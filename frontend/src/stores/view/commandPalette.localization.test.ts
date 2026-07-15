@@ -8,8 +8,10 @@ import {
 import { resolveMessageResult } from "../../platform/localization/fallback";
 import {
   COMMAND_PALETTE_KEYBINDING,
+  deriveSearchPalettePresentationView,
   DOCUMENT_SEARCH_KEYBINDING,
   SEARCH_PALETTE_KEYBINDING,
+  searchPaletteResultCountMessage,
 } from "./commandPalette";
 import {
   KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
@@ -140,5 +142,48 @@ describe("localized command-palette keybindings", () => {
         resolveMessageResult(runtime, { key: "common:actions.reloadPage" }),
       ).toEqual({ message: expectedReload, usedFallback: false });
     }
+  });
+});
+
+describe("localized search-palette presentation", () => {
+  it("resolves result counts for zero, one, two, and many in every locale", () => {
+    for (const locale of [undefined, ltrTestLocale, rtlTestLocale] as const) {
+      const runtime = createTestLocalizationRuntime(locale);
+      for (const count of [0, 1, 2, 11]) {
+        const descriptor = searchPaletteResultCountMessage(count);
+        expect(descriptor).not.toBeNull();
+        expect(resolveMessageResult(runtime, descriptor).usedFallback).toBe(false);
+      }
+    }
+  });
+
+  it("keeps the authored query exact and never exposes error details", () => {
+    const query = "  Exact query — keep spaces  ";
+    const view = deriveSearchPalettePresentationView({
+      query,
+      cursor: 0,
+      expanded: false,
+      pills: [],
+      searchState: "error",
+      semanticOffline: false,
+      error: true,
+    });
+    expect(view.emptyMessage).toEqual({ key: "common:searchPalette.states.failed" });
+    expect(view.liveMessage).toEqual({ key: "common:searchPalette.states.failed" });
+    expect(JSON.stringify(view)).not.toContain("Exact query");
+
+    const empty = deriveSearchPalettePresentationView({
+      query,
+      cursor: 0,
+      expanded: false,
+      pills: [],
+      searchState: "ready",
+      semanticOffline: false,
+      error: false,
+    });
+    expect(empty.emptyMessage).toEqual({
+      key: "common:searchPalette.states.noMatches",
+      values: { query },
+    });
   });
 });

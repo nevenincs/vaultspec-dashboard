@@ -1,6 +1,10 @@
 export const timeline = {
   accessibility: {
     dateField: "Timeline date",
+    loadingRange: "Loading date range",
+    rangeEnd: "Range end",
+    rangeStart: "Range start",
+    selectedRange: "Selected date range",
   },
   actions: {
     clearDateRange: "Clear date range",
@@ -37,5 +41,13 @@ export const timeline = {
   },
   labels: {
     timeline: "Timeline",
+  },
+  states: {
+    noDatedDocuments: "No dated documents in this view.",
+    noDatedFiles: "No dated files in this view.",
+    rangeUnavailable: "Date range is unavailable. Try again shortly.",
+  },
+  summaries: {
+    selectedRange: "{{start}} to {{end}}",
   },
 } as const;

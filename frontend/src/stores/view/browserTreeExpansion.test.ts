@@ -490,7 +490,6 @@ describe("browser tree expansion store", () => {
       markClassName: "shrink-0 text-ink-faint",
       labelClassName: "min-w-0 truncate font-mono",
       linkedCueClassName: "ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent/70",
-      linkedCueAriaLabel: "has graph linkage",
     });
   });
 

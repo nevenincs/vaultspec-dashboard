@@ -1,28 +1,20 @@
-// The review station — the thin, human-in-the-loop review surface for agentic
-// authoring proposals (agentic plan W03.P40, Increment 1). The walking skeleton
-// "is not done until a human can click deny": this surface renders the backend-
-// served proposal queue and lets a reviewer approve/reject (and apply/roll back)
-// each proposal.
-//
-// Layer ownership (architecture-boundaries / views-are-projections): this is a
-// DUMB app-chrome view. It consumes the authoring STORE hooks exclusively
-// (`useReviewStationView`, `useReviewDecision`, …) — it fetches nothing, never
-// inspects the raw `tiers` block (degradation arrives interpreted on the view),
-// and defines no client model. Button ENABLEMENT is the backend-served
-// `eligibility` (rendered directly, never re-derived from events —
-// review-station-state-is-backend-served). A DENIAL is a VALUE the store returns
-// (denials-are-values): the surface renders it as an inline "can’t do that +
-// reason", never an error toast.
-//
-// Design system (design-system-is-centralized): every control resolves to a kit
-// primitive (Button / Badge / StateBlock / Skeleton / SectionLabel) over bound
-// tokens — no raw hex, no loose sizes. Labels are plain user-facing language
-// (labels-are-user-facing): the wire status/command tokens map to reworded
-// labels here; internal ids stay off-screen.
-
 import { useState } from "react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
+  normalizeReviewCommandOutcome,
+  reviewAcknowledgementCountDescriptor,
+  reviewAuthorKindDescriptor,
+  reviewChangeCountDescriptor,
+  reviewCommand,
+  reviewCommandFailureKind,
+  reviewCommandPresentation,
+  reviewFailureDescriptor,
+  reviewPolicyDescriptor,
+  reviewStaleDescriptor,
+  reviewStatusDescriptor,
+  reviewValidationDescriptor,
+  REVIEW_STATION_MESSAGES,
   useApplyChangeset,
   useCreateRollback,
   useCurrentEditorIdentity,
@@ -33,92 +25,39 @@ import {
   type ActionEligibility,
   type AppliedUnderPolicyProjection,
   type AuthoringCommandOutcome,
-  type ChangesetStatus,
   type ProposalProjection,
+  type ReviewCommand,
   type ReviewStationView,
 } from "../../stores/server/authoring";
 import { Badge, Button, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 import { DiffPanel } from "./DiffPanel";
 
-/** Wire status token → plain label. Frontend maps only presentation
- *  (display-state-is-backend-served); the served token stays authoritative. */
-const STATUS_LABEL: Record<ChangesetStatus, string> = {
-  draft: "Draft",
-  generating: "Generating",
-  proposed: "Proposed",
-  needs_review: "Needs review",
-  approved: "Approved",
-  applying: "Applying",
-  applied: "Applied",
-  partially_applied: "Partially applied",
-  compensation_required: "Needs repair",
-  rejected: "Rejected",
-  conflicted: "Conflicted",
-  superseded: "Superseded",
-  failed: "Failed",
-  rollback_proposed: "Rollback proposed",
-  cancelled: "Cancelled",
-};
+type ResolveMessage = ReturnType<typeof useLocalizedMessageResolver>;
 
-/** Wire command token → plain button label. */
-const COMMAND_LABEL: Record<string, string> = {
-  approve: "Approve",
-  reject: "Reject",
-  submit_for_review: "Submit for review",
-  request_apply: "Apply",
-  create_rollback: "Roll back",
-};
-
-const MODE_LABEL: Record<string, string> = {
-  manual: "Manual",
-  assisted: "Assisted",
-  autonomous: "Autonomous",
-};
-
-const REQUIREMENT_LABEL: Record<string, string> = {
-  human_approval_required: "Human approval",
-  system_auto_approvable: "System approval",
-};
-
-function statusLabel(status: ChangesetStatus): string {
-  return STATUS_LABEL[status] ?? status;
+function safeMessage(
+  resolveMessage: ResolveMessage,
+  descriptor: Parameters<ResolveMessage>[0],
+): string | null {
+  const result = resolveMessage(descriptor);
+  return result.usedFallback ? null : result.message;
 }
 
-function commandLabel(command: string): string {
-  return COMMAND_LABEL[command] ?? command;
-}
-
-function policyLabel(proposal: ProposalProjection): string {
-  if (!proposal.policy) return "";
-  const mode =
-    MODE_LABEL[proposal.policy.effective_mode] ?? proposal.policy.effective_mode;
-  const requirement =
-    REQUIREMENT_LABEL[proposal.policy.requirement] ?? proposal.policy.requirement;
-  return `${mode} · ${requirement}`;
-}
-
-function staleLabel(proposal: ProposalProjection): string {
-  if (proposal.approval.stale_reason === "policy_version_changed") {
-    return "Review policy changed";
-  }
-  return "Review is stale";
-}
-
-// --- reviewer identity ----------------------------------------------------------
-
-/** The reviewer identity control: bootstrap the shared current-editor human
- *  actor token (the SAME principal a plain editing session bootstraps —
- *  ledgered-edit-migration ADR), or show the signed-in reviewer with a
- *  sign-out. Without it, no command can resolve a principal. */
 function ReviewerIdentity() {
   const identity = useCurrentEditorIdentity();
+  const resolveMessage = useLocalizedMessageResolver();
+  const signedIn = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signedIn);
+  const signOut = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signOut);
+  const signIn = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signIn);
+  const signingIn = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signingIn);
 
+  if (!signedIn || !signOut || !signIn || !signingIn) return null;
   if (identity.hasToken) {
     return (
       <div className="flex items-center gap-fg-2 text-meta text-ink-muted">
-        <span data-reviewer-signed-in>Signed in as reviewer</span>
+        <span data-reviewer-signed-in>{signedIn}</span>
         <Button variant="ghost" onClick={identity.signOut} data-reviewer-signout>
-          Sign out
+          {signOut}
         </Button>
       </div>
     );
@@ -130,16 +69,11 @@ function ReviewerIdentity() {
       onClick={identity.bootstrap}
       data-reviewer-signin
     >
-      {identity.bootstrapping ? "Signing in…" : "Sign in as reviewer"}
+      {identity.bootstrapping ? signingIn : signIn}
     </Button>
   );
 }
 
-// --- per-proposal review actions ------------------------------------------------
-
-/** The bundle of review commands a proposal card dispatches. Each returns the
- *  interpreted outcome (denials are VALUES — a refusal resolves, never throws;
- *  only a genuine fault throws). */
 export interface ReviewActions {
   decide(
     proposal: ProposalProjection,
@@ -158,8 +92,6 @@ function useReviewActions(): ReviewActions {
   return {
     decide: (proposal, kind) =>
       decision.mutateAsync({
-        // Identity comes from the served projection (never a frontend-recomputed
-        // backend hash). The card only renders these buttons once it is present.
         approvalId: proposal.approval.approval_id ?? "",
         payload: {
           proposal_id: proposal.approval.proposal_id ?? "",
@@ -193,73 +125,77 @@ function useReviewActions(): ReviewActions {
   };
 }
 
-/** The inline feedback a command leaves on a card: a denial/unavailable VALUE
- *  (rendered as a refusal + reason, not an error), or a genuine fault. */
-type CardFeedback =
-  | { tone: "refused"; message: string }
-  | { tone: "error"; message: string }
-  | null;
+type CardFeedback = {
+  tone: "refused" | "error" | "accepted";
+  descriptor: ReturnType<typeof reviewFailureDescriptor>;
+} | null;
 
-type AppliedPolicyMeta = Pick<
-  AppliedUnderPolicyProjection,
-  "policy_id" | "policy_version" | "mode" | "acknowledgement_count"
->;
+type PendingConfirmation = {
+  command: Exclude<ReviewCommand, "submit_for_review">;
+  proposal: ProposalProjection;
+};
 
-function outcomeFeedback(outcome: AuthoringCommandOutcome): CardFeedback {
-  if (outcome.kind === "denied") {
+type AppliedPolicyMeta = Pick<AppliedUnderPolicyProjection, "acknowledgement_count">;
+
+function outcomeFeedback(
+  outcome: AuthoringCommandOutcome,
+): Exclude<CardFeedback, null> | null {
+  const normalized = normalizeReviewCommandOutcome(outcome);
+  if (normalized.kind === "accepted" || normalized.kind === "inFlight") {
     return {
-      tone: "refused",
-      message: outcome.reason ?? "That action isn’t allowed right now.",
+      tone: "accepted",
+      descriptor: REVIEW_STATION_MESSAGES.actionAccepted,
     };
   }
-  if (outcome.kind === "unavailable") {
-    return {
-      tone: "refused",
-      message: outcome.reason ?? "That action isn’t available right now.",
-    };
-  }
-  // `ok` / `in_flight` need no notice — the polled queue refreshes the row.
-  return null;
+  return normalized.reason === "rollbackUnavailable"
+    ? { tone: "refused", descriptor: REVIEW_STATION_MESSAGES.rollbackRefused }
+    : { tone: "refused", descriptor: REVIEW_STATION_MESSAGES.actionNotAllowed };
 }
 
-// --- one proposal card ----------------------------------------------------------
-
-/** A single review-decision button driven by a served eligibility entry. Its
- *  ENABLEMENT is the backend `allowed` flag (never re-derived); a denial's
- *  `reason` is surfaced as the disabled title. When the reviewer is not signed
- *  in, the button is gated with a plain hint (a transient identity gate, not a
- *  permanent lie). */
 function ActionButton({
   eligibility,
+  command,
+  label,
   hasToken,
   busy,
   variant,
+  resolveMessage,
   onRun,
 }: {
   eligibility: ActionEligibility;
+  command: ReviewCommand;
+  label: string;
   hasToken: boolean;
   busy: boolean;
   variant: "primary" | "secondary" | "danger";
+  resolveMessage: ResolveMessage;
   onRun: () => void;
 }) {
   const blockedByBackend = !eligibility.allowed;
   const blockedByIdentity = !hasToken;
   const disabled = busy || blockedByBackend || blockedByIdentity;
-  const title = blockedByBackend
-    ? (eligibility.reason ?? undefined)
-    : blockedByIdentity
-      ? "Sign in as reviewer to act"
-      : undefined;
+  const titleDescriptor = busy
+    ? REVIEW_STATION_MESSAGES.actionInProgress
+    : blockedByBackend
+      ? REVIEW_STATION_MESSAGES.actionUnavailable
+      : blockedByIdentity
+        ? REVIEW_STATION_MESSAGES.signInToAct
+        : null;
+  const title = titleDescriptor
+    ? safeMessage(resolveMessage, titleDescriptor)
+    : undefined;
+  if (titleDescriptor && !title) return null;
+
   return (
     <Button
       variant={variant}
       disabled={disabled}
-      title={title}
+      title={title ?? undefined}
       onClick={onRun}
-      data-action={eligibility.command}
+      data-action={command}
       data-allowed={eligibility.allowed}
     >
-      {commandLabel(eligibility.command)}
+      {label}
     </Button>
   );
 }
@@ -275,59 +211,149 @@ export function ProposalCard({
   hasToken: boolean;
   appliedPolicy?: AppliedPolicyMeta;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<CardFeedback>(null);
   const [showDiff, setShowDiff] = useState(false);
+  const [pending, setPending] = useState<PendingConfirmation | null>(null);
+
+  const status = safeMessage(resolveMessage, reviewStatusDescriptor(proposal.status));
+  const author = safeMessage(
+    resolveMessage,
+    reviewAuthorKindDescriptor(proposal.origin_actor.kind),
+  );
+  const changes = safeMessage(
+    resolveMessage,
+    reviewChangeCountDescriptor(proposal.operation_count),
+  );
+  const untitled = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.untitledProposal,
+  );
+  const showChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.showChanges);
+  const hideChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.hideChanges);
+  const policy = proposal.policy
+    ? safeMessage(
+        resolveMessage,
+        reviewPolicyDescriptor(
+          proposal.policy.effective_mode,
+          proposal.policy.requirement,
+        ),
+      )
+    : null;
+  const validation =
+    proposal.validation.present && proposal.validation.status
+      ? safeMessage(
+          resolveMessage,
+          reviewValidationDescriptor(proposal.validation.status),
+        )
+      : null;
+  const stale =
+    proposal.approval.stale || proposal.approval.stale_reason
+      ? safeMessage(
+          resolveMessage,
+          reviewStaleDescriptor(proposal.approval.stale_reason),
+        )
+      : null;
+  const conflict = proposal.conflict
+    ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.conflict)
+    : null;
+  const appliedAutomatically = appliedPolicy
+    ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.appliedAutomatically)
+    : null;
+  const acknowledgements =
+    appliedPolicy && appliedPolicy.acknowledgement_count > 0
+      ? safeMessage(
+          resolveMessage,
+          reviewAcknowledgementCountDescriptor(appliedPolicy.acknowledgement_count),
+        )
+      : null;
+
+  if (
+    !status ||
+    !author ||
+    !changes ||
+    !untitled ||
+    !showChanges ||
+    !hideChanges ||
+    (proposal.policy && !policy) ||
+    (proposal.validation.present && proposal.validation.status && !validation) ||
+    ((proposal.approval.stale || proposal.approval.stale_reason) && !stale) ||
+    (proposal.conflict && !conflict) ||
+    (appliedPolicy && !appliedAutomatically) ||
+    (appliedPolicy && appliedPolicy.acknowledgement_count > 0 && !acknowledgements)
+  ) {
+    return null;
+  }
 
   const run = async (fn: () => Promise<AuthoringCommandOutcome>) => {
     setBusy(true);
     setFeedback(null);
     try {
       setFeedback(outcomeFeedback(await fn()));
-    } catch {
-      // A genuine fault (4xx/5xx) — distinct from a denial VALUE above.
-      setFeedback({ tone: "error", message: "Something went wrong — please retry." });
+    } catch (error) {
+      setFeedback({
+        tone: "error",
+        descriptor: reviewFailureDescriptor(reviewCommandFailureKind(error)),
+      });
     } finally {
       setBusy(false);
     }
   };
 
-  // The approval identity a decision/apply needs is served ON the projection; the
-  // decision buttons render only when it is present (no recomputed backend hash).
   const hasApprovalIdentity =
     !!proposal.approval.approval_id && !!proposal.approval.proposal_id;
 
-  const variantFor = (command: string): "primary" | "secondary" | "danger" =>
+  const variantFor = (command: ReviewCommand): "primary" | "secondary" | "danger" =>
     command === "reject" ? "danger" : command === "approve" ? "primary" : "secondary";
 
-  const runFor = (command: string): (() => void) => {
+  const runCommand = (command: ReviewCommand, target: ProposalProjection) => {
     switch (command) {
       case "approve":
-        return () => void run(() => actions.decide(proposal, "approve"));
+        return run(() => actions.decide(target, "approve"));
       case "reject":
-        return () => void run(() => actions.decide(proposal, "reject"));
+        return run(() => actions.decide(target, "reject"));
       case "submit_for_review":
-        return () => void run(() => actions.submit(proposal));
+        return run(() => actions.submit(target));
       case "request_apply":
-        return () => void run(() => actions.apply(proposal));
-      default:
-        return () => {};
+        return run(() => actions.apply(target));
+      case "create_rollback":
+        return run(() => actions.rollback(target));
     }
   };
 
-  // A decision/apply needs the served approval identity; submit does not.
-  const eligibilityForRender = proposal.eligibility.filter((entry) => {
-    if (entry.command === "approve" || entry.command === "reject") {
-      return hasApprovalIdentity;
+  const eligibilityForRender = proposal.eligibility.flatMap((entry) => {
+    const command = reviewCommand(entry.command);
+    if (!command || command === "create_rollback") return [];
+    if (
+      (command === "approve" || command === "reject" || command === "request_apply") &&
+      !hasApprovalIdentity
+    ) {
+      return [];
     }
-    if (entry.command === "request_apply") return hasApprovalIdentity;
-    return true;
+    const presentation = reviewCommandPresentation(command);
+    if (presentation.kind === "unavailable" || presentation.command === null) {
+      return [];
+    }
+    const label = safeMessage(resolveMessage, presentation.label);
+    return label ? [{ entry, command: presentation.command, label, presentation }] : [];
   });
+
+  const feedbackMessage = feedback
+    ? safeMessage(resolveMessage, feedback.descriptor)
+    : null;
+  if (feedback && !feedbackMessage) return null;
+
+  const pendingPresentation = pending
+    ? reviewCommandPresentation(pending.command)
+    : null;
+  const confirmation = pendingPresentation?.confirmation
+    ? pendingPresentation.confirmation
+    : null;
+  if (pending && !confirmation) return null;
 
   return (
     <li
-      // Card density matches the rail's PR/issue rows (px-fg-2) so the Approvals
-      // fold reads as the same design element as its sibling sections.
       className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
       data-proposal
       data-changeset-id={proposal.changeset_id}
@@ -336,122 +362,106 @@ export function ProposalCard({
       <div className="flex items-start gap-fg-2">
         <span
           className="min-w-0 flex-1 text-body font-medium text-ink"
-          title={proposal.summary}
+          title={proposal.summary || untitled}
         >
-          {proposal.summary || "Untitled proposal"}
+          {proposal.summary || untitled}
         </span>
-        <Badge>{statusLabel(proposal.status)}</Badge>
+        <Badge>{status}</Badge>
       </div>
 
       <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-muted">
-        <span data-proposal-author>{proposal.origin_actor.id || "unknown author"}</span>
-        <span aria-hidden>·</span>
-        <span data-proposal-ops>
-          {proposal.operation_count === 1
-            ? "1 change"
-            : `${proposal.operation_count} changes`}
-        </span>
-        {proposal.policy && (
-          <>
-            <span aria-hidden>·</span>
-            <span data-proposal-policy title={proposal.policy.reason || undefined}>
-              {policyLabel(proposal)}
-            </span>
-          </>
+        <span data-proposal-author>{author}</span>
+        <span data-proposal-ops>{changes}</span>
+        {policy && <span data-proposal-policy>{policy}</span>}
+        {appliedAutomatically && (
+          <span data-applied-policy>{appliedAutomatically}</span>
         )}
-        {appliedPolicy && (
-          <>
-            <span aria-hidden>·</span>
-            <span
-              data-applied-policy
-              title={`${appliedPolicy.policy_id} @ ${appliedPolicy.policy_version}`}
-            >
-              {MODE_LABEL[appliedPolicy.mode] ?? appliedPolicy.mode} policy
-            </span>
-            {appliedPolicy.acknowledgement_count > 0 && (
-              <>
-                <span aria-hidden>·</span>
-                <span data-applied-policy-ack>
-                  {appliedPolicy.acknowledgement_count === 1
-                    ? "1 acknowledgement"
-                    : `${appliedPolicy.acknowledgement_count} acknowledgements`}
-                </span>
-              </>
-            )}
-          </>
-        )}
-        {proposal.validation.present && proposal.validation.status && (
-          <>
-            <span aria-hidden>·</span>
-            <span data-proposal-validation>
-              {proposal.validation.approval_ready
-                ? "Validated"
-                : `Validation: ${proposal.validation.status}`}
-            </span>
-          </>
-        )}
-        {(proposal.approval.stale || proposal.approval.stale_reason) && (
-          <>
-            <span aria-hidden>·</span>
-            <span className="text-state-stale" data-proposal-stale>
-              {staleLabel(proposal)}
-            </span>
-          </>
+        {acknowledgements && <span data-applied-policy-ack>{acknowledgements}</span>}
+        {validation && <span data-proposal-validation>{validation}</span>}
+        {stale && (
+          <span className="text-state-stale" data-proposal-stale>
+            {stale}
+          </span>
         )}
       </div>
 
-      {proposal.conflict && (
-        <StateBlock
-          mode="degraded"
-          layout="inline"
-          message="This proposal’s target document changed since review — resolve the conflict before applying."
-        />
-      )}
+      {conflict && <StateBlock mode="degraded" layout="inline" message={conflict} />}
 
       <div className="flex flex-wrap items-center gap-fg-2">
-        {eligibilityForRender.map((entry) => (
+        {eligibilityForRender.map(({ entry, command, label, presentation }) => (
           <ActionButton
-            key={entry.command}
+            key={command}
             eligibility={entry}
+            command={command}
+            label={label}
             hasToken={hasToken}
             busy={busy}
-            variant={variantFor(entry.command)}
-            onRun={runFor(entry.command)}
+            variant={variantFor(command)}
+            resolveMessage={resolveMessage}
+            onRun={() => {
+              if (presentation.kind === "direct") {
+                void runCommand(presentation.command, proposal);
+              } else {
+                setPending({ command: presentation.command, proposal });
+              }
+            }}
           />
         ))}
-        {proposal.rollback.available && (
-          <Button
-            variant="secondary"
-            disabled={busy || !hasToken}
-            title={hasToken ? undefined : "Sign in as reviewer to act"}
-            onClick={() => run(() => actions.rollback(proposal))}
-            data-action="create_rollback"
-          >
-            {commandLabel("create_rollback")}
-          </Button>
-        )}
+        {proposal.rollback.available &&
+          (() => {
+            const presentation = reviewCommandPresentation("create_rollback");
+            const label = safeMessage(resolveMessage, presentation.label);
+            const title = !hasToken
+              ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signInToAct)
+              : busy
+                ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.actionInProgress)
+                : undefined;
+            if (!label || ((!hasToken || busy) && !title)) return null;
+            return (
+              <Button
+                variant="secondary"
+                disabled={busy || !hasToken}
+                title={title ?? undefined}
+                onClick={() => setPending({ command: "create_rollback", proposal })}
+                data-action="create_rollback"
+              >
+                {label}
+              </Button>
+            );
+          })()}
         <Button
           variant="ghost"
           onClick={() => setShowDiff((open) => !open)}
           aria-expanded={showDiff}
           data-toggle-diff
         >
-          {showDiff ? "Hide changes" : "Show changes"}
+          {showDiff ? hideChanges : showChanges}
         </Button>
       </div>
 
       {showDiff && <DiffPanel changesetId={proposal.changeset_id} />}
 
-      {feedback && (
+      {feedbackMessage && feedback && (
         <p
           className={`text-meta ${feedback.tone === "error" ? "text-diff-remove" : "text-ink-muted"}`}
           role="status"
           data-card-feedback={feedback.tone}
         >
-          {feedback.tone === "refused"
-            ? `Can’t do that — ${feedback.message}`
-            : feedback.message}
+          {feedbackMessage}
         </p>
+      )}
+
+      {confirmation && pending && (
+        <ActionConfirmationDialog
+          open
+          confirmation={confirmation}
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            const target = pending;
+            setPending(null);
+            void runCommand(target.command, target.proposal);
+          }}
+        />
       )}
     </li>
   );
@@ -466,10 +476,16 @@ export function AppliedUnderPolicyLane({
   actions: ReviewActions;
   hasToken: boolean;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   if (items.length === 0) return null;
+  const section = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.appliedAutomaticallySection,
+  );
+  if (!section) return null;
   return (
     <section className="flex flex-col gap-fg-2" data-after-fact-lane>
-      <SectionLabel count={items.length}>Applied under policy</SectionLabel>
+      <SectionLabel count={items.length}>{section}</SectionLabel>
       <ul className="flex flex-col gap-fg-2" role="list" data-after-fact-list>
         {items.map((item) => (
           <ProposalCard
@@ -485,37 +501,73 @@ export function AppliedUnderPolicyLane({
   );
 }
 
-// --- the surface ----------------------------------------------------------------
-
-/** The review-station body: the four mutually-exclusive display modes over the
- *  interpreted view, then the populated proposal list. */
-function ReviewStationBody({ view }: { view: ReviewStationView }) {
-  const actions = useReviewActions();
-  const hasToken = useHasActorToken();
+export function ReviewStationBody({
+  view,
+  actions,
+  hasToken,
+}: {
+  view: ReviewStationView;
+  actions: ReviewActions;
+  hasToken: boolean;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const queueUnavailable = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.queueUnavailable,
+  );
+  const loading = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.loading);
+  const loadingQueue = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.loadingQueue,
+  );
+  const empty = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.empty);
+  const moreProposals = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.moreProposals,
+  );
+  const moreAppliedChanges = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.moreAppliedChanges,
+  );
+  const informationMayBeOutOfDate = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.informationMayBeOutOfDate,
+  );
+  if (
+    !queueUnavailable ||
+    !loading ||
+    !loadingQueue ||
+    !empty ||
+    !moreProposals ||
+    !moreAppliedChanges ||
+    !informationMayBeOutOfDate
+  ) {
+    return null;
+  }
 
   if (view.storeUnavailable) {
-    return (
-      <StateBlock
-        mode="degraded"
-        message={view.degradedMessage ?? "The authoring service is unavailable."}
-      />
-    );
+    return <StateBlock mode="degraded" message={queueUnavailable} />;
   }
   if (view.loading) {
     return (
-      <Skeleton label="Loading the review queue">
+      <Skeleton label={loadingQueue}>
+        <span className="sr-only">{loading}</span>
         <SkeletonRow width="w-2/3" boxed />
         <SkeletonRow width="w-1/2" boxed />
       </Skeleton>
     );
   }
   if (view.empty) {
-    return <StateBlock mode="empty" message="No proposals are waiting for review." />;
+    return <StateBlock mode="empty" message={empty} />;
   }
   return (
     <>
-      {view.degraded && view.degradedMessage && (
-        <StateBlock mode="degraded" layout="inline" message={view.degradedMessage} />
+      {view.degraded && view.availabilityIssue === "informationMayBeOutOfDate" && (
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message={informationMayBeOutOfDate}
+        />
       )}
       {view.rows.length > 0 && (
         <ul className="flex flex-col gap-fg-2" role="list" data-proposal-list>
@@ -535,33 +587,20 @@ function ReviewStationBody({ view }: { view: ReviewStationView }) {
         hasToken={hasToken}
       />
       {view.truncated && (
-        <StateBlock
-          mode="degraded"
-          layout="inline"
-          message="More proposals exist than are shown here — narrow the queue to see the rest."
-        />
+        <StateBlock mode="degraded" layout="inline" message={moreProposals} />
       )}
       {view.afterFactTruncated && (
-        <StateBlock
-          mode="degraded"
-          layout="inline"
-          message="More policy-applied changes exist than are shown here."
-        />
+        <StateBlock mode="degraded" layout="inline" message={moreAppliedChanges} />
       )}
     </>
   );
 }
 
-/** The approvals queue as a rail SECTION BODY (no title of its own — the enclosing
- *  rail SectionCard supplies the "Approvals" header, mirroring the
- *  search-service console's body-in-a-section pattern). The reviewer identity
- *  control surfaces only when it can matter: proposals are waiting (sign-in
- *  unlocks their actions) or a reviewer is already signed in (sign-out stays
- *  reachable). A quiet queue renders just its state — no dangling sign-in
- *  button over an empty/loading/degraded body. */
 export function ReviewStationSection() {
   const view = useReviewStationView();
   const identity = useCurrentEditorIdentity();
+  const actions = useReviewActions();
+  const hasToken = useHasActorToken();
   const showIdentity =
     identity.hasToken || view.rows.length > 0 || view.afterFactRows.length > 0;
   return (
@@ -571,7 +610,7 @@ export function ReviewStationSection() {
           <ReviewerIdentity />
         </div>
       )}
-      <ReviewStationBody view={view} />
+      <ReviewStationBody view={view} actions={actions} hasToken={hasToken} />
     </div>
   );
 }

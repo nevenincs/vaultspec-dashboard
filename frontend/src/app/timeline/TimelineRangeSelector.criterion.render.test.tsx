@@ -1,15 +1,11 @@
 // @vitest-environment happy-dom
-//
-// TTR-008b: the on-strip date-criterion selector. The timeline strip surfaces the active
-// date field (created / modified / stamped) as a kit SegmentedToggle radiogroup that
-// writes the ONE engine-served `timeline_date_criterion` setting (the same seam the
-// "Filter by" menu uses). Rendered against the REAL engine over the fixture vault.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { en, sourceLocale } from "../../locales/en";
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
@@ -19,11 +15,29 @@ import {
 } from "../../localization/testing";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
+import { formatDate } from "../../platform/localization/formatters";
 import { ENGINE_WAIT } from "../../testing/timing";
 import { liveScope } from "../../testing/liveClient";
 import { TimelineRange } from "./TimelineRangeSelector";
 
-describe("TimelineRange on-strip date-criterion selector (TTR-008b, live engine)", () => {
+const FIXTURE_RANGE_START = Date.parse("2026-01-01T00:00:00Z");
+const FIXTURE_RANGE_END = Date.parse("2026-01-06T00:00:00Z");
+const RANGE_DATE_OPTIONS = Object.freeze({
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+} as const satisfies Intl.DateTimeFormatOptions);
+
+function formattedFixtureRange(locale: string): { start: string; end: string } {
+  const start = formatDate(locale, FIXTURE_RANGE_START, RANGE_DATE_OPTIONS);
+  const end = formatDate(locale, FIXTURE_RANGE_END, RANGE_DATE_OPTIONS);
+  if (start === null || end === null) {
+    throw new Error("Fixture range dates must format.");
+  }
+  return { end, start };
+}
+
+describe("TimelineRange localized controls", () => {
   let scope: string;
   beforeAll(async () => {
     scope = await liveScope();
@@ -49,24 +63,45 @@ describe("TimelineRange on-strip date-criterion selector (TTR-008b, live engine)
       </I18nextProvider>,
     );
 
-    // The selector only mounts on the TYPICAL strip (the fixture has dated documents),
-    // so waiting for the radiogroup also waits for the corpus bounds to load.
     const group = await screen.findByRole(
       "radiogroup",
-      { name: "Timeline date" },
+      { name: en.timeline.accessibility.dateField },
       ENGINE_WAIT,
     );
 
     const radios = within(group).getAllByRole("radio");
-    expect(radios.map((r) => r.textContent)).toEqual(["Created", "Edited", "Updated"]);
+    expect(radios.map((r) => r.textContent)).toEqual([
+      en.timeline.criteria.created,
+      en.timeline.criteria.modified,
+      en.timeline.criteria.stamped,
+    ]);
 
-    // Created is the default active criterion and is always selectable.
-    const created = within(group).getByRole("radio", { name: "Created" });
-    const modified = within(group).getByRole("radio", { name: "Edited" });
-    const stamped = within(group).getByRole("radio", { name: "Updated" });
+    const created = within(group).getByRole("radio", {
+      name: en.timeline.criteria.created,
+    });
+    const modified = within(group).getByRole("radio", {
+      name: en.timeline.criteria.modified,
+    });
+    const stamped = within(group).getByRole("radio", {
+      name: en.timeline.criteria.stamped,
+    });
     expect(created.getAttribute("aria-checked")).toBe("true");
     expect((created as HTMLButtonElement).disabled).toBe(false);
-    expect(created.getAttribute("title")).toBe("Use the creation date for the range");
+    expect(created.getAttribute("title")).toBe(
+      en.timeline.descriptions.useCreationDateForRange,
+    );
+    const rangeSummary = screen.getByLabelText(en.timeline.accessibility.selectedRange);
+    const rangeStart = screen.getByRole("slider", {
+      name: en.timeline.accessibility.rangeStart,
+    });
+    const rangeEnd = screen.getByRole("slider", {
+      name: en.timeline.accessibility.rangeEnd,
+    });
+    const englishRange = formattedFixtureRange(sourceLocale);
+    expect(rangeSummary.textContent).toBe(
+      runtime.t("timeline:summaries.selectedRange", englishRange),
+    );
+    expect(rangeSummary.textContent).not.toMatch(/[\u2013\u2014]/u);
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
     expect(
@@ -92,6 +127,23 @@ describe("TimelineRange on-strip date-criterion selector (TTR-008b, live engine)
     expect(created.getAttribute("title")).toBe(
       ltrTestResources.timeline.descriptions.useCreationDateForRange,
     );
+    expect(
+      screen.getByLabelText(ltrTestResources.timeline.accessibility.selectedRange),
+    ).toBe(rangeSummary);
+    expect(
+      screen.getByRole("slider", {
+        name: ltrTestResources.timeline.accessibility.rangeStart,
+      }),
+    ).toBe(rangeStart);
+    expect(
+      screen.getByRole("slider", {
+        name: ltrTestResources.timeline.accessibility.rangeEnd,
+      }),
+    ).toBe(rangeEnd);
+    const ltrRange = formattedFixtureRange(ltrTestLocale);
+    expect(rangeSummary.textContent).toBe(
+      runtime.t("timeline:summaries.selectedRange", ltrRange),
+    );
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
     expect(
@@ -116,6 +168,23 @@ describe("TimelineRange on-strip date-criterion selector (TTR-008b, live engine)
     ).toBe(stamped);
     expect(created.getAttribute("title")).toBe(
       rtlTestResources.timeline.descriptions.useCreationDateForRange,
+    );
+    expect(
+      screen.getByLabelText(rtlTestResources.timeline.accessibility.selectedRange),
+    ).toBe(rangeSummary);
+    expect(
+      screen.getByRole("slider", {
+        name: rtlTestResources.timeline.accessibility.rangeStart,
+      }),
+    ).toBe(rangeStart);
+    expect(
+      screen.getByRole("slider", {
+        name: rtlTestResources.timeline.accessibility.rangeEnd,
+      }),
+    ).toBe(rangeEnd);
+    const rtlRange = formattedFixtureRange(rtlTestLocale);
+    expect(rangeSummary.textContent).toBe(
+      runtime.t("timeline:summaries.selectedRange", rtlRange),
     );
   });
 });

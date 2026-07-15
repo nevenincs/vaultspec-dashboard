@@ -1,15 +1,11 @@
 // @vitest-environment happy-dom
-//
-// The canvas overlay (canvas-overlay-redesign): the resolver returns ONE primary state
-// plus the ORDERED set of co-occurring annotations, and the chrome renders the primary
-// centered (a boot-idiom spinner for loading) with the annotations stacked at the bottom
-// edge. These tests pin the priority order (loading vs links-building/refreshing vs
-// truncated vs degraded can co-occur), the two designed document-links states, and the
-// truncation chip's filter-open affordance.
 
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
+import { createTestLocalizationRuntime } from "../../localization/testing";
 import type { GraphSlice } from "../../stores/server/engine";
 import type { GraphSliceAvailability } from "../../stores/server/queries";
 import { normalizeRenderCapability } from "../../stores/view/renderCapability";
@@ -19,10 +15,11 @@ import {
 } from "../../stores/view/filterSidebar";
 import {
   CanvasStateOverlay,
-  degradedBannerCopy,
+  degradedCanvasMessage,
   resolveCanvasState,
   type CanvasOverlayView,
 } from "./CanvasStateOverlay";
+import { resolveMessage } from "../../platform/localization/fallback";
 
 afterEach(() => {
   cleanup();
@@ -58,7 +55,7 @@ const base = {
 const annotationKinds = (view: CanvasOverlayView) =>
   view.annotations.map((a) => a.kind);
 
-describe("resolveCanvasState — primary (blocking/centered) states", () => {
+describe("resolveCanvasState primary states", () => {
   it("awaits scope before any data state when no worktree is resolved", () => {
     expect(resolveCanvasState({ ...base, scope: null }).primary.kind).toBe(
       "awaiting-scope",
@@ -112,7 +109,7 @@ describe("resolveCanvasState — primary (blocking/centered) states", () => {
   });
 });
 
-describe("resolveCanvasState — annotations over a live field", () => {
+describe("resolveCanvasState annotations", () => {
   it("drops a semantic-only degradation (search's concern, not the graph stage)", () => {
     const view = resolveCanvasState({
       ...base,
@@ -172,7 +169,7 @@ describe("resolveCanvasState — annotations over a live field", () => {
   });
 });
 
-describe("resolveCanvasState — co-occurrence + priority (canvas-overlay-redesign #4)", () => {
+describe("resolveCanvasState annotation priority", () => {
   it("stacks degraded + truncated + links-refreshing + refreshing in priority order", () => {
     const truncatedSlice = {
       ...liveSlice,
@@ -189,7 +186,6 @@ describe("resolveCanvasState — co-occurrence + priority (canvas-overlay-redesi
         refreshing: true,
       },
     });
-    // declared→links-refreshing (split out); structural→degraded; + truncated + refresh.
     expect(annotationKinds(view)).toEqual([
       "degraded",
       "truncated",
@@ -214,7 +210,7 @@ describe("resolveCanvasState — co-occurrence + priority (canvas-overlay-redesi
   });
 });
 
-describe("normalizeRenderCapability (trust-boundary signal decode)", () => {
+describe("normalizeRenderCapability", () => {
   it("maps the software-fallback signal to render-OK", () => {
     expect(normalizeRenderCapability({ state: "ok", recoverable: false })).toEqual({
       status: "ok",
@@ -242,111 +238,111 @@ const view = (over: Partial<CanvasOverlayView>): CanvasOverlayView => ({
   ...over,
 });
 
-describe("CanvasStateOverlay — primary rendering", () => {
+const runtime = createTestLocalizationRuntime();
+
+function overlayNode(state: CanvasOverlayView) {
+  return (
+    <I18nextProvider i18n={runtime}>
+      <CanvasStateOverlay state={state} />
+    </I18nextProvider>
+  );
+}
+
+function renderOverlay(state: CanvasOverlayView) {
+  return render(overlayNode(state));
+}
+
+describe("CanvasStateOverlay primary rendering", () => {
   it("renders nothing when ok with no annotations", () => {
-    const { container } = render(<CanvasStateOverlay state={view({})} />);
+    const { container } = renderOverlay(view({}));
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders the global loader as a centered spinner ring on a scrim — no 'Loading...' text", () => {
-    const { container } = render(
-      <CanvasStateOverlay state={view({ primary: { kind: "loading-document" } })} />,
+  it("renders the global loader as a centered spinner ring on a scrim", () => {
+    const { container } = renderOverlay(
+      view({ primary: { kind: "loading-document" } }),
     );
     const loader = container.querySelector('[data-canvas-state="loading-document"]');
     expect(loader).toBeTruthy();
-    expect(loader?.textContent).not.toContain("Loading...");
-    // The boot-idiom ring (kit Spinner) is present; the label is sr-only.
     expect(loader?.querySelector(".animate-spin")).toBeTruthy();
-    expect(loader?.querySelector(".sr-only")?.textContent).toBe("Loading graph");
-    // Attenuated scrim, pointer-transparent so the canvas is never grabbed.
+    expect(loader?.querySelector(".sr-only")?.textContent).toBe(
+      en.graph.canvas.states.loading,
+    );
     expect(loader?.className).toContain("pointer-events-none");
   });
 
   it("renders empty / unavailable / gpu cards with plain language (no jargon)", () => {
-    const { rerender } = render(
-      <CanvasStateOverlay state={view({ primary: { kind: "empty" } })} />,
-    );
+    const { rerender } = renderOverlay(view({ primary: { kind: "empty" } }));
     expect(
       document.querySelector('[data-canvas-state="empty"]')?.textContent,
-    ).toContain("No nodes match the current filter");
-    rerender(<CanvasStateOverlay state={view({ primary: { kind: "unavailable" } })} />);
+    ).toContain(en.graph.canvas.emptyStates.noFilterMatches);
+    rerender(overlayNode(view({ primary: { kind: "unavailable" } })));
     expect(
       document.querySelector('[data-canvas-state="unavailable"]')?.textContent,
-    ).toContain("Graph is not available");
-    rerender(
-      <CanvasStateOverlay state={view({ primary: { kind: "gpu-unavailable" } })} />,
-    );
+    ).toContain(en.graph.canvas.errors.unavailable);
+    rerender(overlayNode(view({ primary: { kind: "gpu-unavailable" } })));
     const gpu = document.querySelector('[data-canvas-state="gpu-unavailable"]');
-    expect(gpu?.textContent).toContain("Graphics unavailable");
-    expect(gpu?.textContent).not.toContain("WebGL");
+    expect(gpu?.textContent).toContain(en.graph.canvas.errors.graphicsTitle);
+    expect(gpu?.textContent).toContain(en.graph.canvas.errors.graphicsMessage);
   });
 
   it("renders context-lost with the spinner idiom + a brief label", () => {
-    render(<CanvasStateOverlay state={view({ primary: { kind: "context-lost" } })} />);
+    renderOverlay(view({ primary: { kind: "context-lost" } }));
     const node = document.querySelector('[data-canvas-state="context-lost"]');
-    expect(node?.textContent).toContain("Restoring graphics");
+    expect(node?.textContent).toContain(en.graph.canvas.states.restoring);
     expect(node?.querySelector(".animate-spin")).toBeTruthy();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
   });
 });
 
-describe("CanvasStateOverlay — annotation rendering", () => {
+describe("CanvasStateOverlay annotation rendering", () => {
   it("renders the two designed document-links states with their plain copy", () => {
-    const { rerender } = render(
-      <CanvasStateOverlay
-        state={view({ annotations: [{ kind: "links-building" }] })}
-      />,
+    const { rerender } = renderOverlay(
+      view({ annotations: [{ kind: "links-building" }] }),
     );
     expect(
       document.querySelector('[data-canvas-state="links-building"]')?.textContent,
-    ).toContain("Document links are loading for the first time");
-    rerender(
-      <CanvasStateOverlay
-        state={view({ annotations: [{ kind: "links-refreshing" }] })}
-      />,
-    );
+    ).toContain(en.graph.canvas.states.loadingDocumentLinks);
+    rerender(overlayNode(view({ annotations: [{ kind: "links-refreshing" }] })));
     const refreshing = document.querySelector('[data-canvas-state="links-refreshing"]');
-    expect(refreshing?.textContent).toBe("Document links are being refreshed.");
-    // The refreshing state is the quiet, unobtrusive caption — muted (information-bearing) ink, no border.
+    expect(refreshing?.textContent).toBe(
+      en.graph.canvas.states.refreshingDocumentLinks,
+    );
     expect(refreshing?.className).toContain("text-ink-muted");
     expect(refreshing?.className).not.toContain("border");
   });
 
   it("renders the truncation chip with tabular counts and a filter affordance that opens the filter plane", () => {
-    render(
-      <CanvasStateOverlay
-        state={view({
-          annotations: [
-            { kind: "truncated", total: 8700, returned: 5000, reason: "ceiling" },
-          ],
-        })}
-      />,
+    renderOverlay(
+      view({
+        annotations: [
+          { kind: "truncated", total: 8700, returned: 5000, reason: "ceiling" },
+        ],
+      }),
     );
     const chip = document.querySelector('[data-canvas-state="truncated"]');
-    expect(chip?.textContent).toContain("Showing");
-    // Counts are data-bearing → tabular numerals, thousands-grouped.
-    const counts = chip?.querySelectorAll("[data-tabular]");
-    expect(counts?.length).toBe(2);
     expect(chip?.textContent).toContain("5,000");
     expect(chip?.textContent).toContain("8,700");
-    // The affordance INVOKES the existing open-filter seam (it authors no facet).
+    const counts = chip?.querySelectorAll("[data-tabular]");
+    expect(counts?.length).toBe(1);
     expect(useFilterSidebarStore.getState().open).toBe(false);
-    const refine = chip?.querySelector("button");
-    expect(refine?.textContent).toContain("Refine");
-    fireEvent.click(refine!);
+    const openFilters = chip?.querySelector("button");
+    expect(openFilters?.textContent).toBe(en.common.actions.openFilters);
+    openFilters?.focus();
+    fireEvent.click(openFilters!);
     expect(useFilterSidebarStore.getState().open).toBe(true);
+    expect(document.activeElement).toBe(openFilters);
   });
 
   it("stacks co-occurring annotation chips (each legible)", () => {
-    const { container } = render(
-      <CanvasStateOverlay
-        state={view({
-          annotations: [
-            { kind: "degraded", tiers: ["temporal"], reasons: {} },
-            { kind: "truncated", total: 9000, returned: 5000, reason: "ceiling" },
-            { kind: "links-refreshing" },
-          ],
-        })}
-      />,
+    const { container } = renderOverlay(
+      view({
+        annotations: [
+          { kind: "degraded", tiers: ["temporal"], reasons: {} },
+          { kind: "truncated", total: 9000, returned: 5000, reason: "ceiling" },
+          { kind: "links-refreshing" },
+        ],
+      }),
     );
     expect(container.querySelector('[data-canvas-state="degraded"]')).toBeTruthy();
     expect(container.querySelector('[data-canvas-state="truncated"]')).toBeTruthy();
@@ -355,37 +351,33 @@ describe("CanvasStateOverlay — annotation rendering", () => {
     ).toBeTruthy();
   });
 
-  it("surfaces an unknown tier as a data error, not a degraded view", () => {
-    render(
-      <CanvasStateOverlay
-        state={view({ annotations: [{ kind: "unknown-tier", tiers: ["quantum"] }] })}
-      />,
+  it("maps an unknown condition to safe recovery copy", () => {
+    renderOverlay(
+      view({ annotations: [{ kind: "unknown-tier", tiers: ["quantum"] }] }),
     );
     const chip = document.querySelector('[data-canvas-state="unknown-tier"]');
-    expect(chip?.textContent).toContain("quantum");
-    expect(chip?.textContent).toContain("data error");
+    expect(chip?.textContent).toBe(en.graph.canvas.errors.partialUnavailable);
+    expect(chip?.textContent).not.toContain("quantum");
   });
 });
 
-describe("degradedBannerCopy (plain-language tier copy)", () => {
-  it("maps each edge tier to its plain feature name (no tier jargon)", () => {
-    expect(degradedBannerCopy(["temporal"], {})).toBe(
-      "Timeline unavailable — the rest of the graph is live",
-    );
-    expect(degradedBannerCopy(["structural"], {})).toBe(
-      "Mentions unavailable — the rest of the graph is live",
-    );
-  });
+describe("degradedCanvasMessage", () => {
+  it("selects safe loading or recovery descriptors without carrying input values", () => {
+    const loading = degradedCanvasMessage(["structural"], {
+      structural: "structural tier building",
+    });
+    const unavailable = degradedCanvasMessage(["structural", "temporal"], {
+      structural: "structural tier building",
+      temporal: "engine:offline",
+    });
 
-  it("frames a 'building' reason as loading (transient), not unavailable", () => {
-    expect(
-      degradedBannerCopy(["structural"], { structural: "structural tier building" }),
-    ).toBe("Still loading mentions…");
-  });
-
-  it("joins multiple down features with 'and'", () => {
-    expect(degradedBannerCopy(["structural", "temporal"], {})).toBe(
-      "Mentions and timeline unavailable — the rest of the graph is live",
+    expect(resolveMessage(runtime, loading)).toBe(
+      en.graph.canvas.states.loadingDetails,
     );
+    expect(resolveMessage(runtime, unavailable)).toBe(
+      en.graph.canvas.errors.partialUnavailable,
+    );
+    expect(loading.values).toBeUndefined();
+    expect(unavailable.values).toBeUndefined();
   });
 });

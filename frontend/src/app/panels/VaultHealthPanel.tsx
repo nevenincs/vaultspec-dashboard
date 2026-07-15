@@ -1,15 +1,4 @@
-// The Vault health control-panel body (activity-rail-realignment ADR D3, S10).
-// The first chrome consumer of the served core vault-health word: it renders the
-// served health word and hosts the EXISTING vault-check ops verb with its receipt
-// — no richer per-condition ingestion (explicitly out of scope per the ADR
-// constraints).
-//
-// Layer ownership (dashboard-layer-ownership): a DUMB app-chrome body. The health
-// word is read through the interpreted `useCoreStatus` selector (never the raw
-// `tiers`/`core` block); the check runs through the ONE ops dispatch seam
-// (`useOpsRunMutation` -> `dispatchOps`, logged + traced + guardable), and its
-// outcome renders from the shared `useOpsReceipt` projection — the same receipt
-// idiom every ops surface uses.
+// Project-health summary and its on-demand check action.
 
 import {
   HEALTHY_VAULT_WORDS,
@@ -20,9 +9,11 @@ import {
 import { useOpsRunMutation } from "../../stores/view/opsRun";
 import { useOpsReceipt } from "../../stores/view/opsReceipt";
 import type { OpsReceipt } from "../../stores/server/queries";
+import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
+import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 import { Button } from "../kit";
 
-/** The projected vault-health word + tone the panel renders. */
+/** Projected status word and visual tone. */
 export interface VaultHealthView {
   tone: FrameworkStatusTone;
   word: string;
@@ -52,12 +43,7 @@ function titleCase(word: string): string {
   return word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-/**
- * Project the vault-health word + tone from the interpreted core view. Pure — no
- * hook — so the mapping is unit-testable. An unreachable/errored core is down; a
- * reachable core with no served word is honestly "Reachable" (we do not invent a
- * health verdict); a served word maps healthy -> ok, anything else -> attention.
- */
+/** Derive the status shown from the interpreted project state. */
 export function deriveVaultHealthView(
   core: Pick<CoreStatusView, "loading" | "errored" | "reachable" | "vaultHealth">,
 ): VaultHealthView {
@@ -71,13 +57,15 @@ export function deriveVaultHealthView(
   return { tone: healthy ? "ok" : "attention", word: titleCase(raw) };
 }
 
-/** The Vault health panel body: the served health word plus the vault-check verb. */
+/** Project health status and check action. */
 export function VaultHealthPanel() {
+  const projectHealthLabel = useLocalizedMessage(
+    CONTROL_PANEL_VOCABULARY["vault-health"].label,
+  );
   const core = useCoreStatus();
   const view = deriveVaultHealthView(core);
   const check = useOpsRunMutation();
-  // The receipt store is a global singleton shared by every ops surface; show
-  // only this panel's own verb so a foreign dispatch never surfaces here.
+  // Show only the receipt produced by this panel's action.
   const lastReceipt = useOpsReceipt();
   const receipt = lastReceipt?.verb === "vault-check" ? lastReceipt : null;
 
@@ -88,7 +76,9 @@ export function VaultHealthPanel() {
           aria-hidden
           className={`size-fg-2 shrink-0 rounded-full ${TONE_DOT_CLASS[view.tone]}`}
         />
-        <span className="min-w-0 flex-1 truncate text-body text-ink">Vault health</span>
+        <span className="min-w-0 flex-1 truncate text-body text-ink">
+          {projectHealthLabel}
+        </span>
         <span className={`shrink-0 text-meta ${TONE_TEXT_CLASS[view.tone]}`}>
           {view.word}
         </span>

@@ -1,19 +1,4 @@
 // @vitest-environment happy-dom
-//
-// Worktree-switcher surface (W02.P14.S30) rendered against the REAL engine over
-// the fixture vault (app client bound live in liveSetup). These cover the loaded
-// disclosure contract: the active-worktree trigger headline, the expandable
-// labelled list, the grayscale-safe active-scope cue (aria-current + weight), and
-// the keyboard open/collapse + focus-return.
-//
-// The MULTI-worktree behaviours (switch wholesale, bare-ref non-selectable,
-// rejected-durable-switch, ArrowDown/Up between rows) and the loading / degraded
-// / error states are NOT exercised here: they need either a transport stub (the
-// fakes this codebase is burning down) or a multi-worktree fixture the live
-// engine serves. The switch/reset invariant (022) is owned by the stores-layer
-// activation path (`activateWorktreeScope` -> `switchActiveScope` -> `setScope`)
-// and pure-tested; degradation selection is pure-tested via the stores selectors.
-// See FINDINGS R2 (multi-worktree fixture) to restore the multi-scope render tests.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -37,7 +22,7 @@ function renderPicker(props: { defaultExpanded?: boolean } = {}) {
   );
 }
 
-describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
+describe("WorktreePicker loaded disclosure and accessibility", () => {
   let scope: string;
   beforeAll(async () => {
     scope = await liveScope();
@@ -110,11 +95,7 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
   });
 
   it("never hides the control while the map is loading (always pickable)", () => {
-    // First synchronous frame before the live /map query resolves. The picker MUST
-    // NOT early-return a skeleton/error that hides the whole control — the trigger
-    // (and thus the dropdown's project switcher + Add a project) must always be
-    // reachable so the operator can always pick/add a project, even when the active
-    // project's worktrees are unavailable (the never-strand invariant).
+    // The control remains available while its data loads.
     queryClient.clear();
     renderPicker();
     expect(
@@ -130,7 +111,7 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     // The old no-op "open or add a project" header IconButton is gone; the
     // rail-collapse toggle remains.
     expect(screen.queryByRole("button", { name: /open or add a project/i })).toBeNull();
-    expect(screen.getByRole("button", { name: /collapse left rail/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /collapse navigation/i })).toBeTruthy();
   });
 
   it("pins an 'Add a project…' row as the first item of the dropdown", async () => {
@@ -142,7 +123,7 @@ describe("WorktreePicker loaded disclosure + a11y (S30, live engine)", () => {
     );
     const addRow = list.querySelector("[data-worktree-add-project]");
     expect(addRow).toBeTruthy();
-    expect(addRow?.textContent).toMatch(/add a project/i);
+    expect(addRow?.textContent).toMatch(/add project/i);
     // It is the FIRST focusable row in the list (the relocated folder-add affordance).
     expect(list.querySelector("button")).toBe(addRow);
   });

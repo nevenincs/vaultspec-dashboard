@@ -1,19 +1,5 @@
-// DocChrome — the single chrome bar that crowns an open document, matching the
-// binding reader frame `455:1117` (doc-reader · Reader): a path Breadcrumb on the
-// left and a View/Edit segmented toggle on the right, over a 1px rule. This is the
-// ONE chrome bar the binding design specifies; it replaces the prior stacked
-// `DocHeader` crown + a separate Edit-button toolbar (editor-figma-parity).
-//
-// Composed from the centralized kit (design-system-is-centralized): Breadcrumb and
-// SegmentedToggle/Segment are the shared definitions. Pure, prop-driven app chrome
-// (dashboard-layer-ownership): it holds no wire state, fetches nothing, and reads
-// no raw `tiers` — the host derives the trail from the preserved stores header
-// model and passes mode + intent down.
-//
-// The mode toggle exposes its accelerator only through the native hover tooltip.
-// The chord is DERIVED from the one keymap registry by shared action id — never
-// hand-typed (palette-accelerators-derive-from-the-keymap-registry). Inline shortcut
-// hints belong only in menus and the command palette, keeping document chrome quiet.
+// Document navigation and reading-mode controls. The host owns the path, mode,
+// and actions; this component resolves presentation at render time.
 
 import type { ReactNode } from "react";
 
@@ -24,6 +10,7 @@ import {
   resolveKeycapPresentations,
 } from "../../platform/keymap/chord";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { getKeymapOverrides } from "../../stores/view/keymapDispatcher";
 import {
   EDITOR_TOGGLE_MODE_ACTION_ID,
@@ -32,9 +19,13 @@ import {
 
 export type DocChromeMode = "view" | "edit";
 
-/** The effective keycaps for one editor action id, sourced from the keymap catalog
- *  (the registry's own definitions) with the live user override applied — or an
- *  empty list when the id is unknown, so the hint simply renders nothing. */
+export const DOC_CHROME_MESSAGES = {
+  documentMode: { key: "documents:viewer.accessibility.documentMode" },
+  edit: { key: "documents:viewer.modes.edit" },
+  view: { key: "documents:viewer.modes.view" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+/** Return the effective keycaps for an editor action. */
 function editorAcceleratorCaps(actionId: string) {
   const def = deriveEditorKeybindings().find((binding) => binding.id === actionId);
   if (def === undefined) return [];
@@ -50,17 +41,17 @@ export function DocChrome({
 }: {
   /** The path trail leading to the document (kit Breadcrumb). */
   trail: BreadcrumbItem[];
-  /** The active mode — drives the segmented toggle's selection. */
+  /** The active mode drives the segmented toggle's selection. */
   mode: DocChromeMode;
   /** Emits the next mode when a segment is chosen. */
   onModeChange: (mode: DocChromeMode) => void;
   /** When false, the Edit segment is disabled (e.g. a non-editable target). */
   canEdit: boolean;
-  /** Trailing chrome after the mode toggle (the coarse-pointer menu disclosure,
-   *  touch-selectability ADR D3). */
+  /** Optional controls rendered after the mode toggle. */
   trailing?: ReactNode;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const toggleCaps = resolveKeycapPresentations(
     editorAcceleratorCaps(EDITOR_TOGGLE_MODE_ACTION_ID),
     resolveMessage,
@@ -81,13 +72,13 @@ export function DocChrome({
           <SegmentedToggle
             value={mode}
             onChange={(next) => onModeChange(next === "edit" ? "edit" : "view")}
-            ariaLabel="Document mode"
+            ariaLabel={message(DOC_CHROME_MESSAGES.documentMode)}
           >
             <Segment value="view" title={toggleTitle}>
-              View
+              {message(DOC_CHROME_MESSAGES.view)}
             </Segment>
             <Segment value="edit" disabled={!canEdit} title={toggleTitle}>
-              Edit
+              {message(DOC_CHROME_MESSAGES.edit)}
             </Segment>
           </SegmentedToggle>
           {trailing}

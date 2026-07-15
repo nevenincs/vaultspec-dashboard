@@ -1,18 +1,16 @@
-// SearchResultPill (binding figma SearchResultPill set 650:1790) — one rag search
-// hit rendered as a compact pill in the Cmd-K search surface. It is dumb chrome: it
-// renders the `SearchPillView` the stores layer derives (no fetch, no raw `tiers`),
-// and obeys the UX simplicity law baked into that view — the face shows only the
-// plain colour-coded TYPE WORD, the TITLE, a one-line WHY, and (for docs) the feature
-// chip. The relevance score, commit hash, and encoding deliberately never reach here.
-//
-// Composes the centralised token tier (design-system-is-centralized / no-hardcoded-px):
-// the type-word colour is the bound scene/category css var carried on the view, the
-// selected ring is the accent token, and sizing is the rem token scale. The selected
-// state mirrors the Figma Selected variant — `surface/sunken` ground + a 1.5px
-// `accent/base` ring (kept on every state as a transparent ring so selection never
-// shifts the row).
+// Localized rendering for the safe search-result projection.
 
 import type { SearchPillView } from "../../stores/server/searchPill";
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
+import { formatRelativeTime } from "../../platform/localization/formatters";
+import type { MessageDescriptor } from "../../platform/localization/message";
+
+function isMessageDescriptor(value: unknown): value is MessageDescriptor {
+  return typeof value === "object" && value !== null && "key" in value;
+}
 
 export function SearchResultPill({
   view,
@@ -21,47 +19,68 @@ export function SearchResultPill({
   view: SearchPillView;
   selected: boolean;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const locale = useActiveLocale();
+  const typeWord = resolveMessage(view.typeWord).message;
+  const title = isMessageDescriptor(view.title)
+    ? resolveMessage(view.title).message
+    : view.title;
+  const why =
+    typeof view.why === "string" || view.why === null
+      ? view.why
+      : formatRelativeTime(locale, view.why.value, view.why.unit, {
+          numeric: "auto",
+        });
+  const accessibility = resolveMessage({
+    key: view.selectable
+      ? "common:searchPalette.accessibility.selectableResult"
+      : "common:searchPalette.accessibility.unavailableResult",
+    values: { title },
+  }).message;
+
   return (
-    <div
-      className={`flex w-full flex-col gap-fg-1 rounded-fg-sm border-[0.09375rem] px-fg-3 py-fg-2 ${
-        selected ? "border-accent bg-paper-sunken" : "border-transparent"
-      }`}
-    >
-      <div className="flex items-center gap-fg-2 overflow-hidden">
-        <span
-          className="shrink-0 text-caption font-medium"
-          style={{ color: view.typeColorVar }}
-        >
-          {view.typeWord}
-        </span>
-        {/* Title / feature / why are corpus data: selection stays enabled inside
-            the wrapping option button (touch-selectability ADR D2). */}
-        <span
-          className={`min-w-0 flex-1 select-text truncate text-body text-ink ${
-            view.titleMono ? "font-mono" : "font-medium"
-          }`}
-        >
-          {view.title}
-        </span>
-        {view.featureTag && (
+    <div>
+      <span className="sr-only">{accessibility}</span>
+      <div
+        aria-hidden="true"
+        className={`flex w-full flex-col gap-fg-1 rounded-fg-sm border-[0.09375rem] px-fg-3 py-fg-2 ${
+          selected ? "border-accent bg-paper-sunken" : "border-transparent"
+        }`}
+      >
+        <div className="flex items-center gap-fg-2 overflow-hidden">
           <span
-            className={`shrink-0 select-text rounded-fg-pill px-fg-2 py-fg-0-5 text-caption text-ink-muted ${
-              selected ? "bg-paper-raised" : "bg-paper-sunken"
+            className="shrink-0 text-caption font-medium"
+            style={{ color: view.typeColorVar }}
+          >
+            {typeWord}
+          </span>
+          <span
+            className={`min-w-0 flex-1 select-text truncate text-body text-ink ${
+              view.titleMono ? "font-mono" : "font-medium"
             }`}
           >
-            {view.featureTag}
+            {title}
+          </span>
+          {view.featureTag && (
+            <span
+              className={`shrink-0 select-text rounded-fg-pill px-fg-2 py-fg-0-5 text-caption text-ink-muted ${
+                selected ? "bg-paper-raised" : "bg-paper-sunken"
+              }`}
+            >
+              {view.featureTag}
+            </span>
+          )}
+        </div>
+        {why && (
+          <span
+            className={`block w-full select-text truncate text-caption text-ink-muted ${
+              view.whyMono ? "font-mono" : ""
+            }`}
+          >
+            {why}
           </span>
         )}
       </div>
-      {view.why && (
-        <span
-          className={`block w-full select-text truncate text-caption text-ink-muted ${
-            view.whyMono ? "font-mono" : ""
-          }`}
-        >
-          {view.why}
-        </span>
-      )}
     </div>
   );
 }

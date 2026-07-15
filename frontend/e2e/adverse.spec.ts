@@ -7,6 +7,23 @@
 
 import { expect, test } from "@playwright/test";
 
+import { en } from "../src/locales/en";
+
+const appFallback = (page: import("@playwright/test").Page) =>
+  page.getByRole("alert").filter({ hasText: en.errors.unexpectedApplication.title });
+
+const stageFallback = (page: import("@playwright/test").Page) =>
+  page
+    .locator("#stage")
+    .getByRole("alert")
+    .filter({ hasText: en.errors.unexpectedSection.title });
+
+const railFallback = (page: import("@playwright/test").Page) =>
+  page
+    .locator("aside")
+    .getByRole("alert")
+    .filter({ hasText: en.errors.unexpectedSection.title });
+
 test.describe("platform exception containment (live)", () => {
   test("boots under the mock engine with the four-region shell and dev affordances", async ({
     page,
@@ -18,7 +35,7 @@ test.describe("platform exception containment (live)", () => {
     // injectable.
     await expect(page.locator("[data-crash-injector]")).toBeVisible();
     // The app-level last-line boundary has NOT fired on a healthy boot.
-    await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
+    await expect(appFallback(page)).toHaveCount(0);
   });
 
   test("contains a thrown stage to its region while siblings stay live", async ({
@@ -31,14 +48,14 @@ test.describe("platform exception containment (live)", () => {
     await page.locator('[data-crash="stage"]').click();
 
     // The stage region degrades to its contained fallback...
-    const stageFallback = page.locator('[data-error-region="stage"]');
-    await expect(stageFallback).toBeVisible();
-    await expect(stageFallback).toContainText("this panel hit an error");
+    const fallback = stageFallback(page);
+    await expect(fallback).toBeVisible();
+    await expect(fallback).toContainText(en.errors.unexpectedSection.message);
 
     // ...the sibling timeline region is untouched...
     await expect(page.locator("[data-timeline]")).toBeVisible();
     // ...and the app-level boundary never fired (no white screen).
-    await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
+    await expect(appFallback(page)).toHaveCount(0);
   });
 
   test("recovers the region on clear + retry", async ({ page }) => {
@@ -46,15 +63,17 @@ test.describe("platform exception containment (live)", () => {
     await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
 
     await page.locator('[data-crash="stage"]').click();
-    const stageFallback = page.locator('[data-error-region="stage"]');
-    await expect(stageFallback).toBeVisible();
+    const fallback = stageFallback(page);
+    await expect(fallback).toBeVisible();
 
     // Disarm the injector, then retry the boundary.
     await page.locator("[data-crash-clear]").click();
-    await stageFallback.getByRole("button", { name: "retry" }).click();
+    await fallback
+      .getByRole("button", { name: en.common.actions.retry, exact: true })
+      .click();
 
     // The region recovers: the fallback is gone, the shell is intact.
-    await expect(stageFallback).toHaveCount(0);
+    await expect(fallback).toHaveCount(0);
     await expect(page.locator("[data-timeline]")).toBeVisible();
   });
 
@@ -66,11 +85,11 @@ test.describe("platform exception containment (live)", () => {
 
     await page.locator('[data-crash="right-rail"]').click();
 
-    await expect(page.locator('[data-error-region="right-rail"]')).toBeVisible();
+    await expect(railFallback(page)).toBeVisible();
     // Siblings are independent: timeline alive, stage region not in fallback.
     await expect(page.locator("[data-timeline]")).toBeVisible();
-    await expect(page.locator('[data-error-region="stage"]')).toHaveCount(0);
-    await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
+    await expect(stageFallback(page)).toHaveCount(0);
+    await expect(appFallback(page)).toHaveCount(0);
   });
 
   test("the global trap captures an unhandled rejection into the logger ring buffer", async ({
@@ -126,6 +145,6 @@ test.describe("live-state degradation truth (live)", () => {
     await expect(
       page.getByRole("button", { name: "reconnecting to the live stream" }),
     ).toBeVisible();
-    await expect(page.locator('[data-error-region="app"]')).toHaveCount(0);
+    await expect(appFallback(page)).toHaveCount(0);
   });
 });

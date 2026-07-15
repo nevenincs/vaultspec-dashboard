@@ -1,13 +1,3 @@
-// EditorToolbar — the markdown body's formatting affordances
-// (document-editor-redesign ADR). A compact row of kit IconButtons carrying the
-// two sanctioned families' glyphs (Lucide structural marks); each dispatches the
-// pure `applyMarkdownFormat` command over the current selection (the parent owns
-// the textarea ref and the draft). It is a single FocusZone tab stop — one roving
-// group, arrow/Home/End move within it (Class-B composite navigation), never a
-// hand-rolled roving loop (actions-keymap-palette). The command surface is the
-// toolbar; keyboard accelerators (Mod+B/I/K) are widget-intrinsic to the editor
-// textarea and handled there, not as global keymap chords.
-
 import { useState } from "react";
 import {
   Bold,
@@ -24,27 +14,56 @@ import {
 
 import { IconButton } from "../kit";
 import { useFocusZone } from "../chrome/useFocusZone";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import type { MarkdownFormatCommand } from "./markdownFormatting";
 
 const GLYPH_PX = 16;
 
 interface ToolbarItem {
   command: MarkdownFormatCommand;
-  label: string;
+  label: MessageDescriptor;
   Icon: LucideIcon;
 }
 
-// Ordered by frequency / familiarity: inline emphasis, then structure, then links.
 const TOOLBAR_ITEMS: readonly ToolbarItem[] = [
-  { command: "bold", label: "Bold", Icon: Bold },
-  { command: "italic", label: "Italic", Icon: Italic },
-  { command: "code", label: "Inline code", Icon: Code },
-  { command: "heading", label: "Heading", Icon: Heading },
-  { command: "bulletList", label: "Bulleted list", Icon: List },
-  { command: "orderedList", label: "Numbered list", Icon: ListOrdered },
-  { command: "quote", label: "Quote", Icon: TextQuote },
-  { command: "link", label: "Link", Icon: LinkIcon },
-  { command: "wikiLink", label: "Link to document", Icon: Brackets },
+  { command: "bold", label: { key: "documents:editor.actions.bold" }, Icon: Bold },
+  {
+    command: "italic",
+    label: { key: "documents:editor.actions.italic" },
+    Icon: Italic,
+  },
+  {
+    command: "code",
+    label: { key: "documents:editor.actions.inlineCode" },
+    Icon: Code,
+  },
+  {
+    command: "heading",
+    label: { key: "documents:editor.actions.heading" },
+    Icon: Heading,
+  },
+  {
+    command: "bulletList",
+    label: { key: "documents:editor.actions.bulletedList" },
+    Icon: List,
+  },
+  {
+    command: "orderedList",
+    label: { key: "documents:editor.actions.numberedList" },
+    Icon: ListOrdered,
+  },
+  {
+    command: "quote",
+    label: { key: "documents:editor.actions.quote" },
+    Icon: TextQuote,
+  },
+  { command: "link", label: { key: "documents:editor.actions.link" }, Icon: LinkIcon },
+  {
+    command: "wikiLink",
+    label: { key: "documents:editor.actions.linkToDocument" },
+    Icon: Brackets,
+  },
 ];
 
 export function EditorToolbar({
@@ -54,6 +73,7 @@ export function EditorToolbar({
   onCommand: (command: MarkdownFormatCommand) => void;
   disabled?: boolean;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const zone = useFocusZone({
     orientation: "horizontal",
@@ -61,16 +81,23 @@ export function EditorToolbar({
     activeKey,
     onActiveKeyChange: setActiveKey,
   });
+  const toolbarLabel = resolveMessage({
+    key: "documents:editor.accessibility.formattingToolbar",
+  });
+
+  if (toolbarLabel.usedFallback) return null;
 
   return (
     <div
       role="toolbar"
-      aria-label="Formatting"
+      aria-label={toolbarLabel.message}
       aria-orientation="horizontal"
       className="flex items-center gap-fg-0-5"
       data-editor-toolbar
     >
       {TOOLBAR_ITEMS.map(({ command, label, Icon }) => {
+        const presentation = resolveMessage(label);
+        if (presentation.usedFallback) return null;
         const item = zone.rove(command);
         return (
           <IconButton
@@ -78,8 +105,8 @@ export function EditorToolbar({
             ref={item.ref}
             tabIndex={item.tabIndex}
             onKeyDown={item.onKeyDown}
-            label={label}
-            title={label}
+            label={presentation.message}
+            title={presentation.message}
             disabled={disabled}
             // Keep focus in the textarea so the selection the command wraps is not
             // lost to the button; commit on mouse-down before focus moves.

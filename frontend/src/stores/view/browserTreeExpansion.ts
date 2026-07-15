@@ -54,7 +54,6 @@ export interface BrowserTreeCodeRowView {
   markClassName: string;
   labelClassName: string;
   linkedCueClassName: string;
-  linkedCueAriaLabel: string;
 }
 
 export interface BrowserTreeCodeRowOptions {
@@ -208,7 +207,6 @@ export function deriveCodeBrowserTreeRowView(
     markClassName: "shrink-0 text-ink-faint",
     labelClassName: "min-w-0 truncate font-mono",
     linkedCueClassName: "ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent/70",
-    linkedCueAriaLabel: "has graph linkage",
   };
 }
 

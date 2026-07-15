@@ -8,13 +8,35 @@
 // progress, failed note), the phase words, the served-vs-total truncation bound,
 // the selection treatment, and the designed offline/loading/empty states.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render as testingRender, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
+} from "../../localization/testing";
 import { RagJobsTableBody } from "./RagJobsTable";
 import type { RagJobRow, RagJobsTableView } from "../../stores/server/ragDashboardView";
 
 afterEach(cleanup);
+
+function render(ui: ReactElement, runtime = createTestLocalizationRuntime()) {
+  const providers = (child: ReactElement) => (
+    <I18nextProvider i18n={runtime}>{child}</I18nextProvider>
+  );
+  const result = testingRender(providers(ui));
+  return {
+    ...result,
+    runtime,
+    rerender: (next: ReactElement) => result.rerender(providers(next)),
+  };
+}
 
 const runningRow: RagJobRow = {
   id: "job-run-1",
@@ -209,6 +231,38 @@ describe("RagJobsTableBody (binding RagJobDashboard jobs region)", () => {
     );
     expect(container.querySelector('[data-state-block="degraded"]')).toBeTruthy();
     expect(screen.queryByText("Progress")).toBeNull();
+  });
+
+  it("localizes the unavailable title in place", async () => {
+    const { runtime } = render(
+      <RagJobsTableBody table={view()} selectedJobId={null} offline pending={false} />,
+    );
+    const title = screen.getByText(en.common.controlPanels.unavailableTitles.search);
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByText(ltrTestResources.common.controlPanels.unavailableTitles.search),
+    ).toBe(title);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByText(rtlTestResources.common.controlPanels.unavailableTitles.search),
+    ).toBe(title);
+  });
+
+  it("omits the unavailable title when its catalog is unavailable", () => {
+    const runtime = createTestLocalizationRuntime();
+    runtime.removeResourceBundle("en", "common");
+    const { container } = render(
+      <RagJobsTableBody table={view()} selectedJobId={null} offline pending={false} />,
+      runtime,
+    );
+    const state = container.querySelector('[data-state-block="degraded"]');
+    expect(state?.textContent?.length).toBeGreaterThan(0);
+    expect(state?.textContent).not.toContain(
+      en.common.controlPanels.unavailableTitles.search,
+    );
+    expect(state?.textContent).not.toContain("common:controlPanels");
   });
 
   it("renders the loading skeleton while pending", () => {

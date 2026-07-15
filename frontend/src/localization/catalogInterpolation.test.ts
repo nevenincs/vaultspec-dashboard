@@ -10,6 +10,7 @@ import {
 import { resources, sourceLocale } from "../locales/en";
 import { resolveMessage } from "../platform/localization/fallback";
 import {
+  createCountMessageDescriptor,
   createMessageDescriptor,
   MESSAGE_VALUE_COUNT_MAX,
   MESSAGE_VALUE_NAME_MAX_CHARS,
@@ -145,32 +146,76 @@ describe("production catalog interpolation", () => {
     expect(checkedTemplates).toBeGreaterThan(0);
   });
 
-  it("resolves matching LTR and RTL parameters and safely handles missing values", () => {
+  it("keeps tokenless LTR and RTL recovery messages aligned and rejects extra values", () => {
     const key = "errors:unexpectedSection.message";
     const ltrTemplate = ltrTestResources.errors.unexpectedSection.message;
     const rtlTemplate = rtlTestResources.errors.unexpectedSection.message;
     const ltrTokens = interpolationTokenNames(`${ltrTestLocale}:${key}`, ltrTemplate);
     const rtlTokens = interpolationTokenNames(`${rtlTestLocale}:${key}`, rtlTemplate);
-    const complete = createMessageDescriptor(key, { section: "history" });
+    const descriptor = createMessageDescriptor(key);
+    const extraValues = createMessageDescriptor(key, { section: "history" });
     const ltrRuntime = createTestLocalizationRuntime(ltrTestLocale);
     const rtlRuntime = createTestLocalizationRuntime(rtlTestLocale);
 
-    expect(ltrTokens).toEqual(["section"]);
+    expect(ltrTokens).toEqual([]);
     expect(rtlTokens).toEqual(ltrTokens);
-    expect(complete).not.toBeNull();
+    expect(descriptor).not.toBeNull();
+    expect(extraValues).not.toBeNull();
 
-    const ltrResolved = resolveMessage(ltrRuntime, complete);
-    const rtlResolved = resolveMessage(rtlRuntime, complete);
-    expect(ltrResolved).toBe("Réessayez history.");
-    expect(rtlResolved).toBe("حاول فتح history مرة أخرى.");
+    const ltrResolved = resolveMessage(ltrRuntime, descriptor);
+    const rtlResolved = resolveMessage(rtlRuntime, descriptor);
+    expect(ltrResolved).toBe(ltrTemplate);
+    expect(rtlResolved).toBe(rtlTemplate);
     expect(ltrResolved).not.toMatch(INTERPOLATION_DELIMITER);
     expect(rtlResolved).not.toMatch(INTERPOLATION_DELIMITER);
 
-    expect(resolveMessage(ltrRuntime, { key })).toBe(
+    expect(resolveMessage(ltrRuntime, extraValues)).toBe(
       ltrTestResources.errors.fallback.contentUnavailable,
     );
-    expect(resolveMessage(rtlRuntime, { key })).toBe(
+    expect(resolveMessage(rtlRuntime, extraValues)).toBe(
       rtlTestResources.errors.fallback.contentUnavailable,
+    );
+  });
+
+  it("preserves the authored document query in every localized no-match message", () => {
+    const query = "Authored / مستند";
+    const descriptor = createMessageDescriptor(
+      "documents:documentSearch.states.noMatches",
+      { query },
+    );
+
+    expect(descriptor).not.toBeNull();
+    expect(resolveMessage(createTestLocalizationRuntime(), descriptor)).toBe(
+      `No documents match “${query}”.`,
+    );
+    expect(
+      resolveMessage(createTestLocalizationRuntime(ltrTestLocale), descriptor),
+    ).toBe(`Aucun document ne correspond à « ${query} ».`);
+    expect(
+      resolveMessage(createTestLocalizationRuntime(rtlTestLocale), descriptor),
+    ).toBe(`لا يوجد مستند يطابق «${query}».`);
+  });
+
+  it("preserves comment count values across English, French, and Arabic", () => {
+    const descriptor = createCountMessageDescriptor(
+      "documents:viewer.comments.counts.commentsToReview",
+      2,
+    );
+    expect(descriptor).not.toBeNull();
+
+    const messages = [
+      createTestLocalizationRuntime(),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
+    ].map((runtime) => resolveMessage(runtime, descriptor));
+
+    expect(messages).toEqual([
+      "2 comments to review",
+      "2 commentaires à examiner",
+      "2 تعليقان للمراجعة",
+    ]);
+    expect(messages.every((message) => !INTERPOLATION_DELIMITER.test(message))).toBe(
+      true,
     );
   });
 });

@@ -1,18 +1,11 @@
-// Live-engine global setup (test-integrity: no mocks, no shadows).
-//
-// The frontend test suite runs ONLINE against the REAL `vaultspec serve`
-// binary — never an in-memory double. This setup runs once before the whole
-// vitest run: it copies the committed deterministic fixture vault
+// Global setup for tests that exercise `vaultspec serve`. It copies the
+// committed deterministic fixture corpus
 // (`fixtures/live-vault/`) into a scratch dir, makes it a git repo with fixed
 // commit dates (so temporal/structural ingest is reproducible), spawns the
 // real engine on a free loopback port scoped to that dir, waits for it to come
 // up, and publishes `ENGINE_BASE_URL` / `ENGINE_TOKEN` for every test.
 //
-// Scratch isolation is load-bearing: the engine writes its SQLite cache under
-// `<scope>/.vault/data/engine-data/`, so the test engine MUST own its own vault
-// copy — it can never share the repo's real vault (that file is locked by the
-// dev engine, production-vault-hardening). Teardown kills the engine and
-// removes the scratch dir.
+// Each run owns an isolated cache and removes it during teardown.
 
 import { spawn, spawnSync, type ChildProcess } from "node:child_process";
 import {
@@ -33,17 +26,13 @@ const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
 
-/** Resolve the engine binary the suite runs against (TIH-005).
+/** Resolve the service binary the suite runs against.
  *
- *  An explicit `VAULTSPEC_TEST_ENGINE_BIN` override wins first — the same
- *  adopt-what-you're-told discipline as `ENGINE_BASE_URL`, so a developer can
- *  pin the exact binary and never race an in-flight `cargo build`.
+ *  An explicit `VAULTSPEC_TEST_ENGINE_BIN` override wins first, allowing the
+ *  caller to pin the exact binary.
  *
  *  Otherwise pick the freshest of `engine/target/{release,debug}` by mtime:
- *  debug is current on a dev machine (the release copy is held open by the dev
- *  server), release is current in CI. The chosen path + source is logged in the
- *  setup banner so a mismatch (a half-linked or stale binary) is visible in the
- *  first line of a failing run. */
+ *  The chosen path and source are logged for diagnostics. */
 function resolveEngineBin(): { path: string; source: string } {
   const override = process.env["VAULTSPEC_TEST_ENGINE_BIN"];
   if (override) {
@@ -124,20 +113,15 @@ let scratch: string | undefined;
 let degradedScratch: string | undefined;
 
 export default async function setup(): Promise<() => void> {
-  // Adopt an externally-provided live engine (a CI job, a local `vaultspec
-  // serve`) rather than spawning a second one — same online-live-surface
-  // contract, no port/cache contention.
+  // Reuse an explicitly provided service to avoid port and cache contention.
   if (process.env["ENGINE_BASE_URL"]) return () => {};
 
-  // 1. Scratch copy of the fixture vault (owns its own engine-data cache).
+  // 1. Scratch copy of the fixture corpus (owns its own engine-data cache).
   scratch = mkdtempSync(join(tmpdir(), "vaultspec-livetest-"));
   cpSync(join(FIXTURE_DIR, ".vault"), join(scratch, ".vault"), { recursive: true });
+  cpSync(join(FIXTURE_DIR, "src"), join(scratch, "src"), { recursive: true });
 
-  // 2. Initialise it as a real vaultspec workspace so the engine's `declared`
-  //    tier (vaultspec-core) comes up — content reads, vault-tree, and the
-  //    editor write seam all route through it. The workspace scaffolding is
-  //    generated fresh (not committed) so nothing machine-specific ships in the
-  //    fixture; vaultspec-core is on PATH (the engine spawns it the same way).
+  // 2. Initialize the fixture as a workspace with machine-local scaffolding.
   const install = spawnSync("vaultspec-core", ["install", "--target", scratch], {
     stdio: "pipe",
     shell: true,
@@ -148,14 +132,7 @@ export default async function setup(): Promise<() => void> {
     );
   }
 
-  // 3. Real git history — the engine's structural + temporal ingest source.
-  //    The ignore mirrors the vaultspec-managed block every production
-  //    workspace carries (install can't scaffold it here — it runs before git
-  //    init): the engine's own cache under `.vault/data/` must be invisible to
-  //    git, or its per-rebuild writes keep the scratch permanently dirty — on
-  //    Linux each /status git probe then refreshes `.git/index`, the watcher
-  //    (which watches `.git` for HEAD/ref moves) fires, and the
-  //    rebuild→probe→rebuild churn never reaches quiescence.
+  // 3. Commit the fixture while excluding service caches from change detection.
   writeFileSync(
     join(scratch, ".gitignore"),
     ".vault/data/\n.vault/logs/\n.vault/.obsidian/\n.vault/.trash/\n",
@@ -164,10 +141,7 @@ export default async function setup(): Promise<() => void> {
   git(scratch, ["add", "-A"]);
   git(scratch, ["commit", "-qm", "fixture corpus"]);
 
-  // 3b. A degraded sibling worktree: it keeps `.vault/` (so the structural +
-  //     temporal tiers still read the corpus and the graph loads) but DROPS
-  //     `.vaultspec/`, so the declared tier (vaultspec-core) is genuinely down —
-  //     a REAL degraded scope for the degradation-state tests, never a stub.
+  // 3b. Create a sibling scope without workspace metadata for degradation tests.
   degradedScratch = `${scratch}-degraded`;
   git(scratch, ["worktree", "add", "-q", "-b", "degraded-scope", degradedScratch]);
   rmSync(join(degradedScratch, ".vaultspec"), { recursive: true, force: true });
@@ -181,8 +155,7 @@ export default async function setup(): Promise<() => void> {
   // 3. Spawn the real engine on a free loopback port, scoped to the scratch dir.
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
-  // Banner (TIH-005): make the exact binary under test visible in the first
-  // lines of a run so a stale / half-linked / overridden binary is diagnosable.
+  // Report the exact binary and source used by the run.
   console.info(
     `[live-engine] binary: ${ENGINE_BIN} (source: ${ENGINE_BIN_SOURCE}) → ${baseUrl}`,
   );
@@ -231,13 +204,7 @@ export default async function setup(): Promise<() => void> {
   }
   if (!ready) throw new Error(`engine did not come up within 30s:\n${serveLog}`);
 
-  // Wait for the COLD ingest to settle before any test runs (TIH-003 / TIH-006): the
-  // engine answers /status the moment it binds, but its initial declared-fold graph
-  // rebuild is still in flight for a beat after. Publishing env now would let file 1
-  // start reading a mid-fold corpus. Block until the graph `generation` is stable.
-  // The budget is sized for a COLD CI runner (2 vCPUs, debug binary, uv-resolved
-  // core subprocess per declared fold): the barrier's 20s default was tuned on dev
-  // hardware and expires there while the cold folds are still trickling.
+  // Wait for initial ingestion to settle before publishing the service endpoint.
   try {
     await awaitEngineQuiescent({ baseUrl, token, timeoutMs: 90_000 });
   } catch (err) {

@@ -13,6 +13,7 @@
 import { useMemo } from "react";
 import { X } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   SearchField,
   SectionLabel,
@@ -36,6 +37,7 @@ import {
   useRagDashboardSelectedJob,
   type RagLogLinesChoice,
 } from "../../stores/view/ragDashboard";
+import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 
 // Level → ink tone (status-tone conventions): info reads muted, warning cautions,
 // error/critical break; debug recedes; an unparsed line stays muted (untoned).
@@ -70,6 +72,10 @@ export function RagLogPaneBody({
   selectedJobId: string | null;
   linesChoice: RagLogLinesChoice;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const unavailableTitle = resolveMessage(
+    CONTROL_PANEL_VOCABULARY["search-service"].unavailableTitle,
+  );
   const filtering = logFilter.trim().length > 0;
 
   return (
@@ -126,7 +132,7 @@ export function RagLogPaneBody({
       {semanticOffline ? (
         <StateBlock
           mode="degraded"
-          title="Search service offline"
+          title={unavailableTitle.usedFallback ? undefined : unavailableTitle.message}
           message="Log lines are unavailable while the search service is down."
         />
       ) : lines.length === 0 ? (

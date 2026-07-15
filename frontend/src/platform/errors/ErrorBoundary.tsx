@@ -1,20 +1,23 @@
-// Exception containment (ADR D5): React's only error-catching mechanism is a
-// class boundary, so this is the substrate's single class component. An
-// app-level boundary is the last line; per-region boundaries contain a thrown
-// render to its region so a crashed right rail never white-screens the stage.
-// Each boundary logs through the platform logger and renders a designed,
-// recoverable fallback consistent with the degradation vocabulary.
-//
-// Mechanism only (ADR D1/D4): this catches *unexpected* throws. Expected
-// degradations (rag down, stream lost) flow through the app's degradation
-// matrix, not here.
+// React boundaries contain unexpected render failures. The app boundary keeps
+// a failure from leaving a blank page, while region boundaries preserve their
+// sibling surfaces. Diagnostic detail is retained only in structured logs.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
 
+import { useLocalizedMessage } from "../localization/LocalizationProvider";
+import type { MessageDescriptor } from "../localization/message";
 import { logger } from "../logger/logger";
 
 const boundaryLog = logger.child("boundary");
-const devMode = Boolean(import.meta.env?.DEV);
+
+export const ERROR_BOUNDARY_MESSAGES = {
+  appAction: { key: "common:actions.reloadPage" },
+  appMessage: { key: "errors:unexpectedApplication.message" },
+  appTitle: { key: "errors:unexpectedApplication.title" },
+  regionAction: { key: "common:actions.retry" },
+  regionMessage: { key: "errors:unexpectedSection.message" },
+  regionTitle: { key: "errors:unexpectedSection.title" },
+} as const satisfies Record<string, MessageDescriptor>;
 
 export interface FallbackRenderProps {
   error: Error;
@@ -24,7 +27,7 @@ export interface FallbackRenderProps {
 }
 
 export interface ErrorBoundaryProps {
-  /** Identifies the contained region in logs and the fallback (e.g. "stage"). */
+  /** Identifies the contained region in diagnostic logs. */
   region: string;
   /** "app" is the full-screen last line; "region" is a contained panel card. */
   variant?: "app" | "region";
@@ -77,32 +80,32 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 /**
  * The designed contained fallback. The app variant is a full-screen last
  * line; the region variant is a compact amber card (the degradation palette)
- * that keeps its sibling regions alive and offers a retry. The raw error
- * message is shown only in development.
+ * that keeps its sibling regions alive and offers a retry. Raw diagnostics are
+ * never part of the default fallback in any build; the boundary retains them
+ * only for structured logging and the explicit custom-fallback contract.
  */
-export function DefaultFallback({
-  error,
-  region,
-  variant,
-  reset,
-}: FallbackRenderProps): ReactNode {
+export function DefaultFallback({ variant, reset }: FallbackRenderProps): ReactNode {
+  const appTitle = useLocalizedMessage(ERROR_BOUNDARY_MESSAGES.appTitle);
+  const appMessage = useLocalizedMessage(ERROR_BOUNDARY_MESSAGES.appMessage);
+  const appAction = useLocalizedMessage(ERROR_BOUNDARY_MESSAGES.appAction);
+  const regionTitle = useLocalizedMessage(ERROR_BOUNDARY_MESSAGES.regionTitle);
+  const regionMessage = useLocalizedMessage(ERROR_BOUNDARY_MESSAGES.regionMessage);
+  const regionAction = useLocalizedMessage(ERROR_BOUNDARY_MESSAGES.regionAction);
+
   if (variant === "app") {
     return (
       <div
         role="alert"
-        data-error-region={region}
         className="flex h-screen flex-col items-center justify-center gap-3 bg-stone-50 p-6 text-center text-stone-800"
       >
-        <p className="text-sm font-medium">The dashboard hit an unexpected error.</p>
-        {devMode && (
-          <p className="max-w-md break-words text-xs text-stone-500">{error.message}</p>
-        )}
+        <p className="text-sm font-medium">{appTitle}</p>
+        <p className="max-w-md text-xs text-stone-500">{appMessage}</p>
         <button
           type="button"
-          onClick={reset}
+          onClick={() => globalThis.location.reload()}
           className="rounded border border-stone-300 px-3 py-1 text-xs text-stone-700 hover:border-stone-500"
         >
-          reload view
+          {appAction}
         </button>
       </div>
     );
@@ -110,17 +113,16 @@ export function DefaultFallback({
   return (
     <div
       role="alert"
-      data-error-region={region}
       className="m-1 rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-900"
     >
-      <p className="font-medium">this panel hit an error</p>
-      {devMode && <p className="mt-1 break-words text-amber-700">{error.message}</p>}
+      <p className="font-medium">{regionTitle}</p>
+      <p className="mt-1 text-amber-700">{regionMessage}</p>
       <button
         type="button"
         onClick={reset}
         className="mt-1 rounded border border-amber-400 px-1.5 py-0.5 text-amber-900 hover:border-amber-600"
       >
-        retry
+        {regionAction}
       </button>
     </div>
   );

@@ -17,18 +17,18 @@ describe("controlPanelsCommandProvider", () => {
   it("projects panel labels solely from the injected open-panel snapshot", () => {
     const closed = commands(null);
     expect(closed.map((command) => command.label)).toEqual([
-      { key: "common:actions.showSearchStatus" },
-      { key: "common:actions.showApprovals" },
-      { key: "common:actions.showSystemStatus" },
-      { key: "common:actions.showProjectHealth" },
+      { key: "common:controlPanels.actions.showSearch" },
+      { key: "common:controlPanels.actions.showApprovals" },
+      { key: "common:controlPanels.actions.showSystemStatus" },
+      { key: "common:controlPanels.actions.showProjectHealth" },
     ]);
 
     const approvalsOpen = commands("approvals");
     expect(approvalsOpen.map((command) => command.label)).toEqual([
-      { key: "common:actions.showSearchStatus" },
-      { key: "common:actions.hideApprovals" },
-      { key: "common:actions.showSystemStatus" },
-      { key: "common:actions.showProjectHealth" },
+      { key: "common:controlPanels.actions.showSearch" },
+      { key: "common:controlPanels.actions.hideApprovals" },
+      { key: "common:controlPanels.actions.showSystemStatus" },
+      { key: "common:controlPanels.actions.showProjectHealth" },
     ]);
     expect(approvalsOpen.map((command) => command.id)).toEqual([
       "panel:search-service",

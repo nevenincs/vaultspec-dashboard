@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { openDocumentEditor, updateEditorDraft } from "./editor";
 import {
@@ -22,9 +22,12 @@ describe("unsaved-edit guard", () => {
   });
 
   it("runs the action immediately and stages nothing when the editor is clean", () => {
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscard(proceed);
-    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(proceeded).toBe(1);
     expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
   });
 
@@ -32,10 +35,13 @@ describe("unsaved-edit guard", () => {
     openDirtyEditor("doc:a");
     expect(useViewStore.getState().editorStatus).toBe("dirty");
 
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscard(proceed);
 
-    expect(proceed).not.toHaveBeenCalled();
+    expect(proceeded).toBe(0);
     expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
   });
 
@@ -49,33 +55,42 @@ describe("unsaved-edit guard", () => {
       updateEditorDraft("edited body");
       useViewStore.setState({ editorStatus: status });
 
-      const proceed = vi.fn();
+      let proceeded = 0;
+      const proceed = () => {
+        proceeded += 1;
+      };
       guardUnsavedDiscard(proceed);
 
-      expect(proceed).not.toHaveBeenCalled();
+      expect(proceeded).toBe(0);
       expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
     }
   });
 
   it("runs the staged action and clears on confirm (discard)", () => {
     openDirtyEditor("doc:a");
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscard(proceed);
 
     useUnsavedEditGuardStore.getState().confirm();
 
-    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(proceeded).toBe(1);
     expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
   });
 
   it("does NOT run the staged action on cancel (keep editing)", () => {
     openDirtyEditor("doc:a");
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscard(proceed);
 
     useUnsavedEditGuardStore.getState().cancel();
 
-    expect(proceed).not.toHaveBeenCalled();
+    expect(proceeded).toBe(0);
     expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
   });
 
@@ -111,26 +126,35 @@ describe("guardUnsavedDiscardForDoc (document-scoped)", () => {
   });
 
   it("runs immediately when nothing is dirty", () => {
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscardForDoc("doc:a", proceed);
-    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(proceeded).toBe(1);
     expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
   });
 
   it("runs immediately when a DIFFERENT document is dirty (no false prompt)", () => {
     openDirtyEditor("doc:a");
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     // Closing doc:b while doc:a is the dirty editor must NOT prompt — b has no draft.
     guardUnsavedDiscardForDoc("doc:b", proceed);
-    expect(proceed).toHaveBeenCalledTimes(1);
+    expect(proceeded).toBe(1);
     expect(useUnsavedEditGuardStore.getState().pending).toBeNull();
   });
 
   it("stages a confirm when THIS document is the dirty editor", () => {
     openDirtyEditor("doc:a");
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscardForDoc("doc:a", proceed);
-    expect(proceed).not.toHaveBeenCalled();
+    expect(proceeded).toBe(0);
     expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
   });
 
@@ -138,9 +162,12 @@ describe("guardUnsavedDiscardForDoc (document-scoped)", () => {
     openDocumentEditor("doc:a", "original body", "hash-1");
     updateEditorDraft("edited body");
     useViewStore.setState({ editorStatus: "save-failed" });
-    const proceed = vi.fn();
+    let proceeded = 0;
+    const proceed = () => {
+      proceeded += 1;
+    };
     guardUnsavedDiscardForDoc("doc:a", proceed);
-    expect(proceed).not.toHaveBeenCalled();
+    expect(proceeded).toBe(0);
     expect(useUnsavedEditGuardStore.getState().pending).not.toBeNull();
   });
 });

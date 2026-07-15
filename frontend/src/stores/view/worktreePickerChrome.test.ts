@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  WORKTREE_SWITCH_ERROR_CAP,
   WORKTREE_SWITCH_ID_CAP,
-  WORKTREE_SWITCH_LABEL_CAP,
   beginWorktreeSwitch,
   cancelWorktreeSwitch,
   completeWorktreeSwitch,
@@ -13,7 +11,6 @@ import {
   normalizeWorktreePickerChromeView,
   normalizeWorktreePickerSwitchId,
   normalizeWorktreePickerSwitchError,
-  normalizeWorktreePickerSwitchLabel,
   resetWorktreePickerChrome,
   setWorktreePickerExpanded,
   toggleWorktreePickerExpanded,
@@ -21,30 +18,24 @@ import {
   worktreePickerFirstRowFocusTarget,
   worktreePickerListClassName,
   worktreePickerRowKeyboardTarget,
-  worktreeSwitchFailureMessage,
 } from "./worktreePickerChrome";
 import type { WorkspaceMapPickerRowView } from "../server/queries";
 
 function row(id: string): WorkspaceMapPickerRowView {
   return {
-    worktree: {
-      id,
-      path: id,
-      branch: id,
-      has_vault: true,
-      is_default: false,
-      degraded: [],
-    },
+    worktreeId: id,
+    branch: id,
+    hasVault: true,
     selectable: true,
     isActive: false,
     isPending: false,
-    title: id,
-    ariaLabel: id,
+    title: { key: "projects:workspaceIdentity.accessibility.choose" },
+    ariaLabel: { key: "projects:workspaceIdentity.accessibility.choose" },
     nameLabel: id,
     defaultLabel: null,
     branchLabel: null,
     noVaultLabel: null,
-    degradedTitle: "",
+    degradedTitle: { key: "projects:workspaceIdentity.labels.noProjectFiles" },
     isDegraded: false,
     pendingLabel: null,
     rowClassName: "row",
@@ -92,12 +83,11 @@ describe("worktree picker chrome store", () => {
   });
 
   it("normalizes malformed chrome reads before publishing or toggling", () => {
-    const longError = "x".repeat(WORKTREE_SWITCH_ERROR_CAP + 8);
     useWorktreePickerChromeStore.setState({
       expanded: "true",
       keyboardToggle: "keyboard",
       pendingId: " scope-a ",
-      switchError: longError,
+      switchError: { key: "projects:workspaceIdentity.states.switchFailed" },
     } as unknown as Partial<ReturnType<typeof useWorktreePickerChromeStore.getState>>);
 
     const view = normalizeWorktreePickerChromeView(
@@ -109,7 +99,9 @@ describe("worktree picker chrome store", () => {
       keyboardToggle: false,
       pendingId: "scope-a",
     });
-    expect(view.switchError).toHaveLength(WORKTREE_SWITCH_ERROR_CAP);
+    expect(view.switchError).toEqual({
+      key: "projects:workspaceIdentity.states.switchFailed",
+    });
 
     toggleWorktreePickerExpanded(true);
     expect(useWorktreePickerChromeStore.getState()).toMatchObject({
@@ -134,7 +126,7 @@ describe("worktree picker chrome store", () => {
     failWorktreeSwitch("scope-b", "current", "persist-failed");
     expect(useWorktreePickerChromeStore.getState()).toMatchObject({
       pendingId: null,
-      switchError: "The worktree switch couldn't be saved",
+      switchError: { key: "projects:workspaceIdentity.states.switchFailed" },
     });
   });
 
@@ -145,8 +137,8 @@ describe("worktree picker chrome store", () => {
     expect(
       normalizeWorktreePickerSwitchId("s".repeat(WORKTREE_SWITCH_ID_CAP + 1)),
     ).toBeNull();
-    expect(normalizeWorktreePickerSwitchError("failed")).toBe("failed");
-    expect(normalizeWorktreePickerSwitchError("  failed  ")).toBe("failed");
+    expect(normalizeWorktreePickerSwitchError("failed")).toBeNull();
+    expect(normalizeWorktreePickerSwitchError("  failed  ")).toBeNull();
     expect(normalizeWorktreePickerSwitchError("   ")).toBeNull();
 
     beginWorktreeSwitch("  scope-a  ");
@@ -159,7 +151,7 @@ describe("worktree picker chrome store", () => {
     failWorktreeSwitch(" scope-b ", "branch-b", "selection-rejected");
     expect(useWorktreePickerChromeStore.getState()).toMatchObject({
       pendingId: null,
-      switchError: "Couldn't switch to branch-b — the selection wasn't saved",
+      switchError: { key: "projects:workspaceIdentity.states.switchFailed" },
     });
 
     resetWorktreePickerChrome();
@@ -179,10 +171,12 @@ describe("worktree picker chrome store", () => {
       switchError: null,
     });
 
-    useWorktreePickerChromeStore.getState().failSwitch(" scope-c ", "  failed  ");
+    useWorktreePickerChromeStore.getState().failSwitch(" scope-c ", {
+      key: "projects:workspaceIdentity.states.switchFailed",
+    });
     expect(useWorktreePickerChromeStore.getState()).toMatchObject({
       pendingId: null,
-      switchError: "failed",
+      switchError: { key: "projects:workspaceIdentity.states.switchFailed" },
     });
   });
 
@@ -190,55 +184,47 @@ describe("worktree picker chrome store", () => {
     expect(
       normalizeWorktreePickerActivationIntent({
         selectable: true,
-        worktree: { id: " scope-a ", branch: " feature/a " },
+        worktreeId: " scope-a ",
+        branch: " feature/a ",
       }),
     ).toEqual({ id: "scope-a", branch: " feature/a " });
     expect(
       normalizeWorktreePickerActivationIntent({
         selectable: false,
-        worktree: { id: "scope-a", branch: "feature/a" },
+        worktreeId: "scope-a",
+        branch: "feature/a",
       }),
     ).toBeNull();
     expect(
       normalizeWorktreePickerActivationIntent({
         selectable: true,
-        worktree: { id: "   ", branch: "feature/a" },
+        worktreeId: "   ",
+        branch: "feature/a",
       }),
     ).toBeNull();
     expect(
       normalizeWorktreePickerActivationIntent({
         selectable: true,
-        worktree: {
-          id: "s".repeat(WORKTREE_SWITCH_ID_CAP + 1),
-          branch: "feature/a",
-        },
+        worktreeId: "s".repeat(WORKTREE_SWITCH_ID_CAP + 1),
+        branch: "feature/a",
       }),
     ).toBeNull();
     expect(
       normalizeWorktreePickerActivationIntent({
         selectable: true,
-        worktree: null,
+        worktreeId: null,
+        branch: null,
       }),
     ).toBeNull();
   });
 
-  it("bounds switch error and branch-label text at the chrome boundary", () => {
-    const longError = "x".repeat(WORKTREE_SWITCH_ERROR_CAP + 10);
-    const normalizedError = normalizeWorktreePickerSwitchError(` ${longError} `);
-    expect(normalizedError).toHaveLength(WORKTREE_SWITCH_ERROR_CAP);
-    expect(normalizedError?.endsWith("…")).toBe(true);
-
-    const longBranch = "feature/".concat("x".repeat(WORKTREE_SWITCH_LABEL_CAP + 10));
-    const normalizedLabel = normalizeWorktreePickerSwitchLabel(longBranch);
-    expect(normalizedLabel).toHaveLength(WORKTREE_SWITCH_LABEL_CAP);
-    expect(normalizedLabel?.endsWith("…")).toBe(true);
-
+  it("accepts only the localized switch failure descriptor", () => {
+    const switchFailed = { key: "projects:workspaceIdentity.states.switchFailed" };
+    expect(normalizeWorktreePickerSwitchError(switchFailed)).toEqual(switchFailed);
+    expect(normalizeWorktreePickerSwitchError("internal failure")).toBeNull();
     beginWorktreeSwitch("scope-long");
-    useWorktreePickerChromeStore.getState().failSwitch("scope-long", longError);
-    expect(useWorktreePickerChromeStore.getState().switchError).toBe(normalizedError);
-    expect(worktreeSwitchFailureMessage(longBranch, "selection-rejected")).toContain(
-      normalizedLabel,
-    );
+    useWorktreePickerChromeStore.getState().failSwitch("scope-long", switchFailed);
+    expect(useWorktreePickerChromeStore.getState().switchError).toEqual(switchFailed);
   });
 
   it("clears only the matching pending switch on completion or cancellation", () => {
@@ -255,21 +241,6 @@ describe("worktree picker chrome store", () => {
 
     cancelWorktreeSwitch("scope-c");
     expect(useWorktreePickerChromeStore.getState().pendingId).toBeNull();
-  });
-
-  it("projects switch failure copy behind the chrome seam", () => {
-    expect(worktreeSwitchFailureMessage("feature/local", "selection-rejected")).toBe(
-      "Couldn't switch to feature/local — the selection wasn't saved",
-    );
-    expect(
-      worktreeSwitchFailureMessage("  feature/local  ", "selection-rejected"),
-    ).toBe("Couldn't switch to feature/local — the selection wasn't saved");
-    expect(worktreeSwitchFailureMessage("feature/local", "persist-failed")).toBe(
-      "The worktree switch couldn't be saved",
-    );
-    expect(worktreeSwitchFailureMessage(null, "selection-rejected")).toBe(
-      "Couldn't switch to worktree — the selection wasn't saved",
-    );
   });
 
   it("projects disclosure list and switch-error chrome behind the seam", () => {

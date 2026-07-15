@@ -1,17 +1,3 @@
-// The frontmatter-aware, display-only markdown reader (review-rail-viewers ADR;
-// re-skinned to the binding Reader board `263:871` / Mode=View in the
-// editor-figma-parity campaign).
-//
-// Renders a `.vault/` document as the binding EDITORIAL reader: a DocHeader block
-// (doc-type eyebrow + serif title + italic dek + a date·reading-time·status meta
-// line) lifted out of the body, a leading rule, the lead paragraph and GFM body
-// (tables, task lists, accent-bulleted lists, blockquotes), fenced code through the
-// SHARED Shiki highlighter inside a CodeBlock header bar, and a Tagged/Related
-// footer. All chrome reads the `--color-*` / Reader-role tokens (themes-are-oklch /
-// design-system-is-centralized) — no new colour. It fetches nothing: dumb `app/`
-// chrome over the tiers-derived content view the stores layer supplies
-// (dashboard-layer-ownership).
-
 import type { ReactElement, ReactNode } from "react";
 import { isValidElement, useEffect, useMemo, useRef, useState } from "react";
 import type { Element as HastElement, Root } from "hast";
@@ -19,9 +5,12 @@ import { toJsxRuntime } from "hast-util-to-jsx-runtime";
 import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 import Markdown, { defaultUrlTransform } from "react-markdown";
 import { MessageSquare } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 import { dispatchCopy } from "../../platform/actions/clipboardActions";
 import { fireActionDescriptor } from "../../platform/actions/action";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { formatDate } from "../../platform/localization/formatters";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -32,6 +21,18 @@ import {
   type MarkdownReaderView,
 } from "../../stores/server/queries";
 import { parseDocument } from "../../stores/server/parseDocument";
+import {
+  COMMENT_ACTIONS,
+  commentsToReviewCountDescriptor,
+} from "../../stores/server/authoring/commentVocabulary";
+import {
+  DOCUMENT_VIEWER_MESSAGES,
+  documentViewerDocumentTypeDescriptor,
+  documentViewerMetadataDescriptor,
+  documentViewerStateDescriptor,
+  documentViewerStatusDescriptor,
+  documentViewerTruncationDescriptor,
+} from "../../stores/server/documentViewerVocabulary";
 import { previewDocTab } from "../../stores/view/tabs";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import {
@@ -46,7 +47,7 @@ import {
 import { copyLinkAction } from "../../stores/view/documentLinkActions";
 import { PlanSummaryCard } from "./PlanSummaryCard";
 import { CommentThreadPanel } from "./CommentThreadPanel";
-import { languageDisplayName } from "./languages";
+import { languageDisplayDescriptor } from "./languages";
 import { remarkBlockId } from "./remarkBlockId";
 import {
   remarkWikiLink,
@@ -98,7 +99,11 @@ function CodeFence({
   code: string;
   lang: string | null;
 }): ReactElement {
+  const resolveMessage = useLocalizedMessageResolver();
   const { hast } = useHighlightedHast(code, lang);
+  const readOnly = resolveMessage(DOCUMENT_VIEWER_MESSAGES.labels.readOnly);
+  const copy = resolveMessage(DOCUMENT_VIEWER_MESSAGES.actions.copy);
+  const language = resolveMessage(languageDisplayDescriptor(lang, "text"));
   // Mirror the CodeViewer's Copy affordance (a direct clipboard write); the prior
   // bare <span> rendered an actionable-looking "Copy" that did nothing (dead control).
   const onCopy = () => {
@@ -109,13 +114,15 @@ function CodeFence({
   return (
     <div className="vs-code-fence">
       <div className="vs-code-fence__header">
-        <span className="vs-code-fence__lang">{languageDisplayName(lang)}</span>
-        <span className="vs-code-fence__actions">
-          <span className="vs-code-fence__readonly">Read-only</span>
-          <button type="button" className="vs-code-fence__copy" onClick={onCopy}>
-            Copy
-          </button>
-        </span>
+        <span className="vs-code-fence__lang">{language.message}</span>
+        {!readOnly.usedFallback && !copy.usedFallback && (
+          <span className="vs-code-fence__actions">
+            <span className="vs-code-fence__readonly">{readOnly.message}</span>
+            <button type="button" className="vs-code-fence__copy" onClick={onCopy}>
+              {copy.message}
+            </button>
+          </span>
+        )}
       </div>
       <div className="vs-code-fence__body">
         {hast ? (
@@ -212,10 +219,12 @@ function CommentableHeading({
    *  anchor index (and its ambiguity set) is keyed on. */
   pluginKey: string;
 }): ReactElement {
+  const resolveMessage = useLocalizedMessageResolver();
   const [open, setOpen] = useState(false);
   const anchored = anchoredCommentsForBlock(plane.comments, block);
   const count = anchored.length;
   const ambiguous = plane.anchorIndex.ambiguousPaths.has(pluginKey);
+  const openComments = resolveMessage(COMMENT_ACTIONS.open);
   const openThread = () =>
     fireActionDescriptor(
       commentSectionAction({ hasComments: count > 0, onOpen: () => setOpen(true) }),
@@ -241,23 +250,27 @@ function CommentableHeading({
             <Badge tone="accent">{count}</Badge>
           </span>
         )}
-        <span
-          data-affordance-visibility={plane.viewport === "compact" ? "always" : "hover"}
-          className={
-            plane.viewport === "compact"
-              ? "opacity-100"
-              : "opacity-0 transition-opacity duration-ui-fast group-hover:opacity-100 focus-within:opacity-100"
-          }
-        >
-          <IconButton
-            label="Comment on this section"
-            data-comment-affordance
-            active={open}
-            onClick={openThread}
+        {!openComments.usedFallback && (
+          <span
+            data-affordance-visibility={
+              plane.viewport === "compact" ? "always" : "hover"
+            }
+            className={
+              plane.viewport === "compact"
+                ? "opacity-100"
+                : "opacity-0 transition-opacity duration-ui-fast group-hover:opacity-100 focus-within:opacity-100"
+            }
           >
-            <MessageSquare size={14} aria-hidden />
-          </IconButton>
-        </span>
+            <IconButton
+              label={openComments.message}
+              data-comment-affordance
+              active={open}
+              onClick={openThread}
+            >
+              <MessageSquare size={14} aria-hidden />
+            </IconButton>
+          </span>
+        )}
       </span>
       {open && (
         <CommentThreadPanel
@@ -339,44 +352,86 @@ const HEADING_COMPONENTS: Components = {
   ),
 };
 
-/** The editorial DocHeader block: doc-type eyebrow, serif title, italic dek, and
- *  the date · reading-time · status meta line (board 259:838). */
+const READER_DATE_OPTIONS = Object.freeze({
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+  year: "numeric",
+} as const satisfies Intl.DateTimeFormatOptions);
+const TAG_PREFIX = String.fromCodePoint(35);
+
+function localizedReaderDate(locale: string, iso: string | null): string | null {
+  if (iso === null) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/.exec(iso);
+  if (match === null) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const parsed = new Date(timestamp);
+  if (
+    parsed.getUTCFullYear() !== year ||
+    parsed.getUTCMonth() !== month - 1 ||
+    parsed.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  return formatDate(locale, timestamp, READER_DATE_OPTIONS);
+}
+
 function DocHeaderBlock({
   editorial,
 }: {
   editorial: MarkdownReaderEditorialView;
 }): ReactElement {
+  const resolveMessage = useLocalizedMessageResolver();
+  const { i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage ?? i18n.language;
+  const type = resolveMessage(
+    documentViewerDocumentTypeDescriptor(editorial.documentType),
+  );
+  const created = localizedReaderDate(locale, editorial.createdAt);
+  const updated = localizedReaderDate(locale, editorial.updatedAt);
+  const status =
+    editorial.status === null
+      ? null
+      : resolveMessage(documentViewerStatusDescriptor(editorial.status));
+  const metadataDescriptor = documentViewerMetadataDescriptor({
+    created,
+    updated,
+    minutes: editorial.readMinutes,
+    status: status?.message ?? null,
+  });
+  const metadata =
+    metadataDescriptor === null ? null : resolveMessage(metadataDescriptor);
   return (
     <header className="flex flex-col gap-[0.6875rem]">
-      {editorial.eyebrow && (
+      {!type.usedFallback && (
         <div className="flex items-center gap-[0.4375rem]">
-          <StatusDot category={editorial.eyebrow.category} />
+          {editorial.documentType !== null && (
+            <StatusDot category={editorial.documentType} />
+          )}
           <span
             className="reader-eyebrow"
-            style={{ color: categoryColorVar(editorial.eyebrow.category) }}
+            style={
+              editorial.documentType === null
+                ? undefined
+                : { color: categoryColorVar(editorial.documentType) }
+            }
           >
-            {editorial.eyebrow.label}
+            {type.message}
           </span>
         </div>
       )}
       {editorial.title && <h1 className="reader-title text-ink">{editorial.title}</h1>}
       {editorial.dek && <p className="reader-dek text-ink-muted">{editorial.dek}</p>}
-      {editorial.meta.length > 0 && (
-        <p className="reader-meta text-ink-muted">
-          {editorial.meta.map((part, idx) => (
-            <span key={part}>
-              {idx > 0 && <span className="px-[0.625rem] text-ink-faint">·</span>}
-              {part}
-            </span>
-          ))}
-        </p>
+      {metadata !== null && !metadata.usedFallback && (
+        <p className="reader-meta text-ink-muted">{metadata.message}</p>
       )}
     </header>
   );
 }
 
-/** The Tagged / Related footer (board 263:886): feature tags as chips and related
- *  stems as in-app wiki-links; the doc-type tag is omitted (it is the eyebrow). */
 function ReaderFooter({
   editorial,
   scope,
@@ -384,30 +439,40 @@ function ReaderFooter({
   editorial: MarkdownReaderEditorialView;
   scope: string | null;
 }): ReactElement | null {
+  const resolveMessage = useLocalizedMessageResolver();
+  const tags = resolveMessage(DOCUMENT_VIEWER_MESSAGES.labels.tags);
+  const relatedDocuments = resolveMessage(
+    DOCUMENT_VIEWER_MESSAGES.labels.relatedDocuments,
+  );
   if (editorial.footerTags.length === 0 && editorial.related.length === 0) {
     return null;
   }
   return (
     <footer className="flex flex-col gap-fg-4 px-fg-4 pb-[1.875rem] pt-[1.375rem] @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
       <div className="h-px w-full bg-rule" />
-      {editorial.footerTags.length > 0 && (
+      {editorial.footerTags.length > 0 && !tags.usedFallback && (
         <div className="flex items-center gap-fg-3">
-          <span className="reader-meta w-16 shrink-0 text-ink-muted">Tagged</span>
+          <span className="reader-meta w-16 shrink-0 text-ink-muted">
+            {tags.message}
+          </span>
           <div className="flex flex-1 flex-wrap gap-[0.4375rem]">
             {editorial.footerTags.map((tag) => (
               <span
-                key={tag.label}
+                key={tag.value}
                 className="rounded-full bg-paper-sunken px-[0.625rem] py-fg-1 text-[0.6875rem] text-ink-muted"
               >
-                {tag.label}
+                {TAG_PREFIX}
+                {tag.value}
               </span>
             ))}
           </div>
         </div>
       )}
-      {editorial.related.length > 0 && (
+      {editorial.related.length > 0 && !relatedDocuments.usedFallback && (
         <div className="flex items-center gap-fg-3">
-          <span className="reader-meta w-16 shrink-0 text-ink-muted">Related</span>
+          <span className="reader-meta w-16 shrink-0 text-ink-muted">
+            {relatedDocuments.message}
+          </span>
           <div className="flex flex-1 flex-wrap gap-x-fg-4 gap-y-fg-1-5">
             {editorial.related.map((related) => (
               <a
@@ -447,7 +512,7 @@ function MarkdownBody({
   // A plan document carries the "plan" eyebrow category; the summary card mounts
   // for it (self-fetching the engine plan-interior summary) when the host supplied
   // the plan node id.
-  const isPlan = view.editorial.eyebrow?.category === "plan";
+  const isPlan = view.editorial.documentType === "plan";
   const components = useMemo<Components>(
     () => ({
       ...COMPONENTS,
@@ -539,8 +604,22 @@ export function MarkdownReader({
    *  caller that mounts the reader without comments is unaffected. */
   commentSource?: ReaderCommentSource;
 }): ReactElement {
+  const resolveMessage = useLocalizedMessageResolver();
   const markdownView = useMemo(() => deriveMarkdownReaderView(content), [content]);
   const viewport = useViewportClass();
+  const stateDescriptor = documentViewerStateDescriptor(markdownView.state);
+  const stateMessage =
+    stateDescriptor === null ? null : resolveMessage(stateDescriptor);
+  const documentLabel = resolveMessage(DOCUMENT_VIEWER_MESSAGES.accessibility.document);
+  const truncationDescriptor =
+    markdownView.truncated === null
+      ? null
+      : documentViewerTruncationDescriptor(
+          markdownView.truncated.returned_bytes,
+          markdownView.truncated.total_bytes,
+        );
+  const truncation =
+    truncationDescriptor === null ? null : resolveMessage(truncationDescriptor);
   // The heading anchor index is derived from the RAW served body (frontmatter
   // stripped for clean ancestor paths; the section bytes — and therefore the git
   // blob oids — are identical to the backend's read either way). H1 lift is signaled
@@ -601,13 +680,18 @@ export function MarkdownReader({
   // only in the kit `Skeleton`'s sr-only. Empty / degraded / error stay plain
   // sentences.
   if (markdownView.state === "loading") {
-    return <ReaderSkeleton label={markdownView.stateMessage ?? "Loading document…"} />;
+    return <ReaderSkeleton label={stateMessage!.message} />;
   }
   if (markdownView.state !== "ready") {
     return (
-      <ReaderState className={markdownView.stateToneClass}>
-        {markdownView.stateMessage}
+      <ReaderState className={readerStateToneClass(markdownView.stateTone)}>
+        {stateMessage!.message}
       </ReaderState>
+    );
+  }
+  if (documentLabel.usedFallback) {
+    return (
+      <ReaderState className="text-state-broken">{documentLabel.message}</ReaderState>
     );
   }
 
@@ -618,9 +702,9 @@ export function MarkdownReader({
   return (
     <ReaderCommentsContext.Provider value={commentPlane}>
       <div className="@container flex h-full flex-col bg-paper text-ink">
-        {markdownView.truncated && (
+        {truncation !== null && !truncation.usedFallback && (
           <div className="reader-meta border-b border-rule bg-paper-sunken px-fg-4 py-fg-1 text-ink-muted @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
-            {markdownView.truncationMessage}
+            {truncation.message}
           </div>
         )}
         {commentPlane !== null && <OrphanedNotesBar plane={commentPlane} />}
@@ -631,7 +715,7 @@ export function MarkdownReader({
           ref={scrollRegionRef}
           className="min-h-0 flex-1 overflow-auto"
           role="region"
-          aria-label="document"
+          aria-label={documentLabel.message}
           tabIndex={0}
           // The scroll keys are stopped from the global dispatcher (which would
           // preventDefault them — blocking this scroll — and walk the graph) so the
@@ -646,18 +730,19 @@ export function MarkdownReader({
   );
 }
 
-/** The document-level orphaned-notes affordance: shown only when a comment's anchor
- *  has drifted off its section (the honest orphan state, never a silent re-anchor).
- *  It opens a panel listing every orphaned note under a clearly-labeled stale state
- *  with the typed reason and an explicit re-anchor. */
 function OrphanedNotesBar({
   plane,
 }: {
   plane: ReaderCommentPlane;
 }): ReactElement | null {
+  const resolveMessage = useLocalizedMessageResolver();
   const [open, setOpen] = useState(false);
   const orphaned = orphanedComments(plane.comments);
   if (orphaned.length === 0) return null;
+  const commentsToReview = resolveMessage(
+    commentsToReviewCountDescriptor(orphaned.length),
+  );
+  if (commentsToReview.usedFallback) return null;
   return (
     <div className="relative border-b border-rule bg-paper-sunken px-fg-4 py-fg-1 @lg:px-fg-8 @3xl:px-[3rem] @5xl:px-[4.5rem]">
       <button
@@ -667,9 +752,7 @@ function OrphanedNotesBar({
         onClick={() => setOpen((value) => !value)}
       >
         <MessageSquare size={14} aria-hidden />
-        {orphaned.length === 1
-          ? "1 orphaned note"
-          : `${orphaned.length} orphaned notes`}
+        {commentsToReview.message}
       </button>
       {open && (
         <CommentThreadPanel
@@ -679,7 +762,7 @@ function OrphanedNotesBar({
           actorReady={plane.actorReady}
           actorBootstrapping={plane.actorBootstrapping}
           ensureActor={plane.ensureActor}
-          title="Orphaned notes"
+          title={commentsToReview.message}
           orphanedPanel
           onClose={() => setOpen(false)}
           className="absolute left-fg-4 top-full z-40 mt-fg-1 @lg:left-fg-8"
@@ -723,4 +806,10 @@ function ReaderState({
       <p>{children}</p>
     </div>
   );
+}
+
+function readerStateToneClass(tone: MarkdownReaderView["stateTone"]): string {
+  if (tone === "broken") return "text-state-broken";
+  if (tone === "muted") return "text-ink-muted";
+  return "text-ink-faint";
 }

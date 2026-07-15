@@ -77,7 +77,7 @@ describe("command palette store", () => {
     setCommandPaletteArmedCommandId("ops:vault-check");
 
     expect(useCommandPaletteStore.getState()).toMatchObject({
-      query: "typed lens",
+      query: "  typed lens  ",
       cursor: 4,
       armedCommandId: "ops:vault-check",
     });
@@ -94,8 +94,8 @@ describe("command palette store", () => {
   it("normalizes malformed transient surface inputs at the palette seam", () => {
     const longQuery = ` ${"x".repeat(COMMAND_PALETTE_QUERY_MAX_CHARS + 10)} `;
     expect(normalizeCommandPaletteQuery(null)).toBe("");
-    expect(normalizeCommandPaletteQuery("  typed lens  ")).toBe("typed lens");
-    expect(normalizeCommandPaletteQuery("   ")).toBe("");
+    expect(normalizeCommandPaletteQuery("  typed lens  ")).toBe("  typed lens  ");
+    expect(normalizeCommandPaletteQuery("   ")).toBe("   ");
     expect(normalizeCommandPaletteQuery(longQuery)).toHaveLength(
       COMMAND_PALETTE_QUERY_MAX_CHARS,
     );
@@ -131,7 +131,7 @@ describe("command palette store", () => {
       }),
     ).toEqual({
       open: false,
-      query: "typed lens",
+      query: "  typed lens  ",
       cursor: 3,
       armedCommandId: "ops:vault-check",
       opsFeedback: null,
@@ -197,17 +197,23 @@ describe("command palette store", () => {
       safeCursor: 1,
       selectedNodeId: "code:b",
       showExpandedPanel: true,
-      dialogLabel: "Search documents and code",
-      inputPlaceholder: "Search documents and code…",
-      resultCountLabel: "2 results",
+      dialogLabel: { key: "common:searchPalette.accessibility.dialog" },
+      inputPlaceholder: { key: "common:searchPalette.placeholders.query" },
+      resultCountLabel: {
+        key: "common:searchPalette.counts.results",
+        values: { count: 2 },
+      },
       stateMode: null,
       emptyMessage: null,
-      liveMessage: "2 results",
+      liveMessage: {
+        key: "common:searchPalette.counts.results",
+        values: { count: 2 },
+      },
       footerHints: {
-        move: "move",
-        previousNext: "previous / next",
-        open: "open",
-        close: "close",
+        move: { key: "common:searchPalette.actions.move" },
+        previousNext: { key: "common:searchPalette.actions.previousNext" },
+        open: { key: "common:searchPalette.actions.open" },
+        close: { key: "common:searchPalette.actions.close" },
       },
     });
 
@@ -225,10 +231,10 @@ describe("command palette store", () => {
       safeCursor: 0,
       selectedNodeId: null,
       showExpandedPanel: false,
-      resultCountLabel: "",
+      resultCountLabel: null,
       stateMode: null,
-      emptyMessage: "Search across your documents and code.",
-      liveMessage: "",
+      emptyMessage: { key: "common:searchPalette.states.idle" },
+      liveMessage: null,
     });
 
     expect(
@@ -242,12 +248,10 @@ describe("command palette store", () => {
         error: false,
       }),
     ).toMatchObject({
-      resultCountLabel: "searching…",
-      // Loading is UI-only (state-mode-uniformity ADR): the message becomes the
-      // Skeleton's screen-reader label, never on-screen text.
+      resultCountLabel: { key: "common:searchPalette.states.searching" },
       stateMode: "loading",
-      emptyMessage: "Searching documents and code",
-      liveMessage: "searching…",
+      emptyMessage: { key: "common:searchPalette.states.searching" },
+      liveMessage: { key: "common:searchPalette.states.searching" },
     });
 
     expect(
@@ -261,9 +265,9 @@ describe("command palette store", () => {
         error: true,
       }),
     ).toMatchObject({
-      stateMode: "degraded",
-      emptyMessage: "Full search is unavailable — showing name matches only.",
-      liveMessage: "search request failed",
+      stateMode: "error",
+      emptyMessage: { key: "common:searchPalette.states.failed" },
+      liveMessage: { key: "common:searchPalette.states.failed" },
     });
 
     expect(
@@ -278,13 +282,12 @@ describe("command palette store", () => {
       }),
     ).toMatchObject({
       stateMode: "empty",
-      emptyMessage: "No matches for “auth”.",
+      emptyMessage: {
+        key: "common:searchPalette.states.noMatches",
+        values: { query: "auth" },
+      },
     });
 
-    // Degraded WITHOUT a transport error (rag offline, files providers still
-    // serving): the plain-language copy states both truths — full search down,
-    // name matches only — and the screen-reader twin MATCHES the visible copy
-    // (search-providers ADR D3; no mechanism vocabulary).
     expect(
       deriveSearchPalettePresentationView({
         query: "auth",
@@ -297,13 +300,10 @@ describe("command palette store", () => {
       }),
     ).toMatchObject({
       stateMode: "degraded",
-      emptyMessage: "Full search is unavailable — showing name matches only.",
-      liveMessage: "Full search is unavailable — showing name matches only.",
+      emptyMessage: { key: "common:searchPalette.states.degraded" },
+      liveMessage: { key: "common:searchPalette.states.degraded" },
     });
 
-    // Twin parity when files RESCUE the query (review LOW-1): semantic offline but
-    // results present → no degraded StateBlock, and the SR live region announces
-    // the normal COUNT, not the degraded copy that would have no visible twin.
     expect(
       deriveSearchPalettePresentationView({
         query: "auth",
@@ -317,11 +317,12 @@ describe("command palette store", () => {
     ).toMatchObject({
       stateMode: null,
       emptyMessage: null,
-      liveMessage: "2 results",
+      liveMessage: {
+        key: "common:searchPalette.counts.results",
+        values: { count: 2 },
+      },
     });
 
-    // A walk-capped provider surfaces the honest one-line incomplete note (review
-    // HIGH: truncated-not-surfaced); absent when every listing is complete.
     expect(
       deriveSearchPalettePresentationView({
         query: "auth",
@@ -333,9 +334,7 @@ describe("command palette store", () => {
         error: false,
         incomplete: true,
       }).incompleteNote,
-    ).toBe(
-      "Some files may be missing from name matches — the repository is very large.",
-    );
+    ).toEqual({ key: "common:searchPalette.states.incomplete" });
     expect(
       deriveSearchPalettePresentationView({
         query: "auth",

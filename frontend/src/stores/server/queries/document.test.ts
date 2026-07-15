@@ -36,16 +36,12 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
   it("projects ready code content into tokenizer text, raw lines, and header fields", () => {
     expect(deriveCodeViewerView(content({}))).toEqual({
       state: "ready",
-      stateMessage: null,
       stateTone: "faint",
-      stateToneClass: "text-ink-faint",
       text: "line one\nline two\n",
       rawLines: ["line one", "line two"],
       path: "src/auth/mod.rs",
       languageHint: "rust",
       truncated: null,
-      readOnlyLabel: "read-only",
-      truncationMessage: null,
     });
   });
 
@@ -54,21 +50,15 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
       deriveCodeViewerView(content({ loading: true, available: false, text: "" })),
     ).toMatchObject({
       state: "loading",
-      stateMessage: "Loading file...",
       stateTone: "faint",
-      stateToneClass: "text-ink-faint",
       text: "",
       rawLines: [],
-      readOnlyLabel: "read-only",
-      truncationMessage: null,
     });
     expect(
       deriveCodeViewerView(content({ errored: true, available: false, text: "" })),
     ).toMatchObject({
       state: "errored",
-      stateMessage: "The file could not be loaded.",
       stateTone: "broken",
-      stateToneClass: "text-state-broken",
     });
     expect(
       deriveCodeViewerView(
@@ -81,28 +71,21 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
       ),
     ).toMatchObject({
       state: "degraded",
-      stateMessage: "File unavailable: worktree not listable.",
       stateTone: "muted",
-      stateToneClass: "text-ink-muted",
     });
     expect(deriveCodeViewerView(content({ available: false, text: "" }))).toMatchObject(
       {
         state: "empty",
-        stateMessage: "This file is empty.",
         stateTone: "faint",
-        stateToneClass: "text-ink-faint",
       },
     );
   });
 
   it("renders a distinct not-in-workspace state on a 404 (never a blank body)", () => {
-    // A 404 in the read scope is the "missing" state — distinct from empty/errored so
-    // the viewer never blanks (per-tab-scope-binding).
     expect(
       deriveCodeViewerView(content({ notFound: true, available: false, text: "" })),
     ).toMatchObject({
       state: "missing",
-      stateMessage: "This file isn't in this workspace.",
       stateTone: "muted",
     });
   });
@@ -115,18 +98,10 @@ describe("deriveCodeViewerView (viewer code chrome)", () => {
     };
 
     expect(deriveCodeViewerView(content({ truncated })).truncated).toEqual(truncated);
-    expect(deriveCodeViewerView(content({ truncated })).truncationMessage).toBe(
-      "Truncated to the first 1,048,576 of 2,000,000 bytes — open the file directly for the full contents.",
-    );
     expect(
       deriveCodeViewerView(
         content({ loading: true, available: false, text: "", truncated }),
       ).truncated,
-    ).toBeNull();
-    expect(
-      deriveCodeViewerView(
-        content({ loading: true, available: false, text: "", truncated }),
-      ).truncationMessage,
     ).toBeNull();
   });
 });
@@ -180,8 +155,8 @@ describe("deriveMarkdownHeaderView (viewer document chrome)", () => {
       category: "plan",
       categoryLabel: "plan",
       meta: [
-        { label: "created", value: "2026-06-17" },
-        { label: "modified", value: "2026-06-18" },
+        { kind: "created", iso: "2026-06-17" },
+        { kind: "updated", iso: "2026-06-18" },
       ],
     });
   });
@@ -239,13 +214,12 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
 
     expect(view).toMatchObject({
       state: "ready",
-      stateMessage: null,
       stateTone: "faint",
       truncated: null,
     });
     expect(view.frontmatter).toEqual({
-      tags: [{ label: "#adr", category: "adr" }],
-      dates: [{ label: "created", value: "2026-06-17" }],
+      tags: [{ value: "adr", category: "adr" }],
+      dates: [{ kind: "created", iso: "2026-06-17" }],
       related: [
         {
           stem: "2026-06-18-reader-plan",
@@ -254,13 +228,15 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       ],
     });
     expect(view.body).toBe("\n# Body heading");
-    expect(view.status).toBe("accepted");
     expect(view.editorial).toMatchObject({
       title: "Body heading",
       dek: null,
       body: "",
-      eyebrow: { label: "Decision", category: "adr" },
-      meta: ["17 June 2026", "1 min read", "accepted"],
+      documentType: "adr",
+      createdAt: "2026-06-17",
+      updatedAt: null,
+      readMinutes: 1,
+      status: "accepted",
       footerTags: [],
       related: [
         {
@@ -274,23 +250,22 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
   it("leaves general markdown untouched when no frontmatter fence is present", () => {
     expect(deriveMarkdownReaderView(content({ text: "# Plain markdown" }))).toEqual({
       state: "ready",
-      stateMessage: null,
       stateTone: "faint",
-      stateToneClass: "text-ink-faint",
       frontmatter: null,
-      status: null,
       body: "# Plain markdown",
       editorial: {
         title: "Plain markdown",
         dek: null,
         body: "",
-        eyebrow: null,
-        meta: ["1 min read"],
+        documentType: null,
+        createdAt: null,
+        updatedAt: null,
+        readMinutes: 1,
+        status: null,
         footerTags: [],
         related: [],
       },
       truncated: null,
-      truncationMessage: null,
     });
   });
 
@@ -326,14 +301,14 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       title: "Reader title",
       dek: "The dek is lifted out of the rendered markdown body.",
       body: "The remaining paragraph stays in the markdown article.",
-      eyebrow: { label: "Plan", category: "plan" },
-      meta: ["19 June 2026", "1 min read", "draft"],
-      footerTags: [{ label: "#state-boundary" }],
+      documentType: "plan",
+      createdAt: "2026-06-19",
+      updatedAt: null,
+      readMinutes: 1,
+      status: "draft",
+      footerTags: [{ value: "state-boundary" }],
       related: [{ stem: "dashboard-state-plan", nodeId: "doc:dashboard-state-plan" }],
     });
-    expect(view.truncationMessage).toBe(
-      "Truncated to the first 1,024 of 2,500 bytes — open the file directly for the full document.",
-    );
   });
 
   it("projects loading, error, degraded, empty, and truncated states", () => {
@@ -341,9 +316,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       deriveMarkdownReaderView(content({ loading: true, available: false })),
     ).toMatchObject({
       state: "loading",
-      stateMessage: "Loading document…",
       stateTone: "faint",
-      stateToneClass: "text-ink-faint",
       body: "",
     });
     expect(
@@ -352,9 +325,7 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       ),
     ).toMatchObject({
       state: "errored",
-      stateMessage: "The document could not be loaded.",
       stateTone: "broken",
-      stateToneClass: "text-state-broken",
       body: "",
     });
     expect(
@@ -368,18 +339,14 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       ),
     ).toMatchObject({
       state: "degraded",
-      stateMessage: "Document unavailable: worktree not listable.",
       stateTone: "muted",
-      stateToneClass: "text-ink-muted",
       body: "",
     });
     expect(
       deriveMarkdownReaderView(content({ available: false, text: "" })),
     ).toMatchObject({
       state: "empty",
-      stateMessage: "This document is empty.",
       stateTone: "faint",
-      stateToneClass: "text-ink-faint",
       body: "",
     });
 
@@ -398,7 +365,6 @@ describe("deriveMarkdownReaderView (viewer markdown body)", () => {
       deriveMarkdownReaderView(content({ notFound: true, available: false, text: "" })),
     ).toMatchObject({
       state: "missing",
-      stateMessage: "This document isn't in this workspace.",
       stateTone: "muted",
       body: "",
     });
@@ -415,10 +381,10 @@ describe("deriveFrontmatterHeaderView (reader frontmatter chrome)", () => {
         related: ["2026-06-18-reader-plan"],
       }),
     ).toEqual({
-      tags: [{ label: "#adr", category: "adr" }, { label: "#review-rail" }],
+      tags: [{ value: "adr", category: "adr" }, { value: "review-rail" }],
       dates: [
-        { label: "created", value: "2026-06-17" },
-        { label: "modified", value: "2026-06-18" },
+        { kind: "created", iso: "2026-06-17" },
+        { kind: "updated", iso: "2026-06-18" },
       ],
       related: [
         {

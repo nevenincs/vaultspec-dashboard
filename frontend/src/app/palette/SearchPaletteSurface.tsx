@@ -1,25 +1,4 @@
-// The Cmd-K SEARCH surface (binding figma SearchPalette/List 651:1771 and
-// SearchPalette/Expanded 652:1804). It is the search MODE of the one command
-// palette (see commandPalette store): the rag-backed semantic search plane that
-// surfaces results as SearchResultPills and, on Enter, reveals an on-demand split
-// where the cursored result renders full-width in the editorial reader.
-//
-// Interaction model (binding Figma legends, plain words):
-//   List      — ↑↓ move · ↵ open · esc close
-//   Expanded  — ↑↓ move · ←→ previous / next · ↵ open · esc close
-// Enter from the list reveals the split; Enter in the split opens the result on the
-// stage (the engine node-id click-through) and closes the palette; Esc collapses the
-// split, then closes.
-//
-// Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-contract): dumb
-// chrome. It consumes the stores `useSearchProviders` (the ONE Search host composing
-// the semantic + files(vault) + files(code) providers into one ranked interleaved
-// list) and `useContentView` (the sole wire client for node content), derives the
-// pill views through the stores `deriveSearchPillViews`, reads degradation only
-// through the host's interpreted `semanticOffline`, and emits selection through the
-// scoped dashboard-selection seam. It fetches nothing itself and reads no raw
-// `tiers` block. The editorial render REUSES the existing MarkdownReader / CodeViewer
-// viewers rather than authoring a bespoke long-form.
+// Search across available document and code providers with an optional preview.
 
 import { Search } from "lucide-react";
 import {
@@ -48,7 +27,7 @@ import {
   type SearchCorpus,
   useSearchProviders,
 } from "../../stores/server/searchProviders";
-import { deriveSearchPillViews } from "../../stores/server/searchPill";
+import { deriveSearchPillViewsFromProviderEntries } from "../../stores/server/searchPill";
 import { useActiveScope, useContentView } from "../../stores/server/queries";
 import { activateEntity } from "../../stores/view/activateEntity";
 import { useViewportClass } from "../../stores/view/viewportClass";
@@ -66,8 +45,19 @@ import { trapTabFocus } from "../chrome/focusTrap";
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { useFocusRestore } from "../chrome/useFocusRestore";
 import { SearchResultPill } from "./SearchResultPill";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { AnyMessageDescriptor } from "../../platform/localization/message";
 
-/** The no-results body (state-mode-uniformity ADR): loading is a UI-only Skeleton (the
+const SEARCH_SURFACE_MESSAGES = {
+  cancel: { key: "common:searchPalette.actions.cancel" },
+  scope: { key: "common:searchPalette.accessibility.scope" },
+  all: { key: "common:searchPalette.scopes.all" },
+  documents: { key: "common:searchPalette.scopes.documents" },
+  code: { key: "common:searchPalette.scopes.code" },
+  previewUnavailable: { key: "common:searchPalette.preview.unavailable" },
+} as const;
+
+/** Loading uses a skeleton while other empty states use a shared state block. The
  *  sentence is the screen-reader label, never visible text); degraded/empty render a
  *  StateBlock (shared glyph + one plain sentence); the idle prompt (stateMode `null`
  *  with a message) stays a plain hint sentence. Returns `null` when there is nothing to
@@ -76,28 +66,23 @@ function SearchEmptyState({
   stateMode,
   message,
 }: {
-  stateMode: "loading" | "degraded" | "empty" | null;
+  stateMode: "loading" | "degraded" | "error" | "empty" | null;
   message: string | null;
 }) {
   if (stateMode === "loading") {
     return (
-      <Skeleton label={message ?? "Searching"} className="p-fg-1">
+      <Skeleton label={message ?? ""} className="p-fg-1">
         <SkeletonRow width="w-2/3" />
         <SkeletonRow width="w-1/2" />
         <SkeletonRow width="w-3/5" />
       </Skeleton>
     );
   }
-  if (stateMode === "degraded") {
-    return (
-      <StateBlock
-        mode="degraded"
-        message={message ?? "Search is temporarily unavailable."}
-      />
-    );
+  if (stateMode === "degraded" || stateMode === "error") {
+    return <StateBlock mode="degraded" message={message ?? ""} />;
   }
   if (stateMode === "empty") {
-    return <StateBlock mode="empty" message={message ?? "No matches."} />;
+    return <StateBlock mode="empty" message={message ?? ""} />;
   }
   if (message) {
     return (
@@ -126,20 +111,26 @@ function LegendHint({ keys, label }: { keys: string[]; label: string }) {
  *  merged list. A search-target control on the search plane, never a corpus
  *  filter write. */
 function CorpusToggle({ corpus }: { corpus: SearchCorpus }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: AnyMessageDescriptor) =>
+    resolveMessage(descriptor).message;
   return (
     <SegmentedToggle
       value={corpus}
       onChange={(value) => setSearchPaletteCorpus(value)}
-      ariaLabel="Search scope"
+      ariaLabel={message(SEARCH_SURFACE_MESSAGES.scope)}
     >
-      <Segment value="all">All</Segment>
-      <Segment value="docs">Docs</Segment>
-      <Segment value="code">Code</Segment>
+      <Segment value="all">{message(SEARCH_SURFACE_MESSAGES.all)}</Segment>
+      <Segment value="docs">{message(SEARCH_SURFACE_MESSAGES.documents)}</Segment>
+      <Segment value="code">{message(SEARCH_SURFACE_MESSAGES.code)}</Segment>
     </SegmentedToggle>
   );
 }
 
 export function SearchPaletteSurface() {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: AnyMessageDescriptor) =>
+    resolveMessage(descriptor).message;
   const query = useCommandPaletteQuery();
   const cursor = useSearchPaletteCursor();
   const expanded = useSearchPaletteExpanded();
@@ -148,13 +139,7 @@ export function SearchPaletteSurface() {
 
   const search = useSearchProviders(query, scope, corpus);
   const pills = useMemo(
-    // The host yields banded provider entries; the pill derivation reads the
-    // wire `result` each wraps (species/title/why are derived there).
-    () =>
-      deriveSearchPillViews(
-        search.entries.map((entry) => entry.result),
-        scope,
-      ),
+    () => deriveSearchPillViewsFromProviderEntries(search.entries, scope),
     [search.entries, scope],
   );
   const presentation = deriveSearchPalettePresentationView({
@@ -191,9 +176,7 @@ export function SearchPaletteSurface() {
 
   useFocusRestore(true, { onOpen: () => inputRef.current?.focus() });
 
-  // Esc collapses the split first, then closes — the two-step escape the Figma
-  // expanded legend implies. Window-level so it fires regardless of focus within
-  // the panel.
+  // Escape closes the preview before it closes the search surface.
   const onEscape = useCallback(() => {
     if (expanded) {
       setSearchPaletteExpanded(false);
@@ -214,11 +197,6 @@ export function SearchPaletteSurface() {
 
   const openSelected = useCallback(() => {
     if (!selectedNodeId) return;
-    // The ONE standardized open verb (command-palette-planes ADR): a result opens
-    // through the canonical selection seam, exactly like the context-menu Open and
-    // the graph click-through.
-    // Off-canvas open (search) → the ONE canonical activate seam: PERMANENT dock tab
-    // + frame:true (materialize + center the graph on the node).
     void activateEntity(selectedNodeId, scope, {
       permanent: true,
       frame: true,
@@ -236,11 +214,7 @@ export function SearchPaletteSurface() {
     else openSelected();
   };
 
-  // Compact (mobile-responsive-layout ADR D3; binding Figma compact Search frame
-  // 791:3294): a FULL-SCREEN search surface — query + Cancel, then the result list —
-  // instead of the desktop centered modal. No keyboard-hint footer (touch), and no
-  // expanded reader split: tapping a result opens it through the ONE open seam, which
-  // the compact sliding reader renders full-screen.
+  // Compact layouts use a full-screen result list without the preview split.
   const compact = useViewportClass() === "compact";
   if (compact) {
     return (
@@ -248,7 +222,7 @@ export function SearchPaletteSurface() {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={presentation.dialogLabel}
+        aria-label={message(presentation.dialogLabel)}
         className="fixed inset-0 z-50 flex flex-col bg-paper animate-fade-in"
         onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
       >
@@ -267,7 +241,7 @@ export function SearchPaletteSurface() {
               setSearchPaletteExpanded(false);
             }}
             onKeyDown={onInputKeyDown}
-            placeholder={presentation.inputPlaceholder}
+            placeholder={message(presentation.inputPlaceholder)}
             className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint"
           />
           <button
@@ -275,7 +249,7 @@ export function SearchPaletteSurface() {
             onClick={close}
             className="shrink-0 rounded-fg-sm px-fg-2 py-fg-1 text-body-strong text-accent-text"
           >
-            Cancel
+            {message(SEARCH_SURFACE_MESSAGES.cancel)}
           </button>
         </div>
         <div className="flex items-center border-b border-rule px-fg-3 py-fg-1-5">
@@ -285,13 +259,14 @@ export function SearchPaletteSurface() {
           <ul
             id={listboxId}
             role="listbox"
-            aria-label={presentation.listboxLabel}
+            aria-label={message(presentation.listboxLabel)}
             className="min-h-0 flex-1 overflow-y-auto p-fg-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
           >
             {pills.map((pill, i) => (
               <li key={pill.key} role="option" aria-selected={i === safeCursor}>
                 <button
                   type="button"
+                  disabled={!pill.selectable}
                   onClick={() => {
                     if (!pill.nodeId) return;
                     void activateEntity(pill.nodeId, scope, {
@@ -311,17 +286,19 @@ export function SearchPaletteSurface() {
           <div className="min-h-0 flex-1 overflow-y-auto p-fg-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             <SearchEmptyState
               stateMode={presentation.stateMode}
-              message={presentation.emptyMessage}
+              message={
+                presentation.emptyMessage ? message(presentation.emptyMessage) : null
+              }
             />
           </div>
         )}
         {presentation.incompleteNote && (
           <div className="border-t border-rule px-fg-3 py-fg-1 text-caption text-ink-muted">
-            {presentation.incompleteNote}
+            {message(presentation.incompleteNote)}
           </div>
         )}
         <div id={liveRegionId} aria-live="polite" className="sr-only">
-          {presentation.liveMessage}
+          {presentation.liveMessage ? message(presentation.liveMessage) : ""}
         </div>
       </div>
     );
@@ -338,12 +315,11 @@ export function SearchPaletteSurface() {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label={presentation.dialogLabel}
+        aria-label={message(presentation.dialogLabel)}
         className={presentation.panelClassName}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
       >
-        {/* Query row (figma 651:1772): search glyph · query input · result count. */}
         <div className="flex items-center gap-fg-2 border-b border-rule px-fg-4 py-fg-3">
           <Search aria-hidden className="size-4 shrink-0 text-ink-faint" />
           <input
@@ -359,13 +335,13 @@ export function SearchPaletteSurface() {
               setSearchPaletteExpanded(false);
             }}
             onKeyDown={onInputKeyDown}
-            placeholder={presentation.inputPlaceholder}
+            placeholder={message(presentation.inputPlaceholder)}
             className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint"
           />
           <CorpusToggle corpus={corpus} />
           {presentation.resultCountLabel && (
             <span className="shrink-0 text-caption text-ink-muted" data-tabular>
-              {presentation.resultCountLabel}
+              {message(presentation.resultCountLabel)}
             </span>
           )}
         </div>
@@ -377,15 +353,19 @@ export function SearchPaletteSurface() {
             <ul
               id={listboxId}
               role="listbox"
-              aria-label={presentation.listboxLabel}
+              aria-label={message(presentation.listboxLabel)}
               className="w-[22rem] shrink-0 overflow-y-auto border-r border-rule p-fg-1"
             >
               {pills.map((pill, i) => (
                 <li key={pill.key} role="option" aria-selected={i === safeCursor}>
                   <button
                     type="button"
+                    disabled={!pill.selectable}
                     tabIndex={-1}
-                    onClick={() => setSearchPaletteCursor(i)}
+                    onClick={() => {
+                      if (!pill.selectable) return;
+                      setSearchPaletteCursor(i);
+                    }}
                     className="block w-full text-left"
                   >
                     <SearchResultPill view={pill} selected={i === safeCursor} />
@@ -401,12 +381,11 @@ export function SearchPaletteSurface() {
               ) : (
                 <div className="h-full overflow-y-auto p-fg-6">
                   <p className="text-caption font-medium text-ink-muted">
-                    {selected?.typeWord}
+                    {selected ? message(selected.typeWord) : ""}
                   </p>
                   <p className="mt-fg-2 whitespace-pre-wrap text-body text-ink-muted">
-                    {selected?.result.rerank_text ??
-                      selected?.result.excerpt ??
-                      "No preview available."}
+                    {selected?.preview ??
+                      message(SEARCH_SURFACE_MESSAGES.previewUnavailable)}
                   </p>
                 </div>
               )}
@@ -416,15 +395,17 @@ export function SearchPaletteSurface() {
           <ul
             id={listboxId}
             role="listbox"
-            aria-label={presentation.listboxLabel}
+            aria-label={message(presentation.listboxLabel)}
             className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto p-fg-1"
           >
             {pills.map((pill, i) => (
               <li key={pill.key} role="option" aria-selected={i === safeCursor}>
                 <button
                   type="button"
+                  disabled={!pill.selectable}
                   tabIndex={-1}
                   onClick={() => {
+                    if (!pill.selectable) return;
                     setSearchPaletteCursor(i);
                     setSearchPaletteExpanded(true);
                   }}
@@ -439,35 +420,36 @@ export function SearchPaletteSurface() {
           <div className="max-h-[28rem] min-h-0 flex-1 overflow-y-auto p-fg-1">
             <SearchEmptyState
               stateMode={presentation.stateMode}
-              message={presentation.emptyMessage}
+              message={
+                presentation.emptyMessage ? message(presentation.emptyMessage) : null
+              }
             />
           </div>
         )}
 
-        {/* Incomplete-listing note: a walk-capped provider means name matches may
-            miss files. Visible (and thus screen-reader accessible) plain-language
-            line, no mechanism words (search-providers ADR D1 / D8). */}
         {presentation.incompleteNote && (
           <div className="border-t border-rule px-fg-4 py-fg-1 text-caption text-ink-muted">
-            {presentation.incompleteNote}
+            {message(presentation.incompleteNote)}
           </div>
         )}
 
-        {/* Footer legend (figma 651:1812 / 652 expanded), plain-word labels. */}
         <div className="flex items-center gap-fg-3 border-t border-rule px-fg-4 py-fg-2">
-          <LegendHint keys={["↑", "↓"]} label={presentation.footerHints.move} />
+          <LegendHint
+            keys={["↑", "↓"]}
+            label={message(presentation.footerHints.move)}
+          />
           {presentation.showExpandedPanel && (
             <LegendHint
               keys={["←", "→"]}
-              label={presentation.footerHints.previousNext}
+              label={message(presentation.footerHints.previousNext)}
             />
           )}
-          <LegendHint keys={["↵"]} label={presentation.footerHints.open} />
-          <LegendHint keys={["esc"]} label={presentation.footerHints.close} />
+          <LegendHint keys={["↵"]} label={message(presentation.footerHints.open)} />
+          <LegendHint keys={["esc"]} label={message(presentation.footerHints.close)} />
         </div>
 
         <div id={liveRegionId} aria-live="polite" className="sr-only">
-          {presentation.liveMessage}
+          {presentation.liveMessage ? message(presentation.liveMessage) : ""}
         </div>
       </div>
     </div>

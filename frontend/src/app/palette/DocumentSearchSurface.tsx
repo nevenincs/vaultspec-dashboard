@@ -1,15 +1,4 @@
-// The Cmd-K DOCUMENT-SEARCH surface (command-palette-planes ADR, W02.P06): the
-// literal "go to document by name" plane of the one command palette. It is the
-// rag-free sibling of the semantic SearchPaletteSurface — a flat result list with no
-// expanded reader split — backed by the structural-tier vault tree, so it stays
-// available when the semantic tier is offline.
-//
-// Layer law (dashboard-layer-ownership): dumb chrome. It consumes the stores
-// `useDocumentSearchController` (a thin files(vault) provider consumer — the wire
-// access stays in the stores layer), derives pill views through the shared
-// `deriveSearchPillViews`, and opens a result through the ONE standardized open
-// seam (`activateEntity`), exactly like the search surface and the context-menu
-// Open. It fetches nothing itself and reads no raw `tiers` block.
+// Document name search backed by the production search controller.
 
 import { FileText } from "lucide-react";
 import {
@@ -32,13 +21,46 @@ import { useDocumentSearchController } from "../../stores/server/documentSearchC
 import { deriveSearchPillViews } from "../../stores/server/searchPill";
 import { useActiveScope } from "../../stores/server/queries";
 import { activateEntity } from "../../stores/view/activateEntity";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import {
+  createCountMessageDescriptor,
+  type AnyMessageDescriptor,
+  type MessageDescriptor,
+} from "../../platform/localization/message";
 import { Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { trapTabFocus } from "../chrome/focusTrap";
 import { useDismissOnEscape } from "../chrome/useDismissOnEscape";
 import { useFocusRestore } from "../chrome/useFocusRestore";
 import { SearchResultPill } from "./SearchResultPill";
 
+export const DOCUMENT_SEARCH_MESSAGES = {
+  dialog: { key: "documents:documentSearch.accessibility.dialog" },
+  idle: { key: "documents:documentSearch.states.idle" },
+  noMatches: { key: "documents:documentSearch.states.noMatches" },
+  placeholder: { key: "documents:documentSearch.placeholders.query" },
+  results: { key: "documents:documentSearch.accessibility.results" },
+  searching: { key: "documents:documentSearch.states.searching" },
+  unavailable: { key: "documents:documentSearch.states.unavailable" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function documentSearchCountMessage(count: number): AnyMessageDescriptor {
+  return (
+    createCountMessageDescriptor("documents:documentSearch.counts.documents", count) ??
+    DOCUMENT_SEARCH_MESSAGES.results
+  );
+}
+
+export function documentSearchNoMatchesMessage(query: string): MessageDescriptor {
+  return {
+    ...DOCUMENT_SEARCH_MESSAGES.noMatches,
+    values: { query },
+  };
+}
+
 export function DocumentSearchSurface() {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: AnyMessageDescriptor) =>
+    resolveMessage(descriptor).message;
   const query = useCommandPaletteQuery();
   const cursor = useSearchPaletteCursor();
   const scope = useActiveScope();
@@ -66,9 +88,6 @@ export function DocumentSearchSurface() {
   const openNode = useCallback(
     (nodeId: string | null) => {
       if (!nodeId) return;
-      // Off-canvas open (search) → the ONE canonical activate seam: PERMANENT dock tab
-      // + frame:true so the graph MATERIALIZES and CENTERS on the node (it may be off
-      // the current constellation slice). Retires the dead island open.
       void activateEntity(nodeId, scope, { permanent: true, frame: true }).catch(
         () => undefined,
       );
@@ -92,17 +111,14 @@ export function DocumentSearchSurface() {
 
   const countLabel =
     count > 0
-      ? `${count} document${count === 1 ? "" : "s"}`
+      ? message(documentSearchCountMessage(count))
       : state === "loading"
-        ? "searching…"
+        ? message(DOCUMENT_SEARCH_MESSAGES.searching)
         : "";
-  // The idle PROMPT (no query yet) stays a plain hint sentence — it is the typical idle
-  // state, not an empty/degraded result. Loading, degraded, and no-match render through
-  // the shared state-mode kit (state-mode-uniformity ADR): loading is a UI-only Skeleton
-  // (its sentence is the screen-reader label, never visible text); degraded/empty are a
-  // StateBlock (shared glyph + one plain sentence).
   const idlePrompt =
-    count === 0 && query.trim().length === 0 ? "Find a document by name." : null;
+    count === 0 && query.trim().length === 0
+      ? message(DOCUMENT_SEARCH_MESSAGES.idle)
+      : null;
 
   return (
     <div
@@ -115,7 +131,7 @@ export function DocumentSearchSurface() {
         ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-label="Go to document by name"
+        aria-label={message(DOCUMENT_SEARCH_MESSAGES.dialog)}
         className="flex max-h-[calc(100vh-9rem)] w-[32rem] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover animate-slide-in-down"
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => trapTabFocus(panelRef.current, e)}
@@ -134,7 +150,7 @@ export function DocumentSearchSurface() {
               setSearchPaletteCursor(0);
             }}
             onKeyDown={onInputKeyDown}
-            placeholder="Go to document by name…"
+            placeholder={message(DOCUMENT_SEARCH_MESSAGES.placeholder)}
             className="min-w-0 flex-1 bg-transparent text-body text-ink outline-none placeholder:text-ink-faint"
           />
           {countLabel && (
@@ -148,7 +164,7 @@ export function DocumentSearchSurface() {
           <ul
             id={listboxId}
             role="listbox"
-            aria-label="documents"
+            aria-label={message(DOCUMENT_SEARCH_MESSAGES.results)}
             className="min-h-0 flex-1 overflow-y-auto p-fg-1"
           >
             {pills.map((pill, i) => (
@@ -172,7 +188,10 @@ export function DocumentSearchSurface() {
             {idlePrompt}
           </div>
         ) : state === "loading" ? (
-          <Skeleton label="Searching documents" className="p-fg-1">
+          <Skeleton
+            label={message(DOCUMENT_SEARCH_MESSAGES.searching)}
+            className="p-fg-1"
+          >
             <SkeletonRow width="w-2/3" />
             <SkeletonRow width="w-1/2" />
             <SkeletonRow width="w-3/5" />
@@ -180,10 +199,13 @@ export function DocumentSearchSurface() {
         ) : state === "degraded" ? (
           <StateBlock
             mode="degraded"
-            message="Documents are temporarily unavailable."
+            message={message(DOCUMENT_SEARCH_MESSAGES.unavailable)}
           />
         ) : (
-          <StateBlock mode="empty" message="No document matches your search." />
+          <StateBlock
+            mode="empty"
+            message={message(documentSearchNoMatchesMessage(query))}
+          />
         )}
       </div>
     </div>

@@ -14,7 +14,7 @@ import {
   docTypePresentation,
 } from "./docTypeVocabulary";
 
-describe("canonical doc-type vocabulary (terminology-standardization ADR D1/D2)", () => {
+describe("canonical document-type vocabulary", () => {
   it("preserves the exact frozen raw identity order and presentation map", () => {
     expect(DOC_TYPE_ORDER).toEqual([
       "research",
@@ -29,6 +29,7 @@ describe("canonical doc-type vocabulary (terminology-standardization ADR D1/D2)"
     for (const id of DOC_TYPE_ORDER) {
       expect(Object.isFrozen(DOC_TYPE_PRESENTATION[id])).toBe(true);
       expect(Object.isFrozen(DOC_TYPE_PRESENTATION[id].label)).toBe(true);
+      expect(Object.isFrozen(DOC_TYPE_PRESENTATION[id].detailLabel)).toBe(true);
       expect(docTypePresentation(id)).toBe(DOC_TYPE_PRESENTATION[id]);
     }
   });
@@ -42,32 +43,76 @@ describe("canonical doc-type vocabulary (terminology-standardization ADR D1/D2)"
     expect(docTypePresentation(null)).toBeNull();
   });
 
-  it("resolves the six labels and separate generic label in English, French, and Arabic", () => {
+  it("resolves group and detail labels in English, French, and Arabic", () => {
     const english = createTestLocalizationRuntime();
     const french = createTestLocalizationRuntime(ltrTestLocale);
     const arabic = createTestLocalizationRuntime(rtlTestLocale);
     const expected = [
-      ["research", "Research", "Recherche", "البحث"],
-      ["adr", "Decisions", "Décisions", "القرارات"],
-      ["plan", "Plans", "Plans", "الخطط"],
-      ["exec", "Steps", "Étapes", "الخطوات"],
-      ["audit", "Audits", "Audits", "عمليات التدقيق"],
-      ["reference", "References", "Références", "المراجع"],
+      ["research", "Research", "Research", "Recherche", "Recherche", "البحث", "بحث"],
+      [
+        "adr",
+        "Decisions",
+        "Decision record",
+        "Décisions",
+        "Compte rendu de décision",
+        "القرارات",
+        "سجل قرار",
+      ],
+      ["plan", "Plans", "Plan", "Plans", "Plan", "الخطط", "خطة"],
+      [
+        "exec",
+        "Steps",
+        "Step record",
+        "Étapes",
+        "Compte rendu d’étape",
+        "الخطوات",
+        "سجل خطوة",
+      ],
+      ["audit", "Audits", "Audit", "Audits", "Audit", "عمليات التدقيق", "تدقيق"],
+      [
+        "reference",
+        "References",
+        "Reference",
+        "Références",
+        "Référence",
+        "المراجع",
+        "مرجع",
+      ],
     ] as const;
 
-    for (const [id, source, alternate, rtl] of expected) {
+    for (const [
+      id,
+      sourceGroup,
+      sourceDetail,
+      alternateGroup,
+      alternateDetail,
+      rtlGroup,
+      rtlDetail,
+    ] of expected) {
       const presentation = docTypePresentation(id);
       expect(presentation).not.toBeNull();
       expect(resolveMessageResult(english, presentation!.label)).toEqual({
-        message: source,
+        message: sourceGroup,
+        usedFallback: false,
+      });
+      expect(resolveMessageResult(english, presentation!.detailLabel)).toEqual({
+        message: sourceDetail,
         usedFallback: false,
       });
       expect(resolveMessageResult(french, presentation!.label)).toEqual({
-        message: alternate,
+        message: alternateGroup,
+        usedFallback: false,
+      });
+      expect(resolveMessageResult(french, presentation!.detailLabel)).toEqual({
+        message: alternateDetail,
         usedFallback: false,
       });
       expect(resolveMessageResult(arabic, presentation!.label)).toEqual({
-        message: rtl,
+        message: rtlGroup,
+        usedFallback: false,
+      });
+      expect(resolveMessageResult(arabic, presentation!.detailLabel)).toEqual({
+        message: rtlDetail,
         usedFallback: false,
       });
     }
@@ -85,7 +130,7 @@ describe("canonical doc-type vocabulary (terminology-standardization ADR D1/D2)"
     });
   });
 
-  it("keeps the temporary source-locale bridge safe for legacy consumers", () => {
+  it("keeps the source-locale compatibility fallback safe", () => {
     expect(DOC_TYPE_ORDER.map((id) => docTypeLabel(id))).toEqual([
       "Research",
       "Decisions",

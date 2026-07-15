@@ -58,6 +58,6 @@ describe("ProjectNavigator popup (live engine)", () => {
     // The management affordances are always present: register/open a project and
     // clear the whole history (the CRUD surface).
     expect(screen.getByRole("button", { name: /open project/i })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /clear project history/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /clear history/i })).toBeTruthy();
   });
 });

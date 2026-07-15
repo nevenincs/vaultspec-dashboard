@@ -1,21 +1,15 @@
-// PropertiesPopover — the document editor's on-demand metadata surface
-// (document-editor-redesign ADR). It replaces the permanent 256px properties column
-// that squeezed the writing area: closed by default, it opens from a single
-// Properties button in the editor action bar into a VERTICAL stacked form floating
-// over the full-width body (kit Popover — Escape / outside-pointer dismiss for free).
-//
-// The form edits this document's frontmatter only (feature tag, related links, date)
-// plus its name (rename); it is NOT a corpus filter (filtering-has-one-surface). The
-// feature and related controls link against the LIVE corpus so a value can only ever
-// name something that exists. Presentational: the parent owns the drafts and the
-// save/rename mutations; this composes kit atoms and the shared pickers.
+// On-demand document metadata form. The parent owns drafts and mutations while
+// this component resolves labels and composes the shared field controls.
 
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { Button, Card, Divider, IconButton, Popover, PropertyRow } from "../kit";
 import type { EditorLinkingCorpus } from "../../stores/server/queries";
+import { docTypePresentation } from "../../stores/server/docTypeVocabulary";
 import type { MarkdownEditorFrontmatterDraft } from "../../stores/view/editor";
 import { AutocompleteCombobox, type ComboOption } from "./AutocompleteCombobox";
 import { RelatedDocPicker } from "./RelatedDocPicker";
@@ -23,13 +17,33 @@ import { directoryTagOf, featureTagOf, withFeatureTag } from "./editorTags";
 
 const GLYPH_PX = 16;
 
+export const PROPERTIES_POPOVER_MESSAGES = {
+  date: { key: "documents:viewer.properties.labels.date" },
+  datePlaceholder: { key: "documents:viewer.properties.placeholders.date" },
+  documentName: { key: "documents:viewer.properties.labels.documentName" },
+  documentProperties: { key: "documents:viewer.accessibility.documentProperties" },
+  documentType: { key: "documents:viewer.properties.labels.documentType" },
+  feature: { key: "documents:viewer.properties.labels.feature" },
+  featureTag: { key: "documents:viewer.accessibility.featureTag" },
+  featureTagPlaceholder: {
+    key: "documents:viewer.properties.placeholders.featureTag",
+  },
+  newFeatureTag: { key: "documents:viewer.properties.emptyStates.newFeatureTag" },
+  notSet: { key: "documents:viewer.properties.states.notSet" },
+  relatedDocuments: { key: "documents:viewer.properties.labels.relatedDocuments" },
+  rename: { key: "documents:viewer.properties.actions.rename" },
+  renaming: { key: "documents:viewer.properties.states.renaming" },
+  save: { key: "documents:viewer.properties.actions.save" },
+  saving: { key: "documents:viewer.properties.states.saving" },
+} as const satisfies Record<string, MessageDescriptor>;
+
 /** One vertical form field: a label stacked above its control. */
 function PropField({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <label className="flex flex-col gap-fg-1 text-label text-ink-muted">
-      {label}
+    <div className="flex flex-col gap-fg-1 text-label text-ink-muted">
+      <span>{label}</span>
       {children}
-    </label>
+    </div>
   );
 }
 
@@ -58,9 +72,12 @@ export function PropertiesPopover({
   corpus: EditorLinkingCorpus;
   selfStem: string;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const [open, setOpen] = useState(false);
 
   const directoryTag = directoryTagOf(frontmatterDraft.tags);
+  const documentType = docTypePresentation(directoryTag);
   const currentFeature = featureTagOf(frontmatterDraft.tags);
   const featureOptions: ComboOption[] = corpus.featureTags.map((tag) => ({
     value: tag,
@@ -71,8 +88,8 @@ export function PropertiesPopover({
     <div className="relative" data-properties>
       <span data-properties-trigger>
         <IconButton
-          label="Document properties"
-          title="Document properties"
+          label={message(PROPERTIES_POPOVER_MESSAGES.documentProperties)}
+          title={message(PROPERTIES_POPOVER_MESSAGES.documentProperties)}
           active={open}
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
@@ -86,19 +103,19 @@ export function PropertiesPopover({
           onDismiss={() => setOpen(false)}
           ignoreSelector="[data-properties-trigger]"
           role="dialog"
-          aria-label="Document properties"
+          aria-label={message(PROPERTIES_POPOVER_MESSAGES.documentProperties)}
           className="absolute right-0 top-[calc(100%+0.375rem)] z-40 w-80"
           data-properties-panel
         >
           <Card elevation="overlay" padded>
             <div className="flex flex-col gap-fg-3">
-              <PropField label="Name">
+              <PropField label={message(PROPERTIES_POPOVER_MESSAGES.documentName)}>
                 <div className="flex items-center gap-fg-2">
                   <input
+                    aria-label={message(PROPERTIES_POPOVER_MESSAGES.documentName)}
                     value={renameDraft}
                     onChange={(event) => onRenameChange(event.target.value)}
                     spellCheck={false}
-                    aria-label="document name"
                     className="min-w-0 flex-1 rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
                   />
                   <Button
@@ -106,23 +123,27 @@ export function PropertiesPopover({
                     onClick={onRename}
                     disabled={renameDisabled || renaming}
                   >
-                    Rename
+                    {message(
+                      renaming
+                        ? PROPERTIES_POPOVER_MESSAGES.renaming
+                        : PROPERTIES_POPOVER_MESSAGES.rename,
+                    )}
                   </Button>
                 </div>
               </PropField>
 
               <PropertyRow
-                label="Type"
-                value={directoryTag ? `#${directoryTag}` : "—"}
+                label={message(PROPERTIES_POPOVER_MESSAGES.documentType)}
+                value={message(
+                  documentType?.detailLabel ?? PROPERTIES_POPOVER_MESSAGES.notSet,
+                )}
               />
 
               <Divider />
 
-              <PropField label="Feature">
+              <PropField label={message(PROPERTIES_POPOVER_MESSAGES.feature)}>
                 <AutocompleteCombobox
-                  // Re-seed the single-select field if the feature changes out from
-                  // under an open popover (e.g. a mid-session autofix) so its shown
-                  // value never goes stale.
+                  // Re-seed the field if its value changes while the popover is open.
                   key={currentFeature ?? ""}
                   options={featureOptions}
                   onCommit={(feature) =>
@@ -130,15 +151,17 @@ export function PropertiesPopover({
                       tags: withFeatureTag(frontmatterDraft.tags, feature),
                     })
                   }
-                  placeholder="Set feature tag…"
-                  ariaLabel="set the document feature tag"
+                  placeholder={message(
+                    PROPERTIES_POPOVER_MESSAGES.featureTagPlaceholder,
+                  )}
+                  ariaLabel={message(PROPERTIES_POPOVER_MESSAGES.featureTag)}
                   allowFreeText
                   initialQuery={currentFeature ?? ""}
-                  emptyLabel="Type to create a new feature tag"
+                  emptyLabel={message(PROPERTIES_POPOVER_MESSAGES.newFeatureTag)}
                 />
               </PropField>
 
-              <PropField label="Related">
+              <PropField label={message(PROPERTIES_POPOVER_MESSAGES.relatedDocuments)}>
                 <RelatedDocPicker
                   related={frontmatterDraft.related}
                   onChange={(related) => onFrontmatterChange({ related })}
@@ -147,16 +170,16 @@ export function PropertiesPopover({
                 />
               </PropField>
 
-              <PropField label="Date">
+              <PropField label={message(PROPERTIES_POPOVER_MESSAGES.date)}>
                 <input
+                  aria-label={message(PROPERTIES_POPOVER_MESSAGES.date)}
                   value={frontmatterDraft.date}
                   onChange={(event) =>
                     onFrontmatterChange({ date: event.target.value })
                   }
-                  placeholder="YYYY-MM-DD"
+                  placeholder={message(PROPERTIES_POPOVER_MESSAGES.datePlaceholder)}
                   inputMode="numeric"
                   spellCheck={false}
-                  aria-label="document date"
                   className="rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
                 />
               </PropField>
@@ -166,7 +189,11 @@ export function PropertiesPopover({
                 onClick={onSaveProperties}
                 disabled={savingProperties}
               >
-                Save properties
+                {message(
+                  savingProperties
+                    ? PROPERTIES_POPOVER_MESSAGES.saving
+                    : PROPERTIES_POPOVER_MESSAGES.save,
+                )}
               </Button>
             </div>
           </Card>

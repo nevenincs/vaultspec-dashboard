@@ -1,13 +1,10 @@
-// The compact workspace switcher (mobile-enrichment ADR D1). On compact there is no
-// left rail, so the desktop WorktreePicker's dropdown has no home; instead the Browse
-// top-bar title becomes a tap-target that opens THIS bottom sheet. It re-PRESENTS the
-// SAME `useWorktreePickerView` projection — the identical worktree/project rows and
-// the existing `activateRow` / `swapProject` intents, each routed through the shared
-// `guardUnsavedDiscard` so a switch never silently discards an editor draft. No new
-// fetch, no new model: presentation only over the one projection (dashboard-layer-
-// ownership; the desktop WorktreePicker is untouched).
-
 import { Check, Folder, FolderPlus, GitBranch, type LucideIcon } from "lucide-react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
+import {
+  WORKSPACE_IDENTITY_MESSAGES,
+  type WorkspaceIdentityText,
+} from "../../stores/server/queries";
 
 import { openAddProjectDialog } from "../../stores/view/addProjectChrome";
 import { guardUnsavedDiscard } from "../../stores/view/unsavedEditGuard";
@@ -16,8 +13,6 @@ import { BottomSheet } from "../chrome/BottomSheet";
 
 const EYEBROW_CLASS =
   "px-fg-1 pb-fg-1 pt-fg-2 text-caption tracking-wide text-ink-faint";
-// ≥44px (2.75rem) touch target with a leading glyph column so every row's label
-// starts on one column (design-system touch-target law; no hardcoded px).
 const ROW_CLASS =
   "flex min-h-[2.75rem] w-full items-center gap-fg-2 rounded-fg-sm px-fg-2 text-left text-body text-ink transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50";
 
@@ -51,15 +46,11 @@ function SwitcherRow({
       className={ROW_CLASS}
     >
       <Icon size={18} aria-hidden className="shrink-0 text-ink-faint" />
-      {/* The workspace/branch name is corpus data: selectable inside the row
-          button so touch long-press can copy it (touch-selectability ADR D2). */}
       <span
         className={`min-w-0 flex-1 select-text truncate ${active ? "font-medium text-accent-text" : ""}`}
       >
         {label}
       </span>
-      {/* Current-workspace cue: an accent check (grayscale-safe — it is redundant
-          with the accent name weight, per design-system). */}
       {active && <Check size={16} aria-hidden className="shrink-0 text-accent-text" />}
     </button>
   );
@@ -70,11 +61,14 @@ export interface WorkspaceSwitcherSheetProps {
   onDismiss: () => void;
 }
 
-/** The compact workspace switcher bottom sheet (ADR D1). */
 export function WorkspaceSwitcherSheet({
   open,
   onDismiss,
 }: WorkspaceSwitcherSheetProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
+  const identity = (value: WorkspaceIdentityText) =>
+    typeof value === "string" ? value : message(value);
   const {
     pickerView,
     recentRows,
@@ -88,7 +82,7 @@ export function WorkspaceSwitcherSheet({
 
   // Guard FIRST, dismiss only when the switch proceeds: a dirty draft keeps the sheet
   // open behind the discard confirm (parity with the desktop picker, which never
-  // pre-closes — the popover collapses only as a side effect of a successful switch).
+  // pre-closes. The popover collapses after a successful switch.
   const chooseWorktree = (row: (typeof rows)[number]) => {
     guardUnsavedDiscard(() => {
       onDismiss();
@@ -113,24 +107,27 @@ export function WorkspaceSwitcherSheet({
   };
 
   return (
-    <BottomSheet open={open} onDismiss={onDismiss} title="Switch workspace">
+    <BottomSheet
+      open={open}
+      onDismiss={onDismiss}
+      title={message(WORKSPACE_IDENTITY_MESSAGES.switchWorkspaceTitle)}
+    >
       <div className="flex flex-col gap-fg-1 pb-fg-2">
-        {/* Recent — the cross-project, active-location-first jump list the ADR's D1
-            mandates (the fastest re-orientation path on a phone). Only shown when the
-            projection carries recents. */}
         {recentRows.length > 0 && (
           <>
-            <p className={EYEBROW_CLASS}>Recent</p>
+            <p className={EYEBROW_CLASS}>
+              {message(WORKSPACE_IDENTITY_MESSAGES.recent)}
+            </p>
             <ul className="flex flex-col gap-fg-0-5">
               {recentRows.map((recent) => (
                 <li key={recent.key}>
                   <SwitcherRow
                     Icon={GitBranch}
-                    label={recent.label}
+                    label={identity(recent.label)}
                     active={recent.isActive}
                     disabled={!recent.selectable}
-                    ariaLabel={recent.ariaLabel}
-                    title={recent.title}
+                    ariaLabel={message(recent.ariaLabel)}
+                    title={message(recent.title)}
                     onClick={() => chooseRecent(recent)}
                   />
                 </li>
@@ -138,17 +135,19 @@ export function WorkspaceSwitcherSheet({
             </ul>
           </>
         )}
-        <p className={EYEBROW_CLASS}>Worktrees</p>
+        <p className={EYEBROW_CLASS}>
+          {message(WORKSPACE_IDENTITY_MESSAGES.worktrees)}
+        </p>
         <ul className="flex flex-col gap-fg-0-5">
           {rows.map((row) => (
-            <li key={row.worktree.id}>
+            <li key={row.worktreeId}>
               <SwitcherRow
                 Icon={GitBranch}
-                label={row.nameLabel}
+                label={identity(row.nameLabel)}
                 active={row.isActive}
                 disabled={!row.selectable}
-                ariaLabel={row.ariaLabel}
-                title={row.title}
+                ariaLabel={message(row.ariaLabel)}
+                title={message(row.title)}
                 onClick={() => chooseWorktree(row)}
               />
             </li>
@@ -157,17 +156,19 @@ export function WorkspaceSwitcherSheet({
 
         {showProjects && (
           <>
-            <p className={EYEBROW_CLASS}>Projects</p>
+            <p className={EYEBROW_CLASS}>
+              {message(WORKSPACE_IDENTITY_MESSAGES.projects)}
+            </p>
             <ul className="flex flex-col gap-fg-0-5">
               {projectRows.map((project) => (
                 <li key={project.id}>
                   <SwitcherRow
                     Icon={Folder}
-                    label={project.label}
+                    label={identity(project.label)}
                     active={project.isActive}
                     disabled={!project.selectable}
-                    ariaLabel={project.ariaLabel}
-                    title={project.title}
+                    ariaLabel={message(project.ariaLabel)}
+                    title={message(project.title)}
                     onClick={() => chooseProject(project)}
                   />
                 </li>
@@ -176,7 +177,11 @@ export function WorkspaceSwitcherSheet({
           </>
         )}
 
-        <SwitcherRow Icon={FolderPlus} label="Add a project" onClick={addProject} />
+        <SwitcherRow
+          Icon={FolderPlus}
+          label={message(WORKSPACE_IDENTITY_MESSAGES.addProject)}
+          onClick={addProject}
+        />
       </div>
     </BottomSheet>
   );

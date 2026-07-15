@@ -1,23 +1,40 @@
 // @vitest-environment happy-dom
 //
-// The reusable Dialog primitive (dashboard-settings W03.P06), rendered as real
-// DOM. Exercises its own contract: it mounts only when open, exposes the dialog
+// Exercises the Dialog contract in the DOM: it mounts only when open, exposes the dialog
 // role with an accessible name + description, dismisses on Escape / backdrop /
 // the close button, traps Tab focus within the panel, and moves focus inside on
 // open. Uses core vitest matchers only (no jest-dom in this project).
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { I18nextProvider } from "react-i18next";
+import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
+} from "../../localization/testing";
 import { Dialog } from "./Dialog";
 
 afterEach(cleanup);
 
-function renderDialog(open = true, onClose = vi.fn()) {
-  const utils = render(
+function renderWithLocalization(children: ReactNode) {
+  const runtime = createTestLocalizationRuntime();
+  const utils = render(<I18nextProvider i18n={runtime}>{children}</I18nextProvider>);
+  return { ...utils, runtime };
+}
+
+function renderDialog(open = true) {
+  let closeCount = 0;
+  const utils = renderWithLocalization(
     <Dialog
       open={open}
-      onClose={onClose}
+      onClose={() => {
+        closeCount += 1;
+      }}
       title="Settings"
       description="Tune the dashboard"
     >
@@ -25,7 +42,7 @@ function renderDialog(open = true, onClose = vi.fn()) {
       <button type="button">second</button>
     </Dialog>,
   );
-  return { ...utils, onClose };
+  return { ...utils, closeCount: () => closeCount };
 }
 
 describe("Dialog", () => {
@@ -44,24 +61,77 @@ describe("Dialog", () => {
   });
 
   it("closes on Escape", () => {
-    const { onClose } = renderDialog();
+    const { closeCount } = renderDialog();
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(closeCount()).toBe(1);
   });
 
   it("closes on a backdrop click but not on a panel click", () => {
-    const { onClose } = renderDialog();
+    const { closeCount } = renderDialog();
     fireEvent.mouseDown(screen.getByRole("dialog"));
-    expect(onClose).not.toHaveBeenCalled();
+    expect(closeCount()).toBe(0);
     const scrim = screen.getByRole("dialog").parentElement as HTMLElement;
     fireEvent.mouseDown(scrim);
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(closeCount()).toBe(1);
   });
 
   it("closes via the close button", () => {
-    const { onClose } = renderDialog();
+    const { closeCount } = renderDialog();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(closeCount()).toBe(1);
+  });
+
+  it("blocks every dismiss path while dismissal is disabled", () => {
+    let closeCount = 0;
+    renderWithLocalization(
+      <Dialog
+        open
+        dismissible={false}
+        onClose={() => {
+          closeCount += 1;
+        }}
+        title="Adding project"
+      >
+        <p>Project folder</p>
+      </Dialog>,
+    );
+
+    const dialog = screen.getByRole("dialog");
+    const scrim = dialog.parentElement as HTMLElement;
+    const close = screen.getByRole("button", { name: "Close" }) as HTMLButtonElement;
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.mouseDown(scrim);
+    fireEvent.click(close);
+
+    expect(close.disabled).toBe(true);
+    expect(closeCount).toBe(0);
+  });
+
+  it("updates the close label for each locale without replacing or refocusing the dialog", async () => {
+    const { runtime } = renderDialog();
+    const dialog = screen.getByRole("dialog");
+    const closeButton = screen.getByRole("button", { name: "Close" });
+    const titleId = dialog.getAttribute("aria-labelledby");
+    const descriptionId = dialog.getAttribute("aria-describedby");
+    expect(document.activeElement).toBe(closeButton);
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: ltrTestResources.common.actions.close,
+      }),
+    ).toBe(closeButton);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: rtlTestResources.common.actions.close,
+      }),
+    ).toBe(closeButton);
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    expect(dialog.getAttribute("aria-labelledby")).toBe(titleId);
+    expect(dialog.getAttribute("aria-describedby")).toBe(descriptionId);
+    expect(document.activeElement).toBe(closeButton);
   });
 
   it("moves focus into the dialog on open", () => {
@@ -82,16 +152,12 @@ describe("Dialog", () => {
     expect(document.activeElement).toBe(focusables[0]);
   });
 
-  // The pinned footer slot (create-panel-hardening P01.S01): a dialog's action
-  // row rendered through `footer` sits OUTSIDE the scrolling body as its
-  // sibling, so it can never scroll out of reach on a constrained viewport
-  // (the audit's compact-submit-behind-keyboard HIGH), and it carries the
-  // safe-area bottom inset.
+  // The footer remains outside the scrolling body and visible in constrained viewports.
   it("pins the footer outside the scrolling body with the safe-area inset", () => {
-    render(
+    renderWithLocalization(
       <Dialog
         open
-        onClose={vi.fn()}
+        onClose={() => undefined}
         title="Settings"
         footer={<button type="button">Save</button>}
       >
@@ -113,10 +179,7 @@ describe("Dialog", () => {
     expect(dialog.querySelectorAll(".overflow-y-auto").length).toBe(1);
   });
 
-  // The size variant (rag-job-dashboard P03.S08): `default` keeps the 34rem
-  // settings width; `wide` widens to 52rem for the dashboard cockpit — both
-  // retain the compact viewport guard so a wide panel still fits a narrow
-  // screen. Pure width mapping, no other structural change.
+  // Width variants retain the compact viewport guard.
   it("uses the default 34rem width when no size is given", () => {
     renderDialog();
     const dialog = screen.getByRole("dialog");
@@ -126,8 +189,8 @@ describe("Dialog", () => {
   });
 
   it('widens to 52rem under size="wide" while keeping the compact guard', () => {
-    render(
-      <Dialog open onClose={vi.fn()} title="Search service" size="wide">
+    renderWithLocalization(
+      <Dialog open onClose={() => undefined} title="Search service" size="wide">
         <p>dashboard body</p>
       </Dialog>,
     );
@@ -135,6 +198,26 @@ describe("Dialog", () => {
     expect(dialog.className).toContain("w-[52rem]");
     expect(dialog.className).not.toContain("w-[34rem]");
     expect(dialog.className).toContain("max-w-[calc(100vw-2rem)]");
+  });
+
+  it('uses the 45rem picker width under size="medium"', () => {
+    let closeCount = 0;
+    renderWithLocalization(
+      <Dialog
+        open
+        onClose={() => {
+          closeCount += 1;
+        }}
+        title="Add a project"
+        size="medium"
+      >
+        <p>Project folder</p>
+      </Dialog>,
+    );
+    const dialog = screen.getByRole("dialog");
+    expect(dialog.className).toContain("w-[45rem]");
+    expect(dialog.className).toContain("max-w-[calc(100vw-2rem)]");
+    expect(closeCount).toBe(0);
   });
 
   it("renders no footer region when the footer prop is omitted", () => {
@@ -147,9 +230,7 @@ describe("Dialog", () => {
     ).toBe(false);
   });
 
-  // Reduced-motion honesty (audit reduced-motion-unguarded): both animated
-  // layers carry the motion-reduce gate so the open animation is suppressed
-  // under prefers-reduced-motion.
+  // Both animated layers respect the reduced-motion preference.
   it("gates the open animations on prefers-reduced-motion", () => {
     renderDialog();
     const dialog = screen.getByRole("dialog");

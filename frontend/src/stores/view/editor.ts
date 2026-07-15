@@ -394,8 +394,8 @@ export function deriveMarkdownEditorDocumentView(
     initialText: content.text,
     initialBlobHash: content.blobHash ?? "",
     properties: {
-      tags: frontmatter?.tags.map((tag) => tag.label).join(", ") ?? "",
-      date: frontmatter?.dates.find((date) => date.label === "created")?.value ?? "",
+      tags: frontmatter?.tags.map((tag) => `#${tag.value}`).join(", ") ?? "",
+      date: frontmatter?.dates.find((date) => date.kind === "created")?.iso ?? "",
       related: frontmatter?.related.map((related) => related.stem).join(", ") ?? "",
     },
   };

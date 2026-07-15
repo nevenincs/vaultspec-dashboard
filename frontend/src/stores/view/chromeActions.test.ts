@@ -81,10 +81,10 @@ describe("state-aware chrome toggles", () => {
 
   it("projects panel labels from an explicit snapshot and runs the real toggle", () => {
     expect(controlPanelActions(null).map((action) => action.label)).toEqual([
-      { key: "common:actions.showSearchStatus" },
-      { key: "common:actions.showApprovals" },
-      { key: "common:actions.showSystemStatus" },
-      { key: "common:actions.showProjectHealth" },
+      { key: "common:controlPanels.actions.showSearch" },
+      { key: "common:controlPanels.actions.showApprovals" },
+      { key: "common:controlPanels.actions.showSystemStatus" },
+      { key: "common:controlPanels.actions.showProjectHealth" },
     ]);
 
     const show = controlPanelToggleAction("approvals", null);
@@ -92,7 +92,9 @@ describe("state-aware chrome toggles", () => {
     expect(useControlPanels.getState().open).toBe("approvals");
 
     const hide = controlPanelToggleAction("approvals", "approvals");
-    expect(hide.label).toEqual({ key: "common:actions.hideApprovals" });
+    expect(hide.label).toEqual({
+      key: "common:controlPanels.actions.hideApprovals",
+    });
     hide.run?.();
     expect(useControlPanels.getState().open).toBeNull();
   });

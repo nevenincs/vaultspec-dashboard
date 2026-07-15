@@ -97,6 +97,9 @@ import {
 // stable specifier: every former export resolves here unchanged.
 export * from "./wireTypes";
 export * from "./adapters";
+export * from "./reviewStationOutcome";
+export * from "./reviewStationVocabulary";
+export * from "./commentVocabulary";
 
 // In dev Vite proxies /api to the engine; in production the SPA shares the engine
 // origin and the prefix collapses — identical to the `EngineClient` base rule.
@@ -969,8 +972,8 @@ export interface ReviewStationView {
   /** The durable authoring store is unavailable (typed 503) — a fail-closed mode
    *  distinct from tier degradation. */
   storeUnavailable: boolean;
-  /** A one-sentence, leak-free degradation notice, or `null` when healthy. */
-  degradedMessage: string | null;
+  /** A semantic availability state resolved to localized copy by the view. */
+  availabilityIssue: "queueUnavailable" | "informationMayBeOutOfDate" | null;
   /** Loaded with no proposals in the queue. */
   empty: boolean;
   /** The corpus has more changesets than the served page cap. */
@@ -995,10 +998,10 @@ export function useReviewStationView(): ReviewStationView {
     const degradation = readAuthoringDegradation({ data, error });
     const rows = data?.items ?? [];
     const afterFactRows = data?.applied_under_policy.items ?? [];
-    const degradedMessage = degradation.storeUnavailable
-      ? "The authoring service is unavailable right now — the review queue can’t be loaded."
+    const availabilityIssue = degradation.storeUnavailable
+      ? "queueUnavailable"
       : degradation.degraded
-        ? "Some review information may be out of date."
+        ? "informationMayBeOutOfDate"
         : null;
     return {
       rows,
@@ -1006,7 +1009,7 @@ export function useReviewStationView(): ReviewStationView {
       loading: isLoading && !data,
       degraded: degradation.degraded,
       storeUnavailable: degradation.storeUnavailable,
-      degradedMessage,
+      availabilityIssue,
       empty: !!data && rows.length === 0 && afterFactRows.length === 0,
       truncated: data?.truncated ?? false,
       afterFactTruncated: data?.applied_under_policy.truncated ?? false,

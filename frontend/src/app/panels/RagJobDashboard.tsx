@@ -1,24 +1,9 @@
-// @figma RagJobDashboard · SlhonORmySdoSMTQgDWw3w · 1102:4354
-// The rag job dashboard shell + header bar (rag-job-dashboard ADR D1/D2). The
-// Search service control panel is now a WIDE dialog cockpit: this file owns the
-// dashboard SHELL (a header bar over the scrollable body regions) — the jobs and
-// log regions compose below, and the footer storage strip rides the Dialog's
-// pinned footer slot (wired in ControlPanels).
-//
-// Layer ownership (dashboard-layer-ownership): glass over the rag stores hooks.
-// It reads interpreted status/ops-state (never the raw `tiers` block —
-// degradation-is-read-from-tiers via `useRagStatus`), and dispatches every
-// lifecycle/reindex verb through the one ops seam (the same hooks the retired
-// console used; those interpretations carry forward here). It fetches nothing
-// directly; the enclosing modal mount-gates the reads.
-//
-// The header bar is a PURE presentational component (`DashboardHeaderBar`) fed by
-// props, so its verb eligibility and designed offline/degraded states are unit-
-// testable without the live wire; the container wires the hooks.
+// Search dashboard header, job list, and activity log.
 
 import { useMemo } from "react";
 
 import { Button, ProgressBar, StateBlock } from "../kit";
+import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 import { useActiveScope, useRagStatus } from "../../stores/server/queries";
 import {
   type RagStartOutcome,
@@ -29,6 +14,7 @@ import {
   useRagServiceStart,
   useRagServiceStop,
 } from "../../stores/server/ragControl";
+import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 import { RagJobsTable } from "./RagJobsTable";
 import { RagLogPane } from "./RagLogPane";
 
@@ -38,8 +24,6 @@ function record(v: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-// The lifecycle translations carry forward from the retired console (the console
-// file stays untouched; it may retire in W03). Wire token -> plain status word.
 const LIFECYCLE_LABEL: Record<string, string> = {
   running: "Running",
   stopped: "Stopped",
@@ -51,8 +35,7 @@ function lifecycleLabel(word: string): string {
   return LIFECYCLE_LABEL[word] ?? word.charAt(0).toUpperCase() + word.slice(1);
 }
 
-/** The health tone: running is active, crashed is stale (discovered but not
- *  serving), anything else is broken — dot and word agree. */
+/** Visual tone for the current health state. */
 type HealthTone = "active" | "stale" | "broken";
 
 function healthTone(running: boolean, word: string): HealthTone {
@@ -71,28 +54,28 @@ const HEALTH_INK: Record<HealthTone, string> = {
 };
 
 export interface DashboardHeaderBarProps {
-  /** True only when the service word is exactly "running". */
+  /** Whether the process is running. */
   running: boolean;
-  /** The plain-language health word (already reworded — never a wire token). */
+  /** The user-facing health word. */
   healthWord: string;
   healthTone: HealthTone;
-  /** The engine's degraded reason (semantic tier down), when present. */
+  /** An optional reason for limited availability. */
   degradedReason?: string;
-  /** True when the status snapshot is a genuine transport failure. */
+  /** Whether status could not be loaded. */
   errored?: boolean;
-  /** Compact "pid 1234 · :6333" process meta, when the ops-state served it. */
+  /** Optional compact process details. */
   pidPort?: string;
-  /** The last start outcome, so the needs-install path can offer a retry. */
+  /** The last start outcome. */
   startOutcome?: RagStartOutcome;
-  /** A lifecycle mutation (start/stop) is in flight. */
+  /** Whether a start or stop action is pending. */
   actionsPending: boolean;
-  /** A doctor check is in flight. */
+  /** Whether a health check is pending. */
   doctorPending: boolean;
-  /** A reindex job is live (progress not yet terminal). */
+  /** Whether reindexing is active. */
   reindexActive: boolean;
-  /** 0..1 reindex progress, or undefined for an indeterminate stage. */
+  /** Reindex progress from zero to one, when known. */
   reindexFraction?: number;
-  /** The current reindex step/phase label. */
+  /** The current reindex progress label. */
   reindexLabel?: string;
   onStart: (autoProvision?: boolean) => void;
   onStop: () => void;
@@ -101,13 +84,7 @@ export interface DashboardHeaderBarProps {
   onReindex: () => void;
 }
 
-/**
- * The dashboard header bar (ADR D2): service identity + health word, the lifecycle
- * verbs (Stop/Restart when running, Start when not), Doctor, and the reindex
- * trigger with its inline progress. Verbs that cannot apply while the service is
- * down render disabled-with-reason (D7), never dead-looking controls. Pure over
- * props — the container feeds it interpreted state.
- */
+/** Status and actions shown above the dashboard body. */
 export function DashboardHeaderBar({
   running,
   healthWord,
@@ -127,11 +104,13 @@ export function DashboardHeaderBar({
   onDoctor,
   onReindex,
 }: DashboardHeaderBarProps) {
+  const searchLabel = useLocalizedMessage(
+    CONTROL_PANEL_VOCABULARY["search-service"].label,
+  );
   const needsInstall = startOutcome?.status === "needs_install";
   const startFailed =
     startOutcome !== undefined && !startOutcome.attached && !needsInstall;
-  // Reindex only applies to a running service; when down it stays visible but
-  // disabled-with-reason (D7) rather than vanishing.
+  // Keep reindex visible with an explanation when it is unavailable.
   const reindexBlockReason = running
     ? undefined
     : "Start the search service to reindex.";
@@ -146,7 +125,7 @@ export function DashboardHeaderBar({
           aria-hidden
           className={`size-fg-2 shrink-0 rounded-full ${HEALTH_DOT[tone]}`}
         />
-        <span className="text-body font-medium text-ink">Search service</span>
+        <span className="text-body font-medium text-ink">{searchLabel}</span>
         <span className={`text-meta ${HEALTH_INK[tone]}`} data-rag-health-word>
           {healthWord}
         </span>
@@ -245,12 +224,7 @@ export function DashboardHeaderBar({
   );
 }
 
-/**
- * The rag job dashboard: the header bar over the jobs and log regions. Mounted as
- * the wide Search service control panel body (ControlPanels); the footer storage
- * strip rides the Dialog's pinned footer slot. All reads mount-gate on the open
- * panel (this component only mounts while the dialog is open).
- */
+/** Dashboard header, jobs, and activity log. */
 export function RagJobDashboard() {
   const scope = useActiveScope();
   const status = useRagStatus();
@@ -275,8 +249,7 @@ export function RagJobDashboard() {
     return parts.length > 0 ? parts.join(" · ") : undefined;
   }, [opsState.data]);
 
-  // Restart is machine-wide (stop then start); chained so the new service comes
-  // up after the shared one is down.
+  // Restart only after the stop action succeeds.
   const restart = () =>
     stop.mutate(undefined, { onSuccess: () => start.mutate(undefined) });
 

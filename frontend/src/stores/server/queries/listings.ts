@@ -39,7 +39,6 @@ import { useDashboardState } from "./dashboard";
 import { normalizeGraphSliceScope } from "./graph";
 import { engineKeys, noopRetry, withManualRetry } from "./internal";
 import { useSettings, useSettingsSchema } from "./settings";
-import { tierAvailabilityReason } from "./workspaces";
 
 export interface VaultTreeRequestIdentity {
   scope: string | null;
@@ -813,43 +812,12 @@ export interface FileTreeLevelView {
   /** Render-ready rows so app chrome does not parse file paths. */
   rows: FileTreeRowView[];
   truncated: FileTreeResponse["truncated"];
-  loadingMessage: string;
-  errorTitle: string;
-  retryLabel: string;
-  emptyMessage: string;
-  childLoadingMessage: string;
-  childErrorMessage: string;
-  truncationMessage: string | null;
-  childLoadingClassName: string;
-  childErrorClassName: string;
-  truncationClassName: string;
   retry: () => void;
 }
 
 function fileTreeEntryDisplayName(path: string): string {
   return path.replace(/\/+$/, "").replace(/^.*\//, "");
 }
-
-function fileTreeTruncationMessage(
-  truncated: FileTreeResponse["truncated"],
-): string | null {
-  return truncated
-    ? `more here (${truncated.total_children}) — expand a subdirectory to narrow.`
-    : null;
-}
-
-const FILE_TREE_LEVEL_COPY = {
-  loadingMessage: "reading the worktree…",
-  errorTitle: "code tree unavailable",
-  retryLabel: "try again",
-  emptyMessage: "No source files in this worktree yet.",
-  childLoadingMessage: "…",
-  childErrorMessage: "could not list this directory.",
-  childLoadingClassName:
-    "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
-  childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
-  truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
-} as const;
 
 export function fileTreeChildStatusStyle(depth: number): { paddingLeft: string } {
   return { paddingLeft: `${0.25 + depth * 0.75}rem` };
@@ -861,16 +829,11 @@ export function deriveFileTreeLevelView(
   errored: boolean,
   retry: () => void = noopRetry,
 ): FileTreeLevelView {
-  const base = {
-    ...FILE_TREE_LEVEL_COPY,
-    truncationMessage: null,
-    retry,
-  };
   if (loading) {
-    return { state: "loading", entries: [], rows: [], truncated: null, ...base };
+    return { state: "loading", entries: [], rows: [], truncated: null, retry };
   }
   if (errored) {
-    return { state: "error", entries: [], rows: [], truncated: null, ...base };
+    return { state: "error", entries: [], rows: [], truncated: null, retry };
   }
   const entries = data?.entries ?? [];
   const rows = entries.map((entry) => ({
@@ -882,8 +845,6 @@ export function deriveFileTreeLevelView(
     entries,
     rows,
     truncated: data?.truncated ?? null,
-    ...FILE_TREE_LEVEL_COPY,
-    truncationMessage: fileTreeTruncationMessage(data?.truncated ?? null),
     retry,
   };
 }
@@ -912,22 +873,21 @@ export function useFileTreeAvailability(scope: unknown): FileTreeAvailability {
 
 export interface FileTreeRootSurfaceView {
   rootLevel: FileTreeLevelView;
-  availability: FileTreeAvailability;
   state: FileTreeRootSurfaceState;
-  degradedMessage: string;
-  browserLabel: string;
-  loadingClassName: string;
-  errorRootClassName: string;
-  errorTitleClassName: string;
-  retryButtonClassName: string;
-  degradedClassName: string;
-  emptyClassName: string;
-  navClassName: string;
 }
 
-function fileTreeDegradedMessage(availability: FileTreeAvailability): string {
-  const reason = tierAvailabilityReason(availability);
-  return `this scope has no code tree${reason ? ` — ${reason}` : ""}. the vault browser remains available.`;
+export function deriveFileTreeRootSurfaceView(
+  data: FileTreeResponse | undefined,
+  isPending: boolean,
+  isError: boolean,
+  retry: () => void,
+  tiers: TiersBlock | undefined,
+): FileTreeRootSurfaceView {
+  const availability = deriveFileTreeAvailability(tiers);
+  return {
+    rootLevel: deriveFileTreeLevelView(data, isPending, isError, retry),
+    state: deriveFileTreeRootSurfaceState({ isPending, isError }, availability),
+  };
 }
 
 /**
@@ -937,28 +897,13 @@ function fileTreeDegradedMessage(availability: FileTreeAvailability): string {
  */
 export function useFileTreeRootSurface(scope: unknown): FileTreeRootSurfaceView {
   const rootQuery = useFileTree(scope);
-  const availability = deriveFileTreeAvailability(tiersFromQuery(rootQuery));
-  return {
-    rootLevel: deriveFileTreeLevelView(
-      rootQuery.data,
-      rootQuery.isPending,
-      rootQuery.isError,
-      rootQuery.retry,
-    ),
-    availability,
-    state: deriveFileTreeRootSurfaceState(rootQuery, availability),
-    degradedMessage: fileTreeDegradedMessage(availability),
-    browserLabel: "code browser",
-    loadingClassName: "animate-pulse-live px-fg-1 py-fg-0-5 text-label text-ink-faint",
-    errorRootClassName: "space-y-fg-1 px-fg-1 py-fg-0-5",
-    errorTitleClassName: "text-label text-state-broken",
-    retryButtonClassName:
-      "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
-    degradedClassName:
-      "mx-fg-1 my-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
-    emptyClassName: "px-fg-1 py-fg-0-5 text-label text-ink-faint",
-    navClassName: "text-label",
-  };
+  return deriveFileTreeRootSurfaceView(
+    rootQuery.data,
+    rootQuery.isPending,
+    rootQuery.isError,
+    rootQuery.retry,
+    tiersFromQuery(rootQuery),
+  );
 }
 
 export interface FiltersVocabularyRequestIdentity {

@@ -13,6 +13,7 @@ import type {
 import {
   deriveFileTreeLevelView,
   deriveFileTreeRootSurfaceState,
+  deriveFileTreeRootSurfaceView,
   deriveFiltersVocabularyView,
   deriveVaultTreeAvailability,
   deriveVaultTreeBrowserView,
@@ -29,7 +30,6 @@ import {
   normalizeFiltersVocabularyRequestIdentity,
   normalizeVaultTreeRequestIdentity,
   orderWorkspaceMapWorktrees,
-  tierAvailabilityReason,
   useCodeFiles,
   useFileTree,
   useFiltersVocabulary,
@@ -109,7 +109,7 @@ describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () =
   });
 
   it("degrades only on the structural tier; a down semantic/declared/temporal tier does NOT make documents unavailable", () => {
-    // The vault tree LISTS DOCUMENTS — only the STRUCTURAL tier governs whether
+    // Only the structural tier governs whether documents are listable.
     // they are listable. A down semantic (rag search) or declared ("building") tier
     // must not make the rail cry "documents unavailable" when every document is
     // present (structural up). This was the bug: reading all tiers fired the banner
@@ -133,8 +133,6 @@ describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () =
   });
 
   it("treats an ABSENT structural tier as degraded, but ignores absent semantic/temporal", () => {
-    // Contract §2: absence of the document-content tier ≠ availability — documents
-    // unknown ⇒ degraded. Absent semantic/temporal do not affect the document list.
     const structuralAbsent: TiersBlock = {
       declared: { available: true },
       temporal: { available: true },
@@ -150,27 +148,9 @@ describe("deriveVaultTreeAvailability (sidebar degradation, contract §2)", () =
   });
 
   it("returns the no-degradation default for a wholly absent block (transport fault)", () => {
-    // A missing block is the query's ERROR state (rendered distinctly by the
-    // sidebar), not every-tier-degraded — so the degraded banner does not also
-    // fire on a bare transport failure.
     const a = deriveVaultTreeAvailability(undefined);
     expect(a.degraded).toBe(false);
     expect(a.degradedTiers).toEqual([]);
-  });
-
-  it("selects the first available degraded-tier reason in stores", () => {
-    expect(
-      tierAvailabilityReason({
-        degradedTiers: ["temporal", "semantic"],
-        reasons: { semantic: "rag offline" },
-      }),
-    ).toBe("rag offline");
-    expect(
-      tierAvailabilityReason({
-        degradedTiers: ["structural"],
-        reasons: {},
-      }),
-    ).toBe("");
   });
 });
 
@@ -239,11 +219,11 @@ describe("left-rail root surface states", () => {
     });
 
     expect(view.triggerLabel).toBe("vault-b");
-    expect(view.triggerAriaLabel).toBe("current location: vault-b, switching");
-    // The pending-aware headline is the switch TARGET while switching, so the
-    // trigger's git/path lines never mix the target's name with the outgoing
-    // worktree's state.
-    expect(view.headline?.id).toBe("vault-b");
+    expect(view.triggerAriaLabel).toEqual({
+      key: "projects:workspaceIdentity.accessibility.currentLocationSwitching",
+      values: { worktree: "vault-b" },
+    });
+    expect(view.headline?.branch).toBe("vault-b");
     expect(view.triggerClassName).toBe(
       "flex w-full items-center rounded-fg-xs py-fg-1 text-left transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
     );
@@ -257,13 +237,13 @@ describe("left-rail root surface states", () => {
     expect(view.retryButtonClassName).toBe(
       "rounded-fg-xs text-label text-ink-faint underline-offset-2 hover:text-ink-muted hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus",
     );
-    expect(view.degradedLabel).toBe(
-      "The worktree list is partly unavailable right now — worktree missing. Showing what loaded.",
-    );
+    expect(view.degradedLabel).toEqual({
+      key: "projects:workspaceIdentity.states.degraded",
+    });
     expect(view.degradedClassName).toBe(
       "mt-fg-1 rounded-fg-xs bg-accent-subtle/40 px-fg-1 py-fg-0-5 text-caption text-ink-muted",
     );
-    expect(view.rows.map((row) => row.worktree.id)).toEqual([
+    expect(view.rows.map((row) => row.worktreeId)).toEqual([
       "vault-a",
       "vault-b",
       "bare-a",
@@ -279,15 +259,18 @@ describe("left-rail root surface states", () => {
       badgeClassName: "shrink-0 text-ink-faint",
       degradedIconClassName: "flex shrink-0 items-center text-state-stale",
       pendingLabelClassName: "ml-auto shrink-0 text-caption text-ink-faint",
-      defaultLabel: "·default",
-      ariaLabel: "switch to vault-a, the default worktree, the current worktree",
+      defaultLabel: { key: "projects:workspaceIdentity.labels.default" },
+      ariaLabel: {
+        key: "projects:workspaceIdentity.accessibility.switchWorktree",
+        values: { worktree: "vault-a" },
+      },
     });
     expect(view.rows[1]).toMatchObject({
       isPending: true,
       rowClassName:
         "flex w-full select-text items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus text-ink-muted hover:bg-paper-sunken hover:text-ink",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
-      pendingLabel: "switching…",
+      pendingLabel: { key: "projects:workspaceIdentity.labels.switching" },
     });
     expect(view.rows[2]).toMatchObject({
       selectable: false,
@@ -295,9 +278,15 @@ describe("left-rail root surface states", () => {
       rowClassName:
         "flex w-full select-text items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-0-5 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-not-allowed text-ink-faint/60",
       activeCueClassName: "-ml-fg-1 h-3 w-0.5 shrink-0 rounded-full bg-transparent",
-      noVaultLabel: "·no vault",
-      degradedTitle: "structural",
-      ariaLabel: "bare-a — no vault here, shown for context only",
+      noVaultLabel: { key: "projects:workspaceIdentity.labels.noProjectFiles" },
+      degradedTitle: {
+        key: "projects:workspaceIdentity.accessibility.unavailableWorktree",
+        values: { worktree: "bare-a" },
+      },
+      ariaLabel: {
+        key: "projects:workspaceIdentity.accessibility.unavailableWorktree",
+        values: { worktree: "bare-a" },
+      },
     });
   });
 
@@ -310,9 +299,11 @@ describe("left-rail root surface states", () => {
         availability: noDegradation,
       }),
     ).toMatchObject({
-      triggerLabel: "Pick a worktree…",
-      triggerAriaLabel: "choose a project or worktree",
-      emptyLabel: "No worktrees here yet — point the engine at a repository to begin.",
+      triggerLabel: { key: "projects:workspaceIdentity.labels.noWorktreeName" },
+      triggerAriaLabel: {
+        key: "projects:workspaceIdentity.accessibility.choose",
+      },
+      emptyLabel: { key: "projects:workspaceIdentity.states.noWorktrees" },
       singleScopeLabel: null,
     });
 
@@ -338,7 +329,7 @@ describe("left-rail root surface states", () => {
         "min-w-0 flex-1 truncate text-left text-body-strong text-ink",
       emptyLabel: null,
       emptyClassName: "px-fg-2 py-fg-1 text-label text-ink-faint",
-      singleScopeLabel: "This is the only worktree with a vault.",
+      singleScopeLabel: { key: "projects:workspaceIdentity.states.onlyWorktree" },
       singleScopeClassName: "px-fg-2 py-fg-0-5 text-caption text-ink-faint",
     });
   });
@@ -352,7 +343,7 @@ describe("left-rail root surface states", () => {
     unreachable_reason: reachable ? null : "path is not a readable directory",
   });
 
-  it("builds one cross-project Recent list, current first, attributed per project", () => {
+  it("builds one cross-project recent list without deriving labels from paths", () => {
     const rows = deriveWorktreePickerRecentRows({
       recentScopes: [
         { workspace: "ws-b", scope: "/code/engine/main" },
@@ -366,26 +357,36 @@ describe("left-rail root surface states", () => {
       activeWorkspace: "ws-a",
       activeScope: "/code/dash/main",
     });
-    // The current (ws-a, /code/dash/main) is prepended and marked current; the rest
-    // follow in MRU order, deduped by the (workspace, scope) pair.
-    expect(rows.map((r) => `${r.projectLabel}/${r.worktreeName}`)).toEqual([
-      "dashboard/main",
-      "engine/main",
-      "dashboard/feature-x",
+    expect(rows.map((row) => row.projectLabel)).toEqual([
+      "dashboard",
+      "engine",
+      "dashboard",
+    ]);
+    expect(rows.map((row) => row.worktreeName)).toEqual([
+      { key: "projects:workspaceIdentity.labels.noWorktreeName" },
+      { key: "projects:workspaceIdentity.labels.noWorktreeName" },
+      { key: "projects:workspaceIdentity.labels.noWorktreeName" },
     ]);
     expect(rows[0]).toMatchObject({ isActive: true, sameProject: true });
-    // A cross-project entry knows it is NOT the active project (so the row shows
-    // the project name) and is reached by a workspace swap, not a worktree switch.
     expect(rows[1]).toMatchObject({
       workspace: "ws-b",
-      worktreeName: "main",
+      worktreeName: { key: "projects:workspaceIdentity.labels.noWorktreeName" },
       projectLabel: "engine",
       sameProject: false,
       isActive: false,
+      label: {
+        key: "projects:workspaceIdentity.labels.unnamedWorktreeInProject",
+        values: { project: "engine" },
+      },
     });
-    // The row's primary ink LEADS with the project on a cross-project entry, so
-    // colliding basenames ("main" everywhere) stay distinguishable at a glance.
-    expect(rows.map((r) => r.label)).toEqual(["main", "engine / main", "feature-x"]);
+    const presentation = rows.map(({ label, projectLabel, worktreeName, title }) => ({
+      label,
+      projectLabel,
+      worktreeName,
+      title,
+    }));
+    expect(JSON.stringify(presentation)).not.toContain("feature-x");
+    expect(JSON.stringify(presentation)).not.toContain("/code/");
   });
 
   it("marks a recent in an unreachable project non-selectable", () => {
@@ -429,35 +430,27 @@ describe("left-rail root surface states", () => {
       label: "dashboard",
       isActive: true,
       selectable: true,
-      title: "/code/dashboard",
+      title: {
+        key: "projects:workspaceIdentity.accessibility.switchProject",
+        values: { project: "dashboard" },
+      },
     });
-    // A `<repo>-worktrees/main` root derives the REPO identity ("engine"), so four
-    // projects that are each `.../<repo>-worktrees/main` don't all read "main".
-    // An unreachable root is non-selectable with an honest title.
     expect(rows[1]).toMatchObject({
       id: "ws-b",
-      label: "engine",
+      label: { key: "projects:workspaceIdentity.labels.noProjectName" },
       isActive: false,
       selectable: false,
-      title: "/code/engine-worktrees/main — path is not a readable directory",
+      title: { key: "projects:workspaceIdentity.labels.noProjectFiles" },
     });
+    expect(JSON.stringify(rows)).not.toContain("/code/");
+    expect(JSON.stringify(rows)).not.toContain("readable directory");
   });
 
-  it("derives unique project names from <repo>-worktrees/<branch> layouts", () => {
-    // The engine auto-labels a root with its path basename; pass an explicit label
-    // only to exercise the custom-label-wins branch.
-    const name = (path: string, label?: string) =>
-      workspaceRootName({ path, label: label ?? path.split("/").pop() ?? "" });
-    // Four `.../<repo>-worktrees/main` roots that the engine all auto-labelled
-    // "main" must read as their distinct repo identities, never four "main"s.
-    expect(name("Y:/code/vaultspec-dashboard-worktrees/main")).toBe(
-      "vaultspec-dashboard",
+  it("preserves authored project labels and never derives them from paths", () => {
+    expect(workspaceRootName({ path: "/internal/main", label: " My App " })).toBe(
+      " My App ",
     );
-    expect(name("Y:/code/aeat-worktrees/main")).toBe("aeat");
-    expect(name("Y:/code/vaultspec-core-worktrees/main")).toBe("vaultspec-core");
-    // A non-main branch keeps the branch suffix; a custom label still wins.
-    expect(name("Y:/code/app-worktrees/feature-x")).toBe("app · feature-x");
-    expect(name("Y:/code/app-worktrees/main", "My App")).toBe("My App");
+    expect(workspaceRootName({ path: "/private/secret-project", label: "" })).toBe("");
   });
 
   it("keeps vault-tree transport failure distinct from tiered degradation", () => {
@@ -501,11 +494,7 @@ describe("left-rail root surface states", () => {
       ".vault/index/grid.index.md",
     ]);
     expect(view.groups).toHaveLength(1);
-    // index is excluded from the feature groups (terminology-standardization ADR
-    // D5), so the grid feature counts its 4 displayable docs, not the index.
     expect(view.groups[0]).toMatchObject({ feature: "grid", count: 4 });
-    // Doc-type sub-groups render in the canonical pipeline order (ADR D2) and never
-    // include an `index` sub-group.
     expect(view.groups[0]!.docTypes.map((group) => group.docType)).toEqual([
       "research",
       "adr",
@@ -565,12 +554,8 @@ describe("left-rail root surface states", () => {
   });
 
   it("useCodeFiles walks the code-files listing to completion over the live wire", async () => {
-    // The reader holds the COMPLETE listing (walked to completion), so the
-    // files(code) provider narrows the whole set. On the vault-only fixture the
-    // code corpus is empty (no source files), but the assertions are shape-safe
-    // whether empty or populated: an entries array the client drained, honest
-    // null truncation well below the walk ceiling, and every entry a navigable
-    // `code:{path}` node.
+    // The completed listing contains navigable code nodes and reports truncation
+    // only when the server reaches its walk limit.
     const scope = await liveScope();
     const client = testQueryClient();
     const { result } = renderHook(() => useCodeFiles(scope), {
@@ -791,6 +776,21 @@ describe("left-rail root surface states", () => {
     ).toBe("degraded");
   });
 
+  it("contains file-tree availability reasons inside the store boundary", () => {
+    const hostileReason = "PRIVATE_STRUCTURAL_DIAGNOSTIC_9F2A";
+    const view = deriveFileTreeRootSurfaceView(
+      { path: "", entries: [], truncated: null, tiers: {} },
+      false,
+      false,
+      () => undefined,
+      { structural: { available: false, reason: hostileReason } },
+    );
+
+    expect(view.state).toBe("degraded");
+    expect(Object.keys(view).sort()).toEqual(["rootLevel", "state"]);
+    expect(JSON.stringify(view)).not.toContain(hostileReason);
+  });
+
   it("projects one file-tree directory level into stable chrome inputs", () => {
     const retry = () => undefined;
     expect(deriveFileTreeLevelView(undefined, true, false, retry)).toEqual({
@@ -798,17 +798,6 @@ describe("left-rail root surface states", () => {
       entries: [],
       rows: [],
       truncated: null,
-      loadingMessage: "reading the worktree…",
-      errorTitle: "code tree unavailable",
-      retryLabel: "try again",
-      emptyMessage: "No source files in this worktree yet.",
-      childLoadingMessage: "…",
-      childErrorMessage: "could not list this directory.",
-      truncationMessage: null,
-      childLoadingClassName:
-        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
-      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
-      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     expect(deriveFileTreeLevelView(undefined, false, true, retry)).toEqual({
@@ -816,17 +805,6 @@ describe("left-rail root surface states", () => {
       entries: [],
       rows: [],
       truncated: null,
-      loadingMessage: "reading the worktree…",
-      errorTitle: "code tree unavailable",
-      retryLabel: "try again",
-      emptyMessage: "No source files in this worktree yet.",
-      childLoadingMessage: "…",
-      childErrorMessage: "could not list this directory.",
-      truncationMessage: null,
-      childLoadingClassName:
-        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
-      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
-      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     expect(
@@ -841,17 +819,6 @@ describe("left-rail root surface states", () => {
       entries: [],
       rows: [],
       truncated: null,
-      loadingMessage: "reading the worktree…",
-      errorTitle: "code tree unavailable",
-      retryLabel: "try again",
-      emptyMessage: "No source files in this worktree yet.",
-      childLoadingMessage: "…",
-      childErrorMessage: "could not list this directory.",
-      truncationMessage: null,
-      childLoadingClassName:
-        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
-      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
-      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     const entry = {
@@ -877,17 +844,6 @@ describe("left-rail root surface states", () => {
       entries: [entry],
       rows: [{ entry, displayName: "main.ts" }],
       truncated,
-      loadingMessage: "reading the worktree…",
-      errorTitle: "code tree unavailable",
-      retryLabel: "try again",
-      emptyMessage: "No source files in this worktree yet.",
-      childLoadingMessage: "…",
-      childErrorMessage: "could not list this directory.",
-      truncationMessage: "more here (20) — expand a subdirectory to narrow.",
-      childLoadingClassName:
-        "animate-pulse-live px-fg-1 py-fg-0-5 text-caption text-ink-faint",
-      childErrorClassName: "px-fg-1 py-fg-0-5 text-caption text-state-broken",
-      truncationClassName: "px-fg-1 py-fg-0-5 text-caption text-ink-faint",
       retry,
     });
     expect(fileTreeChildStatusStyle(2)).toEqual({ paddingLeft: "1.75rem" });

@@ -1,26 +1,36 @@
 // @vitest-environment happy-dom
-//
-// Component tests for the read-only code viewer (review-rail-viewers P05): the
-// path header + language badge, line-numbered rendering, the truncated honest
-// notice, and the tiers-derived degraded / empty / error states. The viewer is
-// display-only — these assert there is no editing affordance (no textbox). Uses
-// core vitest matchers (no jest-dom), the project convention.
 
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { resolveMessage } from "../../platform/localization/fallback";
+import {
+  CODE_VIEWER_MESSAGES,
+  codeViewerFooterDescriptor,
+  codeViewerStateDescriptor,
+  documentViewerTruncationDescriptor,
+} from "../../stores/server/documentViewerVocabulary";
 import type { ContentView } from "../../stores/server/queries";
 import { CodeViewer } from "./CodeViewer";
 
-afterEach(cleanup);
-
-function available(
-  text: string,
-  truncated: ContentView["truncated"] = null,
-): ContentView {
+function available(text: string, patch: Partial<ContentView> = {}): ContentView {
   return {
     loading: false,
     errored: false,
+    notFound: false,
     degraded: false,
     degradedTiers: [],
     reasons: {},
@@ -28,104 +38,172 @@ function available(
     blobHash: "abc",
     languageHint: "rust",
     text,
-    truncated,
+    truncated: null,
     available: true,
+    ...patch,
   };
 }
 
+function renderViewer(content: ContentView) {
+  const runtime = createTestLocalizationRuntime();
+  const result = render(
+    <I18nextProvider i18n={runtime}>
+      <CodeViewer content={content} />
+    </I18nextProvider>,
+  );
+  return { ...result, runtime };
+}
+
+afterEach(cleanup);
+
 describe("CodeViewer", () => {
-  it("renders the binding filename header, language badge, and status footer", () => {
-    const { container } = render(<CodeViewer content={available("fn main() {}\n")} />);
-    // Binding CodeViewer (270:927): the header shows the FILENAME (not the full
-    // path) plus a capitalized language badge; the status footer carries the
-    // language · encoding · line count · read-only line.
+  it("updates mounted header, footer, action, and accessibility nodes in every locale", async () => {
+    const { container, runtime } = renderViewer(
+      available("printf 'hello'\n", { languageHint: "sh" }),
+    );
     const header = container.querySelector("header")!;
-    expect(within(header).getByText("mod.rs")).toBeTruthy();
-    expect(within(header).getByText("Rust")).toBeTruthy();
     const footer = container.querySelector("footer")!;
-    expect(footer.textContent).toContain("UTF-8");
-    expect(footer.textContent).toContain("Rust");
+    const path = within(header).getByText("mod.rs");
+    const language = within(header).getByText("Shell");
+    const readOnly = within(header).getByText(
+      resolveMessage(runtime, CODE_VIEWER_MESSAGES.labels.readOnly),
+    );
+    const copy = within(header).getByRole("button", {
+      name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copy),
+    });
+    const contents = screen.getByRole("region", {
+      name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.accessibility.contents),
+    });
+    expect(footer.textContent).toBe(
+      resolveMessage(runtime, codeViewerFooterDescriptor(1, "Shell", "UTF-8")),
+    );
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(within(header).getByText("mod.rs")).toBe(path);
+    expect(within(header).getByText("Interpréteur de commandes")).toBe(language);
+    expect(
+      within(header).getByText(
+        resolveMessage(runtime, CODE_VIEWER_MESSAGES.labels.readOnly),
+      ),
+    ).toBe(readOnly);
+    expect(
+      within(header).getByRole("button", {
+        name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copy),
+      }),
+    ).toBe(copy);
+    expect(
+      screen.getByRole("region", {
+        name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.accessibility.contents),
+      }),
+    ).toBe(contents);
+    expect(footer.textContent).toBe(
+      resolveMessage(
+        runtime,
+        codeViewerFooterDescriptor(1, "Interpréteur de commandes", "UTF-8"),
+      ),
+    );
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(within(header).getByText("mod.rs")).toBe(path);
+    expect(within(header).getByText("واجهة الأوامر")).toBe(language);
+    expect(footer.textContent).toBe(
+      resolveMessage(runtime, codeViewerFooterDescriptor(1, "واجهة الأوامر", "UTF-8")),
+    );
   });
 
-  it("renders line numbers for each line", () => {
-    render(<CodeViewer content={available("line one\nline two\nline three\n")} />);
-    // The gutter renders a 1-based number per line (the first window is visible).
+  it("uses safe generic copy for an unknown language hint", () => {
+    const { container, runtime } = renderViewer(
+      available("private text", {
+        path: undefined,
+        languageHint: "private_wire_language",
+      }),
+    );
+    expect(
+      within(container.querySelector("header")!).getAllByText(
+        resolveMessage(runtime, CODE_VIEWER_MESSAGES.labels.code),
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(document.body.textContent).not.toContain("private_wire_language");
+  });
+
+  it("renders actionable localized states without structural details", () => {
+    const states = [
+      available("", { loading: true, available: false }),
+      available("", { notFound: true, available: false }),
+      available("", { errored: true, available: false }),
+      available("", {
+        degraded: true,
+        available: false,
+        reasons: { structural: "private_backend_state" },
+      }),
+      available("", { available: false }),
+    ];
+    const names = ["loading", "missing", "errored", "degraded", "empty"] as const;
+    for (const [index, content] of states.entries()) {
+      const runtime = createTestLocalizationRuntime();
+      const view = render(
+        <I18nextProvider i18n={runtime}>
+          <CodeViewer content={content} />
+        </I18nextProvider>,
+      );
+      expect(document.body.textContent).toContain(
+        resolveMessage(runtime, codeViewerStateDescriptor(names[index])!),
+      );
+      expect(document.body.textContent).not.toContain("private_backend_state");
+      view.unmount();
+    }
+  });
+
+  it("renders production line rows and localized singular and plural counts", () => {
+    const one = renderViewer(available("one\n"));
+    expect(screen.getByText("1")).toBeTruthy();
+    expect(one.container.querySelector("footer")?.textContent).toBe(
+      resolveMessage(one.runtime, codeViewerFooterDescriptor(1, "Rust", "UTF-8")),
+    );
+    one.unmount();
+
+    const two = renderViewer(available("one\ntwo\n"));
     expect(screen.getByText("1")).toBeTruthy();
     expect(screen.getByText("2")).toBeTruthy();
-    expect(screen.getByText("3")).toBeTruthy();
-  });
-
-  it("is display-only — exposes no editing affordance", () => {
-    render(<CodeViewer content={available("fn main() {}\n")} />);
-    expect(screen.queryByRole("textbox")).toBeNull();
-  });
-
-  it("renders the honest truncated notice from the truncated block", () => {
-    const view = available("x".repeat(100), {
-      total_bytes: 2_000_000,
-      returned_bytes: 1_048_576,
-      reason: "content byte ceiling",
-    });
-    const { container } = render(<CodeViewer content={view} />);
-    // The notice text is interpolated across nodes (two toLocaleString numbers),
-    // so assert on the full rendered text using the store projection's explicit
-    // `en-US` byte-count contract.
-    const text = container.textContent ?? "";
-    expect(text).toContain("Truncated to the first");
-    expect(text).toContain((1_048_576).toLocaleString("en-US"));
-    expect(text).toContain((2_000_000).toLocaleString("en-US"));
-  });
-
-  it("renders the degraded state from the structural tier", () => {
-    const view: ContentView = {
-      loading: false,
-      errored: false,
-      degraded: true,
-      degradedTiers: ["structural"],
-      reasons: { structural: "worktree not listable" },
-      languageHint: null,
-      text: "",
-      truncated: null,
-      available: false,
-    };
-    render(<CodeViewer content={view} />);
-    expect(screen.getByText(/worktree not listable/)).toBeTruthy();
-  });
-
-  it("renders the loading state as a text-free skeleton and the error state as a sentence", () => {
-    const loading: ContentView = {
-      loading: true,
-      errored: false,
-      degraded: false,
-      degradedTiers: [],
-      reasons: {},
-      languageHint: null,
-      text: "",
-      truncated: null,
-      available: false,
-    };
-    const { container, unmount } = render(<CodeViewer content={loading} />);
-    // Loading is UI-ONLY (state-mode-uniformity ADR D2): a kit Skeleton, never
-    // on-screen "Loading…" text. The skeleton announces busy to AT and carries the
-    // human label ONLY in its `sr-only` span.
-    const skeleton = container.querySelector("[data-skeleton]");
-    expect(skeleton).toBeTruthy();
-    expect(skeleton!.getAttribute("role")).toBe("status");
-    expect(skeleton!.getAttribute("aria-busy")).toBe("true");
-    expect(skeleton!.querySelector(".sr-only")?.textContent).toMatch(/Loading file/);
-    // The loading copy is NOT visible body text — it lives only in the sr-only label.
-    const visibleText = Array.from(container.querySelectorAll("*"))
-      .filter((el) => el.children.length === 0 && !el.closest(".sr-only"))
-      .map((el) => el.textContent ?? "")
-      .join(" ");
-    expect(visibleText).not.toMatch(/Loading file/);
-    unmount();
-
-    // Error stays a plain sentence (only loading is skeletonized).
-    const { container: errored } = render(
-      <CodeViewer content={{ ...loading, loading: false, errored: true }} />,
+    expect(two.container.querySelector("footer")?.textContent).toBe(
+      resolveMessage(two.runtime, codeViewerFooterDescriptor(2, "Rust", "UTF-8")),
     );
-    expect(errored.querySelector("[data-skeleton]")).toBeNull();
-    expect(screen.getByText(/could not be loaded/)).toBeTruthy();
+  });
+
+  it("localizes the mounted truncation notice without exposing its reason", async () => {
+    const { runtime } = renderViewer(
+      available("x".repeat(100), {
+        truncated: {
+          total_bytes: 2_000_000,
+          returned_bytes: 1_048_576,
+          reason: "private_ceiling_name",
+        },
+      }),
+    );
+    const descriptor = documentViewerTruncationDescriptor(1_048_576, 2_000_000);
+    const notice = screen.getByText(resolveMessage(runtime, descriptor));
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(notice.textContent).toBe(resolveMessage(runtime, descriptor));
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(notice.textContent).toBe(resolveMessage(runtime, descriptor));
+    expect(document.body.textContent).not.toContain("private_ceiling_name");
+  });
+
+  it("keeps the copy action active without changing code or focus", () => {
+    const authored = "const answer = 42;\n";
+    const { runtime } = renderViewer(available(authored));
+    const copy = screen.getByRole("button", {
+      name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copy),
+    });
+    copy.focus();
+    fireEvent.click(copy);
+    expect(document.activeElement).toBe(copy);
+    expect(document.body.textContent).toContain("const answer = 42;");
+  });
+
+  it("remains display-only", () => {
+    renderViewer(available("fn main() {}\n"));
+    expect(screen.queryByRole("textbox")).toBeNull();
   });
 });

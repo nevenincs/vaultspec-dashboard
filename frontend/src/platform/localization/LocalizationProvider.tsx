@@ -48,3 +48,9 @@ export function useLocalizedMessageResolver(): LocalizedMessageResolver {
     [i18n, language],
   );
 }
+
+/** Return the active locale and update when the application language changes. */
+export function useActiveLocale(): string {
+  const { i18n } = useTranslation(localizationNamespaces, LOCALIZATION_HOOK_OPTIONS);
+  return i18n.resolvedLanguage ?? i18n.language;
+}

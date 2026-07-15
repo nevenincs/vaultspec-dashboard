@@ -10,16 +10,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "942ce3e5f35cce37e9ef6a18",
-    "path": "src/app/AppShell.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "e78b76664b95cfc1c4cd6b2f",
-    "path": "src/app/AppShell.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "2cd9e6aa3eb7ad1f9b6a1355",
     "path": "src/app/authoring/DiffPanel.tsx",
     "rule": "jsx-attribute"
@@ -50,176 +40,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "084416d2c1e0cb537b7ad74c",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "0e7d2be1b0ba3d5e19afdfd6",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "453f55fcace820633074e1ac",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "64198d6c285a6df265fbadf1",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a77f8eaa31d0c43100c82809",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "b1f71f5ab515f3f684f1837a",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "f0344ff466c0503a6e30bbb6",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "f115f1c4f2e16b59aa2d2bd9",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "1dc55747f29644b427c5eac7",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1ff761c58ac1e87da58e3d11",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "278a59dcad3811c8b6b9816e",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "282b039d88e48e84c57392a8",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "282e39562bc974e91a0e6587",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "2aa905f45cef370c43ec26ec",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "36bf322d8940305d34a1a74c",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4f563056978bc78dda27a141",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "52e002d47d4406183db7dd5c",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "616d9eae1644680b8bf480dd",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "70337dacab04a536c7babb6e",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "76b2585f00e35e65cbdfd760",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "79e540256531439e61e515b4",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "86090f3e6ba72a736cebdad4",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8da0f14a15d02f5932f9c84b",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "91070c2aaad6801c77ea3a97",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a7221eb8c61dcb6bd82c8383",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "aa6bcddd51e16e7843818d03",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ac62ad4f6d48a4a12007ead5",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "c37c7dc1400c75c198e284a8",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d53aeef0dc9a9c272f5a6461",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d8e4fd362ca8a363bc8cf202",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "f5bacbc098f10096ea97ca6a",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "fbafed6769e350dd2bf86f28",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "fe5e66b8b2e1840de05485a5",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "85038fdf2a943aa585468740",
-    "path": "src/app/authoring/ReviewStation.tsx",
-    "rule": "presentation-field"
-  },
-  {
     "id": "02be7a3eb28d566e5f3f597d",
     "path": "src/app/chrome/focusRegions.ts",
     "rule": "presentation-field"
@@ -238,16 +58,6 @@
     "id": "d4456508c924309007e34a32",
     "path": "src/app/chrome/focusRegions.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "74f029adf784ec281ed46e14",
-    "path": "src/app/chrome/RailSection.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b38152c72a5ea52cdb60d0a5",
-    "path": "src/app/chrome/RailSection.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "3016c705025c84206758f54b",
@@ -305,22 +115,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "3e4b2eee4e5fefb732462ee8",
-    "path": "src/app/islands/HoverCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "52631d89f531d9a3b7d639b4",
-    "path": "src/app/islands/HoverCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "70ed4b13ca6586cc60b24a30",
-    "path": "src/app/islands/HoverCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "842c3d99db3903611804ad96",
     "path": "src/app/islands/HoverCard.tsx",
     "rule": "jsx-text"
   },
@@ -353,16 +148,6 @@
     "id": "b6c302fe9c843c78e76afa7f",
     "path": "src/app/islands/IslandLayer.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "72ce799301e1ff13adf1f7c3",
-    "path": "src/app/islands/IslandLayer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b81fdf3bb014a8236522772f",
-    "path": "src/app/islands/IslandLayer.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "1b363b2daa00235bf3162e9c",
@@ -440,23 +225,8 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "7b183d3240887fcae2bbbc78",
-    "path": "src/app/kit/Breadcrumb.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "d84fb87fc35628b48ba0735d",
     "path": "src/app/kit/Breadcrumb.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4f4a2433a6f972823e9bdef2",
-    "path": "src/app/kit/FacetRow.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "f12e6ee710d096cb38c8d43c",
-    "path": "src/app/kit/FacetRow.tsx",
     "rule": "jsx-text"
   },
   {
@@ -470,36 +240,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "d0e77c0dafc18a45570db5ea",
-    "path": "src/app/kit/Skeleton.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "468310b2ce53387678017b47",
-    "path": "src/app/kit/StateBlock.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "75f90cd934491ce55c92ff3e",
-    "path": "src/app/kit/StateBlock.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7924089511886bcce9d793f2",
-    "path": "src/app/kit/StateBlock.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ba2baa88a1fd85d8ca2b185e",
-    "path": "src/app/kit/StateBlock.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7b75f09c28d5ba9ab1a16e76",
-    "path": "src/app/kit/StatusDot.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "948af88ffffcdeb870ee199b",
     "path": "src/app/kit/StepCheckMark.tsx",
     "rule": "jsx-attribute"
@@ -508,26 +248,6 @@
     "id": "a5f20dcc68f3f9e355ca1e24",
     "path": "src/app/kit/StepCheckMark.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "06ac02955a59058d879ad84d",
-    "path": "src/app/kit/StepCheckMark.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "9da3b1194badcd7dfd44cce1",
-    "path": "src/app/kit/StepCheckMark.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a427ff9d3fa5d009ff629d65",
-    "path": "src/app/kit/StepCheckMark.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "df412dde7152192ca6f50032",
-    "path": "src/app/kit/StepCheckMark.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "0066271caf03d78cddd5abab",
@@ -540,11 +260,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "202cb3b71a7b4b13a60ff9aa",
-    "path": "src/app/left/CodeTree.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "3aec06ed5bf31467952885a2",
     "path": "src/app/left/FeatureSearchField.tsx",
     "rule": "jsx-attribute"
@@ -553,26 +268,6 @@
     "id": "ae9ebde6a2d6f2076d12b875",
     "path": "src/app/left/FeatureSearchField.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "ac9fae2438616845ed6b1b80",
-    "path": "src/app/left/FeatureSearchField.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "c383366867a9fffb3b041ff1",
-    "path": "src/app/left/FeatureSearchField.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3d503d605e63972ad110b031",
-    "path": "src/app/left/FolderBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "594218b110de8b5d22a703ee",
-    "path": "src/app/left/FolderBrowser.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "c50774b87ba212d8003af7cc",
@@ -595,76 +290,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "74fa69bc6d66de774a403afc",
-    "path": "src/app/left/PickerPlacesRail.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1355b89a8585e01867f68913",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "39b695d230e88f73f3f9b6fb",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "43107394d6aa0dd653e68008",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "44062199cf436053c8817b66",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5402608e27335b391f2f6299",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a847f691720dd6413ef99980",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "c37c1f6f734f8e6514af64ec",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "0f8515cd62591e05aa9750af",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3faae8dab914f16f80c1e7d7",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7ae12f18f406a72f3e1a1fd2",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8ef570d415c1f971184d0959",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "90a0c2b1dcb4a215d9eb4e5f",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "c7e7f3cd6cd51743d98df146",
-    "path": "src/app/left/ProjectNavigator.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "7a45ca803bed7be27546c042",
     "path": "src/app/left/RailFilterField.tsx",
     "rule": "jsx-attribute"
@@ -678,201 +303,6 @@
     "id": "f2917f68f2b4478553233266",
     "path": "src/app/left/RailFilterField.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "312137c53ad3c8ffb036fb02",
-    "path": "src/app/left/RailFilterField.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8b474e7f139d3034caa09666",
-    "path": "src/app/left/RailFilterField.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "f4382e7ab42ce5582d9cbe8d",
-    "path": "src/app/left/RailFilterField.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "0c76adb9d63abfc4065be2e0",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "161b0e32e7f526480acaa945",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1c41aadb3d74ed55d03caa11",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "50962f93308f19098cbf19bf",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "64f95fa68d62ec1f427ce9e6",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "81a9d9cc4cee8da405862e32",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8f630624045f1c3dfebc8493",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d297399ce4dd8acefdfd20a1",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "e6f9a2213e32121dc8b15055",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "fe5dc0f9e863b8d2d728cf42",
-    "path": "src/app/left/TreeBrowser.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "110ac445cadd723fe5ea992d",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5ea0653f920bf7255266e99d",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5fe3a690e7d2f2534b5e1fb8",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "6181b042f44ec8188287a5ca",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "77615861e833500a6f2f20e6",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "9ca57173e9e098697959215c",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "e3fdb7b13308655839b464b3",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "ee2d2f48e0acaa621dacc844",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "f24302de0781405346ad0081",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "0c3c768cd005ccb21db2e7d4",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "0fe69b8f3c1394c251deac0a",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "22273ee27a4fba6219847b4c",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "22450c9baa0086c8296f1910",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "2bbc37d2483a3ddc0ee855fe",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "51f8840ab1b3928997216b0c",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "68051c23101fa1a73b114ca1",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "746ba2202bf7295f11770215",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "80e0f4dc75759bd8437c007e",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8211e4cd67a4f09a3e5b86a7",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b2109f4a990b8a60ae54c17a",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "c216984ccfe35c21e2b7c1be",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "cfd61f294bc5c8654c439d53",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "da761f3110cd56cad76ede7f",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "dc14443e1ce677f2aafd2c42",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "e1a0b90000587fac9fe1a145",
-    "path": "src/app/left/WorktreePicker.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3291c815cbd8defa959e87f3",
-    "path": "src/app/menu/ContextMenuHost.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "6448630a82dbb2290d06541d",
@@ -890,17 +320,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "38e5af3af1a7a22da2cbdb0a",
-    "path": "src/app/palette/CommandPalette.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "93dd5bda4bd0350e0ead47f7",
-    "path": "src/app/palette/CommandPalette.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a1cc4322e6beb40b271d838e",
     "path": "src/app/palette/CommandPalette.tsx",
     "rule": "jsx-text"
   },
@@ -912,116 +332,6 @@
   {
     "id": "adde167593c430d53c4b66bf",
     "path": "src/app/palette/CommandPalette.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b4c6d7c63b83bfa521b6e3a4",
-    "path": "src/app/palette/CommandPalette.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "14f9e08b188d2ac94a349b51",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "1cffa6b24db3e06d6798aa8c",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5ddd4ffbaa15688e3db594e5",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "9904f53f5099bdc862ea7507",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "c62ca4571df248bff2794c92",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "ee4035ea714deb6d708765d2",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "19124c13eda6a413bab21357",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "33100eb9996f931e89cc0ed1",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a3f2f29ad732a35dba8aff87",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "be878eaaa0e89fb177a573bd",
-    "path": "src/app/palette/DocumentSearchSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4c902f2938c91421a1c076ef",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "59a5a22e7502033b8333f84d",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "59f04aa590dd5d53f2b5a421",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "61689ab64e027ce8f550c5f6",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "72fd82812adfca2fecd86fbf",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "9c1a06b93b5b5ea9ec7c9d26",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "9c568d57a277e0f12b8980aa",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a23d5f5274ca0b3749cbae29",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a30dd2da79808685f6f2d309",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b1b85183436d4abb74d06b6c",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "dd221553d8663a25479ae81e",
-    "path": "src/app/palette/SearchPaletteSurface.tsx",
     "rule": "jsx-text"
   },
   {
@@ -1095,22 +405,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "0f8abe51c6df1ef2b01ad914",
-    "path": "src/app/panels/RagDashboardFooter.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "1412bb5e804736df3c7dd49d",
-    "path": "src/app/panels/RagDashboardFooter.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1663d563e319827aac9d2195",
-    "path": "src/app/panels/RagDashboardFooter.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "26cce1f60eeabdd9aea08bbb",
     "path": "src/app/panels/RagDashboardFooter.tsx",
     "rule": "jsx-text"
   },
@@ -1121,11 +416,6 @@
   },
   {
     "id": "4c5a5c051274294313336d88",
-    "path": "src/app/panels/RagDashboardFooter.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "76a0a327cd41567942f63034",
     "path": "src/app/panels/RagDashboardFooter.tsx",
     "rule": "jsx-text"
   },
@@ -1141,16 +431,6 @@
   },
   {
     "id": "988a1cd76474a9aff71998d5",
-    "path": "src/app/panels/RagDashboardFooter.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a5eac9dfd4a618c198061576",
-    "path": "src/app/panels/RagDashboardFooter.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ac151edd4b388aae50f2d363",
     "path": "src/app/panels/RagDashboardFooter.tsx",
     "rule": "jsx-text"
   },
@@ -1196,11 +476,6 @@
   },
   {
     "id": "4f9d0dda167ac80a56500266",
-    "path": "src/app/panels/RagJobDashboard.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6085b5663f1fe8a5be7ca8c9",
     "path": "src/app/panels/RagJobDashboard.tsx",
     "rule": "jsx-text"
   },
@@ -1320,17 +595,7 @@
     "rule": "jsx-text"
   },
   {
-    "id": "639c3ae24c585bd77c238682",
-    "path": "src/app/panels/RagJobsTable.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "7dd2c93c548d566197146613",
-    "path": "src/app/panels/RagJobsTable.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "81b6afd68085ca2266790055",
     "path": "src/app/panels/RagJobsTable.tsx",
     "rule": "jsx-text"
   },
@@ -1346,11 +611,6 @@
   },
   {
     "id": "b0c8413b852c85efbed34d8e",
-    "path": "src/app/panels/RagJobsTable.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "e7720dab9094922b36fa374c",
     "path": "src/app/panels/RagJobsTable.tsx",
     "rule": "jsx-text"
   },
@@ -1395,22 +655,7 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "0e6f3bab0cddcee2a1bb677d",
-    "path": "src/app/panels/RagLogPane.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4d105b268c760a147de8bacd",
-    "path": "src/app/panels/RagLogPane.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "551ec02e3282d17c6d8ecf94",
-    "path": "src/app/panels/RagLogPane.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "553583b9179f38bdf16fff03",
     "path": "src/app/panels/RagLogPane.tsx",
     "rule": "jsx-text"
   },
@@ -1426,16 +671,6 @@
   },
   {
     "id": "daa35449249e3e606add91b9",
-    "path": "src/app/panels/RagLogPane.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ec1f5361ef042f88248e5457",
-    "path": "src/app/panels/RagLogPane.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "fb54897f5cb3717cf6d8fde9",
     "path": "src/app/panels/RagLogPane.tsx",
     "rule": "jsx-text"
   },
@@ -1515,11 +750,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "f04138c6c7535d879ad32045",
-    "path": "src/app/right/menus/HoverCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "919f8ed3810afaad75c21b64",
     "path": "src/app/right/PlanStepTree.tsx",
     "rule": "jsx-attribute"
@@ -1533,21 +763,6 @@
     "id": "d7c240ae1263ff1fea62dec5",
     "path": "src/app/right/PlanStepTree.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "1c917ac48986e8921b541d3e",
-    "path": "src/app/right/PlanStepTree.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "2afd0ae677a64b5c9b1d7497",
-    "path": "src/app/right/PlanStepTree.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "aab777c7b7b6a8232c619242",
-    "path": "src/app/right/PlanStepTree.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "b9d7c5c9fc83a6febf895481",
@@ -1590,27 +805,7 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "03bf898ea7794e334c54a3be",
-    "path": "src/app/right/StatusTab.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "0f948bcdbe1bc656d41c58fe",
-    "path": "src/app/right/StatusTab.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1d7a426e6e32e54e998d475c",
-    "path": "src/app/right/StatusTab.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "48bd639de0870d62490684f7",
-    "path": "src/app/right/StatusTab.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4c6a5b44323ef1c9e7cb3f6e",
     "path": "src/app/right/StatusTab.tsx",
     "rule": "jsx-text"
   },
@@ -1623,11 +818,6 @@
     "id": "f50912c4bddb4ad3e1db19e3",
     "path": "src/app/shell/BottomTabBar.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "3f80116f789ca150819f91ed",
-    "path": "src/app/shell/BottomTabBar.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "19f8803c1857be59361769c9",
@@ -1660,17 +850,7 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "9abaa33bf289c97d6f2c6ac3",
-    "path": "src/app/shell/CompactUnifiedRail.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "a45453d1fa45c618dd13f08f",
-    "path": "src/app/shell/CompactUnifiedRail.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a473eb1b02f42e18fb2d7d7f",
     "path": "src/app/shell/CompactUnifiedRail.tsx",
     "rule": "jsx-text"
   },
@@ -1685,146 +865,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "65750822d905c31d2dc3f8b7",
-    "path": "src/app/shell/WorkspaceSwitcherSheet.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "b9cef6c02ef277d72763a021",
-    "path": "src/app/shell/WorkspaceSwitcherSheet.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "78de5346d0a6e1dadae69b4d",
-    "path": "src/app/shell/WorkspaceSwitcherSheet.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a7e94b6ee4434870a8e01a3c",
-    "path": "src/app/shell/WorkspaceSwitcherSheet.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "de0f42139190ee454bc08581",
-    "path": "src/app/shell/WorkspaceSwitcherSheet.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ed79ca5c6ad74791364d6e08",
-    "path": "src/app/shell/WorkspaceSwitcherSheet.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3e0f66ea3847e23bdc489321",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "fixed-locale-format"
-  },
-  {
-    "id": "ef7c3afd0b9144719469fd33",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "fixed-locale-format"
-  },
-  {
-    "id": "186962c542f6f7dc5b35ffd1",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a0e4a1ffb7fe1cb66206ec96",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "038eba7cb784381771e93102",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "098d807ed60b60cf422b3836",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "15ba2e33c7fdc8c0dadb71df",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1601d308f8e8239f12e80614",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "2ad22430a90333bbfe98c64d",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7dcaf40330ad16754480f479",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "9d0d5051bdaaf627817bf37f",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b09265c4dea09690999e1602",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b5c8eaa4f9475335ad9ef7db",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b9b5c85bc7b5a71e55ffbc96",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "bfa5f299ca0a789d76552b16",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "cf2a628c3365dc6851d41097",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d725c13114f7c4c9587b6f3e",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "fc1f124dc01f920130bbe095",
-    "path": "src/app/stage/CanvasStateOverlay.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "0c1cf544dc306eab6d924b29",
-    "path": "src/app/stage/CategoryLegend.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3ffd08be40c39f00677e5f61",
-    "path": "src/app/stage/CategoryLegend.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "49730ca9f8906561ab25a3b5",
-    "path": "src/app/stage/CategoryLegend.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "dfadd41c09e3f9c0f82935df",
-    "path": "src/app/stage/CategoryLegend.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "de48f3179a59d94fa7ddcdc2",
     "path": "src/app/stage/DockWorkspace.tsx",
     "rule": "jsx-attribute"
@@ -1833,16 +873,6 @@
     "id": "eeaae7fc16e1677a3d51a656",
     "path": "src/app/stage/DockWorkspace.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "578fb7ec76d0f78ca973394e",
-    "path": "src/app/stage/DockWorkspace.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "c2126e09ce1f69e04dc781d2",
-    "path": "src/app/stage/DockWorkspace.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "7456f61ee6e6654d754ef4c8",
@@ -1870,11 +900,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "1f5fc22975809a08a3edf6d6",
-    "path": "src/app/stage/FilterMenu.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "91dc635bbc27bd9714e576f7",
     "path": "src/app/stage/FilterMenu.tsx",
     "rule": "jsx-text"
@@ -1895,16 +920,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "3f8cf33f8aee1ab067ec564c",
-    "path": "src/app/stage/FilterSidebar.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a340b06e59833c0d854e5bcf",
-    "path": "src/app/stage/FilterSidebar.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "1605ad31c4b41c67c2ca0a03",
     "path": "src/app/stage/graphWalk.ts",
     "rule": "direct-locale-format"
@@ -1915,24 +930,9 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "015e37555bf9cc55f701b716",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7c389a1fdb1fe83879ef7307",
-    "path": "src/app/stage/ProvisionPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "36723b25c5af251219ac4ac8",
     "path": "src/app/stage/Stage.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "28c75cd39d0f33d01c53fc9c",
-    "path": "src/app/stage/Stage.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "832ce6d965f4e15d23a25604",
@@ -1955,61 +955,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "574ad28f70b83095dae88e7f",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "800f68af174b9d542fa78d70",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "989940ce522a6f29007df5c5",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a608a34a9be118e92bdfbe55",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "c25ef8ec5f74c3fe34c99ca0",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "6343dbd535eac9596568987e",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "749dc8e905e25536db19d36d",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a479683f93228e91abf3f028",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b3b2fd7a038a9957c90f82bc",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b810e29b70f9cb7114155bb5",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d6f62935fb002a03839e1100",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "28d3bc4d73adcced9aaa148e",
     "path": "src/app/timeline/TimeTravelChip.tsx",
     "rule": "jsx-text"
@@ -2023,191 +968,6 @@
     "id": "a598e911d4e0640c5c2a5ba8",
     "path": "src/app/viewer/AutocompleteCombobox.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "597513e6d280de5087c2037f",
-    "path": "src/app/viewer/AutocompleteCombobox.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "becc35cb309259e48cf3ed1a",
-    "path": "src/app/viewer/AutocompleteCombobox.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ea1972c0181aa74f6852ac39",
-    "path": "src/app/viewer/AutocompleteCombobox.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "046f9d49fde90d9ff0e6127e",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "0c7adb1fbb3c039e1157bcf3",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4fea6693bbcfb59c4c923df5",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6fb93482333dd3eed04246d8",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8031e477bc192f60b541ff88",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "9bc03fc21e03554adc90c3bf",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a90fdfe4163eaea9594b5568",
-    "path": "src/app/viewer/CodeViewer.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1d22fa9b7d46f81056d85512",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "1eea9d4321194dd9e851ebbb",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "3f187c98d13a1e0b5392a7b5",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "6e66a844a50b553e7ba7eb94",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "8b84d6ae5a1b6e3c741e74fd",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a32e8d3d1b62d947118eb17f",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a41a9bbca307fe60cb35efe0",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "ab14062de200b2c68b1f8612",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "b961d54ba9c45fafbb568894",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "ba01856802a5f6e14b523e7f",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "ed1aad080cc8d2598915c8b9",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "06a89525e8f66c909e27fd1d",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "235ba91375505b953985f396",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "28fe8da9876df83502b588b4",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3ad158b10bda578ea5d04643",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "3ca01821c943ded82df2ceac",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "4df8e55915f7668a4854838b",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6c27328a31c299fe46b4b637",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8003d51ea0299c6f0c97a170",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "82ba5c51203e2027552ddecf",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "89dac858d1e89ba077625c83",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8e591479c61c9c4b45b17d2d",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "a2dee407f04a7190393b721b",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ac28f9da4bd2b85f4bab469e",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b997242d63a143f8fcb84828",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "baee0d1ea8bfc4a1969b377e",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "cba742135444d4bfafc71819",
-    "path": "src/app/viewer/CommentThreadPanel.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "fd304534d0898d791ba41baa",
@@ -2230,11 +990,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "219d75d6d38ab0736f5d50dd",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "23074bd7dfb84fc1d31c9600",
     "path": "src/app/viewer/MarkdownDocView.tsx",
     "rule": "jsx-text"
@@ -2246,11 +1001,6 @@
   },
   {
     "id": "d10c9c91f79c2ae6be95e3bf",
-    "path": "src/app/viewer/MarkdownDocView.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "f4ac013614f4cb44f77fbfa4",
     "path": "src/app/viewer/MarkdownDocView.tsx",
     "rule": "jsx-text"
   },
@@ -2273,71 +1023,6 @@
     "id": "d90577e5e0a8e92809e37282",
     "path": "src/app/viewer/markdownFormatting.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "71fef9a266b261d36ac00e2c",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "d34f072b009910bb4cfd67f7",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "eecb3f47c97ab31d1cb47ca1",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "01d782ac0af309a2b0538a15",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "1b691aa654881a32cfd8545c",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "25de6c1c5fc2195571a4b394",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "43bf0d1cab934a4f18f8968b",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "547c1341642491838377316b",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6dd44359cb9f89c5c961bf3a",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7219c3399ef7d20033db6320",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "b7e36b3250dfdf6de101bfa4",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d4aa62d9feca8bde36ff105b",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "db1d33683472b27dc992f625",
-    "path": "src/app/viewer/MarkdownReader.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "3eb5b143def712326b6b3466",
@@ -2365,21 +1050,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "547b244413b9cef13242662c",
-    "path": "src/app/viewer/PlanSummaryCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6b97431319459cde361339b5",
-    "path": "src/app/viewer/PlanSummaryCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6ea7bbb50e1e50a1ee774692",
-    "path": "src/app/viewer/PlanSummaryCard.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "6e83bdd2a84746e3b5b11972",
     "path": "src/app/viewer/RelatedDocPicker.tsx",
     "rule": "jsx-attribute"
@@ -2393,11 +1063,6 @@
     "id": "f2f7bc1c08de72a17c995f51",
     "path": "src/app/viewer/RelatedDocPicker.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "e33529b79de5200d40b0cd24",
-    "path": "src/app/viewer/RelatedDocPicker.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "0619f22a838bc450fe64b6ba",
@@ -2560,19 +1225,9 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "1e86d9ba12b97b012951856a",
-    "path": "src/platform/localization/LocalizationProvider.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "fddfcaf857f817ff088ba11a",
     "path": "src/prototype/StatusGallery.tsx",
     "rule": "imperative-display"
-  },
-  {
-    "id": "06de8f089c23e26f5ac7a171",
-    "path": "src/prototype/StatusGallery.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "081b1b9d5c19a38f8c040894",
@@ -2590,16 +1245,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "2fcd734f0863917b7aa2bc77",
-    "path": "src/prototype/StatusGallery.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "53957c7528a109bf7e4fa726",
-    "path": "src/prototype/StatusGallery.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "5bf17d253f14d9b072a42f68",
     "path": "src/prototype/StatusGallery.tsx",
     "rule": "jsx-text"
@@ -2610,27 +1255,12 @@
     "rule": "jsx-text"
   },
   {
-    "id": "5f5eb848a142811fe2eae467",
-    "path": "src/prototype/StatusGallery.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "76b206fbb2aa469cfb868789",
     "path": "src/prototype/StatusGallery.tsx",
     "rule": "jsx-text"
   },
   {
     "id": "a0f2f1782f1b626863645284",
-    "path": "src/prototype/StatusGallery.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ac1824ce34fcf33edc356d00",
-    "path": "src/prototype/StatusGallery.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "cbcaa4758bbd8325bd11c96b",
     "path": "src/prototype/StatusGallery.tsx",
     "rule": "jsx-text"
   },
@@ -2698,16 +1328,6 @@
     "id": "cfd92ac9669c5ce9ff210989",
     "path": "src/prototype/StatusGallery.tsx",
     "rule": "presentation-field"
-  },
-  {
-    "id": "0396e8a5f588dd17ca09933b",
-    "path": "src/scene/field/markComponents.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "c32ca879c11089e93c943b58",
-    "path": "src/scene/field/markComponents.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "02dee69ccfc08e03dcf7f856",
@@ -3555,46 +2175,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "09a807dcf2faf3d09e321e58",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "fixed-locale-format"
-  },
-  {
-    "id": "359865094cd4c4f42119fbc0",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "fixed-locale-format"
-  },
-  {
-    "id": "44e8a22268c0651ba1f14ccc",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "fixed-locale-format"
-  },
-  {
-    "id": "967fe498f6599b2621efd596",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "fixed-locale-format"
-  },
-  {
-    "id": "00abbf1d80e373004f287163",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "23b9e0549cdd1ee43a304247",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "8e6e6bc6d44cf9ed1ef6480c",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "f5d68a9240dab3eb6e46cb55",
-    "path": "src/stores/server/queries/document.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "5d7ab63fd63c2b70137071d8",
     "path": "src/stores/server/queries/graph.ts",
     "rule": "direct-locale-format"
@@ -3707,31 +2287,6 @@
   {
     "id": "9621ac0bd75e8e4e6b7f284e",
     "path": "src/stores/server/queries/settings.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "412f9be05f92a964070b3d01",
-    "path": "src/stores/server/queries/workspaces.ts",
-    "rule": "direct-locale-format"
-  },
-  {
-    "id": "25cab6e72ed63232804eea51",
-    "path": "src/stores/server/queries/workspaces.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "6e96ad742d7ca740d9ddcfe8",
-    "path": "src/stores/server/queries/workspaces.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c281ed7cf418375cba48136d",
-    "path": "src/stores/server/queries/workspaces.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "c77aab1c1c0098f93d0cdc7d",
-    "path": "src/stores/server/queries/workspaces.ts",
     "rule": "presentation-field"
   },
   {
@@ -4035,11 +2590,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "4cd22f7fa3b0b2964d5c45d6",
-    "path": "src/three-lab/AppearancePanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "6ae720fbe0b707b4304fe713",
     "path": "src/three-lab/AppearancePanel.tsx",
     "rule": "jsx-text"
@@ -4056,11 +2606,6 @@
   },
   {
     "id": "d6072a69f024f06b9da37454",
-    "path": "src/three-lab/AppearancePanel.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "ecfa2fed4e3c142b5e0c6a4b",
     "path": "src/three-lab/AppearancePanel.tsx",
     "rule": "jsx-text"
   },
@@ -4195,11 +2740,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "3ae33f879e1a8bdd0f3ad2ea",
-    "path": "src/three-lab/ThreeLab.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "4f23a96d9bd4a1fb2ad9ee11",
     "path": "src/three-lab/ThreeLab.tsx",
     "rule": "jsx-text"
@@ -4216,11 +2756,6 @@
   },
   {
     "id": "78da0a05d3640bcdc762b586",
-    "path": "src/three-lab/ThreeLab.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "7b80750e4081d1f5670aa563",
     "path": "src/three-lab/ThreeLab.tsx",
     "rule": "jsx-text"
   },
@@ -4318,5 +2853,45 @@
     "id": "fb1e5b6330f4178dd10fabb5",
     "path": "src/viewer-visual/main.tsx",
     "rule": "presentation-field"
+  },
+  {
+    "id": "3c3944dde019ebf36bce5b76",
+    "path": "src/app/left/FeatureSearchField.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "2d58ea3b58c12aaf4cc11478",
+    "path": "src/app/left/VaultBrowser.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "3c1d40796e026485ebd665cf",
+    "path": "src/app/panels/RagJobsTable.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "c848c6de18de4bd137c557dd",
+    "path": "src/app/panels/RagJobsTable.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "b7d0c5b28c9f18aa8ca680c9",
+    "path": "src/app/panels/RagLogPane.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "523246e98406294ffd5005ee",
+    "path": "src/app/panels/RagLogPane.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "21a98a49ecf4755c55b7cc9a",
+    "path": "src/app/viewer/MarkdownDocView.tsx",
+    "rule": "jsx-attribute"
+  },
+  {
+    "id": "5c7edc6dc59cdf093c088f90",
+    "path": "src/app/viewer/RelatedDocPicker.tsx",
+    "rule": "jsx-attribute"
   }
 ]

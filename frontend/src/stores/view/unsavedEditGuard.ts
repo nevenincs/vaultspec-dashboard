@@ -1,27 +1,18 @@
-// Unsaved-edit guard (data-safety): an arm-to-confirm gate that fires before a
-// dirty markdown-editor draft would be silently discarded.
-//
-// The editor holds its body draft locally (`viewStore.draftText` / `editorStatus`)
-// until an explicit save, so a worktree/scope SWITCH (whose wholesale reset clears
-// `draftText`) or an editor CLOSE would throw the draft away with no warning — the
-// "Unsaved changes" status is shown but nothing BLOCKS the destructive action. This
-// guard intercepts those user actions at their call sites: when `editorStatus` is
-// `dirty`, it stages an arm-to-confirm (rendered by `UnsavedEditGuardHost` through the
-// shared `ConfirmDialog` primitive) instead of proceeding; when clean, it runs the
-// action immediately so there is zero cost on the common path. Pure store + helper;
-// no React, no fetch (dashboard-layer-ownership).
-
 import { create } from "zustand";
 
+import type { ActionConfirmationDescriptor } from "../../platform/localization/message";
 import { closeDocumentEditor } from "./editor";
 import { editorStatusHasUnsavedDraft } from "./tabs";
 import { useViewStore } from "./viewStore";
 
+type UnsavedDiscardConfirmation = Extract<
+  ActionConfirmationDescriptor,
+  { readonly kind: "destructive" }
+>;
+
 /** A staged destructive action awaiting the user's keep-or-discard decision. */
 export interface PendingUnsavedDiscard {
-  readonly title: string;
-  readonly message: string;
-  readonly confirmLabel: string;
+  readonly confirmation: UnsavedDiscardConfirmation;
   /** Run when the user confirms discarding the draft. */
   readonly proceed: () => void;
 }
@@ -33,7 +24,7 @@ interface UnsavedEditGuardState {
   request: (intent: PendingUnsavedDiscard) => void;
   /** Discard confirmed — run the staged action and clear. */
   confirm: () => void;
-  /** Keep editing — clear without running the staged action. */
+  /** Cancel the discard and clear without running the staged action. */
   cancel: () => void;
 }
 
@@ -50,21 +41,17 @@ export const useUnsavedEditGuardStore = create<UnsavedEditGuardState>((set, get)
   cancel: () => set({ pending: null }),
 }));
 
-const DEFAULT_COPY = {
-  title: "Unsaved changes",
-  message:
-    "You have unsaved changes in the open document. Discarding them cannot be undone.",
-  confirmLabel: "Discard changes",
-} as const;
+const UNSAVED_DISCARD_CONFIRMATION = {
+  kind: "destructive",
+  title: { key: "documents:confirmations.discardUnsavedChanges.title" },
+  body: { key: "documents:confirmations.discardUnsavedChanges.body" },
+  confirmLabel: { key: "common:destructiveActions.discardChanges" },
+  cancelLabel: { key: "common:actions.cancel" },
+} as const satisfies UnsavedDiscardConfirmation;
 
-function stagePending(
-  proceed: () => void,
-  copy?: Partial<Omit<PendingUnsavedDiscard, "proceed">>,
-): void {
+function stagePending(proceed: () => void): void {
   useUnsavedEditGuardStore.getState().request({
-    title: copy?.title ?? DEFAULT_COPY.title,
-    message: copy?.message ?? DEFAULT_COPY.message,
-    confirmLabel: copy?.confirmLabel ?? DEFAULT_COPY.confirmLabel,
+    confirmation: UNSAVED_DISCARD_CONFIRMATION,
     proceed,
   });
 }
@@ -76,15 +63,12 @@ function stagePending(
  * switch, an editor close). `editorStatusHasUnsavedDraft` (dirty, or a retained-draft
  * save-failed/conflict — all hold unsaved work) is the source of truth for "unsaved work".
  */
-export function guardUnsavedDiscard(
-  proceed: () => void,
-  copy?: Partial<Omit<PendingUnsavedDiscard, "proceed">>,
-): void {
+export function guardUnsavedDiscard(proceed: () => void): void {
   if (!editorStatusHasUnsavedDraft(useViewStore.getState().editorStatus)) {
     proceed();
     return;
   }
-  stagePending(proceed, copy);
+  stagePending(proceed);
 }
 
 /**
@@ -92,11 +76,7 @@ export function guardUnsavedDiscard(
  * document. A tab/panel close on doc B must NOT prompt about doc A's unsaved draft, so
  * a global dirty check is wrong here — gate on `editorTarget?.nodeId === nodeId`.
  */
-export function guardUnsavedDiscardForDoc(
-  nodeId: string,
-  proceed: () => void,
-  copy?: Partial<Omit<PendingUnsavedDiscard, "proceed">>,
-): void {
+export function guardUnsavedDiscardForDoc(nodeId: string, proceed: () => void): void {
   const state = useViewStore.getState();
   const dirtyForThisDoc =
     editorStatusHasUnsavedDraft(state.editorStatus) &&
@@ -105,7 +85,7 @@ export function guardUnsavedDiscardForDoc(
     proceed();
     return;
   }
-  stagePending(proceed, copy);
+  stagePending(proceed);
 }
 
 /**

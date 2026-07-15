@@ -11,6 +11,7 @@ import {
   type TierAvailability,
 } from "../engine";
 import { docNodeIdFromStem } from "../liveAdapters";
+import { docTypePresentation, type VaultDocumentType } from "../docTypeVocabulary";
 import {
   deriveEditorialTitle,
   sanitizeHeadingText,
@@ -168,41 +169,13 @@ export function useContentView(nodeId: unknown, scope: unknown): ContentView {
 export type ViewerStateTone = "faint" | "muted" | "broken";
 
 export interface CodeViewerView {
-  /** The designed surface state the code viewer renders. */
   state: "loading" | "errored" | "degraded" | "empty" | "missing" | "ready";
-  /** Placeholder copy for non-ready states. */
-  stateMessage: string | null;
-  /** Placeholder tone for non-ready states. */
   stateTone: ViewerStateTone;
-  /** Placeholder ink class for non-ready states. */
-  stateToneClass: string;
-  /** Text passed to the tokenizer; blank outside the ready state. */
   text: string;
-  /** Raw, 1:1 source lines for the virtualized line list. */
   rawLines: string[];
-  /** Served repo-relative path for the header. */
   path?: string;
-  /** Highlighter grammar hint for the tokenizer and language badge. */
   languageHint: string | null;
-  /** Honest byte-cap marker shown only with ready content. */
   truncated: ContentTruncated | null;
-  /** Header affordance label for the display-only code viewer. */
-  readOnlyLabel: string;
-  /** Render-ready byte-cap receipt, null when the content is not truncated. */
-  truncationMessage: string | null;
-}
-
-function codeViewerTruncationMessage(
-  truncated: ContentTruncated | null,
-): string | null {
-  if (truncated === null) return null;
-  return `Truncated to the first ${truncated.returned_bytes.toLocaleString("en-US")} of ${truncated.total_bytes.toLocaleString("en-US")} bytes — open the file directly for the full contents.`;
-}
-
-function viewerStateToneClass(tone: ViewerStateTone): string {
-  if (tone === "broken") return "text-state-broken";
-  if (tone === "muted") return "text-ink-muted";
-  return "text-ink-faint";
 }
 
 /**
@@ -217,30 +190,21 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
     path: content.path,
     languageHint: null,
     truncated: null,
-    readOnlyLabel: "read-only",
-    truncationMessage: null,
   };
   if (content.loading) {
     const stateTone: ViewerStateTone = "faint";
     return {
       ...base,
       state: "loading",
-      stateMessage: "Loading file...",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
-  // A 404 in the read scope is a distinct designed state (per-tab-scope-binding): the
-  // file is not in this workspace, never a blank body. Checked before `errored` so a
-  // tiers-less 404 still lands here rather than the generic transport-error copy.
   if (content.notFound) {
     const stateTone: ViewerStateTone = "muted";
     return {
       ...base,
       state: "missing",
-      stateMessage: "This file isn't in this workspace.",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.errored) {
@@ -248,20 +212,15 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
     return {
       ...base,
       state: "errored",
-      stateMessage: "The file could not be loaded.",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.degraded) {
-    const reason = content.reasons.structural;
     const stateTone: ViewerStateTone = "muted";
     return {
       ...base,
       state: "degraded",
-      stateMessage: `File unavailable${reason ? `: ${reason}` : ""}.`,
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (!content.available || content.text.length === 0) {
@@ -269,9 +228,7 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
     return {
       ...base,
       state: "empty",
-      stateMessage: "This file is empty.",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
 
@@ -279,16 +236,12 @@ export function deriveCodeViewerView(content: ContentView): CodeViewerView {
   const stateTone: ViewerStateTone = "faint";
   return {
     state: "ready",
-    stateMessage: null,
     stateTone,
-    stateToneClass: viewerStateToneClass(stateTone),
     text,
     rawLines: text.replace(/\n$/, "").split("\n"),
     path: content.path,
     languageHint: content.languageHint,
     truncated: content.truncated,
-    readOnlyLabel: "read-only",
-    truncationMessage: codeViewerTruncationMessage(content.truncated),
   };
 }
 
@@ -303,8 +256,8 @@ export interface MarkdownHeaderView {
   category?: MarkdownHeaderCategory;
   /** The raw document type label shown in the chip. */
   categoryLabel?: string;
-  /** Frontmatter metadata rows shown by the viewer header. */
-  meta?: Array<{ label: string; value: string }>;
+  /** Raw frontmatter dates retained for localized consumers. */
+  meta?: Array<{ kind: "created" | "updated"; iso: string }>;
 }
 
 const MARKDOWN_HEADER_DOC_TYPE_CATEGORY: Record<string, MarkdownHeaderCategory> = {
@@ -353,10 +306,10 @@ export function deriveMarkdownHeaderView(
 
   const meta: MarkdownHeaderView["meta"] = [];
   if (typeof frontmatter?.date === "string") {
-    meta.push({ label: "created", value: frontmatter.date });
+    meta.push({ kind: "created", iso: frontmatter.date });
   }
   if (typeof frontmatter?.modified === "string") {
-    meta.push({ label: "modified", value: frontmatter.modified });
+    meta.push({ kind: "updated", iso: frontmatter.modified });
   }
 
   return {
@@ -369,26 +322,12 @@ export function deriveMarkdownHeaderView(
 }
 
 export interface MarkdownReaderView {
-  /** The designed reader state the app renders. */
   state: "loading" | "errored" | "degraded" | "empty" | "missing" | "ready";
-  /** Placeholder copy for non-ready states. */
-  stateMessage: string | null;
-  /** Placeholder tone for non-ready states. */
   stateTone: ViewerStateTone;
-  /** Placeholder ink class for non-ready states. */
-  stateToneClass: string;
-  /** Structured frontmatter chrome, null when the document has no visible metadata. */
   frontmatter: FrontmatterHeaderView | null;
-  /** Reader meta status from frontmatter, if present. */
-  status: string | null;
-  /** Markdown body with the leading frontmatter fence removed. */
   body: string;
-  /** Editorial header/footer projection rendered by the reader app chrome. */
   editorial: MarkdownReaderEditorialView;
-  /** Honest byte-cap marker shown only with ready content. */
   truncated: ContentTruncated | null;
-  /** Render-ready byte-cap receipt, null when the content is not truncated. */
-  truncationMessage: string | null;
 }
 
 export type FrontmatterTagCategory =
@@ -400,15 +339,13 @@ export type FrontmatterTagCategory =
   | "research";
 
 export interface FrontmatterTagView {
-  /** Display text including the leading hash. */
-  label: string;
-  /** Design-system category token when the tag names one. */
+  value: string;
   category?: FrontmatterTagCategory;
 }
 
 export interface FrontmatterDateView {
-  label: "created" | "modified";
-  value: string;
+  kind: "created" | "updated";
+  iso: string;
 }
 
 export interface FrontmatterRelatedView {
@@ -422,43 +359,18 @@ export interface FrontmatterHeaderView {
   related: FrontmatterRelatedView[];
 }
 
-export interface MarkdownReaderEyebrowView {
-  label: string;
-  category: FrontmatterTagCategory;
-}
-
 export interface MarkdownReaderEditorialView {
   title: string | null;
   dek: string | null;
   body: string;
-  eyebrow: MarkdownReaderEyebrowView | null;
-  meta: string[];
+  documentType: VaultDocumentType | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  readMinutes: number;
+  status: string | null;
   footerTags: FrontmatterTagView[];
   related: FrontmatterRelatedView[];
 }
-
-const DOCTYPE_EYEBROW: Partial<Record<FrontmatterTagCategory, string>> = {
-  adr: "Decision",
-  audit: "Audit",
-  exec: "Step",
-  plan: "Plan",
-  research: "Research",
-};
-
-const MONTHS = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-];
 
 const FRONTMATTER_TAG_CATEGORIES = new Set<FrontmatterTagCategory>([
   "adr",
@@ -470,11 +382,10 @@ const FRONTMATTER_TAG_CATEGORIES = new Set<FrontmatterTagCategory>([
 ]);
 
 function frontmatterTagView(tag: string): FrontmatterTagView {
-  const label = `#${tag}`;
   if (FRONTMATTER_TAG_CATEGORIES.has(tag as FrontmatterTagCategory)) {
-    return { label, category: tag as FrontmatterTagCategory };
+    return { value: tag, category: tag as FrontmatterTagCategory };
   }
-  return { label };
+  return { value: tag };
 }
 
 export function deriveFrontmatterHeaderView(
@@ -484,10 +395,10 @@ export function deriveFrontmatterHeaderView(
   const tags = frontmatter.tags.map(frontmatterTagView);
   const dates: FrontmatterDateView[] = [];
   if (frontmatter.date !== undefined) {
-    dates.push({ label: "created", value: frontmatter.date });
+    dates.push({ kind: "created", iso: frontmatter.date });
   }
   if (frontmatter.modified !== undefined) {
-    dates.push({ label: "modified", value: frontmatter.modified });
+    dates.push({ kind: "updated", iso: frontmatter.modified });
   }
   const related = frontmatter.related.map((stem) => ({
     stem,
@@ -499,13 +410,13 @@ export function deriveFrontmatterHeaderView(
   return { tags, dates, related };
 }
 
-function markdownReaderEyebrow(
+function markdownReaderDocumentType(
   frontmatter: FrontmatterHeaderView | null,
-): MarkdownReaderEyebrowView | null {
+): VaultDocumentType | null {
   if (!frontmatter) return null;
   for (const tag of frontmatter.tags) {
-    const label = tag.category ? DOCTYPE_EYEBROW[tag.category] : undefined;
-    if (tag.category && label) return { label, category: tag.category };
+    const presentation = docTypePresentation(tag.value);
+    if (presentation !== null) return presentation.id;
   }
   return null;
 }
@@ -513,19 +424,8 @@ function markdownReaderEyebrow(
 function markdownReaderFooterTags(
   frontmatter: FrontmatterHeaderView | null,
 ): FrontmatterTagView[] {
-  return (
-    frontmatter?.tags.filter(
-      (tag) => !(tag.category && DOCTYPE_EYEBROW[tag.category]),
-    ) ?? []
-  );
-}
-
-function formatReaderLongDate(iso: string | undefined): string | null {
-  if (!iso) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  if (!match) return iso;
-  const [, year, month, day] = match;
-  return `${Number(day)} ${MONTHS[Number(month) - 1] ?? month} ${year}`;
+  const documentType = markdownReaderDocumentType(frontmatter);
+  return frontmatter?.tags.filter((tag) => tag.value !== documentType) ?? [];
 }
 
 function markdownReaderReadingMinutes(body: string): number {
@@ -544,9 +444,6 @@ function splitMarkdownReaderEditorialBody(body: string): {
   let title: string | null = null;
   const heading = /^#\s+(.+?)\s*$/.exec(lines[index] ?? "");
   if (heading) {
-    // Reduce the H1 to a clean editorial title: markdown stripped, the
-    // `{feature} {doctype}:` template prefix and `| (status: …)` metadata removed
-    // (both surface elsewhere — the eyebrow and the meta line), capitalized.
     title = deriveEditorialTitle(heading[1]);
     index += 1;
   }
@@ -560,18 +457,9 @@ function splitMarkdownReaderEditorialBody(body: string): {
       dekLines.push(lines[index].trim());
       index += 1;
     }
-    // The dek is also rendered as a raw string (italic chrome), so strip any
-    // inline markdown from it for the same no-noise plain-text guarantee.
     dek = sanitizeHeadingText(dekLines.join(" "));
   }
   return { title, dek, rest: lines.slice(index).join("\n").replace(/^\n+/, "") };
-}
-
-function markdownReaderTruncationMessage(
-  truncated: ContentTruncated | null,
-): string | null {
-  if (truncated === null) return null;
-  return `Truncated to the first ${truncated.returned_bytes.toLocaleString("en-US")} of ${truncated.total_bytes.toLocaleString("en-US")} bytes — open the file directly for the full document.`;
 }
 
 function deriveMarkdownReaderEditorialView(
@@ -580,20 +468,17 @@ function deriveMarkdownReaderEditorialView(
   status: string | null,
 ): MarkdownReaderEditorialView {
   const split = splitMarkdownReaderEditorialBody(body);
-  const date = formatReaderLongDate(
-    frontmatter?.dates.find((entry) => entry.label === "created")?.value,
-  );
-  const meta = [
-    date,
-    `${markdownReaderReadingMinutes(split.rest)} min read`,
-    status,
-  ].filter((part): part is string => Boolean(part));
   return {
     title: split.title,
     dek: split.dek,
     body: split.rest,
-    eyebrow: markdownReaderEyebrow(frontmatter),
-    meta,
+    documentType: markdownReaderDocumentType(frontmatter),
+    createdAt:
+      frontmatter?.dates.find((entry) => entry.kind === "created")?.iso ?? null,
+    updatedAt:
+      frontmatter?.dates.find((entry) => entry.kind === "updated")?.iso ?? null,
+    readMinutes: markdownReaderReadingMinutes(split.rest),
+    status,
     footerTags: markdownReaderFooterTags(frontmatter),
     related: frontmatter?.related ?? [],
   };
@@ -607,20 +492,16 @@ function deriveMarkdownReaderEditorialView(
 export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderView {
   const base = {
     frontmatter: null,
-    status: null,
     body: "",
     editorial: deriveMarkdownReaderEditorialView("", null, null),
     truncated: null,
-    truncationMessage: null,
   };
   if (content.loading) {
     const stateTone: ViewerStateTone = "faint";
     return {
       ...base,
       state: "loading",
-      stateMessage: "Loading document…",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   // A 404 in the read scope is a distinct designed state (per-tab-scope-binding): the
@@ -631,9 +512,7 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
     return {
       ...base,
       state: "missing",
-      stateMessage: "This document isn't in this workspace.",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.errored) {
@@ -641,20 +520,15 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
     return {
       ...base,
       state: "errored",
-      stateMessage: "The document could not be loaded.",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (content.degraded) {
-    const reason = content.reasons.structural;
     const stateTone: ViewerStateTone = "muted";
     return {
       ...base,
       state: "degraded",
-      stateMessage: `Document unavailable${reason ? `: ${reason}` : ""}.`,
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   if (!content.available || content.text.length === 0) {
@@ -662,9 +536,7 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
     return {
       ...base,
       state: "empty",
-      stateMessage: "This document is empty.",
       stateTone,
-      stateToneClass: viewerStateToneClass(stateTone),
     };
   }
   const parsed = parseDocument(content.text);
@@ -676,14 +548,10 @@ export function deriveMarkdownReaderView(content: ContentView): MarkdownReaderVi
   const readerBody = sanitizeReaderBody(parsed.body);
   return {
     state: "ready",
-    stateMessage: null,
     stateTone,
-    stateToneClass: viewerStateToneClass(stateTone),
     frontmatter,
-    status,
     body: readerBody,
     editorial: deriveMarkdownReaderEditorialView(readerBody, frontmatter, status),
     truncated: content.truncated,
-    truncationMessage: markdownReaderTruncationMessage(content.truncated),
   };
 }

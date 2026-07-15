@@ -1,49 +1,46 @@
-// The framework control-panel host (activity-rail-realignment ADR D3, S08). The
-// rail is status-only; the four admin surfaces live in MODAL control panels on the
-// Settings-dialog idiom — the one `Dialog` chrome primitive over the shared
-// single-open view-store flag. Each panel mounts its body ONLY while open
-// (mount-gating law): the heavy rag aggregate and review-queue reads fire on open,
-// not while the rail merely renders.
-//
-// The Search service panel is now the WIDE rag job dashboard (rag-job-dashboard
-// ADR D1): a header/body/footer cockpit replacing the re-hosted rail console. Its
-// footer storage strip rides the Dialog's pinned footer slot. Approvals still
-// re-mounts `ReviewStationSection` unchanged (a chrome-only re-home over stores
-// hooks). The two health bodies (Backend health, Vault health) render
-// already-served but previously dark health planes.
+// Modal host for the four control panels. Closed panel bodies remain unmounted.
 
 import { Dialog } from "../chrome/Dialog";
 import { ReviewStationSection } from "../authoring/ReviewStation";
+import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 import {
   closeControlPanel,
   useOpenControlPanel,
 } from "../../stores/view/controlPanels";
+import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 import { BackendHealthPanel } from "./BackendHealthPanel";
 import { VaultHealthPanel } from "./VaultHealthPanel";
 import { RagJobDashboard } from "./RagJobDashboard";
 import { RagDashboardFooter } from "./RagDashboardFooter";
 
-/**
- * Mount the four modal control panels once in the shell. The single open-id gates
- * which Dialog is open; a closed Dialog renders null, so its body is never mounted
- * (mount-gating). The re-mounted console bodies were rail SECTION bodies (no inset
- * of their own — the SectionCard supplied it), so they carry a panel inset here;
- * the two new health bodies inset themselves.
- */
 export function ControlPanels() {
   const open = useOpenControlPanel();
+  const searchLabel = useLocalizedMessage(
+    CONTROL_PANEL_VOCABULARY["search-service"].label,
+  );
+  const approvalsLabel = useLocalizedMessage(CONTROL_PANEL_VOCABULARY.approvals.label);
+  const systemStatusLabel = useLocalizedMessage(
+    CONTROL_PANEL_VOCABULARY["backend-health"].label,
+  );
+  const projectHealthLabel = useLocalizedMessage(
+    CONTROL_PANEL_VOCABULARY["vault-health"].label,
+  );
   return (
     <>
       <Dialog
         open={open === "search-service"}
         onClose={closeControlPanel}
-        title="Search service"
+        title={searchLabel}
         size="wide"
         footer={<RagDashboardFooter />}
       >
         <RagJobDashboard />
       </Dialog>
-      <Dialog open={open === "approvals"} onClose={closeControlPanel} title="Approvals">
+      <Dialog
+        open={open === "approvals"}
+        onClose={closeControlPanel}
+        title={approvalsLabel}
+      >
         <div className="px-fg-4 py-fg-3">
           <ReviewStationSection />
         </div>
@@ -51,14 +48,14 @@ export function ControlPanels() {
       <Dialog
         open={open === "backend-health"}
         onClose={closeControlPanel}
-        title="Backend health"
+        title={systemStatusLabel}
       >
         <BackendHealthPanel />
       </Dialog>
       <Dialog
         open={open === "vault-health"}
         onClose={closeControlPanel}
-        title="Vault health"
+        title={projectHealthLabel}
       >
         <VaultHealthPanel />
       </Dialog>

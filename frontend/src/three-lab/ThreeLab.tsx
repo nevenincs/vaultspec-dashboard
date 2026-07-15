@@ -474,9 +474,7 @@ export function ThreeLab() {
                   return (
                     <div key={c.key} style={{ margin: "4px 0" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ flex: 1 }} title={c.hint}>
-                          {c.label}
-                        </span>
+                        <span style={{ flex: 1 }}>{c.controlId}</span>
                         <input
                           type="number"
                           value={v}

@@ -38,6 +38,11 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef } from "react";
+import {
+  createCountMessageDescriptor,
+  type CountMessageDescriptor,
+  type MessageDescriptor,
+} from "../../../platform/localization/message";
 import { useDashboardState } from "./dashboard";
 import {
   engineKeys,
@@ -51,9 +56,6 @@ export function useWorkspaceMap() {
   const query = useQuery({
     queryKey: engineKeys.map(),
     queryFn: () => engineClient.map(),
-    // Poll every 8 s while in error state (engine not yet running / token
-    // not yet on disk) so the WorktreePicker self-heals after startup without
-    // requiring a page reload (task-7 live-engine resilience).
     refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
   });
   return withManualRetry(query);
@@ -82,17 +84,6 @@ export function deriveActiveScope(
   return fallback;
 }
 
-/**
- * The active scope, restored on load (user-state-persistence W04.P09.S29).
- *
- * Pure READ hook — precedence, highest first:
- *  1. the user's explicit in-session pick (`viewStore.scope`);
- *  2. the persisted session `active_scope`;
- *  3. the workspace map's default corpus-bearing worktree.
- *
- * The one-shot cold-start persistence remains mounted from Stage; this hook is
- * stores-layer composition for UI consumers and has no side effects.
- */
 export function useActiveScope(): string | null {
   const picked = useViewStore((s) => s.scope);
   const map = useWorkspaceMap();
@@ -107,86 +98,134 @@ export function useActiveScope(): string | null {
   );
 }
 
-/**
- * The workspace map's degradation truth, derived inside the stores layer so the
- * worktree switcher (chrome) never reads the raw `tiers` block
- * (dashboard-layer-ownership / worktree-switcher ADR "States"). The `/map`
- * projection is resolved by the engine's structural read of the
- * repository→branch→worktree tree, so the `structural` tier is what gates the
- * map's availability. Contract §2: a tier marked `available:false` OR absent
- * from the served block is a designed degraded state — absence is degradation,
- * not availability. The reason travels through both the success envelope
- * (`data.tiers`) and the error envelope (`EngineError.tiers`, transport-
- * preserved). Returns `degraded` plus the per-tier reasons for copy-tone
- * rendering; the switcher consumes this, never `map.data.tiers`.
- */
 export type WorkspaceMapAvailability = TierAvailability;
 
 const WORKSPACE_MAP_TIERS = ["structural"] as const;
 export type WorkspaceMapSurfaceState = "loading" | "error" | "ready";
 
+export type WorkspaceIdentityText = string | MessageDescriptor;
+
+export const WORKSPACE_IDENTITY_MESSAGES = {
+  addProject: { key: "projects:workspaceIdentity.actions.addProject" },
+  choose: { key: "projects:workspaceIdentity.accessibility.choose" },
+  clearHistory: { key: "projects:workspaceIdentity.actions.clearHistory" },
+  collapseNavigation: {
+    key: "projects:workspaceIdentity.actions.collapseNavigation",
+  },
+  degraded: { key: "projects:workspaceIdentity.states.degraded" },
+  default: { key: "projects:workspaceIdentity.labels.default" },
+  list: { key: "projects:workspaceIdentity.accessibility.worktreeList" },
+  loading: { key: "projects:workspaceIdentity.states.loading" },
+  noProjectFiles: { key: "projects:workspaceIdentity.labels.noProjectFiles" },
+  noProjectName: { key: "projects:workspaceIdentity.labels.noProjectName" },
+  noRecent: { key: "projects:workspaceIdentity.states.noRecent" },
+  noWorktreeName: { key: "projects:workspaceIdentity.labels.noWorktreeName" },
+  noWorktrees: { key: "projects:workspaceIdentity.states.noWorktrees" },
+  noWorktreesWithProjectFiles: {
+    key: "projects:workspaceIdentity.states.noWorktreesWithProjectFiles",
+  },
+  onlyWorktree: { key: "projects:workspaceIdentity.states.onlyWorktree" },
+  openProject: { key: "projects:workspaceIdentity.actions.openProject" },
+  projects: { key: "projects:workspaceIdentity.sections.projects" },
+  recent: { key: "projects:workspaceIdentity.sections.recent" },
+  recentProjects: { key: "projects:workspaceIdentity.accessibility.recentProjects" },
+  removeFromHistory: {
+    key: "projects:workspaceIdentity.actions.removeFromHistory",
+  },
+  retry: { key: "projects:workspaceIdentity.actions.retry" },
+  switchFailed: { key: "projects:workspaceIdentity.states.switchFailed" },
+  switching: { key: "projects:workspaceIdentity.labels.switching" },
+  uncommittedChanges: {
+    key: "projects:workspaceIdentity.labels.uncommittedChanges",
+  },
+  switchProjectDescription: {
+    key: "projects:workspaceIdentity.descriptions.switchProject",
+  },
+  switchProjectTitle: { key: "projects:workspaceIdentity.titles.switchProject" },
+  switchWorkspaceTitle: {
+    key: "projects:workspaceIdentity.titles.switchWorkspace",
+  },
+  thisProjectWorktrees: {
+    key: "projects:workspaceIdentity.labels.thisProjectWorktrees",
+  },
+  worktrees: { key: "projects:workspaceIdentity.sections.worktrees" },
+  worktreesFailed: { key: "projects:workspaceIdentity.states.worktreesFailed" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function workspaceAheadMessage(count: number): CountMessageDescriptor | null {
+  return createCountMessageDescriptor("projects:workspaceIdentity.counts.ahead", count);
+}
+
+export function workspaceBehindMessage(count: number): CountMessageDescriptor | null {
+  return createCountMessageDescriptor(
+    "projects:workspaceIdentity.counts.behind",
+    count,
+  );
+}
+
 export interface WorkspaceMapPickerRowView {
-  worktree: MapWorktree;
+  worktreeId: string;
+  branch: string;
+  hasVault: boolean;
   selectable: boolean;
   isActive: boolean;
   isPending: boolean;
   isDegraded: boolean;
   rowClassName: string;
   activeCueClassName: string;
-  /** The worktree's display NAME (path basename) — the row's primary ink. */
-  nameLabel: string;
-  /** The checked-out branch when it adds identity beyond the name (null when it
-   *  matches the folder name — "main main" says nothing twice). */
+  nameLabel: WorkspaceIdentityText;
   branchLabel: string | null;
   branchClassName: string;
   badgeClassName: string;
   degradedIconClassName: string;
   pendingLabelClassName: string;
-  title: string;
-  ariaLabel: string;
-  defaultLabel: string | null;
-  /** Quiet marker for a worktree with no vault to open (context-only row). */
-  noVaultLabel: string | null;
-  degradedTitle: string;
-  pendingLabel: string | null;
+  title: MessageDescriptor;
+  ariaLabel: MessageDescriptor;
+  defaultLabel: MessageDescriptor | null;
+  noVaultLabel: MessageDescriptor | null;
+  degradedTitle: MessageDescriptor;
+  pendingLabel: MessageDescriptor | null;
+}
+
+export interface WorkspaceMapPickerHeadlineView {
+  branch: string;
+  dirty: boolean;
+  ahead: number;
+  behind: number;
 }
 
 export interface WorkspaceMapPickerPresentationView {
-  worktrees: MapWorktree[];
   /** The FULL ordered worktree set of the ACTIVE project (the worktree
    *  disclosure). The cross-project "Recent" section is derived separately from
    *  the session recents, not from this `/map` projection. */
   rows: WorkspaceMapPickerRowView[];
-  /** Label for the active project's worktree disclosure — names the project so
+  /** Label for the active project's worktree disclosure, naming the project so
    *  the count is never read machine-wide. */
-  allLabel: string;
+  allLabel: MessageDescriptor;
   /** The active PROJECT's display name (threaded from the registry), or null
-   *  before the registry resolves — the trigger's identity line. */
+   *  before the registry resolves. */
   projectLabel: string | null;
-  /** The pending-aware headline worktree (the switch target while switching,
-   *  else the active worktree) — drives the trigger's git line and path line so
-   *  the header never mixes target and outgoing state. */
-  headline: MapWorktree | null;
+  headline: WorkspaceMapPickerHeadlineView | null;
   pending: boolean;
-  triggerLabel: string;
-  triggerAriaLabel: string;
+  triggerLabel: WorkspaceIdentityText;
+  triggerAriaLabel: MessageDescriptor;
   triggerClassName: string;
   triggerLabelClassName: string;
   triggerIconClassName: string;
-  loadingLabel: string;
+  loadingLabel: MessageDescriptor;
   loadingClassName: string;
-  errorLabel: string;
+  errorLabel: MessageDescriptor;
   errorRootClassName: string;
   errorLabelClassName: string;
-  retryLabel: string;
-  retryAriaLabel: string;
+  retryLabel: MessageDescriptor;
+  retryAriaLabel: MessageDescriptor;
   retryButtonClassName: string;
-  degradedLabel: string | null;
+  degradedLabel: MessageDescriptor | null;
   degradedClassName: string;
-  listAriaLabel: string;
-  emptyLabel: string | null;
+  listAriaLabel: MessageDescriptor;
+  emptyLabel: MessageDescriptor | null;
   emptyClassName: string;
-  singleScopeLabel: string | null;
+  singleScopeLabel: MessageDescriptor | null;
   singleScopeClassName: string;
 }
 
@@ -223,16 +262,6 @@ export function deriveWorkspaceMapAvailability(
   return readTierAvailability(tiers, WORKSPACE_MAP_TIERS);
 }
 
-export function tierAvailabilityReason(
-  availability: Pick<TierAvailability, "degradedTiers" | "reasons">,
-): string {
-  return (
-    availability.degradedTiers
-      .map((tier) => availability.reasons[tier])
-      .find(Boolean) ?? ""
-  );
-}
-
 export function deriveWorkspaceMapSurfaceState(
   query: Pick<UseQueryResult<MapResponse>, "isPending" | "isError">,
   availability: WorkspaceMapAvailability,
@@ -240,14 +269,6 @@ export function deriveWorkspaceMapSurfaceState(
   if (query.isPending) return "loading";
   if (query.isError && !availability.degraded) return "error";
   return "ready";
-}
-
-/** The worktree's display NAME — the basename of its path (the default worktree
- *  of `…/main` reads "main"). The left rail's single clickable title shows this,
- *  not the branch, so the worktree identity is stated once per rail. */
-export function worktreeName(path: string): string {
-  const segments = path.split(/[\\/]+/).filter(Boolean);
-  return segments[segments.length - 1] ?? path;
 }
 
 /** Sort corpus-bearing worktrees first, defaults leading, bare refs last. */
@@ -258,7 +279,7 @@ export function orderWorkspaceMapWorktrees(
     (a, b) =>
       Number(b.has_vault) - Number(a.has_vault) ||
       Number(b.is_default ?? false) - Number(a.is_default ?? false) ||
-      a.branch.localeCompare(b.branch),
+      (a.branch < b.branch ? -1 : a.branch > b.branch ? 1 : 0),
   );
 }
 
@@ -310,18 +331,37 @@ export function deriveWorkspaceMapPickerPresentationView({
     ? worktrees.find((worktree) => worktree.id === pendingId)
     : undefined;
   const headlineWorktree = pendingWorktree ?? current;
-  const headlineName = headlineWorktree ? worktreeName(headlineWorktree.path) : null;
-  const availabilityReason = tierAvailabilityReason(availability);
+  const headlineName =
+    headlineWorktree && headlineWorktree.branch.trim().length > 0
+      ? headlineWorktree.branch
+      : null;
 
   const rows = worktrees.map((worktree) => {
     const selectable = worktree.has_vault;
     const isActive = worktree.id === activeScope;
     const isPending = pending && worktree.id === pendingId;
     const isDegraded = (worktree.degraded?.length ?? 0) > 0;
-    const name = worktreeName(worktree.path);
-    const branch = worktree.branch.trim();
+    const branch = worktree.branch;
+    const hasBranch = branch.trim().length > 0;
+    const name: WorkspaceIdentityText = hasBranch
+      ? branch
+      : WORKSPACE_IDENTITY_MESSAGES.noWorktreeName;
+    const switchLabel: MessageDescriptor = hasBranch
+      ? {
+          key: "projects:workspaceIdentity.accessibility.switchWorktree",
+          values: { worktree: branch },
+        }
+      : WORKSPACE_IDENTITY_MESSAGES.choose;
+    const unavailableLabel: MessageDescriptor = hasBranch
+      ? {
+          key: "projects:workspaceIdentity.accessibility.unavailableWorktree",
+          values: { worktree: branch },
+        }
+      : WORKSPACE_IDENTITY_MESSAGES.noProjectFiles;
     return {
-      worktree,
+      worktreeId: worktree.id,
+      branch,
+      hasVault: worktree.has_vault,
       selectable,
       isActive,
       isPending,
@@ -329,69 +369,80 @@ export function deriveWorkspaceMapPickerPresentationView({
       rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
       activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
       nameLabel: name,
-      branchLabel: branch.length > 0 && branch !== name ? branch : null,
+      branchLabel: null,
       branchClassName: WORKSPACE_MAP_PICKER_BRANCH_CLASS,
       badgeClassName: WORKSPACE_MAP_PICKER_BADGE_CLASS,
       degradedIconClassName: WORKSPACE_MAP_PICKER_DEGRADED_ICON_CLASS,
       pendingLabelClassName: WORKSPACE_MAP_PICKER_PENDING_LABEL_CLASS,
-      title: worktree.has_vault
-        ? worktree.path
-        : `${worktree.path} — no vault here; shown for context`,
-      ariaLabel: worktree.has_vault
-        ? `switch to ${name}${branch.length > 0 && branch !== name ? ` on branch ${branch}` : ""}${
-            worktree.is_default ? ", the default worktree" : ""
-          }${isActive ? ", the current worktree" : ""}`
-        : `${name} — no vault here, shown for context only`,
-      defaultLabel: worktree.is_default ? "·default" : null,
-      noVaultLabel: worktree.has_vault ? null : "·no vault",
-      degradedTitle: worktree.degraded?.join(", ") ?? "",
-      pendingLabel: isPending ? "switching…" : null,
+      title: worktree.has_vault ? switchLabel : unavailableLabel,
+      ariaLabel: worktree.has_vault ? switchLabel : unavailableLabel,
+      defaultLabel: worktree.is_default ? WORKSPACE_IDENTITY_MESSAGES.default : null,
+      noVaultLabel: worktree.has_vault
+        ? null
+        : WORKSPACE_IDENTITY_MESSAGES.noProjectFiles,
+      degradedTitle: unavailableLabel,
+      pendingLabel: isPending ? WORKSPACE_IDENTITY_MESSAGES.switching : null,
     };
   });
 
   return {
-    worktrees,
     rows,
     allLabel: projectLabel
-      ? `Worktrees in ${projectLabel}`
-      : "This project's worktrees",
+      ? {
+          key: "projects:workspaceIdentity.labels.worktreesInProject",
+          values: { project: projectLabel },
+        }
+      : WORKSPACE_IDENTITY_MESSAGES.thisProjectWorktrees,
     projectLabel,
-    headline: headlineWorktree ?? null,
+    headline: headlineWorktree
+      ? {
+          branch: headlineWorktree.branch,
+          dirty: headlineWorktree.dirty === true,
+          ahead: headlineWorktree.ahead ?? 0,
+          behind: headlineWorktree.behind ?? 0,
+        }
+      : null,
     pending,
-    triggerLabel: headlineName ?? "Pick a worktree…",
+    triggerLabel: headlineName ?? WORKSPACE_IDENTITY_MESSAGES.noWorktreeName,
     triggerAriaLabel: headlineName
-      ? `current location: ${projectLabel ? `${projectLabel} / ` : ""}${headlineName}${
-          pending ? ", switching" : ""
-        }`
-      : "choose a project or worktree",
+      ? projectLabel
+        ? {
+            key: pending
+              ? "projects:workspaceIdentity.accessibility.currentLocationSwitchingInProject"
+              : "projects:workspaceIdentity.accessibility.currentLocationInProject",
+            values: { project: projectLabel, worktree: headlineName },
+          }
+        : {
+            key: pending
+              ? "projects:workspaceIdentity.accessibility.currentLocationSwitching"
+              : "projects:workspaceIdentity.accessibility.currentLocation",
+            values: { worktree: headlineName },
+          }
+      : WORKSPACE_IDENTITY_MESSAGES.choose,
     triggerClassName: WORKSPACE_MAP_PICKER_TRIGGER_CLASS,
     triggerLabelClassName: workspaceMapPickerTriggerLabelClassName(pending),
     triggerIconClassName: WORKSPACE_MAP_PICKER_TRIGGER_ICON_CLASS,
-    loadingLabel: "Loading worktrees…",
+    loadingLabel: WORKSPACE_IDENTITY_MESSAGES.loading,
     loadingClassName: WORKSPACE_MAP_PICKER_LOADING_CLASS,
-    errorLabel: "The worktree list couldn't be loaded",
+    errorLabel: WORKSPACE_IDENTITY_MESSAGES.worktreesFailed,
     errorRootClassName: WORKSPACE_MAP_PICKER_ERROR_ROOT_CLASS,
     errorLabelClassName: WORKSPACE_MAP_PICKER_ERROR_LABEL_CLASS,
-    retryLabel: "Retry",
-    retryAriaLabel: "retry loading the worktree list",
+    retryLabel: WORKSPACE_IDENTITY_MESSAGES.retry,
+    retryAriaLabel: WORKSPACE_IDENTITY_MESSAGES.retry,
     retryButtonClassName: WORKSPACE_MAP_PICKER_RETRY_BUTTON_CLASS,
-    degradedLabel: availability.degraded
-      ? `The worktree list is partly unavailable right now${
-          availabilityReason ? ` — ${availabilityReason}` : ""
-        }. Showing what loaded.`
-      : null,
+    degradedLabel: availability.degraded ? WORKSPACE_IDENTITY_MESSAGES.degraded : null,
     degradedClassName: WORKSPACE_MAP_PICKER_DEGRADED_CLASS,
-    listAriaLabel: "projects and worktrees",
+    listAriaLabel: WORKSPACE_IDENTITY_MESSAGES.list,
     emptyLabel:
       worktrees.length === 0
-        ? "No worktrees here yet — point the engine at a repository to begin."
+        ? WORKSPACE_IDENTITY_MESSAGES.noWorktrees
         : selectableCount === 0
-          ? "None of these worktrees has a vault to open — they're shown for context."
+          ? WORKSPACE_IDENTITY_MESSAGES.noWorktreesWithProjectFiles
           : null,
     emptyClassName: WORKSPACE_MAP_PICKER_EMPTY_CLASS,
     singleScopeLabel:
       selectableCount === 1 && worktrees.length === 1
-        ? "This is the only worktree with a vault."
+        ? WORKSPACE_IDENTITY_MESSAGES.onlyWorktree
         : null,
     singleScopeClassName: WORKSPACE_MAP_PICKER_SINGLE_SCOPE_CLASS,
   };
@@ -426,16 +477,7 @@ export function useWorkspaceMapSurface(): WorkspaceMapSurfaceView {
   };
 }
 
-// --- workspace registry (dashboard-workspace-registry ADR) -----------------------
-//
-// The multi-workspace project-root registry, consumed through stores hooks so the
-// WorkspacePicker (chrome) never fetches the engine or reads the raw `tiers`
-// block (dashboard-layer-ownership). `useWorkspaces` is the single wire seam for
-// `GET /workspaces`; registry mutation (select/add/forget) rides the existing
-// `usePutSession` mutation (the config surface), which invalidates BOTH the
-// session and the workspaces keys so the picker re-reads the authoritative shape.
-
-/** Read the workspace registry — the registered roots + the active-workspace id.
+/** Read the workspace registry and active-workspace id.
  *  Polls every 8 s while in error state so the picker self-heals after engine
  *  startup without a page reload (mirrors `useWorkspaceMap`). */
 export function useWorkspaces() {
@@ -452,9 +494,7 @@ export function useWorkspaces() {
  * ownership). The `/workspaces` enumeration is resolved by the engine's
  * structural read of each registered repository, so the `structural` tier gates
  * the registry's availability. Contract §2: a tier marked `available:false` OR
- * absent from the served block is a designed degraded state. The reason travels
- * through both the success envelope (`data.tiers`) and the error envelope
- * (`EngineError.tiers`). Mirrors `useWorkspaceMapAvailability`.
+ * absent from the served block is a designed degraded state.
  */
 export type WorkspacesAvailability = TierAvailability;
 
@@ -473,37 +513,17 @@ export function deriveWorkspacesAvailability(
  *  read identically (design-system-is-centralized). */
 export interface WorktreePickerProjectRowView {
   id: string;
-  label: string;
-  path: string;
+  label: WorkspaceIdentityText;
   isActive: boolean;
   selectable: boolean;
-  title: string;
-  ariaLabel: string;
+  title: MessageDescriptor;
+  ariaLabel: MessageDescriptor;
   rowClassName: string;
   activeCueClassName: string;
 }
 
-/** A distinguishing, human project name. The engine auto-labels a root with its
- *  path basename, so a machine full of `…/<repo>-worktrees/main` worktrees would
- *  ALL read "main" — useless. So we derive the REPO identity from the path: the
- *  parent dir minus a `-worktrees` suffix is the unique, meaningful name
- *  (`vaultspec-core-worktrees/main` → "vaultspec-core"). A genuinely custom label
- *  (one the operator set, differing from the basename) still wins. */
 export function workspaceRootName(root: Pick<WorkspaceRoot, "label" | "path">): string {
-  const segments = root.path.split(/[\\/]+/).filter(Boolean);
-  const base = segments[segments.length - 1] ?? "";
-  const parent = segments[segments.length - 2] ?? "";
-  const label = root.label.trim();
-  // A custom label (not just the auto basename) is authoritative.
-  if (label.length > 0 && label.toLowerCase() !== base.toLowerCase()) return label;
-  // The dominant `<repo>-worktrees/<branch>` layout: identity is the repo name.
-  if (/-worktrees$/i.test(parent)) {
-    const repo = parent.replace(/-worktrees$/i, "");
-    return /^(main|master)$/i.test(base) ? repo : `${repo} · ${base}`;
-  }
-  // A generic branch-y basename with a meaningful parent: qualify with the parent.
-  if (/^(main|master)$/i.test(base) && parent) return `${parent} · ${base}`;
-  return base || label || root.path;
+  return root.label.trim().length > 0 ? root.label : "";
 }
 
 export function deriveWorktreePickerProjectRows(
@@ -512,19 +532,29 @@ export function deriveWorktreePickerProjectRows(
 ): WorktreePickerProjectRowView[] {
   return roots.map((root) => {
     const isActive = root.id === activeWorkspace;
-    const name = workspaceRootName(root);
+    const authoredName = workspaceRootName(root);
+    const name: WorkspaceIdentityText =
+      authoredName.length > 0
+        ? authoredName
+        : WORKSPACE_IDENTITY_MESSAGES.noProjectName;
+    const accessibleName: MessageDescriptor =
+      authoredName.length > 0
+        ? {
+            key: "projects:workspaceIdentity.accessibility.switchProject",
+            values: { project: authoredName },
+          }
+        : WORKSPACE_IDENTITY_MESSAGES.choose;
     return {
       id: root.id,
       label: name,
-      path: root.path,
       isActive,
       selectable: root.reachable,
       title: root.reachable
-        ? root.path
-        : `${root.path} — ${root.unreachable_reason ?? "unreachable"}`,
+        ? accessibleName
+        : WORKSPACE_IDENTITY_MESSAGES.noProjectFiles,
       ariaLabel: root.reachable
-        ? `switch to project ${name}${isActive ? ", current project" : ""}`
-        : `${name} — unreachable: ${root.unreachable_reason ?? "path not reachable"}`,
+        ? accessibleName
+        : WORKSPACE_IDENTITY_MESSAGES.noProjectFiles,
       rowClassName: workspaceMapPickerRowClassName({
         isActive,
         selectable: root.reachable,
@@ -544,22 +574,17 @@ export interface WorktreePickerRecentRowView {
   key: string;
   workspace: string;
   scope: string;
-  /** The worktree display name (basename of the scope path). */
-  worktreeName: string;
-  /** The owning project's name (registry label, falling back to basename). */
-  projectLabel: string;
-  /** The row's primary ink: a same-project entry is just the worktree name; a
-   *  cross-project entry LEADS with the project ("project / worktree") so the
-   *  distinguishing token carries the emphasis when basenames collide. */
-  label: string;
+  worktreeName: WorkspaceIdentityText;
+  projectLabel: WorkspaceIdentityText;
+  label: WorkspaceIdentityText;
   /** This entry is the current active (workspace, scope). */
   isActive: boolean;
   /** This entry belongs to the currently-active project. */
   sameProject: boolean;
   /** Reachable + switchable (its project root is reachable). */
   selectable: boolean;
-  title: string;
-  ariaLabel: string;
+  title: MessageDescriptor;
+  ariaLabel: MessageDescriptor;
   rowClassName: string;
   activeCueClassName: string;
 }
@@ -606,8 +631,12 @@ export function deriveWorktreePickerRecentRows({
 
   return ordered.slice(0, Math.max(0, limit)).map(({ workspace, scope }) => {
     const root = rootById.get(workspace);
-    const projectLabel = root ? workspaceRootName(root) : worktreeName(workspace);
-    const name = worktreeName(scope);
+    const authoredProject = root ? workspaceRootName(root) : "";
+    const projectLabel: WorkspaceIdentityText =
+      authoredProject.length > 0
+        ? authoredProject
+        : WORKSPACE_IDENTITY_MESSAGES.noProjectName;
+    const name: WorkspaceIdentityText = WORKSPACE_IDENTITY_MESSAGES.noWorktreeName;
     const isActive = workspace === activeWorkspace && scope === activeScope;
     const sameProject = workspace === activeWorkspace;
     const selectable = root?.reachable ?? true;
@@ -617,14 +646,31 @@ export function deriveWorktreePickerRecentRows({
       scope,
       worktreeName: name,
       projectLabel,
-      label: sameProject ? name : `${projectLabel} / ${name}`,
+      label: sameProject
+        ? name
+        : authoredProject.length > 0
+          ? {
+              key: "projects:workspaceIdentity.labels.unnamedWorktreeInProject",
+              values: { project: authoredProject },
+            }
+          : WORKSPACE_IDENTITY_MESSAGES.noWorktreeName,
       isActive,
       sameProject,
       selectable,
-      title: sameProject ? scope : `${projectLabel} / ${name}\n${scope}`,
-      ariaLabel: sameProject
-        ? `switch to ${name}${isActive ? ", current" : ""}`
-        : `switch to ${name} in project ${projectLabel}`,
+      title:
+        !sameProject && authoredProject.length > 0
+          ? {
+              key: "projects:workspaceIdentity.accessibility.switchUnnamedWorktreeInProject",
+              values: { project: authoredProject },
+            }
+          : WORKSPACE_IDENTITY_MESSAGES.choose,
+      ariaLabel:
+        !sameProject && authoredProject.length > 0
+          ? {
+              key: "projects:workspaceIdentity.accessibility.switchUnnamedWorktreeInProject",
+              values: { project: authoredProject },
+            }
+          : WORKSPACE_IDENTITY_MESSAGES.choose,
       rowClassName: workspaceMapPickerRowClassName({ isActive, selectable }),
       activeCueClassName: workspaceMapPickerActiveCueClassName(isActive),
     };
@@ -640,7 +686,7 @@ export function useWorkspacesAvailability(): WorkspacesAvailability {
 
 /** Stores selector: the active workspace's id (from the registry's
  *  `active_workspace`), or null when none is selected yet. The picker reads this
- *  to mark the current root — it never reads the raw response. */
+ *  to mark the current root. */
 export function useActiveWorkspace(): string | null {
   return useWorkspaces().data?.active_workspace ?? null;
 }
@@ -651,25 +697,6 @@ export function useWorkspaceRoots(): WorkspaceRoot[] {
   return useWorkspaces().data?.workspaces ?? [];
 }
 
-/**
- * The workspace-level wholesale-swap action (dashboard-workspace-registry ADR):
- * the stores-layer orchestration the WorkspacePicker invokes, exactly as the
- * worktree switcher invokes `setScope`. The control owns NO reset logic; this
- * hook owns the whole transition:
- *
- * 1. The active-workspace selection is durably persisted via `usePutSession`
- *    (the config surface). A rejected switch (unknown workspace → tiered 400)
- *    rejects the mutation before local workspace state or query caches move.
- * 2. `swapWorkspace` (the view store) runs from the accepted session response:
- *    the full 022 cross-store reset WIDENED to re-key the pin/lens stores to the
- *    accepted workspace and scope.
- * 3. The cached worktree SET plus every scoped read subtree are cleared/refetched:
- *    no prior project's node, graph, timeline, pipeline, browser, or git read
- *    survives the accepted project-level reset.
- *
- * Returns a `swap(workspace, scope)` callback plus the mutation handle so the
- * control can render pending / error honestly.
- */
 export function useSwapWorkspace() {
   const queryClient = useQueryClient();
   const putSession = usePutSession();
@@ -714,20 +741,6 @@ export function useSwapWorkspace() {
   return { swap, mutation: putSession };
 }
 
-/**
- * Register a NEW project root from an operator-supplied absolute path
- * (dashboard-workspace-registry ADR): the stores-layer orchestration the
- * AddProjectDialog invokes. The engine `add_workspace` registers the path
- * read-only (it discovers a git workspace and records ONE config row — never
- * clones, inits, or mutates the repository); an invalid path is a tiered 400 the
- * caller surfaces honestly. The engine does NOT echo the new root's id on the PUT,
- * so the id is recovered by DIFFING the registry before/after the registration —
- * a genuinely new root (re-adding an existing path is a no-op that adds none) is
- * then SELECTED through the same wholesale `swap` the project switcher uses, so
- * "add a project" opens it, matching the VS Code / Zed open-folder norm.
- * A typed outcome keeps transport and registry diagnostics out of app chrome.
- * Success carries the added root, or null for an idempotent re-registration.
- */
 export type AddWorkspaceOutcome =
   | { ok: true; workspace: WorkspaceRoot | null }
   | { ok: false; issue: AddProjectIssue };
@@ -1070,7 +1083,7 @@ export function deriveTimelineBootHealIntent({
 /**
  * Force the dashboard playhead to LIVE once per scope on load (TTR-005). Mounted
  * once by the Stage: after time-travel entry was retired every scope must boot
- * live, so a persisted time-travel mode is healed to live exactly once — idempotent
+ * live, so a persisted time-travel mode is healed to live exactly once. It is idempotent
  * with `activateWorktreeScope` (which also lands live: whichever fires first wins,
  * the other observes `live` and no-ops). One-shot per scope via a healed-set ref so
  * the heal cannot race the session seed or re-fire when its own write settles.
@@ -1096,22 +1109,6 @@ export function useHealTimelineModeToLiveOnBoot(): void {
   }, [scope, stateLoaded, isLive]);
 }
 
-/**
- * Stale-SESSION-INTENT boot heal (dashboard-state field lifetimes ADR,
- * global-state-review 2026-07-03). Dashboard-state fields classify into durable
- * preferences (filters, date range, granularity, corpus, panels — persist forever)
- * and SESSION INTENT: the canonical selection, whose resumption value is real inside
- * a working session and gone after a genuine absence — a days-old persisted
- * selection otherwise silently re-drives the rail reveal, the cluster spotlight, and
- * the camera on a fresh load (GSR-002). Once per scope per app lifetime: when the
- * dashboard state has loaded and the scope's view-local activity stamp is stale
- * (8h) or absent, clear the selection through the ONE canonical selection seam —
- * every surface follows via the existing projection. The scope is then stamped, and
- * re-stamped whenever the canonical selection changes while mounted, so an actively
- * used tab keeps its scope fresh and a mid-session reload resumes. Mirrors the
- * TTR-005 timeline heal's one-shot discipline (its stricter unconditional clear
- * stays — a modal mode with no exit has no resumption value).
- */
 export function useHealStaleSessionIntentOnBoot(): void {
   const scope = useActiveScope();
   const dashboardState = useDashboardState(scope);

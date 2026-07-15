@@ -16,8 +16,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
 import { appConfirmGuard } from "../../platform/dispatch/middleware";
 import { resetKeybindings } from "../../platform/keymap/registry";
+import { parseChord } from "../../platform/keymap/chord";
 import {
   createActionConfirmationDescriptor,
   type MessageDescriptor,
@@ -33,6 +35,7 @@ import { engineKeys } from "../../stores/server/queries";
 import { queryClient } from "../../stores/server/queryClient";
 import {
   commandPaletteOpsFeedback,
+  DOCUMENT_SEARCH_KEYBINDING,
   useCommandPaletteStore,
 } from "../../stores/view/commandPalette";
 import {
@@ -546,18 +549,32 @@ describe("CommandPalette three planes", () => {
     ).toBeTruthy();
 
     act(() => useCommandPaletteStore.getState().openDocument());
-    expect(screen.getByRole("dialog", { name: "Go to document by name" })).toBeTruthy();
-    expect(screen.getByPlaceholderText("Go to document by name…")).toBeTruthy();
+    expect(
+      screen.getByRole("dialog", {
+        name: en.documents.documentSearch.accessibility.dialog,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText(en.documents.documentSearch.placeholders.query),
+    ).toBeTruthy();
   });
 
   it("opens the document plane from its global shortcut and toggles closed", () => {
     renderPalette();
+    const shortcut = parseChord(DOCUMENT_SEARCH_KEYBINDING.defaultChord);
+    expect(shortcut).not.toBeNull();
+    const event = {
+      key: shortcut!.key,
+      ctrlKey: shortcut!.mod,
+      altKey: shortcut!.alt,
+      shiftKey: shortcut!.shift,
+    };
 
-    fireEvent.keyDown(window, { key: "O", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, event);
     expect(useCommandPaletteStore.getState().mode).toBe("document");
     expect(useCommandPaletteStore.getState().open).toBe(true);
 
-    fireEvent.keyDown(window, { key: "O", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, event);
     expect(useCommandPaletteStore.getState().open).toBe(false);
   });
 });

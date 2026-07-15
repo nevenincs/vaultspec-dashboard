@@ -7,12 +7,14 @@ import {
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import {
+  createCountMessageDescriptor,
   normalizeMessageDescriptor,
+  type AnyMessageDescriptor,
   type MessageDescriptor,
   type OrdinaryMessageKey,
 } from "../../platform/localization/message";
 import type { OperationConcept } from "../server/opsActions";
-import { SEARCH_QUERY_MAX_CHARS, normalizeSearchQuery } from "../searchQuery";
+import { SEARCH_QUERY_MAX_CHARS } from "../searchQuery";
 import { registerKeyAction } from "./keymapDispatcher";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
 
@@ -33,28 +35,13 @@ export const COMMAND_PALETTE_KEYBINDING: KeybindingDef = {
   context: "global",
 };
 
-// The Cmd-K palette has THREE planes (command-palette-planes / search-providers
-// ADRs), all modes of the one overlay so "Command-K controls searching" holds:
-//   `command`  — the verb/navigation plane fed by the command-provider registry.
-//   `search`   — the one Search plane composing three providers (meaning + files by
-//                name, vault + code) into one ranked interleaved list, with the
-//                on-demand expanded reader split (figma SearchPalette 651:1771 / 652:1804).
-//   `document` — the LITERAL document finder, a thin consumer of the files(vault)
-//                provider over the structural-tier vault tree, for "where is the
-//                thing named X". Stays available when the meaning source is offline.
+// The palette provides command, general search, and document-name search modes.
 export type CommandPaletteMode = "command" | "search" | "document";
 
 export const SEARCH_PALETTE_ACTION_ID = "app:search";
 export const SEARCH_PALETTE_SHORTCUT_LABEL = {
   key: "common:actions.searchDocumentsAndCode",
 } as const;
-// Search binds Mod+Alt+S, landing in the codified structural Mod+Alt+* family (beside the
-// left-rail, doc-tab, editor, and right-rail chords) — a letter key, so no AltGr hazard
-// (keyboard-shortcut-conflict-review ADR D5). It was chosen only after two P-mnemonic chords
-// were disqualified: Mod+P is the browser print dialog (inconsistent preventability across
-// Firefox/Safari) and Mod+Shift+P is Firefox's hard-reserved New Private Window (dead on
-// arrival there, review-caught); Mod+Alt+P was already the project:browse default. Both Mod+P
-// and Mod+Shift+P are on the reserved-chord denylist so neither can return as a default.
 export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
   id: SEARCH_PALETTE_ACTION_ID,
   defaultChord: "Mod+Alt+S",
@@ -67,11 +54,6 @@ export const DOCUMENT_SEARCH_ACTION_ID = "app:document-search";
 export const DOCUMENT_SEARCH_SHORTCUT_LABEL = {
   key: "documents:actions.findByName",
 } as const;
-// Document-find binds Mod+Alt+F ("find in documents"), NOT Mod+Shift+O: Ctrl/Cmd+Shift+O is
-// Chrome's Bookmark Manager and Firefox's Library — chrome-level, page-uninterceptable, so a
-// Mod+Shift+O default is dead on arrival there (keyboard-shortcut-conflict-review ADR D5,
-// review-round). Mod+Alt+F is a free letter chord in the codified structural Mod+Alt+* family
-// (no AltGr hazard); Mod+Shift+O joins the reserved-chord denylist so it cannot return.
 export const DOCUMENT_SEARCH_KEYBINDING: KeybindingDef = {
   id: DOCUMENT_SEARCH_ACTION_ID,
   defaultChord: "Mod+Alt+F",
@@ -96,36 +78,53 @@ export function normalizeSearchPaletteExpanded(expanded: unknown): boolean {
   return expanded === true;
 }
 
-/** The non-typical render mode when there are no result pills (state-mode-uniformity
- *  ADR): `loading` → a UI-only Skeleton (the message is the screen-reader label only),
- *  `degraded`/`empty` → a StateBlock (shared glyph + one sentence). `null` means there
- *  is no empty state to render (results are present). */
-export type SearchPaletteStateMode = "loading" | "degraded" | "empty" | null;
+/** The presentation mode used when there are no result pills. */
+export type SearchPaletteStateMode = "loading" | "degraded" | "error" | "empty" | null;
 
 export interface SearchPalettePresentationView {
   safeCursor: number;
   selectedNodeId: string | null;
   showExpandedPanel: boolean;
-  dialogLabel: string;
-  inputPlaceholder: string;
+  dialogLabel: MessageDescriptor;
+  inputPlaceholder: MessageDescriptor;
   inputAriaExpanded: boolean;
-  resultCountLabel: string;
-  listboxLabel: string;
+  resultCountLabel: AnyMessageDescriptor | null;
+  listboxLabel: MessageDescriptor;
   panelClassName: string;
   /** The non-typical state mode to render when there are no pills (see above). */
   stateMode: SearchPaletteStateMode;
-  emptyMessage: string | null;
-  liveMessage: string;
-  /** A one-line footer note when a provider's listing was walk-capped, so name
-   *  matches may be missing files (search-providers ADR D1 / D8); null otherwise.
-   *  Rendered visibly AND in the live region (twin parity). */
-  incompleteNote: string | null;
+  emptyMessage: MessageDescriptor | null;
+  liveMessage: AnyMessageDescriptor | null;
+  /** A visible note when available results may be incomplete. */
+  incompleteNote: MessageDescriptor | null;
   footerHints: {
-    move: string;
-    previousNext: string;
-    open: string;
-    close: string;
+    move: MessageDescriptor;
+    previousNext: MessageDescriptor;
+    open: MessageDescriptor;
+    close: MessageDescriptor;
   };
+}
+
+export const SEARCH_PALETTE_MESSAGES = {
+  dialog: { key: "common:searchPalette.accessibility.dialog" },
+  results: { key: "common:searchPalette.accessibility.results" },
+  placeholder: { key: "common:searchPalette.placeholders.query" },
+  idle: { key: "common:searchPalette.states.idle" },
+  searching: { key: "common:searchPalette.states.searching" },
+  degraded: { key: "common:searchPalette.states.degraded" },
+  failed: { key: "common:searchPalette.states.failed" },
+  incomplete: { key: "common:searchPalette.states.incomplete" },
+  noMatches: { key: "common:searchPalette.states.noMatches" },
+  move: { key: "common:searchPalette.actions.move" },
+  previousNext: { key: "common:searchPalette.actions.previousNext" },
+  open: { key: "common:searchPalette.actions.open" },
+  close: { key: "common:searchPalette.actions.close" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function searchPaletteResultCountMessage(
+  count: number,
+): AnyMessageDescriptor | null {
+  return createCountMessageDescriptor("common:searchPalette.counts.results", count);
 }
 
 export type SearchPaletteKeyboardIntent =
@@ -173,79 +172,76 @@ export function deriveSearchPalettePresentationView(context: {
   incomplete?: unknown;
 }): SearchPalettePresentationView {
   const query = normalizeCommandPaletteQuery(context.query);
+  const hasQuery = query.trim().length > 0;
   const expanded = normalizeSearchPaletteExpanded(context.expanded);
   const cursor = normalizeSearchPaletteCursor(context.cursor);
   const count = context.pills.length;
   const safeCursor = count > 0 ? Math.min(cursor, count - 1) : 0;
   const selectedNodeId = context.pills[safeCursor]?.nodeId ?? null;
-  const resultCountLabel =
+  const resultCountLabel: AnyMessageDescriptor | null =
     count > 0
-      ? `${count} result${count === 1 ? "" : "s"}`
+      ? searchPaletteResultCountMessage(count)
       : context.searchState === "loading"
-        ? "searching…"
-        : "";
+        ? SEARCH_PALETTE_MESSAGES.searching
+        : null;
   // The empty/idle PROMPT (no query yet) stays a plain hint sentence — it is the
   // typical idle state, not an empty/degraded result. Loading, degraded, and no-match
   // are routed to the shared state-mode kit via `stateMode`; their sentence travels as
   // the StateBlock message (or the Skeleton's screen-reader label for loading).
   const stateMode: SearchPaletteStateMode =
-    count > 0 || query.length === 0
+    count > 0 || !hasQuery
       ? null
       : context.searchState === "loading"
         ? "loading"
-        : context.semanticOffline === true
-          ? "degraded"
-          : "empty";
+        : context.error === true
+          ? "error"
+          : context.semanticOffline === true
+            ? "degraded"
+            : "empty";
   const emptyMessage =
     count > 0
       ? null
-      : query.length === 0
-        ? "Search across your documents and code."
+      : !hasQuery
+        ? SEARCH_PALETTE_MESSAGES.idle
         : context.searchState === "loading"
-          ? "Searching documents and code"
-          : context.semanticOffline === true
-            ? "Full search is unavailable — showing name matches only."
-            : `No matches for “${query}”.`;
+          ? SEARCH_PALETTE_MESSAGES.searching
+          : context.error === true
+            ? SEARCH_PALETTE_MESSAGES.failed
+            : context.semanticOffline === true
+              ? SEARCH_PALETTE_MESSAGES.degraded
+              : { ...SEARCH_PALETTE_MESSAGES.noMatches, values: { query } };
 
-  // A walk-capped provider listing: the name matches may be missing files. One
-  // plain-language line, no mechanism words (search-providers ADR D1 / D8).
-  // Gated on an active query — at idle no matches are shown yet, so announcing
-  // missing matches would be premature.
+  // Incomplete results are relevant only while a search is active.
   const incompleteNote =
-    context.incomplete === true && query.length > 0
-      ? "Some files may be missing from name matches — the repository is very large."
-      : null;
+    context.incomplete === true && hasQuery ? SEARCH_PALETTE_MESSAGES.incomplete : null;
 
   return {
     safeCursor,
     selectedNodeId,
     showExpandedPanel: expanded && count > 0,
-    dialogLabel: "Search documents and code",
-    inputPlaceholder: "Search documents and code…",
+    dialogLabel: SEARCH_PALETTE_MESSAGES.dialog,
+    inputPlaceholder: SEARCH_PALETTE_MESSAGES.placeholder,
     inputAriaExpanded: true,
     resultCountLabel,
-    listboxLabel: "search results",
+    listboxLabel: SEARCH_PALETTE_MESSAGES.results,
     panelClassName: `flex max-h-[calc(100vh-9rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-fg-lg border border-rule bg-paper-raised shadow-fg-popover animate-slide-in-down ${
       expanded ? "w-[64rem]" : "w-[32rem]"
     }`,
     stateMode,
     emptyMessage,
-    // Screen-reader twin parity (search-providers ADR D3): the degraded sentence
-    // is announced ONLY when it is also the VISIBLE state (no results); once files
-    // rescue with results the SR announces the normal count message, matching the
-    // visible list instead of stranding a degraded copy with no on-screen twin.
+    // The live message matches the visible state or result count.
     liveMessage:
       context.error === true
-        ? "search request failed"
+        ? SEARCH_PALETTE_MESSAGES.failed
         : count === 0 && context.semanticOffline === true
-          ? "Full search is unavailable — showing name matches only."
+          ? SEARCH_PALETTE_MESSAGES.degraded
           : resultCountLabel,
     incompleteNote,
     footerHints: {
-      move: "move",
-      previousNext: "previous / next",
-      open: "open",
-      close: "close",
+      move: SEARCH_PALETTE_MESSAGES.move,
+      previousNext: SEARCH_PALETTE_MESSAGES.previousNext,
+      open: SEARCH_PALETTE_MESSAGES.open,
+      close: SEARCH_PALETTE_MESSAGES.close,
     },
   };
 }
@@ -460,7 +456,10 @@ export function normalizeCommandPaletteOpsFeedback(
 }
 
 export function normalizeCommandPaletteQuery(query: unknown): string {
-  return normalizeSearchQuery(query);
+  if (typeof query !== "string") return "";
+  return query.length > COMMAND_PALETTE_QUERY_MAX_CHARS
+    ? query.slice(0, COMMAND_PALETTE_QUERY_MAX_CHARS)
+    : query;
 }
 
 export function normalizeCommandPaletteCursor(cursor: unknown): number {

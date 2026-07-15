@@ -1,32 +1,15 @@
-// The codebase file browser (dashboard-code-tree ADR "The rail's code mode"): a
-// read-only, lazy, collapsible DIRECTORY HIERARCHY over the active worktree,
-// beside the vault browser. It consumes the `/file-tree` projection ONLY through
-// stores hooks (`useFileTreeRootSurface` for the root, `useFileTreeLevel` for lazy
-// child levels), reads degradation ONLY through a stores selector (never the raw
-// `tiers` block), and joins selection on the contract's stable `code:<path>` node id — the same
-// bidirectional join the vault browser realizes for `doc:<stem>`. It fetches
-// nothing itself and defines no model (dashboard-layer-ownership): chrome over the
-// one projection. The root surface state (loading / degraded / transport error)
-// is classified by the stores selector, not recomputed in chrome.
-//
-// Two ADR-mandated deltas from the vault browser: the tree is a TRUE directory
-// hierarchy (not doc-type grouping), and it is BOUNDED + LAZY — each directory
-// fetches its children ONE level at a time on first expansion, cached per scope by
-// the stores hook (the rail never requests the whole tree). The in-rail filter
-// (left-rail IA ADR) narrows the visible, already-fetched tree client-side; it is
-// not a wire search — global "find a file by meaning" is the `POST /search` pillar.
-//
-// The mode toggle that swaps this in for the vault browser is owned by the
-// left-rail IA plan; this module exports the self-contained `CodeTree` component
-// the IA host mounts behind that toggle.
+// Read-only, lazy directory browser for the active worktree. Each directory
+// loads one level on expansion, while filtering narrows only visible entries.
 
 import { File, Folder, type Icon } from "@phosphor-icons/react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
-import { Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { Button, Skeleton, SkeletonRow, StateBlock } from "../kit";
 
 import type { CodeFileEntity } from "../../platform/actions/entity";
-import type { FileTreeEntry } from "../../stores/server/engine";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
+import type { FileTreeEntry, FileTreeTruncated } from "../../stores/server/engine";
 import {
   useActiveScope,
   useFileTreeLevel,
@@ -48,8 +31,7 @@ import {
   useHighlightedCodePath,
 } from "./browserSelection";
 import { RailMessage, RailSkeleton } from "./railStates";
-// Self-registering left-rail context-menu resolver (W03.P07): importing the
-// module runs its `registerResolver("code-file", …)` side effect once.
+// Importing the menu registers the code-file context actions once.
 import "./menus/codeFileMenu";
 
 /** Build the code-file context-menu entity from a tree row's data. A directory
@@ -66,15 +48,11 @@ function codeFileEntity(entry: FileTreeEntry, scope: string | null): CodeFileEnt
   };
 }
 
-// Domain marks (iconography ADR): Phosphor `Folder` / `File`, each grayscale-
-// distinct by SHAPE at 14px (an open container vs a dog-eared page). They read in
-// `currentColor` and inherit the rail's dimmed ink, so hue is never the identity
-// channel — the same grayscale-by-shape discipline the vault doc-type marks pass.
+// Folder and file marks remain distinguishable by shape without relying on color.
 const DIR_MARK: Icon = Folder;
 const FILE_MARK: Icon = File;
 
-/** The mark for a row by kind — exported so the unit test can assert grayscale-
- *  by-shape distinctness (two distinct Phosphor marks) without rendering React. */
+/** Return the semantic mark for a row kind. */
 export function rowMark(kind: FileTreeEntry["kind"]): Icon {
   return kind === "dir" ? DIR_MARK : FILE_MARK;
 }
@@ -84,32 +62,65 @@ export function rowMarkName(kind: FileTreeEntry["kind"]): string {
   return mark.displayName ?? mark.name ?? (kind === "dir" ? "Folder" : "File");
 }
 
-// --- icon sizing (token-aligned, matching the vault browser) ----------------------
-// 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure
-// chevrons read one density step smaller so structural chrome stays attenuated
-// relative to the domain marks.
+// Disclosure chevrons are smaller than the folder and file marks.
 const ROW_MARK_PX = 14;
 const CHEVRON_PX = 12;
 
+const CODE_TREE_NAV_CLASS = "text-label";
+const CODE_TREE_TRUNCATION_CLASS = "px-fg-1 py-fg-0-5 text-caption text-ink-faint";
+
+export const CODE_TREE_MESSAGES = {
+  browser: { key: "documents:codeTree.accessibility.browser" },
+  childLoading: { key: "documents:codeTree.states.childLoading" },
+  childUnavailable: { key: "documents:codeTree.errors.childUnavailable" },
+  degraded: { key: "documents:codeTree.states.degraded" },
+  empty: { key: "documents:codeTree.states.empty" },
+  linkedToMap: { key: "documents:codeTree.accessibility.linkedToMap" },
+  loading: { key: "documents:codeTree.states.loading" },
+  retry: { key: "common:actions.retry" },
+  truncatedUnknown: { key: "documents:codeTree.states.truncatedUnknown" },
+  unavailable: { key: "documents:codeTree.errors.unavailable" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function codeTreeRowActionsMessage(name: string): MessageDescriptor {
+  return { key: "common:accessibility.actionsForItem", values: { item: name } };
+}
+
+export function codeTreeTruncationMessage(
+  truncated: FileTreeTruncated,
+): MessageDescriptor {
+  const shown = truncated.returned_children;
+  const total = truncated.total_children;
+  if (
+    !Number.isSafeInteger(shown) ||
+    !Number.isSafeInteger(total) ||
+    shown < 0 ||
+    total < shown
+  ) {
+    return CODE_TREE_MESSAGES.truncatedUnknown;
+  }
+  return {
+    key: "documents:codeTree.states.truncated",
+    values: { shown, total },
+  };
+}
+
 export interface CodeTreeProps {
   /**
-   * Optional row click handler (defaults to the bidirectional code: selection
-   * join). The IA host may override for an embedding context; absent, a file row
+   * Optional row click handler. A host may override it for an embedding context; absent, a file row
    * focuses its `code:` node on the stage.
    */
   onEntryClick?: (entry: FileTreeEntry) => void;
   /**
    * The set of `code:<path>` node ids that currently have a graph node, for the
-   * quiet right-aligned linkage marker (ADR "The interlink"). A file whose
-   * `node_id` is NOT in this set renders the quiet ABSENT-interlink state (no
-   * marker) — it is still listed and selectable for navigation, never an error.
+   * quiet right-aligned linkage marker. A file absent from this set has no
+   * marker. It remains listed and selectable.
    * Absent/empty (the default) means "no linkage known yet": every file reads as
    * the absent state, which is the honest baseline until the host supplies the set.
    */
   linkedNodeIds?: ReadonlySet<string>;
   /**
-   * In-rail filter (left-rail IA ADR): a client-side narrowing of the VISIBLE,
-   * already-fetched tree — never a wire search. A row matches when its path
+   * A local narrowing of the visible, already-fetched tree. A row matches when its path
    * contains the (lowercased) query; a directory is kept when it or any visible
    * descendant matches. Empty/absent shows the full tree.
    */
@@ -122,19 +133,19 @@ export interface CodeTreeProps {
  * the root and a subordinate liveness cue per expanding directory.
  */
 export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const scope = useActiveScope();
   const rootSurface = useFileTreeRootSurface(scope);
-  const { rootLevel, state, degradedMessage, browserLabel } = rootSurface;
+  const { rootLevel, state } = rootSurface;
   const dashboardSelection = useDashboardBrowserSelection(scope);
   const clickHandler = onEntryClick ?? dashboardSelection.handleCodeEntryClick;
   const { expanded, activeKey, toggle, setActiveKey } = useBrowserTreeExpansion(
     scope,
     "code",
   );
-  // The whole file tree is ONE tab stop with arrow / Home / End roving through the
-  // shared FocusZone primitive (keyboard-navigation W02.P05.S15), replacing the
-  // prior bespoke render-time roving whose keyboard-target derivation left arrow
-  // nav dead. A row's cross-axis ArrowRight / ArrowLeft maps to expand / collapse.
+  // The tree is one tab stop. Arrow, Home, and End keys move between rows;
+  // horizontal arrows expand and collapse directories.
   const zone = useFocusZone({
     orientation: "vertical",
     wrap: false,
@@ -154,58 +165,45 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
   };
 
   if (state === "loading") {
-    // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton,
-    // identical to the Vault tree's — the rail's modes are ONE feature, not per-tab.
-    return <RailSkeleton label={rootLevel.loadingMessage} />;
+    // Use the shared rail skeleton while the root loads.
+    return <RailSkeleton label={message(CODE_TREE_MESSAGES.loading)} />;
   }
 
   if (state === "error") {
-    // Error: a genuine /file-tree failure — contained, region-scoped, with retry,
-    // distinguished from degradation so the user can tell "this read failed" from
-    // "a backend is down" (ADR "States"). A tiers-bearing failure (a backend tier
-    // reported down) is degradation, not a transport error, so it falls through to
-    // the designed degraded state below — only a tiers-less transport fault renders
-    // this error state (degradation-is-read-from-tiers).
+    // Unexpected read failures remain contained and offer a retry.
     return (
-      <div
-        className={rootSurface.errorRootClassName}
-        role="status"
-        aria-live="polite"
-        data-code-error
-      >
-        <p className={rootSurface.errorTitleClassName}>{rootLevel.errorTitle}</p>
-        <button
-          type="button"
-          onClick={rootLevel.retry}
-          className={rootSurface.retryButtonClassName}
-        >
-          {rootLevel.retryLabel}
-        </button>
+      <div data-code-error>
+        <StateBlock
+          mode="degraded"
+          layout="block"
+          message={message(CODE_TREE_MESSAGES.unavailable)}
+        />
+        <div className="flex justify-center px-fg-3 pb-fg-6">
+          <Button variant="ghost" onClick={rootLevel.retry}>
+            {message(CODE_TREE_MESSAGES.retry)}
+          </Button>
+        </div>
       </div>
     );
   }
 
-  // Degraded: a worktree-only capability with no working tree (a remote-ref
-  // scope) or an absent structural tier renders as a DESIGNED degraded state
-  // explaining the absence, distinct from empty; read through the stores
-  // selector, never the raw tiers block (ADR "Structural-tier degradation").
+  // Capability loss remains distinct from an empty directory.
   if (state === "degraded") {
-    // DEGRADED mode (binding `LeftRail` State=Degraded): the shared designed state —
-    // AlertTriangle + the clean view-model sentence, never a raw tier reason.
-    return <RailMessage tone="degraded" label={degradedMessage} />;
+    // The shared degraded state contains no diagnostic detail.
+    return <RailMessage tone="degraded" label={message(CODE_TREE_MESSAGES.degraded)} />;
   }
 
   const entries = rootLevel.entries;
 
   if (entries.length === 0) {
-    // EMPTY mode (binding `LeftRail` State=Empty): the shared designed state.
-    return <RailMessage tone="empty" label={rootLevel.emptyMessage} />;
+    // Use the shared empty state.
+    return <RailMessage tone="empty" label={message(CODE_TREE_MESSAGES.empty)} />;
   }
 
   return (
     <nav
-      className={rootSurface.navClassName}
-      aria-label={browserLabel}
+      className={CODE_TREE_NAV_CLASS}
+      aria-label={message(CODE_TREE_MESSAGES.browser)}
       data-code-browser
     >
       <ul>
@@ -226,17 +224,17 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
       </ul>
       {/* Bounded-read honesty at the root level: a capped level reads as "more
           here", never a silent partial result (graph-queries-are-bounded). */}
-      {rootLevel.truncationMessage && (
+      {rootLevel.truncated && (
         <TruncatedNote
-          message={rootLevel.truncationMessage}
-          className={rootLevel.truncationClassName}
+          message={message(codeTreeTruncationMessage(rootLevel.truncated))}
+          className={CODE_TREE_TRUNCATION_CLASS}
         />
       )}
     </nav>
   );
 }
 
-/** The "more here — expand a subdirectory" note for a capped level. */
+/** The localized bounded-result note for a capped level. */
 function TruncatedNote({ message, className }: { message: string; className: string }) {
   return (
     <p className={className} role="status" data-code-truncated>
@@ -270,9 +268,9 @@ interface CodeTreeNavigation {
 
 /**
  * One row in the hierarchy. A directory is a disclosure (Lucide chevron + Phosphor
- * folder mark) that LAZILY fetches and renders its children on first expansion; a
+ * folder mark) that fetches and renders its children on first expansion; a
  * file is a leaf that joins selection to its `code:` node. The whole subtree is
- * built recursively, one level per `useFileTreeLevel` call — the bounded, lazy grammar.
+ * built recursively, one level per `useFileTreeLevel` call.
  */
 function DirectoryRow({
   row,
@@ -284,6 +282,8 @@ function DirectoryRow({
   expansion,
   navigation,
 }: RowProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const { entry } = row;
   const highlight = useHighlightedCodePath([entry], scope);
   const rowView = deriveCodeBrowserTreeRowView(entry, {
@@ -378,23 +378,19 @@ function DirectoryRow({
           <span className={rowView.labelClassName}>{row.displayName}</span>
           {rowView.linked && (
             <span
-              aria-label={rowView.linkedCueAriaLabel}
+              aria-label={message(CODE_TREE_MESSAGES.linkedToMap)}
               className={rowView.linkedCueClassName}
             />
           )}
         </button>
-        {/* The row's coarse-pointer menu entry (touch-selectability ADR D3): the
-            SAME code-file entity its right-click path opens, sibling of the row
-            button; renders nothing on fine-pointer devices. */}
+        {/* Coarse pointers receive the same context actions as right-click. */}
         <RowMenuDisclosure
           entity={codeFileEntity(entry, scope)}
-          label={`${row.displayName} actions`}
+          label={message(codeTreeRowActionsMessage(row.displayName))}
         />
       </div>
 
-      {/* Lazily-fetched children: mounted only once the directory is expanded, so
-          its `useFileTreeLevel(scope, path)` selector fires on first expansion and is
-          cached per scope thereafter — the one-level-per-call lazy grammar. */}
+      {/* Child data mounts only after the directory expands. */}
       {rowView.isDir && rowView.expanded && (
         <ChildLevel
           path={entry.path}
@@ -447,7 +443,7 @@ interface ChildLevelProps {
  * One lazily-fetched directory level. Mounting this component IS the lazy fetch:
  * `useFileTreeLevel(scope, path, true)` fires for `path`'s children only when the
  * parent directory is expanded (this component is mounted). A subordinate
- * liveness cue shows while the level is in flight (no spinner theatre); an empty
+ * liveness cue shows while the level is in flight; an empty
  * level and a per-level read failure are handled subordinately, never crashing the
  * whole tree.
  */
@@ -461,14 +457,15 @@ function ChildLevel({
   expansion,
   navigation,
 }: ChildLevelProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
   const level = useFileTreeLevel(scope, path);
 
   if (level.state === "loading") {
-    // CHILD LOADING (state-mode-uniformity ADR D2/D4): a small inline skeleton,
-    // indented to the level — no on-screen text; the message is the sr-only label.
+    // Child loading uses an indented skeleton with an accessible label.
     return (
       <div style={fileTreeChildStatusStyle(depth)} data-code-level-loading>
-        <Skeleton label={level.childLoadingMessage}>
+        <Skeleton label={message(CODE_TREE_MESSAGES.childLoading)}>
           <SkeletonRow width="w-2/3" />
         </Skeleton>
       </div>
@@ -476,11 +473,21 @@ function ChildLevel({
   }
 
   if (level.state === "error") {
-    // CHILD ERROR (state-mode-uniformity ADR D3): the shared inline degraded notice —
-    // shared glyph + one plain sentence, indented to the level.
+    // Child failures use the shared indented notice.
     return (
-      <div style={fileTreeChildStatusStyle(depth)} data-code-level-error>
-        <StateBlock mode="degraded" layout="inline" message={level.childErrorMessage} />
+      <div
+        className="space-y-fg-0-5"
+        style={fileTreeChildStatusStyle(depth)}
+        data-code-level-error
+      >
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message={message(CODE_TREE_MESSAGES.childUnavailable)}
+        />
+        <Button variant="ghost" onClick={level.retry}>
+          {message(CODE_TREE_MESSAGES.retry)}
+        </Button>
       </div>
     );
   }
@@ -503,10 +510,10 @@ function ChildLevel({
           navigation={navigation}
         />
       ))}
-      {level.truncationMessage && (
+      {level.truncated && (
         <TruncatedNote
-          message={level.truncationMessage}
-          className={level.truncationClassName}
+          message={message(codeTreeTruncationMessage(level.truncated))}
+          className={CODE_TREE_TRUNCATION_CLASS}
         />
       )}
     </ul>

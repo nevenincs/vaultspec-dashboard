@@ -1,3 +1,5 @@
+import { languageDisplay } from "./languageDisplay";
+
 export const documents = {
   accessibility: {
     addDocumentToFeature: "Add a document to a feature",
@@ -62,12 +64,65 @@ export const documents = {
     switchReadingAndEditing: "Switch between reading and editing",
     switchView: "Switch between documents and files",
   },
+  documentSearch: {
+    accessibility: {
+      dialog: "Find a document",
+      results: "Documents",
+    },
+    counts: {
+      documents_one: "{{count, number}} document",
+      documents_other: "{{count, number}} documents",
+    },
+    placeholders: {
+      query: "Search documents by name…",
+    },
+    states: {
+      idle: "Search for a document by name.",
+      noMatches: "No documents match “{{query}}”.",
+      searching: "Searching documents…",
+      unavailable: "Documents are temporarily unavailable. Try again.",
+    },
+  },
+  guardedActions: {
+    moveCommentToThisSection: "Move comment to this section",
+    reviewStationApproveProposal: "Approve proposal",
+    reviewStationApplyChanges: "Apply changes",
+    reviewStationPrepareRollback: "Prepare rollback",
+  },
+  destructiveActions: {
+    deleteComment: "Delete comment",
+    reviewStationRejectProposal: "Reject proposal",
+  },
   browserModes: {
     documents: "Documents",
     files: "Files",
   },
   categories: {
     code: "Code",
+  },
+  codeTree: {
+    accessibility: {
+      browser: "Project files",
+      linkedToMap: "Shown in project map",
+    },
+    errors: {
+      childUnavailable: "This folder could not be loaded. Try again.",
+      unavailable: "Project files could not be loaded. Try again.",
+    },
+    states: {
+      childLoading: "Loading folder…",
+      degraded: "Project files are unavailable. Browse documents instead.",
+      empty: "No project files found.",
+      loading: "Loading project files…",
+      truncated: "Loaded {{shown, number}} of {{total, number}} files and folders.",
+      truncatedUnknown: "More files and folders are available here.",
+    },
+  },
+  confirmations: {
+    discardUnsavedChanges: {
+      title: "Discard unsaved changes?",
+      body: "Your unsaved document changes will be lost. This cannot be undone.",
+    },
   },
   createDialog: {
     accessibility: {
@@ -172,6 +227,360 @@ export const documents = {
     exec: "Steps",
     audit: "Audits",
     reference: "References",
+  },
+  editor: {
+    accessibility: {
+      formattingToolbar: "Formatting",
+    },
+    actions: {
+      bold: "Apply bold",
+      italic: "Apply italic",
+      inlineCode: "Apply inline code",
+      heading: "Add heading",
+      bulletedList: "Add bulleted list",
+      numberedList: "Add numbered list",
+      quote: "Add quote",
+      link: "Add link",
+      linkToDocument: "Add document link",
+    },
+  },
+  reviewStation: {
+    accessibility: {
+      loadingQueue: "Loading approvals",
+    },
+    actions: {
+      hideChanges: "Hide changes",
+      showChanges: "Show changes",
+      signInAsReviewer: "Sign in as reviewer",
+      signOut: "Sign out",
+      submitForReview: "Submit for review",
+    },
+    confirmations: {
+      approve: {
+        title: "Approve this proposal?",
+        body: "Approve this proposal so its document changes can be applied.",
+      },
+      apply: {
+        title: "Apply these changes?",
+        body: "Apply the approved changes to the affected documents.",
+      },
+      reject: {
+        title: "Reject this proposal?",
+        body: "Reject this proposal without applying its document changes.",
+      },
+      rollback: {
+        title: "Prepare a rollback?",
+        body: "Prepare a new proposal that reverses the applied document changes.",
+      },
+    },
+    statuses: {
+      applied: "Applied",
+      applying: "Applying",
+      approved: "Approved",
+      cancelled: "Cancelled",
+      compensationRequired: "Needs repair",
+      conflicted: "Conflicted",
+      draft: "Draft",
+      failed: "Failed",
+      generating: "Generating",
+      needsReview: "Needs review",
+      partiallyApplied: "Partially applied",
+      proposed: "Proposed",
+      rejected: "Rejected",
+      rollbackProposed: "Rollback proposed",
+      superseded: "Superseded",
+      unknown: "Status unavailable",
+    },
+    policy: {
+      assistedHumanApproval: "Assisted, reviewer approval",
+      assistedSystemApproval: "Assisted, automatic approval",
+      autonomousHumanApproval: "Autonomous, reviewer approval",
+      autonomousSystemApproval: "Autonomous, automatic approval",
+      manualHumanApproval: "Manual, reviewer approval",
+      manualSystemApproval: "Manual, automatic approval",
+      unavailable: "Approval policy unavailable",
+    },
+    authorKinds: {
+      agent: "Assistant",
+      human: "Reviewer",
+      system: "System",
+      toolExecutor: "Automation",
+      unknown: "Unknown author",
+    },
+    validation: {
+      invalid: "Validation failed",
+      stale: "Validation expired",
+      unavailable: "Validation unavailable",
+      valid: "Validated",
+      validWithWarnings: "Validated with warnings",
+    },
+    stale: {
+      policyChanged: "Review policy changed",
+      reviewChanged: "Review changed",
+    },
+    counts: {
+      acknowledgements_one: "{{count, number}} acknowledgement",
+      acknowledgements_other: "{{count, number}} acknowledgements",
+      changes_one: "{{count, number}} change",
+      changes_other: "{{count, number}} changes",
+    },
+    disabledReasons: {
+      actionInProgress: "Wait for the current action to finish.",
+      actionUnavailable: "Refresh the proposal and try again.",
+      rollbackUnavailable: "Refresh the proposal and check rollback availability.",
+      signInToAct: "Sign in as reviewer to continue.",
+    },
+    feedback: {
+      actionAccepted: "Request accepted.",
+      actionNotAllowed: "Review the proposal and choose an available action.",
+      rollbackUnavailable: "Refresh the proposal and check rollback availability.",
+      reviewChanged: "Review the latest proposal, then try again.",
+      reviewerUnavailable: "Sign in as reviewer, then try again.",
+    },
+    errors: {
+      actionFailed: "The action could not be completed. Try again.",
+      conflict:
+        "The target document changed after review. Resolve the conflict before applying.",
+      queueUnavailable: "Approvals are unavailable. Refresh the app and try again.",
+    },
+    states: {
+      appliedAutomatically: "Applied automatically",
+      empty: "No proposals are waiting for review.",
+      informationMayBeOutOfDate:
+        "Approval information may be out of date. Refresh to get the latest information.",
+      loading: "Loading approvals…",
+      moreAppliedChanges: "More automatically applied changes are available.",
+      moreProposals: "More proposals are available. Narrow the queue to see them.",
+      signedIn: "Signed in as reviewer",
+      signingIn: "Signing in…",
+      untitledProposal: "Untitled proposal",
+    },
+    sections: {
+      appliedAutomatically: "Applied automatically",
+    },
+    labels: {
+      actionUnavailable: "Action unavailable",
+    },
+  },
+  viewer: {
+    languages: languageDisplay,
+    accessibility: {
+      documentMode: "Document mode",
+      documentProperties: "Document properties",
+      featureTag: "Feature tag",
+    },
+    modes: {
+      edit: "Edit",
+      view: "View",
+    },
+    codeViewer: {
+      accessibility: {
+        contents: "Code contents",
+      },
+      errors: {
+        loadFailed: "The file could not be loaded. Close it, then open it again.",
+        temporarilyUnavailable:
+          "The file is temporarily unavailable. Try again in a moment.",
+      },
+      footer: {
+        summary_one: "{{language}}, {{encoding}}, {{count, number}} line, read-only",
+        summary_other: "{{language}}, {{encoding}}, {{count, number}} lines, read-only",
+      },
+      labels: {
+        code: "Code",
+        readOnly: "Read-only",
+      },
+      states: {
+        empty: "This file is empty.",
+        loading: "Loading code…",
+        missing: "This file is not available here. Choose another file.",
+      },
+    },
+    reader: {
+      accessibility: {
+        document: "Document",
+      },
+      errors: {
+        loadFailed: "The document could not be loaded. Close it, then open it again.",
+        temporarilyUnavailable:
+          "The document is temporarily unavailable. Try again in a moment.",
+      },
+      labels: {
+        created: "Created",
+        document: "Document",
+        readOnly: "Read-only",
+        relatedDocuments: "Related documents",
+        tags: "Tags",
+        updated: "Updated",
+      },
+      metadata: {
+        readTime_one: "{{count, number}} min read",
+        readTime_other: "{{count, number}} min read",
+        readTimeStatus_one: "{{count, number}} min read · {{status}}",
+        readTimeStatus_other: "{{count, number}} min read · {{status}}",
+        createdReadTime_one: "Created {{created}} · {{count, number}} min read",
+        createdReadTime_other: "Created {{created}} · {{count, number}} min read",
+        createdReadTimeStatus_one:
+          "Created {{created}} · {{count, number}} min read · {{status}}",
+        createdReadTimeStatus_other:
+          "Created {{created}} · {{count, number}} min read · {{status}}",
+        updatedReadTime_one: "Updated {{updated}} · {{count, number}} min read",
+        updatedReadTime_other: "Updated {{updated}} · {{count, number}} min read",
+        updatedReadTimeStatus_one:
+          "Updated {{updated}} · {{count, number}} min read · {{status}}",
+        updatedReadTimeStatus_other:
+          "Updated {{updated}} · {{count, number}} min read · {{status}}",
+        createdUpdatedReadTime_one:
+          "Created {{created}} · updated {{updated}} · {{count, number}} min read",
+        createdUpdatedReadTime_other:
+          "Created {{created}} · updated {{updated}} · {{count, number}} min read",
+        createdUpdatedReadTimeStatus_one:
+          "Created {{created}} · updated {{updated}} · {{count, number}} min read · {{status}}",
+        createdUpdatedReadTimeStatus_other:
+          "Created {{created}} · updated {{updated}} · {{count, number}} min read · {{status}}",
+      },
+      states: {
+        empty: "This document is empty.",
+        loading: "Loading document…",
+        missing: "This document is not available here. Choose another document.",
+      },
+      statuses: {
+        accepted: "Accepted",
+        active: "Active",
+        complete: "Complete",
+        deprecated: "Deprecated",
+        proposed: "Proposed",
+        rejected: "Rejected",
+        superseded: "Superseded",
+        unavailable: "Status unavailable",
+      },
+      truncation: {
+        bytes_one:
+          "Showing the first {{returned, number}} of {{count, number}} byte. Open the file for the full document.",
+        bytes_other:
+          "Showing the first {{returned, number}} of {{count, number}} bytes. Open the file for the full document.",
+      },
+    },
+    comments: {
+      accessibility: {
+        commentsToReview: "Comments to review",
+        editComment: "Edit comment",
+        newComment: "New comment",
+        sectionComments: "Section comments",
+      },
+      actions: {
+        add: "Add comment",
+        close: "Close comments",
+        copyLink: "Copy link",
+        edit: "Edit comment",
+        open: "Open comments",
+        reopen: "Reopen comment",
+        resolve: "Resolve comment",
+        save: "Save comment",
+        tryAgain: "Try again",
+      },
+      authorKinds: {
+        agent: "Assistant",
+        human: "You",
+        system: "System",
+        toolExecutor: "Automation",
+        unknown: "Unknown author",
+      },
+      confirmations: {
+        delete: {
+          title: "Delete this comment?",
+          body: "Delete this comment permanently. This cannot be undone.",
+        },
+      },
+      connectionIssues: {
+        ambiguous:
+          "More than one section matches this comment. Rename a heading, then move the comment.",
+        changed: "This section has changed. Move the comment to this section.",
+        malformed:
+          "This comment's section could not be found. Move the comment to another section.",
+        missing:
+          "This section is no longer available. Move the comment to another section.",
+      },
+      counts: {
+        commentsToReview_one: "{{count, number}} comment to review",
+        commentsToReview_other: "{{count, number}} comments to review",
+        days_one: "{{count, number}} day ago",
+        days_other: "{{count, number}} days ago",
+        hours_one: "{{count, number}} hour ago",
+        hours_other: "{{count, number}} hours ago",
+        minutes_one: "{{count, number}} minute ago",
+        minutes_other: "{{count, number}} minutes ago",
+        months_one: "{{count, number}} month ago",
+        months_other: "{{count, number}} months ago",
+        years_one: "{{count, number}} year ago",
+        years_other: "{{count, number}} years ago",
+      },
+      descriptions: {
+        attachedToSection: "Comments stay with this section.",
+      },
+      disabledReasons: {
+        actorPreparing: "Wait for comments to finish preparing.",
+        duplicateHeading: "Rename a matching heading, then add your comment.",
+      },
+      emptyStates: {
+        noComments: "No comments on this section yet.",
+        noCommentsToReview: "No comments to review.",
+      },
+      errors: {
+        actorUnavailable:
+          "Comments are unavailable. Close the comments, then try again.",
+        addFailed: "The comment could not be added. Try again.",
+        copyLinkFailed: "The link could not be copied. Try again.",
+        deleteFailed: "The comment could not be deleted. Try again.",
+        loadFailed: "Comments could not be loaded. Try again.",
+        moveFailed: "The comment could not be moved. Try again.",
+        reopenFailed: "The comment could not be reopened. Try again.",
+        resolveFailed: "The comment could not be resolved. Try again.",
+        saveFailed: "The comment could not be saved. Try again.",
+      },
+      feedback: {
+        added: "Comment added.",
+        deleted: "Comment deleted.",
+        moved: "Comment moved.",
+        reopened: "Comment reopened.",
+        resolved: "Comment resolved.",
+        saved: "Comment saved.",
+      },
+      placeholders: {
+        newComment: "Add a comment…",
+      },
+      states: {
+        justNow: "Just now",
+        loading: "Loading comments…",
+        preparing: "Preparing comments…",
+        resolved: "Resolved",
+      },
+    },
+    properties: {
+      actions: {
+        rename: "Rename document",
+        save: "Save properties",
+      },
+      emptyStates: {
+        newFeatureTag: "Enter a new feature tag",
+      },
+      labels: {
+        date: "Date",
+        documentName: "Document name",
+        documentType: "Document type",
+        feature: "Feature",
+        relatedDocuments: "Related documents",
+      },
+      placeholders: {
+        date: "YYYY-MM-DD",
+        featureTag: "Enter a feature tag",
+      },
+      states: {
+        notSet: "Not set",
+        renaming: "Renaming document…",
+        saving: "Saving properties…",
+      },
+    },
   },
   disabledReasons: {
     chooseTemporaryTab: "Choose a temporary tab to keep open.",

@@ -7,13 +7,35 @@
 // selector, the dismissible job join chip, the fetched-window honesty caption, the
 // per-level tone classes, and the designed empty/offline states.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render as testingRender, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import type { ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
+} from "../../localization/testing";
 import { RagLogPaneBody } from "./RagLogPane";
 import type { RagLogLine } from "../../stores/server/ragControl";
 
 afterEach(cleanup);
+
+function render(ui: ReactElement, runtime = createTestLocalizationRuntime()) {
+  const providers = (child: ReactElement) => (
+    <I18nextProvider i18n={runtime}>{child}</I18nextProvider>
+  );
+  const result = testingRender(providers(ui));
+  return {
+    ...result,
+    runtime,
+    rerender: (next: ReactElement) => result.rerender(providers(next)),
+  };
+}
 
 const lines: RagLogLine[] = [
   { text: "2026-07-14 10:00:00,000 INFO starting up", level: "info" },
@@ -164,5 +186,51 @@ describe("RagLogPaneBody (binding RagJobDashboard log pane)", () => {
       />,
     );
     expect(container.querySelector('[data-state-block="degraded"]')).toBeTruthy();
+  });
+
+  it("localizes the unavailable title in place", async () => {
+    const { runtime } = render(
+      <RagLogPaneBody
+        lines={[]}
+        windowCount={0}
+        semanticOffline
+        logFilter=""
+        selectedJobId={null}
+        linesChoice={200}
+      />,
+    );
+    const title = screen.getByText(en.common.controlPanels.unavailableTitles.search);
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByText(ltrTestResources.common.controlPanels.unavailableTitles.search),
+    ).toBe(title);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByText(rtlTestResources.common.controlPanels.unavailableTitles.search),
+    ).toBe(title);
+  });
+
+  it("omits the unavailable title when its catalog is unavailable", () => {
+    const runtime = createTestLocalizationRuntime();
+    runtime.removeResourceBundle("en", "common");
+    const { container } = render(
+      <RagLogPaneBody
+        lines={[]}
+        windowCount={0}
+        semanticOffline
+        logFilter=""
+        selectedJobId={null}
+        linesChoice={200}
+      />,
+      runtime,
+    );
+    const state = container.querySelector('[data-state-block="degraded"]');
+    expect(state?.textContent?.length).toBeGreaterThan(0);
+    expect(state?.textContent).not.toContain(
+      en.common.controlPanels.unavailableTitles.search,
+    );
+    expect(state?.textContent).not.toContain("common:controlPanels");
   });
 });

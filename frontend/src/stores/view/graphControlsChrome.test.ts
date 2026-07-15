@@ -4,7 +4,6 @@ import {
   GRAPH_CONTROLS_APPEARANCE_DEFAULTS,
   GRAPH_CONTROLS_TUNE_DEFAULTS,
   deriveGraphControlsAppearancePresentationView,
-  deriveGraphControlsBoundPresentationView,
   deriveGraphControlsFreezeToggleView,
   deriveGraphControlsNavigationView,
   deriveGraphControlsReflowToggleView,
@@ -12,9 +11,6 @@ import {
   deriveGraphControlsSimToggleView,
   deriveGraphControlsTunePresentationView,
   deriveGraphControlsViewPresentationView,
-  formatGraphControlsAppearanceValue,
-  formatGraphControlsBoundSize,
-  formatGraphControlsTuneValue,
   normalizeGraphControlsAppearanceParams,
   normalizeGraphControlsFrozenScope,
   normalizeGraphControlsTuneParams,
@@ -36,6 +32,10 @@ import {
   useGraphControlsChromeStore,
 } from "./graphControlsChrome";
 import { specById } from "../../scene/three/graphControlSchema";
+import {
+  GRAPH_CONTROLS_MESSAGES,
+  UI_GRAPH_CONTROL_MESSAGES,
+} from "./graphControlsVocabulary";
 
 describe("graph controls chrome view seam", () => {
   beforeEach(() => resetGraphControlsChrome());
@@ -96,82 +96,47 @@ describe("graph controls chrome view seam", () => {
   });
 
   it("projects graph settings popover view state for the stage renderer", () => {
-    expect(deriveGraphControlsSettingsPopoverView(true, "Graph settings")).toEqual({
+    expect(deriveGraphControlsSettingsPopoverView(true, GRAPH_CONTROLS_MESSAGES.title)).toEqual({
       active: true,
       ariaExpanded: true,
       panelVisible: true,
-      panelAriaLabel: "Graph settings",
+      panelAriaLabel: GRAPH_CONTROLS_MESSAGES.title,
       panelClassName:
         "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
     });
-    expect(deriveGraphControlsSettingsPopoverView(false, "Graph settings")).toEqual({
+    expect(deriveGraphControlsSettingsPopoverView(false, GRAPH_CONTROLS_MESSAGES.title)).toEqual({
       active: false,
       ariaExpanded: false,
       panelVisible: false,
-      panelAriaLabel: "Graph settings",
+      panelAriaLabel: GRAPH_CONTROLS_MESSAGES.title,
       panelClassName:
         "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
     });
-  });
-
-  it("projects canvas-bound presentation through one graph-controls chrome seam", () => {
-    expect(deriveGraphControlsBoundPresentationView("free")).toEqual({
-      containerClassName: "flex w-48 flex-col gap-fg-2",
-      groupClassName: "flex flex-col gap-fg-1",
-      labelClassName: "text-label text-ink-muted",
-      label: "Canvas bound",
-      shapeAriaLabel: "Canvas bound shape",
-      freeLabel: "Free",
-      circleLabel: "Circle",
-      rectLabel: "Rect",
-      showSizeControl: false,
-      sizeLabel: "Bound size",
-      sizeTitle: "Rectangle half-extent in world units; 0 = auto-fit",
-      sizeMin: 0,
-      sizeMax: 4000,
-      sizeStep: 100,
-    });
-
-    expect(deriveGraphControlsBoundPresentationView("circle")).toMatchObject({
-      showSizeControl: true,
-      sizeTitle: "Circle radius in world units; 0 = auto-fit",
-    });
-    expect(deriveGraphControlsBoundPresentationView("rect")).toMatchObject({
-      showSizeControl: true,
-      sizeTitle: "Rectangle half-extent in world units; 0 = auto-fit",
-    });
-  });
-
-  it("formats canvas-bound size values through the chrome seam", () => {
-    expect(formatGraphControlsBoundSize(0)).toBe("auto");
-    expect(formatGraphControlsBoundSize(1234.4)).toBe("1234");
-    expect(formatGraphControlsBoundSize(1234.5)).toBe("1235");
   });
 
   it("projects freeze toggle action copy from state and availability", () => {
     expect(deriveGraphControlsFreezeToggleView(false, true)).toEqual({
-      label: "Freeze Layout",
-      title: "Freeze the layout in place",
+      label: GRAPH_CONTROLS_MESSAGES.labels.keepLayoutFixed,
+      title: GRAPH_CONTROLS_MESSAGES.descriptions.keepLayoutFixed,
     });
     expect(deriveGraphControlsFreezeToggleView(true, true)).toEqual({
-      label: "Resume Layout",
-      title: "Resume the layout",
+      label: GRAPH_CONTROLS_MESSAGES.labels.keepLayoutFixed,
+      title: GRAPH_CONTROLS_MESSAGES.descriptions.keepLayoutFixed,
     });
     expect(deriveGraphControlsFreezeToggleView(false, false)).toEqual({
-      label: "Freeze Layout",
-      title: "Freezing pauses the live layout — it's off while you're viewing history",
+      label: GRAPH_CONTROLS_MESSAGES.labels.keepLayoutFixed,
+      title: GRAPH_CONTROLS_MESSAGES.descriptions.settingUnavailableInHistory,
     });
   });
 
   it("projects sim play/pause action copy from the run-state mirror", () => {
     expect(deriveGraphControlsSimToggleView(false)).toEqual({
-      label: "Run Layout",
-      title:
-        "Let the layout move: continues a paused settle, or gives a settled graph a fresh run that stops on its own",
+      label: GRAPH_CONTROLS_MESSAGES.actions.resumeMovement,
+      title: GRAPH_CONTROLS_MESSAGES.actions.resumeMovement,
     });
     expect(deriveGraphControlsSimToggleView(true)).toEqual({
-      label: "Pause Layout",
-      title: "Pause the moving layout in place — it stops right where it is",
+      label: GRAPH_CONTROLS_MESSAGES.actions.pauseMovement,
+      title: GRAPH_CONTROLS_MESSAGES.actions.pauseMovement,
     });
   });
 
@@ -193,19 +158,18 @@ describe("graph controls chrome view seam", () => {
   it("projects navigation action chrome through one seam", () => {
     expect(deriveGraphControlsNavigationView()).toEqual({
       containerClassName: "flex flex-col items-center gap-fg-0-5",
-      ariaLabel: "Navigate",
+      ariaLabel: GRAPH_CONTROLS_MESSAGES.accessibility.navigation,
       dividerClassName: "my-fg-0-5 h-px w-6 bg-rule",
-      zoomIn: { label: "Zoom In" },
-      zoomOut: { label: "Zoom Out" },
+      zoomIn: { label: GRAPH_CONTROLS_MESSAGES.actions.zoomIn },
+      zoomOut: { label: GRAPH_CONTROLS_MESSAGES.actions.zoomOut },
       fitToView: {
-        label: "Fit to View",
-        title: "Fit all nodes into the viewport",
+        label: GRAPH_CONTROLS_MESSAGES.actions.fitToView,
+        title: GRAPH_CONTROLS_MESSAGES.actions.fitToView,
       },
       autoframe: {
-        label: "Autoframe",
-        titleOn: "Autoframe is on — the view follows the graph; click to turn off",
-        titleOff:
-          "Autoframe is off — click to keep the whole graph framed automatically",
+        label: GRAPH_CONTROLS_MESSAGES.actions.keepInView,
+        titleOn: GRAPH_CONTROLS_MESSAGES.descriptions.keepInView,
+        titleOff: GRAPH_CONTROLS_MESSAGES.descriptions.keepInView,
       },
     });
   });
@@ -264,14 +228,11 @@ describe("graph controls chrome view seam", () => {
 
   it("derives plain-language reflow toggle copy for each state", () => {
     expect(deriveGraphControlsReflowToggleView(false).label).toBe(
-      "Rearrange when filtering",
+      GRAPH_CONTROLS_MESSAGES.actions.rearrangeAfterFiltering,
     );
-    expect(deriveGraphControlsReflowToggleView(true).label).toBe(
-      "Rearrange when filtering",
+    expect(deriveGraphControlsReflowToggleView(true).title).toBe(
+      GRAPH_CONTROLS_MESSAGES.descriptions.rearrangeAfterFiltering,
     );
-    // The title explains the OTHER mode it switches to (no jargon).
-    expect(deriveGraphControlsReflowToggleView(false).title).toContain("remove");
-    expect(deriveGraphControlsReflowToggleView(true).title).toContain("dim");
   });
 });
 
@@ -296,30 +257,24 @@ describe("graph controls tune seam (three-native force params)", () => {
     const linkStrength = specById("linkStrength")!;
     // Repulsion is the magnitude: the signed `charge` range negated + swapped.
     expect(view.sliders.repulsion).toEqual({
-      label: "Spacing",
-      title: "How far nodes push each other apart",
+      label: UI_GRAPH_CONTROL_MESSAGES.charge.label,
+      title: UI_GRAPH_CONTROL_MESSAGES.charge.description,
       min: -charge.max!,
       max: -charge.min!,
       step: charge.step!,
     });
     expect(view.sliders.linkDistance).toMatchObject({
-      label: "Link length",
+      label: UI_GRAPH_CONTROL_MESSAGES.linkDistance.label,
       min: linkDistance.min!,
       max: linkDistance.max!,
       step: linkDistance.step!,
     });
     expect(view.sliders.linkSpring).toMatchObject({
-      label: "Grouping",
+      label: UI_GRAPH_CONTROL_MESSAGES.linkStrength.label,
       min: linkStrength.min!,
       max: linkStrength.max!,
       step: linkStrength.step!,
     });
-  });
-
-  it("formats force readouts at the schema step precision", () => {
-    expect(formatGraphControlsTuneValue("repulsion", 119.6)).toBe("120"); // charge step 5
-    expect(formatGraphControlsTuneValue("linkDistance", 40)).toBe("40"); // step 1
-    expect(formatGraphControlsTuneValue("linkSpring", 1.5)).toBe("1.50"); // linkStrength step 0.05
   });
 
   it("sets, patches, normalizes, and resets the tune params through one seam", () => {
@@ -381,20 +336,14 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
     ]);
     const nodeSize = specById("nodeSizeScale")!;
     expect(view.sliders.nodeSizeScale).toMatchObject({
-      label: nodeSize.label,
+      label: UI_GRAPH_CONTROL_MESSAGES.nodeSizeScale.label,
       min: nodeSize.min!,
       max: nodeSize.max!,
       step: nodeSize.step!,
     });
-    expect(view.colorModeLabel).toBe("Link colour");
-    expect(view.solidLabel).toBe("Solid");
-    expect(view.gradientLabel).toBe("Blended");
-  });
-
-  it("formats appearance readouts at the schema step precision", () => {
-    expect(formatGraphControlsAppearanceValue("edgeOpacityMax", 0.5)).toBe("0.50"); // step 0.02
-    expect(formatGraphControlsAppearanceValue("nodeSizeScale", 1)).toBe("1.00"); // step 0.05
-    expect(formatGraphControlsAppearanceValue("edgeWidthMax", 2.2)).toBe("2.2"); // step 0.1
+    expect(view.colorModeLabel).toBe(UI_GRAPH_CONTROL_MESSAGES.edgeColorMode.label);
+    expect(view.solidLabel).toBe(GRAPH_CONTROLS_MESSAGES.options.solid);
+    expect(view.gradientLabel).toBe(GRAPH_CONTROLS_MESSAGES.options.blended);
   });
 
   it("sets, patches, normalizes, and resets appearance through one seam", () => {
@@ -437,14 +386,17 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
 describe("graph controls View seam (granularity switch presentation)", () => {
   it("projects the Features / Documents node-level options in the established rail vocabulary", () => {
     const view = deriveGraphControlsViewPresentationView();
-    expect(view.heading).toBe("Show");
+    expect(view.heading).toBe(GRAPH_CONTROLS_MESSAGES.sections.show);
     // The OPTION VALUES are the wire enums; the LABELS are the established
     // user-facing rail vocabulary (the left rail's Features / Documents sections),
     // not invented jargon — the wire keeps feature/document.
     expect(view.detailOptions.map((o) => o.value)).toEqual(["feature", "document"]);
-    expect(view.detailOptions.map((o) => o.label)).toEqual(["Features", "Documents"]);
+    expect(view.detailOptions.map((o) => o.label)).toEqual([
+      GRAPH_CONTROLS_MESSAGES.options.features,
+      GRAPH_CONTROLS_MESSAGES.options.documents,
+    ]);
     // Every option carries an explanatory tooltip, plus a one-line caption.
-    expect(view.detailOptions.every((o) => o.title.length > 0)).toBe(true);
-    expect(view.caption.length).toBeGreaterThan(0);
+    expect(view.detailOptions.every((o) => "key" in o.title)).toBe(true);
+    expect("key" in view.caption).toBe(true);
   });
 });

@@ -4,11 +4,55 @@ import {
   rtlAddProjectDialogResources,
 } from "./addProjectResources";
 import {
+  ltrCommentDestructiveActions,
+  ltrCommentGuardedActions,
+  ltrCommentResources,
+  rtlCommentDestructiveActions,
+  rtlCommentGuardedActions,
+  rtlCommentResources,
+} from "./commentResources";
+import { ltrGraphResources, rtlGraphResources } from "./graphResources";
+import {
+  ltrDocumentSearchResources,
+  rtlDocumentSearchResources,
+} from "./documentSearchResources";
+import {
+  ltrDocumentPropertiesResources,
+  rtlDocumentPropertiesResources,
+} from "./documentPropertiesResources";
+import {
+  ltrCodeViewerResources,
+  ltrDocumentViewerReaderResources,
+  rtlCodeViewerResources,
+  rtlDocumentViewerReaderResources,
+} from "./documentViewerResources";
+import {
   ltrFolderBrowserResources,
   ltrPlacesRailResources,
   rtlFolderBrowserResources,
   rtlPlacesRailResources,
 } from "./pickerResources";
+import {
+  ltrReviewStationDestructiveActions,
+  ltrReviewStationGuardedActions,
+  ltrReviewStationResources,
+  rtlReviewStationDestructiveActions,
+  rtlReviewStationGuardedActions,
+  rtlReviewStationResources,
+} from "./reviewStationResources";
+import { ltrTimelineResources, rtlTimelineResources } from "./timelineResources";
+import {
+  ltrWorkspaceIdentityResources,
+  rtlWorkspaceIdentityResources,
+} from "./workspaceIdentityResources";
+import {
+  ltrSearchPaletteResources,
+  rtlSearchPaletteResources,
+} from "./searchPaletteResources";
+import {
+  ltrLanguageDisplayResources,
+  rtlLanguageDisplayResources,
+} from "./languageDisplayResources";
 
 export const ltrTestLocale = "fr" as const;
 export const rtlTestLocale = "ar" as const;
@@ -46,6 +90,7 @@ export const ltrTestResources = {
       moveToNextPanel: "Passer au panneau suivant",
       moveToPreviousPanel: "Passer au panneau précédent",
       openCommandPalette: "Ouvrir la palette de commandes…",
+      openFilters: "Ouvrir les filtres",
       refreshData: "Actualiser les données",
       reloadPage: "Recharger la page",
       reset: "Réinitialiser",
@@ -95,6 +140,7 @@ export const ltrTestResources = {
         close: "Fermer",
       },
     },
+    searchPalette: ltrSearchPaletteResources,
     controlPanels: {
       labels: {
         search: "Recherche",
@@ -248,6 +294,14 @@ export const ltrTestResources = {
       filterByDocumentType: "Filtrer par ce type de document",
       switchReadingAndEditing: "Basculer entre la lecture et la modification",
       switchView: "Basculer entre les documents et les fichiers",
+    },
+    guardedActions: {
+      ...ltrReviewStationGuardedActions,
+      ...ltrCommentGuardedActions,
+    },
+    destructiveActions: {
+      ...ltrReviewStationDestructiveActions,
+      ...ltrCommentDestructiveActions,
     },
     browserModes: {
       documents: "Documents",
@@ -408,7 +462,10 @@ export const ltrTestResources = {
         linkToDocument: "Ajouter un lien vers un document",
       },
     },
+    documentSearch: ltrDocumentSearchResources,
+    reviewStation: ltrReviewStationResources,
     viewer: {
+      languages: ltrLanguageDisplayResources,
       accessibility: {
         documentMode: "Mode du document",
         documentProperties: "Propriétés du document",
@@ -418,31 +475,10 @@ export const ltrTestResources = {
         edit: "Modification",
         view: "Lecture",
       },
-      properties: {
-        actions: {
-          rename: "Renommer le document",
-          save: "Enregistrer les propriétés",
-        },
-        emptyStates: {
-          newFeatureTag: "Saisissez une nouvelle étiquette de fonctionnalité",
-        },
-        labels: {
-          date: "Date",
-          documentName: "Nom du document",
-          documentType: "Type de document",
-          feature: "Fonctionnalité",
-          relatedDocuments: "Documents associés",
-        },
-        placeholders: {
-          date: "AAAA-MM-JJ",
-          featureTag: "Saisissez une étiquette de fonctionnalité",
-        },
-        states: {
-          notSet: "Non défini",
-          renaming: "Renommage du document…",
-          saving: "Enregistrement des propriétés…",
-        },
-      },
+      codeViewer: ltrCodeViewerResources,
+      reader: ltrDocumentViewerReaderResources,
+      comments: ltrCommentResources,
+      properties: ltrDocumentPropertiesResources,
     },
     disabledReasons: {
       ...en.documents.disabledReasons,
@@ -552,79 +588,7 @@ export const ltrTestResources = {
       feature: "Fonctionnalités",
     },
   },
-  graph: {
-    accessibility: {
-      selectedItem: "Élément sélectionné : {{item}}.",
-      selectedItemGeneric: "Élément sélectionné.",
-      workingSet: "Ensemble de travail",
-      workingSetCount_many: "{{count, number}} éléments dans l’ensemble de travail",
-      workingSetCount_one: "{{count, number}} élément dans l’ensemble de travail",
-      workingSetCount_other: "{{count, number}} éléments dans l’ensemble de travail",
-      hiddenByActiveFilter: "Masqué par le filtre actif",
-      namedWorkingSetItemHidden: "{{item}} est masqué par le filtre actif.",
-      workingSetItemHidden: "L’élément est masqué par le filtre actif.",
-    },
-    actions: {
-      addItemToWorkingSet: "Ajouter l’élément à l’ensemble de travail",
-      addSelectedItemToWorkingSet:
-        "Ajouter l’élément sélectionné à l’ensemble de travail",
-      clearSelection: "Effacer la sélection du graphe",
-      clearWorkingSet: "Effacer l’ensemble de travail",
-      expandFocusedItem: "Développer l’élément actif dans l’espace de travail",
-      fitToView: "Adapter le graphe à la vue",
-      moveToNextConnectedItem: "Passer à l’élément connecté suivant",
-      moveToPreviousConnectedItem: "Passer à l’élément connecté précédent",
-      openFocusedItem: "Ouvrir l’élément actif",
-      pauseMovement: "Suspendre le mouvement du graphe",
-      pinItem: "Épingler l’élément",
-      resetSettings: "Réinitialiser les paramètres du graphe",
-      resetView: "Réinitialiser la vue du graphe",
-      removeItemFromWorkingSet: "Retirer l’élément de l’ensemble de travail",
-      removeNamedItemFromWorkingSet: "Retirer {{item}} de l’ensemble de travail",
-      removeLastItemFromWorkingSet:
-        "Retirer le dernier élément de l’ensemble de travail",
-      resumeMovement: "Reprendre le mouvement du graphe",
-      showRelatedItem: "Afficher l’élément associé",
-      showStartingItem: "Afficher l’élément de départ",
-      unpinItem: "Désépingler l’élément",
-      zoomIn: "Agrandir",
-      zoomOut: "Réduire",
-    },
-    disabledReasons: {
-      chooseConnectionWithSummary: "Choisissez une connexion avec un résumé à copier.",
-      chooseItemWithTitle: "Choisissez un élément avec un titre à copier.",
-      relatedItemUnavailable:
-        "Actualisez les données, puis réessayez d’afficher l’élément associé.",
-      startingItemUnavailable:
-        "Actualisez les données, puis réessayez d’afficher l’élément de départ.",
-    },
-    legend: {
-      accessibility: {
-        documentTypeFilters: "Filtres par type de document",
-        moduleColors: "Couleurs des modules de code",
-        recencyScale: "Échelle de récence du code",
-      },
-      actions: {
-        addDocumentTypeFilter: "Ajouter le filtre {{documentType}}",
-        clearDocumentTypeFilters: "Effacer les filtres",
-        hideDocumentTypeLabels: "Masquer les libellés des types de document",
-        hideModuleLabels: "Masquer les libellés des modules",
-        removeDocumentTypeFilter: "Retirer le filtre {{documentType}}",
-        showDocumentTypeLabels: "Afficher les libellés des types de document",
-        showModuleLabels: "Afficher les libellés des modules",
-      },
-      labels: {
-        older: "Plus ancien",
-        recent: "Récent",
-      },
-    },
-    shortcutGroups: {
-      workingSet: "Ensemble de travail",
-    },
-    labels: {
-      item: "Élément",
-    },
-  },
+  graph: ltrGraphResources,
   operations: {
     actions: {
       applySearchSettings: "Appliquer les paramètres de recherche",
@@ -671,6 +635,7 @@ export const ltrTestResources = {
     },
   },
   projects: {
+    workspaceIdentity: ltrWorkspaceIdentityResources,
     addDialog: ltrAddProjectDialogResources,
     actions: {
       add: "Ajouter un projet…",
@@ -808,51 +773,7 @@ export const ltrTestResources = {
       english: "Anglais",
     },
   },
-  timeline: {
-    accessibility: {
-      dateField: "Date de la chronologie",
-    },
-    actions: {
-      clearDateRange: "Effacer la période",
-      filterByCreationDate: "Filtrer par date de création",
-      filterByCreationDateCurrent: "Filtrer par date de création (actuelle)",
-      filterByEditDate: "Filtrer par date de modification",
-      filterByEditDateCurrent: "Filtrer par date de modification (actuelle)",
-      filterByUpdateDate: "Filtrer par date de mise à jour",
-      filterByUpdateDateCurrent: "Filtrer par date de mise à jour (actuelle)",
-      showLast24Hours: "Afficher les dernières 24 heures",
-      showLast7Days: "Afficher les 7 derniers jours",
-      showLast30Days: "Afficher les 30 derniers jours",
-      showLast90Days: "Afficher les 90 derniers jours",
-      viewProjectAtVersion: "Afficher le projet dans cette version",
-    },
-    criteria: {
-      created: "Création",
-      modified: "Modification",
-      stamped: "Mise à jour",
-    },
-    descriptions: {
-      useCreationDateForRange: "Utiliser la date de création pour la période",
-      useEditDateForRange: "Utiliser la date de modification pour la période",
-      useUpdateDateForRange: "Utiliser la date de mise à jour pour la période",
-    },
-    disabledReasons: {
-      codeFiles:
-        "Choisissez la date de modification. Les fichiers de code utilisent les dates de modification.",
-      chooseProject: "Choisissez un projet, puis réessayez.",
-      current: "Choisissez une autre option de date pour modifier la chronologie.",
-      modifiedUnavailable:
-        "Choisissez la date de création. Les dates de modification ne sont pas disponibles ici.",
-      refreshHistory: "Actualisez l’historique du projet, puis réessayez.",
-      stampedUnavailable:
-        "Choisissez la date de création. Les dates de mise à jour ne sont pas disponibles ici.",
-      switchToDocumentsForHistory:
-        "Passez aux documents pour afficher l’historique du projet.",
-    },
-    labels: {
-      timeline: "Chronologie",
-    },
-  },
+  timeline: ltrTimelineResources,
 } as const;
 
 export const rtlTestResources = {
@@ -888,6 +809,7 @@ export const rtlTestResources = {
       moveToNextPanel: "الانتقال إلى اللوحة التالية",
       moveToPreviousPanel: "الانتقال إلى اللوحة السابقة",
       openCommandPalette: "فتح لوحة الأوامر…",
+      openFilters: "فتح عوامل التصفية",
       refreshData: "تحديث البيانات",
       reloadPage: "إعادة تحميل الصفحة",
       reset: "إعادة تعيين",
@@ -939,6 +861,7 @@ export const rtlTestResources = {
         close: "إغلاق",
       },
     },
+    searchPalette: rtlSearchPaletteResources,
     controlPanels: {
       labels: {
         search: "البحث",
@@ -1076,6 +999,14 @@ export const rtlTestResources = {
       showOrHideChanges: "إظهار التغييرات أو إخفاؤها",
       filterByDocumentType: "التصفية حسب نوع المستند هذا",
       switchReadingAndEditing: "التبديل بين القراءة والتحرير",
+    },
+    guardedActions: {
+      ...rtlReviewStationGuardedActions,
+      ...rtlCommentGuardedActions,
+    },
+    destructiveActions: {
+      ...rtlReviewStationDestructiveActions,
+      ...rtlCommentDestructiveActions,
     },
     browserModes: {
       documents: "المستندات",
@@ -1228,7 +1159,10 @@ export const rtlTestResources = {
         linkToDocument: "إضافة رابط إلى مستند",
       },
     },
+    documentSearch: rtlDocumentSearchResources,
+    reviewStation: rtlReviewStationResources,
     viewer: {
+      languages: rtlLanguageDisplayResources,
       accessibility: {
         documentMode: "وضع المستند",
         documentProperties: "خصائص المستند",
@@ -1238,31 +1172,10 @@ export const rtlTestResources = {
         edit: "تحرير",
         view: "قراءة",
       },
-      properties: {
-        actions: {
-          rename: "إعادة تسمية المستند",
-          save: "حفظ الخصائص",
-        },
-        emptyStates: {
-          newFeatureTag: "أدخل وسم ميزة جديدًا",
-        },
-        labels: {
-          date: "التاريخ",
-          documentName: "اسم المستند",
-          documentType: "نوع المستند",
-          feature: "الميزة",
-          relatedDocuments: "المستندات المرتبطة",
-        },
-        placeholders: {
-          date: "السنة-الشهر-اليوم",
-          featureTag: "أدخل وسم ميزة",
-        },
-        states: {
-          notSet: "غير محدد",
-          renaming: "جارٍ إعادة تسمية المستند…",
-          saving: "جارٍ حفظ الخصائص…",
-        },
-      },
+      codeViewer: rtlCodeViewerResources,
+      reader: rtlDocumentViewerReaderResources,
+      comments: rtlCommentResources,
+      properties: rtlDocumentPropertiesResources,
     },
     disabledReasons: {
       ...en.documents.disabledReasons,
@@ -1377,78 +1290,7 @@ export const rtlTestResources = {
       feature: "الميزات",
     },
   },
-  graph: {
-    accessibility: {
-      selectedItem: "تم تحديد {{item}}.",
-      selectedItemGeneric: "تم تحديد العنصر.",
-      workingSet: "مجموعة العمل",
-      workingSetCount_zero: "{{count, number}} عنصر في مجموعة العمل",
-      workingSetCount_one: "{{count, number}} عنصر في مجموعة العمل",
-      workingSetCount_two: "{{count, number}} من العناصر في مجموعة العمل",
-      workingSetCount_few: "{{count, number}} عناصر في مجموعة العمل",
-      workingSetCount_many: "{{count, number}} عنصرًا في مجموعة العمل",
-      workingSetCount_other: "{{count, number}} عنصر في مجموعة العمل",
-      hiddenByActiveFilter: "مخفي بواسطة عامل التصفية النشط",
-      namedWorkingSetItemHidden: "{{item}} مخفي بواسطة عامل التصفية النشط.",
-      workingSetItemHidden: "العنصر مخفي بواسطة عامل التصفية النشط.",
-    },
-    actions: {
-      addItemToWorkingSet: "إضافة العنصر إلى مجموعة العمل",
-      addSelectedItemToWorkingSet: "إضافة العنصر المحدد إلى مجموعة العمل",
-      clearSelection: "مسح تحديد الرسم البياني",
-      clearWorkingSet: "مسح مجموعة العمل",
-      expandFocusedItem: "توسيع العنصر المحدد ضمن مساحة العمل",
-      fitToView: "ملاءمة الرسم البياني للعرض",
-      moveToNextConnectedItem: "الانتقال إلى العنصر المتصل التالي",
-      moveToPreviousConnectedItem: "الانتقال إلى العنصر المتصل السابق",
-      openFocusedItem: "فتح العنصر المحدد",
-      pauseMovement: "إيقاف حركة الرسم البياني مؤقتًا",
-      pinItem: "تثبيت العنصر",
-      resetSettings: "إعادة تعيين إعدادات الرسم البياني",
-      resetView: "إعادة تعيين عرض الرسم البياني",
-      removeItemFromWorkingSet: "إزالة العنصر من مجموعة العمل",
-      removeNamedItemFromWorkingSet: "إزالة {{item}} من مجموعة العمل",
-      removeLastItemFromWorkingSet: "إزالة العنصر الأخير من مجموعة العمل",
-      resumeMovement: "استئناف حركة الرسم البياني",
-      showRelatedItem: "إظهار العنصر المرتبط",
-      showStartingItem: "إظهار عنصر البداية",
-      unpinItem: "إلغاء تثبيت العنصر",
-      zoomIn: "تكبير",
-      zoomOut: "تصغير",
-    },
-    disabledReasons: {
-      chooseConnectionWithSummary: "اختر اتصالًا له ملخص لنسخه.",
-      chooseItemWithTitle: "اختر عنصرًا له عنوان لنسخه.",
-      relatedItemUnavailable: "حدّث البيانات، ثم حاول إظهار العنصر المرتبط مرة أخرى.",
-      startingItemUnavailable: "حدّث البيانات، ثم حاول إظهار عنصر البداية مرة أخرى.",
-    },
-    legend: {
-      accessibility: {
-        documentTypeFilters: "عوامل التصفية حسب نوع المستند",
-        moduleColors: "ألوان وحدات التعليمات البرمجية",
-        recencyScale: "مقياس حداثة التعليمات البرمجية",
-      },
-      actions: {
-        addDocumentTypeFilter: "إضافة عامل تصفية {{documentType}}",
-        clearDocumentTypeFilters: "مسح عوامل التصفية",
-        hideDocumentTypeLabels: "إخفاء تسميات أنواع المستندات",
-        hideModuleLabels: "إخفاء تسميات الوحدات",
-        removeDocumentTypeFilter: "إزالة عامل تصفية {{documentType}}",
-        showDocumentTypeLabels: "إظهار تسميات أنواع المستندات",
-        showModuleLabels: "إظهار تسميات الوحدات",
-      },
-      labels: {
-        older: "أقدم",
-        recent: "حديث",
-      },
-    },
-    shortcutGroups: {
-      workingSet: "مجموعة العمل",
-    },
-    labels: {
-      item: "عنصر",
-    },
-  },
+  graph: rtlGraphResources,
   operations: {
     actions: {
       applySearchSettings: "تطبيق إعدادات البحث",
@@ -1495,6 +1337,7 @@ export const rtlTestResources = {
     },
   },
   projects: {
+    workspaceIdentity: rtlWorkspaceIdentityResources,
     addDialog: rtlAddProjectDialogResources,
     actions: {
       add: "إضافة مشروع…",
@@ -1620,47 +1463,7 @@ export const rtlTestResources = {
       english: "الإنجليزية",
     },
   },
-  timeline: {
-    accessibility: {
-      dateField: "تاريخ المخطط الزمني",
-    },
-    actions: {
-      clearDateRange: "مسح نطاق التاريخ",
-      filterByCreationDate: "التصفية حسب تاريخ الإنشاء",
-      filterByCreationDateCurrent: "التصفية حسب تاريخ الإنشاء (الحالي)",
-      filterByEditDate: "التصفية حسب تاريخ التعديل",
-      filterByEditDateCurrent: "التصفية حسب تاريخ التعديل (الحالي)",
-      filterByUpdateDate: "التصفية حسب تاريخ التحديث",
-      filterByUpdateDateCurrent: "التصفية حسب تاريخ التحديث (الحالي)",
-      showLast24Hours: "عرض آخر 24 ساعة",
-      showLast7Days: "عرض آخر 7 أيام",
-      showLast30Days: "عرض آخر 30 يومًا",
-      showLast90Days: "عرض آخر 90 يومًا",
-      viewProjectAtVersion: "عرض المشروع بهذا الإصدار",
-    },
-    criteria: {
-      created: "الإنشاء",
-      modified: "التعديل",
-      stamped: "التحديث",
-    },
-    descriptions: {
-      useCreationDateForRange: "استخدام تاريخ الإنشاء للنطاق",
-      useEditDateForRange: "استخدام تاريخ التعديل للنطاق",
-      useUpdateDateForRange: "استخدام تاريخ التحديث للنطاق",
-    },
-    disabledReasons: {
-      codeFiles: "اختر تاريخ التعديل. تستخدم ملفات التعليمات البرمجية تواريخ التعديل.",
-      chooseProject: "اختر مشروعًا، ثم حاول مرة أخرى.",
-      current: "اختر خيار تاريخ آخر لتغيير المخطط الزمني.",
-      modifiedUnavailable: "اختر تاريخ الإنشاء. تواريخ التعديل غير متاحة هنا.",
-      refreshHistory: "حدّث سجل المشروع، ثم حاول مرة أخرى.",
-      stampedUnavailable: "اختر تاريخ الإنشاء. تواريخ التحديث غير متاحة هنا.",
-      switchToDocumentsForHistory: "انتقل إلى المستندات لعرض سجل المشروع.",
-    },
-    labels: {
-      timeline: "المخطط الزمني",
-    },
-  },
+  timeline: rtlTimelineResources,
 } as const;
 
 export const testResources = {

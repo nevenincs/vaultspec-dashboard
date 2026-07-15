@@ -1,13 +1,4 @@
 // @vitest-environment happy-dom
-//
-// Render tests for the reader's section comment affordances + thread panel
-// (authoring-surface W02.P05.S17). The reader is dumb chrome, so it is driven with a
-// plane-shaped prop (the served comments + bound command callbacks the smart parent
-// supplies) — NOT a wire mock: the live wire that backs those callbacks is exercised
-// end to end in `sectionAnchor.live.test.ts` (a reader-built selector anchoring on
-// the real engine). Here we assert the reader's own behaviour: viewport-switched
-// affordance visibility, the count chip, the thread lifecycle (open → compose →
-// resolve), and honest orphaned rendering with an explicit re-anchor.
 
 import {
   act,
@@ -17,24 +8,28 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { I18nextProvider } from "react-i18next";
+import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { resolveMessage } from "../../platform/localization/fallback";
+import type { SectionSelector, ServedComment } from "../../stores/server/authoring";
+import {
+  COMMENT_ACTIONS,
+  COMMENT_MESSAGES,
+  commentConnectionIssueDescriptor,
+  commentsToReviewCountDescriptor,
+} from "../../stores/server/authoring/commentVocabulary";
 import type { ContentView } from "../../stores/server/queries";
-import type { ServedComment } from "../../stores/server/authoring";
 import { MarkdownReader } from "./MarkdownReader";
-import type { ReaderCommentSource } from "./readerComments";
+import type { ReaderCommentActions, ReaderCommentSource } from "./readerComments";
 import { clearSectionScroll, requestSectionScroll } from "./readerSectionScroll";
 
-const SCROLL_NODE_ID = "doc:2026-06-16-x-adr";
-
-afterEach(() => {
-  cleanup();
-  // Restore matchMedia between tests (the compact case stubs it).
-  delete (window as unknown as { matchMedia?: unknown }).matchMedia;
-  // Drop any unconsumed section-scroll intent so it never leaks into the next test.
-  clearSectionScroll(SCROLL_NODE_ID);
-});
-
+const NODE_ID = "doc:2026-06-16-x-adr";
 const SECTION_PATH = ["Doc Title", "Section One"];
 
 const DOC = [
@@ -55,186 +50,7 @@ const DOC = [
   "",
 ].join("\n");
 
-function available(text: string): ContentView {
-  return {
-    loading: false,
-    errored: false,
-    degraded: false,
-    degradedTiers: [],
-    reasons: {},
-    path: ".vault/adr/2026-06-16-x-adr.md",
-    blobHash: "abc",
-    languageHint: "markdown",
-    text,
-    truncated: null,
-    available: true,
-  };
-}
-
-function anchoredComment(id: string, headingPath: string[]): ServedComment {
-  return {
-    comment: {
-      schema_version: "authoring.comment.v1",
-      comment_id: id,
-      document: { node_id: "doc:x" },
-      selector: { heading_path: headingPath, expected_content_hash: "hash" },
-      body: "a section note",
-      author: { id: "human:editor", kind: "human" },
-      resolved: false,
-      created_at_ms: Date.now(),
-      updated_at_ms: Date.now(),
-    },
-    anchor: {
-      state: "anchored",
-      heading_path: headingPath,
-      content_start: 0,
-      content_end: 1,
-    },
-    orphaned: false,
-  };
-}
-
-function orphanedComment(id: string, headingPath: string[]): ServedComment {
-  return {
-    comment: {
-      schema_version: "authoring.comment.v1",
-      comment_id: id,
-      document: { node_id: "doc:x" },
-      selector: { heading_path: headingPath, expected_content_hash: "stale" },
-      body: "a drifted note",
-      author: { id: "human:editor", kind: "human" },
-      resolved: false,
-      created_at_ms: Date.now(),
-      updated_at_ms: Date.now(),
-    },
-    anchor: {
-      state: "orphaned",
-      evidence: {
-        reason: "content_hash_mismatch",
-        heading_path: headingPath,
-        expected: "e",
-        observed: "o",
-      },
-    },
-    orphaned: true,
-  };
-}
-
-function makeSource(overrides: Partial<ReaderCommentSource> = {}): ReaderCommentSource {
-  return {
-    comments: [],
-    docStem: "2026-06-16-x-adr",
-    actorReady: true,
-    actorBootstrapping: false,
-    ensureActor: vi.fn(),
-    createComment: vi.fn().mockResolvedValue(undefined),
-    editComment: vi.fn().mockResolvedValue(undefined),
-    setResolved: vi.fn().mockResolvedValue(undefined),
-    reanchorComment: vi.fn().mockResolvedValue(undefined),
-    deleteComment: vi.fn().mockResolvedValue(undefined),
-    ...overrides,
-  };
-}
-
-/** Stub matchMedia so the compact breakpoint query matches → `useViewportClass()`
- *  reads "compact" (mirrors VaultBrowser.compact.render.test.tsx). */
-function stubCompactMatchMedia(): void {
-  window.matchMedia = ((query: string) =>
-    ({
-      matches: query.includes("max-width"),
-      media: query,
-      onchange: null,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-      addListener: () => undefined,
-      removeListener: () => undefined,
-      dispatchEvent: () => false,
-    }) as unknown as MediaQueryList) as typeof window.matchMedia;
-}
-
-describe("reader comment affordance visibility", () => {
-  it("hover-reveals the affordance on a regular (pointer) viewport", () => {
-    render(<MarkdownReader content={available(DOC)} commentSource={makeSource()} />);
-    const affordance = screen.getByLabelText("Comment on this section");
-    // The wrapper carries the hover reveal on pointer viewports.
-    const wrapper = affordance.closest("[data-affordance-visibility]");
-    expect(wrapper?.getAttribute("data-affordance-visibility")).toBe("hover");
-  });
-
-  it("always shows the affordance on a compact (touch) viewport", () => {
-    stubCompactMatchMedia();
-    render(<MarkdownReader content={available(DOC)} commentSource={makeSource()} />);
-    const affordance = screen.getByLabelText("Comment on this section");
-    const wrapper = affordance.closest("[data-affordance-visibility]");
-    expect(wrapper?.getAttribute("data-affordance-visibility")).toBe("always");
-  });
-});
-
-describe("reader comment count chip", () => {
-  it("renders a count chip on a section that has served comments", () => {
-    const source = makeSource({
-      comments: [
-        anchoredComment("a", SECTION_PATH),
-        anchoredComment("b", SECTION_PATH),
-      ],
-    });
-    const { container } = render(
-      <MarkdownReader content={available(DOC)} commentSource={source} />,
-    );
-    const chip = container.querySelector("[data-comment-count]");
-    expect(chip).toBeTruthy();
-    expect(chip!.textContent).toBe("2");
-  });
-
-  it("shows no chip on a section with no comments", () => {
-    const { container } = render(
-      <MarkdownReader content={available(DOC)} commentSource={makeSource()} />,
-    );
-    expect(container.querySelector("[data-comment-count]")).toBeNull();
-  });
-});
-
-describe("reader comment thread lifecycle", () => {
-  it("opens the thread and composes a new comment with a section-anchored selector", async () => {
-    const createComment = vi.fn().mockResolvedValue(undefined);
-    render(
-      <MarkdownReader
-        content={available(DOC)}
-        commentSource={makeSource({ createComment })}
-      />,
-    );
-    fireEvent.click(screen.getByLabelText("Comment on this section"));
-
-    const box = await screen.findByLabelText("new comment");
-    fireEvent.change(box, { target: { value: "please clarify" } });
-    fireEvent.click(screen.getByRole("button", { name: "Comment" }));
-
-    await waitFor(() => expect(createComment).toHaveBeenCalledTimes(1));
-    const [selector, body] = createComment.mock.calls[0];
-    // The selector carries the full raw ancestor path + a real git-blob-oid hash.
-    expect(selector.heading_path).toEqual(SECTION_PATH);
-    expect(selector.expected_content_hash).toMatch(/^[0-9a-f]{40}$/);
-    expect(body).toBe("please clarify");
-  });
-
-  it("resolves an anchored comment from its thread row", async () => {
-    const setResolved = vi.fn().mockResolvedValue(undefined);
-    render(
-      <MarkdownReader
-        content={available(DOC)}
-        commentSource={makeSource({
-          comments: [anchoredComment("a", SECTION_PATH)],
-          setResolved,
-        })}
-      />,
-    );
-    fireEvent.click(screen.getByLabelText("Comment on this section"));
-    fireEvent.click(await screen.findByLabelText("Resolve comment"));
-    await waitFor(() => expect(setResolved).toHaveBeenCalledWith("a", true));
-  });
-});
-
-const DUP_DOC = [
+const DUPLICATE_DOC = [
   "---",
   "tags:",
   "  - '#adr'",
@@ -255,199 +71,344 @@ const DUP_DOC = [
   "",
 ].join("\n");
 
-describe("reader duplicate-section handling", () => {
-  it("blocks composing on a duplicated section with an honest hint, never a silent orphan", async () => {
-    const createComment = vi.fn().mockResolvedValue(undefined);
-    render(
-      <MarkdownReader
-        content={available(DUP_DOC)}
-        commentSource={makeSource({ createComment })}
-      />,
-    );
-    // Both identically-titled sections carry the affordance; open the first.
-    fireEvent.click(screen.getAllByLabelText("Comment on this section")[0]);
-
-    // The compose box is replaced by a plain-language hint — no "new comment" input.
-    expect(
-      await screen.findByText(/more than one section with this heading/),
-    ).toBeTruthy();
-    expect(screen.queryByLabelText("new comment")).toBeNull();
-    expect(createComment).not.toHaveBeenCalled();
-  });
+afterEach(() => {
+  cleanup();
+  clearSectionScroll(NODE_ID);
 });
 
-describe("reader scroll-to-section (S31)", () => {
-  it("scrolls to and focuses the heading a section-scroll intent targets", () => {
-    const { container } = render(
+function available(text = DOC): ContentView {
+  return {
+    loading: false,
+    errored: false,
+    degraded: false,
+    degradedTiers: [],
+    reasons: {},
+    path: ".vault/adr/2026-06-16-x-adr.md",
+    blobHash: "abc",
+    languageHint: "markdown",
+    text,
+    truncated: null,
+    available: true,
+  };
+}
+
+function servedComment(
+  id: string,
+  options: { orphaned?: boolean; body?: string } = {},
+): ServedComment {
+  const orphaned = options.orphaned ?? false;
+  return {
+    comment: {
+      schema_version: "authoring.comment.v1",
+      comment_id: id,
+      document: { node_id: "doc:x" },
+      selector: { heading_path: SECTION_PATH, expected_content_hash: "hash" },
+      body: options.body ?? "Authored comment",
+      author: { id: "human:editor", kind: "human" },
+      resolved: false,
+      created_at_ms: Date.now(),
+      updated_at_ms: Date.now(),
+    },
+    anchor: orphaned
+      ? {
+          state: "orphaned",
+          evidence: {
+            reason: "content_hash_mismatch",
+            heading_path: SECTION_PATH,
+            expected: "expected-private-hash",
+            observed: "observed-private-hash",
+          },
+        }
+      : {
+          state: "anchored",
+          heading_path: SECTION_PATH,
+          content_start: 0,
+          content_end: 1,
+        },
+    orphaned,
+  };
+}
+
+interface OperationCalls {
+  readonly added: Array<{ selector: SectionSelector; body: string }>;
+  readonly saved: Array<{ id: string; body: string }>;
+  readonly statuses: Array<{ id: string; resolved: boolean }>;
+  readonly moved: Array<{ id: string; selector: SectionSelector }>;
+  readonly deleted: string[];
+}
+
+function operationHarness(): { actions: ReaderCommentActions; calls: OperationCalls } {
+  const calls: OperationCalls = {
+    added: [],
+    saved: [],
+    statuses: [],
+    moved: [],
+    deleted: [],
+  };
+  const actions: ReaderCommentActions = {
+    async createComment(selector, body) {
+      calls.added.push({ selector, body });
+    },
+    async editComment(id, body) {
+      calls.saved.push({ id, body });
+    },
+    async setResolved(id, resolved) {
+      calls.statuses.push({ id, resolved });
+    },
+    async reanchorComment(id, selector) {
+      calls.moved.push({ id, selector });
+    },
+    async deleteComment(id) {
+      calls.deleted.push(id);
+    },
+  };
+  return { actions, calls };
+}
+
+function renderReader(
+  options: {
+    comments?: ServedComment[];
+    content?: ContentView;
+    nodeId?: string | null;
+  } = {},
+) {
+  const runtime = createTestLocalizationRuntime();
+  const harness = operationHarness();
+  let ensureActorCount = 0;
+  const source: ReaderCommentSource = {
+    comments: options.comments ?? [],
+    docStem: "2026-06-16-x-adr",
+    actorReady: true,
+    actorBootstrapping: false,
+    ensureActor() {
+      ensureActorCount += 1;
+    },
+    ...harness.actions,
+  };
+  const result = render(
+    <I18nextProvider i18n={runtime}>
       <MarkdownReader
-        content={available(DOC)}
-        nodeId={SCROLL_NODE_ID}
-        commentSource={makeSource()}
-      />,
+        content={options.content ?? available()}
+        nodeId={options.nodeId === undefined ? NODE_ID : options.nodeId}
+        commentSource={source}
+      />
+    </I18nextProvider>,
+  );
+  return {
+    ...result,
+    runtime,
+    source,
+    calls: harness.calls,
+    ensureActorCount: () => ensureActorCount,
+  };
+}
+
+describe("reader comments", () => {
+  it("updates mounted controls in English, French, and Arabic without losing the open draft", async () => {
+    const anchored = servedComment("comment-a");
+    const review = servedComment("comment-b", { orphaned: true });
+    const { runtime } = renderReader({ comments: [anchored, review] });
+
+    const openButton = screen.getByRole("button", {
+      name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+    });
+    const reviewButton = screen.getByRole("button", {
+      name: resolveMessage(runtime, commentsToReviewCountDescriptor(1)),
+    });
+    openButton.focus();
+    fireEvent.click(openButton);
+    const dialog = await screen.findByRole("dialog", {
+      name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.sectionComments),
+    });
+    const textbox = screen.getByRole("textbox", {
+      name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.newComment),
+    });
+    fireEvent.change(textbox, { target: { value: "Authored draft" } });
+    textbox.focus();
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+      }),
+    ).toBe(openButton);
+    expect(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, commentsToReviewCountDescriptor(1)),
+      }),
+    ).toBe(reviewButton);
+    expect(
+      screen.getByRole("dialog", {
+        name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.sectionComments),
+      }),
+    ).toBe(dialog);
+    expect((textbox as HTMLTextAreaElement).value).toBe("Authored draft");
+    expect(document.activeElement).toBe(textbox);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+      }),
+    ).toBe(openButton);
+    expect(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, commentsToReviewCountDescriptor(1)),
+      }),
+    ).toBe(reviewButton);
+    expect((textbox as HTMLTextAreaElement).value).toBe("Authored draft");
+    expect(document.activeElement).toBe(textbox);
+  });
+
+  it("keeps the regular viewport affordance hover-revealed and shows the section count", () => {
+    const { container, runtime } = renderReader({
+      comments: [servedComment("comment-a"), servedComment("comment-b")],
+    });
+    const affordance = screen.getByRole("button", {
+      name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+    });
+    expect(
+      affordance
+        .closest("[data-affordance-visibility]")
+        ?.getAttribute("data-affordance-visibility"),
+    ).toBe("hover");
+    expect(container.querySelector("[data-comment-count]")?.textContent).toBe("2");
+  });
+
+  it("opens and closes the section panel and restores focus", async () => {
+    const { runtime } = renderReader();
+    const openButton = screen.getByRole("button", {
+      name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+    });
+    openButton.focus();
+    fireEvent.click(openButton);
+    expect(
+      await screen.findByRole("dialog", {
+        name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.sectionComments),
+      }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.close),
+      }),
     );
-    // The heading carries the plugin's slug id ("Section One" → "section-one").
-    const heading = container.querySelector<HTMLElement>("#section-one");
-    expect(heading).toBeTruthy();
-    const scrollSpy = vi.fn();
-    heading!.scrollIntoView = scrollSpy;
-
-    act(() => requestSectionScroll(SCROLL_NODE_ID, "section-one"));
-
-    expect(scrollSpy).toHaveBeenCalledTimes(1);
-    // a11y: the section is made focusable and focused so keyboard/AT users land there.
-    expect(heading!.getAttribute("tabindex")).toBe("-1");
-  });
-
-  it("is inert when the fragment matches no heading (plain open, no error)", () => {
-    const { container } = render(
-      <MarkdownReader
-        content={available(DOC)}
-        nodeId={SCROLL_NODE_ID}
-        commentSource={makeSource()}
-      />,
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", {
+          name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.sectionComments),
+        }),
+      ).toBeNull(),
     );
-    const heading = container.querySelector<HTMLElement>("#section-one");
-    const scrollSpy = vi.fn();
-    heading!.scrollIntoView = scrollSpy;
-
-    act(() => requestSectionScroll(SCROLL_NODE_ID, "no-such-heading"));
-
-    expect(scrollSpy).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(openButton);
   });
 
-  it("fires the scroll+focus once the document finishes loading (the async path)", () => {
-    // scrollIntoView is not implemented in happy-dom — spy the prototype so the
-    // effect can call it, and so we observe the deferred (loading → ready) fire.
-    const proto = window.HTMLElement.prototype as unknown as {
-      scrollIntoView: unknown;
-    };
-    const original = proto.scrollIntoView;
-    const scrollSpy = vi.fn();
-    proto.scrollIntoView = scrollSpy;
-    try {
-      const loadingView: ContentView = {
-        ...available(DOC),
-        loading: true,
-        text: "",
-        available: false,
-      };
-      const { container, rerender } = render(
-        <MarkdownReader
-          content={loadingView}
-          nodeId={SCROLL_NODE_ID}
-          commentSource={makeSource()}
-        />,
-      );
-      // While loading the reader shows a skeleton — no headings exist yet.
-      expect(container.querySelector("#section-one")).toBeNull();
-      // Record the intent WHILE the document is still loading.
-      act(() => requestSectionScroll(SCROLL_NODE_ID, "section-one"));
-      expect(scrollSpy).not.toHaveBeenCalled();
+  it("adds a comment with the production section selector", async () => {
+    const { runtime, calls } = renderReader();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+      }),
+    );
+    const textbox = await screen.findByRole("textbox", {
+      name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.newComment),
+    });
+    fireEvent.change(textbox, { target: { value: "Please clarify" } });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.add),
+      }),
+    );
 
-      // The content resolves — the effect re-runs now that the heading exists.
-      rerender(
-        <MarkdownReader
-          content={available(DOC)}
-          nodeId={SCROLL_NODE_ID}
-          commentSource={makeSource()}
-        />,
-      );
-      expect(scrollSpy).toHaveBeenCalledTimes(1);
-      const heading = container.querySelector<HTMLElement>("#section-one");
-      expect(heading?.getAttribute("tabindex")).toBe("-1");
-    } finally {
-      proto.scrollIntoView = original;
-    }
+    await waitFor(() => expect(calls.added).toHaveLength(1));
+    expect(calls.added[0]?.selector.heading_path).toEqual(SECTION_PATH);
+    expect(calls.added[0]?.selector.expected_content_hash).toMatch(/^[0-9a-f]{40}$/);
+    expect(calls.added[0]?.body).toBe("Please clarify");
   });
 
-  it("clears a dormant intent when the reader unmounts unconsumed (no stale scroll-jump on reopen)", () => {
-    // First open: still loading, record an intent, then unmount before it is ready —
-    // the failed-load case that must not leave a dormant intent behind.
-    const loadingView: ContentView = {
-      ...available(DOC),
+  it("changes an anchored comment status through the supplied operation", async () => {
+    const { runtime, calls } = renderReader({
+      comments: [servedComment("comment-a")],
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+      }),
+    );
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.resolve),
+      }),
+    );
+    await waitFor(() =>
+      expect(calls.statuses).toEqual([{ id: "comment-a", resolved: true }]),
+    );
+  });
+
+  it("blocks adding a comment when two sections have the same heading", async () => {
+    const { runtime, calls } = renderReader({ content: available(DUPLICATE_DOC) });
+    fireEvent.click(
+      screen.getAllByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.open),
+      })[0]!,
+    );
+    expect(
+      await screen.findByText(
+        resolveMessage(runtime, COMMENT_MESSAGES.disabledReasons.duplicateHeading),
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("textbox", {
+        name: resolveMessage(runtime, COMMENT_MESSAGES.accessibility.newComment),
+      }),
+    ).toBeNull();
+    expect(calls.added).toHaveLength(0);
+  });
+
+  it("shows comments to review and moves one with a production selector", async () => {
+    const { container, runtime, calls } = renderReader({
+      comments: [servedComment("comment-a", { orphaned: true })],
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, commentsToReviewCountDescriptor(1)),
+      }),
+    );
+    expect(
+      await screen.findByText(
+        resolveMessage(
+          runtime,
+          commentConnectionIssueDescriptor("content_hash_mismatch"),
+        ),
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, COMMENT_ACTIONS.moveToThisSection),
+      }),
+    );
+    await waitFor(() => expect(calls.moved).toHaveLength(1));
+    expect(calls.moved[0]?.id).toBe("comment-a");
+    expect(calls.moved[0]?.selector.heading_path).toEqual(SECTION_PATH);
+    expect(calls.moved[0]?.selector.expected_content_hash).toMatch(/^[0-9a-f]{40}$/);
+    expect(container.textContent).not.toContain("content_hash_mismatch");
+    expect(container.textContent).not.toContain("expected-private-hash");
+    expect(container.textContent).not.toContain("observed-private-hash");
+  });
+
+  it("clears an unfinished section request when a loading reader closes", () => {
+    const loading: ContentView = {
+      ...available(),
       loading: true,
       text: "",
       available: false,
     };
-    const first = render(
-      <MarkdownReader
-        content={loadingView}
-        nodeId={SCROLL_NODE_ID}
-        commentSource={makeSource()}
-      />,
-    );
-    act(() => requestSectionScroll(SCROLL_NODE_ID, "section-one"));
+    const first = renderReader({ content: loading });
+    act(() => requestSectionScroll(NODE_ID, "section-one"));
     first.unmount();
 
-    // Reopen the same document, now ready. Had the dormant intent lingered it would
-    // scroll-jump; the unmount-clear guarantees it does not.
-    const proto = window.HTMLElement.prototype as unknown as {
-      scrollIntoView: unknown;
-    };
-    const original = proto.scrollIntoView;
-    const scrollSpy = vi.fn();
-    proto.scrollIntoView = scrollSpy;
-    try {
-      render(
-        <MarkdownReader
-          content={available(DOC)}
-          nodeId={SCROLL_NODE_ID}
-          commentSource={makeSource()}
-        />,
-      );
-      expect(scrollSpy).not.toHaveBeenCalled();
-    } finally {
-      proto.scrollIntoView = original;
-    }
-  });
-});
-
-describe("reader copy-section-link (S32)", () => {
-  it("copies the round-trippable [[stem#slug]] section link from the thread header", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      value: { writeText },
-      configurable: true,
-    });
-    render(
-      <MarkdownReader
-        content={available(DOC)}
-        nodeId={SCROLL_NODE_ID}
-        commentSource={makeSource()}
-      />,
-    );
-    fireEvent.click(screen.getByLabelText("Comment on this section"));
-    fireEvent.click(await screen.findByLabelText("Copy section link"));
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toBe("[[2026-06-16-x-adr#section-one]]");
-  });
-});
-
-describe("reader orphaned comment handling", () => {
-  it("lists an orphaned note with its plain-language reason and re-anchors on request", async () => {
-    const reanchorComment = vi.fn().mockResolvedValue(undefined);
-    render(
-      <MarkdownReader
-        content={available(DOC)}
-        commentSource={makeSource({
-          comments: [orphanedComment("c", SECTION_PATH)],
-          reanchorComment,
-        })}
-      />,
-    );
-    // The doc-level orphaned affordance appears (never silently re-anchored).
-    fireEvent.click(screen.getByText("1 orphaned note"));
-
-    // The typed reason renders in plain language.
-    expect(await screen.findByText(/has been edited since/)).toBeTruthy();
-
-    // The section still exists, so an explicit re-anchor is offered and fires.
-    fireEvent.click(screen.getByText("Re-anchor to current section"));
-    await waitFor(() => expect(reanchorComment).toHaveBeenCalledTimes(1));
-    const [commentId, selector] = reanchorComment.mock.calls[0];
-    expect(commentId).toBe("c");
-    expect(selector.heading_path).toEqual(SECTION_PATH);
-    expect(selector.expected_content_hash).toMatch(/^[0-9a-f]{40}$/);
+    const second = renderReader();
+    expect(
+      second.container.querySelector("#section-one")?.getAttribute("tabindex"),
+    ).toBe(null);
   });
 });

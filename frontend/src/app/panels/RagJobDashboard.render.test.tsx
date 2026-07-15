@@ -1,94 +1,107 @@
 // @vitest-environment happy-dom
-//
-// The rag job dashboard shell + header bar (rag-job-dashboard P03.S09). Two layers:
-//   - the pure `DashboardHeaderBar` is unit-tested over synthesized status so its
-//     verb eligibility and designed offline/degraded states are deterministic
-//     without the live wire (it is glass fed by props);
-//   - the `RagJobDashboard` container is mounted online (the suite runs against the
-//     real `vaultspec serve` fixture) to prove the header + both body regions
-//     compose and mount — structure only, never asserting the fixture's live rag
-//     lifecycle state.
-// Core vitest matchers only (no jest-dom in this project).
 
-import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { createElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import { afterEach, describe, expect, it } from "vitest";
 
-import { queryClient } from "../../stores/server/queryClient";
+import { en } from "../../locales/en";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
+} from "../../localization/testing";
 import {
   DashboardHeaderBar,
   RagJobDashboard,
   type DashboardHeaderBarProps,
 } from "./RagJobDashboard";
 
-afterEach(cleanup);
+let activeClient: QueryClient | null = null;
 
-function headerProps(
-  overrides: Partial<DashboardHeaderBarProps> = {},
-): DashboardHeaderBarProps {
-  return {
+afterEach(() => {
+  cleanup();
+  activeClient?.clear();
+  activeClient = null;
+});
+
+function renderHeader(overrides: Partial<DashboardHeaderBarProps> = {}) {
+  const runtime = createTestLocalizationRuntime();
+  const starts: Array<boolean | undefined> = [];
+  const counts = { stop: 0, restart: 0, doctor: 0, reindex: 0 };
+  const props: DashboardHeaderBarProps = {
     running: true,
     healthWord: "Running",
     healthTone: "active",
     actionsPending: false,
     doctorPending: false,
     reindexActive: false,
-    onStart: vi.fn(),
-    onStop: vi.fn(),
-    onRestart: vi.fn(),
-    onDoctor: vi.fn(),
-    onReindex: vi.fn(),
+    onStart: (autoProvision) => starts.push(autoProvision),
+    onStop: () => {
+      counts.stop += 1;
+    },
+    onRestart: () => {
+      counts.restart += 1;
+    },
+    onDoctor: () => {
+      counts.doctor += 1;
+    },
+    onReindex: () => {
+      counts.reindex += 1;
+    },
     ...overrides,
   };
+  const result = render(
+    <I18nextProvider i18n={runtime}>
+      <DashboardHeaderBar {...props} />
+    </I18nextProvider>,
+  );
+  return { ...result, runtime, starts, counts };
 }
 
 describe("DashboardHeaderBar", () => {
-  it("shows the running lifecycle verbs and the reindex trigger", () => {
-    render(<DashboardHeaderBar {...headerProps()} />);
-    expect(screen.getByRole("button", { name: "Stop" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Restart" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Check health" })).toBeTruthy();
+  it("localizes the Search heading in place", async () => {
+    const { runtime } = renderHeader();
+    const heading = screen.getByText(en.common.controlPanels.labels.search);
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(screen.getByText(ltrTestResources.common.controlPanels.labels.search)).toBe(
+      heading,
+    );
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(screen.getByText(rtlTestResources.common.controlPanels.labels.search)).toBe(
+      heading,
+    );
+  });
+
+  it("shows running actions and dispatches their callbacks", () => {
+    const { counts } = renderHeader();
+    const stop = screen.getByRole("button", { name: "Stop" });
+    const restart = screen.getByRole("button", { name: "Restart" });
+    const doctor = screen.getByRole("button", { name: "Check health" });
     const reindex = screen.getByRole("button", { name: "Reindex documents" });
+
     expect((reindex as HTMLButtonElement).disabled).toBe(false);
-    // Health word renders the plain label, not a wire token.
+    fireEvent.click(stop);
+    fireEvent.click(restart);
+    fireEvent.click(doctor);
+    fireEvent.click(reindex);
+    expect(counts).toEqual({ stop: 1, restart: 1, doctor: 1, reindex: 1 });
     expect(screen.getByText("Running")).toBeTruthy();
   });
 
-  it("dispatches the lifecycle and reindex verbs through the handlers", () => {
-    const onStop = vi.fn();
-    const onRestart = vi.fn();
-    const onDoctor = vi.fn();
-    const onReindex = vi.fn();
-    render(
-      <DashboardHeaderBar
-        {...headerProps({ onStop, onRestart, onDoctor, onReindex })}
-      />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
-    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
-    fireEvent.click(screen.getByRole("button", { name: "Check health" }));
-    fireEvent.click(screen.getByRole("button", { name: "Reindex documents" }));
-    expect(onStop).toHaveBeenCalledTimes(1);
-    expect(onRestart).toHaveBeenCalledTimes(1);
-    expect(onDoctor).toHaveBeenCalledTimes(1);
-    expect(onReindex).toHaveBeenCalledTimes(1);
-  });
+  it("keeps reindex visible with a reason while Search is stopped", () => {
+    renderHeader({
+      running: false,
+      healthWord: "Not running",
+      healthTone: "broken",
+    });
 
-  it("renders the designed down state: Start plus disabled-with-reason reindex", () => {
-    render(
-      <DashboardHeaderBar
-        {...headerProps({
-          running: false,
-          healthWord: "Not running",
-          healthTone: "broken",
-        })}
-      />,
-    );
-    // Stop/Restart give way to Start when the service is down...
     expect(screen.getByRole("button", { name: "Start service" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Stop" })).toBeNull();
-    // ...and reindex stays visible but disabled-with-reason (never dead-looking).
     const reindex = screen.getByRole("button", {
       name: "Reindex documents",
     }) as HTMLButtonElement;
@@ -99,92 +112,67 @@ describe("DashboardHeaderBar", () => {
     expect(screen.getByText("Not running")).toBeTruthy();
   });
 
-  it("surfaces the needs-install retry path", () => {
-    const onStart = vi.fn();
-    render(
-      <DashboardHeaderBar
-        {...headerProps({
-          running: false,
-          healthWord: "Not running",
-          healthTone: "broken",
-          startOutcome: { status: "needs_install", attached: false },
-          onStart,
-        })}
-      />,
-    );
-    const retry = screen.getByRole("button", { name: "Retry with auto-provision" });
-    fireEvent.click(retry);
-    expect(onStart).toHaveBeenCalledWith(true);
+  it("dispatches the install retry choice", () => {
+    const { starts } = renderHeader({
+      running: false,
+      healthWord: "Not running",
+      healthTone: "broken",
+      startOutcome: { status: "needs_install", attached: false },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Retry with auto-provision" }));
+    expect(starts).toEqual([true]);
   });
 
-  it("renders the degraded reason line when the semantic tier is down", () => {
-    render(
-      <DashboardHeaderBar
-        {...headerProps({
-          running: false,
-          healthWord: "Not responding",
-          healthTone: "stale",
-          degradedReason: "Semantic search is offline.",
-        })}
-      />,
-    );
+  it("renders the supplied degraded reason", () => {
+    renderHeader({
+      running: false,
+      healthWord: "Not responding",
+      healthTone: "stale",
+      degradedReason: "Semantic search is offline.",
+    });
     expect(screen.getByText("Semantic search is offline.")).toBeTruthy();
   });
 
-  it("renders the designed engine-unreachable state as a degraded block", () => {
-    // A genuine transport failure (the engine itself is unreachable, not merely the
-    // semantic tier down) surfaces the designed degraded block, not a bare error.
-    const { container } = render(
-      <DashboardHeaderBar
-        {...headerProps({
-          running: false,
-          healthWord: "Not running",
-          healthTone: "broken",
-          errored: true,
-        })}
-      />,
-    );
+  it("renders the unavailable state as a degraded block", () => {
+    const { container } = renderHeader({
+      running: false,
+      healthWord: "Not running",
+      healthTone: "broken",
+      errored: true,
+    });
     expect(container.querySelector('[data-state-block="degraded"]')).toBeTruthy();
-    expect(
-      screen.getByText(
-        "The dashboard cannot reach the engine — status is unavailable.",
-      ),
-    ).toBeTruthy();
   });
 
-  it("shows the inline reindex progress while a job is live", () => {
-    const { container } = render(
-      <DashboardHeaderBar
-        {...headerProps({
-          reindexActive: true,
-          reindexFraction: 0.42,
-          reindexLabel: "embedding",
-        })}
-      />,
-    );
+  it("shows inline reindex progress while a job is active", () => {
+    const { container } = renderHeader({
+      reindexActive: true,
+      reindexFraction: 0.42,
+      reindexLabel: "embedding",
+    });
     expect(container.querySelector("[data-rag-reindex-progress]")).toBeTruthy();
     expect(screen.getByText("embedding")).toBeTruthy();
   });
 });
 
-describe("RagJobDashboard (shell)", () => {
-  it("composes the header bar over both body regions", () => {
+describe("RagJobDashboard", () => {
+  it("composes the header over both body regions", () => {
+    const runtime = createTestLocalizationRuntime();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    activeClient = client;
     const { container } = render(
-      createElement(
-        QueryClientProvider,
-        { client: queryClient },
-        createElement(RagJobDashboard),
-      ),
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={client}>
+          <RagJobDashboard />
+        </QueryClientProvider>
+      </I18nextProvider>,
     );
     expect(container.querySelector("[data-rag-job-dashboard]")).toBeTruthy();
     expect(container.querySelector("[data-rag-dashboard-header]")).toBeTruthy();
-    // The jobs + log regions (built by the parallel P04 lane) compose below the
-    // header; assert the body wrapper mounted them without coupling to their
-    // internal DOM.
     const body = container.querySelector("[data-rag-dashboard-body]");
     expect(body).toBeTruthy();
     expect((body as HTMLElement).children.length).toBe(2);
-    // A lifecycle verb is always present (running or down variant).
     expect(container.querySelector("[data-rag-dashboard-header] button")).toBeTruthy();
   });
 });

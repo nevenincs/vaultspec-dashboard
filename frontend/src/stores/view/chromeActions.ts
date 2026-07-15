@@ -20,11 +20,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-import {
-  type ActionDescriptor,
-  type ActionIcon,
-  type ActionPresentation,
-} from "../../platform/actions/action";
+import { type ActionDescriptor, type ActionIcon } from "../../platform/actions/action";
 import {
   CONTROL_PANEL_IDS,
   toggleControlPanel,
@@ -42,6 +38,7 @@ import {
 import { getKeymapOverrides } from "./keymapDispatcher";
 import { runResetLayout } from "./resetLayoutBridge";
 import { openSettingsDialog } from "./settingsDialog";
+import { CONTROL_PANEL_VOCABULARY } from "./controlPanelVocabulary";
 
 export const SETTINGS_ACTION_ID = "app:settings";
 export const RESET_LAYOUT_ACTION_ID = "window:reset-layout";
@@ -160,34 +157,11 @@ export const CONTROL_PANEL_ACTION_IDS: Record<ControlPanelId, string> = {
   "vault-health": "panel:vault-health",
 };
 
-const CONTROL_PANEL_ACTION_SPECS: Record<
-  ControlPanelId,
-  {
-    showLabel: ActionPresentation;
-    hideLabel: ActionPresentation;
-    icon: ActionIcon;
-  }
-> = {
-  "search-service": {
-    showLabel: { key: "common:actions.showSearchStatus" },
-    hideLabel: { key: "common:actions.hideSearchStatus" },
-    icon: Search,
-  },
-  approvals: {
-    showLabel: { key: "common:actions.showApprovals" },
-    hideLabel: { key: "common:actions.hideApprovals" },
-    icon: ClipboardCheck,
-  },
-  "backend-health": {
-    showLabel: { key: "common:actions.showSystemStatus" },
-    hideLabel: { key: "common:actions.hideSystemStatus" },
-    icon: Activity,
-  },
-  "vault-health": {
-    showLabel: { key: "common:actions.showProjectHealth" },
-    hideLabel: { key: "common:actions.hideProjectHealth" },
-    icon: ShieldCheck,
-  },
+const CONTROL_PANEL_ACTION_ICONS: Record<ControlPanelId, ActionIcon> = {
+  "search-service": Search,
+  approvals: ClipboardCheck,
+  "backend-health": Activity,
+  "vault-health": ShieldCheck,
 };
 
 /** Toggle one framework control panel (activity-rail-realignment D4): ONE shared
@@ -199,12 +173,12 @@ export function controlPanelToggleAction(
   id: ControlPanelId,
   openControlPanel: ControlPanelId | null,
 ): ActionDescriptor {
-  const spec = CONTROL_PANEL_ACTION_SPECS[id];
+  const vocabulary = CONTROL_PANEL_VOCABULARY[id];
   return withAccelerator({
     id: CONTROL_PANEL_ACTION_IDS[id],
-    label: openControlPanel === id ? spec.hideLabel : spec.showLabel,
+    label: openControlPanel === id ? vocabulary.hideLabel : vocabulary.showLabel,
     section: "navigate",
-    icon: spec.icon,
+    icon: CONTROL_PANEL_ACTION_ICONS[id],
     run: () => toggleControlPanel(id),
   });
 }

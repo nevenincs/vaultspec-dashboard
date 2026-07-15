@@ -344,6 +344,52 @@ describe("localization source scanner", () => {
     ]);
   });
 
+  it("assigns attribute expressions to the attribute scanner", () => {
+    const directory = mkdtempSync(join(tmpdir(), "vaultspec-localization-jsx-"));
+    try {
+      const file = join(directory, "attribute-ownership.tsx");
+      writeFileSync(
+        file,
+        [
+          'const baseId = "result";',
+          'const tone = "ready";',
+          "const cond = true;",
+          "export const Fixture = () => (",
+          "  <>",
+          "    <div id={`${baseId}-live`} data-state={tone} />",
+          "    <button aria-label={cond ? 'Save' : 'Cancel'} />",
+          '    <SegmentedToggle ariaLabel="Search scope" />',
+          "    <div>{cond ? 'Visible' : 'Hidden'}</div>",
+          "  </>",
+          ");",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const findings = scanFiles([file]);
+      const attributeFindings = findings.filter(
+        ({ code }) => code === FINDING_CODES.jsxAttribute,
+      );
+      const textFindings = findings.filter(
+        ({ code }) => code === FINDING_CODES.jsxText,
+      );
+
+      expect(attributeFindings).toHaveLength(3);
+      expect(attributeFindings.map(({ snippet }) => snippet)).toEqual([
+        "aria-label={cond ? 'Save' : 'Cancel'}",
+        "aria-label={cond ? 'Save' : 'Cancel'}",
+        'ariaLabel="Search scope"',
+      ]);
+      expect(textFindings).toHaveLength(2);
+      expect(textFindings.map(({ snippet }) => snippet)).toEqual([
+        "{cond ? 'Visible' : 'Hidden'}",
+        "{cond ? 'Visible' : 'Hidden'}",
+      ]);
+    } finally {
+      rmSync(directory, { force: true, recursive: true });
+    }
+  });
+
   it("rejects invalid and out-of-root baseline metadata", () => {
     const findings = scanFiles([generatedCommentFile]);
     const entry = baselineFor(findings)[0];

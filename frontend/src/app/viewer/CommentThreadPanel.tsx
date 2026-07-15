@@ -1,126 +1,192 @@
-// The section comment thread panel (authoring-surface ADR D2, W02.P05.S16).
-//
-// Opens anchored to the invoked section (the reader positions it beside the
-// heading, mirroring PropertiesPopover's Popover pattern — Escape / outside-pointer
-// dismiss for free). Two roles, one panel:
-//
-//   - Section thread: lists a live section's ANCHORED comments (author + relative
-//     time + body) with resolve/reopen, edit, delete, and a compose box that creates
-//     a fresh comment whose selector is computed from the CURRENT section bytes (so
-//     it lists as anchored immediately — the same git-blob-oid the backend fences).
-//   - Orphaned notes: lists comments whose anchor drifted, under a clearly-labeled
-//     stale state with the typed reason in plain language and an explicit
-//     "Re-anchor to current section" action — the mutation is never a silent side
-//     effect of a read.
-//
-// Presentational: the parent owns the served comments + the mutations (this composes
-// kit atoms and calls the plane callbacks). Tokens only; every string plain language.
-
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Link, Link2, RotateCcw, Trash2, X } from "lucide-react";
 
-import { Badge, Button, Card, Divider, IconButton, Popover } from "../kit";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type {
-  CommentOrphanEvidence,
-  ServedComment,
-} from "../../stores/server/authoring";
+  AnyMessageDescriptor,
+  MessageDescriptor,
+} from "../../platform/localization/message";
+import type { ServedComment } from "../../stores/server/authoring";
+import {
+  COMMENT_ACTIONS,
+  COMMENT_DELETE_CONFIRMATION,
+  COMMENT_MESSAGES,
+  commentAuthorKindDescriptor,
+  commentConnectionIssueDescriptor,
+  commentFailureDescriptor,
+  commentRelativeTimeDescriptor,
+  commentsToReviewCountDescriptor,
+  commentSuccessDescriptor,
+} from "../../stores/server/authoring/commentVocabulary";
+import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
+import { Badge, Button, Card, Divider, IconButton, Popover } from "../kit";
+import type { ReaderCommentActions } from "./readerComments";
 import {
   headingPathKey,
   sectionSelectorForBlock,
   type CommentAnchorIndex,
   type HeadingBlock,
 } from "./sectionAnchor";
-import type { ReaderCommentActions } from "./readerComments";
 
-/** A coarse, plain-language relative time from an epoch-ms stamp. */
-function relativeTime(ms: number): string {
-  const deltaSeconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (deltaSeconds < 45) return "just now";
-  const minutes = Math.round(deltaSeconds / 60);
-  if (minutes < 60) return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
-  const hours = Math.round(minutes / 60);
-  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
-  const days = Math.round(hours / 24);
-  if (days < 30) return days === 1 ? "1 day ago" : `${days} days ago`;
-  const months = Math.round(days / 30);
-  if (months < 12) return months === 1 ? "1 month ago" : `${months} months ago`;
-  const years = Math.round(months / 12);
-  return years === 1 ? "1 year ago" : `${years} years ago`;
+type ResolveMessage = ReturnType<typeof useLocalizedMessageResolver>;
+
+function localized(
+  resolveMessage: ResolveMessage,
+  descriptor: AnyMessageDescriptor,
+): string | null {
+  const result = resolveMessage(descriptor);
+  return result.usedFallback ? null : result.message;
 }
 
-/** The single-principal author label (V1 is one shared editor by ADR): a human
- *  comment is the current editor ("You"); other kinds name their kind plainly. */
-function authorLabel(kind: string): string {
-  if (kind === "human") return "You";
-  if (kind === "agent") return "Assistant";
-  return "System";
-}
-
-/** The typed orphan reason in plain, user-facing language (no engine vocabulary). */
-function orphanReason(evidence: CommentOrphanEvidence): string {
-  switch (evidence.reason) {
-    case "content_hash_mismatch":
-      return "The section this note was left on has been edited since.";
-    case "missing_anchor":
-      return "The section this note was left on no longer exists.";
-    case "ambiguous_anchor":
-      return "This note's section now matches more than one heading.";
-    case "malformed_anchor":
-      return "This note's anchor is no longer valid.";
-  }
-}
-
-/** The live block whose path still matches an orphaned comment's stored anchor (the
- *  re-anchor target), or undefined when the section is truly gone. */
 function reanchorTarget(
   served: ServedComment,
   anchorIndex: CommentAnchorIndex,
 ): HeadingBlock | undefined {
   const wanted = headingPathKey(served.comment.selector.heading_path);
-  for (const block of anchorIndex.byPluginPath.values()) {
-    if (headingPathKey(block.path) === wanted) return block;
+  const matches: HeadingBlock[] = [];
+  for (const [pluginPath, block] of anchorIndex.byPluginPath) {
+    if (
+      !anchorIndex.ambiguousPaths.has(pluginPath) &&
+      headingPathKey(block.path) === wanted
+    ) {
+      matches.push(block);
+    }
   }
-  return undefined;
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+interface FeedbackProps {
+  descriptor: MessageDescriptor | null;
+  resolveMessage: ResolveMessage;
+}
+
+function Feedback({ descriptor, resolveMessage }: FeedbackProps) {
+  if (descriptor === null) return null;
+  const message = localized(resolveMessage, descriptor);
+  if (message === null) return null;
+  return (
+    <p role="status" className="text-meta text-ink-muted">
+      {message}
+    </p>
+  );
 }
 
 interface CommentRowProps {
   served: ServedComment;
   actions: ReaderCommentActions;
-  /** The live re-anchor target for an orphaned row, or undefined when unavailable. */
   reanchorBlock?: HeadingBlock;
 }
 
-/** One comment: author + relative time + body, with resolve/reopen, edit, delete,
- *  and (for an orphaned row) the explicit re-anchor. Tracks its own in-flight state
- *  so one busy row never freezes the thread. */
 function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const { comment, orphaned } = served;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
   const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<MessageDescriptor | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const busyRef = useRef(false);
+  const deleteButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreDeleteFocusRef = useRef(false);
 
-  const run = (op: () => Promise<void>) => {
+  useEffect(() => {
+    if (confirmDelete || !restoreDeleteFocusRef.current) return;
+    const timer = setTimeout(() => {
+      restoreDeleteFocusRef.current = false;
+      deleteButtonRef.current?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [confirmDelete]);
+
+  const author = localized(
+    resolveMessage,
+    commentAuthorKindDescriptor(comment.author.kind),
+  );
+  const time = localized(
+    resolveMessage,
+    commentRelativeTimeDescriptor(comment.created_at_ms),
+  );
+  const resolved = localized(resolveMessage, COMMENT_MESSAGES.states.resolved);
+  const reopen = localized(resolveMessage, COMMENT_ACTIONS.reopen);
+  const resolve = localized(resolveMessage, COMMENT_ACTIONS.resolve);
+  const deleteComment = localized(resolveMessage, COMMENT_ACTIONS.delete);
+  const editComment = localized(resolveMessage, COMMENT_ACTIONS.edit);
+  const save = localized(resolveMessage, COMMENT_ACTIONS.save);
+  const cancel = localized(resolveMessage, COMMENT_ACTIONS.cancel);
+  const move = localized(resolveMessage, COMMENT_ACTIONS.moveToThisSection);
+  const issue =
+    orphaned && served.anchor.state === "orphaned"
+      ? localized(
+          resolveMessage,
+          commentConnectionIssueDescriptor(served.anchor.evidence.reason),
+        )
+      : "";
+
+  if (
+    [
+      author,
+      time,
+      resolved,
+      reopen,
+      resolve,
+      deleteComment,
+      editComment,
+      save,
+      cancel,
+      move,
+      issue,
+    ].some((value) => value === null)
+  ) {
+    return null;
+  }
+
+  const run = async (
+    operation: () => Promise<void>,
+    success: MessageDescriptor,
+    failure: MessageDescriptor,
+    onSuccess?: () => void,
+  ): Promise<void> => {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
-    void op().finally(() => setBusy(false));
+    setFeedback(null);
+    try {
+      await operation();
+      onSuccess?.();
+      setFeedback(success);
+    } catch {
+      setFeedback(failure);
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const resolveOperation = comment.resolved ? "reopen" : "resolve";
+  const closeDeleteConfirmation = () => {
+    restoreDeleteFocusRef.current = true;
+    setConfirmDelete(false);
   };
 
   return (
-    <div
-      className="flex flex-col gap-fg-1 rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-2"
-      data-comment-id={comment.comment_id}
-      data-comment-orphaned={orphaned}
-    >
+    <div className="flex flex-col gap-fg-1 rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-2">
       <div className="flex items-center justify-between gap-fg-2">
-        <span className="text-label text-ink-muted">
-          {authorLabel(comment.author.kind)} · {relativeTime(comment.created_at_ms)}
+        <span className="flex items-center gap-fg-1 text-label text-ink-muted">
+          <span>{author}</span>
+          <span aria-hidden className="h-fg-2 w-px bg-rule" />
+          <span>{time}</span>
         </span>
         <div className="flex items-center gap-fg-1">
-          {comment.resolved && <Badge tone="neutral">Resolved</Badge>}
+          {comment.resolved && <Badge tone="neutral">{resolved}</Badge>}
           <IconButton
-            label={comment.resolved ? "Reopen comment" : "Resolve comment"}
-            onClick={() =>
-              run(() => actions.setResolved(comment.comment_id, !comment.resolved))
-            }
+            label={comment.resolved ? reopen! : resolve!}
+            onClick={() => {
+              void run(
+                () => actions.setResolved(comment.comment_id, !comment.resolved),
+                commentSuccessDescriptor(resolveOperation),
+                commentFailureDescriptor(resolveOperation),
+              );
+            }}
             disabled={busy}
           >
             {comment.resolved ? (
@@ -130,8 +196,12 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
             )}
           </IconButton>
           <IconButton
-            label="Delete comment"
-            onClick={() => run(() => actions.deleteComment(comment.comment_id))}
+            ref={deleteButtonRef}
+            label={deleteComment!}
+            onClick={() => {
+              restoreDeleteFocusRef.current = false;
+              setConfirmDelete(true);
+            }}
             disabled={busy}
           >
             <Trash2 size={14} aria-hidden />
@@ -139,28 +209,27 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
         </div>
       </div>
 
-      {orphaned && served.anchor.state === "orphaned" && (
-        <div
-          className="rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-meta text-ink-muted"
-          data-comment-orphan-reason={served.anchor.evidence.reason}
-        >
-          {orphanReason(served.anchor.evidence)}
+      {issue !== "" && (
+        <div className="rounded-fg-xs bg-paper-sunken px-fg-2 py-fg-1 text-meta text-ink-muted">
+          {issue}
           {reanchorBlock !== undefined && (
             <button
               type="button"
               className="ml-fg-2 inline-flex items-center gap-fg-1 font-medium text-accent-text underline-offset-2 hover:underline disabled:opacity-50"
               disabled={busy}
-              onClick={() =>
-                run(async () =>
-                  actions.reanchorComment(
-                    comment.comment_id,
-                    await sectionSelectorForBlock(reanchorBlock),
-                  ),
-                )
-              }
+              onClick={() => {
+                void run(
+                  async () => {
+                    const selector = await sectionSelectorForBlock(reanchorBlock);
+                    await actions.reanchorComment(comment.comment_id, selector);
+                  },
+                  commentSuccessDescriptor("move"),
+                  commentFailureDescriptor("move"),
+                );
+              }}
             >
               <Link2 size={12} aria-hidden />
-              Re-anchor to current section
+              {move}
             </button>
           )}
         </div>
@@ -171,7 +240,7 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
           <textarea
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
-            aria-label="edit comment"
+            aria-label={editComment!}
             rows={3}
             className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
           />
@@ -179,14 +248,16 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
             <Button
               variant="secondary"
               disabled={busy || draft.trim().length === 0}
-              onClick={() =>
-                run(async () => {
-                  await actions.editComment(comment.comment_id, draft.trim());
-                  setEditing(false);
-                })
-              }
+              onClick={() => {
+                void run(
+                  () => actions.editComment(comment.comment_id, draft.trim()),
+                  commentSuccessDescriptor("save"),
+                  commentFailureDescriptor("save"),
+                  () => setEditing(false),
+                );
+              }}
             >
-              Save
+              {save}
             </Button>
             <Button
               variant="ghost"
@@ -194,9 +265,10 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
               onClick={() => {
                 setDraft(comment.body);
                 setEditing(false);
+                setFeedback(null);
               }}
             >
-              Cancel
+              {cancel}
             </Button>
           </div>
         </div>
@@ -204,45 +276,97 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
         <button
           type="button"
           className="whitespace-pre-wrap break-words text-left text-body text-ink hover:text-accent-text"
-          title="Edit comment"
+          title={editComment!}
           onClick={() => {
             setDraft(comment.body);
             setEditing(true);
+            setFeedback(null);
           }}
         >
           {comment.body}
         </button>
       )}
+
+      <Feedback descriptor={feedback} resolveMessage={resolveMessage} />
+      <ActionConfirmationDialog
+        open={confirmDelete}
+        confirmation={COMMENT_DELETE_CONFIRMATION}
+        onCancel={closeDeleteConfirmation}
+        onConfirm={() => {
+          closeDeleteConfirmation();
+          void run(
+            () => actions.deleteComment(comment.comment_id),
+            commentSuccessDescriptor("delete"),
+            commentFailureDescriptor("delete"),
+          );
+        }}
+      />
     </div>
   );
 }
 
-/** The compose box: a textarea + a Comment button that creates a comment anchored
- *  to the CURRENT section. Disabled until the shared editor actor is bootstrapped
- *  (a comment command needs a resolved principal). */
+interface ComposeBoxProps {
+  block: HeadingBlock;
+  actions: ReaderCommentActions;
+  actorReady: boolean;
+  actorBootstrapping: boolean;
+}
+
 function ComposeBox({
   block,
   actions,
   actorReady,
   actorBootstrapping,
-}: {
-  block: HeadingBlock;
-  actions: ReaderCommentActions;
-  actorReady: boolean;
-  actorBootstrapping: boolean;
-}) {
+}: ComposeBoxProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
-  const canSubmit = actorReady && !busy && draft.trim().length > 0;
+  const [feedback, setFeedback] = useState<MessageDescriptor | null>(null);
+  const busyRef = useRef(false);
+  const placeholder = localized(
+    resolveMessage,
+    COMMENT_MESSAGES.placeholders.newComment,
+  );
+  const fieldLabel = localized(
+    resolveMessage,
+    COMMENT_MESSAGES.accessibility.newComment,
+  );
+  const add = localized(resolveMessage, COMMENT_ACTIONS.add);
+  const ready = localized(
+    resolveMessage,
+    COMMENT_MESSAGES.descriptions.attachedToSection,
+  );
+  const preparing = localized(resolveMessage, COMMENT_MESSAGES.states.preparing);
+  const unavailable = localized(
+    resolveMessage,
+    COMMENT_MESSAGES.errors.actorUnavailable,
+  );
 
-  const submit = () => {
-    if (!canSubmit) return;
+  if (
+    [placeholder, fieldLabel, add, ready, preparing, unavailable].some(
+      (value) => value === null,
+    )
+  ) {
+    return null;
+  }
+
+  const canSubmit = actorReady && !busy && draft.trim().length > 0;
+  const submit = async (): Promise<void> => {
+    if (!canSubmit || busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
-    void (async () => {
+    setFeedback(null);
+    try {
       const selector = await sectionSelectorForBlock(block);
       await actions.createComment(selector, draft.trim());
       setDraft("");
-    })().finally(() => setBusy(false));
+      setFeedback(commentSuccessDescriptor("add"));
+    } catch {
+      setFeedback(commentFailureDescriptor("add"));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
   };
 
   return (
@@ -250,60 +374,40 @@ function ComposeBox({
       <textarea
         value={draft}
         onChange={(event) => setDraft(event.target.value)}
-        placeholder="Leave a note on this section…"
-        aria-label="new comment"
+        placeholder={placeholder!}
+        aria-label={fieldLabel!}
         rows={3}
         className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
       />
       <div className="flex items-center justify-between gap-fg-2">
         <span className="text-meta text-ink-muted">
-          {actorReady
-            ? "Notes attach to this section's heading."
-            : actorBootstrapping
-              ? "Preparing your editor identity…"
-              : "Sign-in is being prepared…"}
+          {actorReady ? ready : actorBootstrapping ? preparing : unavailable}
         </span>
-        <Button variant="primary" disabled={!canSubmit} onClick={submit}>
-          Comment
+        <Button variant="primary" disabled={!canSubmit} onClick={() => void submit()}>
+          {add}
         </Button>
       </div>
+      <Feedback descriptor={feedback} resolveMessage={resolveMessage} />
     </div>
   );
 }
 
 export interface CommentThreadPanelProps {
-  /** The section this thread is anchored to; when set, the compose box + that
-   *  section's anchored comments render. Omit for the doc-level orphaned panel. */
   block?: HeadingBlock;
-  /** The comments to list (the parent has already narrowed to the section's
-   *  anchored comments, or to the orphaned set). */
   comments: ServedComment[];
-  /** The plane's bound command callbacks + actor-identity state. */
   actions: ReaderCommentActions;
   anchorIndex: CommentAnchorIndex;
   actorReady: boolean;
   actorBootstrapping: boolean;
   ensureActor(): void;
-  /** Panel title (e.g. the section heading, or "Orphaned notes"). */
   title: string;
-  /** True for the doc-level orphaned panel (no compose; rows offer re-anchor). */
   orphanedPanel?: boolean;
-  /** Copy a section link (`[[stem#slug]]`) to this heading; omitted when the source
-   *  is not a document. Rendered as a header verb on the section thread. */
   onCopyLink?: () => void;
-  /** The section's heading path is duplicated in the document, so a new comment
-   *  could not be told apart from the identically-titled section(s). Compose is
-   *  replaced with an honest hint rather than silently creating an orphan. */
   ambiguous?: boolean;
   onClose(): void;
-  /** Popover positioning class supplied by the reader (anchored to the heading). */
   className?: string;
 }
 
-/**
- * The section comment thread panel. Composed from kit atoms in a light-dismiss
- * Popover; the parent supplies the narrowed comments and the section anchor.
- */
 export function CommentThreadPanel({
   block,
   comments,
@@ -319,36 +423,95 @@ export function CommentThreadPanel({
   onClose,
   className,
 }: CommentThreadPanelProps) {
-  // Bootstrap the shared editor actor the moment a thread opens (the least-eager
-  // mint: a reader that never opens a thread never mints a token).
+  const resolveMessage = useLocalizedMessageResolver();
+  const [feedback, setFeedback] = useState<MessageDescriptor | null>(null);
+  const bootstrapActor = useCallback(() => {
+    try {
+      ensureActor();
+    } catch {
+      setFeedback(COMMENT_MESSAGES.errors.actorUnavailable);
+    }
+  }, [ensureActor]);
+
   useEffect(() => {
-    if (!actorReady) ensureActor();
-  }, [actorReady, ensureActor]);
+    if (!actorReady) bootstrapActor();
+  }, [actorReady, bootstrapActor]);
+
+  const dialogLabel = localized(
+    resolveMessage,
+    orphanedPanel
+      ? COMMENT_MESSAGES.accessibility.commentsToReview
+      : COMMENT_MESSAGES.accessibility.sectionComments,
+  );
+  const commentsToReview = localized(
+    resolveMessage,
+    commentsToReviewCountDescriptor(comments.length),
+  );
+  const copyLink = localized(resolveMessage, COMMENT_ACTIONS.copyLink);
+  const close = localized(resolveMessage, COMMENT_ACTIONS.close);
+  const noComments = localized(
+    resolveMessage,
+    orphanedPanel
+      ? COMMENT_MESSAGES.emptyStates.noCommentsToReview
+      : COMMENT_MESSAGES.emptyStates.noComments,
+  );
+  const duplicateHeading = localized(
+    resolveMessage,
+    COMMENT_MESSAGES.disabledReasons.duplicateHeading,
+  );
+  const copyFailure = localized(resolveMessage, commentFailureDescriptor("copyLink"));
+
+  if (
+    [
+      dialogLabel,
+      commentsToReview,
+      copyLink,
+      close,
+      noComments,
+      duplicateHeading,
+      copyFailure,
+    ].some((value) => value === null)
+  ) {
+    return null;
+  }
+
+  const panelTitle = orphanedPanel ? commentsToReview! : title;
 
   return (
     <Popover
       open
       onDismiss={onClose}
       role="dialog"
-      aria-label={orphanedPanel ? "Orphaned comments" : "Section comments"}
+      aria-label={dialogLabel!}
       className={className}
       data-comment-thread
     >
       <Card elevation="overlay" padded>
-        {/* Clamp the panel to the reader pane (the `@container` root exposes `cqw`)
-            so a reader narrower than the 20rem panel never scrolls horizontally. */}
         <div className="flex max-h-[24rem] w-80 max-w-[calc(100cqw-1.5rem)] flex-col gap-fg-2 overflow-auto">
           <div className="flex items-center justify-between gap-fg-2">
-            <span className="truncate text-label font-medium text-ink" title={title}>
-              {title}
+            <span
+              className="truncate text-label font-medium text-ink"
+              title={panelTitle}
+            >
+              {panelTitle}
             </span>
             <div className="flex shrink-0 items-center gap-fg-1">
               {onCopyLink !== undefined && !orphanedPanel && (
-                <IconButton label="Copy section link" onClick={onCopyLink}>
+                <IconButton
+                  label={copyLink!}
+                  onClick={() => {
+                    try {
+                      onCopyLink();
+                      setFeedback(null);
+                    } catch {
+                      setFeedback(commentFailureDescriptor("copyLink"));
+                    }
+                  }}
+                >
                   <Link size={14} aria-hidden />
                 </IconButton>
               )}
-              <IconButton label="Close comments" onClick={onClose}>
+              <IconButton label={close!} onClick={onClose}>
                 <X size={14} aria-hidden />
               </IconButton>
             </div>
@@ -356,11 +519,7 @@ export function CommentThreadPanel({
           <Divider />
 
           {comments.length === 0 ? (
-            <p className="py-fg-1 text-meta text-ink-muted">
-              {orphanedPanel
-                ? "No orphaned notes."
-                : "No comments on this section yet."}
-            </p>
+            <p className="py-fg-1 text-meta text-ink-muted">{noComments}</p>
           ) : (
             <div className="flex flex-col gap-fg-2">
               {comments.map((served) => (
@@ -384,9 +543,7 @@ export function CommentThreadPanel({
                   className="rounded-fg-sm bg-paper-sunken px-fg-2 py-fg-2 text-meta text-ink-muted"
                   data-comment-ambiguous
                 >
-                  This document has more than one section with this heading, so a note
-                  here couldn't be told apart from the others. Rename one of the
-                  headings to comment on it.
+                  {duplicateHeading}
                 </p>
               ) : (
                 <ComposeBox
@@ -398,6 +555,7 @@ export function CommentThreadPanel({
               )}
             </>
           )}
+          <Feedback descriptor={feedback} resolveMessage={resolveMessage} />
         </div>
       </Card>
     </Popover>

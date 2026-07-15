@@ -46,9 +46,7 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
       return (
         <div key={c.key} style={{ margin: "4px 0" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ flex: 1 }} title={c.hint}>
-              {c.label}
-            </span>
+            <span style={{ flex: 1 }}>{c.controlId}</span>
             <select
               value={v}
               onChange={(e) => setParam(c.key, e.target.value)}
@@ -56,7 +54,7 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
             >
               {c.options.map((o) => (
                 <option key={o.value} value={o.value}>
-                  {o.label}
+                  {o.value}
                 </option>
               ))}
             </select>
@@ -68,9 +66,7 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
     return (
       <div key={c.key} style={{ margin: "4px 0" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ flex: 1 }} title={c.hint}>
-            {c.label}
-          </span>
+          <span style={{ flex: 1 }}>{c.controlId}</span>
           <input
             type="number"
             value={v}

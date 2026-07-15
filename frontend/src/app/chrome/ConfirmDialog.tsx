@@ -1,20 +1,16 @@
-// The confirm-dialog content layer (figma 17:1276 "Archive feature"): the
-// arm-to-confirm modal that composes the shared `Dialog` shell with a body copy
-// block and a Cancel / accent-confirm button row. The shell owns the scrim,
-// focus trap, Escape / backdrop dismiss and focus restore; this layer owns the
-// confirm semantics — the body message, the destructive verb, and the two-button
-// footer with the accent confirm affordance auto-focused so the flow completes
-// from the keyboard (arm-to-confirm: the dialog IS the second step).
-//
-// Layer ownership (dashboard-layer-ownership): app-chrome. It renders props and
-// fires the supplied callbacks; it never fetches the engine nor reads the raw
-// tiers block. All color derives from the OKLCH semantic tokens (no hex, no
-// `dark:` variant); the only glyph is the Lucide close in the shell.
+// Confirmation content composed within the shared modal shell. The confirm
+// action receives focus so the flow can be completed from the keyboard.
 
 import { useEffect, useRef } from "react";
 
+import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { Button } from "../kit";
 import { Dialog } from "./Dialog";
+
+export const CONFIRM_DIALOG_MESSAGES = {
+  cancel: { key: "common:actions.cancel" },
+} as const satisfies Record<string, MessageDescriptor>;
 
 export interface ConfirmDialogProps {
   /** Whether the dialog is mounted/visible. */
@@ -25,7 +21,7 @@ export interface ConfirmDialogProps {
   message: React.ReactNode;
   /** The accent confirm button label (e.g. "Archive"). */
   confirmLabel: string;
-  /** The cancel button label. Defaults to "Cancel". */
+  /** Optional caller-owned cancel button label. */
   cancelLabel?: string;
   /** Called when the user confirms (the accent button or the focused Enter). */
   onConfirm: () => void;
@@ -43,10 +39,12 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel,
-  cancelLabel = "Cancel",
+  cancelLabel,
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const defaultCancelLabel = useLocalizedMessage(CONFIRM_DIALOG_MESSAGES.cancel);
+  const resolvedCancelLabel = cancelLabel ?? defaultCancelLabel;
   // Auto-focus the confirm affordance once the shell has mounted it, so the
   // armed step is reachable by Enter alone (the shell focuses the first
   // focusable, which is Cancel; we override to the destructive verb's confirm).
@@ -66,7 +64,7 @@ export function ConfirmDialog({
       footer={
         <div className="flex items-center justify-end gap-fg-2">
           <Button variant="secondary" onClick={onCancel}>
-            {cancelLabel}
+            {resolvedCancelLabel}
           </Button>
           <Button ref={confirmRef} variant="primary" onClick={onConfirm}>
             {confirmLabel}
@@ -74,7 +72,7 @@ export function ConfirmDialog({
         </div>
       }
     >
-      {/* Body copy: the consequence, in muted ink (figma 17:1284). */}
+      {/* The consequence is visually subordinate to the action. */}
       <p className="px-fg-4 py-fg-4 text-body text-ink-muted">{message}</p>
     </Dialog>
   );

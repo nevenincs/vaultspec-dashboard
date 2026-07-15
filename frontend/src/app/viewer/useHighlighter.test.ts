@@ -1,18 +1,9 @@
 // @vitest-environment happy-dom
-//
-// Probe tests for the shared Shiki highlighter (review-rail-viewers P03).
-//
-// These exercise the REAL Shiki fine-grained core + JS regex engine (no mock):
-// the singleton creation, lazy grammar registration, token-bound theme, and the
-// plain-text degradation for an unknown hint. Tokenizing to HAST against the real
-// tokenizer is the core tenet the viewers depend on, so it is probed directly
-// rather than through a brittle component mock.
 
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  languageDisplayName,
   languageHintFromPath,
   resolveGrammar,
   supportedLanguageIds,
@@ -87,7 +78,7 @@ describe("language resolver", () => {
     expect(resolveGrammar("")).toBeNull();
   });
 
-  it("derives review-snippet language hints from paths", () => {
+  it("derives language hints from paths", () => {
     expect(languageHintFromPath("frontend/src/App.tsx")).toBe("tsx");
     expect(languageHintFromPath(".vault/research/alpha.md")).toBe("markdown");
     expect(languageHintFromPath("scripts/build.ps1")).toBe("powershell");
@@ -96,12 +87,6 @@ describe("language resolver", () => {
     expect(languageHintFromPath("Cargo.lock")).toBe("toml");
     expect(languageHintFromPath("schema.graphql")).toBe("graphql");
     expect(languageHintFromPath("Component.vue")).toBe("vue");
-  });
-
-  it("labels broad Shiki aliases with their display names", () => {
-    expect(languageDisplayName("ts")).toBe("TypeScript");
-    expect(languageDisplayName("dockerfile")).toBe("Dockerfile");
-    expect(languageDisplayName("sh")).toBe("Shell");
   });
 });
 
@@ -125,9 +110,7 @@ describe("Shiki core tokenization (real engine)", () => {
       lang: "rust",
       theme: VAULTSPEC_SHIKI_THEME_NAME,
     });
-    // The HAST serializes to spans whose inline styles reference our theme tokens
-    // — proof the highlighter binds to the semantic token tier, not a hardcoded
-    // hex palette (themes-are-oklch-generated-from-a-token-tier).
+    // The HAST serializes to spans whose inline styles reference theme tokens.
     const serialized = JSON.stringify(hast);
     expect(serialized).toContain("var(--color-");
     // The keyword `fn` tokenizes (a non-trivial grammar match, not plain text).

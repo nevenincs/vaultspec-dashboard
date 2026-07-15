@@ -1,12 +1,11 @@
-// The project navigator popup ("Project: Browse or Switch"): an interactive modal
-// that lists the machine-global cross-project recents and lets the operator pick a
-// new project/worktree, prune one entry, or clear the whole history. Dumb `app/`
-// chrome — it consumes the shared `useProjectHistory` seam (the sole owner of the
-// history data + switch/CRUD actions) and the kit Dialog; it never touches the
-// engine client, the raw view store, or the raw `tiers` block.
-
 import { FolderPlus, Trash2, X } from "lucide-react";
 import { useState } from "react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
+import {
+  WORKSPACE_IDENTITY_MESSAGES,
+  type WorkspaceIdentityText,
+} from "../../stores/server/queries";
 
 import { openAddProjectDialog } from "../../stores/view/addProjectChrome";
 import {
@@ -31,6 +30,10 @@ export function ProjectNavigator() {
 
 /** Split so the FocusZone + roving state only mount while the popup is open. */
 function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
+  const identity = (value: WorkspaceIdentityText) =>
+    typeof value === "string" ? value : message(value);
   const { recentRows, activateRecent, removeRecent, clearRecents } = history;
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const zone = useFocusZone({
@@ -51,21 +54,21 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
     <Dialog
       open
       onClose={closeProjectNavigator}
-      title="Switch project"
-      description="Browse recent projects and worktrees across every registered project, then pick one."
+      title={message(WORKSPACE_IDENTITY_MESSAGES.switchProjectTitle)}
+      description={message(WORKSPACE_IDENTITY_MESSAGES.switchProjectDescription)}
       footer={
         <div className="flex items-center justify-between gap-fg-2">
           <Button
             variant="ghost"
             onClick={clearRecents}
-            aria-label="clear project history"
+            aria-label={message(WORKSPACE_IDENTITY_MESSAGES.clearHistory)}
           >
             <Trash2 size={GLYPH_PX} aria-hidden className="mr-fg-1" />
-            Clear history
+            {message(WORKSPACE_IDENTITY_MESSAGES.clearHistory)}
           </Button>
           <Button variant="primary" onClick={openAdd}>
             <FolderPlus size={GLYPH_PX} aria-hidden className="mr-fg-1" />
-            Open project…
+            {message(WORKSPACE_IDENTITY_MESSAGES.openProject)}
           </Button>
         </div>
       }
@@ -76,10 +79,13 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
       >
         {recentRows.length === 0 ? (
           <p className="py-fg-4 text-center text-label text-ink-muted">
-            No recent projects yet — open a project to get started.
+            {message(WORKSPACE_IDENTITY_MESSAGES.noRecent)}
           </p>
         ) : (
-          <ul className="flex flex-col gap-fg-0-5" aria-label="recent projects">
+          <ul
+            className="flex flex-col gap-fg-0-5"
+            aria-label={message(WORKSPACE_IDENTITY_MESSAGES.recentProjects)}
+          >
             {recentRows.map((recent) => {
               const item = zone.rove(recent.key);
               return (
@@ -90,8 +96,8 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
                     type="button"
                     aria-disabled={!recent.selectable}
                     aria-current={recent.isActive ? "true" : undefined}
-                    title={recent.title}
-                    aria-label={recent.ariaLabel}
+                    title={message(recent.title)}
+                    aria-label={message(recent.ariaLabel)}
                     onFocus={() => setActiveKey(recent.key)}
                     onClick={() => choose(recent)}
                     onKeyDown={(e) => {
@@ -111,11 +117,16 @@ function ProjectNavigatorBody({ history }: { history: ProjectHistoryView }) {
                     <span aria-hidden className={recent.activeCueClassName} />
                     {/* The shared row label leads with the project on a
                         cross-project entry, matching the picker dropdown. */}
-                    <span className="min-w-0 select-text truncate">{recent.label}</span>
+                    <span className="min-w-0 select-text truncate">
+                      {identity(recent.label)}
+                    </span>
                   </button>
                   <IconButton
-                    label={`remove ${recent.worktreeName} from history`}
-                    title="Remove from history"
+                    label={message({
+                      key: "projects:workspaceIdentity.accessibility.removeRecent",
+                      values: { worktree: identity(recent.worktreeName) },
+                    })}
+                    title={message(WORKSPACE_IDENTITY_MESSAGES.removeFromHistory)}
                     onClick={() => removeRecent(recent)}
                   >
                     <X size={GLYPH_PX} aria-hidden />

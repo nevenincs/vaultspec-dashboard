@@ -16,6 +16,7 @@
 import { useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   ProgressBar,
   SearchField,
@@ -52,6 +53,7 @@ import {
   useRagDashboardSelectedJob,
   useRagDashboardSort,
 } from "../../stores/view/ragDashboard";
+import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 
 // Phase group → semantic status dot tone (health family), shared with the facet
 // toggles so a row's phase dot and its facet chip agree (never hue-only).
@@ -226,6 +228,10 @@ export function RagJobsTableBody({
   offline: boolean;
   pending: boolean;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const unavailableTitle = resolveMessage(
+    CONTROL_PANEL_VOCABULARY["search-service"].unavailableTitle,
+  );
   const facetSet = useMemo(() => new Set(table.facets), [table.facets]);
   const filtering = table.filterText.trim().length > 0 || table.facets.length > 0;
 
@@ -294,7 +300,7 @@ export function RagJobsTableBody({
       {offline ? (
         <StateBlock
           mode="degraded"
-          title="Search service offline"
+          title={unavailableTitle.usedFallback ? undefined : unavailableTitle.message}
           message="Job history is unavailable while the search service is down."
         />
       ) : pending ? (

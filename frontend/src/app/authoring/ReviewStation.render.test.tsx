@@ -1,46 +1,56 @@
 // @vitest-environment happy-dom
-//
-// ReviewStation card render contract (W03.P40 CHUNK B). These are WIRE-FREE UI
-// unit tests: `ProposalCard` takes the served projection + an injected `actions`
-// bundle + the reviewer-identity flag as PROPS, so the test drives the human-in-
-// the-loop seam without touching the engine wire (the live-wire proof lives in
-// the online suite). The properties under test are the ones the walking skeleton
-// rides: button enablement comes from the SERVED eligibility (never re-derived),
-// clicking "Reject" (the deny seam) dispatches the decision, and a DENIAL renders
-// as an inline "can’t do that + reason" — never an error. Core vitest matchers
-// only (no jest-dom in this repo).
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import { afterEach, describe, expect, it } from "vitest";
 
-import type {
-  ActorRef,
-  AppliedUnderPolicyProjection,
-  AuthoringCommandOutcome,
-  ProposalProjection,
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import {
+  type ActorRef,
+  type AppliedUnderPolicyProjection,
+  type AuthoringCommandOutcome,
+  type ProposalProjection,
+  type ReviewStationView,
 } from "../../stores/server/authoring";
+import { EngineError } from "../../stores/server/engine";
 import {
   AppliedUnderPolicyLane,
   ProposalCard,
+  ReviewStationBody,
   type ReviewActions,
 } from "./ReviewStation";
 
 afterEach(cleanup);
 
-const agent: ActorRef = { id: "agent:writer", kind: "agent" };
+const agent: ActorRef = { id: "agent:private-writer-17", kind: "agent" };
+const accepted: AuthoringCommandOutcome = {
+  kind: "ok",
+  status: "decided",
+  data: {},
+  tiers: {},
+};
 
-/** A NeedsReview projection carrying the SERVED approval identity + backend-owned
- *  approve/reject eligibility — the post-projection-identity wire the card wires
- *  the deny seam against. */
 function needsReviewProposal(
   overrides: Partial<ProposalProjection> = {},
 ): ProposalProjection {
   return {
-    changeset_id: "changeset_1",
-    changeset_revision: "proposal:rev2",
+    changeset_id: "changeset_private_1",
+    changeset_revision: "proposal:private-rev2",
     kind: "authoring",
     status: "needs_review",
-    summary: "Rewrite the ADR introduction",
+    summary: "Rewrite the introduction",
     actor: agent,
     origin_actor: agent,
     operation_count: 2,
@@ -48,231 +58,465 @@ function needsReviewProposal(
       present: true,
       status: "valid",
       approval_ready: true,
-      validation_digest: "validation:v1",
+      validation_digest: "validation:private-v1",
     },
     approval: {
       present: true,
       queue_state: "queued",
       stale: false,
-      approval_id: "approval:abc",
-      proposal_id: "proposal:abc",
-      reviewed_proposal_revision: "proposal:rev2",
+      approval_id: "approval:private-abc",
+      proposal_id: "proposal:private-abc",
+      reviewed_proposal_revision: "proposal:private-rev2",
     },
     policy: {
-      policy_version: "authoring.approval_policy.v1",
+      policy_version: "private.policy.v1",
       scope_mode: "manual",
       effective_mode: "manual",
       session_override_ignored: false,
       risk: "non_destructive",
       requirement: "human_approval_required",
-      reason: "manual mode requires an eligible human approval before apply",
+      reason: "private-policy-reason",
     },
     eligibility: [
       { command: "approve", allowed: true },
       { command: "reject", allowed: true },
     ],
-    rollback: { available: false, reason: "changeset is not applied" },
+    rollback: { available: false, reason: "private-rollback-reason" },
     created_at_ms: 1_775_000_000_000,
     ...overrides,
   };
 }
 
-function stubActions(overrides: Partial<ReviewActions> = {}): ReviewActions {
-  const ok = (): Promise<AuthoringCommandOutcome> =>
-    Promise.resolve({ kind: "ok", status: "decided", data: {}, tiers: {} });
+interface ActionCounts {
+  approve: number;
+  reject: number;
+  submit: number;
+  apply: number;
+  rollback: number;
+}
+
+function actionCallbacks(
+  counts: ActionCounts,
+  outcome: AuthoringCommandOutcome = accepted,
+  failure?: unknown,
+): ReviewActions {
+  const result = (): Promise<AuthoringCommandOutcome> =>
+    failure === undefined ? Promise.resolve(outcome) : Promise.reject(failure);
   return {
-    decide: vi.fn(ok),
-    submit: vi.fn(ok),
-    apply: vi.fn(ok),
-    rollback: vi.fn(ok),
+    decide: (_proposal, decision) => {
+      counts[decision] += 1;
+      return result();
+    },
+    submit: () => {
+      counts.submit += 1;
+      return result();
+    },
+    apply: () => {
+      counts.apply += 1;
+      return result();
+    },
+    rollback: () => {
+      counts.rollback += 1;
+      return result();
+    },
+  };
+}
+
+function emptyCounts(): ActionCounts {
+  return { approve: 0, reject: 0, submit: 0, apply: 0, rollback: 0 };
+}
+
+function localized(ui: React.ReactNode) {
+  const runtime = createTestLocalizationRuntime();
+  return {
+    runtime,
+    ...render(<I18nextProvider i18n={runtime}>{ui}</I18nextProvider>),
+  };
+}
+
+function view(overrides: Partial<ReviewStationView> = {}): ReviewStationView {
+  return {
+    rows: [],
+    afterFactRows: [],
+    loading: false,
+    degraded: false,
+    storeUnavailable: false,
+    availabilityIssue: null,
+    empty: false,
+    truncated: false,
+    afterFactTruncated: false,
     ...overrides,
   };
 }
 
 describe("ProposalCard", () => {
-  it("renders the served summary, status label, and change count", () => {
-    render(
+  it("reacts on the same node in English, French, and Arabic", async () => {
+    const counts = emptyCounts();
+    const { runtime } = localized(
       <ProposalCard
         proposal={needsReviewProposal()}
-        actions={stubActions()}
+        actions={actionCallbacks(counts)}
         hasToken
       />,
     );
-    expect(screen.getByText("Rewrite the ADR introduction")).toBeTruthy();
-    expect(screen.getByText("Needs review")).toBeTruthy();
-    expect(screen.getByText("2 changes")).toBeTruthy();
-    const policy = screen.getByText("Manual · Human approval");
-    expect(policy).toBeTruthy();
-    expect(policy.getAttribute("title")).toContain("manual mode");
+
+    const card = screen.getByRole("listitem");
+    expect(within(card).getByText("Needs review")).toBeTruthy();
+    expect(within(card).getByText("2 changes")).toBeTruthy();
+    expect(within(card).getByText("Assistant")).toBeTruthy();
+
+    await runtime.changeLanguage(ltrTestLocale);
+    await waitFor(() => expect(card.textContent).toContain("Révision nécessaire"));
+    expect(card.textContent).toContain("2 modifications");
+
+    await runtime.changeLanguage(rtlTestLocale);
+    await waitFor(() => expect(card.textContent).toContain("يحتاج إلى مراجعة"));
+    expect(card.textContent).toContain("تغييران");
   });
 
-  it("renders a served policy-stale approval reason", () => {
-    render(
+  it("keeps hostile metadata, identifiers, and raw reasons out of visible copy", () => {
+    const counts = emptyCounts();
+    localized(
       <ProposalCard
         proposal={needsReviewProposal({
+          status: "future_private_status" as ProposalProjection["status"],
+          validation: {
+            present: true,
+            status: "private_validation_token" as NonNullable<
+              ProposalProjection["validation"]["status"]
+            >,
+            approval_ready: false,
+          },
           approval: {
             ...needsReviewProposal().approval,
-            stale: false,
-            stale_reason: "policy_version_changed",
-          },
-        })}
-        actions={stubActions()}
-        hasToken
-      />,
-    );
-
-    expect(screen.getByText("Review policy changed")).toBeTruthy();
-  });
-
-  it("clicking Reject dispatches the deny decision (the human-in-the-loop seam)", async () => {
-    const actions = stubActions();
-    render(
-      <ProposalCard proposal={needsReviewProposal()} actions={actions} hasToken />,
-    );
-
-    const reject = screen.getByRole("button", { name: "Reject" });
-    expect(reject.getAttribute("disabled")).toBeNull();
-    fireEvent.click(reject);
-
-    await waitFor(() => expect(actions.decide).toHaveBeenCalledTimes(1));
-    expect(actions.decide).toHaveBeenCalledWith(
-      expect.objectContaining({ changeset_id: "changeset_1" }),
-      "reject",
-    );
-  });
-
-  it("renders a backend DENIAL as an inline refusal + reason, never an error", async () => {
-    const actions = stubActions({
-      decide: vi.fn(() =>
-        Promise.resolve({
-          kind: "denied",
-          command: "approve",
-          reason: "an agent may not approve its own proposal",
-          tiers: {},
-        } satisfies AuthoringCommandOutcome),
-      ),
-    });
-    render(
-      <ProposalCard proposal={needsReviewProposal()} actions={actions} hasToken />,
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
-
-    const feedback = await screen.findByText(/Can’t do that/);
-    expect(feedback.getAttribute("data-card-feedback")).toBe("refused");
-    expect(feedback.textContent).toContain("may not approve");
-  });
-
-  it("disables an action the backend marks not-allowed and surfaces its reason", () => {
-    render(
-      <ProposalCard
-        proposal={needsReviewProposal({
-          conflict: {
-            child_key: "child_1",
-            reason: "target document changed since review",
+            stale: true,
+            stale_reason: "private-stale-reason",
           },
           eligibility: [
             {
-              command: "approve",
+              command: "future_private_command",
               allowed: false,
-              reason: "target revisions are no longer current",
+              reason: "private-eligibility-reason",
             },
             {
-              command: "reject",
+              command: "approve",
               allowed: false,
-              reason: "target revisions are no longer current",
+              reason: "private-approval-reason",
             },
           ],
+          conflict: { child_key: "private-child", reason: "private-conflict" },
         })}
-        actions={stubActions()}
+        actions={actionCallbacks(counts)}
         hasToken
       />,
     );
 
-    const approve = screen.getByRole("button", { name: "Approve" });
-    // Enablement is the SERVED eligibility — not a frontend guess.
-    expect(approve.getAttribute("disabled")).not.toBeNull();
-    expect(approve.getAttribute("title")).toContain("target revisions");
-    // The served conflict is surfaced to the reviewer.
-    expect(screen.getByText(/changed since review/)).toBeTruthy();
+    const text = screen.getByRole("listitem").textContent ?? "";
+    for (const privateValue of [
+      "agent:private-writer-17",
+      "private.policy.v1",
+      "private-policy-reason",
+      "private_validation_token",
+      "private-validation-reason",
+      "private-stale-reason",
+      "future_private_command",
+      "private-eligibility-reason",
+      "private-approval-reason",
+      "private-conflict",
+    ]) {
+      expect(text).not.toContain(privateValue);
+    }
+    expect(screen.queryByRole("button", { name: "Action unavailable" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Approve proposal" })).toBeTruthy();
   });
 
-  it("gates the decision behind reviewer sign-in when no token is bootstrapped", () => {
-    render(
+  it("uses served eligibility and approval identity without recomputing them", () => {
+    const counts = emptyCounts();
+    const { rerender, runtime } = localized(
+      <ProposalCard
+        proposal={needsReviewProposal({
+          eligibility: [{ command: "approve", allowed: false, reason: "private" }],
+        })}
+        actions={actionCallbacks(counts)}
+        hasToken
+      />,
+    );
+    const approve = screen.getByRole("button", { name: "Approve proposal" });
+    expect(approve.getAttribute("disabled")).not.toBeNull();
+    expect(approve.getAttribute("title")).toBe("Refresh the proposal and try again.");
+
+    rerender(
+      <I18nextProvider i18n={runtime}>
+        <ProposalCard
+          proposal={needsReviewProposal({
+            approval: { present: true, queue_state: "queued", stale: false },
+          })}
+          actions={actionCallbacks(counts)}
+          hasToken
+        />
+      </I18nextProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Approve proposal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject proposal" })).toBeNull();
+  });
+
+  it("uses a localized identity gate and never exposes the backend reason", () => {
+    const counts = emptyCounts();
+    localized(
       <ProposalCard
         proposal={needsReviewProposal()}
-        actions={stubActions()}
+        actions={actionCallbacks(counts)}
         hasToken={false}
       />,
     );
-    const reject = screen.getByRole("button", { name: "Reject" });
+    const reject = screen.getByRole("button", { name: "Reject proposal" });
     expect(reject.getAttribute("disabled")).not.toBeNull();
-    expect(reject.getAttribute("title")).toContain("Sign in as reviewer");
+    expect(reject.getAttribute("title")).toBe("Sign in as reviewer to continue.");
   });
 
-  it("does not render a policy label when the backend did not serve policy", () => {
-    render(
-      <ProposalCard
-        proposal={needsReviewProposal({ policy: undefined })}
-        actions={stubActions()}
-        hasToken
-      />,
-    );
-    expect(document.querySelector("[data-proposal-policy]")).toBeNull();
-  });
-
-  it("hides decision buttons until the projection carries the approval identity", () => {
-    render(
+  it("submits for review directly", async () => {
+    const counts = emptyCounts();
+    localized(
       <ProposalCard
         proposal={needsReviewProposal({
-          approval: { present: true, queue_state: "queued", stale: false },
+          status: "draft",
+          approval: { present: false, stale: false },
+          eligibility: [{ command: "submit_for_review", allowed: true }],
         })}
-        actions={stubActions()}
+        actions={actionCallbacks(counts)}
         hasToken
       />,
     );
-    // No recomputed backend id → no dead decision buttons (no permanent lie).
-    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(counts.submit).toBe(1));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  const confirmations = [
+    {
+      name: "approve",
+      proposal: needsReviewProposal({
+        eligibility: [{ command: "approve", allowed: true }],
+      }),
+      trigger: "Approve proposal",
+      confirm: "Approve proposal",
+    },
+    {
+      name: "reject",
+      proposal: needsReviewProposal({
+        eligibility: [{ command: "reject", allowed: true }],
+      }),
+      trigger: "Reject proposal",
+      confirm: "Reject proposal",
+    },
+    {
+      name: "apply",
+      proposal: needsReviewProposal({
+        status: "approved",
+        eligibility: [{ command: "request_apply", allowed: true }],
+      }),
+      trigger: "Apply changes",
+      confirm: "Apply changes",
+    },
+    {
+      name: "rollback",
+      proposal: needsReviewProposal({
+        status: "applied",
+        eligibility: [],
+        rollback: { available: true, child_key: "child_1" },
+      }),
+      trigger: "Prepare rollback",
+      confirm: "Prepare rollback",
+    },
+  ] as const;
+
+  for (const confirmation of confirmations) {
+    it(`cancels and confirms ${confirmation.name} exactly once`, async () => {
+      const counts = emptyCounts();
+      localized(
+        <ProposalCard
+          proposal={confirmation.proposal}
+          actions={actionCallbacks(counts)}
+          hasToken
+        />,
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: confirmation.trigger }));
+      const firstDialog = screen.getByRole("dialog");
+      fireEvent.click(within(firstDialog).getByRole("button", { name: "Cancel" }));
+      expect(counts[confirmation.name]).toBe(0);
+
+      fireEvent.click(screen.getByRole("button", { name: confirmation.trigger }));
+      const secondDialog = screen.getByRole("dialog");
+      fireEvent.click(
+        within(secondDialog).getByRole("button", { name: confirmation.confirm }),
+      );
+      await waitFor(() => expect(counts[confirmation.name]).toBe(1));
+    });
+  }
+
+  it("classifies refused outcomes without rendering the served reason", async () => {
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal({
+          eligibility: [{ command: "approve", allowed: true }],
+        })}
+        actions={actionCallbacks(counts, {
+          kind: "denied",
+          command: "approve",
+          reason: "private-denial-reason",
+          tiers: {},
+        })}
+        hasToken
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve proposal" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Approve proposal",
+      }),
+    );
+    const feedback = await screen.findByText(
+      "Review the proposal and choose an available action.",
+    );
+    expect(feedback.getAttribute("data-card-feedback")).toBe("refused");
+    expect(document.body.textContent).not.toContain("private-denial-reason");
+  });
+
+  it("classifies typed failures without rendering error metadata", async () => {
+    const counts = emptyCounts();
+    const error = new EngineError("/private/authoring/route", 409, {
+      body: {
+        error_kind: "authoring_stale_review",
+        error: "private-error-message",
+      },
+    });
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal({
+          eligibility: [{ command: "approve", allowed: true }],
+        })}
+        actions={actionCallbacks(counts, accepted, error)}
+        hasToken
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve proposal" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Approve proposal",
+      }),
+    );
+    const feedback = await screen.findByText(
+      "Review the latest proposal, then try again.",
+    );
+    expect(feedback.getAttribute("data-card-feedback")).toBe("error");
+    expect(document.body.textContent).not.toContain("private-error-message");
+    expect(document.body.textContent).not.toContain("authoring_stale_review");
+  });
+
+  it("toggles the change preview with the real query client", () => {
+    const counts = emptyCounts();
+    const runtime = createTestLocalizationRuntime();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <ProposalCard
+            proposal={needsReviewProposal()}
+            actions={actionCallbacks(counts)}
+            hasToken
+          />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Show changes" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Hide changes" })).toBeTruthy();
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 });
 
-describe("AppliedUnderPolicyLane", () => {
-  it("renders policy-applied work in the second lane with rollback available", () => {
+describe("ReviewStation states", () => {
+  it("renders loading, empty, degraded, unavailable, and truncation states", () => {
+    const counts = emptyCounts();
+    const actions = actionCallbacks(counts);
+    const runtime = createTestLocalizationRuntime();
+    const { rerender } = render(
+      <I18nextProvider i18n={runtime}>
+        <ReviewStationBody view={view({ loading: true })} actions={actions} hasToken />
+      </I18nextProvider>,
+    );
+    expect(screen.getByRole("status").getAttribute("aria-label")).toBe(
+      "Loading approvals",
+    );
+
+    const states = [
+      [view({ empty: true }), "No proposals are waiting for review."],
+      [
+        view({
+          degraded: true,
+          availabilityIssue: "informationMayBeOutOfDate",
+        }),
+        "Approval information may be out of date. Refresh to get the latest information.",
+      ],
+      [
+        view({ storeUnavailable: true, availabilityIssue: "queueUnavailable" }),
+        "Approvals are unavailable. Refresh the app and try again.",
+      ],
+      [
+        view({ truncated: true, afterFactTruncated: true }),
+        "More proposals are available. Narrow the queue to see them.",
+      ],
+    ] as const;
+    for (const [state, expected] of states) {
+      rerender(
+        <I18nextProvider i18n={runtime}>
+          <ReviewStationBody view={state} actions={actions} hasToken />
+        </I18nextProvider>,
+      );
+      expect(document.body.textContent).toContain(expected);
+    }
+    expect(document.body.textContent).toContain(
+      "More automatically applied changes are available.",
+    );
+  });
+
+  it("renders the bounded after-fact lane without policy identifiers", () => {
+    const counts = emptyCounts();
     const item: AppliedUnderPolicyProjection = {
       proposal: needsReviewProposal({
         changeset_id: "changeset_applied",
         status: "applied",
-        policy: {
-          policy_version: "authoring.approval_policy.v1",
-          scope_mode: "autonomous",
-          effective_mode: "autonomous",
-          session_override_ignored: false,
-          risk: "non_destructive",
-          requirement: "system_auto_approvable",
-          reason: "autonomous mode auto-approves non-destructive changes",
-        },
         eligibility: [],
         rollback: { available: true, child_key: "child_1" },
       }),
-      policy_id: "authoring.operation_modes",
-      policy_version: "authoring.operation_modes.v1",
+      policy_id: "private.policy.id",
+      policy_version: "private.policy.version",
       mode: "autonomous",
-      system_actor: { id: "system:operation-modes", kind: "system" },
+      system_actor: { id: "system:private", kind: "system" },
       applied_at_ms: 1_775_000_000_100,
       acknowledgement_count: 1,
     };
-
-    render(<AppliedUnderPolicyLane items={[item]} actions={stubActions()} hasToken />);
-
-    expect(screen.getByText("Applied under policy")).toBeTruthy();
-    expect(screen.getByText("Autonomous · System approval")).toBeTruthy();
-    const appliedPolicy = screen.getByText("Autonomous policy");
-    expect(appliedPolicy.getAttribute("title")).toContain("authoring.operation_modes");
-    expect(appliedPolicy.getAttribute("title")).toContain(
-      "authoring.operation_modes.v1",
+    localized(
+      <AppliedUnderPolicyLane
+        items={[item]}
+        actions={actionCallbacks(counts)}
+        hasToken
+      />,
     );
+
+    expect(screen.getAllByText("Applied automatically")).toHaveLength(2);
     expect(screen.getByText("1 acknowledgement")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Roll back" })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("private.policy.id");
+    expect(document.body.textContent).not.toContain("private.policy.version");
+    expect(document.body.textContent).not.toContain("system:private");
   });
 });

@@ -90,11 +90,33 @@ describe("plural catalog manifest", () => {
   it("provides every locale's complete cardinal category family", () => {
     expect(PLURAL_MESSAGE_KEYS).toEqual([
       "common:commandPalette.selectionAnnouncement",
+      "common:searchPalette.counts.results",
       "common:palette.commandCount",
+      "documents:documentSearch.counts.documents",
+      "documents:reviewStation.counts.acknowledgements",
+      "documents:reviewStation.counts.changes",
+      "documents:viewer.codeViewer.footer.summary",
+      "documents:viewer.reader.metadata.readTime",
+      "documents:viewer.reader.metadata.readTimeStatus",
+      "documents:viewer.reader.metadata.createdReadTime",
+      "documents:viewer.reader.metadata.createdReadTimeStatus",
+      "documents:viewer.reader.metadata.updatedReadTime",
+      "documents:viewer.reader.metadata.updatedReadTimeStatus",
+      "documents:viewer.reader.metadata.createdUpdatedReadTime",
+      "documents:viewer.reader.metadata.createdUpdatedReadTimeStatus",
+      "documents:viewer.reader.truncation.bytes",
+      "documents:viewer.comments.counts.commentsToReview",
+      "documents:viewer.comments.counts.days",
+      "documents:viewer.comments.counts.hours",
+      "documents:viewer.comments.counts.minutes",
+      "documents:viewer.comments.counts.months",
+      "documents:viewer.comments.counts.years",
       "documents:tree.partialCount",
       "documents:tree.sizeSummary",
       "documents:tree.wordCount",
       "graph:accessibility.workingSetCount",
+      "projects:workspaceIdentity.counts.ahead",
+      "projects:workspaceIdentity.counts.behind",
       "projects:provisioning.result.itemCount",
     ]);
 
@@ -122,6 +144,17 @@ describe("plural catalog manifest", () => {
             additionalValues = { command: "Open settings" };
           } else if (key === "documents:tree.sizeSummary") {
             additionalValues = { size: "4 KB" };
+          } else if (key === "documents:viewer.reader.truncation.bytes") {
+            additionalValues = { returned: 1 };
+          } else if (key === "documents:viewer.codeViewer.footer.summary") {
+            additionalValues = { language: "Rust", encoding: "UTF-8" };
+          } else if (key.startsWith("documents:viewer.reader.metadata.")) {
+            const normalizedKey = key.toLocaleLowerCase("en");
+            additionalValues = {
+              ...(normalizedKey.includes("created") ? { created: "15 July 2026" } : {}),
+              ...(normalizedKey.includes("updated") ? { updated: "16 July 2026" } : {}),
+              ...(key.endsWith("Status") ? { status: "Accepted" } : {}),
+            };
           }
           const descriptor = createCountMessageDescriptor(key, count, additionalValues);
           expect(descriptor).not.toBeNull();
@@ -131,7 +164,13 @@ describe("plural catalog manifest", () => {
           const expected = physicalTemplate(locale, key, category)
             .replace(/\{\{\s*count\s*,\s*number\s*\}\}/gu, formatted!)
             .replace(/\{\{\s*command\s*\}\}/gu, "Open settings")
-            .replace(/\{\{\s*size\s*\}\}/gu, "4 KB");
+            .replace(/\{\{\s*size\s*\}\}/gu, "4 KB")
+            .replace(/\{\{\s*returned\s*,\s*number\s*\}\}/gu, formatNumber(locale, 1)!)
+            .replace(/\{\{\s*created\s*\}\}/gu, "15 July 2026")
+            .replace(/\{\{\s*updated\s*\}\}/gu, "16 July 2026")
+            .replace(/\{\{\s*status\s*\}\}/gu, "Accepted")
+            .replace(/\{\{\s*language\s*\}\}/gu, "Rust")
+            .replace(/\{\{\s*encoding\s*\}\}/gu, "UTF-8");
           expect(formatted).not.toBeNull();
           expect(resolution, `${locale}:${key}:${category}`).toEqual({
             message: expected,

@@ -7,6 +7,7 @@ import {
   deriveWorktreePickerRecentRows,
   isSessionMutationRejected,
   isSupersededScopeSwitch,
+  WORKSPACE_IDENTITY_MESSAGES,
   type WorkspaceMapPickerRowView,
   type WorkspaceMapPickerPresentationView,
   type WorkspaceMapSurfaceState,
@@ -23,6 +24,7 @@ import {
   useWorkspaceRoots,
   workspaceRootName,
 } from "../server/queries";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import type { RecentScope } from "../server/engine";
 import { useShellPanelIntent } from "../server/panelStateIntent";
 
@@ -33,7 +35,7 @@ export interface WorktreePickerChromeState {
   expanded: boolean;
   keyboardToggle: boolean;
   pendingId: string | null;
-  switchError: string | null;
+  switchError: MessageDescriptor | null;
   setExpanded: (expanded: unknown, viaKeyboard: unknown) => void;
   toggleExpanded: (viaKeyboard: unknown) => void;
   beginSwitch: (id: unknown) => void;
@@ -45,8 +47,6 @@ export interface WorktreePickerChromeState {
 
 export type WorktreeSwitchFailureKind = "selection-rejected" | "persist-failed";
 export const WORKTREE_SWITCH_ID_CAP = 512;
-export const WORKTREE_SWITCH_ERROR_CAP = 240;
-export const WORKTREE_SWITCH_LABEL_CAP = 96;
 
 const RESET_STATE = {
   expanded: false,
@@ -67,22 +67,13 @@ export function normalizeWorktreePickerSwitchId(id: unknown): string | null {
     : null;
 }
 
-export function normalizeWorktreePickerSwitchError(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  if (normalized.length === 0) return null;
-  return normalized.length > WORKTREE_SWITCH_ERROR_CAP
-    ? `${normalized.slice(0, WORKTREE_SWITCH_ERROR_CAP - 1)}…`
-    : normalized;
-}
-
-export function normalizeWorktreePickerSwitchLabel(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  if (normalized.length === 0) return null;
-  return normalized.length > WORKTREE_SWITCH_LABEL_CAP
-    ? `${normalized.slice(0, WORKTREE_SWITCH_LABEL_CAP - 1)}…`
-    : normalized;
+export function normalizeWorktreePickerSwitchError(
+  value: unknown,
+): MessageDescriptor | null {
+  if (!isWorktreePickerRecord(value)) return null;
+  return value.key === WORKSPACE_IDENTITY_MESSAGES.switchFailed.key
+    ? WORKSPACE_IDENTITY_MESSAGES.switchFailed
+    : null;
 }
 
 function isWorktreePickerRecord(value: unknown): value is Record<string, unknown> {
@@ -98,10 +89,8 @@ export function normalizeWorktreePickerActivationIntent(
   row: unknown,
 ): WorktreePickerActivationIntent | null {
   if (!isWorktreePickerRecord(row) || row.selectable !== true) return null;
-  const worktree = row.worktree;
-  if (!isWorktreePickerRecord(worktree)) return null;
-  const id = normalizeWorktreePickerSwitchId(worktree.id);
-  return id === null ? null : { id, branch: worktree.branch };
+  const id = normalizeWorktreePickerSwitchId(row.worktreeId);
+  return id === null ? null : { id, branch: row.branch };
 }
 
 export const useWorktreePickerChromeStore = create<WorktreePickerChromeState>(
@@ -173,7 +162,7 @@ export interface WorktreePickerChromeView {
   expanded: boolean;
   keyboardToggle: boolean;
   pendingId: string | null;
-  switchError: string | null;
+  switchError: MessageDescriptor | null;
   listClassName: string;
   switchErrorClassName: string;
 }
@@ -206,7 +195,7 @@ export function worktreePickerListClassName(keyboardToggle: unknown): string {
 export function worktreePickerFirstRowFocusTarget(
   rows: readonly WorkspaceMapPickerRowView[],
 ): string | null {
-  return normalizeWorktreePickerSwitchId(rows[0]?.worktree.id);
+  return normalizeWorktreePickerSwitchId(rows[0]?.worktreeId);
 }
 
 export function worktreePickerRowKeyboardTarget(
@@ -220,11 +209,11 @@ export function worktreePickerRowKeyboardTarget(
   }
   const delta = key === "ArrowDown" ? 1 : -1;
   const next = Math.min(rows.length - 1, Math.max(0, index + delta));
-  return normalizeWorktreePickerSwitchId(rows[next]?.worktree.id);
+  return normalizeWorktreePickerSwitchId(rows[next]?.worktreeId);
 }
 
 export function useWorktreePickerChrome(): WorktreePickerChromeView {
-  // Select the RAW stable fields; derive the view in useMemo (stable-selectors) —
+  // Select stable fields and derive the view in useMemo,
   // never inside the selector, even under useShallow.
   const expanded = useWorktreePickerChromeStore((state) => state.expanded);
   const keyboardToggle = useWorktreePickerChromeStore((state) => state.keyboardToggle);
@@ -378,9 +367,6 @@ export function useWorktreePickerView(): WorktreePickerView {
   const roots = useWorkspaceRoots();
   const activeWorkspace = useActiveWorkspace();
   const { swap } = useSwapWorkspace();
-  // The active PROJECT's display name (registry root via the distinguishing
-  // repo-identity derivation) — the trigger's identity line and the worktree
-  // disclosure label both read it.
   const activeRoot = roots.find((root) => root.id === activeWorkspace);
   const projectLabel = activeRoot ? workspaceRootName(activeRoot) : null;
   const pickerView = useMemo(
@@ -458,24 +444,14 @@ export function cancelWorktreeSwitch(id: unknown): void {
   useWorktreePickerChromeStore.getState().cancelSwitch(id);
 }
 
-export function worktreeSwitchFailureMessage(
-  branch: unknown,
-  kind: WorktreeSwitchFailureKind,
-): string {
-  const label = normalizeWorktreePickerSwitchLabel(branch) ?? "worktree";
-  return kind === "selection-rejected"
-    ? `Couldn't switch to ${label} — the selection wasn't saved`
-    : "The worktree switch couldn't be saved";
-}
-
 export function failWorktreeSwitch(
   id: unknown,
-  branch: unknown,
-  kind: WorktreeSwitchFailureKind,
+  _branch: unknown,
+  _kind: WorktreeSwitchFailureKind,
 ): void {
   useWorktreePickerChromeStore
     .getState()
-    .failSwitch(id, worktreeSwitchFailureMessage(branch, kind));
+    .failSwitch(id, WORKSPACE_IDENTITY_MESSAGES.switchFailed);
 }
 
 export function resetWorktreePickerChrome(): void {

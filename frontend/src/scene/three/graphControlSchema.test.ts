@@ -11,6 +11,7 @@ import {
   resolveForceParams,
   simulationDefaults,
 } from "./graphControlSchema";
+import { UI_GRAPH_CONTROL_MESSAGES } from "../../stores/view/graphControlsVocabulary";
 
 // Widen the `as const` schema to the ControlSpec interface for the generic field access
 // in the loops below — the as-const literal types are too narrow for `.exposure.includes`
@@ -108,22 +109,6 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   pinchZoomSensitivity: 0.01,
 };
 
-// Friendly UI labels for the ui-exposed entries — the redesign's binding plain-language
-// vocabulary (ui-labels-are-user-facing). The schema is the single source apps-review
-// derives the rendered label from; `label` stays the dev-lab vocabulary.
-const EXPECTED_UI_LABELS: Record<string, string> = {
-  charge: "Spacing",
-  linkDistance: "Link length",
-  linkStrength: "Grouping",
-  nodeSizeScale: "Node size",
-  nodeSalienceScale: "Importance",
-  edgeWidthMax: "Link thickness",
-  edgeOpacityMax: "Link opacity",
-  edgeColorMode: "Link colour",
-  nodeColorMode: "Node colour",
-  nodeIcons: "Show icons",
-};
-
 describe("graphControlSchema defaults", () => {
   it("pins every entry's canonical default (no silent drift)", () => {
     const actual: Record<string, number | string | boolean> = {};
@@ -204,27 +189,20 @@ describe("graphControlSchema structure", () => {
   });
 });
 
-describe("graphControlSchema ui labels (single source for the curated UI)", () => {
-  it("every ui-exposed entry carries its pinned friendly uiLabel", () => {
-    for (const spec of SCHEMA) {
-      if (!spec.exposure.includes("ui")) continue;
-      expect(spec.uiLabel, `${spec.id} is ui-exposed and needs a uiLabel`).toBe(
-        EXPECTED_UI_LABELS[spec.id],
-      );
-    }
-  });
-
-  it("the ui-exposed set is exactly the labelled set (no ui entry unlabelled)", () => {
+describe("graphControlSchema presentation boundary", () => {
+  it("keeps the localized presentation registry exhaustive for UI controls", () => {
     const uiIds = SCHEMA.filter((s) => s.exposure.includes("ui"))
       .map((s) => s.id)
       .sort();
-    expect(uiIds).toEqual(Object.keys(EXPECTED_UI_LABELS).sort());
+    expect(uiIds).toEqual(Object.keys(UI_GRAPH_CONTROL_MESSAGES).sort());
   });
 
-  it("lab-only / internal entries carry no uiLabel (label is the lab vocabulary)", () => {
+  it("keeps presentation fields out of the semantic schema", () => {
     for (const spec of SCHEMA) {
-      if (spec.exposure.includes("ui")) continue;
-      expect(spec.uiLabel).toBeUndefined();
+      expect("label" in spec).toBe(false);
+      expect("uiLabel" in spec).toBe(false);
+      expect("description" in spec).toBe(false);
+      expect("unit" in spec).toBe(false);
     }
   });
 });

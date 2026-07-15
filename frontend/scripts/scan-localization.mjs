@@ -50,7 +50,10 @@ const SOURCE_EXT = /\.(?:css|ts|tsx)$/u;
 const TYPESCRIPT_SOURCE_EXT = /\.(?:ts|tsx)$/u;
 const CSS_SOURCE_EXT = /\.css$/u;
 const TEST_SOURCE = /\.(?:test|spec)\.(?:css|ts|tsx)$/u;
-const EXACT_SOURCE_EXCLUSIONS = new Set(["src/localization/testing/resources.ts"]);
+const EXACT_SOURCE_EXCLUSIONS = new Set([
+  "src/localization/testing/addProjectResources.ts",
+  "src/localization/testing/resources.ts",
+]);
 const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
 const LEGACY_ACTION_PRESENTATION_OWNER = "src/platform/actions/action.ts";
@@ -61,6 +64,7 @@ const JSX_ATTRIBUTE_NAMES = new Set([
   "alt",
   "aria-description",
   "aria-label",
+  "ariaLabel",
   "description",
   "emptyText",
   "errorText",
@@ -889,10 +893,7 @@ function scanProgram(files, allowOutsideSource = false) {
       } else if (
         ts.isJsxExpression(node) &&
         node.expression &&
-        !(
-          ts.isJsxAttribute(node.parent) &&
-          node.parent.name.getText(sourceFile) === "className"
-        )
+        !ts.isJsxAttribute(node.parent)
       ) {
         const parts = staticParts(node.expression, checker, bindings);
         for (const text of parts.texts.filter(meaningful)) {
