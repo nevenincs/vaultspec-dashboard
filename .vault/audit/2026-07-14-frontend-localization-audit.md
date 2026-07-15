@@ -1865,3 +1865,24 @@ scanner, and diff checks passed. Tests contain no doubles, patches, skips, or ex
 failures. Exact reconciliation removed twelve entries and added none, reducing the scanner
 from 1,163 to 1,151 findings. Reset sorting remains assigned to S226. S221 is accepted with
 no open findings.
+
+### W02.P06.S222 review | pass | Categories reuse one localized vocabulary
+
+This step preserves the explicit eight-token category union and exact order while adding
+a separate frozen exhaustive presentation map. Exact lookup accepts only canonical raw
+tokens and rejects aliases, index, case variants, padded values, unknown values, null,
+and undefined. Existing decision, step, and summary aliases remain normalization inputs
+only, and category color behavior is unchanged.
+
+Review confirmed that six category labels reuse the completed document-type descriptors
+by object identity. Only Code and Features add semantic catalog keys, preventing a second
+vocabulary from drifting across graph, document, and category surfaces. Raw tokens remain
+the authority for CSS variables, filters, DOM attributes, keys, and wire behavior.
+
+English, French, and Arabic tests resolve all eight descriptors without fallback and
+preserve the structural union-to-CSS category guard. Independent Sol review approved the
+eight-file scope with no findings. Terra passed 33 focused tests and the complete frontend
+lint recipe. TypeScript, targeted ESLint, formatting, policy, scanner, and diff checks
+passed. Tests contain no doubles, patches, skips, or expected failures. The scanner
+remained clean at 1,151 findings with no allowlist change, matching the documented scanner
+blind spot. S222 and phase W02.P06 are accepted with no open findings.
