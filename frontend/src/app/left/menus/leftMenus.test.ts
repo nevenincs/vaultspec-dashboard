@@ -96,10 +96,21 @@ describe("worktreeMenu", () => {
     expect(ids(actions)).toEqual([
       "worktree:switch-scope",
       "worktree:copy-branch",
-      "worktree:copy-id",
       "worktree:reveal",
     ]);
-    expect(byId(actions, "worktree:switch-scope")?.section).toBe("navigate");
+    expect(byId(actions, "worktree:switch-scope")).toMatchObject({
+      label: { key: "projects:actions.switchWorktree" },
+      section: "navigate",
+    });
+    expect(byId(actions, "worktree:copy-branch")).toMatchObject({
+      label: { key: "common:actions.copyBranchName" },
+      section: "copy",
+      dispatch: {
+        type: "action:copy",
+        payload: { text: "feature/x" },
+      },
+    });
+    expect(byId(actions, "worktree:copy-id")).toBeUndefined();
   });
 
   it("switch-scope is mutating: it carries disabledInTimeTravel and dispatches through the seam", () => {
@@ -126,7 +137,10 @@ describe("worktreeMenu", () => {
       "worktree:switch-scope",
     );
     expect(action?.disabled).toBe(true);
-    expect(action?.disabledReason).toBe("no vault corpus to switch to");
+    expect(action?.label).toEqual({ key: "projects:actions.switchWorktree" });
+    expect(action?.disabledReason).toEqual({
+      key: "projects:disabledReasons.chooseWorktreeWithProjectFiles",
+    });
     expect(action?.run).toBeUndefined();
     expect(action?.dispatch).toBeUndefined();
   });

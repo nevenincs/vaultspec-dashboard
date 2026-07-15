@@ -47,6 +47,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:actions.close": { role: "action" },
   "common:actions.collapseNavigationPanel": { role: "action" },
   "common:actions.copy": { role: "action" },
+  "common:actions.copyBranchName": { role: "action" },
   "common:actions.copyCategoryName": { role: "action" },
   "common:actions.copyDocumentName": { role: "action" },
   "common:actions.copyFeatureTag": { role: "action" },
@@ -349,6 +350,10 @@ export const ENGLISH_MESSAGE_POLICY = {
   "projects:actions.add": { role: "action" },
   "projects:actions.clearHistory": { role: "action" },
   "projects:actions.switch": { role: "action" },
+  "projects:actions.switchWorktree": { role: "action" },
+  "projects:disabledReasons.chooseWorktreeWithProjectFiles": {
+    role: "disabled-reason",
+  },
   "projects:shortcutGroups.projects": { role: "label" },
   "settings:actions.useDarkTheme": { role: "action" },
   "settings:actions.useHighContrastTheme": { role: "action" },

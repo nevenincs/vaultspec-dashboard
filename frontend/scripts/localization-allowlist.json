@@ -865,21 +865,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "979bca17bf58db5e08090614",
-    "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "b37ebf329ad1bcad6135499a",
-    "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "be495685391d5cdbba0ae45c",
-    "path": "src/app/left/menus/worktreeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "1355b89a8585e01867f68913",
     "path": "src/app/left/ProjectNavigator.tsx",
     "rule": "jsx-attribute"

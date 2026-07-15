@@ -135,6 +135,7 @@ const DISABLED_REASON_KEYS = [
   "graph:disabledReasons.chooseItemWithTitle",
   "graph:disabledReasons.relatedItemUnavailable",
   "graph:disabledReasons.startingItemUnavailable",
+  "projects:disabledReasons.chooseWorktreeWithProjectFiles",
 ] as const satisfies readonly MessageKey[];
 
 describe("source-locale message policy", () => {
@@ -185,6 +186,27 @@ describe("source-locale message policy", () => {
         [],
       );
     }
+  });
+
+  it("accepts canonical worktree actions and recovery copy", () => {
+    expect(
+      validateEnglishMessage(
+        "common:actions.copyBranchName",
+        en.common.actions.copyBranchName,
+      ),
+    ).toEqual([]);
+    expect(
+      validateEnglishMessage(
+        "projects:actions.switchWorktree",
+        en.projects.actions.switchWorktree,
+      ),
+    ).toEqual([]);
+    expect(
+      validateEnglishMessage(
+        "projects:disabledReasons.chooseWorktreeWithProjectFiles",
+        en.projects.disabledReasons.chooseWorktreeWithProjectFiles,
+      ),
+    ).toEqual([]);
   });
 
   it("reports each stable policy issue from an adverse literal", () => {

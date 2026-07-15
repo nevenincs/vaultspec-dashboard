@@ -4,7 +4,6 @@
 // unit-testable in isolation. The registration below contributes it for the
 // "worktree" entity kind at module load.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { GitBranch } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -16,7 +15,7 @@ import { revealAction } from "../../../platform/actions/shellActions";
 import { worktreeActivateScopeDispatch } from "../../../stores/server/worktreeActions";
 
 /**
- * The menu for a worktree row. "Switch to this scope" dispatches the same
+ * The menu for a worktree row. "Switch to worktree" dispatches the same
  * stores-layer active-scope transition the row click uses, then docks the
  * playhead back to LIVE; copy the branch name, and reveal the worktree path in
  * the file manager. The switch is a MUTATION, so it carries
@@ -33,7 +32,7 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
     switchable
       ? {
           id: "worktree:switch-scope",
-          label: legacyActionPresentation("Switch to this scope"),
+          label: { key: "projects:actions.switchWorktree" },
           section: "navigate",
           icon: GitBranch,
           disabledInTimeTravel: true,
@@ -41,11 +40,13 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
         }
       : {
           id: "worktree:switch-scope",
-          label: legacyActionPresentation("Switch to this scope"),
+          label: { key: "projects:actions.switchWorktree" },
           section: "navigate",
           icon: GitBranch,
           disabled: true,
-          disabledReason: legacyActionPresentation("no vault corpus to switch to"),
+          disabledReason: {
+            key: "projects:disabledReasons.chooseWorktreeWithProjectFiles",
+          },
           disabledInTimeTravel: true,
         },
   );
@@ -54,20 +55,11 @@ export function worktreeMenu(entity: unknown): ActionDescriptor[] {
     actions.push(
       copyAction({
         id: "worktree:copy-branch",
-        label: { key: "common:actions.copy" },
+        label: { key: "common:actions.copyBranchName" },
         text: normalizedEntity.branch,
       }),
     );
   }
-
-  actions.push(
-    copyAction({
-      id: "worktree:copy-id",
-      label: { key: "common:actions.copy" },
-      text: normalizedEntity.id,
-      what: "id",
-    }),
-  );
 
   if (normalizedEntity.path) {
     actions.push(revealAction({ id: "worktree:reveal", path: normalizedEntity.path }));

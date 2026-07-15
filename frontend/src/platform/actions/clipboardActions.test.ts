@@ -134,6 +134,7 @@ describe("copy verb", () => {
     const runtime = createTestLocalizationRuntime();
     const cases = [
       ["common:actions.copy", "Copy"],
+      ["common:actions.copyBranchName", "Copy branch name"],
       ["common:actions.copyCategoryName", "Copy category name"],
       ["common:actions.copyDocumentName", "Copy document name"],
       ["common:actions.copyFeatureTag", "Copy feature tag"],

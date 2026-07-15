@@ -21,6 +21,7 @@ export const ltrTestResources = {
       cancel: "Annuler",
       close: "Fermer",
       collapseNavigationPanel: "Réduire le panneau de navigation",
+      copyBranchName: "Copier le nom de la branche",
       copyCategoryName: "Copier le nom de la catégorie",
       copyFeatureTag: "Copier l’étiquette de la fonctionnalité",
       hideActivityPanel: "Masquer le panneau d’activité",
@@ -374,6 +375,11 @@ export const ltrTestResources = {
       add: "Ajouter un projet…",
       clearHistory: "Effacer l’historique des projets",
       switch: "Changer de projet…",
+      switchWorktree: "Basculer vers l’arbre de travail",
+    },
+    disabledReasons: {
+      chooseWorktreeWithProjectFiles:
+        "Choisissez un autre arbre de travail contenant les fichiers du projet.",
     },
     shortcutGroups: {
       projects: "Projets",
@@ -503,6 +509,7 @@ export const rtlTestResources = {
       cancel: "إلغاء",
       close: "إغلاق",
       collapseNavigationPanel: "طي لوحة التنقل",
+      copyBranchName: "نسخ اسم الفرع",
       copyCategoryName: "نسخ اسم الفئة",
       copyFeatureTag: "نسخ وسم الميزة",
       hideActivityPanel: "إخفاء لوحة النشاط",
@@ -836,6 +843,10 @@ export const rtlTestResources = {
       add: "إضافة مشروع…",
       clearHistory: "مسح سجل المشاريع",
       switch: "تبديل المشروع…",
+      switchWorktree: "التبديل إلى شجرة العمل",
+    },
+    disabledReasons: {
+      chooseWorktreeWithProjectFiles: "اختر شجرة عمل أخرى تحتوي على ملفات المشروع.",
     },
     shortcutGroups: {
       projects: "المشاريع",

@@ -60,6 +60,7 @@ const COPY_WHAT_VALUES: readonly CopyWhat[] = [
 const COPY_WHAT_SET = new Set<string>(COPY_WHAT_VALUES);
 const COPY_ACTION_MESSAGE_KEYS = [
   "common:actions.copy",
+  "common:actions.copyBranchName",
   "common:actions.copyCategoryName",
   "common:actions.copyDocumentName",
   "common:actions.copyFeatureTag",

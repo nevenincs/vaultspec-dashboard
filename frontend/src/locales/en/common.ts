@@ -16,6 +16,7 @@ export const common = {
     close: "Close",
     collapseNavigationPanel: "Collapse navigation panel",
     copy: "Copy",
+    copyBranchName: "Copy branch name",
     copyCategoryName: "Copy category name",
     copyDocumentName: "Copy document name",
     copyFeatureTag: "Copy feature tag",
