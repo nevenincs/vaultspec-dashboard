@@ -4,7 +4,7 @@
 // compact shell the SAME `FrameworkStatusCluster` the desktop rail pins joins the
 // unified rail as its FOOTER: a shrink-0 sibling BELOW the scrolling content region,
 // never inside it, so it stays fixed at the rail's bottom edge while the Status/Browse
-// stack scrolls. The four chips grow to the 2.75rem touch floor on coarse pointers.
+// stack scrolls. The footer chips grow to the 2.75rem touch floor on coarse pointers.
 // Rendered against the REAL engine over the fixture vault (no mocked wire); only
 // `matchMedia` is stubbed to force the compact viewport class + a coarse pointer.
 
@@ -100,12 +100,14 @@ describe("CompactUnifiedRail composition (live engine, ADR D6)", () => {
     ).toBeTruthy();
   });
 
-  it("renders the four framework chips at the coarse-pointer touch floor", async () => {
+  it("renders the framework footer chips at the coarse-pointer touch floor", async () => {
     renderRail();
     await screen.findByRole("navigation", { name: "Home" }, ENGINE_WAIT);
 
+    // Three footer chips: Search service, Approvals, Vault health. Backend health was
+    // pulled from the footer (user UX decision); it surfaces via the Cmd+K palette.
     const chips = document.querySelectorAll("[data-framework-chip]");
-    expect(chips.length).toBe(4);
+    expect(chips.length).toBe(3);
     // On a coarse primary pointer every chip carries the 2.75rem tap-target floor.
     for (const chip of chips) {
       expect(chip.className).toContain("min-h-[2.75rem]");

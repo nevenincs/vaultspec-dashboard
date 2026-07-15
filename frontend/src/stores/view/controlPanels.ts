@@ -25,6 +25,18 @@ export const CONTROL_PANEL_IDS: readonly ControlPanelId[] = [
   "vault-health",
 ];
 
+/** The control panels that ALSO surface an ambient status chip in the rail-footer
+ *  cluster. Backend health is intentionally excluded: its engine-status chip did not
+ *  make its purpose clear within ~2s, so it was pulled from the footer (user UX
+ *  decision, 2026-07-15). The Backend health panel and its Cmd+K palette command
+ *  stay — the palette is now that panel's only surfacing path. */
+export type FooterChipId = Exclude<ControlPanelId, "backend-health">;
+export const FOOTER_CHIP_IDS: readonly FooterChipId[] = [
+  "search-service",
+  "approvals",
+  "vault-health",
+];
+
 /** Validate unknown input at the boundary (a persisted blob, a palette id, a wire
  *  value): a known panel id or `null`. */
 export function normalizeControlPanelId(value: unknown): ControlPanelId | null {

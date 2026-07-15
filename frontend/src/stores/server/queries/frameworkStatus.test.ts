@@ -12,9 +12,6 @@ import {
 /** A fully-healthy input; each case overrides just the plane under test. */
 function healthy(): FrameworkStatusInputs {
   return {
-    engineLoading: false,
-    engineUnreachable: false,
-    degradedBackendCount: 0,
     core: { loading: false, errored: false, reachable: true, vaultHealth: "healthy" },
     rag: { loading: false, errored: false, degraded: false },
     approvals: {
@@ -27,40 +24,14 @@ function healthy(): FrameworkStatusInputs {
   };
 }
 
-describe("deriveFrameworkStatusView labels", () => {
-  it("carries the plain-language label for each panel", () => {
-    const view = deriveFrameworkStatusView(healthy());
-    expect(view["search-service"].label).toBe("Search service");
-    expect(view.approvals.label).toBe("Approvals");
-    expect(view["backend-health"].label).toBe("Backend health");
-    expect(view["vault-health"].label).toBe("Vault health");
-  });
-
+describe("deriveFrameworkStatusView", () => {
   it("maps every plane to ok when the framework is healthy", () => {
     const view = deriveFrameworkStatusView(healthy());
-    expect(view["search-service"].tone).toBe("ok");
-    expect(view.approvals.tone).toBe("ok");
-    expect(view["backend-health"].tone).toBe("ok");
-    expect(view["vault-health"].tone).toBe("ok");
-  });
-});
-
-describe("backend-health chip", () => {
-  it("is down when the engine is unreachable", () => {
-    const view = deriveFrameworkStatusView({ ...healthy(), engineUnreachable: true });
-    expect(view["backend-health"].tone).toBe("down");
-    expect(view["backend-health"].count).toBeUndefined();
-  });
-
-  it("is unknown while the first status load is in flight", () => {
-    const view = deriveFrameworkStatusView({ ...healthy(), engineLoading: true });
-    expect(view["backend-health"].tone).toBe("unknown");
-  });
-
-  it("is attention with the served degraded-backend count", () => {
-    const view = deriveFrameworkStatusView({ ...healthy(), degradedBackendCount: 2 });
-    expect(view["backend-health"].tone).toBe("attention");
-    expect(view["backend-health"].count).toBe(2);
+    expect(view).toEqual({
+      "search-service": { tone: "ok" },
+      approvals: { tone: "ok" },
+      "vault-health": { tone: "ok" },
+    });
   });
 });
 

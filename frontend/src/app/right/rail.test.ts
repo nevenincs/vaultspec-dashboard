@@ -12,7 +12,7 @@ import {
   opsReceiptFromError,
   opsReceiptFromResult,
 } from "../../stores/server/queries";
-import { CONTROL_PANEL_IDS } from "../../stores/view/controlPanels";
+import { CONTROL_PANEL_IDS, FOOTER_CHIP_IDS } from "../../stores/view/controlPanels";
 import {
   coreCard,
   deriveNowStripView,
@@ -108,16 +108,20 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
     expect(normalizeStatusSectionId("recent-commits")).toBe("recent-commits");
   });
 
-  it("the footer status cluster is exactly the four control panels", () => {
-    // The evicted admin surfaces (Search service, Approvals) plus the two newly
-    // surfaced health planes (Backend health, Vault health) are the cluster chips —
-    // the one place the rail reaches its control panels now.
+  it("registers all four control panels but pins only three as footer chips", () => {
+    // Every panel — the evicted admin surfaces (Search service, Approvals) plus the
+    // two health planes (Backend health, Vault health) — stays registered for the
+    // Cmd+K palette and its modal panel.
     expect(CONTROL_PANEL_IDS).toEqual([
       "search-service",
       "approvals",
       "backend-health",
       "vault-health",
     ]);
+    // Backend health is NOT a footer chip: its engine-status read unclearly, so it was
+    // pulled from the rail (user UX decision). It surfaces only through the palette;
+    // the footer cluster is the remaining three.
+    expect(FOOTER_CHIP_IDS).toEqual(["search-service", "approvals", "vault-health"]);
   });
 });
 

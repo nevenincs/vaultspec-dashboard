@@ -1,9 +1,10 @@
 // The rail-footer framework status cluster (activity-rail-realignment ADR D2). A
 // slim strip pinned to the activity rail's bottom edge — OUTSIDE the scroll region
-// — with one chip per framework control panel: Search service, Approvals, Backend
-// health, Vault health. Each chip shows only a served health tone (the standard
-// status-dot vocabulary) plus at most one served count, and toggles its modal
-// panel.
+// — with one chip per FOOTER control panel: Search service, Approvals, Vault
+// health. Each chip shows only a served health tone (the standard status-dot
+// vocabulary) plus at most one served count, and toggles its modal panel. Backend
+// health is NOT a footer chip — its engine-status read unclearly, so it was pulled
+// from the strip (user UX decision); the Cmd+K palette is its only surfacing path.
 //
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
 // DUMB app-chrome view. Tones and counts come from ONE interpreted stores
@@ -12,18 +13,22 @@
 // panel (`controlPanelToggleAction`), the same verb the command palette and the
 // keymap fire — never a bespoke per-surface handler (actions-keymap-palette).
 //
-// Keyboard (keyboard-navigation): the four chips are ONE FocusZone tab stop —
+// Keyboard (keyboard-navigation): the footer chips are ONE FocusZone tab stop —
 // Tab enters/leaves the cluster while Left/Right (Home/End) rove between chips
 // (name-as-contract binding Figma frame FrameworkStatusCluster).
 
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useState } from "react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import {
-  CONTROL_PANEL_IDS,
+  FOOTER_CHIP_IDS,
   useOpenControlPanel,
   type ControlPanelId,
+  type FooterChipId,
 } from "../../stores/view/controlPanels";
+import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 import { controlPanelToggleAction } from "../../stores/view/chromeActions";
 import {
   useFrameworkStatusView,
@@ -42,15 +47,20 @@ const TONE_DOT_CLASS: Record<FrameworkStatusTone, string> = {
   unknown: "bg-ink-faint",
 };
 
-/** Tone -> a plain-language health word for the chip's accessible name. */
-const TONE_WORD: Record<FrameworkStatusTone, string> = {
-  ok: "healthy",
-  attention: "attention",
-  down: "unavailable",
-  unknown: "checking",
+const TONE_MESSAGES: Readonly<Record<FrameworkStatusTone, MessageDescriptor>> = {
+  ok: { key: "common:controlPanels.tones.workingNormally" },
+  attention: { key: "common:controlPanels.tones.needsAttention" },
+  down: { key: "common:controlPanels.tones.unavailable" },
+  unknown: { key: "common:controlPanels.tones.checking" },
 };
 
+const GROUP_MESSAGE = { key: "common:controlPanels.accessibility.group" } as const;
+const PANEL_STATUS_MESSAGE = {
+  key: "common:controlPanels.accessibility.panelStatus",
+} as const;
+
 export interface StatusChipProps {
+  id: ControlPanelId;
   chip: FrameworkStatusChip;
   /** Whether this chip's panel is the open one. */
   open: boolean;
@@ -70,6 +80,7 @@ export interface StatusChipProps {
  *  served count. Pure presentation — the parent supplies the served chip, the
  *  open flag, and the shared toggle so the chip stays wire- and store-free. */
 export function StatusChip({
+  id,
   chip,
   open,
   onToggle,
@@ -79,6 +90,18 @@ export function StatusChip({
   onFocus,
   coarse = false,
 }: StatusChipProps) {
+  const resolve = useLocalizedMessageResolver();
+  const panel = resolve(CONTROL_PANEL_VOCABULARY[id].label);
+  const status = resolve(TONE_MESSAGES[chip.tone]);
+  const accessibleName = resolve({
+    ...PANEL_STATUS_MESSAGE,
+    values: { panel: panel.message, status: status.message },
+  });
+
+  if (panel.usedFallback || status.usedFallback || accessibleName.usedFallback) {
+    return null;
+  }
+
   return (
     <button
       type="button"
@@ -88,7 +111,7 @@ export function StatusChip({
       onFocus={onFocus}
       onClick={onToggle}
       aria-pressed={open}
-      aria-label={`${chip.label} — ${TONE_WORD[chip.tone]}`}
+      aria-label={accessibleName.message}
       data-framework-chip
       data-tone={chip.tone}
       className={`flex min-w-0 items-center gap-fg-1 rounded-fg-sm px-fg-1-5 py-fg-1 transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-pressed:bg-paper-sunken${
@@ -100,7 +123,7 @@ export function StatusChip({
         className={`size-fg-2 shrink-0 rounded-full ${TONE_DOT_CLASS[chip.tone]}`}
       />
       <span className="min-w-0 truncate text-meta font-medium text-ink-muted">
-        {chip.label}
+        {panel.message}
       </span>
       {chip.count !== undefined && (
         <span className="shrink-0 text-caption tabular-nums text-ink-faint">
@@ -112,12 +135,15 @@ export function StatusChip({
 }
 
 /**
- * The framework status cluster strip. Renders one chip per control panel from the
- * served projection; the four chips share one FocusZone tab stop with horizontal
- * roving. Mounted as a pinned footer beneath the activity rail scroll region.
+ * The framework status cluster strip. Renders one chip per FOOTER control panel
+ * from the served projection; the chips share one FocusZone tab stop with
+ * horizontal roving. Mounted as a pinned footer beneath the activity rail scroll
+ * region.
  */
 export function FrameworkStatusCluster() {
   const view = useFrameworkStatusView();
+  const resolve = useLocalizedMessageResolver();
+  const group = resolve(GROUP_MESSAGE);
   // The panels are MODAL (single-open), so one selector yields the open id and
   // each chip's open flag is a value compare — no per-chip store hook in a loop.
   const openPanel = useOpenControlPanel();
@@ -131,24 +157,28 @@ export function FrameworkStatusCluster() {
     activeKey: active,
     onActiveKeyChange: setActive,
   });
+  if (group.usedFallback) return null;
+
   return (
     <div
       role="group"
-      aria-label="Framework status"
+      aria-label={group.message}
       data-framework-status-cluster
       className="flex shrink-0 items-center justify-between gap-fg-1 border-t border-rule bg-paper-raised px-fg-2 py-fg-1-5"
     >
-      {CONTROL_PANEL_IDS.map((id: ControlPanelId) => {
+      {FOOTER_CHIP_IDS.map((id: FooterChipId) => {
         const item = zone.rove(id);
         // The ONE shared toggle descriptor for this panel — composed here exactly
         // as the command palette and keymap compose it, so the chip cannot drift.
         const action = controlPanelToggleAction(id, openPanel);
+        if (action.run === undefined) return null;
         return (
           <StatusChip
             key={id}
+            id={id}
             chip={view[id]}
             open={openPanel === id}
-            onToggle={action.run ?? (() => {})}
+            onToggle={action.run}
             chipRef={item.ref}
             tabIndex={item.tabIndex}
             onKeyDown={item.onKeyDown}
