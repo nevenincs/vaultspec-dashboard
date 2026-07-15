@@ -144,7 +144,7 @@ Migrate keybinding, command-provider, palette, and context-menu contracts and re
 
 Move canonical tab, browser, sort, date-criterion, document-type, status, and feedback vocabularies into catalogs without changing stable tokens.
 
-- [ ] `W02.P06.S35` - Move browser-mode labels into canonical catalog mappings; `frontend/src/stores/view/browserMode.ts`.
+- [x] `W02.P06.S35` - Move browser-mode labels into canonical catalog mappings; `frontend/src/stores/view/browserMode.ts, frontend/src/stores/view/browserMode.test.ts, frontend/src/stores/view/leftRailKeybindings.ts, frontend/src/stores/view/leftRailKeybindings.localization.test.ts, frontend/src/stores/view/commandPaletteCommands.ts, frontend/src/app/left/BrowserModeToggle.tsx, frontend/src/app/left/BrowserModeToggle.render.test.tsx, frontend/src/app/shell/IconRail.tsx, frontend/src/app/shell/IconRail.render.test.tsx, frontend/src/locales/en/documents.ts, frontend/src/localization/catalogKeys.test.ts, frontend/src/localization/messagePolicy.ts, frontend/src/localization/testing/resources.ts, frontend/scripts/localization-allowlist.json`.
 - [ ] `W02.P06.S36` - Move right-rail tab and shell-layout labels into canonical catalog mappings; `frontend/src/stores/view/shellLayout.ts`.
 - [ ] `W02.P06.S37` - Move timeline date-criterion labels and unavailability reasons into catalog mappings; `frontend/src/app/timeline/timelineDateCriterion.ts`.
 - [ ] `W02.P06.S38` - Move document-type display vocabulary into catalogs while preserving raw tokens and order; `frontend/src/stores/server/docTypeVocabulary.ts`.

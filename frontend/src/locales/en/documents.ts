@@ -1,10 +1,13 @@
 export const documents = {
   accessibility: {
+    browserView: "Browser view",
     switchReadingAndEditingShortcut:
       "Switch between reading and editing ({{accelerator}})",
   },
   actions: {
     addToFeature: "Add to a feature…",
+    browseDocuments: "Browse documents",
+    browseFiles: "Browse files",
     clearFilter: "Clear the document filter",
     collapseTree: "Collapse document tree",
     copyLink: "Copy link",
@@ -19,6 +22,10 @@ export const documents = {
     showOrHideChanges: "Show or hide changes",
     switchReadingAndEditing: "Switch between reading and editing",
     switchView: "Switch between documents and files",
+  },
+  browserModes: {
+    documents: "Documents",
+    files: "Files",
   },
   disabledReasons: {
     copyChangesBeforeReopening:

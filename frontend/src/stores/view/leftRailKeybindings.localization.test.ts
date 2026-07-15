@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
+  rtlTestLocale,
 } from "../../localization/testing";
 import { resolveMessageResult } from "../../platform/localization/fallback";
 import {
@@ -14,6 +15,7 @@ import {
   LEFT_RAIL_NEW_DOC_LABEL,
   LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
   LEFT_RAIL_TOGGLE_FACETS_LABEL,
+  browseModeAction,
   cycleBrowserModeAction,
   deriveLeftRailKeybindings,
   focusFilterAction,
@@ -139,5 +141,49 @@ describe("left-rail localized keybindings", () => {
       id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
       label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
     });
+  });
+
+  it("provides complete localized browse actions and rejects unknown modes", () => {
+    const sourceRuntime = createTestLocalizationRuntime();
+    const alternateRuntime = createTestLocalizationRuntime(ltrTestLocale);
+    const rtlRuntime = createTestLocalizationRuntime(rtlTestLocale);
+    const documents = browseModeAction("vault");
+    const files = browseModeAction("code");
+
+    expect(documents).toMatchObject({
+      id: "left-rail:browse-vault",
+      label: { key: "documents:actions.browseDocuments" },
+    });
+    expect(files).toMatchObject({
+      id: "left-rail:browse-code",
+      label: { key: "documents:actions.browseFiles" },
+    });
+    expect(resolveMessageResult(sourceRuntime, documents?.label)).toEqual({
+      message: "Browse documents",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(alternateRuntime, documents?.label)).toEqual({
+      message: "Parcourir les documents",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(sourceRuntime, files?.label)).toEqual({
+      message: "Browse files",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(alternateRuntime, files?.label)).toEqual({
+      message: "Parcourir les fichiers",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(rtlRuntime, documents?.label)).toEqual({
+      message: "تصفح المستندات",
+      usedFallback: false,
+    });
+    expect(resolveMessageResult(rtlRuntime, files?.label)).toEqual({
+      message: "تصفح الملفات",
+      usedFallback: false,
+    });
+    expect(browseModeAction(" vault ")).toBeNull();
+    expect(browseModeAction("tree")).toBeNull();
+    expect(browseModeAction(null)).toBeNull();
   });
 });

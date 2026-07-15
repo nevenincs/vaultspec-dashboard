@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { useCallback } from "react";
 
+import type { MessageDescriptor } from "../../platform/localization/message";
+
 // Browser-region view-local state (dashboard-left-rail ADR "Browser"): the chosen
 // mode (vault | code), re-keyed per scope so it does not bleed across a
 // worktree/workspace swap. Filter text is canonical dashboard-state now.
@@ -22,26 +24,72 @@ import { useCallback } from "react";
 // folded into Vault so the rail exposes only vault·code.
 export type BrowserMode = "vault" | "code";
 
-export interface BrowserModeOption {
-  id: BrowserMode;
-  label: string;
+type BrowserModeLabelKey =
+  | "documents:browserModes.documents"
+  | "documents:browserModes.files";
+type BrowserModeActionLabelKey =
+  | "documents:actions.browseDocuments"
+  | "documents:actions.browseFiles";
+
+export interface BrowserModePresentation<
+  Mode extends BrowserMode = BrowserMode,
+  LabelKey extends BrowserModeLabelKey = BrowserModeLabelKey,
+  ActionLabelKey extends BrowserModeActionLabelKey = BrowserModeActionLabelKey,
+> {
+  readonly id: Mode;
+  readonly label: MessageDescriptor<LabelKey>;
+  readonly actionLabel: MessageDescriptor<ActionLabelKey>;
 }
 
-// vault -> code, left to right: the binding board's browser-mode segmented
-// control. Labels live with the mode domain so app chrome does not duplicate the
-// option set.
-export const BROWSER_MODE_OPTIONS: readonly BrowserModeOption[] = [
-  { id: "vault", label: "Vault" },
-  // The user-facing label is "Files" (binding `LeftRail` 238:600); the internal
-  // mode id stays "code" (the `/file-tree` projection) — label and id are
-  // deliberately decoupled (ui-labels-are-user-facing).
-  { id: "code", label: "Files" },
-];
+type BrowserModePresentationMap = Readonly<{
+  vault: BrowserModePresentation<
+    "vault",
+    "documents:browserModes.documents",
+    "documents:actions.browseDocuments"
+  >;
+  code: BrowserModePresentation<
+    "code",
+    "documents:browserModes.files",
+    "documents:actions.browseFiles"
+  >;
+}>;
+
+// Raw identity and order stay independent from locale-specific presentation.
+export const BROWSER_MODES = [
+  "vault",
+  "code",
+] as const satisfies readonly BrowserMode[];
+
+export const BROWSER_MODE_PRESENTATION = Object.freeze({
+  vault: {
+    id: "vault",
+    label: { key: "documents:browserModes.documents" },
+    actionLabel: { key: "documents:actions.browseDocuments" },
+  },
+  code: {
+    id: "code",
+    label: { key: "documents:browserModes.files" },
+    actionLabel: { key: "documents:actions.browseFiles" },
+  },
+} as const satisfies BrowserModePresentationMap);
+
+export const BROWSER_VIEW_LABEL = Object.freeze({
+  key: "documents:accessibility.browserView",
+} as const satisfies MessageDescriptor);
+
+/** Resolve presentation only for an exact raw mode identity. */
+export function browserModePresentation(
+  value: unknown,
+): BrowserModePresentation | null {
+  return value === "vault" || value === "code"
+    ? BROWSER_MODE_PRESENTATION[value]
+    : null;
+}
 
 export function normalizeBrowserMode(value: unknown): BrowserMode | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim();
-  return BROWSER_MODE_OPTIONS.find((option) => option.id === normalized)?.id ?? null;
+  return BROWSER_MODES.find((mode) => mode === normalized) ?? null;
 }
 
 export function isBrowserMode(value: unknown): value is BrowserMode {
@@ -88,8 +136,8 @@ export function setBrowserMode(mode: unknown): void {
 }
 
 export function nextBrowserMode(current: BrowserMode): BrowserMode {
-  const index = BROWSER_MODE_OPTIONS.findIndex((option) => option.id === current);
-  return BROWSER_MODE_OPTIONS[(index + 1) % BROWSER_MODE_OPTIONS.length]!.id;
+  const index = BROWSER_MODES.indexOf(current);
+  return BROWSER_MODES[(index + 1) % BROWSER_MODES.length]!;
 }
 
 export function cycleBrowserMode(): void {

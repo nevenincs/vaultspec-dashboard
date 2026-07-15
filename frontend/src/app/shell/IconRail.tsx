@@ -1,6 +1,6 @@
 // IconRail — the left rail's collapsed state. It is NOT a separate primary
 // navigation surface: the two icon buttons map directly to the browser modes the
-// expanded LeftRail hosts (Vault and Files). Selecting either icon sets the mode
+// expanded LeftRail hosts (Documents and Files). Selecting either icon sets the mode
 // and lets AppShell open the full rail.
 //
 // Layer law (dashboard-layer-ownership / view-rewrite-preserves-the-state-and-
@@ -8,7 +8,12 @@
 // (IconButton + the two sanctioned glyph families) and reads only the props it is
 // handed; it never fetches, mints no model, and reads no raw `tiers`.
 
-import { BROWSER_MODE_OPTIONS, type BrowserMode } from "../../stores/view/browserMode";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import {
+  BROWSER_MODES,
+  browserModePresentation,
+  type BrowserMode,
+} from "../../stores/view/browserMode";
 import { IconButton } from "../kit";
 import { Books, TreeStructure } from "../kit/glyphs";
 
@@ -27,20 +32,23 @@ export interface IconRailProps {
 }
 
 export function IconRail({ active, onSelect }: IconRailProps) {
+  const resolveMessage = useLocalizedMessageResolver();
+
   return (
     <nav
       aria-label="Collapsed scope rail"
       className="flex w-12 shrink-0 flex-col items-center border-r border-rule bg-paper py-fg-3"
     >
       <div className="flex flex-col items-center gap-fg-3">
-        {BROWSER_MODE_OPTIONS.map((option) => {
-          const Glyph = PRIMARY_GLYPHS[option.id];
-          const isActive = active === option.id;
+        {BROWSER_MODES.map((mode) => {
+          const presentation = browserModePresentation(mode);
+          if (presentation === null) return null;
+          const label = resolveMessage(presentation.label);
+          if (label.usedFallback) return null;
+          const Glyph = PRIMARY_GLYPHS[mode];
+          const isActive = active === mode;
           return (
-            <div
-              key={option.id}
-              className="relative flex w-12 items-center justify-center"
-            >
+            <div key={mode} className="relative flex w-12 items-center justify-center">
               {isActive && (
                 <span
                   aria-hidden
@@ -48,9 +56,9 @@ export function IconRail({ active, onSelect }: IconRailProps) {
                 />
               )}
               <IconButton
-                label={option.label}
+                label={label.message}
                 active={isActive}
-                onClick={() => onSelect(option.id)}
+                onClick={() => onSelect(mode)}
               >
                 <Glyph size={18} />
               </IconButton>

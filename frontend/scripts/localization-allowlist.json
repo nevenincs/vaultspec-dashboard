@@ -4945,16 +4945,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "033ec47493235224ee6a68c8",
-    "path": "src/stores/view/browserMode.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "54c2ee0264356a337bfa7f20",
-    "path": "src/stores/view/browserMode.ts",
-    "rule": "presentation-field"
-  },
-  {
     "id": "0ea94ad3f8741b5246299adf",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "legacy-action-presentation"
@@ -5406,11 +5396,6 @@
   },
   {
     "id": "efc99d926f99394d21413b95",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "f0b74f4083bdf9cec895bc59",
     "path": "src/stores/view/leftRailKeybindings.ts",
     "rule": "legacy-action-presentation"
   },

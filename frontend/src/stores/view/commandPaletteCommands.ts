@@ -19,7 +19,7 @@ import {
   openProjectAction,
 } from "./projectActions";
 import { useThemeSettingIntent } from "../server/themeSettingIntent";
-import { useBrowserMode } from "./browserMode";
+import { BROWSER_MODES, useBrowserMode } from "./browserMode";
 import {
   browserTreeExpansionKey,
   useBrowserTreeExpansionStore,
@@ -305,10 +305,12 @@ export interface LeftRailCommandEffects {
 export function buildLeftRailCommands(
   effects: LeftRailCommandEffects,
 ): PaletteCommand[] {
+  const browseCommands = BROWSER_MODES.map((mode) => browseModeAction(mode)).filter(
+    (action): action is NonNullable<typeof action> => action !== null,
+  );
   const commands: unknown[] = [
     { ...newDocumentAction(), family: "app" },
-    { ...browseModeAction("vault"), family: "navigate" },
-    { ...browseModeAction("code"), family: "navigate" },
+    ...browseCommands.map((action) => ({ ...action, family: "navigate" })),
     // Focus / clear the document filter — keymap-enrolled verbs now reachable from the
     // palette under their SHARED ids (so their accelerators derive). Focus is a `focus`
     // verb; clear is a `filters` verb.

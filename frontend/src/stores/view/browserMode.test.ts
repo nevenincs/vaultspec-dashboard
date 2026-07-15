@@ -9,8 +9,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 
 import {
-  BROWSER_MODE_OPTIONS,
+  BROWSER_MODES,
+  BROWSER_MODE_PRESENTATION,
   DEFAULT_BROWSER_MODE,
+  browserModePresentation,
   cycleBrowserMode,
   isBrowserMode,
   nextBrowserMode,
@@ -35,13 +37,28 @@ describe("browserMode store (left-rail per-scope mode)", () => {
   });
 
   it("declares the browser-mode option domain once for left-rail consumers", () => {
-    expect(BROWSER_MODE_OPTIONS).toEqual([
-      { id: "vault", label: "Vault" },
-      { id: "code", label: "Files" },
-    ]);
-    expect(BROWSER_MODE_OPTIONS.map((option) => option.id)).toContain(
-      DEFAULT_BROWSER_MODE,
-    );
+    expect(BROWSER_MODES).toEqual(["vault", "code"]);
+    expect(BROWSER_MODES).toContain(DEFAULT_BROWSER_MODE);
+  });
+
+  it("maps exact browser-mode ids to complete typed presentation", () => {
+    expect(BROWSER_MODE_PRESENTATION).toEqual({
+      vault: {
+        id: "vault",
+        label: { key: "documents:browserModes.documents" },
+        actionLabel: { key: "documents:actions.browseDocuments" },
+      },
+      code: {
+        id: "code",
+        label: { key: "documents:browserModes.files" },
+        actionLabel: { key: "documents:actions.browseFiles" },
+      },
+    });
+    expect(browserModePresentation("vault")).toBe(BROWSER_MODE_PRESENTATION.vault);
+    expect(browserModePresentation("code")).toBe(BROWSER_MODE_PRESENTATION.code);
+    expect(browserModePresentation(" code ")).toBeNull();
+    expect(browserModePresentation("tree")).toBeNull();
+    expect(browserModePresentation(null)).toBeNull();
   });
 
   it("validates browser-mode intent at the store seam", () => {

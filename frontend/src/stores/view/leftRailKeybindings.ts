@@ -23,8 +23,7 @@ import {
 import { useDashboardFilterSidebarIntent } from "../server/dashboardFilterSidebarIntent";
 import { useActiveScope } from "../server/queries";
 import {
-  BROWSER_MODE_OPTIONS,
-  type BrowserMode,
+  browserModePresentation,
   cycleBrowserMode,
   setBrowserMode,
 } from "./browserMode";
@@ -175,15 +174,16 @@ export function cycleBrowserModeAction(): ActionDescriptor {
   };
 }
 
-/** Switch the browser to a specific mode (Vault / Files) — a direct set, the
+/** Switch the browser to a specific mode (Documents / Files) — a direct set, the
  *  discrete counterpart to the Mod+B cycle. */
-export function browseModeAction(mode: BrowserMode): ActionDescriptor {
-  const option = BROWSER_MODE_OPTIONS.find((candidate) => candidate.id === mode);
+export function browseModeAction(mode: unknown): ActionDescriptor | null {
+  const presentation = browserModePresentation(mode);
+  if (presentation === null) return null;
   return {
-    id: `left-rail:browse-${mode}`,
-    label: legacyActionPresentation(`Browse ${option?.label ?? mode}`),
+    id: `left-rail:browse-${presentation.id}`,
+    label: presentation.actionLabel,
     section: "navigate",
-    run: () => setBrowserMode(mode),
+    run: () => setBrowserMode(presentation.id),
   };
 }
 

@@ -104,12 +104,15 @@ export const ltrTestResources = {
   documents: {
     ...en.documents,
     accessibility: {
+      browserView: "Vue du navigateur",
       switchReadingAndEditingShortcut:
         "Basculer entre la lecture et la modification ({{accelerator}})",
     },
     actions: {
       ...en.documents.actions,
       addToFeature: "Ajouter à une fonctionnalité…",
+      browseDocuments: "Parcourir les documents",
+      browseFiles: "Parcourir les fichiers",
       clearFilter: "Effacer le filtre des documents",
       collapseTree: "Réduire l’arborescence des documents",
       expandTree: "Développer l’arborescence des documents",
@@ -122,6 +125,10 @@ export const ltrTestResources = {
       showOrHideFilterOptions: "Afficher ou masquer les options de filtre",
       switchReadingAndEditing: "Basculer entre la lecture et la modification",
       switchView: "Basculer entre les documents et les fichiers",
+    },
+    browserModes: {
+      documents: "Documents",
+      files: "Fichiers",
     },
     disabledReasons: {
       ...en.documents.disabledReasons,
@@ -327,15 +334,22 @@ export const rtlTestResources = {
   documents: {
     ...en.documents,
     accessibility: {
+      browserView: "عرض المتصفح",
       switchReadingAndEditingShortcut: "التبديل بين القراءة والتحرير ({{accelerator}})",
     },
     actions: {
       ...en.documents.actions,
+      browseDocuments: "تصفح المستندات",
+      browseFiles: "تصفح الملفات",
       finishEditing: "إنهاء التحرير",
       findByName: "البحث عن مستند بالاسم…",
       save: "حفظ المستند",
       showOrHideChanges: "إظهار التغييرات أو إخفاؤها",
       switchReadingAndEditing: "التبديل بين القراءة والتحرير",
+    },
+    browserModes: {
+      documents: "المستندات",
+      files: "الملفات",
     },
     disabledReasons: {
       ...en.documents.disabledReasons,
