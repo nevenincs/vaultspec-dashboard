@@ -66,31 +66,51 @@ describe("buildGraphCommands", () => {
       "graph:toggle-freeze",
       "graph:reset-defaults",
     ]);
-    expect(cmds.find((c) => c.id === "graph:toggle-freeze")?.label).toBe(
-      "Graph: Freeze Layout",
-    );
+    expect(cmds.map(({ id, label }) => ({ id, label }))).toEqual([
+      { id: "graph:fit-to-view", label: { key: "graph:actions.fitToView" } },
+      { id: "graph:reset-view", label: { key: "graph:actions.resetView" } },
+      { id: "graph:zoom-in", label: { key: "graph:actions.zoomIn" } },
+      { id: "graph:zoom-out", label: { key: "graph:actions.zoomOut" } },
+      {
+        id: "graph:toggle-freeze",
+        label: { key: "graph:actions.pauseMovement" },
+      },
+      {
+        id: "graph:reset-defaults",
+        label: { key: "graph:actions.resetSettings" },
+      },
+    ]);
     const frozen = buildGraphCommands({
       frozen: true,
       setFrozen: () => undefined,
       resetDefaults: () => undefined,
     });
-    expect(frozen.find((c) => c.id === "graph:toggle-freeze")?.label).toBe(
-      "Graph: Resume Layout",
-    );
+    expect(frozen.find((c) => c.id === "graph:toggle-freeze")?.label).toEqual({
+      key: "graph:actions.resumeMovement",
+    });
   });
 
   it("freeze toggle inverts the current state through the injected setter", () => {
-    let next: boolean | null = null;
+    const states: boolean[] = [];
     buildGraphCommands({
       frozen: true,
       setFrozen: (f) => {
-        next = f;
+        states.push(f);
       },
       resetDefaults: () => undefined,
     })
       .find((c) => c.id === "graph:toggle-freeze")
       ?.run();
-    expect(next).toBe(false);
+    buildGraphCommands({
+      frozen: false,
+      setFrozen: (f) => {
+        states.push(f);
+      },
+      resetDefaults: () => undefined,
+    })
+      .find((c) => c.id === "graph:toggle-freeze")
+      ?.run();
+    expect(states).toEqual([false, true]);
   });
 });
 
@@ -103,6 +123,12 @@ describe("buildSettingsCommands", () => {
       "settings:theme-light",
       "settings:theme-dark",
       "settings:theme-high-contrast",
+    ]);
+    expect(cmds.map((c) => c.label)).toEqual([
+      { key: "settings:actions.useSystemTheme" },
+      { key: "settings:actions.useLightTheme" },
+      { key: "settings:actions.useDarkTheme" },
+      { key: "settings:actions.useHighContrastTheme" },
     ]);
     cmds.forEach((c) => c.run());
     expect(set).toEqual(["system", "light", "dark", "high-contrast"]);
@@ -127,9 +153,16 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
       "timeline:clear-date-range",
     ]);
     expect(commands.every((c) => c.family === "filters")).toBe(true);
-    commands.find((c) => c.id === "timeline:range-30d")?.run();
+    expect(commands.map((c) => c.label)).toEqual([
+      { key: "timeline:actions.showLast24Hours" },
+      { key: "timeline:actions.showLast7Days" },
+      { key: "timeline:actions.showLast30Days" },
+      { key: "timeline:actions.showLast90Days" },
+      { key: "timeline:actions.clearDateRange" },
+    ]);
+    commands.slice(0, 4).forEach((command) => command.run());
     commands.find((c) => c.id === "timeline:clear-date-range")?.run();
-    expect(days).toEqual([30]);
+    expect(days).toEqual([1, 7, 30, 90]);
     expect(cleared).toBe(1);
   });
 
@@ -177,6 +210,12 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
     expect(commands.find((c) => c.id === "editor:toggle-diff")?.label).toEqual({
       key: "documents:actions.showOrHideChanges",
     });
+    expect(commands.slice(0, 4).map((c) => c.label)).toEqual([
+      { key: "documents:actions.closeDocument" },
+      { key: "documents:actions.closeAllDocuments" },
+      { key: "documents:actions.reloadDocument" },
+      { key: "documents:actions.keepDocumentOpen" },
+    ]);
     commands[0]?.run();
     commands[1]?.run();
     commands[2]?.run();

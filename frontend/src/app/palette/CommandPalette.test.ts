@@ -154,10 +154,15 @@ describe("buildWindowCommands (window-management parity)", () => {
 
   it("names the inverse action from current visibility state", () => {
     const shown = buildWindowCommands(windowSources());
-    expect(shown.find((c) => c.id === "window:left-rail")?.label).toBe(
-      "Left rail: Hide",
-    );
-    expect(shown.find((c) => c.id === "window:timeline")?.label).toBe("Timeline: Hide");
+    expect(shown.find((c) => c.id === "window:left-rail")?.label).toEqual({
+      key: "common:actions.hideNavigationPanel",
+    });
+    expect(shown.find((c) => c.id === "window:left-collapse")?.label).toEqual({
+      key: "common:actions.collapseNavigationPanel",
+    });
+    expect(shown.find((c) => c.id === "window:timeline")?.label).toEqual({
+      key: "common:actions.hideTimeline",
+    });
     expect(shown.find((c) => c.id === "window:right-rail")?.label).toEqual({
       key: "common:actions.hideActivityPanel",
     });
@@ -169,14 +174,21 @@ describe("buildWindowCommands (window-management parity)", () => {
         leftCollapsed: true,
       }),
     );
-    expect(hidden.find((c) => c.id === "window:left-rail")?.label).toBe(
-      "Left rail: Show",
-    );
-    expect(hidden.find((c) => c.id === "window:timeline")?.label).toBe(
-      "Timeline: Show",
-    );
+    expect(hidden.find((c) => c.id === "window:left-rail")?.label).toEqual({
+      key: "common:actions.showNavigationPanel",
+    });
+    expect(hidden.find((c) => c.id === "window:timeline")?.label).toEqual({
+      key: "common:actions.showTimeline",
+    });
     expect(hidden.find((c) => c.id === "window:right-rail")?.label).toEqual({
       key: "common:actions.showActivityPanel",
+    });
+    const collapsed = buildWindowCommands(windowSources({ leftCollapsed: true }));
+    expect(collapsed.find((c) => c.id === "window:left-collapse")?.label).toEqual({
+      key: "common:actions.expandNavigationPanel",
+    });
+    expect(shown.find((c) => c.id === "window:reset-layout")?.label).toEqual({
+      key: "common:actions.resetLayout",
     });
   });
 
@@ -185,22 +197,37 @@ describe("buildWindowCommands (window-management parity)", () => {
     expect(hidden.some((c) => c.id === "window:left-collapse")).toBe(false);
   });
 
+  it("omits the timeline command when the graph is hidden", () => {
+    const hidden = buildWindowCommands(windowSources({ graphVisible: false }));
+    expect(hidden.some((c) => c.id === "window:timeline")).toBe(false);
+  });
+
   it("routes each command to its intent callback", () => {
     const fired: string[] = [];
     const tabs: unknown[] = [];
     const commands = buildWindowCommands(
       windowSources({
         toggleLeftRail: () => fired.push("left-rail"),
+        toggleLeftCollapsed: () => fired.push("left-collapse"),
+        toggleRightRail: () => fired.push("right-rail"),
         toggleTimeline: () => fired.push("timeline"),
         resetLayout: () => fired.push("reset"),
         setRightTab: (tab) => tabs.push(tab),
       }),
     );
     commands.find((c) => c.id === "window:left-rail")?.run();
+    commands.find((c) => c.id === "window:left-collapse")?.run();
+    commands.find((c) => c.id === "window:right-rail")?.run();
     commands.find((c) => c.id === "window:timeline")?.run();
     commands.find((c) => c.id === "window:reset-layout")?.run();
     commands.find((c) => c.id === "window:rail-changes")?.run();
-    expect(fired).toEqual(["left-rail", "timeline", "reset"]);
+    expect(fired).toEqual([
+      "left-rail",
+      "left-collapse",
+      "right-rail",
+      "timeline",
+      "reset",
+    ]);
     expect(tabs).toEqual(["changes"]);
   });
 

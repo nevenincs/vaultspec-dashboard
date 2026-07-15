@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import type { MessageDescriptor } from "../../platform/localization/message";
 import { showOrHideChangesAction } from "./editorKeybindings";
 import {
@@ -200,15 +199,12 @@ export function commandPaletteRightRailCommandId(tab: unknown): string | null {
 }
 
 export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
-  // Every window/pane verb reads as "<Element>: <Action>" (Title Case, the
-  // label-casing-convention) so each is found by searching the element name in
-  // Cmd+K — "Left rail: Hide", "Timeline: Show", alongside "Graph: Fit to View".
   const commands: unknown[] = [
     {
       id: "window:left-rail",
-      label: legacyActionPresentation(
-        w.leftRailVisible ? "Left rail: Hide" : "Left rail: Show",
-      ),
+      label: w.leftRailVisible
+        ? { key: "common:actions.hideNavigationPanel" }
+        : { key: "common:actions.showNavigationPanel" },
       family: "window",
       run: w.toggleLeftRail,
     },
@@ -218,9 +214,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   if (w.leftRailVisible) {
     commands.push({
       id: "window:left-collapse",
-      label: legacyActionPresentation(
-        w.leftCollapsed ? "Left rail: Expand" : "Left rail: Collapse",
-      ),
+      label: w.leftCollapsed
+        ? { key: "common:actions.expandNavigationPanel" }
+        : { key: "common:actions.collapseNavigationPanel" },
       family: "window",
       run: w.toggleLeftCollapsed,
     });
@@ -247,9 +243,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   if (w.graphVisible) {
     commands.push({
       id: "window:timeline",
-      label: legacyActionPresentation(
-        w.timelineVisible ? "Timeline: Hide" : "Timeline: Show",
-      ),
+      label: w.timelineVisible
+        ? { key: "common:actions.hideTimeline" }
+        : { key: "common:actions.showTimeline" },
       family: "window",
       run: w.toggleTimeline,
     });
@@ -274,7 +270,7 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
       // background menu composes resetLayoutAction over the same id+behavior via the
       // reset-layout bridge. One id (`window:reset-layout`), one behavior.
       id: "window:reset-layout",
-      label: legacyActionPresentation("Reset Layout"),
+      label: { key: "common:actions.resetLayout" },
       family: "window",
       run: w.resetLayout,
     },
@@ -361,12 +357,12 @@ export interface TimelineCommandEffects {
   clearDateRange: () => void;
 }
 
-const TIMELINE_RANGE_PRESETS: { days: number; label: string }[] = [
-  { days: 1, label: "24 hours" },
-  { days: 7, label: "7 days" },
-  { days: 30, label: "30 days" },
-  { days: 90, label: "90 days" },
-];
+const TIMELINE_RANGE_PRESETS = [
+  { days: 1, label: { key: "timeline:actions.showLast24Hours" } },
+  { days: 7, label: { key: "timeline:actions.showLast7Days" } },
+  { days: 30, label: { key: "timeline:actions.showLast30Days" } },
+  { days: 90, label: { key: "timeline:actions.showLast90Days" } },
+] as const satisfies readonly { days: number; label: MessageDescriptor }[];
 
 export function buildTimelineCommands(
   effects: TimelineCommandEffects,
@@ -374,13 +370,13 @@ export function buildTimelineCommands(
   const commands: unknown[] = [
     ...TIMELINE_RANGE_PRESETS.map((preset) => ({
       id: `timeline:range-${preset.days}d`,
-      label: legacyActionPresentation(`Timeline: Last ${preset.label}`),
+      label: preset.label,
       family: "filters",
       run: () => effects.setRangeDays(preset.days),
     })),
     {
       id: "timeline:clear-date-range",
-      label: legacyActionPresentation("Timeline: Clear Date Range"),
+      label: { key: "timeline:actions.clearDateRange" },
       family: "filters",
       run: effects.clearDateRange,
     },
@@ -405,25 +401,25 @@ export function buildEditorCommands(intents: {
   const commands: unknown[] = [
     {
       id: "editor:close-document",
-      label: legacyActionPresentation("Close Document"),
+      label: { key: "documents:actions.closeDocument" },
       family: "app",
       run: intents.closeDoc,
     },
     {
       id: "editor:close-all-documents",
-      label: legacyActionPresentation("Close All Documents"),
+      label: { key: "documents:actions.closeAllDocuments" },
       family: "app",
       run: intents.closeAllDocs,
     },
     {
       id: "editor:reload-document",
-      label: legacyActionPresentation("Reload Document"),
+      label: { key: "documents:actions.reloadDocument" },
       family: "app",
       run: intents.reloadDoc,
     },
     {
       id: "editor:keep-document-open",
-      label: legacyActionPresentation("Keep Document Open"),
+      label: { key: "documents:actions.keepDocumentOpen" },
       family: "app",
       run: intents.keepOpen,
     },
@@ -468,39 +464,39 @@ export function buildGraphCommands(opts: {
   const commands: unknown[] = [
     {
       id: "graph:fit-to-view",
-      label: legacyActionPresentation("Graph: Fit to View"),
+      label: { key: "graph:actions.fitToView" },
       family: "navigate",
       run: graphFitToView,
     },
     {
       id: "graph:reset-view",
-      label: legacyActionPresentation("Graph: Reset View"),
+      label: { key: "graph:actions.resetView" },
       family: "navigate",
       run: graphResetView,
     },
     {
       id: "graph:zoom-in",
-      label: legacyActionPresentation("Graph: Zoom In"),
+      label: { key: "graph:actions.zoomIn" },
       family: "navigate",
       run: graphZoomIn,
     },
     {
       id: "graph:zoom-out",
-      label: legacyActionPresentation("Graph: Zoom Out"),
+      label: { key: "graph:actions.zoomOut" },
       family: "navigate",
       run: graphZoomOut,
     },
     {
       id: "graph:toggle-freeze",
-      label: legacyActionPresentation(
-        opts.frozen ? "Graph: Resume Layout" : "Graph: Freeze Layout",
-      ),
+      label: opts.frozen
+        ? { key: "graph:actions.resumeMovement" }
+        : { key: "graph:actions.pauseMovement" },
       family: "navigate",
       run: () => opts.setFrozen(!opts.frozen),
     },
     {
       id: "graph:reset-defaults",
-      label: legacyActionPresentation("Graph: Reset Controls to Defaults"),
+      label: { key: "graph:actions.resetSettings" },
       family: "navigate",
       run: opts.resetDefaults,
     },
@@ -508,12 +504,12 @@ export function buildGraphCommands(opts: {
   return normalizedPaletteCommands(commands);
 }
 
-const THEME_PALETTE_COMMANDS: { value: string; label: string }[] = [
-  { value: "system", label: "Theme: System" },
-  { value: "light", label: "Theme: Light" },
-  { value: "dark", label: "Theme: Dark" },
-  { value: "high-contrast", label: "Theme: High Contrast" },
-];
+const THEME_PALETTE_COMMANDS = [
+  { value: "system", label: { key: "settings:actions.useSystemTheme" } },
+  { value: "light", label: { key: "settings:actions.useLightTheme" } },
+  { value: "dark", label: { key: "settings:actions.useDarkTheme" } },
+  { value: "high-contrast", label: { key: "settings:actions.useHighContrastTheme" } },
+] as const satisfies readonly { value: string; label: MessageDescriptor }[];
 
 /**
  * Settings commands on the palette (deferral #22): pin the theme preference
@@ -526,7 +522,7 @@ export function buildSettingsCommands(
 ): PaletteCommand[] {
   const commands: unknown[] = THEME_PALETTE_COMMANDS.map((theme) => ({
     id: `settings:theme-${theme.value}`,
-    label: legacyActionPresentation(theme.label),
+    label: theme.label,
     family: "app",
     run: () => setTheme(theme.value),
   }));

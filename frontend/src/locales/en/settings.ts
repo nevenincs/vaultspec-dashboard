@@ -1,4 +1,10 @@
 export const settings = {
+  actions: {
+    useDarkTheme: "Use dark theme",
+    useHighContrastTheme: "Use high contrast theme",
+    useLightTheme: "Use light theme",
+    useSystemTheme: "Use system theme",
+  },
   groups: {
     appearance: "Appearance",
     graph: "Graph",

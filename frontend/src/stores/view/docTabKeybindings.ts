@@ -8,13 +8,9 @@
 
 import { useEffect } from "react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { activateAdjacentDocTab, closeActiveDocTab, useActiveDocId } from "./tabs";
@@ -24,13 +20,11 @@ export const TAB_NEXT_ACTION_ID = "tabs:next-tab";
 export const TAB_PREV_ACTION_ID = "tabs:prev-tab";
 export const TAB_CLOSE_ACTION_ID = "tabs:close-active";
 
-export const TAB_NEXT_LABEL = legacyKeybindingPresentation("Next document tab");
-export const TAB_PREV_LABEL = legacyKeybindingPresentation("Previous document tab");
-export const TAB_CLOSE_LABEL = legacyKeybindingPresentation(
-  "Close the active document tab",
-);
+export const TAB_NEXT_LABEL = { key: "documents:actions.nextTab" } as const;
+export const TAB_PREV_LABEL = { key: "documents:actions.previousTab" } as const;
+export const TAB_CLOSE_LABEL = { key: "documents:actions.closeActiveTab" } as const;
 
-const TAB_GROUP = legacyKeybindingPresentation("Documents");
+const TAB_GROUP = { key: "documents:shortcutGroups.documents" } as const;
 
 export function deriveDocTabKeybindings(): KeybindingDef[] {
   return [
@@ -76,7 +70,7 @@ export function useDocTabKeybindings(): void {
       TAB_NEXT_ACTION_ID,
       (): ActionDescriptor => ({
         id: TAB_NEXT_ACTION_ID,
-        label: legacyActionPresentation(TAB_NEXT_LABEL),
+        label: TAB_NEXT_LABEL,
         run: () => activateAdjacentDocTab(1),
       }),
     );
@@ -84,7 +78,7 @@ export function useDocTabKeybindings(): void {
       TAB_PREV_ACTION_ID,
       (): ActionDescriptor => ({
         id: TAB_PREV_ACTION_ID,
-        label: legacyActionPresentation(TAB_PREV_LABEL),
+        label: TAB_PREV_LABEL,
         run: () => activateAdjacentDocTab(-1),
       }),
     );
@@ -92,11 +86,11 @@ export function useDocTabKeybindings(): void {
       TAB_CLOSE_ACTION_ID,
       (): ActionDescriptor => ({
         id: TAB_CLOSE_ACTION_ID,
-        label: legacyActionPresentation(TAB_CLOSE_LABEL),
+        label: TAB_CLOSE_LABEL,
         disabled: activeDocId === null,
         disabledReason:
           activeDocId === null
-            ? legacyActionPresentation("no open document")
+            ? { key: "documents:disabledReasons.openDocument" }
             : undefined,
         run: () => closeActiveDocTab(),
       }),

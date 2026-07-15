@@ -3,12 +3,17 @@ export const timeline = {
     dateField: "Timeline date",
   },
   actions: {
+    clearDateRange: "Clear date range",
     filterByCreationDate: "Filter by creation date",
     filterByCreationDateCurrent: "Filter by creation date (current)",
     filterByEditDate: "Filter by edit date",
     filterByEditDateCurrent: "Filter by edit date (current)",
     filterByUpdateDate: "Filter by update date",
     filterByUpdateDateCurrent: "Filter by update date (current)",
+    showLast24Hours: "Show the last 24 hours",
+    showLast7Days: "Show the last 7 days",
+    showLast30Days: "Show the last 30 days",
+    showLast90Days: "Show the last 90 days",
   },
   criteria: {
     created: "Created",

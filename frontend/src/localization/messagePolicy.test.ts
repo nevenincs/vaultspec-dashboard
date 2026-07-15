@@ -150,6 +150,15 @@ describe("source-locale message policy", () => {
     }
   });
 
+  it("accepts both canonical graph zoom actions as imperative copy", () => {
+    expect(
+      validateEnglishMessage("graph:actions.zoomIn", en.graph.actions.zoomIn),
+    ).toEqual([]);
+    expect(
+      validateEnglishMessage("graph:actions.zoomOut", en.graph.actions.zoomOut),
+    ).toEqual([]);
+  });
+
   it("reports each stable policy issue from an adverse literal", () => {
     for (const [expectedCode, [rawKey, template]] of Object.entries(CASES)) {
       const key = rawKey as MessageKey;
