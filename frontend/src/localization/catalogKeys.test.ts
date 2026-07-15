@@ -15,6 +15,7 @@ import {
   localizationNamespaces,
   supportedLocales,
 } from "../platform/localization/runtime";
+import { createTestLocalizationRuntime, ltrTestLocale, rtlTestLocale } from "./testing";
 
 const EXPECTED_SHIPPED_LOCALES = ["en"] as const;
 const EXPECTED_NAMESPACES = [
@@ -30,6 +31,9 @@ const EXPECTED_CATALOG_KEYS = [
   "common:accessibility.actionsMenu",
   "common:accessibility.confirmAction",
   "common:accessibility.recordShortcut",
+  "common:accessibility.resizeActivityPanel",
+  "common:accessibility.resizeNavigationPanel",
+  "common:accessibility.resizeTimeline",
   "common:accessibility.resetShortcut",
   "common:actions.cancel",
   "common:actions.close",
@@ -40,6 +44,7 @@ const EXPECTED_CATALOG_KEYS = [
   "common:actions.copyTitle",
   "common:actions.disableFollowMode",
   "common:actions.enableFollowMode",
+  "common:actions.hideActivityPanel",
   "common:actions.hideApprovals",
   "common:actions.hideGraph",
   "common:actions.hideProjectHealth",
@@ -57,14 +62,19 @@ const EXPECTED_CATALOG_KEYS = [
   "common:actions.resetLayout",
   "common:actions.retry",
   "common:actions.searchDocumentsAndCode",
+  "common:actions.showActivityPanel",
   "common:actions.showApprovals",
+  "common:actions.showChanges",
   "common:actions.showGraph",
   "common:actions.showOrHideGraph",
   "common:actions.showInFileManager",
   "common:actions.showKeyboardShortcuts",
   "common:actions.showProjectHealth",
   "common:actions.showSearchStatus",
+  "common:actions.showStatus",
   "common:actions.showSystemStatus",
+  "common:activityTabs.changes",
+  "common:activityTabs.status",
   "common:commandFamilies.editing",
   "common:commandFamilies.filters",
   "common:commandFamilies.focus",
@@ -320,6 +330,32 @@ describe("shipped localization catalog keys", () => {
 
     for (const namespace of localizationNamespaces) {
       expect(runtime.getResourceBundle(sourceLocale, namespace)).toEqual(en[namespace]);
+    }
+  });
+
+  it("resolves shell presentation vocabulary in English, French, and Arabic", () => {
+    const keys = [
+      "common:activityTabs.status",
+      "common:activityTabs.changes",
+      "common:actions.showStatus",
+      "common:actions.showChanges",
+      "common:actions.showActivityPanel",
+      "common:actions.hideActivityPanel",
+      "common:accessibility.resizeNavigationPanel",
+      "common:accessibility.resizeActivityPanel",
+      "common:accessibility.resizeTimeline",
+    ] as const satisfies readonly MessageKey[];
+    const englishRuntime = createTestLocalizationRuntime(sourceLocale);
+    const frenchRuntime = createTestLocalizationRuntime(ltrTestLocale);
+    const arabicRuntime = createTestLocalizationRuntime(rtlTestLocale);
+
+    for (const key of keys) {
+      const english = englishRuntime.t(key);
+      const french = frenchRuntime.t(key);
+      const arabic = arabicRuntime.t(key);
+      expect(french, key).not.toBe(english);
+      expect(arabic, key).not.toBe(english);
+      expect(arabic, key).not.toBe(french);
     }
   });
 });

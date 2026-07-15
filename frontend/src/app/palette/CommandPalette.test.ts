@@ -158,9 +158,9 @@ describe("buildWindowCommands (window-management parity)", () => {
       "Left rail: Hide",
     );
     expect(shown.find((c) => c.id === "window:timeline")?.label).toBe("Timeline: Hide");
-    expect(shown.find((c) => c.id === "window:right-rail")?.label).toBe(
-      "Right rail: Hide",
-    );
+    expect(shown.find((c) => c.id === "window:right-rail")?.label).toEqual({
+      key: "common:actions.hideActivityPanel",
+    });
     const hidden = buildWindowCommands(
       windowSources({
         leftRailVisible: false,
@@ -175,9 +175,9 @@ describe("buildWindowCommands (window-management parity)", () => {
     expect(hidden.find((c) => c.id === "window:timeline")?.label).toBe(
       "Timeline: Show",
     );
-    expect(hidden.find((c) => c.id === "window:right-rail")?.label).toBe(
-      "Right rail: Show",
-    );
+    expect(hidden.find((c) => c.id === "window:right-rail")?.label).toEqual({
+      key: "common:actions.showActivityPanel",
+    });
   });
 
   it("omits the collapse command when the left rail is hidden", () => {

@@ -4955,11 +4955,6 @@
     "rule": "legacy-action-presentation"
   },
   {
-    "id": "226192139234b926bfd3ee4f",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "2fb80554ff0790ac7ab852d9",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "legacy-action-presentation"
@@ -4981,11 +4976,6 @@
   },
   {
     "id": "4a4497efc03878218916b1d5",
-    "path": "src/stores/view/commandPaletteCommands.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "4d5d18b20bf5e81e3c8eeb61",
     "path": "src/stores/view/commandPaletteCommands.ts",
     "rule": "legacy-action-presentation"
   },
@@ -5508,21 +5498,6 @@
     "id": "f82bd028ab3599854088171f",
     "path": "src/stores/view/railSort.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "6d6c06b9b5a26c5ee7590fc2",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "733454ae78e99f004f824e98",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "791a884e2f036d3d60f367ba",
-    "path": "src/stores/view/rightRailKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "335c05ff1f25054efecfee4e",

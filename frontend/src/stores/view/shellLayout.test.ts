@@ -10,6 +10,9 @@ import {
   deriveShellResizeHandleView,
   normalizeRightRailTab,
   RIGHT_RAIL_TABS,
+  RIGHT_RAIL_TAB_PRESENTATION,
+  SHELL_MESSAGES,
+  rightRailTabPresentation,
   rightRailAdjacentTab,
   resetShellLayout,
   resizeShellPanelByKey,
@@ -217,9 +220,32 @@ describe("shell layout frame view", () => {
 
   it("projects the right-rail tab domain from the shell layout seam", () => {
     expect(RIGHT_RAIL_TABS).toEqual([
-      { id: "status", label: "Status" },
-      { id: "changes", label: "Changes" },
+      RIGHT_RAIL_TAB_PRESENTATION.status,
+      RIGHT_RAIL_TAB_PRESENTATION.changes,
     ]);
+    expect(RIGHT_RAIL_TABS[0]).toBe(RIGHT_RAIL_TAB_PRESENTATION.status);
+    expect(RIGHT_RAIL_TABS[1]).toBe(RIGHT_RAIL_TAB_PRESENTATION.changes);
+    expect(RIGHT_RAIL_TAB_PRESENTATION.status).toEqual({
+      id: "status",
+      label: { key: "common:activityTabs.status" },
+      actionLabel: { key: "common:actions.showStatus" },
+    });
+    expect(RIGHT_RAIL_TAB_PRESENTATION.changes).toEqual({
+      id: "changes",
+      label: { key: "common:activityTabs.changes" },
+      actionLabel: { key: "common:actions.showChanges" },
+    });
+    expect(Object.isFrozen(RIGHT_RAIL_TAB_PRESENTATION)).toBe(true);
+    expect(Object.isFrozen(RIGHT_RAIL_TAB_PRESENTATION.status)).toBe(true);
+    expect(Object.isFrozen(RIGHT_RAIL_TAB_PRESENTATION.changes)).toBe(true);
+    expect(Object.isFrozen(RIGHT_RAIL_TABS)).toBe(true);
+    expect(rightRailTabPresentation("status")).toBe(RIGHT_RAIL_TAB_PRESENTATION.status);
+    expect(rightRailTabPresentation("changes")).toBe(
+      RIGHT_RAIL_TAB_PRESENTATION.changes,
+    );
+    expect(rightRailTabPresentation(" status ")).toBeNull();
+    expect(rightRailTabPresentation("search")).toBeNull();
+    expect(rightRailTabPresentation(null)).toBeNull();
   });
 
   it("projects right-rail roving tab movement from the tab domain", () => {
@@ -262,7 +288,7 @@ describe("shell layout frame view", () => {
       rightRailClassName:
         "relative flex min-h-0 flex-col overflow-hidden border-l border-rule",
       showRightRail: true,
-      rightRailToggleLabel: "Right rail: Hide",
+      rightRailToggleLabel: SHELL_MESSAGES.hideActivityPanel,
       // The scroll lives on the inner panel so the framework status cluster
       // pins as a footer outside the scroll region (activity-rail-realignment D2).
       activityRailClassName: "flex min-h-0 flex-1 flex-col",
@@ -272,7 +298,7 @@ describe("shell layout frame view", () => {
 
   it("names the right-rail toggle for its inverse (hide when shown, show when hidden)", () => {
     expect(deriveShellFrameView(shellLayout, shellChrome).rightRailToggleLabel).toBe(
-      "Right rail: Hide",
+      SHELL_MESSAGES.hideActivityPanel,
     );
     const collapsed = deriveShellFrameView(shellLayout, {
       ...shellChrome,
@@ -282,7 +308,7 @@ describe("shell layout frame view", () => {
         right_tab: "status",
       },
     });
-    expect(collapsed.rightRailToggleLabel).toBe("Right rail: Show");
+    expect(collapsed.rightRailToggleLabel).toBe(SHELL_MESSAGES.showActivityPanel);
   });
 
   it("applies dashboard collapse state while preserving visual dimensions", () => {
@@ -318,18 +344,20 @@ describe("shell layout frame view", () => {
 
   it("projects resize handle copy, orientation, and placement", () => {
     expect(deriveShellResizeHandleView("right")).toEqual({
-      label: "Resize left rail",
+      label: SHELL_MESSAGES.resizeNavigationPanel,
       orientation: "vertical",
       className:
         "absolute z-10 bg-transparent outline-none transition-colors duration-ui-fast ease-settle hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-2 focus-visible:outline-focus right-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
     });
     expect(deriveShellResizeHandleView("left")).toMatchObject({
-      label: "Resize right rail",
+      label: SHELL_MESSAGES.resizeActivityPanel,
       orientation: "vertical",
     });
     expect(deriveShellResizeHandleView("top")).toMatchObject({
-      label: "Resize timeline",
+      label: SHELL_MESSAGES.resizeTimeline,
       orientation: "horizontal",
     });
+    expect(deriveShellResizeHandleView("bottom")).toBeNull();
+    expect(deriveShellResizeHandleView(null)).toBeNull();
   });
 });

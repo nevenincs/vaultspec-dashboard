@@ -74,6 +74,8 @@ import { fitTimelineScopeToCorpus, movePlayhead } from "./timelineIntent";
 import { dateRangePatch, patchDashboardState } from "../server/dashboardState";
 import {
   RIGHT_RAIL_TABS,
+  SHELL_MESSAGES,
+  rightRailTabPresentation,
   type RailTabId,
   useShellFrameView,
   useShellWindowActions,
@@ -226,9 +228,9 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
   commands.push(
     {
       id: "window:right-rail",
-      label: legacyActionPresentation(
-        w.rightCollapsed ? "Right rail: Show" : "Right rail: Hide",
-      ),
+      label: w.rightCollapsed
+        ? SHELL_MESSAGES.showActivityPanel
+        : SHELL_MESSAGES.hideActivityPanel,
       family: "window",
       run: w.toggleRightRail,
     },
@@ -253,17 +255,17 @@ export function buildWindowCommands(w: WindowCommandSources): PaletteCommand[] {
     });
   }
   commands.push(
-    ...RIGHT_RAIL_TABS.flatMap(({ id, label }) => {
+    ...RIGHT_RAIL_TABS.flatMap(({ id }) => {
+      const presentation = rightRailTabPresentation(id);
       const commandId = commandPaletteRightRailCommandId(id);
-      const tab = normalizeCommandPaletteRightRailTab(id);
-      return commandId === null || tab === null
+      return presentation === null || commandId === null
         ? []
         : [
             {
               id: commandId,
-              label: legacyActionPresentation(`Activity rail: ${label}`),
+              label: presentation.actionLabel,
               family: "window" as const,
-              run: () => w.setRightTab(tab),
+              run: () => w.setRightTab(presentation.id),
             },
           ];
     }),

@@ -20,7 +20,10 @@ import {
   ragCardView,
 } from "../../stores/view/nowStrip";
 import { normalizeStatusSectionId } from "../../stores/view/statusTabChrome";
-import { RIGHT_RAIL_TABS } from "../../stores/view/shellLayout";
+import {
+  RIGHT_RAIL_TABS,
+  RIGHT_RAIL_TAB_PRESENTATION,
+} from "../../stores/view/shellLayout";
 
 const status = (over: Partial<EngineStatus>): EngineStatus => ({
   ok: true,
@@ -37,16 +40,30 @@ describe("rail tab strip IA (binding Figma ActivityRail 244:753)", () => {
     // tabs in this order. The vestigial Search tab was deleted with the dead
     // right-rail search pillar (search-providers ADR D3): search is the Cmd+K
     // plane, not a rail tab. Status is the primary (leading) tab.
-    expect(RIGHT_RAIL_TABS.map((t) => t.label)).toEqual(["Status", "Changes"]);
-    expect(RIGHT_RAIL_TABS.map((t) => t.id)).toEqual(["status", "changes"]);
+    expect(RIGHT_RAIL_TABS).toEqual([
+      RIGHT_RAIL_TAB_PRESENTATION.status,
+      RIGHT_RAIL_TAB_PRESENTATION.changes,
+    ]);
+    expect(RIGHT_RAIL_TAB_PRESENTATION).toEqual({
+      status: {
+        id: "status",
+        label: { key: "common:activityTabs.status" },
+        actionLabel: { key: "common:actions.showStatus" },
+      },
+      changes: {
+        id: "changes",
+        label: { key: "common:activityTabs.changes" },
+        actionLabel: { key: "common:actions.showChanges" },
+      },
+    });
   });
 
   it("renders every tab label-only — the board carries no leading tab marks", () => {
     // The binding board paints the tabs as plain labels with an accent underline;
     // none carries a leading glyph.
     expect(
-      RIGHT_RAIL_TABS.every(
-        (t) => !("mark" in t) || (t as { mark?: unknown }).mark == null,
+      Object.values(RIGHT_RAIL_TAB_PRESENTATION).every(
+        (presentation) => !("mark" in presentation),
       ),
     ).toBe(true);
   });

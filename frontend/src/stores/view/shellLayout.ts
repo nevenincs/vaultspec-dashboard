@@ -1,11 +1,8 @@
 import { useCallback, useMemo } from "react";
 import { useShallow } from "zustand/react/shallow";
 
-import {
-  DASHBOARD_PANEL_TABS,
-  type DashboardPanelState,
-  type DashboardPanelTab,
-} from "../server/engine";
+import type { MessageDescriptor } from "../../platform/localization/message";
+import { DASHBOARD_PANEL_TABS, type DashboardPanelState } from "../server/engine";
 import { useShellPanelIntent } from "../server/panelStateIntent";
 import {
   type DashboardShellChromeView,
@@ -44,25 +41,80 @@ export const LEFT_RAIL_COLLAPSED_WIDTH = 48;
 export const SHELL_PANEL_KEY_STEP = 16;
 export type RailTabId = DashboardPanelState["right_tab"];
 
-export interface RightRailTabOption {
-  id: RailTabId;
-  label: string;
+type RightRailTabLabelKey =
+  | "common:activityTabs.status"
+  | "common:activityTabs.changes";
+type RightRailTabActionLabelKey =
+  | "common:actions.showStatus"
+  | "common:actions.showChanges";
+
+export interface RightRailTabPresentation<
+  Tab extends RailTabId = RailTabId,
+  LabelKey extends RightRailTabLabelKey = RightRailTabLabelKey,
+  ActionLabelKey extends RightRailTabActionLabelKey = RightRailTabActionLabelKey,
+> {
+  readonly id: Tab;
+  readonly label: MessageDescriptor<LabelKey>;
+  readonly actionLabel: MessageDescriptor<ActionLabelKey>;
 }
 
-const RIGHT_RAIL_TAB_LABELS: Record<DashboardPanelTab, string> = {
-  status: "Status",
-  changes: "Changes",
-};
+type RightRailTabPresentationMap = Readonly<{
+  status: RightRailTabPresentation<
+    "status",
+    "common:activityTabs.status",
+    "common:actions.showStatus"
+  >;
+  changes: RightRailTabPresentation<
+    "changes",
+    "common:activityTabs.changes",
+    "common:actions.showChanges"
+  >;
+}>;
 
-// Status · Changes, left to right: ids come from the dashboard-state wire schema;
-// labels live with the shell frame view so right-rail chrome does not mint a
-// parallel tab domain.
-export const RIGHT_RAIL_TABS: readonly RightRailTabOption[] = DASHBOARD_PANEL_TABS.map(
-  (id) => ({
-    id,
-    label: RIGHT_RAIL_TAB_LABELS[id],
+export const RIGHT_RAIL_TAB_PRESENTATION = Object.freeze({
+  status: Object.freeze({
+    id: "status",
+    label: Object.freeze({ key: "common:activityTabs.status" }),
+    actionLabel: Object.freeze({ key: "common:actions.showStatus" }),
   }),
+  changes: Object.freeze({
+    id: "changes",
+    label: Object.freeze({ key: "common:activityTabs.changes" }),
+    actionLabel: Object.freeze({ key: "common:actions.showChanges" }),
+  }),
+} as const satisfies RightRailTabPresentationMap);
+
+// The ordered consumer seam retains one stable object per raw dashboard tab id.
+export const RIGHT_RAIL_TABS = Object.freeze(
+  DASHBOARD_PANEL_TABS.map((tab) => RIGHT_RAIL_TAB_PRESENTATION[tab]),
 );
+
+/** Resolve presentation only for an exact raw tab identity. */
+export function rightRailTabPresentation(
+  tab: unknown,
+): RightRailTabPresentation | null {
+  return tab === "status" || tab === "changes"
+    ? RIGHT_RAIL_TAB_PRESENTATION[tab]
+    : null;
+}
+
+export const SHELL_MESSAGES = Object.freeze({
+  showActivityPanel: Object.freeze({
+    key: "common:actions.showActivityPanel",
+  } as const satisfies MessageDescriptor<"common:actions.showActivityPanel">),
+  hideActivityPanel: Object.freeze({
+    key: "common:actions.hideActivityPanel",
+  } as const satisfies MessageDescriptor<"common:actions.hideActivityPanel">),
+  resizeNavigationPanel: Object.freeze({
+    key: "common:accessibility.resizeNavigationPanel",
+  } as const satisfies MessageDescriptor<"common:accessibility.resizeNavigationPanel">),
+  resizeActivityPanel: Object.freeze({
+    key: "common:accessibility.resizeActivityPanel",
+  } as const satisfies MessageDescriptor<"common:accessibility.resizeActivityPanel">),
+  resizeTimeline: Object.freeze({
+    key: "common:accessibility.resizeTimeline",
+  } as const satisfies MessageDescriptor<"common:accessibility.resizeTimeline">),
+});
 export const DEFAULT_RIGHT_RAIL_TAB: RailTabId = DASHBOARD_PANEL_TABS[0]!;
 
 export function normalizeRightRailTab(tab: unknown): RailTabId {
@@ -314,7 +366,9 @@ export interface ShellFrameView extends ShellLayoutState {
   showRightRail: boolean;
   /** Accessible label for the layout-level right-rail visibility toggle, named for
    *  its inverse ("hide" vs "show") like every other window/pane control. */
-  rightRailToggleLabel: string;
+  rightRailToggleLabel: MessageDescriptor<
+    "common:actions.showActivityPanel" | "common:actions.hideActivityPanel"
+  >;
   activityRailClassName: string;
   activityPanelClassName: string;
 }
@@ -332,7 +386,7 @@ export interface ShellWindowActions {
 export type ShellResizeHandleSide = "left" | "right" | "top";
 
 export interface ShellResizeHandleView {
-  label: string;
+  label: MessageDescriptor;
   orientation: "horizontal" | "vertical";
   className: string;
 }
@@ -364,15 +418,18 @@ const SHELL_RESIZE_HANDLE_PLACEMENT: Record<ShellResizeHandleSide, string> = {
   top: "left-0 top-[-0.1875rem] h-2 w-full cursor-row-resize",
 };
 
-const SHELL_RESIZE_HANDLE_LABEL: Record<ShellResizeHandleSide, string> = {
-  right: "Resize left rail",
-  left: "Resize right rail",
-  top: "Resize timeline",
+const SHELL_RESIZE_HANDLE_LABEL: Readonly<
+  Record<ShellResizeHandleSide, MessageDescriptor>
+> = {
+  right: SHELL_MESSAGES.resizeNavigationPanel,
+  left: SHELL_MESSAGES.resizeActivityPanel,
+  top: SHELL_MESSAGES.resizeTimeline,
 };
 
 export function deriveShellResizeHandleView(
-  side: ShellResizeHandleSide,
-): ShellResizeHandleView {
+  side: unknown,
+): ShellResizeHandleView | null {
+  if (side !== "right" && side !== "left" && side !== "top") return null;
   return {
     label: SHELL_RESIZE_HANDLE_LABEL[side],
     orientation: side === "top" ? "horizontal" : "vertical",
@@ -425,7 +482,9 @@ export function deriveShellFrameView(
       ? SHELL_RIGHT_RAIL_BASE_CLASS
       : SHELL_RIGHT_RAIL_OPEN_CLASS,
     showRightRail: !rightCollapsed,
-    rightRailToggleLabel: rightCollapsed ? "Right rail: Show" : "Right rail: Hide",
+    rightRailToggleLabel: rightCollapsed
+      ? SHELL_MESSAGES.showActivityPanel
+      : SHELL_MESSAGES.hideActivityPanel,
     activityRailClassName: SHELL_ACTIVITY_RAIL_CLASS,
     activityPanelClassName: SHELL_ACTIVITY_PANEL_CLASS,
   };

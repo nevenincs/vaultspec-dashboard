@@ -26,6 +26,7 @@ import { X } from "lucide-react";
 import { useActiveScope } from "../../stores/server/queries";
 import { resolveActionPresentation } from "../../platform/actions/action";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import {
   useShellFrameView,
@@ -213,6 +214,30 @@ function isTopRightGroup(
 // what is open in the canvas. The graph verb composes the shared `toggleGraphAction()`
 // (one authoring with Cmd+K / keymap); the rail verb composes the shared shell window
 // action. No free-floating absolutely-positioned chrome, no second copy.
+export function DockActivityPanelToggle({
+  label,
+  active,
+  onToggle,
+}: {
+  label: MessageDescriptor;
+  active: boolean;
+  onToggle: () => void;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const presentation = resolveMessage(label);
+  if (presentation.usedFallback) return null;
+  return (
+    <IconButton
+      label={presentation.message}
+      title={presentation.message}
+      active={active}
+      onClick={onToggle}
+    >
+      <PanelRight size={16} aria-hidden />
+    </IconButton>
+  );
+}
+
 function DockHeaderActions(props: IDockviewHeaderActionsProps) {
   const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
@@ -244,14 +269,11 @@ function DockHeaderActions(props: IDockviewHeaderActionsProps) {
       >
         <Hierarchy size={16} aria-hidden />
       </IconButton>
-      <IconButton
+      <DockActivityPanelToggle
         label={shellFrame.rightRailToggleLabel}
-        title={shellFrame.rightRailToggleLabel}
         active={shellFrame.showRightRail}
-        onClick={shellActions.toggleRightRail}
-      >
-        <PanelRight size={16} aria-hidden />
-      </IconButton>
+        onToggle={shellActions.toggleRightRail}
+      />
     </div>
   );
 }

@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   deriveShellResizeHandleView,
   resizeShellPanelByKey,
@@ -29,10 +30,14 @@ export function ShellResizeHandle({
   /** The current size of the resized panel (pixel basis for the drag/keys). */
   current: number;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const view = deriveShellResizeHandleView(side);
+  if (view === null) return null;
+  const label = resolveMessage(view.label);
+  if (label.usedFallback) return null;
   return (
     <div
-      aria-label={view.label}
+      aria-label={label.message}
       aria-orientation={view.orientation}
       className={view.className}
       role="separator"
