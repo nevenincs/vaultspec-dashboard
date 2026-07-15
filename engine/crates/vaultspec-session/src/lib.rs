@@ -49,7 +49,9 @@ pub use app_home::{LauncherState, MAX_WORKSPACE_ROWS, WorkspaceEntry, app_home_d
 pub use schema::WorkspaceRoot;
 pub use session::{MAX_RECENTS, RegistryError, ScopeContext};
 pub use settings::Setting;
-pub use settings_schema::{ControlKind, SettingDef, SettingType, ValidationError};
+pub use settings_schema::{
+    ControlKind, EnumMemberDisplay, SettingDef, SettingDisplay, SettingType, ValidationError,
+};
 pub use store::{Result, Store, StoreError};
 
 /// The public user-state handle, tying the best-effort store together with the

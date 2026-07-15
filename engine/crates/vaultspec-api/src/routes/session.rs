@@ -616,10 +616,10 @@ pub async fn put_settings(
 /// synthesizes defaults from this; the engine validates writes against it. Rides
 /// the shared `{data, tiers}` envelope like every other response.
 ///
-/// Shape: `{ data: { settings: [ <def> ... ], groups: [ <name> ... ] }, tiers }`.
+/// Shape: `{ data: { settings: [ <def> ... ], groups: [ <id> ... ] }, tiers }`.
 /// Each `<def>` carries `key`, `value_type` (tagged), `default`, `scope_eligible`,
-/// `control`, `label`, `description`, `group`, `order`, and optional slider
-/// `step`/`unit`.
+/// `control`, language-agnostic `display` identities, `order`, and optional
+/// slider `step`/`unit`. Resolved user-facing copy is never served here.
 pub async fn get_settings_schema(State(state): State<Arc<AppState>>) -> ApiResult {
     let settings = serde_json::to_value(vaultspec_session::settings_schema::registry())
         .expect("settings schema serialize");

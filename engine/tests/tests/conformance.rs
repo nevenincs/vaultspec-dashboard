@@ -1045,11 +1045,39 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         theme_def["scope_eligible"], false,
         "theme is global-only (not scope-eligible)"
     );
-    assert!(
-        schema["data"]["groups"]
-            .as_array()
-            .is_some_and(|g| g.iter().any(|v| v == "Appearance")),
-        "groups are ordered and include Appearance"
+    assert_eq!(
+        schema["data"]["groups"],
+        serde_json::json!(["appearance", "graph", "keybindings"]),
+        "group order uses stable semantic identities"
+    );
+    assert_eq!(theme_def["display"]["id"], "appearance.theme");
+    assert_eq!(theme_def["display"]["group"], "appearance");
+    assert!(theme_def.get("label").is_none());
+    assert!(theme_def.get("description").is_none());
+    assert!(theme_def.get("group").is_none());
+    assert!(theme_def.get("placeholder").is_none());
+
+    let language_def = defs
+        .iter()
+        .find(|d| d["key"] == "language")
+        .expect("language is a declared setting");
+    assert_eq!(language_def["value_type"]["type"], "enum");
+    assert_eq!(
+        language_def["value_type"]["members"],
+        serde_json::json!(["system", "en"]),
+        "only production locale identities are persistable"
+    );
+    assert_eq!(language_def["default"], "system");
+    assert_eq!(language_def["scope_eligible"], false);
+    assert_eq!(language_def["control"], "segmented");
+    assert_eq!(language_def["display"]["id"], "appearance.language");
+    assert_eq!(language_def["display"]["group"], "appearance");
+    assert_eq!(
+        language_def["display"]["enum_members"],
+        serde_json::json!([
+            { "value": "system", "id": "language.system" },
+            { "value": "en", "id": "language.english" }
+        ])
     );
     // (dashboard-settings, Figma 17:1702) The Graph section carries five rows:
     // default_granularity plus the confidence-floor percent slider and the
@@ -1064,7 +1092,7 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
     );
     assert_eq!(confidence_def["control"], "slider");
     assert_eq!(confidence_def["unit"], "%");
-    assert_eq!(confidence_def["group"], "Graph");
+    assert_eq!(confidence_def["display"]["group"], "graph");
     assert_eq!(confidence_def["scope_eligible"], false);
     let label_def = defs
         .iter()
@@ -1072,7 +1100,7 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         .expect("label_filter is a declared setting");
     assert_eq!(label_def["value_type"]["type"], "string");
     assert_eq!(label_def["control"], "text");
-    assert_eq!(label_def["group"], "Graph");
+    assert_eq!(label_def["display"]["group"], "graph");
     // Both new settings validate on PUT: a percent in range and a stem string.
     let (status, _) = http(
         port,
@@ -1090,6 +1118,15 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
         Some(r#"{"key": "label_filter", "value": "adr"}"#),
     );
     assert_eq!(status, 200, "label_filter accepts a stem string");
+    let (status, language) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "language", "value": "en"}"#),
+    );
+    assert_eq!(status, 200, "language accepts shipped English: {language}");
+    assert_eq!(language["data"]["global"]["language"], "en");
 
     // --- PUT /settings validation: typed rejections -------------------------
     // (dashboard-settings) An unknown key, an out-of-constraint value, and a
@@ -1117,6 +1154,18 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
     );
     assert_eq!(status, 400, "out-of-enum value is rejected: {badval}");
     assert_eq!(badval["error_kind"], "invalid_value");
+    let (status, unsupported_language) = http(
+        port,
+        "PUT",
+        "/settings",
+        &token,
+        Some(r#"{"key": "language", "value": "fr"}"#),
+    );
+    assert_eq!(
+        status, 400,
+        "a test-only locale is rejected: {unsupported_language}"
+    );
+    assert_eq!(unsupported_language["error_kind"], "invalid_value");
     let (status, badscope) = http(
         port,
         "PUT",

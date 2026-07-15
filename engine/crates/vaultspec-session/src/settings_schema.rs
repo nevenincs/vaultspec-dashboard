@@ -76,6 +76,9 @@ const KEYBINDING_CHORD_MAX_LEN: usize = 64;
 /// gradient-mode enum string); numeric values are not length-bound.
 const GRAPH_CONTROL_VALUE_MAX_LEN: usize = 64;
 
+/// Byte ceiling for every authored semantic display identity.
+pub const DISPLAY_ID_MAX_LEN: usize = 64;
+
 /// The UI control a setting renders as (the schema-driven render hint). Adding
 /// a new control kind is the one place the client and this enum must agree.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -104,6 +107,31 @@ pub enum ControlKind {
     SectionFolds,
 }
 
+/// Stable presentation metadata carried on the settings wire. These values are
+/// semantic identities, not resolved copy and not localization keys. The client
+/// maps them exhaustively to its own message descriptors.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct SettingDisplay {
+    /// Identity of the setting concept. It owns the setting's label,
+    /// description, and any optional placeholder in the client catalog.
+    pub id: String,
+    /// Identity of the ordered settings group containing this setting.
+    pub group: String,
+    /// Exact value-to-presentation identities for enum members. Empty for every
+    /// non-enum type.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub enum_members: Vec<EnumMemberDisplay>,
+}
+
+/// Presentation identity for one exact enum value.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct EnumMemberDisplay {
+    /// The string-valued wire member this metadata describes.
+    pub value: String,
+    /// Stable concept identity mapped to a localized label by the client.
+    pub id: String,
+}
+
 /// One declared setting. Owned (not `&'static`) so the registry can carry enum
 /// members; built once and cached.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -116,12 +144,8 @@ pub struct SettingDef {
     /// Whether a per-scope override is allowed. `false` = global only.
     pub scope_eligible: bool,
     pub control: ControlKind,
-    /// Operator-facing label.
-    pub label: String,
-    /// One-line description shown under the control.
-    pub description: String,
-    /// The category the setting groups under in the dialog.
-    pub group: String,
+    /// Language-agnostic display identities. No resolved copy crosses the wire.
+    pub display: SettingDisplay,
     /// Sort order within the group (ascending).
     pub order: u32,
     /// Slider step (slider controls only).
@@ -130,9 +154,6 @@ pub struct SettingDef {
     /// A unit suffix for display, e.g. `"%"` (slider controls only).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub unit: Option<String>,
-    /// Placeholder hint for an empty field (text controls only).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub placeholder: Option<String>,
 }
 
 /// Why a settings write was rejected. Maps to a machine-readable `error_kind`
@@ -183,7 +204,7 @@ pub fn registry() -> &'static [SettingDef] {
 /// The display order of the setting groups (engine-owned so the dialog's
 /// section order is part of the contract, not a client guess).
 pub fn groups() -> &'static [&'static str] {
-    &["Appearance", "Graph", "Keybindings"]
+    &["appearance", "graph", "keybindings"]
 }
 
 /// The cap on user keybinding overrides, mirrored by the frontend registry's
@@ -364,8 +385,118 @@ fn invalid(key: &str, reason: String) -> ValidationError {
     }
 }
 
+fn display(id: &str, group: &str) -> SettingDisplay {
+    SettingDisplay {
+        id: id.to_string(),
+        group: group.to_string(),
+        enum_members: Vec::new(),
+    }
+}
+
+fn enum_display(id: &str, group: &str, members: &[(&str, &str)]) -> SettingDisplay {
+    SettingDisplay {
+        id: id.to_string(),
+        group: group.to_string(),
+        enum_members: members
+            .iter()
+            .map(|(value, id)| EnumMemberDisplay {
+                value: (*value).to_string(),
+                id: (*id).to_string(),
+            })
+            .collect(),
+    }
+}
+
+fn display_id_is_valid(id: &str) -> bool {
+    if id.is_empty() || id.len() > DISPLAY_ID_MAX_LEN {
+        return false;
+    }
+
+    let mut segments = id.split('.');
+    let Some(first) = segments.next() else {
+        return false;
+    };
+    let mut first_bytes = first.bytes();
+    if !matches!(first_bytes.next(), Some(b'a'..=b'z'))
+        || !first_bytes.all(|byte| byte.is_ascii_alphanumeric())
+    {
+        return false;
+    }
+
+    segments.all(|segment| {
+        !segment.is_empty() && segment.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    })
+}
+
+fn assert_display_contract(registry: &[SettingDef]) {
+    use std::collections::HashSet;
+
+    let group_order = groups();
+    assert!(
+        group_order.iter().all(|id| display_id_is_valid(id)),
+        "every group display id must be valid"
+    );
+    let groups: HashSet<&str> = group_order.iter().copied().collect();
+    assert_eq!(
+        groups.len(),
+        group_order.len(),
+        "group display ids must be unique"
+    );
+    let mut display_ids = HashSet::new();
+    for def in registry {
+        assert!(
+            display_id_is_valid(&def.display.id),
+            "invalid setting display id `{}`",
+            def.display.id
+        );
+        assert!(
+            display_ids.insert(def.display.id.as_str()),
+            "duplicate display id `{}`",
+            def.display.id
+        );
+        assert!(
+            groups.contains(def.display.group.as_str()),
+            "unknown display group `{}`",
+            def.display.group
+        );
+
+        match &def.value_type {
+            SettingType::Enum { members } => {
+                assert_eq!(
+                    def.display
+                        .enum_members
+                        .iter()
+                        .map(|member| member.value.as_str())
+                        .collect::<Vec<_>>(),
+                    members.iter().map(String::as_str).collect::<Vec<_>>(),
+                    "enum display metadata must cover `{}` exactly and in order",
+                    def.key
+                );
+                for member in &def.display.enum_members {
+                    assert!(
+                        display_id_is_valid(&member.id),
+                        "invalid enum display id `{}`",
+                        member.id
+                    );
+                    assert!(
+                        display_ids.insert(member.id.as_str()),
+                        "duplicate display id `{}` for `{}`",
+                        member.id,
+                        def.key
+                    );
+                }
+            }
+            _ => assert!(
+                def.display.enum_members.is_empty(),
+                "non-enum setting `{}` must not declare enum display metadata",
+                def.key
+            ),
+        }
+    }
+}
+
 fn build_registry() -> Vec<SettingDef> {
-    vec![
+    let registry = vec![
         SettingDef {
             key: "theme".to_string(),
             value_type: SettingType::Enum {
@@ -379,13 +510,19 @@ fn build_registry() -> Vec<SettingDef> {
             default: "system".to_string(),
             scope_eligible: false,
             control: ControlKind::Segmented,
-            label: "Theme".to_string(),
-            description: "The dashboard color theme.".to_string(),
-            group: "Appearance".to_string(),
+            display: enum_display(
+                "appearance.theme",
+                "appearance",
+                &[
+                    ("system", "theme.system"),
+                    ("light", "theme.light"),
+                    ("dark", "theme.dark"),
+                    ("high-contrast", "theme.highContrast"),
+                ],
+            ),
             order: 1,
             step: None,
             unit: None,
-            placeholder: None,
         },
         SettingDef {
             key: "reduce_motion".to_string(),
@@ -393,13 +530,10 @@ fn build_registry() -> Vec<SettingDef> {
             default: "false".to_string(),
             scope_eligible: false,
             control: ControlKind::Switch,
-            label: "Reduce motion".to_string(),
-            description: "Minimise animation and transitions.".to_string(),
-            group: "Appearance".to_string(),
+            display: display("appearance.reduceMotion", "appearance"),
             order: 2,
             step: None,
             unit: None,
-            placeholder: None,
         },
         // The activity-rail collapsible-section OPEN state — the user's per-section
         // fold preference, persisted as GLOBAL UX state the rail reads on load and
@@ -417,13 +551,30 @@ fn build_registry() -> Vec<SettingDef> {
             default: "{}".to_string(),
             scope_eligible: false,
             control: ControlKind::SectionFolds,
-            label: "Activity rail section folds".to_string(),
-            description: "Which activity-rail sections are kept open.".to_string(),
-            group: "Appearance".to_string(),
+            display: display("appearance.activitySectionFolds", "appearance"),
             order: 3,
             step: None,
             unit: None,
-            placeholder: None,
+        },
+        SettingDef {
+            key: "language".to_string(),
+            value_type: SettingType::Enum {
+                // Production ships the English source catalog only. Test-only
+                // French and Arabic resources are deliberately not persistable.
+                members: vec!["system".to_string(), "en".to_string()],
+            },
+            default: "system".to_string(),
+            scope_eligible: false,
+            control: ControlKind::Segmented,
+            display: enum_display(
+                "appearance.language",
+                "appearance",
+                &[("system", "language.system"), ("en", "language.english")],
+            ),
+            // Preserve every existing Appearance order; append the new control.
+            order: 4,
+            step: None,
+            unit: None,
         },
         SettingDef {
             key: "default_granularity".to_string(),
@@ -437,13 +588,17 @@ fn build_registry() -> Vec<SettingDef> {
             default: "document".to_string(),
             scope_eligible: true,
             control: ControlKind::Segmented,
-            label: "Default granularity".to_string(),
-            description: "The graph detail level on load.".to_string(),
-            group: "Graph".to_string(),
+            display: enum_display(
+                "graph.defaultGranularity",
+                "graph",
+                &[
+                    ("feature", "granularity.feature"),
+                    ("document", "granularity.document"),
+                ],
+            ),
             order: 1,
             step: None,
             unit: None,
-            placeholder: None,
         },
         // The active graph corpus / view mode (codebase-graphing ADR D7): the
         // WHOLE graph surface renders either the VAULT knowledge graph (the
@@ -460,13 +615,14 @@ fn build_registry() -> Vec<SettingDef> {
             default: "vault".to_string(),
             scope_eligible: true,
             control: ControlKind::Segmented,
-            label: "Graph corpus".to_string(),
-            description: "Which dataset the graph maps: the vault or the codebase.".to_string(),
-            group: "Graph".to_string(),
+            display: enum_display(
+                "graph.corpus",
+                "graph",
+                &[("vault", "corpus.vault"), ("code", "corpus.code")],
+            ),
             order: 2,
             step: None,
             unit: None,
-            placeholder: None,
         },
         // The date criterion the timeline orders and filters documents by. Three
         // served criteria (the engine derives `dates.{created,modified,stamped}`):
@@ -486,13 +642,18 @@ fn build_registry() -> Vec<SettingDef> {
             default: "created".to_string(),
             scope_eligible: true,
             control: ControlKind::Segmented,
-            label: "Timeline date".to_string(),
-            description: "Which date the timeline orders and filters documents by.".to_string(),
-            group: "Graph".to_string(),
+            display: enum_display(
+                "graph.timelineDate",
+                "graph",
+                &[
+                    ("created", "timelineDate.created"),
+                    ("modified", "timelineDate.modified"),
+                    ("stamped", "timelineDate.stamped"),
+                ],
+            ),
             order: 6,
             step: None,
             unit: None,
-            placeholder: None,
         },
         // The inferred-edge certainty floor, declared as a percent (0..100) so it
         // renders as a `%` slider; the client maps the percent to the 0..1 float
@@ -505,13 +666,10 @@ fn build_registry() -> Vec<SettingDef> {
             default: "0".to_string(),
             scope_eligible: false,
             control: ControlKind::Slider,
-            label: "Confidence floor".to_string(),
-            description: "Hide inferred edges below this certainty.".to_string(),
-            group: "Graph".to_string(),
+            display: display("graph.confidenceFloor", "graph"),
             order: 3,
             step: Some(1),
             unit: Some("%".to_string()),
-            placeholder: None,
         },
         // The node-stem text filter's persisted default: the Stage's text/stem
         // match initializes from this on scope load. Global, with a default ("");
@@ -522,13 +680,10 @@ fn build_registry() -> Vec<SettingDef> {
             default: String::new(),
             scope_eligible: false,
             control: ControlKind::Text,
-            label: "Label filter".to_string(),
-            description: "Only show nodes whose stem matches.".to_string(),
-            group: "Graph".to_string(),
+            display: display("graph.labelFilter", "graph"),
             order: 4,
             step: None,
             unit: None,
-            placeholder: Some("type a stem…".to_string()),
         },
         // The user's graph force/appearance tuning overrides: a sparse
         // `control_id -> value` (number|string) map layered over the frontend
@@ -546,13 +701,10 @@ fn build_registry() -> Vec<SettingDef> {
             default: "{}".to_string(),
             scope_eligible: false,
             control: ControlKind::GraphControls,
-            label: "Graph controls".to_string(),
-            description: "Persisted force and appearance tuning for the graph.".to_string(),
-            group: "Graph".to_string(),
+            display: display("graph.controls", "graph"),
             order: 5,
             step: None,
             unit: None,
-            placeholder: None,
         },
         // The user's keyboard-shortcut overrides: a sparse `action_id -> chord`
         // map layered over the frontend keybinding registry's defaults. One
@@ -567,20 +719,50 @@ fn build_registry() -> Vec<SettingDef> {
             default: "{}".to_string(),
             scope_eligible: false,
             control: ControlKind::Keybinding,
-            label: "Keyboard shortcuts".to_string(),
-            description: "Customize the chord for any command.".to_string(),
-            group: "Keybindings".to_string(),
+            display: display("keybindings.shortcuts", "keybindings"),
             order: 1,
             step: None,
             unit: None,
-            placeholder: None,
         },
-    ]
+    ];
+    assert_display_contract(&registry);
+    registry
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn display_ids_require_nonempty_alphanumeric_segments() {
+        let max_length_id = format!("a{}", "0".repeat(DISPLAY_ID_MAX_LEN - 1));
+        for valid in [
+            "a",
+            "appearance.theme",
+            "appearance.highContrast",
+            "a.B2",
+            "a.0",
+            max_length_id.as_str(),
+        ] {
+            assert!(display_id_is_valid(valid), "`{valid}` must be valid");
+        }
+
+        let over_length_id = format!("a{}", "0".repeat(DISPLAY_ID_MAX_LEN));
+        for invalid in [
+            "",
+            ".appearance",
+            "Appearance",
+            "appearance.",
+            "appearance..theme",
+            "appearance-theme",
+            "appearance_theme",
+            "appearance theme",
+            "é",
+            over_length_id.as_str(),
+        ] {
+            assert!(!display_id_is_valid(invalid), "`{invalid}` must be invalid");
+        }
+    }
 
     #[test]
     fn registry_is_nonempty_and_keys_unique() {
@@ -618,6 +800,71 @@ mod tests {
     }
 
     #[test]
+    fn language_is_global_system_or_shipped_english_only() {
+        let def = find("language").expect("language is declared");
+        assert_eq!(
+            def.value_type,
+            SettingType::Enum {
+                members: vec!["system".to_string(), "en".to_string()]
+            }
+        );
+        assert_eq!(def.default, "system");
+        assert!(!def.scope_eligible);
+        assert_eq!(def.control, ControlKind::Segmented);
+        assert_eq!(def.order, 4);
+        assert_eq!(def.display.id, "appearance.language");
+        assert_eq!(def.display.group, "appearance");
+        assert_eq!(
+            def.display.enum_members,
+            vec![
+                EnumMemberDisplay {
+                    value: "system".to_string(),
+                    id: "language.system".to_string(),
+                },
+                EnumMemberDisplay {
+                    value: "en".to_string(),
+                    id: "language.english".to_string(),
+                },
+            ]
+        );
+        assert_eq!(validate("language", "system", false).unwrap(), "system");
+        assert_eq!(validate("language", "en", false).unwrap(), "en");
+        for unsupported in ["fr", "ar", "en-US", "EN", " en ", ""] {
+            assert_eq!(
+                validate("language", unsupported, false).unwrap_err().kind(),
+                "invalid_value"
+            );
+        }
+        assert_eq!(
+            validate("language", "en", true).unwrap_err().kind(),
+            "scope_not_allowed"
+        );
+    }
+
+    #[test]
+    fn serialized_schema_contains_semantic_metadata_and_no_resolved_copy() {
+        assert_eq!(groups(), &["appearance", "graph", "keybindings"]);
+        let theme = serde_json::to_value(find("theme").expect("theme is declared")).unwrap();
+        assert_eq!(theme["display"]["id"], "appearance.theme");
+        assert_eq!(theme["display"]["group"], "appearance");
+        assert_eq!(
+            theme["display"]["enum_members"],
+            serde_json::json!([
+                { "value": "system", "id": "theme.system" },
+                { "value": "light", "id": "theme.light" },
+                { "value": "dark", "id": "theme.dark" },
+                { "value": "high-contrast", "id": "theme.highContrast" }
+            ])
+        );
+        for removed in ["label", "description", "group", "placeholder"] {
+            assert!(
+                theme.get(removed).is_none(),
+                "`{removed}` must not be served"
+            );
+        }
+    }
+
+    #[test]
     fn bool_accepts_only_canonical_forms() {
         assert!(validate("reduce_motion", "true", false).is_ok());
         assert!(validate("reduce_motion", "false", false).is_ok());
@@ -644,7 +891,7 @@ mod tests {
         assert_eq!(def.value_type, SettingType::Integer { min: 0, max: 100 });
         assert_eq!(def.control, ControlKind::Slider);
         assert_eq!(def.unit.as_deref(), Some("%"));
-        assert_eq!(def.group, "Graph");
+        assert_eq!(def.display.group, "graph");
         assert!(!def.scope_eligible, "confidence_floor is global-only");
         // In range accepted, out of range rejected, scope rejected.
         assert!(validate("confidence_floor", "60", false).is_ok());
@@ -699,13 +946,13 @@ mod tests {
             SettingType::Keybindings { max_entries } if max_entries == MAX_KEYBINDING_OVERRIDES
         ));
         assert_eq!(def.control, ControlKind::Keybinding);
-        assert_eq!(def.group, "Keybindings");
+        assert_eq!(def.display.group, "keybindings");
         assert_eq!(def.default, "{}");
         assert!(!def.scope_eligible, "shortcuts are not scoped");
         // The declared default validates against its own type.
         assert!(validate("keybindings", "{}", false).is_ok());
         // And it is offered as a group so the dialog renders it.
-        assert!(groups().contains(&"Keybindings"));
+        assert!(groups().contains(&"keybindings"));
     }
 
     #[test]
@@ -757,7 +1004,7 @@ mod tests {
             SettingType::GraphControls { max_entries } if max_entries == MAX_GRAPH_CONTROL_OVERRIDES
         ));
         assert_eq!(def.control, ControlKind::GraphControls);
-        assert_eq!(def.group, "Graph");
+        assert_eq!(def.display.group, "graph");
         assert_eq!(def.default, "{}");
         assert!(!def.scope_eligible, "graph look is global, not scoped");
         // The declared default validates against its own type.
