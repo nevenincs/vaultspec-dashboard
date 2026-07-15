@@ -48,9 +48,7 @@ function record(v: unknown): Record<string, unknown> | undefined {
 function StatCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex shrink-0 flex-col">
-      <span className="text-caption uppercase tracking-[0.025rem] text-ink-faint">
-        {label}
-      </span>
+      <span className="text-caption tracking-[0.025rem] text-ink-faint">{label}</span>
       <span className="text-meta tabular-nums text-ink">{value}</span>
     </div>
   );

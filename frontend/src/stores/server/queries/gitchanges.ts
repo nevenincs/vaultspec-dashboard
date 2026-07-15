@@ -282,8 +282,7 @@ const GIT_CHANGE_BUCKET_ORDER: readonly GitChangeBucket[] = [
   "new",
 ] as const;
 
-// SectionLabel uppercases the eyebrow, so author Title-case and it renders
-// STAGED / MODIFIED / DELETED / NEW to match the binding.
+// Keep eyebrow labels in catalog casing so SectionLabel can render them verbatim.
 const GIT_CHANGE_BUCKET_LABEL: Record<GitChangeBucket, string> = {
   staged: "Staged",
   modified: "Modified",
@@ -334,7 +333,7 @@ export interface GitChangeRow {
 
 export interface GitChangeGroupView {
   id: GitChangeBucket;
-  /** Title-case label; the SectionLabel eyebrow renders it uppercase. */
+  /** Catalog-cased label rendered verbatim by the SectionLabel eyebrow. */
   label: string;
   ariaLabel: string;
   count: number;

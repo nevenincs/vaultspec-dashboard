@@ -1,0 +1,27 @@
+.dynamic-case {
+  text-transform: var(--case-mode);
+}
+
+.kana-case {
+  text-transform: full-size-kana;
+}
+
+.dynamic-caps {
+  font-variant-caps: var(--caps-mode);
+}
+
+.shorthand-dynamic-caps {
+  font-variant: var(--font-variant);
+}
+
+.apply-upper {
+  @apply uppercase;
+}
+
+.apply-lower-variant {
+  @apply hover:lowercase;
+}
+
+.apply-arbitrary-case {
+  @apply focus:[text-transform:math-auto];
+}

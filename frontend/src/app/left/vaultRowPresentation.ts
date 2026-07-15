@@ -81,9 +81,8 @@ export function docMark(docType: string): Icon {
  *  group headers: RESEARCH / DECISIONS / PLANS / STEPS / AUDITS / REFERENCES). The
  *  human plural vocabulary is the ONE canonical doc-type schema (terminology-
  *  standardization ADR D1) — this delegates to it so the rail headers can never
- *  drift from the filter facets and search pills. The label text is Title-Cased and
- *  the kit `SectionLabel` applies the uppercase, so the casing stays data (an
- *  acronym is never mangled by a CSS `capitalize`). Kept exported here for the VAULT
+ *  drift from the filter facets and search pills. The label text keeps catalog casing
+ *  so the kit `SectionLabel` renders it verbatim. Kept exported here for the VAULT
  *  and TREE browser headers. */
 export function docGroupLabel(docType: string): string {
   return docTypeLabel(docType);

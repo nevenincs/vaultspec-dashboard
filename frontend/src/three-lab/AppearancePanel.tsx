@@ -142,7 +142,6 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
                   margin: "8px 0 1px",
                   fontSize: 10,
                   letterSpacing: 0.6,
-                  textTransform: "uppercase",
                   opacity: 0.55,
                 }}
               >

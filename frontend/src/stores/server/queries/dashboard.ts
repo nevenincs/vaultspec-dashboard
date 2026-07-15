@@ -409,7 +409,7 @@ export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresen
     closeAriaLabel: "close filter panel",
     sectionClassName: "border-b border-rule",
     sectionButtonClassName:
-      "flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium uppercase tracking-wider text-ink-muted hover:bg-paper-sunken",
+      "flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium tracking-wider text-ink-muted hover:bg-paper-sunken",
     sectionMetaClassName: "flex items-center gap-fg-1-5",
     sectionBadgeClassName:
       "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",

@@ -33,6 +33,7 @@ const LIMITS = Object.freeze({
 });
 
 const FINDING_CODES = Object.freeze({
+  authoredCaseTransform: "authored-case-transform",
   directLocaleFormat: "direct-locale-format",
   dynamicMessageKey: "dynamic-message-key",
   fixedLocaleFormat: "fixed-locale-format",
@@ -46,8 +47,10 @@ const FINDING_CODES = Object.freeze({
   translationDefault: "translation-default",
 });
 
-const SOURCE_EXT = /\.(?:ts|tsx)$/u;
-const TEST_SOURCE = /\.(?:test|spec)\.(?:ts|tsx)$/u;
+const SOURCE_EXT = /\.(?:css|ts|tsx)$/u;
+const TYPESCRIPT_SOURCE_EXT = /\.(?:ts|tsx)$/u;
+const CSS_SOURCE_EXT = /\.css$/u;
+const TEST_SOURCE = /\.(?:test|spec)\.(?:css|ts|tsx)$/u;
 const EXACT_SOURCE_EXCLUSIONS = new Set(["src/localization/testing/resources.ts"]);
 const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
@@ -113,6 +116,15 @@ const INTL_FORMATTERS = new Set([
   "ListFormat",
   "NumberFormat",
   "RelativeTimeFormat",
+]);
+const CLASS_CASE_TRANSFORMS = new Set(["capitalize", "lowercase", "uppercase"]);
+const CSS_CAPS_TRANSFORMS = new Set([
+  "all-petite-caps",
+  "all-small-caps",
+  "petite-caps",
+  "small-caps",
+  "titling-caps",
+  "unicase",
 ]);
 
 function toRelative(file) {
@@ -195,6 +207,188 @@ function normalizeText(value) {
 
 function meaningful(value) {
   return normalizeText(value).length > 0;
+}
+
+function classCaseTransform(value) {
+  for (const token of value.split(/\s+/u)) {
+    const arbitraryStart = token.lastIndexOf("[");
+    const utility = (
+      arbitraryStart >= 0 && token.endsWith("]")
+        ? token.slice(arbitraryStart)
+        : token.slice(token.lastIndexOf(":") + 1)
+    )
+      .replace(/^!/u, "")
+      .toLowerCase();
+    if (CLASS_CASE_TRANSFORMS.has(utility)) return utility;
+    const arbitrary = /^\[(text-transform|font-variant(?:-caps)?):(.+)\]$/u.exec(
+      utility,
+    );
+    if (arbitrary) {
+      const [, property, authoredValue] = arbitrary;
+      if (
+        (property === "text-transform" && authoredValue !== "none") ||
+        (property === "font-variant-caps" && authoredValue !== "normal") ||
+        (property === "font-variant" &&
+          (authoredValue.includes("var(") ||
+            authoredValue
+              .split(/[_\s]+/u)
+              .some((part) => CSS_CAPS_TRANSFORMS.has(part))))
+      ) {
+        return utility;
+      }
+    }
+  }
+  return null;
+}
+
+function authoredStyleTransforms(node, property, checker, bindings) {
+  if (!node) return ["dynamic"];
+  const parts = staticParts(node, checker, bindings);
+  const values = parts.texts.map((value) => normalizeText(value).toLowerCase());
+  const transforms = new Set(
+    property === "fontVariant"
+      ? values.filter(
+          (value) =>
+            value.includes("var(") ||
+            value.split(/\s+/u).some((token) => CSS_CAPS_TRANSFORMS.has(token)),
+        )
+      : values.filter(
+          (value) =>
+            value.length > 0 &&
+            value !== (property === "textTransform" ? "none" : "normal"),
+        ),
+  );
+  if (parts.dynamic || parts.texts.length === 0) transforms.add("dynamic");
+  return [...transforms].sort(compareText);
+}
+
+function maskCssCommentsAndStrings(source) {
+  let masked = "";
+  let index = 0;
+  while (index < source.length) {
+    if (source.startsWith("/*", index)) {
+      masked += "  ";
+      index += 2;
+      while (index < source.length && !source.startsWith("*/", index)) {
+        masked += source[index] === "\n" ? "\n" : " ";
+        index += 1;
+      }
+      if (index < source.length) {
+        masked += "  ";
+        index += 2;
+      }
+      continue;
+    }
+    const quote = source[index];
+    if (quote === '"' || quote === "'") {
+      masked += " ";
+      index += 1;
+      while (index < source.length) {
+        if (source[index] === "\\" && index + 1 < source.length) {
+          masked += "  ";
+          index += 2;
+          continue;
+        }
+        if (source[index] === quote) {
+          masked += " ";
+          index += 1;
+          break;
+        }
+        masked += source[index] === "\n" ? "\n" : " ";
+        index += 1;
+      }
+      continue;
+    }
+    masked += source[index];
+    index += 1;
+  }
+  return masked;
+}
+
+function lineAndColumnAt(source, offset) {
+  const before = source.slice(0, offset);
+  const lastLineBreak = before.lastIndexOf("\n");
+  return {
+    column: offset - lastLineBreak,
+    line: before.split("\n").length,
+  };
+}
+
+function classCaseTransforms(node, checker, bindings, seen = new Set(), depth = 0) {
+  const transforms = new Set();
+  const inspectText = (text) => {
+    const transform = classCaseTransform(text);
+    if (transform !== null) transforms.add(transform);
+  };
+  const inspect = (expression, currentSeen = seen, currentDepth = depth) => {
+    if (!expression || currentDepth > LIMITS.constantDepth) return;
+    const parts = staticParts(expression, checker, bindings, currentSeen, currentDepth);
+    for (const text of parts.texts) inspectText(text);
+    if (
+      ts.isParenthesizedExpression(expression) ||
+      ts.isAsExpression(expression) ||
+      ts.isSatisfiesExpression(expression)
+    ) {
+      inspect(expression.expression, currentSeen, currentDepth + 1);
+      return;
+    }
+    if (ts.isCallExpression(expression)) {
+      for (const argument of expression.arguments) {
+        inspect(argument, currentSeen, currentDepth + 1);
+      }
+      return;
+    }
+    if (ts.isArrayLiteralExpression(expression)) {
+      for (const element of expression.elements) {
+        if (!ts.isOmittedExpression(element)) {
+          inspect(element, currentSeen, currentDepth + 1);
+        }
+      }
+      return;
+    }
+    if (ts.isObjectLiteralExpression(expression)) {
+      for (const property of expression.properties) {
+        if (ts.isPropertyAssignment(property)) {
+          const name = propertyName(property.name);
+          if (name !== null) inspectText(name);
+        } else if (ts.isShorthandPropertyAssignment(property)) {
+          inspectText(property.name.text);
+        } else if (ts.isSpreadAssignment(property)) {
+          inspect(property.expression, currentSeen, currentDepth + 1);
+        }
+      }
+      return;
+    }
+    if (
+      ts.isBinaryExpression(expression) &&
+      (expression.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken ||
+        expression.operatorToken.kind === ts.SyntaxKind.BarBarToken ||
+        expression.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken)
+    ) {
+      if (expression.operatorToken.kind !== ts.SyntaxKind.AmpersandAmpersandToken) {
+        inspect(expression.left, currentSeen, currentDepth + 1);
+      }
+      inspect(expression.right, currentSeen, currentDepth + 1);
+      return;
+    }
+    if (ts.isIdentifier(expression) || ts.isPropertyAccessExpression(expression)) {
+      const resolved = symbolInitializer(expression, checker);
+      if (!resolved || currentSeen.has(resolved.symbol)) return;
+      const nextSeen = new Set(currentSeen);
+      nextSeen.add(resolved.symbol);
+      inspect(resolved.initializer, nextSeen, currentDepth + 1);
+    }
+  };
+  inspect(node);
+  return [...transforms].sort(compareText);
+}
+
+function classBearingName(name) {
+  return (
+    name === "className" ||
+    name.endsWith("ClassName") ||
+    /_CLASS(?:_NAME)?$/u.test(name)
+  );
 }
 
 function mergeParts(parts, next) {
@@ -638,21 +832,29 @@ function safeSnippet(node, sourceFile) {
 }
 
 function scanProgram(files, allowOutsideSource = false) {
-  const program = ts.createProgram({ rootNames: files, options: compilerOptions() });
+  const typescriptFiles = files.filter((file) => TYPESCRIPT_SOURCE_EXT.test(file));
+  const cssFiles = files.filter((file) => CSS_SOURCE_EXT.test(file));
+  const program = ts.createProgram({
+    rootNames: typescriptFiles,
+    options: compilerOptions(),
+  });
   const requestedFiles = new Set(files.map((file) => resolve(file)));
   if (program.getSyntacticDiagnostics().length > 0) {
     throw new Error("Localization scan found source syntax errors.");
   }
   const checker = program.getTypeChecker();
   const rawFindings = [];
-  const add = (code, node, sourceFile, context, text = "") => {
+  const pushFinding = (finding) => {
     if (rawFindings.length >= LIMITS.findings) {
       throw new Error("Localization finding limit exceeded.");
     }
+    rawFindings.push(finding);
+  };
+  const add = (code, node, sourceFile, context, text = "") => {
     const position = sourceFile.getLineAndCharacterOfPosition(
       node.getStart(sourceFile),
     );
-    rawFindings.push({
+    pushFinding({
       code,
       column: position.character + 1,
       context,
@@ -685,15 +887,82 @@ function scanProgram(files, allowOutsideSource = false) {
     };
 
     const visit = (node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        isConstDeclaration(node) &&
+        classBearingName(node.name.text)
+      ) {
+        for (const transform of classCaseTransforms(
+          node.initializer,
+          checker,
+          bindings,
+        )) {
+          add(
+            FINDING_CODES.authoredCaseTransform,
+            node,
+            sourceFile,
+            node.name.text,
+            transform,
+          );
+        }
+      }
       if (ts.isJsxText(node) && meaningful(node.text)) {
         add(FINDING_CODES.jsxText, node, sourceFile, "jsx-child", node.text);
-      } else if (ts.isJsxExpression(node) && node.expression) {
+      } else if (
+        ts.isJsxExpression(node) &&
+        node.expression &&
+        !(
+          ts.isJsxAttribute(node.parent) &&
+          node.parent.name.getText(sourceFile) === "className"
+        )
+      ) {
         const parts = staticParts(node.expression, checker, bindings);
         for (const text of parts.texts.filter(meaningful)) {
           add(FINDING_CODES.jsxText, node, sourceFile, "jsx-expression", text);
         }
       } else if (ts.isJsxAttribute(node)) {
         const name = node.name.getText(sourceFile);
+        if (name === "className" && node.initializer) {
+          const expression = ts.isJsxExpression(node.initializer)
+            ? node.initializer.expression
+            : node.initializer;
+          if (expression) {
+            for (const transform of classCaseTransforms(
+              expression,
+              checker,
+              bindings,
+            )) {
+              add(
+                FINDING_CODES.authoredCaseTransform,
+                node,
+                sourceFile,
+                "className",
+                transform,
+              );
+            }
+          }
+        }
+        if (
+          name === "textTransform" ||
+          name === "fontVariant" ||
+          name === "fontVariantCaps"
+        ) {
+          const expression = !node.initializer
+            ? undefined
+            : ts.isJsxExpression(node.initializer)
+              ? node.initializer.expression
+              : node.initializer;
+          for (const transform of authoredStyleTransforms(
+            expression,
+            name,
+            checker,
+            bindings,
+          )) {
+            add(FINDING_CODES.authoredCaseTransform, node, sourceFile, name, transform);
+          }
+        }
         if (JSX_ATTRIBUTE_NAMES.has(name) && node.initializer) {
           const expression = ts.isJsxExpression(node.initializer)
             ? node.initializer.expression
@@ -703,6 +972,29 @@ function scanProgram(files, allowOutsideSource = false) {
         }
       } else if (ts.isPropertyAssignment(node)) {
         const name = propertyName(node.name);
+        if (name !== null && classBearingName(name)) {
+          for (const transform of classCaseTransforms(
+            node.initializer,
+            checker,
+            bindings,
+          )) {
+            add(FINDING_CODES.authoredCaseTransform, node, sourceFile, name, transform);
+          }
+        }
+        if (
+          name === "textTransform" ||
+          name === "fontVariant" ||
+          name === "fontVariantCaps"
+        ) {
+          for (const transform of authoredStyleTransforms(
+            node.initializer,
+            name,
+            checker,
+            bindings,
+          )) {
+            add(FINDING_CODES.authoredCaseTransform, node, sourceFile, name, transform);
+          }
+        }
         if (name && PRESENTATION_FIELD_NAMES.has(name)) {
           const unresolvedLegacyActionFactory =
             ts.isCallExpression(node.initializer) &&
@@ -733,6 +1025,27 @@ function scanProgram(files, allowOutsideSource = false) {
           } else {
             reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
           }
+        }
+      } else if (
+        ts.isShorthandPropertyAssignment(node) &&
+        (node.name.text === "textTransform" ||
+          node.name.text === "fontVariant" ||
+          node.name.text === "fontVariantCaps")
+      ) {
+        const resolved = symbolInitializer(node.name, checker);
+        for (const transform of authoredStyleTransforms(
+          resolved?.initializer,
+          node.name.text,
+          checker,
+          bindings,
+        )) {
+          add(
+            FINDING_CODES.authoredCaseTransform,
+            node,
+            sourceFile,
+            node.name.text,
+            transform,
+          );
         }
       }
 
@@ -932,6 +1245,73 @@ function scanProgram(files, allowOutsideSource = false) {
       ts.forEachChild(node, visit);
     };
     visit(sourceFile);
+  }
+
+  for (const file of cssFiles) {
+    if (!allowOutsideSource && !insideRoot(file, sourceRoot)) continue;
+    if (sourceIsExcluded(file)) continue;
+    const source = readFileSync(file, "utf8");
+    if (Buffer.byteLength(source, "utf8") > LIMITS.fileBytes) {
+      throw new Error(`Localization file limit exceeded: ${toRelative(file)}`);
+    }
+    const masked = maskCssCommentsAndStrings(source);
+    const declaration =
+      /(?:^|[;{])\s*(text-transform|font-variant(?:-caps)?)\s*:\s*([^;}]+)/giu;
+    for (const match of masked.matchAll(declaration)) {
+      const property = match[1]?.toLowerCase();
+      const value = match[2]?.toLowerCase() ?? "";
+      if (property === undefined || match.index === undefined) continue;
+      const valueTokens = value
+        .split(/\s+/u)
+        .map((token) => token.replace(/!important$/u, ""))
+        .filter((token) => token.length > 0 && token !== "!important");
+      const normalizedValue = valueTokens.join(" ");
+      const transform =
+        property === "text-transform"
+          ? normalizedValue !== "none"
+            ? normalizedValue || "dynamic"
+            : undefined
+          : property === "font-variant-caps"
+            ? normalizedValue !== "normal"
+              ? normalizedValue || "dynamic"
+              : undefined
+            : normalizedValue.includes("var(") ||
+                valueTokens.some((token) => CSS_CAPS_TRANSFORMS.has(token))
+              ? normalizedValue || "dynamic"
+              : undefined;
+      if (transform === undefined) continue;
+      const propertyOffset = match.index + match[0].indexOf(match[1]);
+      const position = lineAndColumnAt(source, propertyOffset);
+      pushFinding({
+        code: FINDING_CODES.authoredCaseTransform,
+        column: position.column,
+        context: property,
+        line: position.line,
+        path: toRelative(file),
+        snippet: normalizeText(
+          source.slice(propertyOffset, match.index + match[0].length),
+        ).slice(0, LIMITS.snippetChars),
+        text: transform,
+      });
+    }
+    const applyDirective = /@apply\s+([^;}]+)/giu;
+    for (const match of masked.matchAll(applyDirective)) {
+      if (match.index === undefined || match[1] === undefined) continue;
+      const transform = classCaseTransform(match[1]);
+      if (transform === null) continue;
+      const position = lineAndColumnAt(source, match.index);
+      pushFinding({
+        code: FINDING_CODES.authoredCaseTransform,
+        column: position.column,
+        context: "@apply",
+        line: position.line,
+        path: toRelative(file),
+        snippet: normalizeText(
+          source.slice(match.index, match.index + match[0].length),
+        ).slice(0, LIMITS.snippetChars),
+        text: transform,
+      });
+    }
   }
 
   rawFindings.sort(

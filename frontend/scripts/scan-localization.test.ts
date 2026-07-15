@@ -17,8 +17,23 @@ const fixtureRoot = resolve(import.meta.dirname, "fixtures/localization");
 const validFiles = [
   resolve(fixtureRoot, "valid/translation-bindings.tsx"),
   resolve(fixtureRoot, "valid/semantic-exclusions.ts"),
+  resolve(fixtureRoot, "valid/authored-case-exclusions.tsx"),
+  resolve(fixtureRoot, "valid/authored-case-exclusions.css"),
 ];
 const allRulesFile = resolve(fixtureRoot, "invalid/all-rules.tsx");
+const authoredCaseTransformFiles = [
+  resolve(fixtureRoot, "invalid/authored-case-transform.tsx"),
+  resolve(fixtureRoot, "invalid/authored-case-transform.css"),
+];
+const expandedAuthoredCaseTransformFiles = [
+  resolve(fixtureRoot, "invalid/authored-case-transform-expanded.tsx"),
+  resolve(fixtureRoot, "invalid/authored-case-transform-expanded.css"),
+];
+const excludedAuthoredCaseFiles = [
+  resolve(fixtureRoot, "valid/authored-case-excluded.test.tsx"),
+  resolve(fixtureRoot, "valid/authored-case-excluded.test.css"),
+  resolve(import.meta.dirname, "../src/locales/en/common.ts"),
+];
 const generatedCommentFile = resolve(fixtureRoot, "invalid/generated-comment.tsx");
 const legacyActionPresentationFile = resolve(
   fixtureRoot,
@@ -44,12 +59,16 @@ describe("localization source scanner", () => {
     const findings = scanFiles([allRulesFile]);
     const legacyFindings = scanFiles([legacyActionPresentationFile]);
     const legacyKeybindingFindings = scanFiles([legacyKeybindingPresentationFile]);
+    const authoredCaseFindings = scanFiles(authoredCaseTransformFiles);
 
     expect(
       new Set(
-        [...findings, ...legacyFindings, ...legacyKeybindingFindings].map(
-          ({ code }) => code,
-        ),
+        [
+          ...findings,
+          ...legacyFindings,
+          ...legacyKeybindingFindings,
+          ...authoredCaseFindings,
+        ].map(({ code }) => code),
       ),
     ).toEqual(new Set(Object.values(FINDING_CODES)));
     expect(
@@ -92,6 +111,77 @@ describe("localization source scanner", () => {
           snippet.includes("Raw confirmation body"),
       ),
     ).toBe(true);
+  });
+
+  it("rejects authored case transforms in TSX and CSS", () => {
+    const allFindings = scanFiles(authoredCaseTransformFiles);
+    const findings = allFindings.filter(
+      ({ code }) => code === FINDING_CODES.authoredCaseTransform,
+    );
+
+    expect(allFindings.filter(({ code }) => code === FINDING_CODES.jsxText)).toEqual(
+      [],
+    );
+    expect(findings).toHaveLength(22);
+    expect(findings.map(({ snippet }) => snippet)).toEqual([
+      "text-transform: uppercase",
+      "text-transform: lowercase",
+      "text-transform: capitalize",
+      "font-variant: small-caps",
+      "font-variant-caps: all-small-caps",
+      'HEADER_CLASS = "text-caption lowercase"',
+      'rowClassName = joinClasses("capitalize", "font-medium")',
+      'sectionButtonClassName: "uppercase tracking-wide"',
+      'className: "lowercase"',
+      'className="uppercase"',
+      'className={props.compact ? lowerClass : "normal-case"}',
+      'className={joinClasses("capitalize", "font-medium")}',
+      'textTransform: "uppercase"',
+      'textTransform: props.compact ? "lowercase" : "none"',
+      'textTransform: "capitalize"',
+      'className="uppercase"',
+      'textTransform: "capitalize"',
+      "className={HEADER_CLASS}",
+      "className={rowClassName}",
+      "className={presentation.sectionButtonClassName}",
+      "className={itemPresentation.className}",
+      "textTransform",
+    ]);
+  });
+
+  it("excludes test and locale sources from authored case scanning", () => {
+    expect(scanFiles(excludedAuthoredCaseFiles)).toEqual([]);
+  });
+
+  it("fails closed for dynamic and extended authored case transforms", () => {
+    const findings = scanFiles(expandedAuthoredCaseTransformFiles).filter(
+      ({ code }) => code === FINDING_CODES.authoredCaseTransform,
+    );
+    const snippets = findings.map(({ snippet }) => snippet);
+
+    expect(snippets).toEqual(
+      expect.arrayContaining([
+        "text-transform: var(--case-mode)",
+        "text-transform: full-size-kana",
+        "font-variant-caps: var(--caps-mode)",
+        "font-variant: var(--font-variant)",
+        "@apply uppercase",
+        "@apply hover:lowercase",
+        "@apply focus:[text-transform:math-auto]",
+        "textTransform: fullWidth",
+        'textTransform: "full-size-kana"',
+        'textTransform: "math-auto"',
+        "textTransform",
+        'fontVariant: "small-caps"',
+        "fontVariant",
+        "fontVariantCaps",
+        "textTransform={props.textMode}",
+        'fontVariant="small-caps"',
+        "fontVariantCaps={props.capsMode}",
+        'className="hover:[text-transform:full-width]"',
+        'className="[font-variant-caps:small-caps]"',
+      ]),
+    );
   });
 
   it("tracks only the canonical legacy keybinding-presentation bridge", () => {

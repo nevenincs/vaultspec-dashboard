@@ -87,7 +87,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
           {typeWord && (
             <p
               data-hover-doc-type
-              className="text-caption font-medium uppercase tracking-[0.025rem] text-ink-muted"
+              className="text-caption font-medium tracking-[0.025rem] text-ink-muted"
             >
               {typeWord}
             </p>

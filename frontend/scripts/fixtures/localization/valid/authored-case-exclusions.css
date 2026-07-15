@@ -1,0 +1,12 @@
+/* text-transform: uppercase; font-variant: small-caps; */
+.unchanged-label {
+  text-transform: none;
+  font-variant: normal;
+  font-variant-caps: normal;
+  font-variant: tabular-nums;
+  content: "text-transform: lowercase";
+}
+
+.unchanged-utilities {
+  @apply normal-case [text-transform:none] [font-variant-caps:normal];
+}

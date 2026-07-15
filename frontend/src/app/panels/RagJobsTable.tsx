@@ -123,7 +123,7 @@ function HeaderCell({
   if (sortKey === undefined) {
     return (
       <span
-        className={`flex items-center text-caption font-medium uppercase tracking-[0.025rem] text-ink-faint ${alignClass}`}
+        className={`flex items-center text-caption font-medium tracking-[0.025rem] text-ink-faint ${alignClass}`}
       >
         {label}
       </span>
@@ -135,7 +135,7 @@ function HeaderCell({
       type="button"
       onClick={() => setRagDashboardSort(sortKey)}
       aria-pressed={active}
-      className={`flex items-center gap-fg-1 text-caption font-medium uppercase tracking-[0.025rem] transition-colors duration-ui-fast hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${alignClass} ${
+      className={`flex items-center gap-fg-1 text-caption font-medium tracking-[0.025rem] transition-colors duration-ui-fast hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${alignClass} ${
         active ? "text-ink-muted" : "text-ink-faint"
       }`}
     >

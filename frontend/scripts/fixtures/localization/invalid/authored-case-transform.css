@@ -1,0 +1,19 @@
+.upper-label {
+  text-transform: uppercase;
+}
+
+.lower-label {
+  text-transform: lowercase;
+}
+
+.capital-label {
+  text-transform: capitalize;
+}
+
+.small-cap-label {
+  font-variant: small-caps;
+}
+
+.all-small-cap-label {
+  font-variant-caps: all-small-caps;
+}

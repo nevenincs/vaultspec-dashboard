@@ -532,7 +532,7 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
       aria-live="polite"
       className="flex flex-col gap-fg-2 rounded-fg-md border border-rule bg-paper-sunken p-fg-3"
     >
-      <p className="text-meta font-medium uppercase tracking-wide text-ink-faint">
+      <p className="text-meta font-medium tracking-wide text-ink-faint">
         In this feature
       </p>
 

@@ -11,10 +11,15 @@ import { SectionLabel } from "./SectionLabel";
 afterEach(cleanup);
 
 describe("SectionLabel", () => {
-  it("renders the label uppercased via the eyebrow type role", () => {
+  it("preserves authored label casing and eyebrow spacing", () => {
     const { container } = render(<SectionLabel>Decisions</SectionLabel>);
     expect(screen.getByText("Decisions")).toBeTruthy();
-    expect(container.firstElementChild?.className).toContain("uppercase");
+    const className = container.firstElementChild?.className ?? "";
+    expect(className).toContain("font-medium");
+    expect(className).toContain("tracking-[0.025rem]");
+    expect(className).not.toMatch(
+      /(?:^|\s)(?:uppercase|lowercase|capitalize)(?:\s|$)/u,
+    );
   });
 
   it("renders the optional count as a tabular figure", () => {

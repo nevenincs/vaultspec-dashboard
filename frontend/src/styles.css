@@ -552,7 +552,6 @@
     line-height: 1.3;
     font-weight: 500;
     letter-spacing: 0.0375rem;
-    text-transform: uppercase;
   }
   .reader-title {
     font-family: var(--font-serif);

@@ -15,7 +15,7 @@ import { useWorktreePickerView } from "../../stores/view/worktreePickerChrome";
 import { BottomSheet } from "../chrome/BottomSheet";
 
 const EYEBROW_CLASS =
-  "px-fg-1 pb-fg-1 pt-fg-2 text-caption uppercase tracking-wide text-ink-faint";
+  "px-fg-1 pb-fg-1 pt-fg-2 text-caption tracking-wide text-ink-faint";
 // ≥44px (2.75rem) touch target with a leading glyph column so every row's label
 // starts on one column (design-system touch-target law; no hardcoded px).
 const ROW_CLASS =

@@ -111,7 +111,7 @@ const DROPDOWN_CARD_CLASS =
 
 // Section eyebrow inside the dropdown (Recent / the worktree disclosure / Projects).
 const DROPDOWN_SECTION_LABEL_CLASS =
-  "px-fg-2 pt-fg-1-5 pb-fg-0-5 text-caption uppercase tracking-wide text-ink-faint";
+  "px-fg-2 pt-fg-1-5 pb-fg-0-5 text-caption tracking-wide text-ink-faint";
 // The pinned "Add a project…" command row and the worktree disclosure share
 // the worktree-row affordance idiom (selectable, hover, focus ring) so the dropdown
 // reads as one surface (design-system-is-centralized).

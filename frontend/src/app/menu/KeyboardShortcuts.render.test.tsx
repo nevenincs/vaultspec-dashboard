@@ -15,6 +15,8 @@ import {
   createTestLocalizationRuntime,
   ltrTestLocale,
   ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
 } from "../../localization/testing";
 import {
   KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
@@ -66,6 +68,30 @@ describe("KeyboardShortcuts", () => {
     expect(screen.getByText(KEYBOARD_SHORTCUTS_TOGGLE_LABEL)).toBeTruthy();
     const caps = screen.getAllByText("?");
     expect(caps.some((el) => el.tagName.toLowerCase() === "kbd")).toBe(true);
+  });
+
+  it("preserves the localized SectionLabel node and catalog casing across locales", async () => {
+    const { runtime } = renderKeyboardShortcuts();
+    fireEvent.keyDown(window, { key: "?" });
+    const sourceLabel = screen.getByText("General");
+    const section = sourceLabel.closest("section");
+    const labelClassName = sourceLabel.parentElement?.className ?? "";
+    expect(section).not.toBeNull();
+    expect(labelClassName).not.toMatch(
+      /(?:^|\s)(?:uppercase|lowercase|capitalize)(?:\s|$)/u,
+    );
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(screen.getByText(ltrTestResources.common.shortcutGroups.general)).toBe(
+      sourceLabel,
+    );
+    expect(sourceLabel.closest("section")).toBe(section);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(screen.getByText(rtlTestResources.common.shortcutGroups.general)).toBe(
+      sourceLabel,
+    );
+    expect(sourceLabel.closest("section")).toBe(section);
   });
 
   it("does not open while typing ? inside a form field", () => {

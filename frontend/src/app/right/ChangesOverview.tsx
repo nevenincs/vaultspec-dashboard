@@ -6,7 +6,7 @@
 // (vault documents are files too — no separate documents tally) with the sacred
 // "+A −D" diff tallies right-aligned — and its body (revealed on expand) is the
 // STATUS TREE the binding GitStatusPill (642:1745) renders: three collapsible
-// groups — MODIFIED / DELETED / NEW — each a twisty + uppercase eyebrow + count
+// groups — MODIFIED / DELETED / NEW — each a twisty + status eyebrow + count
 // over filename + numstat rows. A row reads like a left-rail Files-tree row (the
 // ONE file-row idiom): the Phosphor File mark in quiet ink + mono filename,
 // indented one tree step under its group with the standard vertical indent guide
@@ -124,7 +124,7 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
 }
 
 /** A collapsible status group (binding GitStatusPill `Section` 655:2031): a twisty +
- *  uppercase eyebrow + count over its file rows. Reuses the centralized FoldSection
+ *  status eyebrow + count over its file rows. Reuses the centralized FoldSection
  *  over the shared status-section chrome — the SAME fold idiom the rail's other
  *  sections use (design-system-is-centralized). Defaults COLLAPSED so the parents
  *  read as a clean "▸ Modified / ▸ Deleted / ▸ New" tree (a large Deleted group does

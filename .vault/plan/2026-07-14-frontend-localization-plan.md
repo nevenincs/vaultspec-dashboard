@@ -374,7 +374,8 @@ Remove every migration exemption and make untranslated rendered copy, fixed loca
 - [ ] `W06.P18.S101` - Run the source guard across every production and auxiliary frontend entry point and repair all findings; `frontend/src/, frontend/*.html`.
 - [ ] `W06.P18.S130` - Define the canonical operation-to-verb inventory and reject divergent synonyms across action IDs; `frontend/src/localization/actionVocabulary.test.ts`.
 - [ ] `W06.P18.S131` - Prove every typed error and status condition maps exhaustively to actionable copy or a safe fallback; `frontend/src/localization/outcomeMessages.test.ts`.
-- [ ] `W06.P18.S132` - Remove manual title-casing and CSS-authored capitalization from user-facing presentation paths; `frontend/src/, frontend/src/styles.css`.
+- [x] `W06.P18.S251` - Remove authored CSS and JSX case transforms and enforce their absence with a zero-exception source guard; `frontend/src/, frontend/src/styles.css, frontend/scripts/scan-localization.mjs`.
+- [ ] `W06.P18.S132` - Remove manual runtime title-casing from user-facing presentation paths through each vocabulary's catalog, formatter, or fail-closed token owner; `frontend/src/`.
 - [ ] `W06.P18.S133` - Remove manual singular, plural, and count sentence construction from production presentation paths; `frontend/src/`.
 - [ ] `W06.P18.S134` - Remove fixed-locale and manual month formatting from production presentation paths; `frontend/src/`.
 - [ ] `W06.P18.S135` - Reject prohibited internal and development vocabulary in catalog values and rendered fallback mappings; `frontend/src/localization/catalogVocabulary.test.ts`.
