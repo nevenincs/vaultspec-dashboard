@@ -197,7 +197,7 @@ Localize project selection, document browsing, filtering, dialogs, menus, and ev
 - [x] `W03.P08.S225` - Standardize and localize vault-feature menu actions through shared action and raw clipboard boundaries; `frontend/src/app/left/menus/vaultFeatureMenu.ts, shared action and clipboard handling, catalogs, allowlist, and focused tests`.
 - [ ] `W03.P08.S226` - Standardize and localize vault-section menu actions without internal IDs; `frontend/src/app/left/menus/vaultSectionMenu.ts`.
 - [ ] `W03.P08.S227` - Standardize and localize workspace menu actions with user-facing concepts; `frontend/src/app/left/menus/workspaceMenu.ts`.
-- [ ] `W03.P08.S228` - Standardize and localize worktree menu actions with user-facing workspace concepts; `frontend/src/app/left/menus/worktreeMenu.ts`.
+- [x] `W03.P08.S228` - Standardize and localize worktree menu actions without exposing internal identifiers; `frontend/src/app/left/menus/worktreeMenu.ts, frontend/src/app/left/menus/leftMenus.test.ts, frontend/src/app/left/menus/leftMenus.localization.test.ts, frontend/src/platform/actions/clipboardActions.ts, frontend/src/platform/actions/clipboardActions.test.ts, frontend/src/locales/en/common.ts, frontend/src/locales/en/projects.ts, frontend/src/localization/catalogKeys.test.ts, frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts, frontend/src/localization/testing/resources.ts, frontend/scripts/localization-allowlist.json`.
 
 ### Phase `W03.P09` - stage graph and islands
 

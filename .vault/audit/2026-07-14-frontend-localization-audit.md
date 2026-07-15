@@ -2112,3 +2112,21 @@ were removed, reducing the scanner from 1,081 to 1,065 findings and legacy actio
 presentations from 57 to 41. S55 is accepted. S177 and S179 remain open only for the
 deliberately preserved raw-ID copy actions, pending approval and implementation of the
 context-menu-copy-safety decision.
+
+### W03.P08.S228 review | pass | Worktree menus keep identity internal
+
+The worktree menu now uses typed descriptors for switching worktrees, copying branch
+names, and explaining unavailable switching. The unavailable state tells the user to
+choose another worktree containing project files. The raw worktree identifier copy
+action and payload are removed, while the internal activation dispatch remains intact.
+
+Optional branch copying and path reveal preserve their existing behavior and order.
+English, French, and Arabic resources resolve every migrated label and reason without
+fallback. Tests also prove that transport identity, paths, branch values, internal
+vocabulary, and em dashes do not enter localized presentation.
+
+Terra passed 72 focused tests and the complete frontend gate. Root independently passed
+the same focused suite, TypeScript, localization scanning, formatting, and diff checks.
+Sol approved the final implementation with no findings. Three exact scanner exemptions
+were removed, reducing the scanner from 1,065 to 1,062 findings and legacy action
+presentations from 41 to 38. S228 is accepted with no open findings.
