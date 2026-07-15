@@ -1797,3 +1797,26 @@ suite passed 84 tests, and the complete frontend lint recipe passed. Tests conta
 doubles, skips, or expected failures. Exact baseline reconciliation removed five entries
 and added none, reducing the scanner from 1,181 to 1,176 findings. S36 is accepted with no
 open findings.
+
+### W02.P06.S37 review | pass | Timeline dates use clear localized concepts
+
+This step uses a frozen raw identity list and a separate exhaustive typed presentation
+map for creation, edit, and update dates. Exact lookup rejects padded, unknown, and null
+values, while React and action boundaries suppress fallback presentation. Raw criterion
+IDs, order, default, action IDs, icons, callbacks, settings values, and wire behavior remain
+unchanged.
+
+Review confirmed that live setting state remains the capability authority. The typed
+`requiresServedSetting` rule replaces a dead static capability field without changing
+behavior: creation dates remain available without the setting, while edit and update
+dates require it. Complete catalog messages eliminate runtime lowercasing, sentence
+composition, backend terminology, field terminology, and vague unavailable-state text.
+
+English, French, and Arabic tests preserve the same radiogroup and radio nodes across
+language changes while validating labels, descriptions, current-state actions, and
+actionable disabled reasons. Independent Sol review approved all twelve files with no
+findings and passed 28 tests across five files. Terra reproduced that suite and the full
+frontend lint recipe. TypeScript, targeted ESLint, formatting, scanner, and diff checks
+passed. Tests contain no doubles, patches, skips, or expected failures. Exact baseline
+reconciliation removed thirteen entries and added none, reducing the scanner from 1,176
+to 1,163 findings. S37 is accepted with no open findings.
