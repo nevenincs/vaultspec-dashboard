@@ -2190,3 +2190,20 @@ execution window without reporting a failure, so it is not counted as verificati
 Six exact exemptions were removed, reducing the scanner from 1,035 to 1,029 findings
 and legacy action presentations from 22 to 16. S182 and S184 are accepted. S185 remains
 open for the remaining right-rail menu tests.
+
+### W04.P11.S66 review | pass | Search-result menus omit ranking internals
+
+Search-result menus now compose the shared Show on canvas action with the existing
+search-result action ID and normalized entity. This preserves the scoped selection
+effect, navigate section, icon, open behavior, editor and file-manager actions, and
+source-path copying.
+
+Ranking-value copying and full serialized-result copying are removed. The unavailable
+canvas action uses the canonical actionable reason. English, French, and Arabic resolve
+the shared label and reason without fallback, raw identifiers, ranking values, or
+internal vocabulary.
+
+Root and Terra passed 45 affected tests. The complete frontend lint recipe passed, and
+independent review found no issues. Four exact exemptions were removed, reducing the
+scanner from 1,029 to 1,025 findings and legacy action presentations from 16 to 12. S66
+is accepted with no open findings.

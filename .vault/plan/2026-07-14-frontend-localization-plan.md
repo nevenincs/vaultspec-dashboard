@@ -249,7 +249,7 @@ Complete search dialog, result, provider, empty, degraded, live-region, and resu
 
 - [ ] `W04.P11.S64` - Localize document-search dialog, fields, scopes, results, and live regions; `frontend/src/app/palette/DocumentSearchSurface.tsx`.
 - [ ] `W04.P11.S65` - Move search-provider species, degradation, selection, and no-result copy onto typed messages; `frontend/src/stores/server/searchProviders.ts`.
-- [ ] `W04.P11.S66` - Localize search result menus and accessible selection descriptions without semantic, vector, score, or node leakage; `frontend/src/app/right/menus/searchResultMenu.ts`.
+- [x] `W04.P11.S66` - Localize search-result menu actions without ranking, node, or serialized-record leakage; `frontend/src/app/right/menus/searchResultMenu.ts, frontend/src/app/right/menus/rightMenus.test.ts, frontend/src/app/right/menus/rightMenus.localization.test.ts, frontend/src/app/menus/sharedActions.ts, frontend/src/app/menus/sharedActions.test.ts, frontend/scripts/localization-allowlist.json`.
 - [ ] `W04.P11.S67` - Replace manual result counts and relative dates with locale-aware complete messages; `frontend/src/stores/server/searchPill.ts, frontend/src/stores/view/commandPalette.ts`.
 - [ ] `W04.P11.S68` - Migrate command-palette render and presentation tests through production catalogs; `frontend/src/app/palette/CommandPalette.render.test.tsx, frontend/src/app/palette/CommandPalette.test.ts`.
 - [ ] `W04.P11.S187` - Localize global search surface fields, scopes, results, footer guidance, and live regions; `frontend/src/app/palette/SearchPaletteSurface.tsx`.
