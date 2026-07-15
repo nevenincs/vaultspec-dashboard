@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { SettingDef, SettingsState } from "./engine";
+import type { SettingDef, SettingsSchema, SettingsState } from "./engine";
 import {
   defaultSettingsEditTarget,
   effectiveSettingsEditTarget,
@@ -11,6 +11,7 @@ import {
   resolveEffective,
   resolveGraphControlOverrides,
   resolveKeybindingOverrides,
+  resolveLanguagePreference,
   resolveReduceMotionSetting,
   settingCanTargetScope,
   settingsControlIsDefaulted,
@@ -24,9 +25,14 @@ const def: SettingDef = {
   default: "feature",
   scope_eligible: true,
   control: "segmented",
-  label: "Default granularity",
-  description: "Initial graph granularity",
-  group: "Graph",
+  display: {
+    id: "graph.defaultGranularity",
+    group: "graph",
+    enum_members: [
+      { value: "feature", id: "granularity.feature" },
+      { value: "document", id: "granularity.document" },
+    ],
+  },
   order: 1,
 };
 
@@ -36,9 +42,11 @@ const reduceMotionDef: SettingDef = {
   default: "false",
   scope_eligible: false,
   control: "switch",
-  label: "Reduce motion",
-  description: "Reduce animated transitions",
-  group: "Appearance",
+  display: {
+    id: "appearance.reduceMotion",
+    group: "appearance",
+    enum_members: [],
+  },
   order: 2,
 };
 
@@ -115,7 +123,7 @@ describe("app-consumed settings", () => {
   it("resolves reduce motion through the schema-declared setting", () => {
     expect(
       resolveReduceMotionSetting(
-        { settings: [reduceMotionDef], groups: ["Appearance"], tiers: {} },
+        { settings: [reduceMotionDef], groups: ["appearance"], tiers: {} },
         settings({ reduce_motion: "true" }),
       ),
     ).toBe(true);
@@ -125,10 +133,68 @@ describe("app-consumed settings", () => {
     expect(resolveReduceMotionSetting(undefined, undefined)).toBe(false);
     expect(
       resolveReduceMotionSetting(
-        { settings: [reduceMotionDef], groups: ["Appearance"], tiers: {} },
+        { settings: [reduceMotionDef], groups: ["appearance"], tiers: {} },
         settings(),
       ),
     ).toBe(false);
+  });
+});
+
+describe("global language preference", () => {
+  const languageDef: SettingDef = {
+    key: "language",
+    value_type: { type: "enum", members: ["system", "en"] },
+    default: "system",
+    scope_eligible: false,
+    control: "segmented",
+    display: {
+      id: "appearance.language",
+      group: "appearance",
+      enum_members: [
+        { value: "system", id: "language.system" },
+        { value: "en", id: "language.english" },
+      ],
+    },
+    order: 4,
+  };
+  const schema = {
+    settings: [languageDef],
+    groups: ["appearance"],
+    tiers: {},
+  } satisfies SettingsSchema;
+
+  it("resolves exact global identity and ignores scoped rows", () => {
+    expect(resolveLanguagePreference(schema, undefined)).toBeNull();
+    expect(resolveLanguagePreference(schema, settings())).toBe("system");
+    expect(resolveLanguagePreference(schema, settings({ language: "en" }))).toBe("en");
+    expect(
+      resolveLanguagePreference(
+        schema,
+        settings({ language: "en" }, { "scope-a": { language: "system" } }),
+      ),
+    ).toBe("en");
+  });
+
+  it("fails closed for unavailable, malformed, or unsupported identity", () => {
+    expect(resolveLanguagePreference(undefined, undefined)).toBeNull();
+    expect(resolveLanguagePreference(undefined, settings())).toBeNull();
+    expect(resolveLanguagePreference(schema, settings({ language: "fr" }))).toBe("en");
+    expect(resolveLanguagePreference(schema, settings({ language: " en " }))).toBe(
+      "en",
+    );
+    expect(
+      resolveLanguagePreference({ settings: [], groups: [], tiers: {} }, settings()),
+    ).toBe("en");
+    expect(
+      resolveLanguagePreference(
+        {
+          settings: [{ ...languageDef, scope_eligible: true }],
+          groups: ["appearance"],
+          tiers: {},
+        },
+        settings({ language: "en" }),
+      ),
+    ).toBe("en");
   });
 });
 
@@ -174,16 +240,18 @@ describe("keybinding override decode", () => {
       default: "{}",
       scope_eligible: false,
       control: "keybinding",
-      label: "Keyboard shortcuts",
-      description: "Customized key chords",
-      group: "Keybindings",
+      display: {
+        id: "keybindings.shortcuts",
+        group: "keybindings",
+        enum_members: [],
+      },
       order: 1,
     };
     const schema = {
       settings: [keybindingsDef],
-      groups: ["Keybindings"],
+      groups: ["keybindings"],
       tiers: {},
-    };
+    } satisfies SettingsSchema;
 
     expect(
       resolveKeybindingOverrides(schema, settings({ keybindings: '{"x":"Mod+X"}' })),
@@ -202,12 +270,14 @@ describe("graph_controls override resolution", () => {
     default: "{}",
     scope_eligible: false,
     control: "text",
-    label: "Graph controls",
-    description: "Persisted graph control overrides",
-    group: "Graph",
+    display: { id: "graph.controls", group: "graph", enum_members: [] },
     order: 1,
   };
-  const schema = { settings: [graphControlsDef], groups: ["Graph"], tiers: {} };
+  const schema = {
+    settings: [graphControlsDef],
+    groups: ["graph"],
+    tiers: {},
+  } satisfies SettingsSchema;
 
   it("parses a JSON object string into a normalized map; {} on corrupt/non-object", () => {
     expect(

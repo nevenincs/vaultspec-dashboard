@@ -31,21 +31,10 @@ import {
 
 export interface SettingsEnumControlOptionView {
   value: string;
-  /** Title-Case display label derived from the served enum token (presentation
-   *  only — `ui-labels-are-user-facing`: mapping a token to a word is not deriving
-   *  state). Standardized casing per the dashboard label convention. */
   label: string;
   active: boolean;
   tabIndex: 0 | -1;
   className: string;
-}
-
-/** Title-Case a served enum token for display ("high-contrast" -> "High Contrast"). */
-function enumMemberLabel(member: string): string {
-  return member
-    .split(/[-_\s]+/)
-    .map((word) => (word ? word[0]!.toUpperCase() + word.slice(1) : word))
-    .join(" ");
 }
 
 export interface SettingsEnumControlView {
@@ -56,8 +45,10 @@ export interface SettingsEnumControlView {
 export function deriveSettingsEnumControlView(
   def: SettingDef,
   value: string,
+  labels: ReadonlyMap<string, string> = new Map(),
 ): SettingsEnumControlView {
   const members = def.value_type.type === "enum" ? def.value_type.members : [];
+  const completeLabels = members.every((member) => labels.has(member));
   const activeValue = members.includes(value)
     ? value
     : members.includes(def.default)
@@ -66,20 +57,22 @@ export function deriveSettingsEnumControlView(
   return {
     rootClassName:
       "flex shrink-0 flex-wrap gap-fg-0-5 rounded-fg-xs border border-rule bg-paper-sunken p-fg-0-5",
-    options: members.map((member) => {
-      const active = member === activeValue;
-      return {
-        value: member,
-        label: enumMemberLabel(member),
-        active,
-        tabIndex: active ? 0 : -1,
-        className: `rounded-fg-xs px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
-          active
-            ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
-            : "text-ink-faint hover:text-ink-muted"
-        }`,
-      };
-    }),
+    options: completeLabels
+      ? members.map((member) => {
+          const active = member === activeValue;
+          return {
+            value: member,
+            label: labels.get(member)!,
+            active,
+            tabIndex: active ? 0 : -1,
+            className: `rounded-fg-xs px-fg-2 py-fg-0-5 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50 ${
+              active
+                ? "bg-paper-raised font-medium text-ink shadow-fg-raised"
+                : "text-ink-faint hover:text-ink-muted"
+            }`,
+          };
+        })
+      : [],
   };
 }
 

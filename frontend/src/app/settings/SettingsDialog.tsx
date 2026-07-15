@@ -16,7 +16,13 @@
 // controls (settings-are-schema-driven-from-one-registry).
 
 import { useActiveScope, useSettingsDialogView } from "../../stores/server/queries";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { EffectiveSetting } from "../../stores/server/settingsSelectors";
+import {
+  SETTINGS_GROUP_MESSAGES,
+  settingEnumMessageDescriptors,
+  settingPresentationDescriptors,
+} from "../../stores/view/settingsPresentation";
 import {
   closeSettingsDialog,
   useSettingsDialogOpen,
@@ -35,6 +41,37 @@ export function SettingsDialog() {
   const activeScope = useActiveScope();
 
   const settings = useSettingsDialogView(activeScope);
+  const resolveMessage = useLocalizedMessageResolver();
+  const message = (descriptor: Parameters<typeof resolveMessage>[0]) =>
+    resolveMessage(descriptor).message;
+
+  const groups = settings.groups.flatMap((group) => {
+    if (!Object.hasOwn(SETTINGS_GROUP_MESSAGES, group.id)) return [];
+    const rows = group.settings.flatMap((eff) => {
+      const presentation = settingPresentationDescriptors(eff.def);
+      const enumMessages = settingEnumMessageDescriptors(eff.def);
+      if (presentation === null || enumMessages === null) return [];
+      return [
+        {
+          eff,
+          label: message(presentation.label),
+          description: message(presentation.description),
+          placeholder: presentation.placeholder
+            ? message(presentation.placeholder)
+            : undefined,
+          enumLabels: new Map(
+            [...enumMessages].map(([value, descriptor]) => [
+              value,
+              message(descriptor),
+            ]),
+          ),
+        },
+      ];
+    });
+    return rows.length === 0
+      ? []
+      : [{ id: group.id, label: message(SETTINGS_GROUP_MESSAGES[group.id]), rows }];
+  });
 
   return (
     <Dialog
@@ -59,19 +96,19 @@ export function SettingsDialog() {
             {settings.loadingMessage}
           </p>
         )}
-        {!settings.loading && settings.groups.length === 0 && (
+        {!settings.loading && groups.length === 0 && (
           <p className="py-fg-4 text-center text-label text-ink-muted">
             {settings.emptyMessage}
           </p>
         )}
-        {settings.groups.map((group) => (
-          <section key={group.name} className="flex flex-col gap-fg-2">
+        {groups.map((group) => (
+          <section key={group.id} className="flex flex-col gap-fg-2">
             {/* Board 96:2: a plain eyebrow section label (kit SectionLabel) — no
                 underline rule. */}
-            <SectionLabel>{group.name}</SectionLabel>
+            <SectionLabel>{group.label}</SectionLabel>
             <div className="flex flex-col gap-fg-2">
-              {group.settings.map((eff) => (
-                <SettingRow key={eff.def.key} eff={eff} activeScope={activeScope} />
+              {group.rows.map((row) => (
+                <SettingRow key={row.eff.def.key} {...row} activeScope={activeScope} />
               ))}
             </div>
           </section>
@@ -84,9 +121,20 @@ export function SettingsDialog() {
 interface SettingRowProps {
   eff: EffectiveSetting;
   activeScope: unknown;
+  label: string;
+  description: string;
+  placeholder?: string;
+  enumLabels: ReadonlyMap<string, string>;
 }
 
-function SettingRow({ eff, activeScope }: SettingRowProps) {
+function SettingRow({
+  eff,
+  activeScope,
+  label,
+  description,
+  placeholder,
+  enumLabels,
+}: SettingRowProps) {
   const row = useSettingsRowController(eff, activeScope);
   const { def } = row;
 
@@ -94,16 +142,17 @@ function SettingRow({ eff, activeScope }: SettingRowProps) {
     <div className={row.rootClassName}>
       <div className={row.headerClassName}>
         <label htmlFor={row.fieldId} className={row.labelClassName}>
-          <span className={row.titleClassName}>{def.label}</span>
-          {def.description && (
-            <span className={row.descriptionClassName}>{def.description}</span>
-          )}
+          <span className={row.titleClassName}>{label}</span>
+          <span className={row.descriptionClassName}>{description}</span>
         </label>
         <div className={row.controlStackClassName}>
           {/* Controls stay interactive during a write — discrete writes are fast
               and never disable mid-interaction (dashboard-settings review HIGH-2). */}
           <SettingControl
             def={def}
+            label={label}
+            placeholder={placeholder}
+            enumLabels={enumLabels}
             value={row.shownValue}
             onChange={row.onControlChange}
             id={row.fieldId}

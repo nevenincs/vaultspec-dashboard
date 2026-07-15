@@ -19,9 +19,15 @@ const enumDef: SettingDef = {
   default: "system",
   scope_eligible: false,
   control: "segmented",
-  label: "Theme",
-  description: "",
-  group: "Appearance",
+  display: {
+    id: "appearance.theme",
+    group: "appearance",
+    enum_members: [
+      { value: "system", id: "theme.system" },
+      { value: "light", id: "theme.light" },
+      { value: "dark", id: "theme.dark" },
+    ],
+  },
   order: 1,
 };
 
@@ -31,9 +37,7 @@ const boolDef: SettingDef = {
   default: "false",
   scope_eligible: false,
   control: "switch",
-  label: "Reduce motion",
-  description: "",
-  group: "Appearance",
+  display: { id: "appearance.reduceMotion", group: "appearance", enum_members: [] },
   order: 2,
 };
 
@@ -43,9 +47,7 @@ const stringDef: SettingDef = {
   default: "",
   scope_eligible: false,
   control: "text",
-  label: "Label",
-  description: "",
-  group: "General",
+  display: { id: "graph.labelFilter", group: "graph", enum_members: [] },
   order: 1,
 };
 
@@ -55,18 +57,30 @@ const intDef: SettingDef = {
   default: "100",
   scope_eligible: true,
   control: "slider",
-  label: "Label size",
-  description: "",
-  group: "Graph",
+  display: { id: "graph.confidenceFloor", group: "graph", enum_members: [] },
   order: 2,
   step: 10,
   unit: "%",
 };
 
+const themeLabels = new Map([
+  ["system", "System"],
+  ["light", "Light"],
+  ["dark", "Dark"],
+]);
+
 describe("SettingControl dispatch + control kit", () => {
   it("segmented (enum): marks the active member and emits the next on click", () => {
     const onChange = vi.fn();
-    render(<SettingControl def={enumDef} value="dark" onChange={onChange} />);
+    render(
+      <SettingControl
+        def={enumDef}
+        label="Theme"
+        enumLabels={themeLabels}
+        value="dark"
+        onChange={onChange}
+      />,
+    );
     const group = screen.getByRole("radiogroup", { name: "Theme" });
     expect(group).toBeTruthy();
     const dark = screen.getByRole("radio", { name: "Dark" });
@@ -77,7 +91,15 @@ describe("SettingControl dispatch + control kit", () => {
 
   it("segmented (enum): arrow keys rove and emit", () => {
     const onChange = vi.fn();
-    render(<SettingControl def={enumDef} value="system" onChange={onChange} />);
+    render(
+      <SettingControl
+        def={enumDef}
+        label="Theme"
+        enumLabels={themeLabels}
+        value="system"
+        onChange={onChange}
+      />,
+    );
     fireEvent.keyDown(screen.getByRole("radio", { name: "System" }), {
       key: "ArrowRight",
     });
@@ -87,13 +109,25 @@ describe("SettingControl dispatch + control kit", () => {
   it("switch (bool): reflects state and toggles the wire value", () => {
     const onChange = vi.fn();
     const { rerender } = render(
-      <SettingControl def={boolDef} value="false" onChange={onChange} />,
+      <SettingControl
+        def={boolDef}
+        label="Reduce motion"
+        value="false"
+        onChange={onChange}
+      />,
     );
     const sw = screen.getByRole("switch", { name: "Reduce motion" });
     expect(sw.getAttribute("aria-checked")).toBe("false");
     fireEvent.click(sw);
     expect(onChange).toHaveBeenCalledWith("true");
-    rerender(<SettingControl def={boolDef} value="true" onChange={onChange} />);
+    rerender(
+      <SettingControl
+        def={boolDef}
+        label="Reduce motion"
+        value="true"
+        onChange={onChange}
+      />,
+    );
     expect(
       screen
         .getByRole("switch", { name: "Reduce motion" })
@@ -103,7 +137,9 @@ describe("SettingControl dispatch + control kit", () => {
 
   it("text (string): reflects value and emits raw input", () => {
     const onChange = vi.fn();
-    render(<SettingControl def={stringDef} value="hi" onChange={onChange} />);
+    render(
+      <SettingControl def={stringDef} label="Label" value="hi" onChange={onChange} />,
+    );
     const input = screen.getByRole("textbox", { name: "Label" }) as HTMLInputElement;
     expect(input.value).toBe("hi");
     expect(input.maxLength).toBe(40);
@@ -116,6 +152,7 @@ describe("SettingControl dispatch + control kit", () => {
     render(
       <SettingControl
         def={intDef}
+        label="Label size"
         value="120"
         onChange={(next) => changes.push(next)}
       />,
@@ -135,7 +172,16 @@ describe("SettingControl dispatch + control kit", () => {
 
   it("disabled: controls do not emit", () => {
     const onChange = vi.fn();
-    render(<SettingControl def={enumDef} value="dark" onChange={onChange} disabled />);
+    render(
+      <SettingControl
+        def={enumDef}
+        label="Theme"
+        enumLabels={themeLabels}
+        value="dark"
+        onChange={onChange}
+        disabled
+      />,
+    );
     fireEvent.click(screen.getByRole("radio", { name: "Light" }));
     expect(onChange).not.toHaveBeenCalled();
   });

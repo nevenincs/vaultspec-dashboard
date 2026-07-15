@@ -16,7 +16,7 @@ afterEach(() => {
 
 describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
   const schema: SettingsSchema = {
-    groups: ["Appearance"],
+    groups: ["appearance"],
     settings: [
       {
         key: "theme",
@@ -24,9 +24,14 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
         default: "system",
         scope_eligible: false,
         control: "segmented",
-        label: "Theme",
-        description: "Dashboard color mode",
-        group: "Appearance",
+        display: {
+          id: "appearance.theme",
+          group: "appearance",
+          enum_members: [
+            { value: "system", id: "theme.system" },
+            { value: "dark", id: "theme.dark" },
+          ],
+        },
         order: 1,
       },
     ],
@@ -53,7 +58,7 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
       doneLabel: "Done",
     });
     expect(view.groups).toHaveLength(1);
-    expect(view.groups[0]).toMatchObject({ name: "Appearance" });
+    expect(view.groups[0]).toMatchObject({ id: "appearance" });
     expect(view.groups[0]!.settings[0]).toMatchObject({
       value: "dark",
       provenance: "global",
@@ -87,7 +92,7 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
 
 describe("deriveThemeSettingView (platform theme bridge)", () => {
   const schema: SettingsSchema = {
-    groups: ["Appearance"],
+    groups: ["appearance"],
     settings: [
       {
         key: "theme",
@@ -95,9 +100,15 @@ describe("deriveThemeSettingView (platform theme bridge)", () => {
         default: "system",
         scope_eligible: false,
         control: "segmented",
-        label: "Theme",
-        description: "Dashboard color mode",
-        group: "Appearance",
+        display: {
+          id: "appearance.theme",
+          group: "appearance",
+          enum_members: [
+            { value: "system", id: "theme.system" },
+            { value: "light", id: "theme.light" },
+            { value: "dark", id: "theme.dark" },
+          ],
+        },
         order: 1,
       },
     ],
@@ -129,7 +140,7 @@ describe("deriveThemeSettingView (platform theme bridge)", () => {
 
 describe("deriveSettingsEffectsView (settings side effects)", () => {
   const schema: SettingsSchema = {
-    groups: ["Appearance", "Graph"],
+    groups: ["appearance", "graph"],
     settings: [
       {
         key: "reduce_motion",
@@ -137,9 +148,11 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         default: "false",
         scope_eligible: false,
         control: "switch",
-        label: "Reduce motion",
-        description: "Reduce animated transitions",
-        group: "Appearance",
+        display: {
+          id: "appearance.reduceMotion",
+          group: "appearance",
+          enum_members: [],
+        },
         order: 1,
       },
       {
@@ -148,9 +161,14 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         default: "document",
         scope_eligible: true,
         control: "segmented",
-        label: "Default granularity",
-        description: "The graph detail level on load",
-        group: "Graph",
+        display: {
+          id: "graph.defaultGranularity",
+          group: "graph",
+          enum_members: [
+            { value: "feature", id: "granularity.feature" },
+            { value: "document", id: "granularity.document" },
+          ],
+        },
         order: 1,
       },
       {
@@ -159,9 +177,7 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         default: "0",
         scope_eligible: false,
         control: "slider",
-        label: "Confidence floor",
-        description: "Minimum inferred edge confidence",
-        group: "Graph",
+        display: { id: "graph.confidenceFloor", group: "graph", enum_members: [] },
         order: 2,
       },
       {
@@ -170,9 +186,7 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         default: "",
         scope_eligible: false,
         control: "text",
-        label: "Label filter",
-        description: "Initial graph text filter",
-        group: "Graph",
+        display: { id: "graph.labelFilter", group: "graph", enum_members: [] },
         order: 3,
       },
     ],

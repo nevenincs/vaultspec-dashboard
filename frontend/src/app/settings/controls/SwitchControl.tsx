@@ -11,7 +11,7 @@
 import { deriveSettingsSwitchControlView } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
-export function SwitchControl({ def, value, onChange, disabled, id }: ControlProps) {
+export function SwitchControl({ label, value, onChange, disabled, id }: ControlProps) {
   const view = deriveSettingsSwitchControlView(value);
   return (
     <button
@@ -19,7 +19,7 @@ export function SwitchControl({ def, value, onChange, disabled, id }: ControlPro
       role="switch"
       id={id}
       aria-checked={view.checked}
-      aria-label={def.label}
+      aria-label={label}
       disabled={disabled}
       onClick={() => onChange(view.nextValue)}
       className={view.buttonClassName}

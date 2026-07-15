@@ -16,6 +16,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { createElement } from "react";
 import {
@@ -98,16 +99,21 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     // A labelled control per declared setting.
     expect(screen.getByText("Theme")).toBeTruthy();
     expect(screen.getByText("Reduce motion")).toBeTruthy();
-    expect(screen.getByText("Default granularity")).toBeTruthy();
+    expect(screen.getByText("Default detail level")).toBeTruthy();
     // The Graph section's two new rows (Figma 17:1702): a percent slider and a
     // stem text field, rendered through the schema-driven NumberControl/TextControl.
-    expect(screen.getByText("Confidence floor")).toBeTruthy();
-    expect(screen.getByText("Label filter")).toBeTruthy();
-    expect(screen.getByRole("slider", { name: "Confidence floor" })).toBeTruthy();
-    expect(screen.getByRole("textbox", { name: "Label filter" })).toBeTruthy();
+    expect(screen.getByText("Minimum connection certainty")).toBeTruthy();
+    expect(screen.getByText("Name filter")).toBeTruthy();
+    expect(
+      screen.getByRole("slider", { name: "Minimum connection certainty" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "Name filter" })).toBeTruthy();
     // Theme renders as the segmented (radiogroup) control with its members.
     expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Dark" })).toBeTruthy();
+    const language = screen.getByRole("radiogroup", { name: "Language" });
+    expect(within(language).getByRole("radio", { name: "System" })).toBeTruthy();
+    expect(within(language).getByRole("radio", { name: "English" })).toBeTruthy();
   });
 
   it("reflects the effective value and persists a change through the wire", async () => {
@@ -115,11 +121,12 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     // assert against an explicit value, not an assumed-unset default).
     await engineClient.putSettings({ key: "theme", value: "system" });
     renderDialog();
-    const systemRadio = await screen.findByRole(
-      "radio",
-      { name: "System" },
+    const themeControl = await screen.findByRole(
+      "radiogroup",
+      { name: "Theme" },
       ENGINE_WAIT,
     );
+    const systemRadio = within(themeControl).getByRole("radio", { name: "System" });
     await waitFor(
       () => expect(systemRadio.getAttribute("aria-checked")).toBe("true"),
       ENGINE_WAIT,
@@ -135,7 +142,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
 
   it("offers the per-scope override target for a scope-eligible setting only", async () => {
     renderDialog();
-    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
+    await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     // Scope-eligible settings (e.g. default_granularity, timeline_date_criterion)
     // expose the [Global | This scope] target; global-only ones (theme, reduce_motion)
     // do not. Derive the expected count from the served schema so adding another
@@ -151,7 +158,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     useViewStore.getState().setScope(null);
     queryClient.clear();
     renderDialog();
-    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
+    await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     const schema = await createLiveClient().settingsSchema();
     const scopeEligibleCount = schema.settings.filter((s) => s.scope_eligible).length;
     expect(screen.getAllByRole("radiogroup", { name: "apply to" })).toHaveLength(
@@ -161,7 +168,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
 
   it("persists a scope override when the target is 'This scope'", async () => {
     renderDialog();
-    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
+    await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     // Switch the first scope-eligible row's target to 'This scope', then pick a value.
     const thisScope = screen.getAllByRole("radio", { name: "This scope" })[0];
     fireEvent.click(thisScope);
@@ -186,7 +193,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     renderDialog();
     const labelFilter = await screen.findByRole(
       "textbox",
-      { name: "Label filter" },
+      { name: "Name filter" },
       ENGINE_WAIT,
     );
     fireEvent.change(labelFilter, { target: { value: "transient label draft" } });
@@ -214,7 +221,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     const labelFilter = (await screen.findByRole(
       "textbox",
       {
-        name: "Label filter",
+        name: "Name filter",
       },
       ENGINE_WAIT,
     )) as HTMLInputElement;
@@ -257,7 +264,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     useViewStore.getState().setScope(sourceScope);
 
     renderDialog();
-    await screen.findByText("Default granularity", undefined, ENGINE_WAIT);
+    await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     // default_granularity is the first scope-eligible row (declared before
     // timeline_date_criterion), so target its [Global | This scope] radios by index.
     await waitFor(() => {

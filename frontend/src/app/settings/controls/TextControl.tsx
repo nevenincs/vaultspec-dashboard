@@ -6,7 +6,15 @@
 import { deriveSettingsTextControlView } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
-export function TextControl({ def, value, onChange, disabled, id }: ControlProps) {
+export function TextControl({
+  def,
+  label,
+  placeholder,
+  value,
+  onChange,
+  disabled,
+  id,
+}: ControlProps) {
   const view = deriveSettingsTextControlView(def);
   return (
     <input
@@ -15,8 +23,8 @@ export function TextControl({ def, value, onChange, disabled, id }: ControlProps
       value={value}
       disabled={disabled}
       maxLength={view.maxLength}
-      placeholder={def.placeholder}
-      aria-label={def.label}
+      placeholder={placeholder}
+      aria-label={label}
       onChange={(e) => onChange(e.target.value)}
       className={view.className}
     />

@@ -18,8 +18,16 @@ import {
 } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
-export function EnumControl({ def, value, onChange, disabled, id }: ControlProps) {
-  const view = deriveSettingsEnumControlView(def, value);
+export function EnumControl({
+  def,
+  label,
+  enumLabels = new Map(),
+  value,
+  onChange,
+  disabled,
+  id,
+}: ControlProps) {
+  const view = deriveSettingsEnumControlView(def, value, enumLabels);
   const segEls = useRef(new Map<string, HTMLButtonElement>());
 
   const onKeyDown = (index: number) => (e: ReactKeyboardEvent<HTMLButtonElement>) => {
@@ -36,12 +44,7 @@ export function EnumControl({ def, value, onChange, disabled, id }: ControlProps
   };
 
   return (
-    <div
-      role="radiogroup"
-      aria-label={def.label}
-      id={id}
-      className={view.rootClassName}
-    >
+    <div role="radiogroup" aria-label={label} id={id} className={view.rootClassName}>
       {view.options.map((option, index) => {
         return (
           <button

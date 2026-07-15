@@ -14,12 +14,22 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { THEMES } from "../../platform/theme/themeController";
 import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { EngineError } from "./engine";
-import type { SettingsSchema, SettingsState } from "./engine";
-import { adaptSettingsSchema } from "./liveAdapters";
+import type { SettingDef, SettingsSchema, SettingsState } from "./engine";
+import {
+  adaptSettingsSchema,
+  SETTING_DEFAULT_MAX_CHARS,
+  SETTING_ENUM_MAX_MEMBERS,
+  SETTING_NUMERIC_ABS_MAX,
+  SETTING_ORDER_MAX,
+  SETTING_SCHEMA_MAX_GROUPS,
+  SETTING_SCHEMA_MAX_ITEMS,
+  SETTING_VALUE_LIMIT_MAX,
+} from "./liveAdapters";
 import {
   CONSUMED_SETTING_KEYS,
   resolveEffective,
   resolveEffectiveSetting,
+  resolveLanguagePreference,
   resolveSettings,
   settingDefByKey,
 } from "./settingsSelectors";
@@ -65,6 +75,24 @@ describe("settings schema (live engine GET /settings/schema)", () => {
     });
     expect(theme!.control).toBe("segmented");
     expect(theme!.scope_eligible).toBe(false);
+    expect(theme!.display).toEqual({
+      id: "appearance.theme",
+      group: "appearance",
+      enum_members: [
+        { value: "system", id: "theme.system" },
+        { value: "light", id: "theme.light" },
+        { value: "dark", id: "theme.dark" },
+        { value: "high-contrast", id: "theme.highContrast" },
+      ],
+    });
+
+    const language = byKey.get(CONSUMED_SETTING_KEYS.language);
+    expect(language).toBeDefined();
+    expect(language!.value_type).toEqual({
+      type: "enum",
+      members: ["system", "en"],
+    });
+    expect(language!.display.id).toBe("appearance.language");
 
     const granularity = byKey.get("default_granularity");
     expect(granularity).toBeDefined();
@@ -80,27 +108,25 @@ describe("settings schema (live engine GET /settings/schema)", () => {
     expect(reduceMotion!.control).toBe("switch");
 
     // Groups are engine-declared and include the two known groups.
-    expect(schema.groups).toEqual(expect.arrayContaining(["Appearance", "Graph"]));
+    expect(schema.groups).toEqual(["appearance", "graph", "keybindings"]);
     // The tiers block rides through but is never read by chrome.
     expect(schema.tiers).toBeTypeOf("object");
   });
 
-  it("decodes the integer/slider value_type (adapter coverage for future settings)", () => {
-    // A pure-function vector: the adapter must decode integer + slider + step/unit
-    // when such a setting lands, independent of today's registry.
+  it("decodes the declared integer slider contract", () => {
     const decoded = adaptSettingsSchema({
       settings: [
         {
-          key: "synthetic_scale",
-          value_type: { type: "integer", min: 50, max: 200 },
-          default: "100",
-          scope_eligible: true,
+          key: "confidence_floor",
+          value_type: { type: "integer", min: 0, max: 100 },
+          default: "0",
+          scope_eligible: false,
           control: "slider",
-          label: "Scale",
-          description: "",
+          label: "Confidence floor",
+          description: "Hide inferred edges below this certainty.",
           group: "Graph",
-          order: 9,
-          step: 10,
+          order: 3,
+          step: 1,
           unit: "%",
         },
       ],
@@ -108,54 +134,254 @@ describe("settings schema (live engine GET /settings/schema)", () => {
       tiers: {},
     });
     const s = decoded.settings[0];
-    expect(s.value_type).toEqual({ type: "integer", min: 50, max: 200 });
+    expect(s.value_type).toEqual({ type: "integer", min: 0, max: 100 });
     expect(s.control).toBe("slider");
-    expect(s.step).toBe(10);
+    expect(s.step).toBe(1);
     expect(s.unit).toBe("%");
   });
 
-  it("normalizes schema metadata at the adapter boundary", () => {
+  it("maps known legacy metadata without retaining its English copy", () => {
     const decoded = adaptSettingsSchema({
       settings: [
         {
-          key: "  theme  ",
+          key: "theme",
           value_type: {
             type: "enum",
-            members: [" system ", "system", "", " dark ", 42],
+            members: ["system", "light", "dark", "high-contrast"],
           },
           default: "system",
           scope_eligible: false,
-          control: " segmented ",
-          label: " Theme ",
-          description: " Color mode ",
-          group: " Appearance ",
+          control: "segmented",
+          label: "Theme",
+          description: "The dashboard color theme.",
+          group: "Appearance",
           order: 1,
-          unit: " px ",
-          placeholder: " Choose ",
         },
         {
           key: "   ",
           value_type: { type: "string" },
         },
       ],
-      groups: [" Appearance ", "Appearance", "", 7, " Graph "],
+      groups: ["Appearance", "Appearance", "", 7, "Graph"],
       tiers: {},
     });
 
-    expect(decoded.groups).toEqual(["Appearance", "Graph"]);
+    expect(decoded.groups).toEqual(["appearance", "graph"]);
     expect(decoded.settings).toHaveLength(1);
     expect(decoded.settings[0]).toEqual(
       expect.objectContaining({
         key: "theme",
-        value_type: { type: "enum", members: ["system", "dark"] },
+        value_type: {
+          type: "enum",
+          members: ["system", "light", "dark", "high-contrast"],
+        },
         control: "segmented",
-        label: "Theme",
-        description: "Color mode",
-        group: "Appearance",
-        unit: "px",
-        placeholder: "Choose",
+        display: {
+          id: "appearance.theme",
+          group: "appearance",
+          enum_members: [
+            { value: "system", id: "theme.system" },
+            { value: "light", id: "theme.light" },
+            { value: "dark", id: "theme.dark" },
+            { value: "high-contrast", id: "theme.highContrast" },
+          ],
+        },
+        unit: undefined,
       }),
     );
+    expect(decoded.settings[0]).not.toHaveProperty("label");
+    expect(decoded.settings[0]).not.toHaveProperty("description");
+    expect(decoded.settings[0]).not.toHaveProperty("placeholder");
+  });
+
+  it("fails closed for unknown or inexact semantic metadata", () => {
+    const validTheme = {
+      key: "theme",
+      value_type: {
+        type: "enum",
+        members: ["system", "light", "dark", "high-contrast"],
+      },
+      default: "system",
+      scope_eligible: false,
+      control: "segmented",
+      order: 1,
+    };
+    const decoded = adaptSettingsSchema({
+      settings: [
+        {
+          ...validTheme,
+          key: " theme ",
+          display: {
+            id: "appearance.theme",
+            group: "appearance",
+            enum_members: [],
+          },
+        },
+        {
+          ...validTheme,
+          display: {
+            id: " appearance.theme ",
+            group: "appearance",
+            enum_members: [],
+          },
+        },
+        {
+          ...validTheme,
+          display: {
+            id: "appearance.theme",
+            group: "appearance",
+            enum_members: [
+              { value: "system", id: "theme.system" },
+              { value: "light", id: "theme.light" },
+              { value: "dark", id: "theme.dark" },
+            ],
+          },
+        },
+        {
+          key: "future_setting",
+          value_type: { type: "bool" },
+          display: { id: "future.setting", group: "appearance" },
+        },
+      ],
+      groups: [" appearance ", "appearance", "unknown"],
+    });
+    expect(decoded.settings).toEqual([]);
+    expect(decoded.groups).toEqual(["appearance"]);
+  });
+
+  it("rejects mismatched controls and value types for every declared setting", () => {
+    const hostile = schema.settings.flatMap((def) => [
+      {
+        ...def,
+        control: def.control === "text" ? "switch" : "text",
+      },
+      {
+        ...def,
+        value_type:
+          def.value_type.type === "bool"
+            ? { type: "string", max_len: 200 }
+            : { type: "bool" },
+      },
+    ]);
+
+    const decoded = adaptSettingsSchema({
+      settings: hostile,
+      groups: schema.groups,
+      tiers: {},
+    });
+
+    expect(decoded.settings).toEqual([]);
+
+    const theme = schema.settings.find((def) => def.key === "theme")!;
+    const graphControls = schema.settings.find((def) => def.key === "graph_controls")!;
+    const sectionFolds = schema.settings.find(
+      (def) => def.key === "right_rail_section_folds",
+    )!;
+    const mixed = adaptSettingsSchema({
+      settings: [
+        theme,
+        { ...graphControls, control: "text" },
+        {
+          ...sectionFolds,
+          value_type: { type: "string", max_len: 200 },
+        },
+      ],
+      groups: schema.groups,
+      tiers: {},
+    });
+    const dialogKeys = resolveSettings(mixed, undefined, scope).flatMap((group) =>
+      group.settings.map((setting) => setting.def.key),
+    );
+    expect(dialogKeys).toEqual(["theme"]);
+  });
+
+  it("rejects missing or malformed scope eligibility for a global setting", () => {
+    const theme = schema.settings.find((def) => def.key === "theme")!;
+    const missingScope: Partial<SettingDef> = { ...theme };
+    delete missingScope.scope_eligible;
+
+    const decoded = adaptSettingsSchema({
+      settings: [
+        missingScope,
+        { ...theme, scope_eligible: "false" },
+        { ...theme, scope_eligible: null },
+      ],
+      groups: schema.groups,
+      tiers: {},
+    });
+
+    expect(decoded.settings).toEqual([]);
+  });
+
+  it("caps raw schema arrays before looking for acceptable entries", () => {
+    const theme = schema.settings.find((def) => def.key === "theme");
+    expect(theme).toBeDefined();
+
+    const settings: Array<SettingDef | null> = Array.from(
+      { length: SETTING_SCHEMA_MAX_ITEMS },
+      () => null,
+    );
+    settings.push(theme!);
+    const groups = Array.from({ length: SETTING_SCHEMA_MAX_GROUPS }, () => "unknown");
+    groups.push("appearance");
+
+    const decoded = adaptSettingsSchema({ settings, groups, tiers: {} });
+    expect(decoded.settings).toEqual([]);
+    expect(decoded.groups).toEqual([]);
+
+    const tooManyMembers = Array.from(
+      { length: SETTING_ENUM_MAX_MEMBERS + 1 },
+      (_, index) => `member-${index}`,
+    );
+    const enumDecoded = adaptSettingsSchema({
+      settings: [
+        {
+          ...theme!,
+          value_type: { type: "enum", members: tooManyMembers },
+        },
+      ],
+      groups: ["appearance"],
+    });
+    expect(enumDecoded.settings).toEqual([]);
+  });
+
+  it("rejects retained metadata outside scalar resource bounds", () => {
+    const byKey = new Map(schema.settings.map((def) => [def.key, def]));
+    const theme = byKey.get("theme")!;
+    const confidence = byKey.get("confidence_floor")!;
+    const label = byKey.get("label_filter")!;
+    const graphControls = byKey.get("graph_controls")!;
+
+    const decoded = adaptSettingsSchema({
+      settings: [
+        { ...theme, default: "x".repeat(SETTING_DEFAULT_MAX_CHARS + 1) },
+        { ...theme, order: SETTING_ORDER_MAX + 1 },
+        {
+          ...confidence,
+          value_type: {
+            type: "integer",
+            min: -SETTING_NUMERIC_ABS_MAX - 1,
+            max: 100,
+          },
+        },
+        { ...confidence, step: SETTING_NUMERIC_ABS_MAX + 1 },
+        { ...confidence, unit: "x".repeat(65) },
+        {
+          ...label,
+          value_type: { type: "string", max_len: SETTING_VALUE_LIMIT_MAX + 1 },
+        },
+        {
+          ...graphControls,
+          value_type: {
+            type: "graph_controls",
+            max_entries: SETTING_VALUE_LIMIT_MAX + 1,
+          },
+        },
+      ],
+      groups: schema.groups,
+    });
+
+    expect(decoded.settings).toEqual([]);
   });
 
   it("tolerates a sparse / malformed body without throwing (tolerant adapter)", () => {
@@ -172,9 +398,8 @@ describe("settings schema (live engine GET /settings/schema)", () => {
       ],
       groups: ["G"],
     });
-    expect(degraded.settings).toHaveLength(1);
-    expect(degraded.settings[0].control).toBe("text");
-    expect(degraded.settings[0].value_type).toEqual({ type: "string", max_len: 4096 });
+    expect(degraded.settings).toEqual([]);
+    expect(degraded.groups).toEqual([]);
   });
 });
 
@@ -234,6 +459,27 @@ describe("settings effective-value resolution", () => {
       type: "enum",
       members: ["system", ...THEMES],
     });
+  });
+
+  it("resolves the global raw language preference and rejects scoped history", () => {
+    expect(resolveLanguagePreference(schema, undefined)).toBeNull();
+    expect(
+      resolveLanguagePreference(schema, { global: {}, scoped: {}, tiers: {} }),
+    ).toBe("system");
+    expect(
+      resolveLanguagePreference(schema, {
+        global: { language: "en" },
+        scoped: { [scope]: { language: "system" } },
+        tiers: {},
+      }),
+    ).toBe("en");
+    expect(
+      resolveLanguagePreference(schema, {
+        global: { language: "fr" },
+        scoped: {},
+        tiers: {},
+      }),
+    ).toBe("en");
   });
 
   it("resolves app-consumed settings by key through the served schema", () => {
@@ -304,10 +550,10 @@ describe("settings effective-value resolution", () => {
   it("groups and orders settings per the engine-declared schema", () => {
     const groups = resolveSettings(schema, undefined, scope);
     // Appearance precedes Graph; theme + reduce_motion lead the Appearance group.
-    expect(groups.map((g) => g.name)).toEqual(
-      expect.arrayContaining(["Appearance", "Graph"]),
+    expect(groups.map((g) => g.id)).toEqual(
+      expect.arrayContaining(["appearance", "graph"]),
     );
-    const appearance = groups.find((g) => g.name === "Appearance")!;
+    const appearance = groups.find((g) => g.id === "appearance")!;
     expect(appearance.settings.map((s) => s.def.key).slice(0, 2)).toEqual([
       CONSUMED_SETTING_KEYS.theme,
       CONSUMED_SETTING_KEYS.reduceMotion,

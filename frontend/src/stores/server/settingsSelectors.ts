@@ -19,6 +19,7 @@ import type {
   GraphCorpus,
   GraphGranularity,
   SettingDef,
+  SettingGroupId,
   SettingsSchema,
   SettingsState,
 } from "./engine";
@@ -26,6 +27,7 @@ import { normalizeStoreScope } from "./scopeIdentity";
 
 /** Settings with app-level consumers beyond the generic schema-rendered dialog. */
 export const CONSUMED_SETTING_KEYS = {
+  language: "language",
   theme: "theme",
   reduceMotion: "reduce_motion",
   defaultGranularity: "default_granularity",
@@ -74,9 +76,11 @@ export interface EffectiveSetting {
 
 /** A settings group (category) with its resolved members, in declared order. */
 export interface SettingsGroup {
-  name: string;
+  id: SettingGroupId;
   settings: EffectiveSetting[];
 }
+
+export type LanguagePreference = "system" | "en";
 
 export const normalizeSettingsScope = normalizeStoreScope;
 
@@ -147,6 +151,27 @@ export function resolveReduceMotionSetting(
     CONSUMED_SETTING_KEYS.reduceMotion,
   );
   return setting ? decodeBool(setting.value) : false;
+}
+
+/** Resolve the authoritative global language preference as raw identity. */
+export function resolveLanguagePreference(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+): LanguagePreference | null {
+  if (schema === undefined || settings === undefined) return null;
+  const def = settingDefByKey(schema, CONSUMED_SETTING_KEYS.language);
+  if (
+    def === undefined ||
+    def.scope_eligible ||
+    def.value_type.type !== "enum" ||
+    def.value_type.members.length !== 2 ||
+    def.value_type.members[0] !== "system" ||
+    def.value_type.members[1] !== "en"
+  ) {
+    return "en";
+  }
+  const value = resolveEffective(def, settings, null).value;
+  return value === "system" || value === "en" ? value : "en";
 }
 
 /** Whether a setting row can target the active scope. */
@@ -280,9 +305,8 @@ export function resolveGraphSettingsDefaults(
 /**
  * Resolve all declared settings for the active scope, grouped and ordered per
  * the engine-owned schema. Groups appear in the schema's declared `groups`
- * order; within a group, settings sort by their declared `order`. A setting
- * whose group is not in the declared list is appended under a trailing group of
- * that name (defensive — keeps a newer engine-declared group visible).
+ * order; within a group, settings sort by their declared `order`. Undeclared
+ * groups remain suppressed until the frontend admits their presentation IDs.
  */
 export function resolveSettings(
   schema: SettingsSchema | undefined,
@@ -290,30 +314,28 @@ export function resolveSettings(
   activeScope: unknown,
 ): SettingsGroup[] {
   if (!schema) return [];
-  const byGroup = new Map<string, EffectiveSetting[]>();
+  const byGroup = new Map<SettingGroupId, EffectiveSetting[]>();
   for (const def of schema.settings) {
     // The graph-controls override map is edited from the graph-controls overlay
     // panel, NOT the settings dialog (graph-control-standardisation): skip its
     // control kind so the dialog never renders it.
-    if (def.control === "graph_controls") continue;
+    if (def.control === "graph_controls" || def.control === "section_folds") continue;
     const resolved = resolveEffective(def, settings, activeScope);
-    const list = byGroup.get(def.group) ?? [];
+    const list = byGroup.get(def.display.group) ?? [];
     list.push(resolved);
-    byGroup.set(def.group, list);
+    byGroup.set(def.display.group, list);
   }
 
   const ordered: SettingsGroup[] = [];
-  const seen = new Set<string>();
-  const emit = (name: string): void => {
-    const list = byGroup.get(name);
-    if (!list || seen.has(name)) return;
-    seen.add(name);
+  const seen = new Set<SettingGroupId>();
+  const emit = (id: SettingGroupId): void => {
+    const list = byGroup.get(id);
+    if (!list || seen.has(id)) return;
+    seen.add(id);
     list.sort((a, b) => a.def.order - b.def.order);
-    ordered.push({ name, settings: list });
+    ordered.push({ id, settings: list });
   };
-  for (const name of schema.groups) emit(name);
-  // Any group not named in the declared order (defensive) follows, alphabetically.
-  for (const name of [...byGroup.keys()].sort()) emit(name);
+  for (const id of schema.groups) emit(id);
   return ordered;
 }
 

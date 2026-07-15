@@ -14,7 +14,14 @@ import {
 } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
 
-export function NumberControl({ def, value, onChange, disabled, id }: ControlProps) {
+export function NumberControl({
+  def,
+  label,
+  value,
+  onChange,
+  disabled,
+  id,
+}: ControlProps) {
   const view = deriveSettingsNumberControlView(def, value);
   return (
     <div className="flex shrink-0 items-center gap-fg-2">
@@ -26,7 +33,7 @@ export function NumberControl({ def, value, onChange, disabled, id }: ControlPro
         step={view.step}
         value={view.current}
         disabled={disabled}
-        aria-label={def.label}
+        aria-label={label}
         aria-valuetext={view.ariaValueText}
         onChange={(e) => {
           const next = settingsNumberControlCommitValue(def, e.currentTarget.value);

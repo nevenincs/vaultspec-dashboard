@@ -17,12 +17,14 @@ import type { ControlProps } from "./types";
 /** Control kinds the settings DIALOG renders. `graph_controls` is excluded — it is
  *  edited from the graph-controls overlay panel, not the dialog (the dialog filters
  *  it out upstream; graph-control-standardisation). */
-type DialogControlKind = Exclude<SettingControlKind, "graph_controls">;
+type DialogControlKind = Exclude<
+  SettingControlKind,
+  "graph_controls" | "section_folds"
+>;
 
 /** The kind → renderer map, total over the dialog-rendered kinds. The adapter
- *  degrades an unknown engine control kind to `text`, and a non-dialog kind
- *  (graph_controls) is filtered upstream, so the `?? TextControl` fallback is a
- *  safety net rather than a routine path. */
+ *  admits only known dialog controls. Unknown and non-dialog controls render
+ *  nothing so wire metadata can never become user-facing copy. */
 export const CONTROL_RENDERERS: Record<
   DialogControlKind,
   ComponentType<ControlProps>
@@ -36,7 +38,7 @@ export const CONTROL_RENDERERS: Record<
 
 /** Render the control for a declared setting by dispatching on its control kind. */
 export function SettingControl(props: ControlProps) {
-  const Renderer =
-    CONTROL_RENDERERS[props.def.control as DialogControlKind] ?? TextControl;
+  const Renderer = CONTROL_RENDERERS[props.def.control as DialogControlKind];
+  if (Renderer === undefined) return null;
   return <Renderer {...props} />;
 }

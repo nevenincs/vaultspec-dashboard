@@ -33,9 +33,7 @@ const def: SettingDef = {
   default: "{}",
   scope_eligible: false,
   control: "keybinding",
-  label: "Keyboard shortcuts",
-  description: "",
-  group: "Keybindings",
+  display: { id: "keybindings.shortcuts", group: "keybindings", enum_members: [] },
   order: 1,
 };
 
@@ -45,7 +43,12 @@ function KeybindingHarness({ initialValue = "{}" }: { initialValue?: string }) {
     <>
       <output data-testid="keybinding-value">{value}</output>
       <div data-testid="keybinding-control">
-        <KeybindingControl def={def} value={value} onChange={setValue} />
+        <KeybindingControl
+          def={def}
+          label="Keyboard shortcuts"
+          value={value}
+          onChange={setValue}
+        />
       </div>
     </>
   );

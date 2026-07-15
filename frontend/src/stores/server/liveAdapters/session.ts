@@ -8,6 +8,10 @@ import type {
   SessionState,
   SettingControlKind,
   SettingDef,
+  SettingDisplay,
+  SettingDisplayId,
+  SettingEnumDisplayId,
+  SettingGroupId,
   SettingValueType,
   SettingsSchema,
   SettingsState,
@@ -217,103 +221,511 @@ const CONTROL_KINDS: SettingControlKind[] = [
   "slider",
   "keybinding",
   "graph_controls",
+  "section_folds",
 ];
 
-function normalizeSchemaString(value: unknown, fallback: string): string {
-  if (typeof value !== "string") return fallback;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : fallback;
-}
+export const SETTING_SCHEMA_MAX_ITEMS = 256;
+export const SETTING_SCHEMA_MAX_GROUPS = 16;
+export const SETTING_ENUM_MAX_MEMBERS = 64;
+export const SETTING_DISPLAY_ID_MAX_CHARS = 64;
+export const SETTING_DEFAULT_MAX_CHARS = 4096;
+export const SETTING_VALUE_LIMIT_MAX = 4096;
+export const SETTING_NUMERIC_ABS_MAX = 1_000_000;
+export const SETTING_ORDER_MAX = 10_000;
+
+type DisplaySpec = Readonly<{
+  id: SettingDisplayId;
+  group: SettingGroupId;
+  control: SettingControlKind;
+  valueType: SettingValueType["type"];
+  defaultValue: string;
+  scopeEligible: boolean;
+  order: number;
+  min?: number;
+  max?: number;
+  maxLen?: number;
+  maxEntries?: number;
+  step?: number;
+  unit?: string;
+  enumMembers?: readonly (readonly [string, SettingEnumDisplayId])[];
+  legacy?: readonly [
+    label: string,
+    description: string,
+    group: string,
+    placeholder?: string,
+  ];
+}>;
+
+const DISPLAY_BY_SETTING_KEY: Readonly<Record<string, DisplaySpec>> = Object.freeze({
+  theme: {
+    id: "appearance.theme",
+    group: "appearance",
+    control: "segmented",
+    valueType: "enum",
+    defaultValue: "system",
+    scopeEligible: false,
+    order: 1,
+    enumMembers: [
+      ["system", "theme.system"],
+      ["light", "theme.light"],
+      ["dark", "theme.dark"],
+      ["high-contrast", "theme.highContrast"],
+    ],
+    legacy: ["Theme", "The dashboard color theme.", "Appearance"],
+  },
+  reduce_motion: {
+    id: "appearance.reduceMotion",
+    group: "appearance",
+    control: "switch",
+    valueType: "bool",
+    defaultValue: "false",
+    scopeEligible: false,
+    order: 2,
+    legacy: ["Reduce motion", "Minimise animation and transitions.", "Appearance"],
+  },
+  right_rail_section_folds: {
+    id: "appearance.activitySectionFolds",
+    group: "appearance",
+    control: "section_folds",
+    valueType: "section_folds",
+    defaultValue: "{}",
+    scopeEligible: false,
+    order: 3,
+    maxEntries: 64,
+    legacy: [
+      "Activity rail section folds",
+      "Which activity-rail sections are kept open.",
+      "Appearance",
+    ],
+  },
+  language: {
+    id: "appearance.language",
+    group: "appearance",
+    control: "segmented",
+    valueType: "enum",
+    defaultValue: "system",
+    scopeEligible: false,
+    order: 4,
+    enumMembers: [
+      ["system", "language.system"],
+      ["en", "language.english"],
+    ],
+  },
+  default_granularity: {
+    id: "graph.defaultGranularity",
+    group: "graph",
+    control: "segmented",
+    valueType: "enum",
+    defaultValue: "document",
+    scopeEligible: true,
+    order: 1,
+    enumMembers: [
+      ["feature", "granularity.feature"],
+      ["document", "granularity.document"],
+    ],
+    legacy: ["Default granularity", "The graph detail level on load.", "Graph"],
+  },
+  graph_corpus: {
+    id: "graph.corpus",
+    group: "graph",
+    control: "segmented",
+    valueType: "enum",
+    defaultValue: "vault",
+    scopeEligible: true,
+    order: 2,
+    enumMembers: [
+      ["vault", "corpus.vault"],
+      ["code", "corpus.code"],
+    ],
+    legacy: [
+      "Graph corpus",
+      "Which dataset the graph maps: the vault or the codebase.",
+      "Graph",
+    ],
+  },
+  timeline_date_criterion: {
+    id: "graph.timelineDate",
+    group: "graph",
+    control: "segmented",
+    valueType: "enum",
+    defaultValue: "created",
+    scopeEligible: true,
+    order: 6,
+    enumMembers: [
+      ["created", "timelineDate.created"],
+      ["modified", "timelineDate.modified"],
+      ["stamped", "timelineDate.stamped"],
+    ],
+    legacy: [
+      "Timeline date",
+      "Which date the timeline orders and filters documents by.",
+      "Graph",
+    ],
+  },
+  confidence_floor: {
+    id: "graph.confidenceFloor",
+    group: "graph",
+    control: "slider",
+    valueType: "integer",
+    defaultValue: "0",
+    scopeEligible: false,
+    order: 3,
+    min: 0,
+    max: 100,
+    step: 1,
+    unit: "%",
+    legacy: ["Confidence floor", "Hide inferred edges below this certainty.", "Graph"],
+  },
+  label_filter: {
+    id: "graph.labelFilter",
+    group: "graph",
+    control: "text",
+    valueType: "string",
+    defaultValue: "",
+    scopeEligible: false,
+    order: 4,
+    maxLen: 200,
+    legacy: [
+      "Label filter",
+      "Only show nodes whose stem matches.",
+      "Graph",
+      "type a stem…",
+    ],
+  },
+  graph_controls: {
+    id: "graph.controls",
+    group: "graph",
+    control: "graph_controls",
+    valueType: "graph_controls",
+    defaultValue: "{}",
+    scopeEligible: false,
+    order: 5,
+    maxEntries: 256,
+    legacy: [
+      "Graph controls",
+      "Persisted force and appearance tuning for the graph.",
+      "Graph",
+    ],
+  },
+  keybindings: {
+    id: "keybindings.shortcuts",
+    group: "keybindings",
+    control: "keybinding",
+    valueType: "keybindings",
+    defaultValue: "{}",
+    scopeEligible: false,
+    order: 1,
+    maxEntries: 256,
+    legacy: [
+      "Keyboard shortcuts",
+      "Customize the chord for any command.",
+      "Keybindings",
+    ],
+  },
+});
+
+const LEGACY_GROUP_IDS: Readonly<Record<string, SettingGroupId>> = Object.freeze({
+  Appearance: "appearance",
+  Graph: "graph",
+  Keybindings: "keybindings",
+});
 
 function normalizeOptionalSchemaString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
-  const normalized = value.trim();
-  return normalized.length > 0 ? normalized : undefined;
+  return value.length > 0 && value.length <= 64 && value === value.trim()
+    ? value
+    : undefined;
 }
 
 function normalizeSchemaStringList(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
+  if (value.length > SETTING_ENUM_MAX_MEMBERS) return [];
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const entry of value) {
+  for (const entry of value.slice(0, SETTING_ENUM_MAX_MEMBERS)) {
     if (typeof entry !== "string") continue;
     const normalized = entry.trim();
     if (normalized.length === 0 || seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
+    if (out.length >= SETTING_ENUM_MAX_MEMBERS) break;
   }
   return out;
 }
 
-function normalizeSettingControlKind(value: unknown): SettingControlKind {
-  const normalized = normalizeOptionalSchemaString(value);
-  return normalized !== undefined && (CONTROL_KINDS as string[]).includes(normalized)
-    ? (normalized as SettingControlKind)
-    : "text";
+function normalizeSettingControlKind(value: unknown): SettingControlKind | null {
+  return typeof value === "string" && (CONTROL_KINDS as string[]).includes(value)
+    ? (value as SettingControlKind)
+    : null;
 }
 
-/** Decode one `value_type` tagged union from the wire, defaulting unknown or
- *  malformed shapes to a permissive `string` so a sparse or newer wire never
- *  throws (the tolerant-adapter property). */
-function adaptValueType(value: unknown): SettingValueType {
-  if (!isRec(value) || typeof value.type !== "string") {
-    return { type: "string", max_len: 4096 };
-  }
+function boundedInteger(value: unknown, min: number, max: number): number | null {
+  return typeof value === "number" &&
+    Number.isSafeInteger(value) &&
+    value >= min &&
+    value <= max
+    ? value
+    : null;
+}
+
+function adaptValueType(value: unknown): SettingValueType | null {
+  if (!isRec(value) || typeof value.type !== "string") return null;
   switch (value.type) {
-    case "enum":
+    case "enum": {
+      const members = normalizeSchemaStringList(value.members);
+      if (
+        !Array.isArray(value.members) ||
+        value.members.length === 0 ||
+        value.members.length !== members.length ||
+        value.members.some((member, index) => member !== members[index])
+      ) {
+        return null;
+      }
       return {
         type: "enum",
-        members: normalizeSchemaStringList(value.members),
+        members,
       };
+    }
     case "bool":
       return { type: "bool" };
-    case "integer":
+    case "integer": {
+      const min = boundedInteger(
+        value.min,
+        -SETTING_NUMERIC_ABS_MAX,
+        SETTING_NUMERIC_ABS_MAX,
+      );
+      const max = boundedInteger(
+        value.max,
+        -SETTING_NUMERIC_ABS_MAX,
+        SETTING_NUMERIC_ABS_MAX,
+      );
+      if (min === null || max === null || min > max) return null;
       return {
         type: "integer",
-        min: typeof value.min === "number" ? value.min : 0,
-        max: typeof value.max === "number" ? value.max : 100,
+        min,
+        max,
       };
-    case "keybindings":
+    }
+    case "keybindings": {
+      const maxEntries = boundedInteger(value.max_entries, 0, SETTING_VALUE_LIMIT_MAX);
+      if (maxEntries === null) return null;
       return {
         type: "keybindings",
-        max_entries: typeof value.max_entries === "number" ? value.max_entries : 256,
+        max_entries: maxEntries,
       };
-    case "graph_controls":
+    }
+    case "graph_controls": {
+      const maxEntries = boundedInteger(value.max_entries, 0, SETTING_VALUE_LIMIT_MAX);
+      if (maxEntries === null) return null;
       return {
         type: "graph_controls",
-        max_entries: typeof value.max_entries === "number" ? value.max_entries : 256,
+        max_entries: maxEntries,
       };
-    case "string":
-    default:
+    }
+    case "section_folds": {
+      const maxEntries = boundedInteger(value.max_entries, 0, SETTING_VALUE_LIMIT_MAX);
+      if (maxEntries === null) return null;
       return {
-        type: "string",
-        max_len: typeof value.max_len === "number" ? value.max_len : 4096,
+        type: "section_folds",
+        max_entries: maxEntries,
       };
+    }
+    case "string": {
+      const maxLen = boundedInteger(value.max_len, 0, SETTING_VALUE_LIMIT_MAX);
+      if (maxLen === null) return null;
+      return { type: "string", max_len: maxLen };
+    }
+    default:
+      return null;
   }
 }
 
-/** Decode one declared setting from the wire, defaulting every missing field to
- *  a safe value. An unknown control kind falls back to `text` (the most generic
- *  renderer), so a newer engine-declared control never crashes an older client. */
+function semanticIdIsWellFormed(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= SETTING_DISPLAY_ID_MAX_CHARS &&
+    /^[a-z][A-Za-z0-9]*(?:\.[A-Za-z0-9]+)*$/.test(value)
+  );
+}
+
+function adaptSettingDisplay(
+  value: unknown,
+  key: string,
+  valueType: SettingValueType,
+  source: Readonly<Record<string, unknown>>,
+): SettingDisplay | null {
+  const spec = Object.hasOwn(DISPLAY_BY_SETTING_KEY, key)
+    ? DISPLAY_BY_SETTING_KEY[key]
+    : undefined;
+  if (spec === undefined) return null;
+
+  const expectedMembers = spec.enumMembers ?? [];
+  if (valueType.type === "enum") {
+    if (
+      expectedMembers.length !== valueType.members.length ||
+      expectedMembers.some(([member], index) => valueType.members[index] !== member)
+    ) {
+      return null;
+    }
+  } else if (expectedMembers.length > 0) {
+    return null;
+  }
+
+  // An absent display block is the one recognized legacy schema. Its resolved
+  // English fields are deliberately ignored and never copied into client state.
+  if (value === undefined) {
+    const legacy = spec.legacy;
+    if (
+      legacy === undefined ||
+      source.label !== legacy[0] ||
+      source.description !== legacy[1] ||
+      source.group !== legacy[2] ||
+      source.placeholder !== legacy[3]
+    ) {
+      return null;
+    }
+    return {
+      id: spec.id,
+      group: spec.group,
+      enum_members: expectedMembers.map(([member, id]) => ({ value: member, id })),
+    };
+  }
+  if (!isRec(value)) return null;
+  if (
+    !semanticIdIsWellFormed(value.id) ||
+    !semanticIdIsWellFormed(value.group) ||
+    value.id !== spec.id ||
+    value.group !== spec.group
+  ) {
+    return null;
+  }
+
+  const rawMembers = value.enum_members;
+  if (expectedMembers.length === 0) {
+    if (
+      rawMembers !== undefined &&
+      (!Array.isArray(rawMembers) || rawMembers.length > 0)
+    ) {
+      return null;
+    }
+    return { id: spec.id, group: spec.group, enum_members: [] };
+  }
+  if (!Array.isArray(rawMembers) || rawMembers.length !== expectedMembers.length) {
+    return null;
+  }
+  for (let index = 0; index < expectedMembers.length; index += 1) {
+    const raw = rawMembers[index];
+    const [expectedValue, expectedId] = expectedMembers[index];
+    if (
+      !isRec(raw) ||
+      raw.value !== expectedValue ||
+      !semanticIdIsWellFormed(raw.id) ||
+      raw.id !== expectedId
+    ) {
+      return null;
+    }
+  }
+  return {
+    id: spec.id,
+    group: spec.group,
+    enum_members: expectedMembers.map(([member, id]) => ({ value: member, id })),
+  };
+}
+
+function valueTypeMatchesSpec(valueType: SettingValueType, spec: DisplaySpec): boolean {
+  if (valueType.type !== spec.valueType) return false;
+  switch (valueType.type) {
+    case "integer":
+      return valueType.min === spec.min && valueType.max === spec.max;
+    case "string":
+      return valueType.max_len === spec.maxLen;
+    case "keybindings":
+    case "graph_controls":
+    case "section_folds":
+      return valueType.max_entries === spec.maxEntries;
+    default:
+      return true;
+  }
+}
+
 function adaptSettingDef(value: unknown): SettingDef | null {
   if (!isRec(value)) return null;
-  const key = normalizeOptionalSchemaString(value.key);
-  if (key === undefined) return null;
+  if (
+    typeof value.key !== "string" ||
+    value.key.length === 0 ||
+    value.key.length > 256 ||
+    value.key !== value.key.trim()
+  ) {
+    return null;
+  }
+  const key = value.key;
+  const spec = Object.hasOwn(DISPLAY_BY_SETTING_KEY, key)
+    ? DISPLAY_BY_SETTING_KEY[key]
+    : undefined;
+  if (spec === undefined) return null;
   const control = normalizeSettingControlKind(value.control);
+  const valueType = adaptValueType(value.value_type);
+  if (control === null || valueType === null) return null;
+  const defaultValue =
+    typeof value.default === "string" &&
+    value.default.length <= SETTING_DEFAULT_MAX_CHARS
+      ? value.default
+      : null;
+  const order = boundedInteger(value.order, 0, SETTING_ORDER_MAX);
+  const step =
+    value.step === undefined
+      ? undefined
+      : boundedInteger(value.step, 1, SETTING_NUMERIC_ABS_MAX);
+  if (defaultValue === null || order === null || step === null) return null;
+  const unit = normalizeOptionalSchemaString(value.unit);
+  if (value.unit !== undefined && unit === undefined) return null;
+  if (
+    typeof value.scope_eligible !== "boolean" ||
+    control !== spec.control ||
+    !valueTypeMatchesSpec(valueType, spec) ||
+    defaultValue !== spec.defaultValue ||
+    value.scope_eligible !== spec.scopeEligible ||
+    order !== spec.order ||
+    step !== spec.step ||
+    unit !== spec.unit
+  ) {
+    return null;
+  }
+  const display = adaptSettingDisplay(value.display, key, valueType, value);
+  if (display === null) return null;
   return {
     key,
-    value_type: adaptValueType(value.value_type),
-    default: typeof value.default === "string" ? value.default : "",
-    scope_eligible: value.scope_eligible === true,
+    value_type: valueType,
+    default: defaultValue,
+    scope_eligible: spec.scopeEligible,
     control,
-    label: normalizeSchemaString(value.label, key),
-    description: normalizeSchemaString(value.description, ""),
-    group: normalizeSchemaString(value.group, "General"),
-    order: typeof value.order === "number" ? value.order : 0,
-    step: typeof value.step === "number" ? value.step : undefined,
-    unit: normalizeOptionalSchemaString(value.unit),
-    placeholder: normalizeOptionalSchemaString(value.placeholder),
+    display,
+    order,
+    step,
+    unit,
   };
+}
+
+function adaptSettingGroups(value: unknown): SettingGroupId[] {
+  if (!Array.isArray(value)) return [];
+  const groups: SettingGroupId[] = [];
+  const seen = new Set<SettingGroupId>();
+  for (const raw of value.slice(0, SETTING_SCHEMA_MAX_GROUPS)) {
+    if (typeof raw !== "string") continue;
+    const legacyGroup = Object.hasOwn(LEGACY_GROUP_IDS, raw)
+      ? LEGACY_GROUP_IDS[raw]
+      : undefined;
+    const group =
+      raw === "appearance" || raw === "graph" || raw === "keybindings"
+        ? raw
+        : legacyGroup;
+    if (group === undefined || seen.has(group)) continue;
+    seen.add(group);
+    groups.push(group);
+    if (groups.length >= SETTING_SCHEMA_MAX_GROUPS) break;
+  }
+  return groups;
 }
 
 /** Live `/settings/schema` → the internal schema. TOLERANT: an absent settings
@@ -321,9 +733,17 @@ function adaptSettingDef(value: unknown): SettingDef | null {
  *  throwing, and the chrome never reads the raw tiers block. */
 export function adaptSettingsSchema(body: unknown): SettingsSchema {
   if (!isRec(body)) return { settings: [], groups: [], tiers: {} };
-  const settings = Array.isArray(body.settings)
-    ? body.settings.map(adaptSettingDef).filter((d): d is SettingDef => d !== null)
-    : [];
-  const groups = normalizeSchemaStringList(body.groups);
+  const settings: SettingDef[] = [];
+  const seenKeys = new Set<string>();
+  if (Array.isArray(body.settings)) {
+    for (const raw of body.settings.slice(0, SETTING_SCHEMA_MAX_ITEMS)) {
+      const def = adaptSettingDef(raw);
+      if (def === null || seenKeys.has(def.key)) continue;
+      seenKeys.add(def.key);
+      settings.push(def);
+      if (settings.length >= SETTING_SCHEMA_MAX_ITEMS) break;
+    }
+  }
+  const groups = adaptSettingGroups(body.groups);
   return { settings, groups, tiers: (body.tiers ?? {}) as TiersBlock };
 }

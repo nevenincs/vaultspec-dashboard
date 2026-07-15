@@ -633,7 +633,8 @@ export type SettingValueType =
   // OBJECT STRING `{control_id: number|string}`, bounded by `max_entries`. The
   // frontend `graphControlSchema` owns the control vocabulary + ranges; the engine
   // keeps the value well-formed + bounded. Decoded by `parseGraphControlOverrides`.
-  | { type: "graph_controls"; max_entries: number };
+  | { type: "graph_controls"; max_entries: number }
+  | { type: "section_folds"; max_entries: number };
 
 /** The UI control a setting renders as (the schema-driven render hint). The
  *  `keybinding` kind renders the chord-recorder catalog (KeybindingControl). */
@@ -645,7 +646,49 @@ export type SettingControlKind =
   | "keybinding"
   // Edited from the graph-controls overlay panel, NOT the settings dialog — the
   // dialog SKIPS this control kind (graph-control-standardisation).
-  | "graph_controls";
+  | "graph_controls"
+  | "section_folds";
+
+export type SettingGroupId = "appearance" | "graph" | "keybindings";
+
+export type SettingDisplayId =
+  | "appearance.theme"
+  | "appearance.reduceMotion"
+  | "appearance.activitySectionFolds"
+  | "appearance.language"
+  | "graph.defaultGranularity"
+  | "graph.corpus"
+  | "graph.timelineDate"
+  | "graph.confidenceFloor"
+  | "graph.labelFilter"
+  | "graph.controls"
+  | "keybindings.shortcuts";
+
+export type SettingEnumDisplayId =
+  | "theme.system"
+  | "theme.light"
+  | "theme.dark"
+  | "theme.highContrast"
+  | "language.system"
+  | "language.english"
+  | "granularity.feature"
+  | "granularity.document"
+  | "corpus.vault"
+  | "corpus.code"
+  | "timelineDate.created"
+  | "timelineDate.modified"
+  | "timelineDate.stamped";
+
+export interface SettingEnumDisplay {
+  value: string;
+  id: SettingEnumDisplayId;
+}
+
+export interface SettingDisplay {
+  id: SettingDisplayId;
+  group: SettingGroupId;
+  enum_members: SettingEnumDisplay[];
+}
 
 /** One declared setting (GET /settings/schema data.settings[]). */
 export interface SettingDef {
@@ -656,22 +699,18 @@ export interface SettingDef {
   /** Whether a per-scope override is allowed (false = global only). */
   scope_eligible: boolean;
   control: SettingControlKind;
-  label: string;
-  description: string;
-  group: string;
+  display: SettingDisplay;
   order: number;
   /** Slider step (slider controls only). */
   step?: number;
   /** Unit suffix for display, e.g. "%" (slider controls only). */
   unit?: string;
-  /** Placeholder hint for an empty field (text controls only). */
-  placeholder?: string;
 }
 
 /** The served settings schema (GET /settings/schema data): the declared settings
  *  plus the engine-owned group display order. */
 export interface SettingsSchema {
   settings: SettingDef[];
-  groups: string[];
+  groups: SettingGroupId[];
   tiers: TiersBlock;
 }

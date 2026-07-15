@@ -32,9 +32,7 @@ const integerDef: SettingDef = {
   default: "25",
   scope_eligible: true,
   control: "slider",
-  label: "Confidence floor",
-  description: "",
-  group: "Graph",
+  display: { id: "graph.confidenceFloor", group: "graph", enum_members: [] },
   order: 1,
   step: 5,
   unit: "%",
@@ -46,9 +44,15 @@ const enumDef: SettingDef = {
   default: "system",
   scope_eligible: false,
   control: "segmented",
-  label: "Theme",
-  description: "",
-  group: "Appearance",
+  display: {
+    id: "appearance.theme",
+    group: "appearance",
+    enum_members: [
+      { value: "system", id: "theme.system" },
+      { value: "light", id: "theme.light" },
+      { value: "dark", id: "theme.dark" },
+    ],
+  },
   order: 1,
 };
 
@@ -58,12 +62,15 @@ const textDef: SettingDef = {
   default: "",
   scope_eligible: false,
   control: "text",
-  label: "Label filter",
-  description: "",
-  group: "Graph",
+  display: { id: "graph.labelFilter", group: "graph", enum_members: [] },
   order: 3,
-  placeholder: "Filter labels",
 };
+
+const enumLabels = new Map([
+  ["system", "System"],
+  ["light", "Light"],
+  ["dark", "Dark"],
+]);
 
 const keybindingDefs = [
   {
@@ -84,7 +91,7 @@ const keybindingDefs = [
 
 describe("settings control view projections", () => {
   it("projects enum segment rows and keyboard targets from one seam", () => {
-    const view = deriveSettingsEnumControlView(enumDef, "light");
+    const view = deriveSettingsEnumControlView(enumDef, "light", enumLabels);
 
     expect(view).toEqual({
       rootClassName:
@@ -116,7 +123,7 @@ describe("settings control view projections", () => {
   });
 
   it("falls back to a declared enum member when persisted state is malformed", () => {
-    const view = deriveSettingsEnumControlView(enumDef, "solarized");
+    const view = deriveSettingsEnumControlView(enumDef, "solarized", enumLabels);
 
     expect(
       view.options.map((option) => [option.value, option.active, option.tabIndex]),
@@ -129,12 +136,35 @@ describe("settings control view projections", () => {
     const fallbackToFirst = deriveSettingsEnumControlView(
       { ...enumDef, default: "missing" },
       "solarized",
+      enumLabels,
     );
     expect(fallbackToFirst.options[0]).toMatchObject({
       value: "system",
       active: true,
       tabIndex: 0,
     });
+  });
+
+  it("renders no enum options when localized labels are incomplete", () => {
+    const hostile = {
+      ...enumDef,
+      value_type: {
+        type: "enum" as const,
+        members: ["system", "high-contrast"],
+      },
+      display: {
+        ...enumDef.display,
+        enum_members: [
+          { value: "system", id: "theme.system" as const },
+          { value: "high-contrast", id: "theme.highContrast" as const },
+        ],
+      },
+    };
+    expect(
+      deriveSettingsEnumControlView(hostile, "system", new Map([["system", "System"]]))
+        .options,
+    ).toEqual([]);
+    expect(deriveSettingsEnumControlView(hostile, "system").options).toEqual([]);
   });
 
   it("projects switch state and next wire value from one seam", () => {

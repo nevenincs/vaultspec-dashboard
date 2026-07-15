@@ -8,8 +8,14 @@
 import type { SettingDef } from "../../../stores/server/engine";
 
 export interface ControlProps {
-  /** The declared setting (carries type, constraints, label, unit, etc.). */
+  /** The declared setting carries behavior and raw wire identity only. */
   def: SettingDef;
+  /** Catalog-resolved user-facing label. */
+  label: string;
+  /** Catalog-resolved text-field hint, when declared for the setting. */
+  placeholder?: string;
+  /** Catalog-resolved labels keyed by exact enum wire value. */
+  enumLabels?: ReadonlyMap<string, string>;
   /** The current effective string value. */
   value: string;
   /** Emit the next string value to persist. */
