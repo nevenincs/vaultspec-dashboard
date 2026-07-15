@@ -1687,3 +1687,25 @@ catalogs, plural rules, runtime state, and React behavior without doubles, skips
 expected failures. Exact baseline reconciliation removed one Escape literal entry and
 added none, reducing the scanner from 1,409 to 1,408 findings. S32 is accepted with no
 open findings.
+
+### W02.P05.S146 review | pass | Refresh data uses one cross-plane descriptor
+
+This step, implemented through delegated Terra rollout work, replaces the refresh-data
+action and shortcut bridges with one frozen canonical descriptor. Palette and global
+menu composition preserve that exact descriptor reference.
+
+Review confirmed the stable action ID, shortcut chord and context, General group, icon,
+menu section, palette family, time-travel availability, and full query-refresh behavior.
+Page reload remains a separate recovery action with its own message key.
+
+English, French, and Arabic resolve genuine refresh-data wording without fallback. The
+copy is concise, imperative, sentence case, and contains no implementation metadata or
+em dash.
+
+Independent Sol verification approved the step with no findings. Terra's focused suite
+passed 17 tests across five files, and TypeScript, targeted ESLint, the localization
+scanner, diff checks, and the complete frontend lint recipe passed. The context-free
+provider was made zero-argument so the modified tests contain no synthetic context,
+no-op functions, doubles, skips, or expected failures. Exact baseline reconciliation
+removed two bridge entries and added none, reducing the scanner from 1,408 to 1,406
+findings. S146 is accepted with no open findings.
