@@ -2905,46 +2905,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "0630c7e00f0fc9480cd68880",
-    "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "3b05a01f2289a90e2700b294",
-    "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "5860bce663b024405def4514",
-    "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "f13c8b9cda22f28a925f2a6c",
-    "path": "src/app/timeline/menus/timelineFilterActions.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "08409187e86c04905c3c87b1",
-    "path": "src/app/timeline/timelineDateCriterion.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "202181c9a09c4ae681b80588",
-    "path": "src/app/timeline/timelineDateCriterion.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "3ca655219cd7ba4a2f1a55ac",
-    "path": "src/app/timeline/timelineDateCriterion.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "20d1a5c8e09ff6d943b1bc41",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
     "id": "574ad28f70b83095dae88e7f",
     "path": "src/app/timeline/TimelineRangeSelector.tsx",
     "rule": "jsx-attribute"
@@ -2960,11 +2920,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "a318cf53d7099427e35f0349",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
     "id": "a608a34a9be118e92bdfbe55",
     "path": "src/app/timeline/TimelineRangeSelector.tsx",
     "rule": "jsx-attribute"
@@ -2975,22 +2930,7 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "c7f4ec90155f53ea5eeaee3b",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "5766f86174996c6d4fe65b3f",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "6343dbd535eac9596568987e",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "6d54987f64e5fb709eb16fe6",
     "path": "src/app/timeline/TimelineRangeSelector.tsx",
     "rule": "jsx-text"
   },
@@ -3016,11 +2956,6 @@
   },
   {
     "id": "d6f62935fb002a03839e1100",
-    "path": "src/app/timeline/TimelineRangeSelector.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "d91afe2a3e2f3017f3b4b6aa",
     "path": "src/app/timeline/TimelineRangeSelector.tsx",
     "rule": "jsx-text"
   },

@@ -31,6 +31,7 @@
 
 import { useRef } from "react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { Segment, SegmentedToggle, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
@@ -44,7 +45,9 @@ import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStat
 import { setTimelineDateCriterion } from "../../stores/server/timelineDateCriterionIntent";
 import {
   TIMELINE_DATE_CRITERIA,
-  type TimelineDateCriterion,
+  TIMELINE_DATE_CRITERION_MESSAGES,
+  timelineDateCriterionIsAvailable,
+  timelineDateCriterionPresentation,
 } from "./timelineDateCriterion";
 import {
   clampToSpan,
@@ -66,6 +69,7 @@ export interface TimelineRangeProps {
 }
 
 export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   // The strip narrows the ACTIVE corpus (code-timeline-range ADR): its edge
   // bounds, degradation truth, and date criterion all follow the served graph
   // corpus, so in code mode the span is the code files' mtime span — never the
@@ -79,6 +83,7 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   // criterion is pinned to Modified in code mode whatever the persisted vault
   // criterion setting says — the label always names the field actually matched.
   const criterion = isCode ? "modified" : vaultCriterion;
+  const dateFieldLabel = resolveMessage(TIMELINE_DATE_CRITERION_MESSAGES.dateField);
   const trackRef = useRef<HTMLDivElement>(null);
   const activeHandle = useRef<"from" | "to" | null>(null);
 
@@ -273,34 +278,42 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
           settings-are-schema-driven). Modified/Stamped disable with an honest reason
           until the engine serves the setting; the per-criterion bounds (TTR-008) make
           the edges follow the choice automatically. */}
-      <SegmentedToggle
-        value={criterion}
-        onChange={(next) =>
-          void setTimelineDateCriterion(next as TimelineDateCriterion)
-        }
-        ariaLabel="timeline date field"
-        className="shrink-0"
-      >
-        {TIMELINE_DATE_CRITERIA.map((c) => {
-          // Code mode pins the criterion to Modified — the only date a code file
-          // carries — so the other criteria disable with the honest reason
-          // instead of silently matching a different field than their label.
-          const gated = isCode ? c.id !== "modified" : c.id !== "created" && !served;
-          const gatedReason = isCode
-            ? "Code files date by modified time only"
-            : c.unavailableReason;
-          return (
-            <Segment
-              key={c.id}
-              value={c.id}
-              disabled={gated}
-              title={gated ? gatedReason : `Range by ${c.label.toLowerCase()} date`}
-            >
-              {c.label}
-            </Segment>
-          );
-        })}
-      </SegmentedToggle>
+      {!dateFieldLabel.usedFallback && (
+        <SegmentedToggle
+          value={criterion}
+          onChange={(next) => {
+            const presentation = timelineDateCriterionPresentation(next);
+            if (presentation !== null) void setTimelineDateCriterion(presentation.id);
+          }}
+          ariaLabel={dateFieldLabel.message}
+          className="shrink-0"
+        >
+          {TIMELINE_DATE_CRITERIA.map((id) => {
+            const c = timelineDateCriterionPresentation(id);
+            if (c === null) return null;
+            // Code mode pins the criterion to Modified — the only date a code file
+            // carries — so the other criteria disable with the honest reason
+            // instead of silently matching a different field than their label.
+            const gated = isCode
+              ? c.id !== "modified"
+              : !timelineDateCriterionIsAvailable(c.id, served);
+            const titleDescriptor = gated
+              ? isCode
+                ? TIMELINE_DATE_CRITERION_MESSAGES.codeFiles
+                : c.unavailableReason
+              : c.rangeDescription;
+            if (titleDescriptor === null) return null;
+            const label = resolveMessage(c.label);
+            const title = resolveMessage(titleDescriptor);
+            if (label.usedFallback || title.usedFallback) return null;
+            return (
+              <Segment key={c.id} value={c.id} disabled={gated} title={title.message}>
+                {label.message}
+              </Segment>
+            );
+          })}
+        </SegmentedToggle>
+      )}
 
       {isNarrowed && (
         <button

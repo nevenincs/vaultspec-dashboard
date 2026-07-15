@@ -235,6 +235,27 @@ export const ENGLISH_MESSAGE_POLICY = {
   "projects:actions.add": { role: "action" },
   "projects:actions.clearHistory": { role: "action" },
   "projects:actions.switch": { role: "action" },
+  "timeline:accessibility.dateField": { role: "accessibility" },
+  "timeline:actions.filterByCreationDate": { role: "action" },
+  "timeline:actions.filterByCreationDateCurrent": { role: "action" },
+  "timeline:actions.filterByEditDate": { role: "action" },
+  "timeline:actions.filterByEditDateCurrent": { role: "action" },
+  "timeline:actions.filterByUpdateDate": { role: "action" },
+  "timeline:actions.filterByUpdateDateCurrent": { role: "action" },
+  "timeline:criteria.created": { role: "label" },
+  "timeline:criteria.modified": { role: "label" },
+  "timeline:criteria.stamped": { role: "label" },
+  "timeline:descriptions.useCreationDateForRange": { role: "description" },
+  "timeline:descriptions.useEditDateForRange": { role: "description" },
+  "timeline:descriptions.useUpdateDateForRange": { role: "description" },
+  "timeline:disabledReasons.codeFiles": { role: "disabled-reason" },
+  "timeline:disabledReasons.current": { role: "disabled-reason" },
+  "timeline:disabledReasons.modifiedUnavailable": {
+    role: "disabled-reason",
+  },
+  "timeline:disabledReasons.stampedUnavailable": {
+    role: "disabled-reason",
+  },
 } as const satisfies Record<MessageKey, MessagePolicyEntry>;
 
 export const IMPERATIVE_ACTION_VERBS = [
@@ -259,6 +280,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Enable",
   "Expand",
   "Find",
+  "Filter",
   "Finish",
   "Focus",
   "Hide",

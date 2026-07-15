@@ -5,8 +5,9 @@ import { features } from "./features";
 import { graph } from "./graph";
 import { operations } from "./operations";
 import { projects } from "./projects";
+import { timeline } from "./timeline";
 
-export { common, documents, errors, features, graph, operations, projects };
+export { common, documents, errors, features, graph, operations, projects, timeline };
 
 export const sourceLocale = "en" as const;
 export const defaultNS = "common" as const;
@@ -19,6 +20,7 @@ export const en = {
   graph,
   operations,
   projects,
+  timeline,
 } as const;
 
 export const resources = {

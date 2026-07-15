@@ -13,7 +13,6 @@
 // from the setting and the served criteria become runnable (one source: the
 // `timelineDateCriterion` vocabulary).
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Calendar, Clock, Stamp } from "lucide-react";
 
 import type { ActionDescriptor, ActionIcon } from "../../../platform/actions/action";
@@ -23,6 +22,9 @@ import {
 } from "../../../stores/server/timelineDateCriterionIntent";
 import {
   TIMELINE_DATE_CRITERIA,
+  TIMELINE_DATE_CRITERION_MESSAGES,
+  timelineDateCriterionIsAvailable,
+  timelineDateCriterionPresentation,
   type TimelineDateCriterion,
 } from "../timelineDateCriterion";
 
@@ -42,32 +44,42 @@ const CRITERION_ICON: Record<TimelineDateCriterion, ActionIcon> = {
  */
 export function timelineDateCriterionActions(): ActionDescriptor[] {
   const { active, served } = timelineDateCriterionSnapshot();
-  return TIMELINE_DATE_CRITERIA.map((criterion) => {
+  return TIMELINE_DATE_CRITERIA.flatMap<ActionDescriptor>((id) => {
+    const criterion = timelineDateCriterionPresentation(id);
+    if (criterion === null) return [];
     const base = {
       id: `timeline:filter-by:${criterion.id}`,
-      label: legacyActionPresentation(`Filter by ${criterion.label}`),
+      label: criterion.filterActionLabel,
       section: "transform" as const,
       icon: CRITERION_ICON[criterion.id],
     };
     if (criterion.id === active) {
-      return {
-        ...base,
-        label: legacyActionPresentation(`Filter by ${criterion.label} (current)`),
-        disabled: true,
-        disabledReason: legacyActionPresentation("current date criterion"),
-      };
+      return [
+        {
+          ...base,
+          label: criterion.currentFilterActionLabel,
+          disabled: true,
+          disabledReason: TIMELINE_DATE_CRITERION_MESSAGES.current,
+        },
+      ];
     }
     // `created` is always available; modified/stamped only once the engine serves
     // the setting (capability gate) — otherwise honest disabled-with-reason.
-    if (criterion.id !== "created" && !served) {
-      return {
-        ...base,
-        disabled: true,
-        disabledReason: legacyActionPresentation(
-          criterion.unavailableReason ?? "not available yet",
-        ),
-      };
+    if (!timelineDateCriterionIsAvailable(criterion.id, served)) {
+      if (criterion.unavailableReason === null) return [];
+      return [
+        {
+          ...base,
+          disabled: true,
+          disabledReason: criterion.unavailableReason,
+        },
+      ];
     }
-    return { ...base, run: () => void setTimelineDateCriterion(criterion.id) };
+    return [
+      {
+        ...base,
+        run: () => void setTimelineDateCriterion(criterion.id),
+      },
+    ];
   });
 }

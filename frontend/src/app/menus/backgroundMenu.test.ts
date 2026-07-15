@@ -70,9 +70,17 @@ describe("backgroundMenu resolver", () => {
     expect(actions.find((a) => a.id === "timeline:filter-by:created")?.disabled).toBe(
       true,
     );
-    expect(
-      actions.find((a) => a.id === "timeline:filter-by:modified")?.disabledReason,
-    ).toBeTruthy();
+    expect(actions.find((a) => a.id === "timeline:filter-by:created")).toMatchObject({
+      label: { key: "timeline:actions.filterByCreationDateCurrent" },
+      disabledReason: { key: "timeline:disabledReasons.current" },
+    });
+    expect(actions.find((a) => a.id === "timeline:filter-by:modified")).toMatchObject({
+      label: { key: "timeline:actions.filterByEditDate" },
+      disabled: true,
+      disabledReason: {
+        key: "timeline:disabledReasons.modifiedUnavailable",
+      },
+    });
     // A non-timeline region carries no criterion group.
     expect(
       backgroundMenu({ kind: "background", id: "bg", region: "right-rail" }).map(

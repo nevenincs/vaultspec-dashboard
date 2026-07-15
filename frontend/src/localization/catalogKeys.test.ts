@@ -26,6 +26,7 @@ const EXPECTED_NAMESPACES = [
   "graph",
   "operations",
   "projects",
+  "timeline",
 ] as const;
 const EXPECTED_CATALOG_KEYS = [
   "common:accessibility.actionsMenu",
@@ -222,6 +223,23 @@ const EXPECTED_CATALOG_KEYS = [
   "projects:actions.add",
   "projects:actions.clearHistory",
   "projects:actions.switch",
+  "timeline:accessibility.dateField",
+  "timeline:actions.filterByCreationDate",
+  "timeline:actions.filterByCreationDateCurrent",
+  "timeline:actions.filterByEditDate",
+  "timeline:actions.filterByEditDateCurrent",
+  "timeline:actions.filterByUpdateDate",
+  "timeline:actions.filterByUpdateDateCurrent",
+  "timeline:criteria.created",
+  "timeline:criteria.modified",
+  "timeline:criteria.stamped",
+  "timeline:descriptions.useCreationDateForRange",
+  "timeline:descriptions.useEditDateForRange",
+  "timeline:descriptions.useUpdateDateForRange",
+  "timeline:disabledReasons.codeFiles",
+  "timeline:disabledReasons.current",
+  "timeline:disabledReasons.modifiedUnavailable",
+  "timeline:disabledReasons.stampedUnavailable",
 ] as const satisfies readonly PhysicalMessageKey[];
 
 const EXPECTED_PUBLIC_MESSAGE_KEYS = [
@@ -345,6 +363,22 @@ describe("shipped localization catalog keys", () => {
       "common:accessibility.resizeActivityPanel",
       "common:accessibility.resizeTimeline",
     ] as const satisfies readonly MessageKey[];
+    const englishRuntime = createTestLocalizationRuntime(sourceLocale);
+    const frenchRuntime = createTestLocalizationRuntime(ltrTestLocale);
+    const arabicRuntime = createTestLocalizationRuntime(rtlTestLocale);
+
+    for (const key of keys) {
+      const english = englishRuntime.t(key);
+      const french = frenchRuntime.t(key);
+      const arabic = arabicRuntime.t(key);
+      expect(french, key).not.toBe(english);
+      expect(arabic, key).not.toBe(english);
+      expect(arabic, key).not.toBe(french);
+    }
+  });
+
+  it("resolves timeline date vocabulary in English, French, and Arabic", () => {
+    const keys = EXPECTED_CATALOG_KEYS.filter((key) => key.startsWith("timeline:"));
     const englishRuntime = createTestLocalizationRuntime(sourceLocale);
     const frenchRuntime = createTestLocalizationRuntime(ltrTestLocale);
     const arabicRuntime = createTestLocalizationRuntime(rtlTestLocale);

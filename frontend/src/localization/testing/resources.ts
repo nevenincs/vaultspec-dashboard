@@ -243,6 +243,38 @@ export const ltrTestResources = {
     },
   },
   projects: en.projects,
+  timeline: {
+    accessibility: {
+      dateField: "Date de la chronologie",
+    },
+    actions: {
+      filterByCreationDate: "Filtrer par date de création",
+      filterByCreationDateCurrent: "Filtrer par date de création (actuelle)",
+      filterByEditDate: "Filtrer par date de modification",
+      filterByEditDateCurrent: "Filtrer par date de modification (actuelle)",
+      filterByUpdateDate: "Filtrer par date de mise à jour",
+      filterByUpdateDateCurrent: "Filtrer par date de mise à jour (actuelle)",
+    },
+    criteria: {
+      created: "Création",
+      modified: "Modification",
+      stamped: "Mise à jour",
+    },
+    descriptions: {
+      useCreationDateForRange: "Utiliser la date de création pour la période",
+      useEditDateForRange: "Utiliser la date de modification pour la période",
+      useUpdateDateForRange: "Utiliser la date de mise à jour pour la période",
+    },
+    disabledReasons: {
+      codeFiles:
+        "Choisissez la date de modification. Les fichiers de code utilisent les dates de modification.",
+      current: "Choisissez une autre option de date pour modifier la chronologie.",
+      modifiedUnavailable:
+        "Choisissez la date de création. Les dates de modification ne sont pas disponibles ici.",
+      stampedUnavailable:
+        "Choisissez la date de création. Les dates de mise à jour ne sont pas disponibles ici.",
+    },
+  },
 } as const;
 
 export const rtlTestResources = {
@@ -470,6 +502,35 @@ export const rtlTestResources = {
     },
   },
   projects: en.projects,
+  timeline: {
+    accessibility: {
+      dateField: "تاريخ المخطط الزمني",
+    },
+    actions: {
+      filterByCreationDate: "التصفية حسب تاريخ الإنشاء",
+      filterByCreationDateCurrent: "التصفية حسب تاريخ الإنشاء (الحالي)",
+      filterByEditDate: "التصفية حسب تاريخ التعديل",
+      filterByEditDateCurrent: "التصفية حسب تاريخ التعديل (الحالي)",
+      filterByUpdateDate: "التصفية حسب تاريخ التحديث",
+      filterByUpdateDateCurrent: "التصفية حسب تاريخ التحديث (الحالي)",
+    },
+    criteria: {
+      created: "الإنشاء",
+      modified: "التعديل",
+      stamped: "التحديث",
+    },
+    descriptions: {
+      useCreationDateForRange: "استخدام تاريخ الإنشاء للنطاق",
+      useEditDateForRange: "استخدام تاريخ التعديل للنطاق",
+      useUpdateDateForRange: "استخدام تاريخ التحديث للنطاق",
+    },
+    disabledReasons: {
+      codeFiles: "اختر تاريخ التعديل. تستخدم ملفات التعليمات البرمجية تواريخ التعديل.",
+      current: "اختر خيار تاريخ آخر لتغيير المخطط الزمني.",
+      modifiedUnavailable: "اختر تاريخ الإنشاء. تواريخ التعديل غير متاحة هنا.",
+      stampedUnavailable: "اختر تاريخ الإنشاء. تواريخ التحديث غير متاحة هنا.",
+    },
+  },
 } as const;
 
 export const testResources = {
