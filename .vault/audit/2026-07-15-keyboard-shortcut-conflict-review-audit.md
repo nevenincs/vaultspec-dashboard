@@ -1,14 +1,15 @@
 ---
 tags:
-  - '#audit'
-  - '#keyboard-shortcut-conflict-review'
+  - "#audit"
+  - "#keyboard-shortcut-conflict-review"
 date: '2026-07-15'
-modified: '2026-07-15'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
   - "[[2026-07-15-keyboard-shortcut-conflict-review-adr]]"
+promoted_to:
+  - 'rule:default-chord-selection-vetting'
+modified: '2026-07-15'
 ---
-
 # `keyboard-shortcut-conflict-review` audit: `conflict definition, denylist, and re-chords review` | APPROVED
 
 ## Scope
