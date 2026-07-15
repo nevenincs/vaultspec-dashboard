@@ -106,6 +106,43 @@ describe("handleKeymapEvent", () => {
     );
   });
 
+  it("does not fire a bound bare-key chord while an IME composition is active", () => {
+    let runCount = 0;
+    const action = runAction(() => {
+      runCount += 1;
+    });
+    const base = {
+      getDefs: () => [def({ id: "expand", defaultChord: "e", context: "global" })],
+      resolveAction: (id: unknown) => (id === "expand" ? action : null),
+      fire: (a: ActionDescriptor) => a.run?.(),
+    };
+
+    // Sanity: the same bare-key chord fires when NOT composing.
+    const plain = keyEvent({ key: "e" });
+    expect(handleKeymapEvent(plain, deps(base))).toBe(true);
+    expect(runCount).toBe(1);
+
+    // isComposing true: the keystroke belongs to the input method — no action, not consumed.
+    const composing = new KeyboardEvent("keydown", {
+      key: "e",
+      cancelable: true,
+      isComposing: true,
+    });
+    expect(handleKeymapEvent(composing, deps(base))).toBe(false);
+    expect(composing.defaultPrevented).toBe(false);
+    expect(runCount).toBe(1);
+
+    // Legacy keyCode === 229 fallback for engines that still emit it while composing.
+    const legacy = new KeyboardEvent("keydown", {
+      key: "e",
+      cancelable: true,
+      keyCode: 229,
+    });
+    expect(handleKeymapEvent(legacy, deps(base))).toBe(false);
+    expect(legacy.defaultPrevented).toBe(false);
+    expect(runCount).toBe(1);
+  });
+
   it("applies the time-travel gate to a mutating action", () => {
     let fireCount = 0;
     const mutating: ActionDescriptor = {

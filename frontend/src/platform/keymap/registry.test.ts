@@ -303,12 +303,30 @@ describe("contextsOverlap", () => {
 });
 
 describe("findConflicts / conflictsForCandidate", () => {
-  it("reports two actions sharing a chord in overlapping contexts", () => {
+  it("reports two actions sharing a chord at equal specificity (both global)", () => {
+    const defs = [
+      def({ id: "a", defaultChord: "Mod+K", context: "global" }),
+      def({ id: "b", defaultChord: "Mod+K", context: "global" }),
+    ];
+    expect(findConflicts(defs)).toEqual([{ chord: "Mod+K", ids: ["a", "b"] }]);
+  });
+
+  it("reports two actions sharing a chord within the same surface context", () => {
+    const defs = [
+      def({ id: "a", defaultChord: "Enter", context: "canvas" }),
+      def({ id: "b", defaultChord: "Enter", context: "canvas" }),
+    ];
+    expect(findConflicts(defs)).toEqual([{ chord: "Enter", ids: ["a", "b"] }]);
+  });
+
+  it("does NOT report a global-vs-surface shadow (unequal specificity)", () => {
+    // The deliberate, resolvable shadow: most-specific-active-context wins, so the
+    // surface binding fires when focused and the global one otherwise — no ambiguity.
     const defs = [
       def({ id: "a", defaultChord: "Mod+K", context: "global" }),
       def({ id: "b", defaultChord: "Mod+K", context: "canvas" }),
     ];
-    expect(findConflicts(defs)).toEqual([{ chord: "Mod+K", ids: ["a", "b"] }]);
+    expect(findConflicts(defs)).toEqual([]);
   });
 
   it("does not report a shared chord across non-overlapping surfaces", () => {
@@ -327,5 +345,15 @@ describe("findConflicts / conflictsForCandidate", () => {
     expect(conflictsForCandidate(defs, {}, " a ", "Mod+B")).toEqual(["b"]);
     expect(conflictsForCandidate(defs, {}, "a", "Mod+Z")).toEqual([]);
     expect(conflictsForCandidate(defs, {}, "a", "Mod+A")).toEqual([]); // self excluded
+  });
+
+  it("excludes a candidate that only shadows a binding at a different specificity", () => {
+    // A global candidate colliding with a canvas binding is a resolvable shadow, not
+    // a conflict; the recorder must not warn on it.
+    const defs = [
+      def({ id: "global-nav", defaultChord: "ArrowLeft", context: "global" }),
+      def({ id: "canvas-walk", defaultChord: "ArrowLeft", context: "canvas" }),
+    ];
+    expect(conflictsForCandidate(defs, {}, "global-nav", "ArrowLeft")).toEqual([]);
   });
 });

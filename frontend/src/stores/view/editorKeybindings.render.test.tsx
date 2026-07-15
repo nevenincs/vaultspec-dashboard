@@ -71,7 +71,7 @@ describe("editor keybinding localization", () => {
       },
       {
         id: "editor:toggle-diff",
-        defaultChord: "Mod+Shift+D",
+        defaultChord: "Mod+Alt+G",
         label: { key: "documents:actions.showOrHideChanges" },
         group: { key: "documents:shortcutGroups.editing" },
         context: "global",

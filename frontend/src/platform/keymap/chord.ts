@@ -16,6 +16,16 @@
 // `Ctrl` is for the rare binding that must be Control even on a Mac. On
 // non-macOS, `Mod` and `Ctrl` both resolve to the Control key, which is correct
 // and expected.
+//
+// AltGr convention (keyboard-shortcut-conflict-review ADR D7), reviewer-enforced. A new
+// DEFAULT chord must NEVER be `Mod+Alt+<symbol>` where the symbol requires AltGr to type on
+// a common EU keyboard layout (the bracket/brace/at/euro class). On Windows/EU layouts AltGr
+// emits `ctrlKey + altKey` — the exact bit pattern `matchesChord` treats as `Mod+Alt` on
+// non-Mac — so such a default both misfires on AltGr input and is unreachable on the very
+// layouts where the symbol needs AltGr. "Requires AltGr" is layout-dependent and not
+// derivable from the DOM key value, so there is no mechanical guard: this convention is
+// enforced in review. (The two live pre-existing instances, `Mod+Alt+[`/`Mod+Alt+]`, are
+// flagged as an accepted risk in `stores/view/leftRailKeybindings.ts`.)
 
 import {
   type MessageDescriptor,

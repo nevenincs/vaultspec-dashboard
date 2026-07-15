@@ -135,12 +135,30 @@ export interface KeymapDeps {
  *  - time-travel gate: a mutating action marked `disabledInTimeTravel` is inert
  *    in historical mode (the same central gate the resolver registry applies).
  */
+/**
+ * Whether the event is an in-flight IME composition keystroke. A composition-confirming
+ * key (e.g. Enter/Space selecting a candidate) must NEVER resolve to a command binding:
+ * it belongs to the input method, and composition can occur inside contentEditable regions
+ * the text-entry target check does not recognize (keyboard-shortcut-conflict-review ADR D6).
+ * `isComposing` is the modern signal; `keyCode === 229` is the legacy fallback some engines
+ * still emit while composing.
+ */
+function isComposingEvent(event: object): boolean {
+  const view = event as { isComposing?: unknown; keyCode?: unknown };
+  return view.isComposing === true || view.keyCode === 229;
+}
+
 export function handleKeymapEvent(
   event:
     | KeyboardEvent
     | (ChordEvent & { target: EventTarget | null; preventDefault?: () => void }),
   deps: KeymapDeps,
 ): boolean {
+  // Unconditional early-out BEFORE context resolution: a keystroke that is confirming an
+  // IME composition is the input method's, not a command shortcut. Gating here (rather than
+  // on the text-entry target) covers every binding uniformly, including bare-key globals.
+  if (isComposingEvent(event)) return false;
+
   const def = resolveKeybinding(
     deps.getDefs(),
     deps.getOverrides(),

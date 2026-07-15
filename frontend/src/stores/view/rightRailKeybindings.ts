@@ -29,12 +29,18 @@ export function rightRailTabActionId(tab: unknown): string | null {
   return normalizedTab === null ? null : `right-rail:show-${normalizedTab}`;
 }
 
+// Right-rail tab switching binds Mod+Alt+{n}, NOT Mod+{n}: every major browser
+// (Chrome/Firefox/Safari/Edge) hard-reserves Ctrl/Cmd+1..9 for browser-tab switching
+// and intercepts the keystroke before the page sees it, so a bare Mod+{n} default is dead
+// on arrival (keyboard-shortcut-conflict-review ADR D4). Mod+Alt+{n} lands in the existing
+// structural Mod+Alt+* family (beside the left-rail and doc-tab chords); the reserved-chord
+// denylist guard proves the dead Mod+{n} chords never reappear as defaults.
 export function rightRailTabChord(index: unknown): string | null {
   return Number.isInteger(index) &&
     typeof index === "number" &&
     index >= 0 &&
     index < RIGHT_RAIL_TABS.length
-    ? `Mod+${index + 1}`
+    ? `Mod+Alt+${index + 1}`
     : null;
 }
 

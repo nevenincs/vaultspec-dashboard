@@ -48,9 +48,16 @@ export const SEARCH_PALETTE_ACTION_ID = "app:search";
 export const SEARCH_PALETTE_SHORTCUT_LABEL = {
   key: "common:actions.searchDocumentsAndCode",
 } as const;
+// Search binds Mod+Alt+S, landing in the codified structural Mod+Alt+* family (beside the
+// left-rail, doc-tab, editor, and right-rail chords) — a letter key, so no AltGr hazard
+// (keyboard-shortcut-conflict-review ADR D5). It was chosen only after two P-mnemonic chords
+// were disqualified: Mod+P is the browser print dialog (inconsistent preventability across
+// Firefox/Safari) and Mod+Shift+P is Firefox's hard-reserved New Private Window (dead on
+// arrival there, review-caught); Mod+Alt+P was already the project:browse default. Both Mod+P
+// and Mod+Shift+P are on the reserved-chord denylist so neither can return as a default.
 export const SEARCH_PALETTE_KEYBINDING: KeybindingDef = {
   id: SEARCH_PALETTE_ACTION_ID,
-  defaultChord: "Mod+P",
+  defaultChord: "Mod+Alt+S",
   label: SEARCH_PALETTE_SHORTCUT_LABEL,
   group: GENERAL_KEYBINDING_GROUP,
   context: "global",
@@ -60,9 +67,14 @@ export const DOCUMENT_SEARCH_ACTION_ID = "app:document-search";
 export const DOCUMENT_SEARCH_SHORTCUT_LABEL = {
   key: "documents:actions.findByName",
 } as const;
+// Document-find binds Mod+Alt+F ("find in documents"), NOT Mod+Shift+O: Ctrl/Cmd+Shift+O is
+// Chrome's Bookmark Manager and Firefox's Library — chrome-level, page-uninterceptable, so a
+// Mod+Shift+O default is dead on arrival there (keyboard-shortcut-conflict-review ADR D5,
+// review-round). Mod+Alt+F is a free letter chord in the codified structural Mod+Alt+* family
+// (no AltGr hazard); Mod+Shift+O joins the reserved-chord denylist so it cannot return.
 export const DOCUMENT_SEARCH_KEYBINDING: KeybindingDef = {
   id: DOCUMENT_SEARCH_ACTION_ID,
-  defaultChord: "Mod+Shift+O",
+  defaultChord: "Mod+Alt+F",
   label: DOCUMENT_SEARCH_SHORTCUT_LABEL,
   group: GENERAL_KEYBINDING_GROUP,
   context: "global",
@@ -845,7 +857,7 @@ export function useCommandPaletteGlobalToggle(cancelConfirm: () => void): void {
 }
 
 /**
- * Register the global search shortcut (`app:search`, default `Mod+P`) on the one
+ * Register the global search shortcut (`app:search`, default `Mod+Alt+S`) on the one
  * keymap registry + dispatcher (keyboard-shortcuts-bind-through-the-one-keymap-
  * registry). It opens the palette directly in search mode (or, when the palette is
  * already in search mode, toggles it closed); pressing it from command mode flips
@@ -878,7 +890,7 @@ export function useSearchPaletteGlobalShortcut(cancelConfirm: () => void): void 
 
 /**
  * Register the global document-search shortcut (`app:document-search`, default
- * `Mod+Shift+O`) on the one keymap registry + dispatcher. It opens the palette in the
+ * `Mod+Alt+F`) on the one keymap registry + dispatcher. It opens the palette in the
  * literal document-finder plane (or toggles it closed when already there), mirroring
  * `useSearchPaletteGlobalShortcut`.
  */

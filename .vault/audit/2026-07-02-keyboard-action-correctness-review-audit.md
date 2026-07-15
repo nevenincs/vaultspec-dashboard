@@ -156,6 +156,16 @@ Note a correct guard must compare same-specificity pairs only — the canvas
 arrow bindings deliberately shadow the global arrow-walk by context
 specificity, which `contextsOverlap` counts as a conflict.
 
+> **Amendment (2026-07-15, keyboard-shortcut-conflict-review):** KAR-008's disposition
+> is extended. The same-specificity filter the original guard implemented locally has
+> been relocated into production: `registry.ts` now exports `specificity` and its
+> `findConflicts` / `conflictsForCandidate` apply the equal-specificity definition
+> directly, so the guard no longer re-derives it and the settings recorder consumes the
+> same predicate (closing the recorder false-positive KAR-008's scope never reached). A
+> sibling denylist guard (`reservedKeybindingDenylist.guard.test.ts`) additionally covers
+> the collide-with-the-browser/OS class (Mod+1..9, Mod+P, etc.) that KAR-008 never asked
+> about.
+
 ### keyboard-navigation-sound | info | the two-tier model is converged and the historical failure classes are closed
 
 Verified end-to-end, no dead zones or double-fires found. Exactly one window

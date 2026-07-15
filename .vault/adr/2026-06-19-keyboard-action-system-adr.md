@@ -118,6 +118,17 @@ and surfaces it inline (warn + offer reassign); the registry exposes a pure conf
 recorder and a test both use. The dispatcher reads `effective settings → overrides`, merges over
 the registry defaults, and binds — so the setting is genuinely consumed (no dead control).
 
+> **Amendment (2026-07-15, keyboard-shortcut-conflict-review):** Decision 7's "pure
+> conflict-check the recorder and a test both use" is now formally scope-aware. The
+> registry's conflict predicate (`findConflicts` / `conflictsForCandidate`) flags a pair
+> only when the two bindings share a canonical chord AND sit at EQUAL context specificity
+> (both global, or both the same named surface context); a global-vs-surface shadow is by
+> definition not a conflict, since the dispatcher's most-specific-active-context-wins rule
+> resolves it. This closes a recorder false-positive where the ten deliberate
+> global-vs-canvas arrow/`E` shadows rendered as conflicts on a stock install. The
+> definition lives once in `registry.ts` and is consumed by both the recorder and the
+> default-set guard — no surface re-derives it.
+
 **5. Legend convergence.** The hand-transcribed `KEYBOARD_SHORTCUT_GROUPS` is **deleted**; the
 `?` legend is *derived* from the registry (label + effective chord per group), so it can never
 drift from the live bindings again. The `?` and `Ctrl+K` openers themselves become `global`

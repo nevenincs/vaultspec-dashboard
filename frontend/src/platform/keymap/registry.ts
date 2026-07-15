@@ -270,8 +270,14 @@ export function contextsOverlap(a: BindingContext, b: BindingContext): boolean {
   return a === b || a === "global" || b === "global";
 }
 
-/** Specificity rank: surface contexts (1) beat global (0) when both match. */
-function specificity(context: BindingContext): number {
+/**
+ * Specificity rank of a binding context: a focused surface (1) outranks global
+ * (0). The dispatcher's `resolveKeybinding` uses this for most-specific-active-
+ * context-wins resolution; the conflict predicates below use it to define what a
+ * conflict IS. Exported so every surface (dispatcher, settings recorder, the
+ * default-set guard) consumes ONE ranking and never re-derives it.
+ */
+export function specificity(context: BindingContext): number {
   return context === "global" ? 0 : 1;
 }
 
@@ -315,9 +321,30 @@ export interface KeybindingConflict {
 }
 
 /**
- * Find binding conflicts: distinct actions whose effective chords are equal and
- * whose contexts overlap (so they could fire on the same keystroke). Used by the
- * settings recorder to warn before a user assigns a colliding chord.
+ * The one formal conflict definition (keyboard-shortcut-conflict-review ADR D1),
+ * shared by every surface that reasons about bindings. A CONFLICT is: two distinct
+ * action ids whose effective chords canonicalize identically AND whose contexts sit
+ * at EQUAL specificity — i.e. both `global`, or both the same named surface context.
+ * A global-vs-surface pair at DIFFERING specificity is by definition NOT a conflict:
+ * the dispatcher's most-specific-active-context-wins rule (`resolveKeybinding`)
+ * resolves it deterministically (the surface binding fires when that surface is
+ * focused, the global one otherwise), so it is a deliberate, resolvable shadow, not
+ * an ambiguity. Two DISTINCT surface contexts never overlap (they can never be active
+ * at once), so a shared chord across them is not a conflict either.
+ *
+ * This is the ONLY place the rule is stated. Both `findConflicts` and
+ * `conflictsForCandidate` apply it; the settings recorder and the default-set guard
+ * consume them, never re-deriving the predicate. A change here changes the predicate
+ * for every consumer at once — narrow it only as a reviewed contract event.
+ */
+function isConflictPair(a: BindingContext, b: BindingContext): boolean {
+  return contextsOverlap(a, b) && specificity(a) === specificity(b);
+}
+
+/**
+ * Find binding conflicts (per `isConflictPair`): distinct actions whose effective
+ * chords are equal at equal context specificity. Used by the settings recorder to
+ * warn before a user assigns a colliding chord, and by the default-set guard.
  */
 export function findConflicts(
   defs: readonly KeybindingDef[],
@@ -333,7 +360,7 @@ export function findConflicts(
     for (let j = i + 1; j < sorted.length; j++) {
       const a = sorted[i];
       const b = sorted[j];
-      if (!contextsOverlap(a.context, b.context)) continue;
+      if (!isConflictPair(a.context, b.context)) continue;
       const ca = canonicalizeChord(effectiveChord(a, normalizedOverrides));
       const cb = canonicalizeChord(effectiveChord(b, normalizedOverrides));
       if (ca !== null && ca === cb) {
@@ -347,8 +374,9 @@ export function findConflicts(
 /**
  * The conflicts a candidate chord would introduce for `targetId` if assigned -
  * the recorder's pre-commit check. Returns the ids of existing bindings the
- * candidate would collide with (overlapping context, same canonical chord),
- * excluding the target itself.
+ * candidate would collide with under the one conflict definition (`isConflictPair`:
+ * same canonical chord at equal context specificity), excluding the target itself.
+ * A binding the candidate merely shadows at a different specificity is NOT returned.
  */
 export function conflictsForCandidate(
   defs: readonly KeybindingDef[],
@@ -367,7 +395,7 @@ export function conflictsForCandidate(
   const hits: string[] = [];
   for (const def of normalizedDefs) {
     if (def.id === normalizedTargetId) continue;
-    if (!contextsOverlap(def.context, target.context)) continue;
+    if (!isConflictPair(def.context, target.context)) continue;
     if (canonicalizeChord(effectiveChord(def, normalizedOverrides)) === candidate) {
       hits.push(def.id);
     }

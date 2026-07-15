@@ -1,16 +1,3 @@
-// The markdown document view with read + edit modes (editor-dock-workspace P05).
-// View mode renders the read-only `MarkdownReader`; edit mode mounts the existing
-// (document-editor backend) bounded editor slice as a raw-markdown body editor
-// plus a PROPERTIES card for `tags / date / related`, saving through the core
-// write verbs (`set-body` / `set-frontmatter` / `rename`) over the core ops route.
-// Only markdown documents are editable; the code viewer stays read-only.
-//
-// The editor slice is single (one open editor at a time, bounded-by-default): a
-// markdown panel is editable when it IS the editor target, and entering edit mode
-// seeds the slice from this panel's read. Layer law: this is dumb `app/` chrome —
-// it fetches nothing (the content query + the write mutations are the sole wire
-// clients) and reads the tiers-derived `ContentView`, never raw `tiers`.
-
 import {
   useEffect,
   useLayoutEffect,
@@ -50,6 +37,8 @@ import { dispatchOps } from "../../stores/server/opsActions";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
+  EDITOR_CLOSE_LABEL,
+  EDITOR_SAVE_LABEL,
   EDITOR_TOGGLE_DIFF_LABEL,
   EDITOR_TOGGLE_MODE_ACTION_ID,
   switchReadingAndEditingAction,
@@ -149,6 +138,8 @@ export function MarkdownDocView({
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const toggleChangesLabel = resolveMessage(EDITOR_TOGGLE_DIFF_LABEL).message;
+  const saveLabel = resolveMessage(EDITOR_SAVE_LABEL);
+  const closeLabel = resolveMessage(EDITOR_CLOSE_LABEL);
   // Memoize on the now-stable ContentView (useContentView memoizes its result) so
   // `documentEditor.properties` is a referentially-stable object — it is passed into
   // useMarkdownEditorChromeView as a seed-effect dependency, and a fresh object every
@@ -468,7 +459,7 @@ export function MarkdownDocView({
             <EditorToolbar onCommand={applyFormat} />
           </div>
           {/* Toggle diff (authoring-surface ADR D4): compare draft against the
-              saved text captured at open. Chord Mod+Shift+D; shared id
+              saved text captured at open. Chord Mod+Alt+G; shared id
               `editor:toggle-diff` across toolbar, keymap, and palette. */}
           <IconButton
             label={toggleChangesLabel}
@@ -493,16 +484,20 @@ export function MarkdownDocView({
             corpus={corpus}
             selfStem={selfStem}
           />
-          <Button
-            variant="primary"
-            onClick={saveBodyNow}
-            disabled={!editor.canSave || saveBody.isPending}
-          >
-            Save
-          </Button>
-          <Button variant="ghost" onClick={requestCloseDocumentEditor}>
-            Done
-          </Button>
+          {!saveLabel.usedFallback && (
+            <Button
+              variant="primary"
+              onClick={saveBodyNow}
+              disabled={!editor.canSave || saveBody.isPending}
+            >
+              {saveLabel.message}
+            </Button>
+          )}
+          {!closeLabel.usedFallback && (
+            <Button variant="ghost" onClick={requestCloseDocumentEditor}>
+              {closeLabel.message}
+            </Button>
+          )}
         </div>
       </div>
       {editorChrome.hasAdvisories && (

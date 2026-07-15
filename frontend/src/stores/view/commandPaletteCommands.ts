@@ -424,7 +424,7 @@ export function buildEditorCommands(intents: {
       run: intents.keepOpen,
     },
     {
-      // Shared id with the keymap chord (Mod+Shift+D) so accelerators derive
+      // Shared id with the keymap chord (Mod+Alt+G) so accelerators derive
       // correctly from the registry (actions-keymap-palette: one id per verb).
       ...showOrHideChangesAction(intents.toggleDiff),
       family: "edit",

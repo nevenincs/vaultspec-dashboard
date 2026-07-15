@@ -1,17 +1,4 @@
 // @vitest-environment happy-dom
-//
-// Render tests for the redesigned markdown editor view (document-editor-redesign
-// P04.S07): edit mode is a full-width body with the formatting toolbar and an
-// on-demand (closed-by-default) Properties popover — no permanent metadata column.
-// Crucially it guards that the editor does NOT swallow global command chords
-// (Mod+K = command palette, Mod+B = left-rail toggle): formatting is a toolbar-only
-// surface, so those keys must fall through unchanged (the regression the review
-// caught). Runs online against the live engine harness; the corpus hook is left
-// idle (scope null) since these assertions do not need it.
-//
-// W03.P06.S20 addendum: in-editor diff render tests + enrollment guard for
-// `editor:toggle-diff` — verifies the diff panel, the keymap chord, and the
-// palette command under the one shared action id.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -28,6 +15,9 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
 } from "../../localization/testing";
 import { en } from "../../locales/en";
 import type { ContentView } from "../../stores/server/queries";
@@ -51,6 +41,8 @@ import { MarkdownDocView } from "./MarkdownDocView";
 
 const NODE_ID = "doc:2026-07-11-sample-plan";
 const TOGGLE_CHANGES_LABEL = en.documents.actions.showOrHideChanges;
+const SAVE_LABEL = en.documents.actions.save;
+const CLOSE_LABEL = en.documents.actions.finishEditing;
 const BODY = [
   "---",
   "tags:",
@@ -100,7 +92,11 @@ afterEach(() => {
 describe("MarkdownDocView edit mode", () => {
   it("renders a full-width body with the toolbar and NO permanent properties column", () => {
     renderEditing();
-    expect(screen.getByRole("toolbar", { name: "Formatting" })).toBeTruthy();
+    expect(
+      screen.getByRole("toolbar", {
+        name: en.documents.editor.accessibility.formattingToolbar,
+      }),
+    ).toBeTruthy();
     expect(screen.getByLabelText("document body editor")).toBeTruthy();
     // The properties surface is closed by default — no dialog, no permanent form.
     expect(screen.queryByRole("dialog", { name: "Document properties" })).toBeNull();
@@ -118,12 +114,70 @@ describe("MarkdownDocView edit mode", () => {
       "document body editor",
     ) as HTMLTextAreaElement;
     textarea.setSelectionRange(0, textarea.value.length);
-    fireEvent.click(screen.getByRole("button", { name: "Bold" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: en.documents.editor.actions.bold }),
+    );
     const updated = screen.getByLabelText(
       "document body editor",
     ) as HTMLTextAreaElement;
     expect(updated.value.startsWith("**")).toBe(true);
     expect(updated.value.endsWith("**")).toBe(true);
+  });
+
+  it("localizes save and close actions in place while preserving editor behavior", async () => {
+    const { runtime } = renderEditing();
+    const save = screen.getByRole("button", { name: SAVE_LABEL });
+    const close = screen.getByRole("button", { name: CLOSE_LABEL });
+
+    expect((save as HTMLButtonElement).disabled).toBe(true);
+    act(() => updateEditorDraft(`${BODY}\nChanged`));
+    expect((save as HTMLButtonElement).disabled).toBe(false);
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: ltrTestResources.documents.actions.save,
+      }),
+    ).toBe(save);
+    expect(
+      screen.getByRole("button", {
+        name: ltrTestResources.documents.actions.finishEditing,
+      }),
+    ).toBe(close);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: rtlTestResources.documents.actions.save,
+      }),
+    ).toBe(save);
+    expect(
+      screen.getByRole("button", {
+        name: rtlTestResources.documents.actions.finishEditing,
+      }),
+    ).toBe(close);
+  });
+
+  it("omits save and close actions when their messages are unavailable", () => {
+    const runtime = createTestLocalizationRuntime();
+    runtime.removeResourceBundle("en", "documents");
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <MarkdownDocView
+            nodeId={NODE_ID}
+            content={content()}
+            scope={null}
+            trail={[]}
+          />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+    act(() => openDocumentEditor(NODE_ID, BODY, "abc"));
+
+    expect(screen.queryByRole("button", { name: SAVE_LABEL })).toBeNull();
+    expect(screen.queryByRole("button", { name: CLOSE_LABEL })).toBeNull();
+    expect(document.body.textContent).not.toContain("documents:actions");
   });
 
   it("does NOT swallow the global Mod+K / Mod+B chords (no bespoke formatting accelerator)", () => {
@@ -146,10 +200,7 @@ describe("MarkdownDocView edit mode", () => {
   });
 });
 
-// ── W03.P06.S20 ─────────────────────────────────────────────────────────────
-// In-editor diff render tests (authoring-surface ADR D4).
-
-describe("MarkdownDocView diff panel (S20)", () => {
+describe("MarkdownDocView diff panel", () => {
   it("shows the diff toggle button in edit mode", () => {
     renderEditing();
     expect(screen.getByRole("button", { name: TOGGLE_CHANGES_LABEL })).toBeTruthy();
@@ -218,7 +269,6 @@ describe("MarkdownDocView diff panel (S20)", () => {
   });
 });
 
-// Enrollment guard: one shared id under keymap and palette (actions-keymap-palette).
 const noop = () => undefined;
 function editorCommandContext(): CommandContext {
   return {
@@ -262,15 +312,15 @@ function editorCommandContext(): CommandContext {
   };
 }
 
-describe("editor:toggle-diff enrollment guard (S20)", () => {
+describe("editor:toggle-diff enrollment guard", () => {
   afterAll(() => resetCommandProviders());
 
-  it("is enrolled in the keymap registry under the canonical id with Mod+Shift+D", () => {
+  it("is enrolled in the keymap registry under the canonical id with Mod+Alt+G", () => {
     const binding = deriveEditorKeybindings().find(
       (b) => b.id === EDITOR_TOGGLE_DIFF_ACTION_ID,
     );
     expect(binding).toBeTruthy();
-    expect(binding?.defaultChord).toBe("Mod+Shift+D");
+    expect(binding?.defaultChord).toBe("Mod+Alt+G");
   });
 
   it("is enrolled in the palette under the same shared id in the edit family", () => {
@@ -281,12 +331,7 @@ describe("editor:toggle-diff enrollment guard (S20)", () => {
   });
 });
 
-// ── W03.P06.S19 ceiling closure ──────────────────────────────────────────────
-// Verifies the debounce that bounds per-keystroke O(n·m) line-LCS cost:
-// rapid draft edits must not recompute the diff immediately; the diff must
-// settle to the final draft after the 250ms trailing window.
-
-describe("MarkdownDocView diff debounce (S19 ceiling closure)", () => {
+describe("MarkdownDocView diff debounce", () => {
   it("debounces proposed text: rapid edits do not immediately recompute the diff, then settle after 250ms", async () => {
     const { container } = renderEditing();
     // Open the diff panel: leading flush renders the current draft (same as base —

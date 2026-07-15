@@ -111,6 +111,12 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
     },
     {
       id: LEFT_RAIL_EXPAND_TREE_ACTION_ID,
+      // ACCEPTED RISK (keyboard-shortcut-conflict-review ADR D7): Mod+Alt+] is a
+      // Mod+Alt+<symbol> default, and `]` requires AltGr on most EU layouts where AltGr
+      // emits ctrlKey+altKey (indistinguishable from Mod+Alt on non-Mac) — so this can
+      // misfire or be unreachable there. No general AltGr fix lands now (a chord-model
+      // redesign). RETURN TRIGGER: on a real affected-layout report, re-chord this pair
+      // specifically (e.g. toward Mod+Shift+]) rather than attempting a general fix.
       defaultChord: "Mod+Alt+]",
       label: LEFT_RAIL_EXPAND_TREE_LABEL,
       group: LEFT_RAIL_GROUP,
@@ -118,6 +124,9 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
     },
     {
       id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
+      // ACCEPTED RISK (keyboard-shortcut-conflict-review ADR D7): see the Mod+Alt+] note
+      // above — `[` likewise requires AltGr on most EU layouts. Same return trigger:
+      // re-chord this pair (e.g. toward Mod+Shift+[) on a real affected-layout report.
       defaultChord: "Mod+Alt+[",
       label: LEFT_RAIL_COLLAPSE_TREE_LABEL,
       group: LEFT_RAIL_GROUP,

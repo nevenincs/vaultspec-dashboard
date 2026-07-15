@@ -85,11 +85,11 @@ export function CommandPalette() {
   const mode = useCommandPaletteMode();
   const commandPaletteConfirm = useConfirmable<void>("ops:run");
   useCommandPaletteGlobalToggle(commandPaletteConfirm.cancel);
-  // The search shortcut (Mod+P) opens the SAME palette in search mode — both modes
+  // The search shortcut (Mod+Alt+S) opens the SAME palette in search mode — both modes
   // share the one overlay so Command-K controls searching (filtering-has-one-
   // canonical-surface / keyboard-shortcuts-bind-through-the-one-keymap-registry).
   useSearchPaletteGlobalShortcut(commandPaletteConfirm.cancel);
-  // The document shortcut (Mod+Shift+O) opens the SAME overlay in the literal
+  // The document shortcut (Mod+Alt+F) opens the SAME overlay in the literal
   // document-finder plane (command-palette-planes ADR).
   useDocumentSearchGlobalShortcut(commandPaletteConfirm.cancel);
 

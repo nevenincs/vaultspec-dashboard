@@ -38,14 +38,14 @@ const expectedPaletteBindings = [
   },
   {
     id: "app:search",
-    defaultChord: "Mod+P",
+    defaultChord: "Mod+Alt+S",
     key: "common:actions.searchDocumentsAndCode",
     source: "Search documents and code…",
     alternate: "Rechercher dans les documents et le code…",
   },
   {
     id: "app:document-search",
-    defaultChord: "Mod+Shift+O",
+    defaultChord: "Mod+Alt+F",
     key: "documents:actions.findByName",
     source: "Find a document by name…",
     alternate: "Rechercher un document par nom…",

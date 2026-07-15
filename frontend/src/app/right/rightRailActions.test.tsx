@@ -20,14 +20,14 @@ describe("right-rail actions", () => {
     expect(deriveRightRailKeybindings()).toEqual([
       {
         id: "right-rail:show-status",
-        defaultChord: "Mod+1",
+        defaultChord: "Mod+Alt+1",
         label: { key: "common:actions.showStatus" },
         group: { key: "common:shortcutGroups.window" },
         context: "right-rail",
       },
       {
         id: "right-rail:show-changes",
-        defaultChord: "Mod+2",
+        defaultChord: "Mod+Alt+2",
         label: { key: "common:actions.showChanges" },
         group: { key: "common:shortcutGroups.window" },
         context: "right-rail",
@@ -90,7 +90,7 @@ describe("right-rail actions", () => {
     expect(normalizeRightRailKeybindingTab({ tab: "changes" })).toBeNull();
     expect(rightRailTabActionId(" changes ")).toBe("right-rail:show-changes");
     expect(rightRailTabActionId({ tab: "changes" })).toBeNull();
-    expect(rightRailTabChord(0)).toBe("Mod+1");
+    expect(rightRailTabChord(0)).toBe("Mod+Alt+1");
     expect(rightRailTabChord("0")).toBeNull();
     expect(rightRailTabChord(RIGHT_RAIL_TABS.length)).toBeNull();
   });

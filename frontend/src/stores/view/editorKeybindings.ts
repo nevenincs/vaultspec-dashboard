@@ -175,11 +175,16 @@ export function deriveEditorKeybindings(): KeybindingDef[] {
       context: "global",
     },
     {
-      // Toggle the draft-vs-saved diff panel (authoring-surface ADR D4). Chord
-      // verified free of same-specificity collisions by the KAR-008 guard.
-      // Mod+B (left-rail toggle) and Mod+I/K are reserved — not this chord.
+      // Toggle the draft-vs-saved diff panel (authoring-surface ADR D4). Binds Mod+Alt+G
+      // after two prior chords were disqualified (keyboard-shortcut-conflict-review ADR D5,
+      // review-round): Mod+Shift+D is Chrome's bookmark-all-tabs, and Mod+Alt+D is macOS
+      // Cmd+Opt+D (Show/Hide Dock, an Apple system-wide shortcut) — both chrome/OS-reserved.
+      // Mod+Alt+G is clean across Chrome/Firefox/Safari/Edge and macOS system shortcuts (the
+      // reviewer vetted out B/K/E/C/M/H in this family as browser/OS-reserved on Mac); it is
+      // a distinct chord from the Mod+Shift+G graph toggle. Both Mod+Shift+D and Mod+Alt+D
+      // are on the reserved-chord denylist so neither returns.
       id: EDITOR_TOGGLE_DIFF_ACTION_ID,
-      defaultChord: "Mod+Shift+D",
+      defaultChord: "Mod+Alt+G",
       label: EDITOR_TOGGLE_DIFF_LABEL,
       group: EDITOR_GROUP,
       context: "global",
