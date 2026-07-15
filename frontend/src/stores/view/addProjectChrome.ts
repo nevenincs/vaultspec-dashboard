@@ -1,28 +1,28 @@
 import { useMemo } from "react";
 import { create } from "zustand";
+import { normalizeAddProjectIssue, type AddProjectIssue } from "../addProjectIssue";
 
 // Add-project chrome state: modal visibility, the path draft, and validation
 // feedback. The registration itself stays in stores/server (`useAddWorkspace`),
 // the sole wire client. This mirrors `createDocChrome` exactly so the two modal
-// surfaces read identically. Mutation pending is read from the add hook, not held
-// here, so this store owns only the disclosure + draft.
+// surfaces read identically. Submission state stays local to the dialog, so this
+// store owns only disclosure, path data, and a closed user-facing issue condition.
 export const ADD_PROJECT_PATH_MAX_CHARS = 1024;
-export const ADD_PROJECT_ERROR_MAX_CHARS = 1024;
 
 export interface AddProjectChromeState {
   open: boolean;
   path: string;
-  error: string | null;
+  issue: AddProjectIssue | null;
   toggleOpen: () => void;
   setPath: (path: unknown) => void;
-  setError: (error: unknown) => void;
+  setIssue: (issue: unknown) => void;
   reset: () => void;
 }
 
 const RESET_STATE = {
   open: false,
   path: "",
-  error: null,
+  issue: null,
 };
 
 export function normalizeAddProjectPath(value: unknown): string {
@@ -32,19 +32,10 @@ export function normalizeAddProjectPath(value: unknown): string {
     : value.slice(0, ADD_PROJECT_PATH_MAX_CHARS);
 }
 
-export function normalizeAddProjectError(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const normalized =
-    value.length <= ADD_PROJECT_ERROR_MAX_CHARS
-      ? value
-      : value.slice(0, ADD_PROJECT_ERROR_MAX_CHARS);
-  return normalized.trim().length > 0 ? normalized : null;
-}
-
 export interface AddProjectChromeView {
   open: boolean;
   path: string;
-  error: string | null;
+  issue: AddProjectIssue | null;
 }
 
 export function normalizeAddProjectChromeView(state: unknown): AddProjectChromeView {
@@ -55,7 +46,7 @@ export function normalizeAddProjectChromeView(state: unknown): AddProjectChromeV
   return {
     open: value.open === true,
     path: normalizeAddProjectPath(value.path),
-    error: normalizeAddProjectError(value.error),
+    issue: normalizeAddProjectIssue(value.issue),
   };
 }
 
@@ -65,10 +56,10 @@ export const useAddProjectChromeStore = create<AddProjectChromeState>((set) => (
     set((state) =>
       state.open
         ? RESET_STATE
-        : { ...normalizeAddProjectChromeView(state), open: true, error: null },
+        : { ...normalizeAddProjectChromeView(state), open: true, issue: null },
     ),
-  setPath: (path) => set({ path: normalizeAddProjectPath(path), error: null }),
-  setError: (error) => set({ error: normalizeAddProjectError(error) }),
+  setPath: (path) => set({ path: normalizeAddProjectPath(path), issue: null }),
+  setIssue: (issue) => set({ issue: normalizeAddProjectIssue(issue) }),
   reset: () => set(RESET_STATE),
 }));
 
@@ -77,10 +68,10 @@ export function useAddProjectChrome(): AddProjectChromeView {
   // never inside the selector, even under useShallow.
   const open = useAddProjectChromeStore((state) => state.open);
   const path = useAddProjectChromeStore((state) => state.path);
-  const error = useAddProjectChromeStore((state) => state.error);
+  const issue = useAddProjectChromeStore((state) => state.issue);
   return useMemo(
-    () => normalizeAddProjectChromeView({ open, path, error }),
-    [open, path, error],
+    () => normalizeAddProjectChromeView({ open, path, issue }),
+    [open, path, issue],
   );
 }
 
@@ -103,8 +94,8 @@ export function setAddProjectPath(path: unknown): void {
   useAddProjectChromeStore.getState().setPath(path);
 }
 
-export function setAddProjectError(error: unknown): void {
-  useAddProjectChromeStore.getState().setError(error);
+export function setAddProjectIssue(issue: unknown): void {
+  useAddProjectChromeStore.getState().setIssue(issue);
 }
 
 export function resetAddProjectChrome(): void {

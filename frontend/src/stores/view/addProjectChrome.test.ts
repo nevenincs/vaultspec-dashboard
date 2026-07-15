@@ -1,14 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
-  ADD_PROJECT_ERROR_MAX_CHARS,
   ADD_PROJECT_PATH_MAX_CHARS,
   normalizeAddProjectChromeView,
-  normalizeAddProjectError,
   normalizeAddProjectPath,
   openAddProjectDialog,
   resetAddProjectChrome,
-  setAddProjectError,
+  setAddProjectIssue,
   setAddProjectPath,
   toggleAddProjectDialog,
   useAddProjectChromeStore,
@@ -24,12 +22,21 @@ describe("add-project chrome store", () => {
     expect(normalizeAddProjectPath(long)).toHaveLength(ADD_PROJECT_PATH_MAX_CHARS);
   });
 
-  it("normalizes the error to a non-empty bounded string or null", () => {
-    expect(normalizeAddProjectError("   ")).toBeNull();
-    expect(normalizeAddProjectError(7)).toBeNull();
-    expect(normalizeAddProjectError("bad path")).toBe("bad path");
-    const long = "x".repeat(ADD_PROJECT_ERROR_MAX_CHARS + 10);
-    expect(normalizeAddProjectError(long)).toHaveLength(ADD_PROJECT_ERROR_MAX_CHARS);
+  it("stores only closed add-project issues", () => {
+    for (const issue of [
+      "pathRequired",
+      "folderUnavailable",
+      "notGitProject",
+      "alreadyAdded",
+      "addFailed",
+    ] as const) {
+      setAddProjectIssue(issue);
+      expect(useAddProjectChromeStore.getState().issue).toBe(issue);
+    }
+    setAddProjectIssue("raw engine diagnostic");
+    expect(useAddProjectChromeStore.getState().issue).toBeNull();
+    setAddProjectIssue({ issue: "addFailed" });
+    expect(useAddProjectChromeStore.getState().issue).toBeNull();
   });
 
   it("opens idempotently and resets on toggle-closed", () => {
@@ -44,28 +51,28 @@ describe("add-project chrome store", () => {
     expect(useAddProjectChromeStore.getState()).toMatchObject({
       open: false,
       path: "",
-      error: null,
+      issue: null,
     });
   });
 
   it("clears the error when the path changes (typing dismisses the refusal)", () => {
     openAddProjectDialog();
-    setAddProjectError("path is not a readable directory");
-    expect(useAddProjectChromeStore.getState().error).not.toBeNull();
+    setAddProjectIssue("pathRequired");
+    expect(useAddProjectChromeStore.getState().issue).toBe("pathRequired");
     setAddProjectPath("/code/fixed");
-    expect(useAddProjectChromeStore.getState().error).toBeNull();
+    expect(useAddProjectChromeStore.getState().issue).toBeNull();
   });
 
   it("projects a normalized chrome view from malformed state", () => {
     useAddProjectChromeStore.setState({
       open: "true",
       path: 99,
-      error: "   ",
+      issue: "raw engine diagnostic",
     } as unknown as Partial<ReturnType<typeof useAddProjectChromeStore.getState>>);
     expect(normalizeAddProjectChromeView(useAddProjectChromeStore.getState())).toEqual({
       open: false,
       path: "",
-      error: null,
+      issue: null,
     });
   });
 });

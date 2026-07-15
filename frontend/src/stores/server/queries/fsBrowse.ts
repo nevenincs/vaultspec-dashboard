@@ -1,20 +1,18 @@
-// The add-project OS folder picker's wire seam (single-app-runtime ADR O6): a
-// stores-layer hook over `GET /fs/list`, consumed only by `AddProjectDialog`'s
-// Browse affordance so app/ chrome never fetches the engine directly
-// (dashboard-layer-ownership). Omitted `path` reads the filesystem roots; an
-// absolute `path` reads that directory's immediate subdirectories. Each level is
-// its own bounded cache entry, mirroring `useFileTree`'s per-directory grain.
+// Cached read for one project-picker folder level. Filtering and hidden-folder
+// inclusion happen before the server applies its row limit. Held data avoids a
+// blank list while the next level loads.
 
-import { engineClient, type FsListResponse } from "../engine";
-import { useQuery } from "@tanstack/react-query";
+import { engineClient, type FsListParams, type FsListResponse } from "../engine";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { engineKeys, withManualRetry } from "./internal";
 
-export function useFsList(path?: string) {
+export function useFsList(params: FsListParams = {}) {
   const query = useQuery({
-    queryKey: engineKeys.fsList(path),
-    queryFn: () => engineClient.fsList(path),
+    queryKey: engineKeys.fsList(params.path, params.q, params.hidden),
+    queryFn: () => engineClient.fsList(params),
+    placeholderData: keepPreviousData,
   });
   return withManualRetry(query);
 }
 
-export type { FsListResponse };
+export type { FsListParams, FsListResponse };

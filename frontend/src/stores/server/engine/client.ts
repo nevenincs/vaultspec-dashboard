@@ -47,6 +47,7 @@ import type {
   FeatureRosterResponse,
   FileTreeResponse,
   FiltersVocabulary,
+  FsListParams,
   FsListResponse,
   GraphCorpus,
   GraphFilter,
@@ -230,10 +231,18 @@ export class EngineClient {
   }
 
   /** Bounded, read-only OS directory browsing for the add-project picker
-   *  (single-app-runtime ADR O6): omitted `path` lists the filesystem roots,
-   *  an absolute `path` lists that directory's immediate subdirectories. */
-  async fsList(path?: string): Promise<FsListResponse> {
-    return adaptFsList(await this.get("/fs/list", path ? { path } : undefined));
+   *  (single-app-runtime ADR O6 + workspace-picker-dialog ADR D4): omitted
+   *  `path` lists the filesystem roots (with engine-served places), an
+   *  absolute `path` lists that directory's immediate subdirectories. `q` and
+   *  `hidden` narrow engine-side BEFORE the row cap (filtering law). */
+  async fsList(params: FsListParams = {}): Promise<FsListResponse> {
+    const query: Record<string, string> = {};
+    if (params.path) query.path = params.path;
+    if (params.q) query.q = params.q;
+    if (params.hidden) query.hidden = "true";
+    return adaptFsList(
+      await this.get("/fs/list", Object.keys(query).length > 0 ? query : undefined),
+    );
   }
 
   async vaultTree(

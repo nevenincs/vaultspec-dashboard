@@ -1,25 +1,26 @@
-// A reusable modal Dialog primitive (dashboard-settings W03.P06).
-//
-// The app had no shared modal — only the command palette rolled its own scrim +
-// focus trap. This generalizes that pattern into a token-driven primitive the
-// settings dialog (and future modals) compose: a backdrop scrim, a centered
-// panel with the dialog role, a real focus trap (Tab/Shift+Tab cycle within),
-// Escape and backdrop dismiss, focus-into on open and focus-restore on close.
-// All chrome derives from the OKLCH semantic tokens (no hardcoded hex, no `dark:`
-// variant); the close affordance is a Lucide glyph (structural chrome).
+// Shared modal shell with focus containment, dismissal, and focus restoration.
 
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 import { useCallback, useId, useRef } from "react";
+
+import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { focusableDescendants, trapTabFocus } from "./focusTrap";
 import { useDismissOnEscape } from "./useDismissOnEscape";
 import { useFocusRestore } from "./useFocusRestore";
+
+export const DIALOG_MESSAGES = {
+  close: { key: "common:actions.close" },
+} as const satisfies Record<string, MessageDescriptor>;
 
 export interface DialogProps {
   /** Whether the dialog is mounted/visible. When false, nothing renders. */
   open: boolean;
   /** Called on every dismiss path: Escape, backdrop click, the close button. */
   onClose: () => void;
+  /** Whether Escape, the backdrop, and the close button may dismiss the dialog. */
+  dismissible?: boolean;
   /** The dialog title (also its accessible name via aria-labelledby). */
   title: string;
   /** Optional one-line description under the title (aria-describedby). */
@@ -32,16 +33,15 @@ export interface DialogProps {
    *  the safe-area bottom inset. Dialogs with a bottom action row pass it
    *  here rather than rendering a footer inside the scrolling body. */
   footer?: ReactNode;
-  /** Panel width: `default` (34rem) for settings-class modals, `wide` (52rem)
-   *  for the dashboard cockpit that hosts a job table and a log pane side by
-   *  side (rag-job-dashboard ADR D1). Both keep the compact viewport guard. */
-  size?: "default" | "wide";
+  /** Panel width. All variants retain the compact viewport guard. */
+  size?: "default" | "medium" | "wide";
 }
 
 /** The panel width class per size variant. The `max-w` compact guard is shared,
  *  so a wide panel still fits a narrow viewport. */
 const PANEL_WIDTH: Record<NonNullable<DialogProps["size"]>, string> = {
   default: "w-[34rem]",
+  medium: "w-[45rem]",
   wide: "w-[52rem]",
 };
 
@@ -58,13 +58,15 @@ export function Dialog({
   children,
   footer,
   size = "default",
+  dismissible = true,
 }: DialogProps) {
+  const closeLabel = useLocalizedMessage(DIALOG_MESSAGES.close);
   const panelRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const descId = useId();
 
   useDismissOnEscape(onClose, {
-    enabled: open,
+    enabled: open && dismissible,
     target: document,
     preventDefault: true,
   });
@@ -87,7 +89,7 @@ export function Dialog({
       onMouseDown={(e) => {
         // Backdrop dismiss only on the scrim itself; a click inside the panel
         // stops propagation (below) and must not close it.
-        if (e.target === e.currentTarget) onClose();
+        if (dismissible && e.target === e.currentTarget) onClose();
       }}
     >
       <div
@@ -115,7 +117,8 @@ export function Dialog({
           <button
             type="button"
             onClick={onClose}
-            aria-label="Close"
+            disabled={!dismissible}
+            aria-label={closeLabel}
             className="shrink-0 rounded-fg-xs p-fg-1 text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <X aria-hidden className="size-3.5" />

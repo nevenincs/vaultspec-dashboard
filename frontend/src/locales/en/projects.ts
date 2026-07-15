@@ -1,4 +1,30 @@
 export const projects = {
+  addDialog: {
+    accessibility: {
+      folderPath: "Project folder path",
+    },
+    actions: {
+      add: "Add project",
+      adding: "Adding project…",
+      pickFolder: "Pick folder",
+    },
+    description: "Choose a project folder. Its files will not be changed.",
+    errors: {
+      addFailed: "This project could not be added. Try again.",
+      alreadyAdded: "This project is already added. Choose it from the project list.",
+      folderUnavailable:
+        "That folder could not be opened. Check the path and folder permissions, then try again.",
+      notGitProject: "Choose a folder that contains a Git repository.",
+      pathRequired: "Enter the full path to a project folder.",
+    },
+    fields: {
+      folder: "Project folder",
+    },
+    placeholders: {
+      folderPath: "Enter the full folder path",
+    },
+    title: "Add a project",
+  },
   actions: {
     add: "Add project…",
     checkProjectStatus: "Check project status",
@@ -29,6 +55,51 @@ export const projects = {
     refreshProjectForPullRequest: "Refresh project data, then try again.",
     setUpProjectFirst: "Set up the project, then try again.",
     waitForProjectStatus: "Wait for the project status to load, then try again.",
+  },
+  folderBrowser: {
+    accessibility: {
+      filterFolders: "Filter folders in this level",
+      folderOptionGitRepository: "{{folder}}, Git repository",
+      folderOptionHidden: "{{folder}}, hidden folder",
+      folderOptionProject: "{{folder}}, project",
+      folderOptionRegistered: "{{folder}}, already added",
+      folders: "Folders",
+      showHiddenFolders: "Show hidden folders",
+    },
+    badges: {
+      alreadyAdded: "Already added",
+      gitRepository: "Git repository",
+      hidden: "Hidden",
+      project: "Project",
+    },
+    empty: {
+      noMatches: "No folders match.",
+      noSubfolders: "No subfolders here.",
+    },
+    errors: {
+      readFailed: "This folder could not be opened.",
+      readFailedHint: "Check the path or choose another folder.",
+    },
+    labels: {
+      filterFolders: "Filter folders…",
+      hidden: "Hidden",
+      roots: "This computer",
+    },
+    states: {
+      loading: "Reading folders…",
+      truncated: "Showing the first {{limit, number}} folders.",
+    },
+  },
+  placesRail: {
+    labels: {
+      home: "Home",
+      places: "Places",
+    },
+    sections: {
+      drives: "Drives",
+      projects: "Projects",
+      recent: "Recent",
+    },
   },
   provisioning: {
     description: "Set up this project to continue.",

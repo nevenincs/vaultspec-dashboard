@@ -14,6 +14,7 @@ import type {
   FileTreeTruncated,
   FsListEntry,
   FsListResponse,
+  FsPlace,
   GraphSlice,
   NodeDetail,
   NodeEvidence,
@@ -564,12 +565,12 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
   };
 }
 
-// --- filesystem browse picker (single-app-runtime ADR O6) -----------------------
+// --- filesystem browse picker ---------------------------------------------------
 //
 // Tolerant adapter for `GET /fs/list`. The live `{data, tiers}` envelope is
 // already unwrapped by `unwrapEnvelope` before this runs; a body already in the
 // internal shape (the mock) passes through unchanged. Every missing field
-// defaults to a safe empty so a sparse or malformed shape NEVER throws — the
+// defaults to a safe empty so a sparse or malformed shape never throws. The
 // picker degrades to an empty, non-truncated level rather than crashing the
 // add-project dialog.
 
@@ -583,23 +584,48 @@ function adaptFsListEntry(value: unknown): FsListEntry | null {
     path,
     is_managed: value.is_managed === true,
     is_git: value.is_git === true,
+    is_hidden: value.is_hidden === true,
+    is_registered: value.is_registered === true,
   };
+}
+
+function adaptFsPlace(value: unknown): FsPlace | null {
+  if (!isRec(value)) return null;
+  const name = normalizeFileTreeString(value.name);
+  const path = normalizeFileTreeString(value.path);
+  if (name === undefined || path === undefined) return null;
+  return { name, path };
 }
 
 /** Live `/fs/list` → the internal listing. TOLERANT: an absent `entries` array
  *  defaults to empty, `path`/`parent` default to null (the filesystem-roots
- *  shape), and `truncated` defaults to false. */
+ *  shape), `places` defaults to empty (a pre-enrichment engine), and
+ *  `truncated` defaults to false. */
 export function adaptFsList(body: unknown): FsListResponse {
   if (!isRec(body)) {
-    return { path: null, parent: null, entries: [], truncated: false, tiers: {} };
+    return {
+      path: null,
+      parent: null,
+      is_registered: false,
+      entries: [],
+      places: [],
+      truncated: false,
+      tiers: {},
+    };
   }
   return {
     path: normalizeFileTreeString(body.path) ?? null,
     parent: normalizeFileTreeString(body.parent) ?? null,
+    is_registered: body.is_registered === true,
     entries: Array.isArray(body.entries)
       ? body.entries
           .map(adaptFsListEntry)
           .filter((entry): entry is FsListEntry => entry !== null)
+      : [],
+    places: Array.isArray(body.places)
+      ? body.places
+          .map(adaptFsPlace)
+          .filter((place): place is FsPlace => place !== null)
       : [],
     truncated: body.truncated === true,
     tiers: (body.tiers ?? {}) as TiersBlock,

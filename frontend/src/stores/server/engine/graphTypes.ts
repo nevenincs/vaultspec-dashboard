@@ -231,14 +231,14 @@ export interface FileTreeResponse {
   tiers: TiersBlock;
 }
 
-// --- filesystem browse picker (single-app-runtime ADR O6) -----------------------
+// --- filesystem browse picker ---------------------------------------------------
 //
 // `GET /fs/list[?path=<absolute dir>]`: bounded, read-only OS directory browsing
 // for the add-project picker. Without `path` it lists the filesystem roots (drive
 // letters on Windows, `/` elsewhere); with an absolute `path` it lists that
 // directory's immediate SUBDIRECTORIES only, name-sorted and capped. Each row
 // carries the two markers the picker renders: `is_managed` (has a `.vault`) and
-// `is_git` (has a `.git`) — a plain git repo the picker can register vs. one
+// `is_git` (has a `.git`). A plain Git repository can be registered while a
 // already vaultspec-managed.
 
 export interface FsListEntry {
@@ -246,6 +246,19 @@ export interface FsListEntry {
   path: string;
   is_managed: boolean;
   is_git: boolean;
+  /** Dotfolder or OS-hidden folder, served only
+   *  when the request opts into hidden entries; rendered de-emphasized. */
+  is_hidden: boolean;
+  /** Already a registered workspace root,
+   *  rendered marked and non-actionable so re-adding is not a round-trip error. */
+  is_registered: boolean;
+}
+
+/** One places-rail shortcut served at the roots level: the home
+ *  directory today; engine-owned so the client never probes the OS itself. */
+export interface FsPlace {
+  name: string;
+  path: string;
 }
 
 export interface FsListResponse {
@@ -253,10 +266,24 @@ export interface FsListResponse {
   path: string | null;
   /** The listed directory's parent path; null at the roots level or a root itself. */
   parent: string | null;
+  /** Whether the listed directory itself is already a registered workspace root. */
+  is_registered: boolean;
   entries: FsListEntry[];
+  /** Engine-served places shortcuts; non-empty only on the roots response. */
+  places: FsPlace[];
   /** True when the 256-row cap clipped this level's entries. */
   truncated: boolean;
   tiers: TiersBlock;
+}
+
+/** The `/fs/list` request narrowing. Both fields apply before
+ *  the row cap, so a truncated level stays filterable (filtering law). */
+export interface FsListParams {
+  path?: string;
+  /** Case-insensitive substring name filter. */
+  q?: string;
+  /** Include hidden (dot / OS-hidden) folders; default false. */
+  hidden?: boolean;
 }
 
 // --- §4 read-only content fetch (review-rail-viewers ADR) ------------------------

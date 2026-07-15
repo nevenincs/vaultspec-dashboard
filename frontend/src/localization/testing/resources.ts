@@ -1,4 +1,14 @@
 import { en, sourceLocale } from "../../locales/en";
+import {
+  ltrAddProjectDialogResources,
+  rtlAddProjectDialogResources,
+} from "./addProjectResources";
+import {
+  ltrFolderBrowserResources,
+  ltrPlacesRailResources,
+  rtlFolderBrowserResources,
+  rtlPlacesRailResources,
+} from "./pickerResources";
 
 export const ltrTestLocale = "fr" as const;
 export const rtlTestLocale = "ar" as const;
@@ -83,6 +93,40 @@ export const ltrTestResources = {
         navigate: "Naviguer",
         open: "Ouvrir",
         close: "Fermer",
+      },
+    },
+    controlPanels: {
+      labels: {
+        search: "Recherche",
+        projectHealth: "Santé du projet",
+        systemStatus: "État du système",
+        approvals: "Approbations",
+      },
+      actions: {
+        showSearch: "Afficher la recherche",
+        hideSearch: "Masquer la recherche",
+        showProjectHealth: "Afficher la santé du projet",
+        hideProjectHealth: "Masquer la santé du projet",
+        showSystemStatus: "Afficher l’état du système",
+        hideSystemStatus: "Masquer l’état du système",
+        showApprovals: "Afficher les approbations",
+        hideApprovals: "Masquer les approbations",
+      },
+      unavailableTitles: {
+        search: "Recherche indisponible",
+        projectHealth: "Santé du projet indisponible",
+        systemStatus: "État du système indisponible",
+        approvals: "Approbations indisponibles",
+      },
+      accessibility: {
+        group: "État du projet",
+        panelStatus: "{{panel}} : {{status}}",
+      },
+      tones: {
+        workingNormally: "Fonctionne normalement",
+        needsAttention: "Nécessite une attention",
+        unavailable: "Indisponible",
+        checking: "Vérification en cours",
       },
     },
     palette: {
@@ -212,6 +256,32 @@ export const ltrTestResources = {
     categories: {
       code: "Code",
     },
+    codeTree: {
+      accessibility: {
+        browser: "Fichiers du projet",
+        linkedToMap: "Affiché dans la carte du projet",
+      },
+      errors: {
+        childUnavailable: "Impossible de charger ce dossier. Réessayez.",
+        unavailable: "Impossible de charger les fichiers du projet. Réessayez.",
+      },
+      states: {
+        childLoading: "Chargement du dossier…",
+        degraded:
+          "Les fichiers du projet sont indisponibles. Parcourez plutôt les documents.",
+        empty: "Aucun fichier de projet trouvé.",
+        loading: "Chargement des fichiers du projet…",
+        truncated:
+          "{{shown, number}} fichiers et dossiers chargés sur {{total, number}}.",
+        truncatedUnknown: "D’autres fichiers et dossiers sont disponibles ici.",
+      },
+    },
+    confirmations: {
+      discardUnsavedChanges: {
+        title: "Ignorer les modifications non enregistrées ?",
+        body: "Les modifications non enregistrées du document seront perdues. Cette action est irréversible.",
+      },
+    },
     createDialog: {
       accessibility: {
         addLinkedDocument: "Ajouter un document lié",
@@ -322,6 +392,58 @@ export const ltrTestResources = {
       audit: "Audits",
       reference: "Références",
     },
+    editor: {
+      accessibility: {
+        formattingToolbar: "Mise en forme",
+      },
+      actions: {
+        bold: "Mettre en gras",
+        italic: "Mettre en italique",
+        inlineCode: "Appliquer le code en ligne",
+        heading: "Ajouter un titre",
+        bulletedList: "Ajouter une liste à puces",
+        numberedList: "Ajouter une liste numérotée",
+        quote: "Ajouter une citation",
+        link: "Ajouter un lien",
+        linkToDocument: "Ajouter un lien vers un document",
+      },
+    },
+    viewer: {
+      accessibility: {
+        documentMode: "Mode du document",
+        documentProperties: "Propriétés du document",
+        featureTag: "Étiquette de fonctionnalité",
+      },
+      modes: {
+        edit: "Modification",
+        view: "Lecture",
+      },
+      properties: {
+        actions: {
+          rename: "Renommer le document",
+          save: "Enregistrer les propriétés",
+        },
+        emptyStates: {
+          newFeatureTag: "Saisissez une nouvelle étiquette de fonctionnalité",
+        },
+        labels: {
+          date: "Date",
+          documentName: "Nom du document",
+          documentType: "Type de document",
+          feature: "Fonctionnalité",
+          relatedDocuments: "Documents associés",
+        },
+        placeholders: {
+          date: "AAAA-MM-JJ",
+          featureTag: "Saisissez une étiquette de fonctionnalité",
+        },
+        states: {
+          notSet: "Non défini",
+          renaming: "Renommage du document…",
+          saving: "Enregistrement des propriétés…",
+        },
+      },
+    },
     disabledReasons: {
       ...en.documents.disabledReasons,
       chooseTemporaryTab: "Choisissez un onglet temporaire à garder ouvert.",
@@ -403,7 +525,7 @@ export const ltrTestResources = {
       title: "Un problème est survenu",
     },
     unexpectedSection: {
-      message: "Réessayez {{section}}.",
+      message: "Réessayez cette section.",
       title: "Cette section ne peut pas être affichée",
     },
   },
@@ -476,6 +598,26 @@ export const ltrTestResources = {
       startingItemUnavailable:
         "Actualisez les données, puis réessayez d’afficher l’élément de départ.",
     },
+    legend: {
+      accessibility: {
+        documentTypeFilters: "Filtres par type de document",
+        moduleColors: "Couleurs des modules de code",
+        recencyScale: "Échelle de récence du code",
+      },
+      actions: {
+        addDocumentTypeFilter: "Ajouter le filtre {{documentType}}",
+        clearDocumentTypeFilters: "Effacer les filtres",
+        hideDocumentTypeLabels: "Masquer les libellés des types de document",
+        hideModuleLabels: "Masquer les libellés des modules",
+        removeDocumentTypeFilter: "Retirer le filtre {{documentType}}",
+        showDocumentTypeLabels: "Afficher les libellés des types de document",
+        showModuleLabels: "Afficher les libellés des modules",
+      },
+      labels: {
+        older: "Plus ancien",
+        recent: "Récent",
+      },
+    },
     shortcutGroups: {
       workingSet: "Ensemble de travail",
     },
@@ -529,6 +671,7 @@ export const ltrTestResources = {
     },
   },
   projects: {
+    addDialog: ltrAddProjectDialogResources,
     actions: {
       add: "Ajouter un projet…",
       checkProjectStatus: "Vérifier l’état du projet",
@@ -563,6 +706,8 @@ export const ltrTestResources = {
       waitForProjectStatus:
         "Attendez le chargement de l’état du projet, puis réessayez.",
     },
+    folderBrowser: ltrFolderBrowserResources,
+    placesRail: ltrPlacesRailResources,
     provisioning: {
       description: "Configurez ce projet pour continuer.",
       details: {
@@ -794,6 +939,40 @@ export const rtlTestResources = {
         close: "إغلاق",
       },
     },
+    controlPanels: {
+      labels: {
+        search: "البحث",
+        projectHealth: "سلامة المشروع",
+        systemStatus: "حالة النظام",
+        approvals: "الموافقات",
+      },
+      actions: {
+        showSearch: "إظهار البحث",
+        hideSearch: "إخفاء البحث",
+        showProjectHealth: "إظهار سلامة المشروع",
+        hideProjectHealth: "إخفاء سلامة المشروع",
+        showSystemStatus: "إظهار حالة النظام",
+        hideSystemStatus: "إخفاء حالة النظام",
+        showApprovals: "إظهار الموافقات",
+        hideApprovals: "إخفاء الموافقات",
+      },
+      unavailableTitles: {
+        search: "البحث غير متاح",
+        projectHealth: "سلامة المشروع غير متاحة",
+        systemStatus: "حالة النظام غير متاحة",
+        approvals: "الموافقات غير متاحة",
+      },
+      accessibility: {
+        group: "حالة المشروع",
+        panelStatus: "{{panel}}: {{status}}",
+      },
+      tones: {
+        workingNormally: "يعمل بشكل طبيعي",
+        needsAttention: "يحتاج إلى الانتباه",
+        unavailable: "غير متاح",
+        checking: "جارٍ التحقق",
+      },
+    },
     palette: {
       commandCount_few: "{{count, number}} أوامر",
       commandCount_many: "{{count, number}} أمرًا",
@@ -905,6 +1084,31 @@ export const rtlTestResources = {
     categories: {
       code: "التعليمات البرمجية",
     },
+    codeTree: {
+      accessibility: {
+        browser: "ملفات المشروع",
+        linkedToMap: "معروض في خريطة المشروع",
+      },
+      errors: {
+        childUnavailable: "تعذر تحميل هذا المجلد. حاول مرة أخرى.",
+        unavailable: "تعذر تحميل ملفات المشروع. حاول مرة أخرى.",
+      },
+      states: {
+        childLoading: "جارٍ تحميل المجلد…",
+        degraded: "ملفات المشروع غير متاحة. تصفح المستندات بدلاً من ذلك.",
+        empty: "لم يتم العثور على ملفات مشروع.",
+        loading: "جارٍ تحميل ملفات المشروع…",
+        truncated:
+          "تم تحميل {{shown, number}} من أصل {{total, number}} من الملفات والمجلدات.",
+        truncatedUnknown: "تتوفر ملفات ومجلدات إضافية هنا.",
+      },
+    },
+    confirmations: {
+      discardUnsavedChanges: {
+        title: "تجاهل التغييرات غير المحفوظة؟",
+        body: "ستفقد تغييرات المستند غير المحفوظة. لا يمكن التراجع عن هذا الإجراء.",
+      },
+    },
     createDialog: {
       accessibility: {
         addLinkedDocument: "إضافة مستند مرتبط",
@@ -1008,6 +1212,58 @@ export const rtlTestResources = {
       audit: "عمليات التدقيق",
       reference: "المراجع",
     },
+    editor: {
+      accessibility: {
+        formattingToolbar: "التنسيق",
+      },
+      actions: {
+        bold: "تطبيق الخط العريض",
+        italic: "تطبيق الخط المائل",
+        inlineCode: "تطبيق التعليمات البرمجية المضمنة",
+        heading: "إضافة عنوان",
+        bulletedList: "إضافة قائمة نقطية",
+        numberedList: "إضافة قائمة مرقمة",
+        quote: "إضافة اقتباس",
+        link: "إضافة رابط",
+        linkToDocument: "إضافة رابط إلى مستند",
+      },
+    },
+    viewer: {
+      accessibility: {
+        documentMode: "وضع المستند",
+        documentProperties: "خصائص المستند",
+        featureTag: "وسم الميزة",
+      },
+      modes: {
+        edit: "تحرير",
+        view: "قراءة",
+      },
+      properties: {
+        actions: {
+          rename: "إعادة تسمية المستند",
+          save: "حفظ الخصائص",
+        },
+        emptyStates: {
+          newFeatureTag: "أدخل وسم ميزة جديدًا",
+        },
+        labels: {
+          date: "التاريخ",
+          documentName: "اسم المستند",
+          documentType: "نوع المستند",
+          feature: "الميزة",
+          relatedDocuments: "المستندات المرتبطة",
+        },
+        placeholders: {
+          date: "السنة-الشهر-اليوم",
+          featureTag: "أدخل وسم ميزة",
+        },
+        states: {
+          notSet: "غير محدد",
+          renaming: "جارٍ إعادة تسمية المستند…",
+          saving: "جارٍ حفظ الخصائص…",
+        },
+      },
+    },
     disabledReasons: {
       ...en.documents.disabledReasons,
       chooseTemporaryTab: "اختر علامة تبويب مؤقتة لإبقائها مفتوحة.",
@@ -1096,7 +1352,7 @@ export const rtlTestResources = {
       title: "حدث خطأ ما",
     },
     unexpectedSection: {
-      message: "حاول فتح {{section}} مرة أخرى.",
+      message: "حاول فتح هذا القسم مرة أخرى.",
       title: "تعذر عرض هذا القسم",
     },
   },
@@ -1166,6 +1422,26 @@ export const rtlTestResources = {
       relatedItemUnavailable: "حدّث البيانات، ثم حاول إظهار العنصر المرتبط مرة أخرى.",
       startingItemUnavailable: "حدّث البيانات، ثم حاول إظهار عنصر البداية مرة أخرى.",
     },
+    legend: {
+      accessibility: {
+        documentTypeFilters: "عوامل التصفية حسب نوع المستند",
+        moduleColors: "ألوان وحدات التعليمات البرمجية",
+        recencyScale: "مقياس حداثة التعليمات البرمجية",
+      },
+      actions: {
+        addDocumentTypeFilter: "إضافة عامل تصفية {{documentType}}",
+        clearDocumentTypeFilters: "مسح عوامل التصفية",
+        hideDocumentTypeLabels: "إخفاء تسميات أنواع المستندات",
+        hideModuleLabels: "إخفاء تسميات الوحدات",
+        removeDocumentTypeFilter: "إزالة عامل تصفية {{documentType}}",
+        showDocumentTypeLabels: "إظهار تسميات أنواع المستندات",
+        showModuleLabels: "إظهار تسميات الوحدات",
+      },
+      labels: {
+        older: "أقدم",
+        recent: "حديث",
+      },
+    },
     shortcutGroups: {
       workingSet: "مجموعة العمل",
     },
@@ -1219,6 +1495,7 @@ export const rtlTestResources = {
     },
   },
   projects: {
+    addDialog: rtlAddProjectDialogResources,
     actions: {
       add: "إضافة مشروع…",
       checkProjectStatus: "التحقق من حالة المشروع",
@@ -1249,6 +1526,8 @@ export const rtlTestResources = {
       setUpProjectFirst: "أعدّ المشروع، ثم حاول مرة أخرى.",
       waitForProjectStatus: "انتظر حتى يتم تحميل حالة المشروع، ثم حاول مرة أخرى.",
     },
+    folderBrowser: rtlFolderBrowserResources,
+    placesRail: rtlPlacesRailResources,
     provisioning: {
       description: "أعدّ هذا المشروع للمتابعة.",
       details: {

@@ -9,12 +9,14 @@ import {
 } from "../../view/sessionIntentFreshness";
 import { movePlayhead } from "../../view/timelineIntent";
 import { useViewStore } from "../../view/viewStore";
+import type { AddProjectIssue } from "../../addProjectIssue";
 import {
   dashboardSelectionId,
   patchDashboardState,
   selectionPatch,
 } from "../dashboardState";
 import {
+  EngineError,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
@@ -722,37 +724,64 @@ export function useSwapWorkspace() {
  * so the id is recovered by DIFFING the registry before/after the registration —
  * a genuinely new root (re-adding an existing path is a no-op that adds none) is
  * then SELECTED through the same wholesale `swap` the project switcher uses, so
- * "add a project" opens it, matching the VS Code / Zed open-folder norm. Returns
- * the added root (or null when the path was already registered / ambiguous).
+ * "add a project" opens it, matching the VS Code / Zed open-folder norm.
+ * A typed outcome keeps transport and registry diagnostics out of app chrome.
+ * Success carries the added root, or null for an idempotent re-registration.
  */
+export type AddWorkspaceOutcome =
+  | { ok: true; workspace: WorkspaceRoot | null }
+  | { ok: false; issue: AddProjectIssue };
+
+export function classifyAddWorkspaceError(error: unknown): AddProjectIssue {
+  if (
+    !(error instanceof EngineError) ||
+    error.path !== "/session" ||
+    error.status !== 400
+  ) {
+    return "addFailed";
+  }
+  switch (error.errorKind) {
+    case "not_a_directory":
+    case "unreadable":
+      return "folderUnavailable";
+    case "not_a_git_workspace":
+      return "notGitProject";
+    case "already_registered":
+      return "alreadyAdded";
+    default:
+      return "addFailed";
+  }
+}
+
 export function useAddWorkspace() {
   const queryClient = useQueryClient();
   const putSession = usePutSession();
   const { swap } = useSwapWorkspace();
-  const add = async (path: unknown): Promise<WorkspaceRoot | null> => {
+  const add = async (path: unknown): Promise<AddWorkspaceOutcome> => {
     const normalized = normalizeStoreScope(path);
     if (normalized === null) {
-      throw new Error("a project path is required");
+      return { ok: false, issue: "pathRequired" };
     }
-    const before = new Set(
-      (
-        queryClient.getQueryData<WorkspacesState>(engineKeys.workspaces())
-          ?.workspaces ?? []
-      ).map((root) => root.id),
-    );
-    await putSession.mutateAsync({ add_workspace: normalized });
-    // Re-read the registry to learn the newly-registered root's id (the PUT
-    // echoes only the session, not the registered id). `usePutSession` already
-    // invalidated the workspaces key, so this resolves the authoritative shape.
-    const after = await queryClient.fetchQuery({
-      queryKey: engineKeys.workspaces(),
-      queryFn: () => engineClient.workspaces(),
-    });
-    const added = after.workspaces.find((root) => !before.has(root.id)) ?? null;
-    if (added) await swap(added.id);
-    return added;
+    try {
+      const before = new Set(
+        (
+          queryClient.getQueryData<WorkspacesState>(engineKeys.workspaces())
+            ?.workspaces ?? []
+        ).map((root) => root.id),
+      );
+      await putSession.mutateAsync({ add_workspace: normalized });
+      const after = await queryClient.fetchQuery({
+        queryKey: engineKeys.workspaces(),
+        queryFn: () => engineClient.workspaces(),
+      });
+      const added = after.workspaces.find((root) => !before.has(root.id)) ?? null;
+      if (added) await swap(added.id);
+      return { ok: true, workspace: added };
+    } catch (error: unknown) {
+      return { ok: false, issue: classifyAddWorkspaceError(error) };
+    }
   };
-  return { add, mutation: putSession };
+  return { add };
 }
 
 /**

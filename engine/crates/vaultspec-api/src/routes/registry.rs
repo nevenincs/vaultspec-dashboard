@@ -179,30 +179,43 @@ pub fn resolve_map_workspace_root(
 /// path the operator points at. Refuses with an honest reason when the path is
 /// not a discoverable git workspace / not readable / has no enumerable worktree,
 /// never partially registering. Returns the registered workspace id.
+///
+/// Re-registering an ALREADY-registered root (even via a differently-spelled
+/// alias of the same canonical id) is a dedup upsert, not a refusal — that is
+/// the frozen dashboard-workspace-registry contract this route must not
+/// tighten. `already_registered` (workspace-picker-dialog D6) is therefore an
+/// `error_kind` this route never emits: the picker's own `is_registered`
+/// marker (D4) is what keeps the operator from attempting a duplicate
+/// registration in the first place; the typed kind exists on the wire for a
+/// client that still needs an exhaustive switch over the four refusal kinds.
 pub fn register_root(state: &AppState, path: &str) -> Result<String, (StatusCode, Json<Value>)> {
-    let refuse = |reason: &str| {
-        super::api_error(
+    let refuse = |kind: &'static str, human: &str| {
+        super::api_error_kind(
             state,
             StatusCode::BAD_REQUEST,
-            format!("cannot register `{path}`: {reason}"),
+            kind,
+            format!("cannot register `{path}`: {human}"),
         )
     };
 
     let raw = PathBuf::from(path);
     if !raw.is_dir() {
-        return Err(refuse("path is not a readable directory"));
+        return Err(refuse(
+            "not_a_directory",
+            "path is not a readable directory",
+        ));
     }
     // READ-ONLY discovery: resolve the workspace (its canonical common dir is the
     // stable id) and confirm at least one worktree is enumerable.
     let workspace = ingest_git::workspace::Workspace::discover(&raw)
-        .map_err(|_| refuse("not a git workspace"))?;
+        .map_err(|_| refuse("not_a_git_workspace", "not a git workspace"))?;
     // Path-only check (worktree-enumeration sweep): only "is at least one
     // worktree enumerable" matters here, so list roots cheaply rather than
     // inspecting every worktree.
     let roots = ingest_git::worktrees::list_roots(&workspace)
-        .map_err(|_| refuse("worktrees are not enumerable"))?;
+        .map_err(|_| refuse("unreadable", "worktrees are not enumerable"))?;
     if roots.is_empty() {
-        return Err(refuse("no enumerable worktrees"));
+        return Err(refuse("not_a_git_workspace", "no enumerable worktrees"));
     }
 
     let id = super::scope_token(&workspace.common_dir);
@@ -350,4 +363,103 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
             .unwrap_or_else(|e| e.into_inner()) = target_path;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod refusal_kind_tests {
+    use super::*;
+    use std::path::Path;
+
+    fn git(dir: &Path, args: &[&str]) {
+        let output = std::process::Command::new("git")
+            .current_dir(dir)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "f")
+            .env("GIT_AUTHOR_EMAIL", "f@t")
+            .env("GIT_COMMITTER_NAME", "f")
+            .env("GIT_COMMITTER_EMAIL", "f@t")
+            .output()
+            .expect("git runs");
+        assert!(
+            output.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    fn fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::app::build_state(dir.path().to_path_buf());
+        (dir, state)
+    }
+
+    #[test]
+    fn refuses_a_missing_path_with_not_a_directory() {
+        let (_dir, state) = fixture_state();
+        let scratch = tempfile::tempdir().unwrap();
+        let missing = scratch.path().join("does-not-exist");
+        let err = register_root(&state, missing.to_str().unwrap()).unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+        assert_eq!(err.1.0["error_kind"], "not_a_directory");
+    }
+
+    #[test]
+    fn refuses_a_non_git_directory_with_not_a_git_workspace() {
+        let (_dir, state) = fixture_state();
+        let plain = tempfile::tempdir().unwrap();
+        let err = register_root(&state, plain.path().to_str().unwrap()).unwrap_err();
+        assert_eq!(err.1.0["error_kind"], "not_a_git_workspace");
+    }
+
+    #[test]
+    fn refuses_a_bare_repo_with_no_worktrees_as_not_a_git_workspace() {
+        let (_dir, state) = fixture_state();
+        let bare = tempfile::tempdir().unwrap();
+        git(bare.path(), &["init", "--bare", "."]);
+        let err = register_root(&state, bare.path().to_str().unwrap()).unwrap_err();
+        assert_eq!(err.1.0["error_kind"], "not_a_git_workspace");
+    }
+
+    #[test]
+    fn a_discoverable_git_workspace_registers_successfully() {
+        let (_dir, state) = fixture_state();
+        let repo = tempfile::tempdir().unwrap();
+        git(repo.path(), &["init", "-b", "main", "."]);
+        std::fs::write(repo.path().join("f.txt"), "x").unwrap();
+        git(repo.path(), &["add", "."]);
+        git(repo.path(), &["commit", "-m", "first"]);
+        let id = register_root(&state, repo.path().to_str().unwrap()).unwrap();
+        assert!(!id.is_empty());
+    }
+
+    #[test]
+    fn every_typed_kind_serializes_on_the_wire() {
+        // `already_registered` has no current register_root call site (a
+        // re-register dedups as a successful upsert — see register_root's doc
+        // comment), but the wire contract still declares it, so this proves
+        // the shape directly through the shared helper rather than through a
+        // (non-existent) refusal path.
+        let (_dir, state) = fixture_state();
+        for kind in [
+            "not_a_directory",
+            "not_a_git_workspace",
+            "unreadable",
+            "already_registered",
+        ] {
+            let (status, body) = super::super::api_error_kind(
+                &state,
+                StatusCode::BAD_REQUEST,
+                kind,
+                "human message".to_string(),
+            );
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert_eq!(body.0["error_kind"], kind);
+            assert_eq!(body.0["error"], "human message");
+            assert!(
+                body.0["tiers"].is_object(),
+                "every error envelope carries tiers: {}",
+                body.0
+            );
+        }
+    }
 }

@@ -70,7 +70,8 @@ export const engineKeys = {
   // the machine to find a folder to register), so no scope segment folds in.
   // Omitted `path` is the filesystem-roots level; each distinct directory is its
   // own bounded cache entry.
-  fsList: (path?: string) => [...engineKeys.all, "fs-list", path ?? ""] as const,
+  fsList: (path?: string, q?: string, hidden?: boolean) =>
+    [...engineKeys.all, "fs-list", path ?? "", q ?? "", hidden === true] as const,
   filters: (scope: string, corpus?: GraphCorpus) =>
     [...engineKeys.all, "filters", scope, corpus ?? "vault"] as const,
   // Per-feature pipeline coverage (feature-group-authoring ADR D2): keyed by

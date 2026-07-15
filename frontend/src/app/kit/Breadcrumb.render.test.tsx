@@ -1,11 +1,9 @@
 // @vitest-environment happy-dom
 //
-// Breadcrumb kit primitive (W01.P02.S05): renders the path trail without
-// crashing, marks the final segment as the current page, and fires onSelect from
-// a preceding segment.
+// Verifies current-location semantics and ancestor selection.
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { Breadcrumb } from "./Breadcrumb";
 
@@ -23,9 +21,35 @@ describe("Breadcrumb", () => {
   });
 
   it("fires onSelect from a preceding (interactive) segment", () => {
-    const onSelect = vi.fn();
+    let selections = 0;
+    const onSelect = () => {
+      selections += 1;
+    };
     render(<Breadcrumb items={[{ label: "vault", onSelect }, { label: "here" }]} />);
     fireEvent.click(screen.getByRole("button", { name: "vault" }));
-    expect(onSelect).toHaveBeenCalledTimes(1);
+    expect(selections).toBe(1);
+  });
+
+  it("exposes a disabled ancestor and prevents its selection", () => {
+    let selections = 0;
+    render(
+      <Breadcrumb
+        items={[
+          {
+            label: "vault",
+            disabled: true,
+            onSelect: () => {
+              selections += 1;
+            },
+          },
+          { label: "here" },
+        ]}
+      />,
+    );
+
+    const ancestor = screen.getByRole("button", { name: "vault" }) as HTMLButtonElement;
+    expect(ancestor.disabled).toBe(true);
+    fireEvent.click(ancestor);
+    expect(selections).toBe(0);
   });
 });

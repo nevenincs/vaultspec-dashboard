@@ -1,14 +1,10 @@
-// Breadcrumb — the centralized path trail (figma-frontend-rewrite W01.P02.S05;
-// binding kit board 135:2 / Breadcrumb 157:123). Renders an ordered list of path
-// segments separated by a "/" divider (the binding separator — Figma 157:123 and
-// the reader chrome use a slash, not a chevron); the final segment is the current
-// location (aria-current) and is not interactive, while preceding segments fire
-// their `onSelect`. Surfaces compose this for the doc header / reader path.
-// Display-only and prop-driven.
+// Ordered path trail. The final segment marks the current location; preceding
+// segments may navigate to ancestors.
 
 export interface BreadcrumbItem {
   label: string;
   onSelect?: () => void;
+  disabled?: boolean;
 }
 
 export interface BreadcrumbProps {
@@ -23,10 +19,7 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
           return (
-            // Ancestor crumbs stay whole (shrink-0) so only the CURRENT (last)
-            // segment truncates — the trail never degrades to "Va… / Decisi… /
-            // title…" in a narrow reader (mobile-enrichment ADR D6). The wide
-            // desktop reader is unaffected (ancestor labels are short).
+            // Keep ancestors whole and truncate only the current segment.
             <li
               key={`${item.label}-${i}`}
               className={`flex items-center gap-fg-1-5 ${isLast ? "min-w-0" : "shrink-0"}`}
@@ -39,7 +32,8 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
                 <button
                   type="button"
                   onClick={item.onSelect}
-                  className="whitespace-nowrap rounded-fg-xs text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                  disabled={item.disabled}
+                  className="whitespace-nowrap rounded-fg-xs text-ink-muted transition-colors duration-ui-fast ease-settle hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:text-ink-faint disabled:hover:text-ink-faint"
                 >
                   {item.label}
                 </button>
