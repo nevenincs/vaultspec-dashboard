@@ -44,3 +44,10 @@ scanner decreased from 1,163 to 1,151 findings with no new exemptions.
 Terra passed 82 tests across seven files and the complete frontend lint recipe. Independent
 Sol review passed 56 tests and approved the frozen default, real persistence coverage,
 fail-closed behavior, and multilingual DOM identity with no remaining findings.
+
+### Reset action addendum
+
+The remaining Reset sorting live action and keybinding now share the canonical typed
+descriptor. Its stable ID, section, icon, effect, and default order remain unchanged.
+English, French, and Arabic behavior tests passed, and the exact legacy action exemption
+was removed. Sol approved the residual closure with no findings.

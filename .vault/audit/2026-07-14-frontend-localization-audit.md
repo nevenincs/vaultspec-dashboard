@@ -2062,3 +2062,31 @@ frontend gate passed. Eleven exact scanner exemptions were removed. The scanner 
 at 1,091 findings, including 61 remaining legacy action presentations and one remaining
 legacy keybinding presentation elsewhere. S50 and S223 through S225 are accepted with no
 open findings.
+
+### S33, S92, S220, S221, S250 review | pass | Keybinding bridge removed
+
+Mobile top-bar accessibility overrides are now strict message descriptors. Back, skip
+navigation, workspace guidance, compact surface headings, Vault fallback, and Reset
+sorting resolve through catalogs. The compact shell reuses canonical Search and filter
+action descriptors. Workspace basenames remain untranslated user data inside one complete
+catalog message, and the previous user-facing em dash composition is gone.
+
+Back remains operable when localization resolution uses the bounded safe fallback, so a
+compact-reader user cannot be trapped. Optional title activation fails closed when its
+accessible message cannot resolve. Live English, French, and Arabic tests preserve the
+same DOM nodes and raw workspace identity while updating all surrounding copy.
+
+The keybinding registry and every shortcut or settings consumer are descriptor-only. The
+legacy presentation type, helper, normalizer, and residual string branches are removed.
+Malformed raw label or group definitions are omitted without exposing their contents. A
+narrow scanner rule and replacement fixture continue to reject raw keybinding presentation
+fields without retaining the deleted compatibility API.
+
+Sol found and verified fixes for the Back escape path, strict mobile prop types, three
+residual string consumers, scanner regression protection, and live compact-shell proof,
+then approved the final implementation with no findings. Terra passed 151 focused tests;
+root passed 128 focused tests and the complete frontend gate. Ten exact exemptions were
+removed. The scanner is clean at 1,081 findings, including 57 remaining legacy action
+presentations and no legacy keybinding category. S92, S220, and S250 are accepted. The
+residual S33 and S221 ownership is complete. S167, S168, S201, and S202 remain open for
+their untouched consumers.

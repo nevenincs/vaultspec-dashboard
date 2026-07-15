@@ -38,3 +38,11 @@ Independent verification passed 34 focused tests across five files, TypeScript, 
 ## Notes
 
 Sol required the planned store and dialog steps to merge atomically so the codebase would not gain a temporary second presentation contract. Terra implemented the merged step, and Sol independently approved it with no findings.
+
+### Bridge closure addendum
+
+The global shortcut toggle now shares one typed descriptor between its keybinding and live
+action. Shortcut and settings consumers are descriptor-only, omit malformed definitions,
+and preserve stable action and group identity across English, French, and Arabic updates.
+This residual producer work completed atomically with S250. Sol approved the closure with
+no findings, 128 root-focused tests passed, and the complete frontend gate passed.
