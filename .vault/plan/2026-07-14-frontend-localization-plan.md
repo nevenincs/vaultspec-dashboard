@@ -184,7 +184,8 @@ Localize project selection, document browsing, filtering, dialogs, menus, and ev
 - [ ] `W03.P08.S47` - Localize tree-browser sections, counts, loading, and partial-result copy; `frontend/src/app/left/TreeBrowser.tsx`.
 - [ ] `W03.P08.S48` - Localize filter sidebar and filter menu labels, counts, states, and actions; `frontend/src/app/stage/FilterSidebar.tsx, frontend/src/app/stage/FilterMenu.tsx`.
 - [ ] `W03.P08.S49` - Localize add-project dialog guidance, refusal, validation, and actions; `frontend/src/app/left/AddProjectDialog.tsx`.
-- [ ] `W03.P08.S50` - Standardize and localize code-file menu actions without internal IDs; `frontend/src/app/left/menus/codeFileMenu.ts`.
+- [x] `W03.P08.S50` - Standardize and localize code-file menu actions through shared action and clipboard presentation boundaries; `frontend/src/app/left/menus/codeFileMenu.ts, frontend/src/app/menus/sharedActions.ts, frontend/src/platform/actions/clipboardActions.ts, catalogs, allowlist, and focused tests`.
+
 - [ ] `W03.P08.S51` - Migrate left-rail browser render tests through production catalogs; `frontend/src/app/left/VaultBrowser.render.test.tsx, frontend/src/app/left/VaultBrowser.compact.render.test.tsx`.
 - [ ] `W03.P08.S169` - Localize folder-browser navigation, empty states, and accessible names; `frontend/src/app/left/FolderBrowser.tsx`.
 - [ ] `W03.P08.S170` - Localize vault-browser grouping, document states, and accessible names; `frontend/src/app/left/VaultBrowser.tsx`.
@@ -192,9 +193,12 @@ Localize project selection, document browsing, filtering, dialogs, menus, and ev
 - [ ] `W03.P08.S172` - Localize create-document dialog fields, validation, confirmations, and actions; `frontend/src/app/left/CreateDocDialog.tsx`.
 - [ ] `W03.P08.S173` - Migrate project and worktree render tests through production catalogs; `frontend/src/app/left/ProjectNavigator.render.test.tsx, frontend/src/app/left/WorktreePicker.render.test.tsx`.
 - [ ] `W03.P08.S174` - Migrate filter and state render tests through production catalogs; `frontend/src/app/left/RailFilterField.render.test.tsx, frontend/src/app/left/railStates.render.test.tsx, frontend/src/app/stage/FilterMenu.render.test.tsx, frontend/src/app/stage/FilterSidebar.planStates.test.ts`.
-- [ ] `W03.P08.S223` - Standardize and localize vault-category menu actions without internal IDs; `frontend/src/app/left/menus/vaultCategoryMenu.ts`.
-- [ ] `W03.P08.S224` - Standardize and localize vault-document menu actions without internal IDs; `frontend/src/app/left/menus/vaultDocMenu.ts`.
-- [ ] `W03.P08.S225` - Standardize and localize vault-feature menu actions without internal IDs; `frontend/src/app/left/menus/vaultFeatureMenu.ts`.
+- [x] `W03.P08.S223` - Standardize and localize vault-category menu actions while keeping localized category labels out of raw clipboard payloads; `frontend/src/app/left/menus/vaultCategoryMenu.ts, shared clipboard outcome handling, catalogs, allowlist, and focused tests`.
+
+- [x] `W03.P08.S224` - Standardize and localize vault-document menu actions through the shared canvas action boundary; `frontend/src/app/left/menus/vaultDocMenu.ts, frontend/src/app/menus/sharedActions.ts, catalogs, allowlist, and focused tests`.
+
+- [x] `W03.P08.S225` - Standardize and localize vault-feature menu actions through shared action and raw clipboard boundaries; `frontend/src/app/left/menus/vaultFeatureMenu.ts, shared action and clipboard handling, catalogs, allowlist, and focused tests`.
+
 - [ ] `W03.P08.S226` - Standardize and localize vault-section menu actions without internal IDs; `frontend/src/app/left/menus/vaultSectionMenu.ts`.
 - [ ] `W03.P08.S227` - Standardize and localize workspace menu actions with user-facing concepts; `frontend/src/app/left/menus/workspaceMenu.ts`.
 - [ ] `W03.P08.S228` - Standardize and localize worktree menu actions with user-facing workspace concepts; `frontend/src/app/left/menus/worktreeMenu.ts`.

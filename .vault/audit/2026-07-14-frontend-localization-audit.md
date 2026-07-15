@@ -2039,3 +2039,26 @@ rejection, and real English, French, and Arabic resolution.
 
 Sol confirmed that the identity assertions are non-tautological and introduce no mirrored
 business logic. Four focused tests passed. S217 is accepted with no open findings.
+
+### W03.P08.S50, S223-S225 review | pass | Left-rail menus use typed presentation
+
+Code-file, vault-category, vault-document, and vault-feature menus now use typed action
+descriptors. A shared canvas builder preserves stable IDs, sections, order, navigation,
+scope, eligibility, execution, and icon behavior. The unavailable state provides one
+short recovery action. Filter actions use the canonical Filter by grammar, and category
+actions use one consistent noun.
+
+Clipboard handling now separates raw user data from localized messages. File paths and
+feature tags remain byte-for-byte data. Category display content remains a descriptor
+until the terminal clipboard effect resolves the active locale. Unknown document types
+fall back to generic document copy, and malformed or mixed payload records fail closed
+without exposing their contents.
+
+Sol found and verified corrections to filter wording, category terminology, message
+length policy, clipboard record validation, and unknown document-type coverage, then
+approved the final implementation with no findings. English, French, and Arabic tests
+exercise the migrated presentation. The focused suite passed 87 tests, and the complete
+frontend gate passed. Eleven exact scanner exemptions were removed. The scanner is clean
+at 1,091 findings, including 61 remaining legacy action presentations and one remaining
+legacy keybinding presentation elsewhere. S50 and S223 through S225 are accepted with no
+open findings.
