@@ -1753,3 +1753,27 @@ files, and all 14 scanner tests passed. The complete frontend lint recipe passed
 contain no doubles, skips, or expected failures. Correcting class-name ownership removed
 222 stale JSX-text exemptions and added none, reducing the scanner from 1,406 to 1,184
 findings. S251 is accepted with no open findings.
+
+### W02.P06.S35 review | pass | Browser modes use user-facing document concepts
+
+This step, implemented through delegated Terra rollout work, replaces raw browser-mode
+presentation with an exhaustive typed mapping. Internal `vault` and `code` values remain
+the stable identity, order, default, persisted value, and callback payload.
+
+Review confirmed that React boundaries resolve Documents and Files while keys, segment
+values, data attributes, commands, and state transitions continue using raw IDs. Browse
+actions use complete catalog messages and unknown, whitespace, malformed, or future
+modes return null instead of echoing or title-casing a token.
+
+Real English, French, and Arabic tests preserve radiogroup, radio, navigation, and button
+node identity across locale changes and explicitly prevent visible or accessibility
+leakage of Vault, vault, or code. The wording is short, sentence case, and contains no
+development metadata or em dash.
+
+Independent Sol verification approved the step with no findings and passed 55 tests
+across focused and catalog suites. Terra's focused suite passed 55 tests across seven
+files. TypeScript, targeted ESLint, the localization scanner, diff checks, and the
+complete frontend lint recipe passed. Modified tests contain no resource mutation,
+doubles, skips, or expected failures. Exact baseline reconciliation removed three
+entries and added none, reducing the scanner from 1,184 to 1,181 findings. S35 is
+accepted with no open findings.
