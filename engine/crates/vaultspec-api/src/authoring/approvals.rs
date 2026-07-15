@@ -694,14 +694,18 @@ fn decision_command(decision: ApprovalDecision) -> CommandKind {
 }
 
 /// The canonical lifecycle transition kind a decision publishes to the durable
-/// outbox. Approve resolves the approval; reject rejects the proposal; request-changes
-/// returns the proposal for revision (a `proposal.updated` transition). The verdict is
-/// carried authoritatively by the payload `decision` field regardless of the kind.
+/// outbox. Approve and request-changes both RESOLVE the open approval
+/// (`approval.resolved`); reject is the terminal `proposal.rejected`. Request-changes
+/// has no distinct changeset status of its own (the proposal returns to draft), so it
+/// is observable ONLY from this live decision event — it rides `approval.resolved` and
+/// is disambiguated by the authoritative payload `decision` field, which every
+/// decision event carries regardless of kind.
 fn decision_event_kind(decision: ApprovalDecision) -> LifecycleEventKind {
     match decision {
-        ApprovalDecision::Approve => LifecycleEventKind::ApprovalResolved,
+        ApprovalDecision::Approve | ApprovalDecision::RequestChanges => {
+            LifecycleEventKind::ApprovalResolved
+        }
         ApprovalDecision::Reject => LifecycleEventKind::ProposalRejected,
-        ApprovalDecision::RequestChanges => LifecycleEventKind::ProposalUpdated,
     }
 }
 
@@ -1109,10 +1113,10 @@ mod tests {
         let event = events
             .iter()
             .find(|event| {
-                event.event_kind == "proposal.updated"
-                    && event.payload["data"].get("decision").is_some()
+                event.event_kind == "approval.resolved"
+                    && event.payload["data"]["decision"] == "request_changes"
             })
-            .expect("a request-changes publishes proposal.updated with a decision");
+            .expect("a request-changes publishes approval.resolved with its verdict");
         assert_eq!(event.payload["data"]["decision"], "request_changes");
     }
 

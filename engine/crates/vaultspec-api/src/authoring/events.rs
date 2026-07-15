@@ -455,6 +455,52 @@ pub(crate) fn review_decision_event(
     })
 }
 
+/// Build the durable lifecycle event for a generic changeset STATUS transition — the
+/// canonical event kind is derived from the resulting status via
+/// [`LifecycleTransition::from_changeset_status`], so command sites never mint an ad-hoc
+/// kind. Cancel, supersede, rebase, and rollback ride this; the review-decision path
+/// uses [`review_decision_event`] instead so it can attach the authoritative `decision`
+/// field. Deduped on the resulting changeset revision (the apply path's precedent), so
+/// an idempotent replay of the same transition coalesces to one event. Returns `None`
+/// for a status with no canonical transition (none today — the mapping is total — but
+/// the guard keeps a future status from silently minting a malformed event).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn changeset_transition_event(
+    changeset_id: &str,
+    changeset_revision: &str,
+    previous_revision: Option<&str>,
+    status: ChangesetStatus,
+    actor: ActorRef,
+    command: CommandKind,
+    idempotency_key: Option<IdempotencyKey>,
+    created_at_ms: i64,
+) -> StoreResult<Option<OutboxEventDraft>> {
+    let Some(transition) = LifecycleTransition::from_changeset_status(status) else {
+        return Ok(None);
+    };
+    let mut data = json!({
+        "changeset_id": changeset_id,
+        "changeset_revision": changeset_revision,
+        "status": status,
+    });
+    if let Some(previous) = previous_revision {
+        data["previous_revision"] = json!(previous);
+    }
+    let draft = lifecycle_event_draft(LifecycleEventInput {
+        event_id: format!("changeset-transition-event:{changeset_id}:{changeset_revision}"),
+        dedupe_key: format!("changeset-transition:{changeset_id}:{changeset_revision}"),
+        aggregate_kind: LifecycleAggregateKind::Changeset,
+        aggregate_id: changeset_id.to_string(),
+        event_kind: transition.event_kind(),
+        actor,
+        command: Some(command),
+        idempotency_key,
+        payload: data,
+        created_at_ms,
+    })?;
+    Ok(Some(draft))
+}
+
 pub(crate) fn projector_feed_page(
     events: Vec<OutboxEvent>,
     latest_outbox_seq: i64,
@@ -756,9 +802,10 @@ mod tests {
         assert_eq!(approve.payload["data"]["comment"], "looks good");
 
         // A distinct decision on a distinct resulting revision is a distinct event, and
-        // request-changes rides proposal.updated while still carrying its verdict field.
+        // request-changes rides approval.resolved (no distinct status) while still
+        // carrying its verdict field.
         let edit = review_decision_event(
-            LifecycleEventKind::ProposalUpdated,
+            LifecycleEventKind::ApprovalResolved,
             "request_changes",
             None,
             "approval_1",
@@ -771,13 +818,62 @@ mod tests {
             3_000,
         )
         .unwrap();
-        assert_eq!(edit.event_kind, "proposal.updated");
+        assert_eq!(edit.event_kind, "approval.resolved");
         assert_eq!(edit.payload["data"]["decision"], "request_changes");
         assert!(
             edit.payload["data"].get("comment").is_none(),
             "an absent comment is omitted from the payload"
         );
         assert_ne!(approve.dedupe_key, edit.dedupe_key);
+    }
+
+    #[test]
+    fn changeset_transition_builder_derives_kind_from_status_and_dedupes_on_revision() {
+        let cancelled = changeset_transition_event(
+            "changeset_1",
+            "blob:rev5",
+            Some("blob:rev4"),
+            ChangesetStatus::Cancelled,
+            actor(),
+            CommandKind::CancelProposal,
+            None,
+            5_000,
+        )
+        .unwrap()
+        .expect("Cancelled maps to a canonical transition");
+        assert_eq!(cancelled.event_kind, "cancellation.recorded");
+        assert_eq!(cancelled.aggregate_kind, "changeset");
+        assert_eq!(cancelled.aggregate_id, "changeset_1");
+        assert_eq!(
+            cancelled.dedupe_key,
+            "changeset-transition:changeset_1:blob:rev5"
+        );
+        assert_eq!(cancelled.payload["data"]["status"], "cancelled");
+        assert_eq!(cancelled.payload["data"]["changeset_id"], "changeset_1");
+        assert_eq!(cancelled.payload["data"]["changeset_revision"], "blob:rev5");
+        assert_eq!(cancelled.payload["data"]["previous_revision"], "blob:rev4");
+
+        // Supersede rides proposal.updated; rollback rides rollback.created — canonical
+        // kinds straight from the status mapping, no ad-hoc names.
+        let superseded = changeset_transition_event(
+            "changeset_1",
+            "blob:rev6",
+            None,
+            ChangesetStatus::Superseded,
+            actor(),
+            CommandKind::Supersede,
+            None,
+            6_000,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(superseded.event_kind, "proposal.updated");
+        assert!(
+            superseded.payload["data"]
+                .get("previous_revision")
+                .is_none(),
+            "an absent previous revision is omitted"
+        );
     }
 
     #[test]

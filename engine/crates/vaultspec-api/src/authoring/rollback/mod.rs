@@ -48,6 +48,7 @@ use super::model::{
     DocumentRef, IdempotencyKey, RevisionToken,
 };
 use super::operations::MaterializedProposalOperation;
+use super::proposal::emit_changeset_transition;
 use super::sections::SectionSelector;
 use super::snapshots::{PreimageCaptureRequest, PreimageRecord, SnapshotReader};
 use super::store::unit_of_work::{Repository, UnitOfWork};
@@ -531,6 +532,7 @@ pub fn generate_rollback(
         })
         .map_err(|err| StoreError::Ledger(err.to_string()))?;
         uow.ledger().append_revision(&record)?;
+        emit_changeset_transition(uow, &record, CommandKind::CreateRollback)?;
 
         Ok(RollbackOutcome::generated(&record))
     })

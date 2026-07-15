@@ -66,7 +66,7 @@ use super::model::{
 use super::operations::MaterializedProposalOperation;
 use super::proposal::{
     ProposalCommandContext, ProposalCommandOutcome, ProposalCommandResult, TerminalProposalRequest,
-    create_proposal, preimage_id, store_preimages, supersede_proposal,
+    create_proposal, emit_changeset_transition, preimage_id, store_preimages, supersede_proposal,
 };
 use super::snapshots::{PreimageCaptureRequest, SnapshotReader};
 use super::store::idempotency::{
@@ -239,6 +239,7 @@ pub fn rebase_proposal(
         })
         .map_err(|err| StoreError::Ledger(err.to_string()))?;
         uow.ledger().append_revision(&record)?;
+        emit_changeset_transition(uow, &record, CommandKind::Rebase)?;
         let outcome = ProposalCommandOutcome {
             schema_version: OUTCOME_SCHEMA.to_string(),
             command: CommandKind::Rebase,

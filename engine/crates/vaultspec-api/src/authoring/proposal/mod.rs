@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use super::api::{ChangesetChildOperationDraft, ChangesetOperationKind, CreateProposalRequest};
+use super::events::changeset_transition_event;
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetHistory,
     ChangesetRevisionInput,
@@ -24,6 +25,7 @@ use super::store::idempotency::{
     IdempotencyConflict, IdempotencyKeyScope, IdempotencyRecord, IdempotencyScope,
     InFlightReservation, OutcomeKind, RecordedOutcome, ReplayLookup, ReserveDecision,
 };
+use super::store::outbox::AppendDecision;
 use super::store::unit_of_work::UnitOfWork;
 use super::store::{Result as StoreResult, Store, StoreError};
 use super::transitions::{
@@ -613,10 +615,39 @@ fn terminal_transition(
                     context.now_ms,
                 )?;
                 uow.ledger().append_revision(&record)?;
+                emit_changeset_transition(uow, &record, command)?;
                 Ok(outcome(command, &record, receipt_id, None))
             },
         )
     })
+}
+
+/// Publish a changeset status-transition to the durable outbox in the SAME unit of work
+/// as the ledger append (a served event never outruns durable state). The canonical
+/// event kind is derived from the resulting status; deduped on the resulting revision.
+/// The one emit helper every changeset-transition command routes through (rebase and
+/// rollback included), so no command site mints an ad-hoc event.
+pub(super) fn emit_changeset_transition(
+    uow: &UnitOfWork<'_>,
+    record: &ChangesetAggregateRecord,
+    command: CommandKind,
+) -> StoreResult<()> {
+    let event = changeset_transition_event(
+        record.changeset_id.as_str(),
+        record.changeset_revision.as_str(),
+        record.previous_revision.as_ref().map(RevisionToken::as_str),
+        record.status,
+        record.actor.clone(),
+        command,
+        None,
+        record.created_at_ms,
+    )?;
+    if let Some(event) = event {
+        match uow.outbox().append_event(event)? {
+            AppendDecision::Inserted(_) | AppendDecision::Duplicate(_) => {}
+        }
+    }
+    Ok(())
 }
 
 trait TransitionRequestExt {

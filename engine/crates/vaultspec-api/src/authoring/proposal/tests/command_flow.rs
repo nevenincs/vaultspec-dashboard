@@ -855,3 +855,83 @@ fn cancellation_and_supersession_are_terminal() {
         "{terminal_validate:?}"
     );
 }
+
+#[test]
+fn cancel_and_supersede_publish_changeset_transition_events_to_the_outbox() {
+    let (dir, mut store) = temp_store();
+    let root = dir.path();
+    let reader = reader(root);
+
+    let cancelled_id = changeset_id("changeset_cancel_evt");
+    let created = accepted(
+        create_proposal(
+            &mut store,
+            &reader,
+            context("idem:create:cancel-evt", 100),
+            create_request(root, cancelled_id.clone(), "child_1", valid_body("first")),
+        )
+        .unwrap(),
+    );
+    let cancelled = accepted(
+        cancel_proposal(
+            &mut store,
+            context("idem:cancel-evt", 101),
+            terminal_request(cancelled_id.clone(), created.changeset_revision, "cancel"),
+        )
+        .unwrap(),
+    );
+    assert_eq!(cancelled.status, ChangesetStatus::Cancelled);
+
+    let superseded_id = changeset_id("changeset_supersede_evt");
+    let created = accepted(
+        create_proposal(
+            &mut store,
+            &reader,
+            context("idem:create:supersede-evt", 200),
+            create_request(root, superseded_id.clone(), "child_1", valid_body("first")),
+        )
+        .unwrap(),
+    );
+    let superseded = accepted(
+        supersede_proposal(
+            &mut store,
+            context("idem:supersede-evt", 201),
+            terminal_request(
+                superseded_id.clone(),
+                created.changeset_revision,
+                "supersede",
+            ),
+        )
+        .unwrap(),
+    );
+    assert_eq!(superseded.status, ChangesetStatus::Superseded);
+
+    let events = store
+        .with_read_unit_of_work(CommandKind::SubscribeEvents, |uow| {
+            uow.outbox().events_after(0, 50)
+        })
+        .unwrap();
+
+    // Cancel publishes the canonical cancellation.recorded transition on the changeset
+    // aggregate, keyed to the resulting revision, carrying the served status.
+    let cancel_event = events
+        .iter()
+        .find(|event| event.event_kind == "cancellation.recorded")
+        .expect("cancel publishes cancellation.recorded");
+    assert_eq!(cancel_event.aggregate_kind, "changeset");
+    assert_eq!(cancel_event.aggregate_id, cancelled_id.as_str());
+    assert_eq!(cancel_event.payload["data"]["status"], "cancelled");
+    assert_eq!(
+        cancel_event.payload["data"]["changeset_id"],
+        cancelled_id.as_str()
+    );
+
+    // Supersede rides the canonical proposal.updated transition (from_changeset_status).
+    let supersede_event = events
+        .iter()
+        .find(|event| {
+            event.event_kind == "proposal.updated" && event.aggregate_id == superseded_id.as_str()
+        })
+        .expect("supersede publishes proposal.updated");
+    assert_eq!(supersede_event.payload["data"]["status"], "superseded");
+}
