@@ -1777,3 +1777,23 @@ complete frontend lint recipe passed. Modified tests contain no resource mutatio
 doubles, skips, or expected failures. Exact baseline reconciliation removed three
 entries and added none, reducing the scanner from 1,184 to 1,181 findings. S35 is
 accepted with no open findings.
+
+### W02.P06.S36 review | pass | Activity panels and resize controls use user-facing language
+
+This step, implemented through delegated Terra rollout work, replaces activity-panel tab,
+toggle, resize, action, and keybinding text with typed catalog mappings. The frozen ordered
+descriptor set retains `status` and `changes` as raw state and callback identities while
+presentation uses exact nullable lookups that reject unknown and whitespace values.
+
+Review confirmed that stores carry descriptors and React boundaries resolve localized
+copy without exposing right-rail terminology or other implementation details. Layout,
+ordering, focus, callbacks, keyboard behavior, and safe state normalization remain
+unchanged. The action test was rewritten as a real-behavior, mock-free test.
+
+English, French, and Arabic DOM and callback tests cover direct consumers, shell controls,
+the command palette, and activity-panel actions. Independent Sol review approved the step
+with no findings and passed 55 focused tests plus 12 shell identity tests. Terra's affected
+suite passed 84 tests, and the complete frontend lint recipe passed. Tests contain no
+doubles, skips, or expected failures. Exact baseline reconciliation removed five entries
+and added none, reducing the scanner from 1,181 to 1,176 findings. S36 is accepted with no
+open findings.
