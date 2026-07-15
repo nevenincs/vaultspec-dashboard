@@ -2028,3 +2028,14 @@ focused suite passed 56 tests, and the complete frontend lint recipe passed. Six
 exact scanner exemptions were removed. The scanner is clean at 1,102 findings, including
 72 remaining legacy action presentations and one remaining legacy keybinding
 presentation elsewhere. S249 is accepted with no open findings.
+
+### W02.P05.S217 review | pass | Right-rail actions and shortcuts share descriptors
+
+The existing right-rail production path already derived Status and Changes copy from the
+canonical shell presentation map. The closing proof now compares the separately built
+keybinding and live action labels by object identity for both actions, while retaining
+stable IDs, Mod+1 and Mod+2 chords, right-rail context, order, execution, unsafe-input
+rejection, and real English, French, and Arabic resolution.
+
+Sol confirmed that the identity assertions are non-tautological and introduce no mirrored
+business logic. Four focused tests passed. S217 is accepted with no open findings.
