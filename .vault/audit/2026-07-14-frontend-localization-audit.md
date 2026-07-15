@@ -1842,3 +1842,26 @@ frontend lint recipe. TypeScript, targeted ESLint, formatting, policy, scanner, 
 checks passed. Tests contain no doubles, patches, skips, or expected failures. The scanner
 remained clean at 1,163 findings with no allowlist change, matching the documented scanner
 blind spot. S38 is accepted with no open findings.
+
+### W02.P06.S221 review | pass | Rail sorting uses clear localized choices
+
+This step separates the exact frozen seven-item raw sort order from an exhaustive frozen
+presentation map. Complete catalog descriptors cover option labels, sort actions, and the
+active-sort accessibility name, eliminating runtime lowercasing and sentence composition.
+Workspace share replaces internal corpus terminology, and all visible copy uses sentence
+case without development metadata or em dashes.
+
+Review confirmed that the frozen default, persistence key and shape, trimmed state ingress,
+natural directions, reselection flip, reset, action IDs, icons, callbacks, and downstream
+ordering remain unchanged. Presentation lookup is exact and nullable, while BrowserRegion
+omits unresolved presentation. Real localStorage tests cover Zustand persistence without
+doubles.
+
+English, French, and Arabic tests preserve the same BrowserRegion button node and raw sort
+state while updating its complete accessible name. Independent Sol review approved the
+ten-file scope with no remaining findings and passed 56 tests. Terra passed 82 tests across
+seven files and the complete frontend lint recipe. TypeScript, targeted ESLint, formatting,
+scanner, and diff checks passed. Tests contain no doubles, patches, skips, or expected
+failures. Exact reconciliation removed twelve entries and added none, reducing the scanner
+from 1,163 to 1,151 findings. Reset sorting remains assigned to S226. S221 is accepted with
+no open findings.
