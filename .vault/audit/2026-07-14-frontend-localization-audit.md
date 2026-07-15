@@ -1820,3 +1820,25 @@ frontend lint recipe. TypeScript, targeted ESLint, formatting, scanner, and diff
 passed. Tests contain no doubles, patches, skips, or expected failures. Exact baseline
 reconciliation removed thirteen entries and added none, reducing the scanner from 1,176
 to 1,163 findings. S37 is accepted with no open findings.
+
+### W02.P06.S38 review | pass | Document types use an exact localized vocabulary
+
+This step separates the exact frozen six-item raw document-type order from an exhaustive
+frozen presentation map. Canonical lookup accepts only research, decision, plan, step,
+audit, and reference identities and returns null for index, code, summary, arbitrary,
+padded, or null values. Generic Document remains a separate catalog concept rather than a
+seventh type or a derived token fallback.
+
+Review confirmed that the unsafe title-case fallback and hot English label map are gone.
+A deprecated compatibility bridge reads only approved English source-catalog leaves and
+maps every noncanonical value to generic Document, so later-owned consumers retain current
+behavior without leaking raw or internal tokens. Transport, filtering, cache, category,
+callback, data-attribute, and wire identities were not changed.
+
+English, French, and Arabic catalog tests cover every type and the generic label without
+fallback. Independent Sol review approved the seven-file scope with no findings and passed
+50 tests across five files. Terra passed 67 tests across seven files and the complete
+frontend lint recipe. TypeScript, targeted ESLint, formatting, policy, scanner, and diff
+checks passed. Tests contain no doubles, patches, skips, or expected failures. The scanner
+remained clean at 1,163 findings with no allowlist change, matching the documented scanner
+blind spot. S38 is accepted with no open findings.
