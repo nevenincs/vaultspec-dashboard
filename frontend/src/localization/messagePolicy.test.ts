@@ -199,6 +199,21 @@ describe("source-locale message policy", () => {
     }
   });
 
+  it("accepts canonical reader comment actions", () => {
+    expect(
+      validateEnglishMessage(
+        "documents:actions.addComment",
+        en.documents.actions.addComment,
+      ),
+    ).toEqual([]);
+    expect(
+      validateEnglishMessage(
+        "documents:actions.openComments",
+        en.documents.actions.openComments,
+      ),
+    ).toEqual([]);
+  });
+
   it("accepts canonical worktree actions and recovery copy", () => {
     expect(
       validateEnglishMessage(

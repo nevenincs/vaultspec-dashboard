@@ -10,7 +10,6 @@
 // react-markdown reaches it without prop-drilling through the markdown component
 // map.
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import { createContext, useContext } from "react";
 import { MessageSquare } from "lucide-react";
 
@@ -41,9 +40,11 @@ export function commentSectionAction(args: {
 }): ActionDescriptor {
   return {
     id: COMMENT_SECTION_ACTION_ID,
-    label: legacyActionPresentation(
-      args.hasComments ? "Open comments" : "Add a comment",
-    ),
+    label: {
+      key: args.hasComments
+        ? "documents:actions.openComments"
+        : "documents:actions.addComment",
+    },
     section: "transform",
     icon: MessageSquare,
     run: args.onOpen,

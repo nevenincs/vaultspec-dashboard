@@ -187,6 +187,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:accessibility.treeOptionsSortedByWorkspaceShare": {
     role: "accessibility",
   },
+  "documents:actions.addComment": { role: "action" },
   "documents:actions.addToFeature": { role: "action" },
   "documents:actions.browseDocuments": { role: "action" },
   "documents:actions.browseFiles": { role: "action" },
@@ -207,6 +208,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:actions.keepTabOpen": { role: "action" },
   "documents:actions.linkToSelectedDocument": { role: "action" },
   "documents:actions.nextTab": { role: "action" },
+  "documents:actions.openComments": { role: "action" },
   "documents:actions.previousTab": { role: "action" },
   "documents:actions.resetFilters": { role: "action" },
   "documents:actions.resetSorting": { role: "action" },

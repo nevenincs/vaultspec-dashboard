@@ -156,6 +156,7 @@ export const ltrTestResources = {
     },
     actions: {
       ...en.documents.actions,
+      addComment: "Ajouter un commentaire",
       addToFeature: "Ajouter à une fonctionnalité…",
       browseDocuments: "Parcourir les documents",
       browseFiles: "Parcourir les fichiers",
@@ -174,6 +175,7 @@ export const ltrTestResources = {
       keepDocumentOpen: "Garder le document ouvert",
       keepTabOpen: "Garder l’onglet ouvert",
       nextTab: "Aller à l’onglet de document suivant",
+      openComments: "Ouvrir les commentaires",
       previousTab: "Aller à l’onglet de document précédent",
       resetFilters: "Réinitialiser les filtres",
       resetSorting: "Réinitialiser le tri",
@@ -708,6 +710,7 @@ export const rtlTestResources = {
     },
     actions: {
       ...en.documents.actions,
+      addComment: "إضافة تعليق",
       browseDocuments: "تصفح المستندات",
       browseFiles: "تصفح الملفات",
       closeAllDocuments: "إغلاق جميع المستندات",
@@ -722,6 +725,7 @@ export const rtlTestResources = {
       keepTabOpen: "إبقاء علامة التبويب مفتوحة",
       reloadDocument: "إعادة تحميل المستند",
       nextTab: "الانتقال إلى علامة تبويب المستند التالية",
+      openComments: "فتح التعليقات",
       previousTab: "الانتقال إلى علامة تبويب المستند السابقة",
       resetSorting: "إعادة تعيين الترتيب",
       save: "حفظ المستند",

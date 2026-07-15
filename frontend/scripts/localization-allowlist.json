@@ -3125,11 +3125,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "45518f3e7c1a179c6c3f8e61",
-    "path": "src/app/viewer/readerComments.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "6e83bdd2a84746e3b5b11972",
     "path": "src/app/viewer/RelatedDocPicker.tsx",
     "rule": "jsx-attribute"

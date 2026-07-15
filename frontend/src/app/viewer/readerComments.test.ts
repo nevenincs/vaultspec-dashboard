@@ -3,7 +3,7 @@
 // descriptor, one stable id, one runnable lane) and the section↔comment narrowing
 // are asserted without a DOM.
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { isRunnable } from "../../platform/actions/action";
 import type { ServedComment } from "../../stores/server/authoring";
@@ -67,21 +67,25 @@ const block: HeadingBlock = {
 
 describe("commentSectionAction (action-plane enrollment)", () => {
   it("is one runnable descriptor under the single stable section-comment id", () => {
-    const onOpen = vi.fn();
+    let openCount = 0;
+    const onOpen = () => {
+      openCount += 1;
+    };
     const action = commentSectionAction({ hasComments: false, onOpen });
     expect(action.id).toBe(COMMENT_SECTION_ACTION_ID);
     expect(action.section).toBe("transform");
     expect(action.icon).toBeDefined();
     expect(isRunnable(action)).toBe(true);
     action.run?.();
-    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(openCount).toBe(1);
   });
 
   it("keeps the id stable while only reshaping the label for existing comments", () => {
     const add = commentSectionAction({ hasComments: false, onOpen: () => undefined });
     const open = commentSectionAction({ hasComments: true, onOpen: () => undefined });
     expect(add.id).toBe(open.id);
-    expect(add.label).not.toBe(open.label);
+    expect(add.label).toEqual({ key: "documents:actions.addComment" });
+    expect(open.label).toEqual({ key: "documents:actions.openComments" });
   });
 });
 

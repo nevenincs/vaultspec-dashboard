@@ -12,6 +12,7 @@ export const documents = {
     treeOptionsSortedByWorkspaceShare: "Tree options, sorted by workspace share",
   },
   actions: {
+    addComment: "Add a comment",
     addToFeature: "Add to a feature…",
     browseDocuments: "Browse documents",
     browseFiles: "Browse files",
@@ -32,6 +33,7 @@ export const documents = {
     keepTabOpen: "Keep tab open",
     linkToSelectedDocument: "Link to selected document",
     nextTab: "Move to next document tab",
+    openComments: "Open comments",
     previousTab: "Move to previous document tab",
     resetFilters: "Reset filters",
     resetSorting: "Reset sorting",
