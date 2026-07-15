@@ -2155,3 +2155,19 @@ findings.
 Twenty exact scanner exemptions were removed, reducing the scanner from 1,062 to 1,042
 findings and legacy action presentations from 38 to 29. S53, S57, and S241 are accepted.
 S192 remains open for its untouched view-store presentation tests.
+
+### W03.P09.S178 review | pass | Document tabs use canonical actions
+
+Document-tab menus now use typed descriptors for keeping a tab open, reloading a
+document, closing one document, closing other documents, and closing all documents.
+Disabled actions tell the user to choose a temporary tab or open another document,
+instead of describing internal tab state.
+
+Stable action IDs, order, sections, icons, effects, scope handling, and eligibility
+remain unchanged. English, French, and Arabic resources resolve every migrated label
+and reason without fallback or raw identifiers.
+
+Terra and an independent reviewer approved the implementation with no findings. Root
+and Terra each passed 26 focused tests; the complete frontend lint recipe also passed.
+Seven exact exemptions were removed, reducing the scanner from 1,042 to 1,035 findings
+and legacy action presentations from 29 to 22. S178 is accepted with no open findings.
