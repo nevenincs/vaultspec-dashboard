@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
   resetKeybindings,
 } from "../../platform/keymap/registry";
@@ -84,26 +83,31 @@ describe("keyboard shortcuts store", () => {
       {
         id: "command.palette",
         defaultChord: "Mod+K",
-        label: legacyKeybindingPresentation("Open the command palette"),
-        group: legacyKeybindingPresentation("General"),
+        label: { key: "common:actions.openCommandPalette" },
+        group: { key: "common:shortcutGroups.general" },
         context: "global",
       },
       {
         id: "graph.next",
         defaultChord: "ArrowRight",
-        label: legacyKeybindingPresentation("Next neighbour"),
-        group: legacyKeybindingPresentation("Graph"),
+        label: { key: "common:actions.retry" },
+        group: { key: "common:shortcutGroups.graph" },
         context: "canvas",
       },
     ]);
 
     const groups = deriveKeyboardShortcutGroups(undefined, {}, false);
-    expect(groups.map((group) => group.label)).toEqual(["General", "Graph"]);
-    const general = groups.find((group) => group.label === "General");
-    expect(general?.id).toBe("legacy:General");
+    expect(groups.map((group) => group.label)).toEqual([
+      { key: "common:shortcutGroups.general" },
+      { key: "common:shortcutGroups.graph" },
+    ]);
+    const general = groups.find(
+      (group) => group.id === "message:common:shortcutGroups.general",
+    );
+    expect(general?.id).toBe("message:common:shortcutGroups.general");
     expect(general?.shortcuts).toContainEqual({
       id: "command.palette",
-      label: "Open the command palette",
+      label: { key: "common:actions.openCommandPalette" },
       keys: [{ key: "common:keycaps.control" }, { kind: "literal", value: "K" }],
     });
   });
@@ -114,8 +118,8 @@ describe("keyboard shortcuts store", () => {
       {
         id: "command.palette",
         defaultChord: "Mod+K",
-        label: legacyKeybindingPresentation("Open the command palette"),
-        group: legacyKeybindingPresentation("General"),
+        label: { key: "common:actions.openCommandPalette" },
+        group: { key: "common:shortcutGroups.general" },
         context: "global",
       },
     ]);
@@ -126,12 +130,12 @@ describe("keyboard shortcuts store", () => {
     );
     expect(groups[0]?.shortcuts[0]).toEqual({
       id: "command.palette",
-      label: "Open the command palette",
+      label: { key: "common:actions.openCommandPalette" },
       keys: [{ key: "common:keycaps.control" }, { kind: "literal", value: "P" }],
     });
   });
 
-  it("retains typed presentations and groups distinct descriptor objects by key", () => {
+  it("retains typed presentations and groups descriptor objects by key", () => {
     const groups = deriveKeyboardShortcutGroups(
       [
         {
@@ -146,13 +150,6 @@ describe("keyboard shortcuts store", () => {
           defaultChord: "Escape",
           label: { key: "common:actions.close" },
           group: { key: "common:actions.showKeyboardShortcuts" },
-          context: "global",
-        },
-        {
-          id: "action.legacy",
-          defaultChord: "L",
-          label: legacyKeybindingPresentation("Legacy shortcut"),
-          group: legacyKeybindingPresentation("common:actions.showKeyboardShortcuts"),
           context: "global",
         },
       ],
@@ -177,17 +174,6 @@ describe("keyboard shortcuts store", () => {
           },
         ],
       },
-      {
-        id: "legacy:common:actions.showKeyboardShortcuts",
-        label: "common:actions.showKeyboardShortcuts",
-        shortcuts: [
-          {
-            id: "action.legacy",
-            label: "Legacy shortcut",
-            keys: [{ kind: "literal", value: "L" }],
-          },
-        ],
-      },
     ]);
     expect(groups[0]?.shortcuts[0]?.label).not.toBe("action.retry");
   });
@@ -197,8 +183,15 @@ describe("keyboard shortcuts store", () => {
       {
         id: "bad.label",
         defaultChord: "A",
-        label: { key: "common:missing" },
-        group: legacyKeybindingPresentation("General"),
+        label: "Raw source label",
+        group: { key: "common:shortcutGroups.general" },
+        context: "global",
+      },
+      {
+        id: "bad.raw-group",
+        defaultChord: "G",
+        label: { key: "common:actions.retry" },
+        group: "Raw source group",
         context: "global",
       },
       {

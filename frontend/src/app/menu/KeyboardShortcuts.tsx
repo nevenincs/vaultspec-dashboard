@@ -17,30 +17,14 @@
 
 import { Kbd, ListRow, SectionLabel } from "../kit";
 import { Dialog } from "../chrome/Dialog";
-import type {
-  KeybindingGroupPresentation,
-  KeybindingPresentation,
-} from "../../platform/keymap/registry";
 import { resolveKeycapPresentations } from "../../platform/keymap/chord";
-import {
-  type LocalizedMessageResolver,
-  useLocalizedMessageResolver,
-} from "../../platform/localization/LocalizationProvider";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   closeKeyboardShortcuts,
   useKeyboardShortcutsGlobalToggle,
   useKeyboardShortcutGroups,
   useKeyboardShortcutsOpen,
 } from "../../stores/view/keyboardShortcuts";
-
-function resolveKeybindingPresentation(
-  presentation: KeybindingPresentation | KeybindingGroupPresentation,
-  resolveMessage: LocalizedMessageResolver,
-): string {
-  return typeof presentation === "string"
-    ? presentation
-    : resolveMessage(presentation).message;
-}
 
 function keycapIdentity(shortcutId: string, index: number): string {
   return `${shortcutId}:keycap:${index}`;
@@ -61,16 +45,13 @@ export function KeyboardShortcuts() {
     >
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
         {shortcutGroups.map((group) => {
-          const groupLabel = resolveKeybindingPresentation(group.label, resolveMessage);
+          const groupLabel = resolveMessage(group.label).message;
           return (
             <section key={group.id} className="flex flex-col gap-fg-1">
               <SectionLabel>{groupLabel}</SectionLabel>
               <ul className="flex flex-col">
                 {group.shortcuts.map((shortcut) => {
-                  const shortcutLabel = resolveKeybindingPresentation(
-                    shortcut.label,
-                    resolveMessage,
-                  );
+                  const shortcutLabel = resolveMessage(shortcut.label).message;
                   const keycaps = resolveKeycapPresentations(
                     shortcut.keys,
                     resolveMessage,

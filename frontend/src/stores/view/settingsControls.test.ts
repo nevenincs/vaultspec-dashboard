@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   type KeybindingDef,
   MAX_KEYBINDING_ID_LEN,
-  legacyKeybindingPresentation,
 } from "../../platform/keymap/registry";
 import type { SettingDef } from "../server/engine";
 import {
@@ -229,10 +228,10 @@ describe("settings control view projections", () => {
     const view = deriveSettingsKeybindingControlView('{"help.legend":"Ctrl+P"}', [
       ...keybindingDefs,
       {
-        id: "legacy.group",
+        id: "raw.group",
         defaultChord: "Ctrl+L",
-        label: legacyKeybindingPresentation("Legacy action"),
-        group: legacyKeybindingPresentation("message:common:shortcutDialog.title"),
+        label: "Raw action" as unknown as KeybindingDef["label"],
+        group: "Raw group" as unknown as KeybindingDef["group"],
         context: "global",
       },
     ]);
@@ -240,7 +239,6 @@ describe("settings control view projections", () => {
     expect(view.empty).toBe(false);
     expect(view.groups.map((group) => group.id)).toEqual([
       "message:common:shortcutDialog.title",
-      "legacy:message:common:shortcutDialog.title",
     ]);
     expect(view.groups[0]).toEqual({
       id: "message:common:shortcutDialog.title",
@@ -262,7 +260,9 @@ describe("settings control view projections", () => {
         },
       ],
     });
-    expect(view.groups[1]?.rows.map((row) => row.id)).toEqual(["legacy.group"]);
+    expect(
+      view.groups.flatMap((group) => group.rows.map((row) => row.id)),
+    ).not.toContain("raw.group");
   });
 
   it("fails closed to the empty view when every presentation is malformed", () => {
@@ -385,15 +385,15 @@ describe("settings control view projections", () => {
         {
           id: "custom.open",
           defaultChord: "Ctrl+P",
-          label: legacyKeybindingPresentation("Custom open"),
-          group: legacyKeybindingPresentation("General"),
+          label: { key: "common:actions.open" },
+          group: { key: "common:shortcutGroups.general" },
           context: "global",
         },
       ]),
     ).toEqual([
       {
         id: "custom.open",
-        label: legacyKeybindingPresentation("Custom open"),
+        label: { key: "common:actions.open" },
       },
     ]);
   });

@@ -31,4 +31,7 @@ export const timeline = {
     modifiedUnavailable: "Choose the creation date. Edit dates aren't available here.",
     stampedUnavailable: "Choose the creation date. Update dates aren't available here.",
   },
+  labels: {
+    timeline: "Timeline",
+  },
 } as const;

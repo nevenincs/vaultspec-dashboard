@@ -18,7 +18,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   findConflicts,
-  legacyKeybindingPresentation,
   type BindingContext,
   type KeybindingDef,
 } from "../../platform/keymap/registry";
@@ -104,8 +103,8 @@ describe("default keybinding conflict guard (KAR-008)", () => {
       id: "test:injected-collision",
       context: defaults[0].context,
       defaultChord: collidingDefault,
-      label: legacyKeybindingPresentation("synthetic collision"),
-      group: legacyKeybindingPresentation("test"),
+      label: { key: "common:actions.retry" },
+      group: { key: "common:shortcutGroups.general" },
     };
     const conflicts = findConflicts([...defaults, injected]);
     expect(conflicts.some((c) => c.ids.includes("test:injected-collision"))).toBe(true);

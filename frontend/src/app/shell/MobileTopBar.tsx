@@ -17,6 +17,7 @@ import {
   resolveActionPresentation,
   type ActionPresentation,
 } from "../../platform/actions/action";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 export interface MobileTopBarAction {
@@ -36,12 +37,12 @@ export interface MobileTopBarProps {
   title: string;
   /** When set, a leading back control is shown (slide-back). */
   onBack?: () => void;
-  backLabel?: string;
+  backLabel?: MessageDescriptor;
   /** When set, the title becomes a tap-target with a trailing chevron — the compact
    *  workspace-switcher trigger (mobile-enrichment ADR D1). */
   onTitleActivate?: () => void;
   /** Accessible name for the title trigger (defaults to the title + a hint). */
-  titleActivateLabel?: string;
+  titleActivateLabel?: MessageDescriptor;
   /** Trailing icon actions, right-aligned. */
   actions?: readonly MobileTopBarAction[];
 }
@@ -82,12 +83,23 @@ function IconSlot({
 export function MobileTopBar({
   title,
   onBack,
-  backLabel = "Back",
+  backLabel,
   onTitleActivate,
   titleActivateLabel,
   actions,
 }: MobileTopBarProps) {
   const resolveMessage = useLocalizedMessageResolver();
+  const resolvedBackLabel = resolveActionPresentation(
+    backLabel ?? { key: "common:accessibility.back" },
+    resolveMessage,
+  );
+  const resolvedTitleActivateLabel = resolveActionPresentation(
+    titleActivateLabel ?? {
+      key: "common:accessibility.switchWorkspace",
+      values: { workspace: title },
+    },
+    resolveMessage,
+  );
   const resolvedActions: Array<
     Omit<MobileTopBarAction, "label" | "text"> & {
       label: string;
@@ -121,7 +133,7 @@ export function MobileTopBar({
       className="flex h-[3.25rem] shrink-0 items-center gap-fg-1 border-b border-rule bg-paper-raised pe-fg-1 ps-fg-2"
     >
       {onBack && (
-        <IconSlot label={backLabel} onClick={onBack}>
+        <IconSlot label={resolvedBackLabel.message} onClick={onBack}>
           <ChevronLeft size={20} />
         </IconSlot>
       )}
@@ -136,9 +148,12 @@ export function MobileTopBar({
           <button
             type="button"
             data-mobile-title-trigger
-            onClick={onTitleActivate}
+            disabled={resolvedTitleActivateLabel.usedFallback}
+            onClick={
+              resolvedTitleActivateLabel.usedFallback ? undefined : onTitleActivate
+            }
             aria-haspopup="dialog"
-            aria-label={titleActivateLabel ?? `${title} — switch workspace`}
+            aria-label={resolvedTitleActivateLabel.message}
             className="flex min-w-0 flex-1 items-center gap-fg-1 rounded-fg-sm py-fg-1 text-left transition-colors duration-ui-fast ease-settle outline-none hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             <span className="min-w-0 truncate text-title text-ink">{title}</span>

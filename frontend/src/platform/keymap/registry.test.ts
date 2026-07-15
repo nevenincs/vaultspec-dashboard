@@ -3,19 +3,16 @@ import { afterEach, describe, expect, it } from "vitest";
 import { type ChordEvent } from "./chord";
 import {
   type KeybindingDef,
-  LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS,
   MAX_KEYBINDING_ID_LEN,
   conflictsForCandidate,
   contextsOverlap,
   effectiveChord,
   findConflicts,
-  legacyKeybindingPresentation,
   listKeybindings,
   normalizeKeybindingGroupPresentation,
   normalizeKeybindingId,
   normalizeKeybindingOverrides,
   normalizeKeybindingPresentation,
-  normalizeLegacyKeybindingPresentation,
   registerKeybindings,
   resetKeybindings,
   resolveKeybinding,
@@ -28,8 +25,8 @@ function ev(over: Partial<ChordEvent> & { key: string }): ChordEvent {
 const def = (
   over: Partial<KeybindingDef> & Pick<KeybindingDef, "id" | "defaultChord">,
 ): KeybindingDef => ({
-  label: legacyKeybindingPresentation(over.id),
-  group: legacyKeybindingPresentation("Test"),
+  label: { key: "common:actions.retry" },
+  group: { key: "common:shortcutGroups.general" },
   context: "global",
   ...over,
 });
@@ -42,8 +39,8 @@ describe("registerKeybindings", () => {
       def({
         id: " palette ",
         defaultChord: " Mod+K ",
-        label: legacyKeybindingPresentation(" Open palette "),
-        group: legacyKeybindingPresentation(" General "),
+        label: { key: "common:actions.openCommandPalette" },
+        group: { key: "common:shortcutGroups.general" },
         context: " global " as KeybindingDef["context"],
       }),
     ]);
@@ -55,8 +52,8 @@ describe("registerKeybindings", () => {
       {
         id: "palette",
         defaultChord: "Mod+K",
-        label: legacyKeybindingPresentation("Open palette"),
-        group: legacyKeybindingPresentation("General"),
+        label: { key: "common:actions.openCommandPalette" },
+        group: { key: "common:shortcutGroups.general" },
         context: "global",
       },
     ]);
@@ -98,7 +95,7 @@ describe("registerKeybindings", () => {
         def({
           id: "x",
           defaultChord: "Mod+X",
-          label: legacyKeybindingPresentation("   "),
+          label: "raw source copy" as unknown as KeybindingDef["label"],
         }),
       ]),
     ).toThrow();
@@ -173,18 +170,12 @@ describe("registerKeybindings", () => {
 });
 
 describe("keybinding presentation normalization", () => {
-  it("bounds legacy copy and accepts typed labels", () => {
-    expect(normalizeLegacyKeybindingPresentation(" Label ")).toBe("Label");
-    expect(normalizeLegacyKeybindingPresentation("   ")).toBeNull();
-    expect(
-      normalizeLegacyKeybindingPresentation(
-        "x".repeat(LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS + 1),
-      ),
-    ).toBeNull();
+  it("accepts typed labels and rejects raw source strings", () => {
     expect(normalizeKeybindingPresentation({ key: "common:actions.retry" })).toEqual({
       key: "common:actions.retry",
     });
     expect(normalizeKeybindingPresentation({ key: "missing:key" })).toBeNull();
+    expect(normalizeKeybindingPresentation("Retry")).toBeNull();
   });
 
   it("requires group descriptors to be static", () => {

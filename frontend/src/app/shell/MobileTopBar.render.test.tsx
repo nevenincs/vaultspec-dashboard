@@ -8,6 +8,8 @@ import {
   createTestLocalizationRuntime,
   ltrTestLocale,
   ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
 } from "../../localization/testing";
 import { MobileTopBar } from "./MobileTopBar";
 import { SAFE_FALLBACK_SOURCE_MESSAGE } from "../../platform/localization/fallback";
@@ -71,5 +73,89 @@ describe("MobileTopBar localized actions", () => {
     expect(button.hasAttribute("disabled")).toBe(true);
     fireEvent.click(button);
     expect(activations).toBe(0);
+  });
+
+  it("localizes back and workspace controls without replacing their nodes", async () => {
+    const runtime = createTestLocalizationRuntime();
+    let backActivations = 0;
+    let titleActivations = 0;
+    render(
+      <I18nextProvider i18n={runtime}>
+        <MobileTopBar
+          title="main"
+          onBack={() => {
+            backActivations += 1;
+          }}
+          onTitleActivate={() => {
+            titleActivations += 1;
+          }}
+        />
+      </I18nextProvider>,
+    );
+
+    const back = screen.getByRole("button", { name: "Back" });
+    const title = screen.getByRole("button", {
+      name: "Switch workspace from main",
+    });
+
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: ltrTestResources.common.accessibility.back,
+      }),
+    ).toBe(back);
+    expect(
+      screen.getByRole("button", {
+        name: "Changer d’espace de travail depuis main",
+      }),
+    ).toBe(title);
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByRole("button", {
+        name: rtlTestResources.common.accessibility.back,
+      }),
+    ).toBe(back);
+    expect(screen.getByRole("button", { name: "تبديل مساحة العمل من main" })).toBe(
+      title,
+    );
+
+    fireEvent.click(back);
+    fireEvent.click(title);
+    expect(backActivations).toBe(1);
+    expect(titleActivations).toBe(1);
+  });
+
+  it("keeps Back operable with safe fallback while other controls fail closed", () => {
+    const runtime = createTestLocalizationRuntime();
+    runtime.removeResourceBundle("en", "common");
+    let activations = 0;
+    render(
+      <I18nextProvider i18n={runtime}>
+        <MobileTopBar
+          title="main"
+          onBack={() => {
+            activations += 1;
+          }}
+          onTitleActivate={() => {
+            activations += 1;
+          }}
+        />
+      </I18nextProvider>,
+    );
+
+    const controls = screen.getAllByRole("button", {
+      name: SAFE_FALLBACK_SOURCE_MESSAGE,
+    });
+    expect(controls).toHaveLength(2);
+    const back = controls.find(
+      (control) => control.getAttribute("aria-pressed") === "false",
+    );
+    const title = controls.find((control) => control.hasAttribute("aria-haspopup"));
+    expect(back?.hasAttribute("disabled")).toBe(false);
+    expect(title?.hasAttribute("disabled")).toBe(true);
+    if (back) fireEvent.click(back);
+    if (title) fireEvent.click(title);
+    expect(activations).toBe(1);
   });
 });

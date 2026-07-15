@@ -1,10 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  legacyKeybindingPresentation,
-  registerKeybindings,
-  resetKeybindings,
-} from "../../platform/keymap/registry";
+import { registerKeybindings, resetKeybindings } from "../../platform/keymap/registry";
 import { createActionConfirmationDescriptor } from "../../platform/localization/message";
 import {
   buildEditorCommands,
@@ -601,8 +597,8 @@ describe("deriveCommandAccelerators", () => {
       {
         id: "left-rail:new-document",
         defaultChord: "Mod+Alt+N",
-        label: legacyKeybindingPresentation("New document"),
-        group: legacyKeybindingPresentation("Left rail"),
+        label: { key: "documents:actions.addToFeature" },
+        group: { key: "common:shortcutGroups.navigation" },
         context: "left-rail",
       },
     ]);
@@ -627,8 +623,8 @@ describe("deriveCommandAccelerators", () => {
       {
         id: "left-rail:new-document",
         defaultChord: "Mod+Alt+N",
-        label: legacyKeybindingPresentation("New document"),
-        group: legacyKeybindingPresentation("Left rail"),
+        label: { key: "documents:actions.addToFeature" },
+        group: { key: "common:shortcutGroups.navigation" },
         context: "left-rail",
       },
     ]);

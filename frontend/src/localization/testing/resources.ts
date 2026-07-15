@@ -7,11 +7,14 @@ export const ltrTestResources = {
   common: {
     accessibility: {
       ...en.common.accessibility,
+      back: "Retour",
       recordShortcut: "Enregistrer un raccourci pour {{action}}",
       resizeActivityPanel: "Redimensionner le panneau d’activité",
       resizeNavigationPanel: "Redimensionner le panneau de navigation",
       resizeTimeline: "Redimensionner la chronologie",
       resetShortcut: "Réinitialiser le raccourci pour {{action}}",
+      skipToContent: "Aller au contenu",
+      switchWorkspace: "Changer d’espace de travail depuis {{workspace}}",
     },
     actions: {
       ...en.common.actions,
@@ -165,6 +168,7 @@ export const ltrTestResources = {
       nextTab: "Aller à l’onglet de document suivant",
       previousTab: "Aller à l’onglet de document précédent",
       resetFilters: "Réinitialiser les filtres",
+      resetSorting: "Réinitialiser le tri",
       reloadDocument: "Recharger le document",
       save: "Enregistrer le document",
       sortByLatestActivity: "Trier par activité récente",
@@ -214,6 +218,7 @@ export const ltrTestResources = {
     },
     labels: {
       document: "Document",
+      vault: "Coffre",
     },
     sortOptions: {
       latestActivity: "Activité récente",
@@ -461,6 +466,9 @@ export const ltrTestResources = {
       stampedUnavailable:
         "Choisissez la date de création. Les dates de mise à jour ne sont pas disponibles ici.",
     },
+    labels: {
+      timeline: "Chronologie",
+    },
   },
 } as const;
 
@@ -468,11 +476,14 @@ export const rtlTestResources = {
   common: {
     accessibility: {
       ...en.common.accessibility,
+      back: "رجوع",
       recordShortcut: "تسجيل اختصار لـ {{action}}",
       resizeActivityPanel: "تغيير حجم لوحة النشاط",
       resizeNavigationPanel: "تغيير حجم لوحة التنقل",
       resizeTimeline: "تغيير حجم المخطط الزمني",
       resetShortcut: "إعادة تعيين اختصار {{action}}",
+      skipToContent: "التخطي إلى المحتوى",
+      switchWorkspace: "تبديل مساحة العمل من {{workspace}}",
     },
     actions: {
       ...en.common.actions,
@@ -615,6 +626,7 @@ export const rtlTestResources = {
       reloadDocument: "إعادة تحميل المستند",
       nextTab: "الانتقال إلى علامة تبويب المستند التالية",
       previousTab: "الانتقال إلى علامة تبويب المستند السابقة",
+      resetSorting: "إعادة تعيين الترتيب",
       save: "حفظ المستند",
       sortByLatestActivity: "الترتيب حسب أحدث نشاط",
       sortByDocumentCount: "الترتيب حسب عدد المستندات",
@@ -659,6 +671,7 @@ export const rtlTestResources = {
     },
     labels: {
       document: "مستند",
+      vault: "الخزنة",
     },
     sortOptions: {
       latestActivity: "أحدث نشاط",
@@ -891,6 +904,9 @@ export const rtlTestResources = {
       current: "اختر خيار تاريخ آخر لتغيير المخطط الزمني.",
       modifiedUnavailable: "اختر تاريخ الإنشاء. تواريخ التعديل غير متاحة هنا.",
       stampedUnavailable: "اختر تاريخ الإنشاء. تواريخ التحديث غير متاحة هنا.",
+    },
+    labels: {
+      timeline: "المخطط الزمني",
     },
   },
 } as const;

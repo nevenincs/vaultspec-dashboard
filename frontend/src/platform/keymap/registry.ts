@@ -65,51 +65,19 @@ export const MAX_KEYBINDING_OVERRIDES = 256;
  */
 export const MAX_KEYBINDING_CHORD_LEN = 64;
 export const MAX_KEYBINDING_ID_LEN = 128;
-export const LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS = 256;
-
-declare const legacyKeybindingPresentationBrand: unique symbol;
-
-/** Bounded keybinding copy tracked by the localization scanner. */
-export type LegacyKeybindingPresentation = string & {
-  readonly [legacyKeybindingPresentationBrand]: "legacy-keybinding-presentation";
-};
 
 /** Presentation accepted by the keybinding registry. */
-export type KeybindingPresentation = LegacyKeybindingPresentation | MessageDescriptor;
+export type KeybindingPresentation = MessageDescriptor;
 
 /** Group messages are taxonomy identities, so interpolation values are prohibited. */
-export type KeybindingGroupPresentation =
-  | LegacyKeybindingPresentation
-  | (MessageDescriptor & { readonly values?: never });
+export type KeybindingGroupPresentation = MessageDescriptor & {
+  readonly values?: never;
+};
 
-/** Normalize bounded compatibility copy without coercion. */
-export function normalizeLegacyKeybindingPresentation(
-  value: unknown,
-): LegacyKeybindingPresentation | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim();
-  return normalized.length > 0 &&
-    normalized.length <= LEGACY_KEYBINDING_PRESENTATION_MAX_CHARS
-    ? (normalized as LegacyKeybindingPresentation)
-    : null;
-}
-
-/** Mark one complete legacy keybinding message for exact scanner inventory. */
-export function legacyKeybindingPresentation(
-  value: string,
-): LegacyKeybindingPresentation {
-  return (
-    normalizeLegacyKeybindingPresentation(value) ?? ("" as LegacyKeybindingPresentation)
-  );
-}
-
-/** Normalize a typed or scanner-tracked transitional keybinding message. */
+/** Normalize a typed keybinding message without accepting source-locale strings. */
 export function normalizeKeybindingPresentation(
   value: unknown,
 ): KeybindingPresentation | null {
-  if (typeof value === "string") {
-    return normalizeLegacyKeybindingPresentation(value);
-  }
   return normalizeMessageDescriptor(value);
 }
 
@@ -119,7 +87,6 @@ export function normalizeKeybindingGroupPresentation(
 ): KeybindingGroupPresentation | null {
   const normalized = normalizeKeybindingPresentation(value);
   if (normalized === null) return null;
-  if (typeof normalized === "string") return normalized;
   return normalized.values === undefined
     ? (normalized as KeybindingGroupPresentation)
     : null;

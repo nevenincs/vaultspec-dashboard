@@ -2180,41 +2180,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "0445a642a554fd6a0863bcf2",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "17d2d477733c90d8c850257b",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "72110ed24a502e57467495d1",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "740ae350910062397c255124",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "8653e3c7d2324845fb42e544",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "363cc75ad39e255fe17b8734",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "7f6a8758a045c503acbc2e35",
-    "path": "src/app/shell/CompactAppShell.tsx",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "254b3523eaf1975c79d9b470",
     "path": "src/app/shell/CompactDocReader.tsx",
     "rule": "jsx-attribute"
@@ -5023,21 +4988,6 @@
     "id": "fe0e4229c97186a0e99db7b6",
     "path": "src/stores/view/inspector.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "989034ee926d29553b8082b8",
-    "path": "src/stores/view/keyboardShortcuts.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "93dc318956cb04137be533f1",
-    "path": "src/stores/view/keyboardShortcuts.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "efc99d926f99394d21413b95",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
   },
   {
     "id": "ecb292b0acf158a1fc3b4a41",

@@ -13,6 +13,8 @@ import {
   LEFT_RAIL_FOCUS_FILTER_LABEL,
   LEFT_RAIL_NEW_DOC_ACTION_ID,
   LEFT_RAIL_NEW_DOC_LABEL,
+  LEFT_RAIL_RESET_SORTING_ACTION_ID,
+  LEFT_RAIL_RESET_SORTING_LABEL,
   LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
   LEFT_RAIL_TOGGLE_FACETS_LABEL,
   browseModeAction,
@@ -20,6 +22,7 @@ import {
   deriveLeftRailKeybindings,
   focusFilterAction,
   newDocumentAction,
+  resetSortingAction,
   toggleFacetsAction,
 } from "./leftRailKeybindings";
 
@@ -185,5 +188,27 @@ describe("left-rail localized keybindings", () => {
     expect(browseModeAction(" vault ")).toBeNull();
     expect(browseModeAction("tree")).toBeNull();
     expect(browseModeAction(null)).toBeNull();
+  });
+
+  it("shares one localized reset-sorting descriptor across action surfaces", () => {
+    const action = resetSortingAction();
+
+    expect(action).toMatchObject({
+      id: LEFT_RAIL_RESET_SORTING_ACTION_ID,
+      label: LEFT_RAIL_RESET_SORTING_LABEL,
+      section: "navigate",
+    });
+    expect(resolveMessageResult(createTestLocalizationRuntime(), action.label)).toEqual(
+      {
+        message: "Reset sorting",
+        usedFallback: false,
+      },
+    );
+    expect(
+      resolveMessageResult(createTestLocalizationRuntime(ltrTestLocale), action.label),
+    ).toEqual({ message: "Réinitialiser le tri", usedFallback: false });
+    expect(
+      resolveMessageResult(createTestLocalizationRuntime(rtlTestLocale), action.label),
+    ).toEqual({ message: "إعادة تعيين الترتيب", usedFallback: false });
   });
 });

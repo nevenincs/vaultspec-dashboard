@@ -12,10 +12,7 @@ import {
   UnfoldVertical,
 } from "lucide-react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
   registerKeybindings,
@@ -74,7 +71,9 @@ export const LEFT_RAIL_TOGGLE_FACETS_LABEL = {
 export const LEFT_RAIL_RESET_FILTERS_LABEL = {
   key: "documents:actions.resetFilters",
 } as const;
-export const LEFT_RAIL_RESET_SORTING_LABEL = "Reset Sorting";
+export const LEFT_RAIL_RESET_SORTING_LABEL = {
+  key: "documents:actions.resetSorting",
+} as const;
 
 export const LEFT_RAIL_GROUP = {
   key: "common:shortcutGroups.navigation",
@@ -264,7 +263,7 @@ export function sortTreeActionId(key: RailSortKey): string {
 export function resetSortingAction(): ActionDescriptor {
   return {
     id: LEFT_RAIL_RESET_SORTING_ACTION_ID,
-    label: legacyActionPresentation(LEFT_RAIL_RESET_SORTING_LABEL),
+    label: LEFT_RAIL_RESET_SORTING_LABEL,
     section: "navigate",
     icon: ListRestart,
     run: resetRailSort,

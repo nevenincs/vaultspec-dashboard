@@ -65,7 +65,10 @@ describe("KeyboardShortcuts", () => {
     renderKeyboardShortcuts();
     fireEvent.keyDown(window, { key: "?" });
     expect(screen.getByText("General")).toBeTruthy();
-    expect(screen.getByText(KEYBOARD_SHORTCUTS_TOGGLE_LABEL)).toBeTruthy();
+    expect(KEYBOARD_SHORTCUTS_TOGGLE_LABEL).toEqual({
+      key: "common:actions.showKeyboardShortcuts",
+    });
+    expect(screen.getByText("Show keyboard shortcuts")).toBeTruthy();
     const caps = screen.getAllByText("?");
     expect(caps.some((el) => el.tagName.toLowerCase() === "kbd")).toBe(true);
   });
@@ -148,6 +151,18 @@ describe("KeyboardShortcuts", () => {
     expect(sourceGroup?.textContent).toContain(
       ltrTestResources.common.actions.showKeyboardShortcuts,
     );
+
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    const rtlRow = screen
+      .getByText(rtlTestResources.common.actions.retry)
+      .closest("li");
+    expect(rtlRow).toBe(sourceRow);
+    expect(rtlRow?.closest("section")).toBe(sourceGroup);
+    expect(sourceGroup?.textContent).toContain(
+      rtlTestResources.common.actions.showKeyboardShortcuts,
+    );
+    expect(screen.queryByText("action.retry")).toBeNull();
+    expect(screen.queryByText("common:actions.retry")).toBeNull();
     dispose();
   });
 });

@@ -16,16 +16,20 @@
 // here (ADR D4 — not mounted on a cold compact load), so the dock workspace is
 // absent from this branch.
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import { useEffect, useRef, useState } from "react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { useActiveScope } from "../../stores/server/queries";
 import { setCompactSurface, useCompactSurface } from "../../stores/view/compactSurface";
 import {
   openSearchPalette,
   SEARCH_PALETTE_ACTION_ID,
+  SEARCH_PALETTE_SHORTCUT_LABEL,
 } from "../../stores/view/commandPalette";
-import { LEFT_RAIL_TOGGLE_FACETS_ACTION_ID } from "../../stores/view/leftRailKeybindings";
+import {
+  LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
+  LEFT_RAIL_TOGGLE_FACETS_LABEL,
+} from "../../stores/view/leftRailKeybindings";
 import {
   toggleFilterSidebar,
   useFilterSidebarOpen,
@@ -38,11 +42,8 @@ import { CompactUnifiedRail } from "./CompactUnifiedRail";
 import { MobileTopBar } from "./MobileTopBar";
 import { WorkspaceSwitcherSheet } from "./WorkspaceSwitcherSheet";
 
-const SURFACE_TITLE: Record<string, string> = {
-  timeline: "Timeline",
-};
-
 export function CompactAppShell() {
+  const resolveMessage = useLocalizedMessageResolver();
   const surface = useCompactSurface();
   const scope = useActiveScope();
   const filterOpen = useFilterSidebarOpen();
@@ -72,7 +73,7 @@ export function CompactAppShell() {
   // bottom Search tab, and the timeline frame carries no top-bar action.
   const searchAction = {
     id: SEARCH_PALETTE_ACTION_ID,
-    label: legacyActionPresentation("Search"),
+    label: SEARCH_PALETTE_SHORTCUT_LABEL,
     Glyph: MagnifyingGlass,
     onClick: openSearchPalette,
   };
@@ -81,15 +82,18 @@ export function CompactAppShell() {
   const worktree =
     typeof scope === "string" && scope
       ? (scope.split(/[\\/]/).pop() ?? scope)
-      : "Vault";
-  const title = surface === "home" ? worktree : (SURFACE_TITLE[surface] ?? "Home");
+      : resolveMessage({ key: "documents:labels.vault" }).message;
+  const title =
+    surface === "home"
+      ? worktree
+      : resolveMessage({ key: "timeline:labels.timeline" }).message;
   const actions =
     surface === "home"
       ? [
           searchAction,
           {
             id: LEFT_RAIL_TOGGLE_FACETS_ACTION_ID,
-            label: legacyActionPresentation("Advanced filters"),
+            label: LEFT_RAIL_TOGGLE_FACETS_LABEL,
             Glyph: Funnel,
             onClick: () => toggleFilterSidebar(),
             active: filterOpen,
@@ -110,7 +114,7 @@ export function CompactAppShell() {
           mainRef.current?.focus();
         }}
       >
-        Skip to content
+        {resolveMessage({ key: "common:accessibility.skipToContent" }).message}
       </a>
       <MobileTopBar
         title={title}
@@ -119,7 +123,12 @@ export function CompactAppShell() {
         // trigger (mobile-enrichment D1). The Timeline surface keeps a plain heading.
         onTitleActivate={surface === "home" ? () => setSwitcherOpen(true) : undefined}
         titleActivateLabel={
-          surface === "home" ? `${worktree} — switch workspace` : undefined
+          surface === "home"
+            ? {
+                key: "common:accessibility.switchWorkspace",
+                values: { workspace: worktree },
+              }
+            : undefined
         }
       />
       <main

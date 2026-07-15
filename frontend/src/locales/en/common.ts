@@ -1,12 +1,15 @@
 export const common = {
   accessibility: {
     actionsMenu: "Actions",
+    back: "Back",
     confirmAction: "Confirm {{action}}?",
     recordShortcut: "Record a shortcut for {{action}}",
     resizeActivityPanel: "Resize activity panel",
     resizeNavigationPanel: "Resize navigation panel",
     resizeTimeline: "Resize timeline",
     resetShortcut: "Reset the shortcut for {{action}}",
+    skipToContent: "Skip to content",
+    switchWorkspace: "Switch workspace from {{workspace}}",
   },
   actions: {
     cancel: "Cancel",

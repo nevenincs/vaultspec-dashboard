@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { useEffect } from "react";
 
-import { legacyActionPresentation } from "../../platform/actions/action";
 import {
   chordToKeycaps,
   defaultIsMac,
@@ -13,7 +12,6 @@ import {
   type KeybindingOverrides,
   type KeybindingPresentation,
   effectiveChord,
-  legacyKeybindingPresentation,
   listKeybindings,
   normalizeKeybindingGroupPresentation,
   normalizeKeybindingPresentation,
@@ -45,9 +43,9 @@ interface KeyboardShortcutsState {
 }
 
 export const KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID = "app:keyboard-shortcuts";
-export const KEYBOARD_SHORTCUTS_TOGGLE_LABEL = legacyKeybindingPresentation(
-  "Show keyboard shortcuts",
-);
+export const KEYBOARD_SHORTCUTS_TOGGLE_LABEL = {
+  key: "common:actions.showKeyboardShortcuts",
+} as const;
 const GENERAL_KEYBINDING_GROUP = {
   key: "common:shortcutGroups.general",
 } as const;
@@ -87,8 +85,7 @@ export function deriveKeyboardShortcutGroups(
     const label = normalizeKeybindingPresentation(def.label);
     const group = normalizeKeybindingGroupPresentation(def.group);
     if (label === null || group === null) continue;
-    const groupId =
-      typeof group === "string" ? `legacy:${group}` : `message:${group.key}`;
+    const groupId = `message:${group.key}`;
     const keys = chordToKeycaps(effectiveChord(def, overrides), isMac);
     const row = { id: def.id, label, keys };
     const existing = byGroup.get(groupId);
@@ -146,7 +143,7 @@ export function useKeyboardShortcutsGlobalToggle(): void {
     const disposeAction = registerKeyAction(KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID, () => {
       return {
         id: KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
-        label: legacyActionPresentation(KEYBOARD_SHORTCUTS_TOGGLE_LABEL),
+        label: KEYBOARD_SHORTCUTS_TOGGLE_LABEL,
         run: toggleKeyboardShortcuts,
       };
     });

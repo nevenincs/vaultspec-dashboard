@@ -41,7 +41,6 @@ const FINDING_CODES = Object.freeze({
   jsxAttribute: "jsx-attribute",
   jsxText: "jsx-text",
   legacyActionPresentation: "legacy-action-presentation",
-  legacyKeybindingPresentation: "legacy-keybinding-presentation",
   presentationField: "presentation-field",
   translatedFragment: "translated-fragment",
   translationDefault: "translation-default",
@@ -56,8 +55,6 @@ const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
 const LEGACY_ACTION_PRESENTATION_OWNER = "src/platform/actions/action.ts";
 const LEGACY_ACTION_PRESENTATION_EXPORT = "legacyActionPresentation";
-const LEGACY_KEYBINDING_PRESENTATION_OWNER = "src/platform/keymap/registry.ts";
-const LEGACY_KEYBINDING_PRESENTATION_EXPORT = "legacyKeybindingPresentation";
 
 const JSX_ATTRIBUTE_NAMES = new Set([
   "accessibleName",
@@ -486,15 +483,6 @@ function isCanonicalLegacyActionPresentation(expression, checker) {
   );
 }
 
-function isCanonicalLegacyKeybindingPresentation(expression, checker) {
-  return isCanonicalLegacyPresentation(
-    expression,
-    checker,
-    LEGACY_KEYBINDING_PRESENTATION_EXPORT,
-    LEGACY_KEYBINDING_PRESENTATION_OWNER,
-  );
-}
-
 function isLegacyPresentationType(node, checker, typeName, owner) {
   const alias = unwrapAlias(checker.getTypeAtLocation(node).aliasSymbol, checker);
   return (
@@ -511,15 +499,6 @@ function isLegacyActionPresentationType(node, checker) {
     checker,
     "LegacyActionPresentation",
     LEGACY_ACTION_PRESENTATION_OWNER,
-  );
-}
-
-function isLegacyKeybindingPresentationType(node, checker) {
-  return isLegacyPresentationType(
-    node,
-    checker,
-    "LegacyKeybindingPresentation",
-    LEGACY_KEYBINDING_PRESENTATION_OWNER,
   );
 }
 
@@ -649,9 +628,6 @@ function translationCallKind(node, bindings, checker) {
   const expression = node.expression;
   if (isCanonicalLegacyActionPresentation(expression, checker)) {
     return "legacy-action-presentation";
-  }
-  if (isCanonicalLegacyKeybindingPresentation(expression, checker)) {
-    return "legacy-keybinding-presentation";
   }
   if (ts.isIdentifier(expression)) {
     const symbol = symbolAt(expression, checker);
@@ -995,7 +971,15 @@ function scanProgram(files, allowOutsideSource = false) {
             add(FINDING_CODES.authoredCaseTransform, node, sourceFile, name, transform);
           }
         }
-        if (name && PRESENTATION_FIELD_NAMES.has(name)) {
+        const rawKeybindingGroupField =
+          name === "group" &&
+          ts.isObjectLiteralExpression(node.parent) &&
+          node.parent.properties.some(
+            (property) =>
+              ts.isPropertyAssignment(property) &&
+              propertyName(property.name) === "defaultChord",
+          );
+        if (name && (PRESENTATION_FIELD_NAMES.has(name) || rawKeybindingGroupField)) {
           const unresolvedLegacyActionFactory =
             ts.isCallExpression(node.initializer) &&
             !isCanonicalLegacyActionPresentation(
@@ -1005,16 +989,7 @@ function scanProgram(files, allowOutsideSource = false) {
             (callName(node.initializer.expression) ===
               LEGACY_ACTION_PRESENTATION_EXPORT ||
               isLegacyActionPresentationType(node.initializer, checker));
-          const unresolvedLegacyKeybindingFactory =
-            ts.isCallExpression(node.initializer) &&
-            !isCanonicalLegacyKeybindingPresentation(
-              node.initializer.expression,
-              checker,
-            ) &&
-            (callName(node.initializer.expression) ===
-              LEGACY_KEYBINDING_PRESENTATION_EXPORT ||
-              isLegacyKeybindingPresentationType(node.initializer, checker));
-          if (unresolvedLegacyActionFactory || unresolvedLegacyKeybindingFactory) {
+          if (unresolvedLegacyActionFactory) {
             add(
               FINDING_CODES.presentationField,
               node,
@@ -1147,14 +1122,6 @@ function scanProgram(files, allowOutsideSource = false) {
             node,
             sourceFile,
             LEGACY_ACTION_PRESENTATION_EXPORT,
-            node.arguments[0]?.getText(sourceFile) ?? "",
-          );
-        } else if (translationKind === "legacy-keybinding-presentation") {
-          add(
-            FINDING_CODES.legacyKeybindingPresentation,
-            node,
-            sourceFile,
-            LEGACY_KEYBINDING_PRESENTATION_EXPORT,
             node.arguments[0]?.getText(sourceFile) ?? "",
           );
         }

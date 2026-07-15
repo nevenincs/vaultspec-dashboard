@@ -34,12 +34,15 @@ export interface MessagePolicyEntry {
 
 export const ENGLISH_MESSAGE_POLICY = {
   "common:accessibility.actionsMenu": { role: "accessibility" },
+  "common:accessibility.back": { role: "accessibility" },
   "common:accessibility.confirmAction": { role: "accessibility" },
   "common:accessibility.recordShortcut": { role: "accessibility" },
   "common:accessibility.resizeActivityPanel": { role: "accessibility" },
   "common:accessibility.resizeNavigationPanel": { role: "accessibility" },
   "common:accessibility.resizeTimeline": { role: "accessibility" },
   "common:accessibility.resetShortcut": { role: "accessibility" },
+  "common:accessibility.skipToContent": { role: "accessibility" },
+  "common:accessibility.switchWorkspace": { role: "accessibility" },
   "common:actions.cancel": { role: "action" },
   "common:actions.close": { role: "action" },
   "common:actions.collapseNavigationPanel": { role: "action" },
@@ -198,6 +201,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:actions.nextTab": { role: "action" },
   "documents:actions.previousTab": { role: "action" },
   "documents:actions.resetFilters": { role: "action" },
+  "documents:actions.resetSorting": { role: "action" },
   "documents:actions.reloadDocument": { role: "action" },
   "documents:actions.save": { role: "action" },
   "documents:actions.sortByCreationDate": { role: "action" },
@@ -239,6 +243,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:feedback.linkInProgress": { role: "status" },
   "documents:feedback.linkSucceeded": { role: "status" },
   "documents:labels.document": { role: "label" },
+  "documents:labels.vault": { role: "label" },
   "documents:sortOptions.creationDate": { role: "label" },
   "documents:sortOptions.documentCount": { role: "label" },
   "documents:sortOptions.editDate": { role: "label" },
@@ -391,6 +396,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "timeline:disabledReasons.stampedUnavailable": {
     role: "disabled-reason",
   },
+  "timeline:labels.timeline": { role: "label" },
 } as const satisfies Record<MessageKey, MessagePolicyEntry>;
 
 export const IMPERATIVE_ACTION_VERBS = [

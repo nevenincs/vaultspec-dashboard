@@ -32,6 +32,7 @@ export const documents = {
     nextTab: "Move to next document tab",
     previousTab: "Move to previous document tab",
     resetFilters: "Reset filters",
+    resetSorting: "Reset sorting",
     reloadDocument: "Reload document",
     save: "Save document",
     sortByLatestActivity: "Sort by latest activity",
@@ -82,6 +83,7 @@ export const documents = {
   },
   labels: {
     document: "Document",
+    vault: "Vault",
   },
   sortOptions: {
     latestActivity: "Latest activity",

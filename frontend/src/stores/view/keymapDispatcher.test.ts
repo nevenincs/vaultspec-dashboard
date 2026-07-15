@@ -7,11 +7,7 @@ import {
   type ActionDescriptor,
 } from "../../platform/actions/action";
 import { type ChordEvent } from "../../platform/keymap/chord";
-import {
-  type KeybindingDef,
-  legacyKeybindingPresentation,
-  resetKeybindings,
-} from "../../platform/keymap/registry";
+import { type KeybindingDef, resetKeybindings } from "../../platform/keymap/registry";
 import {
   type KeymapDeps,
   activeContextsFromElement,
@@ -30,8 +26,8 @@ function keyEvent(over: Partial<ChordEvent> & { key: string }): KeyboardEvent {
 const def = (
   over: Partial<KeybindingDef> & Pick<KeybindingDef, "id" | "defaultChord">,
 ): KeybindingDef => ({
-  label: legacyKeybindingPresentation(over.id),
-  group: legacyKeybindingPresentation("Test"),
+  label: { key: "common:actions.retry" },
+  group: { key: "common:shortcutGroups.general" },
   context: "global",
   ...over,
 });

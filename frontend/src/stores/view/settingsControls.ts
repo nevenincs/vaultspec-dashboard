@@ -226,8 +226,7 @@ export function deriveSettingsKeybindingControlView(
     const label = normalizeKeybindingPresentation(def.label);
     const group = normalizeKeybindingGroupPresentation(def.group);
     if (label === null || group === null) continue;
-    const groupId =
-      typeof group === "string" ? `legacy:${group}` : `message:${group.key}`;
+    const groupId = `message:${group.key}`;
     const chord = effectiveChord(def, overrides);
     const row: SettingsKeybindingRowView = {
       id: def.id,

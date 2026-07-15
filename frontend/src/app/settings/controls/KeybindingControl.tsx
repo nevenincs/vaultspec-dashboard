@@ -16,15 +16,8 @@
 import { useCallback } from "react";
 
 import { Button, Kbd, SectionLabel } from "../../kit";
-import type {
-  KeybindingGroupPresentation,
-  KeybindingPresentation,
-} from "../../../platform/keymap/registry";
 import { resolveKeycapPresentations } from "../../../platform/keymap/chord";
-import {
-  type LocalizedMessageResolver,
-  useLocalizedMessageResolver,
-} from "../../../platform/localization/LocalizationProvider";
+import { useLocalizedMessageResolver } from "../../../platform/localization/LocalizationProvider";
 import {
   clearKeybindingOverride,
   deriveSettingsKeybindingControlView,
@@ -35,15 +28,6 @@ import {
   useSettingsKeybindingRecorder,
 } from "../../../stores/view/settingsControls";
 import type { ControlProps } from "./types";
-
-function resolveKeybindingPresentation(
-  presentation: KeybindingPresentation | KeybindingGroupPresentation,
-  resolveMessage: LocalizedMessageResolver,
-): string {
-  return typeof presentation === "string"
-    ? presentation
-    : resolveMessage(presentation).message;
-}
 
 function keycapIdentity(actionId: string, index: number): string {
   return `${actionId}:keycap:${index}`;
@@ -79,16 +63,13 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
   return (
     <div id={id} className="flex flex-col gap-fg-4">
       {view.groups.map((group) => {
-        const groupLabel = resolveKeybindingPresentation(group.label, resolveMessage);
+        const groupLabel = resolveMessage(group.label).message;
         return (
           <section key={group.id} className="flex flex-col gap-fg-1">
             <SectionLabel>{groupLabel}</SectionLabel>
             <ul className="flex flex-col gap-fg-0-5">
               {group.rows.map((row) => {
-                const rowLabel = resolveKeybindingPresentation(
-                  row.label,
-                  resolveMessage,
-                );
+                const rowLabel = resolveMessage(row.label).message;
                 const recording = recordingId === row.id;
                 const conflicts = recording
                   ? []
@@ -102,10 +83,7 @@ export function KeybindingControl({ value, onChange, disabled, id }: ControlProp
                     <div className="flex min-w-0 flex-col">
                       <span className="truncate text-body text-ink">{rowLabel}</span>
                       {conflicts.map((conflict) => {
-                        const action = resolveKeybindingPresentation(
-                          conflict.label,
-                          resolveMessage,
-                        );
+                        const action = resolveMessage(conflict.label).message;
                         return (
                           <span
                             key={conflict.id}

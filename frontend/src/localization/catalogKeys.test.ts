@@ -31,12 +31,15 @@ const EXPECTED_NAMESPACES = [
 ] as const;
 const EXPECTED_CATALOG_KEYS = [
   "common:accessibility.actionsMenu",
+  "common:accessibility.back",
   "common:accessibility.confirmAction",
   "common:accessibility.recordShortcut",
   "common:accessibility.resizeActivityPanel",
   "common:accessibility.resizeNavigationPanel",
   "common:accessibility.resizeTimeline",
   "common:accessibility.resetShortcut",
+  "common:accessibility.skipToContent",
+  "common:accessibility.switchWorkspace",
   "common:actions.cancel",
   "common:actions.close",
   "common:actions.collapseNavigationPanel",
@@ -177,6 +180,7 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:actions.nextTab",
   "documents:actions.previousTab",
   "documents:actions.resetFilters",
+  "documents:actions.resetSorting",
   "documents:actions.reloadDocument",
   "documents:actions.save",
   "documents:actions.sortByCreationDate",
@@ -213,6 +217,7 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:feedback.linkInProgress",
   "documents:feedback.linkSucceeded",
   "documents:labels.document",
+  "documents:labels.vault",
   "documents:sortOptions.creationDate",
   "documents:sortOptions.documentCount",
   "documents:sortOptions.editDate",
@@ -361,6 +366,7 @@ const EXPECTED_CATALOG_KEYS = [
   "timeline:disabledReasons.current",
   "timeline:disabledReasons.modifiedUnavailable",
   "timeline:disabledReasons.stampedUnavailable",
+  "timeline:labels.timeline",
 ] as const satisfies readonly PhysicalMessageKey[];
 
 const EXPECTED_PUBLIC_MESSAGE_KEYS = [
@@ -485,6 +491,11 @@ describe("shipped localization catalog keys", () => {
       "common:accessibility.resizeNavigationPanel",
       "common:accessibility.resizeActivityPanel",
       "common:accessibility.resizeTimeline",
+      "common:accessibility.skipToContent",
+      "common:accessibility.back",
+      "documents:actions.resetSorting",
+      "documents:labels.vault",
+      "timeline:labels.timeline",
     ] as const satisfies readonly MessageKey[];
     const englishRuntime = createTestLocalizationRuntime(sourceLocale);
     const frenchRuntime = createTestLocalizationRuntime(ltrTestLocale);
