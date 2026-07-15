@@ -1729,3 +1729,27 @@ TypeScript, ESLint, Prettier, the localization scanner, diff checks, and the com
 frontend lint recipe passed. The test uses no mocks, spies, fakes, stubs, no-op fixtures,
 patches, skips, or expected failures. No production code or allowlist changed, so the
 scanner remains at 1,406 findings. S34 is accepted with no open findings.
+
+### W06.P18.S251 review | pass | Authored case transforms are prohibited
+
+This step, implemented through delegated Terra rollout work and a bounded scanner child
+lane, removes CSS, utility-class, and inline case transforms from production and
+auxiliary frontend surfaces. SectionLabel now renders catalog casing exactly as authored.
+
+Review confirmed that typography, spacing, stable DOM identity, focus, controls, and
+accessible behavior remain unchanged. Real locale tests preserve English, French, and
+Arabic casing across live language changes. Semantic token and title helpers were not
+modified and remain assigned to their catalog-owning S132 steps.
+
+The new source rule rejects mutating class utilities, inline and shorthand case or caps
+properties, dynamic unsafe values, CSS declarations, arbitrary utilities, and `@apply`.
+It covers class-bearing fields and constants plus SVG text while excluding geometric
+transforms, computational casing, proven resets, semantic comparisons, and tabular
+numerals. The authored-case rule has zero production findings and zero exemptions.
+
+Independent Sol verification passed 57 tests across four files, TypeScript, ESLint, the
+localization scanner, and diff checks. Terra's affected suite passed 110 tests across ten
+files, and all 14 scanner tests passed. The complete frontend lint recipe passed. Tests
+contain no doubles, skips, or expected failures. Correcting class-name ownership removed
+222 stale JSX-text exemptions and added none, reducing the scanner from 1,406 to 1,184
+findings. S251 is accepted with no open findings.
