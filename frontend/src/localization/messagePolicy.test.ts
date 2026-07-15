@@ -131,6 +131,10 @@ const DISABLED_REASON_KEYS = [
   "documents:disabledReasons.selectDifferentDocument",
   "documents:disabledReasons.selectDocument",
   "features:disabledReasons.selectFeature",
+  "graph:disabledReasons.chooseConnectionWithSummary",
+  "graph:disabledReasons.chooseItemWithTitle",
+  "graph:disabledReasons.relatedItemUnavailable",
+  "graph:disabledReasons.startingItemUnavailable",
 ] as const satisfies readonly MessageKey[];
 
 describe("source-locale message policy", () => {
@@ -157,6 +161,30 @@ describe("source-locale message policy", () => {
     expect(
       validateEnglishMessage("graph:actions.zoomOut", en.graph.actions.zoomOut),
     ).toEqual([]);
+  });
+
+  it("accepts canonical stage-menu actions and recovery copy", () => {
+    for (const [key, template] of [
+      ["graph:actions.pinItem", en.graph.actions.pinItem],
+      ["graph:actions.unpinItem", en.graph.actions.unpinItem],
+      ["graph:actions.addItemToWorkingSet", en.graph.actions.addItemToWorkingSet],
+      ["graph:actions.showStartingItem", en.graph.actions.showStartingItem],
+      ["graph:actions.showRelatedItem", en.graph.actions.showRelatedItem],
+    ] as const satisfies readonly (readonly [MessageKey, string])[]) {
+      expect(validateEnglishMessage(key, template)).toEqual([]);
+    }
+
+    for (const key of [
+      "chooseItemWithTitle",
+      "startingItemUnavailable",
+      "relatedItemUnavailable",
+      "chooseConnectionWithSummary",
+    ] as const) {
+      const messageKey = `graph:disabledReasons.${key}` as MessageKey;
+      expect(validateEnglishMessage(messageKey, en.graph.disabledReasons[key])).toEqual(
+        [],
+      );
+    }
   });
 
   it("reports each stable policy issue from an adverse literal", () => {

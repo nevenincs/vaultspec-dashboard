@@ -2575,26 +2575,6 @@
     "rule": "direct-locale-format"
   },
   {
-    "id": "346b15058d4b992744eacd42",
-    "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "a301cf71c8f90ed953f4695d",
-    "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "a3a6bd9675dc4198be5a5789",
-    "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "b348faa11b57f8420a86d70b",
-    "path": "src/app/stage/menus/canvasMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "3ff27ff8270448903690b885",
     "path": "src/app/stage/menus/docTabMenu.ts",
     "rule": "legacy-action-presentation"
@@ -2627,66 +2607,6 @@
   {
     "id": "fcd6b8d2b424f45dc3661d40",
     "path": "src/app/stage/menus/docTabMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "0a36819bc74a1e5d7eebc0fe",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "29e4d4462b7bd0e16e1ad8ea",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "3c02add1334c767c4cb4ab31",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "45d0568cf5d81fdf20f582c4",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "635cd138c76c5e0ad674c3f4",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "7efc99a52d9790bd7a027f68",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "a90272a839f4c7f1f43b0ae7",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "ee58decf74aa56d839b37fed",
-    "path": "src/app/stage/menus/graphNodeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "064b31af8f42c311f8104862",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "572c4e1bcae770f83cf0a5b2",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "ab112d55ce5a7df5d28a8833",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "b1ef7adc6ce39fc5411db53d",
-    "path": "src/app/stage/menus/metaEdgeMenu.ts",
     "rule": "legacy-action-presentation"
   },
   {

@@ -55,7 +55,8 @@ describe("graphNodeMenu (canonical node resolver)", () => {
   const base = { kind: "node", id: " doc:alpha ", title: " Alpha " };
 
   it("offers focus / open-island / pin / expand-ego / copies by default", () => {
-    expect(byId(graphNodeMenu(base))).toEqual([
+    const actions = graphNodeMenu(base);
+    expect(byId(actions)).toEqual([
       "node:focus",
       "node:open",
       "node:pin",
@@ -66,6 +67,15 @@ describe("graphNodeMenu (canonical node resolver)", () => {
       "node:autofix-feature",
       "node:archive-feature",
     ]);
+    expect(find(actions, "node:focus")).toMatchObject({
+      label: { key: "common:actions.showOnCanvas" },
+      section: "navigate",
+    });
+    expect(find(actions, "node:open").label).toEqual({ key: "common:actions.open" });
+    expect(find(actions, "node:pin").label).toEqual({ key: "graph:actions.pinItem" });
+    expect(find(actions, "node:expand-ego").label).toEqual({
+      key: "graph:actions.addItemToWorkingSet",
+    });
   });
 
   it("relate enables for a doc node with a different doc focused; archive only for feature nodes", () => {
@@ -104,6 +114,21 @@ describe("graphNodeMenu (canonical node resolver)", () => {
     expect(open).not.toContain("node:open");
     expect(open).toContain("node:unpin");
     expect(open).toContain("node:collapse-ego");
+    const actions = graphNodeMenu({
+      ...base,
+      isOpen: true,
+      isPinned: true,
+      inWorkingSet: true,
+    });
+    expect(find(actions, "node:close-island").label).toEqual({
+      key: "common:actions.close",
+    });
+    expect(find(actions, "node:unpin").label).toEqual({
+      key: "graph:actions.unpinItem",
+    });
+    expect(find(actions, "node:collapse-ego").label).toEqual({
+      key: "graph:actions.removeItemFromWorkingSet",
+    });
   });
 
   it("gates every view-mutating action in time-travel; leaves focus/copy free", () => {
@@ -121,7 +146,9 @@ describe("graphNodeMenu (canonical node resolver)", () => {
       "node:copy-title",
     );
     expect(copyTitle.disabled).toBe(true);
-    expect(copyTitle.disabledReason).toBe("no title");
+    expect(copyTitle.disabledReason).toEqual({
+      key: "graph:disabledReasons.chooseItemWithTitle",
+    });
   });
 
   it("rejects non-node entities at resolver ingress", () => {
@@ -213,7 +240,23 @@ describe("metaEdgeMenu", () => {
     const e = { kind: "meta-edge", id: "m1" };
     const summary = find(metaEdgeMenu(e), "meta-edge:copy-summary");
     expect(summary.disabled).toBe(true);
-    expect(summary.disabledReason).toBe("no summary");
+    expect(summary.disabledReason).toEqual({
+      key: "graph:disabledReasons.chooseConnectionWithSummary",
+    });
+  });
+
+  it("uses distinct actionable reasons when a connected item is unavailable", () => {
+    const actions = metaEdgeMenu({ kind: "meta-edge", id: "m1" });
+    expect(find(actions, "meta-edge:goto-src")).toMatchObject({
+      label: { key: "graph:actions.showStartingItem" },
+      disabled: true,
+      disabledReason: { key: "graph:disabledReasons.startingItemUnavailable" },
+    });
+    expect(find(actions, "meta-edge:goto-dst")).toMatchObject({
+      label: { key: "graph:actions.showRelatedItem" },
+      disabled: true,
+      disabledReason: { key: "graph:disabledReasons.relatedItemUnavailable" },
+    });
   });
 
   it("rejects non-meta-edge entities at resolver ingress", () => {
@@ -266,5 +309,15 @@ describe("canvasMenu", () => {
     expect(find(a, "canvas:clear-working-set").disabledInTimeTravel).toBe(true);
     expect(find(a, "canvas:fit").disabledInTimeTravel).toBeUndefined();
     expect(find(a, "canvas:reset").disabledInTimeTravel).toBeUndefined();
+  });
+
+  it("reuses the canonical graph command and working-set descriptors", () => {
+    const actions = canvasMenu();
+    expect(actions.slice(0, 4).map(({ label }) => label)).toEqual([
+      { key: "graph:actions.fitToView" },
+      { key: "graph:actions.resetView" },
+      { key: "graph:actions.clearSelection" },
+      { key: "graph:actions.clearWorkingSet" },
+    ]);
   });
 });

@@ -3,10 +3,10 @@
 // is modest and honest - copy the breakdown summary (when present) and the id.
 // Pure over the descriptor; nothing mutates.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
+import type { MessageDescriptor } from "../../../platform/localization/message";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
@@ -17,21 +17,22 @@ import { focusMenuNode } from "../../../stores/view/menuActions";
  *  a disabled-with-reason placeholder when the endpoint id is absent. */
 function gotoEndpointAction(
   id: string,
-  label: string,
+  label: MessageDescriptor,
+  unavailableReason: MessageDescriptor,
   nodeId: string | undefined,
 ): ActionDescriptor {
   if (typeof nodeId !== "string" || nodeId.length === 0) {
     return {
       id,
-      label: legacyActionPresentation(label),
+      label,
       section: "navigate",
       disabled: true,
-      disabledReason: legacyActionPresentation("no endpoint"),
+      disabledReason: unavailableReason,
     };
   }
   return {
     id,
-    label: legacyActionPresentation(label),
+    label,
     section: "navigate",
     icon: Crosshair,
     run: () => focusMenuNode(nodeId),
@@ -43,8 +44,18 @@ export function metaEdgeMenu(entity: unknown): ActionDescriptor[] {
   if (normalizedEntity?.kind !== "meta-edge") return [];
 
   return [
-    gotoEndpointAction("meta-edge:goto-src", "Go to source", normalizedEntity.src),
-    gotoEndpointAction("meta-edge:goto-dst", "Go to destination", normalizedEntity.dst),
+    gotoEndpointAction(
+      "meta-edge:goto-src",
+      { key: "graph:actions.showStartingItem" },
+      { key: "graph:disabledReasons.startingItemUnavailable" },
+      normalizedEntity.src,
+    ),
+    gotoEndpointAction(
+      "meta-edge:goto-dst",
+      { key: "graph:actions.showRelatedItem" },
+      { key: "graph:disabledReasons.relatedItemUnavailable" },
+      normalizedEntity.dst,
+    ),
     normalizedEntity.summary
       ? copyAction({
           id: "meta-edge:copy-summary",
@@ -57,7 +68,9 @@ export function metaEdgeMenu(entity: unknown): ActionDescriptor[] {
           label: { key: "common:actions.copySummary" },
           section: "copy",
           disabled: true,
-          disabledReason: legacyActionPresentation("no summary"),
+          disabledReason: {
+            key: "graph:disabledReasons.chooseConnectionWithSummary",
+          },
         },
     copyAction({
       id: "meta-edge:copy-id",

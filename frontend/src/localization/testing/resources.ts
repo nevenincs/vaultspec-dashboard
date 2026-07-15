@@ -284,6 +284,7 @@ export const ltrTestResources = {
       workingSetItemHidden: "L’élément est masqué par le filtre actif.",
     },
     actions: {
+      addItemToWorkingSet: "Ajouter l’élément à l’ensemble de travail",
       addSelectedItemToWorkingSet:
         "Ajouter l’élément sélectionné à l’ensemble de travail",
       clearSelection: "Effacer la sélection du graphe",
@@ -294,6 +295,7 @@ export const ltrTestResources = {
       moveToPreviousConnectedItem: "Passer à l’élément connecté précédent",
       openFocusedItem: "Ouvrir l’élément actif",
       pauseMovement: "Suspendre le mouvement du graphe",
+      pinItem: "Épingler l’élément",
       resetSettings: "Réinitialiser les paramètres du graphe",
       resetView: "Réinitialiser la vue du graphe",
       removeItemFromWorkingSet: "Retirer l’élément de l’ensemble de travail",
@@ -301,8 +303,19 @@ export const ltrTestResources = {
       removeLastItemFromWorkingSet:
         "Retirer le dernier élément de l’ensemble de travail",
       resumeMovement: "Reprendre le mouvement du graphe",
+      showRelatedItem: "Afficher l’élément associé",
+      showStartingItem: "Afficher l’élément de départ",
+      unpinItem: "Désépingler l’élément",
       zoomIn: "Agrandir",
       zoomOut: "Réduire",
+    },
+    disabledReasons: {
+      chooseConnectionWithSummary: "Choisissez une connexion avec un résumé à copier.",
+      chooseItemWithTitle: "Choisissez un élément avec un titre à copier.",
+      relatedItemUnavailable:
+        "Actualisez les données, puis réessayez d’afficher l’élément associé.",
+      startingItemUnavailable:
+        "Actualisez les données, puis réessayez d’afficher l’élément de départ.",
     },
     shortcutGroups: {
       workingSet: "Ensemble de travail",
@@ -737,6 +750,7 @@ export const rtlTestResources = {
       workingSetItemHidden: "العنصر مخفي بواسطة عامل التصفية النشط.",
     },
     actions: {
+      addItemToWorkingSet: "إضافة العنصر إلى مجموعة العمل",
       addSelectedItemToWorkingSet: "إضافة العنصر المحدد إلى مجموعة العمل",
       clearSelection: "مسح تحديد الرسم البياني",
       clearWorkingSet: "مسح مجموعة العمل",
@@ -746,14 +760,24 @@ export const rtlTestResources = {
       moveToPreviousConnectedItem: "الانتقال إلى العنصر المتصل السابق",
       openFocusedItem: "فتح العنصر المحدد",
       pauseMovement: "إيقاف حركة الرسم البياني مؤقتًا",
+      pinItem: "تثبيت العنصر",
       resetSettings: "إعادة تعيين إعدادات الرسم البياني",
       resetView: "إعادة تعيين عرض الرسم البياني",
       removeItemFromWorkingSet: "إزالة العنصر من مجموعة العمل",
       removeNamedItemFromWorkingSet: "إزالة {{item}} من مجموعة العمل",
       removeLastItemFromWorkingSet: "إزالة العنصر الأخير من مجموعة العمل",
       resumeMovement: "استئناف حركة الرسم البياني",
+      showRelatedItem: "إظهار العنصر المرتبط",
+      showStartingItem: "إظهار عنصر البداية",
+      unpinItem: "إلغاء تثبيت العنصر",
       zoomIn: "تكبير",
       zoomOut: "تصغير",
+    },
+    disabledReasons: {
+      chooseConnectionWithSummary: "اختر اتصالًا له ملخص لنسخه.",
+      chooseItemWithTitle: "اختر عنصرًا له عنوان لنسخه.",
+      relatedItemUnavailable: "حدّث البيانات، ثم حاول إظهار العنصر المرتبط مرة أخرى.",
+      startingItemUnavailable: "حدّث البيانات، ثم حاول إظهار عنصر البداية مرة أخرى.",
     },
     shortcutGroups: {
       workingSet: "مجموعة العمل",

@@ -259,6 +259,7 @@ const EXPECTED_CATALOG_KEYS = [
   "graph:accessibility.hiddenByActiveFilter",
   "graph:accessibility.namedWorkingSetItemHidden",
   "graph:accessibility.workingSetItemHidden",
+  "graph:actions.addItemToWorkingSet",
   "graph:actions.addSelectedItemToWorkingSet",
   "graph:actions.clearSelection",
   "graph:actions.clearWorkingSet",
@@ -268,14 +269,22 @@ const EXPECTED_CATALOG_KEYS = [
   "graph:actions.moveToPreviousConnectedItem",
   "graph:actions.openFocusedItem",
   "graph:actions.pauseMovement",
+  "graph:actions.pinItem",
   "graph:actions.resetSettings",
   "graph:actions.resetView",
   "graph:actions.removeItemFromWorkingSet",
   "graph:actions.removeNamedItemFromWorkingSet",
   "graph:actions.removeLastItemFromWorkingSet",
   "graph:actions.resumeMovement",
+  "graph:actions.showRelatedItem",
+  "graph:actions.showStartingItem",
+  "graph:actions.unpinItem",
   "graph:actions.zoomIn",
   "graph:actions.zoomOut",
+  "graph:disabledReasons.chooseConnectionWithSummary",
+  "graph:disabledReasons.chooseItemWithTitle",
+  "graph:disabledReasons.relatedItemUnavailable",
+  "graph:disabledReasons.startingItemUnavailable",
   "graph:shortcutGroups.workingSet",
   "graph:labels.item",
   "operations:actions.applySearchSettings",
@@ -565,5 +574,31 @@ describe("shipped localization catalog keys", () => {
     expect(arabic.t("common:disabledReasons.itemUnavailableOnCanvas")).toBe(
       "حدّث البيانات، ثم حاول إظهار هذا العنصر على اللوحة.",
     );
+  });
+
+  it("resolves stage-menu actions and recovery copy independently in each language", () => {
+    const keys = [
+      "graph:actions.addItemToWorkingSet",
+      "graph:actions.pinItem",
+      "graph:actions.showRelatedItem",
+      "graph:actions.showStartingItem",
+      "graph:actions.unpinItem",
+      "graph:disabledReasons.chooseConnectionWithSummary",
+      "graph:disabledReasons.chooseItemWithTitle",
+      "graph:disabledReasons.relatedItemUnavailable",
+      "graph:disabledReasons.startingItemUnavailable",
+    ] as const satisfies readonly MessageKey[];
+    const english = createTestLocalizationRuntime(sourceLocale);
+    const french = createTestLocalizationRuntime(ltrTestLocale);
+    const arabic = createTestLocalizationRuntime(rtlTestLocale);
+
+    for (const key of keys) {
+      const englishMessage = english.t(key);
+      const frenchMessage = french.t(key);
+      const arabicMessage = arabic.t(key);
+      expect(frenchMessage, key).not.toBe(englishMessage);
+      expect(arabicMessage, key).not.toBe(englishMessage);
+      expect(arabicMessage, key).not.toBe(frenchMessage);
+    }
   });
 });
