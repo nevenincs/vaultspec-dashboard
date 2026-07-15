@@ -2220,3 +2220,28 @@ Root and Terra passed 31 focused tests, the complete frontend lint recipe passed
 independent review found no issues. One exact exemption was removed, reducing the scanner
 from 1,025 to 1,024 findings and legacy action presentations from 12 to 11. S82 and S195
 remain open for their untouched comment-thread and rendering responsibilities.
+
+### W03.P08.S172 review | pass | Create-document failures are closed and user-facing
+
+The create-document dialog now resolves titles, descriptions, fields, document types,
+guidance, coverage states, actions, progress, validation, errors, and accessible names
+through typed descriptors. English, French, and Arabic resources cover the complete
+surface without runtime English fallbacks.
+
+Create failures cross the store boundary as closed categories. Same-day collisions,
+changed projects, changed locations, in-flight creation, and generic failures map to
+truthful recovery messages. Raw backend reasons, failed-write diagnostics, paths, blob
+hashes, actors, changeset and receipt identifiers, and unknown document-type tokens
+cannot enter dialog state or rendered output. Intended feature tags, document titles,
+and related document stems remain user data.
+
+Request payloads, successful document opening, focus placement, keyboard behavior,
+accessibility relationships, eligibility handling, and additive creation semantics remain
+unchanged. No confirmation was added because creation cannot overwrite an existing
+document.
+
+Terra passed 103 focused tests, TypeScript, scanner, formatting, and the complete frontend
+lint recipe. Root independently passed the same 103 tests and complete frontend gate.
+Independent review approved the architecture and behavior. Thirty-nine exact exemptions
+were removed, reducing the scanner from 1,024 to 985 findings. S172 is accepted with no
+open findings.

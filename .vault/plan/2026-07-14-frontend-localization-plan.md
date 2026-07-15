@@ -189,7 +189,7 @@ Localize project selection, document browsing, filtering, dialogs, menus, and ev
 - [ ] `W03.P08.S169` - Localize folder-browser navigation, empty states, and accessible names; `frontend/src/app/left/FolderBrowser.tsx`.
 - [ ] `W03.P08.S170` - Localize vault-browser grouping, document states, and accessible names; `frontend/src/app/left/VaultBrowser.tsx`.
 - [ ] `W03.P08.S171` - Localize left-rail loading, degraded, empty, and partial state blocks; `frontend/src/app/left/railStates.tsx`.
-- [ ] `W03.P08.S172` - Localize create-document dialog fields, validation, confirmations, and actions; `frontend/src/app/left/CreateDocDialog.tsx`.
+- [x] `W03.P08.S172` - Localize create-document dialog fields, validation, confirmations, and actions; `frontend/src/app/left/CreateDocDialog.tsx, frontend/src/stores/view/createDocChrome.ts, frontend/src/stores/server/queries/mutations.ts, catalogs, policy, focused tests, and exact allowlist`.
 - [ ] `W03.P08.S173` - Migrate project and worktree render tests through production catalogs; `frontend/src/app/left/ProjectNavigator.render.test.tsx, frontend/src/app/left/WorktreePicker.render.test.tsx`.
 - [ ] `W03.P08.S174` - Migrate filter and state render tests through production catalogs; `frontend/src/app/left/RailFilterField.render.test.tsx, frontend/src/app/left/railStates.render.test.tsx, frontend/src/app/stage/FilterMenu.render.test.tsx, frontend/src/app/stage/FilterSidebar.planStates.test.ts`.
 - [x] `W03.P08.S223` - Standardize and localize vault-category menu actions while keeping localized category labels out of raw clipboard payloads; `frontend/src/app/left/menus/vaultCategoryMenu.ts, shared clipboard outcome handling, catalogs, allowlist, and focused tests`.
