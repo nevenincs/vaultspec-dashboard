@@ -41,6 +41,9 @@ export const documents = {
     documents: "Documents",
     files: "Files",
   },
+  categories: {
+    code: "Code",
+  },
   documentTypes: {
     research: "Research",
     adr: "Decisions",

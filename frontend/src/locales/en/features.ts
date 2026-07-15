@@ -26,4 +26,7 @@ export const features = {
   guardedActions: {
     repair: "Repair feature",
   },
+  labels: {
+    feature: "Features",
+  },
 } as const;

@@ -59,8 +59,14 @@ export { FoldSection } from "./FoldSection";
 export type { FoldSectionProps } from "./FoldSection";
 
 // Shared category vocabulary (Chip / StatusDot color mapping)
-export { categoryToken, categoryColorVar } from "./category";
-export type { Category, CategoryToken } from "./category";
+export {
+  CATEGORY_PRESENTATION,
+  CATEGORY_TOKENS,
+  categoryColorVar,
+  categoryPresentation,
+  categoryToken,
+} from "./category";
+export type { Category, CategoryPresentation, CategoryToken } from "./category";
 
 // Centralized glyph set (the two sanctioned families, under binding Figma names)
 export * from "./glyphs";

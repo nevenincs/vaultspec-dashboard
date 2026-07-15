@@ -160,6 +160,9 @@ export const ltrTestResources = {
       documents: "Documents",
       files: "Fichiers",
     },
+    categories: {
+      code: "Code",
+    },
     documentTypes: {
       research: "Recherche",
       adr: "Décisions",
@@ -225,6 +228,9 @@ export const ltrTestResources = {
         "La fonctionnalité n’a pas été réparée. Vérifiez-la, puis réessayez.",
       repairSucceeded: "Fonctionnalité réparée.",
       repairUnavailable: "Impossible de réparer la fonctionnalité. Réessayez.",
+    },
+    labels: {
+      feature: "Fonctionnalités",
     },
   },
   graph: {
@@ -460,6 +466,9 @@ export const rtlTestResources = {
       documents: "المستندات",
       files: "الملفات",
     },
+    categories: {
+      code: "التعليمات البرمجية",
+    },
     documentTypes: {
       research: "البحث",
       adr: "القرارات",
@@ -520,6 +529,9 @@ export const rtlTestResources = {
       repairRejected: "لم يتم إصلاح الميزة. تحقق منها، ثم حاول مرة أخرى.",
       repairSucceeded: "تم إصلاح الميزة.",
       repairUnavailable: "تعذر إصلاح الميزة. حاول مرة أخرى.",
+    },
+    labels: {
+      feature: "الميزات",
     },
   },
   graph: {

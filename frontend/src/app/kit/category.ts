@@ -19,6 +19,9 @@
 // (index-node-exclusion ADR), a strictly-ignored element. There is no index category
 // token, color, or chip anywhere in the dashboard.
 
+import type { MessageDescriptor } from "../../platform/localization/message";
+import { DOC_TYPE_PRESENTATION } from "../../stores/server/docTypeVocabulary";
+
 /** The canonical category tokens emitted as --color-scene-category-*. */
 export type CategoryToken =
   | "adr"
@@ -29,6 +32,66 @@ export type CategoryToken =
   | "plan"
   | "reference"
   | "research";
+
+/** The stable raw category order. Presentation never changes these identities. */
+export const CATEGORY_TOKENS = Object.freeze([
+  "adr",
+  "audit",
+  "code",
+  "exec",
+  "feature",
+  "plan",
+  "reference",
+  "research",
+] as const) satisfies readonly CategoryToken[];
+
+export interface CategoryPresentation<Id extends CategoryToken = CategoryToken> {
+  readonly id: Id;
+  readonly label: MessageDescriptor;
+}
+
+type CategoryPresentationMap = Readonly<{
+  [Id in CategoryToken]: CategoryPresentation<Id>;
+}>;
+
+const CODE_LABEL = Object.freeze({
+  key: "documents:categories.code",
+} satisfies MessageDescriptor<"documents:categories.code">);
+const FEATURE_LABEL = Object.freeze({
+  key: "features:labels.feature",
+} satisfies MessageDescriptor<"features:labels.feature">);
+
+/** Exhaustive localized presentation, kept separate from raw category identity. */
+export const CATEGORY_PRESENTATION = Object.freeze({
+  adr: Object.freeze({ id: "adr", label: DOC_TYPE_PRESENTATION.adr.label }),
+  audit: Object.freeze({ id: "audit", label: DOC_TYPE_PRESENTATION.audit.label }),
+  code: Object.freeze({ id: "code", label: CODE_LABEL }),
+  exec: Object.freeze({ id: "exec", label: DOC_TYPE_PRESENTATION.exec.label }),
+  feature: Object.freeze({ id: "feature", label: FEATURE_LABEL }),
+  plan: Object.freeze({ id: "plan", label: DOC_TYPE_PRESENTATION.plan.label }),
+  reference: Object.freeze({
+    id: "reference",
+    label: DOC_TYPE_PRESENTATION.reference.label,
+  }),
+  research: Object.freeze({
+    id: "research",
+    label: DOC_TYPE_PRESENTATION.research.label,
+  }),
+} as const satisfies CategoryPresentationMap);
+
+/** Resolve presentation only for an exact canonical raw identity. */
+export function categoryPresentation(value: unknown): CategoryPresentation | null {
+  return value === "adr" ||
+    value === "audit" ||
+    value === "code" ||
+    value === "exec" ||
+    value === "feature" ||
+    value === "plan" ||
+    value === "reference" ||
+    value === "research"
+    ? CATEGORY_PRESENTATION[value]
+    : null;
+}
 
 /** The Figma-facing category labels (board 135:2 Chip Category variants) plus
  *  the canonical tokens themselves, so callers may pass either vocabulary. */
