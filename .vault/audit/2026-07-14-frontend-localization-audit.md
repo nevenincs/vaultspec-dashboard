@@ -2130,3 +2130,28 @@ the same focused suite, TypeScript, localization scanning, formatting, and diff 
 Sol approved the final implementation with no findings. Three exact scanner exemptions
 were removed, reducing the scanner from 1,065 to 1,062 findings and legacy action
 presentations from 41 to 38. S228 is accepted with no open findings.
+
+### W03.P09.S53, S57 and W04.P13.S241 review | pass | Project setup hides diagnostics
+
+Project setup guidance, actions, progress, results, errors, recovery, and confirmation
+now resolve through typed project descriptors. The custom two-click replacement state is
+removed. Replacing setup uses the shared destructive confirmation dialog, while the
+independent server-required confirmation value remains in the unchanged dispatch payload.
+
+The panel no longer renders machine job labels, target paths, process output, transport
+errors, exit details, schema values, unknown status or recommendation values, platform
+names, commands, versions, provider names, or internal tool terminology. Known completion
+states use localized labels. Unknown states omit the badge, and uncertain completion
+offers a localized project-status check. A future unknown recommendation fails closed
+without dispatching or exposing its value.
+
+English, French, and Arabic component tests cover actions, details, destructive
+confirmation, plural item counts, progress, failures, and recovery. Hostile values prove
+that internal metadata cannot enter rendered output. Root passed 57 focused tests, 26
+stage overlay tests, TypeScript, formatting, localization scanning, and the complete
+frontend lint recipe. Sol approved the architecture and final implementation with no
+findings.
+
+Twenty exact scanner exemptions were removed, reducing the scanner from 1,062 to 1,042
+findings and legacy action presentations from 38 to 29. S53, S57, and S241 are accepted.
+S192 remains open for its untouched view-store presentation tests.

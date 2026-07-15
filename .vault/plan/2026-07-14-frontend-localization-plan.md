@@ -204,11 +204,11 @@ Localize project selection, document browsing, filtering, dialogs, menus, and ev
 Localize canvas states, graph controls, provisioning, entity menus, hover cards, and island presentation without exposing graph or rendering internals.
 
 - [ ] `W03.P09.S52` - Localize canvas loading, empty, degraded, truncated, unavailable, and recovery states; `frontend/src/app/stage/CanvasStateOverlay.tsx`.
-- [ ] `W03.P09.S53` - Localize provisioning guidance, refusal, progress, and recovery without implementation details; `frontend/src/app/stage/ProvisionPanel.tsx`.
+- [x] `W03.P09.S53` - Localize project setup guidance, progress, results, and recovery without exposing diagnostics or implementation details; `frontend/src/app/stage/ProvisionPanel.tsx, frontend/src/app/stage/ProvisionPanel.localization.test.tsx, frontend/src/locales/en/projects.ts, frontend/src/localization/catalogKeys.test.ts, frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts, frontend/src/localization/testing/resources.ts, frontend/scripts/localization-allowlist.json`.
 - [ ] `W03.P09.S54` - Localize graph control labels, descriptions, and accessibility names; `frontend/src/app/stage/GraphControls.tsx`.
 - [x] `W03.P09.S55` - Standardize and localize canvas background menu actions through canonical graph descriptors; `frontend/src/app/stage/menus/canvasMenu.ts, graph menu localization tests, catalogs, policy, and exact allowlist`.
 - [ ] `W03.P09.S56` - Localize graph-island interior, empty, loading, and accessibility presentation; `frontend/src/app/islands/IslandLayer.tsx`.
-- [ ] `W03.P09.S57` - Migrate stage state and control tests through production catalogs; `frontend/src/app/stage/CanvasStateOverlay.render.test.tsx, frontend/src/app/stage/ProvisionPanel.render.test.tsx`.
+- [x] `W03.P09.S57` - Prove localized project setup and stage overlay behavior through production catalogs; `frontend/src/app/stage/ProvisionPanel.render.test.tsx, frontend/src/app/stage/ProvisionPanel.localization.test.tsx, frontend/src/app/stage/CanvasStateOverlay.render.test.tsx`.
 - [ ] `W03.P09.S114` - Move production graph-control labels and descriptions into catalogs while retaining technical lab-only vocabulary internally; `frontend/src/scene/three/graphControlSchema.ts`.
 - [ ] `W03.P09.S128` - Localize right-menu hover-card accessible names, states, overflow counts, and actions without raw IDs; `frontend/src/app/right/menus/HoverCard.tsx`.
 - [ ] `W03.P09.S147` - Replace graph-control store labels, titles, descriptions, and fallback copy with typed descriptors; `frontend/src/stores/view/graphControlsChrome.ts`.
@@ -291,7 +291,7 @@ Replace resolved strings near server and view-store boundaries with typed outcom
 - [ ] `W04.P13.S238` - Replace inspector strings with typed descriptors and actionable recovery; `frontend/src/stores/view/inspector.ts`.
 - [ ] `W04.P13.S239` - Replace work-tab presentation strings with typed descriptors; `frontend/src/stores/view/workTabChrome.ts`.
 - [ ] `W04.P13.S240` - Replace context-menu presentation strings with typed descriptors; `frontend/src/stores/view/contextMenu.ts`.
-- [ ] `W04.P13.S241` - Replace provision-action presentation strings with typed descriptors; `frontend/src/stores/view/provisionActions.ts`.
+- [x] `W04.P13.S241` - Replace project setup action strings and custom confirmation arming with typed descriptors; `frontend/src/stores/view/provisionActions.ts, frontend/src/stores/view/provisionActions.test.ts, frontend/src/stores/view/provisionActions.localization.test.ts, frontend/src/app/stage/ProvisionPanel.tsx, frontend/scripts/localization-allowlist.json`.
 
 ## Wave `W05` - authoring viewer settings and auxiliary surfaces
 
