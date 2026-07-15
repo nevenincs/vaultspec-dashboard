@@ -23,7 +23,10 @@ import {
   it,
 } from "vitest";
 
-import { engineClient } from "../../stores/server/engine";
+import { engineClient, type SettingsState } from "../../stores/server/engine";
+import { sourceLocale } from "../../locales/en";
+import { LOCALE_PREFERENCE_CACHE_KEY } from "../../platform/localization/localeController";
+import { localization, localeController } from "../../platform/localization/runtime";
 import { queryClient } from "../../stores/server/queryClient";
 import { dashboardStateSessionIdentity, engineKeys } from "../../stores/server/queries";
 import { resetSettingsGraphDefaultsInitializationGuard } from "../../stores/server/settingsEffectsIntent";
@@ -99,6 +102,50 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
     resetSettingsGraphDefaultsInitializationGuard();
     useViewStore.getState().setScope(null);
     document.documentElement.removeAttribute("data-reduce-motion");
+  });
+
+  it("reconciles engine-owned system language over the synchronous cache hint", async () => {
+    const settingsBefore = await engineClient.settings();
+    const preferenceBefore = localeController.getPreference();
+    const cacheBefore = localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY);
+    let mounted: ReturnType<typeof renderEffects> | undefined;
+
+    try {
+      await engineClient.putSettings({
+        key: CONSUMED_SETTING_KEYS.language,
+        value: "system",
+      });
+      await localeController.reconcilePreference("en");
+      expect(localeController.getPreference()).toBe("en");
+      expect(localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY)).toBe("en");
+
+      queryClient.clear();
+      mounted = renderEffects();
+
+      await waitFor(() => {
+        const queried = queryClient.getQueryData<SettingsState>(engineKeys.settings());
+        expect(queried?.global[CONSUMED_SETTING_KEYS.language]).toBe("system");
+        expect(localeController.getPreference()).toBe("system");
+        expect(localeController.getResolvedLocale()).toBe(sourceLocale);
+        expect(localization.resolvedLanguage ?? localization.language).toBe(
+          sourceLocale,
+        );
+        expect(localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY)).toBe("system");
+      }, ENGINE_WAIT);
+    } finally {
+      mounted?.unmount();
+      queryClient.clear();
+      await engineClient.putSettings({
+        key: CONSUMED_SETTING_KEYS.language,
+        value: settingsBefore.global[CONSUMED_SETTING_KEYS.language] ?? "system",
+      });
+      await localeController.reconcilePreference(preferenceBefore, { cache: false });
+      if (cacheBefore === null) {
+        localStorage.removeItem(LOCALE_PREFERENCE_CACHE_KEY);
+      } else {
+        localStorage.setItem(LOCALE_PREFERENCE_CACHE_KEY, cacheBefore);
+      }
+    }
   });
 
   it("applies reduce_motion to a document attribute the stylesheet honors", async () => {
