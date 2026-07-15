@@ -5,10 +5,10 @@
 // the backend; this just invalidates the query cache so the next read is fresh. A
 // non-mutating refresh, so it carries no confirm guard and is not time-travel gated.
 
-import { registerCommandProvider, type CommandContext } from "../commandRegistry";
+import { registerCommandProvider } from "../commandRegistry";
 import { refreshDataAction } from "../reloadKeybindings";
 
-export function reloadCommandProvider(_ctx: CommandContext): readonly unknown[] {
+export function reloadCommandProvider(): readonly unknown[] {
   // Compose the SHARED Refresh builder (unified-action-plane): the palette, the
   // Mod+Shift+R chord, and the context-menu global tail all run the same descriptor, so
   // the verb cannot drift. The palette groups by `family`, not the descriptor's section.

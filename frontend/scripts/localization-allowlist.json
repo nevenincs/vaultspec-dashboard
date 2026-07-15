@@ -6635,16 +6635,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "92e7226226bbccb2940628dc",
-    "path": "src/stores/view/reloadKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "548606c2e1674e18e21ba945",
-    "path": "src/stores/view/reloadKeybindings.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
     "id": "6d6c06b9b5a26c5ee7590fc2",
     "path": "src/stores/view/rightRailKeybindings.ts",
     "rule": "legacy-action-presentation"

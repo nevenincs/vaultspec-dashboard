@@ -13,7 +13,10 @@ import {
   type ActionContext,
 } from "../../platform/actions/registry";
 import { registerKeybindings } from "../../platform/keymap/registry";
-import { deriveReloadKeybindings } from "../../stores/view/reloadKeybindings";
+import {
+  RELOAD_REFRESH_DATA_LABEL,
+  deriveReloadKeybindings,
+} from "../../stores/view/reloadKeybindings";
 import { globalTailActions } from "./globalTail";
 
 const LIVE: ActionContext = { timeTravel: false };
@@ -36,6 +39,7 @@ describe("context-menu global tail (Refresh)", () => {
   it("is Refresh ONLY - the heavy rag-reindex verb is never in the tail (D5)", () => {
     const tail = globalTailActions();
     expect(tail.map((a) => a.id)).toEqual(["reload:refresh-data"]);
+    expect(tail[0].label).toBe(RELOAD_REFRESH_DATA_LABEL);
     expect(tail[0].section).toBe("global");
     expect(tail.some((a) => a.id.includes("reindex"))).toBe(false);
   });

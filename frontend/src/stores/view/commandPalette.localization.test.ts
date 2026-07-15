@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
+  rtlTestLocale,
 } from "../../localization/testing";
 import { resolveMessageResult } from "../../platform/localization/fallback";
 import {
@@ -14,7 +15,12 @@ import {
   KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
   deriveKeyboardShortcutGroups,
 } from "./keyboardShortcuts";
-import { deriveReloadKeybindings } from "./reloadKeybindings";
+import {
+  RELOAD_REFRESH_DATA_ACTION_ID,
+  RELOAD_REFRESH_DATA_LABEL,
+  deriveReloadKeybindings,
+  refreshDataAction,
+} from "./reloadKeybindings";
 
 const paletteBindings = [
   COMMAND_PALETTE_KEYBINDING,
@@ -99,5 +105,40 @@ describe("localized command-palette keybindings", () => {
       message: "Général",
       usedFallback: false,
     });
+  });
+
+  it("shares one refresh descriptor across action and keybinding in every test locale", () => {
+    const action = refreshDataAction();
+    const [binding] = deriveReloadKeybindings();
+
+    expect(action).toMatchObject({
+      id: RELOAD_REFRESH_DATA_ACTION_ID,
+      label: RELOAD_REFRESH_DATA_LABEL,
+    });
+    expect(action.label).toBe(RELOAD_REFRESH_DATA_LABEL);
+    expect(binding).toEqual({
+      id: RELOAD_REFRESH_DATA_ACTION_ID,
+      defaultChord: "Mod+Shift+R",
+      label: RELOAD_REFRESH_DATA_LABEL,
+      group: { key: "common:shortcutGroups.general" },
+      context: "global",
+    });
+    expect(binding?.label).toBe(RELOAD_REFRESH_DATA_LABEL);
+    expect(Object.isFrozen(RELOAD_REFRESH_DATA_LABEL)).toBe(true);
+
+    for (const [locale, expectedRefresh, expectedReload] of [
+      [undefined, "Refresh data", "Reload page"],
+      [ltrTestLocale, "Actualiser les données", "Recharger la page"],
+      [rtlTestLocale, "تحديث البيانات", "إعادة تحميل الصفحة"],
+    ] as const) {
+      const runtime = createTestLocalizationRuntime(locale);
+      expect(resolveMessageResult(runtime, RELOAD_REFRESH_DATA_LABEL)).toEqual({
+        message: expectedRefresh,
+        usedFallback: false,
+      });
+      expect(
+        resolveMessageResult(runtime, { key: "common:actions.reloadPage" }),
+      ).toEqual({ message: expectedReload, usedFallback: false });
+    }
   });
 });

@@ -10,20 +10,19 @@ import { useEffect } from "react";
 
 import { RefreshCw } from "lucide-react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { refreshAllEngineQueries } from "../server/queries";
 import { registerKeyAction } from "./keymapDispatcher";
 
 export const RELOAD_REFRESH_DATA_ACTION_ID = "reload:refresh-data";
-export const RELOAD_REFRESH_DATA_LABEL = legacyKeybindingPresentation("Refresh data");
+export const RELOAD_REFRESH_DATA_LABEL = Object.freeze({
+  key: "common:actions.refreshData",
+} as const) satisfies MessageDescriptor;
 const GENERAL_KEYBINDING_GROUP = {
   key: "common:shortcutGroups.general",
 } as const;
@@ -38,7 +37,7 @@ const GENERAL_KEYBINDING_GROUP = {
 export function refreshDataAction(): ActionDescriptor {
   return {
     id: RELOAD_REFRESH_DATA_ACTION_ID,
-    label: legacyActionPresentation(RELOAD_REFRESH_DATA_LABEL),
+    label: RELOAD_REFRESH_DATA_LABEL,
     icon: RefreshCw,
     run: () => refreshAllEngineQueries(),
   };
