@@ -593,10 +593,15 @@ fn approved_changeset_materializes_once_and_records_an_applied_receipt() {
     assert_eq!(receipt.child.base_blob_hash.len(), 40, "git blob oid");
     assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
     let events = outbox_events(&mut fx);
+    // The apply stage publishes its two transitions in order. (The review setup that
+    // reached Approved first published `approval.requested` + `approval.resolved`;
+    // this assertion scopes to the apply-domain kinds so it stays focused on the apply
+    // ordering rather than the full upstream lifecycle.)
     assert_eq!(
         events
             .iter()
             .map(|event| event.event_kind.as_str())
+            .filter(|kind| kind.starts_with("apply."))
             .collect::<Vec<_>>(),
         vec!["apply.started".to_string(), "apply.recorded".to_string()]
     );

@@ -27,6 +27,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::events::{LifecycleEventKind, approval_requested_event, review_decision_event};
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
 };
@@ -34,6 +35,7 @@ use super::model::{
     ActionEligibility, ActorKind, ActorRef, ApprovalId, ChangesetId, ChangesetKind,
     ChangesetStatus, CommandKind, ProposalId, RevisionToken,
 };
+use super::store::outbox::AppendDecision;
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
 };
@@ -382,6 +384,24 @@ impl ApprovalRepository<'_, '_> {
         // record_kind="approval"/Pending so compaction can never silently delete
         // it (approval-gates-review-state ADR; retention S40). Same unit of work.
         self.register_retention(&record, LifecycleStatus::Pending)?;
+        // Publish the `approval.requested` lifecycle transition to the durable outbox
+        // in the SAME commit boundary, so a downstream verdict subscriber parks the run
+        // the instant the proposal enters review. Attributed to the submitting actor —
+        // the current head's author (the submit moved it to NeedsReview under them).
+        if let Some(head) = self.uow.ledger().latest(&record.changeset_id)? {
+            let event = approval_requested_event(
+                record.approval_id.as_str(),
+                record.proposal_id.as_str(),
+                record.changeset_id.as_str(),
+                record.reviewed.proposal_revision.as_str(),
+                head.actor,
+                None,
+                record.created_at_ms,
+            )?;
+            match self.uow.outbox().append_event(event)? {
+                AppendDecision::Inserted(_) | AppendDecision::Duplicate(_) => {}
+            }
+        }
         Ok(ApprovalOutcome {
             record,
             eligibility: ActionEligibility::allowed(CommandKind::SubmitForReview),
@@ -517,6 +537,26 @@ impl ApprovalRepository<'_, '_> {
             ApprovalDecision::RequestChanges => LifecycleStatus::Superseded,
         };
         self.register_retention(&request, lifecycle)?;
+        // Publish the decision as a lifecycle transition on the durable outbox in the
+        // SAME commit boundary as the ledger append + record persist, so a downstream
+        // verdict subscriber resumes the parked run. The `decision` field is
+        // authoritative for the verdict; `next` names the resulting status + revision.
+        let decision_event = review_decision_event(
+            decision_event_kind(decision),
+            decision.as_str(),
+            request.decision.as_ref().and_then(|d| d.comment.as_deref()),
+            request.approval_id.as_str(),
+            request.proposal_id.as_str(),
+            request.changeset_id.as_str(),
+            next.status,
+            next.changeset_revision.as_str(),
+            reviewer.clone(),
+            decision_command(decision),
+            decided_at_ms,
+        )?;
+        match self.uow.outbox().append_event(decision_event)? {
+            AppendDecision::Inserted(_) | AppendDecision::Duplicate(_) => {}
+        }
 
         Ok(ApprovalOutcome {
             record: request,
@@ -650,6 +690,18 @@ fn decision_command(decision: ApprovalDecision) -> CommandKind {
         ApprovalDecision::Approve => CommandKind::Approve,
         ApprovalDecision::Reject => CommandKind::Reject,
         ApprovalDecision::RequestChanges => CommandKind::EditProposal,
+    }
+}
+
+/// The canonical lifecycle transition kind a decision publishes to the durable
+/// outbox. Approve resolves the approval; reject rejects the proposal; request-changes
+/// returns the proposal for revision (a `proposal.updated` transition). The verdict is
+/// carried authoritatively by the payload `decision` field regardless of the kind.
+fn decision_event_kind(decision: ApprovalDecision) -> LifecycleEventKind {
+    match decision {
+        ApprovalDecision::Approve => LifecycleEventKind::ApprovalResolved,
+        ApprovalDecision::Reject => LifecycleEventKind::ProposalRejected,
+        ApprovalDecision::RequestChanges => LifecycleEventKind::ProposalUpdated,
     }
 }
 
@@ -919,6 +971,149 @@ mod tests {
                 }))
             })
             .unwrap()
+    }
+
+    fn outbox_events(store: &mut Store) -> Vec<crate::authoring::store::outbox::OutboxEvent> {
+        store
+            .with_read_unit_of_work(CommandKind::SubscribeEvents, |uow| {
+                uow.outbox().events_after(0, 50)
+            })
+            .unwrap()
+    }
+
+    // --- the durable review lifecycle published to the outbox (a2a verdict wire) ---
+
+    #[test]
+    fn submit_for_review_publishes_approval_requested_to_the_durable_outbox() {
+        let (_dir, mut store) = temp_store();
+        let author = actor("agent:author", ActorKind::Agent);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_1").unwrap();
+        let reviewed = seed_needs_review(&mut store, &changeset_id, &author);
+        let _record = request(&mut store, &proposal_id, &changeset_id, &reviewed);
+
+        let events = outbox_events(&mut store);
+        let requested = events
+            .iter()
+            .find(|event| event.event_kind == "approval.requested")
+            .expect("submit publishes approval.requested to the outbox");
+        assert_eq!(requested.aggregate_kind, "approval");
+        assert_eq!(requested.aggregate_id, "approval_1");
+        // The schema wrapper + correlation ids the a2a subscriber parks a run against.
+        assert_eq!(
+            requested.payload["schema"],
+            crate::authoring::events::LIFECYCLE_EVENT_SCHEMA
+        );
+        let data = &requested.payload["data"];
+        assert_eq!(data["approval_id"], "approval_1");
+        assert_eq!(data["proposal_id"], "proposal_1");
+        assert_eq!(data["changeset_id"], "changeset_1");
+        assert_eq!(data["reviewed_revision"], reviewed.as_str());
+        assert!(
+            data.get("decision").is_none(),
+            "approval.requested is non-resolving and carries no verdict"
+        );
+    }
+
+    #[test]
+    fn approve_publishes_approval_resolved_with_the_verdict_decision() {
+        let (_dir, mut store) = temp_store();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_1").unwrap();
+        let reviewed = seed_needs_review(&mut store, &changeset_id, &author);
+        request(&mut store, &proposal_id, &changeset_id, &reviewed);
+
+        let outcome = decide(
+            &mut store,
+            CommandKind::Approve,
+            &proposal_id,
+            ApprovalDecision::Approve,
+            &reviewer,
+            40,
+        )
+        .unwrap();
+        assert!(
+            outcome.eligibility.allowed,
+            "{:?}",
+            outcome.eligibility.reason
+        );
+
+        let events = outbox_events(&mut store);
+        let resolved = events
+            .iter()
+            .find(|event| event.event_kind == "approval.resolved")
+            .expect("an approve publishes approval.resolved");
+        assert_eq!(resolved.aggregate_kind, "approval");
+        assert_eq!(resolved.aggregate_id, "approval_1");
+        let data = &resolved.payload["data"];
+        assert_eq!(data["decision"], "approve");
+        assert_eq!(data["proposal_id"], "proposal_1");
+        assert_eq!(data["changeset_id"], "changeset_1");
+        assert_eq!(data["resulting_status"], "approved");
+    }
+
+    #[test]
+    fn reject_and_request_changes_publish_their_canonical_transitions_with_verdicts() {
+        // A reject publishes proposal.rejected carrying decision=reject.
+        let (_dir_r, mut store_r) = temp_store();
+        let author = actor("agent:author", ActorKind::Agent);
+        let reviewer = actor("human:reviewer", ActorKind::Human);
+        let changeset_id = ChangesetId::new("changeset_1").unwrap();
+        let proposal_id = ProposalId::new("proposal_1").unwrap();
+        let reviewed = seed_needs_review(&mut store_r, &changeset_id, &author);
+        request(&mut store_r, &proposal_id, &changeset_id, &reviewed);
+        let rejected = decide(
+            &mut store_r,
+            CommandKind::Reject,
+            &proposal_id,
+            ApprovalDecision::Reject,
+            &reviewer,
+            40,
+        )
+        .unwrap();
+        assert!(
+            rejected.eligibility.allowed,
+            "{:?}",
+            rejected.eligibility.reason
+        );
+        let events = outbox_events(&mut store_r);
+        let event = events
+            .iter()
+            .find(|event| event.event_kind == "proposal.rejected")
+            .expect("a reject publishes proposal.rejected");
+        assert_eq!(event.payload["data"]["decision"], "reject");
+        assert_eq!(event.payload["data"]["resulting_status"], "rejected");
+
+        // A request-changes publishes proposal.updated carrying decision=request_changes,
+        // which the a2a decoder maps onto its request_changes verdict from the field.
+        let (_dir_e, mut store_e) = temp_store();
+        let reviewed_e = seed_needs_review(&mut store_e, &changeset_id, &author);
+        request(&mut store_e, &proposal_id, &changeset_id, &reviewed_e);
+        let edited = decide(
+            &mut store_e,
+            CommandKind::EditProposal,
+            &proposal_id,
+            ApprovalDecision::RequestChanges,
+            &reviewer,
+            40,
+        )
+        .unwrap();
+        assert!(
+            edited.eligibility.allowed,
+            "{:?}",
+            edited.eligibility.reason
+        );
+        let events = outbox_events(&mut store_e);
+        let event = events
+            .iter()
+            .find(|event| {
+                event.event_kind == "proposal.updated"
+                    && event.payload["data"].get("decision").is_some()
+            })
+            .expect("a request-changes publishes proposal.updated with a decision");
+        assert_eq!(event.payload["data"]["decision"], "request_changes");
     }
 
     // --- the AGENT-SELF-APPROVAL guardrail (safety-critical), tested both sides ---

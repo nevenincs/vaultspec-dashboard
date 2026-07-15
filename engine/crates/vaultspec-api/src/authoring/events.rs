@@ -371,6 +371,90 @@ pub(crate) fn comment_event(
     })
 }
 
+/// Build the `approval.requested` lifecycle event published when a proposal enters
+/// review (NeedsReview). It rides the SAME durable outbox/projector feed every other
+/// lifecycle transition uses; the payload data carries the approval / proposal /
+/// changeset correlation ids a downstream verdict subscriber parks a run against.
+/// This is a NON-RESOLVING event — it opens the review, it does not decide it, so it
+/// carries no `decision` field. The dedupe key folds in the reviewed revision so a
+/// wedge-heal re-open coalesces to the one event rather than duplicating on the feed.
+pub(crate) fn approval_requested_event(
+    approval_id: &str,
+    proposal_id: &str,
+    changeset_id: &str,
+    reviewed_revision: &str,
+    actor: ActorRef,
+    idempotency_key: Option<IdempotencyKey>,
+    created_at_ms: i64,
+) -> StoreResult<OutboxEventDraft> {
+    lifecycle_event_draft(LifecycleEventInput {
+        event_id: format!("approval-requested-event:{approval_id}:{reviewed_revision}"),
+        dedupe_key: format!("approval-requested:{approval_id}:{reviewed_revision}"),
+        aggregate_kind: LifecycleAggregateKind::Approval,
+        aggregate_id: approval_id.to_string(),
+        event_kind: LifecycleEventKind::ApprovalRequested,
+        actor,
+        command: Some(CommandKind::SubmitForReview),
+        idempotency_key,
+        payload: json!({
+            "approval_id": approval_id,
+            "proposal_id": proposal_id,
+            "changeset_id": changeset_id,
+            "reviewed_revision": reviewed_revision,
+            "queue_state": "queued",
+        }),
+        created_at_ms,
+    })
+}
+
+/// Build the lifecycle event published when a reviewer DECIDES an open approval. The
+/// event kind is the canonical transition for the decision — `approval.resolved` for
+/// an approve, `proposal.rejected` for a reject, `proposal.updated` for a
+/// request-changes (the proposal returns to draft/rollback-proposed for revision).
+/// The `decision` field in the payload data is AUTHORITATIVE: a downstream verdict
+/// subscriber maps `approve` / `reject` / `request_changes` onto its verdict
+/// vocabulary directly from it, independent of the event kind. The dedupe key folds
+/// in the resulting revision (unique per decision append) so an idempotent
+/// re-decision coalesces to the one event.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn review_decision_event(
+    event_kind: LifecycleEventKind,
+    decision: &str,
+    comment: Option<&str>,
+    approval_id: &str,
+    proposal_id: &str,
+    changeset_id: &str,
+    resulting_status: ChangesetStatus,
+    resulting_revision: &str,
+    actor: ActorRef,
+    command: CommandKind,
+    created_at_ms: i64,
+) -> StoreResult<OutboxEventDraft> {
+    let mut data = json!({
+        "decision": decision,
+        "approval_id": approval_id,
+        "proposal_id": proposal_id,
+        "changeset_id": changeset_id,
+        "resulting_status": resulting_status,
+        "resulting_revision": resulting_revision,
+    });
+    if let Some(comment) = comment {
+        data["comment"] = json!(comment);
+    }
+    lifecycle_event_draft(LifecycleEventInput {
+        event_id: format!("review-decision-event:{approval_id}:{resulting_revision}"),
+        dedupe_key: format!("review-decision:{approval_id}:{resulting_revision}"),
+        aggregate_kind: LifecycleAggregateKind::Approval,
+        aggregate_id: approval_id.to_string(),
+        event_kind,
+        actor,
+        command: Some(command),
+        idempotency_key: None,
+        payload: data,
+        created_at_ms,
+    })
+}
+
 pub(crate) fn projector_feed_page(
     events: Vec<OutboxEvent>,
     latest_outbox_seq: i64,
@@ -617,6 +701,83 @@ mod tests {
             let transition = LifecycleTransition::from_changeset_status(status).unwrap();
             assert_eq!(transition.event_kind(), expected_kind);
         }
+    }
+
+    #[test]
+    fn approval_requested_builder_wraps_correlation_ids_and_carries_no_verdict() {
+        let draft = approval_requested_event(
+            "approval_1",
+            "proposal_1",
+            "changeset_1",
+            "blob:rev1",
+            actor(),
+            Some(idem("submit")),
+            1_000,
+        )
+        .unwrap();
+
+        assert_eq!(draft.event_kind, "approval.requested");
+        assert_eq!(draft.aggregate_kind, "approval");
+        assert_eq!(draft.aggregate_id, "approval_1");
+        assert_eq!(draft.dedupe_key, "approval-requested:approval_1:blob:rev1");
+        assert_eq!(draft.payload["schema"], LIFECYCLE_EVENT_SCHEMA);
+        assert_eq!(draft.payload["event_kind"], "approval.requested");
+        let data = &draft.payload["data"];
+        assert_eq!(data["approval_id"], "approval_1");
+        assert_eq!(data["proposal_id"], "proposal_1");
+        assert_eq!(data["changeset_id"], "changeset_1");
+        assert_eq!(data["reviewed_revision"], "blob:rev1");
+        assert!(
+            data.get("decision").is_none(),
+            "a review-open event must not carry a verdict"
+        );
+    }
+
+    #[test]
+    fn review_decision_builder_carries_the_verdict_and_stable_revision_identity() {
+        let approve = review_decision_event(
+            LifecycleEventKind::ApprovalResolved,
+            "approve",
+            Some("looks good"),
+            "approval_1",
+            "proposal_1",
+            "changeset_1",
+            ChangesetStatus::Approved,
+            "blob:rev2",
+            actor(),
+            CommandKind::Approve,
+            2_000,
+        )
+        .unwrap();
+        assert_eq!(approve.event_kind, "approval.resolved");
+        assert_eq!(approve.dedupe_key, "review-decision:approval_1:blob:rev2");
+        assert_eq!(approve.payload["data"]["decision"], "approve");
+        assert_eq!(approve.payload["data"]["resulting_status"], "approved");
+        assert_eq!(approve.payload["data"]["comment"], "looks good");
+
+        // A distinct decision on a distinct resulting revision is a distinct event, and
+        // request-changes rides proposal.updated while still carrying its verdict field.
+        let edit = review_decision_event(
+            LifecycleEventKind::ProposalUpdated,
+            "request_changes",
+            None,
+            "approval_1",
+            "proposal_1",
+            "changeset_1",
+            ChangesetStatus::Draft,
+            "blob:rev3",
+            actor(),
+            CommandKind::EditProposal,
+            3_000,
+        )
+        .unwrap();
+        assert_eq!(edit.event_kind, "proposal.updated");
+        assert_eq!(edit.payload["data"]["decision"], "request_changes");
+        assert!(
+            edit.payload["data"].get("comment").is_none(),
+            "an absent comment is omitted from the payload"
+        );
+        assert_ne!(approve.dedupe_key, edit.dedupe_key);
     }
 
     #[test]
