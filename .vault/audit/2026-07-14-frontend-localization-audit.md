@@ -2207,3 +2207,16 @@ Root and Terra passed 45 affected tests. The complete frontend lint recipe passe
 independent review found no issues. Four exact exemptions were removed, reducing the
 scanner from 1,029 to 1,025 findings and legacy action presentations from 16 to 12. S66
 is accepted with no open findings.
+
+### W05.P14.S82 and S195 partial review | pass | Reader comment action uses typed labels
+
+The reader comment action now selects typed Add a comment or Open comments descriptors
+from comment availability. Its stable ID, transform section, icon, direct callback, and
+availability behavior remain unchanged. The focused test now uses a real closure counter
+instead of its previous test double.
+
+English, French, and Arabic resolve both labels without fallback or internal values.
+Root and Terra passed 31 focused tests, the complete frontend lint recipe passed, and
+independent review found no issues. One exact exemption was removed, reducing the scanner
+from 1,025 to 1,024 findings and legacy action presentations from 12 to 11. S82 and S195
+remain open for their untouched comment-thread and rendering responsibilities.
