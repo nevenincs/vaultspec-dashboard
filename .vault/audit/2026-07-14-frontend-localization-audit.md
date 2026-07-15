@@ -1934,3 +1934,25 @@ identities are unique and length bounded. Sol found and verified the only low gr
 mismatch. Twenty-five focused session tests, real route conformance, Rust formatting,
 workspace Clippy, frontend integration, and diff checks passed. S08 is accepted with no
 open findings.
+
+### W01.P02.S10 review | pass | Engine truth reconciles a bounded locale hint
+
+The production localization runtime now reads one validated preference token
+synchronously before document binding or React mount. System resolution examines bounded
+canonical browser preferences in order, prefers exact shipped locales, then a matching
+base language, and otherwise uses the source locale. Malformed cache data and runtime
+failures also use the source locale without showing an error or diagnostic detail.
+
+Review confirmed that the controller is framework-free, store-free, and wire-free. The
+existing settings-effects bridge supplies only settled semantic preference identity, the
+engine remains the write authority, and the cache stores System rather than its resolved
+locale. Locale changes serialize and coalesce with real latest-request semantics, duplicate
+StrictMode reconciliation is idempotent, and one browser listener exists only while System
+is active. Runtime-owned HMR cleanup and repeated destroy are bounded and safe.
+
+Independent Sol review found and verified fixes for redundant cache writes and direct
+first-paint construction coverage. Fifty production-behavior tests used real i18n
+resources, localStorage, browser events, and live settings derivation without doubles. The
+full frontend lint recipe, TypeScript, targeted ESLint, formatting, scanner, and diff
+checks passed. The scanner remained clean at 1,151 findings with no allowlist change. S10
+is accepted with no open findings.
