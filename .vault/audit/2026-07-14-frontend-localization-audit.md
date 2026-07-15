@@ -1709,3 +1709,23 @@ provider was made zero-argument so the modified tests contain no synthetic conte
 no-op functions, doubles, skips, or expected failures. Exact baseline reconciliation
 removed two bridge entries and added none, reducing the scanner from 1,408 to 1,406
 findings. S146 is accepted with no open findings.
+
+### W02.P05.S34 review | pass | One action renders identical wording across three planes
+
+This test-only step, implemented through delegated Terra rollout work, mounts the real
+context menu, command palette, and shortcut dialog with production registration hooks,
+providers, action builders, registries, and a fresh query client.
+
+Review confirmed that `reload:refresh-data` is the stable identity in all three planes,
+that every producer carries the exact same canonical descriptor, and that the real
+French runtime resolves `Actualiser les données` without fallback. Menu section, palette
+family, shortcut chord and context, and visible DOM identity remain unchanged.
+
+No English fallback, action ID, message key, or implementation metadata appears in the
+rendered UI. Localized keycaps remain separate from the action wording comparison.
+
+Independent Sol verification approved the production integration test with no findings.
+TypeScript, ESLint, Prettier, the localization scanner, diff checks, and the complete
+frontend lint recipe passed. The test uses no mocks, spies, fakes, stubs, no-op fixtures,
+patches, skips, or expected failures. No production code or allowlist changed, so the
+scanner remains at 1,406 findings. S34 is accepted with no open findings.
