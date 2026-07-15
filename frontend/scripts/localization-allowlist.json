@@ -1990,26 +1990,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "063c90a2222bae51763aba8e",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "1c00c3d126c18366c208cc2c",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "afac19f8bb416187242cb733",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "efa8d7303638c8780f1f9eb5",
-    "path": "src/app/right/menus/searchResultMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "919f8ed3810afaad75c21b64",
     "path": "src/app/right/PlanStepTree.tsx",
     "rule": "jsx-attribute"

@@ -13,6 +13,7 @@ import { resolveActionPresentation } from "../../../platform/actions/action";
 import { resolveMessageResult } from "../../../platform/localization/fallback";
 import { commitMenu } from "./commitMenu";
 import { prMenu } from "./prMenu";
+import { searchResultMenu } from "./searchResultMenu";
 
 function action(actions: readonly ActionDescriptor[], id: string): ActionDescriptor {
   const match = actions.find((candidate) => candidate.id === id);
@@ -51,6 +52,21 @@ function migratedPresentations(): readonly ActionPresentation[] {
     kind: "pull-request",
     id: "private-pr-number",
   });
+  const searchResult = searchResultMenu({
+    kind: "search-result",
+    id: "private-search-id",
+    source: "private/source/path.ts",
+    nodeId: "private-node-id",
+    score: 0.93,
+    isCode: true,
+  });
+  const unavailableSearchResult = searchResultMenu({
+    kind: "search-result",
+    id: "private-search-id",
+    source: "private/source/path.ts",
+    score: 0.93,
+    isCode: true,
+  });
 
   return [
     ...availableCommit.map(({ label }) => label),
@@ -59,10 +75,12 @@ function migratedPresentations(): readonly ActionPresentation[] {
     action(unselectedCommit, "commit:view-at-commit").disabledReason!,
     ...pullRequest.map(({ label }) => label),
     action(stalePullRequest, "pull-request:open").disabledReason!,
+    action(searchResult, "search-result:focus").label,
+    action(unavailableSearchResult, "search-result:focus").disabledReason!,
   ];
 }
 
-describe("localized commit and pull request menus", () => {
+describe("localized right-rail entity menus", () => {
   it("resolves every migrated presentation through genuine English, French, and Arabic catalogs", () => {
     const runtimes = [
       createTestLocalizationRuntime(),
@@ -80,13 +98,13 @@ describe("localized commit and pull request menus", () => {
       expect(new Set(results.map(({ message }) => message)).size).toBe(3);
       for (const { message } of results) {
         expect(message).not.toMatch(
-          /private-|private\.example|authored commit|\b(?:corpus|scope|registry|transport|id)\b|—/iu,
+          /private-|private\.example|private\/source|authored commit|\b(?:corpus|scope|registry|transport|id|score|vector|semantic|json)\b|—/iu,
         );
       }
     }
   });
 
-  it("preserves authored commit and pull request data in clipboard payloads", () => {
+  it("preserves permitted authored and source data in clipboard payloads", () => {
     const commitActions = commitMenu(
       {
         kind: "commit",
@@ -101,6 +119,14 @@ describe("localized commit and pull request menus", () => {
       kind: "pull-request",
       id: "42",
       url: "https://example.com/pull/42",
+    });
+    const searchResultActions = searchResultMenu({
+      kind: "search-result",
+      id: "search-id",
+      source: "src/exact-path.ts",
+      nodeId: "code:src/exact-path.ts",
+      score: 0.93,
+      isCode: true,
     });
 
     expect(action(commitActions, "commit:copy-hash").dispatch).toMatchObject({
@@ -120,5 +146,16 @@ describe("localized commit and pull request menus", () => {
     ).toMatchObject({
       payload: { text: "42", what: "id" },
     });
+    expect(
+      action(searchResultActions, "search-result:copy-source").dispatch,
+    ).toMatchObject({
+      payload: { text: "src/exact-path.ts", what: "path" },
+    });
+    expect(searchResultActions.map(({ id }) => id)).not.toContain(
+      "search-result:copy-score",
+    );
+    expect(searchResultActions.map(({ id }) => id)).not.toContain(
+      "search-result:copy-full",
+    );
   });
 });

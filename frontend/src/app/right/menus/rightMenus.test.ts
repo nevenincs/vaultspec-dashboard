@@ -3,7 +3,7 @@
 // store, no host. The assertions pin the action ids/sections, the
 // `disabledInTimeTravel` mark on every MUTATING action (the registry gate keys on
 // it), and the conditional disables/omissions the descriptor's optional fields
-// drive (no title, no relation/dst, no nodeId, no score, no hunk).
+// drive (no title, no relation/dst, no nodeId, no hunk).
 
 import { describe, expect, it } from "vitest";
 
@@ -75,22 +75,22 @@ describe("searchResultMenu", () => {
     isCode: true,
   };
 
-  it("offers focus / open-editor / reveal / copies for a code result", () => {
+  it("offers open, show-on-canvas, shell navigation, and source copy for code", () => {
     expect(byId(searchResultMenu(code))).toEqual([
       "search-result:open",
       "search-result:focus",
       "search-result:open-editor",
       "search-result:reveal",
       "search-result:copy-source",
-      "search-result:copy-score",
-      "search-result:copy-full",
     ]);
   });
 
-  it("focus is a non-mutating navigate selection (not gated)", () => {
+  it("show-on-canvas preserves the focus id as a non-mutating selection", () => {
     const focus = find(searchResultMenu(code), "search-result:focus");
+    expect(focus.label).toEqual({ key: "common:actions.showOnCanvas" });
     expect(focus.section).toBe("navigate");
     expect(focus.disabledInTimeTravel).toBeUndefined();
+    expect(focus.run).toBeTypeOf("function");
   });
 
   it("normalizes runtime search-result descriptors before building actions", () => {
@@ -105,12 +105,9 @@ describe("searchResultMenu", () => {
     expect(find(actions, "search-result:copy-source")).toMatchObject({
       dispatch: { payload: { text: "src/x.ts", what: "path" } },
     });
-    expect(find(actions, "search-result:copy-score")).toMatchObject({
-      dispatch: { payload: { text: "0.91" } },
-    });
   });
 
-  it("disables focus with a reason when there is no node id", () => {
+  it("disables canvas navigation with an actionable reason without a node id", () => {
     const noNode = searchResultMenu({
       kind: "search-result",
       id: "src/x.ts",
@@ -120,7 +117,9 @@ describe("searchResultMenu", () => {
     });
     const focus = find(noNode, "search-result:focus");
     expect(focus.disabled).toBe(true);
-    expect(focus.disabledReason).toBe("no graph node");
+    expect(focus.disabledReason).toEqual({
+      key: "common:disabledReasons.itemUnavailableOnCanvas",
+    });
     const open = find(noNode, "search-result:open");
     expect(open.disabled).toBe(true);
     expect(open.disabledReason).toEqual({
@@ -140,17 +139,23 @@ describe("searchResultMenu", () => {
     expect(byId(vault)).not.toContain("search-result:open-editor");
   });
 
-  it("disables copy-score with a reason when there is no score", () => {
-    const noScore = searchResultMenu({
+  it("never exposes ranking or serialized-result copy actions", () => {
+    const actions = searchResultMenu({
       kind: "search-result",
       id: "doc:a",
       source: "notes/a.md",
       nodeId: "doc:a",
+      score: 0.7,
       isCode: false,
     });
-    const score = find(noScore, "search-result:copy-score");
-    expect(score.disabled).toBe(true);
-    expect(score.disabledReason).toBe("no score");
+    expect(byId(actions)).toEqual([
+      "search-result:open",
+      "search-result:focus",
+      "search-result:reveal",
+      "search-result:copy-source",
+    ]);
+    expect(byId(actions)).not.toContain("search-result:copy-score");
+    expect(byId(actions)).not.toContain("search-result:copy-full");
   });
 
   it("rejects malformed and non-search-result entities at resolver ingress", () => {
