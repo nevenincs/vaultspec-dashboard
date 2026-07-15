@@ -32,7 +32,8 @@ import { useDashboardFeatureFilterDraft } from "./dashboardFeatureFilter";
 import { toggleFilterSidebar } from "./filterSidebar";
 import { registerKeyAction } from "./keymapDispatcher";
 import {
-  RAIL_SORT_OPTIONS,
+  RAIL_SORT_KEYS,
+  railSortPresentation,
   type RailSortKey,
   resetRailSort,
   setRailSortKey,
@@ -239,13 +240,20 @@ export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
  *  the vault-section context menu, and the palette. Choosing the active key again
  *  flips direction (the store owns that gesture). Store-only intents. */
 export function sortTreeActions(): ActionDescriptor[] {
-  return RAIL_SORT_OPTIONS.map((option) => ({
-    id: sortTreeActionId(option.id),
-    label: legacyActionPresentation(`Sort by ${option.label}`),
-    section: "navigate",
-    icon: ArrowUpDown,
-    run: () => setRailSortKey(option.id),
-  }));
+  return RAIL_SORT_KEYS.flatMap<ActionDescriptor>((id) => {
+    const presentation = railSortPresentation(id);
+    return presentation === null
+      ? []
+      : [
+          {
+            id: sortTreeActionId(presentation.id),
+            label: presentation.actionLabel,
+            section: "navigate",
+            icon: ArrowUpDown,
+            run: () => setRailSortKey(presentation.id),
+          },
+        ];
+  });
 }
 
 export function sortTreeActionId(key: RailSortKey): string {

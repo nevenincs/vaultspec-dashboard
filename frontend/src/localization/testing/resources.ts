@@ -118,6 +118,18 @@ export const ltrTestResources = {
       browserView: "Vue du navigateur",
       switchReadingAndEditingShortcut:
         "Basculer entre la lecture et la modification ({{accelerator}})",
+      treeOptionsSortedByLatestActivity:
+        "Options de l’arborescence, triées par activité récente",
+      treeOptionsSortedByDocumentCount:
+        "Options de l’arborescence, triées par nombre de documents",
+      treeOptionsSortedByName: "Options de l’arborescence, triées par nom",
+      treeOptionsSortedByCreationDate:
+        "Options de l’arborescence, triées par date de création",
+      treeOptionsSortedByEditDate:
+        "Options de l’arborescence, triées par date de modification",
+      treeOptionsSortedByLength: "Options de l’arborescence, triées par longueur",
+      treeOptionsSortedByWorkspaceShare:
+        "Options de l’arborescence, triées par part de l’espace de travail",
     },
     actions: {
       ...en.documents.actions,
@@ -132,6 +144,13 @@ export const ltrTestResources = {
       focusFilter: "Activer le filtre des documents",
       resetFilters: "Réinitialiser les filtres",
       save: "Enregistrer le document",
+      sortByLatestActivity: "Trier par activité récente",
+      sortByDocumentCount: "Trier par nombre de documents",
+      sortByName: "Trier par nom",
+      sortByCreationDate: "Trier par date de création",
+      sortByEditDate: "Trier par date de modification",
+      sortByLength: "Trier par longueur",
+      sortByWorkspaceShare: "Trier par part de l’espace de travail",
       showOrHideChanges: "Afficher ou masquer les modifications",
       showOrHideFilterOptions: "Afficher ou masquer les options de filtre",
       switchReadingAndEditing: "Basculer entre la lecture et la modification",
@@ -167,6 +186,15 @@ export const ltrTestResources = {
     },
     labels: {
       document: "Document",
+    },
+    sortOptions: {
+      latestActivity: "Activité récente",
+      documentCount: "Nombre de documents",
+      name: "Nom",
+      creationDate: "Date de création",
+      editDate: "Date de modification",
+      length: "Longueur",
+      workspaceShare: "Part de l’espace de travail",
     },
     shortcutGroups: {
       editing: "Modification du document",
@@ -401,6 +429,15 @@ export const rtlTestResources = {
     accessibility: {
       browserView: "عرض المتصفح",
       switchReadingAndEditingShortcut: "التبديل بين القراءة والتحرير ({{accelerator}})",
+      treeOptionsSortedByLatestActivity: "خيارات شجرة المستندات، مرتبة حسب أحدث نشاط",
+      treeOptionsSortedByDocumentCount:
+        "خيارات شجرة المستندات، مرتبة حسب عدد المستندات",
+      treeOptionsSortedByName: "خيارات شجرة المستندات، مرتبة حسب الاسم",
+      treeOptionsSortedByCreationDate: "خيارات شجرة المستندات، مرتبة حسب تاريخ الإنشاء",
+      treeOptionsSortedByEditDate: "خيارات شجرة المستندات، مرتبة حسب تاريخ التعديل",
+      treeOptionsSortedByLength: "خيارات شجرة المستندات، مرتبة حسب الطول",
+      treeOptionsSortedByWorkspaceShare:
+        "خيارات شجرة المستندات، مرتبة حسب حصة مساحة العمل",
     },
     actions: {
       ...en.documents.actions,
@@ -409,6 +446,13 @@ export const rtlTestResources = {
       finishEditing: "إنهاء التحرير",
       findByName: "البحث عن مستند بالاسم…",
       save: "حفظ المستند",
+      sortByLatestActivity: "الترتيب حسب أحدث نشاط",
+      sortByDocumentCount: "الترتيب حسب عدد المستندات",
+      sortByName: "الترتيب حسب الاسم",
+      sortByCreationDate: "الترتيب حسب تاريخ الإنشاء",
+      sortByEditDate: "الترتيب حسب تاريخ التعديل",
+      sortByLength: "الترتيب حسب الطول",
+      sortByWorkspaceShare: "الترتيب حسب حصة مساحة العمل",
       showOrHideChanges: "إظهار التغييرات أو إخفاؤها",
       switchReadingAndEditing: "التبديل بين القراءة والتحرير",
     },
@@ -440,6 +484,15 @@ export const rtlTestResources = {
     },
     labels: {
       document: "مستند",
+    },
+    sortOptions: {
+      latestActivity: "أحدث نشاط",
+      documentCount: "عدد المستندات",
+      name: "الاسم",
+      creationDate: "تاريخ الإنشاء",
+      editDate: "تاريخ التعديل",
+      length: "الطول",
+      workspaceShare: "حصة مساحة العمل",
     },
     shortcutGroups: {
       editing: "تحرير المستند",

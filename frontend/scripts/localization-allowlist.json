@@ -585,29 +585,9 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "2f8409ee8381fd3810681379",
-    "path": "src/app/left/BrowserRegion.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
     "id": "5f7a3673c46ce7aef24efa38",
     "path": "src/app/left/BrowserRegion.tsx",
     "rule": "jsx-attribute"
-  },
-  {
-    "id": "c44be8944a86471aea3cb790",
-    "path": "src/app/left/BrowserRegion.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "8fc2c7961df28144192e2b17",
-    "path": "src/app/left/BrowserRegion.tsx",
-    "rule": "jsx-text"
-  },
-  {
-    "id": "e14415f18b81b11038e20e71",
-    "path": "src/app/left/BrowserRegion.tsx",
-    "rule": "jsx-text"
   },
   {
     "id": "907d4d2ef50479e5512fa22f",
@@ -5315,11 +5295,6 @@
     "rule": "legacy-keybinding-presentation"
   },
   {
-    "id": "7e6dc6640fe12541c08d00a8",
-    "path": "src/stores/view/leftRailKeybindings.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "efc99d926f99394d21413b95",
     "path": "src/stores/view/leftRailKeybindings.ts",
     "rule": "legacy-action-presentation"
@@ -5398,41 +5373,6 @@
     "id": "f0381b87a2ca58aa0aacdf4f",
     "path": "src/stores/view/provisionActions.ts",
     "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "40a8704e0a607c00dac1606e",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "742f469894bdbeaf4f44eb1e",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "825c75ba1f1c7c9a56dc848f",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "a161f4bc303ea3e2730a53ca",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "a8015a9da272a81941fdaf9c",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "d66ef12399e4966d599df79b",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
-  },
-  {
-    "id": "f82bd028ab3599854088171f",
-    "path": "src/stores/view/railSort.ts",
-    "rule": "presentation-field"
   },
   {
     "id": "335c05ff1f25054efecfee4e",

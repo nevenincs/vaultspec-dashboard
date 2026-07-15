@@ -11,11 +11,12 @@
 
 import { ArrowUpDown, Plus } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserMode";
 import { useActiveScope, useVaultFilesNarrowText } from "../../stores/server/queries";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { newDocumentAction } from "../../stores/view/leftRailKeybindings";
-import { RAIL_SORT_OPTIONS, useRailSort } from "../../stores/view/railSort";
+import { railSortPresentation, useRailSort } from "../../stores/view/railSort";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { IconButton } from "../kit";
 import { BrowserModeToggle } from "./BrowserModeToggle";
@@ -28,13 +29,17 @@ import { VaultBrowser } from "./VaultBrowser";
  *  this button is pure chrome. Vault mode only: the Files tree keeps its fixed
  *  directories-first order and offers no sort control. */
 function VaultTreeOptionsButton({ scope }: { scope: string | null }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const sort = useRailSort();
+  const activePresentation = railSortPresentation(sort.key);
   const activeLabel =
-    RAIL_SORT_OPTIONS.find((option) => option.id === sort.key)?.label ??
-    "Latest Activity";
+    activePresentation === null
+      ? null
+      : resolveMessage(activePresentation.triggerLabel);
+  if (activeLabel === null || activeLabel.usedFallback) return null;
   return (
     <IconButton
-      label={`Tree options (sorted by ${activeLabel.toLowerCase()})`}
+      label={activeLabel.message}
       aria-haspopup="menu"
       data-rail-sort-trigger
       onClick={(event) => {

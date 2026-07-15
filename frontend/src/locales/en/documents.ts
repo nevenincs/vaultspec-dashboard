@@ -3,6 +3,13 @@ export const documents = {
     browserView: "Browser view",
     switchReadingAndEditingShortcut:
       "Switch between reading and editing ({{accelerator}})",
+    treeOptionsSortedByLatestActivity: "Tree options, sorted by latest activity",
+    treeOptionsSortedByDocumentCount: "Tree options, sorted by document count",
+    treeOptionsSortedByName: "Tree options, sorted by name",
+    treeOptionsSortedByCreationDate: "Tree options, sorted by creation date",
+    treeOptionsSortedByEditDate: "Tree options, sorted by edit date",
+    treeOptionsSortedByLength: "Tree options, sorted by length",
+    treeOptionsSortedByWorkspaceShare: "Tree options, sorted by workspace share",
   },
   actions: {
     addToFeature: "Add to a feature…",
@@ -18,6 +25,13 @@ export const documents = {
     linkToSelectedDocument: "Link to selected document",
     resetFilters: "Reset filters",
     save: "Save document",
+    sortByLatestActivity: "Sort by latest activity",
+    sortByDocumentCount: "Sort by document count",
+    sortByName: "Sort by name",
+    sortByCreationDate: "Sort by creation date",
+    sortByEditDate: "Sort by edit date",
+    sortByLength: "Sort by length",
+    sortByWorkspaceShare: "Sort by workspace share",
     showOrHideFilterOptions: "Show or hide filter options",
     showOrHideChanges: "Show or hide changes",
     switchReadingAndEditing: "Switch between reading and editing",
@@ -54,6 +68,15 @@ export const documents = {
   },
   labels: {
     document: "Document",
+  },
+  sortOptions: {
+    latestActivity: "Latest activity",
+    documentCount: "Document count",
+    name: "Name",
+    creationDate: "Creation date",
+    editDate: "Edit date",
+    length: "Length",
+    workspaceShare: "Workspace share",
   },
   shortcutGroups: {
     editing: "Document editing",

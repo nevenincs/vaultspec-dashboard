@@ -145,6 +145,27 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:accessibility.switchReadingAndEditingShortcut": {
     role: "accessibility",
   },
+  "documents:accessibility.treeOptionsSortedByCreationDate": {
+    role: "accessibility",
+  },
+  "documents:accessibility.treeOptionsSortedByDocumentCount": {
+    role: "accessibility",
+  },
+  "documents:accessibility.treeOptionsSortedByEditDate": {
+    role: "accessibility",
+  },
+  "documents:accessibility.treeOptionsSortedByLatestActivity": {
+    role: "accessibility",
+  },
+  "documents:accessibility.treeOptionsSortedByLength": {
+    role: "accessibility",
+  },
+  "documents:accessibility.treeOptionsSortedByName": {
+    role: "accessibility",
+  },
+  "documents:accessibility.treeOptionsSortedByWorkspaceShare": {
+    role: "accessibility",
+  },
   "documents:actions.addToFeature": { role: "action" },
   "documents:actions.browseDocuments": { role: "action" },
   "documents:actions.browseFiles": { role: "action" },
@@ -158,6 +179,13 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:actions.linkToSelectedDocument": { role: "action" },
   "documents:actions.resetFilters": { role: "action" },
   "documents:actions.save": { role: "action" },
+  "documents:actions.sortByCreationDate": { role: "action" },
+  "documents:actions.sortByDocumentCount": { role: "action" },
+  "documents:actions.sortByEditDate": { role: "action" },
+  "documents:actions.sortByLatestActivity": { role: "action" },
+  "documents:actions.sortByLength": { role: "action" },
+  "documents:actions.sortByName": { role: "action" },
+  "documents:actions.sortByWorkspaceShare": { role: "action" },
   "documents:actions.showOrHideFilterOptions": { role: "action" },
   "documents:actions.showOrHideChanges": { role: "action" },
   "documents:actions.switchReadingAndEditing": { role: "action" },
@@ -186,6 +214,13 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:feedback.linkInProgress": { role: "status" },
   "documents:feedback.linkSucceeded": { role: "status" },
   "documents:labels.document": { role: "label" },
+  "documents:sortOptions.creationDate": { role: "label" },
+  "documents:sortOptions.documentCount": { role: "label" },
+  "documents:sortOptions.editDate": { role: "label" },
+  "documents:sortOptions.latestActivity": { role: "label" },
+  "documents:sortOptions.length": { role: "label" },
+  "documents:sortOptions.name": { role: "label" },
+  "documents:sortOptions.workspaceShare": { role: "label" },
   "documents:shortcutGroups.editing": { role: "label" },
   "errors:fallback.contentUnavailable": { role: "error-message" },
   "errors:unexpectedApplication.message": { role: "error-message" },
@@ -305,6 +340,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Search",
   "Select",
   "Show",
+  "Sort",
   "Start",
   "Stop",
   "Switch",
