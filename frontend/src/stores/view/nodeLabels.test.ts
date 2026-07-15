@@ -9,7 +9,7 @@ describe("node id display labels", () => {
   });
 
   it("leaves other identities intact", () => {
-    expect(nodeIdDisplayLabel("code:src/app.ts")).toBe("code:src/app.ts");
+    expect(nodeIdDisplayLabel("code:src/app.ts")).toBe("src/app.ts");
     expect(nodeIdDisplayLabel("commit:abcdef")).toBe("commit:abcdef");
   });
 

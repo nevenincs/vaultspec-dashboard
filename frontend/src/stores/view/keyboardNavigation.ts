@@ -1,12 +1,10 @@
 import { useEffect, useMemo } from "react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
+  type KeybindingGroupPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import type { EngineNode } from "../server/engine";
@@ -18,19 +16,34 @@ import {
   useNodeNeighbors,
 } from "../server/queries";
 import { registerKeyAction, useKeymapDispatcher } from "./keymapDispatcher";
+import { nodeIdDisplayLabel } from "./nodeLabels";
 import { normalizeSelectionScope, useDashboardNodeSelection } from "./selection";
 
 export interface KeyboardNavigationView {
   selectedId: string | null;
   neighborIds: string[];
   featureIds: string[];
-  announcement: string;
+  announcement: MessageDescriptor | null;
 }
 
 export type KeyboardNavigationIntent = { kind: "select-node"; id: string };
 
-export const KEYBOARD_NAVIGATION_ACTION_GROUP =
-  legacyKeybindingPresentation("Navigation");
+export const KEYBOARD_NAVIGATION_ACTION_GROUP = Object.freeze({
+  key: "common:shortcutGroups.navigation",
+} as const satisfies MessageDescriptor);
+
+export const KEYBOARD_NAVIGATION_PREVIOUS_CONNECTED_LABEL = Object.freeze({
+  key: "graph:actions.moveToPreviousConnectedItem",
+} as const satisfies MessageDescriptor);
+export const KEYBOARD_NAVIGATION_NEXT_CONNECTED_LABEL = Object.freeze({
+  key: "graph:actions.moveToNextConnectedItem",
+} as const satisfies MessageDescriptor);
+export const KEYBOARD_NAVIGATION_PREVIOUS_FEATURE_LABEL = Object.freeze({
+  key: "features:actions.moveToPreviousFeature",
+} as const satisfies MessageDescriptor);
+export const KEYBOARD_NAVIGATION_NEXT_FEATURE_LABEL = Object.freeze({
+  key: "features:actions.moveToNextFeature",
+} as const satisfies MessageDescriptor);
 
 export type KeyboardNavigationActionId =
   | "nav:neighbor-previous"
@@ -40,13 +53,15 @@ export type KeyboardNavigationActionId =
 
 export interface KeyboardNavigationBinding extends KeybindingDef {
   key: string;
+  label: MessageDescriptor;
+  group: KeybindingGroupPresentation;
 }
 
 export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] = [
   {
     id: "nav:neighbor-previous",
     defaultChord: "ArrowLeft",
-    label: legacyKeybindingPresentation("Select previous connected document"),
+    label: KEYBOARD_NAVIGATION_PREVIOUS_CONNECTED_LABEL,
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowLeft",
@@ -54,7 +69,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:neighbor-next",
     defaultChord: "ArrowRight",
-    label: legacyKeybindingPresentation("Select next connected document"),
+    label: KEYBOARD_NAVIGATION_NEXT_CONNECTED_LABEL,
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowRight",
@@ -62,7 +77,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:feature-previous",
     defaultChord: "ArrowUp",
-    label: legacyKeybindingPresentation("Select previous feature"),
+    label: KEYBOARD_NAVIGATION_PREVIOUS_FEATURE_LABEL,
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowUp",
@@ -70,7 +85,7 @@ export const KEYBOARD_NAVIGATION_BINDINGS: readonly KeyboardNavigationBinding[] 
   {
     id: "nav:feature-next",
     defaultChord: "ArrowDown",
-    label: legacyKeybindingPresentation("Select next feature"),
+    label: KEYBOARD_NAVIGATION_NEXT_FEATURE_LABEL,
     group: KEYBOARD_NAVIGATION_ACTION_GROUP,
     context: "global",
     key: "ArrowDown",
@@ -128,10 +143,7 @@ export function deriveKeyboardNavigationActionDescriptor(
   if (intent === null) return null;
   return {
     id: binding.id,
-    label:
-      typeof binding.label === "string"
-        ? legacyActionPresentation(binding.label)
-        : binding.label,
+    label: binding.label,
     run: () => {
       void selectDashboardNode(intent.id).catch(() => undefined);
     },
@@ -143,15 +155,25 @@ export function deriveKeyboardNavigationView(
   neighborNodes: readonly EngineNode[] | undefined,
   featureTags: readonly string[],
 ): KeyboardNavigationView {
+  const selectedDisplayLabel =
+    selectedId !== null && /^(?:feature|doc|code):/u.test(selectedId)
+      ? nodeIdDisplayLabel(selectedId)
+      : null;
   return {
     selectedId,
     neighborIds: (neighborNodes ?? [])
       .map((node) => node.id)
       .filter((id) => id !== selectedId),
     featureIds: featureTags.map(featureNodeIdFromTag),
-    announcement: selectedId
-      ? `selected ${selectedId.replace(/^(feature|doc):/, "")}`
-      : "",
+    announcement:
+      selectedId === null
+        ? null
+        : selectedDisplayLabel === null || selectedDisplayLabel.length === 0
+          ? { key: "graph:accessibility.selectedItemGeneric" }
+          : {
+              key: "graph:accessibility.selectedItem",
+              values: { item: selectedDisplayLabel },
+            },
   };
 }
 

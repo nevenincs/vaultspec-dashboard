@@ -235,6 +235,10 @@ export const ltrTestResources = {
   },
   features: {
     ...en.features,
+    actions: {
+      moveToNextFeature: "Passer à la fonctionnalité suivante",
+      moveToPreviousFeature: "Passer à la fonctionnalité précédente",
+    },
     feedback: {
       archiveRejected:
         "La fonctionnalité n’a pas été archivée. Vérifiez-la, puis réessayez.",
@@ -250,8 +254,22 @@ export const ltrTestResources = {
     },
   },
   graph: {
+    accessibility: {
+      selectedItem: "Élément sélectionné : {{item}}.",
+      selectedItemGeneric: "Élément sélectionné.",
+      workingSet: "Ensemble de travail",
+      workingSetCount_many: "{{count, number}} éléments dans l’ensemble de travail",
+      workingSetCount_one: "{{count, number}} élément dans l’ensemble de travail",
+      workingSetCount_other: "{{count, number}} éléments dans l’ensemble de travail",
+      hiddenByActiveFilter: "Masqué par le filtre actif",
+      namedWorkingSetItemHidden: "{{item}} est masqué par le filtre actif.",
+      workingSetItemHidden: "L’élément est masqué par le filtre actif.",
+    },
     actions: {
+      addSelectedItemToWorkingSet:
+        "Ajouter l’élément sélectionné à l’ensemble de travail",
       clearSelection: "Effacer la sélection du graphe",
+      clearWorkingSet: "Effacer l’ensemble de travail",
       expandFocusedItem: "Développer l’élément actif dans l’espace de travail",
       fitToView: "Adapter le graphe à la vue",
       moveToNextConnectedItem: "Passer à l’élément connecté suivant",
@@ -260,9 +278,19 @@ export const ltrTestResources = {
       pauseMovement: "Suspendre le mouvement du graphe",
       resetSettings: "Réinitialiser les paramètres du graphe",
       resetView: "Réinitialiser la vue du graphe",
+      removeItemFromWorkingSet: "Retirer l’élément de l’ensemble de travail",
+      removeNamedItemFromWorkingSet: "Retirer {{item}} de l’ensemble de travail",
+      removeLastItemFromWorkingSet:
+        "Retirer le dernier élément de l’ensemble de travail",
       resumeMovement: "Reprendre le mouvement du graphe",
       zoomIn: "Agrandir",
       zoomOut: "Réduire",
+    },
+    shortcutGroups: {
+      workingSet: "Ensemble de travail",
+    },
+    labels: {
+      item: "Élément",
     },
   },
   operations: {
@@ -310,7 +338,16 @@ export const ltrTestResources = {
       },
     },
   },
-  projects: en.projects,
+  projects: {
+    actions: {
+      add: "Ajouter un projet…",
+      clearHistory: "Effacer l’historique des projets",
+      switch: "Changer de projet…",
+    },
+    shortcutGroups: {
+      projects: "Projets",
+    },
+  },
   settings: {
     actions: {
       useDarkTheme: "Utiliser le thème sombre",
@@ -630,6 +667,10 @@ export const rtlTestResources = {
   },
   features: {
     ...en.features,
+    actions: {
+      moveToNextFeature: "الانتقال إلى الميزة التالية",
+      moveToPreviousFeature: "الانتقال إلى الميزة السابقة",
+    },
     feedback: {
       archiveRejected: "لم تتم أرشفة الميزة. تحقق منها، ثم حاول مرة أخرى.",
       archiveSucceeded: "تمت أرشفة الميزة.",
@@ -643,8 +684,24 @@ export const rtlTestResources = {
     },
   },
   graph: {
+    accessibility: {
+      selectedItem: "تم تحديد {{item}}.",
+      selectedItemGeneric: "تم تحديد العنصر.",
+      workingSet: "مجموعة العمل",
+      workingSetCount_zero: "{{count, number}} عنصر في مجموعة العمل",
+      workingSetCount_one: "{{count, number}} عنصر في مجموعة العمل",
+      workingSetCount_two: "{{count, number}} من العناصر في مجموعة العمل",
+      workingSetCount_few: "{{count, number}} عناصر في مجموعة العمل",
+      workingSetCount_many: "{{count, number}} عنصرًا في مجموعة العمل",
+      workingSetCount_other: "{{count, number}} عنصر في مجموعة العمل",
+      hiddenByActiveFilter: "مخفي بواسطة عامل التصفية النشط",
+      namedWorkingSetItemHidden: "{{item}} مخفي بواسطة عامل التصفية النشط.",
+      workingSetItemHidden: "العنصر مخفي بواسطة عامل التصفية النشط.",
+    },
     actions: {
+      addSelectedItemToWorkingSet: "إضافة العنصر المحدد إلى مجموعة العمل",
       clearSelection: "مسح تحديد الرسم البياني",
+      clearWorkingSet: "مسح مجموعة العمل",
       expandFocusedItem: "توسيع العنصر المحدد ضمن مساحة العمل",
       fitToView: "ملاءمة الرسم البياني للعرض",
       moveToNextConnectedItem: "الانتقال إلى العنصر المتصل التالي",
@@ -653,9 +710,18 @@ export const rtlTestResources = {
       pauseMovement: "إيقاف حركة الرسم البياني مؤقتًا",
       resetSettings: "إعادة تعيين إعدادات الرسم البياني",
       resetView: "إعادة تعيين عرض الرسم البياني",
+      removeItemFromWorkingSet: "إزالة العنصر من مجموعة العمل",
+      removeNamedItemFromWorkingSet: "إزالة {{item}} من مجموعة العمل",
+      removeLastItemFromWorkingSet: "إزالة العنصر الأخير من مجموعة العمل",
       resumeMovement: "استئناف حركة الرسم البياني",
       zoomIn: "تكبير",
       zoomOut: "تصغير",
+    },
+    shortcutGroups: {
+      workingSet: "مجموعة العمل",
+    },
+    labels: {
+      item: "عنصر",
     },
   },
   operations: {
@@ -703,7 +769,16 @@ export const rtlTestResources = {
       },
     },
   },
-  projects: en.projects,
+  projects: {
+    actions: {
+      add: "إضافة مشروع…",
+      clearHistory: "مسح سجل المشاريع",
+      switch: "تبديل المشروع…",
+    },
+    shortcutGroups: {
+      projects: "المشاريع",
+    },
+  },
   settings: {
     actions: {
       useDarkTheme: "استخدام النسق الداكن",

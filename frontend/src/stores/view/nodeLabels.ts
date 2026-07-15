@@ -1,6 +1,6 @@
 /** Compact display label for stable graph node ids in app chrome. */
 export function nodeIdDisplayLabel(id: string): string {
-  return id.replace(/^(feature|doc):/, "");
+  return id.replace(/^(feature|doc|code):/, "");
 }
 
 /** Compact endpoint label for graph edge rows, where every stable node prefix is

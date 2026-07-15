@@ -4,13 +4,13 @@
 
 import { useEffect, useMemo } from "react";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import type { ActionDescriptor } from "../../platform/actions/action";
+import type {
+  CountMessageDescriptor,
+  MessageDescriptor,
+} from "../../platform/localization/message";
 import {
   type KeybindingDef,
-  legacyKeybindingPresentation,
   registerKeybindings,
 } from "../../platform/keymap/registry";
 import { normalizeNodeId } from "../nodeIds";
@@ -20,8 +20,10 @@ import { useViewStore, WORKING_SET_CAP } from "./viewStore";
 
 export interface WorkingSetRowView {
   id: string;
-  label: string;
-  collapseLabel: string;
+  label:
+    | { readonly kind: "user-data"; readonly value: string }
+    | { readonly kind: "message"; readonly descriptor: MessageDescriptor };
+  collapseLabel: MessageDescriptor;
   rootClassName: string;
   collapseButtonClassName: string;
   /** Present + true only when the chip's node is FILTERED OUT of the visible set
@@ -31,19 +33,21 @@ export interface WorkingSetRowView {
    *  supplied), keeping the visible-row shape unchanged. */
   hidden?: true;
   /** Plain-language "hidden by filter" affordance, present only when `hidden`. */
-  hiddenHint?: string;
+  hiddenHint?: MessageDescriptor;
+  /** Complete accessible copy combining the user-data label and hidden state. */
+  hiddenLabel?: MessageDescriptor;
 }
 
 export interface WorkingSetView {
   rows: WorkingSetRowView[];
   visible: boolean;
   navClassName: string;
-  navLabel: string;
+  navLabel: MessageDescriptor;
   countClassName: string;
-  countLabel: string;
-  countAriaLabel: string;
+  count: number;
+  countAriaLabel: CountMessageDescriptor;
   clearButtonClassName: string;
-  clearLabel: string;
+  clearLabel: MessageDescriptor;
 }
 
 const WORKING_SET_NAV_CLASS =
@@ -62,26 +66,43 @@ const WORKING_SET_CLEAR_BUTTON_CLASS =
 // (GS-006). Presentation only — the working-set membership is unchanged, and releasing the
 // filter un-dims the chip with no state change.
 const WORKING_SET_ROW_HIDDEN_CLASS = "opacity-50";
-const WORKING_SET_HIDDEN_HINT = "Hidden by the active filter";
+const WORKING_SET_HIDDEN_HINT = Object.freeze({
+  key: "graph:accessibility.hiddenByActiveFilter",
+} as const satisfies MessageDescriptor);
+const WORKING_SET_NAV_LABEL = Object.freeze({
+  key: "graph:accessibility.workingSet",
+} as const satisfies MessageDescriptor);
+const WORKING_SET_CLEAR_LABEL = Object.freeze({
+  key: "graph:actions.clearWorkingSet",
+} as const satisfies MessageDescriptor);
+const WORKING_SET_ITEM_LABEL = Object.freeze({
+  key: "graph:labels.item",
+} as const satisfies MessageDescriptor);
 
-export const WORKING_SET_KEYBINDING_GROUP = legacyKeybindingPresentation("Working set");
+export const WORKING_SET_KEYBINDING_GROUP = Object.freeze({
+  key: "graph:shortcutGroups.workingSet",
+} as const satisfies MessageDescriptor);
 export const WORKING_SET_EXPAND_SELECTION_ACTION_ID = "working-set:expand-selection";
 export const WORKING_SET_COLLAPSE_LAST_ACTION_ID = "working-set:collapse-last";
+export const WORKING_SET_EXPAND_SELECTION_LABEL = Object.freeze({
+  key: "graph:actions.addSelectedItemToWorkingSet",
+} as const satisfies MessageDescriptor);
+export const WORKING_SET_COLLAPSE_LAST_LABEL = Object.freeze({
+  key: "graph:actions.removeLastItemFromWorkingSet",
+} as const satisfies MessageDescriptor);
 
 export const WORKING_SET_KEYBINDINGS: readonly KeybindingDef[] = [
   {
     id: WORKING_SET_EXPAND_SELECTION_ACTION_ID,
     defaultChord: "E",
-    label: legacyKeybindingPresentation(
-      "Expand selected document into the working set",
-    ),
+    label: WORKING_SET_EXPAND_SELECTION_LABEL,
     group: WORKING_SET_KEYBINDING_GROUP,
     context: "global",
   },
   {
     id: WORKING_SET_COLLAPSE_LAST_ACTION_ID,
     defaultChord: "Backspace",
-    label: legacyKeybindingPresentation("Collapse the last working-set expansion"),
+    label: WORKING_SET_COLLAPSE_LAST_LABEL,
     group: WORKING_SET_KEYBINDING_GROUP,
     context: "global",
   },
@@ -112,7 +133,13 @@ export function workingSetRows(
   visibleNodeIds: ReadonlySet<string> | null = null,
 ): WorkingSetRowView[] {
   return normalizeWorkingSetIds(ids).map((id) => {
-    const label = nodeIdDisplayLabel(id);
+    const displayLabel = /^(?:feature|doc|code):/u.test(id)
+      ? nodeIdDisplayLabel(id)
+      : null;
+    const label: WorkingSetRowView["label"] =
+      displayLabel === null || displayLabel.length === 0
+        ? { kind: "message", descriptor: WORKING_SET_ITEM_LABEL }
+        : { kind: "user-data", value: displayLabel };
     // A chip is filter-hidden when a visibility membership is supplied AND its node is not
     // in it. With no membership (null) nothing is dimmed — the visible-row shape is
     // unchanged, so a mount that does not thread visibility behaves exactly as before.
@@ -120,12 +147,32 @@ export function workingSetRows(
     return {
       id,
       label,
-      collapseLabel: `Collapse ${label}`,
+      collapseLabel:
+        displayLabel !== null && displayLabel.length > 0
+          ? {
+              key: "graph:actions.removeNamedItemFromWorkingSet",
+              values: { item: displayLabel },
+            }
+          : { key: "graph:actions.removeItemFromWorkingSet" },
       rootClassName: hidden
         ? `${WORKING_SET_ROW_CLASS} ${WORKING_SET_ROW_HIDDEN_CLASS}`
         : WORKING_SET_ROW_CLASS,
       collapseButtonClassName: WORKING_SET_COLLAPSE_BUTTON_CLASS,
-      ...(hidden ? { hidden: true as const, hiddenHint: WORKING_SET_HIDDEN_HINT } : {}),
+      ...(hidden
+        ? {
+            hidden: true as const,
+            hiddenHint: WORKING_SET_HIDDEN_HINT,
+            hiddenLabel:
+              displayLabel !== null && displayLabel.length > 0
+                ? ({
+                    key: "graph:accessibility.namedWorkingSetItemHidden",
+                    values: { item: displayLabel },
+                  } satisfies MessageDescriptor)
+                : ({
+                    key: "graph:accessibility.workingSetItemHidden",
+                  } satisfies MessageDescriptor),
+          }
+        : {}),
     };
   });
 }
@@ -145,12 +192,15 @@ export function workingSetView(
     rows,
     visible: rows.length > 0,
     navClassName: WORKING_SET_NAV_CLASS,
-    navLabel: "working set",
+    navLabel: WORKING_SET_NAV_LABEL,
     countClassName: WORKING_SET_COUNT_CLASS,
-    countLabel: String(rows.length),
-    countAriaLabel: `${rows.length} expansions in working set`,
+    count: rows.length,
+    countAriaLabel: {
+      key: "graph:accessibility.workingSetCount",
+      values: { count: rows.length },
+    },
     clearButtonClassName: WORKING_SET_CLEAR_BUTTON_CLASS,
-    clearLabel: "clear to constellation",
+    clearLabel: WORKING_SET_CLEAR_LABEL,
   };
 }
 
@@ -163,7 +213,7 @@ export function workingSetKeyAction(
     if (nodeId === null) return null;
     return {
       id: WORKING_SET_EXPAND_SELECTION_ACTION_ID,
-      label: legacyActionPresentation("Expand selected document into the working set"),
+      label: WORKING_SET_EXPAND_SELECTION_LABEL,
       run: () => expandWorkingSet(nodeId),
     };
   }
@@ -173,7 +223,7 @@ export function workingSetKeyAction(
     if (last === undefined) return null;
     return {
       id: WORKING_SET_COLLAPSE_LAST_ACTION_ID,
-      label: legacyActionPresentation("Collapse the last working-set expansion"),
+      label: WORKING_SET_COLLAPSE_LAST_LABEL,
       run: () => collapseWorkingSet(last),
     };
   }

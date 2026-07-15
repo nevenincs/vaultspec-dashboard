@@ -1,4 +1,8 @@
 export const features = {
+  actions: {
+    moveToNextFeature: "Move to the next feature",
+    moveToPreviousFeature: "Move to the previous feature",
+  },
   confirmations: {
     archive: {
       body: "This removes the feature and its documents from active work.",

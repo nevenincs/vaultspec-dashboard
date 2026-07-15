@@ -5,7 +5,11 @@
 // the working set to the constellation.
 
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
+import { formatNumber } from "../../platform/localization/formatters";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { localizationNamespaces } from "../../platform/localization/runtime";
 import {
   clearWorkingSet,
   collapseWorkingSet,
@@ -34,45 +38,66 @@ export function WorkingSet({
 }: WorkingSetProps = {}) {
   const view = useWorkingSetView(visibleNodeIds);
   useWorkingSetKeybindings(canonicalSelectedId ?? null);
+  const resolveMessage = useLocalizedMessageResolver();
+  const { i18n } = useTranslation(localizationNamespaces, { useSuspense: false });
+  const locale = i18n.resolvedLanguage ?? i18n.language;
 
   // The trail hides entirely when the working set is empty: the constellation
   // alone needs no provenance.
   if (!view.visible) return null;
   return (
-    <nav className={view.navClassName} aria-label={view.navLabel} data-working-set>
+    <nav
+      className={view.navClassName}
+      aria-label={resolveMessage(view.navLabel).message}
+      data-working-set
+    >
       {/* Working-set size: a data-bearing count, tabular numerals. */}
       <span
         data-tabular
         className={view.countClassName}
-        aria-label={view.countAriaLabel}
+        aria-label={resolveMessage(view.countAriaLabel).message}
       >
-        {view.countLabel}
+        {formatNumber(locale, view.count) ?? String(view.count)}
       </span>
-      {view.rows.map((row) => (
-        <span
-          key={row.id}
-          className={row.rootClassName}
-          data-working-set-hidden={row.hidden ? "" : undefined}
-          title={row.hiddenHint}
-          aria-label={row.hidden ? `${row.label} — ${row.hiddenHint}` : undefined}
-        >
-          {row.label}
-          <button
-            type="button"
-            aria-label={row.collapseLabel}
-            className={row.collapseButtonClassName}
-            onClick={() => collapseWorkingSet(row.id)}
+      {view.rows.map((row) => {
+        const rowLabel =
+          row.label.kind === "user-data"
+            ? row.label.value
+            : resolveMessage(row.label.descriptor).message;
+        return (
+          <span
+            key={row.id}
+            className={row.rootClassName}
+            data-working-set-hidden={row.hidden ? "" : undefined}
+            title={
+              row.hiddenHint === undefined
+                ? undefined
+                : resolveMessage(row.hiddenHint).message
+            }
+            aria-label={
+              row.hiddenLabel === undefined
+                ? undefined
+                : resolveMessage(row.hiddenLabel).message
+            }
           >
-            <X size={11} aria-hidden />
-          </button>
-        </span>
-      ))}
+            {rowLabel}
+            <button
+              type="button"
+              aria-label={resolveMessage(row.collapseLabel).message}
+              className={row.collapseButtonClassName}
+              onClick={() => collapseWorkingSet(row.id)}
+            >
+              <X size={11} aria-hidden />
+            </button>
+          </span>
+        );
+      })}
       <button
         type="button"
         onClick={clearWorkingSet}
         className={view.clearButtonClassName}
       >
-        {view.clearLabel}
+        {resolveMessage(view.clearLabel).message}
       </button>
     </nav>
   );

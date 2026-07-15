@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { resolveMessageResult } from "../../platform/localization/fallback";
 import type { EngineNode } from "../server/engine";
 import {
   KEYBOARD_NAVIGATION_BINDINGS,
@@ -24,7 +30,10 @@ describe("deriveKeyboardNavigationView", () => {
       selectedId: "doc:a",
       neighborIds: ["doc:b", "doc:c"],
       featureIds: ["feature:design", "feature:runtime"],
-      announcement: "selected a",
+      announcement: {
+        key: "graph:accessibility.selectedItem",
+        values: { item: "a" },
+      },
     });
   });
 
@@ -33,8 +42,35 @@ describe("deriveKeyboardNavigationView", () => {
       selectedId: null,
       neighborIds: [],
       featureIds: [],
-      announcement: "",
+      announcement: null,
     });
+  });
+
+  it("announces bounded display labels without exposing unsupported stable ids", () => {
+    const code = deriveKeyboardNavigationView("code:src/app.ts", undefined, []);
+    expect(code.announcement).toEqual({
+      key: "graph:accessibility.selectedItem",
+      values: { item: "src/app.ts" },
+    });
+    const unsupported = deriveKeyboardNavigationView(
+      "commit:0123456789abcdef",
+      undefined,
+      [],
+    );
+    expect(unsupported.announcement).toEqual({
+      key: "graph:accessibility.selectedItemGeneric",
+    });
+
+    for (const locale of [undefined, ltrTestLocale, rtlTestLocale] as const) {
+      const runtime = createTestLocalizationRuntime(locale);
+      const codeMessage = resolveMessageResult(runtime, code.announcement);
+      const genericMessage = resolveMessageResult(runtime, unsupported.announcement);
+      expect(codeMessage.usedFallback).toBe(false);
+      expect(codeMessage.message).toContain("src/app.ts");
+      expect(codeMessage.message).not.toContain("code:");
+      expect(genericMessage.usedFallback).toBe(false);
+      expect(genericMessage.message).not.toContain("0123456789abcdef");
+    }
   });
 });
 
@@ -57,7 +93,7 @@ describe("deriveKeyboardNavigationKeyIntent", () => {
     selectedId: "feature:runtime",
     neighborIds: ["doc:a", "doc:b"],
     featureIds: ["feature:design", "feature:runtime", "feature:search"],
-    announcement: "selected runtime",
+    announcement: null,
   };
 
   it("projects arrow keys to canonical node-selection intents", () => {
@@ -100,6 +136,39 @@ describe("keyboard navigation keybinding catalog", () => {
       ["nav:feature-previous", "ArrowUp", "ArrowUp", "global"],
       ["nav:feature-next", "ArrowDown", "ArrowDown", "global"],
     ]);
+    expect(KEYBOARD_NAVIGATION_BINDINGS.map(({ label }) => label)).toEqual([
+      { key: "graph:actions.moveToPreviousConnectedItem" },
+      { key: "graph:actions.moveToNextConnectedItem" },
+      { key: "features:actions.moveToPreviousFeature" },
+      { key: "features:actions.moveToNextFeature" },
+    ]);
+    expect(
+      KEYBOARD_NAVIGATION_BINDINGS.every(
+        ({ group }) => group === KEYBOARD_NAVIGATION_BINDINGS[0]?.group,
+      ),
+    ).toBe(true);
+    expect(KEYBOARD_NAVIGATION_BINDINGS[0]?.group).toEqual({
+      key: "common:shortcutGroups.navigation",
+    });
+  });
+
+  it("resolves every binding through genuine English, French, and Arabic resources", () => {
+    const runtimes = [
+      createTestLocalizationRuntime(),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
+    ] as const;
+    for (const binding of KEYBOARD_NAVIGATION_BINDINGS) {
+      const messages = runtimes.map(
+        (runtime) => resolveMessageResult(runtime, binding.label).message,
+      );
+      expect(new Set(messages).size).toBe(3);
+      expect(
+        runtimes.every(
+          (runtime) => !resolveMessageResult(runtime, binding.label).usedFallback,
+        ),
+      ).toBe(true);
+    }
   });
 
   it("maps registered action ids back to the canonical key-intent input", () => {
@@ -122,13 +191,14 @@ describe("deriveKeyboardNavigationActionDescriptor", () => {
         selectedId: null,
         neighborIds: ["doc:a", "doc:b"],
         featureIds: [],
-        announcement: "",
+        announcement: null,
       },
       async (id: string) => {
         selected.push(id);
       },
     );
     if (!action?.run) throw new Error("missing keyboard navigation action");
+    expect(action.label).toBe(binding.label);
 
     action.run();
 
@@ -143,7 +213,7 @@ describe("deriveKeyboardNavigationActionDescriptor", () => {
     expect(
       deriveKeyboardNavigationActionDescriptor(
         binding,
-        { selectedId: null, neighborIds: [], featureIds: [], announcement: "" },
+        { selectedId: null, neighborIds: [], featureIds: [], announcement: null },
         async () => undefined,
       ),
     ).toBeNull();

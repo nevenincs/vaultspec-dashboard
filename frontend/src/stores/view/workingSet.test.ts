@@ -1,9 +1,17 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { resolveMessageResult } from "../../platform/localization/fallback";
 import { WORKING_SET_CAP, useViewStore } from "./viewStore";
 import {
   WORKING_SET_COLLAPSE_LAST_ACTION_ID,
   WORKING_SET_EXPAND_SELECTION_ACTION_ID,
+  WORKING_SET_COLLAPSE_LAST_LABEL,
+  WORKING_SET_EXPAND_SELECTION_LABEL,
   WORKING_SET_KEYBINDINGS,
   clearWorkingSet,
   collapseWorkingSet,
@@ -90,8 +98,11 @@ describe("working-set intent seam", () => {
     expect(workingSetRows(["doc:alpha", "feature:beta", "code:src/app.ts"])).toEqual([
       {
         id: "doc:alpha",
-        label: "alpha",
-        collapseLabel: "Collapse alpha",
+        label: { kind: "user-data", value: "alpha" },
+        collapseLabel: {
+          key: "graph:actions.removeNamedItemFromWorkingSet",
+          values: { item: "alpha" },
+        },
         rootClassName:
           "flex items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-raised px-fg-2 py-fg-0-5 text-caption text-ink shadow-fg-raised",
         collapseButtonClassName:
@@ -99,8 +110,11 @@ describe("working-set intent seam", () => {
       },
       {
         id: "feature:beta",
-        label: "beta",
-        collapseLabel: "Collapse beta",
+        label: { kind: "user-data", value: "beta" },
+        collapseLabel: {
+          key: "graph:actions.removeNamedItemFromWorkingSet",
+          values: { item: "beta" },
+        },
         rootClassName:
           "flex items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-raised px-fg-2 py-fg-0-5 text-caption text-ink shadow-fg-raised",
         collapseButtonClassName:
@@ -108,8 +122,11 @@ describe("working-set intent seam", () => {
       },
       {
         id: "code:src/app.ts",
-        label: "code:src/app.ts",
-        collapseLabel: "Collapse code:src/app.ts",
+        label: { kind: "user-data", value: "src/app.ts" },
+        collapseLabel: {
+          key: "graph:actions.removeNamedItemFromWorkingSet",
+          values: { item: "src/app.ts" },
+        },
         rootClassName:
           "flex items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-raised px-fg-2 py-fg-0-5 text-caption text-ink shadow-fg-raised",
         collapseButtonClassName:
@@ -118,13 +135,35 @@ describe("working-set intent seam", () => {
     ]);
   });
 
+  it("uses generic localized presentation for unsupported stable ids", () => {
+    expect(workingSetRows(["commit:0123456789abcdef", "internal:private-id"])).toEqual([
+      expect.objectContaining({
+        id: "commit:0123456789abcdef",
+        label: { kind: "message", descriptor: { key: "graph:labels.item" } },
+        collapseLabel: { key: "graph:actions.removeItemFromWorkingSet" },
+      }),
+      expect.objectContaining({
+        id: "internal:private-id",
+        label: { kind: "message", descriptor: { key: "graph:labels.item" } },
+        collapseLabel: { key: "graph:actions.removeItemFromWorkingSet" },
+      }),
+    ]);
+    const [hidden] = workingSetRows(["commit:0123456789abcdef"], new Set<string>());
+    expect(hidden.hiddenLabel).toEqual({
+      key: "graph:accessibility.workingSetItemHidden",
+    });
+  });
+
   it("projects chip-trail presentation behind the seam", () => {
     expect(workingSetView(["doc:alpha", "feature:beta"])).toEqual({
       rows: [
         {
           id: "doc:alpha",
-          label: "alpha",
-          collapseLabel: "Collapse alpha",
+          label: { kind: "user-data", value: "alpha" },
+          collapseLabel: {
+            key: "graph:actions.removeNamedItemFromWorkingSet",
+            values: { item: "alpha" },
+          },
           rootClassName:
             "flex items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-raised px-fg-2 py-fg-0-5 text-caption text-ink shadow-fg-raised",
           collapseButtonClassName:
@@ -132,8 +171,11 @@ describe("working-set intent seam", () => {
         },
         {
           id: "feature:beta",
-          label: "beta",
-          collapseLabel: "Collapse beta",
+          label: { kind: "user-data", value: "beta" },
+          collapseLabel: {
+            key: "graph:actions.removeNamedItemFromWorkingSet",
+            values: { item: "beta" },
+          },
           rootClassName:
             "flex items-center gap-fg-1 rounded-fg-pill border border-rule bg-paper-raised px-fg-2 py-fg-0-5 text-caption text-ink shadow-fg-raised",
           collapseButtonClassName:
@@ -143,14 +185,17 @@ describe("working-set intent seam", () => {
       visible: true,
       navClassName:
         "pointer-events-auto absolute top-9 left-2 z-10 flex flex-wrap items-center gap-1",
-      navLabel: "working set",
+      navLabel: { key: "graph:accessibility.workingSet" },
       countClassName:
         "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption tabular-nums text-ink-muted",
-      countLabel: "2",
-      countAriaLabel: "2 expansions in working set",
+      count: 2,
+      countAriaLabel: {
+        key: "graph:accessibility.workingSetCount",
+        values: { count: 2 },
+      },
       clearButtonClassName:
         "rounded-fg-pill border border-rule bg-paper-sunken px-fg-2 py-fg-0-5 text-caption text-ink-muted hover:text-ink transition-colors duration-ui-fast ease-settle focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-      clearLabel: "clear to constellation",
+      clearLabel: { key: "graph:actions.clearWorkingSet" },
     });
   });
 
@@ -158,8 +203,11 @@ describe("working-set intent seam", () => {
     expect(workingSetView([])).toMatchObject({
       rows: [],
       visible: false,
-      countLabel: "0",
-      countAriaLabel: "0 expansions in working set",
+      count: 0,
+      countAriaLabel: {
+        key: "graph:accessibility.workingSetCount",
+        values: { count: 0 },
+      },
     });
   });
 
@@ -176,7 +224,13 @@ describe("working-set intent seam", () => {
 
     // Filtered OUT → hidden:true, a plain-language affordance, and the dim utility appended.
     expect(rows[1].hidden).toBe(true);
-    expect(rows[1].hiddenHint).toBe("Hidden by the active filter");
+    expect(rows[1].hiddenHint).toEqual({
+      key: "graph:accessibility.hiddenByActiveFilter",
+    });
+    expect(rows[1].hiddenLabel).toEqual({
+      key: "graph:accessibility.namedWorkingSetItemHidden",
+      values: { item: "beta" },
+    });
     expect(rows[1].rootClassName).toBe(`${baseClass} opacity-50`);
   });
 
@@ -195,18 +249,21 @@ describe("working-set intent seam", () => {
       {
         id: WORKING_SET_EXPAND_SELECTION_ACTION_ID,
         defaultChord: "E",
-        label: "Expand selected document into the working set",
-        group: "Working set",
+        label: WORKING_SET_EXPAND_SELECTION_LABEL,
+        group: { key: "graph:shortcutGroups.workingSet" },
         context: "global",
       },
       {
         id: WORKING_SET_COLLAPSE_LAST_ACTION_ID,
         defaultChord: "Backspace",
-        label: "Collapse the last working-set expansion",
-        group: "Working set",
+        label: WORKING_SET_COLLAPSE_LAST_LABEL,
+        group: { key: "graph:shortcutGroups.workingSet" },
         context: "global",
       },
     ]);
+    expect(WORKING_SET_KEYBINDINGS[0]?.label).toBe(WORKING_SET_EXPAND_SELECTION_LABEL);
+    expect(WORKING_SET_KEYBINDINGS[1]?.label).toBe(WORKING_SET_COLLAPSE_LAST_LABEL);
+    expect(WORKING_SET_KEYBINDINGS[0]?.group).toBe(WORKING_SET_KEYBINDINGS[1]?.group);
   });
 
   it("projects working-set keyboard actions from current store state", () => {
@@ -216,7 +273,7 @@ describe("working-set intent seam", () => {
     );
     expect(expand).toMatchObject({
       id: WORKING_SET_EXPAND_SELECTION_ACTION_ID,
-      label: "Expand selected document into the working set",
+      label: WORKING_SET_EXPAND_SELECTION_LABEL,
     });
 
     expand?.run?.();
@@ -225,11 +282,31 @@ describe("working-set intent seam", () => {
     const collapse = workingSetKeyAction(WORKING_SET_COLLAPSE_LAST_ACTION_ID, null);
     expect(collapse).toMatchObject({
       id: WORKING_SET_COLLAPSE_LAST_ACTION_ID,
-      label: "Collapse the last working-set expansion",
+      label: WORKING_SET_COLLAPSE_LAST_LABEL,
     });
 
     collapse?.run?.();
     expect(useViewStore.getState().workingSet).toEqual([]);
+    expect(expand?.label).toBe(WORKING_SET_EXPAND_SELECTION_LABEL);
+    expect(collapse?.label).toBe(WORKING_SET_COLLAPSE_LAST_LABEL);
+  });
+
+  it("resolves working-set bindings through genuine English, French, and Arabic resources", () => {
+    const runtimes = [
+      createTestLocalizationRuntime(),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
+    ] as const;
+    for (const binding of WORKING_SET_KEYBINDINGS) {
+      const labels = runtimes.map(
+        (runtime) => resolveMessageResult(runtime, binding.label).message,
+      );
+      const groups = runtimes.map(
+        (runtime) => resolveMessageResult(runtime, binding.group).message,
+      );
+      expect(new Set(labels).size).toBe(3);
+      expect(new Set(groups).size).toBe(3);
+    }
   });
 
   it("keeps working-set keyboard actions inert without actionable state", () => {

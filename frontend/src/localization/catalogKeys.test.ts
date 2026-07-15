@@ -220,6 +220,8 @@ const EXPECTED_CATALOG_KEYS = [
   "errors:unexpectedApplication.title",
   "errors:unexpectedSection.message",
   "errors:unexpectedSection.title",
+  "features:actions.moveToNextFeature",
+  "features:actions.moveToPreviousFeature",
   "features:confirmations.archive.body",
   "features:confirmations.archive.title",
   "features:confirmations.repair.body",
@@ -234,7 +236,17 @@ const EXPECTED_CATALOG_KEYS = [
   "features:feedback.repairUnavailable",
   "features:guardedActions.repair",
   "features:labels.feature",
+  "graph:accessibility.selectedItem",
+  "graph:accessibility.selectedItemGeneric",
+  "graph:accessibility.workingSet",
+  "graph:accessibility.workingSetCount_one",
+  "graph:accessibility.workingSetCount_other",
+  "graph:accessibility.hiddenByActiveFilter",
+  "graph:accessibility.namedWorkingSetItemHidden",
+  "graph:accessibility.workingSetItemHidden",
+  "graph:actions.addSelectedItemToWorkingSet",
   "graph:actions.clearSelection",
+  "graph:actions.clearWorkingSet",
   "graph:actions.expandFocusedItem",
   "graph:actions.fitToView",
   "graph:actions.moveToNextConnectedItem",
@@ -243,9 +255,14 @@ const EXPECTED_CATALOG_KEYS = [
   "graph:actions.pauseMovement",
   "graph:actions.resetSettings",
   "graph:actions.resetView",
+  "graph:actions.removeItemFromWorkingSet",
+  "graph:actions.removeNamedItemFromWorkingSet",
+  "graph:actions.removeLastItemFromWorkingSet",
   "graph:actions.resumeMovement",
   "graph:actions.zoomIn",
   "graph:actions.zoomOut",
+  "graph:shortcutGroups.workingSet",
+  "graph:labels.item",
   "operations:actions.applySearchSettings",
   "operations:actions.checkWorkspace",
   "operations:actions.disableSearch",
@@ -276,6 +293,7 @@ const EXPECTED_CATALOG_KEYS = [
   "projects:actions.add",
   "projects:actions.clearHistory",
   "projects:actions.switch",
+  "projects:shortcutGroups.projects",
   "settings:actions.useDarkTheme",
   "settings:actions.useHighContrastTheme",
   "settings:actions.useLightTheme",
@@ -338,12 +356,13 @@ const EXPECTED_CATALOG_KEYS = [
 const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   ...EXPECTED_CATALOG_KEYS.filter(
     (key) =>
-      !/^common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement)_(?:one|other)$/u.test(
+      !/^(?:common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement)|graph:accessibility\.workingSetCount)_(?:one|other)$/u.test(
         key,
       ),
   ),
   "common:commandPalette.selectionAnnouncement",
   "common:palette.commandCount",
+  "graph:accessibility.workingSetCount",
 ] as readonly MessageKey[];
 
 function splitMessageKey(key: PhysicalMessageKey): {
@@ -395,6 +414,7 @@ describe("shipped localization catalog keys", () => {
     expect(PLURAL_MESSAGE_KEYS).toEqual([
       "common:commandPalette.selectionAnnouncement",
       "common:palette.commandCount",
+      "graph:accessibility.workingSetCount",
     ]);
     expect(isPluralMessageKey("common:palette.commandCount")).toBe(true);
     expect(isMessageKey("common:palette.commandCount_one")).toBe(false);

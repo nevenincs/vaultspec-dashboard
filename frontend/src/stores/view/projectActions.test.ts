@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { FolderGit2, FolderPlus } from "lucide-react";
 
-import { createTestLocalizationRuntime } from "../../localization/testing";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
 import { resolveMessageResult } from "../../platform/localization/fallback";
 import {
   PROJECT_BROWSE_ACTION_ID,
   PROJECT_CLEAR_HISTORY_ACTION_ID,
   PROJECT_OPEN_ACTION_ID,
+  PROJECT_BROWSE_LABEL,
+  PROJECT_OPEN_LABEL,
   browseProjectsAction,
   deriveProjectKeybindings,
   openProjectAction,
@@ -20,22 +26,24 @@ describe("project action group", () => {
       {
         id: PROJECT_OPEN_ACTION_ID,
         defaultChord: "Mod+Alt+O",
-        label: "Project: Open",
-        group: "Project",
+        label: PROJECT_OPEN_LABEL,
+        group: { key: "projects:shortcutGroups.projects" },
         context: "global",
       },
       {
         id: PROJECT_BROWSE_ACTION_ID,
         defaultChord: "Mod+Alt+P",
-        label: "Project: Browse or Switch",
-        group: "Project",
+        label: PROJECT_BROWSE_LABEL,
+        group: { key: "projects:shortcutGroups.projects" },
         context: "global",
       },
     ]);
     // Clear History is a destructive verb — palette-only, no standing chord.
     expect(defs.map((b) => b.id)).not.toContain(PROJECT_CLEAR_HISTORY_ACTION_ID);
     expect(new Set(defs.map((b) => b.defaultChord)).size).toBe(2);
-    expect(defs.every((b) => b.group === "Project")).toBe(true);
+    expect(defs[0]?.label).toBe(PROJECT_OPEN_LABEL);
+    expect(defs[1]?.label).toBe(PROJECT_BROWSE_LABEL);
+    expect(defs[0]?.group).toBe(defs[1]?.group);
   });
 
   it("authors project navigation with canonical descriptors and stable behavior", () => {
@@ -51,20 +59,26 @@ describe("project action group", () => {
       section: "navigate",
       icon: FolderGit2,
     });
+    expect(openProjectAction().label).toBe(PROJECT_OPEN_LABEL);
+    expect(browseProjectsAction().label).toBe(PROJECT_BROWSE_LABEL);
   });
 
   it("resolves project navigation through the real localization runtime", () => {
-    const runtime = createTestLocalizationRuntime();
-    const cases = [
-      [openProjectAction(), "Add project…"],
-      [browseProjectsAction(), "Switch project…"],
+    const runtimes = [
+      createTestLocalizationRuntime(),
+      createTestLocalizationRuntime(ltrTestLocale),
+      createTestLocalizationRuntime(rtlTestLocale),
     ] as const;
-
-    for (const [action, message] of cases) {
-      expect(resolveMessageResult(runtime, action.label)).toEqual({
-        message,
-        usedFallback: false,
-      });
+    for (const action of [openProjectAction(), browseProjectsAction()]) {
+      const messages = runtimes.map(
+        (runtime) => resolveMessageResult(runtime, action.label).message,
+      );
+      expect(new Set(messages).size).toBe(3);
+      expect(
+        runtimes.every(
+          (runtime) => !resolveMessageResult(runtime, action.label).usedFallback,
+        ),
+      ).toBe(true);
     }
   });
 });

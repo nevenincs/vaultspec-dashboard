@@ -4,4 +4,7 @@ export const projects = {
     clearHistory: "Clear project history",
     switch: "Switch project…",
   },
+  shortcutGroups: {
+    projects: "Projects",
+  },
 } as const;

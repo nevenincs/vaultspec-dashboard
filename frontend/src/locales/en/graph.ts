@@ -1,6 +1,18 @@
 export const graph = {
+  accessibility: {
+    selectedItem: "Selected {{item}}.",
+    selectedItemGeneric: "Item selected.",
+    workingSet: "Working set",
+    workingSetCount_one: "{{count, number}} item in working set",
+    workingSetCount_other: "{{count, number}} items in working set",
+    hiddenByActiveFilter: "Hidden by the active filter",
+    namedWorkingSetItemHidden: "{{item}} is hidden by the active filter.",
+    workingSetItemHidden: "Item is hidden by the active filter.",
+  },
   actions: {
+    addSelectedItemToWorkingSet: "Add selected item to working set",
     clearSelection: "Clear the graph selection",
+    clearWorkingSet: "Clear working set",
     expandFocusedItem: "Expand focused item into working set",
     fitToView: "Fit graph to view",
     moveToNextConnectedItem: "Move to the next connected item",
@@ -9,8 +21,17 @@ export const graph = {
     pauseMovement: "Pause graph movement",
     resetSettings: "Reset graph settings",
     resetView: "Reset graph view",
+    removeItemFromWorkingSet: "Remove item from working set",
+    removeNamedItemFromWorkingSet: "Remove {{item}} from working set",
+    removeLastItemFromWorkingSet: "Remove last item from working set",
     resumeMovement: "Resume graph movement",
     zoomIn: "Zoom in",
     zoomOut: "Zoom out",
+  },
+  shortcutGroups: {
+    workingSet: "Working set",
+  },
+  labels: {
+    item: "Item",
   },
 } as const;

@@ -2855,16 +2855,6 @@
     "rule": "jsx-text"
   },
   {
-    "id": "8bf7e09765b74f5472cc782c",
-    "path": "src/app/stage/WorkingSet.tsx",
-    "rule": "jsx-attribute"
-  },
-  {
-    "id": "a11e1ce824b6c5fc905a16b7",
-    "path": "src/app/stage/WorkingSet.tsx",
-    "rule": "jsx-text"
-  },
-  {
     "id": "832ce6d965f4e15d23a25604",
     "path": "src/app/stage/WorkspaceGhost.tsx",
     "rule": "jsx-attribute"
@@ -5090,36 +5080,6 @@
     "rule": "presentation-field"
   },
   {
-    "id": "f268a54d55ae308d3da375a5",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "9b616ebb8f879bd61ff36195",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "b203844e818748fb79fb7147",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "c0e8ad1961b07d2af62d016a",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "e6d161d202b7ace5f60af44e",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "f4f731fde6df779cab215722",
-    "path": "src/stores/view/keyboardNavigation.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
     "id": "989034ee926d29553b8082b8",
     "path": "src/stores/view/keyboardShortcuts.ts",
     "rule": "legacy-action-presentation"
@@ -5148,21 +5108,6 @@
     "id": "de76863cac9c0ac0f7859ebd",
     "path": "src/stores/view/nodeInterior.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "60bc0affeaf5c6f7243d838a",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "cad9ffb140bf19679fdd51c1",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "e034daf5ddc8963e952f5212",
-    "path": "src/stores/view/projectActions.ts",
-    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "06b8730c24d52af5e7518dae",
@@ -5253,31 +5198,6 @@
     "id": "e8d58ea0d049d31cd99eef3f",
     "path": "src/stores/view/unsavedEditGuard.ts",
     "rule": "presentation-field"
-  },
-  {
-    "id": "8491b5c68ccb23fbe0554df7",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "c9cf3a2e4d6c4aac45ffe6d0",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "72d1433c260f214ab41534aa",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "af7a322d1f3770e5bf37fd72",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "legacy-keybinding-presentation"
-  },
-  {
-    "id": "ed9e9e40742d0c125d6fd8fc",
-    "path": "src/stores/view/workingSet.ts",
-    "rule": "legacy-keybinding-presentation"
   },
   {
     "id": "5a984c395bd36bd055e1480b",
