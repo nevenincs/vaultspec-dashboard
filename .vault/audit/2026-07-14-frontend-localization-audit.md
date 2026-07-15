@@ -2171,3 +2171,22 @@ Terra and an independent reviewer approved the implementation with no findings. 
 and Terra each passed 26 focused tests; the complete frontend lint recipe also passed.
 Seven exact exemptions were removed, reducing the scanner from 1,042 to 1,035 findings
 and legacy action presentations from 29 to 22. S178 is accepted with no open findings.
+
+### W04.P10.S182 and S184 review | pass | Right-rail history uses product language
+
+Commit menus now say View project at this version and provide distinct recovery actions
+for switching to documents, refreshing history, or choosing a project. Full and short
+commit hashes and commit messages use explicit copy labels. Pull-request menus use typed
+open, refresh, copy-link, and copy-number descriptors.
+
+Stable IDs, order, sections, icons, navigation, time-travel behavior, external link
+handling, and raw hash, message, URL, and number clipboard values remain unchanged.
+English, French, and Arabic catalogs resolve every migrated presentation without
+fallback. No corpus, scope, remote-state, or development vocabulary enters user copy.
+
+Root and Terra passed 73 focused tests. The complete frontend lint recipe passed, and
+independent review found no issues. A separate full frontend test command exceeded its
+execution window without reporting a failure, so it is not counted as verification.
+Six exact exemptions were removed, reducing the scanner from 1,035 to 1,029 findings
+and legacy action presentations from 22 to 16. S182 and S184 are accepted. S185 remains
+open for the remaining right-rail menu tests.
