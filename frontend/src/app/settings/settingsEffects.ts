@@ -11,9 +11,16 @@ import {
   useSettingsEffectsView,
 } from "../../stores/server/queries";
 import { useSettingsEffectsIntent } from "../../stores/server/settingsEffectsIntent";
+import { localeController } from "../../platform/localization/runtime";
 
 export function useSettingsEffects(scope: unknown = null) {
-  const { loading, reduceMotion, graphDefaults } = useSettingsEffectsView(scope);
+  const {
+    loading,
+    reduceMotion,
+    languagePreference,
+    languagePreferenceCacheable,
+    graphDefaults,
+  } = useSettingsEffectsView(scope);
   // Bridge persisted keybinding overrides into the global keymap dispatcher
   // (keyboard-action-system W02). Stores owns the wire read; this only mounts.
   useKeymapOverridesBinding();
@@ -28,6 +35,13 @@ export function useSettingsEffects(scope: unknown = null) {
     if (loading) return;
     document.documentElement.dataset.reduceMotion = reduceMotion ? "true" : "false";
   }, [loading, reduceMotion]);
+
+  useEffect(() => {
+    if (loading || languagePreference === null) return;
+    void localeController.reconcilePreference(languagePreference, {
+      cache: languagePreferenceCacheable,
+    });
+  }, [languagePreference, languagePreferenceCacheable, loading]);
 
   // Graph/filter defaults initialize a fresh dashboard-state scope once. After
   // that, dashboard-state is the live owner; settings must not keep overwriting

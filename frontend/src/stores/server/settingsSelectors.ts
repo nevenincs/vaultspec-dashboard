@@ -82,6 +82,11 @@ export interface SettingsGroup {
 
 export type LanguagePreference = "system" | "en";
 
+export interface LanguageAuthorityResolution {
+  readonly preference: LanguagePreference;
+  readonly cacheable: boolean;
+}
+
 export const normalizeSettingsScope = normalizeStoreScope;
 
 /**
@@ -153,11 +158,11 @@ export function resolveReduceMotionSetting(
   return setting ? decodeBool(setting.value) : false;
 }
 
-/** Resolve the authoritative global language preference as raw identity. */
-export function resolveLanguagePreference(
+/** Resolve language identity and whether it came from a valid authoritative row. */
+export function resolveLanguageAuthority(
   schema: SettingsSchema | undefined,
   settings: SettingsState | undefined,
-): LanguagePreference | null {
+): LanguageAuthorityResolution | null {
   if (schema === undefined || settings === undefined) return null;
   const def = settingDefByKey(schema, CONSUMED_SETTING_KEYS.language);
   if (
@@ -168,10 +173,20 @@ export function resolveLanguagePreference(
     def.value_type.members[0] !== "system" ||
     def.value_type.members[1] !== "en"
   ) {
-    return "en";
+    return { preference: "en", cacheable: false };
   }
   const value = resolveEffective(def, settings, null).value;
-  return value === "system" || value === "en" ? value : "en";
+  return value === "system" || value === "en"
+    ? { preference: value, cacheable: true }
+    : { preference: "en", cacheable: false };
+}
+
+/** Resolve the authoritative global language preference as raw identity. */
+export function resolveLanguagePreference(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+): LanguagePreference | null {
+  return resolveLanguageAuthority(schema, settings)?.preference ?? null;
 }
 
 /** Whether a setting row can target the active scope. */

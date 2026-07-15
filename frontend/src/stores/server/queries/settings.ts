@@ -17,6 +17,7 @@ import {
   resolveEffectiveSetting,
   resolveGraphSettingsDefaults,
   resolveKeybindingOverrides,
+  resolveLanguageAuthority,
   resolveReduceMotionSetting,
   resolveSettings,
   settingEnumMembers,
@@ -100,6 +101,8 @@ export interface ThemeSettingView {
 export interface SettingsEffectsView {
   loading: boolean;
   reduceMotion: boolean;
+  languagePreference: "system" | "en" | null;
+  languagePreferenceCacheable: boolean;
   graphDefaults: GraphSettingsDefaults | null;
 }
 
@@ -153,9 +156,12 @@ export function deriveSettingsEffectsView(
   settingsLoading = false,
 ): SettingsEffectsView {
   const loading = schemaLoading || settingsLoading;
+  const language = loading ? null : resolveLanguageAuthority(schema, settings);
   return {
     loading,
     reduceMotion: loading ? false : resolveReduceMotionSetting(schema, settings),
+    languagePreference: language?.preference ?? (loading ? null : "en"),
+    languagePreferenceCacheable: language?.cacheable ?? false,
     graphDefaults: loading
       ? null
       : resolveGraphSettingsDefaults(schema, settings, activeScope),

@@ -211,6 +211,8 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
     ).toEqual({
       loading: false,
       reduceMotion: true,
+      languagePreference: "en",
+      languagePreferenceCacheable: false,
       graphDefaults: {
         defaultGranularity: "feature",
         corpus: "vault",
@@ -253,7 +255,56 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
     ).toEqual({
       loading: true,
       reduceMotion: false,
+      languagePreference: null,
+      languagePreferenceCacheable: false,
       graphDefaults: null,
+    });
+  });
+
+  it("exposes settled language authority separately from fallback", () => {
+    const languageSchema: SettingsSchema = {
+      ...schema,
+      settings: [
+        ...schema.settings,
+        {
+          key: "language",
+          value_type: { type: "enum", members: ["system", "en"] },
+          default: "system",
+          scope_eligible: false,
+          control: "segmented",
+          display: {
+            id: "appearance.language",
+            group: "appearance",
+            enum_members: [
+              { value: "system", id: "language.system" },
+              { value: "en", id: "language.english" },
+            ],
+          },
+          order: 4,
+        },
+      ],
+    };
+
+    expect(
+      deriveSettingsEffectsView(
+        languageSchema,
+        { global: { language: "system" }, scoped: {}, tiers: {} },
+        null,
+      ),
+    ).toMatchObject({
+      loading: false,
+      languagePreference: "system",
+      languagePreferenceCacheable: true,
+    });
+    expect(
+      deriveSettingsEffectsView(
+        languageSchema,
+        { global: { language: "fr" }, scoped: {}, tiers: {} },
+        null,
+      ),
+    ).toMatchObject({
+      languagePreference: "en",
+      languagePreferenceCacheable: false,
     });
   });
 });

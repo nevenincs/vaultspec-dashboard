@@ -9,6 +9,12 @@ import {
   type EnglishResources,
 } from "../../locales/en";
 import { SAFE_FALLBACK_SOURCE_MESSAGE } from "./fallback";
+import {
+  createLocaleController,
+  resolveInitialLocale,
+  supportedLocales,
+  type SupportedLocale,
+} from "./localeController";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -23,11 +29,7 @@ export const localizationNamespaces = Object.freeze(
   Object.keys(en) as (keyof EnglishResources)[],
 );
 
-export const supportedLocales = Object.freeze(
-  Object.keys(resources) as (keyof typeof resources)[],
-);
-
-export type SupportedLocale = (typeof supportedLocales)[number];
+export { supportedLocales, type SupportedLocale } from "./localeController";
 
 const safeMissingMessage = (): string => SAFE_FALLBACK_SOURCE_MESSAGE;
 
@@ -63,12 +65,15 @@ const localizationOptions = {
 } satisfies InitOptions;
 
 /** Create a real, fully initialized runtime backed only by shipped resources. */
-export function createLocalizationRuntime(): i18n {
+export function createLocalizationRuntime(
+  language: SupportedLocale = sourceLocale,
+): i18n {
   const instance = createInstance();
   instance.use(initReactI18next);
   void instance.init({
     ...localizationOptions,
     ns: [...localizationNamespaces],
+    lng: language,
     resources: structuredClone(resources),
     supportedLngs: [...supportedLocales],
   });
@@ -80,5 +85,27 @@ export function createLocalizationRuntime(): i18n {
   return instance;
 }
 
+export interface ApplicationLocalizationRuntime {
+  readonly initialLocale: ReturnType<typeof resolveInitialLocale>;
+  readonly localization: i18n;
+  readonly localeController: ReturnType<typeof createLocaleController>;
+}
+
+/** Construct the initialized runtime and controller from one synchronous cache read. */
+export function createApplicationLocalizationRuntime(): ApplicationLocalizationRuntime {
+  const initialLocale = resolveInitialLocale();
+  const initializedRuntime = createLocalizationRuntime(initialLocale.locale);
+  return Object.freeze({
+    initialLocale,
+    localization: initializedRuntime,
+    localeController: createLocaleController(initializedRuntime, initialLocale),
+  });
+}
+
 /** The application-lifetime localization runtime. */
-export const localization = createLocalizationRuntime();
+export const applicationLocalizationRuntime = createApplicationLocalizationRuntime();
+export const { localization, localeController } = applicationLocalizationRuntime;
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => localeController.destroy());
+}
