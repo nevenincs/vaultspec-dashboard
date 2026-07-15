@@ -2090,3 +2090,25 @@ removed. The scanner is clean at 1,081 findings, including 57 remaining legacy a
 presentations and no legacy keybinding category. S92, S220, and S250 are accepted. The
 residual S33 and S221 ownership is complete. S167, S168, S201, and S202 remain open for
 their untouched consumers.
+
+### W03.P09.S55 with S177/S179 presentation progress | pass | Stage menus use typed copy
+
+Canvas, graph-node, and meta-connection menus now carry typed descriptors for all sixteen
+previous legacy presentation calls. Canvas actions reuse the exact graph camera, selection,
+and working-set messages already used by commands and shortcuts. Graph-node focus composes
+the shared Show on canvas action. Open and Close use common descriptors. Pin, Unpin, Add to
+working set, and Remove item from working set name the actual store effects without exposing
+island or ego terminology.
+
+The meta-connection helper now accepts only message descriptors. Starting and related item
+actions remain distinct, and unavailable states tell the user to refresh or choose an
+eligible item. Missing-title and missing-summary copy states are actionable. English,
+French, and Arabic production resolution covers every migrated label and reason without
+fallback, em dashes, raw values, or internal vocabulary.
+
+Terra and Sol independently approved the settled diff with no findings. Root passed 41
+focused tests; Sol passed 55. The complete frontend gate passed. Sixteen exact exemptions
+were removed, reducing the scanner from 1,081 to 1,065 findings and legacy action
+presentations from 57 to 41. S55 is accepted. S177 and S179 remain open only for the
+deliberately preserved raw-ID copy actions, pending approval and implementation of the
+context-menu-copy-safety decision.

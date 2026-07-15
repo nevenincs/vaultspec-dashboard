@@ -206,7 +206,7 @@ Localize canvas states, graph controls, provisioning, entity menus, hover cards,
 - [ ] `W03.P09.S52` - Localize canvas loading, empty, degraded, truncated, unavailable, and recovery states; `frontend/src/app/stage/CanvasStateOverlay.tsx`.
 - [ ] `W03.P09.S53` - Localize provisioning guidance, refusal, progress, and recovery without implementation details; `frontend/src/app/stage/ProvisionPanel.tsx`.
 - [ ] `W03.P09.S54` - Localize graph control labels, descriptions, and accessibility names; `frontend/src/app/stage/GraphControls.tsx`.
-- [ ] `W03.P09.S55` - Standardize and localize canvas background menu actions; `frontend/src/app/stage/menus/canvasMenu.ts`.
+- [x] `W03.P09.S55` - Standardize and localize canvas background menu actions through canonical graph descriptors; `frontend/src/app/stage/menus/canvasMenu.ts, graph menu localization tests, catalogs, policy, and exact allowlist`.
 - [ ] `W03.P09.S56` - Localize graph-island interior, empty, loading, and accessibility presentation; `frontend/src/app/islands/IslandLayer.tsx`.
 - [ ] `W03.P09.S57` - Migrate stage state and control tests through production catalogs; `frontend/src/app/stage/CanvasStateOverlay.render.test.tsx, frontend/src/app/stage/ProvisionPanel.render.test.tsx`.
 - [ ] `W03.P09.S114` - Move production graph-control labels and descriptions into catalogs while retaining technical lab-only vocabulary internally; `frontend/src/scene/three/graphControlSchema.ts`.
@@ -214,9 +214,9 @@ Localize canvas states, graph controls, provisioning, entity menus, hover cards,
 - [ ] `W03.P09.S147` - Replace graph-control store labels, titles, descriptions, and fallback copy with typed descriptors; `frontend/src/stores/view/graphControlsChrome.ts`.
 - [ ] `W03.P09.S175` - Localize stage-level labels and accessibility names without rendering internals; `frontend/src/app/stage/Stage.tsx`.
 - [ ] `W03.P09.S176` - Localize graph category legend labels and descriptions; `frontend/src/app/stage/CategoryLegend.tsx`.
-- [ ] `W03.P09.S177` - Standardize and localize graph-node menu actions and disabled reasons; `frontend/src/app/stage/menus/graphNodeMenu.ts`.
+- [ ] `W03.P09.S177` - Replace raw graph-node identifier copy with an approved public reference and finish graph-node menu localization; `frontend/src/app/stage/menus/graphNodeMenu.ts, graph menu behavior and localization tests, public-reference action, catalogs, and exact allowlist`.
 - [ ] `W03.P09.S178` - Standardize and localize document-tab menu actions and confirmations; `frontend/src/app/stage/menus/docTabMenu.ts`.
-- [ ] `W03.P09.S179` - Standardize and localize connection menu actions and disabled reasons; `frontend/src/app/stage/menus/metaEdgeMenu.ts`.
+- [ ] `W03.P09.S179` - Remove raw meta-connection identifier copy and finish connection menu localization; `frontend/src/app/stage/menus/metaEdgeMenu.ts, graph menu behavior and localization tests, catalogs, and exact allowlist`.
 - [ ] `W03.P09.S180` - Localize island hover-card content, overflow counts, and accessible actions; `frontend/src/app/islands/HoverCard.tsx, frontend/src/app/islands/HoverCardLayer.tsx`.
 - [ ] `W03.P09.S181` - Migrate island and hover-card tests through production catalogs; `frontend/src/app/islands/HoverCard.render.test.tsx, frontend/src/app/islands/HoverCard.typed.render.test.tsx`.
 - [ ] `W03.P09.S215` - Standardize and localize island focus, close, and copy menu actions; `frontend/src/app/islands/menus/islandMenu.ts`.
