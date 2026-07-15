@@ -1974,3 +1974,33 @@ Independent Sol review passed with no findings. Sixty-one focused frontend tests
 engine language contract test, TypeScript, targeted ESLint, formatting, scanner, and diff
 checks passed. The scanner remained clean at 1,151 findings with no allowlist change. S12,
 phase W01.P02, and Wave W01 are accepted with no open findings.
+
+### W02.P05.S151-S155 review | pass | Palette producers use semantic action descriptors
+
+Window, timeline, editor, graph, and theme command builders now emit typed semantic
+descriptors. The migration removes assembled English labels, raw theme presentation, and
+graph layout terminology while preserving command IDs, families, order, visibility gates,
+state inversion, callbacks, range values, theme values, accelerators, and shared actions.
+
+English, French, and Arabic runtimes resolve every migrated command without fallback.
+Behavior tests execute every timeline preset, both graph movement states, every theme
+choice, and all window and editor callbacks. Sol approved Zoom as the clear canonical
+camera verb and found no remaining issues. Seventeen legacy action calls and twenty-five
+exact allowlist entries were removed from the producer. The integrated focused suite
+passed 57 tests, and the full frontend lint recipe passed. The scanner is clean at 1,118
+findings, including 75 remaining legacy action presentations elsewhere. S151 through S155
+are accepted with no open findings.
+
+### W02.P05.S218 review | pass | Document-tab actions and keybindings share typed copy
+
+Document-tab navigation and close definitions now share typed descriptors with their live
+registered actions. The unavailable close action uses the dedicated actionable reason
+Open a document first. Stable IDs, chords, contexts, eligibility, navigation, wrapping,
+and close behavior remain unchanged.
+
+Real hook, registry, and store tests prove action-to-keybinding descriptor parity and exact
+English, French, and Arabic resolution for labels, group, and disabled reason. Sol found
+and verified the final imperative wording correction to Move to next or previous document
+tab. Four legacy action calls, four legacy keybinding calls, and their eight exact
+allowlist entries were removed. The integrated focused suite and complete frontend gate
+passed. S218 is accepted with no open findings.
