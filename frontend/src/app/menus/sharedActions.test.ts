@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Archive, Link2, Wrench } from "lucide-react";
+import { Archive, Crosshair, Link2, Wrench } from "lucide-react";
 
 import {
   resolveActionPresentation,
@@ -14,6 +14,7 @@ import {
   docStemFromNodeId,
   openEntityAction,
   relateToSelectionAction,
+  showOnCanvasAction,
 } from "./sharedActions";
 
 const localization = createLocalizationRuntime();
@@ -21,6 +22,32 @@ const resolvePresentation = (presentation: ActionPresentation): string =>
   resolveActionPresentation(presentation, (descriptor) =>
     resolveMessageResult(localization, descriptor),
   ).message;
+
+describe("showOnCanvasAction", () => {
+  it("builds the canonical localized canvas action for a trimmed node id", () => {
+    const action = showOnCanvasAction({ id: "x:focus", nodeId: "  node:one  " });
+
+    expect(action.label).toEqual({ key: "common:actions.showOnCanvas" });
+    expect(resolvePresentation(action.label)).toBe("Show on canvas");
+    expect(action.section).toBe("navigate");
+    expect(action.icon).toBe(Crosshair);
+    expect(action.disabled).toBeUndefined();
+    expect(action.run).toBeTypeOf("function");
+  });
+
+  it("fails closed with an actionable localized reason for blank node ids", () => {
+    const action = showOnCanvasAction({ id: "x:focus", nodeId: " \t " });
+
+    expect(action.disabled).toBe(true);
+    expect(action.disabledReason).toEqual({
+      key: "common:disabledReasons.itemUnavailableOnCanvas",
+    });
+    expect(resolvePresentation(action.disabledReason!)).toBe(
+      "Refresh data, then try showing this item on the canvas.",
+    );
+    expect(action.run).toBeUndefined();
+  });
+});
 
 describe("docStemFromNodeId", () => {
   it("returns the stem for a doc: node id, null otherwise", () => {

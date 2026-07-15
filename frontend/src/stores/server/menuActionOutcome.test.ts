@@ -35,6 +35,11 @@ const copyDispatch = {
   payload: { text: "Document" },
 } as const;
 
+const localizedCopyDispatch = {
+  type: COPY_ACTION,
+  payload: { message: { key: "documents:documentTypes.adr" } },
+} as const;
+
 const relateDispatch = {
   type: RELATE_ACTION,
   payload: { src: "source", dst: "target", scope: "scope-a" },
@@ -127,6 +132,32 @@ describe("consumeMenuActionOutcome", () => {
     await expect(
       consumeMenuActionOutcome(copyDispatch, Promise.reject(new Error("denied")), null),
     ).resolves.toEqual({ ok: false, feedback: "copy-failed" });
+    await expect(
+      consumeMenuActionOutcome(
+        localizedCopyDispatch,
+        Promise.resolve({ ok: true }),
+        null,
+      ),
+    ).resolves.toEqual({ ok: true, feedback: "copy-succeeded" });
+  });
+
+  it("rejects mixed and extended copy payloads before classifying outcomes", async () => {
+    for (const payload of [
+      {
+        text: "Decisions",
+        message: { key: "documents:documentTypes.adr" },
+      },
+      { text: "Decisions", unexpected: true },
+      { message: { key: "documents:documentTypes.adr" }, unexpected: true },
+    ]) {
+      await expect(
+        consumeMenuActionOutcome(
+          { type: COPY_ACTION, payload },
+          Promise.resolve({ ok: true }),
+          null,
+        ),
+      ).resolves.toEqual({ ok: false, feedback: "action-unavailable" });
+    }
   });
 
   it("classifies every production relate outcome without duplicating invalidation", async () => {

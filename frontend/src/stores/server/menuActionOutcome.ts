@@ -2,7 +2,7 @@ import type { QueryClient } from "@tanstack/react-query";
 
 import {
   COPY_ACTION,
-  normalizeCopyWhat,
+  isCopyPayload,
   type CopyResult,
 } from "../../platform/actions/clipboardActions";
 import { normalizeAction } from "../../platform/dispatch/dispatch";
@@ -33,13 +33,6 @@ type ClassifiedDispatch =
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isCopyPayload(value: unknown): boolean {
-  if (!isRecord(value) || typeof value.text !== "string") return false;
-  const keys = Object.keys(value);
-  if (keys.some((key) => key !== "text" && key !== "what")) return false;
-  return value.what === undefined || normalizeCopyWhat(value.what) === value.what;
 }
 
 function isRelatePayload(value: unknown): value is RelatePayload {

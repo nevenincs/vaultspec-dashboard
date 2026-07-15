@@ -18,6 +18,8 @@ export const ltrTestResources = {
       cancel: "Annuler",
       close: "Fermer",
       collapseNavigationPanel: "Réduire le panneau de navigation",
+      copyCategoryName: "Copier le nom de la catégorie",
+      copyFeatureTag: "Copier l’étiquette de la fonctionnalité",
       hideActivityPanel: "Masquer le panneau d’activité",
       hideNavigationPanel: "Masquer le panneau de navigation",
       hideTimeline: "Masquer la chronologie",
@@ -36,6 +38,7 @@ export const ltrTestResources = {
       showTimeline: "Afficher la chronologie",
       showChanges: "Afficher les modifications",
       showKeyboardShortcuts: "Afficher les raccourcis clavier",
+      showOnCanvas: "Afficher sur le canevas",
       showOrHideGraph: "Afficher ou masquer le graphe",
       showStatus: "Afficher l’état",
     },
@@ -77,7 +80,11 @@ export const ltrTestResources = {
       commandCount_one: "{{count, number}} commande",
       commandCount_other: "{{count, number}} commandes",
     },
-    disabledReasons: en.common.disabledReasons,
+    disabledReasons: {
+      ...en.common.disabledReasons,
+      itemUnavailableOnCanvas:
+        "Actualisez les données, puis réessayez d’afficher cet élément sur le canevas.",
+    },
     feedback: {
       actionUnavailable:
         "Impossible de terminer l’action. Rechargez la page et réessayez.",
@@ -147,8 +154,10 @@ export const ltrTestResources = {
       closeDocument: "Fermer le document",
       clearFilter: "Effacer le filtre des documents",
       closeActiveTab: "Fermer l’onglet du document actif",
+      collapseCategory: "Réduire la catégorie",
       collapseTree: "Réduire l’arborescence des documents",
       expandTree: "Développer l’arborescence des documents",
+      expandCategory: "Développer la catégorie",
       findByName: "Rechercher un document par nom…",
       finishEditing: "Terminer la modification",
       focusFilter: "Activer le filtre des documents",
@@ -167,6 +176,7 @@ export const ltrTestResources = {
       sortByWorkspaceShare: "Trier par part de l’espace de travail",
       showOrHideChanges: "Afficher ou masquer les modifications",
       showOrHideFilterOptions: "Afficher ou masquer les options de filtre",
+      filterByDocumentType: "Filtrer par ce type de document",
       switchReadingAndEditing: "Basculer entre la lecture et la modification",
       switchView: "Basculer entre les documents et les fichiers",
     },
@@ -236,8 +246,11 @@ export const ltrTestResources = {
   features: {
     ...en.features,
     actions: {
+      collapse: "Réduire la fonctionnalité",
+      expand: "Développer la fonctionnalité",
       moveToNextFeature: "Passer à la fonctionnalité suivante",
       moveToPreviousFeature: "Passer à la fonctionnalité précédente",
+      filterByFeature: "Filtrer par cette fonctionnalité",
     },
     feedback: {
       archiveRejected:
@@ -466,6 +479,8 @@ export const rtlTestResources = {
       cancel: "إلغاء",
       close: "إغلاق",
       collapseNavigationPanel: "طي لوحة التنقل",
+      copyCategoryName: "نسخ اسم الفئة",
+      copyFeatureTag: "نسخ وسم الميزة",
       hideActivityPanel: "إخفاء لوحة النشاط",
       hideNavigationPanel: "إخفاء لوحة التنقل",
       hideTimeline: "إخفاء المخطط الزمني",
@@ -484,6 +499,7 @@ export const rtlTestResources = {
       showTimeline: "إظهار المخطط الزمني",
       showChanges: "إظهار التغييرات",
       showOrHideGraph: "إظهار الرسم البياني أو إخفاؤه",
+      showOnCanvas: "إظهار على اللوحة",
       showStatus: "إظهار الحالة",
     },
     activityTabs: {
@@ -530,7 +546,10 @@ export const rtlTestResources = {
       commandCount_two: "{{count, number}} أمران",
       commandCount_zero: "{{count, number}} أمر",
     },
-    disabledReasons: en.common.disabledReasons,
+    disabledReasons: {
+      ...en.common.disabledReasons,
+      itemUnavailableOnCanvas: "حدّث البيانات، ثم حاول إظهار هذا العنصر على اللوحة.",
+    },
     feedback: {
       actionUnavailable: "تعذر إكمال الإجراء. أعد تحميل الصفحة وحاول مرة أخرى.",
       copyFailed: "تعذر النسخ. حاول مرة أخرى.",
@@ -588,8 +607,10 @@ export const rtlTestResources = {
       closeAllDocuments: "إغلاق جميع المستندات",
       closeDocument: "إغلاق المستند",
       closeActiveTab: "إغلاق علامة تبويب المستند النشط",
+      collapseCategory: "طي الفئة",
       finishEditing: "إنهاء التحرير",
       findByName: "البحث عن مستند بالاسم…",
+      expandCategory: "توسيع الفئة",
       keepDocumentOpen: "إبقاء المستند مفتوحًا",
       reloadDocument: "إعادة تحميل المستند",
       nextTab: "الانتقال إلى علامة تبويب المستند التالية",
@@ -603,6 +624,7 @@ export const rtlTestResources = {
       sortByLength: "الترتيب حسب الطول",
       sortByWorkspaceShare: "الترتيب حسب حصة مساحة العمل",
       showOrHideChanges: "إظهار التغييرات أو إخفاؤها",
+      filterByDocumentType: "التصفية حسب نوع المستند هذا",
       switchReadingAndEditing: "التبديل بين القراءة والتحرير",
     },
     browserModes: {
@@ -668,8 +690,11 @@ export const rtlTestResources = {
   features: {
     ...en.features,
     actions: {
+      collapse: "طي الميزة",
+      expand: "توسيع الميزة",
       moveToNextFeature: "الانتقال إلى الميزة التالية",
       moveToPreviousFeature: "الانتقال إلى الميزة السابقة",
+      filterByFeature: "التصفية حسب هذه الميزة",
     },
     feedback: {
       archiveRejected: "لم تتم أرشفة الميزة. تحقق منها، ثم حاول مرة أخرى.",

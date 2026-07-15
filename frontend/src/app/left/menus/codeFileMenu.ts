@@ -4,9 +4,6 @@
 // is unit-testable in isolation. The registration below contributes it for the
 // "code-file" entity kind at module load.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
-import { Crosshair } from "lucide-react";
-
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
@@ -16,10 +13,10 @@ import {
   openInEditorAction,
   revealAction,
 } from "../../../platform/actions/shellActions";
-import { focusMenuNode } from "../../../stores/view/menuActions";
+import { showOnCanvasAction } from "../../menus/sharedActions";
 
 /**
- * The menu for a code-tree row. A FILE offers "Focus linked node" (select its
+ * The menu for a code-tree row. A FILE offers "Show on canvas" (select its
  * `code:` node — navigation, shared with the row click; disabled-with-reason
  * when the file has no graph linkage yet), copy path, reveal, and
  * open-in-editor. A DIRECTORY is not a graph node and is not opened in an editor,
@@ -34,22 +31,11 @@ export function codeFileMenu(entity: unknown): ActionDescriptor[] {
     const linked =
       normalizedEntity.nodeId !== undefined && normalizedEntity.nodeId.length > 0;
     actions.push(
-      linked
-        ? {
-            id: "code-file:focus",
-            label: legacyActionPresentation("Focus linked node"),
-            section: "navigate",
-            icon: Crosshair,
-            run: () => focusMenuNode(normalizedEntity.nodeId, normalizedEntity),
-          }
-        : {
-            id: "code-file:focus",
-            label: legacyActionPresentation("Focus linked node"),
-            section: "navigate",
-            icon: Crosshair,
-            disabled: true,
-            disabledReason: legacyActionPresentation("no graph node for this file yet"),
-          },
+      showOnCanvasAction({
+        id: "code-file:focus",
+        nodeId: linked ? normalizedEntity.nodeId : null,
+        entity: normalizedEntity,
+      }),
     );
   }
 

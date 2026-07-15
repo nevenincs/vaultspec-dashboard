@@ -4,9 +4,6 @@
 // isolation. The registration below contributes it for the "vault-doc" entity
 // kind at module load.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
-import { Crosshair } from "lucide-react";
-
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
@@ -18,11 +15,10 @@ import {
 } from "../../../platform/actions/shellActions";
 import { copyLinkAction } from "../../../stores/view/documentLinkActions";
 import { newDocumentAction } from "../../../stores/view/leftRailKeybindings";
-import { focusMenuNode } from "../../../stores/view/menuActions";
-import { relateToSelectionAction } from "../../menus/sharedActions";
+import { relateToSelectionAction, showOnCanvasAction } from "../../menus/sharedActions";
 
 /**
- * The menu for a vault document row. "Focus on stage" selects the document's
+ * The menu for a vault document row. "Show on canvas" selects the document's
  * linked node (the shared selection focuses the field, exactly as the row click
  * does); copy the path and the stem; reveal and open-in-editor over the
  * document's path. Focus is navigation (non-mutating) — it shares the one
@@ -33,14 +29,11 @@ export function vaultDocMenu(entity: unknown, ctx?: ActionContext): ActionDescri
   if (normalizedEntity?.kind !== "vault-doc") return [];
 
   return [
-    {
+    showOnCanvasAction({
       id: "vault-doc:focus",
-      label: legacyActionPresentation("Focus on stage"),
-      section: "navigate",
-      icon: Crosshair,
-      run: () =>
-        focusMenuNode(normalizedEntity.nodeId ?? normalizedEntity.id, normalizedEntity),
-    },
+      nodeId: normalizedEntity.nodeId ?? normalizedEntity.id,
+      entity: normalizedEntity,
+    }),
     revealAction({ id: "vault-doc:reveal", path: normalizedEntity.path }),
     openInEditorAction({
       id: "vault-doc:open-in-editor",

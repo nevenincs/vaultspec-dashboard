@@ -268,7 +268,15 @@ describe("vaultFeatureMenu", () => {
       "vault-feature:archive",
     ]);
     expect(byId(actions, "vault-feature:focus")?.section).toBe("navigate");
-    expect(byId(actions, "vault-feature:toggle")?.label).toBe("Expand feature");
+    expect(byId(actions, "vault-feature:focus")?.label).toEqual({
+      key: "common:actions.showOnCanvas",
+    });
+    expect(byId(actions, "vault-feature:toggle")?.label).toEqual({
+      key: "features:actions.expand",
+    });
+    expect(byId(actions, "vault-feature:filter")?.label).toEqual({
+      key: "features:actions.filterByFeature",
+    });
     expect(byId(actions, "vault-feature:filter")?.section).toBe("navigate");
     expect(byId(actions, "vault-feature:filter")?.run).toBeTypeOf("function");
     expect(byId(actions, "vault-feature:filter")?.disabledInTimeTravel).toBeUndefined();
@@ -287,7 +295,7 @@ describe("vaultFeatureMenu", () => {
       }),
       "vault-feature:toggle",
     );
-    expect(action?.label).toBe("Collapse feature");
+    expect(action?.label).toEqual({ key: "features:actions.collapse" });
     expect(action?.disabledInTimeTravel).toBeUndefined();
   });
 
@@ -297,7 +305,9 @@ describe("vaultFeatureMenu", () => {
       "vault-feature:focus",
     );
     expect(action?.disabled).toBe(true);
-    expect(action?.disabledReason).toBe("no graph node for this feature yet");
+    expect(action?.disabledReason).toEqual({
+      key: "common:disabledReasons.itemUnavailableOnCanvas",
+    });
     expect(action?.run).toBeUndefined();
   });
 
@@ -371,10 +381,20 @@ describe("vaultCategoryMenu", () => {
       "left-rail:new-document",
       "vault-category:copy-category",
     ]);
-    expect(byId(actions, "vault-category:toggle")?.label).toBe("Expand category");
-    expect(byId(actions, "vault-category:filter")?.label).toBe("Filter to this type");
+    expect(byId(actions, "vault-category:toggle")?.label).toEqual({
+      key: "documents:actions.expandCategory",
+    });
+    expect(byId(actions, "vault-category:filter")?.label).toEqual({
+      key: "documents:actions.filterByDocumentType",
+    });
     expect(byId(actions, "vault-category:filter")?.section).toBe("navigate");
     expect(byId(actions, "vault-category:copy-category")?.section).toBe("copy");
+    expect(byId(actions, "vault-category:copy-category")?.label).toEqual({
+      key: "common:actions.copyCategoryName",
+    });
+    expect(byId(actions, "vault-category:copy-category")?.dispatch?.payload).toEqual({
+      message: { key: "documents:documentTypes.adr" },
+    });
   });
 
   it("omits the toggle when no expansion key is carried, keeps filter + new-doc + copy", () => {
@@ -390,6 +410,23 @@ describe("vaultCategoryMenu", () => {
     ]);
   });
 
+  it("copies the generic localized document noun for an unknown category type", () => {
+    const action = byId(
+      vaultCategoryMenu({
+        kind: "vault-category",
+        id: "vault-category:type:private-token",
+        docType: "private-token",
+      }),
+      "vault-category:copy-category",
+    );
+
+    expect(action?.dispatch?.payload).toEqual({
+      message: { key: "documents:labels.document" },
+    });
+    expect(action?.dispatch?.payload).not.toHaveProperty("text");
+    expect(JSON.stringify(action?.dispatch?.payload)).not.toContain("private-token");
+  });
+
   it("none of the category verbs are mutating (no time-travel gate)", () => {
     const actions = vaultCategoryMenu({
       kind: "vault-category",
@@ -401,7 +438,9 @@ describe("vaultCategoryMenu", () => {
     for (const action of actions) {
       expect(action.disabledInTimeTravel).toBeUndefined();
     }
-    expect(byId(actions, "vault-category:toggle")?.label).toBe("Collapse category");
+    expect(byId(actions, "vault-category:toggle")?.label).toEqual({
+      key: "documents:actions.collapseCategory",
+    });
   });
 
   it("rejects non-vault-category entities at resolver ingress", () => {
@@ -469,6 +508,9 @@ describe("codeFileMenu", () => {
       "code-file:copy-path",
     ]);
     expect(byId(actions, "code-file:focus")?.run).toBeTypeOf("function");
+    expect(byId(actions, "code-file:focus")?.label).toEqual({
+      key: "common:actions.showOnCanvas",
+    });
   });
 
   it("rejects non-code-file entities at resolver ingress", () => {
@@ -487,7 +529,9 @@ describe("codeFileMenu", () => {
       "code-file:focus",
     );
     expect(action?.disabled).toBe(true);
-    expect(action?.disabledReason).toBe("no graph node for this file yet");
+    expect(action?.disabledReason).toEqual({
+      key: "common:disabledReasons.itemUnavailableOnCanvas",
+    });
     expect(action?.run).toBeUndefined();
   });
 

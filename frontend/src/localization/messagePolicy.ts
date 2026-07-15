@@ -44,7 +44,9 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:actions.close": { role: "action" },
   "common:actions.collapseNavigationPanel": { role: "action" },
   "common:actions.copy": { role: "action" },
+  "common:actions.copyCategoryName": { role: "action" },
   "common:actions.copyDocumentName": { role: "action" },
+  "common:actions.copyFeatureTag": { role: "action" },
   "common:actions.copyPath": { role: "action" },
   "common:actions.copySummary": { role: "action" },
   "common:actions.copyTitle": { role: "action" },
@@ -79,6 +81,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:actions.showOrHideGraph": { role: "action" },
   "common:actions.showInFileManager": { role: "action" },
   "common:actions.showKeyboardShortcuts": { role: "action" },
+  "common:actions.showOnCanvas": { role: "action" },
   "common:actions.showProjectHealth": { role: "action" },
   "common:actions.showSearchStatus": { role: "action" },
   "common:actions.showStatus": { role: "action" },
@@ -108,6 +111,9 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:commandPalette.footer.open": { role: "label" },
   "common:commandPalette.footer.close": { role: "label" },
   "common:disabledReasons.actionUnavailable": { role: "disabled-reason" },
+  "common:disabledReasons.itemUnavailableOnCanvas": {
+    role: "disabled-reason",
+  },
   "common:disabledReasons.currentVersionRequired": { role: "disabled-reason" },
   "common:disabledReasons.desktopEditorRequired": { role: "disabled-reason" },
   "common:disabledReasons.desktopFileManagerRequired": {
@@ -179,9 +185,11 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:actions.closeDocument": { role: "action" },
   "documents:actions.clearFilter": { role: "action" },
   "documents:actions.closeActiveTab": { role: "action" },
+  "documents:actions.collapseCategory": { role: "action" },
   "documents:actions.collapseTree": { role: "action" },
   "documents:actions.copyLink": { role: "action" },
   "documents:actions.expandTree": { role: "action" },
+  "documents:actions.expandCategory": { role: "action" },
   "documents:actions.findByName": { role: "action" },
   "documents:actions.finishEditing": { role: "action" },
   "documents:actions.focusFilter": { role: "action" },
@@ -200,6 +208,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:actions.sortByName": { role: "action" },
   "documents:actions.sortByWorkspaceShare": { role: "action" },
   "documents:actions.showOrHideFilterOptions": { role: "action" },
+  "documents:actions.filterByDocumentType": { role: "action" },
   "documents:actions.showOrHideChanges": { role: "action" },
   "documents:actions.switchReadingAndEditing": { role: "action" },
   "documents:actions.switchView": { role: "action" },
@@ -243,8 +252,11 @@ export const ENGLISH_MESSAGE_POLICY = {
   "errors:unexpectedApplication.title": { role: "error-title" },
   "errors:unexpectedSection.message": { role: "error-message" },
   "errors:unexpectedSection.title": { role: "error-title" },
+  "features:actions.collapse": { role: "action" },
+  "features:actions.expand": { role: "action" },
   "features:actions.moveToNextFeature": { role: "action" },
   "features:actions.moveToPreviousFeature": { role: "action" },
+  "features:actions.filterByFeature": { role: "action" },
   "features:confirmations.archive.body": { role: "confirmation" },
   "features:confirmations.archive.title": { role: "label" },
   "features:confirmations.repair.body": { role: "confirmation" },
@@ -449,6 +461,7 @@ export const RECOVERY_VERBS = [
   "Close",
   "Copy",
   "Open",
+  "Refresh",
   "Reload",
   "Return",
   "Retry",
@@ -563,6 +576,7 @@ const RECOVERY_OBJECT_LEADS: ReadonlySet<string> = new Set([
   "a",
   "an",
   "another",
+  "data",
   "it",
   "our",
   "that",
@@ -663,6 +677,7 @@ function isActionableRecoveryClause(clause: string): boolean {
 
   const words = wordsIn(complement).map((match) => match[0].toLocaleLowerCase("en"));
   const lead = words[0];
+  if (canonicalVerb === "Refresh" && lead === "data") return true;
   if (lead === "again") {
     return words.length === 1 || RECOVERY_PREPOSITIONS.has(words[1]!);
   }

@@ -41,7 +41,9 @@ const EXPECTED_CATALOG_KEYS = [
   "common:actions.close",
   "common:actions.collapseNavigationPanel",
   "common:actions.copy",
+  "common:actions.copyCategoryName",
   "common:actions.copyDocumentName",
+  "common:actions.copyFeatureTag",
   "common:actions.copyPath",
   "common:actions.copySummary",
   "common:actions.copyTitle",
@@ -76,6 +78,7 @@ const EXPECTED_CATALOG_KEYS = [
   "common:actions.showOrHideGraph",
   "common:actions.showInFileManager",
   "common:actions.showKeyboardShortcuts",
+  "common:actions.showOnCanvas",
   "common:actions.showProjectHealth",
   "common:actions.showSearchStatus",
   "common:actions.showStatus",
@@ -109,6 +112,7 @@ const EXPECTED_CATALOG_KEYS = [
   "common:disabledReasons.currentVersionRequired",
   "common:disabledReasons.desktopEditorRequired",
   "common:disabledReasons.desktopFileManagerRequired",
+  "common:disabledReasons.itemUnavailableOnCanvas",
   "common:disabledReasons.selectItemToOpen",
   "common:feedback.actionUnavailable",
   "common:feedback.copyFailed",
@@ -160,9 +164,11 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:actions.closeAllDocuments",
   "documents:actions.closeDocument",
   "documents:actions.clearFilter",
+  "documents:actions.collapseCategory",
   "documents:actions.collapseTree",
   "documents:actions.copyLink",
   "documents:actions.expandTree",
+  "documents:actions.expandCategory",
   "documents:actions.findByName",
   "documents:actions.finishEditing",
   "documents:actions.focusFilter",
@@ -181,6 +187,7 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:actions.sortByName",
   "documents:actions.sortByWorkspaceShare",
   "documents:actions.showOrHideFilterOptions",
+  "documents:actions.filterByDocumentType",
   "documents:actions.showOrHideChanges",
   "documents:actions.switchReadingAndEditing",
   "documents:actions.switchView",
@@ -220,8 +227,11 @@ const EXPECTED_CATALOG_KEYS = [
   "errors:unexpectedApplication.title",
   "errors:unexpectedSection.message",
   "errors:unexpectedSection.title",
+  "features:actions.collapse",
+  "features:actions.expand",
   "features:actions.moveToNextFeature",
   "features:actions.moveToPreviousFeature",
+  "features:actions.filterByFeature",
   "features:confirmations.archive.body",
   "features:confirmations.archive.title",
   "features:confirmations.repair.body",
@@ -504,5 +514,45 @@ describe("shipped localization catalog keys", () => {
       expect(arabic, key).not.toBe(english);
       expect(arabic, key).not.toBe(french);
     }
+  });
+
+  it("resolves menu filters and canvas recovery copy in English, French, and Arabic", () => {
+    const english = createTestLocalizationRuntime(sourceLocale);
+    const french = createTestLocalizationRuntime(ltrTestLocale);
+    const arabic = createTestLocalizationRuntime(rtlTestLocale);
+
+    expect(english.t("documents:actions.filterByDocumentType")).toBe(
+      "Filter by this document type",
+    );
+    expect(french.t("documents:actions.filterByDocumentType")).toBe(
+      "Filtrer par ce type de document",
+    );
+    expect(arabic.t("documents:actions.filterByDocumentType")).toBe(
+      "التصفية حسب نوع المستند هذا",
+    );
+    expect(english.t("documents:actions.expandCategory")).toBe("Expand category");
+    expect(french.t("documents:actions.expandCategory")).toBe(
+      "Développer la catégorie",
+    );
+    expect(arabic.t("documents:actions.expandCategory")).toBe("توسيع الفئة");
+    expect(english.t("documents:actions.collapseCategory")).toBe("Collapse category");
+    expect(french.t("documents:actions.collapseCategory")).toBe("Réduire la catégorie");
+    expect(arabic.t("documents:actions.collapseCategory")).toBe("طي الفئة");
+    expect(english.t("features:actions.filterByFeature")).toBe(
+      "Filter by this feature",
+    );
+    expect(french.t("features:actions.filterByFeature")).toBe(
+      "Filtrer par cette fonctionnalité",
+    );
+    expect(arabic.t("features:actions.filterByFeature")).toBe("التصفية حسب هذه الميزة");
+    expect(english.t("common:disabledReasons.itemUnavailableOnCanvas")).toBe(
+      "Refresh data, then try showing this item on the canvas.",
+    );
+    expect(french.t("common:disabledReasons.itemUnavailableOnCanvas")).toBe(
+      "Actualisez les données, puis réessayez d’afficher cet élément sur le canevas.",
+    );
+    expect(arabic.t("common:disabledReasons.itemUnavailableOnCanvas")).toBe(
+      "حدّث البيانات، ثم حاول إظهار هذا العنصر على اللوحة.",
+    );
   });
 });

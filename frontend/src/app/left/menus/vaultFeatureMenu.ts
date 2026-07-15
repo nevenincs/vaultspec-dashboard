@@ -9,8 +9,7 @@
 // feature row offers the SAME focus / new-document / autofix / archive verbs under
 // shared ids — authored once, not re-derived here.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
-import { Crosshair, Filter, FoldVertical, UnfoldVertical } from "lucide-react";
+import { Filter, FoldVertical, UnfoldVertical } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { copyAction } from "../../../platform/actions/clipboardActions";
@@ -18,16 +17,19 @@ import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { setDashboardFeatureFilter } from "../../../stores/server/dashboardState";
-import { focusMenuNode } from "../../../stores/view/menuActions";
 import { newDocumentAction } from "../../../stores/view/leftRailKeybindings";
 import { toggleVaultBrowserTreeItem } from "../../../stores/view/browserTreeExpansion";
-import { archiveFeatureAction, autofixFeatureAction } from "../../menus/sharedActions";
+import {
+  archiveFeatureAction,
+  autofixFeatureAction,
+  showOnCanvasAction,
+} from "../../menus/sharedActions";
 
 /**
- * The menu for a feature folder row. "Focus on stage" selects the feature's linked
+ * The menu for a feature folder row. "Show on canvas" selects the feature's linked
  * node (navigation — disabled-with-reason until the feature resolves to a node);
- * "Expand/Collapse feature" toggles the folder through the one expansion authority;
- * "Filter to this feature" writes the one canonical feature-query filter so every
+ * "Expand feature" and "Collapse feature" use the one expansion authority;
+ * "Filter by this feature" writes the one canonical feature-query filter so every
  * corpus view narrows to it; "Add to a Feature…" opens the create dialog pre-filled with
  * this feature; "Autofix"
  * and "Archive feature" are the shared feature verbs (confirm-guarded, time-travel-
@@ -41,33 +43,22 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
   const actions: ActionDescriptor[] = [];
 
   actions.push(
-    normalizedEntity.nodeId
-      ? {
-          id: "vault-feature:focus",
-          label: legacyActionPresentation("Focus on stage"),
-          section: "navigate",
-          icon: Crosshair,
-          run: () => focusMenuNode(normalizedEntity.nodeId, normalizedEntity),
-        }
-      : {
-          id: "vault-feature:focus",
-          label: legacyActionPresentation("Focus on stage"),
-          section: "navigate",
-          icon: Crosshair,
-          disabled: true,
-          disabledReason: legacyActionPresentation(
-            "no graph node for this feature yet",
-          ),
-        },
+    showOnCanvasAction({
+      id: "vault-feature:focus",
+      nodeId: normalizedEntity.nodeId,
+      entity: normalizedEntity,
+    }),
   );
 
   if (normalizedEntity.expansionKey) {
     const expansionKey = normalizedEntity.expansionKey;
     actions.push({
       id: "vault-feature:toggle",
-      label: legacyActionPresentation(
-        normalizedEntity.expanded ? "Collapse feature" : "Expand feature",
-      ),
+      label: {
+        key: normalizedEntity.expanded
+          ? "features:actions.collapse"
+          : "features:actions.expand",
+      },
       section: "navigate",
       icon: normalizedEntity.expanded ? FoldVertical : UnfoldVertical,
       run: () => toggleVaultBrowserTreeItem(normalizedEntity.scope, expansionKey),
@@ -79,7 +70,7 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
   // tree, the graph, and the timeline in lock-step (one-filter-authority).
   actions.push({
     id: "vault-feature:filter",
-    label: legacyActionPresentation("Filter to this feature"),
+    label: { key: "features:actions.filterByFeature" },
     section: "navigate",
     icon: Filter,
     run: () => {
@@ -103,7 +94,7 @@ export function vaultFeatureMenu(entity: unknown): ActionDescriptor[] {
   actions.push(
     copyAction({
       id: "vault-feature:copy-tag",
-      label: { key: "common:actions.copy" },
+      label: { key: "common:actions.copyFeatureTag" },
       text: normalizedEntity.feature,
     }),
   );

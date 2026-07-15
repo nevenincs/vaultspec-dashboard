@@ -43,9 +43,7 @@ describe("copy verb", () => {
       text: "  node:alpha  ",
       what: "id",
     });
-    expect(normalizeCopyPayload({ text: 42, what: "unknown" })).toEqual({
-      text: "",
-    });
+    expect(normalizeCopyPayload({ text: 42, what: "unknown" })).toBeNull();
   });
 
   it("writes the payload text to the clipboard and reports ok", async () => {
@@ -81,9 +79,11 @@ describe("copy verb", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("normalizes direct dispatch payloads before writing", async () => {
-    await dispatchCopy({ text: 42, what: "unknown" });
-    expect(writeText).toHaveBeenCalledWith("");
+  it("rejects malformed direct dispatch payloads without writing", async () => {
+    await expect(dispatchCopy({ text: 42, what: "unknown" })).resolves.toEqual({
+      ok: false,
+    });
+    expect(writeText).not.toHaveBeenCalled();
   });
 
   it("copyAction builds a copy-section descriptor routed through the copy verb", () => {
@@ -134,7 +134,9 @@ describe("copy verb", () => {
     const runtime = createTestLocalizationRuntime();
     const cases = [
       ["common:actions.copy", "Copy"],
+      ["common:actions.copyCategoryName", "Copy category name"],
       ["common:actions.copyDocumentName", "Copy document name"],
+      ["common:actions.copyFeatureTag", "Copy feature tag"],
       ["common:actions.copyPath", "Copy path"],
       ["common:actions.copySummary", "Copy summary"],
       ["common:actions.copyTitle", "Copy title"],

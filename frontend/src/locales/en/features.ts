@@ -1,7 +1,10 @@
 export const features = {
   actions: {
+    collapse: "Collapse feature",
+    expand: "Expand feature",
     moveToNextFeature: "Move to the next feature",
     moveToPreviousFeature: "Move to the previous feature",
+    filterByFeature: "Filter by this feature",
   },
   confirmations: {
     archive: {

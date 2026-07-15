@@ -10,11 +10,13 @@
 import { Copy } from "lucide-react";
 
 import { appDispatcher } from "../dispatch/middleware";
+import { resolveMessage, type MessageTranslator } from "../localization/fallback";
 import {
   normalizeMessageDescriptor,
   type MessageDescriptor,
   type MessageKey,
 } from "../localization/message";
+import { localization } from "../localization/runtime";
 import { logger } from "../logger/logger";
 import {
   normalizeActionDescriptorId,
@@ -29,11 +31,20 @@ export type CopyWhat = "id" | "title" | "path" | "stem" | "summary";
 
 export const COPY_ACTION = "action:copy";
 
-export interface CopyPayload {
-  text: string;
-  /** What the text represents - for labels and trace, never alters behaviour. */
-  what?: CopyWhat;
-}
+export type CopyPayload =
+  | {
+      readonly text: string;
+      readonly message?: never;
+      /** What the text represents - for labels and trace, never alters behaviour. */
+      readonly what?: CopyWhat;
+    }
+  | {
+      /** Catalog-owned clipboard content, resolved only by the terminal effect. */
+      readonly message: MessageDescriptor;
+      readonly text?: never;
+      /** What the text represents - for labels and trace, never alters behaviour. */
+      readonly what?: CopyWhat;
+    };
 
 export interface CopyResult {
   ok: boolean;
@@ -49,7 +60,9 @@ const COPY_WHAT_VALUES: readonly CopyWhat[] = [
 const COPY_WHAT_SET = new Set<string>(COPY_WHAT_VALUES);
 const COPY_ACTION_MESSAGE_KEYS = [
   "common:actions.copy",
+  "common:actions.copyCategoryName",
   "common:actions.copyDocumentName",
+  "common:actions.copyFeatureTag",
   "common:actions.copyPath",
   "common:actions.copySummary",
   "common:actions.copyTitle",
@@ -73,13 +86,79 @@ export function normalizeCopyWhat(value: unknown): CopyWhat | undefined {
     : undefined;
 }
 
-export function normalizeCopyPayload(payload: unknown): CopyPayload {
-  const record = copyRecord(payload);
-  const what = normalizeCopyWhat(record.what);
-  return {
-    text: normalizeActionDescriptorText(record.text),
-    ...(what === undefined ? {} : { what }),
-  };
+/** Accept only one exact clipboard-content lane: raw text or a localized message. */
+export function isCopyPayload(value: unknown): value is CopyPayload {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  let prototype: object | null;
+  let keys: readonly PropertyKey[];
+  try {
+    prototype = Object.getPrototypeOf(value) as object | null;
+    keys = Reflect.ownKeys(value);
+  } catch {
+    return false;
+  }
+  if (prototype !== Object.prototype && prototype !== null) return false;
+
+  const fields = new Map<string, unknown>();
+  for (const key of keys) {
+    if (typeof key !== "string") return false;
+    if (key !== "text" && key !== "message" && key !== "what") return false;
+    let descriptor: PropertyDescriptor | undefined;
+    try {
+      descriptor = Object.getOwnPropertyDescriptor(value, key);
+    } catch {
+      return false;
+    }
+    if (
+      descriptor === undefined ||
+      !descriptor.enumerable ||
+      !("value" in descriptor)
+    ) {
+      return false;
+    }
+    fields.set(key, descriptor.value);
+  }
+
+  const what = fields.get("what");
+  if (what !== undefined && normalizeCopyWhat(what) !== what) {
+    return false;
+  }
+  const hasText = fields.has("text");
+  const hasMessage = fields.has("message");
+  if (hasText === hasMessage) return false;
+  return hasText
+    ? typeof fields.get("text") === "string"
+    : normalizeMessageDescriptor(fields.get("message")) !== null;
+}
+
+export function normalizeCopyPayload(payload: unknown): CopyPayload | null {
+  if (!isCopyPayload(payload)) return null;
+  const what = normalizeCopyWhat(payload.what);
+  if (typeof payload.text === "string") {
+    return {
+      text: payload.text,
+      ...(what === undefined ? {} : { what }),
+    };
+  }
+  const message = normalizeMessageDescriptor(payload.message);
+  return message === null
+    ? null
+    : {
+        message,
+        ...(what === undefined ? {} : { what }),
+      };
+}
+
+/** Resolve catalog-owned content against the active locale at clipboard execution. */
+export function resolveCopyPayloadText(
+  payload: unknown,
+  translator: MessageTranslator = localization,
+): string | null {
+  const normalized = normalizeCopyPayload(payload);
+  if (normalized === null) return null;
+  return "message" in normalized
+    ? resolveMessage(translator, normalized.message)
+    : normalized.text;
 }
 
 function normalizeCopyActionLabel(value: unknown): MessageDescriptor {
@@ -141,7 +220,8 @@ async function writeClipboard(text: string): Promise<boolean> {
 
 // Register the terminal effect once at module load (the ops handler pattern).
 appDispatcher.register<CopyPayload>(COPY_ACTION, (action) => {
-  const text = normalizeCopyPayload(action.payload).text;
+  const text = resolveCopyPayloadText(action.payload);
+  if (text === null) return Promise.resolve({ ok: false } satisfies CopyResult);
   return writeClipboard(text).then((ok) => ({ ok }) satisfies CopyResult);
 });
 
@@ -156,7 +236,28 @@ export function dispatchCopy(payload: unknown): Promise<CopyResult> {
 /** Build a copy action descriptor for a menu's copy section. */
 export function copyAction(opts: unknown): ActionDescriptor {
   const record = copyRecord(opts);
-  const payload = normalizeCopyPayload(record);
+  const what = normalizeCopyWhat(record.what);
+  const payload: CopyPayload = {
+    text: normalizeActionDescriptorText(record.text),
+    ...(what === undefined ? {} : { what }),
+  };
+  return {
+    id: normalizeActionDescriptorId(record.id, "copy"),
+    label: normalizeCopyActionLabel(record.label),
+    section: "copy",
+    icon: Copy,
+    dispatch: { type: COPY_ACTION, payload },
+  };
+}
+
+/** Build a copy action whose content resolves from a typed message at execution. */
+export function copyLocalizedMessageAction(opts: unknown): ActionDescriptor {
+  const record = copyRecord(opts);
+  const what = normalizeCopyWhat(record.what);
+  const payload = normalizeCopyPayload({
+    message: record.message,
+    ...(what === undefined ? {} : { what }),
+  });
   return {
     id: normalizeActionDescriptorId(record.id, "copy"),
     label: normalizeCopyActionLabel(record.label),

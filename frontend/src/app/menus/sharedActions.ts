@@ -17,15 +17,52 @@
 // deleted. They read only their arguments + the injected ActionContext
 // (selectedNodeId), never a store — so they stay pure and unit-testable.
 
-import { Archive, ArrowUpRight, Link2, Wrench } from "lucide-react";
+import { Archive, ArrowUpRight, Crosshair, Link2, Wrench } from "lucide-react";
 
 import type { ActionDescriptor } from "../../platform/actions/action";
 import type { ActionContext } from "../../platform/actions/registry";
 import { OPS_ACTION } from "../../stores/server/opsActions";
 import { RELATE_ACTION, type RelatePayload } from "../../stores/server/relateActions";
-import { openMenuNodeIsland } from "../../stores/view/menuActions";
+import {
+  focusMenuNode,
+  openMenuNodeIsland,
+  type ScopedMenuEntity,
+} from "../../stores/view/menuActions";
 
 const DOC_NODE_PREFIX = "doc:";
+
+export interface ShowOnCanvasOptions {
+  readonly id: string;
+  readonly nodeId?: string | null;
+  readonly entity?: ScopedMenuEntity;
+}
+
+/** Select an existing canvas item without opening or materializing new content. */
+export function showOnCanvasAction(opts: ShowOnCanvasOptions): ActionDescriptor {
+  const base = {
+    id: opts.id,
+    label: { key: "common:actions.showOnCanvas" } as const,
+    section: "navigate" as const,
+    icon: Crosshair,
+  };
+  const nodeId =
+    typeof opts.nodeId === "string" && opts.nodeId.trim().length > 0
+      ? opts.nodeId.trim()
+      : null;
+  if (nodeId === null) {
+    return {
+      ...base,
+      disabled: true,
+      disabledReason: {
+        key: "common:disabledReasons.itemUnavailableOnCanvas",
+      } as const,
+    };
+  }
+  return {
+    ...base,
+    run: () => focusMenuNode(nodeId, opts.entity),
+  };
+}
 
 export interface OpenEntityOptions {
   /** The action id (surface-scoped, e.g. "search-result:open" / "node:open"). */

@@ -5,22 +5,24 @@
 // global state, so it is unit-testable in isolation. The registration below
 // contributes it for the "vault-category" entity kind at module load.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Filter, FoldVertical, UnfoldVertical } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
-import { copyAction } from "../../../platform/actions/clipboardActions";
+import { copyLocalizedMessageAction } from "../../../platform/actions/clipboardActions";
 import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { toggleDashboardFilterFacet } from "../../../stores/server/dashboardState";
+import {
+  docTypePresentation,
+  DOCUMENT_TYPE_MESSAGES,
+} from "../../../stores/server/docTypeVocabulary";
 import { newDocumentAction } from "../../../stores/view/leftRailKeybindings";
 import { toggleVaultBrowserTreeItem } from "../../../stores/view/browserTreeExpansion";
-import { docGroupLabel } from "../vaultRowPresentation";
 
 /**
- * The menu for a category folder row. "Expand/Collapse" toggles the folder through
- * the one expansion authority; "Filter to this type" toggles the canonical
+ * The menu for a category folder row. "Expand category" and "Collapse category"
+ * use the one expansion authority; "Filter by this document type" toggles the canonical
  * `doc_types` facet (the SAME write the graph legend performs) so every corpus view
  * narrows; "Add to a Feature…" opens the create dialog (pre-filled with the parent
  * feature when this is a feature sub-folder, otherwise unfilled); the human category
@@ -37,9 +39,11 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
     const expansionKey = normalizedEntity.expansionKey;
     actions.push({
       id: "vault-category:toggle",
-      label: legacyActionPresentation(
-        normalizedEntity.expanded ? "Collapse category" : "Expand category",
-      ),
+      label: {
+        key: normalizedEntity.expanded
+          ? "documents:actions.collapseCategory"
+          : "documents:actions.expandCategory",
+      },
       section: "navigate",
       icon: normalizedEntity.expanded ? FoldVertical : UnfoldVertical,
       run: () => toggleVaultBrowserTreeItem(normalizedEntity.scope, expansionKey),
@@ -51,7 +55,7 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
   // the timeline in lock-step (one-filter-authority).
   actions.push({
     id: "vault-category:filter",
-    label: legacyActionPresentation("Filter to this type"),
+    label: { key: "documents:actions.filterByDocumentType" },
     section: "navigate",
     icon: Filter,
     run: () => {
@@ -68,10 +72,12 @@ export function vaultCategoryMenu(entity: unknown): ActionDescriptor[] {
   actions.push(newDocumentAction(normalizedEntity.feature));
 
   actions.push(
-    copyAction({
+    copyLocalizedMessageAction({
       id: "vault-category:copy-category",
-      label: { key: "common:actions.copy" },
-      text: docGroupLabel(normalizedEntity.docType),
+      label: { key: "common:actions.copyCategoryName" },
+      message:
+        docTypePresentation(normalizedEntity.docType)?.label ??
+        DOCUMENT_TYPE_MESSAGES.document,
     }),
   );
 

@@ -850,61 +850,6 @@
     "rule": "jsx-attribute"
   },
   {
-    "id": "0147b9909c5325317d2980b7",
-    "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "4b9c474f6d6214316edaa7f1",
-    "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "ccccb923970d270898af3385",
-    "path": "src/app/left/menus/codeFileMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "836061e9aeccddf35f5e48b5",
-    "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "f5d6ee840415b7603f8c633c",
-    "path": "src/app/left/menus/vaultCategoryMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "f848c88c283f7a3f608ed13e",
-    "path": "src/app/left/menus/vaultDocMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "13da61671b73961fa101c31f",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "32fd011fe6fade99754d8a49",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "6323242ec7e741d4276ceabb",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "6527bc5eccf4cd466a7e25f2",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
-    "id": "d0adf9cc6ab1663b9512eb58",
-    "path": "src/app/left/menus/vaultFeatureMenu.ts",
-    "rule": "legacy-action-presentation"
-  },
-  {
     "id": "4a44e2c61a6f05e23ef32ab4",
     "path": "src/app/left/menus/workspaceMenu.ts",
     "rule": "legacy-action-presentation"
