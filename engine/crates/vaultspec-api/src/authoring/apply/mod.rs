@@ -138,8 +138,10 @@ pub fn apply_changeset(
 
     // Stage B — materialize with NO transaction held. The caller wraps this whole
     // function in `spawn_blocking`; `adapter.invoke` is the sync subprocess seam.
-    let invoke_result = adapter.invoke(worktree_root, &prep.invocation);
-    let resolution = resolve_outcome(invoke_result, &prep, worktree_root);
+    // A single-invocation kind runs once; a `CreateDocument`-with-body runs the
+    // ordered scaffold→body pair, each invocation individually capped/timed and
+    // the child outcome fail-closed on the strengthened post-verify.
+    let resolution = materialize_child(adapter, worktree_root, &prep);
 
     // Stage C — completion: append the terminal revision, record the receipt,
     // register retention, publish. One unit of work; all-or-nothing.
@@ -177,6 +179,15 @@ pub(super) struct ApplyPrep {
     /// through this.
     post_verify: PostVerifyExpectation,
     invocation: CoreInvocation,
+    /// The SECOND invocation of a two-step materialization, `Some` only for a
+    /// `CreateDocument` whose materialized draft carries an authored body:
+    /// `invocation` is the `vault add` scaffold, this is the `vault set-body`
+    /// that writes the body under the scaffold's frontmatter. `None` for every
+    /// single-invocation kind (the whole `.vault/` write is one core call).
+    /// Core's `vault add` scaffolds from a template only — it has no
+    /// body-on-stdin path — so a whole-document create MUST scaffold then write
+    /// the body as an ordered pair, or it materializes the empty template.
+    follow_up_invocation: Option<CoreInvocation>,
 }
 
 pub(super) enum Preflight {
@@ -402,6 +413,10 @@ fn preflight_in_uow(
         Ok(post_verify) => post_verify,
         Err(err) => return Ok(Err(err)),
     };
+    let follow_up_invocation = match build_create_body_follow_up(child.operation, materialized) {
+        Ok(follow_up) => follow_up,
+        Err(err) => return Ok(Err(err)),
+    };
 
     // Reserve the attempt, then append the `Applying` revision under the applying
     // actor (records that materialization started — restart visibility). A
@@ -457,6 +472,7 @@ fn preflight_in_uow(
         expected_result_blob_hash,
         post_verify,
         invocation,
+        follow_up_invocation,
     }))))
 }
 
@@ -749,6 +765,105 @@ pub(super) fn build_write_invocation(
         .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")))
 }
 
+/// The SECOND invocation of a `CreateDocument`-with-body materialization: the
+/// `vault set-body` that writes the authored body under the scaffold's
+/// frontmatter, run after `build_write_invocation`'s `vault add` scaffolds the
+/// document. `Ok(None)` for every non-create kind and for a bodiless create
+/// (a bare scaffold), so the caller stores a `None` follow-up and stays a
+/// single invocation.
+///
+/// Core's `vault add` scaffolds from a doc-type template ONLY — it has no
+/// body-on-stdin path (verified against `vault add --help`) — so a whole-
+/// document create that stopped at `vault add` materializes the empty template,
+/// never the authored content. The body write is a distinct core call, keyed on
+/// the SAME deterministic predicted path the identity-bearing post-verify uses,
+/// so both agree on the target across a crash-recovery reclaim.
+///
+/// `vault set-body` REPLACES only the body prose and preserves the scaffold's
+/// frontmatter byte-for-byte (verified against `vault set-body --help`), so the
+/// streamed text is the authored body with any leading YAML frontmatter block
+/// stripped — streaming the whole document would double the frontmatter. The
+/// scaffold's core-generated frontmatter (conformant by construction) is the one
+/// that survives.
+pub(super) fn build_create_body_follow_up(
+    operation: ChangesetOperationKind,
+    materialized: &super::operations::MaterializedProposalOperation,
+) -> Result<Option<CoreInvocation>> {
+    if operation != ChangesetOperationKind::CreateDocument {
+        return Ok(None);
+    }
+    let body = create_body_payload(materialized);
+    if body.trim().is_empty() {
+        // A bodiless create scaffolds and stops — the template IS the intent.
+        return Ok(None);
+    }
+    let DocumentRef::ProvisionalCreate {
+        doc_type, feature, ..
+    } = &materialized.target.document
+    else {
+        return Err(ApplyError::Internal(
+            "materialized CreateDocument child target is not a provisional create".to_string(),
+        ));
+    };
+    let Some(date) = materialized.create_document_date.as_deref() else {
+        return Err(ApplyError::Internal(
+            "materialized CreateDocument child carries no fixed create date".to_string(),
+        ));
+    };
+    // The DETERMINISTIC predicted path `post_verify_expectation` also computes —
+    // core's `vault add` derives the filename from its own `{date}-{feature}-
+    // {doc_type}.md` convention, so this is the just-scaffolded document's path.
+    let document_path = format!(".vault/{doc_type}/{date}-{feature}-{doc_type}.md");
+    // No `--expected-blob-hash` fence: the target was just created by THIS apply's
+    // own scaffold step, so there is no concurrent writer to fence against within
+    // the single in-flight materialization.
+    CoreInvocation::write(
+        CoreCapability::SetBody,
+        &document_path,
+        WriteArgs {
+            body: Some(body),
+            ..Default::default()
+        },
+    )
+    .map(Some)
+    .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")))
+}
+
+/// The body text a `CreateDocument`-with-body streams to `vault set-body`: the
+/// materialized whole-document preview with any leading YAML frontmatter block
+/// stripped, because `set-body` keeps the scaffold's own frontmatter and
+/// replaces only body prose. The blank line that followed the closing `---`
+/// fence is preserved, so the composed document keeps its frontmatter/body
+/// separation. A preview with no frontmatter fence is returned unchanged.
+pub(super) fn create_body_payload(
+    materialized: &super::operations::MaterializedProposalOperation,
+) -> String {
+    strip_leading_frontmatter(&materialized.target_snapshot.payload_text)
+}
+
+/// Strip a leading `---`-fenced YAML frontmatter block from a document, keeping
+/// everything after the closing fence line (including the blank line that
+/// followed it). Text that does not open with a `---` fence line is returned
+/// verbatim. Line-ending agnostic: matches a fence line whose trimmed content
+/// is exactly `---`.
+fn strip_leading_frontmatter(text: &str) -> String {
+    let mut lines = text.split_inclusive('\n');
+    match lines.next() {
+        Some(first) if first.trim_end_matches(['\n', '\r']) == "---" => {}
+        // No opening fence: the whole text is body prose.
+        _ => return text.to_string(),
+    }
+    for line in lines.by_ref() {
+        if line.trim_end_matches(['\n', '\r']) == "---" {
+            // The closing fence — everything after it is body prose.
+            return lines.collect();
+        }
+    }
+    // An unterminated frontmatter block (no closing fence): treat the whole
+    // input as body rather than silently dropping it.
+    text.to_string()
+}
+
 /// HOW to verify, post-write, that a materialized child's write actually
 /// landed — keyed on the SAME operation kind [`build_write_invocation`]
 /// dispatches on, because the two questions are coupled: verification is sound
@@ -812,6 +927,16 @@ pub(super) enum PostVerifyExpectation {
         expected_stem: String,
         expected_path: String,
         expected_feature_tag: String,
+        /// The authored body a two-step create-with-body wrote via `set-body`,
+        /// `Some` only when the materialized draft carried one. Its presence
+        /// STRENGTHENS the verify: a create whose scaffold landed but whose body
+        /// write did NOT (a crash between the two steps, or an indeterminate
+        /// kill of the body write) leaves the pristine template on disk — the
+        /// bare "scaffold shape" check would forge that hollow document as
+        /// Applied. When set, post-verify additionally requires the on-disk body
+        /// to CONTAIN this authored text, so a scaffold-only landing fails
+        /// closed. `None` for a bodiless create (the template IS the intent).
+        expected_body: Option<String>,
     },
     /// `PlanStepState` applies to `SetPlanStepState` — the plan CLI verb is
     /// core-authoritative over the resulting bytes (it flips the checkbox glyph,
@@ -885,10 +1010,16 @@ pub(super) fn post_verify_expectation(
             };
             let expected_stem = format!("{date}-{feature}-{doc_type}");
             let expected_path = format!(".vault/{doc_type}/{expected_stem}.md");
+            // Recomputed identically from the SAME durable materialized operation
+            // the follow-up invocation reads, so the reclaim path's post-verify
+            // and the happy path agree on the expected body.
+            let body = create_body_payload(materialized);
+            let expected_body = (!body.trim().is_empty()).then_some(body);
             Ok(PostVerifyExpectation::CreatedAt {
                 expected_stem,
                 expected_path,
                 expected_feature_tag: format!("#{feature}"),
+                expected_body,
             })
         }
         ChangesetOperationKind::SetPlanStepState => {

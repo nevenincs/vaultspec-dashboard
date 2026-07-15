@@ -294,6 +294,24 @@ pub(super) const LIVE_CREATE_STEM: &str = "2026-01-15-apply-create-live-demo-pla
 pub(super) const LIVE_CREATE_DOC_PATH: &str =
     ".vault/plan/2026-01-15-apply-create-live-demo-plan.md";
 
+/// A distinctive line the authored body carries and the pristine template never
+/// does — the "body landed" witness for the two-step create assertions.
+pub(super) const LIVE_CREATE_BODY_MARKER: &str = "APPLY LIVE CREATE BODY MARKER";
+
+/// The WHOLE authored document a real graph-submitter sends as a
+/// `create_document` draft body — a complete document from its own opening
+/// `---` frontmatter fence through the last section. The apply's body-write step
+/// strips this leading frontmatter (core's `set-body` keeps the scaffold's own
+/// frontmatter) and streams only the prose below, so the materialized document
+/// carries core's conformant scaffold frontmatter plus this authored body — with
+/// no template annotations, no unfilled placeholders, and no doubled frontmatter.
+pub(super) const LIVE_CREATE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#apply-create-live-demo'\ndate: '2026-01-15'\nmodified: '2026-01-15'\nrelated: []\n---\n\n# `apply-create-live-demo` plan\n\nAPPLY LIVE CREATE BODY MARKER - the two-step create wrote this authored body.\n\n## Proposed Changes\n\nWire the two-step apply so a whole-document create materializes its authored content.\n\n## Tasks\n\n- Scaffold the document, then write the authored body under the scaffold frontmatter.\n\n## Verification\n\nThe materialized document exists and contains this authored body.\n";
+
+/// The prose portion of [`LIVE_CREATE_BODY`] — everything below the closing
+/// frontmatter fence — the exact text the apply's `set-body` step streams and
+/// the two-step landing adapter re-supplies to replicate a real materialization.
+pub(super) const LIVE_CREATE_BODY_PROSE: &str = "# `apply-create-live-demo` plan\n\nAPPLY LIVE CREATE BODY MARKER - the two-step create wrote this authored body.\n\n## Proposed Changes\n\nWire the two-step apply so a whole-document create materializes its authored content.\n\n## Tasks\n\n- Scaffold the document, then write the authored body under the scaffold frontmatter.\n\n## Verification\n\nThe materialized document exists and contains this authored body.\n";
+
 /// The `setup_live_rename` sibling for `CreateDocument`: a REAL git +
 /// vaultspec workspace, an APPROVED single-child `CreateDocument`
 /// changeset ready to apply against the genuine `vaultspec-core` binary.
@@ -349,9 +367,11 @@ pub(super) fn setup_live_create() -> Fx {
         },
         draft: DraftMutation {
             mode: DraftMode::WholeDocument,
-            body: "preview body (never sent to core; a real create's scaffold comes \
-                   from core's own doc-type template)"
-                .to_string(),
+            // A real graph-submitter sends the WHOLE authored document (its own
+            // frontmatter through its last section). The apply strips this
+            // leading frontmatter and writes the prose under the scaffold's
+            // frontmatter via the two-step `vault add` → `vault set-body`.
+            body: LIVE_CREATE_BODY.to_string(),
             frontmatter: None,
             new_stem: None,
             section_selector: None,
@@ -520,6 +540,53 @@ pub(super) fn landing_create_timeout_adapter(
         ]
     };
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+}
+
+/// A REAL two-step `CreateDocument`-with-body materialization, wrapped to LAND
+/// BOTH steps (`vault add` scaffold THEN `vault set-body` of the authored prose)
+/// and THEN hang past the deadline — the outcome-indeterminate-kill falsifier
+/// for the STRENGTHENED `CreatedAt` post-verify. Only when the authored body is
+/// genuinely on disk (not merely the scaffold) must the reclaim recognize it
+/// Applied. The prose is staged in the worktree and supplied via
+/// `set-body --body-file`, exactly the body the apply's own follow-up streams.
+pub(super) fn landing_create_two_step_timeout_adapter(
+    worktree_root: &Path,
+    doc_type: &str,
+    feature: &str,
+    title: &str,
+    date: &str,
+    stem: &str,
+    body_prose: &str,
+) -> CoreAdapter {
+    let body_file = ".landing-source-create";
+    std::fs::write(worktree_root.join(body_file), body_prose).unwrap();
+    let invocation = if cfg!(windows) {
+        vec![
+            "powershell".to_string(),
+            "-NoProfile".into(),
+            "-Command".into(),
+            format!(
+                "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
+                 '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
+                 uv run --no-sync vaultspec-core vault set-body '{stem}' --body-file \
+                 '{body_file}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+            ),
+        ]
+    } else {
+        vec![
+            "sh".to_string(),
+            "-c".into(),
+            format!(
+                "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature '{feature}' \
+                 --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
+                 uv run --no-sync vaultspec-core vault set-body '{stem}' --body-file \
+                 '{body_file}' --json >/dev/null 2>&1; sleep 30"
+            ),
+        ]
+    };
+    // A generous deadline: TWO real `uv run` core subprocesses must complete
+    // before the kill, so the apply-level adapter still observes a Timeout.
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(20))
 }
 
 /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the

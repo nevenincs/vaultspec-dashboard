@@ -278,28 +278,57 @@ fn create_document_apply_against_the_real_core_is_recognized_applied() {
         receipt.child.result_node_id.as_deref(),
         Some(format!("doc:{LIVE_CREATE_STEM}").as_str())
     );
+
+    // The two-step materialization wrote the AUTHORED body under the scaffold's
+    // frontmatter — not the empty template (the scaffold-only regression this
+    // fix closes). The body landed, the template annotations/placeholders are
+    // gone, and the frontmatter was not doubled by streaming the whole authored
+    // document (with its own fence) as body.
+    let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+    let saved_lf = saved.replace("\r\n", "\n");
+    assert!(
+        saved_lf.contains(LIVE_CREATE_BODY_MARKER),
+        "the authored body must be materialized, not the empty template: {saved_lf}"
+    );
+    assert!(
+        !saved_lf.contains("<!--"),
+        "the template guidance annotations must be replaced by the authored body: {saved_lf}"
+    );
+    assert!(
+        !saved_lf.contains("{topic}") && !saved_lf.contains("{title}"),
+        "no unfilled template placeholder survives the authored body write: {saved_lf}"
+    );
+    let fence_lines = saved_lf.lines().filter(|line| line.trim() == "---").count();
+    assert_eq!(
+        fence_lines, 2,
+        "exactly ONE frontmatter block (two fence lines) — the scaffold's own, never \
+         doubled by the streamed body: {saved_lf}"
+    );
 }
 
 #[test]
-fn create_document_indeterminate_kill_after_a_real_landed_create_is_recognized_applied() {
-    // THE R1 pattern applied to CreateDocument: core is core-authoritative
-    // over the ENTIRE scaffold (a doc-type template this engine cannot
-    // predict) — there is no preview hash to compare, and a bare
-    // "something now exists at the target stem" check would be exactly
-    // the stem-identity-aliasing bug class the Rename rollback lineage
-    // guard closes. The identity-bearing `CreatedAt` verify (a
-    // DETERMINISTIC predicted path fixed at materialize time, plus a
-    // frontmatter feature-tag re-read) must recognize a REAL, landed
-    // `vault add` regardless of the reclaim recomputing everything from
-    // the SAME durable `materialized_operation`.
+fn create_document_indeterminate_kill_after_both_steps_landed_is_recognized_applied() {
+    // THE R1 pattern applied to a TWO-STEP CreateDocument-with-body: core is
+    // core-authoritative over the ENTIRE scaffold AND the authored body write —
+    // there is no preview hash to compare, and a bare "something now exists at
+    // the target stem" check would be exactly the stem-identity-aliasing bug
+    // class the Rename rollback lineage guard closes. The identity-bearing
+    // `CreatedAt` verify (a DETERMINISTIC predicted path fixed at materialize
+    // time, a frontmatter feature-tag re-read, AND — new — the authored body's
+    // presence) must recognize a REAL, landed two-step create regardless of the
+    // reclaim recomputing everything from the SAME durable
+    // `materialized_operation`.
     let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
     let mut fx = setup_live_create();
     let applier = fx.applier.clone();
-    let adapter = landing_create_timeout_adapter(
+    let adapter = landing_create_two_step_timeout_adapter(
+        &fx.root,
         LIVE_CREATE_DOC_TYPE,
         LIVE_CREATE_FEATURE,
         "Apply Live Create Demo",
         LIVE_CREATE_DATE,
+        LIVE_CREATE_STEM,
+        LIVE_CREATE_BODY_PROSE,
     );
     let outcome = apply(
         &mut fx,
@@ -314,8 +343,8 @@ fn create_document_indeterminate_kill_after_a_real_landed_create_is_recognized_a
     assert_eq!(
         receipt.state,
         ApplyState::Applied,
-        "the REAL landed create must be recognized Applied via the identity-bearing \
-         post-verify: {receipt:?}"
+        "the REAL landed two-step create (scaffold + authored body) must be recognized \
+         Applied via the identity-bearing post-verify: {receipt:?}"
     );
     assert!(receipt.child.resolved_via_post_verify);
     assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
@@ -330,6 +359,63 @@ fn create_document_indeterminate_kill_after_a_real_landed_create_is_recognized_a
     assert_eq!(
         receipt.child.result_node_id.as_deref(),
         Some(format!("doc:{LIVE_CREATE_STEM}").as_str())
+    );
+    let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+    assert!(
+        saved
+            .replace("\r\n", "\n")
+            .contains(LIVE_CREATE_BODY_MARKER),
+        "the reclaim recognizes Applied only because the authored body genuinely landed"
+    );
+}
+
+#[test]
+fn create_document_indeterminate_kill_after_only_the_scaffold_fails_closed() {
+    // The scaffold-only regression, guarded: a create-with-body whose FIRST step
+    // (`vault add`) landed but whose SECOND step (the authored body write) did
+    // NOT — a crash or indeterminate kill between the two — leaves the pristine
+    // TEMPLATE on disk. The pre-fix `CreatedAt` check (path + feature tag) would
+    // forge that hollow scaffold as Applied — exactly the empty-document defect
+    // this fix closes. With the authored body now required, the post-state
+    // re-verify records `Failed`, fail-closed, never a forged success.
+    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let mut fx = setup_live_create();
+    let applier = fx.applier.clone();
+    // `landing_create_timeout_adapter` runs ONLY `vault add` (the scaffold) and
+    // then hangs — the authored body write never happens.
+    let adapter = landing_create_timeout_adapter(
+        LIVE_CREATE_DOC_TYPE,
+        LIVE_CREATE_FEATURE,
+        "Apply Live Create Demo",
+        LIVE_CREATE_DATE,
+    );
+    let outcome = apply(
+        &mut fx,
+        &adapter,
+        &applier,
+        "idem:apply:cr:live:scaffold-only:1",
+        100,
+    );
+    let receipt = outcome
+        .receipt
+        .expect("an indeterminate kill still resolves to a terminal receipt");
+    assert_eq!(
+        receipt.state,
+        ApplyState::Failed,
+        "a scaffold that landed WITHOUT the authored body must fail closed, never be \
+         forged Applied on the bare template: {receipt:?}"
+    );
+    assert!(receipt.child.resolved_via_post_verify);
+    assert_eq!(ledger_status(&mut fx), ChangesetStatus::Failed);
+
+    // The scaffold is on disk (the `vault add` did land) but carries only the
+    // template — the authored body is absent, which is exactly why the verify
+    // fails closed.
+    assert!(fx.doc_file.exists());
+    let saved = std::fs::read_to_string(&fx.doc_file).unwrap();
+    assert!(
+        !saved.contains(LIVE_CREATE_BODY_MARKER),
+        "the authored body genuinely did not land — the failure is honest"
     );
 }
 

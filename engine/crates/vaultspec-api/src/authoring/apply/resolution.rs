@@ -5,6 +5,7 @@
 use std::path::Path;
 
 use super::super::api::ChangesetOperationKind;
+use super::super::core_adapter::CoreAdapter;
 use super::super::ledger::ChangesetAggregateRecord;
 use super::super::model::DocumentRef;
 use super::super::store::Result as StoreResult;
@@ -12,8 +13,8 @@ use super::super::store::idempotency::{IdempotencyKeyScope, InFlightReservation}
 use super::types::{ApplyChildOutcome, ApplyError, ApplyRequest};
 use super::{
     ApplyPrep, PostVerifyExpectation, Preflight, apply_request_digest, apply_scope,
-    build_write_invocation, existing_path, full_file_blob_hash, post_verify_expectation,
-    read_blob_hash, read_document_text, receipt_id_for,
+    build_create_body_follow_up, build_write_invocation, existing_path, full_file_blob_hash,
+    post_verify_expectation, read_blob_hash, read_document_text, receipt_id_for,
 };
 
 /// The interpreted result of the materialize stage, ready to persist.
@@ -24,6 +25,51 @@ pub(super) struct ChildResolution {
     pub(super) core_schema: Option<String>,
     pub(super) resolved_via_post_verify: bool,
     pub(super) diagnostic: Option<String>,
+}
+
+/// Run a prepared child's materialization and interpret the outcome. A single-
+/// invocation kind is one `adapter.invoke` interpreted by [`resolve_outcome`]. A
+/// `CreateDocument`-with-body is an ORDERED PAIR: `vault add` scaffolds, then —
+/// only when that scaffold CLEANLY succeeds — `vault set-body` writes the body,
+/// and the body write's result IS the child outcome (its landing is what makes
+/// the create real). Each invocation carries its own output cap + wall-clock
+/// timeout at the adapter seam; the R1 discipline is preserved end to end:
+///
+/// - The scaffold refused (business `failed`) or faulted determinately: the body
+///   write is NOT run and the child fails on the scaffold step.
+/// - The scaffold was killed OUTCOME-INDETERMINATE: the body write is NOT run;
+///   [`resolve_outcome`] routes to the fail-closed post-state re-verify, which
+///   for a create-with-body requires the authored body and so records `Failed`
+///   for a scaffold-only landing — never a forged Applied.
+/// - The body write is killed indeterminate: post-state re-verify decides, and
+///   only a landed body (its text present on disk) resolves Applied.
+pub(super) fn materialize_child(
+    adapter: &CoreAdapter,
+    worktree_root: &Path,
+    prep: &ApplyPrep,
+) -> ChildResolution {
+    let primary = adapter.invoke(worktree_root, &prep.invocation);
+    if let Some(follow_up) = &prep.follow_up_invocation {
+        // The scaffold cleanly landed → run the body write; its result is the
+        // child outcome. Any other scaffold result (refusal, determinate fault,
+        // or an indeterminate kill) resolves on the scaffold step alone, which
+        // fails closed at the strengthened `CreatedAt` post-verify.
+        if matches!(&primary, Ok(envelope) if envelope.is_success()) {
+            let follow_result = adapter.invoke(worktree_root, follow_up);
+            return resolve_outcome(follow_result, prep, worktree_root);
+        }
+    }
+    resolve_outcome(primary, prep, worktree_root)
+}
+
+/// Whether the authored `body` a two-step create wrote is present in the
+/// document's post-state `text`. Line-ending agnostic (core may write CRLF on
+/// Windows while the streamed body is LF), so a real landing is not missed on a
+/// newline-convention difference. A `contains` (not equality) check tolerates
+/// the scaffold's preserved frontmatter preceding the body.
+fn body_landed(text: &str, body: &str) -> bool {
+    let normalize = |s: &str| s.replace("\r\n", "\n").replace('\r', "\n");
+    normalize(text).contains(normalize(body).trim())
 }
 
 pub(super) fn resolve_outcome(
@@ -224,12 +270,16 @@ pub(super) fn post_state_resolution(
             expected_stem,
             expected_path,
             expected_feature_tag,
+            expected_body,
         } => {
             // See the `CreatedAt` type doc for why resolving at the
             // DETERMINISTIC predicted path is sound identity proof here (core
             // refuses to overwrite + duplicate-path conflict detection), with
             // the feature-tag re-read as defense-in-depth "expected scaffold
-            // shape" beyond bare existence.
+            // shape" beyond bare existence. For a two-step create-with-body the
+            // authored body must ALSO be present: a scaffold whose body write
+            // did not land carries the pristine template, which the feature-tag
+            // check alone would forge as Applied.
             let created = resolve_by_stem(worktree_root, expected_stem);
             let created_path = created.as_ref().and_then(|document| match document {
                 DocumentRef::Existing { path, .. } => Some(path.clone()),
@@ -239,21 +289,35 @@ pub(super) fn post_state_resolution(
                 (Some(created_ref), Some(path)) if &path == expected_path => {
                     match read_document_text(worktree_root, created_ref) {
                         Ok(text) if text.contains(expected_feature_tag.as_str()) => {
-                            ChildResolution {
-                                outcome: ApplyChildOutcome::Applied,
-                                observed_result_blob_hash: read_blob_hash(
-                                    worktree_root,
-                                    created_ref,
-                                )
-                                .ok(),
-                                core_status: None,
-                                core_schema: None,
-                                resolved_via_post_verify: true,
-                                diagnostic: Some(format!(
-                                    "{reason}; post-state re-verified the create of \
-                                     `{expected_stem}` landed at the expected path with the \
-                                     expected scaffold shape"
-                                )),
+                            match expected_body {
+                                Some(body) if !body_landed(&text, body) => ChildResolution {
+                                    outcome: ApplyChildOutcome::Failed,
+                                    observed_result_blob_hash: None,
+                                    core_status: None,
+                                    core_schema: None,
+                                    resolved_via_post_verify: true,
+                                    diagnostic: Some(format!(
+                                        "{reason}; the create of `{expected_stem}` scaffolded at \
+                                         the expected path but the authored body did NOT land \
+                                         (the body write step did not complete; fail-closed)"
+                                    )),
+                                },
+                                _ => ChildResolution {
+                                    outcome: ApplyChildOutcome::Applied,
+                                    observed_result_blob_hash: read_blob_hash(
+                                        worktree_root,
+                                        created_ref,
+                                    )
+                                    .ok(),
+                                    core_status: None,
+                                    core_schema: None,
+                                    resolved_via_post_verify: true,
+                                    diagnostic: Some(format!(
+                                        "{reason}; post-state re-verified the create of \
+                                         `{expected_stem}` landed at the expected path with the \
+                                         expected scaffold shape and authored body"
+                                    )),
+                                },
                             }
                         }
                         Ok(_) => ChildResolution {
@@ -474,6 +538,12 @@ pub(super) fn build_reclaim_prep(
         Ok(post_verify) => post_verify,
         Err(err) => return Ok(Err(err)),
     };
+    // Built for prep uniformity; the reclaim path never invokes it (post-state
+    // re-verify only), exactly like `invocation` above.
+    let follow_up_invocation = match build_create_body_follow_up(child.operation, materialized) {
+        Ok(follow_up) => follow_up,
+        Err(err) => return Ok(Err(err)),
+    };
     Ok(Ok(Preflight::Reclaim(Box::new(ApplyPrep {
         reservation,
         receipt_id,
@@ -489,6 +559,7 @@ pub(super) fn build_reclaim_prep(
         expected_result_blob_hash,
         post_verify,
         invocation,
+        follow_up_invocation,
     }))))
 }
 
