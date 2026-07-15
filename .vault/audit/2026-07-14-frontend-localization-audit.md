@@ -2004,3 +2004,27 @@ and verified the final imperative wording correction to Move to next or previous
 tab. Four legacy action calls, four legacy keybinding calls, and their eight exact
 allowlist entries were removed. The integrated focused suite and complete frontend gate
 passed. S218 is accepted with no open findings.
+
+### W02.P05.S249 review | pass | Navigation and working-set copy is typed and fail closed
+
+Keyboard navigation, project shortcuts, and working-set commands now share typed action
+descriptors across keybindings and live actions. Project actions reuse their exact
+descriptors by identity. Navigation uses the canonical Move verb for connected items and
+features. IDs, chords, contexts, order, eligibility, registration, selection behavior,
+working-set capacity, and add or remove effects remain unchanged.
+
+The ownership audit expanded the step to two orphaned render boundaries. Keyboard
+announcements now resolve complete catalog messages and suppress unsupported stable
+identifiers. Working-set labels, actions, hidden-state guidance, counts, and accessible
+copy resolve at render time. Supported document, feature, and code labels remain bounded
+user data. Commit and unknown identities preserve membership and counts but render only
+localized generic item copy. The previous accessible em-dash concatenation is removed.
+
+Sol found and verified fixes for an over-broad keybinding group type and the unsupported
+identifier fallback, then approved the final implementation with no findings. Real
+English, French, and Arabic tests cover labels, groups, announcements, locale-formatted
+counts, plural accessible counts, complete hidden-state sentences, and hostile IDs. The
+focused suite passed 56 tests, and the complete frontend lint recipe passed. Sixteen
+exact scanner exemptions were removed. The scanner is clean at 1,102 findings, including
+72 remaining legacy action presentations and one remaining legacy keybinding
+presentation elsewhere. S249 is accepted with no open findings.
