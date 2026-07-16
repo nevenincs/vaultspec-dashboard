@@ -1,5 +1,44 @@
 # Changelog
 
+## [0.1.4](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.3...v0.1.4) (2026-07-16)
+
+
+### Features
+
+* **authoring:** thread grounding related: into CreateDocument scaffold ([0c05f0d](https://github.com/nevenincs/vaultspec-dashboard/commit/0c05f0dc5fa13b12d98a1c71d9af1e0c990a2788))
+* **authoring:** W01 backend — ledgered plan-step ticks + section-anchored comments plane (authoring-surface ADR D1+D2) ([dd208c0](https://github.com/nevenincs/vaultspec-dashboard/commit/dd208c0b50eb8a5921f1a437477bcf95f9449261))
+* **authoring:** W04 S33 — plan-tick rollback inverse retires the V1 unavailable gate ([818776f](https://github.com/nevenincs/vaultspec-dashboard/commit/818776f3f2220a08d7334331f74ac6daeccd7f17))
+* **dist:** MSI channel with a Start-Menu shortcut (single-app-runtime S22) ([5aa1536](https://github.com/nevenincs/vaultspec-dashboard/commit/5aa1536e68d050a2327a9a89264d453fb3e5a143))
+* **engine:** /features serves generation-memoized feature-group coverage ([00236b7](https://github.com/nevenincs/vaultspec-dashboard/commit/00236b7c350d4d6d2d52b1abb4178ed921004011))
+* **engine:** extend changeset-transition events to the durable outbox ([a7ad6f3](https://github.com/nevenincs/vaultspec-dashboard/commit/a7ad6f38d23a40ea9fe7feeab89a1b842d1a62f1))
+* **engine:** publish review lifecycle events to the durable outbox ([5173858](https://github.com/nevenincs/vaultspec-dashboard/commit/5173858f47ed38e815d5b818bbcc954c598629fc))
+* **engine:** serve semantic settings metadata ([a6a9b51](https://github.com/nevenincs/vaultspec-dashboard/commit/a6a9b511bad092e5cc616b88a5097782fd77adc7))
+* **graph:** stale-while-refolding declared edges end edge-less graphs ([9fd6eeb](https://github.com/nevenincs/vaultspec-dashboard/commit/9fd6eeb9e648689ea8ac6f79967d0f7230798dfe))
+* **picker:** rebuild the workspace picker into a production folder picker ([acee980](https://github.com/nevenincs/vaultspec-dashboard/commit/acee980bce6e3dd3697c7097b5145ac72e8a945c))
+* **runtime:** seated default-port conflict falls back to ephemeral (single-app-runtime D2 robustness) ([853fec9](https://github.com/nevenincs/vaultspec-dashboard/commit/853fec9c8acf48185b39b20745099e714392cbac))
+* **runtime:** starting-state discovery + bounded folder-browse route (single-app-runtime S23, S24) ([ec0267d](https://github.com/nevenincs/vaultspec-dashboard/commit/ec0267d94c06d41b16aeed9b3e971369ffc053b2))
+* **runtime:** W01 seat law + lifecycle core (single-app-runtime S01-S07) ([150c0bb](https://github.com/nevenincs/vaultspec-dashboard/commit/150c0bb7d675cb6fe2755194b710d1d008f689e7))
+* **runtime:** W02/W03 engine — app front door, workspace-less boot, provisioning parity, CSP, update verb (single-app-runtime S08-S13, S15-S20) ([97b6912](https://github.com/nevenincs/vaultspec-dashboard/commit/97b69126aae8512f7c31e48d7f6b441f9d2f814e))
+
+
+### Bug Fixes
+
+* **api:** drop unused imports after the boot/discovery split ([71d042f](https://github.com/nevenincs/vaultspec-dashboard/commit/71d042ffc50184179cb672ea167d875589e2f3ca))
+* **engine:** materialize a whole-document create as a two-step apply ([2659e1c](https://github.com/nevenincs/vaultspec-dashboard/commit/2659e1c35a1f2d57edd95081c02678ae8707d5a6))
+* **engine:** scope create-path-collision apply gate to landable siblings ([ca66181](https://github.com/nevenincs/vaultspec-dashboard/commit/ca661816a86a9a13800730073733ecbff2217309))
+* **engine:** survey-bearing rag reads get their own wall-clock budget ([aff4de9](https://github.com/nevenincs/vaultspec-dashboard/commit/aff4de9d60c24fecd9366a1078f5f8dfa2896488))
+* **launch:** review findings — cold-index-proof spawn wait (30s-&gt;180s), honest crash-loop message ([f997ae1](https://github.com/nevenincs/vaultspec-dashboard/commit/f997ae146934a8be0def1fe827eb5cb9c723d99e))
+* **runtime:** P07 review revisions — state-aware launcher wait, starting-seat test, listbox keyboard nav ([88cb65d](https://github.com/nevenincs/vaultspec-dashboard/commit/88cb65d3ac6eb6db47197bfdaaff0df4bab4f5df))
+* **runtime:** review revisions — seat-first boot, liveness-aware crash guard, raced-launch attach, CSP document proof, S20 honest split ([2061ec0](https://github.com/nevenincs/vaultspec-dashboard/commit/2061ec0dc6d30e32c51818c291d680f17c771a7e))
+
+
+### Performance
+
+* **code-files:** generation-keyed delta via the generalized row-delta core ([ca55107](https://github.com/nevenincs/vaultspec-dashboard/commit/ca551073e4ecacc24a48dd066a09189f9541ef6e))
+* **git:** engine-computed changes summary; detail fetch pays only on fold-open ([1aba7d9](https://github.com/nevenincs/vaultspec-dashboard/commit/1aba7d99e72035571717d45b6e6bb9f134b8e53e))
+* **graph:** generation-keyed slice delta kills the idle refetch storm ([e6d087d](https://github.com/nevenincs/vaultspec-dashboard/commit/e6d087dd3cebab8143e5a4b73f15bdcd7af6b3a5))
+* **vault-tree:** generation-keyed delta reconciliation (vault-tree-delta ADR) ([241fbc2](https://github.com/nevenincs/vaultspec-dashboard/commit/241fbc29bfa09b876b4cb9fcdc9aa05fc27f739c))
+
 ## [0.1.3](https://github.com/nevenincs/vaultspec-dashboard/compare/v0.1.2...v0.1.3) (2026-07-11)
 
 
