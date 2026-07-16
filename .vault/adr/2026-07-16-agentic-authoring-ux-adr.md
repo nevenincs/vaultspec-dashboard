@@ -98,6 +98,50 @@ This ADR is the north-star decision for the epic: one cohesive, sparse, direct a
 > Filed ASKs: run-level cancel, served interrupt state + decision schema, served
 > model options.
 
+> **Amendment (2026-07-16, W03.P03.S13/S14 build — transcript wire truths):**
+> what the authoring plane actually serves for the transcript, verified in engine
+> source + proven live. SERVED: the session snapshot (turns = user prompt_text +
+> summary + turn_index + actor; runs = the bounded `RunStatus` enum + timestamps
+> + cancellation_reason + turn_id join; `active_run`) and exactly three SSE
+> lifecycle kinds — `session.created`, `run.started`, `cancellation.recorded` —
+> which are cache-refresh signals, NOT content frames. NOT SERVED anywhere:
+> thinking/reasoning content (langgraph maps only thread/run/checkpoint
+> references), the agent's FINAL TEXT (no turn/run record carries model output),
+> and any readable tool-call or pending-permission state (no list route). The
+> ONLY tool-call wire surface is COMMAND-TIME — the `/agent-tools/execute`
+> response envelope (`disposition` + `interrupt_id`) and `/permission-decision`
+> — so tool-call rows render only client-DISPATCHED calls, recorded into a
+> bounded client annex (evict-oldest, honestly lost on reload, truth recoverable
+> from durable events), the same posture as the S10 staged interrupt. The
+> transcript therefore shows served run-state words (Working…/Stopping…) not a
+> fake token stream, hides the thinking block entirely (no producer), and leaves
+> the final-text position empty behind a marked relay-gap seam. **NEW ASK, and
+> the load-bearing one:** there is NO run-COMPLETION event — only
+> `cancellation.recorded`; a run stays `active` until cancelled, so "Done" can
+> never render from the wire today. A real agent-runtime integration needs
+> either the a2a relay (D3) or a run-settle/completion lifecycle event before a
+> completed run surfaces — filed. `AGENT_TRANSCRIPT_TURN_CAP` is derived from
+> `snapshot.caps` so the window notice tracks the engine's own recovery bound.
+> Collateral (sound): the messagePolicy agent block was extracted to
+> `messagePolicy.agent.ts` (crossed the 1500 ratchet), and "Allow"/"Deny" were
+> admitted into `IMPERATIVE_ACTION_VERBS` (genuine imperatives).
+
+> **Amendment (2026-07-16, W03.P03.S16 — inline proposal card + the correlation
+> gap):** the card body REUSES the ReviewStation proposal card verbatim (still
+> exactly one proposal-card implementation), mounted into the transcript's
+> proposal slot. The one real question — proposal↔run correlation — is NOT
+> served: `ProposalProjection` carries only `actor`/`origin_actor`, no
+> `session_id`/`run_id`/`turn_id` (the changeset stores `session_id` internally
+> but the projection omits it; run/turn ids don't exist on a changeset even
+> internally). Not faked: the card binds the session principal's NEWEST proposal
+> (matched by the one shared provenance — actor identity, covering the a2a
+> delegated-agent case) to the LATEST turn only, marked
+> `data-correlation="session-actor-latest"`; the slot stays honestly empty
+> otherwise. **NEW ASK:** serve `session_id` on `ProposalProjection` (a one-field
+> addition — already stored internally), and ideally `run_id`/`turn_id` changeset
+> provenance for an exact per-run bind; the correlation narrows without touching
+> the reused card when it lands.
+
 **D5 — Review detangle: kill the sign-in gate; provenance becomes ambient; approval becomes inline.** The `ReviewerIdentity` component and its entire Sign in/Sign out/Signing in vocabulary are DELETED. The actor-token bootstrap moves to the stores seam as an ambient lazy mint: the first mutating authoring intent (edit, comment, approve, prompt) bootstraps the token transparently, exactly as editing already does — no surface ever renders auth vocabulary for a single implicit local operator. Per-change review moves inline: when a run settles into a proposal, the transcript renders a **proposal card** — served summary, change count, one Show-changes diff (D7), and Approve/Reject/Apply buttons driven by served `eligibility`, preview-then-approve as the default posture. The ReviewStation dialog is REDESIGNED, not deleted: renamed **"Review"**, ungated, it remains the cross-session queue and audit view (including the applied-under-policy lane) for anything not decided inline. The **operation-mode** switch gets its first UI as one small control in the Review header wired to `POST /v1/mode`, rendering served mode tokens as plain labels ("Review each change" / "Apply automatically, log for review"). The dead review-claim routes get NO UI: single-operator product today; return trigger below.
 
 **D6 — The comment→agent bridge: ACCEPT the agentic-feedback-loop ADR, with one amendment.** The proposed `2026-07-14-agentic-feedback-loop-adr` is accepted as-is in substance — anchored comments batch immutably and attach to the next ordinary composer turn (its D2), the exact mechanism this ADR's composer now makes buildable. One amendment: the attached-comments affordance uses the SAME chip grammar as D2's `@`-mention chips — a "4 comments" removable chip above the input, one attachment treatment, not a parallel one. Additionally each comment thread gains one small **"Send to agent"** action (context menu + thread affordance) that stages that comment into the pending set. Its D4 cross-repo `feedback_batch_id` continuation remains an open ask on the a2a edge, unchanged.

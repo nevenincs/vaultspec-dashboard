@@ -8,6 +8,7 @@ import { LANGUAGE_DISPLAY_MESSAGE_POLICY } from "./messagePolicy.languageDisplay
 import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMaintenance";
 import { THREE_LAB_MESSAGE_POLICY } from "./messagePolicy.threeLab";
 import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
+import { AGENT_MESSAGE_POLICY } from "./messagePolicy.agent";
 
 export type MessageRole =
   | "action"
@@ -48,6 +49,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   ...NODE_INTERIOR_MESSAGE_POLICY,
   ...HOVER_MESSAGE_POLICY,
   ...SEARCH_MAINTENANCE_MESSAGE_POLICY,
+  ...AGENT_MESSAGE_POLICY,
   "common:accessibility.actionsForItem": { role: "accessibility" },
   "common:accessibility.actionsMenu": { role: "accessibility" },
   "common:accessibility.back": { role: "accessibility" },
@@ -188,53 +190,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:controlPanels.tones.needsAttention": { role: "status" },
   "common:controlPanels.tones.unavailable": { role: "status" },
   "common:controlPanels.tones.checking": { role: "status" },
-  "common:agent.actions.openPanel": { role: "action" },
-  "common:agent.actions.closePanel": { role: "action" },
-  "common:agent.actions.togglePanel": { role: "action" },
-  "common:agent.actions.stopRun": { role: "action" },
-  "common:agent.actions.newSession": { role: "action" },
-  "common:agent.panel.region": { role: "label" },
-  "common:agent.panel.sessionsMenu": { role: "accessibility" },
-  // "New session" is the Figma-bound noun-phrase menu name (like "New document"),
-  // not imperative copy — classified as a label, mirroring that precedent.
-  "common:agent.panel.newSession": { role: "label" },
-  "common:agent.panel.recentSessions": { role: "label" },
-  "common:agent.panel.untitledSession": { role: "label" },
-  "common:agent.panel.close": { role: "accessibility" },
-  "common:agent.transcript.loading": { role: "status" },
-  "common:agent.transcript.empty": { role: "status" },
-  "common:agent.transcript.noSession": { role: "status" },
-  "common:agent.transcript.error": { role: "error-message" },
-  "common:agent.composer.placeholder": { role: "label" },
-  "common:agent.composer.steerPlaceholder": { role: "label" },
-  "common:agent.composer.send": { role: "action" },
-  "common:agent.composer.stop": { role: "action" },
-  "common:agent.composer.sendFailed": { role: "error-message" },
-  "common:agent.composer.attachedContext": { role: "accessibility" },
-  "common:agent.composer.queuedChip": { role: "label" },
-  "common:agent.composer.removeQueued": { role: "accessibility" },
-  "common:agent.composer.mentionPlaceholder": { role: "label" },
-  "common:agent.composer.mentionAria": { role: "accessibility" },
-  "common:agent.composer.mentionEmpty": { role: "status" },
-  "common:agent.composer.removeMention": { role: "accessibility" },
-  "common:agent.composer.commentBatch": { role: "label" },
-  "common:agent.composer.removeComments": { role: "accessibility" },
-  "common:agent.composer.slashAria": { role: "accessibility" },
-  "common:agent.composer.slashEmpty": { role: "status" },
-  "common:agent.composer.selectorValue": { role: "label" },
-  "common:agent.composer.selectorDisabled": { role: "accessibility" },
-  "common:agent.composer.model": { role: "label" },
-  "common:agent.composer.modelDefault": { role: "label" },
-  // Non-actionable unavailability reasons ride the `status` role, mirroring the
-  // `common:disabledReasons.*` precedent (nothing the operator can do yet).
-  "common:agent.composer.modelUnavailable": { role: "status" },
-  "common:agent.composer.team": { role: "label" },
-  "common:agent.composer.teamDefault": { role: "label" },
-  "common:agent.composer.teamUnavailable": { role: "status" },
-  "common:agent.chip.working": { role: "status" },
-  "common:agent.chip.label": { role: "accessibility" },
-  "common:agent.chip.status.active": { role: "status" },
-  "common:agent.chip.status.cancelRequested": { role: "status" },
   "common:disabledReasons.actionUnavailable": { role: "disabled-reason" },
   "common:disabledReasons.itemUnavailableOnCanvas": {
     role: "disabled-reason",
@@ -1015,6 +970,7 @@ export const ENGLISH_MESSAGE_POLICY = {
 
 export const IMPERATIVE_ACTION_VERBS = [
   "Add",
+  "Allow",
   "Approve",
   "Apply",
   "Archive",
@@ -1032,6 +988,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Copy",
   "Create",
   "Delete",
+  "Deny",
   "Disable",
   "Discard",
   "Edit",

@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agentic-authoring-ux'
 date: '2026-07-16'
-modified: '2026-07-16'
+modified: '2026-07-17'
 tier: L3
 related:
   - '[[2026-07-16-agentic-authoring-ux-adr]]'
@@ -140,11 +140,11 @@ Tool-call, thinking, and inline permission entries; stop, steer-via-composer, an
 
 Fixed-order turn transcript; collapsed tool-call/thinking/permission entries; stop/steer/queued-prompt; inline proposal card on the unified DiffView.
 
-- [ ] `W03.P03.S13` - Build the fixed-order turn transcript (user prompt then thinking then tool calls then final text) with collapse-on-settle and a bounded retained window (D3); `frontend/src/app/agent/Transcript.tsx`.
-- [ ] `W03.P03.S14` - Build the collapsed-by-default tool-call entry with per-call served status, the dimmed cost-labeled thinking block, and the inline tool-permission prompt wired to permission-decision (D3); `frontend/src/app/agent/ToolCallEntry.tsx`.
+- [x] `W03.P03.S13` - Build the fixed-order turn transcript (user prompt then thinking then tool calls then final text) with collapse-on-settle and a bounded retained window (D3); `frontend/src/app/agent/Transcript.tsx`.
+- [x] `W03.P03.S14` - Build the collapsed-by-default tool-call entry with per-call served status, the dimmed cost-labeled thinking block, and the inline tool-permission prompt wired to permission-decision (D3); `frontend/src/app/agent/ToolCallEntry.tsx`.
 - [x] `W03.P03.S15` - Add the Stop button (wire runs/cancel), steer-via-composer (interrupt resume while parked), and the one-slot queued-prompt chip dispatched on run settle (D4); `frontend/src/app/agent/Composer.tsx`.
-- [ ] `W03.P03.S16` - Build the inline proposal card (served summary, change count, Show-changes via DiffView, eligibility-driven Approve/Reject/Apply) as the preview-then-approve happy path (D5); `frontend/src/app/agent/ProposalCard.tsx`.
-- [ ] `W03.P03.S17` - Run the full gate and live-wire suite, route the W03 transcript through code review, and persist the audit; `frontend/`.
+- [x] `W03.P03.S16` - Build the inline proposal card (served summary, change count, Show-changes via DiffView, eligibility-driven Approve/Reject/Apply) as the preview-then-approve happy path (D5); `frontend/src/app/agent/ProposalCard.tsx`.
+- [x] `W03.P03.S17` - Run the full gate and live-wire suite, route the W03 transcript through code review, and persist the audit; `frontend/`.
 
 ## Wave `W04` - The bridge and mode
 

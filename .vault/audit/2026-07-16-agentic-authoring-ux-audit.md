@@ -165,3 +165,48 @@ module-size clean, epic footprint in that file exactly 2 lines.
 - Carry the three W02 cross-team ASKS forward (ADR D4 amendment): run-level
   cancel that preserves the session, served pending-interrupt state + decision
   schema, and served model options.
+
+## Wave W03 — the live transcript (S13/S14/S16) | APPROVED (1 HIGH revised, then re-reviewed)
+
+Reviewed the streaming transcript, the tool-call/thinking/permission entries, and
+the inline proposal card. First pass WITHHELD on one HIGH (a wrong-bind risk),
+fixed and re-reviewed to APPROVED (46/46 tests, full gate exit 0).
+
+### proposal-correlation-overreach | high (resolved) | a stale earlier session's proposal could render in a new session and be approved
+
+`correlateSessionProposal` matched on `session.actor.id` alone, newest-wins across
+the whole review queue. But the product is single-operator — every session shares
+the ambient `human:local-operator` — so the actor match barely discriminates: a
+fresh Session B could bind and render Session A's still-pending proposal under
+Approve/Reject/Apply, letting a human approve an unrelated changeset (session
+history makes multi-session the mainline, not an edge case). RESOLVED with a
+zero-backend floor: `proposal.created_at_ms >= session.created_at_ms` before
+newest-wins, so a proposal predating the session is excluded; a test pins the
+exclusion. Residual (two sessions in the same millisecond) honestly documented —
+only a served `session_id` on `ProposalProjection` closes it (filed ASK).
+
+### proposal-hook-mount-per-turn | medium (resolved) | review hooks mounted on every turn, not just the latest
+
+`AgentTurnProposal` rendered inside every turn's `<li>` with the latest-turn gate
+inside the child, so `useReviewStationView` + four review mutations mounted for all
+up-to-20 turns. RESOLVED: the mount is gated in `Transcript.tsx`
+(`{isLatestTurn && …}`) — the review hooks mount once.
+
+### wire-honesty | none (confirmed) | the transcript renders only what is served
+
+Verified against the ADR SERVED/NOT-SERVED split: the live-turn indicator is the
+served run-state word (never a fake token stream); the thinking block null-renders
+when unserved; the final-text position is a marked honest gap; tool-call rows
+render only client-dispatched calls from a bounded annex. The permission prompt is
+proven end-to-end on the live engine (requester≠decider holds); its fault path
+keeps the prompt open, never silently drops it. The proposal card reuses the
+ReviewStation card verbatim — still one proposal-card implementation. The render
+cap derives from `snapshot.caps.turn_cap` so the window + windowFull can't drift.
+
+## Recommendations
+
+- W03 APPROVED after revision; full gate `just dev lint frontend` exit 0.
+- Carry the two W03 cross-team ASKS forward (ADR amendments): a run-settle /
+  completion lifecycle event (no run ever transitions to `completed` today, so
+  "Done" cannot render from the wire), and `session_id` (+ ideally run/turn ids)
+  on `ProposalProjection` for an exact proposal↔run bind.

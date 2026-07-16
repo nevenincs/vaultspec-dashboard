@@ -51,7 +51,7 @@ export interface ReviewActions {
   rollback(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
 }
 
-function useReviewActions(): ReviewActions {
+export function useReviewActions(): ReviewActions {
   const decision = useReviewDecision();
   const submit = useSubmitForReview();
   const apply = useApplyChangeset();

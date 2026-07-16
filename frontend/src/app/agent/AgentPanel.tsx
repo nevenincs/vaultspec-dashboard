@@ -42,6 +42,7 @@ import {
 } from "../kit";
 import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import { Composer } from "./Composer";
+import { Transcript } from "./Transcript";
 
 const AGENT = {
   region: "common:agent.panel.region",
@@ -177,20 +178,9 @@ function AgentTranscriptContainer({
       <StateBlock mode="empty" message={resolveMessage({ key: AGENT.empty }).message} />
     );
   } else {
-    body = (
-      <ol className="flex flex-col gap-fg-2" data-agent-transcript-entries>
-        {session.data!.turns.map((turn) => (
-          <li key={turn.turn_id} className="flex flex-col gap-fg-1">
-            <p className="rounded-fg-md bg-paper-sunken px-fg-2 py-fg-1-5 text-body text-ink">
-              {turn.prompt_text}
-            </p>
-            {turn.summary && (
-              <p className="px-fg-2 text-body text-ink-muted">{turn.summary}</p>
-            )}
-          </li>
-        ))}
-      </ol>
-    );
+    // The reconciled fixed-order transcript (S13): snapshot turns/runs grafted
+    // with the client-held annex, collapse-on-settle, bounded window.
+    body = <Transcript snapshot={session.data!} />;
   }
 
   return (
