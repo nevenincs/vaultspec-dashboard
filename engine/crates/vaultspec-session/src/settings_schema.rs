@@ -561,15 +561,15 @@ fn build_registry() -> Vec<SettingDef> {
             value_type: SettingType::Enum {
                 // Production ships the English source catalog only. Test-only
                 // French and Arabic resources are deliberately not persistable.
-                members: vec!["system".to_string(), "en".to_string()],
+                members: vec!["en".to_string()],
             },
-            default: "system".to_string(),
+            default: "en".to_string(),
             scope_eligible: false,
             control: ControlKind::Segmented,
             display: enum_display(
                 "appearance.language",
                 "appearance",
-                &[("system", "language.system"), ("en", "language.english")],
+                &[("en", "language.english")],
             ),
             // Preserve every existing Appearance order; append the new control.
             order: 4,
@@ -800,15 +800,15 @@ mod tests {
     }
 
     #[test]
-    fn language_is_global_system_or_shipped_english_only() {
+    fn language_is_global_and_shipped_english_only() {
         let def = find("language").expect("language is declared");
         assert_eq!(
             def.value_type,
             SettingType::Enum {
-                members: vec!["system".to_string(), "en".to_string()]
+                members: vec!["en".to_string()]
             }
         );
-        assert_eq!(def.default, "system");
+        assert_eq!(def.default, "en");
         assert!(!def.scope_eligible);
         assert_eq!(def.control, ControlKind::Segmented);
         assert_eq!(def.order, 4);
@@ -816,20 +816,13 @@ mod tests {
         assert_eq!(def.display.group, "appearance");
         assert_eq!(
             def.display.enum_members,
-            vec![
-                EnumMemberDisplay {
-                    value: "system".to_string(),
-                    id: "language.system".to_string(),
-                },
-                EnumMemberDisplay {
-                    value: "en".to_string(),
-                    id: "language.english".to_string(),
-                },
-            ]
+            vec![EnumMemberDisplay {
+                value: "en".to_string(),
+                id: "language.english".to_string(),
+            }]
         );
-        assert_eq!(validate("language", "system", false).unwrap(), "system");
         assert_eq!(validate("language", "en", false).unwrap(), "en");
-        for unsupported in ["fr", "ar", "en-US", "EN", " en ", ""] {
+        for unsupported in ["system", "fr", "ar", "en-US", "EN", " en ", ""] {
             assert_eq!(
                 validate("language", unsupported, false).unwrap_err().kind(),
                 "invalid_value"

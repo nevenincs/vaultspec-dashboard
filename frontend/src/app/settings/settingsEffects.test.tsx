@@ -104,7 +104,7 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
     document.documentElement.removeAttribute("data-reduce-motion");
   });
 
-  it("reconciles engine-owned system language over the synchronous cache hint", async () => {
+  it("reconciles the engine-owned English language into the cache", async () => {
     const settingsBefore = await engineClient.settings();
     const preferenceBefore = localeController.getPreference();
     const cacheBefore = localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY);
@@ -113,31 +113,31 @@ describe("useSettingsEffects (consumed settings, live engine)", () => {
     try {
       await engineClient.putSettings({
         key: CONSUMED_SETTING_KEYS.language,
-        value: "system",
+        value: "en",
       });
       await localeController.reconcilePreference("en");
       expect(localeController.getPreference()).toBe("en");
-      expect(localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY)).toBe("en");
+      localStorage.setItem(LOCALE_PREFERENCE_CACHE_KEY, "fr");
 
       queryClient.clear();
       mounted = renderEffects();
 
       await waitFor(() => {
         const queried = queryClient.getQueryData<SettingsState>(engineKeys.settings());
-        expect(queried?.global[CONSUMED_SETTING_KEYS.language]).toBe("system");
-        expect(localeController.getPreference()).toBe("system");
+        expect(queried?.global[CONSUMED_SETTING_KEYS.language]).toBe("en");
+        expect(localeController.getPreference()).toBe("en");
         expect(localeController.getResolvedLocale()).toBe(sourceLocale);
         expect(localization.resolvedLanguage ?? localization.language).toBe(
           sourceLocale,
         );
-        expect(localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY)).toBe("system");
+        expect(localStorage.getItem(LOCALE_PREFERENCE_CACHE_KEY)).toBe("en");
       }, ENGINE_WAIT);
     } finally {
       mounted?.unmount();
       queryClient.clear();
       await engineClient.putSettings({
         key: CONSUMED_SETTING_KEYS.language,
-        value: settingsBefore.global[CONSUMED_SETTING_KEYS.language] ?? "system",
+        value: settingsBefore.global[CONSUMED_SETTING_KEYS.language] ?? "en",
       });
       await localeController.reconcilePreference(preferenceBefore, { cache: false });
       if (cacheBefore === null) {

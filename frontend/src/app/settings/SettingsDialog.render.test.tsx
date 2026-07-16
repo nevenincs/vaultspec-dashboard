@@ -61,9 +61,10 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     settingsSnapshot = await engineClient.settings();
   });
   afterAll(async () => {
-    for (const key of ["theme", "label_filter"]) {
+    for (const key of ["theme", "language", "label_filter"]) {
       const defaults: Record<string, string> = {
         theme: "system",
+        language: "en",
         label_filter: "",
       };
       await engineClient
@@ -112,8 +113,36 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     expect(screen.getByRole("radiogroup", { name: "Theme" })).toBeTruthy();
     expect(screen.getByRole("radio", { name: "Dark" })).toBeTruthy();
     const language = screen.getByRole("radiogroup", { name: "Language" });
-    expect(within(language).getByRole("radio", { name: "System" })).toBeTruthy();
+    expect(within(language).getAllByRole("radio")).toHaveLength(1);
     expect(within(language).getByRole("radio", { name: "English" })).toBeTruthy();
+    expect(within(language).queryByRole("radio", { name: "System" })).toBeNull();
+  });
+
+  it("persists English through the user settings store", async () => {
+    const settingWrites: string[] = [];
+    engineClient.useTransport((input, init) => {
+      const path = input.replace(/^\/api/, "");
+      if (path === "/settings" && init?.method === "PUT") {
+        settingWrites.push(String(init.body ?? ""));
+      }
+      return liveTransport(input, init);
+    });
+
+    renderDialog();
+    const language = await screen.findByRole(
+      "radiogroup",
+      { name: "Language" },
+      ENGINE_WAIT,
+    );
+    const english = within(language).getByRole("radio", { name: "English" });
+    fireEvent.click(english);
+
+    await waitFor(() => {
+      expect(settingWrites.map((body) => JSON.parse(body))).toContainEqual(
+        expect.objectContaining({ key: "language", value: "en" }),
+      );
+    }, ENGINE_WAIT);
+    expect((await engineClient.settings()).global.language).toBe("en");
   });
 
   it("reflects the effective value and persists a change through the wire", async () => {
@@ -144,13 +173,14 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     renderDialog();
     await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     // Scope-eligible settings (e.g. default_granularity, timeline_date_criterion)
-    // expose the [Global | This scope] target; global-only ones (theme, reduce_motion)
+    // expose the [Global | This project] target; global-only ones (theme, reduce_motion)
     // do not. Derive the expected count from the served schema so adding another
     // scope-eligible setting can't silently drift this assertion.
     const schema = await createLiveClient().settingsSchema();
     const scopeEligibleCount = schema.settings.filter((s) => s.scope_eligible).length;
-    const applyToGroups = screen.getAllByRole("radiogroup", { name: "apply to" });
-    expect(applyToGroups.length).toBe(scopeEligibleCount);
+    expect(screen.getAllByRole("radio", { name: "This project" })).toHaveLength(
+      scopeEligibleCount,
+    );
   });
 
   it("uses the restored active scope when no explicit view-store scope is picked", async () => {
@@ -161,17 +191,17 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     const schema = await createLiveClient().settingsSchema();
     const scopeEligibleCount = schema.settings.filter((s) => s.scope_eligible).length;
-    expect(screen.getAllByRole("radiogroup", { name: "apply to" })).toHaveLength(
+    expect(screen.getAllByRole("radio", { name: "This project" })).toHaveLength(
       scopeEligibleCount,
     );
   });
 
-  it("persists a scope override when the target is 'This scope'", async () => {
+  it("persists a scope override when the target is 'This project'", async () => {
     renderDialog();
     await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
-    // Switch the first scope-eligible row's target to 'This scope', then pick a value.
-    const thisScope = screen.getAllByRole("radio", { name: "This scope" })[0];
-    fireEvent.click(thisScope);
+    // Switch the first scope-eligible row's target to 'This project', then pick a value.
+    const thisProject = screen.getAllByRole("radio", { name: "This project" })[0];
+    fireEvent.click(thisProject);
     fireEvent.click(screen.getByRole("radio", { name: "Document" }));
     await waitFor(() => {
       expect(
@@ -197,7 +227,7 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
       ENGINE_WAIT,
     );
     fireEvent.change(labelFilter, { target: { value: "transient label draft" } });
-    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
     await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -266,11 +296,11 @@ describe("SettingsDialog (schema-driven, live engine)", () => {
     renderDialog();
     await screen.findByText("Default detail level", undefined, ENGINE_WAIT);
     // default_granularity is the first scope-eligible row (declared before
-    // timeline_date_criterion), so target its [Global | This scope] radios by index.
+    // timeline_date_criterion), so target its [Global | This project] radios by index.
     await waitFor(() => {
       expect(
         screen
-          .getAllByRole("radio", { name: "This scope" })[0]
+          .getAllByRole("radio", { name: "This project" })[0]
           .getAttribute("aria-checked"),
       ).toBe("true");
     }, ENGINE_WAIT);

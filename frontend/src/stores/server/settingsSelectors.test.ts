@@ -13,6 +13,7 @@ import {
   resolveKeybindingOverrides,
   resolveLanguagePreference,
   resolveReduceMotionSetting,
+  resolveSettings,
   settingCanTargetScope,
   settingsControlIsDefaulted,
   settingsControlValue,
@@ -143,17 +144,14 @@ describe("app-consumed settings", () => {
 describe("global language preference", () => {
   const languageDef: SettingDef = {
     key: "language",
-    value_type: { type: "enum", members: ["system", "en"] },
-    default: "system",
+    value_type: { type: "enum", members: ["en"] },
+    default: "en",
     scope_eligible: false,
     control: "segmented",
     display: {
       id: "appearance.language",
       group: "appearance",
-      enum_members: [
-        { value: "system", id: "language.system" },
-        { value: "en", id: "language.english" },
-      ],
+      enum_members: [{ value: "en", id: "language.english" }],
     },
     order: 4,
   };
@@ -165,12 +163,12 @@ describe("global language preference", () => {
 
   it("resolves exact global identity and ignores scoped rows", () => {
     expect(resolveLanguagePreference(schema, undefined)).toBeNull();
-    expect(resolveLanguagePreference(schema, settings())).toBe("system");
+    expect(resolveLanguagePreference(schema, settings())).toBe("en");
     expect(resolveLanguagePreference(schema, settings({ language: "en" }))).toBe("en");
     expect(
       resolveLanguagePreference(
         schema,
-        settings({ language: "en" }, { "scope-a": { language: "system" } }),
+        settings({ language: "en" }, { "scope-a": { language: "fr" } }),
       ),
     ).toBe("en");
   });
@@ -188,13 +186,27 @@ describe("global language preference", () => {
     expect(
       resolveLanguagePreference(
         {
-          settings: [{ ...languageDef, scope_eligible: true }],
+          settings: [
+            {
+              ...languageDef,
+              value_type: { type: "enum", members: ["system", "en"] },
+            },
+          ],
           groups: ["appearance"],
           tiers: {},
         },
         settings({ language: "en" }),
       ),
     ).toBe("en");
+  });
+
+  it("presents English when an older store still contains an unsupported value", () => {
+    const groups = resolveSettings(schema, settings({ language: "system" }), null);
+    expect(groups[0]?.settings[0]).toMatchObject({
+      def: { key: "language" },
+      value: "en",
+      provenance: "default",
+    });
   });
 });
 

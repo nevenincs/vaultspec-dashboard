@@ -2,6 +2,7 @@
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import type { KeybindingOverrides } from "../../../platform/keymap/registry";
+import type { SupportedLocale } from "../../../platform/localization/localeController";
 import type { MessageDescriptor } from "../../../platform/localization/message";
 import { setKeymapOverridesReader } from "../../view/keymapDispatcher";
 import {
@@ -102,7 +103,7 @@ export interface ThemeSettingView {
 export interface SettingsEffectsView {
   loading: boolean;
   reduceMotion: boolean;
-  languagePreference: "system" | "en" | null;
+  languagePreference: SupportedLocale | null;
   languagePreferenceCacheable: boolean;
   graphDefaults: GraphSettingsDefaults | null;
 }

@@ -90,8 +90,12 @@ describe("settings schema (live engine GET /settings/schema)", () => {
     expect(language).toBeDefined();
     expect(language!.value_type).toEqual({
       type: "enum",
-      members: ["system", "en"],
+      members: ["en"],
     });
+    expect(language!.default).toBe("en");
+    expect(language!.display.enum_members).toEqual([
+      { value: "en", id: "language.english" },
+    ]);
     expect(language!.display.id).toBe("appearance.language");
 
     const granularity = byKey.get("default_granularity");
@@ -465,11 +469,11 @@ describe("settings effective-value resolution", () => {
     expect(resolveLanguagePreference(schema, undefined)).toBeNull();
     expect(
       resolveLanguagePreference(schema, { global: {}, scoped: {}, tiers: {} }),
-    ).toBe("system");
+    ).toBe("en");
     expect(
       resolveLanguagePreference(schema, {
         global: { language: "en" },
-        scoped: { [scope]: { language: "system" } },
+        scoped: { [scope]: { language: "fr" } },
         tiers: {},
       }),
     ).toBe("en");
