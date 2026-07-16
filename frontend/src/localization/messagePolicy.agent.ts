@@ -6,6 +6,13 @@ import type { MessageKey } from "../platform/localization/message";
 import type { MessagePolicyEntry } from "./messagePolicy";
 
 export const AGENT_MESSAGE_POLICY = {
+  "common:agent.sendComment": { role: "action" },
+  // The two segment options name operation MODES (radio-style labels the control
+  // selects), not imperative action buttons — classified as labels like the other
+  // segmented-toggle option names.
+  "common:agent.autonomy.label": { role: "label" },
+  "common:agent.autonomy.reviewEach": { role: "label" },
+  "common:agent.autonomy.applyAutomatically": { role: "label" },
   "common:agent.actions.openPanel": { role: "action" },
   "common:agent.actions.closePanel": { role: "action" },
   "common:agent.actions.togglePanel": { role: "action" },

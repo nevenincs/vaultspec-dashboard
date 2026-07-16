@@ -236,7 +236,7 @@ function ComposerChipRow() {
               resolveMessage(
                 createCountMessageDescriptor(
                   "common:agent.composer.commentBatch",
-                  commentBatch.count,
+                  commentBatch.comments.length,
                 )!,
               ).message
             }
@@ -420,6 +420,7 @@ export function Composer() {
   const resumeInterrupt = useResumeInterrupt();
 
   const mentions = useAgentMentions();
+  const commentBatch = useAgentCommentBatch();
   const pendingInterrupt = useAgentPendingInterrupt();
   const queuedPrompt = useAgentQueuedPrompt();
 
@@ -554,13 +555,14 @@ export function Composer() {
   ]);
 
   const submit = async () => {
-    const prompt = buildAgentPrompt(text, mentions);
+    const prompt = buildAgentPrompt(text, mentions, commentBatch);
     if (prompt.length === 0) return;
     if (destination === "queue") {
       // Mid-run: hold the one queued slot (latest wins) — the input never locks.
       useAgentComposer.getState().setQueuedPrompt(prompt);
       setText("");
       useAgentComposer.getState().clearMentions();
+      useAgentComposer.getState().stageCommentBatch(null);
       return;
     }
     // A session cannot be created without a resolved scope; hold the submit
@@ -584,6 +586,7 @@ export function Composer() {
       }
       setText("");
       useAgentComposer.getState().clearMentions();
+      useAgentComposer.getState().stageCommentBatch(null);
     } catch {
       // The draft is preserved; the failure is surfaced inline below the input.
       setSendFailed(true);
@@ -645,7 +648,7 @@ export function Composer() {
     destination === "steer" ? MSG.steerPlaceholder : MSG.idlePlaceholder;
   const placeholder = resolveMessage({ key: placeholderKey }).message;
   const sendDisabled =
-    buildAgentPrompt(text, mentions).length === 0 ||
+    buildAgentPrompt(text, mentions, commentBatch).length === 0 ||
     slashMode ||
     (destination === "bootstrap" && scope === null);
   // Stop routes through the SHARED `agent:stop-run` descriptor so the button and

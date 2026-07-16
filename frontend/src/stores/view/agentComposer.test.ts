@@ -4,15 +4,32 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  AGENT_COMPOSER_COMMENT_CAP,
+  AGENT_COMPOSER_COMMENTS_PREFIX,
   AGENT_COMPOSER_CONTEXT_PREFIX,
   AGENT_COMPOSER_MENTION_CAP,
   agentSubmitDestination,
   buildAgentPrompt,
+  serializeCommentBatch,
+  stageAgentComment,
   stageAgentCommentBatch,
   stageAgentInterrupt,
   useAgentComposer,
+  type AgentCommentAttachment,
   type AgentMention,
 } from "./agentComposer";
+
+function attachment(
+  overrides: Partial<AgentCommentAttachment>,
+): AgentCommentAttachment {
+  return {
+    commentId: "comment:1",
+    docStem: "2026-02-04-editor-demo-plan",
+    headingPath: ["Overview"],
+    body: "tighten this",
+    ...overrides,
+  };
+}
 
 function resetComposer(): void {
   useAgentComposer.setState({
@@ -125,6 +142,43 @@ describe("buildAgentPrompt", () => {
       `${AGENT_COMPOSER_CONTEXT_PREFIX} [[2026-02-04-editor-demo-plan]] #editor-demo`,
     );
   });
+
+  it("serializes a staged comment batch as a deterministic block with provenance + anchor", () => {
+    const batch = {
+      batchId: null,
+      comments: [
+        attachment({ commentId: "c1", headingPath: ["Intro"], body: "clarify scope" }),
+        attachment({
+          commentId: "c2",
+          docStem: null,
+          headingPath: ["Design", "Risks"],
+          body: "add a fallback",
+        }),
+      ],
+    };
+    expect(serializeCommentBatch(batch)).toBe(
+      `${AGENT_COMPOSER_COMMENTS_PREFIX}\n` +
+        `- [[2026-02-04-editor-demo-plan]] Intro: clarify scope\n` +
+        `- Design › Risks: add a fallback`,
+    );
+    expect(serializeCommentBatch(null)).toBe("");
+    expect(serializeCommentBatch({ batchId: null, comments: [] })).toBe("");
+  });
+
+  it("appends the comment block after the text and mentions in one prompt", () => {
+    const batch = {
+      batchId: null,
+      comments: [attachment({ commentId: "c1", headingPath: ["Intro"], body: "fix" })],
+    };
+    expect(buildAgentPrompt("revise", mentions, batch)).toBe(
+      `revise\n\n${AGENT_COMPOSER_CONTEXT_PREFIX} [[2026-02-04-editor-demo-plan]] #editor-demo\n\n` +
+        `${AGENT_COMPOSER_COMMENTS_PREFIX}\n- [[2026-02-04-editor-demo-plan]] Intro: fix`,
+    );
+    // Comments-only submit is valid (attached context is the prompt).
+    expect(buildAgentPrompt("", [], batch)).toBe(
+      `${AGENT_COMPOSER_COMMENTS_PREFIX}\n- [[2026-02-04-editor-demo-plan]] Intro: fix`,
+    );
+  });
 });
 
 describe("composer store bounds", () => {
@@ -151,15 +205,33 @@ describe("composer store bounds", () => {
     expect(useAgentComposer.getState().queuedPrompt).toBeNull();
   });
 
-  it("stages and clears the comment batch and interrupt through the seams", () => {
-    stageAgentCommentBatch({ count: 4, batchId: "batch:1" });
-    expect(useAgentComposer.getState().commentBatch).toEqual({
-      count: 4,
-      batchId: "batch:1",
-    });
+  it("appends comments to the pending batch, upserts by id, and bounds the set", () => {
+    stageAgentComment(attachment({ commentId: "c1", body: "first note" }));
+    stageAgentComment(attachment({ commentId: "c2" }));
+    // Re-staging c1 UPSERTS in place: the set stays at 2 (no duplicate) but the
+    // body refreshes to the latest (an edit after staging must not freeze stale).
+    stageAgentComment(attachment({ commentId: "c1", body: "edited note" }));
+    const comments = useAgentComposer.getState().commentBatch!.comments;
+    expect(comments).toHaveLength(2);
+    expect(comments[0]).toMatchObject({ commentId: "c1", body: "edited note" });
+    expect(comments[1]!.commentId).toBe("c2");
+
+    for (let i = 0; i < AGENT_COMPOSER_COMMENT_CAP + 5; i += 1) {
+      stageAgentComment(attachment({ commentId: `bulk-${i}` }));
+    }
+    expect(useAgentComposer.getState().commentBatch?.comments).toHaveLength(
+      AGENT_COMPOSER_COMMENT_CAP,
+    );
+  });
+
+  it("clears the whole staged batch through the batch seam", () => {
+    stageAgentComment(attachment({ commentId: "c1" }));
+    expect(useAgentComposer.getState().commentBatch).not.toBeNull();
     stageAgentCommentBatch(null);
     expect(useAgentComposer.getState().commentBatch).toBeNull();
+  });
 
+  it("stages and clears the interrupt through the seam", () => {
     stageAgentInterrupt({ interruptId: "int:1", runId: "run:1" });
     expect(useAgentComposer.getState().pendingInterrupt).toEqual({
       interruptId: "int:1",

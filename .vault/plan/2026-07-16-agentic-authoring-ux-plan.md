@@ -154,9 +154,9 @@ Comment-to-agent attachment executing the accepted agentic-feedback-loop ADR fro
 
 Comment-to-agent attachment (the accepted feedback-loop ADR) via shared chip grammar + Send-to-agent action; the operation-mode control in the Review header.
 
-- [ ] `W04.P04.S18` - Add the Send-to-agent action and the N-comments removable chip in the composer using the shared mention-chip grammar, executing the accepted feedback-loop ADR frontend-side (D6); `frontend/src/app/viewer/CommentThreadPanel.tsx`.
-- [ ] `W04.P04.S19` - Add the operation-mode control in the Review header wired to POST mode, rendering served mode tokens as plain labels (D5); `frontend/src/app/authoring/ReviewStation.tsx`.
-- [ ] `W04.P04.S20` - Run the full gate and live-wire suite, route the W04 bridge and mode through code review, and persist the audit; `frontend/`.
+- [x] `W04.P04.S18` - Add the Send-to-agent action and the N-comments removable chip in the composer using the shared mention-chip grammar, executing the accepted feedback-loop ADR frontend-side (D6); `frontend/src/app/viewer/CommentThreadPanel.tsx`.
+- [x] `W04.P04.S19` - Add the operation-mode control in the Review header wired to POST mode, rendering served mode tokens as plain labels (D5); `frontend/src/app/authoring/ReviewStation.tsx`.
+- [x] `W04.P04.S20` - Run the full gate and live-wire suite, route the W04 bridge and mode through code review, and persist the audit; `frontend/`.
 
 ## Wave `W05` - a2a enrichment
 

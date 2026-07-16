@@ -346,6 +346,13 @@ export interface RollbackPayload {
   reason: string;
 }
 
+/** `POST /authoring/v1/mode` payload (engine `SetOperationModeRequest`): set the
+ *  active worktree's operation mode. The scope is backend-derived from the active
+ *  workspace root — never client-claimed. */
+export interface SetOperationModePayload {
+  mode: OperationMode;
+}
+
 /** `POST /authoring/v1/direct-writes` frontmatter fields (the `edit_frontmatter`
  *  operation's payload). Every field is optional — only the ones the editor
  *  actually changed are sent. */

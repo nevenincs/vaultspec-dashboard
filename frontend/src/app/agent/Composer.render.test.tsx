@@ -25,7 +25,12 @@ import { AuthoringClient } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
 import { queryClient } from "../../stores/server/queryClient";
 import { useAgentPanel } from "../../stores/view/agentPanel";
-import { stageAgentInterrupt, useAgentComposer } from "../../stores/view/agentComposer";
+import {
+  AGENT_COMPOSER_COMMENTS_PREFIX,
+  stageAgentComment,
+  stageAgentInterrupt,
+  useAgentComposer,
+} from "../../stores/view/agentComposer";
 import {
   registerCommandProvider,
   type CommandDescriptor,
@@ -127,6 +132,52 @@ describe("Composer keyboard contract", () => {
     expect(snapshot.turns).toHaveLength(1);
     expect(snapshot.turns[0]!.prompt_text).toBe("hello there");
     await waitFor(() => expect(input().value).toBe(""));
+  });
+
+  it("stages a comment as the shared chip and serializes the batch into the submitted turn", async () => {
+    // The comment→agent bridge (feedback-loop ADR D6): a staged comment renders as
+    // the same "N comments" chip, and submitting carries the anchored comment into
+    // the turn's prompt as a deterministic block (interim serialization — the wire
+    // turn contract carries only `prompt`, so the batch rides IN it).
+    stageAgentComment({
+      commentId: `comment-${run}`,
+      docStem: "2026-01-04-beta-research",
+      headingPath: ["Scope"],
+      body: "expand the scope section",
+    });
+    renderComposer();
+
+    const chip = document.querySelector('[data-composer-chip="comments"]');
+    expect(chip).not.toBeNull();
+    expect(chip!.textContent).toContain("1 comment");
+
+    fireEvent.change(input(), { target: { value: "address the comments" } });
+    await waitFor(
+      () =>
+        expect(
+          (document.querySelector("[data-composer-send]") as HTMLButtonElement)
+            .disabled,
+        ).toBe(false),
+      { timeout: 10_000 },
+    );
+    fireEvent.keyDown(input(), { key: "Enter" });
+
+    await waitFor(
+      () => expect(useAgentPanel.getState().currentSessionId).not.toBeNull(),
+      { timeout: 15_000 },
+    );
+    const sessionId = useAgentPanel.getState().currentSessionId!;
+    const snapshot = await liveAgent.getSession(sessionId);
+    expect(snapshot.turns).toHaveLength(1);
+    const prompt = snapshot.turns[0]!.prompt_text;
+    expect(prompt).toContain("address the comments");
+    expect(prompt).toContain(AGENT_COMPOSER_COMMENTS_PREFIX);
+    expect(prompt).toContain(
+      "[[2026-01-04-beta-research]] Scope: expand the scope section",
+    );
+
+    // The batch clears after a successful submit.
+    await waitFor(() => expect(useAgentComposer.getState().commentBatch).toBeNull());
   });
 
   it("starts the next turn in the existing current session", async () => {

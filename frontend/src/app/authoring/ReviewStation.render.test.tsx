@@ -21,12 +21,14 @@ import {
   type ActorRef,
   type AppliedUnderPolicyProjection,
   type AuthoringCommandOutcome,
+  type OperationMode,
   type ProposalProjection,
   type ReviewStationView,
 } from "../../stores/server/authoring";
 import { EngineError } from "../../stores/server/engine";
 import {
   AppliedUnderPolicyLane,
+  AutonomyControl,
   ProposalCard,
   ReviewStationBody,
   type ReviewActions,
@@ -145,6 +147,7 @@ function view(overrides: Partial<ReviewStationView> = {}): ReviewStationView {
     empty: false,
     truncated: false,
     afterFactTruncated: false,
+    operationMode: null,
     ...overrides,
   };
 }
@@ -435,6 +438,100 @@ describe("ProposalCard", () => {
     fireEvent.click(toggle);
     expect(screen.getByRole("button", { name: "Hide changes" })).toBeTruthy();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("AutonomyControl", () => {
+  it("renders plain labels, marks the served mode active, and emits the served token in three locales", async () => {
+    const selected: OperationMode[] = [];
+    const { runtime } = localized(
+      <AutonomyControl
+        mode="manual"
+        onSelect={(m) => {
+          selected.push(m);
+          return Promise.resolve(accepted);
+        }}
+      />,
+    );
+    const group = screen.getByRole("radiogroup", { name: "Autonomy" });
+    const reviewEach = within(group).getByRole("radio", {
+      name: "Review each change",
+    });
+    const applyAuto = within(group).getByRole("radio", {
+      name: "Apply automatically",
+    });
+    expect(reviewEach.getAttribute("aria-checked")).toBe("true");
+    expect(applyAuto.getAttribute("aria-checked")).toBe("false");
+
+    // Selecting the other segment emits the served mode token (never re-derived);
+    // a successful switch shows NO feedback chatter (the active segment IS the cue).
+    fireEvent.click(applyAuto);
+    await waitFor(() => expect(selected).toEqual(["autonomous"]));
+    expect(document.querySelector("[data-autonomy-feedback]")).toBeNull();
+
+    await runtime.changeLanguage(ltrTestLocale);
+    await waitFor(() =>
+      expect(group.textContent).toContain("Vérifier chaque modification"),
+    );
+    expect(group.textContent).toContain("Appliquer automatiquement");
+
+    await runtime.changeLanguage(rtlTestLocale);
+    await waitFor(() => expect(group.textContent).toContain("مراجعة كل تغيير"));
+  });
+
+  it("marks neither segment when the served mode is assisted (no fabricated selection)", () => {
+    localized(
+      <AutonomyControl mode="assisted" onSelect={() => Promise.resolve(accepted)} />,
+    );
+    const radios = within(
+      screen.getByRole("radiogroup", { name: "Autonomy" }),
+    ).getAllByRole("radio");
+    for (const radio of radios) {
+      expect(radio.getAttribute("aria-checked")).toBe("false");
+    }
+  });
+
+  it("surfaces a served denial as inline feedback without the raw reason", async () => {
+    localized(
+      <AutonomyControl
+        mode="manual"
+        onSelect={() =>
+          Promise.resolve({
+            kind: "denied",
+            command: "set_operation_mode",
+            reason: "private-mode-denial",
+            tiers: {},
+          })
+        }
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Apply automatically" }));
+    const feedback = await screen.findByText(
+      "Review the proposal and choose an available action.",
+    );
+    expect(feedback.getAttribute("data-autonomy-feedback")).toBe("refused");
+    expect(document.body.textContent).not.toContain("private-mode-denial");
+  });
+
+  it("surfaces a typed transport failure as inline error feedback", async () => {
+    localized(
+      <AutonomyControl
+        mode="manual"
+        onSelect={() =>
+          Promise.reject(
+            new EngineError("/private/authoring/mode", 409, {
+              body: { error_kind: "authoring_stale_review", error: "private-error" },
+            }),
+          )
+        }
+      />,
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "Apply automatically" }));
+    const feedback = await screen.findByText(
+      "Review the latest proposal, then try again.",
+    );
+    expect(feedback.getAttribute("data-autonomy-feedback")).toBe("error");
+    expect(document.body.textContent).not.toContain("private-error");
   });
 });
 

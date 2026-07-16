@@ -1,4 +1,10 @@
 export const ltrAgentResources = {
+  sendComment: "Envoyer à l’assistant",
+  autonomy: {
+    label: "Autonomie",
+    reviewEach: "Vérifier chaque modification",
+    applyAutomatically: "Appliquer automatiquement",
+  },
   actions: {
     openPanel: "Ouvrir le panneau de l’assistant",
     closePanel: "Fermer le panneau de l’assistant",
@@ -84,6 +90,12 @@ export const ltrAgentResources = {
 } as const;
 
 export const rtlAgentResources = {
+  sendComment: "إرسال إلى المساعد",
+  autonomy: {
+    label: "الاستقلالية",
+    reviewEach: "مراجعة كل تغيير",
+    applyAutomatically: "تطبيق تلقائي",
+  },
   actions: {
     openPanel: "فتح لوحة المساعد",
     closePanel: "إغلاق لوحة المساعد",

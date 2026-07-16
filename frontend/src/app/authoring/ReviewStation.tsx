@@ -19,15 +19,26 @@ import {
   useCreateRollback,
   useReviewDecision,
   useReviewStationView,
+  useSetOperationMode,
   useSubmitForReview,
   type ActionEligibility,
   type AppliedUnderPolicyProjection,
   type AuthoringCommandOutcome,
+  type OperationMode,
   type ProposalProjection,
   type ReviewCommand,
   type ReviewStationView,
 } from "../../stores/server/authoring";
-import { Badge, Button, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
+import {
+  Badge,
+  Button,
+  Segment,
+  SectionLabel,
+  SegmentedToggle,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 import { DiffPanel } from "./DiffPanel";
 
@@ -546,14 +557,102 @@ export function ReviewStationBody({
   );
 }
 
+/** The autonomy / operation-mode control (agentic-authoring-ux ADR D5, Figma
+ *  `AutonomyControl` 1226:4520): a compact two-mode segmented control under an
+ *  "Autonomy" eyebrow reflecting the SERVED worktree mode. Manual → "Review each
+ *  change" (human approval required); autonomous → "Apply automatically". Plain
+ *  labels mapped from the served mode token; the segments write via the mode seam
+ *  with ambient provenance. A served "assisted" mode (not one of the two segments)
+ *  shows neither active — honest, never a fabricated selection. */
+export function AutonomyControl({
+  mode,
+  onSelect,
+}: {
+  mode: OperationMode;
+  /** Set the worktree mode; resolves with the served command outcome (a denial is
+   *  a VALUE here, not a throw) and rejects on transport/typed failure — mirroring
+   *  the ProposalCard decision seam so both surface refusals identically. */
+  onSelect: (mode: OperationMode) => Promise<AuthoringCommandOutcome>;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<CardFeedback>(null);
+  const eyebrow = safeMessage(resolveMessage, { key: "common:agent.autonomy.label" });
+  const reviewEach = safeMessage(resolveMessage, {
+    key: "common:agent.autonomy.reviewEach",
+  });
+  const applyAutomatically = safeMessage(resolveMessage, {
+    key: "common:agent.autonomy.applyAutomatically",
+  });
+  if (!eyebrow || !reviewEach || !applyAutomatically) return null;
+
+  const select = async (next: OperationMode) => {
+    setBusy(true);
+    setFeedback(null);
+    try {
+      const result = outcomeFeedback(await onSelect(next));
+      // Surface only a refusal/failure — a successful switch is self-evident in the
+      // active segment, so no success chatter clutters the toggle.
+      setFeedback(result && result.tone !== "accepted" ? result : null);
+    } catch (error) {
+      setFeedback({
+        tone: "error",
+        descriptor: reviewFailureDescriptor(reviewCommandFailureKind(error)),
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const feedbackMessage = feedback
+    ? safeMessage(resolveMessage, feedback.descriptor)
+    : null;
+
+  return (
+    <div className="flex flex-col gap-fg-1" data-autonomy-control data-mode={mode}>
+      <SectionLabel>{eyebrow}</SectionLabel>
+      <SegmentedToggle
+        value={mode}
+        ariaLabel={eyebrow}
+        disabled={busy}
+        onChange={(next) => {
+          if (next === "manual" || next === "autonomous") void select(next);
+        }}
+      >
+        <Segment value="manual">{reviewEach}</Segment>
+        <Segment value="autonomous">{applyAutomatically}</Segment>
+      </SegmentedToggle>
+      {feedbackMessage && feedback && (
+        <p
+          className={`text-meta ${feedback.tone === "error" ? "text-diff-remove" : "text-ink-muted"}`}
+          role="status"
+          data-autonomy-feedback={feedback.tone}
+        >
+          {feedbackMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function ReviewStationSection() {
   const view = useReviewStationView();
   const actions = useReviewActions();
+  const setMode = useSetOperationMode();
   // No identity affordance: provenance is ambient (ADR D5). The review actions
   // mint the actor token transparently on first use, so the queue renders and
   // every decision is reachable with zero prior editing and no sign-in surface.
   return (
     <div className="flex flex-col gap-fg-3 text-body" data-review-station>
+      {/* The autonomy control renders only when the wire carries a served mode:
+          the mode is observable only through a proposal's policy (no scope-level
+          mode read exists), so an empty queue shows no control. */}
+      {view.operationMode !== null && (
+        <AutonomyControl
+          mode={view.operationMode}
+          onSelect={(mode) => setMode.mutateAsync(mode)}
+        />
+      )}
       <ReviewStationBody view={view} actions={actions} />
     </div>
   );

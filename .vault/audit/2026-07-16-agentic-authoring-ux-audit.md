@@ -210,3 +210,62 @@ cap derives from `snapshot.caps.turn_cap` so the window + windowFull can't drift
   completion lifecycle event (no run ever transitions to `completed` today, so
   "Done" cannot render from the wire), and `session_id` (+ ideally run/turn ids)
   on `ProposalProjection` for an exact proposal↔run bind.
+
+## Wave W04 — the comment bridge + autonomy control (S18/S19) | APPROVED (1 HIGH revised, then re-reviewed)
+
+Reviewed the comment→agent bridge and the operation-mode / autonomy control.
+First pass WITHHELD on one HIGH (a shared-engine test hazard) + one MEDIUM;
+fixed and re-reviewed to APPROVED (35/35 tests, full gate exit 0).
+
+### live-test-mode-reset-not-crash-safe | high (resolved) | a thrown assertion strands the shared engine in autonomous, cascading into later live tests
+
+The autonomy live test reset the worktree operation mode to `manual` as a plain
+trailing statement, not exception-safe. Operation mode is worktree-GLOBAL and the
+live suite runs sequentially (`fileParallelism: false`), so a thrown `waitFor`
+would leave the scratch engine in `autonomous` — and later live tests
+(`ProposalCard.live`, `authoring.happyPath.live`) that depend on manual-gate
+semantics would silently auto-apply instead of queueing, a cascading failure that
+masks its own cause. RESOLVED: the reset moved to an unconditional async
+`afterEach`; proven by running the live suite sequentially with the manual-gate
+tests staying green.
+
+### mode-switch-swallows-denial | medium (resolved) | a mode switch silently no-ops on denial/error with no feedback
+
+`setOperationMode` was fire-and-forget — it ignored both the `denied`
+`AuthoringCommandOutcome` (a value, not a throw) and the transport error, unlike
+the sibling `ProposalCard` decision buttons in the same file. RESOLVED: the
+control now runs the shared `outcomeFeedback` seam and renders inline feedback
+(denial → a fixed localized descriptor, never the raw reason; error → the typed
+failure descriptor); a successful switch shows no feedback (the active segment is
+the cue).
+
+### comment-bridge-and-autonomy | none (confirmed) | wire-honest, bounded, served-shape-honest, principal-gated
+
+S18: the comment batch is bounded (cap 32) + upsert-deduped by id (re-stage
+refreshes a stale body), serialized deterministically into the ONE `prompt` field
+the turn contract accepts (no structured feedback field — honestly flagged, the
+`feedback_batch_id` continuation is a2a-gated), rendered as the shared "N comments"
+chip (one attachment treatment, not parallel). S19: the autonomy control derives
+its mode ONLY from a served `policy.effective_mode` — renders nothing when the
+queue is empty (no fabricated default), `assisted` lights neither segment;
+principal-gated (human/system only, verified live); the mode switch round-trips
+against the real engine.
+
+### comment-send-to-agent-bespoke | low (deferred) | a bespoke handler, not a shared ActionDescriptor
+
+`comment:send-to-agent` is a bespoke `onClick` rather than the ADR D8 shared
+ActionDescriptor — but it matches the existing comment-row precedent
+(resolve/edit/delete are all bespoke; there is no comment context-menu surface).
+Deferred D8 follow-up, non-blocking.
+
+## Recommendations
+
+- W04 APPROVED after revision; full gate `just dev lint frontend` exit 0.
+- W01–W04 (all buildable waves) are complete. W05 (a2a enrichment) is cross-team
+  gated on the a2a backend (contract accepted, zero implementation) — the epic
+  reaches its buildable completion here; every honest wire gap is a filed ask.
+- Carry the two W04 cross-team ASKS forward: a structured feedback field on the
+  turn contract (comments as data, not prose), and a scope-level operation-mode
+  read (so the autonomy control works pre-proposal).
+- Deferred follow-ups: the `stopRun`/`stop` "End conversation" dedup (W02) and
+  the `comment:send-to-agent` ActionDescriptor (W04).

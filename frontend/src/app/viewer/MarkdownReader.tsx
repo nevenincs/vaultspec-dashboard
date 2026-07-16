@@ -71,6 +71,8 @@ import {
   type ReaderCommentSource,
 } from "./readerComments";
 import { stopScrollKeyPropagation } from "./scrollRegion";
+import { stageAgentComment } from "../../stores/view/agentComposer";
+import { openAgentPanel } from "../../stores/view/agentPanel";
 import { useHighlightedHast } from "./useHighlighter";
 
 /** Preserve the `vaultspec:doc:` wiki-link scheme through react-markdown's URL
@@ -284,6 +286,19 @@ function CommentableHeading({
           title={text}
           ambiguous={ambiguous}
           onCopyLink={copySectionLink}
+          onSendToAgent={(served) => {
+            // Stage the anchored comment (body + section anchor + doc provenance)
+            // into the composer's pending batch and open the panel (feedback-loop
+            // ADR D6). The interim serialization rides the prompt text; the
+            // structured feedback_batch_id continuation is upstream-gated.
+            stageAgentComment({
+              commentId: served.comment.comment_id,
+              docStem: plane.docStem,
+              headingPath: served.comment.selector.heading_path,
+              body: served.comment.body,
+            });
+            openAgentPanel();
+          }}
           onClose={() => setOpen(false)}
           className="absolute right-0 top-full z-40 mt-fg-1"
         />

@@ -142,6 +142,27 @@ This ADR is the north-star decision for the epic: one cohesive, sparse, direct a
 > provenance for an exact per-run bind; the correlation narrows without touching
 > the reused card when it lands.
 
+> **Amendment (2026-07-16, W04.P04.S18/S19 — comment bridge + autonomy control,
+> two more served-shape gaps):** (1) The comment→agent bridge is built — a
+> per-comment "Send to agent" affordance stages an anchored comment (body +
+> heading + doc stem) into the composer's bounded batch (cap 32, deduped),
+> rendered as the shared "N comments" chip, serialized on submit into a
+> deterministic "Comments to address:" prompt block. WIRE TRUTH: the turn
+> contract carries ONLY `prompt` text (`StartTurnPayload = {prompt, summary}`) —
+> there is NO structured feedback field — so the batch rides IN the prompt,
+> exactly like `@`-mentions; the structured `feedback_batch_id` continuation
+> (feedback-loop ADR D4) is upstream-gated on the a2a edge. NEW ASK: a structured
+> feedback field on the turn contract (so comments attach as data, not prose).
+> (2) The autonomy control (Figma `AutonomyControl`) is built in the Review
+> header — a two-mode segmented control ("Review each change" / "Apply
+> automatically") reading the served mode and writing `POST /v1/mode` (a client
+> that did not exist before). SERVED-SHAPE TRUTH: there is NO scope-level
+> operation-mode READ — the mode is observable ONLY through a proposal's
+> `policy.effective_mode`, so the control renders only when the queue carries a
+> proposal (an empty queue honestly shows no control). The mode is also
+> worktree-GLOBAL. NEW ASK: serve a scope-level operation-mode read so the
+> control works pre-proposal.
+
 **D5 — Review detangle: kill the sign-in gate; provenance becomes ambient; approval becomes inline.** The `ReviewerIdentity` component and its entire Sign in/Sign out/Signing in vocabulary are DELETED. The actor-token bootstrap moves to the stores seam as an ambient lazy mint: the first mutating authoring intent (edit, comment, approve, prompt) bootstraps the token transparently, exactly as editing already does — no surface ever renders auth vocabulary for a single implicit local operator. Per-change review moves inline: when a run settles into a proposal, the transcript renders a **proposal card** — served summary, change count, one Show-changes diff (D7), and Approve/Reject/Apply buttons driven by served `eligibility`, preview-then-approve as the default posture. The ReviewStation dialog is REDESIGNED, not deleted: renamed **"Review"**, ungated, it remains the cross-session queue and audit view (including the applied-under-policy lane) for anything not decided inline. The **operation-mode** switch gets its first UI as one small control in the Review header wired to `POST /v1/mode`, rendering served mode tokens as plain labels ("Review each change" / "Apply automatically, log for review"). The dead review-claim routes get NO UI: single-operator product today; return trigger below.
 
 **D6 — The comment→agent bridge: ACCEPT the agentic-feedback-loop ADR, with one amendment.** The proposed `2026-07-14-agentic-feedback-loop-adr` is accepted as-is in substance — anchored comments batch immutably and attach to the next ordinary composer turn (its D2), the exact mechanism this ADR's composer now makes buildable. One amendment: the attached-comments affordance uses the SAME chip grammar as D2's `@`-mention chips — a "4 comments" removable chip above the input, one attachment treatment, not a parallel one. Additionally each comment thread gains one small **"Send to agent"** action (context menu + thread affordance) that stages that comment into the pending set. Its D4 cross-repo `feedback_batch_id` continuation remains an open ask on the a2a edge, unchanged.

@@ -71,8 +71,10 @@ import type {
   ProposalListResult,
   ProposalProjection,
   ProposalSnapshotResult,
+  OperationMode,
   ReviewDecisionPayload,
   RollbackPayload,
+  SetOperationModePayload,
   SubmitForReviewPayload,
   Rec,
 } from "./wireTypes";
@@ -440,6 +442,16 @@ export class AuthoringClient {
       payload,
       opts,
     );
+  }
+
+  /** `POST /authoring/v1/mode` — set the active worktree operation mode. The scope
+   *  is backend-derived (never client-claimed); a non-human/system principal is
+   *  refused as a `denied` value. */
+  async setOperationMode(
+    payload: SetOperationModePayload,
+    opts: CommandOptions,
+  ): Promise<AuthoringCommandOutcome> {
+    return this.command("/authoring/v1/mode", "set_operation_mode", payload, opts);
   }
 
   // --- section-anchored document comments (authoring-surface ADR D2) ---
@@ -1021,6 +1033,11 @@ export interface ReviewStationView {
   truncated: boolean;
   /** The after-the-fact lane has more items than the served page cap. */
   afterFactTruncated: boolean;
+  /** The active worktree operation mode, read from the served policy on the first
+   *  available proposal (no scope-level mode read exists; it is observable only
+   *  through a proposal's `policy.effective_mode`). Null when the queue is empty —
+   *  the autonomy control then has no served mode to reflect. */
+  operationMode: OperationMode | null;
 }
 
 /**
@@ -1039,6 +1056,13 @@ export function useReviewStationView(): ReviewStationView {
     const degradation = readAuthoringDegradation({ data, error });
     const rows = data?.items ?? [];
     const afterFactRows = data?.applied_under_policy.items ?? [];
+    // The worktree mode is a scope-level setting the wire exposes only through a
+    // proposal's served policy; read it from the first available projection (queue
+    // row, else after-fact row), null when nothing carries one.
+    const operationMode =
+      rows[0]?.policy?.effective_mode ??
+      afterFactRows[0]?.proposal.policy?.effective_mode ??
+      null;
     const availabilityIssue = degradation.storeUnavailable
       ? "queueUnavailable"
       : degradation.degraded
@@ -1054,6 +1078,7 @@ export function useReviewStationView(): ReviewStationView {
       empty: !!data && rows.length === 0 && afterFactRows.length === 0,
       truncated: data?.truncated ?? false,
       afterFactTruncated: data?.applied_under_policy.truncated ?? false,
+      operationMode,
     };
   }, [data, error, isLoading]);
 }
@@ -1296,6 +1321,20 @@ export function useCreateProposal() {
   return useMutation({
     mutationFn: (payload: CreateProposalPayload) =>
       authoringClient.createProposal(payload, { actorToken: requireActorToken() }),
+    onSuccess: invalidateAuthoring,
+  });
+}
+
+/** Set the active worktree operation mode (the autonomy control, agentic-authoring-ux
+ *  ADR D5). Ambient provenance — the mutation mints the operator token on first use;
+ *  a switch invalidates the queue so the served `effective_mode` re-derives. */
+export function useSetOperationMode() {
+  return useMutation({
+    mutationFn: async (mode: OperationMode) =>
+      authoringClient.setOperationMode(
+        { mode },
+        { actorToken: await ensureActorToken() },
+      ),
     onSuccess: invalidateAuthoring,
   });
 }

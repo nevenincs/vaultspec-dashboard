@@ -258,6 +258,12 @@ export const common = {
     },
   },
   agent: {
+    sendComment: "Send to agent",
+    autonomy: {
+      label: "Autonomy",
+      reviewEach: "Review each change",
+      applyAutomatically: "Apply automatically",
+    },
     actions: {
       openPanel: "Open agent panel",
       closePanel: "Close agent panel",

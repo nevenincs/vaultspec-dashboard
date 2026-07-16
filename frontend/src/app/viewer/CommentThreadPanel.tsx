@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Link, Link2, RotateCcw, Trash2, X } from "lucide-react";
+import { Check, Link, Link2, RotateCcw, Send, Trash2, X } from "lucide-react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type {
@@ -75,9 +75,17 @@ interface CommentRowProps {
   served: ServedComment;
   actions: ReaderCommentActions;
   reanchorBlock?: HeadingBlock;
+  /** Stage this comment into the agent composer's pending batch (feedback-loop ADR
+   *  D6). Absent when no agent surface is mounted — the affordance then hides. */
+  onSendToAgent?: () => void;
 }
 
-function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
+function CommentRow({
+  served,
+  actions,
+  reanchorBlock,
+  onSendToAgent,
+}: CommentRowProps) {
   const resolveMessage = useLocalizedMessageResolver();
   const { comment, orphaned } = served;
   const [editing, setEditing] = useState(false);
@@ -114,6 +122,11 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
   const save = localized(resolveMessage, COMMENT_ACTIONS.save);
   const cancel = localized(resolveMessage, COMMENT_ACTIONS.cancel);
   const move = localized(resolveMessage, COMMENT_ACTIONS.moveToThisSection);
+  // Resolved outside the required-copy bail below: a missing agent key must hide
+  // only the send affordance, never the whole comment row.
+  const sendToAgent = onSendToAgent
+    ? localized(resolveMessage, { key: "common:agent.sendComment" })
+    : null;
   const issue =
     orphaned && served.anchor.state === "orphaned"
       ? localized(
@@ -178,6 +191,16 @@ function CommentRow({ served, actions, reanchorBlock }: CommentRowProps) {
         </span>
         <div className="flex items-center gap-fg-1">
           {comment.resolved && <Badge tone="neutral">{resolved}</Badge>}
+          {onSendToAgent !== undefined && sendToAgent !== null && (
+            <IconButton
+              label={sendToAgent}
+              data-comment-send-agent
+              onClick={onSendToAgent}
+              disabled={busy}
+            >
+              <Send size={14} aria-hidden />
+            </IconButton>
+          )}
           <IconButton
             label={comment.resolved ? reopen! : resolve!}
             onClick={() => {
@@ -403,6 +426,9 @@ export interface CommentThreadPanelProps {
   title: string;
   orphanedPanel?: boolean;
   onCopyLink?: () => void;
+  /** Stage one comment into the agent composer's pending batch (feedback-loop ADR
+   *  D6). Absent when no agent surface is available; the per-row affordance hides. */
+  onSendToAgent?: (served: ServedComment) => void;
   ambiguous?: boolean;
   onClose(): void;
   className?: string;
@@ -419,6 +445,7 @@ export function CommentThreadPanel({
   title,
   orphanedPanel = false,
   onCopyLink,
+  onSendToAgent,
   ambiguous = false,
   onClose,
   className,
@@ -529,6 +556,9 @@ export function CommentThreadPanel({
                   actions={actions}
                   reanchorBlock={
                     orphanedPanel ? reanchorTarget(served, anchorIndex) : undefined
+                  }
+                  onSendToAgent={
+                    onSendToAgent ? () => onSendToAgent(served) : undefined
                   }
                 />
               ))}
