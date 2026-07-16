@@ -21,11 +21,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   CURRENT_EDITOR_ACTOR,
   authoringClient,
+  ensureActorToken,
   getActorToken,
   setActorToken,
+  useCreateProposal,
   useCurrentEditorIdentity,
   useEnsureCurrentEditorIdentity,
-  useReviewDecision,
   type IssuedActorToken,
 } from "./authoring";
 import type { TiersBlock } from "./engine";
@@ -239,22 +240,55 @@ describe("the editor and the review station resolve to the SAME principal", () =
   });
 });
 
-describe("fail-safe: an edit attempted with no bootstrapped identity is refused, not silently dropped", () => {
+describe("ensureActorToken — ambient lazy mint (review provenance, ADR D5)", () => {
+  it("mints the shared local-operator principal on first use and caches it, with no explicit sign-in gesture", async () => {
+    const spy = vi
+      .spyOn(authoringClient, "issueActorToken")
+      .mockResolvedValue(issuedToken("ambient-token"));
+    expect(getActorToken()).toBeNull();
+
+    const token = await ensureActorToken();
+
+    expect(token).toBe("ambient-token");
+    expect(getActorToken()).toBe("ambient-token");
+    expect(spy).toHaveBeenCalledWith({ actor: CURRENT_EDITOR_ACTOR });
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns the present token without minting a second one", async () => {
+    setActorToken("already-present");
+    const spy = vi.spyOn(authoringClient, "issueActorToken");
+
+    expect(await ensureActorToken()).toBe("already-present");
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("dedupes concurrent first-use mints into a single request", async () => {
+    const spy = vi
+      .spyOn(authoringClient, "issueActorToken")
+      .mockResolvedValue(issuedToken("deduped-token"));
+
+    const [a, b] = await Promise.all([ensureActorToken(), ensureActorToken()]);
+
+    expect(a).toBe("deduped-token");
+    expect(b).toBe("deduped-token");
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("fail-safe: a non-ambient mutating intent with no bootstrapped identity is refused, not silently dropped", () => {
   it("a ledgered command mutation throws a clear error when no actor token is bootstrapped", async () => {
     expect(getActorToken()).toBeNull();
-    const { result } = renderHook(() => useReviewDecision(), {
+    const { result } = renderHook(() => useCreateProposal(), {
       wrapper: wrapper(new QueryClient()),
     });
 
     await expect(
       result.current.mutateAsync({
-        approvalId: "approval:no-identity",
-        payload: {
-          proposal_id: "proposal:no-identity",
-          approval_id: "approval:no-identity",
-          decision: "approve",
-          reviewed_revision: "proposal:rev1",
-        },
+        session_id: "session:no-identity",
+        changeset_id: "changeset:no-identity",
+        summary: "no-identity proposal",
+        operations: [],
       }),
     ).rejects.toThrow(/no authoring actor token is bootstrapped/);
   });

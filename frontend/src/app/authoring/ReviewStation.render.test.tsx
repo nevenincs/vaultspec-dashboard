@@ -156,7 +156,6 @@ describe("ProposalCard", () => {
       <ProposalCard
         proposal={needsReviewProposal()}
         actions={actionCallbacks(counts)}
-        hasToken
       />,
     );
 
@@ -207,7 +206,6 @@ describe("ProposalCard", () => {
           conflict: { child_key: "private-child", reason: "private-conflict" },
         })}
         actions={actionCallbacks(counts)}
-        hasToken
       />,
     );
 
@@ -238,7 +236,6 @@ describe("ProposalCard", () => {
           eligibility: [{ command: "approve", allowed: false, reason: "private" }],
         })}
         actions={actionCallbacks(counts)}
-        hasToken
       />,
     );
     const approve = screen.getByRole("button", { name: "Approve proposal" });
@@ -252,7 +249,6 @@ describe("ProposalCard", () => {
             approval: { present: true, queue_state: "queued", stale: false },
           })}
           actions={actionCallbacks(counts)}
-          hasToken
         />
       </I18nextProvider>,
     );
@@ -260,18 +256,21 @@ describe("ProposalCard", () => {
     expect(screen.queryByRole("button", { name: "Reject proposal" })).toBeNull();
   });
 
-  it("uses a localized identity gate and never exposes the backend reason", () => {
+  it("reaches every review action with zero prior editing (ambient provenance)", () => {
+    // ADR D5: provenance is ambient — the mutation mints the actor token on
+    // first use, so an action is enabled purely by served eligibility with no
+    // sign-in gate. A reviewer who never edited still gets live buttons.
     const counts = emptyCounts();
     localized(
       <ProposalCard
         proposal={needsReviewProposal()}
         actions={actionCallbacks(counts)}
-        hasToken={false}
       />,
     );
     const reject = screen.getByRole("button", { name: "Reject proposal" });
-    expect(reject.getAttribute("disabled")).not.toBeNull();
-    expect(reject.getAttribute("title")).toBe("Sign in as reviewer to continue.");
+    expect(reject.getAttribute("disabled")).toBeNull();
+    const approve = screen.getByRole("button", { name: "Approve proposal" });
+    expect(approve.getAttribute("disabled")).toBeNull();
   });
 
   it("submits for review directly", async () => {
@@ -284,7 +283,6 @@ describe("ProposalCard", () => {
           eligibility: [{ command: "submit_for_review", allowed: true }],
         })}
         actions={actionCallbacks(counts)}
-        hasToken
       />,
     );
 
@@ -338,7 +336,6 @@ describe("ProposalCard", () => {
         <ProposalCard
           proposal={confirmation.proposal}
           actions={actionCallbacks(counts)}
-          hasToken
         />,
       );
 
@@ -369,7 +366,6 @@ describe("ProposalCard", () => {
           reason: "private-denial-reason",
           tiers: {},
         })}
-        hasToken
       />,
     );
 
@@ -400,7 +396,6 @@ describe("ProposalCard", () => {
           eligibility: [{ command: "approve", allowed: true }],
         })}
         actions={actionCallbacks(counts, accepted, error)}
-        hasToken
       />,
     );
 
@@ -430,7 +425,6 @@ describe("ProposalCard", () => {
           <ProposalCard
             proposal={needsReviewProposal()}
             actions={actionCallbacks(counts)}
-            hasToken
           />
         </QueryClientProvider>
       </I18nextProvider>,
@@ -451,7 +445,7 @@ describe("ReviewStation states", () => {
     const runtime = createTestLocalizationRuntime();
     const { rerender } = render(
       <I18nextProvider i18n={runtime}>
-        <ReviewStationBody view={view({ loading: true })} actions={actions} hasToken />
+        <ReviewStationBody view={view({ loading: true })} actions={actions} />
       </I18nextProvider>,
     );
     expect(screen.getByRole("status").getAttribute("aria-label")).toBe(
@@ -479,7 +473,7 @@ describe("ReviewStation states", () => {
     for (const [state, expected] of states) {
       rerender(
         <I18nextProvider i18n={runtime}>
-          <ReviewStationBody view={state} actions={actions} hasToken />
+          <ReviewStationBody view={state} actions={actions} />
         </I18nextProvider>,
       );
       expect(document.body.textContent).toContain(expected);
@@ -506,11 +500,7 @@ describe("ReviewStation states", () => {
       acknowledgement_count: 1,
     };
     localized(
-      <AppliedUnderPolicyLane
-        items={[item]}
-        actions={actionCallbacks(counts)}
-        hasToken
-      />,
+      <AppliedUnderPolicyLane items={[item]} actions={actionCallbacks(counts)} />,
     );
 
     expect(screen.getAllByText("Applied automatically")).toHaveLength(2);

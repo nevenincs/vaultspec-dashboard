@@ -155,7 +155,7 @@ export const ltrTestResources = {
         search: "Recherche",
         projectHealth: "Santé du projet",
         systemStatus: "État du système",
-        approvals: "Approbations",
+        approvals: "Révision",
       },
       actions: {
         showSearch: "Afficher la recherche",
@@ -164,14 +164,14 @@ export const ltrTestResources = {
         hideProjectHealth: "Masquer la santé du projet",
         showSystemStatus: "Afficher l’état du système",
         hideSystemStatus: "Masquer l’état du système",
-        showApprovals: "Afficher les approbations",
-        hideApprovals: "Masquer les approbations",
+        showApprovals: "Afficher la révision",
+        hideApprovals: "Masquer la révision",
       },
       unavailableTitles: {
         search: "Recherche indisponible",
         projectHealth: "Santé du projet indisponible",
         systemStatus: "État du système indisponible",
-        approvals: "Approbations indisponibles",
+        approvals: "Révision indisponible",
       },
       accessibility: {
         group: "État du projet",
@@ -885,7 +885,7 @@ export const rtlTestResources = {
         search: "البحث",
         projectHealth: "سلامة المشروع",
         systemStatus: "حالة النظام",
-        approvals: "الموافقات",
+        approvals: "المراجعة",
       },
       actions: {
         showSearch: "إظهار البحث",
@@ -894,14 +894,14 @@ export const rtlTestResources = {
         hideProjectHealth: "إخفاء سلامة المشروع",
         showSystemStatus: "إظهار حالة النظام",
         hideSystemStatus: "إخفاء حالة النظام",
-        showApprovals: "إظهار الموافقات",
-        hideApprovals: "إخفاء الموافقات",
+        showApprovals: "إظهار المراجعة",
+        hideApprovals: "إخفاء المراجعة",
       },
       unavailableTitles: {
         search: "البحث غير متاح",
         projectHealth: "سلامة المشروع غير متاحة",
         systemStatus: "حالة النظام غير متاحة",
-        approvals: "الموافقات غير متاحة",
+        approvals: "المراجعة غير متاحة",
       },
       accessibility: {
         group: "حالة المشروع",

@@ -6,8 +6,6 @@ export const ltrReviewStationResources = {
   actions: {
     hideChanges: "Masquer les modifications",
     showChanges: "Afficher les modifications",
-    signInAsReviewer: "Se connecter comme réviseur",
-    signOut: "Se déconnecter",
     submitForReview: "Soumettre pour révision",
   },
   confirmations: {
@@ -89,7 +87,6 @@ export const ltrReviewStationResources = {
     actionUnavailable: "Actualisez la proposition, puis réessayez.",
     rollbackUnavailable:
       "Actualisez la proposition et vérifiez si l’annulation est disponible.",
-    signInToAct: "Connectez-vous comme réviseur pour continuer.",
   },
   feedback: {
     actionAccepted: "Demande acceptée.",
@@ -97,7 +94,8 @@ export const ltrReviewStationResources = {
     rollbackUnavailable:
       "Actualisez la proposition et vérifiez si l’annulation est disponible.",
     reviewChanged: "Examinez la dernière proposition, puis réessayez.",
-    reviewerUnavailable: "Connectez-vous comme réviseur, puis réessayez.",
+    reviewerUnavailable:
+      "Cette action n’a pas pu être autorisée. Actualisez, puis réessayez.",
   },
   errors: {
     actionFailed: "L’action n’a pas pu être effectuée. Réessayez.",
@@ -116,8 +114,6 @@ export const ltrReviewStationResources = {
       "D’autres modifications appliquées automatiquement sont disponibles.",
     moreProposals:
       "D’autres propositions sont disponibles. Affinez la file pour les voir.",
-    signedIn: "Connecté comme réviseur",
-    signingIn: "Connexion en cours…",
     untitledProposal: "Proposition sans titre",
   },
   sections: { appliedAutomatically: "Appliquées automatiquement" },
@@ -139,8 +135,6 @@ export const rtlReviewStationResources = {
   actions: {
     hideChanges: "إخفاء التغييرات",
     showChanges: "إظهار التغييرات",
-    signInAsReviewer: "تسجيل الدخول كمراجع",
-    signOut: "تسجيل الخروج",
     submitForReview: "الإرسال للمراجعة",
   },
   confirmations: {
@@ -224,14 +218,13 @@ export const rtlReviewStationResources = {
     actionInProgress: "انتظر حتى ينتهي الإجراء الحالي.",
     actionUnavailable: "حدّث المقترح، ثم حاول مرة أخرى.",
     rollbackUnavailable: "حدّث المقترح وتحقق من توفر التراجع.",
-    signInToAct: "سجّل الدخول كمراجع للمتابعة.",
   },
   feedback: {
     actionAccepted: "تم قبول الطلب.",
     actionNotAllowed: "راجع المقترح واختر إجراءً متاحًا.",
     rollbackUnavailable: "حدّث المقترح وتحقق من توفر التراجع.",
     reviewChanged: "راجع أحدث مقترح، ثم حاول مرة أخرى.",
-    reviewerUnavailable: "سجّل الدخول كمراجع، ثم حاول مرة أخرى.",
+    reviewerUnavailable: "تعذّر تفويض هذا الإجراء. حدّث، ثم حاول مرة أخرى.",
   },
   errors: {
     actionFailed: "تعذر إكمال الإجراء. حاول مرة أخرى.",
@@ -246,8 +239,6 @@ export const rtlReviewStationResources = {
     loading: "جارٍ تحميل الموافقات…",
     moreAppliedChanges: "تتوفر تغييرات أخرى مطبقة تلقائيًا.",
     moreProposals: "تتوفر مقترحات أخرى. ضيّق قائمة الانتظار لرؤيتها.",
-    signedIn: "تم تسجيل الدخول كمراجع",
-    signingIn: "جارٍ تسجيل الدخول…",
     untitledProposal: "مقترح بلا عنوان",
   },
   sections: { appliedAutomatically: "مطبّق تلقائيًا" },

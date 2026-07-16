@@ -450,8 +450,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   },
   "documents:reviewStation.actions.hideChanges": { role: "action" },
   "documents:reviewStation.actions.showChanges": { role: "action" },
-  "documents:reviewStation.actions.signInAsReviewer": { role: "action" },
-  "documents:reviewStation.actions.signOut": { role: "action" },
   "documents:guardedActions.reviewStationApproveProposal": { role: "action" },
   "documents:guardedActions.reviewStationApplyChanges": { role: "action" },
   "documents:guardedActions.reviewStationPrepareRollback": { role: "action" },
@@ -529,9 +527,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:reviewStation.disabledReasons.rollbackUnavailable": {
     role: "disabled-reason",
   },
-  "documents:reviewStation.disabledReasons.signInToAct": {
-    role: "disabled-reason",
-  },
   "documents:reviewStation.feedback.actionAccepted": { role: "status" },
   "documents:reviewStation.feedback.actionNotAllowed": {
     role: "error-message",
@@ -554,8 +549,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:reviewStation.states.loading": { role: "status" },
   "documents:reviewStation.states.moreAppliedChanges": { role: "status" },
   "documents:reviewStation.states.moreProposals": { role: "status" },
-  "documents:reviewStation.states.signedIn": { role: "status" },
-  "documents:reviewStation.states.signingIn": { role: "status" },
   "documents:reviewStation.states.untitledProposal": { role: "status" },
   "documents:reviewStation.sections.appliedAutomatically": { role: "label" },
   "documents:reviewStation.labels.actionUnavailable": { role: "label" },

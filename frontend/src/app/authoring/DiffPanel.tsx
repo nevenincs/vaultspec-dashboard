@@ -6,40 +6,18 @@
 // consumes the authoring store's `useProposalDetail` (the only fetch seam); it
 // never touches the wire or the raw `tiers` block. The DETAIL projection serves
 // the bounded base + proposed TEXTS (no server-side diff — a diff is a derived
-// review artifact); the line diff itself is PRESENTATION, computed client-side by
-// `diffLines`. Truncation is surfaced honestly from the served `BoundedDocumentText`.
-//
-// Design system: kit StateBlock/Skeleton for the non-diff states; diff identity
-// stays in the bound `--color-diff-*` tally and grayscale-safe +/− gutter, while
-// snippet text reuses the shared token-tier highlighter. No background tints, no
-// hardcoded px.
+// review artifact); the line diff itself is PRESENTATION, rendered by the one
+// shared `DiffView` primitive (ADR D7). Truncation is surfaced honestly from the
+// served `BoundedDocumentText`.
 
-import { useMemo } from "react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
-import { authoredDisplayText } from "../../platform/localization/displayText";
 
 import {
   useProposalDetail,
-  type BoundedDocumentText,
   type ReviewDocumentProjection,
 } from "../../stores/server/authoring";
-import { DecorativeGlyph, Skeleton, SkeletonRow, StateBlock } from "../kit";
-import { HighlightedLineContent } from "../viewer/HighlightedCode";
-import { languageHintFromPath } from "../viewer/languages";
-import { useTokenLines } from "../viewer/useHighlighter";
-import { diffLines, diffStat, type DiffLineKind } from "./diffLines";
-
-const GUTTER: Record<DiffLineKind, string> = {
-  add: "+",
-  remove: "−",
-  context: " ",
-};
-
-const LINE_TONE: Record<DiffLineKind, string> = {
-  add: "text-diff-add",
-  remove: "text-diff-remove",
-  context: "text-ink-muted",
-};
+import { Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { DiffView } from "./DiffView";
 
 /** A human label for a review document's target — its path/stem when the served
  *  ref carries one, else the child key. Presentation only; the ref is opaque. */
@@ -52,114 +30,13 @@ function documentLabel(document: unknown, childKey: string): string {
   return childKey;
 }
 
-/** The honest truncation notice when either served side was byte-capped. */
-function truncationSide(base: BoundedDocumentText, proposed: BoundedDocumentText) {
-  const side = base.truncated ? base : proposed.truncated ? proposed : null;
-  if (!side) return null;
-  return side;
-}
-
-/** The pure diff renderer over two served texts. Exported so a wire-free render
- *  test drives it without the store. */
-export function DiffLinesView({
-  base,
-  proposed,
-  label,
-}: {
-  base: BoundedDocumentText;
-  proposed: BoundedDocumentText;
-  label: string;
-}) {
-  const lines = useMemo(
-    () => diffLines(base.text, proposed.text),
-    [base.text, proposed.text],
-  );
-  const stat = useMemo(() => diffStat(lines), [lines]);
-  const resolveMessage = useLocalizedMessageResolver();
-  const truncated = truncationSide(base, proposed);
-  const languageHint = useMemo(() => languageHintFromPath(label), [label]);
-  const { lines: tokenLines } = useTokenLines(
-    lines.map((line) => line.text).join("\n"),
-    languageHint,
-  );
-
-  return (
-    <div className="flex flex-col gap-fg-1-5" data-review-doc-diff data-doc={label}>
-      <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-muted">
-        <span
-          className="min-w-0 truncate font-mono text-ink-muted"
-          title={authoredDisplayText(label)}
-        >
-          {label}
-        </span>
-        <span className="tabular-nums text-diff-add" data-diff-added>
-          <DecorativeGlyph name="plus" />
-          {stat.added}
-        </span>
-        <span className="tabular-nums text-diff-remove" data-diff-removed>
-          <DecorativeGlyph name="minus" />
-          {stat.removed}
-        </span>
-      </div>
-      {stat.added === 0 && stat.removed === 0 ? (
-        <StateBlock
-          mode="empty"
-          layout="inline"
-          message={
-            resolveMessage({
-              key: "documents:localizationWave.authoring.noTextChange",
-            }).message
-          }
-        />
-      ) : (
-        <div className="overflow-x-auto rounded-fg-xs border border-rule bg-paper-sunken">
-          <pre className="min-w-full text-meta leading-relaxed" data-diff-lines>
-            {lines.map((line, index) => (
-              <div
-                // Diff lines have no stable id; index is the stable order here.
-                key={index}
-                className={`flex gap-fg-1-5 px-fg-2 ${LINE_TONE[line.kind]}`}
-                data-diff-line={line.kind}
-              >
-                <span aria-hidden className="select-none tabular-nums">
-                  {GUTTER[line.kind]}
-                </span>
-                <span className="whitespace-pre-wrap break-words">
-                  <HighlightedLineContent
-                    raw={line.text}
-                    tokens={tokenLines?.[index]}
-                  />
-                </span>
-              </div>
-            ))}
-          </pre>
-        </div>
-      )}
-      {truncated && (
-        <StateBlock
-          mode="degraded"
-          layout="inline"
-          message={
-            resolveMessage({
-              key: "documents:localizationWave.authoring.truncatedPreview",
-              values: {
-                returned: truncated.returned_bytes,
-                total: truncated.total_bytes,
-              },
-            }).message
-          }
-        />
-      )}
-    </div>
-  );
-}
-
 function ReviewDocumentDiff({ doc }: { doc: ReviewDocumentProjection }) {
   return (
-    <DiffLinesView
+    <DiffView
       base={doc.base}
       proposed={doc.proposed}
       label={documentLabel(doc.document, doc.child_key)}
+      source="proposal-preview"
     />
   );
 }

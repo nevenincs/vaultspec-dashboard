@@ -1156,7 +1156,12 @@ export function useEnsureCurrentEditorIdentity(enabled = true): CurrentEditorIde
 /** Require the bootstrapped session actor token, or throw a clear error the
  *  command mutation surfaces (a command needs a resolved principal). Exported
  *  so a cross-store mutation (e.g. `useSaveBody`'s direct-write call) shares
- *  the SAME fail-safe refusal, rather than re-deriving its own null check. */
+ *  the SAME fail-safe refusal, rather than re-deriving its own null check.
+ *
+ *  Used by the paths that already carry their own ambient bootstrap trigger —
+ *  editing (mount-mints via `useEnsureCurrentEditorIdentity`) and commenting
+ *  (thread-open bootstrap). The REVIEW path has no such trigger, so it uses the
+ *  ambient `ensureActorToken` below instead (agentic-authoring-ux ADR D5). */
 export function requireActorToken(): string {
   const token = getActorToken();
   if (!token) {
@@ -1167,15 +1172,47 @@ export function requireActorToken(): string {
   return token;
 }
 
+// De-duplicates concurrent ambient mints: while one `ensureActorToken` mint is
+// in flight, every other caller awaits the SAME promise rather than firing a
+// second `issueActorToken` request. Cleared once the mint settles.
+let inflightActorMint: Promise<string> | null = null;
+
+/** Ambiently ensure a session actor token exists, minting the shared local
+ *  operator principal on first use and returning it (agentic-authoring-ux ADR
+ *  D5). Provenance is plumbing, not ceremony: the first mutating REVIEW intent
+ *  (approve, reject, submit, apply, rollback) transparently bootstraps the token
+ *  — no surface renders auth vocabulary, and a reviewer never hits a sign-in
+ *  wall before acting. A present token is returned as-is (no re-mint); a failed
+ *  mint rejects so the calling mutation surfaces the failure honestly. */
+export async function ensureActorToken(): Promise<string> {
+  const existing = getActorToken();
+  if (existing) return existing;
+  if (!inflightActorMint) {
+    inflightActorMint = (async () => {
+      const issued = await authoringClient.issueActorToken({
+        actor: CURRENT_EDITOR_ACTOR,
+      });
+      if (!issued.raw_token) {
+        throw new Error("actor-token mint returned no token");
+      }
+      setActorToken(issued.raw_token);
+      return issued.raw_token;
+    })().finally(() => {
+      inflightActorMint = null;
+    });
+  }
+  return inflightActorMint;
+}
+
 /** Record a reviewer's approve/reject decision. This is the human-in-the-loop
  *  seam — the walking skeleton "is not done until a human can click deny." A
  *  denial/refusal comes back as a `denied` OUTCOME (not a thrown error); the UI
  *  renders it as a refusal + reason. */
 export function useReviewDecision() {
   return useMutation({
-    mutationFn: (args: { approvalId: string; payload: ReviewDecisionPayload }) =>
+    mutationFn: async (args: { approvalId: string; payload: ReviewDecisionPayload }) =>
       authoringClient.reviewDecision(args.approvalId, args.payload, {
-        actorToken: requireActorToken(),
+        actorToken: await ensureActorToken(),
       }),
     onSuccess: invalidateAuthoring,
   });
@@ -1184,9 +1221,12 @@ export function useReviewDecision() {
 /** Submit a drafted proposal for review (validate + submit + open-approval). */
 export function useSubmitForReview() {
   return useMutation({
-    mutationFn: (args: { changesetId: string; payload: SubmitForReviewPayload }) =>
+    mutationFn: async (args: {
+      changesetId: string;
+      payload: SubmitForReviewPayload;
+    }) =>
       authoringClient.submitForReview(args.changesetId, args.payload, {
-        actorToken: requireActorToken(),
+        actorToken: await ensureActorToken(),
       }),
     onSuccess: invalidateAuthoring,
   });
@@ -1195,8 +1235,8 @@ export function useSubmitForReview() {
 /** Materialize an approved changeset. */
 export function useApplyChangeset() {
   return useMutation({
-    mutationFn: (payload: ApplyPayload) =>
-      authoringClient.applyChangeset(payload, { actorToken: requireActorToken() }),
+    mutationFn: async (payload: ApplyPayload) =>
+      authoringClient.applyChangeset(payload, { actorToken: await ensureActorToken() }),
     onSuccess: invalidateAuthoring,
   });
 }
@@ -1204,8 +1244,8 @@ export function useApplyChangeset() {
 /** Generate a rollback of an applied changeset. */
 export function useCreateRollback() {
   return useMutation({
-    mutationFn: (payload: RollbackPayload) =>
-      authoringClient.createRollback(payload, { actorToken: requireActorToken() }),
+    mutationFn: async (payload: RollbackPayload) =>
+      authoringClient.createRollback(payload, { actorToken: await ensureActorToken() }),
     onSuccess: invalidateAuthoring,
   });
 }

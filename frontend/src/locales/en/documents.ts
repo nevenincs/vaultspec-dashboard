@@ -301,8 +301,6 @@ export const documents = {
     actions: {
       hideChanges: "Hide changes",
       showChanges: "Show changes",
-      signInAsReviewer: "Sign in as reviewer",
-      signOut: "Sign out",
       submitForReview: "Submit for review",
     },
     confirmations: {
@@ -378,14 +376,14 @@ export const documents = {
       actionInProgress: "Wait for the current action to finish.",
       actionUnavailable: "Refresh the proposal and try again.",
       rollbackUnavailable: "Refresh the proposal and check rollback availability.",
-      signInToAct: "Sign in as reviewer to continue.",
     },
     feedback: {
       actionAccepted: "Request accepted.",
       actionNotAllowed: "Review the proposal and choose an available action.",
       rollbackUnavailable: "Refresh the proposal and check rollback availability.",
       reviewChanged: "Review the latest proposal, then try again.",
-      reviewerUnavailable: "Sign in as reviewer, then try again.",
+      reviewerUnavailable:
+        "This action could not be authorized. Refresh, then try again.",
     },
     errors: {
       actionFailed: "The action could not be completed. Try again.",
@@ -401,8 +399,6 @@ export const documents = {
       loading: "Loading approvals…",
       moreAppliedChanges: "More automatically applied changes are available.",
       moreProposals: "More proposals are available. Narrow the queue to see them.",
-      signedIn: "Signed in as reviewer",
-      signingIn: "Signing in…",
       untitledProposal: "Untitled proposal",
     },
     sections: {

@@ -17,8 +17,6 @@ import {
   REVIEW_STATION_MESSAGES,
   useApplyChangeset,
   useCreateRollback,
-  useCurrentEditorIdentity,
-  useHasActorToken,
   useReviewDecision,
   useReviewStationView,
   useSubmitForReview,
@@ -41,37 +39,6 @@ function safeMessage(
 ): string | null {
   const result = resolveMessage(descriptor);
   return result.usedFallback ? null : result.message;
-}
-
-function ReviewerIdentity() {
-  const identity = useCurrentEditorIdentity();
-  const resolveMessage = useLocalizedMessageResolver();
-  const signedIn = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signedIn);
-  const signOut = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signOut);
-  const signIn = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signIn);
-  const signingIn = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signingIn);
-
-  if (!signedIn || !signOut || !signIn || !signingIn) return null;
-  if (identity.hasToken) {
-    return (
-      <div className="flex items-center gap-fg-2 text-meta text-ink-muted">
-        <span data-reviewer-signed-in>{signedIn}</span>
-        <Button variant="ghost" onClick={identity.signOut} data-reviewer-signout>
-          {signOut}
-        </Button>
-      </div>
-    );
-  }
-  return (
-    <Button
-      variant="secondary"
-      disabled={identity.bootstrapping}
-      onClick={identity.bootstrap}
-      data-reviewer-signin
-    >
-      {identity.bootstrapping ? signingIn : signIn}
-    </Button>
-  );
 }
 
 export interface ReviewActions {
@@ -156,7 +123,6 @@ function ActionButton({
   eligibility,
   command,
   label,
-  hasToken,
   busy,
   variant,
   resolveMessage,
@@ -165,22 +131,21 @@ function ActionButton({
   eligibility: ActionEligibility;
   command: ReviewCommand;
   label: string;
-  hasToken: boolean;
   busy: boolean;
   variant: "primary" | "secondary" | "danger";
   resolveMessage: ResolveMessage;
   onRun: () => void;
 }) {
+  // Provenance is ambient (ADR D5): the mutation itself mints the actor token on
+  // first use, so a review action is gated ONLY by served eligibility — never by
+  // a client-side identity check. There is no sign-in wall before acting.
   const blockedByBackend = !eligibility.allowed;
-  const blockedByIdentity = !hasToken;
-  const disabled = busy || blockedByBackend || blockedByIdentity;
+  const disabled = busy || blockedByBackend;
   const titleDescriptor = busy
     ? REVIEW_STATION_MESSAGES.actionInProgress
     : blockedByBackend
       ? REVIEW_STATION_MESSAGES.actionUnavailable
-      : blockedByIdentity
-        ? REVIEW_STATION_MESSAGES.signInToAct
-        : null;
+      : null;
   const title = titleDescriptor
     ? safeMessage(resolveMessage, titleDescriptor)
     : undefined;
@@ -203,12 +168,10 @@ function ActionButton({
 export function ProposalCard({
   proposal,
   actions,
-  hasToken,
   appliedPolicy,
 }: {
   proposal: ProposalProjection;
   actions: ReviewActions;
-  hasToken: boolean;
   appliedPolicy?: AppliedPolicyMeta;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
@@ -394,7 +357,6 @@ export function ProposalCard({
             eligibility={entry}
             command={command}
             label={label}
-            hasToken={hasToken}
             busy={busy}
             variant={variantFor(command)}
             resolveMessage={resolveMessage}
@@ -411,16 +373,14 @@ export function ProposalCard({
           (() => {
             const presentation = reviewCommandPresentation("create_rollback");
             const label = safeMessage(resolveMessage, presentation.label);
-            const title = !hasToken
-              ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.signInToAct)
-              : busy
-                ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.actionInProgress)
-                : undefined;
-            if (!label || ((!hasToken || busy) && !title)) return null;
+            const title = busy
+              ? safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.actionInProgress)
+              : undefined;
+            if (!label || (busy && !title)) return null;
             return (
               <Button
                 variant="secondary"
-                disabled={busy || !hasToken}
+                disabled={busy}
                 title={title ?? undefined}
                 onClick={() => setPending({ command: "create_rollback", proposal })}
                 data-action="create_rollback"
@@ -470,11 +430,9 @@ export function ProposalCard({
 export function AppliedUnderPolicyLane({
   items,
   actions,
-  hasToken,
 }: {
   items: AppliedUnderPolicyProjection[];
   actions: ReviewActions;
-  hasToken: boolean;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   if (items.length === 0) return null;
@@ -492,7 +450,6 @@ export function AppliedUnderPolicyLane({
             key={`${item.proposal.changeset_id}:${item.applied_at_ms}`}
             proposal={item.proposal}
             actions={actions}
-            hasToken={hasToken}
             appliedPolicy={item}
           />
         ))}
@@ -504,11 +461,9 @@ export function AppliedUnderPolicyLane({
 export function ReviewStationBody({
   view,
   actions,
-  hasToken,
 }: {
   view: ReviewStationView;
   actions: ReviewActions;
-  hasToken: boolean;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const queueUnavailable = safeMessage(
@@ -576,16 +531,11 @@ export function ReviewStationBody({
               key={proposal.changeset_id}
               proposal={proposal}
               actions={actions}
-              hasToken={hasToken}
             />
           ))}
         </ul>
       )}
-      <AppliedUnderPolicyLane
-        items={view.afterFactRows}
-        actions={actions}
-        hasToken={hasToken}
-      />
+      <AppliedUnderPolicyLane items={view.afterFactRows} actions={actions} />
       {view.truncated && (
         <StateBlock mode="degraded" layout="inline" message={moreProposals} />
       )}
@@ -598,19 +548,13 @@ export function ReviewStationBody({
 
 export function ReviewStationSection() {
   const view = useReviewStationView();
-  const identity = useCurrentEditorIdentity();
   const actions = useReviewActions();
-  const hasToken = useHasActorToken();
-  const showIdentity =
-    identity.hasToken || view.rows.length > 0 || view.afterFactRows.length > 0;
+  // No identity affordance: provenance is ambient (ADR D5). The review actions
+  // mint the actor token transparently on first use, so the queue renders and
+  // every decision is reachable with zero prior editing and no sign-in surface.
   return (
     <div className="flex flex-col gap-fg-3 text-body" data-review-station>
-      {showIdentity && (
-        <div className="flex items-center justify-end">
-          <ReviewerIdentity />
-        </div>
-      )}
-      <ReviewStationBody view={view} actions={actions} hasToken={hasToken} />
+      <ReviewStationBody view={view} actions={actions} />
     </div>
   );
 }

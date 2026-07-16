@@ -227,7 +227,7 @@ export const common = {
       search: "Search",
       projectHealth: "Project health",
       systemStatus: "System status",
-      approvals: "Approvals",
+      approvals: "Review",
     },
     actions: {
       showSearch: "Show search",
@@ -236,14 +236,14 @@ export const common = {
       hideProjectHealth: "Hide project health",
       showSystemStatus: "Show system status",
       hideSystemStatus: "Hide system status",
-      showApprovals: "Show approvals",
-      hideApprovals: "Hide approvals",
+      showApprovals: "Show review",
+      hideApprovals: "Hide review",
     },
     unavailableTitles: {
       search: "Search unavailable",
       projectHealth: "Project health unavailable",
       systemStatus: "System status unavailable",
-      approvals: "Approvals unavailable",
+      approvals: "Review unavailable",
     },
     accessibility: {
       group: "Project status",

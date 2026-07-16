@@ -15,7 +15,16 @@ related:
   - "[[2026-06-29-agentic-review-station-state-adr]]"
 ---
 
-# `agentic-feedback-loop` adr: `batched anchored comments as agent revision context` | (**status:** `proposed`)
+# `agentic-feedback-loop` adr: `batched anchored comments as agent revision context` | (**status:** `accepted`)
+
+> **Amendment (2026-07-16, agentic-authoring-ux):** accepted as part of the
+> agentic-authoring-ux epic (that ADR's D6). One amendment: the attached-comments
+> affordance uses the SAME removable-chip grammar as the composer's `@`-mention
+> chips (a "N comments" chip above the input) — one attachment treatment, not a
+> parallel one — and each comment thread gains one small "Send to agent" action
+> that stages a comment into the pending set. The composer this ADR depended on
+> now exists by that epic's D2. The cross-repo `feedback_batch_id` continuation
+> (this ADR's D4) remains an open ask on the a2a edge.
 
 ## Problem Statement
 

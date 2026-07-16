@@ -83,10 +83,10 @@ describe("control panel vocabulary", () => {
         unavailable: "Search unavailable",
       },
       {
-        label: "Approvals",
-        show: "Show approvals",
-        hide: "Hide approvals",
-        unavailable: "Approvals unavailable",
+        label: "Review",
+        show: "Show review",
+        hide: "Hide review",
+        unavailable: "Review unavailable",
       },
       {
         label: "System status",

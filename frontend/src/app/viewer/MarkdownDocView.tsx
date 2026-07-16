@@ -70,7 +70,7 @@ import {
   editorStatusHasUnsavedDraft,
   promoteDocTab,
 } from "../../stores/view/tabs";
-import { DiffLinesView } from "../authoring/DiffPanel";
+import { DiffView } from "../authoring/DiffView";
 import { Button, Divider, IconButton, type BreadcrumbItem } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { EditorToolbar } from "./EditorToolbar";
@@ -95,7 +95,7 @@ export const featureFromDocTags = featureTagOf;
 // failure actions-keymap-palette forbids) or add palette commands that do nothing
 // without a focused editor. Save remains the one editor keymap-registry binding.
 
-/** Debounces the proposed text fed to DiffLinesView so per-keystroke O(n·m)
+/** Debounces the proposed text fed to DiffView so per-keystroke O(n·m)
  *  line-LCS is bounded. Flushes immediately when the diff panel first opens
  *  (visible: false → true) so the leading render is instant; subsequent draft
  *  changes trail by delayMs. Panel-closed transitions skip the timeout entirely. */
@@ -615,7 +615,8 @@ export function MarkdownDocView({
           className="max-h-64 overflow-y-auto border-b border-rule bg-paper-sunken px-fg-3 py-fg-2"
           data-editor-diff-section
         >
-          <DiffLinesView
+          <DiffView
+            source="draft-vs-saved"
             base={{
               text: editor.baseText,
               truncated: false,
