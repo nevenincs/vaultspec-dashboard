@@ -15,6 +15,11 @@ import {
   normalizeGraphControlOverrides,
   type GraphControlOverrides,
 } from "../../scene/three/graphControlSchema";
+import { sourceLocale } from "../../locales/en";
+import {
+  supportedLocales,
+  type SupportedLocale,
+} from "../../platform/localization/localeController";
 import type {
   GraphCorpus,
   GraphGranularity,
@@ -80,7 +85,7 @@ export interface SettingsGroup {
   settings: EffectiveSetting[];
 }
 
-export type LanguagePreference = "system" | "en";
+export type LanguagePreference = SupportedLocale;
 
 export interface LanguageAuthorityResolution {
   readonly preference: LanguagePreference;
@@ -169,16 +174,22 @@ export function resolveLanguageAuthority(
     def === undefined ||
     def.scope_eligible ||
     def.value_type.type !== "enum" ||
-    def.value_type.members.length !== 2 ||
-    def.value_type.members[0] !== "system" ||
-    def.value_type.members[1] !== "en"
+    def.default !== sourceLocale ||
+    def.value_type.members.length !== supportedLocales.length ||
+    !def.value_type.members.every(
+      (member, index) => member === supportedLocales[index],
+    ) ||
+    def.display.enum_members.length !== supportedLocales.length ||
+    !def.display.enum_members.every(
+      (member, index) => member.value === supportedLocales[index],
+    )
   ) {
-    return { preference: "en", cacheable: false };
+    return { preference: sourceLocale, cacheable: false };
   }
   const value = resolveEffective(def, settings, null).value;
-  return value === "system" || value === "en"
-    ? { preference: value, cacheable: true }
-    : { preference: "en", cacheable: false };
+  return (supportedLocales as readonly string[]).includes(value)
+    ? { preference: value as SupportedLocale, cacheable: true }
+    : { preference: sourceLocale, cacheable: false };
 }
 
 /** Resolve the authoritative global language preference as raw identity. */
@@ -336,8 +347,19 @@ export function resolveSettings(
     // control kind so the dialog never renders it.
     if (def.control === "graph_controls" || def.control === "section_folds") continue;
     const resolved = resolveEffective(def, settings, activeScope);
+    const safeResolved =
+      def.key === CONSUMED_SETTING_KEYS.language &&
+      !(supportedLocales as readonly string[]).includes(resolved.value)
+        ? {
+            ...resolved,
+            value: sourceLocale,
+            globalValue: undefined,
+            scopeValue: undefined,
+            provenance: "default" as const,
+          }
+        : resolved;
     const list = byGroup.get(def.display.group) ?? [];
-    list.push(resolved);
+    list.push(safeResolved);
     byGroup.set(def.display.group, list);
   }
 

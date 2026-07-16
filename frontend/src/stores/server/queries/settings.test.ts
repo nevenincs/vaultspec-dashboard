@@ -50,12 +50,12 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
     expect(view.schemaLoading).toBe(false);
     expect(view.settingsLoading).toBe(false);
     expect(view).toMatchObject({
-      title: "Settings",
-      description: "Preferences are saved to this workspace. Some apply per scope.",
-      loadingMessage: "Loading settings…",
-      emptyMessage: "No settings are available.",
-      cancelLabel: "Cancel",
-      doneLabel: "Done",
+      title: { key: "common:finalWave.settings.title" },
+      description: { key: "common:finalWave.settings.description" },
+      loadingMessage: { key: "common:finalWave.settings.loading" },
+      emptyMessage: { key: "common:finalWave.settings.empty" },
+      cancelLabel: { key: "common:finalWave.settings.cancel" },
+      doneLabel: { key: "common:finalWave.settings.done" },
     });
     expect(view.groups).toHaveLength(1);
     expect(view.groups[0]).toMatchObject({ id: "appearance" });
@@ -71,8 +71,8 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
       schemaLoading: true,
       settingsLoading: false,
       groups: [],
-      loadingMessage: "Loading settings…",
-      emptyMessage: "No settings are available.",
+      loadingMessage: { key: "common:finalWave.settings.loading" },
+      emptyMessage: { key: "common:finalWave.settings.empty" },
     });
   });
 
@@ -84,8 +84,8 @@ describe("deriveSettingsDialogView (schema-driven settings dialog)", () => {
       schemaLoading: false,
       settingsLoading: true,
       groups: [],
-      loadingMessage: "Loading settings…",
-      emptyMessage: "No settings are available.",
+      loadingMessage: { key: "common:finalWave.settings.loading" },
+      emptyMessage: { key: "common:finalWave.settings.empty" },
     });
   });
 });
@@ -268,17 +268,14 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
         ...schema.settings,
         {
           key: "language",
-          value_type: { type: "enum", members: ["system", "en"] },
-          default: "system",
+          value_type: { type: "enum", members: ["en"] },
+          default: "en",
           scope_eligible: false,
           control: "segmented",
           display: {
             id: "appearance.language",
             group: "appearance",
-            enum_members: [
-              { value: "system", id: "language.system" },
-              { value: "en", id: "language.english" },
-            ],
+            enum_members: [{ value: "en", id: "language.english" }],
           },
           order: 4,
         },
@@ -288,12 +285,12 @@ describe("deriveSettingsEffectsView (settings side effects)", () => {
     expect(
       deriveSettingsEffectsView(
         languageSchema,
-        { global: { language: "system" }, scoped: {}, tiers: {} },
+        { global: { language: "en" }, scoped: {}, tiers: {} },
         null,
       ),
     ).toMatchObject({
       loading: false,
-      languagePreference: "system",
+      languagePreference: "en",
       languagePreferenceCacheable: true,
     });
     expect(

@@ -303,13 +303,10 @@ const DISPLAY_BY_SETTING_KEY: Readonly<Record<string, DisplaySpec>> = Object.fre
     group: "appearance",
     control: "segmented",
     valueType: "enum",
-    defaultValue: "system",
+    defaultValue: "en",
     scopeEligible: false,
     order: 4,
-    enumMembers: [
-      ["system", "language.system"],
-      ["en", "language.english"],
-    ],
+    enumMembers: [["en", "language.english"]],
   },
   default_granularity: {
     id: "graph.defaultGranularity",

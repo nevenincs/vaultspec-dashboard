@@ -669,7 +669,6 @@ export type SettingEnumDisplayId =
   | "theme.light"
   | "theme.dark"
   | "theme.highContrast"
-  | "language.system"
   | "language.english"
   | "granularity.feature"
   | "granularity.document"
