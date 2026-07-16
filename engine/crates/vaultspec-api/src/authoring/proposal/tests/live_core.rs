@@ -129,6 +129,7 @@ fn create_document_draft_for(child_key: &str) -> ChangesetChildOperationDraft {
         title: "Standard Flow Create".to_string(),
         collision_status: ProvisionalCollisionStatus::Unknown,
         proposed_stem: None,
+        related: Vec::new(),
     };
     ChangesetChildOperationDraft {
         child_key: child_key.to_string(),

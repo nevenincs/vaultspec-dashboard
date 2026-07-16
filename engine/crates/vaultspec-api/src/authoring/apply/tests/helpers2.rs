@@ -356,6 +356,7 @@ pub(super) fn setup_live_create() -> Fx {
         title: "Apply Live Create Demo".to_string(),
         collision_status: ProvisionalCollisionStatus::Unknown,
         proposed_stem: None,
+        related: Vec::new(),
     };
     let draft = ChangesetChildOperationDraft {
         child_key: "child_1".to_string(),

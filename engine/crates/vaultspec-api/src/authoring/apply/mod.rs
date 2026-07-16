@@ -727,6 +727,7 @@ pub(super) fn build_write_invocation(
             doc_type,
             feature,
             title,
+            related,
             ..
         } = &materialized.target.document
         else {
@@ -739,8 +740,14 @@ pub(super) fn build_write_invocation(
                 "materialized CreateDocument child carries no fixed create date".to_string(),
             ));
         };
-        return CoreInvocation::create_document(doc_type, feature, Some(title.as_str()), date, &[])
-            .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
+        return CoreInvocation::create_document(
+            doc_type,
+            feature,
+            Some(title.as_str()),
+            date,
+            related,
+        )
+        .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
     }
     // SetPlanStepState is NOT a `write` over a document ref either — the plan CLI
     // verb takes a positional `<plan_ref> <S##>` and NO `--expected-blob-hash`

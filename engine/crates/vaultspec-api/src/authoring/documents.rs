@@ -215,6 +215,7 @@ impl DocumentResolver {
             title,
             collision_status,
             proposed_stem,
+            related: Vec::new(),
         })
     }
 

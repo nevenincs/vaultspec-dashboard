@@ -1318,6 +1318,7 @@ fn provisional_document_fixture() -> DocumentRef {
         title: "Agentic Plan".to_string(),
         collision_status: ProvisionalCollisionStatus::Available,
         proposed_stem: Some("agentic-plan".to_string()),
+        related: Vec::new(),
     }
 }
 

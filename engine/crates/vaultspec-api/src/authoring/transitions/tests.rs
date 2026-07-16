@@ -45,6 +45,7 @@ fn provisional_doc() -> DocumentRef {
         title: "Create plan".to_string(),
         collision_status: ProvisionalCollisionStatus::Available,
         proposed_stem: Some("transition-new".to_string()),
+        related: Vec::new(),
     }
 }
 

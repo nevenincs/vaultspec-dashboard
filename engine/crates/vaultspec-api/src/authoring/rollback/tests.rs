@@ -49,6 +49,7 @@ fn provisional_doc(stem: &str) -> DocumentRef {
         title: format!("Create {stem}"),
         collision_status: ProvisionalCollisionStatus::Available,
         proposed_stem: Some(stem.to_string()),
+        related: Vec::new(),
     }
 }
 

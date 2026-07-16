@@ -1281,6 +1281,7 @@ fn approved_apply_is_not_blocked_by_a_non_landable_create_sibling() {
                 title: "X ADR".to_string(),
                 collision_status: ProvisionalCollisionStatus::Unknown,
                 proposed_stem: None,
+                related: Vec::new(),
             },
             base_revision: None,
             current_revision: None,

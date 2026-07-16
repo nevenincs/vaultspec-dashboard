@@ -927,6 +927,7 @@ fn materialized_create_child(
         title: title.to_string(),
         collision_status: crate::authoring::model::ProvisionalCollisionStatus::Unknown,
         proposed_stem: None,
+        related: Vec::new(),
     };
     let draft = ChangesetChildOperationDraft {
         child_key: child_key.to_string(),

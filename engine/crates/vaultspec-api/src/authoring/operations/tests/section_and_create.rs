@@ -170,6 +170,7 @@ fn provisional_document(doc_type: &str, feature: &str, title: &str) -> DocumentR
         title: title.to_string(),
         collision_status: ProvisionalCollisionStatus::Unknown,
         proposed_stem: None,
+        related: Vec::new(),
     }
 }
 

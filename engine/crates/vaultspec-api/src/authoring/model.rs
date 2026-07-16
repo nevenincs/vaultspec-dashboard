@@ -175,6 +175,14 @@ pub enum DocumentRef {
         collision_status: ProvisionalCollisionStatus,
         #[serde(skip_serializing_if = "Option::is_none")]
         proposed_stem: Option<String>,
+        /// Grounding `related:` wiki-links (e.g. `[[<stem>]]`) threaded into the
+        /// scaffold's frontmatter via `vault add --related` at apply. The document
+        /// author cannot self-author this — the two-step create+set-body apply
+        /// replaces the body but the scaffold's frontmatter wins — so it must ride
+        /// the create target from a client that knows the grounding docs' canonical
+        /// stems (P04.S16). Defaults empty for back-compat with pre-S16 changesets.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        related: Vec<String>,
     },
     RenameTarget {
         source: Box<DocumentRef>,
@@ -562,6 +570,7 @@ mod tests {
             title: "Agentic plan".to_string(),
             collision_status: ProvisionalCollisionStatus::Available,
             proposed_stem: Some("agentic-plan".to_string()),
+            related: Vec::new(),
         };
         let rename = DocumentRef::RenameTarget {
             source: Box::new(existing.clone()),

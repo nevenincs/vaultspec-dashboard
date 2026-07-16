@@ -826,6 +826,7 @@ fn build_draft(
                 title: params.title.clone(),
                 collision_status: ProvisionalCollisionStatus::Unknown,
                 proposed_stem: None,
+                related: params.related.clone(),
             };
             ChangesetChildOperationDraft {
                 child_key: "direct_write".to_string(),

@@ -887,6 +887,7 @@ fn document_activity_groups_all_document_ref_identity_variants() {
         title: "Activity Identity".to_string(),
         collision_status: ProvisionalCollisionStatus::Available,
         proposed_stem: Some("activity-identity".to_string()),
+        related: Vec::new(),
     };
     let rename = DocumentRef::RenameTarget {
         source: Box::new(source.clone()),

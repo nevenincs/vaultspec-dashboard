@@ -1381,6 +1381,7 @@ mod tests {
                         title: "Tool alias".to_string(),
                         collision_status: ProvisionalCollisionStatus::Unknown,
                         proposed_stem: None,
+                        related: Vec::new(),
                     },
                     base_revision: None,
                     current_revision: None,
