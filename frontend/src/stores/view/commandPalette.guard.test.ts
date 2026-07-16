@@ -26,6 +26,7 @@ import "./commandProviders/settingsCommandProvider";
 import "./commandProviders/opsCommandProvider";
 import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/controlPanelsCommandProvider";
+import "./commandProviders/agentCommandProvider";
 
 const noop = () => undefined;
 function commandContext(): CommandContext {

@@ -58,6 +58,7 @@ import type {
   AppliedUnderPolicyProjection,
   ApplyPayload,
   AuthoringCommandOutcome,
+  AuthoringLifecycleEvent,
   AuthoringRecoveryResult,
   AuthoringStatus,
   AuthoringStreamFrame,
@@ -703,6 +704,45 @@ function invalidateAuthoring(): void {
   void defaultQueryClient.invalidateQueries({ queryKey: authoringKeys.all });
 }
 
+// --- lifecycle event fan-out (shared feed → sibling slices) --------------------
+//
+// The authoring lifecycle SSE feed is the SINGLE durable stream, and it already
+// carries the agent-conversation events (`session.created`, `run.started`, and
+// future run kinds). The agent slice (`stores/server/agent`) needs those to
+// refresh its session/run caches without a poll (agentic-authoring-ux ADR D3) —
+// but coupling this module to that slice would cycle (the agent slice already
+// imports the ambient actor-token seam from here). So the agent slice REGISTERS a
+// listener through this seam and the stream pump fans every lifecycle event out
+// to it: one-directional at runtime, with no static import of the agent slice.
+
+type AuthoringLifecycleListener = (event: AuthoringLifecycleEvent) => void;
+const lifecycleListeners = new Set<AuthoringLifecycleListener>();
+
+/** Register a per-event listener on the shared lifecycle feed, invoked for every
+ *  durable event as it settles. Returns an unsubscribe. Distinct from
+ *  `subscribeAuthoringLifecycle` (which refcounts the STREAM CONNECTION): this is
+ *  the EVENT fan-out the agent slice uses to invalidate its session/run caches on
+ *  the events this store's own queries do not consume. */
+export function onAuthoringLifecycleEvent(
+  listener: AuthoringLifecycleListener,
+): () => void {
+  lifecycleListeners.add(listener);
+  return () => {
+    lifecycleListeners.delete(listener);
+  };
+}
+
+function notifyAuthoringLifecycle(event: AuthoringLifecycleEvent): void {
+  for (const listener of lifecycleListeners) {
+    try {
+      listener(event);
+    } catch {
+      // A listener fault must never break the shared stream pump for other
+      // consumers; the slice that registered it owns its own error surface.
+    }
+  }
+}
+
 export function applyAuthoringRecovery(recovery: AuthoringRecoveryResult): void {
   defaultQueryClient.setQueryData(
     authoringKeys.proposals(),
@@ -749,6 +789,7 @@ export async function handleAuthoringStreamChunk(
     case "lifecycle":
       advanceAuthoringStreamSeq(frame.event.seq);
       invalidateAuthoring();
+      notifyAuthoringLifecycle(frame.event);
       return;
     case "gap":
       setAuthoringStreamGap(frame);

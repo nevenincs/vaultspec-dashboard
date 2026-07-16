@@ -54,6 +54,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:accessibility.confirmAction": { role: "accessibility" },
   "common:accessibility.recordShortcut": { role: "accessibility" },
   "common:accessibility.resizeActivityPanel": { role: "accessibility" },
+  "common:accessibility.resizeAgentPanel": { role: "accessibility" },
   "common:accessibility.resizeNavigationPanel": { role: "accessibility" },
   "common:accessibility.resizeTimeline": { role: "accessibility" },
   "common:accessibility.resetShortcut": { role: "accessibility" },
@@ -187,6 +188,53 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:controlPanels.tones.needsAttention": { role: "status" },
   "common:controlPanels.tones.unavailable": { role: "status" },
   "common:controlPanels.tones.checking": { role: "status" },
+  "common:agent.actions.openPanel": { role: "action" },
+  "common:agent.actions.closePanel": { role: "action" },
+  "common:agent.actions.togglePanel": { role: "action" },
+  "common:agent.actions.stopRun": { role: "action" },
+  "common:agent.actions.newSession": { role: "action" },
+  "common:agent.panel.region": { role: "label" },
+  "common:agent.panel.sessionsMenu": { role: "accessibility" },
+  // "New session" is the Figma-bound noun-phrase menu name (like "New document"),
+  // not imperative copy — classified as a label, mirroring that precedent.
+  "common:agent.panel.newSession": { role: "label" },
+  "common:agent.panel.recentSessions": { role: "label" },
+  "common:agent.panel.untitledSession": { role: "label" },
+  "common:agent.panel.close": { role: "accessibility" },
+  "common:agent.transcript.loading": { role: "status" },
+  "common:agent.transcript.empty": { role: "status" },
+  "common:agent.transcript.noSession": { role: "status" },
+  "common:agent.transcript.error": { role: "error-message" },
+  "common:agent.composer.placeholder": { role: "label" },
+  "common:agent.composer.steerPlaceholder": { role: "label" },
+  "common:agent.composer.send": { role: "action" },
+  "common:agent.composer.stop": { role: "action" },
+  "common:agent.composer.sendFailed": { role: "error-message" },
+  "common:agent.composer.attachedContext": { role: "accessibility" },
+  "common:agent.composer.queuedChip": { role: "label" },
+  "common:agent.composer.removeQueued": { role: "accessibility" },
+  "common:agent.composer.mentionPlaceholder": { role: "label" },
+  "common:agent.composer.mentionAria": { role: "accessibility" },
+  "common:agent.composer.mentionEmpty": { role: "status" },
+  "common:agent.composer.removeMention": { role: "accessibility" },
+  "common:agent.composer.commentBatch": { role: "label" },
+  "common:agent.composer.removeComments": { role: "accessibility" },
+  "common:agent.composer.slashAria": { role: "accessibility" },
+  "common:agent.composer.slashEmpty": { role: "status" },
+  "common:agent.composer.selectorValue": { role: "label" },
+  "common:agent.composer.selectorDisabled": { role: "accessibility" },
+  "common:agent.composer.model": { role: "label" },
+  "common:agent.composer.modelDefault": { role: "label" },
+  // Non-actionable unavailability reasons ride the `status` role, mirroring the
+  // `common:disabledReasons.*` precedent (nothing the operator can do yet).
+  "common:agent.composer.modelUnavailable": { role: "status" },
+  "common:agent.composer.team": { role: "label" },
+  "common:agent.composer.teamDefault": { role: "label" },
+  "common:agent.composer.teamUnavailable": { role: "status" },
+  "common:agent.chip.working": { role: "status" },
+  "common:agent.chip.label": { role: "accessibility" },
+  "common:agent.chip.status.active": { role: "status" },
+  "common:agent.chip.status.cancelRequested": { role: "status" },
   "common:disabledReasons.actionUnavailable": { role: "disabled-reason" },
   "common:disabledReasons.itemUnavailableOnCanvas": {
     role: "disabled-reason",
@@ -988,6 +1036,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Discard",
   "Edit",
   "Enable",
+  "End",
   "Expand",
   "Find",
   "Filter",
@@ -1020,6 +1069,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Save",
   "Search",
   "Select",
+  "Send",
   "Set",
   "Sign",
   "Show",
@@ -1380,7 +1430,16 @@ export function validateEnglishMessage(
     .map((part) => part.value)
     .join(" ");
 
-  if (template.trim().length === 0 || literalText.trim().length === 0) {
+  // A proper-name message may be a pure interpolation pass-through (e.g. a plan
+  // step's own name rendered through the localization boundary) — the template
+  // carries a value token and no literal copy, which is not an empty message.
+  const interpolationOnly =
+    parts.some((part) => part.kind === "value") && literalText.trim().length === 0;
+  if (
+    template.trim().length === 0 ||
+    (literalText.trim().length === 0 &&
+      !(policy.role === "proper-name" && interpolationOnly))
+  ) {
     issue(issues, "empty");
   }
 

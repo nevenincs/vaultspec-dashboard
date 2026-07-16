@@ -80,6 +80,24 @@ This ADR is the north-star decision for the epic: one cohesive, sparse, direct a
 
 **D4 — Stop, steer, and the queued prompt.** One **Stop** action (`agent:stop-run`) wired to the existing `POST /v1/runs/{id}/cancel`, rendered as a single button replacing Send while a run streams, plus a Cmd+K command — cancel and stop are one verb, one seam. **Steer** is not a separate control: when the run parks on an interrupt, the composer itself targets `POST /v1/interrupts/{id}/resume` — the same input, contextual destination, zero new chrome. **Queued prompt mid-run:** the backend has no concept (linear turns). Interim: the composer holds exactly ONE pending prompt client-side, rendered as a removable "Queued" chip, dispatched as the next turn on run settle — bounded, honest, and deleted outright when the backend concept lands. A coordination ASK is filed for a real queued-turn primitive.
 
+> **Amendment (2026-07-16, W02.P02.S10 build — engine truths discovered and
+> test-proven):** three realities the design must reflect. (1) `cancel_run`
+> cancels the WHOLE SESSION (`session.status → cancelled`), not just the run, and
+> `start_prompt_turn` 422s on any non-active session — so **Stop ends the
+> conversation**, and the machine correctly routes the next submit (including the
+> queued dispatch) to a freshly bootstrapped session. This is honest given the
+> engine, but a run-level cancel that PRESERVES the session is now a filed
+> cross-team ASK (so Stop can halt a run without discarding the conversation).
+> (2) A mid-run `start_prompt_turn` JOINS the active run rather than erroring or
+> queuing — so the client-held one-slot queue is the ONLY real queueing,
+> reinforcing the queued-turn ASK. (3) There is NO served pending-interrupt state
+> (no interrupt list route; the only surface is the tool-execute
+> `awaiting_permission` arm's `interrupt_id`) and NO served model options — so
+> steer rides a W03-populated client-staged interrupt record, and the Model pill
+> is honestly disabled-with-reason ("Default"), the same treatment as Team.
+> Filed ASKs: run-level cancel, served interrupt state + decision schema, served
+> model options.
+
 **D5 — Review detangle: kill the sign-in gate; provenance becomes ambient; approval becomes inline.** The `ReviewerIdentity` component and its entire Sign in/Sign out/Signing in vocabulary are DELETED. The actor-token bootstrap moves to the stores seam as an ambient lazy mint: the first mutating authoring intent (edit, comment, approve, prompt) bootstraps the token transparently, exactly as editing already does — no surface ever renders auth vocabulary for a single implicit local operator. Per-change review moves inline: when a run settles into a proposal, the transcript renders a **proposal card** — served summary, change count, one Show-changes diff (D7), and Approve/Reject/Apply buttons driven by served `eligibility`, preview-then-approve as the default posture. The ReviewStation dialog is REDESIGNED, not deleted: renamed **"Review"**, ungated, it remains the cross-session queue and audit view (including the applied-under-policy lane) for anything not decided inline. The **operation-mode** switch gets its first UI as one small control in the Review header wired to `POST /v1/mode`, rendering served mode tokens as plain labels ("Review each change" / "Apply automatically, log for review"). The dead review-claim routes get NO UI: single-operator product today; return trigger below.
 
 **D6 — The comment→agent bridge: ACCEPT the agentic-feedback-loop ADR, with one amendment.** The proposed `2026-07-14-agentic-feedback-loop-adr` is accepted as-is in substance — anchored comments batch immutably and attach to the next ordinary composer turn (its D2), the exact mechanism this ADR's composer now makes buildable. One amendment: the attached-comments affordance uses the SAME chip grammar as D2's `@`-mention chips — a "4 comments" removable chip above the input, one attachment treatment, not a parallel one. Additionally each comment thread gains one small **"Send to agent"** action (context menu + thread affordance) that stages that comment into the pending set. Its D4 cross-repo `feedback_batch_id` continuation remains an open ask on the a2a edge, unchanged.

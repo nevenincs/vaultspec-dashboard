@@ -19,6 +19,7 @@ import {
   DOCUMENT_SEARCH_KEYBINDING,
   SEARCH_PALETTE_KEYBINDING,
 } from "./commandPalette";
+import { deriveAgentKeybindings } from "./agentActions";
 import { deriveDocTabKeybindings } from "./docTabKeybindings";
 import { deriveEditorKeybindings } from "./editorKeybindings";
 import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
@@ -39,6 +40,7 @@ export function assembleDefaultKeybindings(): KeybindingDef[] {
     SEARCH_PALETTE_KEYBINDING,
     DOCUMENT_SEARCH_KEYBINDING,
     KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
+    ...deriveAgentKeybindings(),
     ...deriveDocTabKeybindings(),
     ...deriveEditorKeybindings(),
     ...deriveGraphToggleKeybindings(),

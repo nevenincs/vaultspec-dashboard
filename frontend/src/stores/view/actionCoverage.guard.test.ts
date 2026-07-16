@@ -42,6 +42,11 @@ import {
 } from "./keyboardShortcuts";
 import { CONTROL_PANEL_ACTION_IDS, GRAPH_TOGGLE_ACTION_ID } from "./chromeActions";
 import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
+import {
+  AGENT_NEW_SESSION_ACTION_ID,
+  AGENT_TOGGLE_PANEL_ACTION_ID,
+  deriveAgentKeybindings,
+} from "./agentActions";
 
 // Register the command providers and the right-rail resolvers under test (side effects).
 import "./commandProviders/leftRailCommandProvider";
@@ -49,6 +54,7 @@ import "./commandProviders/projectCommandProvider";
 import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/windowCommandProvider";
 import "./commandProviders/controlPanelsCommandProvider";
+import "./commandProviders/agentCommandProvider";
 import "../../app/right/menus/commitMenu";
 import "../../app/right/menus/prMenu";
 import "../../app/stage/menus/docTabMenu";
@@ -76,6 +82,9 @@ const DUAL_PLANE_VERBS = [
   // The graph-visibility toggle (appshell-reframe #11): keymap (Mod+Shift+G) +
   // palette (window provider) + background context menu, one shared id.
   GRAPH_TOGGLE_ACTION_ID,
+  // The agent-panel toggle: keymap (Mod+Alt+A), palette, background menu, and
+  // footer chip all share one action id.
+  AGENT_TOGGLE_PANEL_ACTION_ID,
 ];
 
 const noop = () => undefined;
@@ -137,6 +146,7 @@ describe("action coverage grid guard", () => {
       ...deriveRightRailKeybindings(),
       ...deriveReloadKeybindings(),
       ...deriveGraphToggleKeybindings(),
+      ...deriveAgentKeybindings(),
       KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
     ].map((b) => b.id),
   );
@@ -172,5 +182,13 @@ describe("action coverage grid guard", () => {
     for (const id of Object.values(CONTROL_PANEL_ACTION_IDS)) {
       expect(paletteIds.has(id)).toBe(true);
     }
+  });
+
+  it("the always-available agent verbs resolve in the palette under their shared ids", () => {
+    // toggle-panel (dual-plane, asserted above) and new-session are always offered;
+    // stop-run is eligibility-gated (present only with a stoppable run) so it is
+    // correctly absent here with no active run — a deliberate non-lie, not a gap.
+    expect(paletteIds.has(AGENT_TOGGLE_PANEL_ACTION_ID)).toBe(true);
+    expect(paletteIds.has(AGENT_NEW_SESSION_ACTION_ID)).toBe(true);
   });
 });

@@ -37,6 +37,8 @@ import {
 } from "../../stores/server/queries";
 import { useFocusZone } from "../chrome/useFocusZone";
 import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
+import { AgentChip, useAgentChipView } from "../agent/AgentChip";
+import { agentTogglePanelAction } from "../../stores/view/agentActions";
 
 /** Tone -> the bound status-dot fill (the health triad; never raw hex). `unknown`
  *  is the pre-resolution muted state. */
@@ -157,6 +159,10 @@ export function FrameworkStatusCluster() {
     activeKey: active,
     onActiveKeyChange: setActive,
   });
+  // The collapsed-agent chip's presentation, or null when it must not render. The
+  // hook is called unconditionally (rules-of-hooks); the render + the rove are
+  // gated on its result so a hidden chip never registers a phantom roving item.
+  const chipView = useAgentChipView();
   if (group.usedFallback) return null;
 
   return (
@@ -187,6 +193,25 @@ export function FrameworkStatusCluster() {
           />
         );
       })}
+      {/* The collapsed-agent chip (agentic-authoring-ux ADR D1/D8): renders only
+          while a run streams with the panel collapsed, so it is absent from the
+          cluster most of the time. When present it is ONE more roving tab stop
+          (`zone.rove("agent")`, called after the panel chips so it sits last) and
+          fires the SHARED `agent:toggle-panel` descriptor — not a bespoke handler. */}
+      {chipView !== null &&
+        (() => {
+          const item = zone.rove("agent");
+          return (
+            <AgentChip
+              view={chipView}
+              onToggle={() => agentTogglePanelAction().run?.()}
+              chipRef={item.ref}
+              tabIndex={item.tabIndex}
+              onKeyDown={item.onKeyDown}
+              onFocus={() => setActive("agent")}
+            />
+          );
+        })()}
     </div>
   );
 }

@@ -92,6 +92,7 @@ describe("plural catalog manifest", () => {
       "common:kit.activity.rowsLoaded",
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
+      "common:agent.composer.commentBatch",
       "common:palette.commandCount",
       "common:finalWave.work.progress",
       "documents:localizationWave.plan.completion",

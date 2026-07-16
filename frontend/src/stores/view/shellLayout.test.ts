@@ -16,12 +16,18 @@ import {
   rightRailAdjacentTab,
   resetShellLayout,
   resizeShellPanelByKey,
+  setShellAgentPanelWidth,
   shellResizeKeySize,
   shellResizePointerSize,
   startShellResizePointerSession,
   type ShellLayoutState,
 } from "./shellLayout";
-import { useViewStore } from "./viewStore";
+import {
+  AGENT_PANEL_DEFAULT_WIDTH,
+  AGENT_PANEL_MAX_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
+  useViewStore,
+} from "./viewStore";
 
 describe("shell layout frame view", () => {
   beforeEach(() => {
@@ -32,6 +38,7 @@ describe("shell layout frame view", () => {
     leftRailVisible: true,
     leftRailWidth: 300,
     rightRailWidth: 320,
+    agentPanelWidth: 400,
     timelineVisible: true,
     graphVisible: true,
     timelineHeight: 180,
@@ -58,6 +65,8 @@ describe("shell layout frame view", () => {
         leftRailWidth: 300,
         rightCollapsed: false,
         rightRailWidth: 320,
+        agentPanelOpen: false,
+        agentPanelWidth: 400,
       }),
     ).toBe("300px 1fr 320px");
 
@@ -68,6 +77,8 @@ describe("shell layout frame view", () => {
         leftRailWidth: 300,
         rightCollapsed: false,
         rightRailWidth: 320,
+        agentPanelOpen: false,
+        agentPanelWidth: 400,
       }),
     ).toBe("48px 1fr 320px");
 
@@ -78,8 +89,38 @@ describe("shell layout frame view", () => {
         leftRailWidth: 300,
         rightCollapsed: true,
         rightRailWidth: 320,
+        agentPanelOpen: false,
+        agentPanelWidth: 400,
       }),
     ).toBe("0px 1fr 0px");
+  });
+
+  it("adds an explicit fourth track when the agent panel is open, so the stage reflows beside it (ADR D1)", () => {
+    // Open → a fourth track of the panel's width; the stage's 1fr shrinks to make room.
+    expect(
+      appShellGridColumns({
+        leftRailVisible: true,
+        leftCollapsed: false,
+        leftRailWidth: 300,
+        rightCollapsed: false,
+        rightRailWidth: 320,
+        agentPanelOpen: true,
+        agentPanelWidth: 400,
+      }),
+    ).toBe("300px 1fr 320px 400px");
+
+    // Closed → no fourth track (the panel occupies no cell).
+    expect(
+      appShellGridColumns({
+        leftRailVisible: true,
+        leftCollapsed: false,
+        leftRailWidth: 300,
+        rightCollapsed: false,
+        rightRailWidth: 320,
+        agentPanelOpen: false,
+        agentPanelWidth: 400,
+      }),
+    ).toBe("300px 1fr 320px");
   });
 
   it("bounds shell panel dimensions at the shell layout seam", () => {
@@ -359,5 +400,40 @@ describe("shell layout frame view", () => {
     });
     expect(deriveShellResizeHandleView("bottom")).toBeNull();
     expect(deriveShellResizeHandleView(null)).toBeNull();
+  });
+});
+
+// The docked Agent panel's width is a shell-layout column now (it moved out of the
+// agentPanel store): it clamps through the same bounded shell-panel seam as the
+// rails and persists on the canonical view store, reset by "Reset layout".
+describe("agent panel width clamp and persistence", () => {
+  beforeEach(() => {
+    resetShellLayout();
+  });
+
+  it("clamps a below-min width up to the minimum and persists it", () => {
+    setShellAgentPanelWidth(50);
+    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_MIN_WIDTH);
+  });
+
+  it("clamps an above-max width down to the maximum and persists it", () => {
+    setShellAgentPanelWidth(9999);
+    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_MAX_WIDTH);
+  });
+
+  it("keeps an in-bounds width and floors a non-finite width to the minimum", () => {
+    setShellAgentPanelWidth(440);
+    expect(useViewStore.getState().agentPanelWidth).toBe(440);
+    // Non-finite floors to the minimum through the shared bounded shell-panel seam
+    // (the same rule the rails and timeline follow), not to the default.
+    setShellAgentPanelWidth(Number.NaN);
+    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_MIN_WIDTH);
+  });
+
+  it("restores the default agent width on layout reset", () => {
+    setShellAgentPanelWidth(500);
+    expect(useViewStore.getState().agentPanelWidth).toBe(500);
+    resetShellLayout();
+    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_DEFAULT_WIDTH);
   });
 });

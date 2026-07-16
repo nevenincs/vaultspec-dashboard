@@ -477,6 +477,9 @@ export interface ViewState {
   leftRailWidth: number;
   /** Expanded right rail width in pixels. */
   rightRailWidth: number;
+  /** Docked Agent panel width in pixels (agentic-authoring-ux ADR D1). A shell
+   *  column like the rails; its open flag lives in the agent-panel view store. */
+  agentPanelWidth: number;
   /** Whether the bottom timeline region is mounted in the shell layout. */
   timelineVisible: boolean;
   /** Whether the graph element is mounted in the shell layout. The timeline is
@@ -488,6 +491,7 @@ export interface ViewState {
   setLeftRailVisible: (visible: unknown) => void;
   setLeftRailWidth: (width: unknown) => void;
   setRightRailWidth: (width: unknown) => void;
+  setAgentPanelWidth: (width: unknown) => void;
   setTimelineVisible: (visible: unknown) => void;
   setGraphVisible: (visible: unknown) => void;
   setTimelineHeight: (height: unknown) => void;
@@ -534,6 +538,12 @@ export const LEFT_RAIL_DEFAULT_WIDTH = 252;
 export const RIGHT_RAIL_MIN_WIDTH = 220;
 export const RIGHT_RAIL_MAX_WIDTH = 420;
 export const RIGHT_RAIL_DEFAULT_WIDTH = 290;
+// The docked Agent panel (agentic-authoring-ux ADR D1) is a shell-layout column
+// like the rails: its width lives here (canonical, resettable, shared-resize
+// state), a touch wider than the activity rail since it holds a conversation.
+export const AGENT_PANEL_MIN_WIDTH = 320;
+export const AGENT_PANEL_MAX_WIDTH = 640;
+export const AGENT_PANEL_DEFAULT_WIDTH = 400;
 export const TIMELINE_MIN_HEIGHT = 120;
 export const TIMELINE_MAX_HEIGHT = 360;
 export const TIMELINE_DEFAULT_HEIGHT = 212;
@@ -702,6 +712,7 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailVisible: true,
   leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
   rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
+  agentPanelWidth: AGENT_PANEL_DEFAULT_WIDTH,
   timelineVisible: true,
   graphVisible: true,
   timelineHeight: TIMELINE_DEFAULT_HEIGHT,
@@ -1099,6 +1110,14 @@ export const useViewStore = create<ViewState>((set) => ({
         RIGHT_RAIL_MAX_WIDTH,
       ),
     }),
+  setAgentPanelWidth: (width) =>
+    set({
+      agentPanelWidth: normalizeShellLayoutPanelSize(
+        width,
+        AGENT_PANEL_MIN_WIDTH,
+        AGENT_PANEL_MAX_WIDTH,
+      ),
+    }),
   setTimelineVisible: (timelineVisible) =>
     set({ timelineVisible: normalizeShellLayoutVisible(timelineVisible) }),
   setGraphVisible: (graphVisible) =>
@@ -1119,6 +1138,7 @@ export const useViewStore = create<ViewState>((set) => ({
       leftRailVisible: true,
       leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
       rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
+      agentPanelWidth: AGENT_PANEL_DEFAULT_WIDTH,
       timelineVisible: true,
       graphVisible: true,
       timelineHeight: TIMELINE_DEFAULT_HEIGHT,

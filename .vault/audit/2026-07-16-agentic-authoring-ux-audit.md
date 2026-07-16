@@ -95,6 +95,73 @@ in the shared tree, tracked to that lane, not this wave.
 - The three foreign suite failures belong to the localization-migration lane;
   do not attribute them to this epic at closeout.
 
+## Wave W02 — the keystone shell (S07–S11) | APPROVED (2 HIGH revised, then re-reviewed)
+
+Reviewed the whole wave: the bounded `stores/server/agent/` wire slice, the SSE
+lifecycle fan-out, the docked `AgentPanel`, the `Composer` keystone, and the
+agent action surface. First pass WITHHELD on two HIGH defects, both fixed and
+re-reviewed to APPROVED.
+
+### panel-grid-misplacement | high (resolved) | the panel wrapped to a new grid row instead of reflowing beside the stage
+
+`shellLayout.ts` fixed the grid to three explicit tracks and `AppShell` mounted
+the panel as a fourth UNPOSITIONED child; CSS Grid `grid-auto-flow: row` wrapped
+it to a new row under the left rail (reviewer proved this in real Chromium), not
+beside the stage as ADR D1 requires. RESOLVED: `appShellGridColumns` now appends
+an explicit conditional 4th track when the panel is open, and the panel is pinned
+to `col-start-4` via `agentPanelClassName` — explicit placement, never
+auto-flow. The width moved onto the shared "agent" resize axis
+(persisted through `viewStore`, keyboard-steppable), which also closed the S09
+non-persistent-width follow-up. Width-clamp coverage relocated to the unified
+`boundedShellPanelSize` seam (non-finite → min, derived from the real seam).
+
+### agent-labels-fail-message-policy | high (resolved) | three action labels failed the localization gate; full gate never run clean
+
+`agent.actions.{openPanel,closePanel,newSession}` tripped title-case /
+non-imperative-action; `vitest run src/localization` was RED — the full gate had
+not actually been run. RESOLVED: reworded verb-first ("Open agent panel" /
+"Close agent panel" / "Start new agent session").
+
+### stop-run-label-and-imperative-gap | none (fixed at close) | "End conversation" is the honest label; "End" admitted as an imperative verb
+
+A separate gate failure surfaced at close: `agent.actions.stopRun` =
+"End conversation" failed `non-imperative-action`. This is the EPIC's key (a
+coder had misattributed it to the localization lane). "End conversation" is the
+DELIBERATE, honest label — it reflects the discovered engine truth that Stop
+cancels the whole session (ADR D4 amendment), not merely a run. Fixed correctly
+by admitting "End" into `IMPERATIVE_ACTION_VERBS` (a legitimate vocabulary gap,
+exactly as "Send" was added), not by rewording away a good label.
+
+### composer-state-machine | none (confirmed) | the crux is correct against the engine truths
+
+`agentSubmitDestination` correctly resolves bootstrap / turn / steer / queue from
+(sessionId, served session.status, active_run, staged interrupt): bootstrap on a
+non-active session (Stop-ends-session → next submit opens fresh), steer only when
+the interrupt matches the live run, one-slot queue dispatched exactly once on
+settle with restore-on-failure. Honest wire-gap handling: Model/Team
+disabled-with-reason (unserved), client-staged interrupt self-cleans. SSE
+fan-out consumes `session.created`/`run.started` via a cycle-free subscriber
+seam. Action surface: one descriptor per verb; `Mod+Alt+A` vetted free and
+guard-covered; chip folded into the FocusZone rove.
+
+### module-size-resources | none (fixed at close) | the shared test-resources monolith, resolved not written off
+
+`localization/testing/resources.ts` breached 1500 (agent keys + lane WIP).
+Resolved rather than attributed away: the epic's agent fr/ar overlays were
+extracted to `agentResources.ts` (established `pickerResources.ts` pattern,
+merged catalog unchanged), and a prettier pass brought the file to ~1389 lines —
+module-size clean, epic footprint in that file exactly 2 lines.
+
+### stop-label-duplication | low | `stopRun` and a sibling `stop` both render "End conversation"
+
+`en/common.ts` carries both `agent.actions.stopRun` and a sibling `stop` =
+"End conversation". Small duplication; a follow-up dedup, non-blocking.
+
 ## Recommendations
 
-<!-- Actionable recommendations -->
+- W02 APPROVED after revision; full gate `just dev lint frontend` exit 0, no
+  regression to the W01/first-pass-approved scope.
+- Follow-up (LOW): dedup the `stopRun`/`stop` "End conversation" pair.
+- Carry the three W02 cross-team ASKS forward (ADR D4 amendment): run-level
+  cancel that preserves the session, served pending-interrupt state + decision
+  schema, and served model options.

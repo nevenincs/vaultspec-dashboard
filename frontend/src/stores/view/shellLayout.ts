@@ -9,6 +9,8 @@ import {
   useDashboardShellChromeView,
 } from "../server/queries";
 import {
+  AGENT_PANEL_MAX_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
   LEFT_RAIL_MAX_WIDTH,
   LEFT_RAIL_MIN_WIDTH,
   RIGHT_RAIL_MAX_WIDTH,
@@ -17,9 +19,12 @@ import {
   TIMELINE_MIN_HEIGHT,
   useViewStore,
 } from "./viewStore";
+import { useAgentPanelOpen } from "./agentPanel";
 import { useViewportClass, type ViewportClass } from "./viewportClass";
 
 export {
+  AGENT_PANEL_MAX_WIDTH,
+  AGENT_PANEL_MIN_WIDTH,
   LEFT_RAIL_MAX_WIDTH,
   LEFT_RAIL_MIN_WIDTH,
   RIGHT_RAIL_MAX_WIDTH,
@@ -32,6 +37,7 @@ export interface ShellLayoutState {
   leftRailVisible: boolean;
   leftRailWidth: number;
   rightRailWidth: number;
+  agentPanelWidth: number;
   timelineVisible: boolean;
   graphVisible: boolean;
   timelineHeight: number;
@@ -114,6 +120,9 @@ export const SHELL_MESSAGES = Object.freeze({
   resizeTimeline: Object.freeze({
     key: "common:accessibility.resizeTimeline",
   } as const satisfies MessageDescriptor<"common:accessibility.resizeTimeline">),
+  resizeAgentPanel: Object.freeze({
+    key: "common:accessibility.resizeAgentPanel",
+  } as const satisfies MessageDescriptor<"common:accessibility.resizeAgentPanel">),
 });
 export const DEFAULT_RIGHT_RAIL_TAB: RailTabId = DASHBOARD_PANEL_TABS[0]!;
 
@@ -143,7 +152,7 @@ export function boundedShellPanelSize(value: number, min: number, max: number): 
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-export type ShellResizeAxis = "left" | "right" | "timeline";
+export type ShellResizeAxis = "left" | "right" | "agent" | "timeline";
 export type ShellResizeKey = "ArrowLeft" | "ArrowRight" | "ArrowUp" | "ArrowDown";
 
 export interface ShellResizeBounds {
@@ -155,6 +164,9 @@ export const SHELL_RESIZE_BOUNDS: Readonly<Record<ShellResizeAxis, ShellResizeBo
   {
     left: { min: LEFT_RAIL_MIN_WIDTH, max: LEFT_RAIL_MAX_WIDTH },
     right: { min: RIGHT_RAIL_MIN_WIDTH, max: RIGHT_RAIL_MAX_WIDTH },
+    // The Agent panel docks at the RIGHT edge with its handle on its LEFT side, so
+    // it resizes in the same direction as the right rail (drag left widens).
+    agent: { min: AGENT_PANEL_MIN_WIDTH, max: AGENT_PANEL_MAX_WIDTH },
     timeline: { min: TIMELINE_MIN_HEIGHT, max: TIMELINE_MAX_HEIGHT },
   };
 
@@ -182,7 +194,7 @@ export function shellResizePointerSize({
   const delta =
     axis === "left"
       ? clientX - startClientX
-      : axis === "right"
+      : axis === "right" || axis === "agent"
         ? startClientX - clientX
         : startClientY - clientY;
   return boundedShellPanelSize(startSize + delta, min, max);
@@ -209,11 +221,11 @@ export function shellResizeKeySize({
 }: ShellResizeKeyInput): number | null {
   const forward =
     (axis === "left" && key === "ArrowRight") ||
-    (axis === "right" && key === "ArrowLeft") ||
+    ((axis === "right" || axis === "agent") && key === "ArrowLeft") ||
     (axis === "timeline" && key === "ArrowUp");
   const backward =
     (axis === "left" && key === "ArrowLeft") ||
-    (axis === "right" && key === "ArrowRight") ||
+    ((axis === "right" || axis === "agent") && key === "ArrowRight") ||
     (axis === "timeline" && key === "ArrowDown");
   if (!forward && !backward) return null;
   return boundedShellPanelSize(
@@ -262,6 +274,10 @@ export function setShellResizeSize(axis: ShellResizeAxis, size: number): void {
   }
   if (axis === "right") {
     setShellRightRailWidth(size);
+    return;
+  }
+  if (axis === "agent") {
+    setShellAgentPanelWidth(size);
     return;
   }
   setShellTimelineHeight(size);
@@ -320,6 +336,11 @@ export interface ShellGridColumnsInput {
   leftRailWidth: number;
   rightCollapsed: boolean;
   rightRailWidth: number;
+  /** Whether the docked Agent panel is open — it adds an explicit 4th track so the
+   *  stage's `1fr` reflows beside it (agentic-authoring-ux ADR D1); closed, the
+   *  grid stays the three rail/stage tracks. */
+  agentPanelOpen: boolean;
+  agentPanelWidth: number;
 }
 
 export function appShellGridColumns({
@@ -328,6 +349,8 @@ export function appShellGridColumns({
   leftRailWidth,
   rightCollapsed,
   rightRailWidth,
+  agentPanelOpen,
+  agentPanelWidth,
 }: ShellGridColumnsInput): string {
   const leftColumnWidth = !leftRailVisible
     ? 0
@@ -335,7 +358,8 @@ export function appShellGridColumns({
       ? LEFT_RAIL_COLLAPSED_WIDTH
       : leftRailWidth;
   const rightColumnWidth = rightCollapsed ? 0 : rightRailWidth;
-  return `${leftColumnWidth}px 1fr ${rightColumnWidth}px`;
+  const agentTrack = agentPanelOpen ? ` ${agentPanelWidth}px` : "";
+  return `${leftColumnWidth}px 1fr ${rightColumnWidth}px${agentTrack}`;
 }
 
 export interface ShellFrameView extends ShellLayoutState {
@@ -371,6 +395,13 @@ export interface ShellFrameView extends ShellLayoutState {
   >;
   activityRailClassName: string;
   activityPanelClassName: string;
+  /** Whether the docked Agent panel is mounted in its own right-most grid track. */
+  agentPanelOpen: boolean;
+  /** The Agent panel column width in px (the drag/keys pixel basis). */
+  agentPanelWidth: number;
+  /** The Agent panel column classes: pin it to the explicit 4th track so it never
+   *  auto-wraps to a new row under the left rail (agentic-authoring-ux ADR D1). */
+  agentPanelClassName: string;
 }
 
 export interface ShellWindowActions {
@@ -383,7 +414,7 @@ export interface ShellWindowActions {
   resetLayout: () => void;
 }
 
-export type ShellResizeHandleSide = "left" | "right" | "top";
+export type ShellResizeHandleSide = "left" | "right" | "agent" | "top";
 
 export interface ShellResizeHandleView {
   label: MessageDescriptor;
@@ -409,12 +440,21 @@ const SHELL_RIGHT_RAIL_OPEN_CLASS = `${SHELL_RIGHT_RAIL_BASE_CLASS} border-l bor
 // shrink-0 sibling below it.
 const SHELL_ACTIVITY_RAIL_CLASS = "flex min-h-0 flex-1 flex-col";
 const SHELL_ACTIVITY_PANEL_CLASS = "min-h-0 flex-1 overflow-y-auto p-fg-2";
+// The docked Agent panel column (agentic-authoring-ux ADR D1): pinned to the
+// explicit 4th grid track (`col-start-4`) so it reflows BESIDE the stage and never
+// auto-wraps to a new row under the left rail. `relative` anchors its left-edge
+// resize handle. The column width is the grid track, so the aside carries no width.
+const SHELL_AGENT_PANEL_CLASS =
+  "relative col-start-4 flex min-h-0 min-w-0 flex-col border-l border-rule bg-paper";
 const SHELL_RESIZE_HANDLE_BASE_CLASS =
   "absolute z-10 bg-transparent outline-none transition-colors duration-ui-fast ease-settle hover:bg-accent/20 focus-visible:bg-accent/20 focus-visible:outline-2 focus-visible:outline-focus";
 
 const SHELL_RESIZE_HANDLE_PLACEMENT: Record<ShellResizeHandleSide, string> = {
   right: "right-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
   left: "left-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
+  // The Agent panel's handle sits on its LEFT edge (the stage boundary), same
+  // placement as the activity rail's, but carries its own label.
+  agent: "left-[-0.1875rem] top-0 h-full w-2 cursor-col-resize",
   top: "left-0 top-[-0.1875rem] h-2 w-full cursor-row-resize",
 };
 
@@ -423,13 +463,16 @@ const SHELL_RESIZE_HANDLE_LABEL: Readonly<
 > = {
   right: SHELL_MESSAGES.resizeNavigationPanel,
   left: SHELL_MESSAGES.resizeActivityPanel,
+  agent: SHELL_MESSAGES.resizeAgentPanel,
   top: SHELL_MESSAGES.resizeTimeline,
 };
 
 export function deriveShellResizeHandleView(
   side: unknown,
 ): ShellResizeHandleView | null {
-  if (side !== "right" && side !== "left" && side !== "top") return null;
+  if (side !== "right" && side !== "left" && side !== "agent" && side !== "top") {
+    return null;
+  }
   return {
     label: SHELL_RESIZE_HANDLE_LABEL[side],
     orientation: side === "top" ? "horizontal" : "vertical",
@@ -441,6 +484,7 @@ export function deriveShellFrameView(
   shellLayout: ShellLayoutState,
   shellChrome: DashboardShellChromeView,
   viewportClass: ViewportClass = "regular",
+  agentPanelOpen = false,
 ): ShellFrameView {
   const panelState = shellChrome.panelState;
   const leftCollapsed = panelState.left_collapsed;
@@ -465,6 +509,8 @@ export function deriveShellFrameView(
       leftRailWidth: shellLayout.leftRailWidth,
       rightCollapsed,
       rightRailWidth: shellLayout.rightRailWidth,
+      agentPanelOpen,
+      agentPanelWidth: shellLayout.agentPanelWidth,
     }),
     rootClassName: SHELL_ROOT_CLASS,
     leftRailClassName: SHELL_LEFT_RAIL_CLASS,
@@ -487,6 +533,9 @@ export function deriveShellFrameView(
       : SHELL_MESSAGES.hideActivityPanel,
     activityRailClassName: SHELL_ACTIVITY_RAIL_CLASS,
     activityPanelClassName: SHELL_ACTIVITY_PANEL_CLASS,
+    agentPanelOpen,
+    agentPanelWidth: shellLayout.agentPanelWidth,
+    agentPanelClassName: SHELL_AGENT_PANEL_CLASS,
   };
   return frame;
 }
@@ -497,11 +546,18 @@ export function useShellLayoutState(): ShellLayoutState {
       leftRailVisible: state.leftRailVisible,
       leftRailWidth: state.leftRailWidth,
       rightRailWidth: state.rightRailWidth,
+      agentPanelWidth: state.agentPanelWidth,
       timelineVisible: state.timelineVisible,
       graphVisible: state.graphVisible,
       timelineHeight: state.timelineHeight,
     })),
   );
+}
+
+/** The docked Agent panel width (px), read from the canonical shell-layout store
+ *  — the panel column and its resize handle share this one value. */
+export function useAgentPanelWidth(): number {
+  return useViewStore((state) => state.agentPanelWidth);
 }
 
 /** Lightweight primitive selector for the graph-visibility signal (the dock
@@ -515,7 +571,10 @@ export function useShellFrameView(scope: unknown): ShellFrameView {
   const shellChrome = useDashboardShellChromeView(scope);
   const shellLayout = useShellLayoutState();
   const viewportClass = useViewportClass();
-  return deriveShellFrameView(shellLayout, shellChrome, viewportClass);
+  // The agent panel's open flag lives in its own view store (agent-domain state);
+  // the shell frame folds it in so the grid gains the panel's 4th track (ADR D1).
+  const agentPanelOpen = useAgentPanelOpen();
+  return deriveShellFrameView(shellLayout, shellChrome, viewportClass, agentPanelOpen);
 }
 
 export function useShellWindowActions(
@@ -584,6 +643,10 @@ export function setShellLeftRailWidth(width: unknown): void {
 
 export function setShellRightRailWidth(width: unknown): void {
   useViewStore.getState().setRightRailWidth(width);
+}
+
+export function setShellAgentPanelWidth(width: unknown): void {
+  useViewStore.getState().setAgentPanelWidth(width);
 }
 
 export function setShellTimelineVisible(visible: unknown): void {

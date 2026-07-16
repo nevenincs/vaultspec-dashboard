@@ -124,13 +124,13 @@ The docked Agent panel, footer chip, and composer keystone over a new stores/ser
 
 Mount the docked Agent panel + collapsed footer chip; build the composer (slash, @-mention chips, Model/Team selectors); add the stores/server/agent slice with sessions/turns + SSE adapter cases; enroll the agent ActionDescriptors with vetted chords.
 
-- [ ] `W02.P02.S06` - Author the binding Figma frames for the Agent panel, collapsed footer chip, and composer before build (D1/D2); `figma:SlhonORmySdoSMTQgDWw3w`.
-- [ ] `W02.P02.S07` - Add the bounded stores/server/agent slice: the sole wire client for sessions/turns/runs/interrupts/agent-tools with query keys and bounded caches (D9); `frontend/src/stores/server/agent`.
-- [ ] `W02.P02.S08` - Add SSE adapter cases for the dropped session.created and run.started lifecycle events (D3); `frontend/src/stores/server/liveAdapters`.
-- [ ] `W02.P02.S09` - Build the docked Agent panel mounted once in AppShell plus the collapsed footer status chip in the FrameworkStatusCluster grammar (D1); `frontend/src/app/agent/AgentPanel.tsx`.
-- [ ] `W02.P02.S10` - Build the composer: multiline Enter-to-send with Shift+Enter newline, slash popover from the one command registry, at-mention chips over AutocompleteCombobox resolving vault features/documents, small adjacent Model and Team selectors (D2); `frontend/src/app/agent/Composer.tsx`.
-- [ ] `W02.P02.S11` - Enroll the agent ActionDescriptors (toggle-panel, stop-run, new-session) across palette/keymap/menus; `vet Mod+Alt+A against the reserved-chord denylist with a citation (D8); `frontend/src/stores/view/agentActions.ts`.
-- [ ] `W02.P02.S12` - Run the full gate and live-wire suite, route the W02 shell and composer through code review, and persist the audit; `frontend/`.
+- [x] `W02.P02.S06` - Author the binding Figma frames for the Agent panel, collapsed footer chip, and composer before build (D1/D2); `figma:SlhonORmySdoSMTQgDWw3w`.
+- [x] `W02.P02.S07` - Add the bounded stores/server/agent slice: the sole wire client for sessions/turns/runs/interrupts/agent-tools with query keys and bounded caches (D9); `frontend/src/stores/server/agent`.
+- [x] `W02.P02.S08` - Add SSE adapter cases for the dropped session.created and run.started lifecycle events (D3); `frontend/src/stores/server/liveAdapters`.
+- [x] `W02.P02.S09` - Build the docked Agent panel mounted once in AppShell plus the collapsed footer status chip in the FrameworkStatusCluster grammar (D1); `frontend/src/app/agent/AgentPanel.tsx`.
+- [x] `W02.P02.S10` - Build the composer: multiline Enter-to-send with Shift+Enter newline, slash popover from the one command registry, at-mention chips over AutocompleteCombobox resolving vault features/documents, small adjacent Model and Team selectors (D2); `frontend/src/app/agent/Composer.tsx`.
+- [x] `W02.P02.S11` - Enroll the agent ActionDescriptors (toggle-panel, stop-run, new-session) across palette/keymap/menus; `vet Mod+Alt+A against the reserved-chord denylist with a citation (D8); `frontend/src/stores/view/agentActions.ts`.
+- [x] `W02.P02.S12` - Run the full gate and live-wire suite, route the W02 shell and composer through code review, and persist the audit; `frontend/`.
 
 ## Wave `W03` - The live transcript
 

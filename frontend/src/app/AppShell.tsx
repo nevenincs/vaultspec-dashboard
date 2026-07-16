@@ -32,6 +32,7 @@ import {
 import { useEditorKeybindings } from "../stores/view/editorKeybindings";
 import { useDocTabKeybindings } from "../stores/view/docTabKeybindings";
 import { useGraphToggleKeybindings } from "../stores/view/graphToggleKeybindings";
+import { useAgentKeybindings } from "../stores/view/agentActions";
 import { useReloadKeybindings } from "../stores/view/reloadKeybindings";
 import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
@@ -62,6 +63,7 @@ import { IconRail } from "./shell/IconRail";
 import { CompactAppShell } from "./shell/CompactAppShell";
 import { getScene } from "./stage/Stage";
 import { DockWorkspace } from "./stage/DockWorkspace";
+import { AgentPanel } from "./agent/AgentPanel";
 // The reader/code-viewer stack (react-markdown + Shiki) is heavy and only needed
 // Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): three
 // fluid/fixed columns at full viewport height —
@@ -140,6 +142,10 @@ export function AppShell() {
   // registry alongside its palette command (window:graph) and background-menu entry
   // (appshell-reframe #11), all under the one shared id.
   useGraphToggleKeybindings();
+  // The agent-panel toggle chord (Mod+Alt+A), enrolled on the one keymap registry
+  // alongside its palette command (agent provider) and the footer chip, all under
+  // the one shared id `agent:toggle-panel` (agentic-authoring-ux ADR D8).
+  useAgentKeybindings();
   // Region traversal (keyboard-navigation W01.P02): F6/Shift+F6 cycle focus
   // between the major panels through the one keymap registry, and the focusin
   // tracker feeds per-region entry memory. Mounted once at the shell top.
@@ -293,6 +299,17 @@ export function AppShell() {
           </ErrorBoundary>
         )}
       </aside>
+
+      {/* ── Agent panel — a docked, NON-MODAL region beside the work surface
+          (agentic-authoring-ux ADR D1). When open it occupies an EXPLICIT 4th grid
+          track (added to `gridColumns` by shellLayout, pinned via the frame's
+          `agentPanelClassName` col-start-4), so the stage's `1fr` reflows to make
+          room — it never overlays, never wraps to a new row, and never re-parents
+          the pinned canvas. Renders null when collapsed. Compact composition is a
+          deferred pass (ADR pitfalls), so it mounts desktop-only. */}
+      <ErrorBoundary region="agent-panel">
+        <AgentPanel className={shellFrame.agentPanelClassName} />
+      </ErrorBoundary>
 
       {/* The activity-rail (and graph) visibility toggles are NOT free-floating chrome
           here: they live in the dock's top-right action cluster (DockWorkspace's

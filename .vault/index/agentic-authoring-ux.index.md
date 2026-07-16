@@ -31,6 +31,7 @@ related:
   - '[[2026-07-16-agentic-authoring-ux-adr]]'
   - '[[2026-07-16-agentic-authoring-ux-audit]]'
   - '[[2026-07-16-agentic-authoring-ux-plan]]'
+  - '[[2026-07-16-agentic-authoring-ux-reference]]'
   - '[[2026-07-16-agentic-authoring-ux-research]]'
 ---
 
@@ -76,6 +77,10 @@ Auto-generated index of all documents tagged with `#agentic-authoring-ux`.
 ### plan
 
 - `2026-07-16-agentic-authoring-ux-plan` - `agentic-authoring-ux` plan
+
+### reference
+
+- `2026-07-16-agentic-authoring-ux-reference` - `agentic-authoring-ux` reference: `agent surface design spec (panel, composer, transcript)`
 
 ### research
 
