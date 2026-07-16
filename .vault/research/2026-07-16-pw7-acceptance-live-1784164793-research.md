@@ -1,0 +1,68 @@
+---
+tags:
+  - '#research'
+  - '#pw7-acceptance-live-1784164793'
+date: '2026-07-16'
+modified: '2026-07-16'
+related: []
+---
+
+# `pw7-acceptance-live-1784164793` research: SSE reconnection and cursor persistence for long-lived dashboard event streams
+
+The question is what reconnection-and-resume contract a long-lived dashboard SSE stream should honour when the socket drops (network blip, engine restart, hidden-tab pause, slow-consumer lag) and how far a resume cursor should persist — in memory, in browser storage, or in a durable server log. The stakes are correctness under churn: a stream that silently drops deltas leaves the graph, tree, and lifecycle panels stale without ever telling the operator, and a resume that replays against a reset clock splices mixed-generation state (the "load-time artefact"). The dashboard has already converged on **two distinct strategies picked by one axis — whether a missed event is re-derivable from an authoritative snapshot or is durable truth that would be lost** — and this document grounds that split, its concrete mechanisms and bounds, and the open decisions the ADR must close for the acceptance-live harness that will exercise them.
+
+## Findings
+
+### The dashboard runs two reconnection contracts, not one, split by event replaceability
+
+There is no single SSE strategy. Re-derivable channels (`graph`, `backends`, `git`, `fs`, `index`) ride an **ephemeral in-memory ring with best-effort `since=` resume**; irreplaceable authoring lifecycle events ride a **durable transactional outbox with an exact `last_seq` cursor**. The two share a monotonic-`seq` frame shape but differ in every persistence and recovery property below. The selection rule is explicit in the outbox design (`engine/crates/vaultspec-api/src/authoring/stream.rs:3-6`): lifecycle truth is replayed from the durable outbox, "never from raw frames" — because an approval or apply receipt cannot be re-derived from a re-read, whereas a graph generation always can.
+
+### Ephemeral model: volatile ring, per-scope clock, gap-triggered re-keyframe
+
+The engine multiplexed stream (`engine/crates/vaultspec-api/src/routes/stream.rs`) subscribes a per-scope-cell `tokio::sync::broadcast` channel and resumes from an in-memory `VecDeque` ring. Concrete bounds: the ring holds `RING_CAP = 4096` frames (`engine/crates/vaultspec-api/src/app.rs:524`), evicting oldest-first (`app.rs:1200`); the broadcast channel capacity is `1024` (`app.rs:537`); `seq` is a per-cell `AtomicU64`. Resume is a `since=` query param, not the `Last-Event-ID` header (`stream.rs:107-120`). Three resiliency edges are handled rather than papered over:
+
+- **Replay gap on eviction** — if the next needed seq (`since+1`) is older than the oldest buffered frame, the handler emits an explicit `gap` event so the client re-keyframes (`stream.rs:135-197`); `gap_oldest` uses `saturating_add` against the unsanitized wire `u64` so a hostile `since=u64::MAX` cannot overflow-wrap into a spurious gap (`stream.rs:131-137`).
+- **Slow-consumer lag** — a receiver that falls behind the `1024`-capacity broadcast yields `Lagged(n)`, mapped to a `gap` event rather than an `item.ok()?` silent drop (`stream.rs:219-244`). Note the asymmetry: broadcast capacity (`1024`) is smaller than the resume ring (`4096`), so a live receiver can lag and re-keyframe before the ring would have failed to replay it.
+- **Subscribe-before-snapshot ordering** — the handler subscribes the live receiver first and snapshots the ring second, so a rebuild landing between the two is queued rather than lost; overlap is de-duplicated by a seq threshold (`stream.rs:164-207`).
+
+Every ephemeral frame still carries `.id(seq)` and the stream keeps alive with the axum default (`stream.rs:194,209,239`), so a native `EventSource` client would receive `Last-Event-ID` — but the frontend deliberately does not use it (next finding).
+
+### The client resumes via a fetch-stream and a query-param cursor, not native EventSource
+
+The frontend consumes the stream through `fetch` + `ReadableStream`, not `EventSource` (`frontend/src/stores/server/queries/streams.ts:81-110`), and folds resume state into TanStack Query. Rationale visible in the code: multiplexed channels, cache-key integration, `AbortController` cancel on unmount/scope-change, and a `since=` value that folds into the query key so two resume offsets never collide on one cache entry (`streams.ts:146-184`). Concrete client bounds: an incremental frame parser drops any frame over `MAX_SSE_FRAME_BYTES = 2 MiB` rather than buffering a hostile payload (`streams.ts:38-66`); the accumulator is ring-capped at `STREAM_RETENTION = 256` with seq-dedup so a resume replay splices idempotently (`streams.ts:119-138`); reconnection is TanStack `retry: true` with capped exponential backoff — 250 ms first attempt, doubling to a 30 s ceiling — so a flapping stream cannot tight-loop (`streams.ts:180-183`); `staleTime: Infinity` is paired with `gcTime: 30_000` so an unobserved stream's 256-frame array is reclaimed promptly (`streams.ts:172-176`). A mid-stream read failure throws `StreamLostError` so the degradation surface can render it as `degraded/stream-lost`, while an intentional abort is re-thrown untouched (`streams.ts:68-110`).
+
+### The ephemeral resume cursor is in-memory only and does not survive a page reload
+
+The graph resume point (`lastSeq`) lives in a zustand store, advances monotonically, and resets on scope swap (`frontend/src/stores/server/liveStatus.ts:65-79`); a grep for `localStorage`/`sessionStorage`/`persist` across `frontend/src/stores` returns 52 files but none persist this cursor. Consequence: on a page reload the cursor is gone and the client re-keyframes from an authoritative snapshot rather than resuming — which is correct precisely because the snapshot is authoritative. `useGraphLiveSync` seeds resume from a fetched `keyframeSeq` and handles the two ways a held cursor goes stale (`graphSync.ts:412-618`): a reconnect that resumes to an **empty** stream is read as an engine restart that reset the clock and forces a re-keyframe (`graphSync.ts:534-548`), and a **backward** seq (a lower seq than last observed) is read as a clock reset whose deltas must not be spliced onto the stale graph — the partial batch is discarded and the stores-owned fallback re-keyframes (`graphSync.ts:567-587`). Fallback sweeps are rate-floored: full re-drains no more often than `GRAPH_REFETCH_COOLDOWN_MS = 15_000`, and building-tier polls re-read via the sub-KB delta path every `GRAPH_BUILDING_REFETCH_MS = 4_000` (`graphSync.ts:52-58`).
+
+### Durable model: transactional outbox, exact `last_seq` cursor, finite bounded replay
+
+Authoring lifecycle events resume against a durable SQLite outbox with a persisted monotonic seq that survives engine restart (`engine/crates/vaultspec-api/src/authoring/stream.rs`). The client resumes with `GET /authoring/v1/events?last_seq=N` and, on cold start, `GET /authoring/v1/recovery?last_seq=N` which returns an authoritative snapshot plus the `next_seq` to resume after (`frontend/src/stores/server/authoring/index.ts:312-334`). Replay is finite and bounded, degrading honestly on each out-of-window case rather than replaying unboundedly: `cursor_ahead_of_high_water` when the client's seq exceeds the outbox tip, and `replay_window_exceeded` when the gap is larger than `LIFECYCLE_REPLAY_PAGE_CAP` — each returns a `next_recovery_seq` pointing the client at a fresh snapshot (`stream.rs:182-210`). The client cursor advances through `advanceAuthoringStreamSeq` and reconnects with its own exponential backoff mirroring the ephemeral shape (`authoring/index.ts:667-668,787-826`). Even here the client-held cursor is in-memory; durability lives server-side, and a reload re-syncs from `last_seq=0` → recovery snapshot → `next_seq`.
+
+### Hidden-tab pause is a designed resume, not a lost stream
+
+Long-lived streams on a parked tab are paused deliberately: after `BACKEND_SIGNAL_HIDDEN_PAUSE_MS = 60_000` hidden, the backend-signal subscription both disables and cancels the in-flight stream (closing the socket — `enabled:false` alone would leave it open, cancel alone would let `retry` reopen), and on return invalidates the stream key to reopen and re-snapshot (`streams.ts:211-286`). The gap window is explicitly not treated as degradation because these channels are unanchored and every reconnect re-serves current state. This is the governing precedent (`2026-06-13-dashboard-live-state-adr`, D4) any long-lived-stream reconnection strategy must stay consistent with.
+
+### Bounded / uninvestigated
+
+Not investigated in this pass: (a) keep-alive interval tuning — the stream uses `KeepAlive::default()` (`stream.rs:209`) and its interaction with intermediary proxy buffering under `text/event-stream` is unverified; (b) mobile background-throttling behaviour beyond the 60 s hidden pause; (c) whether the acceptance-live harness can deterministically force a ring-eviction gap (needs > `RING_CAP=4096` frames while a consumer is detached) or a broadcast `Lagged` (needs > `1024` un-consumed) to exercise both re-keyframe paths under test; (d) the concrete E2E assertions that would prove a reconnect re-keyframes rather than splices stale state — the harness scope this feature exists to build.
+
+## Options for the reconnection-and-cursor contract
+
+- **A — Ephemeral in-memory ring + `since=` resume, no durable client cursor (current for `graph`/`backends`/`git`).** Kept for every re-derivable channel: cheap, fully bounded (`4096` ring, `256` client retention, `30 s` gcTime), and correct because a gap/restart always falls back to an authoritative snapshot. Rejected as the *sole* strategy: it cannot carry irreplaceable lifecycle truth, which a gap would silently drop.
+- **B — Durable transactional outbox + exact `last_seq` cursor (current for authoring lifecycle).** Kept for irreplaceable events (approvals, apply receipts): survives engine restart, replays exactly within a bounded window, degrades to a recovery snapshot beyond it. Rejected as the *universal* strategy: a durable outbox per graph delta is unwarranted cost for state that is cheaper to re-derive than to replay.
+- **C — Native `EventSource` + `Last-Event-ID` auto-reconnect.** The engine already emits `.id(seq)`, so this would work on the wire. Rejected in the existing code because it gives no multiplexed-channel control, no TanStack cache integration, no `AbortController`-driven pause/cancel, and no query-param resume that folds into the cache key — and `Last-Event-ID` alone still would not express gap detection or backward-reset re-keyframe, which are application logic regardless of transport.
+- **D — Persist the ephemeral cursor to `sessionStorage`/`localStorage` for cross-reload resume.** Not currently done. Marginal benefit only when the snapshot is expensive *and* the reconnect gap is small; a persisted cursor is stale the moment the `4096` ring evicts it or the engine restarts (clock reset), both already handled by re-keyframe — so persistence adds a stale-cursor branch for a saved snapshot fetch that is already fast and rate-floored.
+
+The evidence favours preserving the **two-model split keyed on event replaceability** (A for re-derivable channels, B for durable lifecycle truth) with the gap-event, empty-resume-is-restart, and backward-seq-reset contract as the resiliency floor, rather than introducing durable client-side cursor persistence (D) or a transport swap (C). The ADR (`2026-07-16-pw7-acceptance-live-1784164793-adr`) records the decision and the acceptance-live assertions that will prove it.
+
+## Sources
+
+- `engine/crates/vaultspec-api/src/routes/stream.rs:107-245` — `/stream` channels/`since=`/`scope`, `gap_oldest` saturating gap detection, subscribe-before-snapshot, `Lagged`→`gap`, `.id(seq)` + `keep_alive`.
+- `engine/crates/vaultspec-api/src/app.rs:524,537,1185-1215` — `RING_CAP=4096`, `broadcast::channel(1024)`, per-cell `AtomicU64` seq, oldest-first eviction.
+- `frontend/src/stores/server/queries/streams.ts:38-286` — fetch-stream parser, `MAX_SSE_FRAME_BYTES`, `STREAM_RETENTION=256`, seq-dedup reducer, retry backoff 250 ms→30 s, `gcTime`, hidden-tab pause `60_000`.
+- `frontend/src/stores/server/liveStatus.ts:17-79` — in-memory monotonic `lastSeq` cursor, reset-on-scope-swap, no persistence.
+- `frontend/src/stores/server/graphSync.ts:412-618` — `since=keyframeSeq` resume, empty-resume-is-restart re-keyframe, backward-seq reset guard, floored fallback sweeps.
+- `engine/crates/vaultspec-api/src/authoring/stream.rs:3-210` — durable outbox replay, `LIFECYCLE_REPLAY_PAGE_CAP`, `cursor_ahead_of_high_water`, `replay_window_exceeded`, `next_seq`.
+- `frontend/src/stores/server/authoring/index.ts:312-334,667-826` — `/authoring/v1/events?last_seq=`, `/authoring/v1/recovery`, durable cursor advance, reconnect backoff.
+- `.vault/adr/2026-06-13-dashboard-live-state-adr.md` (D4 hidden-tab pause), `.vault/adr/2026-06-29-agentic-streaming-events-outbox-adr.md` (durable-outbox model) — governing prior decisions.
