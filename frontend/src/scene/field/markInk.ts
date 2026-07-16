@@ -30,14 +30,14 @@ export interface MarkDef {
   /** Whether the geometry is adopted from Phosphor or authored in-family. */
   readonly provenance: "adopted" | "authored";
   /** The inner SVG markup on the 256 grid; no outer <svg> wrapper. */
-  readonly body: string;
+  readonly svgBody: string;
 }
 
 /** Wrap a mark body in a complete 256-grid SVG document string. */
 export function markSvg(def: MarkDef): string {
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${MARK_GRID} ${MARK_GRID}">` +
-    def.body +
+    def.svgBody +
     "</svg>"
   );
 }

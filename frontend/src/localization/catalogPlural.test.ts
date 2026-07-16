@@ -89,9 +89,15 @@ function physicalCategories(
 describe("plural catalog manifest", () => {
   it("provides every locale's complete cardinal category family", () => {
     expect(PLURAL_MESSAGE_KEYS).toEqual([
+      "common:kit.activity.rowsLoaded",
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
       "common:palette.commandCount",
+      "common:finalWave.work.progress",
+      "documents:localizationWave.plan.completion",
+      "documents:localizationWave.plan.phaseCount",
+      "documents:localizationWave.plan.stepCount",
+      "documents:localizationWave.plan.waveCount",
       "documents:documentSearch.counts.documents",
       "documents:reviewStation.counts.acknowledgements",
       "documents:reviewStation.counts.changes",
@@ -115,6 +121,16 @@ describe("plural catalog manifest", () => {
       "documents:tree.sizeSummary",
       "documents:tree.wordCount",
       "graph:accessibility.workingSetCount",
+      "graph:islands.progress.stepsComplete",
+      "graph:hover.evidence.codeLocations",
+      "graph:hover.evidence.commits",
+      "graph:hover.evidence.documents",
+      "graph:lab.actions.loadGenerated",
+      "operations:searchMaintenance.jobs.count",
+      "operations:searchMaintenance.jobs.partial",
+      "operations:searchMaintenance.projects.live",
+      "operations:searchMaintenance.projects.summary",
+      "operations:searchMaintenance.projects.partial",
       "projects:workspaceIdentity.counts.ahead",
       "projects:workspaceIdentity.counts.behind",
       "projects:provisioning.result.itemCount",
@@ -142,12 +158,25 @@ describe("plural catalog manifest", () => {
           let additionalValues: AdditionalCountMessageValues | undefined;
           if (key === "common:commandPalette.selectionAnnouncement") {
             additionalValues = { command: "Open settings" };
+          } else if (
+            key === "operations:searchMaintenance.jobs.partial" ||
+            key === "operations:searchMaintenance.projects.partial"
+          ) {
+            additionalValues = { shown: 1 };
+          } else if (key === "operations:searchMaintenance.projects.summary") {
+            additionalValues = { live: 1 };
           } else if (key === "documents:tree.sizeSummary") {
             additionalValues = { size: "4 KB" };
           } else if (key === "documents:viewer.reader.truncation.bytes") {
             additionalValues = { returned: 1 };
           } else if (key === "documents:viewer.codeViewer.footer.summary") {
             additionalValues = { language: "Rust", encoding: "UTF-8" };
+          } else if (
+            key === "graph:islands.progress.stepsComplete" ||
+            key === "common:finalWave.work.progress" ||
+            key === "documents:localizationWave.plan.completion"
+          ) {
+            additionalValues = { done: 1 };
           } else if (key.startsWith("documents:viewer.reader.metadata.")) {
             const normalizedKey = key.toLocaleLowerCase("en");
             additionalValues = {
@@ -166,6 +195,10 @@ describe("plural catalog manifest", () => {
             .replace(/\{\{\s*command\s*\}\}/gu, "Open settings")
             .replace(/\{\{\s*size\s*\}\}/gu, "4 KB")
             .replace(/\{\{\s*returned\s*,\s*number\s*\}\}/gu, formatNumber(locale, 1)!)
+            .replace(/\{\{\s*shown\s*,\s*number\s*\}\}/gu, formatNumber(locale, 1)!)
+            .replace(/\{\{\s*live\s*,\s*number\s*\}\}/gu, formatNumber(locale, 1)!)
+            .replace(/\{\{\s*done\s*,\s*number\s*\}\}/gu, formatNumber(locale, 1)!)
+            .replace(/\{\{\s*total\s*,\s*number\s*\}\}/gu, formatted!)
             .replace(/\{\{\s*created\s*\}\}/gu, "15 July 2026")
             .replace(/\{\{\s*updated\s*\}\}/gu, "16 July 2026")
             .replace(/\{\{\s*status\s*\}\}/gu, "Accepted")

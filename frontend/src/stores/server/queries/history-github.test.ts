@@ -503,17 +503,9 @@ describe("deriveHistoryView", () => {
         selectable: true,
         hasBody: false,
         subjectLabel: "feat: x",
-        rowAriaLabel: "commit abc123: feat: x",
-        messageToggleLabel: expect.any(Function),
         ageLabel: "5m",
       },
     ]);
-    expect(view.recentCommitRows[0]!.messageToggleLabel(false)).toBe(
-      "expand message for abc123",
-    );
-    expect(view.recentCommitRows[0]!.messageToggleLabel(true)).toBe(
-      "collapse message for abc123",
-    );
     expect(view.canShowMore).toBe(false);
   });
 
@@ -535,8 +527,7 @@ describe("deriveHistoryView", () => {
     );
 
     expect(view.recentCommitRows[0]).toMatchObject({
-      subjectLabel: "(no subject)",
-      rowAriaLabel: "commit empty: (no subject)",
+      subjectLabel: { key: "common:finalWave.history.commit" },
     });
   });
 
@@ -584,7 +575,6 @@ describe("deriveHistoryView", () => {
       selectable: true,
       hasBody: false,
       subjectLabel: "subject",
-      rowAriaLabel: "commit abcdef12: subject",
       ageLabel: "",
     });
   });
@@ -1083,10 +1073,25 @@ describe("derivePRsView and deriveIssuesView", () => {
         openIssues: 4,
       }),
     ).toEqual({
-      openPlans: { id: "open-plans", title: "Plans", count: 2 },
-      pullRequests: { id: "pull-requests", title: "Pull requests", count: undefined },
-      openIssues: { id: "open-issues", title: "Issues", count: 4 },
-      recentCommits: { id: "recent-commits", title: "Commits" },
+      openPlans: {
+        id: "open-plans",
+        title: { key: "common:finalWave.statusSections.plans" },
+        count: 2,
+      },
+      pullRequests: {
+        id: "pull-requests",
+        title: { key: "common:finalWave.statusSections.pullRequests" },
+        count: undefined,
+      },
+      openIssues: {
+        id: "open-issues",
+        title: { key: "common:finalWave.statusSections.issues" },
+        count: 4,
+      },
+      recentCommits: {
+        id: "recent-commits",
+        title: { key: "common:finalWave.statusSections.commits" },
+      },
     });
   });
 

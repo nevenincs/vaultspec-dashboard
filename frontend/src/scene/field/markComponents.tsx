@@ -31,11 +31,11 @@ export interface MarkProps {
 }
 
 /**
- * Render a `MarkDef` body as an inline SVG inheriting `currentColor`. The body
+ * Render a `MarkDef` SVG body as an inline SVG inheriting `currentColor`. The geometry
  * is the project's own authored/adopted geometry (no untrusted input), set via
  * `dangerouslySetInnerHTML` because the def carries multiple path/shape
  * elements; this is the chrome analogue of the texture seam's
- * `GraphicsContext.svg(def.body)` parse.
+ * `GraphicsContext.svg(def.svgBody)` parse.
  */
 export function Mark({
   def,
@@ -54,7 +54,7 @@ export function Mark({
       aria-label={title}
       aria-hidden={title ? undefined : true}
       className={className}
-      dangerouslySetInnerHTML={{ __html: def.body }}
+      dangerouslySetInnerHTML={{ __html: def.svgBody }}
     />
   );
 }

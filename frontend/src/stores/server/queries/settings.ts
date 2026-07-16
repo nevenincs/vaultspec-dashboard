@@ -2,6 +2,7 @@
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import type { KeybindingOverrides } from "../../../platform/keymap/registry";
+import type { MessageDescriptor } from "../../../platform/localization/message";
 import { setKeymapOverridesReader } from "../../view/keymapDispatcher";
 import {
   EngineError,
@@ -84,12 +85,12 @@ export interface SettingsDialogView {
   schemaLoading: boolean;
   settingsLoading: boolean;
   groups: SettingsGroup[];
-  title: string;
-  description: string;
-  loadingMessage: string;
-  emptyMessage: string;
-  cancelLabel: string;
-  doneLabel: string;
+  title: MessageDescriptor;
+  description: MessageDescriptor;
+  loadingMessage: MessageDescriptor;
+  emptyMessage: MessageDescriptor;
+  cancelLabel: MessageDescriptor;
+  doneLabel: MessageDescriptor;
 }
 
 export interface ThemeSettingView {
@@ -119,12 +120,12 @@ export function deriveSettingsDialogView(
     schemaLoading,
     settingsLoading,
     groups: loading ? [] : resolveSettings(schema, settings, activeScope),
-    title: "Settings",
-    description: "Preferences are saved to this workspace. Some apply per scope.",
-    loadingMessage: "Loading settings…",
-    emptyMessage: "No settings are available.",
-    cancelLabel: "Cancel",
-    doneLabel: "Done",
+    title: { key: "common:finalWave.settings.title" },
+    description: { key: "common:finalWave.settings.description" },
+    loadingMessage: { key: "common:finalWave.settings.loading" },
+    emptyMessage: { key: "common:finalWave.settings.empty" },
+    cancelLabel: { key: "common:finalWave.settings.cancel" },
+    doneLabel: { key: "common:finalWave.settings.done" },
   };
 }
 

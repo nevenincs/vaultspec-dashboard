@@ -7,6 +7,7 @@
 // readout.
 
 import type { HTMLAttributes } from "react";
+import { DecorativeGlyph } from "./DecorativeGlyph";
 
 export interface ProgressBarProps extends Omit<
   HTMLAttributes<HTMLDivElement>,
@@ -50,7 +51,9 @@ export function ProgressBar({
       </div>
       {showValue && (
         <span data-tabular className="shrink-0 tabular-nums text-meta text-ink-muted">
-          {clamped}/{safeMax}
+          {clamped}
+          <DecorativeGlyph name="slash" />
+          {safeMax}
         </span>
       )}
     </div>

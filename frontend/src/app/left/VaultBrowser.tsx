@@ -47,8 +47,8 @@ export function filterVaultEntries(
   return filterVaultTreeEntries(entries, filter);
 }
 
-export type VaultBrowserProps = Omit<TreeBrowserProps, "ariaLabel">;
+export type VaultBrowserProps = Omit<TreeBrowserProps, "variant">;
 
 export function VaultBrowser(props: VaultBrowserProps) {
-  return <TreeBrowser {...props} ariaLabel="vault browser" />;
+  return <TreeBrowser {...props} variant="vault" />;
 }

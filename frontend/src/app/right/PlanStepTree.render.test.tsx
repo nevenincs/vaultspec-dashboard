@@ -1,8 +1,16 @@
 // @vitest-environment happy-dom
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { createElement } from "react";
+import { I18nextProvider } from "react-i18next";
 import {
   afterAll,
   afterEach,
@@ -15,6 +23,12 @@ import {
 
 import type { PlanInteriorView } from "../../stores/server/queries";
 import { engineKeys, usePlanInteriorView } from "../../stores/server/queries";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { sourceLocale } from "../../locales/en";
 import { authoringClient, setActorToken } from "../../stores/server/authoring";
 import { queryClient } from "../../stores/server/queryClient";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -113,6 +127,68 @@ describe("PlanStepTree", () => {
 
     expect(screen.getByRole("status").textContent).toContain("showing 40 of 90");
   });
+
+  it("keeps hostile plan identities out of same-node localized presentation", async () => {
+    const hostileId = "S01-SUPER-SECRET";
+    const hostileExecId = "doc:exec-SUPER-SECRET";
+    const runtime = createTestLocalizationRuntime();
+    const view: PlanInteriorView = {
+      ...emptyView,
+      empty: false,
+      hasUngroupedSteps: true,
+      steps: [
+        {
+          node_id: `step:${hostileId}`,
+          id: hostileId,
+          done: false,
+          exec_node_id: hostileExecId,
+          targetNodeId: hostileExecId,
+          selectable: true,
+          headingLabel: { key: "common:finalWave.planSteps.generic" },
+          rowAriaLabel: {
+            key: "common:finalWave.planSteps.openGenericRecord",
+          },
+          rowClassName: "",
+        },
+      ],
+    };
+
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <PlanStepTree view={view} />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const checkbox = screen.getByRole("checkbox", { name: "Plan step" });
+    const openButton = screen.getByRole("button", {
+      name: "Open record for this plan step",
+    });
+    const assertNoIdentityLeak = () => {
+      expect(document.body.textContent).not.toContain(hostileId);
+      expect(document.body.textContent).not.toContain(hostileExecId);
+      for (const node of [checkbox, openButton]) {
+        expect(node.getAttribute("aria-label")).not.toContain(hostileId);
+        expect(node.getAttribute("aria-label")).not.toContain(hostileExecId);
+        expect(node.getAttribute("title") ?? "").not.toContain(hostileId);
+        expect(node.getAttribute("title") ?? "").not.toContain(hostileExecId);
+      }
+    };
+
+    assertNoIdentityLeak();
+    await act(async () => runtime.changeLanguage(ltrTestLocale));
+    expect(checkbox.getAttribute("aria-label")).toBe("Étape du plan");
+    expect(openButton.getAttribute("aria-label")).toBe(
+      "Ouvrir l’enregistrement de cette étape du plan",
+    );
+    assertNoIdentityLeak();
+    await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(checkbox.getAttribute("aria-label")).toBe("خطوة في الخطة");
+    expect(openButton.getAttribute("aria-label")).toBe("فتح سجل هذه الخطوة في الخطة");
+    assertNoIdentityLeak();
+    await act(async () => runtime.changeLanguage(sourceLocale));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -203,10 +279,10 @@ describe("PlanStepTree live: plan-step checkbox (authoring-surface D1)", () => {
       // aria-label now includes the heading text — use regex for prefix matching.
       await waitFor(() => {
         const s01 = screen.getByRole("checkbox", {
-          name: /toggle step S01/,
+          name: /scaffold the alpha module/,
         }) as HTMLInputElement;
         const s02 = screen.getByRole("checkbox", {
-          name: /toggle step S02/,
+          name: /wire the alpha reader/,
         }) as HTMLInputElement;
         expect(s01).toBeTruthy();
         expect(s02).toBeTruthy();
@@ -219,7 +295,7 @@ describe("PlanStepTree live: plan-step checkbox (authoring-surface D1)", () => {
       }, ENGINE_WAIT);
 
       const s02 = screen.getByRole("checkbox", {
-        name: /toggle step S02/,
+        name: /wire the alpha reader/,
       }) as HTMLInputElement;
 
       try {
@@ -274,14 +350,18 @@ describe("PlanStepTree live: plan-step checkbox (authoring-surface D1)", () => {
       await waitFor(() => {
         // Confirm S01 is selectable: its preview button says "open exec record".
         expect(
-          screen.getByRole("button", { name: /step S01, open exec record/ }),
+          screen.getByRole("button", {
+            name: /open record for scaffold the alpha module/i,
+          }),
         ).toBeTruthy();
         // S01's checkbox must be present.
-        expect(screen.getByRole("checkbox", { name: /toggle step S01/ })).toBeTruthy();
+        expect(
+          screen.getByRole("checkbox", { name: /scaffold the alpha module/ }),
+        ).toBeTruthy();
       }, ENGINE_WAIT);
 
       const s01 = screen.getByRole("checkbox", {
-        name: /toggle step S01/,
+        name: /scaffold the alpha module/,
       }) as HTMLInputElement;
 
       // Fire ArrowRight — the focus-zone cross-axis (onCrossNext) calls
@@ -315,11 +395,13 @@ describe("PlanStepTree live: plan-step checkbox (authoring-surface D1)", () => {
     // Wait for the step tree to arrive (interior served from the live engine).
     // aria-label now includes heading text — use regex.
     await waitFor(() => {
-      expect(screen.getByRole("checkbox", { name: /toggle step S02/ })).toBeTruthy();
+      expect(
+        screen.getByRole("checkbox", { name: /wire the alpha reader/ }),
+      ).toBeTruthy();
     }, ENGINE_WAIT);
 
     const s02 = screen.getByRole("checkbox", {
-      name: /toggle step S02/,
+      name: /wire the alpha reader/,
     }) as HTMLInputElement;
     // In time-travel mode canTick=false, so the checkbox is always disabled.
     expect(s02.disabled).toBe(true);

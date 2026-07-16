@@ -12,7 +12,10 @@ describe("workTabChrome projections", () => {
   it("projects progress-ring geometry and token classes", () => {
     const half = deriveWorkProgressRingView(2, 4);
     expect(half).toMatchObject({
-      label: "2 of 4 steps complete",
+      label: {
+        key: "common:finalWave.work.progress",
+        values: { count: 4, done: 2 },
+      },
       rootClassName: "flex shrink-0 items-center gap-fg-1",
       svgClassName: "shrink-0",
       trackClassName: "stroke-rule",
@@ -28,7 +31,6 @@ describe("workTabChrome projections", () => {
     expect(deriveWorkStatusPillView("accepted")).toEqual({
       className:
         "shrink-0 rounded-fg-pill border px-fg-1-5 py-px text-caption font-medium border-state-active/50 text-state-active",
-      ariaLabel: "status accepted",
     });
     expect(deriveWorkStatusPillView("unknown").className).toContain(
       "border-rule text-ink-muted",
@@ -40,7 +42,6 @@ describe("workTabChrome projections", () => {
     expect(arc.rootClassName).toBe(
       "flex items-center gap-fg-0-5 px-fg-1 py-fg-1 text-caption text-ink-faint",
     );
-    expect(arc.ariaLabel).toBe("pipeline phases");
     expect(arc.rows.map((row) => row.phase)).toEqual([
       "research",
       "adr",
@@ -52,7 +53,6 @@ describe("workTabChrome projections", () => {
     expect(arc.rows[1]).toMatchObject({
       phase: "adr",
       occupied: true,
-      ariaLabel: "adr (in flight)",
       phaseClassName: "inline-flex items-center gap-fg-0-5 font-medium text-ink",
       dotClassName: "inline-block size-fg-1 rounded-fg-pill bg-accent",
       separatorVisible: true,

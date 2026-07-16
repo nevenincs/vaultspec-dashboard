@@ -1,13 +1,12 @@
 import { create } from "zustand";
 
 import { appearanceDefaults, specById } from "../../scene/three/graphControlSchema";
+import type { MessageDescriptor } from "../../platform/localization/message";
+import {
+  GRAPH_CONTROLS_MESSAGES,
+  UI_GRAPH_CONTROL_MESSAGES,
+} from "./graphControlsVocabulary";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
-
-// Three-native force controls, rebuilt against the field's `set-force-params`
-// d3-force seam after the Cosmos field was retired. The three knobs are UI-facing
-// magnitudes: `repulsion` (the many-body push, mapped to a negative charge on the
-// field), `linkDistance` (spring rest length), and `linkSpring` (link-spring
-// strength). The GraphControls component maps these onto `set-force-params`.
 
 export interface GraphControlsTuneParams {
   repulsion: number;
@@ -18,8 +17,6 @@ export interface GraphControlsTuneParams {
 export type GraphControlsTuneParamKey = keyof GraphControlsTuneParams;
 
 export const GRAPH_CONTROLS_TUNE_DEFAULTS: GraphControlsTuneParams = {
-  // Derived from the canonical schema. Repulsion is the MAGNITUDE the UI presents;
-  // the canonical `charge` default is signed (negative), so repulsion = −charge.
   repulsion: -numericSpec("charge").default,
   linkDistance: numericSpec("linkDistance").default,
   linkSpring: numericSpec("linkStrength").default,
@@ -29,17 +26,7 @@ function finiteOrDefault(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-// --- schema derivation (graph-control-standardisation) -------------------------
-// Every range / label / default below is read from the canonical control registry
-// (scene/three/graphControlSchema) instead of being hand-authored here, so the UI
-// can never drift from the field. The schema's `exposure: ["ui"]` entries ARE the
-// curation of which controls the user surface carries.
-
-/** A numeric ControlSpec narrowed to its required fields; throws at module load if
- *  the schema lacks the id or it is non-numeric (fail-fast on drift). */
 function numericSpec(id: string): {
-  label: string;
-  uiLabel: string | undefined;
   min: number;
   max: number;
   step: number;
@@ -57,22 +44,11 @@ function numericSpec(id: string): {
     throw new Error(`graphControlsChrome: expected numeric schema spec "${id}"`);
   }
   return {
-    label: spec.label,
-    uiLabel: spec.uiLabel,
     min: spec.min,
     max: spec.max,
     step: spec.step,
     default: spec.default,
   };
-}
-
-/** Decimal places implied by a slider step, so the readout matches its granularity
- *  (schema-derived precision, not hand-authored). */
-function decimalsForStep(step: number): number {
-  if (!Number.isFinite(step) || step <= 0 || step >= 1) return 0;
-  const text = step.toString();
-  const dot = text.indexOf(".");
-  return dot === -1 ? 0 : Math.min(4, text.length - dot - 1);
 }
 
 export function normalizeGraphControlsTuneParams(
@@ -109,24 +85,22 @@ export function normalizeGraphControlsFrozen(frozen: unknown): boolean {
 export const normalizeGraphControlsFrozenScope = normalizeViewStoreSessionString;
 
 export interface GraphControlsTuneSliderPresentationView {
-  label: string;
-  title: string;
+  label: MessageDescriptor;
+  title: MessageDescriptor;
   min: number;
   max: number;
   step: number;
 }
 
 export interface GraphControlsTunePresentationView {
-  /** Panel title (binding Figma `graph/Sim + Display controls` 714:2630). */
-  title: string;
-  /** The "LAYOUT" category eyebrow (the collapsible group these sliders live in). */
-  categoryLabel: string;
+  title: MessageDescriptor;
+  categoryLabel: MessageDescriptor;
   containerClassName: string;
   freezeRowClassName: string;
   freezeLabelClassName: string;
-  freezeLabel: string;
+  freezeLabel: MessageDescriptor;
   resetButtonClassName: string;
-  resetLabel: string;
+  resetLabel: MessageDescriptor;
   sliders: Record<GraphControlsTuneParamKey, GraphControlsTuneSliderPresentationView>;
 }
 
@@ -134,41 +108,34 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
   const charge = numericSpec("charge");
   const linkDistance = numericSpec("linkDistance");
   const linkStrength = numericSpec("linkStrength");
-  // User-facing labels DERIVE from the schema's `uiLabel` (single source,
-  // ui-labels-are-user-facing): the seam keeps the technical ids + the schema's
-  // technical `label` (dev-lab vocabulary); the screen reads the friendly
-  // `uiLabel` (Spacing / Link length / Grouping), falling back to `label`.
   return {
-    title: "Graph controls",
-    categoryLabel: "Layout",
+    title: GRAPH_CONTROLS_MESSAGES.title,
+    categoryLabel: GRAPH_CONTROLS_MESSAGES.sections.layout,
     containerClassName: "flex w-full flex-col gap-fg-2",
     freezeRowClassName: "flex items-center justify-between gap-fg-2",
     freezeLabelClassName: "text-body text-ink-muted",
-    freezeLabel: "Freeze Layout",
+    freezeLabel: GRAPH_CONTROLS_MESSAGES.labels.keepLayoutFixed,
     resetButtonClassName:
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-    resetLabel: "Reset to defaults",
+    resetLabel: GRAPH_CONTROLS_MESSAGES.actions.resetSettings,
     sliders: {
-      // Spacing presents the repulsion MAGNITUDE: the canonical signed `charge`
-      // range (negative) maps to a positive magnitude by negating + swapping
-      // min/max. The field still stores the signed charge.
       repulsion: {
-        label: charge.uiLabel ?? charge.label,
-        title: "How far nodes push each other apart",
+        label: UI_GRAPH_CONTROL_MESSAGES.charge.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.charge.description,
         min: -charge.max,
         max: -charge.min,
         step: charge.step,
       },
       linkDistance: {
-        label: linkDistance.uiLabel ?? linkDistance.label,
-        title: "The rest length of the links between connected nodes",
+        label: UI_GRAPH_CONTROL_MESSAGES.linkDistance.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.linkDistance.description,
         min: linkDistance.min,
         max: linkDistance.max,
         step: linkDistance.step,
       },
       linkSpring: {
-        label: linkStrength.uiLabel ?? linkStrength.label,
-        title: "How tightly connected nodes pull together into groups",
+        label: UI_GRAPH_CONTROL_MESSAGES.linkStrength.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.linkStrength.description,
         min: linkStrength.min,
         max: linkStrength.max,
         step: linkStrength.step,
@@ -176,77 +143,6 @@ export function deriveGraphControlsTunePresentationView(): GraphControlsTunePres
     },
   };
 }
-
-export function formatGraphControlsTuneValue(
-  key: GraphControlsTuneParamKey,
-  value: number,
-): string {
-  const id =
-    key === "repulsion"
-      ? "charge"
-      : key === "linkDistance"
-        ? "linkDistance"
-        : "linkStrength";
-  return value.toFixed(decimalsForStep(numericSpec(id).step));
-}
-
-export type GraphControlsBoundShape = "free" | "circle" | "rect";
-
-export interface GraphControlsBoundPresentationView {
-  containerClassName: string;
-  groupClassName: string;
-  labelClassName: string;
-  label: string;
-  shapeAriaLabel: string;
-  freeLabel: string;
-  circleLabel: string;
-  rectLabel: string;
-  showSizeControl: boolean;
-  sizeLabel: string;
-  sizeTitle: string;
-  sizeMin: number;
-  sizeMax: number;
-  sizeStep: number;
-}
-
-export function deriveGraphControlsBoundPresentationView(
-  shape: unknown,
-): GraphControlsBoundPresentationView {
-  const normalizedShape: GraphControlsBoundShape =
-    shape === "circle" || shape === "rect" ? shape : "free";
-  return {
-    containerClassName: "flex w-48 flex-col gap-fg-2",
-    groupClassName: "flex flex-col gap-fg-1",
-    labelClassName: "text-label text-ink-muted",
-    label: "Canvas bound",
-    shapeAriaLabel: "Canvas bound shape",
-    freeLabel: "Free",
-    circleLabel: "Circle",
-    rectLabel: "Rect",
-    showSizeControl: normalizedShape !== "free",
-    sizeLabel: "Bound size",
-    sizeTitle:
-      normalizedShape === "circle"
-        ? "Circle radius in world units; 0 = auto-fit"
-        : "Rectangle half-extent in world units; 0 = auto-fit",
-    sizeMin: 0,
-    sizeMax: 4000,
-    sizeStep: 100,
-  };
-}
-
-export function formatGraphControlsBoundSize(value: unknown): string {
-  const normalized = finiteOrDefault(value, 0);
-  return normalized <= 0 ? "auto" : String(Math.round(normalized));
-}
-
-// --- appearance / "look" controls (graph-backend-unification ADR D3) -----------
-// The node-size + edge-look knobs the GraphControls appearance section tunes on the
-// active field, mapped onto `set-appearance-params`. The store carries the full
-// AppearanceParams shape (so a dispatch is complete); the UI exposes node size,
-// salience spread, edge width, edge opacity, and the edge colour-inheritance mode
-// (solid | gradient; gradient is the binding default per ADR D2). The edge
-// width/opacity MIN ends stay at the field defaults and ride along in the dispatch.
 
 export type GraphControlsEdgeColorMode = "solid" | "gradient";
 export type GraphControlsNodeColorMode = "category" | "recency";
@@ -259,22 +155,17 @@ export interface GraphControlsAppearanceParams {
   edgeOpacityMin: number;
   edgeOpacityMax: number;
   edgeColorMode: GraphControlsEdgeColorMode;
-  /** Node-body colour source (code-graph-heat ADR): the category palette, or the
-   *  engine-served recency rank on the theme heat ramp. */
   nodeColorMode: GraphControlsNodeColorMode;
-  /** Draw nodes as their doc-type element mark instead of a plain category circle
-   *  (graph-node-icons). A boolean toggle in the appearance section. */
+
   nodeIcons: boolean;
 }
 
-/** The appearance knobs the UI exposes as sliders (the min ends are not surfaced). */
 export type GraphControlsAppearanceSliderKey =
   | "nodeSizeScale"
   | "nodeSalienceScale"
   | "edgeWidthMax"
   | "edgeOpacityMax";
 
-// Derived from the canonical schema (carries the unsurfaced edge-min floors too).
 export const GRAPH_CONTROLS_APPEARANCE_DEFAULTS: GraphControlsAppearanceParams =
   appearanceDefaults();
 
@@ -329,22 +220,20 @@ export function normalizeGraphControlsAppearanceParams(
 export interface GraphControlsAppearancePresentationView {
   containerClassName: string;
   headingClassName: string;
-  heading: string;
-  colorModeLabel: string;
-  colorModeAriaLabel: string;
-  solidLabel: string;
-  gradientLabel: string;
-  /** Node colour-mode copy (code-graph-heat ADR), schema-derived. */
-  nodeColorModeLabel: string;
-  nodeColorModeAriaLabel: string;
-  categoryLabel: string;
-  recencyLabel: string;
-  /** "Show icons" toggle copy (graph-node-icons), schema-derived. */
-  iconsLabel: string;
-  iconsTitle: string;
-  iconsAriaLabel: string;
+  heading: MessageDescriptor;
+  colorModeLabel: MessageDescriptor;
+  colorModeAriaLabel: MessageDescriptor;
+  solidLabel: MessageDescriptor;
+  gradientLabel: MessageDescriptor;
+  nodeColorModeLabel: MessageDescriptor;
+  nodeColorModeAriaLabel: MessageDescriptor;
+  categoryLabel: MessageDescriptor;
+  recencyLabel: MessageDescriptor;
+  iconsLabel: MessageDescriptor;
+  iconsTitle: MessageDescriptor;
+  iconsAriaLabel: MessageDescriptor;
   resetButtonClassName: string;
-  resetLabel: string;
+  resetLabel: MessageDescriptor;
   sliders: Record<
     GraphControlsAppearanceSliderKey,
     GraphControlsTuneSliderPresentationView
@@ -357,53 +246,48 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
   const edgeWidth = numericSpec("edgeWidthMax");
   const edgeOpacity = numericSpec("edgeOpacityMax");
   return {
-    // User-facing labels DERIVE from the schema's `uiLabel` (single source,
-    // ui-labels-are-user-facing): Node size / Importance / Link thickness / Link
-    // opacity / Link colour. Option display labels (Solid | Blended) are UI copy
-    // for the enum values. The seam keeps the technical ids + `label`.
     containerClassName: "flex w-full flex-col gap-fg-2",
     headingClassName: "text-label text-ink-muted",
-    heading: "Appearance",
-    colorModeLabel: specById("edgeColorMode")?.uiLabel ?? "Link colour",
-    colorModeAriaLabel: "Link colour mode",
-    solidLabel: "Solid",
-    gradientLabel: "Blended",
-    nodeColorModeLabel: specById("nodeColorMode")?.uiLabel ?? "Node colour",
-    nodeColorModeAriaLabel: "Node colour mode",
-    categoryLabel: "Category",
-    recencyLabel: "Recency",
-    iconsLabel: specById("nodeIcons")?.uiLabel ?? "Show icons",
-    iconsTitle: "Draw each node as its document-type icon instead of a plain circle",
-    iconsAriaLabel: "Show node icons",
+    heading: GRAPH_CONTROLS_MESSAGES.sections.appearance,
+    colorModeLabel: UI_GRAPH_CONTROL_MESSAGES.edgeColorMode.label,
+    colorModeAriaLabel: GRAPH_CONTROLS_MESSAGES.accessibility.edgeColorMode,
+    solidLabel: GRAPH_CONTROLS_MESSAGES.options.solid,
+    gradientLabel: GRAPH_CONTROLS_MESSAGES.options.blended,
+    nodeColorModeLabel: UI_GRAPH_CONTROL_MESSAGES.nodeColorMode.label,
+    nodeColorModeAriaLabel: GRAPH_CONTROLS_MESSAGES.accessibility.nodeColorMode,
+    categoryLabel: GRAPH_CONTROLS_MESSAGES.options.category,
+    recencyLabel: GRAPH_CONTROLS_MESSAGES.options.recency,
+    iconsLabel: UI_GRAPH_CONTROL_MESSAGES.nodeIcons.label,
+    iconsTitle: UI_GRAPH_CONTROL_MESSAGES.nodeIcons.description,
+    iconsAriaLabel: GRAPH_CONTROLS_MESSAGES.accessibility.showNodeIcons,
     resetButtonClassName:
       "self-start text-caption text-accent-text underline-offset-2 transition-colors hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus",
-    resetLabel: "Reset to defaults",
+    resetLabel: GRAPH_CONTROLS_MESSAGES.actions.resetSettings,
     sliders: {
       nodeSizeScale: {
-        label: nodeSize.uiLabel ?? nodeSize.label,
-        title: "Scale every node's drawn size",
+        label: UI_GRAPH_CONTROL_MESSAGES.nodeSizeScale.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.nodeSizeScale.description,
         min: nodeSize.min,
         max: nodeSize.max,
         step: nodeSize.step,
       },
       nodeSalienceScale: {
-        label: salience.uiLabel ?? salience.label,
-        title:
-          "How strongly a node's connectedness (its number of links) drives its size; 0 = every node the same size",
+        label: UI_GRAPH_CONTROL_MESSAGES.nodeSalienceScale.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.nodeSalienceScale.description,
         min: salience.min,
         max: salience.max,
         step: salience.step,
       },
       edgeWidthMax: {
-        label: edgeWidth.uiLabel ?? edgeWidth.label,
-        title: "Thickness of the strongest links",
+        label: UI_GRAPH_CONTROL_MESSAGES.edgeWidthMax.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.edgeWidthMax.description,
         min: edgeWidth.min,
         max: edgeWidth.max,
         step: edgeWidth.step,
       },
       edgeOpacityMax: {
-        label: edgeOpacity.uiLabel ?? edgeOpacity.label,
-        title: "Opacity of the strongest links",
+        label: UI_GRAPH_CONTROL_MESSAGES.edgeOpacityMax.label,
+        title: UI_GRAPH_CONTROL_MESSAGES.edgeOpacityMax.description,
         min: edgeOpacity.min,
         max: edgeOpacity.max,
         step: edgeOpacity.step,
@@ -412,60 +296,37 @@ export function deriveGraphControlsAppearancePresentationView(): GraphControlsAp
   };
 }
 
-export function formatGraphControlsAppearanceValue(
-  key: GraphControlsAppearanceSliderKey,
-  value: number,
-): string {
-  return value.toFixed(decimalsForStep(numericSpec(key).step));
-}
-
-// --- "Show" control (graph-granularity switch) ---------------------------------
-// The one dashboard-state graph switch the panel exposes: whether the graph nodes
-// are FEATURES (each node a cluster of related documents — the high-level map) or
-// DOCUMENTS (each node a single vault file — the full graph). Unlike the
-// layout/appearance knobs this writes DASHBOARD-STATE (a re-query of the graph
-// slice), not the canvas-local field params — so the section reads its active
-// segment back from the served state and writes through the stage-controls intent.
-// Every string here is plain user-facing language (ui-labels-are-user-facing): the
-// wire keeps `feature`/`document`; the screen reads Features / Documents.
-//
-// (The salience-LENS switch was dropped: the lens only re-orders DOI label culling,
-// while node size is driven by connectedness/member-count — never the lens — so
-// status↔design produced no visible change. A non-capability is removed, not shipped
-// as a dead control.)
-
 export interface GraphControlsSegmentOptionView {
   value: string;
-  label: string;
-  title: string;
+  label: MessageDescriptor;
+  title: MessageDescriptor;
 }
 
 export interface GraphControlsViewPresentationView {
-  heading: string;
-  detailAriaLabel: string;
+  heading: MessageDescriptor;
+  detailAriaLabel: MessageDescriptor;
   detailOptions: readonly GraphControlsSegmentOptionView[];
-  /** One-line caption under the toggle explaining what the two views show. */
-  caption: string;
+
+  caption: MessageDescriptor;
 }
 
 export function deriveGraphControlsViewPresentationView(): GraphControlsViewPresentationView {
   return {
-    heading: "Show",
-    detailAriaLabel: "Graph node level",
+    heading: GRAPH_CONTROLS_MESSAGES.sections.show,
+    detailAriaLabel: GRAPH_CONTROLS_MESSAGES.accessibility.nodeLevel,
     detailOptions: [
       {
         value: "feature",
-        label: "Features",
-        title: "Each node is a feature — a cluster of related documents",
+        label: GRAPH_CONTROLS_MESSAGES.options.features,
+        title: GRAPH_CONTROLS_MESSAGES.descriptions.featureLevel,
       },
       {
         value: "document",
-        label: "Documents",
-        title: "Each node is a single vault document",
+        label: GRAPH_CONTROLS_MESSAGES.options.documents,
+        title: GRAPH_CONTROLS_MESSAGES.descriptions.documentLevel,
       },
     ],
-    caption:
-      "Features groups related documents into clusters; Documents shows every file.",
+    caption: GRAPH_CONTROLS_MESSAGES.descriptions.granularity,
   };
 }
 
@@ -473,120 +334,108 @@ export interface GraphControlsSettingsPopoverView {
   active: boolean;
   ariaExpanded: boolean;
   panelVisible: boolean;
-  panelAriaLabel: string;
+  panelAriaLabel: MessageDescriptor;
   panelClassName: string;
 }
 
 export function deriveGraphControlsSettingsPopoverView(
   open: boolean,
-  label: string,
+  label: MessageDescriptor,
 ): GraphControlsSettingsPopoverView {
   return {
     active: open,
     ariaExpanded: open,
     panelVisible: open,
     panelAriaLabel: label,
-    // The panel drops DOWN-LEFT from the top-right trigger (binding graph/Hero
-    // 213:505 `graph-settings-trigger` top-right + `graph/Sim + Display controls`
-    // 714:2630 264px card). Right-aligned to the trigger so the 264px body never
-    // clips off the right edge of the canvas.
     panelClassName:
       "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
   };
 }
 
 export interface GraphControlsFreezeToggleView {
-  label: string;
-  title: string;
+  label: MessageDescriptor;
+  title: MessageDescriptor;
 }
 
 export function deriveGraphControlsFreezeToggleView(
-  frozen: boolean,
+  _frozen: boolean,
   freezeAvailable: boolean,
 ): GraphControlsFreezeToggleView {
   return {
-    label: frozen ? "Resume Layout" : "Freeze Layout",
+    label: GRAPH_CONTROLS_MESSAGES.labels.keepLayoutFixed,
     title: freezeAvailable
-      ? frozen
-        ? "Resume the layout"
-        : "Freeze the layout in place"
-      : "Freezing pauses the live layout — it's off while you're viewing history",
+      ? GRAPH_CONTROLS_MESSAGES.descriptions.keepLayoutFixed
+      : GRAPH_CONTROLS_MESSAGES.descriptions.settingUnavailableInHistory,
   };
 }
 
 export interface GraphControlsSimToggleView {
-  label: string;
-  title: string;
+  label: MessageDescriptor;
+  title: MessageDescriptor;
 }
 
-/** Copy for the top-left play/pause control. The state it renders is the sim's own
- *  truth (the `sim-state` mirror), so "Pause Layout" shows exactly while the layout is
- *  actually ticking and flips back on its own when the cooldown settles. */
 export function deriveGraphControlsSimToggleView(
   running: boolean,
 ): GraphControlsSimToggleView {
   return {
-    label: running ? "Pause Layout" : "Run Layout",
+    label: running
+      ? GRAPH_CONTROLS_MESSAGES.actions.pauseMovement
+      : GRAPH_CONTROLS_MESSAGES.actions.resumeMovement,
     title: running
-      ? "Pause the moving layout in place — it stops right where it is"
-      : "Let the layout move: continues a paused settle, or gives a settled graph a fresh run that stops on its own",
+      ? GRAPH_CONTROLS_MESSAGES.actions.pauseMovement
+      : GRAPH_CONTROLS_MESSAGES.actions.resumeMovement,
   };
 }
 
 export interface GraphControlsReflowToggleView {
-  label: string;
-  title: string;
+  label: MessageDescriptor;
+  title: MessageDescriptor;
 }
 
-/** Plain-language copy for the filter-behaviour toggle row (ui-labels-are-user-facing:
- *  "reflow" is engineering jargon — the label reads "Rearrange when filtering"). The
- *  title explains the OTHER mode it switches to, so the user knows what the toggle
- *  does in either state. */
 export function deriveGraphControlsReflowToggleView(
-  reflow: boolean,
+  _reflow: boolean,
 ): GraphControlsReflowToggleView {
   return {
-    label: "Rearrange when filtering",
-    title: reflow
-      ? "Filtered-out nodes are removed and the graph re-forms around what's left — turn off to dim them in place instead"
-      : "Filtered-out nodes are dimmed in place — turn on to remove them so the graph re-forms around what's left",
+    label: GRAPH_CONTROLS_MESSAGES.actions.rearrangeAfterFiltering,
+    title: GRAPH_CONTROLS_MESSAGES.descriptions.rearrangeAfterFiltering,
   };
 }
 
 export interface GraphControlsNavigationButtonView {
-  label: string;
-  title?: string;
+  label: MessageDescriptor;
+  title?: MessageDescriptor;
 }
 
 export interface GraphControlsNavigationView {
   containerClassName: string;
-  ariaLabel: string;
+  ariaLabel: MessageDescriptor;
   dividerClassName: string;
   zoomIn: GraphControlsNavigationButtonView;
   zoomOut: GraphControlsNavigationButtonView;
   fitToView: GraphControlsNavigationButtonView;
-  /** The 4th nav button is an AUTOFRAME TOGGLE (default on), not a second fit button:
-   *  when on, the view continuously eases to keep the whole graph framed as it changes. */
-  autoframe: { label: string; titleOn: string; titleOff: string };
+
+  autoframe: {
+    label: MessageDescriptor;
+    titleOn: MessageDescriptor;
+    titleOff: MessageDescriptor;
+  };
 }
 
 export function deriveGraphControlsNavigationView(): GraphControlsNavigationView {
   return {
-    // VERTICAL cluster (binding graph/Hero 213:505 NavControls/Vertical 260:839,
-    // bottom-left): zoom in / zoom out · a horizontal rule · fit / recenter.
     containerClassName: "flex flex-col items-center gap-fg-0-5",
-    ariaLabel: "Navigate",
+    ariaLabel: GRAPH_CONTROLS_MESSAGES.accessibility.navigation,
     dividerClassName: "my-fg-0-5 h-px w-6 bg-rule",
-    zoomIn: { label: "Zoom In" },
-    zoomOut: { label: "Zoom Out" },
+    zoomIn: { label: GRAPH_CONTROLS_MESSAGES.actions.zoomIn },
+    zoomOut: { label: GRAPH_CONTROLS_MESSAGES.actions.zoomOut },
     fitToView: {
-      label: "Fit to View",
-      title: "Fit all nodes into the viewport",
+      label: GRAPH_CONTROLS_MESSAGES.actions.fitToView,
+      title: GRAPH_CONTROLS_MESSAGES.actions.fitToView,
     },
     autoframe: {
-      label: "Autoframe",
-      titleOn: "Autoframe is on — the view follows the graph; click to turn off",
-      titleOff: "Autoframe is off — click to keep the whole graph framed automatically",
+      label: GRAPH_CONTROLS_MESSAGES.actions.keepInView,
+      titleOn: GRAPH_CONTROLS_MESSAGES.descriptions.keepInView,
+      titleOff: GRAPH_CONTROLS_MESSAGES.descriptions.keepInView,
     },
   };
 }
@@ -597,22 +446,8 @@ interface GraphControlsChromeState {
   appearanceOpen: boolean;
   frozen: boolean;
   frozenScope: string | null;
-  // Reflow filter mode (canvas-local behaviour toggle, sibling of `frozen`): when on,
-  // filtering REMOVES the filtered-out nodes/edges from the live simulation so the
-  // layout re-forms around the survivors, instead of dimming/hiding them in place. A
-  // pure scene-behaviour flag — never the canonical dashboard filter, and (like
-  // `frozen`) never a persisted graph_controls override (the setting persists only
-  // number/enum controls).
   reflowFilter: boolean;
-  // Autoframe (graph-autoframe): when on (the DEFAULT), the field continuously eases the
-  // camera to keep the whole graph framed as it settles/filters. A canvas-behaviour flag
-  // (sibling of `frozen`/`reflowFilter`), never a persisted graph_controls override.
   autoframeEnabled: boolean;
-  // Live simulation run state (sim play/pause, 2026-07-03): a READ MIRROR of the
-  // field's own `running` truth, written ONLY from the scene's `sim-state` events —
-  // never by the play/pause click itself. The button reflects the graph internals
-  // (auto-flips to "play" when the cooling schedule settles) so the UI can never
-  // drift from the sim. Transient view chrome, never persisted.
   simRunning: boolean;
   tuneParams: GraphControlsTuneParams;
   appearanceParams: GraphControlsAppearanceParams;
@@ -722,22 +557,18 @@ export function useGraphControlsSettingsOpen(): boolean {
   return useGraphControlsChromeStore((state) => state.settingsOpen);
 }
 
-/** Whether autoframe is on (default true) — the 4th nav button's toggle state. */
 export function useGraphControlsAutoframe(): boolean {
   return useGraphControlsChromeStore((state) => state.autoframeEnabled);
 }
 
-/** Live sim run state — the scene `sim-state` event mirror the play/pause button reads. */
 export function useGraphControlsSimRunning(): boolean {
   return useGraphControlsChromeStore((state) => state.simRunning);
 }
 
-/** Write the sim run-state mirror (ONLY from the scene event bridge, never a click). */
 export function setGraphControlsSimRunning(running: unknown): void {
   useGraphControlsChromeStore.getState().setSimRunning(running);
 }
 
-/** Toggle autoframe from outside React (the nav button's click handler). */
 export function toggleGraphControlsAutoframe(): void {
   useGraphControlsChromeStore.getState().toggleAutoframe();
 }

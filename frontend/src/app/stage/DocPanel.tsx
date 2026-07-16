@@ -12,6 +12,7 @@
 // header bar.
 
 import type { IDockviewPanelProps } from "dockview";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import { useDockDocPanelView } from "../../stores/view/tabs";
 import type { ViewerSurface } from "../../stores/view/viewStore";
@@ -31,12 +32,19 @@ export interface DocPanelParams {
 }
 
 export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
+  const resolveMessage = useLocalizedMessageResolver();
   const { nodeId, surface, scope } = props.params;
   const view = useDockDocPanelView(nodeId, surface, scope);
 
   if (view.state === "code") {
     return (
-      <section className="flex h-full flex-col bg-paper" aria-label="code viewer">
+      <section
+        className="flex h-full flex-col bg-paper"
+        aria-label={
+          resolveMessage({ key: "documents:workspace.accessibility.codeViewer" })
+            .message
+        }
+      >
         <div className="min-h-0 flex-1">
           <CodeViewer content={view.content} />
         </div>
@@ -45,13 +53,21 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
   }
 
   return (
-    <section className="flex h-full flex-col bg-paper" aria-label="document viewer">
+    <section
+      className="flex h-full flex-col bg-paper"
+      aria-label={
+        resolveMessage({ key: "documents:workspace.accessibility.documentViewer" })
+          .message
+      }
+    >
       <div className="min-h-0 flex-1">
         <MarkdownDocView
           nodeId={view.nodeId}
           content={view.content}
           scope={view.scope}
-          trail={buildDocTrail(view.header)}
+          trail={buildDocTrail(view.header, {
+            rootLabel: resolveMessage({ key: "documents:labels.vault" }).message,
+          })}
         />
       </div>
     </section>

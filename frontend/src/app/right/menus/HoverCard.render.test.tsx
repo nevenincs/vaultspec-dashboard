@@ -1,115 +1,154 @@
 // @vitest-environment happy-dom
-//
-// Hover-card render test (W03.P08.S50): the binding graph/HoverCard 84:2 as a DUMB
-// projection. The card takes a typed model (the projection a stores selector
-// supplies) and renders identity + the bounded evidence groups — it never fetches,
-// never reads the raw tiers block. The assertions pin the identity header, the
-// grouped evidence lines, the resolution-state tint on a code line, the "+N more"
-// overflow tail, and the identity-tail monospace id.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { HoverCard, type HoverCardModel } from "./HoverCard";
-import { deriveEvidenceGroups } from "../../../stores/view/hoverCardEvidence";
-import type { NodeEvidence } from "../../../stores/server/engine";
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../../localization/testing";
+import { resolveMessageResult } from "../../../platform/localization/fallback";
+import type { EngineNode, NodeEvidence } from "../../../stores/server/engine";
+import {
+  cardModelFromEvidence,
+  type HoverCardModel,
+} from "../../../stores/view/hoverCard";
+import { HoverCard } from "./HoverCard";
 
 afterEach(cleanup);
 
-const tiers = {} as NodeEvidence["tiers"];
+const hostile = {
+  id: "doc:private-id",
+  path: "/private/research.md",
+  symbol: "secretSymbol",
+  sha: "private-sha-abcdef",
+  state: "private_resolution_state",
+  tier: "private_tier",
+  relation: "private_relation",
+  confidence: "0.91",
+};
 
-const model = (over: Partial<HoverCardModel> = {}): HoverCardModel => ({
-  id: "doc:2026-foo-adr",
-  kind: "adr",
-  title: "Foo decision",
-  category: "adr",
-  evidence: deriveEvidenceGroups({
-    documents: [{ path: ".vault/research/2026-foo-research.md", doc_type: "research" }],
+function productionModel(): HoverCardModel {
+  const node: EngineNode = {
+    id: hostile.id,
+    kind: "adr",
+    doc_type: "adr",
+    title: "  Authored title  ",
+  };
+  const evidence: NodeEvidence = {
+    documents: [{ path: hostile.path, doc_type: "private_kind" }],
     code_locations: [
-      { path: "src/lib.rs", symbol: "build", line: 42, state: "resolved" },
-      { path: "src/gone.rs", state: "broken" },
+      { path: "/private/code.ts", symbol: hostile.symbol, state: hostile.state },
     ],
-    commits: [{ sha: "abcdef1234", subject: "land the thing" }],
-    tiers,
-  }),
-  ...over,
-});
+    commits: [
+      {
+        sha: hostile.sha,
+        subject: "  Authored commit subject  ",
+        confidence: 0.91,
+      },
+    ],
+    tiers: { [hostile.tier]: [{ relation: hostile.relation }] } as never,
+  };
+  return cardModelFromEvidence(node, evidence, "  Authored summary  ")!;
+}
 
-describe("HoverCard (binding graph/HoverCard 84:2)", () => {
-  it("renders the identity header (title + monospace id)", () => {
-    render(<HoverCard model={model()} />);
-    expect(screen.getByRole("dialog").getAttribute("aria-label")).toBe(
-      "adr Foo decision",
+function HoverHarness({ model }: { model: HoverCardModel }) {
+  const [opened, setOpened] = useState(false);
+  return (
+    <>
+      <HoverCard model={model} onOpen={(id) => setOpened(id === model.id)} />
+      <output>{opened ? "opened" : "closed"}</output>
+    </>
+  );
+}
+
+function setup() {
+  const runtime = createTestLocalizationRuntime();
+  const model = productionModel();
+  const view = render(
+    <I18nextProvider i18n={runtime}>
+      <HoverHarness model={model} />
+    </I18nextProvider>,
+  );
+  return { runtime, model, ...view };
+}
+
+describe("HoverCard safe localized presentation", () => {
+  it("renders semantic counts and byte-exact authored content without metadata", () => {
+    const { container } = setup();
+    expect(container.querySelector("h3")?.textContent).toBe("  Authored title  ");
+    expect(container.querySelector("[data-hover-summary]")?.textContent).toBe(
+      "  Authored summary  ",
     );
-    expect(screen.getByText("Foo decision")).toBeTruthy();
-    expect(screen.getByText("doc:2026-foo-adr")).toBeTruthy();
-  });
-
-  it("renders the evidence groups with their lines", () => {
-    render(<HoverCard model={model()} />);
-    expect(screen.getByText("documents")).toBeTruthy();
-    expect(screen.getByText("code")).toBeTruthy();
-    expect(screen.getByText("commits")).toBeTruthy();
-    expect(screen.getByText("2026-foo-research.md")).toBeTruthy();
-    expect(screen.getByText("lib.rs#build")).toBeTruthy();
-    expect(screen.getByText("abcdef1")).toBeTruthy();
-  });
-
-  it("tints a code line by its resolution state", () => {
-    render(<HoverCard model={model()} />);
-    expect(screen.getByText("(resolved)").className).toContain("text-state-active");
-    expect(screen.getByText("(broken)").className).toContain("text-state-broken");
-  });
-
-  it("surfaces the '+N more' overflow tail when a group exceeds the cap", () => {
-    const docs = Array.from({ length: 9 }, (_, i) => ({
-      path: `.vault/research/r${i}.md`,
-      doc_type: "research",
-    }));
-    render(
-      <HoverCard
-        model={model({
-          evidence: deriveEvidenceGroups({
-            documents: docs,
-            code_locations: [],
-            commits: [],
-            tiers,
-          }),
-        })}
-      />,
+    expect(container.querySelector("li")?.textContent).toBe(
+      "  Authored commit subject  ",
     );
-    expect(screen.getByText("+5 more")).toBeTruthy();
+    expect(screen.getByText("1 related document")).toBeTruthy();
+    expect(screen.getByText("1 code location")).toBeTruthy();
+    expect(screen.getByText("1 related change")).toBeTruthy();
+
+    for (const forbidden of Object.values(hostile)) {
+      expect(document.body.textContent).not.toContain(forbidden);
+      expect(document.body.innerHTML).not.toContain(forbidden);
+    }
+    expect(document.body.innerHTML).not.toContain("private_kind");
   });
 
-  it("renders identity only when the node carries no evidence (no empty groups)", () => {
-    render(<HoverCard model={model({ evidence: [] })} />);
-    expect(screen.queryByText("documents")).toBeNull();
-    expect(screen.getByText("Foo decision")).toBeTruthy();
+  it("updates the same accessible and count nodes for French and Arabic", async () => {
+    const { runtime, model, container } = setup();
+    const dialog = screen.getByRole("dialog");
+    const type = container.querySelector("[data-hover-doc-type]")!;
+    const documents = container.querySelector("[data-hover-document-count]")!;
+    const code = container.querySelector("[data-hover-code-count]")!;
+    const commits = container.querySelector("[data-hover-commit-count]")!;
+    const open = container.querySelector<HTMLButtonElement>("[data-hover-open]")!;
+
+    for (const locale of [ltrTestLocale, rtlTestLocale]) {
+      await act(() => runtime.changeLanguage(locale));
+      expect(dialog.getAttribute("aria-label")).toBe(
+        resolveMessageResult(runtime, {
+          key: "graph:hover.accessibility.detailsFor",
+          values: { title: model.title },
+        }).message,
+      );
+      expect(open.getAttribute("aria-label")).toBe(
+        resolveMessageResult(runtime, {
+          key: "graph:hover.accessibility.open",
+          values: { title: model.title },
+        }).message,
+      );
+      expect(type.textContent).toBe(
+        resolveMessageResult(runtime, model.typeLabel).message,
+      );
+      expect(documents.textContent).toBe(
+        resolveMessageResult(runtime, {
+          key: "graph:hover.evidence.documents",
+          values: { count: 1 },
+        }).message,
+      );
+      expect(code.textContent).toBe(
+        resolveMessageResult(runtime, {
+          key: "graph:hover.evidence.codeLocations",
+          values: { count: 1 },
+        }).message,
+      );
+      expect(commits.textContent).toBe(
+        resolveMessageResult(runtime, {
+          key: "graph:hover.evidence.commits",
+          values: { count: 1 },
+        }).message,
+      );
+    }
   });
 
-  it("renders a plain-language doc-type eyebrow from the canonical vocabulary", () => {
-    const { container } = render(<HoverCard model={model({ docType: "plan" })} />);
-    const eyebrow = container.querySelector("[data-hover-doc-type]");
-    expect(eyebrow?.textContent).toBe("Plans");
-  });
-
-  it("omits the doc-type eyebrow for a node with no doc type (a feature node)", () => {
-    const { container } = render(
-      <HoverCard model={model({ kind: "feature", docType: undefined })} />,
-    );
-    expect(container.querySelector("[data-hover-doc-type]")).toBeNull();
-  });
-
-  it("renders the headline summary when present and omits it when absent", () => {
-    const { container: withSummary } = render(
-      <HoverCard model={model({ summary: "The first prose line of the doc." })} />,
-    );
-    expect(withSummary.querySelector("[data-hover-summary]")?.textContent).toBe(
-      "The first prose line of the doc.",
-    );
-
-    cleanup();
-    const { container: without } = render(<HoverCard model={model()} />);
-    expect(without.querySelector("[data-hover-summary]")).toBeNull();
+  it("opens through the real stateful callback without exposing the identifier", () => {
+    const { container } = setup();
+    expect(screen.getByText("closed")).toBeTruthy();
+    fireEvent.click(container.querySelector<HTMLButtonElement>("[data-hover-open]")!);
+    expect(screen.getByText("opened")).toBeTruthy();
+    expect(document.body.innerHTML).not.toContain(hostile.id);
   });
 });

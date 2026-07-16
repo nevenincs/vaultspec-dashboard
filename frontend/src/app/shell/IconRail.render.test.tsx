@@ -26,7 +26,7 @@ describe("IconRail", () => {
       </I18nextProvider>,
     );
 
-    const nav = screen.getByRole("navigation", { name: "Collapsed scope rail" });
+    const nav = screen.getByRole("navigation", { name: "Collapsed navigation" });
     const documents = screen.getByRole("button", { name: "Documents" });
     const files = screen.getByRole("button", { name: "Files" });
     const expectNoRawModeCopy = () => {
@@ -42,7 +42,11 @@ describe("IconRail", () => {
     expect(selected).toEqual(["code"]);
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
-    expect(screen.getByRole("navigation", { name: "Collapsed scope rail" })).toBe(nav);
+    expect(
+      screen.getByRole("navigation", {
+        name: ltrTestResources.common.shell.accessibility.collapsedNavigation,
+      }),
+    ).toBe(nav);
     expect(
       screen.getByRole("button", {
         name: ltrTestResources.documents.browserModes.documents,
@@ -56,6 +60,11 @@ describe("IconRail", () => {
     expectNoRawModeCopy();
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
+    expect(
+      screen.getByRole("navigation", {
+        name: rtlTestResources.common.shell.accessibility.collapsedNavigation,
+      }),
+    ).toBe(nav);
     expect(
       screen.getByRole("button", {
         name: rtlTestResources.documents.browserModes.documents,

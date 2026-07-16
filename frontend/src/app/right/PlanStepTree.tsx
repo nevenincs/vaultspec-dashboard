@@ -7,6 +7,9 @@
 import { type ChangeEvent, useEffect, useState } from "react";
 
 import { CircleSlash } from "lucide-react";
+import { logger } from "../../platform/logger/logger";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 
 import {
   useActiveScope,
@@ -19,7 +22,7 @@ import {
   type PlanInteriorView,
 } from "../../stores/server/queries";
 import { useDashboardNodeSelection } from "../../stores/view/selection";
-import { Skeleton, SkeletonRow, StepCheckMark } from "../kit";
+import { DecorativeGlyph, Skeleton, SkeletonRow, StepCheckMark } from "../kit";
 import {
   useFocusZone,
   type FocusZoneItemOptions,
@@ -42,11 +45,17 @@ interface TickProps {
 }
 
 const SMALL_PX = 13;
+const planStepLogger = logger.child("plan-step-tree");
+const ACTION_UNAVAILABLE = Object.freeze({
+  key: "common:feedback.actionUnavailable",
+}) satisfies MessageDescriptor;
 
 function RollupFraction({ rollup }: { rollup: InteriorRollup }) {
   return (
     <span className="shrink-0 text-caption text-ink-muted" data-tabular data-rollup>
-      {rollup.done}/{rollup.total}
+      {rollup.done}
+      <DecorativeGlyph name="slash" />
+      {rollup.total}
     </span>
   );
 }
@@ -65,9 +74,15 @@ function StepRow({
   isTimeTravel,
 }: StepRowProps) {
   const selectDashboardNode = useDashboardNodeSelection(useActiveScope());
+  const resolveMessage = useLocalizedMessageResolver();
+  const historyUnavailable = resolveMessage({
+    key: "common:disabledReasons.viewingHistory",
+  }).message;
+  const headingLabel = resolveMessage(step.headingLabel).message;
+  const rowAriaLabel = resolveMessage(step.rowAriaLabel).message;
   const tick = usePlanStepTick();
   const [pendingDone, setPendingDone] = useState<boolean | null>(null);
-  const [tickMessage, setTickMessage] = useState<string | null>(null);
+  const [tickMessage, setTickMessage] = useState<MessageDescriptor | null>(null);
 
   // All steps join the roving zone; the checkbox input holds the one tab stop.
   // ArrowRight (cross-axis) opens the step's exec record via the same action as
@@ -111,23 +126,22 @@ function StepRow({
         onSuccess: ({ result }) => {
           if (result.kind === "conflict") {
             setPendingDone(null);
-            setTickMessage(
-              "step state conflict — the plan changed; try again after the view refreshes",
-            );
+            setTickMessage(ACTION_UNAVAILABLE);
           } else if (result.kind === "refused") {
             setPendingDone(null);
-            setTickMessage(
-              result.reason.length > 0
-                ? result.reason
-                : "could not update the step — try again",
-            );
+            planStepLogger.warn("step update refused", {
+              planNodeId,
+              stepId: step.id,
+              reason: result.reason,
+            });
+            setTickMessage(ACTION_UNAVAILABLE);
           }
           // "ticked" — pendingDone stays; the reconcile useEffect clears it once
           // the served step.done catches up after the plan-interior query refetches.
         },
         onError: () => {
           setPendingDone(null);
-          setTickMessage("could not update the step — try again");
+          setTickMessage(ACTION_UNAVAILABLE);
         },
       },
     );
@@ -151,7 +165,7 @@ function StepRow({
             is the focus-zone tab stop (one stop per composite — Class-B widget-intrinsic
             key; stopPropagation keeps it from reaching the global dispatcher). */}
         <label
-          title={isTimeTravel ? "not available while viewing history" : undefined}
+          title={isTimeTravel ? historyUnavailable : undefined}
           onClick={(e) => e.stopPropagation()}
           className={`relative flex shrink-0 items-center ${canTick ? "cursor-pointer" : "cursor-default"}`}
         >
@@ -176,17 +190,11 @@ function StepRow({
               item.onKeyDown(e);
             }}
             onFocus={() => nav.setActive(step.node_id)}
-            aria-label={`toggle step ${step.id}: ${step.headingLabel}`}
+            aria-label={headingLabel}
             className="sr-only"
           />
           <StepCheckMark done={effectiveDone} />
         </label>
-        <span
-          className="shrink-0 select-text font-mono text-caption text-ink-muted"
-          data-tabular
-        >
-          {step.id}
-        </span>
         {/* The preview button drops out of the tab ring; the checkbox holds the one
             tab stop (every-composite-navigates-through-the-one-focuszone). */}
         <button
@@ -199,14 +207,14 @@ function StepRow({
               void selectDashboardNode(step.targetNodeId).catch(() => undefined);
             }
           }}
-          aria-label={step.rowAriaLabel}
+          aria-label={rowAriaLabel}
           className={`min-w-0 flex-1 select-text truncate text-left text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
             step.selectable
               ? "transition-colors duration-ui-fast ease-settle hover:text-ink"
               : "cursor-default opacity-80"
           }`}
         >
-          {step.headingLabel}
+          {headingLabel}
         </button>
       </div>
       {tickMessage !== null && (
@@ -215,7 +223,7 @@ function StepRow({
           role="alert"
           data-tick-message
         >
-          {tickMessage}
+          {resolveMessage(tickMessage).message}
         </p>
       )}
     </li>
@@ -234,7 +242,6 @@ function PhaseGroup({
   return (
     <li className="space-y-fg-0-5">
       <p className="flex items-center gap-fg-1-5 px-fg-1 text-caption text-ink-muted">
-        <span className="font-mono">{phase.id}</span>
         {phase.heading && <span className="min-w-0 truncate">{phase.heading}</span>}
         <RollupFraction rollup={phase.rollup} />
       </p>
@@ -259,7 +266,6 @@ function WaveGroup({
   return (
     <li className="space-y-fg-0-5">
       <p className="flex items-center gap-fg-1-5 px-fg-1 text-caption font-medium text-ink-muted">
-        <span className="font-mono">{wave.id}</span>
         {wave.heading && <span className="min-w-0 truncate">{wave.heading}</span>}
         <RollupFraction rollup={wave.rollup} />
       </p>

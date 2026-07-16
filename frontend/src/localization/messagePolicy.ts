@@ -1,7 +1,13 @@
 import { MESSAGE_KEYS, type MessageKey } from "../platform/localization/message";
 import { DOCUMENT_VIEWER_MESSAGE_POLICY } from "./messagePolicy.documentViewer";
+import { FILTER_MESSAGE_POLICY } from "./messagePolicy.filters";
+import { NODE_INTERIOR_MESSAGE_POLICY } from "./messagePolicy.nodeInterior";
+import { HOVER_MESSAGE_POLICY } from "./messagePolicy.hover";
 import { GRAPH_CONTROLS_MESSAGE_POLICY } from "./messagePolicy.graphControls";
 import { LANGUAGE_DISPLAY_MESSAGE_POLICY } from "./messagePolicy.languageDisplay";
+import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMaintenance";
+import { THREE_LAB_MESSAGE_POLICY } from "./messagePolicy.threeLab";
+import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
 
 export type MessageRole =
   | "action"
@@ -37,6 +43,11 @@ export interface MessagePolicyEntry {
 }
 
 export const ENGLISH_MESSAGE_POLICY = {
+  ...SHELL_MESSAGE_POLICY,
+  ...FILTER_MESSAGE_POLICY,
+  ...NODE_INTERIOR_MESSAGE_POLICY,
+  ...HOVER_MESSAGE_POLICY,
+  ...SEARCH_MAINTENANCE_MESSAGE_POLICY,
   "common:accessibility.actionsForItem": { role: "accessibility" },
   "common:accessibility.actionsMenu": { role: "accessibility" },
   "common:accessibility.back": { role: "accessibility" },
@@ -286,6 +297,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:editor.actions.quote": { role: "action" },
   ...DOCUMENT_VIEWER_MESSAGE_POLICY,
   ...GRAPH_CONTROLS_MESSAGE_POLICY,
+  ...THREE_LAB_MESSAGE_POLICY,
   ...LANGUAGE_DISPLAY_MESSAGE_POLICY,
   "documents:actions.addComment": { role: "action" },
   "documents:actions.addToFeature": { role: "action" },
@@ -991,6 +1003,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Focus",
   "Hide",
   "Link",
+  "Load",
   "Keep",
   "Move",
   "Open",
@@ -1010,6 +1023,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Resolve",
   "Resume",
   "Retry",
+  "Restart",
   "Save",
   "Search",
   "Select",

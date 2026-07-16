@@ -36,7 +36,10 @@ export function IconRail({ active, onSelect }: IconRailProps) {
 
   return (
     <nav
-      aria-label="Collapsed scope rail"
+      aria-label={
+        resolveMessage({ key: "common:shell.accessibility.collapsedNavigation" })
+          .message
+      }
       className="flex w-12 shrink-0 flex-col items-center border-r border-rule bg-paper py-fg-3"
     >
       <div className="flex flex-col items-center gap-fg-3">

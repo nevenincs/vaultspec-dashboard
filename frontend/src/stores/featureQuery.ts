@@ -16,6 +16,10 @@
 // the user typed is echoed by the field; the parsed `{value, mode}` is what we write.
 
 import { normalizeSearchQuery } from "./searchQuery";
+import {
+  authoredDisplayText,
+  compareAuthoredDisplayText,
+} from "../platform/localization/displayText";
 
 export type FeatureQueryMode = "glob" | "regex";
 
@@ -141,6 +145,7 @@ export const FEATURE_TAG_SUGGESTION_LIMIT = 8;
 export function featureTagSuggestions(
   rawInput: unknown,
   featureTags: readonly string[],
+  locale: string,
   limit: number = FEATURE_TAG_SUGGESTION_LIMIT,
 ): FeatureTagSuggestion[] {
   const seen = new Set<string>();
@@ -170,7 +175,15 @@ export function featureTagSuggestions(
       return { tag, display, rank };
     })
     .filter((row) => row.rank >= 0)
-    .sort((a, b) => a.rank - b.rank || a.display.localeCompare(b.display));
+    .sort(
+      (a, b) =>
+        a.rank - b.rank ||
+        compareAuthoredDisplayText(
+          locale,
+          authoredDisplayText(a.display),
+          authoredDisplayText(b.display),
+        ),
+    );
 
   return ranked
     .slice(0, Math.max(0, limit))

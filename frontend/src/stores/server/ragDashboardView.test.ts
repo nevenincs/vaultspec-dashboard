@@ -59,8 +59,7 @@ describe("ragJobPhaseGroup", () => {
     expect(ragJobPhaseGroup("error")).toBe("failed");
     expect(ragJobPhaseGroup("failed")).toBe("failed");
     expect(ragJobPhaseGroup("cancelled")).toBe("failed");
-    // An unknown/in-flight phase defaults to running (a live, non-terminal job).
-    expect(ragJobPhaseGroup(undefined)).toBe("running");
+    expect(ragJobPhaseGroup(undefined)).toBe("unavailable");
   });
 });
 
@@ -69,10 +68,7 @@ describe("deriveRagJobsTable", () => {
     const table = deriveRagJobsTable(SNAPSHOT, view());
     const run = table.rows.find((r) => r.id === "job-run");
     expect(run).toMatchObject({
-      phase: "running",
       group: "running",
-      step: "embedding",
-      kind: "watcher",
       durationSeconds: 5,
     });
     expect(run?.fraction).toBeCloseTo(0.25);
@@ -98,19 +94,12 @@ describe("deriveRagJobsTable", () => {
     ]);
   });
 
-  it("text-filters over id, step, and kind case-insensitively", () => {
-    // "embedding" matches only the running job's step.
+  it("text-filters over stable identity without projecting raw metadata", () => {
     expect(
-      deriveRagJobsTable(SNAPSHOT, view({ filterText: "EMBED" })).rows.map((r) => r.id),
-    ).toEqual(["job-run"]);
-    // "watcher" is the kind of two jobs.
-    expect(
-      new Set(
-        deriveRagJobsTable(SNAPSHOT, view({ filterText: "watcher" })).rows.map(
-          (r) => r.id,
-        ),
+      deriveRagJobsTable(SNAPSHOT, view({ filterText: "JOB-RUN" })).rows.map(
+        (r) => r.id,
       ),
-    ).toEqual(new Set(["job-run", "job-fail"]));
+    ).toEqual(["job-run"]);
   });
 
   it("phase-facets to the active groups, empty facet set showing all", () => {
@@ -128,12 +117,13 @@ describe("deriveRagJobsTable", () => {
   });
 
   it("counts groups over the text-filtered set so the chips reflect the search", () => {
-    const table = deriveRagJobsTable(SNAPSHOT, view({ filterText: "watcher" }));
+    const table = deriveRagJobsTable(SNAPSHOT, view({ filterText: "job-" }));
     expect(table.groupCounts).toEqual({
       running: 1,
-      queued: 0,
-      done: 0,
+      queued: 1,
+      done: 1,
       failed: 1,
+      unavailable: 0,
     });
   });
 

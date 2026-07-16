@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
+import { useLocalizedMessageResolver } from "../platform/localization/LocalizationProvider";
 
-import { CrashInjector, CrashZone } from "../platform/errors/CrashInjector";
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
 import { useActiveScope } from "../stores/server/queries";
 import { useBackendSignalSubscription } from "../stores/view/backendSignals";
@@ -36,7 +36,6 @@ import { useReloadKeybindings } from "../stores/view/reloadKeybindings";
 import { setSceneCommandRunner } from "../stores/view/sceneCommandBridge";
 import { KeyboardNav } from "./a11y/KeyboardNav";
 import { useRegionCycleKeybindings } from "./chrome/regionCycleKeybindings";
-import { DegradationDebugSwitch } from "./degradation/DebugSwitch";
 import { ContextMenuHost } from "./menu/ContextMenuHost";
 import { UnsavedEditGuardHost } from "./chrome/UnsavedEditGuardHost";
 import { KeyboardShortcuts } from "./menu/KeyboardShortcuts";
@@ -79,6 +78,7 @@ import { DockWorkspace } from "./stage/DockWorkspace";
 // adds no new fetch, mints no model, and reads no raw `tiers`.
 
 export function AppShell() {
+  const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   const onboarding = useFirstRunOnboardingState();
   const shellFrame = useShellFrameView(scope);
@@ -227,7 +227,7 @@ export function AppShell() {
           stageRef.current?.focus();
         }}
       >
-        Skip to content
+        {resolveMessage({ key: "common:accessibility.skipToContent" }).message}
       </a>
       {/* The universal loading floor (universal-data-loading ADR D2). */}
       <DataActivityIndicator />
@@ -240,7 +240,6 @@ export function AppShell() {
       <UnsavedEditGuardHost />
       <ContextMenuHost timeTravel={timeTravel} />
       <KeyboardShortcuts />
-      <DegradationDebugSwitch />
       <KeyboardNav />
 
       {/* ── Left rail — expanded content, collapsed mode icons, or hidden ──── */}
@@ -250,7 +249,6 @@ export function AppShell() {
         )}
         {shellFrame.showExpandedLeftRail && (
           <ErrorBoundary region="left-rail">
-            <CrashZone region="left-rail" />
             <div
               className={shellFrame.leftRailContentClassName}
               data-keymap-context={LEFT_RAIL_KEYMAP_CONTEXT}
@@ -281,7 +279,6 @@ export function AppShell() {
             full width; with neither, the dock workspace shows its ghost empty state. */}
         <div className={shellFrame.stageBodyClassName}>
           <ErrorBoundary region="stage">
-            <CrashZone region="stage" />
             <DockWorkspace />
           </ErrorBoundary>
         </div>
@@ -291,7 +288,6 @@ export function AppShell() {
       <aside className={shellFrame.rightRailClassName}>
         {shellFrame.showRightRail && (
           <ErrorBoundary region="right-rail">
-            <CrashZone region="right-rail" />
             <ShellResizeHandle side="left" axis="right" current={rightRailWidth} />
             <ActivityRail shellFrame={shellFrame} />
           </ErrorBoundary>
@@ -302,8 +298,6 @@ export function AppShell() {
           here: they live in the dock's top-right action cluster (DockWorkspace's
           rightHeaderActionsComponent), which rides the top-right-most open panel and
           is re-derived on every layout change. */}
-
-      <CrashInjector />
     </div>
   );
 }
@@ -320,6 +314,7 @@ function ActivityRail({
 }: {
   shellFrame: Pick<ShellFrameView, "activityRailClassName" | "activityPanelClassName">;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   return (
     <div
       className={shellFrame.activityRailClassName}
@@ -329,7 +324,7 @@ function ActivityRail({
       <div
         className={shellFrame.activityPanelClassName}
         role="region"
-        aria-label="activity"
+        aria-label={resolveMessage({ key: "common:shell.regions.activity" }).message}
         tabIndex={0}
         onContextMenu={backgroundContextMenuHandler("right-rail", openContextMenu)}
       >

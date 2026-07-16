@@ -1,22 +1,15 @@
-// The rag job-dashboard JOBS region (rag-job-dashboard ADR D3; binding Figma
-// RagJobDashboard jobs region 1102:4354). A sortable, filterable table over the
-// ONE served, bounded jobs list: a filter query, phase facet toggles with counts,
-// a sort control, and a column header whose active column carries the sort mark.
-// Selecting a row JOINS the log pane (writes the shared view-store selection).
-//
-// Glass over the stores plane (dashboard-layer-ownership): the zero-prop region
-// reads the jobs hook + the pure `deriveRagJobsTable` projection + the view-local
-// presentation store, derives in useMemo (raw selectors), and never fetches the
-// engine itself or reads the raw tiers block — offline truth is the tiers-gated
-// `ragSemanticOffline` read the hook already interprets. All narrowing is
-// PRESENTATION over one served list (filter-vs-presentation): it never writes the
-// corpus filter, and a served list capped below the machine total renders its
-// bound rather than fabricating completeness.
-
 import { useMemo } from "react";
 import { ChevronDown } from "lucide-react";
 
-import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
+import {
+  formatDuration,
+  formatNumber,
+  formatRelativeTime,
+} from "../../platform/localization/formatters";
 import {
   ProgressBar,
   SearchField,
@@ -53,63 +46,67 @@ import {
   useRagDashboardSelectedJob,
   useRagDashboardSort,
 } from "../../stores/view/ragDashboard";
-import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 
-// Phase group → semantic status dot tone (health family), shared with the facet
-// toggles so a row's phase dot and its facet chip agree (never hue-only).
+const M = {
+  filterStatus: { key: "operations:searchMaintenance.accessibility.filterByStatus" },
+  filterUpdates: { key: "operations:searchMaintenance.accessibility.filterUpdates" },
+  progress: { key: "operations:searchMaintenance.accessibility.progress" },
+  sortUpdates: { key: "operations:searchMaintenance.accessibility.sortUpdates" },
+  title: { key: "operations:searchMaintenance.jobs.title" },
+  update: { key: "operations:searchMaintenance.jobs.update" },
+  empty: { key: "operations:searchMaintenance.jobs.empty" },
+  noMatches: { key: "operations:searchMaintenance.jobs.noMatches" },
+  placeholder: { key: "operations:searchMaintenance.filters.placeholder" },
+  newest: { key: "operations:searchMaintenance.labels.newest" },
+  longest: { key: "operations:searchMaintenance.labels.longest" },
+  updateColumn: { key: "operations:searchMaintenance.labels.update" },
+  status: { key: "operations:searchMaintenance.labels.status" },
+  progressColumn: { key: "operations:searchMaintenance.labels.progress" },
+  started: { key: "operations:searchMaintenance.labels.started" },
+  duration: { key: "operations:searchMaintenance.labels.duration" },
+  working: { key: "operations:searchMaintenance.progress.working" },
+  unavailable: { key: "operations:searchMaintenance.service.unavailable" },
+  loading: { key: "operations:searchMaintenance.states.checking" },
+} as const;
+
 const GROUP_DOT: Record<RagJobPhaseGroup, FacetDotTone> = {
   running: "active",
   queued: "provisional",
   done: "complete",
   failed: "danger",
+  unavailable: "stale",
 };
 
-// Plain-language phase word (labels-are-user-facing): the served token stays in a
-// title tooltip, only the reworded group word renders.
-const GROUP_LABEL: Record<RagJobPhaseGroup, string> = {
-  running: "Running",
-  queued: "Queued",
-  done: "Done",
-  failed: "Failed",
-};
+const GROUP_MESSAGE = {
+  running: { key: "operations:searchMaintenance.states.running" },
+  queued: { key: "operations:searchMaintenance.states.queued" },
+  done: { key: "operations:searchMaintenance.states.completed" },
+  failed: { key: "operations:searchMaintenance.states.failed" },
+  unavailable: { key: "operations:searchMaintenance.states.statusUnavailable" },
+} as const;
 
-// The five-column grid, shared by the header and every row so the columns align:
-// Job (flex) · Phase · Progress (flex) · Started · Duration.
 const GRID =
-  "grid grid-cols-[minmax(6rem,2fr)_5.5rem_minmax(6rem,2fr)_5rem_4.5rem] items-center gap-fg-2";
+  "grid grid-cols-[minmax(6rem,2fr)_6rem_minmax(6rem,2fr)_7rem_6rem] items-center gap-fg-2";
 
-/** Treat a sub-1e12 stamp as epoch seconds, otherwise milliseconds. */
-function toMillis(stamp: number): number {
-  return stamp < 1e12 ? stamp * 1000 : stamp;
+function relativeStart(locale: string, startedAt: number | undefined): string | null {
+  if (startedAt === undefined) return null;
+  const milliseconds = startedAt < 1e12 ? startedAt * 1000 : startedAt;
+  const seconds = Math.round((milliseconds - Date.now()) / 1000);
+  if (Math.abs(seconds) < 60)
+    return formatRelativeTime(locale, seconds, "second", { numeric: "auto" });
+  if (Math.abs(seconds) < 3600)
+    return formatRelativeTime(locale, Math.round(seconds / 60), "minute", {
+      numeric: "auto",
+    });
+  if (Math.abs(seconds) < 86400)
+    return formatRelativeTime(locale, Math.round(seconds / 3600), "hour", {
+      numeric: "auto",
+    });
+  return formatRelativeTime(locale, Math.round(seconds / 86400), "day", {
+    numeric: "auto",
+  });
 }
 
-/** Compact "5m ago" relative start label; an absent stamp reads as an em space. */
-function formatStarted(startedAt: number | undefined): string {
-  if (startedAt === undefined) return "—";
-  const deltaS = Math.max(0, (Date.now() - toMillis(startedAt)) / 1000);
-  if (deltaS < 60) return "just now";
-  if (deltaS < 3600) return `${Math.floor(deltaS / 60)}m ago`;
-  if (deltaS < 86400) return `${Math.floor(deltaS / 3600)}h ago`;
-  return `${Math.floor(deltaS / 86400)}d ago`;
-}
-
-/** Compact runtime label: 45s / 2m 30s / 1h 5m. */
-function formatDuration(seconds: number | undefined): string {
-  if (seconds === undefined) return "—";
-  const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) {
-    const rem = s % 60;
-    return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
-  }
-  const h = Math.floor(m / 60);
-  const remM = m % 60;
-  return remM > 0 ? `${h}h ${remM}m` : `${h}h`;
-}
-
-/** One header column cell; the two sort-bearing columns are buttons that write the
- *  view store and carry the sort mark when active. */
 function HeaderCell({
   label,
   sortKey,
@@ -122,101 +119,88 @@ function HeaderCell({
   align?: "start" | "end";
 }) {
   const alignClass = align === "end" ? "justify-end text-right" : "justify-start";
-  if (sortKey === undefined) {
+  if (sortKey === undefined)
     return (
       <span
-        className={`flex items-center text-caption font-medium tracking-[0.025rem] text-ink-faint ${alignClass}`}
+        className={`flex items-center text-caption font-medium text-ink-faint ${alignClass}`}
       >
         {label}
       </span>
     );
-  }
   const active = activeSort === sortKey;
   return (
     <button
       type="button"
       onClick={() => setRagDashboardSort(sortKey)}
       aria-pressed={active}
-      className={`flex items-center gap-fg-1 text-caption font-medium tracking-[0.025rem] transition-colors duration-ui-fast hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${alignClass} ${
-        active ? "text-ink-muted" : "text-ink-faint"
-      }`}
+      className={`flex items-center gap-fg-1 text-caption font-medium text-ink-faint ${alignClass}`}
     >
       <span>{label}</span>
-      {active && <ChevronDown size={12} aria-hidden className="shrink-0" />}
+      {active && <ChevronDown size={12} aria-hidden />}
     </button>
   );
 }
 
-/** A single job row: a selectable button laying its cells on the shared grid. */
 function JobRow({ row, selected }: { row: RagJobRow; selected: boolean }) {
-  const running = row.group === "running";
-  const failed = row.group === "failed";
+  const resolve = useLocalizedMessageResolver();
+  const locale = useActiveLocale();
+  const status = resolve(GROUP_MESSAGE[row.group]).message;
+  const update = resolve(M.update).message;
+  const progress = resolve(M.progress).message;
+  const started = relativeStart(locale, row.startedAt);
+  const duration =
+    row.durationSeconds === undefined
+      ? null
+      : formatDuration(locale, Math.max(0, row.durationSeconds) * 1000, {
+          maxUnits: 2,
+          style: "short",
+        });
   return (
     <button
       type="button"
+      aria-label={
+        resolve({
+          key: "operations:searchMaintenance.accessibility.updateStatus",
+          values: { status },
+        }).message
+      }
       aria-pressed={selected}
       onClick={() => selectRagDashboardJob(selected ? "" : row.id)}
       data-selected={selected ? "" : undefined}
-      className={`${GRID} w-full rounded-fg-sm px-fg-2 py-fg-1-5 text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+      className={`${GRID} w-full rounded-fg-sm px-fg-2 py-fg-1-5 text-left ${
         selected ? "bg-accent-subtle" : "hover:bg-paper-sunken"
       }`}
     >
-      {/* Job identity: id + optional trigger/source sub-label. */}
-      <span className="flex min-w-0 flex-col">
-        <span className="truncate text-meta text-ink" title={row.id}>
-          {row.id}
-        </span>
-        {row.kind !== undefined && (
-          <span className="truncate text-caption text-ink-faint">{row.kind}</span>
-        )}
-      </span>
-      {/* Phase: dot + plain word (raw phase in the tooltip). */}
-      <span
-        className="flex min-w-0 items-center gap-fg-1"
-        title={row.phase || undefined}
-      >
+      <span className="truncate text-meta text-ink">{update}</span>
+      <span className="flex min-w-0 items-center gap-fg-1">
         <span
           aria-hidden
           className="size-2 shrink-0 rounded-full"
           style={{ backgroundColor: facetDotColor(GROUP_DOT[row.group]) }}
         />
-        <span className="truncate text-meta text-ink-muted">
-          {GROUP_LABEL[row.group]}
-        </span>
+        <span className="truncate text-meta text-ink-muted">{status}</span>
       </span>
-      {/* Progress: a running bar + step; a failed note; otherwise the step, if any. */}
-      <span className="flex min-w-0 flex-col gap-fg-0-5">
-        {running && row.fraction !== undefined ? (
+      <span className="min-w-0">
+        {row.group === "running" && row.fraction !== undefined ? (
           <ProgressBar
             value={Math.round(row.fraction * 100)}
             max={100}
-            label={`${row.id} progress`}
+            label={progress}
           />
-        ) : null}
-        {row.step !== undefined && (
-          <span
-            className={`truncate text-caption ${failed ? "text-state-broken" : "text-ink-faint"}`}
-          >
-            {row.step}
+        ) : row.group === "running" ? (
+          <span className="truncate text-caption text-ink-faint">
+            {resolve(M.working).message}
           </span>
-        )}
-        {running && row.fraction === undefined && row.step === undefined && (
-          <span className="truncate text-caption text-ink-faint">Working…</span>
-        )}
+        ) : null}
       </span>
-      {/* Started (relative) and Duration, both tabular. */}
-      <span className="truncate text-meta tabular-nums text-ink-faint">
-        {formatStarted(row.startedAt)}
-      </span>
+      <span className="truncate text-meta tabular-nums text-ink-faint">{started}</span>
       <span className="truncate text-right text-meta tabular-nums text-ink-faint">
-        {formatDuration(row.durationSeconds)}
+        {duration}
       </span>
     </button>
   );
 }
 
-/** The presentational jobs table body — pure over the derived view + selection.
- *  Exported for the render test (the zero-prop wrapper wires the stores). */
 export function RagJobsTableBody({
   table,
   selectedJobId,
@@ -228,142 +212,111 @@ export function RagJobsTableBody({
   offline: boolean;
   pending: boolean;
 }) {
-  const resolveMessage = useLocalizedMessageResolver();
-  const unavailableTitle = resolveMessage(
-    CONTROL_PANEL_VOCABULARY["search-service"].unavailableTitle,
-  );
+  const resolve = useLocalizedMessageResolver();
+  const locale = useActiveLocale();
   const facetSet = useMemo(() => new Set(table.facets), [table.facets]);
   const filtering = table.filterText.trim().length > 0 || table.facets.length > 0;
-
+  const count = formatNumber(locale, table.servedCount) ?? "";
   return (
     <div data-rag-jobs-region className="flex min-h-0 flex-col gap-fg-2">
-      <SectionLabel count={table.servedCount}>Jobs</SectionLabel>
-
-      {/* Controls: filter query · phase facet toggles · sort. */}
+      <SectionLabel count={count}>{resolve(M.title).message}</SectionLabel>
       <div className="flex flex-wrap items-center gap-fg-2">
         <div className="min-w-[10rem] flex-1">
           <SearchField
             value={table.filterText}
-            onChange={(value) => setRagDashboardJobsFilter(value)}
+            onChange={setRagDashboardJobsFilter}
             onClear={() => setRagDashboardJobsFilter("")}
-            placeholder="Filter jobs…"
-            ariaLabel="Filter jobs"
+            placeholder={resolve(M.placeholder).message}
+            ariaLabel={resolve(M.filterUpdates).message}
           />
         </div>
         <SegmentedToggle
           value={table.sort}
-          onChange={(value) => setRagDashboardSort(value)}
-          ariaLabel="Sort jobs"
+          onChange={setRagDashboardSort}
+          ariaLabel={resolve(M.sortUpdates).message}
         >
-          <Segment value="recency" title="Newest first">
-            Newest
-          </Segment>
-          <Segment value="duration" title="Longest running first">
-            Longest
-          </Segment>
+          <Segment value="recency">{resolve(M.newest).message}</Segment>
+          <Segment value="duration">{resolve(M.longest).message}</Segment>
         </SegmentedToggle>
       </div>
       <div
         role="group"
-        aria-label="Filter by phase"
-        className="flex flex-wrap items-center gap-fg-1"
+        aria-label={resolve(M.filterStatus).message}
+        className="flex flex-wrap gap-fg-1"
       >
-        {RAG_JOB_PHASE_GROUPS.map((group) => {
-          const checked = facetSet.has(group);
-          return (
-            <button
-              key={group}
-              type="button"
-              role="checkbox"
-              aria-checked={checked}
-              onClick={() => toggleRagDashboardFacet(group)}
-              className={`inline-flex shrink-0 items-center gap-fg-1 rounded-fg-pill border px-fg-2 py-fg-0-5 text-meta font-medium transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                checked
-                  ? "border-accent bg-accent-subtle text-accent-text"
-                  : "border-rule bg-paper-sunken text-ink-muted hover:border-rule-strong"
-              }`}
-            >
-              <span
-                aria-hidden
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: facetDotColor(GROUP_DOT[group]) }}
-              />
-              <span>{GROUP_LABEL[group]}</span>
-              <span data-tabular className="tabular-nums text-ink-faint">
-                {table.groupCounts[group]}
-              </span>
-            </button>
-          );
-        })}
+        {RAG_JOB_PHASE_GROUPS.map((group) => (
+          <button
+            key={group}
+            type="button"
+            role="checkbox"
+            aria-checked={facetSet.has(group)}
+            onClick={() => toggleRagDashboardFacet(group)}
+            className="inline-flex items-center gap-fg-1 rounded-fg-pill border border-rule px-fg-2 py-fg-0-5 text-meta"
+          >
+            <span
+              aria-hidden
+              className="size-2 rounded-full"
+              style={{ backgroundColor: facetDotColor(GROUP_DOT[group]) }}
+            />
+            <span>{resolve(GROUP_MESSAGE[group]).message}</span>
+            <span data-tabular>{formatNumber(locale, table.groupCounts[group])}</span>
+          </button>
+        ))}
       </div>
-
       {offline ? (
-        <StateBlock
-          mode="degraded"
-          title={unavailableTitle.usedFallback ? undefined : unavailableTitle.message}
-          message="Job history is unavailable while the search service is down."
-        />
+        <StateBlock mode="degraded" message={resolve(M.unavailable).message} />
       ) : pending ? (
-        <Skeleton label="Loading jobs…" className="gap-fg-1-5">
+        <Skeleton label={resolve(M.loading).message} className="gap-fg-1-5">
           <SkeletonRow width="w-2/3" boxed />
           <SkeletonRow width="w-1/2" boxed />
-          <SkeletonRow width="w-3/5" boxed />
         </Skeleton>
       ) : (
         <div className="flex min-h-0 flex-col">
-          {/* The fixed five-column grid keeps its column widths on a narrow
-              viewport by scrolling horizontally rather than crushing the cells
-              (compact collapse): the header + rows share one x-scroll region so
-              their columns stay aligned, while the empty state and the
-              truncation note below stay full-width and wrap. */}
           <div className="min-h-0 overflow-x-auto" data-rag-jobs-scroll>
             <div className="flex min-h-0 min-w-[34rem] flex-col">
-              {/* Column header row on the shared grid. */}
               <div className={`${GRID} border-b border-rule px-fg-2 pb-fg-1`}>
-                <HeaderCell label="Job" activeSort={table.sort} />
-                <HeaderCell label="Phase" activeSort={table.sort} />
-                <HeaderCell label="Progress" activeSort={table.sort} />
-                <HeaderCell label="Started" sortKey="recency" activeSort={table.sort} />
                 <HeaderCell
-                  label="Duration"
+                  label={resolve(M.updateColumn).message}
+                  activeSort={table.sort}
+                />
+                <HeaderCell label={resolve(M.status).message} activeSort={table.sort} />
+                <HeaderCell
+                  label={resolve(M.progressColumn).message}
+                  activeSort={table.sort}
+                />
+                <HeaderCell
+                  label={resolve(M.started).message}
+                  sortKey="recency"
+                  activeSort={table.sort}
+                />
+                <HeaderCell
+                  label={resolve(M.duration).message}
                   sortKey="duration"
                   activeSort={table.sort}
                   align="end"
                 />
               </div>
-
-              {table.rows.length > 0 && (
-                <div className="flex min-h-0 flex-col overflow-y-auto pt-fg-1">
-                  {table.rows.map((row) => (
-                    <JobRow
-                      key={row.id}
-                      row={row}
-                      selected={selectedJobId === row.id}
-                    />
-                  ))}
-                </div>
-              )}
+              <div className="flex min-h-0 flex-col overflow-y-auto pt-fg-1">
+                {table.rows.map((row) => (
+                  <JobRow key={row.id} row={row} selected={selectedJobId === row.id} />
+                ))}
+              </div>
             </div>
           </div>
-
           {table.rows.length === 0 && (
             <StateBlock
               mode="empty"
-              message={
-                filtering
-                  ? "No jobs match this filter."
-                  : "No indexing jobs yet — reindex to populate the history."
-              }
+              message={resolve(filtering ? M.noMatches : M.empty).message}
             />
           )}
-
-          {/* Honest served-vs-total bound: never a silent undercount. */}
-          {table.truncated && (
+          {table.truncated && table.total !== undefined && (
             <p className="pt-fg-1-5 text-caption text-ink-faint">
-              Showing the {table.servedCount} most recent job
-              {table.servedCount === 1 ? "" : "s"}
-              {table.total !== undefined ? ` of ${table.total}` : ""} — older history is
-              not loaded.
+              {
+                resolve({
+                  key: "operations:searchMaintenance.jobs.partial",
+                  values: { count: table.total, shown: table.servedCount },
+                }).message
+              }
             </p>
           )}
         </div>
@@ -372,12 +325,6 @@ export function RagJobsTableBody({
   );
 }
 
-/**
- * The JOBS region, mount-gated by the dashboard panel host (so the jobs read
- * polls only while the dashboard is open). Reads the served jobs list, the pure
- * table projection, and the view-local presentation state; emits selection into
- * the shared store to join the log pane.
- */
 export function RagJobsTable() {
   const scope = useActiveScope();
   const jobsQuery = useRagJobs(scope, RAG_JOBS_LIMIT_CAP);
@@ -385,23 +332,19 @@ export function RagJobsTable() {
   const facets = useRagDashboardFacets();
   const filterText = useRagDashboardJobsFilter();
   const selectedJobId = useRagDashboardSelectedJob();
-
-  const snapshot = jobsQuery.data?.envelope ?? null;
   const viewState = useMemo(
     () => ({ sort, facets, filterText }),
     [sort, facets, filterText],
   );
   const table = useMemo(
-    () => deriveRagJobsTable(snapshot, viewState),
-    [snapshot, viewState],
+    () => deriveRagJobsTable(jobsQuery.data?.envelope ?? null, viewState),
+    [jobsQuery.data, viewState],
   );
-  const offline = ragSemanticOffline(jobsQuery.data);
-
   return (
     <RagJobsTableBody
       table={table}
       selectedJobId={selectedJobId}
-      offline={offline}
+      offline={ragSemanticOffline(jobsQuery.data)}
       pending={jobsQuery.isPending}
     />
   );

@@ -28,10 +28,11 @@ const DOC_TYPE_CRUMB: Record<string, string> = {
  *  title pair enough room to read without ellipsizing every crumb. */
 export function buildDocTrail(
   header: MarkdownHeaderView,
-  opts: { includeRoot?: boolean } = {},
+  opts: { includeRoot?: boolean; rootLabel?: string } = {},
 ): BreadcrumbItem[] {
-  const { includeRoot = true } = opts;
-  const items: BreadcrumbItem[] = includeRoot ? [{ label: "Vault" }] : [];
+  const { includeRoot = true, rootLabel } = opts;
+  const items: BreadcrumbItem[] =
+    includeRoot && rootLabel !== undefined ? [{ label: rootLabel }] : [];
   const type = header.categoryLabel;
   if (type) {
     items.push({

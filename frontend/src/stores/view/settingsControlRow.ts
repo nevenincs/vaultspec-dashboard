@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MessageDescriptor } from "../../platform/localization/message";
 
 import { useSettingsRowWriteIntent } from "../server/settingsRowIntent";
 import {
@@ -23,12 +24,12 @@ export type { SettingsEditTarget };
 
 export interface SettingsEditTargetOption {
   id: SettingsEditTarget;
-  label: string;
+  label: MessageDescriptor;
 }
 
 export const SETTINGS_EDIT_TARGET_OPTIONS: readonly SettingsEditTargetOption[] = [
-  { id: "global", label: "Global" },
-  { id: "scope", label: "This scope" },
+  { id: "global", label: { key: "common:finalWave.settings.global" } },
+  { id: "scope", label: { key: "common:finalWave.settings.scope" } },
 ];
 
 export { isSettingsEditTarget, normalizeSettingsEditTarget };
@@ -40,7 +41,6 @@ export interface SettingsEditTargetOptionRow extends SettingsEditTargetOption {
 
 export interface SettingsEditTargetToggleView {
   rootClassName: string;
-  ariaLabel: string;
   rows: SettingsEditTargetOptionRow[];
 }
 
@@ -49,7 +49,6 @@ export function deriveSettingsEditTargetToggleView(
 ): SettingsEditTargetToggleView {
   return {
     rootClassName: "flex gap-fg-0-5 text-caption",
-    ariaLabel: "apply to",
     rows: SETTINGS_EDIT_TARGET_OPTIONS.map((option) => {
       const checked = target === option.id;
       return {
@@ -94,7 +93,7 @@ export interface SettingsRowStaticView {
 
 export interface SettingsRowResetAction {
   kind: "match-global" | "reset-default";
-  label: string;
+  label: MessageDescriptor;
   value: string;
 }
 
@@ -125,9 +124,17 @@ export function deriveSettingsRowStaticView(
   const matchGlobalValue = eff.globalValue ?? eff.def.default;
   const defaultValue = eff.def.default;
   const resetAction: SettingsRowResetAction | null = canMatchGlobal
-    ? { kind: "match-global", label: "Match global", value: matchGlobalValue }
+    ? {
+        kind: "match-global",
+        label: { key: "common:finalWave.settings.matchGlobal" },
+        value: matchGlobalValue,
+      }
     : canResetDefault
-      ? { kind: "reset-default", label: "Reset to default", value: defaultValue }
+      ? {
+          kind: "reset-default",
+          label: { key: "common:finalWave.settings.resetDefault" },
+          value: defaultValue,
+        }
       : null;
   const resetButtonClassName =
     resetAction === null

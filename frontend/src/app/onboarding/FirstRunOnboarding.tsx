@@ -22,6 +22,7 @@
 import { useMemo } from "react";
 
 import { FolderPlus } from "lucide-react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import type { WorkspacesState } from "../../stores/server/engine";
 import { useWorkspaces } from "../../stores/server/queries";
@@ -63,17 +64,19 @@ export function useFirstRunOnboardingState(): FirstRunOnboardingState {
  *  that explains no project is connected yet and hands off to the shared
  *  add-project affordance. */
 export function FirstRunOnboardingBody({ onAddProject }: { onAddProject: () => void }) {
+  const resolveMessage = useLocalizedMessageResolver();
   return (
     <div className="flex h-screen min-h-0 w-screen items-center justify-center bg-paper px-fg-4 text-center">
       <div className="flex max-w-[28rem] flex-col items-center gap-fg-3">
         <FolderPlus aria-hidden size={32} className="shrink-0 text-ink-faint" />
-        <h1 className="text-title font-medium text-ink">Welcome to vaultspec</h1>
+        <h1 className="text-title font-medium text-ink">
+          {resolveMessage({ key: "common:finalWave.onboarding.title" }).message}
+        </h1>
         <p className="text-body text-ink-muted">
-          No project is connected yet. Add a project folder to get started — the path is
-          registered read-only, so nothing on disk is created or modified.
+          {resolveMessage({ key: "common:finalWave.onboarding.body" }).message}
         </p>
         <Button variant="primary" onClick={onAddProject}>
-          Add your first project
+          {resolveMessage({ key: "common:finalWave.onboarding.action" }).message}
         </Button>
       </div>
     </div>

@@ -19,6 +19,7 @@ export const ltrTimelineResources = {
     showLast30Days: "Afficher les 30 derniers jours",
     showLast90Days: "Afficher les 90 derniers jours",
     viewProjectAtVersion: "Afficher le projet dans cette version",
+    returnToLive: "Revenir au direct",
   },
   criteria: {
     created: "Création",
@@ -53,6 +54,7 @@ export const ltrTimelineResources = {
   },
   summaries: {
     selectedRange: "{{start}} au {{end}}",
+    viewingAt: "Affichage de {{date}}",
   },
 } as const;
 
@@ -77,6 +79,7 @@ export const rtlTimelineResources = {
     showLast30Days: "عرض آخر 30 يومًا",
     showLast90Days: "عرض آخر 90 يومًا",
     viewProjectAtVersion: "عرض المشروع بهذا الإصدار",
+    returnToLive: "العودة إلى العرض المباشر",
   },
   criteria: {
     created: "الإنشاء",
@@ -107,5 +110,6 @@ export const rtlTimelineResources = {
   },
   summaries: {
     selectedRange: "{{start}} إلى {{end}}",
+    viewingAt: "عرض {{date}}",
   },
 } as const;

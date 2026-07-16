@@ -53,7 +53,14 @@ import {
 import { previewDocTab } from "../../stores/view/tabs";
 import type { ButtonHTMLAttributes, Ref } from "react";
 
-import { FoldSection, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
+import {
+  DecorativeGlyph,
+  FoldSection,
+  SectionLabel,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+} from "../kit";
 
 // The Changes fold defaults closed — the board's resting GitStatusPill state.
 const CHANGES_SECTION_ID = "changes";
@@ -107,12 +114,14 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
             <span className={row.diffClassName}>
               {row.showAdds && (
                 <span className={row.addsClassName} aria-label={row.addsLabel}>
-                  +{row.adds}
+                  <DecorativeGlyph name="plus" />
+                  {row.adds}
                 </span>
               )}
               {row.showDels && (
                 <span className={row.delsClassName} aria-label={row.delsLabel}>
-                  −{row.dels}
+                  <DecorativeGlyph name="minus" />
+                  {row.dels}
                 </span>
               )}
             </span>
@@ -161,7 +170,7 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
           className="pointer-events-none absolute inset-y-0 w-px bg-rule"
           style={{ insetInlineStart: `${GROUP_GUIDE_CENTER_REM}rem` }}
         />
-        <ul className="flex flex-col gap-fg-0-5 pl-fg-3" aria-label={group.ariaLabel}>
+        <ul className="flex flex-col gap-fg-0-5 pl-fg-3">
           {group.rows.map((row) => (
             <ChangeRow key={row.path} row={row} scope={scope} />
           ))}

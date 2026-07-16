@@ -6,7 +6,6 @@ import { liveTransport } from "../../../testing/liveClient";
 import { engineClient } from "../engine";
 import type { DashboardState, SessionState } from "../engine";
 import {
-  dashboardEditedWindowRange,
   dashboardGraphDefaultsInitializationIdentity,
   dashboardStateSessionIdentity,
   deriveDashboardDateRangeView,
@@ -127,121 +126,36 @@ describe("deriveDashboardFilterSummaryView (stage filter toolbar)", () => {
 });
 
 describe("deriveDashboardFilterSidebarView (stage filter sidebar)", () => {
-  const now = Date.parse("2026-06-18T12:00:00.000Z");
-
-  it("projects canonical dashboard filters into selected facets and active badges", () => {
-    const view = deriveDashboardFilterSidebarView(
-      {
-        filters: {
-          doc_types: ["adr"],
-          feature_tags: ["state", "filters"],
-          text: "centralize",
-        },
-        date_range: dashboardEditedWindowRange("7d", now),
+  it("projects canonical dashboard filters without presentation copy", () => {
+    const view = deriveDashboardFilterSidebarView({
+      filters: {
+        doc_types: ["adr"],
+        feature_tags: ["state", "filters"],
+        text: "centralize",
       },
-      now,
-    );
+      date_range: { from: "2026-06-11" },
+    });
 
     expect(view.docTypes).toEqual(["adr"]);
     expect(view.featureTags).toEqual(["state", "filters"]);
-    expect(view.editedWindow).toBe("7d");
-    expect(view.editedWindowRows).toEqual([
-      {
-        key: "any",
-        label: "Any time",
-        active: false,
-        inputClassName: "accent-accent",
-        labelClassName:
-          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-        valueClassName: "text-ink-muted",
-      },
-      {
-        key: "7d",
-        label: "Last 7 days",
-        active: true,
-        inputClassName: "accent-accent",
-        labelClassName:
-          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-        valueClassName: "text-ink",
-      },
-      {
-        key: "30d",
-        label: "Last 30 days",
-        active: false,
-        inputClassName: "accent-accent",
-        labelClassName:
-          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-        valueClassName: "text-ink-muted",
-      },
-      {
-        key: "year",
-        label: "This year",
-        active: false,
-        inputClassName: "accent-accent",
-        labelClassName:
-          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-        valueClassName: "text-ink-muted",
-      },
-    ]);
     expect(view.dateActive).toBe(true);
     expect(view.anyActive).toBe(true);
-    expect(view.presentation).toMatchObject({
-      panelAriaLabel: "filter panel",
-      panelClassName: "pointer-events-auto fixed z-50",
-      headerClassName:
-        "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
-      titleClassName: "text-body font-medium text-ink",
-      headerActionsClassName: "flex items-center gap-fg-2",
-      titleLabel: "Filter documents",
-      clearAllClassName:
-        "text-caption text-accent-text underline-offset-2 hover:underline",
-      clearAllLabel: "Clear all",
-      clearAllAriaLabel: "clear all filters",
-      closeButtonClassName:
-        "rounded-fg-xs p-fg-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink",
-      closeAriaLabel: "close filter panel",
-      sectionClassName: "border-b border-rule",
-      sectionButtonClassName:
-        "flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium tracking-wider text-ink-muted hover:bg-paper-sunken",
-      sectionMetaClassName: "flex items-center gap-fg-1-5",
-      sectionBadgeClassName:
-        "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",
-      sectionIconClassName: "text-ink-faint",
-      sectionBodyClassName: "pb-2",
-      kindSectionLabel: "Type",
-      featureSectionLabel: "Feature",
-      editedSectionLabel: "Edited",
-      editedWindowAriaLabel: "edited window",
-      facetEmptyClassName: "px-fg-3 py-fg-1 text-label italic text-ink-faint",
-      facetListClassName: "space-y-fg-0-5 px-fg-3",
-      facetOverflowButtonClassName:
-        "ml-fg-1 text-label text-ink-faint underline hover:text-ink-muted",
-      footerClassName: "border-t border-rule px-fg-3 py-fg-1-5",
-      footerTextClassName: "text-label text-state-stale",
-      editedWindows: [
-        { key: "any", label: "Any time" },
-        { key: "7d", label: "Last 7 days" },
-        { key: "30d", label: "Last 30 days" },
-        { key: "year", label: "This year" },
-      ],
-    });
+    expect(view).not.toHaveProperty("presentation");
   });
 
   it("treats top-level dashboard date range as active filter intent", () => {
-    expect(deriveDashboardFilterSidebarView(undefined, now)).toMatchObject({
+    expect(deriveDashboardFilterSidebarView(undefined)).toMatchObject({
       docTypes: [],
       featureTags: [],
-      editedWindow: "any",
       dateActive: false,
       anyActive: false,
     });
     expect(
-      deriveDashboardFilterSidebarView(
-        { filters: {}, date_range: { from: "2026-06-01", to: "2026-06-30" } },
-        now,
-      ),
+      deriveDashboardFilterSidebarView({
+        filters: {},
+        date_range: { from: "2026-06-01", to: "2026-06-30" },
+      }),
     ).toMatchObject({
-      editedWindow: "any",
       dateActive: true,
       anyActive: true,
     });

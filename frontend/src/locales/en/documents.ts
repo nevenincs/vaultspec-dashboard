@@ -1,6 +1,56 @@
 import { languageDisplay } from "./languageDisplay";
 
 export const documents = {
+  localizationWave: {
+    authoring: {
+      loadingPreview: "Loading the change preview",
+      previewLoadFailed: "The change preview couldn’t be loaded.",
+      previewUnavailable: "No change preview is available for this proposal.",
+      noTextChange: "No textual change in this document.",
+      truncatedPreview:
+        "Preview truncated. Showing {{returned, number}} of {{total, number}} bytes. Open the document for the full body.",
+    },
+    accessibility: {
+      documentActions: "Document actions",
+      documentBodyEditor: "Document body editor",
+      linkedDocuments: "Linked documents",
+      planSummary: "Plan summary",
+      suggestionsFor: "Suggestions for {{label}}",
+    },
+    actions: {
+      fixConformance: "Repair conformance",
+      fixFeatureConformance: "Repair “{{feature}}” conformance",
+      removeRelated: "Remove {{document}}",
+    },
+    disabledReasons: {
+      noFeatureForFix: "Add a feature tag before fixing conformance",
+    },
+    formatting: {
+      boldPlaceholder: "bold text",
+      codePlaceholder: "code",
+      documentPlaceholder: "document",
+      italicPlaceholder: "italic text",
+      linkTextPlaceholder: "text",
+      linkUrlPlaceholder: "url",
+    },
+    plan: {
+      completion_one: "Plan completion, {{done, number}} of {{count, number}} step",
+      completion_other: "Plan completion, {{done, number}} of {{count, number}} steps",
+      counts: "{{waves}} · {{phases}} · {{steps}}",
+      loadingSummary: "Loading plan summary…",
+      phaseCount_one: "{{count, number}} phase",
+      phaseCount_other: "{{count, number}} phases",
+      stepCount_one: "{{count, number}} step",
+      stepCount_other: "{{count, number}} steps",
+      waveCount_one: "{{count, number}} wave",
+      waveCount_other: "{{count, number}} waves",
+    },
+    related: {
+      aria: "Link a related document",
+      empty: "No matching documents",
+      placeholder: "Link a document…",
+    },
+  },
   accessibility: {
     addDocumentToFeature: "Add a document to a feature",
     browserView: "Browser view",
@@ -580,6 +630,13 @@ export const documents = {
         renaming: "Renaming document…",
         saving: "Saving properties…",
       },
+    },
+  },
+  workspace: {
+    accessibility: {
+      codeViewer: "Code viewer",
+      documentViewer: "Document viewer",
+      inWorkspace: "In workspace {{workspace}}",
     },
   },
   disabledReasons: {

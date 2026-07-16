@@ -27,11 +27,17 @@ import { SearchField } from "../kit";
 import { featureTagSuggestions } from "../../stores/featureQuery";
 import { useActiveScope, useFiltersVocabularyView } from "../../stores/server/queries";
 import { useDashboardFeatureFilterDraft } from "../../stores/view/dashboardFeatureFilter";
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
 
 export function FeatureSearchField() {
   const scope = useActiveScope();
   const draft = useDashboardFeatureFilterDraft(scope);
   const vocabulary = useFiltersVocabularyView(scope);
+  const locale = useActiveLocale();
+  const resolveMessage = useLocalizedMessageResolver();
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -45,8 +51,9 @@ export function FeatureSearchField() {
   const [edited, setEdited] = useState(false);
 
   const suggestions = useMemo(
-    () => featureTagSuggestions(edited ? draft.value : "", vocabulary.featureTags),
-    [edited, draft.value, vocabulary.featureTags],
+    () =>
+      featureTagSuggestions(edited ? draft.value : "", vocabulary.featureTags, locale),
+    [edited, draft.value, vocabulary.featureTags, locale],
   );
   const showList = open && suggestions.length > 0;
   const activeOptionId =
@@ -130,8 +137,10 @@ export function FeatureSearchField() {
         }}
         onKeyDown={handleKeyDown}
         inputRef={inputRef}
-        placeholder="Filter by feature…"
-        ariaLabel="filter the vault by feature"
+        placeholder={
+          resolveMessage({ key: "common:rail.filters.featurePlaceholder" }).message
+        }
+        ariaLabel={resolveMessage({ key: "common:rail.filters.featureAria" }).message}
         role="combobox"
         aria-expanded={showList}
         aria-controls={listboxId}
@@ -142,7 +151,10 @@ export function FeatureSearchField() {
         <ul
           id={listboxId}
           role="listbox"
-          aria-label="feature suggestions"
+          aria-label={
+            resolveMessage({ key: "common:rail.accessibility.featureSuggestions" })
+              .message
+          }
           data-feature-suggestions
           className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-40 max-h-[16rem] overflow-y-auto rounded-fg-md border border-rule bg-paper py-fg-1 shadow-fg-overlay"
         >

@@ -16,6 +16,7 @@ import { Play, RotateCcw } from "lucide-react";
 import { useDashboardTimelineModeView } from "../../stores/server/queries";
 import { normalizeTimelineScope } from "../../stores/view/timeline";
 import { movePlayhead } from "../../stores/view/timelineIntent";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 /** Human-time label for an instant (date + minute), tabular-rendered. */
 function humanInstant(ts: string | number): string {
@@ -23,6 +24,7 @@ function humanInstant(ts: string | number): string {
 }
 
 export function TimeTravelChip({ scope }: { scope: unknown }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const normalizedScope = normalizeTimelineScope(scope);
   const timeline = useDashboardTimelineModeView(normalizedScope);
   if (!timeline.timeTravel || timeline.asOf === undefined) return null;
@@ -33,7 +35,12 @@ export function TimeTravelChip({ scope }: { scope: unknown }) {
     >
       <Play size={11} aria-hidden className="rotate-180" />
       <span>
-        viewing <time data-tabular>{humanInstant(timeline.asOf)}</time>
+        {
+          resolveMessage({
+            key: "timeline:summaries.viewingAt",
+            values: { date: humanInstant(timeline.asOf) },
+          }).message
+        }
       </span>
       <button
         type="button"
@@ -43,7 +50,7 @@ export function TimeTravelChip({ scope }: { scope: unknown }) {
         }}
       >
         <RotateCcw size={10} aria-hidden />
-        return to live
+        {resolveMessage({ key: "timeline:actions.returnToLive" }).message}
       </button>
     </div>
   );

@@ -2,7 +2,7 @@
 // Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
 
 import { describe, expect, it } from "vitest";
-import { deriveEvidenceGroups } from "../../view/hoverCardEvidence";
+import { deriveHoverEvidenceSummary } from "../../view/hoverCardEvidence";
 import type { SearchResult } from "../engine";
 import {
   SEARCH_RESULTS_MAX_ITEMS,
@@ -751,11 +751,11 @@ describe("adaptNodeEvidence (live /nodes/{id}/evidence; serde-omitted empty arra
       documents: [{ path: ".vault/plan/p.md", doc_type: "plan" }],
       tiers: TIERS,
     });
-    const groups = deriveEvidenceGroups(evidence);
-    expect(groups.map((g) => g.heading)).toEqual(["documents"]); // only the present group
+    const summary = deriveHoverEvidenceSummary(evidence);
+    expect(summary.documentCount).toBe(1);
     // And the pure fold is itself robust to a directly-omitted array (defensive floor).
     expect(() =>
-      deriveEvidenceGroups({ documents: [], tiers: TIERS } as never),
+      deriveHoverEvidenceSummary({ documents: [], tiers: TIERS } as never),
     ).not.toThrow();
   });
 });

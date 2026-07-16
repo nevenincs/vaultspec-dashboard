@@ -1,13 +1,7 @@
-// Live "look" knobs (node module size, edge width/opacity, edge colour mode) for
-// the three.js field — the appearance sibling of the Simulation (force) panel.
-// Mirrors the forceControls knob pattern; drives ThreeField.setAppearanceParams.
-// Renders both control kinds from the shared appearanceControls schema: a numeric
-// slider/stepper, and a select for enum knobs (the edge colour mode). Self-contained
-// so it slots into the lab as a single element, anchored top-LEFT (the Simulation
-// panel owns top-right).
-
 import { useCallback, useState } from "react";
 
+import { useLocalizedMessageResolver } from "../platform/localization/LocalizationProvider";
+import type { AnyMessageDescriptor } from "../platform/localization/message";
 import type { AppearanceParams } from "../scene/three/appearance";
 import {
   APPEARANCE_CONTROLS,
@@ -16,74 +10,112 @@ import {
   type AppearanceControl,
 } from "../scene/three/appearanceControls";
 import type { ThreeField } from "../scene/three/threeField";
+import {
+  APPEARANCE_CONTROL_SECTION_MESSAGES,
+  LAB_GRAPH_CONTROL_MESSAGES,
+  LAB_GRAPH_CONTROL_OPTION_MESSAGES,
+  THREE_LAB_MESSAGES,
+  type LabGraphControlOption,
+} from "../stores/view/threeLabVocabulary";
 
-export function AppearancePanel({ getField }: { getField: () => ThreeField | null }) {
-  const [params, setParams] = useState<AppearanceParams>({
-    ...APPEARANCE_CONTROL_DEFAULTS,
-  });
+interface AppearanceControlsPanelProps {
+  params: AppearanceParams;
+  onParamChange: <Key extends keyof AppearanceParams>(
+    key: Key,
+    value: AppearanceParams[Key],
+  ) => void;
+  onReset: () => void;
+}
+
+export function AppearanceControlsPanel({
+  params,
+  onParamChange,
+  onReset,
+}: AppearanceControlsPanelProps) {
+  const resolveMessageResult = useLocalizedMessageResolver();
+  const resolveMessage = useCallback(
+    (descriptor: AnyMessageDescriptor) => resolveMessageResult(descriptor).message,
+    [resolveMessageResult],
+  );
   const [open, setOpen] = useState(true);
 
-  // Live retune: mirror the knob in the panel and push the single changed value into
-  // the running field (edge changes are a cheap attribute rewrite; a node-size change
-  // re-feeds collide spacing and gently reheats).
-  const setParam = useCallback(
-    (key: keyof AppearanceParams, value: number | string) => {
-      setParams((prev) => ({ ...prev, [key]: value }) as AppearanceParams);
-      getField()?.setAppearanceParams({ [key]: value } as Partial<AppearanceParams>);
-    },
-    [getField],
-  );
+  const renderControl = (control: AppearanceControl) => {
+    const messages = LAB_GRAPH_CONTROL_MESSAGES[control.controlId];
+    const label = resolveMessage(messages.label);
+    const description = resolveMessage(messages.description);
 
-  const reset = useCallback(() => {
-    const d: AppearanceParams = { ...APPEARANCE_CONTROL_DEFAULTS };
-    setParams(d);
-    getField()?.setAppearanceParams(d);
-  }, [getField]);
-
-  const renderControl = (c: AppearanceControl) => {
-    if (c.kind === "enum") {
-      const v = params[c.key] as string;
+    if (control.kind === "boolean") {
       return (
-        <div key={c.key} style={{ margin: "4px 0" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ flex: 1 }}>{c.controlId}</span>
-            <select
-              value={v}
-              onChange={(e) => setParam(c.key, e.target.value)}
-              style={{ font: "inherit" }}
-            >
-              {c.options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.value}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+        <label
+          key={control.key}
+          title={description}
+          style={{ display: "flex", gap: 6, margin: "6px 0" }}
+        >
+          <input
+            type="checkbox"
+            checked={params[control.key] as boolean}
+            onChange={(event) => onParamChange(control.key, event.target.checked)}
+          />
+          <span>{label}</span>
+        </label>
       );
     }
-    const v = params[c.key] as number;
+
+    if (control.kind === "enum") {
+      return (
+        <label
+          key={control.key}
+          title={description}
+          style={{ display: "flex", alignItems: "center", gap: 6, margin: "4px 0" }}
+        >
+          <span style={{ flex: 1 }}>{label}</span>
+          <select
+            value={params[control.key] as string}
+            onChange={(event) =>
+              onParamChange(
+                control.key,
+                event.target.value as AppearanceParams[typeof control.key],
+              )
+            }
+            style={{ font: "inherit" }}
+          >
+            {control.options.map((option) => (
+              <option key={option.value} value={option.value}>
+                {resolveMessage(
+                  LAB_GRAPH_CONTROL_OPTION_MESSAGES[
+                    option.value as LabGraphControlOption
+                  ],
+                )}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    const value = params[control.key] as number;
     return (
-      <div key={c.key} style={{ margin: "4px 0" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span style={{ flex: 1 }}>{c.controlId}</span>
+      <div key={control.key} title={description} style={{ margin: "4px 0" }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ flex: 1 }}>{label}</span>
           <input
             type="number"
-            value={v}
-            min={c.min}
-            max={c.max}
-            step={c.step}
-            onChange={(e) => setParam(c.key, Number(e.target.value))}
+            value={value}
+            min={control.min}
+            max={control.max}
+            step={control.step}
+            onChange={(event) => onParamChange(control.key, Number(event.target.value))}
             style={{ width: 60, font: "inherit", textAlign: "right" }}
           />
-        </div>
+        </label>
         <input
+          aria-label={label}
           type="range"
-          min={c.min}
-          max={c.max}
-          step={c.step}
-          value={v}
-          onChange={(e) => setParam(c.key, Number(e.target.value))}
+          min={control.min}
+          max={control.max}
+          step={control.step}
+          value={value}
+          onChange={(event) => onParamChange(control.key, Number(event.target.value))}
           style={{ width: "100%", marginTop: 1 }}
         />
       </div>
@@ -92,6 +124,7 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
 
   return (
     <section
+      aria-label={resolveMessage(THREE_LAB_MESSAGES.accessibility.appearancePanel)}
       style={{
         position: "absolute",
         top: 46,
@@ -118,15 +151,31 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
         }}
       >
         <button
-          onClick={() => setOpen((s) => !s)}
-          title={open ? "Collapse" : "Expand"}
+          onClick={() => setOpen((current) => !current)}
+          title={resolveMessage(
+            open
+              ? THREE_LAB_MESSAGES.actions.collapse
+              : THREE_LAB_MESSAGES.actions.expand,
+          )}
           style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}
         >
-          {open ? "▾" : "▸"}
+          <span
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: 6,
+              height: 6,
+              borderRight: "1px solid currentColor",
+              borderBottom: "1px solid currentColor",
+              transform: open ? "rotate(45deg)" : "rotate(-45deg)",
+            }}
+          />
         </button>
-        <strong style={{ flex: 1 }}>Appearance</strong>
-        <button onClick={reset} title="Restore defaults">
-          Reset
+        <strong style={{ flex: 1 }}>
+          {resolveMessage(THREE_LAB_MESSAGES.panels.appearance)}
+        </strong>
+        <button onClick={onReset}>
+          {resolveMessage(THREE_LAB_MESSAGES.actions.reset)}
         </button>
       </header>
       {open && (
@@ -141,13 +190,41 @@ export function AppearancePanel({ getField }: { getField: () => ThreeField | nul
                   opacity: 0.55,
                 }}
               >
-                {group}
+                {resolveMessage(APPEARANCE_CONTROL_SECTION_MESSAGES[group])}
               </div>
-              {APPEARANCE_CONTROLS.filter((c) => c.group === group).map(renderControl)}
+              {APPEARANCE_CONTROLS.filter((control) => control.group === group).map(
+                renderControl,
+              )}
             </div>
           ))}
         </div>
       )}
     </section>
+  );
+}
+
+export function AppearancePanel({ getField }: { getField: () => ThreeField | null }) {
+  const [params, setParams] = useState<AppearanceParams>({
+    ...APPEARANCE_CONTROL_DEFAULTS,
+  });
+  const onParamChange = useCallback(
+    <Key extends keyof AppearanceParams>(key: Key, value: AppearanceParams[Key]) => {
+      setParams((previous) => ({ ...previous, [key]: value }));
+      getField()?.setAppearanceParams({ [key]: value });
+    },
+    [getField],
+  );
+  const onReset = useCallback(() => {
+    const defaults = { ...APPEARANCE_CONTROL_DEFAULTS };
+    setParams(defaults);
+    getField()?.setAppearanceParams(defaults);
+  }, [getField]);
+
+  return (
+    <AppearanceControlsPanel
+      params={params}
+      onParamChange={onParamChange}
+      onReset={onReset}
+    />
   );
 }

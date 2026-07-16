@@ -39,16 +39,24 @@ export interface MarkdownEditResult {
 interface InlineSpec {
   before: string;
   after: string;
-  /** Placeholder used when the selection is empty. */
-  placeholder: string;
+  token: keyof MarkdownFormattingPlaceholders;
 }
 
 const INLINE: Partial<Record<MarkdownFormatCommand, InlineSpec>> = {
-  bold: { before: "**", after: "**", placeholder: "bold text" },
-  italic: { before: "*", after: "*", placeholder: "italic text" },
-  code: { before: "`", after: "`", placeholder: "code" },
-  wikiLink: { before: "[[", after: "]]", placeholder: "document" },
+  bold: { before: "**", after: "**", token: "bold" },
+  italic: { before: "*", after: "*", token: "italic" },
+  code: { before: "`", after: "`", token: "code" },
+  wikiLink: { before: "[[", after: "]]", token: "document" },
 };
+
+export interface MarkdownFormattingPlaceholders {
+  bold: string;
+  italic: string;
+  code: string;
+  document: string;
+  linkText: string;
+  linkUrl: string;
+}
 
 const LINE_PREFIX: Partial<Record<MarkdownFormatCommand, string>> = {
   heading: "# ",
@@ -67,12 +75,13 @@ function normalizeRange(text: string, start: number, end: number): [number, numb
 
 function applyInline(
   spec: InlineSpec,
+  placeholders: MarkdownFormattingPlaceholders,
   text: string,
   start: number,
   end: number,
 ): MarkdownEditResult {
   const selected = text.slice(start, end);
-  const body = selected.length > 0 ? selected : spec.placeholder;
+  const body = selected.length > 0 ? selected : placeholders[spec.token];
   const next = text.slice(0, start) + spec.before + body + spec.after + text.slice(end);
   // Select the body (the wrapped text or the placeholder) so it is highlighted and
   // ready to overtype.
@@ -83,10 +92,15 @@ function applyInline(
 /** A markdown link is the one inline command with two slots; the caret lands on the
  *  `url` slot so the author types the target immediately, with the label preserved
  *  (or a `text` placeholder when the selection is empty). */
-function applyLink(text: string, start: number, end: number): MarkdownEditResult {
+function applyLink(
+  text: string,
+  start: number,
+  end: number,
+  placeholders: MarkdownFormattingPlaceholders,
+): MarkdownEditResult {
   const selected = text.slice(start, end);
-  const label = selected.length > 0 ? selected : "text";
-  const url = "url";
+  const label = selected.length > 0 ? selected : placeholders.linkText;
+  const url = placeholders.linkUrl;
   const next = `${text.slice(0, start)}[${label}](${url})${text.slice(end)}`;
   const urlStart = start + 1 + label.length + 2; // "[" + label + "]("
   return { text: next, selStart: urlStart, selEnd: urlStart + url.length };
@@ -122,6 +136,7 @@ function applyLinePrefix(
 export function applyMarkdownFormat(
   command: MarkdownFormatCommand,
   selection: MarkdownSelection,
+  placeholders: MarkdownFormattingPlaceholders,
 ): MarkdownEditResult {
   const [start, end] = normalizeRange(
     selection.text,
@@ -129,8 +144,8 @@ export function applyMarkdownFormat(
     selection.selEnd,
   );
   const text = selection.text;
-  if (command === "link") return applyLink(text, start, end);
+  if (command === "link") return applyLink(text, start, end, placeholders);
   const inline = INLINE[command];
-  if (inline) return applyInline(inline, text, start, end);
+  if (inline) return applyInline(inline, placeholders, text, start, end);
   return applyLinePrefix(command, text, start, end);
 }

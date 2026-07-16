@@ -77,15 +77,15 @@ export function SettingsDialog() {
     <Dialog
       open={open}
       onClose={closeSettingsDialog}
-      title={settings.title}
-      description={settings.description}
+      title={message(settings.title)}
+      description={message(settings.description)}
       footer={
         <div className="flex items-center justify-end gap-fg-2">
           <Button variant="secondary" onClick={closeSettingsDialog}>
-            {settings.cancelLabel}
+            {message(settings.cancelLabel)}
           </Button>
           <Button variant="primary" onClick={closeSettingsDialog}>
-            {settings.doneLabel}
+            {message(settings.doneLabel)}
           </Button>
         </div>
       }
@@ -93,12 +93,12 @@ export function SettingsDialog() {
       <div className="flex flex-col gap-fg-4 px-fg-4 pt-fg-3 pb-fg-4">
         {settings.loading && (
           <p className="py-fg-4 text-center text-label text-ink-muted">
-            {settings.loadingMessage}
+            {message(settings.loadingMessage)}
           </p>
         )}
         {!settings.loading && groups.length === 0 && (
           <p className="py-fg-4 text-center text-label text-ink-muted">
-            {settings.emptyMessage}
+            {message(settings.emptyMessage)}
           </p>
         )}
         {groups.map((group) => (
@@ -135,6 +135,7 @@ function SettingRow({
   placeholder,
   enumLabels,
 }: SettingRowProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const row = useSettingsRowController(eff, activeScope);
   const { def } = row;
 
@@ -158,7 +159,11 @@ function SettingRow({
             id={row.fieldId}
           />
           {row.scopeable && (
-            <ScopeTargetToggle target={row.target} onTarget={row.setTarget} />
+            <ScopeTargetToggle
+              target={row.target}
+              onTarget={row.setTarget}
+              ariaLabel={label}
+            />
           )}
         </div>
       </div>
@@ -172,7 +177,7 @@ function SettingRow({
             onClick={() => row.commit(row.resetAction!.value)}
             className={row.resetButtonClassName ?? undefined}
           >
-            {row.resetAction.label}
+            {resolveMessage(row.resetAction.label).message}
           </button>
         )}
       </div>
@@ -190,13 +195,16 @@ function SettingRow({
 function ScopeTargetToggle({
   target,
   onTarget,
+  ariaLabel,
 }: {
   target: SettingsEditTarget;
   onTarget: (target: unknown) => void;
+  ariaLabel: string;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const view = deriveSettingsEditTargetToggleView(target);
   return (
-    <div role="radiogroup" aria-label={view.ariaLabel} className={view.rootClassName}>
+    <div role="radiogroup" aria-label={ariaLabel} className={view.rootClassName}>
       {view.rows.map(({ id, label, checked, className }) => (
         <button
           key={id}
@@ -206,7 +214,7 @@ function ScopeTargetToggle({
           onClick={() => onTarget(id)}
           className={className}
         >
-          {label}
+          {resolveMessage(label).message}
         </button>
       ))}
     </div>

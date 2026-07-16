@@ -2,6 +2,8 @@
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
+import type { MessageDescriptor } from "../../../platform/localization/message";
+import { authoredDisplayText } from "../../../platform/localization/displayText";
 import {
   engineClient,
   readTierAvailability,
@@ -445,8 +447,8 @@ export interface InteriorRollup {
 export interface InteriorStepView extends InteriorStep {
   targetNodeId: string | null;
   selectable: boolean;
-  headingLabel: string;
-  rowAriaLabel: string;
+  headingLabel: MessageDescriptor;
+  rowAriaLabel: MessageDescriptor;
   rowClassName: string;
 }
 
@@ -506,14 +508,29 @@ const EMPTY_PLAN_SUMMARY: PlanSummary = {
 
 function interiorStepView(step: InteriorStep): InteriorStepView {
   const targetNodeId = step.exec_node_id ?? null;
+  const headingLabel: MessageDescriptor = step.action
+    ? {
+        key: "common:finalWave.planSteps.named",
+        values: { step: authoredDisplayText(step.action) },
+      }
+    : { key: "common:finalWave.planSteps.generic" };
   return {
     ...step,
     targetNodeId,
     selectable: targetNodeId !== null,
-    headingLabel: step.action ?? step.id,
-    rowAriaLabel: `step ${step.id}${
-      targetNodeId ? ", open exec record" : ", no exec record"
-    }`,
+    headingLabel,
+    rowAriaLabel: step.action
+      ? {
+          key: targetNodeId
+            ? "common:finalWave.planSteps.openRecord"
+            : "common:finalWave.planSteps.recordUnavailable",
+          values: { step: authoredDisplayText(step.action) },
+        }
+      : {
+          key: targetNodeId
+            ? "common:finalWave.planSteps.openGenericRecord"
+            : "common:finalWave.planSteps.genericRecordUnavailable",
+        },
     rowClassName: `flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
       targetNodeId ? "hover:bg-paper-sunken" : "cursor-default opacity-80"
     }`,
@@ -622,7 +639,7 @@ export interface PlanSummaryView {
   /** Whether the plan carries any steps (the card hides its bar/% when false). */
   hasStructure: boolean;
   /** User-facing state label (`ui-labels-are-user-facing`). */
-  stateLabel: string;
+  stateLabel: MessageDescriptor;
   /** Presentation tone for the badge/bar, mapped from the served `plan_state`. */
   tone: PlanStateTone;
   /** Completion percentage over served counts; null when the plan has no steps. */
@@ -635,12 +652,23 @@ export interface PlanSummaryView {
   doneCount: number;
 }
 
-const PLAN_STATE_PRESENTATION: Record<string, { label: string; tone: PlanStateTone }> =
-  {
-    "not-started": { label: "Not started", tone: "pending" },
-    "in-progress": { label: "In progress", tone: "active" },
-    finished: { label: "Finished", tone: "complete" },
-  };
+const PLAN_STATE_PRESENTATION: Record<
+  string,
+  { label: MessageDescriptor; tone: PlanStateTone }
+> = {
+  "not-started": {
+    label: { key: "common:finalWave.planStates.notStarted" },
+    tone: "pending",
+  },
+  "in-progress": {
+    label: { key: "common:finalWave.planStates.inProgress" },
+    tone: "active",
+  },
+  finished: {
+    label: { key: "common:finalWave.planStates.finished" },
+    tone: "complete",
+  },
+};
 
 /**
  * Map the engine `PlanSummary` to the reader card's presentation. The completion

@@ -43,6 +43,7 @@ import {
 } from "../menus/backgroundContextMenu";
 import { FrameworkStatusCluster } from "../right/FrameworkStatusCluster";
 import { StatusTab } from "../right/StatusTab";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 // The two top-level section headers pin to the top of the Home-pane scroll as it
 // moves (an accordion-sticky: Status stays until Browse pushes it up, then Browse
@@ -53,12 +54,13 @@ const STICKY_HEADER_CLASS =
   "sticky top-0 z-10 flex w-full items-center gap-fg-1 bg-paper px-fg-3 py-fg-2 text-left text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
 
 export function CompactUnifiedRail() {
+  const resolveMessage = useLocalizedMessageResolver();
   const statusOpen = useCompactRailStatusOpen();
   const browseOpen = useCompactRailBrowseOpen();
 
   return (
     <nav
-      aria-label="Home"
+      aria-label={resolveMessage({ key: "common:shell.navigation.home" }).message}
       data-compact-unified-rail
       onContextMenu={backgroundContextMenuHandler(
         "left-rail",
@@ -74,7 +76,11 @@ export function CompactUnifiedRail() {
         <FoldSection
           open={statusOpen}
           onToggle={toggleCompactRailStatus}
-          label={<SectionLabel>Status</SectionLabel>}
+          label={
+            <SectionLabel>
+              {resolveMessage({ key: "common:shell.navigation.status" }).message}
+            </SectionLabel>
+          }
           headerClassName={STICKY_HEADER_CLASS}
           bodyClassName="px-fg-3 pb-fg-4"
           bodyId="compact-rail-status"
@@ -85,7 +91,11 @@ export function CompactUnifiedRail() {
         <FoldSection
           open={browseOpen}
           onToggle={toggleCompactRailBrowse}
-          label={<SectionLabel>Browse</SectionLabel>}
+          label={
+            <SectionLabel>
+              {resolveMessage({ key: "common:shell.navigation.browse" }).message}
+            </SectionLabel>
+          }
           headerClassName={STICKY_HEADER_CLASS}
           bodyClassName="px-fg-3 pb-fg-4"
           bodyId="compact-rail-browse"

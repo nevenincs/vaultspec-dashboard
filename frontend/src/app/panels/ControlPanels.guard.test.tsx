@@ -44,13 +44,13 @@ function renderPanels() {
       </QueryClientProvider>
     </I18nextProvider>,
   );
-  return { ...result, runtime };
+  return { ...result, runtime, client };
 }
 
 describe("ControlPanels", () => {
   it("mounts the complete Search dashboard only while its dialog is open", () => {
     openControlPanel("search-service");
-    const { container } = renderPanels();
+    const { container, client } = renderPanels();
     const dialog = screen.getByRole("dialog", {
       name: en.common.controlPanels.labels.search,
     });
@@ -59,7 +59,13 @@ describe("ControlPanels", () => {
     expect(container.querySelector("[data-rag-job-dashboard]")).toBeTruthy();
     expect(container.querySelector("[data-rag-dashboard-header]")).toBeTruthy();
     expect(container.querySelector("[data-rag-jobs-region]")).toBeTruthy();
-    expect(container.querySelector("[data-rag-log-region]")).toBeTruthy();
+    expect(container.querySelector("[data-rag-log-region]")).toBeNull();
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .some((query) => query.queryKey.includes("logs")),
+    ).toBe(false);
     expect(container.querySelector("[data-rag-footer-region]")).toBeTruthy();
     expect(container.querySelector("#rag-ops-details")).toBeNull();
   });
@@ -68,6 +74,26 @@ describe("ControlPanels", () => {
     const { container } = renderPanels();
     expect(container.querySelector("[data-rag-job-dashboard]")).toBeNull();
     expect(container.querySelector("[data-rag-footer-region]")).toBeNull();
+  });
+
+  it("reacts in place for localized system-status row copy", async () => {
+    openControlPanel("backend-health");
+    const { runtime, container } = renderPanels();
+    const row = container.querySelector('[data-backend-row="application"]');
+    const label = row?.querySelector(".text-body");
+    expect(label?.textContent).toBe(en.common.systemStatus.labels.application);
+
+    await act(() => runtime.changeLanguage(ltrTestLocale));
+    expect(container.querySelector('[data-backend-row="application"]')).toBe(row);
+    expect(label?.textContent).toBe(
+      ltrTestResources.common.systemStatus.labels.application,
+    );
+
+    await act(() => runtime.changeLanguage(rtlTestLocale));
+    expect(container.querySelector('[data-backend-row="application"]')).toBe(row);
+    expect(label?.textContent).toBe(
+      rtlTestResources.common.systemStatus.labels.application,
+    );
   });
 
   it.each([

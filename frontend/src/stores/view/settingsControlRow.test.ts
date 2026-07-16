@@ -37,8 +37,8 @@ function setting(patch: Partial<EffectiveSetting> = {}): EffectiveSetting {
 describe("settings row controller read model", () => {
   it("declares the edit-target option domain once for settings rows", () => {
     expect(SETTINGS_EDIT_TARGET_OPTIONS).toEqual([
-      { id: "global", label: "Global" },
-      { id: "scope", label: "This scope" },
+      { id: "global", label: { key: "common:finalWave.settings.global" } },
+      { id: "scope", label: { key: "common:finalWave.settings.scope" } },
     ]);
   });
 
@@ -58,7 +58,7 @@ describe("settings row controller read model", () => {
         defaultValue: "feature",
         resetAction: {
           kind: "match-global",
-          label: "Match global",
+          label: { key: "common:finalWave.settings.matchGlobal" },
           value: "feature",
         },
         rootClassName: "flex flex-col gap-fg-1",
@@ -140,7 +140,7 @@ describe("settings row controller read model", () => {
         defaultValue: "",
         resetAction: {
           kind: "reset-default",
-          label: "Reset to default",
+          label: { key: "common:finalWave.settings.resetDefault" },
           value: "",
         },
         resetButtonClassName:
@@ -176,18 +176,17 @@ describe("settings row controller read model", () => {
   it("projects scope-target toggle rows and active classes from one seam", () => {
     expect(deriveSettingsEditTargetToggleView("scope")).toEqual({
       rootClassName: "flex gap-fg-0-5 text-caption",
-      ariaLabel: "apply to",
       rows: [
         {
           id: "global",
-          label: "Global",
+          label: { key: "common:finalWave.settings.global" },
           checked: false,
           className:
             "rounded-fg-xs px-fg-1 py-fg-0-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus text-ink-faint hover:text-ink-muted",
         },
         {
           id: "scope",
-          label: "This scope",
+          label: { key: "common:finalWave.settings.scope" },
           checked: true,
           className:
             "rounded-fg-xs px-fg-1 py-fg-0-5 transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus font-medium text-accent-text",

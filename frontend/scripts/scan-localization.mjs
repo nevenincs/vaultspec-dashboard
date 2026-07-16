@@ -15,6 +15,13 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
 
 import ts from "typescript";
+import {
+  baselineEntries,
+  compareAllowlist,
+  PRESENTATION_FIELD_NAMES,
+  reportCounts,
+  UNSAFE_DYNAMIC_PRESENTATION_NAMES,
+} from "./scan-localization-policy.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = resolve(here, "..");
@@ -44,6 +51,7 @@ const FINDING_CODES = Object.freeze({
   presentationField: "presentation-field",
   translatedFragment: "translated-fragment",
   translationDefault: "translation-default",
+  unsafeDynamicPresentation: "unsafe-dynamic-presentation",
 });
 
 const SOURCE_EXT = /\.(?:css|ts|tsx)$/u;
@@ -52,10 +60,13 @@ const CSS_SOURCE_EXT = /\.css$/u;
 const TEST_SOURCE = /\.(?:test|spec)\.(?:css|ts|tsx)$/u;
 const EXACT_SOURCE_EXCLUSIONS = new Set([
   "src/localization/testing/addProjectResources.ts",
+  "src/localization/testing/graphResources.ts",
   "src/localization/testing/resources.ts",
+  "src/localization/testing/threeLabResources.ts",
 ]);
 const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
+const AUTHORED_DISPLAY_OWNER = "src/platform/localization/displayText.ts";
 const LEGACY_ACTION_PRESENTATION_OWNER = "src/platform/actions/action.ts";
 const LEGACY_ACTION_PRESENTATION_EXPORT = "legacyActionPresentation";
 
@@ -66,22 +77,6 @@ const JSX_ATTRIBUTE_NAMES = new Set([
   "aria-label",
   "ariaLabel",
   "description",
-  "emptyText",
-  "errorText",
-  "label",
-  "loadingText",
-  "message",
-  "placeholder",
-  "statusText",
-  "title",
-]);
-const PRESENTATION_FIELD_NAMES = new Set([
-  "accessibleName",
-  "body",
-  "cancelLabel",
-  "confirmLabel",
-  "description",
-  "disabledReason",
   "emptyText",
   "errorText",
   "label",
@@ -113,6 +108,7 @@ const LOCALE_METHODS = new Map([
   ["toLocaleTimeString", 0],
 ]);
 const INTL_FORMATTERS = new Set([
+  "Collator",
   "DateTimeFormat",
   "ListFormat",
   "NumberFormat",
@@ -208,6 +204,39 @@ function normalizeText(value) {
 
 function meaningful(value) {
   return normalizeText(value).length > 0;
+}
+
+function unsafeDynamicPresentationNodes(node) {
+  const matches = [];
+  const visit = (current) => {
+    if (
+      ts.isArrowFunction(current) ||
+      ts.isFunctionExpression(current) ||
+      ts.isJsxElement(current) ||
+      ts.isJsxSelfClosingElement(current) ||
+      ts.isJsxFragment(current)
+    ) {
+      return;
+    }
+    if (
+      ts.isPropertyAccessExpression(current) &&
+      UNSAFE_DYNAMIC_PRESENTATION_NAMES.has(current.name.text)
+    ) {
+      matches.push(current);
+      return;
+    }
+    if (
+      ts.isIdentifier(current) &&
+      UNSAFE_DYNAMIC_PRESENTATION_NAMES.has(current.text) &&
+      !ts.isPropertyAccessExpression(current.parent)
+    ) {
+      matches.push(current);
+      return;
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return matches;
 }
 
 function classCaseTransform(value) {
@@ -859,11 +888,36 @@ function scanProgram(files, allowOutsideSource = false) {
     if (sourceIsExcluded(file)) continue;
     const bindings = translationBindings(sourceFile, checker);
     const formatterOwner = toRelative(file) === FORMATTER_OWNER;
+    const authoredDisplayOwner = toRelative(file) === AUTHORED_DISPLAY_OWNER;
 
     const reportStatic = (code, node, context, expression = node) => {
       const parts = staticParts(expression, checker, bindings);
       for (const text of parts.texts.filter(meaningful))
         add(code, node, sourceFile, context, text);
+    };
+    const reportUnsafeDynamic = (node, context, expression) => {
+      if (
+        !ts.isIdentifier(expression) &&
+        !ts.isPropertyAccessExpression(expression) &&
+        !ts.isTemplateExpression(expression) &&
+        !ts.isBinaryExpression(expression) &&
+        !ts.isConditionalExpression(expression)
+      ) {
+        return;
+      }
+      if (staticParts(expression, checker, bindings).translation) return;
+      const dynamicRoots = ts.isConditionalExpression(expression)
+        ? [expression.whenTrue, expression.whenFalse]
+        : [expression];
+      for (const unsafeNode of dynamicRoots.flatMap(unsafeDynamicPresentationNodes)) {
+        add(
+          FINDING_CODES.unsafeDynamicPresentation,
+          unsafeNode,
+          sourceFile,
+          context,
+          unsafeNode.getText(sourceFile),
+        );
+      }
     };
 
     const visit = (node) => {
@@ -899,6 +953,7 @@ function scanProgram(files, allowOutsideSource = false) {
         for (const text of parts.texts.filter(meaningful)) {
           add(FINDING_CODES.jsxText, node, sourceFile, "jsx-expression", text);
         }
+        reportUnsafeDynamic(node, "jsx-expression", node.expression);
       } else if (ts.isJsxAttribute(node)) {
         const name = node.name.getText(sourceFile);
         if (name === "className" && node.initializer) {
@@ -946,6 +1001,7 @@ function scanProgram(files, allowOutsideSource = false) {
             : node.initializer;
           if (expression)
             reportStatic(FINDING_CODES.jsxAttribute, node, name, expression);
+          if (expression) reportUnsafeDynamic(node, name, expression);
         }
       } else if (ts.isPropertyAssignment(node)) {
         const name = propertyName(node.name);
@@ -1000,6 +1056,7 @@ function scanProgram(files, allowOutsideSource = false) {
             );
           } else {
             reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
+            reportUnsafeDynamic(node, name, node.initializer);
           }
         }
       } else if (
@@ -1029,6 +1086,7 @@ function scanProgram(files, allowOutsideSource = false) {
         const name = callName(node.expression);
         if (name && IMPERATIVE_CALL_NAMES.has(name) && node.arguments[0]) {
           reportStatic(FINDING_CODES.imperativeDisplay, node, name, node.arguments[0]);
+          reportUnsafeDynamic(node, name, node.arguments[0]);
         }
 
         const translationKind = translationCallKind(node, bindings, checker);
@@ -1143,7 +1201,8 @@ function scanProgram(files, allowOutsideSource = false) {
           if (
             ts.isIdentifier(node.expression.expression) &&
             node.expression.expression.text === "Intl" &&
-            INTL_FORMATTERS.has(node.expression.name.text)
+            INTL_FORMATTERS.has(node.expression.name.text) &&
+            !(authoredDisplayOwner && node.expression.name.text === "Collator")
           ) {
             const locale = node.arguments[0];
             add(
@@ -1164,7 +1223,8 @@ function scanProgram(files, allowOutsideSource = false) {
         ts.isPropertyAccessExpression(node.expression) &&
         ts.isIdentifier(node.expression.expression) &&
         node.expression.expression.text === "Intl" &&
-        INTL_FORMATTERS.has(node.expression.name.text)
+        INTL_FORMATTERS.has(node.expression.name.text) &&
+        !(authoredDisplayOwner && node.expression.name.text === "Collator")
       ) {
         const locale = node.arguments?.[0];
         add(
@@ -1357,40 +1417,6 @@ export function validateAllowlistEntries(parsed) {
   return parsed;
 }
 
-export function compareAllowlist(findings, allowlist) {
-  const current = new Map(findings.map((finding) => [finding.id, finding]));
-  const allowed = new Map(allowlist.map((entry) => [entry.id, entry]));
-  return {
-    metadataMismatches: findings.filter((finding) => {
-      const entry = allowed.get(finding.id);
-      return (
-        entry !== undefined &&
-        (entry.rule !== finding.code || entry.path !== finding.path)
-      );
-    }),
-    newFindings: findings.filter((finding) => !allowed.has(finding.id)),
-    stale: allowlist.filter((entry) => !current.has(entry.id)),
-  };
-}
-
-function baselineEntries(findings) {
-  return findings
-    .map(({ id, code, path }) => ({ id, path, rule: code }))
-    .sort(
-      (a, b) =>
-        compareText(a.path, b.path) ||
-        compareText(a.rule, b.rule) ||
-        compareText(a.id, b.id),
-    );
-}
-
-function reportCounts(findings) {
-  const counts = new Map();
-  for (const finding of findings)
-    counts.set(finding.code, (counts.get(finding.code) ?? 0) + 1);
-  return [...counts].sort(([a], [b]) => compareText(a, b));
-}
-
 function run() {
   const init = process.argv.includes("--init");
   const findings = scanProductionSources();
@@ -1463,4 +1489,4 @@ if (import.meta.url === invokedPath) {
   }
 }
 
-export { FINDING_CODES, LIMITS };
+export { compareAllowlist, FINDING_CODES, LIMITS };

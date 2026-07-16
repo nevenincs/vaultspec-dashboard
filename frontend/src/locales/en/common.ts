@@ -1,8 +1,26 @@
 export const common = {
+  systemStatus: {
+    labels: {
+      application: "Application",
+      documents: "Documents",
+      history: "History",
+      links: "Links",
+      projectTools: "Project tools",
+      search: "Search",
+    },
+    states: {
+      available: "Available",
+      checking: "Checking…",
+      reachable: "Available",
+      statusUnavailable: "Status unavailable",
+      unavailable: "Unavailable",
+    },
+  },
   accessibility: {
     actionsForItem: "Actions for {{item}}",
     actionsMenu: "Actions",
     back: "Back",
+    breadcrumb: "Breadcrumb",
     confirmAction: "Confirm {{action}}?",
     recordShortcut: "Record a shortcut for {{action}}",
     resizeActivityPanel: "Resize activity panel",
@@ -15,6 +33,8 @@ export const common = {
   actions: {
     cancel: "Cancel",
     close: "Close",
+    closeIsland: "Close island",
+    clearSearch: "Clear search",
     collapseNavigationPanel: "Collapse navigation panel",
     copy: "Copy",
     copyBranchName: "Copy branch name",
@@ -32,6 +52,9 @@ export const common = {
     disableFollowMode: "Disable follow mode",
     enableFollowMode: "Enable follow mode",
     expandNavigationPanel: "Expand navigation panel",
+    focusOnStage: "Focus on stage",
+    goToDestinationNode: "Open destination",
+    highlightOnStage: "Show on stage",
     hideActivityPanel: "Hide activity panel",
     hideApprovals: "Hide approvals",
     hideGraph: "Hide graph",
@@ -46,6 +69,7 @@ export const common = {
     openInEditor: "Open in editor",
     openSettings: "Open settings…",
     refreshData: "Refresh data",
+    removeFromRegistry: "Remove from registry",
     reloadPage: "Reload page",
     reset: "Reset",
     resetLayout: "Reset layout",
@@ -67,6 +91,58 @@ export const common = {
     showTimeline: "Show timeline",
     moveToNextPanel: "Move to the next panel",
     moveToPreviousPanel: "Move to the previous panel",
+  },
+  rail: {
+    accessibility: {
+      featureSuggestions: "Feature suggestions",
+      scopeNavigation: "Project navigation",
+    },
+    filters: {
+      advanced: "Advanced filters",
+      advancedApplied: "Advanced filters ({{count, number}} applied)",
+      featureAria: "Filter the vault by feature",
+      featurePlaceholder: "Filter by feature…",
+    },
+    states: {
+      degradedMessage: "Search is offline. Open items and history may be incomplete.",
+      degradedTitle: "Running degraded",
+      emptyMessage: "No open plans, pull requests, or issues in this worktree.",
+      emptyTitle: "Nothing in flight",
+      loadingActivity: "Loading activity",
+    },
+  },
+  kit: {
+    activity: {
+      loading: "Loading data",
+      rowsLoaded_one: "{{count, number}} row loaded…",
+      rowsLoaded_other: "{{count, number}} rows loaded…",
+    },
+    stepStates: {
+      complete: "Complete",
+      open: "Open",
+    },
+  },
+  shell: {
+    accessibility: {
+      collapsedNavigation: "Collapsed navigation",
+      primaryNavigation: "Primary navigation",
+    },
+    navigation: {
+      browse: "Browse",
+      home: "Home",
+      search: "Search",
+      status: "Status",
+    },
+    regions: {
+      activity: "Activity",
+      fileBrowser: "File browser",
+      timeline: "Timeline",
+      workspace: "Graph and documents",
+    },
+    workspace: {
+      emptyMessage: "Show the graph, create a document, or open one from navigation.",
+      emptyTitle: "Nothing open",
+    },
   },
   activityTabs: {
     changes: "Changes",
@@ -186,11 +262,70 @@ export const common = {
   },
   disabledReasons: {
     actionUnavailable: "Reload the page and try this action again.",
+    launchProjectCannotBeRemoved: "The launch project cannot be removed",
+    noDestination: "No destination",
+    noDestinationNode: "No destination item",
+    noProjectPath: "No project path",
+    noRelation: "No relation",
+    viewingHistory: "Not available while viewing history",
     itemUnavailableOnCanvas: "Refresh data, then try showing this item on the canvas.",
     currentVersionRequired: "Return to the current version to use this action.",
     desktopEditorRequired: "Open the desktop app to edit this file.",
     desktopFileManagerRequired: "Open the desktop app to show this item.",
     selectItemToOpen: "Select an item to open.",
+  },
+  finalWave: {
+    history: {
+      collapseMessage: "Collapse message for {{commit}}",
+      commit: "Commit",
+      expandMessage: "Expand message for {{commit}}",
+      openCommit: "Open {{commit}}",
+    },
+    onboarding: {
+      action: "Add your first project",
+      body: "No project is connected yet. Add a project folder to get started. The path is registered read-only, so nothing on disk is created or modified.",
+      title: "Welcome to vaultspec",
+    },
+    planStates: {
+      finished: "Finished",
+      inProgress: "In progress",
+      notStarted: "Not started",
+    },
+    planSteps: {
+      generic: "Plan step",
+      genericRecordUnavailable: "No record available for this plan step",
+      named: "{{step}}",
+      openGenericRecord: "Open record for this plan step",
+      openRecord: "Open record for {{step}}",
+      recordUnavailable: "No record available for {{step}}",
+    },
+    settings: {
+      global: "Global",
+      matchGlobal: "Reset to global",
+      resetDefault: "Reset to default",
+      scope: "This project",
+      title: "Settings",
+      description: "Preferences are saved to this workspace. Some apply per project.",
+      loading: "Loading settings…",
+      empty: "No settings are available.",
+      cancel: "Cancel",
+      done: "Finish",
+    },
+    statusSections: {
+      commits: "Commits",
+      issues: "Issues",
+      plans: "Plans",
+      pullRequests: "Pull requests",
+    },
+    work: {
+      progress_one: "{{done, number}} of {{count, number}} step complete",
+      progress_other: "{{done, number}} of {{count, number}} steps complete",
+    },
+    visualHarness: {
+      decisions: "Decisions",
+      title: "Phase-lane arc timeline",
+      vault: "Vault",
+    },
   },
   feedback: {
     actionUnavailable: "Couldn't complete the action. Reload the page and try again.",

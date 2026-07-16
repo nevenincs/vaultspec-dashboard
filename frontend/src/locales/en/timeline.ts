@@ -19,6 +19,7 @@ export const timeline = {
     showLast30Days: "Show the last 30 days",
     showLast90Days: "Show the last 90 days",
     viewProjectAtVersion: "View project at this version",
+    returnToLive: "Resume live view",
   },
   criteria: {
     created: "Created",
@@ -49,5 +50,6 @@ export const timeline = {
   },
   summaries: {
     selectedRange: "{{start}} to {{end}}",
+    viewingAt: "Viewing {{date}}",
   },
 } as const;

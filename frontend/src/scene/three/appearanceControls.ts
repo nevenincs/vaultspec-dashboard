@@ -1,26 +1,14 @@
-// Configurable APPEARANCE parameters — the lab's look-tuning surface, the "look"
-// sibling of forceControls. DERIVED from the canonical control registry
-// (graphControlSchema): labels, ranges, and defaults all come from there — the single
-// source of truth. This adapter re-shapes the registry's ui/lab-exposed
-// `visualisation` specs into the discriminated AppearanceControl the panel consumes
-// and attaches the panel section grouping (lab presentation only).
-//
-// Control kinds: a discriminated union so a renderer (the dev lab now, the app
-// GraphControls surface later) switches on `kind` — "number" for a slider/stepper,
-// "enum" for a select / SegmentedToggle.
-
 import { APPEARANCE_DEFAULTS, type AppearanceParams } from "./appearance";
-import { controlsFor } from "./graphControlSchema";
+import { controlsFor, type LabGraphControlId } from "./graphControlSchema";
+
+export type AppearanceControlSection = "nodes" | "edges";
 
 interface AppearanceControlBase {
   key: keyof AppearanceParams;
-  label: string;
-  group: string;
-  /** Short hint for what the knob does. */
-  hint: string;
+  controlId: LabGraphControlId;
+  group: AppearanceControlSection;
 }
 
-/** A numeric knob (slider + stepper). */
 export interface AppearanceNumberControl extends AppearanceControlBase {
   kind: "number";
   min: number;
@@ -30,56 +18,50 @@ export interface AppearanceNumberControl extends AppearanceControlBase {
 
 export interface AppearanceEnumOption {
   value: string;
-  label: string;
 }
 
-/** A discrete-choice knob (select / segmented toggle), e.g. the edge colour mode. */
 export interface AppearanceEnumControl extends AppearanceControlBase {
   kind: "enum";
   options: AppearanceEnumOption[];
 }
 
-export type AppearanceControl = AppearanceNumberControl | AppearanceEnumControl;
+export interface AppearanceBooleanControl extends AppearanceControlBase {
+  kind: "boolean";
+}
 
-/** Panel SECTION per appearance param (lab presentation only). */
-const SUBGROUP: Record<string, string> = {
-  nodeSizeScale: "Nodes",
-  nodeSalienceScale: "Nodes",
-  nodeColorMode: "Nodes",
-  edgeColorMode: "Edges",
-  edgeWidthMin: "Edges",
-  edgeWidthMax: "Edges",
-  edgeOpacityMin: "Edges",
-  edgeOpacityMax: "Edges",
-};
-const ENUM_OPTION_LABELS: Record<string, string> = {
-  solid: "Solid",
-  gradient: "Gradient",
-  category: "Category",
-  recency: "Recency",
-};
+export type AppearanceControl =
+  | AppearanceNumberControl
+  | AppearanceEnumControl
+  | AppearanceBooleanControl;
 
-/** The 7 appearance knobs, derived from the ui/lab-exposed `visualisation` specs (the
- *  registry's exposure-[] viz internals are excluded from the lab knob set). */
+const SUBGROUP = {
+  nodeSizeScale: "nodes",
+  nodeSalienceScale: "nodes",
+  nodeColorMode: "nodes",
+  nodeIcons: "nodes",
+  edgeColorMode: "edges",
+  edgeWidthMin: "edges",
+  edgeWidthMax: "edges",
+  edgeOpacityMin: "edges",
+  edgeOpacityMax: "edges",
+} as const satisfies Record<string, AppearanceControlSection>;
+
 export const APPEARANCE_CONTROLS: AppearanceControl[] = controlsFor("visualisation")
   .filter((spec) => spec.id in SUBGROUP)
   .map((spec): AppearanceControl => {
     const base = {
       key: spec.id as keyof AppearanceParams,
-      label: spec.label,
-      group: SUBGROUP[spec.id],
-      hint: spec.description ?? "",
+      controlId: spec.id as LabGraphControlId,
+      group: SUBGROUP[spec.id as keyof typeof SUBGROUP],
     };
     if (spec.type === "enum") {
       return {
         ...base,
         kind: "enum",
-        options: (spec.options ?? []).map((value) => ({
-          value,
-          label: ENUM_OPTION_LABELS[value] ?? value,
-        })),
+        options: (spec.options ?? []).map((value) => ({ value })),
       };
     }
+    if (spec.type === "boolean") return { ...base, kind: "boolean" };
     return {
       ...base,
       kind: "number",
@@ -89,10 +71,8 @@ export const APPEARANCE_CONTROLS: AppearanceControl[] = controlsFor("visualisati
     };
   });
 
-/** Defaults straight from the field (which derives them from the same registry). */
 export const APPEARANCE_CONTROL_DEFAULTS: AppearanceParams = { ...APPEARANCE_DEFAULTS };
 
-/** Group names in first-seen order, for laying the panel out in sections. */
-export const APPEARANCE_CONTROL_GROUPS: string[] = [
+export const APPEARANCE_CONTROL_GROUPS: AppearanceControlSection[] = [
   ...new Set(APPEARANCE_CONTROLS.map((c) => c.group)),
 ];

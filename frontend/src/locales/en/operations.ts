@@ -1,7 +1,102 @@
 export const operations = {
+  searchMaintenance: {
+    accessibility: {
+      filterByStatus: "Filter by status",
+      filterUpdates: "Filter search updates",
+      progress: "Search update progress",
+      sortUpdates: "Sort search updates",
+      updateStatus: "Search update: {{status}}",
+    },
+    actions: {
+      checkHealth: "Check search",
+      refresh: "Refresh",
+      restart: "Restart search",
+      retrySetup: "Set up and retry",
+      start: "Start search",
+      stop: "Stop search",
+      update: "Update search",
+    },
+    confirmations: {
+      stop: {
+        body: "Stopping search affects every open project until search is started again.",
+        title: "Stop search?",
+      },
+    },
+    destructiveActions: {
+      stop: "Stop search",
+    },
+    filters: {
+      placeholder: "Filter updates…",
+    },
+    jobs: {
+      count_one: "{{count, number}} update",
+      count_other: "{{count, number}} updates",
+      empty: "No search updates yet.",
+      noMatches: "No updates match this filter.",
+      partial_one: "Loaded {{shown, number}} of {{count, number}} update.",
+      partial_other: "Loaded {{shown, number}} of {{count, number}} updates.",
+      title: "Search updates",
+      update: "Search update",
+    },
+    labels: {
+      duration: "Duration",
+      entries: "Entries",
+      newest: "Newest",
+      longest: "Longest",
+      onDisk: "On disk",
+      progress: "Progress",
+      projects: "Projects",
+      started: "Started",
+      status: "Status",
+      update: "Update",
+    },
+    progress: {
+      working: "Updating search…",
+    },
+    projects: {
+      live_one: "{{count, number}} active",
+      live_other: "{{count, number}} active",
+      summary_one: "{{live, number}} active, {{count, number}} inactive",
+      summary_other: "{{live, number}} active, {{count, number}} inactive",
+      partial_one:
+        "Covering {{shown, number}} of {{count, number}} project. Totals may be higher.",
+      partial_other:
+        "Covering {{shown, number}} of {{count, number}} projects. Totals may be higher.",
+    },
+    service: {
+      shared: "Shared across projects",
+      unavailable: "Search status is unavailable. Reload the page and try again.",
+      setupRequired: "Search needs setup. Set it up, then try again.",
+      startFailed: "Search could not start. Try again.",
+      updateUnavailable: "Start search, then try again.",
+    },
+    states: {
+      completed: "Completed",
+      failed: "Failed",
+      queued: "Queued",
+      running: "In progress",
+      statusUnavailable: "Status unavailable",
+      checking: "Checking…",
+      available: "Available",
+      unavailable: "Unavailable",
+      started: "Running",
+      stopped: "Stopped",
+    },
+    storage: {
+      loading: "Loading storage details…",
+      unavailable: "Storage details are unavailable.",
+    },
+    watcher: {
+      disabled: "Not watching",
+      enabled: "Watching for changes",
+      label: "Watch for changes",
+      unavailable: "Start search, then try again.",
+    },
+  },
   actions: {
     applySearchSettings: "Apply search settings",
     checkWorkspace: "Check workspace",
+    checkVault: "Check project health",
     disableSearch: "Disable search",
     enableSearch: "Enable search",
     refreshSearch: "Refresh search",

@@ -11,6 +11,7 @@
 
 import { ArrowUpDown, Plus } from "lucide-react";
 
+import { resolveActionPresentation } from "../../platform/actions/action";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { useBrowserMode, useBrowserModeIntent } from "../../stores/view/browserMode";
 import { useActiveScope, useVaultFilesNarrowText } from "../../stores/server/queries";
@@ -61,6 +62,7 @@ function VaultTreeOptionsButton({ scope }: { scope: string | null }) {
 }
 
 export function BrowserRegion() {
+  const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   const mode = useBrowserMode();
   // The rail vault|code toggle writes the view-local browser mode, which is the
@@ -85,7 +87,7 @@ export function BrowserRegion() {
       className={
         compact ? "flex flex-col gap-fg-3" : "flex min-h-0 flex-1 flex-col gap-fg-3"
       }
-      aria-label="file browser"
+      aria-label={resolveMessage({ key: "common:shell.regions.fileBrowser" }).message}
       data-browser-region
     >
       <div className="flex items-center gap-fg-2">
@@ -98,7 +100,10 @@ export function BrowserRegion() {
                 the ONE shared new-document action descriptor, never a bespoke handler.
                 Vault mode only — the Files tree lists source, not authored docs. */}
             <IconButton
-              label="Add to a feature"
+              label={
+                resolveActionPresentation(newDocumentAction().label, resolveMessage)
+                  .message
+              }
               data-new-document
               onClick={() => newDocumentAction().run?.()}
             >

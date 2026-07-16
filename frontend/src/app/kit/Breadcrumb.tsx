@@ -1,6 +1,9 @@
 // Ordered path trail. The final segment marks the current location; preceding
 // segments may navigate to ancestors.
 
+import { DecorativeGlyph } from "./DecorativeGlyph";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+
 export interface BreadcrumbItem {
   label: string;
   onSelect?: () => void;
@@ -13,8 +16,12 @@ export interface BreadcrumbProps {
 }
 
 export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   return (
-    <nav aria-label="Breadcrumb" className={className || undefined}>
+    <nav
+      aria-label={resolveMessage({ key: "common:accessibility.breadcrumb" }).message}
+      className={className || undefined}
+    >
       <ol className="flex min-w-0 items-center gap-fg-1-5 text-[0.8125rem] leading-[1.4] text-ink-muted">
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
@@ -39,9 +46,7 @@ export function Breadcrumb({ items, className = "" }: BreadcrumbProps) {
                 </button>
               )}
               {!isLast && (
-                <span className="shrink-0 text-ink-faint" aria-hidden>
-                  /
-                </span>
+                <DecorativeGlyph name="slash" className="shrink-0 text-ink-faint" />
               )}
             </li>
           );

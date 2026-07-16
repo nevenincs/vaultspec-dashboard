@@ -33,6 +33,13 @@ import {
 } from "./graphControlsChrome";
 import { specById } from "../../scene/three/graphControlSchema";
 import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  rtlTestLocale,
+} from "../../localization/testing";
+import { sourceLocale } from "../../locales/en";
+import { resolveMessage } from "../../platform/localization/fallback";
+import {
   GRAPH_CONTROLS_MESSAGES,
   UI_GRAPH_CONTROL_MESSAGES,
 } from "./graphControlsVocabulary";
@@ -96,7 +103,9 @@ describe("graph controls chrome view seam", () => {
   });
 
   it("projects graph settings popover view state for the stage renderer", () => {
-    expect(deriveGraphControlsSettingsPopoverView(true, GRAPH_CONTROLS_MESSAGES.title)).toEqual({
+    expect(
+      deriveGraphControlsSettingsPopoverView(true, GRAPH_CONTROLS_MESSAGES.title),
+    ).toEqual({
       active: true,
       ariaExpanded: true,
       panelVisible: true,
@@ -104,7 +113,9 @@ describe("graph controls chrome view seam", () => {
       panelClassName:
         "absolute right-0 top-full z-30 mt-fg-1 flex w-[16.5rem] flex-col gap-fg-3 p-fg-3 backdrop-blur-sm",
     });
-    expect(deriveGraphControlsSettingsPopoverView(false, GRAPH_CONTROLS_MESSAGES.title)).toEqual({
+    expect(
+      deriveGraphControlsSettingsPopoverView(false, GRAPH_CONTROLS_MESSAGES.title),
+    ).toEqual({
       active: false,
       ariaExpanded: false,
       panelVisible: false,
@@ -146,7 +157,6 @@ describe("graph controls chrome view seam", () => {
     setGraphControlsSimRunning(true);
     expect(useGraphControlsChromeStore.getState().simRunning).toBe(true);
 
-    // Only a real boolean true counts (the scene emits booleans; anything else idles).
     setGraphControlsSimRunning("true");
     expect(useGraphControlsChromeStore.getState().simRunning).toBe(false);
 
@@ -199,7 +209,6 @@ describe("graph controls chrome view seam", () => {
     toggleGraphReflowFilter();
     expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
 
-    // Non-boolean truthy normalizes to false (only a real boolean true enables it).
     setGraphReflowFilter("true");
     expect(useGraphControlsChromeStore.getState().reflowFilter).toBe(false);
 
@@ -209,7 +218,6 @@ describe("graph controls chrome view seam", () => {
   });
 
   it("defaults autoframe ON and sets/toggles/normalizes/resets it", () => {
-    // Default ON (graph-autoframe): the 4th nav button starts engaged.
     expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
 
     useGraphControlsChromeStore.getState().setAutoframe(false);
@@ -218,7 +226,6 @@ describe("graph controls chrome view seam", () => {
     useGraphControlsChromeStore.getState().toggleAutoframe();
     expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
 
-    // Only a real boolean true enables it (non-boolean truthy normalizes to false).
     useGraphControlsChromeStore.getState().setAutoframe("true");
     expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
 
@@ -255,7 +262,6 @@ describe("graph controls tune seam (three-native force params)", () => {
     const charge = specById("charge")!;
     const linkDistance = specById("linkDistance")!;
     const linkStrength = specById("linkStrength")!;
-    // Repulsion is the magnitude: the signed `charge` range negated + swapped.
     expect(view.sliders.repulsion).toEqual({
       label: UI_GRAPH_CONTROL_MESSAGES.charge.label,
       title: UI_GRAPH_CONTROL_MESSAGES.charge.description,
@@ -285,7 +291,6 @@ describe("graph controls tune seam (three-native force params)", () => {
       linkSpring: 1.5,
     });
 
-    // A patch merges and normalizes non-finite values back to the default.
     patchGraphControlsTuneParams({ linkDistance: Number.NaN, linkSpring: 2 });
     expect(useGraphControlsChromeStore.getState().tuneParams).toEqual({
       repulsion: 200,
@@ -309,7 +314,7 @@ describe("graph controls tune seam (three-native force params)", () => {
 describe("graph controls appearance seam (set-appearance-params)", () => {
   beforeEach(() => resetGraphControlsChrome());
 
-  it("defaults appearance to the field's look (gradient edges per ADR D2)", () => {
+  it("defaults appearance to the field's look", () => {
     expect(GRAPH_CONTROLS_APPEARANCE_DEFAULTS).toEqual({
       nodeSizeScale: 1,
       nodeSalienceScale: 1,
@@ -362,7 +367,6 @@ describe("graph controls appearance seam (set-appearance-params)", () => {
       edgeColorMode: "solid",
     });
 
-    // A patch merges; a non-finite number and an invalid mode fall back to defaults.
     patchGraphControlsAppearanceParams({
       edgeWidthMax: Number.NaN,
       edgeColorMode: "rainbow",
@@ -387,16 +391,27 @@ describe("graph controls View seam (granularity switch presentation)", () => {
   it("projects the Features / Documents node-level options in the established rail vocabulary", () => {
     const view = deriveGraphControlsViewPresentationView();
     expect(view.heading).toBe(GRAPH_CONTROLS_MESSAGES.sections.show);
-    // The OPTION VALUES are the wire enums; the LABELS are the established
-    // user-facing rail vocabulary (the left rail's Features / Documents sections),
-    // not invented jargon — the wire keeps feature/document.
     expect(view.detailOptions.map((o) => o.value)).toEqual(["feature", "document"]);
     expect(view.detailOptions.map((o) => o.label)).toEqual([
       GRAPH_CONTROLS_MESSAGES.options.features,
       GRAPH_CONTROLS_MESSAGES.options.documents,
     ]);
-    // Every option carries an explanatory tooltip, plus a one-line caption.
     expect(view.detailOptions.every((o) => "key" in o.title)).toBe(true);
     expect("key" in view.caption).toBe(true);
+  });
+});
+
+describe("graph controls localization", () => {
+  it("resolves production descriptors in English, French, and Arabic", () => {
+    const descriptor = UI_GRAPH_CONTROL_MESSAGES.charge.label;
+    expect(
+      resolveMessage(createTestLocalizationRuntime(sourceLocale), descriptor),
+    ).toBe("Spacing");
+    expect(
+      resolveMessage(createTestLocalizationRuntime(ltrTestLocale), descriptor),
+    ).toBe("Espacement");
+    expect(
+      resolveMessage(createTestLocalizationRuntime(rtlTestLocale), descriptor),
+    ).toBe("التباعد");
   });
 });

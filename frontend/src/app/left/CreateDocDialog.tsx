@@ -23,7 +23,10 @@
 import { useEffect, useId, useMemo, useRef } from "react";
 import { ArrowLeft, X } from "lucide-react";
 
-import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
 import type { MessageDescriptor } from "../../platform/localization/message";
 import {
   useActiveScope,
@@ -169,7 +172,8 @@ export function CreateDocDialog() {
   // picker reads, so both create entry points share one source and a value can only
   // ever name an existing tag (free text still creates a new one). Derived in a
   // memo over the raw corpus (store-selector law).
-  const corpus = useEditorLinkingCorpus(scope);
+  const locale = useActiveLocale();
+  const corpus = useEditorLinkingCorpus(scope, locale);
   const featureOptions: ComboOption[] = useMemo(
     () => corpus.featureTags.map((tag) => ({ value: tag, primary: tag })),
     [corpus.featureTags],

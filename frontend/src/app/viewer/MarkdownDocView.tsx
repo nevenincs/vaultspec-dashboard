@@ -9,7 +9,11 @@ import {
 
 import { GitCompare } from "lucide-react";
 
-import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
+import { authoredDisplayText } from "../../platform/localization/displayText";
 
 import {
   useCreateComment,
@@ -234,7 +238,8 @@ export function MarkdownDocView({
 
   // The pickable corpus for the Feature / Related linking pickers (stores selector;
   // this component fetches nothing — dashboard-layer-ownership).
-  const corpus = useEditorLinkingCorpus(scope);
+  const locale = useActiveLocale();
+  const corpus = useEditorLinkingCorpus(scope, locale);
   const selfStem = docStemFromNodeId(nodeId) ?? "";
 
   // Formatting wiring: the toolbar reads the textarea selection, applies a pure
@@ -247,11 +252,34 @@ export function MarkdownDocView({
   const applyFormat = (command: MarkdownFormatCommand) => {
     const el = textareaRef.current;
     if (!el) return;
-    const result = applyMarkdownFormat(command, {
-      text: editor.draftText,
-      selStart: el.selectionStart,
-      selEnd: el.selectionEnd,
-    });
+    const result = applyMarkdownFormat(
+      command,
+      {
+        text: editor.draftText,
+        selStart: el.selectionStart,
+        selEnd: el.selectionEnd,
+      },
+      {
+        bold: resolveMessage({
+          key: "documents:localizationWave.formatting.boldPlaceholder",
+        }).message,
+        italic: resolveMessage({
+          key: "documents:localizationWave.formatting.italicPlaceholder",
+        }).message,
+        code: resolveMessage({
+          key: "documents:localizationWave.formatting.codePlaceholder",
+        }).message,
+        document: resolveMessage({
+          key: "documents:localizationWave.formatting.documentPlaceholder",
+        }).message,
+        linkText: resolveMessage({
+          key: "documents:localizationWave.formatting.linkTextPlaceholder",
+        }).message,
+        linkUrl: resolveMessage({
+          key: "documents:localizationWave.formatting.linkUrlPlaceholder",
+        }).message,
+      },
+    );
     pendingSelectionRef.current = [result.selStart, result.selEnd];
     updateEditorDraft(result.text);
   };
@@ -426,7 +454,14 @@ export function MarkdownDocView({
           canEdit={documentEditor.canEdit}
           trailing={
             docMenuEntity && (
-              <RowMenuDisclosure entity={docMenuEntity} label="Document actions" />
+              <RowMenuDisclosure
+                entity={docMenuEntity}
+                label={
+                  resolveMessage({
+                    key: "documents:localizationWave.accessibility.documentActions",
+                  }).message
+                }
+              />
             )
           }
         />
@@ -528,8 +563,13 @@ export function MarkdownDocView({
                   disabled={feature === null}
                   title={
                     feature === null
-                      ? "no feature tag to scope the fix"
-                      : `Fix conformance for #${feature}`
+                      ? resolveMessage({
+                          key: "documents:localizationWave.disabledReasons.noFeatureForFix",
+                        }).message
+                      : resolveMessage({
+                          key: "documents:localizationWave.actions.fixFeatureConformance",
+                          values: { feature: authoredDisplayText(feature) },
+                        }).message
                   }
                   onClick={() => {
                     if (feature === null) return;
@@ -542,8 +582,13 @@ export function MarkdownDocView({
                   }}
                 >
                   {feature === null
-                    ? "Fix conformance"
-                    : `Fix “${feature}” conformance`}
+                    ? resolveMessage({
+                        key: "documents:localizationWave.actions.fixConformance",
+                      }).message
+                    : resolveMessage({
+                        key: "documents:localizationWave.actions.fixFeatureConformance",
+                        values: { feature: authoredDisplayText(feature) },
+                      }).message}
                 </Button>
               );
             })()}
@@ -551,7 +596,10 @@ export function MarkdownDocView({
           <ul className="mt-fg-1 flex flex-col gap-px">
             {editorChrome.advisoryRows.map((row) => (
               <li key={row.key} className={`text-label ${row.toneClass}`}>
-                {row.marker} {row.message}
+                {row.marker}{" "}
+                {row.messageDescriptor
+                  ? resolveMessage(row.messageDescriptor).message
+                  : row.message}
                 {row.fixableSuffix}
               </li>
             ))}
@@ -592,7 +640,11 @@ export function MarkdownDocView({
           value={editor.draftText}
           languageHint="markdown"
           onChange={updateEditorDraft}
-          ariaLabel="document body editor"
+          ariaLabel={
+            resolveMessage({
+              key: "documents:localizationWave.accessibility.documentBodyEditor",
+            }).message
+          }
           inputRef={textareaRef}
         />
       </div>

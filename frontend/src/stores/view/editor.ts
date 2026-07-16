@@ -4,6 +4,10 @@
 
 import { useEffect, useMemo } from "react";
 import { create } from "zustand";
+import {
+  normalizeMessageDescriptor,
+  type MessageDescriptor,
+} from "../../platform/localization/message";
 
 import type { OpsWriteResult } from "../server/engine";
 import {
@@ -24,6 +28,7 @@ export interface ConformanceCheck {
   check?: string;
   severity?: string;
   message?: string;
+  messageDescriptor?: MessageDescriptor;
   fixable?: boolean;
 }
 
@@ -70,6 +75,7 @@ export interface MarkdownEditorAdvisoryRowView {
   toneClass: string;
   marker: string;
   message: string;
+  messageDescriptor: MessageDescriptor | null;
   fixableLabel: string | null;
   fixableSuffix: string;
 }
@@ -159,6 +165,9 @@ export function normalizeMarkdownEditorAdvisories(
       ...(normalizeAdvisoryText(value.message) !== undefined
         ? { message: normalizeAdvisoryText(value.message) }
         : {}),
+      ...(normalizeMessageDescriptor(value.messageDescriptor) !== null
+        ? { messageDescriptor: normalizeMessageDescriptor(value.messageDescriptor)! }
+        : {}),
       ...(typeof value.fixable === "boolean" ? { fixable: value.fixable } : {}),
     });
     if (normalized.length >= MARKDOWN_EDITOR_ADVISORIES_MAX_ITEMS) break;
@@ -237,7 +246,8 @@ export function deriveMarkdownEditorChromeView(
         key: `${check.check ?? "check"}-${index}`,
         toneClass: error ? "text-state-broken" : "text-ink-muted",
         marker: error ? "x" : "!",
-        message: check.message ?? check.check ?? "advisory",
+        message: check.message ?? check.check ?? "",
+        messageDescriptor: check.messageDescriptor ?? null,
         fixableLabel: check.fixable ? "fixable" : null,
         fixableSuffix: check.fixable ? " - fixable" : "",
       };
@@ -520,7 +530,11 @@ export function applyRenameEditorResult(result: RenameDocResult): void {
   }
   if (result.kind === "collision") {
     setMarkdownEditorAdvisories([
-      { severity: "error", message: result.message, fixable: false },
+      {
+        severity: "error",
+        messageDescriptor: { key: "common:feedback.actionUnavailable" },
+        fixable: false,
+      },
     ]);
     markEditorFailed();
     return;

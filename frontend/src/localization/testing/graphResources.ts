@@ -1,7 +1,10 @@
 import { ltrCanvasResources, rtlCanvasResources } from "./canvasStateResources";
+import { ltrThreeLabResources, rtlThreeLabResources } from "./threeLabResources";
 
 export const ltrGraphResources = {
   accessibility: {
+    canvas:
+      "Canevas du graphe. Utilisez les flèches pour vous déplacer, Entrée pour ouvrir et E pour développer.",
     selectedItem: "Élément sélectionné : {{item}}.",
     selectedItemGeneric: "Élément sélectionné.",
     workingSet: "Ensemble de travail",
@@ -93,6 +96,64 @@ export const ltrGraphResources = {
     title: "Commandes du graphe",
   },
   canvas: ltrCanvasResources,
+  filters: {
+    accessibility: { panel: "Filtres de documents" },
+    actions: {
+      clearAll: "Tout effacer",
+      reset: "Réinitialiser les filtres",
+      showResults: "Afficher les résultats",
+    },
+    edited: {
+      any: "À tout moment",
+      lastSevenDays: "7 derniers jours",
+      lastThirtyDays: "30 derniers jours",
+      thisYear: "Cette année",
+    },
+    health: {
+      dangling: "Destination manquante",
+      emptyScaffold: "Document vide",
+      invalid: "Détails incomplets",
+      orphaned: "Non lié",
+    },
+    options: {
+      adr: "Décisions",
+      audit: "Revues",
+      exec: "Étapes",
+      plan: "Plans",
+      reference: "Références",
+      research: "Recherche",
+      summary: "Résumés",
+    },
+    search: { features: "Rechercher des fonctionnalités" },
+    sections: {
+      decisionStatus: "État de la décision",
+      edited: "Modifié",
+      feature: "Fonctionnalité",
+      health: "Santé",
+      kind: "Type",
+      planStatus: "État du plan",
+    },
+    states: {
+      empty: "Aucun choix de filtre disponible.",
+      loading: "Chargement des choix de filtre…",
+    },
+    statuses: {
+      accepted: "Accepté",
+      active: "Actif",
+      archived: "Archivé",
+      complete: "Terminé",
+      deprecated: "Obsolète",
+      draft: "Brouillon",
+      finished: "Terminé",
+      inProgress: "En cours",
+      notStarted: "Non commencé",
+      proposed: "Proposé",
+      rejected: "Rejeté",
+    },
+    compactTitle: "Filtres",
+    title: "Filtrer les documents",
+  },
+  lab: ltrThreeLabResources,
   disabledReasons: {
     chooseConnectionWithSummary: "Choisissez une connexion avec un résumé à copier.",
     chooseItemWithTitle: "Choisissez un élément avec un titre à copier.",
@@ -121,16 +182,55 @@ export const ltrGraphResources = {
       recent: "Récent",
     },
   },
+  islands: {
+    labels: { status: "État", type: "Type" },
+    progress: {
+      stepsComplete_many: "{{done, number}} étapes sur {{count, number}} terminées",
+      stepsComplete_one: "{{done, number}} étape sur {{count, number}} terminée",
+      stepsComplete_other: "{{done, number}} étapes sur {{count, number}} terminées",
+    },
+    states: {
+      active: "Actif",
+      archived: "Archivé",
+      broken: "Attention requise",
+      complete: "Terminé",
+      featureLoading: "Chargement des documents associés…",
+      loading: "Chargement des détails…",
+      stale: "Obsolète",
+      unavailable:
+        "Les détails sont indisponibles. Actualisez les données, puis réessayez.",
+    },
+  },
+  hover: {
+    accessibility: {
+      detailsFor: "Détails de {{title}}",
+      open: "Ouvrir {{title}}",
+    },
+    evidence: {
+      codeLocations_many: "{{count, number}} emplacements de code",
+      codeLocations_one: "{{count, number}} emplacement de code",
+      codeLocations_other: "{{count, number}} emplacements de code",
+      commits_many: "{{count, number}} modifications associées",
+      commits_one: "{{count, number}} modification associée",
+      commits_other: "{{count, number}} modifications associées",
+      documents_many: "{{count, number}} documents associés",
+      documents_one: "{{count, number}} document associé",
+      documents_other: "{{count, number}} documents associés",
+    },
+    types: { feature: "Fonctionnalité" },
+  },
   shortcutGroups: {
     workingSet: "Ensemble de travail",
   },
   labels: {
+    graph: "Graphe",
     item: "Élément",
   },
 } as const;
 
 export const rtlGraphResources = {
   accessibility: {
+    canvas: "لوحة الرسم البياني. استخدم مفاتيح الأسهم للتنقل وEnter للفتح وE للتوسيع.",
     selectedItem: "تم تحديد {{item}}.",
     selectedItemGeneric: "تم تحديد العنصر.",
     workingSet: "مجموعة العمل",
@@ -222,6 +322,64 @@ export const rtlGraphResources = {
     title: "عناصر تحكم الرسم البياني",
   },
   canvas: rtlCanvasResources,
+  filters: {
+    accessibility: { panel: "عوامل تصفية المستندات" },
+    actions: {
+      clearAll: "مسح الكل",
+      reset: "إعادة تعيين عوامل التصفية",
+      showResults: "إظهار النتائج",
+    },
+    edited: {
+      any: "أي وقت",
+      lastSevenDays: "آخر 7 أيام",
+      lastThirtyDays: "آخر 30 يومًا",
+      thisYear: "هذا العام",
+    },
+    health: {
+      dangling: "وجهة مفقودة",
+      emptyScaffold: "مستند فارغ",
+      invalid: "تفاصيل غير مكتملة",
+      orphaned: "غير مرتبط",
+    },
+    options: {
+      adr: "القرارات",
+      audit: "المراجعات",
+      exec: "الخطوات",
+      plan: "الخطط",
+      reference: "المراجع",
+      research: "البحث",
+      summary: "الملخصات",
+    },
+    search: { features: "البحث عن الميزات" },
+    sections: {
+      decisionStatus: "حالة القرار",
+      edited: "تم التعديل",
+      feature: "الميزة",
+      health: "السلامة",
+      kind: "النوع",
+      planStatus: "حالة الخطة",
+    },
+    states: {
+      empty: "لا تتوفر خيارات تصفية.",
+      loading: "جارٍ تحميل خيارات التصفية…",
+    },
+    statuses: {
+      accepted: "مقبول",
+      active: "نشط",
+      archived: "مؤرشف",
+      complete: "مكتمل",
+      deprecated: "قديم",
+      draft: "مسودة",
+      finished: "منتهٍ",
+      inProgress: "قيد التقدم",
+      notStarted: "لم يبدأ",
+      proposed: "مقترح",
+      rejected: "مرفوض",
+    },
+    compactTitle: "عوامل التصفية",
+    title: "تصفية المستندات",
+  },
+  lab: rtlThreeLabResources,
   disabledReasons: {
     chooseConnectionWithSummary: "اختر اتصالًا له ملخص لنسخه.",
     chooseItemWithTitle: "اختر عنصرًا له عنوان لنسخه.",
@@ -248,10 +406,59 @@ export const rtlGraphResources = {
       recent: "حديث",
     },
   },
+  islands: {
+    labels: { status: "الحالة", type: "النوع" },
+    progress: {
+      stepsComplete_zero: "اكتملت {{done, number}} من {{count, number}} خطوة",
+      stepsComplete_one: "اكتملت {{done, number}} من {{count, number}} خطوة",
+      stepsComplete_two: "اكتملت {{done, number}} من {{count, number}} خطوتين",
+      stepsComplete_few: "اكتملت {{done, number}} من {{count, number}} خطوات",
+      stepsComplete_many: "اكتملت {{done, number}} من {{count, number}} خطوة",
+      stepsComplete_other: "اكتملت {{done, number}} من {{count, number}} خطوة",
+    },
+    states: {
+      active: "نشط",
+      archived: "مؤرشف",
+      broken: "يحتاج إلى اهتمام",
+      complete: "مكتمل",
+      featureLoading: "جارٍ تحميل المستندات المرتبطة…",
+      loading: "جارٍ تحميل التفاصيل…",
+      stale: "قديم",
+      unavailable: "التفاصيل غير متاحة. حدّث البيانات، ثم حاول مرة أخرى.",
+    },
+  },
+  hover: {
+    accessibility: {
+      detailsFor: "تفاصيل {{title}}",
+      open: "فتح {{title}}",
+    },
+    evidence: {
+      codeLocations_zero: "{{count, number}} موقع تعليمات برمجية",
+      codeLocations_one: "{{count, number}} موقع تعليمات برمجية",
+      codeLocations_two: "{{count, number}} موقعا تعليمات برمجية",
+      codeLocations_few: "{{count, number}} مواقع تعليمات برمجية",
+      codeLocations_many: "{{count, number}} موقع تعليمات برمجية",
+      codeLocations_other: "{{count, number}} موقع تعليمات برمجية",
+      commits_zero: "{{count, number}} تغيير مرتبط",
+      commits_one: "{{count, number}} تغيير مرتبط",
+      commits_two: "{{count, number}} تغييران مرتبطان",
+      commits_few: "{{count, number}} تغييرات مرتبطة",
+      commits_many: "{{count, number}} تغييرًا مرتبطًا",
+      commits_other: "{{count, number}} تغيير مرتبط",
+      documents_zero: "{{count, number}} مستند مرتبط",
+      documents_one: "{{count, number}} مستند مرتبط",
+      documents_two: "{{count, number}} مستندان مرتبطان",
+      documents_few: "{{count, number}} مستندات مرتبطة",
+      documents_many: "{{count, number}} مستندًا مرتبطًا",
+      documents_other: "{{count, number}} مستند مرتبط",
+    },
+    types: { feature: "ميزة" },
+  },
   shortcutGroups: {
     workingSet: "مجموعة العمل",
   },
   labels: {
+    graph: "الرسم البياني",
     item: "عنصر",
   },
 } as const;

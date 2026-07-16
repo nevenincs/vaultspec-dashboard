@@ -10,6 +10,7 @@ import {
 } from "../engine";
 import { isRagRunning } from "../liveAdapters";
 import { useEngineStatus } from "./internal";
+import type { MessageDescriptor } from "../../../platform/localization/message";
 
 // --- git working-tree state (git-diff-browser ADR) -----------------------------------
 //
@@ -197,6 +198,29 @@ export interface RagStatusView {
    * from the carried fields; false whenever any is missing or the tier degrades.
    */
   ready: boolean;
+  /** Closed user-facing status projection. Raw lifecycle and reasons stay internal. */
+  presentation: MessageDescriptor;
+}
+
+function ragStatusPresentation({
+  loading,
+  errored,
+  degraded,
+  service,
+}: {
+  loading: boolean;
+  errored: boolean;
+  degraded: boolean;
+  service?: string;
+}): MessageDescriptor {
+  if (loading) return { key: "operations:searchMaintenance.states.checking" };
+  if (errored || degraded)
+    return { key: "operations:searchMaintenance.states.statusUnavailable" };
+  if (service === "running")
+    return { key: "operations:searchMaintenance.states.started" };
+  if (service === "stopped" || service === "absent")
+    return { key: "operations:searchMaintenance.states.stopped" };
+  return { key: "operations:searchMaintenance.states.statusUnavailable" };
 }
 
 /**
@@ -228,7 +252,7 @@ export function deriveRagStatusView(
     const running = isRagRunning(rag.service);
     const ready =
       running && !degraded && rag.index !== undefined && rag.watcher !== undefined;
-    return {
+    const view = {
       loading: false,
       errored: false,
       degraded,
@@ -240,12 +264,13 @@ export function deriveRagStatusView(
       jobs: rag.jobs,
       ready,
     };
+    return { ...view, presentation: ragStatusPresentation(view) };
   }
   // No rag payload. A tiers-bearing envelope (served snapshot OR a backend-down
   // error envelope) is designed degradation; a tiers-less fault is the errored
   // branch; otherwise the snapshot is still in flight.
   if (tiers) {
-    return {
+    const view = {
       loading: false,
       errored: false,
       degraded,
@@ -253,23 +278,26 @@ export function deriveRagStatusView(
       running: false,
       ready: false,
     };
+    return { ...view, presentation: ragStatusPresentation(view) };
   }
   if (error) {
-    return {
+    const view = {
       loading: false,
       errored: true,
       degraded: false,
       running: false,
       ready: false,
     };
+    return { ...view, presentation: ragStatusPresentation(view) };
   }
-  return {
+  const view = {
     loading: pending,
     errored: false,
     degraded: false,
     running: false,
     ready: false,
   };
+  return { ...view, presentation: ragStatusPresentation(view) };
 }
 
 /**
@@ -289,6 +317,75 @@ export interface StatusRollupView {
   git: GitStatusHookView;
   core: CoreStatusView;
   rag: RagStatusView;
+}
+
+export type SystemStatusTone = "ok" | "down" | "unknown";
+export interface SystemStatusRow {
+  key: "application" | "projectTools" | "documents" | "links" | "history" | "search";
+  label: MessageDescriptor;
+  status: MessageDescriptor;
+  tone: SystemStatusTone;
+}
+
+const SYSTEM_ROW_LABELS = {
+  application: { key: "common:systemStatus.labels.application" },
+  projectTools: { key: "common:systemStatus.labels.projectTools" },
+  documents: { key: "common:systemStatus.labels.documents" },
+  links: { key: "common:systemStatus.labels.links" },
+  history: { key: "common:systemStatus.labels.history" },
+  search: { key: "common:systemStatus.labels.search" },
+} as const satisfies Record<SystemStatusRow["key"], MessageDescriptor>;
+
+function systemStatusDescriptor(tone: SystemStatusTone): MessageDescriptor {
+  return tone === "ok"
+    ? { key: "common:systemStatus.states.available" }
+    : tone === "unknown"
+      ? { key: "common:systemStatus.states.checking" }
+      : { key: "common:systemStatus.states.unavailable" };
+}
+
+/** Project interpreted status into a closed presentation model. Raw tier names,
+ * lifecycle values, and served reasons never cross this boundary. */
+export function deriveSystemStatusRows(rollup: StatusRollupView): SystemStatusRow[] {
+  const loading = rollup.core.loading && !rollup.engineUnreachable;
+  const applicationTone: SystemStatusTone = rollup.engineUnreachable
+    ? "down"
+    : loading
+      ? "unknown"
+      : "ok";
+  const toolsTone: SystemStatusTone =
+    rollup.engineUnreachable || rollup.core.errored
+      ? "down"
+      : rollup.core.loading
+        ? "unknown"
+        : rollup.core.reachable
+          ? "ok"
+          : "down";
+  const tierTone = (tier: string): SystemStatusTone => {
+    if (rollup.engineUnreachable) return "down";
+    if (loading) return "unknown";
+    if (tier === "semantic")
+      return rollup.rag.loading
+        ? "unknown"
+        : rollup.rag.errored || rollup.rag.degraded
+          ? "down"
+          : "ok";
+    return rollup.degradations.includes(tier) ? "down" : "ok";
+  };
+  const rows: Array<[SystemStatusRow["key"], SystemStatusTone]> = [
+    ["application", applicationTone],
+    ["projectTools", toolsTone],
+    ["documents", tierTone("structural")],
+    ["links", tierTone("declared")],
+    ["history", tierTone("temporal")],
+    ["search", tierTone("semantic")],
+  ];
+  return rows.map(([key, tone]) => ({
+    key,
+    label: SYSTEM_ROW_LABELS[key],
+    status: systemStatusDescriptor(tone),
+    tone,
+  }));
 }
 
 /**

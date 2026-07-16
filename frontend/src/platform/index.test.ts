@@ -14,9 +14,6 @@ describe("platform public API barrel", () => {
       "postWorkerLog",
       // containment
       "ErrorBoundary",
-      "CrashInjector",
-      "CrashZone",
-      "useCrashStore",
       // dispatch
       "Dispatcher",
       "useAction",

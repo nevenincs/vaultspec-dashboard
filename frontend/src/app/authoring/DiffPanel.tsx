@@ -15,13 +15,15 @@
 // hardcoded px.
 
 import { useMemo } from "react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { authoredDisplayText } from "../../platform/localization/displayText";
 
 import {
   useProposalDetail,
   type BoundedDocumentText,
   type ReviewDocumentProjection,
 } from "../../stores/server/authoring";
-import { Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { DecorativeGlyph, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { HighlightedLineContent } from "../viewer/HighlightedCode";
 import { languageHintFromPath } from "../viewer/languages";
 import { useTokenLines } from "../viewer/useHighlighter";
@@ -51,10 +53,10 @@ function documentLabel(document: unknown, childKey: string): string {
 }
 
 /** The honest truncation notice when either served side was byte-capped. */
-function truncationNotice(base: BoundedDocumentText, proposed: BoundedDocumentText) {
+function truncationSide(base: BoundedDocumentText, proposed: BoundedDocumentText) {
   const side = base.truncated ? base : proposed.truncated ? proposed : null;
   if (!side) return null;
-  return `Preview truncated — showing ${side.returned_bytes} of ${side.total_bytes} bytes. Open the document for the full body.`;
+  return side;
 }
 
 /** The pure diff renderer over two served texts. Exported so a wire-free render
@@ -73,7 +75,8 @@ export function DiffLinesView({
     [base.text, proposed.text],
   );
   const stat = useMemo(() => diffStat(lines), [lines]);
-  const truncated = truncationNotice(base, proposed);
+  const resolveMessage = useLocalizedMessageResolver();
+  const truncated = truncationSide(base, proposed);
   const languageHint = useMemo(() => languageHintFromPath(label), [label]);
   const { lines: tokenLines } = useTokenLines(
     lines.map((line) => line.text).join("\n"),
@@ -83,21 +86,30 @@ export function DiffLinesView({
   return (
     <div className="flex flex-col gap-fg-1-5" data-review-doc-diff data-doc={label}>
       <div className="flex flex-wrap items-center gap-fg-2 text-meta text-ink-muted">
-        <span className="min-w-0 truncate font-mono text-ink-muted" title={label}>
+        <span
+          className="min-w-0 truncate font-mono text-ink-muted"
+          title={authoredDisplayText(label)}
+        >
           {label}
         </span>
         <span className="tabular-nums text-diff-add" data-diff-added>
-          +{stat.added}
+          <DecorativeGlyph name="plus" />
+          {stat.added}
         </span>
         <span className="tabular-nums text-diff-remove" data-diff-removed>
-          −{stat.removed}
+          <DecorativeGlyph name="minus" />
+          {stat.removed}
         </span>
       </div>
       {stat.added === 0 && stat.removed === 0 ? (
         <StateBlock
           mode="empty"
           layout="inline"
-          message="No textual change in this document."
+          message={
+            resolveMessage({
+              key: "documents:localizationWave.authoring.noTextChange",
+            }).message
+          }
         />
       ) : (
         <div className="overflow-x-auto rounded-fg-xs border border-rule bg-paper-sunken">
@@ -123,7 +135,21 @@ export function DiffLinesView({
           </pre>
         </div>
       )}
-      {truncated && <StateBlock mode="degraded" layout="inline" message={truncated} />}
+      {truncated && (
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message={
+            resolveMessage({
+              key: "documents:localizationWave.authoring.truncatedPreview",
+              values: {
+                returned: truncated.returned_bytes,
+                total: truncated.total_bytes,
+              },
+            }).message
+          }
+        />
+      )}
     </div>
   );
 }
@@ -142,11 +168,18 @@ function ReviewDocumentDiff({ doc }: { doc: ReviewDocumentProjection }) {
  *  proposed texts) for `changesetId` and renders the per-operation diff. Mounted
  *  only when a card expands, so the body-free queue never pays the detail cost. */
 export function DiffPanel({ changesetId }: { changesetId: string }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const detail = useProposalDetail(changesetId);
 
   if (detail.isLoading) {
     return (
-      <Skeleton label="Loading the change preview">
+      <Skeleton
+        label={
+          resolveMessage({
+            key: "documents:localizationWave.authoring.loadingPreview",
+          }).message
+        }
+      >
         <SkeletonRow width="w-3/4" />
         <SkeletonRow width="w-2/3" />
       </Skeleton>
@@ -157,7 +190,11 @@ export function DiffPanel({ changesetId }: { changesetId: string }) {
       <StateBlock
         mode="degraded"
         layout="inline"
-        message="The change preview couldn’t be loaded."
+        message={
+          resolveMessage({
+            key: "documents:localizationWave.authoring.previewLoadFailed",
+          }).message
+        }
       />
     );
   }
@@ -168,7 +205,11 @@ export function DiffPanel({ changesetId }: { changesetId: string }) {
       <StateBlock
         mode="empty"
         layout="inline"
-        message="No change preview is available for this proposal."
+        message={
+          resolveMessage({
+            key: "documents:localizationWave.authoring.previewUnavailable",
+          }).message
+        }
       />
     );
   }

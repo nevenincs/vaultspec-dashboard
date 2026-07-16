@@ -22,6 +22,10 @@
 // ownership, views-are-projections-of-one-model).
 
 import type { SceneEdgeData, SceneNodeData } from "../../scene/sceneController";
+import {
+  compareStableIdentifiers,
+  stableIdentifier,
+} from "../../platform/localization/displayText";
 
 /** The minimal graph shape the walk needs — nodes + the edge adjacency. */
 export interface WalkGraph {
@@ -42,7 +46,9 @@ export function egoNeighbors(graph: WalkGraph, id: string): string[] {
     if (edge.src === id && edge.dst !== id && present.has(edge.dst)) seen.add(edge.dst);
     if (edge.dst === id && edge.src !== id && present.has(edge.src)) seen.add(edge.src);
   }
-  return [...seen].sort((a, b) => a.localeCompare(b));
+  return [...seen].sort((a, b) =>
+    compareStableIdentifiers(stableIdentifier(a), stableIdentifier(b)),
+  );
 }
 
 /**
@@ -60,7 +66,11 @@ export function nextFocus(
   const ids = graph.nodes.map((n) => n.id);
   if (ids.length === 0) return null;
   if (current === null || !ids.includes(current)) {
-    return [...ids].sort((a, b) => a.localeCompare(b))[0] ?? null;
+    return (
+      [...ids].sort((a, b) =>
+        compareStableIdentifiers(stableIdentifier(a), stableIdentifier(b)),
+      )[0] ?? null
+    );
   }
   const ego = egoNeighbors(graph, current);
   if (ego.length === 0) return current;

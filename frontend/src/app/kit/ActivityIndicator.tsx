@@ -8,6 +8,8 @@
 // nothing derived, no fetch, no store reads — the connected wrapper in
 // `app/chrome` owns the one `useDataActivityView` subscription.
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+
 export interface ActivityIndicatorProps {
   /** Render the indicator (the debounced `visible` from the activity view). */
   visible: boolean;
@@ -19,6 +21,7 @@ export function ActivityIndicator({
   visible,
   rowsLoaded = null,
 }: ActivityIndicatorProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   if (!visible) return null;
   return (
     <div
@@ -29,7 +32,7 @@ export function ActivityIndicator({
           count stays aria-hidden so a multi-page drain never queues repeated
           polite announcements (review nit: SR chattiness). */}
       <span role="status" className="sr-only">
-        Loading data
+        {resolveMessage({ key: "common:kit.activity.loading" }).message}
       </span>
       <div
         aria-hidden
@@ -38,10 +41,12 @@ export function ActivityIndicator({
       {rowsLoaded !== null && (
         <div aria-hidden className="flex justify-end pe-fg-2 pt-fg-1">
           <span className="rounded-fg-sm border border-rule bg-paper-raised/95 px-fg-2 py-fg-0-5 text-label text-ink-muted shadow-fg-overlay">
-            <span data-tabular className="tabular-nums">
-              {rowsLoaded.toLocaleString()}
-            </span>{" "}
-            rows…
+            {
+              resolveMessage({
+                key: "common:kit.activity.rowsLoaded",
+                values: { count: rowsLoaded },
+              }).message
+            }
           </span>
         </div>
       )}

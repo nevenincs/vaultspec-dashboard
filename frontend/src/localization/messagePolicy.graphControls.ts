@@ -1,6 +1,6 @@
 export const GRAPH_CONTROLS_MESSAGE_POLICY = {
   "graph:actions.keepInView": { role: "action" },
-  "graph:actions.rearrangeAfterFiltering": { role: "action" },
+  "graph:actions.rearrangeAfterFiltering": { role: "label" },
   "graph:controls.accessibility.edgeColorMode": { role: "accessibility" },
   "graph:controls.accessibility.navigation": { role: "accessibility" },
   "graph:controls.accessibility.nodeColorMode": { role: "accessibility" },

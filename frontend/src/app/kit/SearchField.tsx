@@ -11,6 +11,7 @@
 
 import type { FocusEventHandler, KeyboardEventHandler, Ref } from "react";
 import { Search, X } from "lucide-react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 // 14px structural-chrome glyph — the search mark reads as attenuated chrome inside
 // the field, matching the rail's other Lucide marks.
@@ -67,6 +68,7 @@ export function SearchField({
   "aria-activedescendant": ariaActiveDescendant,
   "aria-autocomplete": ariaAutocomplete,
 }: SearchFieldProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const hasValue = value.length > 0;
   return (
     <div
@@ -104,7 +106,7 @@ export function SearchField({
           type="button"
           onClick={onClear}
           disabled={disabled}
-          aria-label="clear search"
+          aria-label={resolveMessage({ key: "common:actions.clearSearch" }).message}
           className="shrink-0 rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink-muted focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
           data-kit-search-clear
         >

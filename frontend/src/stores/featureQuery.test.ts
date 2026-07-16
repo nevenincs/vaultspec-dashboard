@@ -109,7 +109,7 @@ describe("featureTagSuggestions", () => {
   const tags = ["dashboard-left-rail", "dashboard-gui", "engine-hardening", "timeline"];
 
   it("lists the whole vocabulary for an empty input", () => {
-    expect(featureTagSuggestions("", tags).map((s) => s.tag)).toEqual([
+    expect(featureTagSuggestions("", tags, "en").map((s) => s.tag)).toEqual([
       "dashboard-gui",
       "dashboard-left-rail",
       "engine-hardening",
@@ -118,26 +118,26 @@ describe("featureTagSuggestions", () => {
   });
 
   it("matches the raw hyphenated tag", () => {
-    expect(featureTagSuggestions("left-rail", tags).map((s) => s.tag)).toEqual([
+    expect(featureTagSuggestions("left-rail", tags, "en").map((s) => s.tag)).toEqual([
       "dashboard-left-rail",
     ]);
   });
 
   it("matches the sanitized display string", () => {
     // "Left Rail" only appears in the display name, never the raw tag substring.
-    expect(featureTagSuggestions("Left Rail", tags).map((s) => s.tag)).toEqual([
+    expect(featureTagSuggestions("Left Rail", tags, "en").map((s) => s.tag)).toEqual([
       "dashboard-left-rail",
     ]);
   });
 
   it("returns tag + display for each suggestion", () => {
-    expect(featureTagSuggestions("timeline", tags)).toEqual([
+    expect(featureTagSuggestions("timeline", tags, "en")).toEqual([
       { tag: "timeline", display: "Timeline" },
     ]);
   });
 
   it("caps the list", () => {
     const many = Array.from({ length: 20 }, (_, i) => `feature-${i}`);
-    expect(featureTagSuggestions("feature", many, 5)).toHaveLength(5);
+    expect(featureTagSuggestions("feature", many, "en", 5)).toHaveLength(5);
   });
 });

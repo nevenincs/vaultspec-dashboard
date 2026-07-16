@@ -1,22 +1,34 @@
-// Minimal parallel sandbox for the three.js GPGPU field. Drives ThreeField through
-// a SceneController (the same path the app uses) so node/edge/simulation AND the
-// interaction surface (hover/select/open/context-menu/camera) can be exercised and
-// measured on their own — no cosmos, no app chrome.
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../platform/localization/LocalizationProvider";
+import type { AnyMessageDescriptor } from "../platform/localization/message";
 import { createDashboardScene } from "../scene/field/fieldAssembly";
-import type { SceneController } from "../scene/sceneController";
-import type { SceneEdgeData, SceneNodeData } from "../scene/sceneController";
+import type {
+  SceneController,
+  SceneEdgeData,
+  SceneNodeData,
+} from "../scene/sceneController";
 import { sliceToScene } from "../scene/sceneMapping";
-import { graphLabDevSlice } from "./sampleGraph";
-import type { ThreeField } from "../scene/three/threeField";
 import type { D3ForceParams } from "../scene/three/d3ForceSolver";
 import {
   FORCE_CONTROLS,
   FORCE_CONTROL_DEFAULTS,
   FORCE_CONTROL_GROUPS,
 } from "../scene/three/forceControls";
+import type { ThreeField } from "../scene/three/threeField";
+import {
+  FORCE_CONTROL_SECTION_MESSAGES,
+  LAB_GRAPH_CONTROL_MESSAGES,
+  THREE_LAB_MESSAGES,
+  generatedTitleMessage,
+  loadGeneratedMessage,
+  presetFeedbackMessage,
+  sampleTitleMessage,
+} from "../stores/view/threeLabVocabulary";
+import { AppearancePanel } from "./AppearancePanel";
 import {
   DEFAULT_PRESET_NAME,
   type ForcePresets,
@@ -24,224 +36,441 @@ import {
   deletePreset,
   initialForceParams,
   loadPreset,
-  paramsToJson,
-  parseParamsJson,
   presetNames,
   readPresets,
   savePreset,
   writeStoredParams,
 } from "./forcePresets";
-import { AppearancePanel } from "./AppearancePanel";
+import { createGraphLabSampleSlice, type GraphLabSampleTitles } from "./sampleGraph";
 
 interface GeneratedGraph {
   nodes: SceneNodeData[];
   edges: SceneEdgeData[];
 }
 
-const DOC_TYPES = ["adr", "plan", "exec", "audit", "research", "reference"];
-const TIERS = ["declared", "structural", "temporal", "semantic"] as const;
+const DOCUMENT_TYPES = ["adr", "plan", "exec", "audit", "research", "reference"];
+const EDGE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
 
-/**
- * Deterministic clustered synthetic graph for perf testing: `clusters` feature
- * hubs, each with member documents linked to the hub (declared) and a few
- * cross-links. No RNG — a hashed pseudo-random keeps runs stable.
- */
-function generateGraph(nodeCount: number): GeneratedGraph {
+function generateGraph(
+  nodeCount: number,
+  resolveMessage: (descriptor: AnyMessageDescriptor) => string,
+): GeneratedGraph {
   const nodes: SceneNodeData[] = [];
   const edges: SceneEdgeData[] = [];
-  const clusters = Math.max(3, Math.round(Math.sqrt(nodeCount) / 2));
-  const rand = (seed: number) => {
-    const x = Math.sin(seed * 12.9898) * 43758.5453;
-    return x - Math.floor(x);
+  const groupCount = Math.max(3, Math.round(Math.sqrt(nodeCount) / 2));
+  const stableNumber = (seed: number) => {
+    const value = Math.sin(seed * 12.9898) * 43758.5453;
+    return value - Math.floor(value);
   };
 
-  for (let c = 0; c < clusters; c++) {
+  for (let group = 0; group < groupCount; group += 1) {
     nodes.push({
-      id: `feature:${c}`,
+      id: `feature:${group}`,
       kind: "feature",
-      title: `Feature ${c}`,
-      featureTags: [`f${c}`],
+      title: resolveMessage(generatedTitleMessage("generatedGroup", group + 1)),
+      featureTags: [`f${group}`],
       memberCount: 0,
     });
   }
 
-  let docIdx = 0;
+  let item = 0;
   while (nodes.length < nodeCount) {
-    const c = docIdx % clusters;
-    const id = `doc:${docIdx}`;
+    const group = item % groupCount;
+    const id = `doc:${item}`;
     nodes.push({
       id,
       kind: "document",
-      docType: DOC_TYPES[docIdx % DOC_TYPES.length],
-      title: `Doc ${docIdx}`,
-      featureTags: [`f${c}`],
-      salience: rand(docIdx),
+      docType: DOCUMENT_TYPES[item % DOCUMENT_TYPES.length],
+      title: resolveMessage(generatedTitleMessage("generatedItem", item + 1)),
+      featureTags: [`f${group}`],
+      salience: stableNumber(item),
     });
     edges.push({
-      id: `e-hub-${docIdx}`,
+      id: `e-hub-${item}`,
       src: id,
-      dst: `feature:${c}`,
+      dst: `feature:${group}`,
       relation: "member",
       tier: "declared",
       confidence: 0.9,
     });
-    if (docIdx > clusters) {
-      const targetIdx = Math.floor(rand(docIdx * 7) * docIdx);
+    if (item > groupCount) {
+      const target = Math.floor(stableNumber(item * 7) * item);
       edges.push({
-        id: `e-x-${docIdx}`,
+        id: `e-x-${item}`,
         src: id,
-        dst: `doc:${targetIdx}`,
+        dst: `doc:${target}`,
         relation: "relates",
-        tier: TIERS[docIdx % TIERS.length],
-        confidence: 0.3 + rand(docIdx * 3) * 0.6,
+        tier: EDGE_TIERS[item % EDGE_TIERS.length],
+        confidence: 0.3 + stableNumber(item * 3) * 0.6,
       });
     }
-    docIdx++;
+    item += 1;
   }
   return { nodes, edges };
 }
 
+interface SimulationPanelProps {
+  params: D3ForceParams;
+  presets: ForcePresets;
+  selectedPreset: string;
+  presetDraft: string;
+  feedback: AnyMessageDescriptor | null;
+  onParamChange: (key: keyof D3ForceParams, value: number) => void;
+  onReset: () => void;
+  onLoadPreset: (name: string) => void;
+  onDeletePreset: () => void;
+  onPresetDraftChange: (value: string) => void;
+  onSavePreset: () => void;
+  onCopyLink: () => void;
+}
+
+export function SimulationPanel({
+  params,
+  presets,
+  selectedPreset,
+  presetDraft,
+  feedback,
+  onParamChange,
+  onReset,
+  onLoadPreset,
+  onDeletePreset,
+  onPresetDraftChange,
+  onSavePreset,
+  onCopyLink,
+}: SimulationPanelProps) {
+  const resolveMessageResult = useLocalizedMessageResolver();
+  const resolveMessage = useCallback(
+    (descriptor: AnyMessageDescriptor) => resolveMessageResult(descriptor).message,
+    [resolveMessageResult],
+  );
+  const locale = useActiveLocale();
+  const [open, setOpen] = useState(true);
+  const options = presetNames(presets, locale);
+
+  return (
+    <section
+      aria-label={resolveMessage(THREE_LAB_MESSAGES.accessibility.simulationPanel)}
+      style={{
+        position: "absolute",
+        top: 46,
+        right: 8,
+        width: 252,
+        maxHeight: "calc(100% - 54px)",
+        display: "flex",
+        flexDirection: "column",
+        background: "rgba(253, 250, 246, 0.95)",
+        border: "1px solid var(--color-border, #ddd)",
+        borderRadius: 8,
+        boxShadow: "0 6px 20px rgba(0, 0, 0, 0.14)",
+        font: "12px system-ui, sans-serif",
+        overflow: "hidden",
+      }}
+    >
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 8px",
+          borderBottom: open ? "1px solid var(--color-border, #eee)" : "none",
+        }}
+      >
+        <button
+          onClick={() => setOpen((current) => !current)}
+          title={resolveMessage(
+            open
+              ? THREE_LAB_MESSAGES.actions.collapse
+              : THREE_LAB_MESSAGES.actions.expand,
+          )}
+          style={{ border: "none", background: "none", cursor: "pointer", padding: 0 }}
+        >
+          <span
+            aria-hidden
+            style={{
+              display: "inline-block",
+              width: 6,
+              height: 6,
+              borderRight: "1px solid currentColor",
+              borderBottom: "1px solid currentColor",
+              transform: open ? "rotate(45deg)" : "rotate(-45deg)",
+            }}
+          />
+        </button>
+        <strong style={{ flex: 1 }}>
+          {resolveMessage(THREE_LAB_MESSAGES.panels.simulation)}
+        </strong>
+        <button onClick={onReset}>
+          {resolveMessage(THREE_LAB_MESSAGES.actions.reset)}
+        </button>
+      </header>
+      {open && (
+        <div style={{ overflowY: "auto", padding: "2px 8px 8px" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 4,
+              padding: "4px 0 8px",
+              borderBottom: "1px solid var(--color-border, #eee)",
+            }}
+          >
+            <div style={{ display: "flex", gap: 4 }}>
+              <select
+                aria-label={resolveMessage(THREE_LAB_MESSAGES.accessibility.presetList)}
+                value={selectedPreset}
+                onChange={(event) => onLoadPreset(event.target.value)}
+                title={resolveMessage(THREE_LAB_MESSAGES.presets.loadTitle)}
+                style={{ flex: 1, font: "inherit" }}
+              >
+                {options.map((name) => (
+                  <option key={name} value={name}>
+                    {name === DEFAULT_PRESET_NAME
+                      ? resolveMessage(THREE_LAB_MESSAGES.presets.defaultName)
+                      : name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={onDeletePreset}
+                disabled={selectedPreset === DEFAULT_PRESET_NAME}
+                title={resolveMessage(THREE_LAB_MESSAGES.presets.deleteTitle)}
+              >
+                {resolveMessage(THREE_LAB_MESSAGES.actions.deletePreset)}
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 4 }}>
+              <input
+                value={presetDraft}
+                onChange={(event) => onPresetDraftChange(event.target.value)}
+                placeholder={resolveMessage(THREE_LAB_MESSAGES.presets.namePlaceholder)}
+                style={{ flex: 1, font: "inherit", minWidth: 0 }}
+              />
+              <button onClick={onSavePreset}>
+                {resolveMessage(THREE_LAB_MESSAGES.actions.savePreset)}
+              </button>
+            </div>
+            <button onClick={onCopyLink}>
+              {resolveMessage(THREE_LAB_MESSAGES.actions.copyLink)}
+            </button>
+            {feedback && (
+              <div role="status" style={{ fontSize: 10, opacity: 0.7 }}>
+                {resolveMessage(feedback)}
+              </div>
+            )}
+          </div>
+          {FORCE_CONTROL_GROUPS.map((group) => (
+            <div key={group}>
+              <div
+                style={{
+                  margin: "8px 0 1px",
+                  fontSize: 10,
+                  letterSpacing: 0.6,
+                  opacity: 0.55,
+                }}
+              >
+                {resolveMessage(FORCE_CONTROL_SECTION_MESSAGES[group])}
+              </div>
+              {FORCE_CONTROLS.filter((control) => control.group === group).map(
+                (control) => {
+                  const value = params[control.key];
+                  const messages = LAB_GRAPH_CONTROL_MESSAGES[control.controlId];
+                  const label = resolveMessage(messages.label);
+                  return (
+                    <div
+                      key={control.key}
+                      title={resolveMessage(messages.description)}
+                      style={{ margin: "4px 0" }}
+                    >
+                      <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ flex: 1 }}>{label}</span>
+                        <input
+                          type="number"
+                          value={value}
+                          min={control.min}
+                          max={control.max}
+                          step={control.step}
+                          onChange={(event) =>
+                            onParamChange(control.key, Number(event.target.value))
+                          }
+                          style={{ width: 60, font: "inherit", textAlign: "right" }}
+                        />
+                      </label>
+                      <input
+                        aria-label={label}
+                        type="range"
+                        min={control.min}
+                        max={control.max}
+                        step={control.step}
+                        value={value}
+                        onChange={(event) =>
+                          onParamChange(control.key, Number(event.target.value))
+                        }
+                        style={{ width: "100%", marginTop: 1 }}
+                      />
+                      {control.zeroIsAuto && value === 0 && (
+                        <div style={{ fontSize: 10, opacity: 0.5, marginTop: -2 }}>
+                          {resolveMessage(THREE_LAB_MESSAGES.values.automatic)}
+                        </div>
+                      )}
+                    </div>
+                  );
+                },
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ThreeLab() {
+  const resolveMessageResult = useLocalizedMessageResolver();
+  const resolveMessage = useCallback(
+    (descriptor: AnyMessageDescriptor) => resolveMessageResult(descriptor).message,
+    [resolveMessageResult],
+  );
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{ controller: SceneController; field: ThreeField } | null>(
     null,
   );
-  const [fps, setFps] = useState(0);
-  const [status, setStatus] = useState("loading…");
-  const [hovered, setHovered] = useState<string | null>(null);
-  const [selected, setSelected] = useState<string | null>(null);
-  // Params hydrate from `?sim=` › localStorage › defaults (forcePresets), so a
-  // tuned config survives reload and is shareable by URL.
-  const [params, setParamsState] = useState<D3ForceParams>(() =>
+  const [params, setParams] = useState<D3ForceParams>(() =>
     initialForceParams(window.location.search),
   );
   const paramsRef = useRef(params);
   const [presets, setPresets] = useState<ForcePresets>(() => readPresets());
-  const [selectedPreset, setSelectedPreset] = useState<string>(DEFAULT_PRESET_NAME);
+  const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_NAME);
   const [presetDraft, setPresetDraft] = useState("");
-  const [jsonDraft, setJsonDraft] = useState("");
-  const [labStatus, setLabStatus] = useState("");
-  const [showControls, setShowControls] = useState(true);
+  const [feedback, setFeedback] = useState<AnyMessageDescriptor | null>(null);
+  const showingSample = useRef(true);
 
-  // Persist the live params on every change so a tweak survives reload (and a
-  // `?sim=` hydration becomes the working set). The ref keeps the latest value
-  // available to the mount effect without re-running it.
+  const sampleTitles = useMemo<GraphLabSampleTitles>(
+    () => ({
+      planning: resolveMessage(sampleTitleMessage("planning")),
+      connections: resolveMessage(sampleTitleMessage("connections")),
+      history: resolveMessage(sampleTitleMessage("history")),
+      researchNote: resolveMessage(sampleTitleMessage("researchNote")),
+      designNote: resolveMessage(sampleTitleMessage("designNote")),
+      workPlan: resolveMessage(sampleTitleMessage("workPlan")),
+      progressNote: resolveMessage(sampleTitleMessage("progressNote")),
+      qualitySummary: resolveMessage(sampleTitleMessage("qualitySummary")),
+      projectGuidance: resolveMessage(sampleTitleMessage("projectGuidance")),
+      workGroup: resolveMessage(sampleTitleMessage("workGroup")),
+    }),
+    [resolveMessage],
+  );
+  const sampleScene = useMemo(
+    () => sliceToScene(createGraphLabSampleSlice(sampleTitles)),
+    [sampleTitles],
+  );
+  const sampleSceneRef = useRef(sampleScene);
+
   useEffect(() => {
     paramsRef.current = params;
     writeStoredParams(params);
   }, [params]);
 
-  // Apply a full param set: mirror it in the panel AND push it into the running
-  // solver (it reheats and re-settles so the effect is visible immediately).
+  useEffect(() => {
+    sampleSceneRef.current = sampleScene;
+    if (showingSample.current) {
+      sceneRef.current?.controller.command({
+        kind: "set-data",
+        nodes: sampleScene.nodes,
+        edges: sampleScene.edges,
+      });
+    }
+  }, [sampleScene]);
+
   const applyParams = useCallback((next: D3ForceParams) => {
-    setParamsState(next);
+    setParams(next);
     sceneRef.current?.field.setForceParams(next);
   }, []);
 
-  // Live retune of one knob.
   const setParam = useCallback((key: keyof D3ForceParams, value: number) => {
-    setParamsState((prev) => ({ ...prev, [key]: value }) as D3ForceParams);
-    sceneRef.current?.field.setForceParams({ [key]: value } as Partial<D3ForceParams>);
+    setParams((previous) => ({ ...previous, [key]: value }));
+    sceneRef.current?.field.setForceParams({ [key]: value });
   }, []);
 
   const resetParams = useCallback(() => {
     applyParams({ ...FORCE_CONTROL_DEFAULTS });
     setSelectedPreset(DEFAULT_PRESET_NAME);
-    setLabStatus("Restored defaults");
+    setFeedback(THREE_LAB_MESSAGES.feedback.defaultsRestored);
   }, [applyParams]);
 
   const onLoadPreset = useCallback(
     (name: string) => {
       setSelectedPreset(name);
       applyParams(loadPreset(presets, name));
-      setLabStatus(`Loaded preset “${name}”`);
+      const displayName =
+        name === DEFAULT_PRESET_NAME
+          ? resolveMessage(THREE_LAB_MESSAGES.presets.defaultName)
+          : name;
+      setFeedback(presetFeedbackMessage("presetLoaded", displayName));
     },
-    [applyParams, presets],
+    [applyParams, presets, resolveMessage],
   );
 
   const onSavePreset = useCallback(() => {
     const name = presetDraft.trim();
-    if (!name || name === DEFAULT_PRESET_NAME) {
-      setLabStatus("Enter a preset name (not “Default”)");
+    if (!name || name === DEFAULT_PRESET_NAME || Object.hasOwn(presets, name)) {
+      setFeedback(THREE_LAB_MESSAGES.feedback.presetNameRequired);
       return;
     }
-    setPresets((prev) => savePreset(prev, name, params));
+    setPresets((previous) => savePreset(previous, name, params));
     setSelectedPreset(name);
     setPresetDraft("");
-    setLabStatus(`Saved preset “${name}”`);
-  }, [params, presetDraft]);
+    setFeedback(presetFeedbackMessage("presetSaved", name));
+  }, [params, presetDraft, presets]);
 
   const onDeletePreset = useCallback(() => {
     if (selectedPreset === DEFAULT_PRESET_NAME) {
-      setLabStatus("The Default preset can’t be deleted");
+      setFeedback(THREE_LAB_MESSAGES.feedback.defaultPresetProtected);
       return;
     }
     const name = selectedPreset;
-    setPresets((prev) => deletePreset(prev, name));
+    setPresets((previous) => deletePreset(previous, name));
     setSelectedPreset(DEFAULT_PRESET_NAME);
-    setLabStatus(`Deleted preset “${name}”`);
+    setFeedback(presetFeedbackMessage("presetDeleted", name));
   }, [selectedPreset]);
 
-  const onCopyJson = useCallback(() => {
-    const text = paramsToJson(params);
-    setJsonDraft(text);
-    const pending = navigator.clipboard?.writeText?.(text);
-    if (pending) {
-      void pending.then(
-        () => setLabStatus("Copied params JSON to clipboard"),
-        () => setLabStatus("Clipboard blocked — copy from the box below"),
-      );
-    } else {
-      setLabStatus("Clipboard unavailable — copy from the box below");
-    }
-  }, [params]);
-
-  const onLoadJson = useCallback(() => {
-    try {
-      applyParams(parseParamsJson(jsonDraft));
-      setSelectedPreset(DEFAULT_PRESET_NAME);
-      setLabStatus("Applied pasted JSON");
-    } catch {
-      setLabStatus("Invalid JSON");
-    }
-  }, [applyParams, jsonDraft]);
-
-  const onCopyShareUrl = useCallback(() => {
-    const url = buildShareUrl(params);
-    if (!url) {
-      setLabStatus("Could not build a share URL");
+  const onCopyLink = useCallback(() => {
+    const link = buildShareUrl(params);
+    if (link === null) {
+      setFeedback(THREE_LAB_MESSAGES.feedback.linkCreationFailed);
       return;
     }
-    const pending = navigator.clipboard?.writeText?.(url);
-    if (pending) {
-      void pending.then(
-        () => setLabStatus("Copied shareable ?sim= URL"),
-        () => setLabStatus("Clipboard blocked"),
-      );
-    } else {
-      setLabStatus("Clipboard unavailable");
+    const pending = navigator.clipboard?.writeText(link);
+    if (!pending) {
+      setFeedback(THREE_LAB_MESSAGES.feedback.linkUnavailable);
+      return;
     }
+    void pending.then(
+      () => setFeedback(THREE_LAB_MESSAGES.feedback.linkCopied),
+      () => setFeedback(THREE_LAB_MESSAGES.feedback.linkUnavailable),
+    );
   }, [params]);
 
-  const load = useCallback(
-    (nodes: SceneNodeData[], edges: SceneEdgeData[], label: string) => {
-      sceneRef.current?.controller.command({ kind: "set-data", nodes, edges });
-      setStatus(`${label}: ${nodes.length} nodes, ${edges.length} edges`);
-    },
-    [],
-  );
-
   const loadSample = useCallback(() => {
-    const mapped = sliceToScene(graphLabDevSlice);
-    load(mapped.nodes, mapped.edges, "sample");
-  }, [load]);
+    showingSample.current = true;
+    const current = sampleSceneRef.current;
+    sceneRef.current?.controller.command({
+      kind: "set-data",
+      nodes: current.nodes,
+      edges: current.edges,
+    });
+  }, []);
 
   const loadGenerated = useCallback(
     (count: number) => {
-      const g = generateGraph(count);
-      load(g.nodes, g.edges, `generated ${count}`);
+      showingSample.current = false;
+      const graph = generateGraph(count, resolveMessage);
+      sceneRef.current?.controller.command({
+        kind: "set-data",
+        nodes: graph.nodes,
+        edges: graph.edges,
+      });
     },
-    [load],
+    [resolveMessage],
   );
 
   useEffect(() => {
@@ -250,64 +479,36 @@ export function ThreeLab() {
     const scene = createDashboardScene();
     sceneRef.current = scene;
     scene.controller.mount(host);
-    // Hydrate the freshly-built field with the persisted/URL params BEFORE the
-    // first set-data, so the solver is constructed at those values (no
-    // default-then-reheat flash).
     scene.field.setForceParams(paramsRef.current);
-
-    const off = scene.controller.on((ev) => {
-      if (ev.kind === "hover") setHovered(ev.id);
-      else if (ev.kind === "select") {
-        setSelected(ev.id);
+    const unsubscribe = scene.controller.on((event) => {
+      if (event.kind === "select") {
         scene.controller.command({
           kind: "set-selected",
-          ids: new Set(ev.id ? [ev.id] : []),
+          ids: new Set(event.id ? [event.id] : []),
         });
       }
     });
-
-    const ro = new ResizeObserver(() => {
-      const rect = host.getBoundingClientRect();
-      scene.controller.resize(rect.width, rect.height);
+    const resizeObserver = new ResizeObserver(() => {
+      const bounds = host.getBoundingClientRect();
+      scene.controller.resize(bounds.width, bounds.height);
     });
-    ro.observe(host);
-
-    const mapped = sliceToScene(graphLabDevSlice);
+    resizeObserver.observe(host);
+    const current = sampleSceneRef.current;
     scene.controller.command({
       kind: "set-data",
-      nodes: mapped.nodes,
-      edges: mapped.edges,
+      nodes: current.nodes,
+      edges: current.edges,
     });
-    setStatus(`sample: ${mapped.nodes.length} nodes, ${mapped.edges.length} edges`);
-
-    let frames = 0;
-    let last = performance.now();
-    let raf = 0;
-    const tick = () => {
-      frames++;
-      const now = performance.now();
-      if (now - last >= 500) {
-        setFps(Math.round((frames * 1000) / (now - last)));
-        frames = 0;
-        last = now;
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-
     return () => {
-      cancelAnimationFrame(raf);
-      off();
-      ro.disconnect();
+      unsubscribe();
+      resizeObserver.disconnect();
       scene.controller.destroy();
       sceneRef.current = null;
     };
   }, []);
 
-  const cmd = (c: Parameters<SceneController["command"]>[0]) =>
-    sceneRef.current?.controller.command(c);
-
-  const presetOptions = presetNames(presets);
+  const command = (value: Parameters<SceneController["command"]>[0]) =>
+    sceneRef.current?.controller.command(value);
 
   return (
     <div
@@ -323,190 +524,39 @@ export function ThreeLab() {
           font: "13px system-ui, sans-serif",
         }}
       >
-        <strong>three.js graph lab</strong>
-        <button onClick={loadSample}>Sample</button>
-        <button onClick={() => loadGenerated(500)}>500</button>
-        <button onClick={() => loadGenerated(2000)}>2000</button>
-        <button onClick={() => loadGenerated(5000)}>5000</button>
-        <button onClick={() => cmd({ kind: "fit-to-view" })}>Fit</button>
-        <button onClick={() => cmd({ kind: "set-simulation-active", active: true })}>
-          Reheat
+        <strong>{resolveMessage(THREE_LAB_MESSAGES.title)}</strong>
+        <button onClick={loadSample}>
+          {resolveMessage(THREE_LAB_MESSAGES.actions.loadSample)}
         </button>
-        <span style={{ opacity: 0.7 }}>
-          hover: {hovered ?? "—"} · sel: {selected ?? "—"}
-        </span>
-        <span style={{ marginLeft: "auto", opacity: 0.7 }}>{status}</span>
-        <span
-          style={{
-            minWidth: 70,
-            textAlign: "right",
-            fontVariantNumeric: "tabular-nums",
-          }}
+        {[500, 2000, 5000].map((count) => (
+          <button key={count} onClick={() => loadGenerated(count)}>
+            {resolveMessage(loadGeneratedMessage(count))}
+          </button>
+        ))}
+        <button onClick={() => command({ kind: "fit-to-view" })}>
+          {resolveMessage(THREE_LAB_MESSAGES.actions.fitToView)}
+        </button>
+        <button
+          onClick={() => command({ kind: "set-simulation-active", active: true })}
         >
-          {fps} fps
-        </span>
+          {resolveMessage(THREE_LAB_MESSAGES.actions.restartMovement)}
+        </button>
       </header>
       <div ref={hostRef} style={{ position: "relative", flex: 1, minHeight: 0 }} />
-      <section
-        style={{
-          position: "absolute",
-          top: 46,
-          right: 8,
-          width: 252,
-          maxHeight: "calc(100% - 54px)",
-          display: "flex",
-          flexDirection: "column",
-          background: "rgba(253, 250, 246, 0.95)",
-          border: "1px solid var(--color-border, #ddd)",
-          borderRadius: 8,
-          boxShadow: "0 6px 20px rgba(0, 0, 0, 0.14)",
-          font: "12px system-ui, sans-serif",
-          overflow: "hidden",
-        }}
-      >
-        <header
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "6px 8px",
-            borderBottom: showControls ? "1px solid var(--color-border, #eee)" : "none",
-          }}
-        >
-          <button
-            onClick={() => setShowControls((s) => !s)}
-            title={showControls ? "Collapse" : "Expand"}
-            style={{
-              border: "none",
-              background: "none",
-              cursor: "pointer",
-              padding: 0,
-            }}
-          >
-            {showControls ? "▾" : "▸"}
-          </button>
-          <strong style={{ flex: 1 }}>Simulation</strong>
-          <button onClick={resetParams} title="Restore defaults">
-            Reset
-          </button>
-        </header>
-        {showControls && (
-          <div style={{ overflowY: "auto", padding: "2px 8px 8px" }}>
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: 4,
-                padding: "4px 0 8px",
-                borderBottom: "1px solid var(--color-border, #eee)",
-              }}
-            >
-              <div style={{ display: "flex", gap: 4 }}>
-                <select
-                  value={selectedPreset}
-                  onChange={(e) => onLoadPreset(e.target.value)}
-                  title="Load a saved preset"
-                  style={{ flex: 1, font: "inherit" }}
-                >
-                  {presetOptions.map((name) => (
-                    <option key={name} value={name}>
-                      {name}
-                    </option>
-                  ))}
-                </select>
-                <button
-                  onClick={onDeletePreset}
-                  disabled={selectedPreset === DEFAULT_PRESET_NAME}
-                  title="Delete the selected preset"
-                >
-                  ✕
-                </button>
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                <input
-                  value={presetDraft}
-                  onChange={(e) => setPresetDraft(e.target.value)}
-                  placeholder="Save current as…"
-                  style={{ flex: 1, font: "inherit", minWidth: 0 }}
-                />
-                <button onClick={onSavePreset}>Save</button>
-              </div>
-              <div style={{ display: "flex", gap: 4 }}>
-                <button onClick={onCopyJson} style={{ flex: 1 }}>
-                  Copy JSON
-                </button>
-                <button onClick={onCopyShareUrl} style={{ flex: 1 }}>
-                  Copy URL
-                </button>
-              </div>
-              <textarea
-                value={jsonDraft}
-                onChange={(e) => setJsonDraft(e.target.value)}
-                placeholder="Paste D3ForceParams JSON…"
-                spellCheck={false}
-                rows={3}
-                style={{
-                  width: "100%",
-                  font: "11px ui-monospace, monospace",
-                  resize: "vertical",
-                  boxSizing: "border-box",
-                }}
-              />
-              <button onClick={onLoadJson}>Load JSON</button>
-              {labStatus && (
-                <div style={{ fontSize: 10, opacity: 0.7 }}>{labStatus}</div>
-              )}
-            </div>
-            {FORCE_CONTROL_GROUPS.map((group) => (
-              <div key={group}>
-                <div
-                  style={{
-                    margin: "8px 0 1px",
-                    fontSize: 10,
-                    letterSpacing: 0.6,
-                    opacity: 0.55,
-                  }}
-                >
-                  {group}
-                </div>
-                {FORCE_CONTROLS.filter((c) => c.group === group).map((c) => {
-                  const v = params[c.key];
-                  return (
-                    <div key={c.key} style={{ margin: "4px 0" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ flex: 1 }}>{c.controlId}</span>
-                        <input
-                          type="number"
-                          value={v}
-                          min={c.min}
-                          max={c.max}
-                          step={c.step}
-                          onChange={(e) => setParam(c.key, Number(e.target.value))}
-                          style={{ width: 60, font: "inherit", textAlign: "right" }}
-                        />
-                      </div>
-                      <input
-                        type="range"
-                        min={c.min}
-                        max={c.max}
-                        step={c.step}
-                        value={v}
-                        onChange={(e) => setParam(c.key, Number(e.target.value))}
-                        style={{ width: "100%", marginTop: 1 }}
-                      />
-                      {c.zeroIsAuto && v === 0 && (
-                        <div style={{ fontSize: 10, opacity: 0.5, marginTop: -2 }}>
-                          auto
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <SimulationPanel
+        params={params}
+        presets={presets}
+        selectedPreset={selectedPreset}
+        presetDraft={presetDraft}
+        feedback={feedback}
+        onParamChange={setParam}
+        onReset={resetParams}
+        onLoadPreset={onLoadPreset}
+        onDeletePreset={onDeletePreset}
+        onPresetDraftChange={setPresetDraft}
+        onSavePreset={onSavePreset}
+        onCopyLink={onCopyLink}
+      />
       <AppearancePanel getField={() => sceneRef.current?.field ?? null} />
     </div>
   );

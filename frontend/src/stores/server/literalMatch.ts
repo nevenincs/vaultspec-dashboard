@@ -21,6 +21,13 @@
 //
 // Layer law: pure over its inputs, no fetch, no React, no raw `tiers` read.
 
+import {
+  compareRepositoryPaths,
+  compareStableIdentifiers,
+  repositoryPath,
+  stableIdentifier,
+} from "../../platform/localization/displayText";
+
 // ── Band constants ─────────────────────────────────────────────────────────────
 
 /**
@@ -211,13 +218,16 @@ export function rankLiteralMatches<T>(
   }
   scored.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score;
-    const aStem = (a.fields.stem ?? "").toLowerCase();
-    const bStem = (b.fields.stem ?? "").toLowerCase();
-    const stemCmp = aStem.localeCompare(bStem);
+    const aStem = a.fields.stem ?? "";
+    const bStem = b.fields.stem ?? "";
+    const stemCmp = compareStableIdentifiers(
+      stableIdentifier(aStem),
+      stableIdentifier(bStem),
+    );
     if (stemCmp !== 0) return stemCmp;
-    const aPath = (a.fields.path ?? "").toLowerCase();
-    const bPath = (b.fields.path ?? "").toLowerCase();
-    return aPath.localeCompare(bPath);
+    const aPath = a.fields.path ?? "";
+    const bPath = b.fields.path ?? "";
+    return compareRepositoryPaths(repositoryPath(aPath), repositoryPath(bPath));
   });
   return scored.slice(0, Math.max(0, cap)).map(({ item, score }) => ({ item, score }));
 }

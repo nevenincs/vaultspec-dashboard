@@ -477,7 +477,7 @@ describe("timeline view-state seam", () => {
     expect(parseTimelineDateInput("2026-06-18")).toBe(june);
     expect(parseTimelineDateInput("")).toBeNull();
     expect(timelineDateInputValue(june)).toBe("2026-06-18");
-    expect(formatTimelineDayMonth(june)).toBe("Jun 18");
+    expect(formatTimelineDayMonth(june, "en")).toBe("Jun 18");
   });
 
   it("orders timeline date-picker drafts before dispatching a dashboard range", () => {

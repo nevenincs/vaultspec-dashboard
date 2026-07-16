@@ -103,38 +103,48 @@ describe("cardModelFromEvidence — binding identity+evidence projection (S50)",
     tiers,
   };
 
-  it("projects id, kind, title, and the scene category", () => {
-    const model = cardModelFromEvidence(adr, evidence);
+  it("projects internal intent, authored title, and closed presentation", () => {
+    const model = cardModelFromEvidence(adr, evidence)!;
     expect(model.id).toBe(adr.id);
-    expect(model.kind).toBe("adr");
+    expect(model.markKind).toBe("adr");
+    expect(model.typeLabel).toEqual({ key: "documents:documentTypes.adr" });
     expect(model.title).toBe("Editor demo adr");
     expect(model.category).toBe("adr");
   });
 
-  it("folds the enriched evidence into the bounded grouped lines", () => {
-    const model = cardModelFromEvidence(adr, evidence);
-    const headings = model.evidence.map((g) => g.heading);
-    expect(headings).toEqual(["documents", "code", "commits"]);
-    expect(model.evidence[0].lines[0].label).toBe("2026-foo-research.md");
-    expect(model.evidence[1].lines[0].label).toBe("lib.rs#build");
-    expect(model.evidence[2].lines[0].label).toBe("abcdef1");
+  it("reduces enriched evidence to safe counts and authored subjects", () => {
+    const model = cardModelFromEvidence(adr, evidence)!;
+    expect(model.evidence).toEqual({
+      documentCount: 1,
+      codeLocationCount: 1,
+      commitCount: 1,
+      commitSubjects: ["land it"],
+    });
+    expect(JSON.stringify(model)).not.toContain(".vault/research");
+    expect(JSON.stringify(model)).not.toContain("src/lib.rs");
+    expect(JSON.stringify(model)).not.toContain("abcdef1234");
   });
 
-  it("renders identity only (no groups) when evidence is absent or empty", () => {
-    expect(cardModelFromEvidence(adr, undefined).evidence).toEqual([]);
+  it("uses zero semantic counts when evidence is absent or empty", () => {
+    expect(cardModelFromEvidence(adr, undefined)!.evidence).toMatchObject({
+      documentCount: 0,
+      codeLocationCount: 0,
+      commitCount: 0,
+    });
     expect(
       cardModelFromEvidence(adr, {
         documents: [],
         code_locations: [],
         commits: [],
         tiers,
-      }).evidence,
-    ).toEqual([]);
+      })!.evidence,
+    ).toMatchObject({ documentCount: 0, codeLocationCount: 0, commitCount: 0 });
   });
 
-  it("falls back to the id for the title when absent", () => {
+  it("fails closed instead of falling back to the id for a missing title", () => {
     const bare: EngineNode = { id: "doc:research-1", kind: "research" };
-    expect(cardModelFromEvidence(bare, undefined).title).toBe("doc:research-1");
+    expect(cardModelFromEvidence(bare, undefined)).toBeNull();
+    expect(cardModelFromEvidence({ ...bare, title: "   " }, undefined)).toBeNull();
   });
 
   it("drops a served node payload that does not match the hovered identity", () => {
@@ -146,7 +156,7 @@ describe("cardModelFromEvidence — binding identity+evidence projection (S50)",
   it("normalizes runtime hovered identity before matching served node detail", () => {
     expect(deriveHoverCardView(` ${adr.id} `, adr, evidence).model).toMatchObject({
       id: adr.id,
-      kind: "adr",
+      markKind: "adr",
     });
     expect(deriveHoverCardView({ id: adr.id }, adr, evidence)).toEqual({
       model: null,

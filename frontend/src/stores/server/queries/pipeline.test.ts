@@ -377,7 +377,9 @@ describe("derivePlanSummaryView (plan card metadata from the engine summary)", (
       plan_state: "in-progress",
     });
     expect(view.hasStructure).toBe(true);
-    expect(view.stateLabel).toBe("In progress");
+    expect(view.stateLabel).toEqual({
+      key: "common:finalWave.planStates.inProgress",
+    });
     expect(view.tone).toBe("active");
     expect(view.percent).toBe(48); // round(10/21*100)
     expect(view.percentLabel).toBe("48%");
@@ -411,7 +413,9 @@ describe("derivePlanSummaryView (plan card metadata from the engine summary)", (
       done_count: 6,
       plan_state: "finished",
     });
-    expect(finished.stateLabel).toBe("Finished");
+    expect(finished.stateLabel).toEqual({
+      key: "common:finalWave.planStates.finished",
+    });
     expect(finished.tone).toBe("complete");
     expect(finished.percentLabel).toBe("100%");
 
@@ -422,11 +426,13 @@ describe("derivePlanSummaryView (plan card metadata from the engine summary)", (
       done_count: 0,
       plan_state: null,
     });
-    // No steps → no fake bar/percentage; falls back to the "Not started" label.
+    // No steps → no invented bar/percentage; falls back to "Not started".
     expect(empty.hasStructure).toBe(false);
     expect(empty.percent).toBeNull();
     expect(empty.percentLabel).toBeNull();
-    expect(empty.stateLabel).toBe("Not started");
+    expect(empty.stateLabel).toEqual({
+      key: "common:finalWave.planStates.notStarted",
+    });
     expect(empty.tone).toBe("pending");
   });
 });
@@ -513,20 +519,37 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
       {
         targetNodeId: "doc:exec-a",
         selectable: true,
-        headingLabel: "wire the plan",
-        rowAriaLabel: "step S01, open exec record",
+        headingLabel: {
+          key: "common:finalWave.planSteps.named",
+          values: { step: "wire the plan" },
+        },
+        rowAriaLabel: {
+          key: "common:finalWave.planSteps.openRecord",
+          values: { step: "wire the plan" },
+        },
         rowClassName:
           "flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus hover:bg-paper-sunken",
       },
       {
         targetNodeId: null,
         selectable: false,
-        headingLabel: "S02",
-        rowAriaLabel: "step S02, no exec record",
+        headingLabel: {
+          key: "common:finalWave.planSteps.generic",
+        },
+        rowAriaLabel: {
+          key: "common:finalWave.planSteps.genericRecordUnavailable",
+        },
         rowClassName:
           "flex w-full items-center gap-fg-1-5 rounded-fg-xs px-fg-1 py-fg-0-5 text-left text-label transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus cursor-default opacity-80",
       },
     ]);
+    const presentation = view.steps.map(({ headingLabel, rowAriaLabel }) => ({
+      headingLabel,
+      rowAriaLabel,
+    }));
+    expect(JSON.stringify(presentation)).not.toContain("S01");
+    expect(JSON.stringify(presentation)).not.toContain("S02");
+    expect(JSON.stringify(presentation)).not.toContain("doc:exec-a");
     expect(view.truncated).toEqual({
       total_nodes: 9001,
       returned_nodes: 2000,

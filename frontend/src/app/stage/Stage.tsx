@@ -5,6 +5,7 @@
 // events; the field owns every frame.
 
 import { useCallback, useEffect, useRef } from "react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import { getThemeController } from "../../platform/theme/themeController";
 import { createDashboardScene } from "../../scene/field/fieldAssembly";
@@ -135,6 +136,7 @@ export function useSceneSimStateBridge(): void {
 }
 
 export function Stage() {
+  const resolveMessage = useLocalizedMessageResolver();
   const hostRef = useRef<HTMLDivElement>(null);
   useSceneThemeRefresh();
   useSceneSimStateBridge();
@@ -441,7 +443,7 @@ export function Stage() {
         // operability). aria-label names the surface for screen readers.
         tabIndex={0}
         role="application"
-        aria-label="node canvas — arrow keys walk the graph, Enter opens, e expands"
+        aria-label={resolveMessage({ key: "graph:accessibility.canvas" }).message}
         className="absolute inset-0 outline-none focus-visible:ring-2 focus-visible:ring-state-active/40"
         data-stage-host
         // Declares the canvas keymap context: when focus is on/within the canvas

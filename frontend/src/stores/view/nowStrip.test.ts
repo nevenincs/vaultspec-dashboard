@@ -23,6 +23,7 @@ describe("deriveNowStripView", () => {
         vaultHealth: "green",
       },
       rag: {
+        presentation: { key: "operations:searchMaintenance.states.started" },
         loading: false,
         errored: false,
         degraded: false,
@@ -78,6 +79,7 @@ describe("deriveNowStripView", () => {
         reachable: false,
       },
       rag: {
+        presentation: { key: "operations:searchMaintenance.states.started" },
         loading: false,
         errored: false,
         degraded: false,

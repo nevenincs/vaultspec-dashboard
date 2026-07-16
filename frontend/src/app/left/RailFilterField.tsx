@@ -17,6 +17,7 @@
 
 import { Filter } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { Badge, IconButton } from "../kit";
 import {
   useActiveScope,
@@ -31,6 +32,7 @@ import { FilterSidebar } from "../stage/FilterSidebar";
 import { FeatureSearchField } from "./FeatureSearchField";
 
 export function RailFilterField() {
+  const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   const filterOpen = useFilterSidebarOpen();
   const summary = useDashboardFilterSummaryView(scope);
@@ -45,8 +47,11 @@ export function RailFilterField() {
         <IconButton
           label={
             activeFilters > 0
-              ? `Advanced filters (${activeFilters} applied)`
-              : "Advanced filters"
+              ? resolveMessage({
+                  key: "common:rail.filters.advancedApplied",
+                  values: { count: activeFilters },
+                }).message
+              : resolveMessage({ key: "common:rail.filters.advanced" }).message
           }
           active={filterOpen}
           aria-haspopup="dialog"

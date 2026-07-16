@@ -15,6 +15,10 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import {
+  LocalizationProvider,
+  useLocalizedMessageResolver,
+} from "../platform/localization/LocalizationProvider";
 
 import { DocChrome } from "../app/viewer/DocChrome";
 import { MarkdownReader } from "../app/viewer/MarkdownReader";
@@ -64,6 +68,7 @@ const content = deriveContentView(response, null, false);
 // real MarkdownReader renders. The harness composes the card from the SAME
 // `DocChrome` the app uses, so this capture verifies the real chrome, not a mock.
 function ReaderVisualHarness() {
+  const resolveMessage = useLocalizedMessageResolver();
   return (
     <div className="flex h-screen min-h-0 justify-center bg-paper text-ink">
       <div
@@ -73,9 +78,21 @@ function ReaderVisualHarness() {
       >
         <DocChrome
           trail={[
-            { label: "Vault" },
-            { label: "Decisions" },
-            { label: "Phase-lane arc timeline" },
+            {
+              label: resolveMessage({
+                key: "common:finalWave.visualHarness.vault",
+              }).message,
+            },
+            {
+              label: resolveMessage({
+                key: "common:finalWave.visualHarness.decisions",
+              }).message,
+            },
+            {
+              label: resolveMessage({
+                key: "common:finalWave.visualHarness.title",
+              }).message,
+            },
           ]}
           mode="view"
           onModeChange={() => undefined}
@@ -92,7 +109,9 @@ function ReaderVisualHarness() {
 createRoot(rootElement).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <ReaderVisualHarness />
+      <LocalizationProvider>
+        <ReaderVisualHarness />
+      </LocalizationProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

@@ -94,6 +94,7 @@ import {
   formatPercentage,
 } from "../../platform/localization/formatters";
 import {
+  useActiveLocale,
   useLocalizedMessageResolver,
   type LocalizedMessageResolver,
 } from "../../platform/localization/LocalizationProvider";
@@ -312,8 +313,8 @@ export interface TreeBrowserProps {
   onEntryOpen?: (entry: VaultTreeEntry) => void;
   /** The document path currently highlighted by the shared selection. */
   highlightedPath?: string | null;
-  /** Landmark label for the mounted tree surface. */
-  ariaLabel?: "tree browser" | "vault browser";
+  /** Semantic surface variant; its landmark label resolves from the catalog. */
+  variant?: "tree" | "vault";
 }
 
 /** Build the vault-doc context-menu entity from a tree row's data. */
@@ -380,9 +381,10 @@ export function TreeBrowser({
   onEntryClick,
   onEntryOpen,
   highlightedPath,
-  ariaLabel = "tree browser",
+  variant = "tree",
 }: TreeBrowserProps) {
   const resolveMessage = useLocalizedMessageResolver();
+  const activeLocale = useActiveLocale();
   const scope = useActiveScope();
   const { tree, availability, state, complete } = useVaultTreeSurface(scope);
   const facets = useVaultRailFacets(scope);
@@ -546,8 +548,8 @@ export function TreeBrowser({
   // sorted by (title-first truncation: the row carries exactly one meta value).
   const sort = useRailSort();
   const view = useMemo(
-    () => deriveVaultRailView(tree.data?.entries ?? [], facets, sort),
-    [tree.data?.entries, facets, sort],
+    () => deriveVaultRailView(tree.data?.entries ?? [], facets, sort, activeLocale),
+    [tree.data?.entries, facets, sort, activeLocale],
   );
   const allTreeKeys = useMemo(
     () =>
@@ -602,13 +604,13 @@ export function TreeBrowser({
       className="flex flex-col gap-fg-4 text-label"
       aria-label={
         resolveMessage(
-          ariaLabel === "vault browser"
+          variant === "vault"
             ? TREE_BROWSER_MESSAGES.vaultBrowser
             : TREE_BROWSER_MESSAGES.treeBrowser,
         ).message
       }
-      data-tree-browser={ariaLabel === "tree browser" ? "" : undefined}
-      data-vault-browser={ariaLabel === "vault browser" ? "" : undefined}
+      data-tree-browser={variant === "tree" ? "" : undefined}
+      data-vault-browser={variant === "vault" ? "" : undefined}
     >
       {/* DEGRADED mode (binding `LeftRail` State=Degraded): the shared designed
           notice — an AlertTriangle and ONE plain sentence above whatever loaded.

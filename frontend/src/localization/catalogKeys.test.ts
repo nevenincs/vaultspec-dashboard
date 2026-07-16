@@ -17,6 +17,12 @@ import {
 } from "../platform/localization/runtime";
 import { createTestLocalizationRuntime, ltrTestLocale, rtlTestLocale } from "./testing";
 import { EXPECTED_LANGUAGE_DISPLAY_KEYS } from "./catalogLanguageDisplayKeys";
+import { EXPECTED_FILTER_KEYS } from "./catalogFilterKeys";
+import { EXPECTED_NODE_INTERIOR_KEYS } from "./catalogNodeInteriorKeys";
+import { EXPECTED_HOVER_KEYS } from "./catalogHoverKeys";
+import { EXPECTED_THREE_LAB_KEYS } from "./catalogThreeLabKeys";
+import { EXPECTED_SEARCH_MAINTENANCE_KEYS } from "./catalogSearchMaintenanceKeys";
+import { EXPECTED_SHELL_KEYS } from "./catalogShellKeys";
 
 const EXPECTED_SHIPPED_LOCALES = ["en"] as const;
 const EXPECTED_NAMESPACES = [
@@ -31,6 +37,12 @@ const EXPECTED_NAMESPACES = [
   "timeline",
 ] as const;
 const EXPECTED_CATALOG_KEYS = [
+  ...EXPECTED_SHELL_KEYS,
+  ...EXPECTED_FILTER_KEYS,
+  ...EXPECTED_NODE_INTERIOR_KEYS,
+  ...EXPECTED_HOVER_KEYS,
+  ...EXPECTED_THREE_LAB_KEYS,
+  ...EXPECTED_SEARCH_MAINTENANCE_KEYS,
   "common:accessibility.actionsForItem",
   "common:accessibility.actionsMenu",
   "common:accessibility.back",
@@ -667,11 +679,13 @@ const EXPECTED_CATALOG_KEYS = [
   "graph:actions.clearWorkingSet",
   "graph:actions.expandFocusedItem",
   "graph:actions.fitToView",
+  "graph:actions.keepInView",
   "graph:actions.moveToNextConnectedItem",
   "graph:actions.moveToPreviousConnectedItem",
   "graph:actions.openFocusedItem",
   "graph:actions.pauseMovement",
   "graph:actions.pinItem",
+  "graph:actions.rearrangeAfterFiltering",
   "graph:actions.resetSettings",
   "graph:actions.resetView",
   "graph:actions.removeItemFromWorkingSet",
@@ -695,6 +709,49 @@ const EXPECTED_CATALOG_KEYS = [
   "graph:canvas.states.refreshingDocumentLinks",
   "graph:canvas.states.restoring",
   "graph:canvas.states.truncated",
+  "graph:controls.accessibility.edgeColorMode",
+  "graph:controls.accessibility.navigation",
+  "graph:controls.accessibility.nodeColorMode",
+  "graph:controls.accessibility.nodeLevel",
+  "graph:controls.accessibility.showNodeIcons",
+  "graph:controls.descriptions.charge",
+  "graph:controls.descriptions.documentLevel",
+  "graph:controls.descriptions.edgeColorMode",
+  "graph:controls.descriptions.edgeOpacityMax",
+  "graph:controls.descriptions.edgeWidthMax",
+  "graph:controls.descriptions.featureLevel",
+  "graph:controls.descriptions.granularity",
+  "graph:controls.descriptions.keepInView",
+  "graph:controls.descriptions.keepLayoutFixed",
+  "graph:controls.descriptions.linkDistance",
+  "graph:controls.descriptions.linkStrength",
+  "graph:controls.descriptions.nodeColorMode",
+  "graph:controls.descriptions.nodeIcons",
+  "graph:controls.descriptions.nodeSalienceScale",
+  "graph:controls.descriptions.nodeSizeScale",
+  "graph:controls.descriptions.rearrangeAfterFiltering",
+  "graph:controls.descriptions.settingUnavailableInHistory",
+  "graph:controls.labels.charge",
+  "graph:controls.labels.edgeColorMode",
+  "graph:controls.labels.edgeOpacityMax",
+  "graph:controls.labels.edgeWidthMax",
+  "graph:controls.labels.keepLayoutFixed",
+  "graph:controls.labels.linkDistance",
+  "graph:controls.labels.linkStrength",
+  "graph:controls.labels.nodeColorMode",
+  "graph:controls.labels.nodeIcons",
+  "graph:controls.labels.nodeSalienceScale",
+  "graph:controls.labels.nodeSizeScale",
+  "graph:controls.options.blended",
+  "graph:controls.options.category",
+  "graph:controls.options.documents",
+  "graph:controls.options.features",
+  "graph:controls.options.recency",
+  "graph:controls.options.solid",
+  "graph:controls.sections.appearance",
+  "graph:controls.sections.layout",
+  "graph:controls.sections.show",
+  "graph:controls.title",
   "graph:disabledReasons.chooseConnectionWithSummary",
   "graph:disabledReasons.chooseItemWithTitle",
   "graph:disabledReasons.relatedItemUnavailable",
@@ -944,13 +1001,32 @@ const EXPECTED_CATALOG_KEYS = [
 const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   ...EXPECTED_CATALOG_KEYS.filter(
     (key) =>
-      !/^(?:common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:accessibility\.workingSetCount|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
+      !/^common:kit\.activity\.rowsLoaded_(?:one|other)$/u.test(key) &&
+      !/^common:finalWave\.work\.progress_(?:one|other)$/u.test(key) &&
+      !/^documents:localizationWave\.plan\.(?:completion|phaseCount|stepCount|waveCount)_(?:one|other)$/u.test(
+        key,
+      ) &&
+      !/^operations:searchMaintenance\.(?:jobs\.(?:count|partial)|projects\.(?:live|partial|summary))_(?:zero|one|two|few|many|other)$/u.test(
+        key,
+      ) &&
+      !/^(?:common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:codeLocations|commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
         key,
       ),
   ),
   "common:commandPalette.selectionAnnouncement",
+  "common:finalWave.work.progress",
+  "common:kit.activity.rowsLoaded",
+  "documents:localizationWave.plan.completion",
+  "documents:localizationWave.plan.phaseCount",
+  "documents:localizationWave.plan.stepCount",
+  "documents:localizationWave.plan.waveCount",
   "common:palette.commandCount",
   "common:searchPalette.counts.results",
+  "operations:searchMaintenance.jobs.count",
+  "operations:searchMaintenance.jobs.partial",
+  "operations:searchMaintenance.projects.live",
+  "operations:searchMaintenance.projects.partial",
+  "operations:searchMaintenance.projects.summary",
   "documents:documentSearch.counts.documents",
   "documents:reviewStation.counts.acknowledgements",
   "documents:reviewStation.counts.changes",
@@ -974,6 +1050,11 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "documents:tree.sizeSummary",
   "documents:tree.wordCount",
   "graph:accessibility.workingSetCount",
+  "graph:islands.progress.stepsComplete",
+  "graph:hover.evidence.codeLocations",
+  "graph:hover.evidence.commits",
+  "graph:hover.evidence.documents",
+  "graph:lab.actions.loadGenerated",
   "projects:workspaceIdentity.counts.ahead",
   "projects:workspaceIdentity.counts.behind",
   "projects:provisioning.result.itemCount",
@@ -1026,9 +1107,15 @@ describe("shipped localization catalog keys", () => {
     );
     expect([...MESSAGE_KEYS].sort()).toEqual([...EXPECTED_PUBLIC_MESSAGE_KEYS].sort());
     expect(PLURAL_MESSAGE_KEYS).toEqual([
+      "common:kit.activity.rowsLoaded",
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
       "common:palette.commandCount",
+      "common:finalWave.work.progress",
+      "documents:localizationWave.plan.completion",
+      "documents:localizationWave.plan.phaseCount",
+      "documents:localizationWave.plan.stepCount",
+      "documents:localizationWave.plan.waveCount",
       "documents:documentSearch.counts.documents",
       "documents:reviewStation.counts.acknowledgements",
       "documents:reviewStation.counts.changes",
@@ -1052,6 +1139,16 @@ describe("shipped localization catalog keys", () => {
       "documents:tree.sizeSummary",
       "documents:tree.wordCount",
       "graph:accessibility.workingSetCount",
+      "graph:islands.progress.stepsComplete",
+      "graph:hover.evidence.codeLocations",
+      "graph:hover.evidence.commits",
+      "graph:hover.evidence.documents",
+      "graph:lab.actions.loadGenerated",
+      "operations:searchMaintenance.jobs.count",
+      "operations:searchMaintenance.jobs.partial",
+      "operations:searchMaintenance.projects.live",
+      "operations:searchMaintenance.projects.summary",
+      "operations:searchMaintenance.projects.partial",
       "projects:workspaceIdentity.counts.ahead",
       "projects:workspaceIdentity.counts.behind",
       "projects:provisioning.result.itemCount",

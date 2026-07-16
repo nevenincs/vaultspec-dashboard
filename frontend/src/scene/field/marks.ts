@@ -124,7 +124,7 @@ const EVENT_LIFECYCLE = p(
 const TIER_DECLARED = {
   id: "tier:declared",
   provenance: "authored" as const,
-  body: p("M128,24 232,128 128,232 24,128 Z"),
+  svgBody: p("M128,24 232,128 128,232 24,128 Z"),
 };
 
 /** tier:structural — open square frame + one bold accent corner-notch. */
@@ -133,7 +133,7 @@ const TIER_STRUCTURAL = {
   provenance: "authored" as const,
   // Outer square with an inner square cut (the frame), then a short bold
   // notch riding the top-left corner — the asymmetry that fixes the reading.
-  body:
+  svgBody:
     // open frame: outer 56..200, inner 88..168 (even-odd hole via winding)
     '<path fill="currentColor" fill-rule="evenodd" d="M56,56H200V200H56ZM84,84V172H172V84Z"/>' +
     // accent corner-notch: a thick round-jointed L at the top-left corner
@@ -144,7 +144,7 @@ const TIER_STRUCTURAL = {
 const TIER_TEMPORAL = {
   id: "tier:temporal",
   provenance: "authored" as const,
-  body:
+  svgBody:
     // dashed ring: r=80 about center, round-cap dashes anchored at 12 o'clock
     '<circle cx="128" cy="128" r="80" fill="none" stroke="currentColor" stroke-width="20" stroke-linecap="round" stroke-dasharray="42 42"/>' +
     // center dot
@@ -155,7 +155,7 @@ const TIER_TEMPORAL = {
 const TIER_SEMANTIC = {
   id: "tier:semantic",
   provenance: "authored" as const,
-  body:
+  svgBody:
     '<g fill="none" stroke="currentColor" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M40,84 Q84,52 128,84 T216,84"/>' +
     '<path d="M40,128 Q84,96 128,128 T216,128"/>' +
@@ -189,14 +189,14 @@ export type TierKey = keyof typeof TIER_MARK_DEFS;
 const STATE_ACTIVE = {
   id: "state:active",
   provenance: "authored" as const,
-  body: '<circle cx="128" cy="128" r="56" fill="currentColor"/>',
+  svgBody: '<circle cx="128" cy="128" r="56" fill="currentColor"/>',
 };
 
 /** state:complete — a bold check inside a ring (Phosphor CheckCircle energy). */
 const STATE_COMPLETE = {
   id: "state:complete",
   provenance: "authored" as const,
-  body: p(
+  svgBody: p(
     "M173.66,98.34a8,8,0,0,1,0,11.32l-56,56a8,8,0,0,1-11.32,0l-24-24a8,8,0,0,1,11.32-11.32L112,148.69l50.34-50.35A8,8,0,0,1,173.66,98.34ZM232,128A104,104,0,1,1,128,24,104.11,104.11,0,0,1,232,128Zm-16,0a88,88,0,1,0-88,88A88.1,88.1,0,0,0,216,128Z",
   ),
 };
@@ -205,7 +205,7 @@ const STATE_COMPLETE = {
 const STATE_ARCHIVED = {
   id: "state:archived",
   provenance: "authored" as const,
-  body: p(
+  svgBody: p(
     "M224,48H32A16,16,0,0,0,16,64V88a16,16,0,0,0,16,16v88a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V104a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM208,192H48V104H208ZM224,88H32V64H224V88ZM96,136a8,8,0,0,1,8-8h48a8,8,0,0,1,0,16H104A8,8,0,0,1,96,136Z",
   ),
 };
@@ -222,7 +222,7 @@ const STATE_ARCHIVED = {
 const STATE_BROKEN = {
   id: "state:broken",
   provenance: "authored" as const,
-  body:
+  svgBody:
     // the bolt: tall zig with a clear central gap, sharp (miter) joins
     '<path fill="currentColor" d="M148,24 96,116 134,116 108,232 176,108 134,108 Z"/>' +
     // the broken baseline it cuts through, anchored on a gate cell-center row
@@ -234,7 +234,7 @@ const STATE_BROKEN = {
 const STATE_STALE = {
   id: "state:stale",
   provenance: "authored" as const,
-  body: p(
+  svgBody: p(
     "M136,80v43.47l36.12,21.67a8,8,0,0,1-8.24,13.72l-40-24A8,8,0,0,1,120,128V80a8,8,0,0,1,16,0Zm-8-48A95.44,95.44,0,0,0,60.08,60.15C52.81,67.51,46.35,74.59,40,82V64a8,8,0,0,0-16,0v40a8,8,0,0,0,8,8H72a8,8,0,0,0,0-16H49c7.15-8.42,14.27-16.35,22.39-24.57a80,80,0,1,1,1.66,114.75,8,8,0,1,0-11,11.64A96,96,0,1,0,128,32Z",
   ),
 };
@@ -264,7 +264,7 @@ export type StateKey = keyof typeof STATE_MARK_DEFS;
 export const NODE_FEATURE_MARK = {
   id: "feature",
   provenance: "adopted" as const,
-  body: p(
+  svgBody: p(
     "M172,76a44,44,0,1,0-44,44A44.05,44.05,0,0,0,172,76Zm-44,28a28,28,0,1,1,28-28A28,28,0,0,1,128,104Zm60,24a44,44,0,1,0,44,44A44.05,44.05,0,0,0,188,128Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,188,200ZM68,128a44,44,0,1,0,44,44A44.05,44.05,0,0,0,68,128Zm0,72a28,28,0,1,1,28-28A28,28,0,0,1,68,200Z",
   ),
 };
@@ -332,28 +332,28 @@ function severityArc(fraction: number): string {
 const STATUS_SEVERITY_1 = {
   id: "status-severity-1",
   provenance: "authored" as const,
-  body: severityArc(0.25),
+  svgBody: severityArc(0.25),
 };
 
 /** severity 2 — a half gauge. */
 const STATUS_SEVERITY_2 = {
   id: "status-severity-2",
   provenance: "authored" as const,
-  body: severityArc(0.5),
+  svgBody: severityArc(0.5),
 };
 
 /** severity 3 — a three-quarter gauge. */
 const STATUS_SEVERITY_3 = {
   id: "status-severity-3",
   provenance: "authored" as const,
-  body: severityArc(0.75),
+  svgBody: severityArc(0.75),
 };
 
 /** severity 4 — a full ring gauge (the highest grade). */
 const STATUS_SEVERITY_4 = {
   id: "status-severity-4",
   provenance: "authored" as const,
-  body:
+  svgBody:
     `<circle cx="${SEV_CX}" cy="${SEV_CY}" r="${SEV_R}" ` +
     `fill="none" stroke="currentColor" stroke-width="${SEV_SW}"/>`,
 };
@@ -386,22 +386,22 @@ const TIER_STEP = (n: 1 | 2 | 3 | 4): string => {
 const STATUS_TIER_1 = {
   id: "status-tier-1",
   provenance: "authored" as const,
-  body: TIER_STEP(1),
+  svgBody: TIER_STEP(1),
 };
 const STATUS_TIER_2 = {
   id: "status-tier-2",
   provenance: "authored" as const,
-  body: TIER_STEP(2),
+  svgBody: TIER_STEP(2),
 };
 const STATUS_TIER_3 = {
   id: "status-tier-3",
   provenance: "authored" as const,
-  body: TIER_STEP(3),
+  svgBody: TIER_STEP(3),
 };
 const STATUS_TIER_4 = {
   id: "status-tier-4",
   provenance: "authored" as const,
-  body: TIER_STEP(4),
+  svgBody: TIER_STEP(4),
 };
 
 /**
@@ -446,29 +446,33 @@ export const STATUS_TIER_MARK_DEFS = {
  */
 export const DOC_TYPE_MARK_DEFS: Record<string, MarkDef> = {
   feature: NODE_FEATURE_MARK,
-  research: { id: "research", provenance: "adopted", body: RESEARCH },
-  adr: { id: "adr", provenance: "adopted", body: ADR },
-  plan: { id: "plan", provenance: "adopted", body: PLAN },
-  exec: { id: "exec", provenance: "adopted", body: EXEC },
-  audit: { id: "audit", provenance: "adopted", body: AUDIT },
-  reference: { id: "reference", provenance: "adopted", body: REFERENCE },
-  code: { id: "code", provenance: "adopted", body: CODE },
+  research: { id: "research", provenance: "adopted", svgBody: RESEARCH },
+  adr: { id: "adr", provenance: "adopted", svgBody: ADR },
+  plan: { id: "plan", provenance: "adopted", svgBody: PLAN },
+  exec: { id: "exec", provenance: "adopted", svgBody: EXEC },
+  audit: { id: "audit", provenance: "adopted", svgBody: AUDIT },
+  reference: { id: "reference", provenance: "adopted", svgBody: REFERENCE },
+  code: { id: "code", provenance: "adopted", svgBody: CODE },
 };
 
 /** The four event marks, keyed by event kind. */
 export const EVENT_MARK_DEFS: Record<string, MarkDef> = {
-  commit: { id: "event:commit", provenance: "adopted", body: EVENT_COMMIT },
+  commit: { id: "event:commit", provenance: "adopted", svgBody: EVENT_COMMIT },
   "doc-created": {
     id: "event:doc-created",
     provenance: "adopted",
-    body: EVENT_DOC_CREATED,
+    svgBody: EVENT_DOC_CREATED,
   },
   "doc-modified": {
     id: "event:doc-modified",
     provenance: "adopted",
-    body: EVENT_DOC_MODIFIED,
+    svgBody: EVENT_DOC_MODIFIED,
   },
-  lifecycle: { id: "event:lifecycle", provenance: "adopted", body: EVENT_LIFECYCLE },
+  lifecycle: {
+    id: "event:lifecycle",
+    provenance: "adopted",
+    svgBody: EVENT_LIFECYCLE,
+  },
 };
 
 /**

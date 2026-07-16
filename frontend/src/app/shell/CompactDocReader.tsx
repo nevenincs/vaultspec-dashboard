@@ -27,6 +27,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import {
   closeDocTab,
@@ -132,6 +133,7 @@ function DocReaderPane({
   surface: ViewerSurface;
   scope: string | null;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const view = useDockDocPanelView(nodeId, surface, scope);
   // Both the tap-back control and the edge-swipe route the SAME doc-scoped guard, so
   // a dirty draft for THIS document arms the discard confirm before the reader pops
@@ -156,7 +158,13 @@ function DocReaderPane({
         {...swipe.handlers}
       >
         <MobileTopBar title={codeTitle(nodeId)} onBack={back} />
-        <div className="min-h-0 flex-1 overflow-y-auto" aria-label="code viewer">
+        <div
+          className="min-h-0 flex-1 overflow-y-auto"
+          aria-label={
+            resolveMessage({ key: "documents:workspace.accessibility.codeViewer" })
+              .message
+          }
+        >
           <CodeViewer content={view.content} />
         </div>
       </div>
@@ -173,7 +181,13 @@ function DocReaderPane({
       {...swipe.handlers}
     >
       <MobileTopBar title={view.header.title} onBack={back} />
-      <div className="min-h-0 flex-1 overflow-y-auto" aria-label="document viewer">
+      <div
+        className="min-h-0 flex-1 overflow-y-auto"
+        aria-label={
+          resolveMessage({ key: "documents:workspace.accessibility.documentViewer" })
+            .message
+        }
+      >
         <MarkdownDocView
           nodeId={view.nodeId}
           content={view.content}

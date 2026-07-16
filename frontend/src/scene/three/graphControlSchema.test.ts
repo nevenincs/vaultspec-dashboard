@@ -13,34 +13,19 @@ import {
 } from "./graphControlSchema";
 import { UI_GRAPH_CONTROL_MESSAGES } from "../../stores/view/graphControlsVocabulary";
 
-// Widen the `as const` schema to the ControlSpec interface for the generic field access
-// in the loops below — the as-const literal types are too narrow for `.exposure.includes`
-// ("never" on empty-exposure tuples) and the optional `uiLabel`.
 const SCHEMA: readonly ControlSpec[] = GRAPH_CONTROL_SCHEMA;
 
-// The canonical default of EVERY registry entry, pinned INDEPENDENTLY of the schema so
-// an accidental default change is caught (algo-flagged: the entry defaults were the lone
-// untested path). The whole point is the regression pin — update this map only when a
-// default is changed DELIBERATELY.
 const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
-  // --- simulation: d3-force params (17) ---
   charge: -120,
   linkDistance: 40,
   linkStrength: 1,
   chargeDistanceMax: 0,
-  // 0.5 = the Barnes-Hut accuracy sweet spot (graph-simulation-stability ADR
-  // amendment 2): a coarser criterion measured as two thirds of the live jitter.
   chargeTheta: 0.5,
   centerStrength: 0.06,
   collidePadding: 3,
-  // 0.35 — deliberate retune (sim-smoothness reference audit): collide is never
-  // alpha-scaled, so 0.8 over-corrected ~3.3x during the anneal hold; references
-  // ship no collide at all.
   collideStrength: 0.35,
   collideIterations: 1,
   velocityDecay: 0.5,
-  // 0.03 — deliberate retune (sim-smoothness reference audit): 0.05 was 2.2x the
-  // d3/Quartz default, freezing a less-balanced field after too short a tail.
   alphaDecay: 0.03,
   alphaMin: 0.005,
   dragAlpha: 0.3,
@@ -48,21 +33,18 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   wakeRadius: 0,
   sleepSpeed: 0.4,
   sleepTicks: 18,
-  // --- simulation: energy schedule (internal) ---
   coldAlpha: 1,
   warmReheatAlpha: 0.5,
   gentleReheatAlpha: 0.15,
   warmStartAlpha: 0.3,
   prewarmMaxTicks: 300,
   prewarmBudgetMs: 260,
-  // --- simulation: the convergence-gated anneal (graph-simulation-stability) ---
   annealAlpha: 0.3,
   annealSettleSpeed: 0.12,
   annealSettleTicks: 30,
   annealMaxTicks: 600,
   annealStallTicks: 90,
   annealStallImprovement: 0.02,
-  // --- visualisation: the 9 appearance params ---
   nodeSizeScale: 1,
   nodeSalienceScale: 1,
   edgeWidthMin: 0.6,
@@ -72,7 +54,6 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   edgeColorMode: "gradient",
   nodeColorMode: "category",
   nodeIcons: false,
-  // --- visualisation: internal render constants ---
   baseNodeRadius: 4,
   salienceRadiusMax: 2.6,
   featureLevelScale: 0.6,
@@ -95,7 +76,6 @@ const EXPECTED_DEFAULTS: Record<string, number | string | boolean> = {
   edgeDimAlpha: 0.2,
   pulseRingAlpha: 0.85,
   nodeDegreeReference: 100,
-  // --- navigation ---
   zoomMin: 0.02,
   zoomMax: 50,
   zoomStepButton: 1.2,

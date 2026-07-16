@@ -20,10 +20,10 @@ afterEach(cleanup);
  * texture seam, without depending on DOM serialization quirks (the serializer
  * rewrites `<path/>` to `<path></path>`, so exact innerHTML equality is brittle).
  */
-function firstGeometry(body: string): string {
-  const d = /d="([^"]+)"/.exec(body);
+function firstGeometry(svgBody: string): string {
+  const d = /d="([^"]+)"/.exec(svgBody);
   if (d) return d[1];
-  const r = /r="([^"]+)"/.exec(body);
+  const r = /r="([^"]+)"/.exec(svgBody);
   if (r) return `r="${r[1]}"`;
   throw new Error("no geometry token in body");
 }
@@ -34,7 +34,7 @@ describe("DocTypeMark", () => {
     const svg = container.querySelector("svg");
     expect(svg).not.toBeNull();
     // The rendered SVG carries the doc-type def's own geometry — one source.
-    expect(svg!.innerHTML).toContain(firstGeometry(DOC_TYPE_MARK_DEFS.adr.body));
+    expect(svg!.innerHTML).toContain(firstGeometry(DOC_TYPE_MARK_DEFS.adr.svgBody));
   });
 
   it("inherits hue through currentColor, hard-coding no color", () => {
@@ -56,14 +56,14 @@ describe("TierMark and StateMark", () => {
   it("render the authored tier mark bodies", () => {
     const { container } = render(<TierMark tier="declared" />);
     expect(container.querySelector("svg")!.innerHTML).toContain(
-      firstGeometry(TIER_MARK_DEFS.declared.body),
+      firstGeometry(TIER_MARK_DEFS.declared.svgBody),
     );
   });
 
   it("render the authored state mark bodies", () => {
     const { container } = render(<StateMark state="broken" />);
     expect(container.querySelector("svg")!.innerHTML).toContain(
-      firstGeometry(STATE_MARK_DEFS.broken.body),
+      firstGeometry(STATE_MARK_DEFS.broken.svgBody),
     );
   });
 });
@@ -72,7 +72,7 @@ describe("MarkById and accessibility", () => {
   it("resolves any mark by its stable id", () => {
     const { container } = render(<MarkById id="tier:semantic" />);
     expect(container.querySelector("svg")!.innerHTML).toContain(
-      firstGeometry(TIER_MARK_DEFS.semantic.body),
+      firstGeometry(TIER_MARK_DEFS.semantic.svgBody),
     );
   });
 

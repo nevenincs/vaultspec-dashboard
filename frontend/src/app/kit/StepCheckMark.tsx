@@ -7,6 +7,7 @@
 // style around it via CSS.
 
 const MARK_PX = 14;
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 export interface StepCheckMarkProps {
   /** Whether the step is complete (filled disc + check) or open (hollow ring). */
@@ -16,10 +17,15 @@ export interface StepCheckMarkProps {
 }
 
 export function StepCheckMark({ done, size = MARK_PX }: StepCheckMarkProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   return (
     <span
       role="img"
-      aria-label={done ? "complete" : "open"}
+      aria-label={
+        resolveMessage({
+          key: done ? "common:kit.stepStates.complete" : "common:kit.stepStates.open",
+        }).message
+      }
       data-step-check
       data-done={done}
       className={`inline-flex shrink-0 items-center justify-center ${

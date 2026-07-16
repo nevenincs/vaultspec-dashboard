@@ -2,6 +2,7 @@
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
+import { logger } from "../../../platform/logger/logger";
 import {
   authoringClient,
   requireActorToken,
@@ -104,12 +105,19 @@ function normalizeWriteRef(nodeId: unknown): {
   };
 }
 
-function refusedWriteResult(error: string): {
+const mutationLogger = logger.child("authoring-mutations");
+const ACTION_UNAVAILABLE_CHECK = Object.freeze({
+  severity: "error",
+  messageDescriptor: Object.freeze({ key: "common:feedback.actionUnavailable" }),
+  fixable: false,
+});
+
+function refusedWriteResult(): {
   result: OpsWriteResult;
   tiers: TiersBlock;
 } {
   return {
-    result: { kind: "refused", checks: [], errors: [error] },
+    result: { kind: "refused", checks: [], errors: [] },
     tiers: {},
   };
 }
@@ -531,11 +539,11 @@ export function invalidateScopedSemanticReads(
  * (e.g. a scope-pin mismatch, a non-human actor) or failed direct write is
  * never a silently blank advisories panel.
  */
-function directWriteRefusedResult(reason: string): OpsWriteResult {
+function directWriteRefusedResult(): OpsWriteResult {
   return {
     kind: "refused",
-    checks: [{ severity: "error", message: reason, fixable: false }],
-    errors: [reason],
+    checks: [ACTION_UNAVAILABLE_CHECK],
+    errors: [],
   };
 }
 
@@ -566,26 +574,26 @@ function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
     };
   }
   if (outcome.kind === "denied") {
+    mutationLogger.warn("direct write denied", {
+      denialKind: outcome.denialKind,
+      reason: outcome.reason,
+    });
     return {
-      result: directWriteRefusedResult(
-        outcome.reason ?? "the direct editor save was denied",
-      ),
+      result: directWriteRefusedResult(),
       tiers: outcome.tiers,
     };
   }
   if (outcome.kind === "failed") {
+    mutationLogger.warn("direct write failed", { reason: outcome.reason });
     return {
-      result: directWriteRefusedResult(
-        outcome.reason ?? "the direct editor save failed",
-      ),
+      result: directWriteRefusedResult(),
       tiers: outcome.tiers,
     };
   }
   if (outcome.kind === "in_flight") {
+    mutationLogger.info("direct write already in flight");
     return {
-      result: directWriteRefusedResult(
-        "a prior save for this document is still in flight — try again shortly",
-      ),
+      result: directWriteRefusedResult(),
       tiers: outcome.tiers,
     };
   }
@@ -617,7 +625,7 @@ export function useSaveBody() {
     mutationFn: async (args: SaveBodyArgs) => {
       const normalized = normalizeSaveBodyArgs(args);
       if (normalized.ref === null) {
-        return refusedWriteResult("Missing document id");
+        return refusedWriteResult();
       }
       const outcome = await authoringClient.directWrite(
         {
@@ -696,7 +704,7 @@ export function useSetFrontmatter() {
     mutationFn: async (args: SetFrontmatterArgs) => {
       const normalized = normalizeSetFrontmatterArgs(args);
       if (normalized.ref === null) {
-        return refusedWriteResult("Missing document id");
+        return refusedWriteResult();
       }
       const outcome = await authoringClient.directWrite(
         {
@@ -816,7 +824,7 @@ export function useCreateDoc() {
       const normalized = normalizeCreateDocArgs(args);
       if (normalized.docType.length === 0 || normalized.feature.length === 0) {
         return {
-          ...refusedWriteResult("Document type and feature are required"),
+          ...refusedWriteResult(),
           nodeId: null,
           failure: "create-failed",
         };
@@ -866,12 +874,15 @@ export function useCreateDoc() {
       // folds into the SAME refused-with-checks result below: `OpsWriteResult`
       // (unlike rename's `RenameDocResult`) carries no distinct `collision`
       // kind for create, so there is no separate branch to route to.
-      const reason =
-        outcome.kind === "denied" || outcome.kind === "failed"
-          ? (outcome.reason ?? "Create refused")
-          : "a prior create for this document is still in flight — try again shortly";
+      mutationLogger.warn("document create refused", {
+        outcome: outcome.kind,
+        reason:
+          outcome.kind === "denied" || outcome.kind === "failed"
+            ? outcome.reason
+            : undefined,
+      });
       return {
-        result: directWriteRefusedResult(reason),
+        result: directWriteRefusedResult(),
         tiers: outcome.tiers,
         nodeId: null,
         failure: createDocFailureKind(outcome),
@@ -934,12 +945,12 @@ export function normalizeRenameDocArgs(args: unknown): NormalizedRenameDocArgs {
   };
 }
 
-function refusedRenameResult(message: string): {
+function refusedRenameResult(): {
   result: RenameDocResult;
   tiers: TiersBlock;
 } {
   return {
-    result: { kind: "refused", message, checks: [] },
+    result: { kind: "refused", message: "", checks: [] },
     tiers: {},
   };
 }
@@ -970,17 +981,22 @@ export function useRenameDoc() {
     ): Promise<{ result: RenameDocResult; tiers: TiersBlock }> => {
       const normalized = normalizeRenameDocArgs(args);
       if (normalized.ref === null || normalized.nodeId === null) {
-        return refusedRenameResult("Missing document id");
+        mutationLogger.warn("rename validation refused", {
+          code: "missing-document-id",
+        });
+        return refusedRenameResult();
       }
       if (normalized.to.length === 0) {
-        return refusedRenameResult("Rename target is required");
+        mutationLogger.warn("rename validation refused", { code: "missing-target" });
+        return refusedRenameResult();
       }
       // The direct-write route REQUIRES `expected_blob_hash` for rename (unlike
       // the legacy op, which tolerated an absent fence) — refuse client-side
       // rather than sending an empty string, which the backend 422s as a
       // malformed request rather than a graceful denial VALUE.
       if (!normalized.expectedBlobHash) {
-        return refusedRenameResult("Missing the pre-rename optimistic base");
+        mutationLogger.warn("rename validation refused", { code: "missing-base" });
+        return refusedRenameResult();
       }
       const outcome = await authoringClient.directWrite(
         {
@@ -1008,19 +1024,23 @@ export function useRenameDoc() {
           actual: outcome.conflict.actual_blob_hash,
         };
       } else if (outcome.kind === "denied" && outcome.denialKind === "path_collision") {
+        mutationLogger.warn("rename path collision", { reason: outcome.reason });
         result = {
           kind: "collision",
-          message: outcome.reason ?? "Target already exists",
+          message: "",
         };
       } else {
-        const reason =
-          outcome.kind === "denied" || outcome.kind === "failed"
-            ? (outcome.reason ?? "Rename refused")
-            : "a prior rename for this document is still in flight — try again shortly";
+        mutationLogger.warn("rename refused", {
+          outcome: outcome.kind,
+          reason:
+            outcome.kind === "denied" || outcome.kind === "failed"
+              ? outcome.reason
+              : undefined,
+        });
         result = {
           kind: "refused",
-          message: reason,
-          checks: [{ severity: "error", message: reason, fixable: false }],
+          message: "",
+          checks: [ACTION_UNAVAILABLE_CHECK],
         };
       }
       return { result, tiers: outcome.tiers };

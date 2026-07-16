@@ -6,9 +6,22 @@ import {
   normalizeDashboardFilterFacetValue,
   type DashboardFilterFacet,
 } from "../server/dashboardState";
-import { docTypeLabel } from "../server/docTypeVocabulary";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { normalizeSearchQuery } from "../searchQuery";
+import {
+  FILTER_MESSAGES,
+  filterHealthPresentation,
+  filterMessageLabel,
+  filterPlanStatusPresentation,
+  filterStatusPresentation,
+  type FilterOptionLabel,
+  type FilterTokenPresentation,
+} from "./filterPresentation";
 import { normalizeViewStoreSessionString } from "./scopeIdentity";
+import {
+  compareStableIdentifiers,
+  stableIdentifier,
+} from "../../platform/localization/displayText";
 
 // Stage filter-sidebar chrome state. Filter VALUES are canonical dashboard-state;
 // this store owns only whether the data-driven filter instrument is visible and
@@ -37,26 +50,9 @@ const FILTER_SIDEBAR_LIST_KEYS = [
 ] as const satisfies readonly FilterSidebarListKey[];
 const FILTER_SIDEBAR_LIST_KEY_SET = new Set<string>(FILTER_SIDEBAR_LIST_KEYS);
 
-export interface FilterSidebarFacetRowView {
-  value: string;
-  checked: boolean;
-  inputClassName: string;
-  labelClassName: string;
-  valueClassName: string;
-}
-
-export interface FilterSidebarFacetListView {
-  shown: string[];
-  rows: FilterSidebarFacetRowView[];
-  overflow: number;
-  overflowLabel: string | null;
-  emptyMessage: string | null;
-  ariaBusy: boolean | undefined;
-}
-
 export interface FilterSidebarFacetOptionView {
   value: string;
-  label?: string;
+  label: FilterOptionLabel;
   count?: number;
   dot?: FilterSidebarFacetDotTone;
 }
@@ -64,25 +60,24 @@ export interface FilterSidebarFacetOptionView {
 interface FilterSidebarCheckboxSectionView {
   type: "checkbox";
   key: string;
-  label: string;
+  label: MessageDescriptor;
   options: FilterSidebarFacetOptionView[];
   selected: string[];
   onToggle: (value: string) => void;
   search?: {
     value: string;
     onChange: (value: string) => void;
-    placeholder?: string;
-    ariaLabel?: string;
+    placeholder: MessageDescriptor;
   };
   loading?: boolean;
-  emptyLabel?: string;
+  emptyLabel?: MessageDescriptor;
 }
 
 interface FilterSidebarRadioSectionView {
   type: "radio";
   key: string;
-  label: string;
-  options: { value: string; label: string }[];
+  label: MessageDescriptor;
+  options: { value: string; label: MessageDescriptor }[];
   value: string;
   onSelect: (value: string) => void;
 }
@@ -164,36 +159,6 @@ export function normalizeFilterSidebarExpandedLists(
   }
   return normalized;
 }
-
-const FILTER_SIDEBAR_STATUS_DOT: Record<string, FilterSidebarFacetDotTone> = {
-  accepted: "complete",
-  finished: "complete",
-  complete: "complete",
-  proposed: "provisional",
-  draft: "provisional",
-  "in-progress": "active",
-  active: "active",
-  "not-started": "stale",
-  rejected: "broken",
-  deprecated: "archived",
-  archived: "archived",
-};
-
-const FILTER_SIDEBAR_HEALTH_DOT: Record<string, FilterSidebarFacetDotTone> = {
-  dangling: "broken",
-  invalid: "danger",
-  "empty-scaffold": "stale",
-  orphaned: "archived",
-};
-
-// Health facet values translate to plain user-facing language — never the raw
-// engineering slug (ui-labels-are-user-facing).
-const FILTER_SIDEBAR_HEALTH_LABEL: Record<string, string> = {
-  dangling: "Dangling",
-  invalid: "Invalid frontmatter",
-  "empty-scaffold": "Empty scaffold",
-  orphaned: "Orphans",
-};
 
 export interface FilterSidebarState {
   open: boolean;
@@ -314,7 +279,9 @@ export function normalizeFilterSidebarVocabularyPart(values: unknown): string[] 
     normalizedValues.add(normalized);
     if (normalizedValues.size >= FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES) break;
   }
-  return [...normalizedValues].sort((a, b) => a.localeCompare(b));
+  return [...normalizedValues].sort((a, b) =>
+    compareStableIdentifiers(stableIdentifier(a), stableIdentifier(b)),
+  );
 }
 
 export function normalizeFilterSidebarFacetValues(values: unknown): string[] {
@@ -329,12 +296,6 @@ export function normalizeFilterSidebarFacetValues(values: unknown): string[] {
     if (normalizedValues.length >= FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES) break;
   }
   return normalizedValues;
-}
-
-export function normalizeFilterSidebarFacetLimit(max: unknown): number | undefined {
-  return typeof max === "number" && Number.isFinite(max) && max > 0
-    ? Math.trunc(max)
-    : undefined;
 }
 
 function visualStateVocabularyPart(values: unknown): string[] {
@@ -406,57 +367,6 @@ export function useFilterSidebarListExpanded(key: unknown): boolean {
   );
 }
 
-export function deriveFilterSidebarFacetListView(
-  values: unknown,
-  selected: unknown,
-  max: unknown,
-  showAll: unknown,
-  loading: unknown,
-): FilterSidebarFacetListView {
-  const normalizedValues = normalizeFilterSidebarFacetValues(values);
-  const normalizedSelected = new Set(normalizeFilterSidebarFacetValues(selected));
-  const limit = normalizeFilterSidebarFacetLimit(max);
-  const showAllValues = showAll === true;
-  const loadingValue = loading === true;
-  const shown =
-    limit === undefined || showAllValues
-      ? [...normalizedValues]
-      : normalizedValues.slice(0, limit);
-  const overflow =
-    limit === undefined ? 0 : Math.max(0, normalizedValues.length - limit);
-  return {
-    shown,
-    rows: shown.map((value) => ({
-      value,
-      checked: normalizedSelected.has(value),
-      inputClassName: "accent-accent",
-      labelClassName:
-        "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-      valueClassName: normalizedSelected.has(value) ? "text-ink" : "text-ink-muted",
-    })),
-    overflow,
-    overflowLabel: overflow > 0 && !showAllValues ? `+${overflow} more` : null,
-    emptyMessage:
-      normalizedValues.length === 0
-        ? loadingValue
-          ? "loading..."
-          : "none in corpus"
-        : null,
-    ariaBusy: loadingValue || undefined,
-  };
-}
-
-export function filterSidebarFeatureOptions(
-  featureTags: unknown,
-  featureSearch: unknown,
-): string[] {
-  const query = normalizeFilterSidebarFeatureSearch(featureSearch).trim().toLowerCase();
-  const normalizedFeatureTags = normalizeFilterSidebarFacetValues(featureTags);
-  return query
-    ? normalizedFeatureTags.filter((tag) => tag.toLowerCase().includes(query))
-    : normalizedFeatureTags;
-}
-
 export interface FilterSidebarMenuSectionsInput {
   vocabulary: unknown;
   filterView: unknown;
@@ -489,6 +399,24 @@ function filterSidebarToggleHandler(
   };
 }
 
+function closedFilterOptions(
+  values: readonly string[],
+  presentationFor: (value: unknown) => FilterTokenPresentation | null,
+): FilterSidebarFacetOptionView[] {
+  return values.flatMap((value) => {
+    const presentation = presentationFor(value);
+    return presentation === null
+      ? []
+      : [
+          {
+            value,
+            label: filterMessageLabel(presentation.label),
+            dot: presentation.dot,
+          },
+        ];
+  });
+}
+
 export function deriveFilterSidebarMenuSections({
   vocabulary,
   filterView,
@@ -517,14 +445,10 @@ export function deriveFilterSidebarMenuSections({
           {
             type: "checkbox" as const,
             key: "status",
-            label: "Decision status",
+            label: FILTER_MESSAGES.sections.decisionStatus,
             selected: selectedStatuses,
             onToggle: filterSidebarToggleHandler("statuses", onToggleFacet),
-            options: statuses.map((value) => ({
-              value,
-              label: filterSidebarStatusLabel(value),
-              dot: filterSidebarStatusDot(value),
-            })),
+            options: closedFilterOptions(statuses, filterStatusPresentation),
           },
         ]
       : []),
@@ -537,14 +461,10 @@ export function deriveFilterSidebarMenuSections({
           {
             type: "checkbox" as const,
             key: "plan-status",
-            label: "Plan status",
+            label: FILTER_MESSAGES.sections.planStatus,
             selected: selectedPlanStates,
             onToggle: filterSidebarToggleHandler("plan_states", onToggleFacet),
-            options: planStates.map((value) => ({
-              value,
-              label: filterSidebarPlanStateLabel(value),
-              dot: filterSidebarStatusDot(value),
-            })),
+            options: closedFilterOptions(planStates, filterPlanStatusPresentation),
           },
         ]
       : []),
@@ -555,59 +475,14 @@ export function deriveFilterSidebarMenuSections({
           {
             type: "checkbox" as const,
             key: "health",
-            label: "Health",
+            label: FILTER_MESSAGES.sections.health,
             selected: selectedHealth,
             onToggle: filterSidebarToggleHandler("health", onToggleFacet),
-            options: health.map((value) => ({
-              value,
-              label: filterSidebarHealthLabel(value),
-              dot: filterSidebarHealthDot(value),
-            })),
+            options: closedFilterOptions(health, filterHealthPresentation),
           },
         ]
       : []),
   ];
-}
-
-export function filterSidebarDocTypeLabel(value: string): string {
-  return docTypeLabel(value);
-}
-
-/** A status facet value as plain sentence-case language ("in-progress" → "In
- *  progress"), never the raw slug (ui-labels-are-user-facing). */
-export function filterSidebarStatusLabel(value: string): string {
-  const cleaned = value.replace(/[-_]+/g, " ").trim();
-  return cleaned.length === 0
-    ? value
-    : cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-}
-
-// Plan completion states the engine serves (derived from step progress:
-// not-started / in-progress / finished) → plain user labels
-// (ui-labels-are-user-facing). Unknown values fall back to sentence-case.
-const FILTER_SIDEBAR_PLAN_STATE_LABEL: Record<string, string> = {
-  "not-started": "Not started",
-  "in-progress": "In progress",
-  finished: "Finished",
-};
-
-export function filterSidebarPlanStateLabel(value: string): string {
-  return (
-    FILTER_SIDEBAR_PLAN_STATE_LABEL[value.toLowerCase()] ??
-    filterSidebarStatusLabel(value)
-  );
-}
-
-export function filterSidebarStatusDot(value: string): FilterSidebarFacetDotTone {
-  return FILTER_SIDEBAR_STATUS_DOT[value.toLowerCase()] ?? "provisional";
-}
-
-export function filterSidebarHealthDot(value: string): FilterSidebarFacetDotTone {
-  return FILTER_SIDEBAR_HEALTH_DOT[value.toLowerCase()] ?? "stale";
-}
-
-export function filterSidebarHealthLabel(value: string): string {
-  return FILTER_SIDEBAR_HEALTH_LABEL[value.toLowerCase()] ?? value;
 }
 
 export function setFilterSidebarOpen(open: unknown): void {

@@ -11,8 +11,12 @@
 import { Button, StateBlock } from "../kit";
 import { setShellGraphVisible } from "../../stores/view/shellLayout";
 import { newDocumentAction } from "../../stores/view/leftRailKeybindings";
+import { resolveActionPresentation } from "../../platform/actions/action";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 export function WorkspaceGhost() {
+  const resolveMessage = useLocalizedMessageResolver();
+  const newDocument = newDocumentAction();
   return (
     <div
       className="flex h-full w-full flex-col items-center justify-center gap-fg-3 bg-paper"
@@ -20,15 +24,15 @@ export function WorkspaceGhost() {
     >
       <StateBlock
         mode="empty"
-        title="Nothing open"
-        message="Show the graph, create a document, or open one from the rail."
+        title={resolveMessage({ key: "common:shell.workspace.emptyTitle" }).message}
+        message={resolveMessage({ key: "common:shell.workspace.emptyMessage" }).message}
       />
       <div className="flex items-center gap-fg-2">
         <Button variant="primary" onClick={() => setShellGraphVisible(true)}>
-          Show graph
+          {resolveMessage({ key: "common:actions.showGraph" }).message}
         </Button>
-        <Button variant="secondary" onClick={() => newDocumentAction().run?.()}>
-          Add to a feature
+        <Button variant="secondary" onClick={() => newDocument.run?.()}>
+          {resolveActionPresentation(newDocument.label, resolveMessage).message}
         </Button>
       </div>
     </div>

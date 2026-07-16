@@ -5,6 +5,7 @@ import {
   FEATURE_LIFECYCLE_AXIS,
   arrangeFeatureLifecycleAxis,
   deriveFeatureLifecycleView,
+  featureLifecycleDocType,
   featureLifecycleRank,
 } from "../../stores/server/queries";
 import {
@@ -13,11 +14,13 @@ import {
   stateMarkKey,
 } from "../../stores/view/nodeInterior";
 
-const node = (id: string, kind: string, extra?: Partial<EngineNode>): EngineNode => ({
-  id,
-  kind,
-  ...extra,
-});
+function documentNode(
+  id: string,
+  docType: string,
+  extra?: Partial<EngineNode>,
+): EngineNode {
+  return { id, kind: "Document", doc_type: docType, ...extra };
+}
 
 describe("lifecycle axis (canonical layout, G3.e)", () => {
   it("ranks the five doc types in lifecycle order", () => {
@@ -28,29 +31,44 @@ describe("lifecycle axis (canonical layout, G3.e)", () => {
   });
 
   it("arranges a feature's documents along the axis, dropping non-docs", () => {
-    const arranged = arrangeFeatureLifecycleAxis([
-      node("d", "audit"),
-      node("f", "feature"),
-      node("a", "research"),
-      node("c", "exec"),
-      node("b", "adr"),
-      node("x", "code"),
+    const arranged = arrangeFeatureLifecycleAxis(
+      [
+        documentNode("d", "audit"),
+        { id: "f", kind: "Feature" },
+        documentNode("a", "research"),
+        documentNode("c", "exec"),
+        documentNode("b", "adr"),
+        documentNode("x", "private_type"),
+        { id: "legacy", kind: "adr" },
+      ],
+      "en",
+    );
+    expect(arranged.map((node) => node.doc_type)).toEqual([
+      "research",
+      "adr",
+      "exec",
+      "audit",
     ]);
-    expect(arranged.map((n) => n.kind)).toEqual(["research", "adr", "exec", "audit"]);
+    expect(arranged.map((node) => node.id)).not.toContain("legacy");
+    expect(featureLifecycleDocType(documentNode("known", "plan"))).toBe("plan");
+    expect(featureLifecycleDocType(documentNode("unknown", "private_type"))).toBeNull();
   });
 
   it("derives the feature lifecycle loading and ready views", () => {
-    expect(deriveFeatureLifecycleView(undefined)).toEqual({
+    expect(deriveFeatureLifecycleView(undefined, "en")).toEqual({
       state: "loading",
       docs: [],
     });
 
     expect(
-      deriveFeatureLifecycleView([
-        node("b", "adr"),
-        node("x", "code"),
-        node("a", "research"),
-      ]),
+      deriveFeatureLifecycleView(
+        [
+          documentNode("b", "adr"),
+          documentNode("x", "private_type"),
+          documentNode("a", "research"),
+        ],
+        "en",
+      ),
     ).toMatchObject({
       state: "ready",
       docs: [{ id: "a" }, { id: "b" }],
@@ -62,9 +80,16 @@ describe("interiorSteps", () => {
   it("orders steps canonically with check state", () => {
     const steps = interiorSteps({
       nodes: [
-        node("p#S02", "step", { title: "S02", lifecycle: { state: "active" } }),
-        node("p#S01", "step", { title: "S01", lifecycle: { state: "complete" } }),
-        node("p", "plan"),
+        { id: "p#S02", kind: "step", title: "S02", lifecycle: { state: "active" } },
+        {
+          id: "p#S01",
+          kind: "step",
+          title: "S01",
+          lifecycle: { state: "complete" },
+        },
+        { id: "private-step-id", kind: "step", title: "private-step-id" },
+        { id: "missing-title-id", kind: "step" },
+        documentNode("p", "plan"),
       ],
       edges: [],
       tiers: {},
@@ -82,7 +107,7 @@ describe("interiorSteps", () => {
 
 describe("deriveNodeInteriorView", () => {
   const detail: NodeDetail = {
-    node: { id: "doc:plan", kind: "plan", title: "Plan" },
+    node: documentNode("doc:plan", "plan", { title: "Plan" }),
     tiers: {},
   };
 
@@ -96,7 +121,7 @@ describe("deriveNodeInteriorView", () => {
     ).toEqual({ state: "feature" });
   });
 
-  it("projects loading and unavailable copy from node-detail state", () => {
+  it("projects loading and unavailable descriptors from node-detail state", () => {
     expect(
       deriveNodeInteriorView("doc:plan", {
         state: "loading",
@@ -105,8 +130,7 @@ describe("deriveNodeInteriorView", () => {
       }),
     ).toMatchObject({
       state: "loading",
-      message: "unfolding…",
-      messageClassName: "mt-fg-1 text-label text-ink-faint",
+      message: { key: "graph:islands.states.loading" },
     });
 
     expect(
@@ -117,10 +141,7 @@ describe("deriveNodeInteriorView", () => {
       }),
     ).toMatchObject({
       state: "unavailable",
-      message: "interior unavailable",
-      messageClassName:
-        "mt-fg-1 flex items-center gap-fg-1 text-label text-state-broken",
-      iconSize: 14,
+      message: { key: "graph:islands.states.unavailable" },
     });
   });
 
@@ -134,7 +155,7 @@ describe("deriveNodeInteriorView", () => {
     ).toEqual({ state: "plan", detail });
 
     const summaryDetail: NodeDetail = {
-      node: { id: "doc:adr", kind: "adr", title: "ADR" },
+      node: documentNode("doc:adr", "adr", { title: "ADR" }),
       tiers: {},
     };
     expect(

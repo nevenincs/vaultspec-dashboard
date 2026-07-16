@@ -26,6 +26,10 @@ import {
   normalizeMessageDescriptor,
   type MessageDescriptor,
 } from "../localization/message";
+import {
+  compareStableIdentifiers,
+  stableIdentifier,
+} from "../localization/displayText";
 
 /**
  * The activation context of a binding. `global` is always active; the surface
@@ -232,7 +236,9 @@ export function registerKeybindings(defs: readonly KeybindingDef[]): () => void 
 
 /** All registered bindings, in stable id order. */
 export function listKeybindings(): KeybindingDef[] {
-  return [...bindings.values()].sort((a, b) => a.id.localeCompare(b.id));
+  return [...bindings.values()].sort((a, b) =>
+    compareStableIdentifiers(stableIdentifier(a.id), stableIdentifier(b.id)),
+  );
 }
 
 /** Look up one binding by id. */
@@ -355,7 +361,9 @@ export function findConflicts(
   const sorted = defs
     .map(normalizedKeybindingDef)
     .filter((def): def is KeybindingDef => def !== null)
-    .sort((a, b) => a.id.localeCompare(b.id));
+    .sort((a, b) =>
+      compareStableIdentifiers(stableIdentifier(a.id), stableIdentifier(b.id)),
+    );
   for (let i = 0; i < sorted.length; i++) {
     for (let j = i + 1; j < sorted.length; j++) {
       const a = sorted[i];
@@ -400,5 +408,7 @@ export function conflictsForCandidate(
       hits.push(def.id);
     }
   }
-  return hits.sort((a, b) => a.localeCompare(b));
+  return hits.sort((a, b) =>
+    compareStableIdentifiers(stableIdentifier(a), stableIdentifier(b)),
+  );
 }

@@ -335,7 +335,6 @@ export interface GitChangeGroupView {
   id: GitChangeBucket;
   /** Catalog-cased label rendered verbatim by the SectionLabel eyebrow. */
   label: string;
-  ariaLabel: string;
   count: number;
   rows: GitChangeRow[];
 }
@@ -413,7 +412,6 @@ function deriveGitChangeGroups(files: readonly ChangedFile[]): GitChangeGroupVie
     (bucket) => ({
       id: bucket,
       label: GIT_CHANGE_BUCKET_LABEL[bucket],
-      ariaLabel: `${GIT_CHANGE_BUCKET_LABEL[bucket].toLowerCase()} changes`,
       count: byBucket[bucket].length,
       rows: byBucket[bucket],
     }),

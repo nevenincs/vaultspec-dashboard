@@ -44,6 +44,7 @@ import {
   type IssueRowView,
   type PipelinePlanRowView,
   type PullRequestRowView,
+  type RecentCommitRow,
   useActiveScope,
   useDashboardTimelineModeView,
   useHistoryView,
@@ -57,6 +58,8 @@ import {
   usePipelineExpansion,
 } from "../../stores/view/pipelineExpansion";
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { authoredDisplayText } from "../../platform/localization/displayText";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
@@ -65,6 +68,7 @@ import { selectEventNodes } from "../../stores/view/selection";
 import {
   deriveStatusSectionChromeView,
   deriveRecentCommitChromeRows,
+  type RecentCommitChromeRowView,
   showMoreRecentCommits,
   type StatusSectionId,
   toggleRecentCommit,
@@ -80,6 +84,7 @@ import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStat
 // Centralized kit primitives (design-system-is-centralized).
 import {
   Badge,
+  DecorativeGlyph,
   ChevronDown,
   ChevronRight,
   ProgressBar,
@@ -262,7 +267,7 @@ function PlanPill({
             )}
             {fresh && (
               <span className="shrink-0 text-meta text-ink-muted" data-freshness>
-                · {fresh}
+                <DecorativeGlyph name="middleDot" /> {fresh}
               </span>
             )}
           </div>
@@ -365,6 +370,7 @@ function ChecksTag({ row }: { row: PullRequestRowView }) {
 }
 
 function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const { pr } = row;
   const Icon = row.icon === "merged" ? GitMerge : GitPullRequest;
   const key = `pr:${pr.number}`;
@@ -412,11 +418,22 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
         <span className="shrink-0 font-mono text-meta text-accent-text" data-tabular>
           {row.numberLabel}
         </span>
-        <span className="min-w-0 flex-1 truncate text-label text-ink" title={pr.title}>
+        <span
+          className="min-w-0 flex-1 truncate text-label text-ink"
+          title={authoredDisplayText(pr.title)}
+        >
           {row.titleLabel}
         </span>
         <Badge tone={row.stateTone}>{row.stateLabel}</Badge>
-        <RowMenuDisclosure entity={prEntity} label={`${row.titleLabel} actions`} />
+        <RowMenuDisclosure
+          entity={prEntity}
+          label={
+            resolveMessage({
+              key: "common:accessibility.actionsForItem",
+              values: { item: authoredDisplayText(row.titleLabel) },
+            }).message
+          }
+        />
       </div>
       <div className="flex items-center gap-fg-1-5 pl-fg-4 text-meta text-ink-muted">
         {row.authorLabel && <span>{row.authorLabel}</span>}
@@ -491,7 +508,7 @@ function IssueRow({ row }: { row: IssueRowView }) {
         </span>
         <span
           className="min-w-0 flex-1 truncate text-label text-ink"
-          title={issue.title}
+          title={authoredDisplayText(issue.title)}
         >
           {row.titleLabel}
         </span>
@@ -503,7 +520,11 @@ function IssueRow({ row }: { row: IssueRowView }) {
               {label}
             </Badge>
           ))}
-          {row.authorLabel && <span>· {row.authorLabel}</span>}
+          {row.authorLabel && (
+            <span>
+              <DecorativeGlyph name="middleDot" /> {row.authorLabel}
+            </span>
+          )}
         </div>
       )}
     </li>
@@ -541,6 +562,106 @@ function OpenIssuesBody({ scope }: { scope: unknown }) {
 // Recent commits — expandable rows revealing the full message body + show-more.
 // ---------------------------------------------------------------------------
 
+export function RecentCommitItem({
+  chromeRow,
+  commitBodyClassName,
+  scope,
+}: {
+  chromeRow: RecentCommitChromeRowView<RecentCommitRow>;
+  commitBodyClassName: string;
+  scope: unknown;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const { row, expanded, showBody } = chromeRow;
+  const { commit } = row;
+  const subjectLabel =
+    typeof row.subjectLabel === "string"
+      ? row.subjectLabel
+      : resolveMessage(row.subjectLabel).message;
+  const Chevron = expanded ? ChevronDown : ChevronRight;
+  const commitEntity = {
+    kind: "commit" as const,
+    id: commit.hash,
+    shortHash: commit.short_hash,
+    subject: commit.subject,
+    ts: commit.ts,
+  };
+
+  return (
+    <li
+      className={chromeRow.rootClassName}
+      data-recent-commit
+      data-hash={commit.hash}
+      onContextMenu={guardedContextMenu((e) => {
+        e.preventDefault();
+        openContextMenu(commitEntity, { x: e.clientX, y: e.clientY });
+      })}
+    >
+      <div className={chromeRow.headerClassName}>
+        <button
+          type="button"
+          onClick={() => toggleRecentCommit(commit.hash)}
+          disabled={!row.hasBody}
+          aria-expanded={expanded}
+          aria-label={
+            resolveMessage({
+              key: expanded
+                ? "common:finalWave.history.collapseMessage"
+                : "common:finalWave.history.expandMessage",
+              values: { commit: authoredDisplayText(subjectLabel) },
+            }).message
+          }
+          className={chromeRow.toggleClassName}
+          data-commit-toggle
+        >
+          <Chevron size={TWISTY_PX} aria-hidden />
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            if (row.selectable)
+              void selectEventNodes(row.eventId, row.touchedNodeIds, scope).catch(
+                () => undefined,
+              );
+          }}
+          disabled={!row.selectable}
+          className={chromeRow.rowButtonClassName}
+          aria-label={
+            resolveMessage({
+              key: "common:finalWave.history.openCommit",
+              values: { commit: authoredDisplayText(subjectLabel) },
+            }).message
+          }
+        >
+          <span
+            className={`${chromeRow.subjectClassName} select-text`}
+            title={commit.subject ? authoredDisplayText(commit.subject) : undefined}
+          >
+            {subjectLabel}
+          </span>
+          <span className={`${chromeRow.ageClassName} select-text`} data-tabular>
+            {row.ageLabel}
+          </span>
+        </button>
+        <RowMenuDisclosure
+          entity={commitEntity}
+          label={
+            resolveMessage({
+              key: "common:accessibility.actionsForItem",
+              values: { item: authoredDisplayText(subjectLabel) },
+            }).message
+          }
+        />
+      </div>
+      {showBody && (
+        <div className={commitBodyClassName} data-commit-body>
+          {commit.body}
+        </div>
+      )}
+    </li>
+  );
+}
+
 function RecentCommitsBody({ scope }: { scope: unknown }) {
   const chrome = useRecentCommitsChrome(HISTORY_PAGE);
   const view = useHistoryView(scope, chrome.limit);
@@ -570,87 +691,14 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
   return (
     <div className={view.listRootClassName} data-recent-commits-list>
       <ul className={view.listClassName} role="list">
-        {chromeRows.map((chromeRow) => {
-          const { row, expanded, showBody } = chromeRow;
-          const { commit } = row;
-          const Chevron = expanded ? ChevronDown : ChevronRight;
-          const commitEntity = {
-            kind: "commit" as const,
-            id: commit.hash,
-            shortHash: commit.short_hash,
-            subject: commit.subject,
-            ts: commit.ts,
-          };
-          return (
-            <li
-              key={commit.hash}
-              className={chromeRow.rootClassName}
-              data-recent-commit
-              data-hash={commit.hash}
-              onContextMenu={guardedContextMenu((e) => {
-                e.preventDefault();
-                openContextMenu(commitEntity, { x: e.clientX, y: e.clientY });
-              })}
-            >
-              <div className={chromeRow.headerClassName}>
-                <button
-                  type="button"
-                  onClick={() => toggleRecentCommit(commit.hash)}
-                  disabled={!row.hasBody}
-                  aria-expanded={expanded}
-                  aria-label={row.messageToggleLabel(expanded)}
-                  className={chromeRow.toggleClassName}
-                  data-commit-toggle
-                >
-                  <Chevron size={TWISTY_PX} aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (row.selectable)
-                      void selectEventNodes(
-                        row.eventId,
-                        row.touchedNodeIds,
-                        scope,
-                      ).catch(() => undefined);
-                  }}
-                  disabled={!row.selectable}
-                  className={chromeRow.rowButtonClassName}
-                  aria-label={row.rowAriaLabel}
-                >
-                  <span
-                    className={`${chromeRow.shortHashClassName} select-text`}
-                    data-short-hash
-                    data-tabular
-                  >
-                    {commit.short_hash}
-                  </span>
-                  <span
-                    className={`${chromeRow.subjectClassName} select-text`}
-                    title={commit.subject}
-                  >
-                    {row.subjectLabel}
-                  </span>
-                  <span
-                    className={`${chromeRow.ageClassName} select-text`}
-                    data-tabular
-                  >
-                    {row.ageLabel}
-                  </span>
-                </button>
-                <RowMenuDisclosure
-                  entity={commitEntity}
-                  label={`${row.subjectLabel} actions`}
-                />
-              </div>
-              {showBody && (
-                <div className={view.commitBodyClassName} data-commit-body>
-                  {commit.body}
-                </div>
-              )}
-            </li>
-          );
-        })}
+        {chromeRows.map((chromeRow) => (
+          <RecentCommitItem
+            key={chromeRow.row.commit.hash}
+            chromeRow={chromeRow}
+            commitBodyClassName={view.commitBodyClassName}
+            scope={scope}
+          />
+        ))}
       </ul>
       {view.canShowMore && (
         <button
@@ -695,6 +743,7 @@ export function deriveRailState(
 }
 
 export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {}) {
+  const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   // Section-header counts mirror the binding board ("OPEN PLANS — N"). They read
   // the same interpreted views the bodies consume; TanStack dedupes the shared
@@ -744,7 +793,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           <SectionCard
             {...headerNav(sections.openPlans.id)}
             id={sections.openPlans.id}
-            title={sections.openPlans.title}
+            title={resolveMessage(sections.openPlans.title).message}
             count={sections.openPlans.count}
           >
             <OpenPlansBody scope={scope} />
@@ -752,7 +801,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           <SectionCard
             {...headerNav(sections.pullRequests.id)}
             id={sections.pullRequests.id}
-            title={sections.pullRequests.title}
+            title={resolveMessage(sections.pullRequests.title).message}
             count={sections.pullRequests.count}
           >
             <PullRequestsBody scope={scope} />
@@ -760,7 +809,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           <SectionCard
             {...headerNav(sections.openIssues.id)}
             id={sections.openIssues.id}
-            title={sections.openIssues.title}
+            title={resolveMessage(sections.openIssues.title).message}
             count={sections.openIssues.count}
           >
             <OpenIssuesBody scope={scope} />
@@ -768,7 +817,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
           <SectionCard
             {...headerNav(sections.recentCommits.id)}
             id={sections.recentCommits.id}
-            title={sections.recentCommits.title}
+            title={resolveMessage(sections.recentCommits.title).message}
           >
             <RecentCommitsBody scope={scope} />
           </SectionCard>

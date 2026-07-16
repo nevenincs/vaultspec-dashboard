@@ -3,6 +3,7 @@ import { useMemo } from "react";
 
 import { queryClient } from "../server/queryClient";
 import { PHASE_LANES, type PhaseLane } from "./timelinePhases";
+import { formatDate } from "../../platform/localization/formatters";
 
 /** Default per-lane visibility: every phase lane shown. */
 export function allTimelineLanesVisible(): Record<PhaseLane, boolean> {
@@ -642,11 +643,13 @@ export function timelineDateInputValue(ms: number): string {
 }
 
 /** Short "MMM D" day label for timeline range pills. */
-export function formatTimelineDayMonth(ms: number): string {
-  return new Date(ms).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
+export function formatTimelineDayMonth(ms: number, locale: string): string {
+  return (
+    formatDate(locale, ms, {
+      month: "short",
+      day: "numeric",
+    }) ?? ""
+  );
 }
 
 export function orderedTimelineDateInputRange(

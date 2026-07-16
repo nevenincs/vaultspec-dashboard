@@ -29,7 +29,7 @@ export interface Silhouette {
 
 /** Rasterize a mark to a GATE_SIZE ink bitmap over the full 256 grid. */
 export function silhouetteOf(def: MarkDef, size = GATE_SIZE): Silhouette {
-  const cells = rasterizeBody(def.body, size);
+  const cells = rasterizeBody(def.svgBody, size);
   const hits = cells.reduce((n, c) => n + (c ? 1 : 0), 0);
   return { size, cells, coverage: hits / (size * size) };
 }

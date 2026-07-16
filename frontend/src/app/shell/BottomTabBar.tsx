@@ -20,20 +20,26 @@ import { useEffect, useState } from "react";
 import type { CompactSurface } from "../../stores/view/compactSurface";
 import { useFocusZone } from "../chrome/useFocusZone";
 import { Calendar, Home, MagnifyingGlass } from "../kit/glyphs";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 
 export type { CompactSurface };
 
 interface TabDef {
   id: CompactSurface;
-  label: string;
+  label: MessageDescriptor;
   Glyph: ComponentType<{ size?: number }>;
 }
 
 // Left-to-right order: the unified Home landing, the timeline scrubber, then search.
 const TABS: readonly TabDef[] = [
-  { id: "home", label: "Home", Glyph: Home },
-  { id: "timeline", label: "Timeline", Glyph: Calendar },
-  { id: "search", label: "Search", Glyph: MagnifyingGlass },
+  { id: "home", label: { key: "common:shell.navigation.home" }, Glyph: Home },
+  { id: "timeline", label: { key: "timeline:labels.timeline" }, Glyph: Calendar },
+  {
+    id: "search",
+    label: { key: "common:shell.navigation.search" },
+    Glyph: MagnifyingGlass,
+  },
 ];
 
 export interface BottomTabBarProps {
@@ -42,6 +48,7 @@ export interface BottomTabBarProps {
 }
 
 export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   // The three surfaces rove through the one shared FocusZone (keyboard-navigation
   // every-composite-navigates-through-the-one-focuszone): the bar is ONE tab stop
   // and Left/Right arrows move between tabs. Activation is MANUAL (Enter / Space /
@@ -57,13 +64,16 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
   });
   return (
     <nav
-      aria-label="Primary"
+      aria-label={
+        resolveMessage({ key: "common:shell.accessibility.primaryNavigation" }).message
+      }
       data-kit="bottom-tab-bar"
       // border-top + raised ground; safe-area inset keeps the row clear of the
       // home-indicator gesture zone (no px literal: rem floor max()'d with env()).
       className="flex shrink-0 items-stretch gap-fg-1 border-t border-rule bg-paper-raised px-fg-2 pt-fg-2 pb-[max(0.625rem,env(safe-area-inset-bottom))]"
     >
       {TABS.map(({ id, label, Glyph }) => {
+        const localizedLabel = resolveMessage(label).message;
         const isActive = id === active;
         const item = zone.rove(id);
         return (
@@ -73,7 +83,7 @@ export function BottomTabBar({ active, onSelect }: BottomTabBarProps) {
             tabIndex={item.tabIndex}
             onKeyDown={item.onKeyDown}
             type="button"
-            aria-label={label}
+            aria-label={localizedLabel}
             aria-current={isActive ? "page" : undefined}
             data-active={isActive}
             onClick={() => onSelect(id)}

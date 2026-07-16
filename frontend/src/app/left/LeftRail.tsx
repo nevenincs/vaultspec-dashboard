@@ -25,6 +25,7 @@
 // behaviour.
 
 import { openContextMenu } from "../../stores/view/contextMenu";
+import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 import { backgroundContextMenuHandler } from "../menus/backgroundContextMenu";
 import { Divider } from "../kit";
 import { BrowserRegion } from "./BrowserRegion";
@@ -32,13 +33,16 @@ import { RailFilterField } from "./RailFilterField";
 import { WorktreePicker } from "./WorktreePicker";
 
 export function LeftRail() {
+  const navigationLabel = useLocalizedMessage({
+    key: "common:rail.accessibility.scopeNavigation",
+  });
   return (
     // ONE labelled navigation landmark for the whole rail content. The flex column
     // gives the browser region the remaining height so it dominates the rail (the
     // header, filter, and tabs are compact). Binding spacing: px/pt 12, a 12px gap
     // between the stacked slots, hairline dividers bracketing the filter field.
     <nav
-      aria-label="scope rail"
+      aria-label={navigationLabel}
       data-left-rail
       onContextMenu={backgroundContextMenuHandler("left-rail", openContextMenu)}
       className="flex min-h-0 flex-1 flex-col gap-fg-3 px-fg-3 pt-fg-3 text-ink-muted"

@@ -1,65 +1,93 @@
 // @vitest-environment happy-dom
-//
-// FilterMenu loading-state render test: a checkbox section whose vocabulary is still
-// loading must render the text-free kit Skeleton (state-mode-uniformity ADR D2) — a
-// busy region with the human label ONLY in `sr-only`, never an on-screen "loading…"
-// string. The empty (not-loading) case stays a plain sentence. Core vitest matchers
-// only (no jest-dom), the project convention.
 
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { useState } from "react";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  createTestLocalizationRuntime,
+  ltrTestLocale,
+  ltrTestResources,
+  rtlTestLocale,
+  rtlTestResources,
+} from "../../localization/testing";
+import { formatNumber } from "../../platform/localization/formatters";
+import {
+  FILTER_MESSAGES,
+  authoredFilterLabel,
+} from "../../stores/view/filterPresentation";
 import { FilterMenu, type FilterMenuSection } from "./FilterMenu";
 
 afterEach(cleanup);
 
-function checkboxSection(over: Partial<FilterMenuSection> = {}): FilterMenuSection {
-  return {
-    type: "checkbox",
-    key: "kind",
-    label: "Type",
-    options: [],
-    selected: [],
-    onToggle: () => {},
-    ...over,
-  } as FilterMenuSection;
+function FilterHarness({ loading = false }: { loading?: boolean }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const sections: FilterMenuSection[] = [
+    {
+      type: "checkbox",
+      key: "feature",
+      label: FILTER_MESSAGES.sections.feature,
+      options: loading
+        ? []
+        : [
+            {
+              value: "feature/مؤلف",
+              label: authoredFilterLabel("feature/مؤلف"),
+              count: 1234,
+            },
+          ],
+      selected,
+      onToggle: (value) =>
+        setSelected((current) =>
+          current.includes(value)
+            ? current.filter((item) => item !== value)
+            : [...current, value],
+        ),
+      loading,
+    },
+  ];
+  return <FilterMenu sections={sections} />;
 }
 
-/** Visible (non sr-only) leaf text of a container. */
-function visibleText(container: HTMLElement): string {
-  return Array.from(container.querySelectorAll("*"))
-    .filter((el) => el.children.length === 0 && !el.closest(".sr-only"))
-    .map((el) => el.textContent ?? "")
-    .join(" ");
+function setup(loading = false) {
+  const runtime = createTestLocalizationRuntime();
+  const view = render(
+    <I18nextProvider i18n={runtime}>
+      <FilterHarness loading={loading} />
+    </I18nextProvider>,
+  );
+  return { runtime, ...view };
 }
 
-describe("FilterMenu loading state", () => {
-  it("renders a loading section as a text-free skeleton, not 'loading…' text", () => {
-    const { container } = render(
-      <FilterMenu sections={[checkboxSection({ loading: true, options: [] })]} />,
-    );
+describe("FilterMenu localization", () => {
+  it("renders a loading section as localized text-free skeleton chrome", () => {
+    const { container } = setup(true);
     const skeleton = container.querySelector("[data-skeleton]");
-    expect(skeleton).toBeTruthy();
-    expect(skeleton!.getAttribute("role")).toBe("status");
-    expect(skeleton!.getAttribute("aria-busy")).toBe("true");
-    expect(skeleton!.querySelector(".sr-only")?.textContent).toMatch(/Loading filter/);
-    // No visible "loading…" text — the label lives only in the sr-only span.
-    expect(visibleText(container)).not.toMatch(/loading/i);
+    expect(skeleton?.getAttribute("role")).toBe("status");
+    expect(skeleton?.getAttribute("aria-busy")).toBe("true");
+    expect(skeleton?.querySelector(".sr-only")?.textContent).toBe(
+      "Loading filter choices…",
+    );
   });
 
-  it("renders the empty (not-loading) section as a plain sentence, no skeleton", () => {
-    const { container } = render(
-      <FilterMenu
-        sections={[
-          checkboxSection({
-            loading: false,
-            options: [],
-            emptyLabel: "none in corpus",
-          }),
-        ]}
-      />,
-    );
-    expect(container.querySelector("[data-skeleton]")).toBeNull();
-    expect(visibleText(container)).toMatch(/none in corpus/);
+  it("keeps authored tags byte-exact and updates the same localized nodes", async () => {
+    const { runtime } = setup();
+    const title = screen.getByText("Filter documents");
+    const section = screen.getByText("Feature");
+    const authored = screen.getByText("feature/مؤلف");
+    const count = screen.getByText(formatNumber("en", 1234) ?? "");
+
+    await act(() => runtime.changeLanguage(ltrTestLocale));
+    expect(title.textContent).toBe(ltrTestResources.graph.filters.title);
+    expect(section.textContent).toBe(ltrTestResources.graph.filters.sections.feature);
+    expect(authored.textContent).toBe("feature/مؤلف");
+    expect(count.textContent).toBe(formatNumber(ltrTestLocale, 1234));
+
+    await act(() => runtime.changeLanguage(rtlTestLocale));
+    expect(title.textContent).toBe(rtlTestResources.graph.filters.title);
+    expect(section.textContent).toBe(rtlTestResources.graph.filters.sections.feature);
+    expect(authored.textContent).toBe("feature/مؤلف");
+    expect(count.textContent).toBe(formatNumber(rtlTestLocale, 1234));
   });
 });

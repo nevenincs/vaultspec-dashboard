@@ -53,6 +53,8 @@ export { Kbd } from "./Kbd";
 export type { KbdProps } from "./Kbd";
 export { Breadcrumb } from "./Breadcrumb";
 export type { BreadcrumbProps, BreadcrumbItem } from "./Breadcrumb";
+export { DecorativeGlyph } from "./DecorativeGlyph";
+export type { DecorativeGlyphName } from "./DecorativeGlyph";
 export { PropertyRow } from "./PropertyRow";
 export type { PropertyRowProps } from "./PropertyRow";
 export { FoldSection } from "./FoldSection";

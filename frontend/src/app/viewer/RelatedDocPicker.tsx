@@ -12,6 +12,8 @@
 
 import { X } from "lucide-react";
 
+import { authoredDisplayText } from "../../platform/localization/displayText";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { Badge } from "../kit";
 import type { EditorCorpusDocument } from "../../stores/server/queries";
 import { AutocompleteCombobox, type ComboOption } from "./AutocompleteCombobox";
@@ -51,6 +53,7 @@ export function RelatedDocPicker({
   /** The stem of the document being edited, excluded from its own link options. */
   selfStem: string;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const selected = parseRelatedStems(related);
   const selectedSet = new Set(selected);
 
@@ -70,7 +73,14 @@ export function RelatedDocPicker({
   return (
     <div className="flex flex-col gap-fg-2" data-related-picker>
       {selected.length > 0 && (
-        <ul className="flex flex-wrap gap-fg-1" aria-label="linked documents">
+        <ul
+          className="flex flex-wrap gap-fg-1"
+          aria-label={
+            resolveMessage({
+              key: "documents:localizationWave.accessibility.linkedDocuments",
+            }).message
+          }
+        >
           {selected.map((stem) => (
             <li key={stem}>
               <Badge>
@@ -78,7 +88,12 @@ export function RelatedDocPicker({
                 <button
                   type="button"
                   onClick={() => remove(stem)}
-                  aria-label={`remove ${stem}`}
+                  aria-label={
+                    resolveMessage({
+                      key: "documents:localizationWave.actions.removeRelated",
+                      values: { document: authoredDisplayText(stem) },
+                    }).message
+                  }
                   className="ml-fg-1 inline-flex shrink-0 rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
                 >
                   <X size={12} aria-hidden />
@@ -91,10 +106,18 @@ export function RelatedDocPicker({
       <AutocompleteCombobox
         options={options}
         onCommit={add}
-        placeholder="Link a document…"
-        ariaLabel="link a related document"
+        placeholder={
+          resolveMessage({
+            key: "documents:localizationWave.related.placeholder",
+          }).message
+        }
+        ariaLabel={
+          resolveMessage({ key: "documents:localizationWave.related.aria" }).message
+        }
         clearOnCommit
-        emptyLabel="No matching documents"
+        emptyLabel={
+          resolveMessage({ key: "documents:localizationWave.related.empty" }).message
+        }
       />
     </div>
   );

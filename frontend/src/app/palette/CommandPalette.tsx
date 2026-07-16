@@ -25,7 +25,7 @@ import { CornerDownLeft, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { Kbd, Skeleton, SkeletonRow } from "../kit";
+import { DecorativeGlyph, Kbd, Skeleton, SkeletonRow } from "../kit";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageResolutionResult } from "../../platform/localization/fallback";
 import { createCountMessageDescriptor } from "../../platform/localization/message";
@@ -503,11 +503,19 @@ function CommandPaletteSurface() {
             {/* Footer hints (board 94:2): navigate / open / close with Kbd chips. */}
             <div className="flex items-center gap-fg-3 border-t border-rule px-fg-4 py-fg-2 text-caption text-ink-faint">
               <span className="flex items-center gap-fg-1">
-                {footerNavigate.message} <Kbd>↑</Kbd>
-                <Kbd>↓</Kbd>
+                {footerNavigate.message}{" "}
+                <Kbd>
+                  <DecorativeGlyph name="arrowUp" />
+                </Kbd>
+                <Kbd>
+                  <DecorativeGlyph name="arrowDown" />
+                </Kbd>
               </span>
               <span className="flex items-center gap-fg-1">
-                {footerOpen.message} <Kbd>↵</Kbd>
+                {footerOpen.message}{" "}
+                <Kbd>
+                  <DecorativeGlyph name="enter" />
+                </Kbd>
               </span>
               <span className="flex items-center gap-fg-1">
                 {footerClose.message}{" "}

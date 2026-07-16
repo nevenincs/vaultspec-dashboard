@@ -21,6 +21,7 @@ import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { Popover } from "../kit";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import {
   useDashboardFilterSidebarView,
@@ -30,6 +31,7 @@ import {
   deriveFilterSidebarMenuSections,
   useFilterSidebarVisualState,
 } from "../../stores/view/filterSidebar";
+import { FILTER_MESSAGES } from "../../stores/view/filterPresentation";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { BottomSheet } from "../chrome/BottomSheet";
 import { FilterMenu } from "./FilterMenu";
@@ -50,6 +52,7 @@ export interface FilterSidebarProps {
 
 /** Gap (px) between the Filters button and the flyout's left edge. */
 const FLYOUT_ANCHOR_GAP = 8;
+const FILTER_PANEL_CLASS = "pointer-events-auto fixed z-50";
 
 interface FlyoutAnchor {
   top: number;
@@ -176,6 +179,7 @@ function useFlyoutAnchor(open: boolean): FlyoutAnchorState {
 }
 
 export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const vocabulary = useFiltersVocabularyView(scope);
   const filterView = useDashboardFilterSidebarView(scope);
   const filterIntent = useDashboardFilterSidebarIntent(scope);
@@ -188,7 +192,8 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
     vocabulary.statuses,
     vocabulary.health,
   );
-  const presentation = filterView.presentation;
+  const title = resolveMessage(FILTER_MESSAGES.title).message;
+  const panelLabel = resolveMessage(FILTER_MESSAGES.panel).message;
   // On compact the filter is presented in a bottom sheet (ADR D3), not the
   // desktop anchored flyout — so the flyout anchor machinery is gated off.
   const compact = useViewportClass() === "compact";
@@ -203,7 +208,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   const filterMenu = (
     <FilterMenu
       key={visualStateKey}
-      title={presentation.titleLabel}
+      title={FILTER_MESSAGES.title}
       anyActive={filterView.anyActive}
       onClearAll={() => {
         // Clears only the facet filters; the date window is the timeline's to own
@@ -220,14 +225,9 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   // holds). The sheet owns its own scrim/dismiss/safe-area + grabber.
   if (compact) {
     return (
-      <BottomSheet
-        open={open}
-        onDismiss={onClose}
-        title={presentation.titleLabel}
-        hideTitle
-      >
+      <BottomSheet open={open} onDismiss={onClose} title={title} hideTitle>
         <FilterMenu
-          title="Filters"
+          title={FILTER_MESSAGES.compactTitle}
           anyActive={filterView.anyActive}
           onClearAll={() => void filterIntent.clearFilters()}
           sections={sections}
@@ -250,9 +250,9 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       onDismiss={onClose}
       ignoreSelector="[data-rail-filter-trigger]"
       role="dialog"
-      aria-label={presentation.panelAriaLabel}
+      aria-label={panelLabel}
       aria-modal={false}
-      className={`${presentation.panelClassName}${ready ? " animate-fade-in" : ""}`}
+      className={`${FILTER_PANEL_CLASS}${ready ? " animate-fade-in" : ""}`}
       style={{
         top: anchor.top,
         left: anchor.left,

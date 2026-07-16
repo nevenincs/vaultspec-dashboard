@@ -7,7 +7,6 @@
 // App layer: resolvers live here; the registry is substrate. The registration
 // below contributes this resolver for the "edge" entity kind at module load.
 
-import { legacyActionPresentation } from "../../../platform/actions/action";
 import { Crosshair, Highlighter } from "lucide-react";
 
 import type { ActionDescriptor } from "../../../platform/actions/action";
@@ -31,7 +30,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
 
   actions.push({
     id: "edge:highlight",
-    label: legacyActionPresentation("Highlight on stage"),
+    label: { key: "common:actions.highlightOnStage" },
     section: "navigate",
     icon: Highlighter,
     run: () => selectEdge(normalizedEntity.id),
@@ -42,18 +41,18 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     normalizedEntity.dst
       ? {
           id: "edge:goto-destination",
-          label: legacyActionPresentation("Go to destination node"),
+          label: { key: "common:actions.goToDestinationNode" },
           section: "navigate",
           icon: Crosshair,
           run: () => focusMenuNode(normalizedEntity.dst),
         }
       : {
           id: "edge:goto-destination",
-          label: legacyActionPresentation("Go to destination node"),
+          label: { key: "common:actions.goToDestinationNode" },
           section: "navigate",
           icon: Crosshair,
           disabled: true,
-          disabledReason: legacyActionPresentation("no destination node"),
+          disabledReason: { key: "common:disabledReasons.noDestinationNode" },
         },
   );
 
@@ -80,7 +79,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
       label: { key: "common:actions.copy" },
       section: "copy",
       disabled: true,
-      disabledReason: legacyActionPresentation("no relation"),
+      disabledReason: { key: "common:disabledReasons.noRelation" },
     });
   }
 
@@ -98,7 +97,7 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
       label: { key: "common:actions.copy" },
       section: "copy",
       disabled: true,
-      disabledReason: legacyActionPresentation("no destination"),
+      disabledReason: { key: "common:disabledReasons.noDestination" },
     });
   }
 

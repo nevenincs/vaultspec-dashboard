@@ -1,9 +1,11 @@
-export const WORK_ROVING_ATTR = "data-work-roving";
+import { createCountMessageDescriptor } from "../../platform/localization/message";
+import type { CountMessageDescriptor } from "../../platform/localization/message";
 
+export const WORK_ROVING_ATTR = "data-work-roving";
 const GATE_PX = 14;
 
 export interface WorkProgressRingView {
-  label: string;
+  label: CountMessageDescriptor<"common:finalWave.work.progress">;
   radius: number;
   circumference: number;
   dash: number;
@@ -25,7 +27,9 @@ export function deriveWorkProgressRingView(
   const dash = circumference * fraction;
   const complete = total > 0 && done >= total;
   return {
-    label: `${done} of ${total} steps complete`,
+    label: createCountMessageDescriptor("common:finalWave.work.progress", total, {
+      done,
+    })!,
     radius,
     circumference,
     dash,
@@ -47,14 +51,12 @@ const WORK_STATUS_PILL_INK: Record<string, string> = {
 
 export interface WorkStatusPillView {
   className: string;
-  ariaLabel: string;
 }
 
 export function deriveWorkStatusPillView(status: string): WorkStatusPillView {
   const ink = WORK_STATUS_PILL_INK[status] ?? "border-rule text-ink-muted";
   return {
     className: `shrink-0 rounded-fg-pill border px-fg-1-5 py-px text-caption font-medium ${ink}`,
-    ariaLabel: `status ${status}`,
   };
 }
 
@@ -72,7 +74,6 @@ export type WorkPipelineArcPhase = (typeof WORK_PIPELINE_ARC_PHASES)[number];
 export interface WorkPipelineArcRow {
   phase: WorkPipelineArcPhase;
   occupied: boolean;
-  ariaLabel: string;
   itemClassName: string;
   phaseClassName: string;
   dotClassName: string;
@@ -82,7 +83,6 @@ export interface WorkPipelineArcRow {
 
 export interface WorkPipelineArcView {
   rootClassName: string;
-  ariaLabel: string;
   rows: WorkPipelineArcRow[];
 }
 
@@ -92,13 +92,11 @@ export function deriveWorkPipelineArcView(
   return {
     rootClassName:
       "flex items-center gap-fg-0-5 px-fg-1 py-fg-1 text-caption text-ink-faint",
-    ariaLabel: "pipeline phases",
     rows: WORK_PIPELINE_ARC_PHASES.map((phase, index) => {
       const on = occupied.has(phase);
       return {
         phase,
         occupied: on,
-        ariaLabel: on ? `${phase} (in flight)` : phase,
         itemClassName: "flex items-center gap-fg-0-5",
         phaseClassName: `inline-flex items-center gap-fg-0-5 ${
           on ? "font-medium text-ink" : ""

@@ -1,5 +1,8 @@
+import { threeLab } from "./threeLab";
+
 export const graph = {
   accessibility: {
+    canvas: "Graph canvas. Use the arrow keys to move, enter to open, and E to expand.",
     selectedItem: "Selected {{item}}.",
     selectedItemGeneric: "Item selected.",
     workingSet: "Working set",
@@ -39,9 +42,9 @@ export const graph = {
     accessibility: {
       edgeColorMode: "Link color mode",
       navigation: "Navigate the graph",
-      nodeColorMode: "Node color mode",
+      nodeColorMode: "Item color mode",
       nodeLevel: "Graph detail",
-      showNodeIcons: "Show node icons",
+      showNodeIcons: "Item type display",
     },
     descriptions: {
       charge: "Increase or decrease space between items.",
@@ -70,10 +73,10 @@ export const graph = {
       keepLayoutFixed: "Keep layout fixed",
       linkDistance: "Link length",
       linkStrength: "Grouping",
-      nodeColorMode: "Node color",
+      nodeColorMode: "Item color",
       nodeIcons: "Show icons",
       nodeSalienceScale: "Importance",
-      nodeSizeScale: "Node size",
+      nodeSizeScale: "Item size",
     },
     options: {
       blended: "Blended",
@@ -112,6 +115,67 @@ export const graph = {
       refreshing: "Refreshing project map…",
     },
   },
+  filters: {
+    accessibility: {
+      panel: "Document filters",
+    },
+    actions: {
+      clearAll: "Clear all",
+      reset: "Reset filters",
+      showResults: "Show results",
+    },
+    edited: {
+      any: "Any time",
+      lastSevenDays: "Last 7 days",
+      lastThirtyDays: "Last 30 days",
+      thisYear: "This year",
+    },
+    health: {
+      dangling: "Missing destination",
+      emptyScaffold: "Empty document",
+      invalid: "Incomplete details",
+      orphaned: "Unlinked",
+    },
+    options: {
+      adr: "Decisions",
+      audit: "Reviews",
+      exec: "Steps",
+      plan: "Plans",
+      reference: "References",
+      research: "Research",
+      summary: "Summaries",
+    },
+    search: {
+      features: "Search features",
+    },
+    sections: {
+      decisionStatus: "Decision status",
+      edited: "Edited",
+      feature: "Feature",
+      health: "Health",
+      kind: "Type",
+      planStatus: "Plan status",
+    },
+    states: {
+      empty: "No filter choices available.",
+      loading: "Loading filter choices…",
+    },
+    statuses: {
+      accepted: "Accepted",
+      active: "Active",
+      archived: "Archived",
+      complete: "Complete",
+      deprecated: "Deprecated",
+      draft: "Draft",
+      finished: "Finished",
+      inProgress: "In progress",
+      notStarted: "Not started",
+      proposed: "Proposed",
+      rejected: "Rejected",
+    },
+    compactTitle: "Filters",
+    title: "Filter documents",
+  },
   disabledReasons: {
     chooseConnectionWithSummary: "Choose a connection with a summary to copy.",
     chooseItemWithTitle: "Choose an item with a title to copy.",
@@ -138,10 +202,49 @@ export const graph = {
       recent: "Recent",
     },
   },
+  islands: {
+    labels: {
+      status: "Status",
+      type: "Type",
+    },
+    progress: {
+      stepsComplete_one: "{{done, number}} of {{count, number}} step complete",
+      stepsComplete_other: "{{done, number}} of {{count, number}} steps complete",
+    },
+    states: {
+      active: "Active",
+      archived: "Archived",
+      broken: "Needs attention",
+      complete: "Complete",
+      featureLoading: "Loading related documents…",
+      loading: "Loading details…",
+      stale: "Out of date",
+      unavailable: "Details are unavailable. Refresh data, then try again.",
+    },
+  },
+  hover: {
+    accessibility: {
+      detailsFor: "Details for {{title}}",
+      open: "Open {{title}}",
+    },
+    evidence: {
+      codeLocations_one: "{{count, number}} code location",
+      codeLocations_other: "{{count, number}} code locations",
+      commits_one: "{{count, number}} related change",
+      commits_other: "{{count, number}} related changes",
+      documents_one: "{{count, number}} related document",
+      documents_other: "{{count, number}} related documents",
+    },
+    types: {
+      feature: "Feature",
+    },
+  },
   shortcutGroups: {
     workingSet: "Working set",
   },
   labels: {
+    graph: "Graph",
     item: "Item",
   },
+  lab: threeLab,
 } as const;

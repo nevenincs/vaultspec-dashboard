@@ -1,27 +1,25 @@
 import { nodeCategory, type NodeCategory } from "../../scene/field/categoryColor";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { normalizeNodeId } from "../nodeIds";
 import type { EngineNode, NodeEvidence } from "../server/engine";
+import { docTypePresentation } from "../server/docTypeVocabulary";
 import {
   useGraphNodeFromActiveSlice,
   useNodeDetailView,
   useNodeEvidence,
 } from "../server/queries";
-import { deriveEvidenceGroups, type EvidenceGroup } from "./hoverCardEvidence";
+import {
+  deriveHoverEvidenceSummary,
+  type HoverEvidenceSummary,
+} from "./hoverCardEvidence";
 import { normalizeSelectionScope } from "./selection";
 
 /** The transient hover card's render model. */
 export interface HoverCardModel {
-  /** Stable node id (identity-bearing; rendered monospace). */
+  /** Stable node id retained only for the open callback; never rendered. */
   readonly id: string;
-  /** GLYPH_KINDS species (adr / plan / audit / rule / feature / ...). */
-  readonly kind: string;
-  /** The vault doc type (`research` / `adr` / `plan` / `exec` / `audit` /
-   *  `reference`) — the key the doc-type mark family and the canonical
-   *  `docTypeLabel` vocabulary resolve against. Absent on synthesized feature
-   *  nodes (which carry their species in `kind`). Drives BOTH the header glyph
-   *  (the marks are keyed by doc type, not the bare `document` kind) and the
-   *  plain-language eyebrow. */
-  readonly docType?: string;
+  readonly markKind: string;
+  readonly typeLabel: MessageDescriptor;
   readonly title: string;
   /** The scene category the node belongs to; drives tokenized accent styling. */
   readonly category?: NodeCategory;
@@ -30,8 +28,7 @@ export interface HoverCardModel {
    *  synthesized feature/constellation nodes have no body, so it is absent there
    *  (honest absence — the card simply omits the line). */
   readonly summary?: string;
-  /** Bounded, grouped evidence lines folded from enriched node evidence. */
-  readonly evidence: EvidenceGroup[];
+  readonly evidence: HoverEvidenceSummary;
 }
 
 export interface HoverCardView {
@@ -64,23 +61,29 @@ export function deriveHoverCardLayerView(
 }
 
 /**
- * Project a node's identity plus enriched evidence into the binding hover-card
- * view model. When evidence is absent, the card renders identity only.
+ * Project safe authored copy plus semantic evidence into the binding hover-card
+ * view model. When evidence is absent, the card renders authored copy only.
  */
 export function cardModelFromEvidence(
   node: EngineNode,
   evidence: NodeEvidence | undefined,
   summary?: string,
-): HoverCardModel {
-  const trimmed = summary?.trim();
+): HoverCardModel | null {
+  const title = node.title;
+  if (typeof title !== "string" || title.trim().length === 0 || title === node.id)
+    return null;
+  const documentType = docTypePresentation(node.doc_type ?? node.kind);
+  const feature = node.kind === "feature";
+  if (documentType === null && !feature) return null;
   return {
     id: node.id,
-    kind: node.kind,
-    docType: node.doc_type,
-    title: node.title ?? node.id,
+    markKind: feature ? "feature" : documentType!.id,
+    typeLabel: feature ? { key: "graph:hover.types.feature" } : documentType!.label,
+    title,
     category: nodeCategory(node.kind),
-    summary: trimmed ? trimmed : undefined,
-    evidence: evidence ? deriveEvidenceGroups(evidence) : [],
+    summary:
+      typeof summary === "string" && summary.trim().length > 0 ? summary : undefined,
+    evidence: deriveHoverEvidenceSummary(evidence),
   };
 }
 

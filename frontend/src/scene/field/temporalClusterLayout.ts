@@ -1,3 +1,8 @@
+import {
+  compareStableIdentifiers,
+  stableIdentifier,
+} from "../../platform/localization/displayText";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 
@@ -60,9 +65,11 @@ export function temporalClusterLayout(
   const meta: TemporalBucketMeta[] = [];
 
   for (const [key, bucket] of [...buckets.entries()].sort((a, b) =>
-    a[0].localeCompare(b[0]),
+    compareStableIdentifiers(stableIdentifier(a[0]), stableIdentifier(b[0])),
   )) {
-    const ordered = [...bucket].sort((a, b) => a.id.localeCompare(b.id));
+    const ordered = [...bucket].sort((a, b) =>
+      compareStableIdentifiers(stableIdentifier(a.id), stableIdentifier(b.id)),
+    );
     const x = ordered.reduce((sum, item) => sum + item.x, 0) / ordered.length;
     let radius = pointRadius;
 

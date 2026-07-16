@@ -7,18 +7,13 @@
 // law): this never narrows the corpus filter, and it never fabricates
 // completeness — a served list capped below the machine total renders its bound.
 
-import {
-  isJobFailed,
-  isJobTerminal,
-  type RagJob,
-  type RagJobsSnapshot,
-} from "./ragControl";
+import { type RagJob, type RagJobsSnapshot } from "./ragControl";
 
 /** How the jobs table sorts: newest-first, or longest-running-first. */
 export type RagJobSortKey = "recency" | "duration";
 
 /** The phase buckets the served phase vocabulary maps onto (the facet chips). */
-export type RagJobPhaseGroup = "running" | "queued" | "done" | "failed";
+export type RagJobPhaseGroup = "running" | "queued" | "done" | "failed" | "unavailable";
 
 /** The sort keys, in control order. */
 export const RAG_JOB_SORT_KEYS: readonly RagJobSortKey[] = ["recency", "duration"];
@@ -29,6 +24,7 @@ export const RAG_JOB_PHASE_GROUPS: readonly RagJobPhaseGroup[] = [
   "queued",
   "done",
   "failed",
+  "unavailable",
 ];
 
 const RAG_JOB_FIELD_MAX_CHARS = 2048;
@@ -50,28 +46,26 @@ function jobNumber(value: unknown): number | undefined {
 export function ragJobPhaseGroup(phase: string | undefined): RagJobPhaseGroup {
   const normalized = jobText(phase)?.toLowerCase();
   if (normalized === "queued" || normalized === "pending") return "queued";
-  if (isJobFailed(phase)) return "failed";
-  if (isJobTerminal(phase)) return "done";
-  return "running";
+  if (["error", "failed", "cancelled", "canceled"].includes(normalized ?? ""))
+    return "failed";
+  if (["done", "ok", "complete", "completed", "succeeded"].includes(normalized ?? ""))
+    return "done";
+  if (normalized === "running") return "running";
+  return "unavailable";
 }
 
 /** One presentation row in the jobs table — a projection of a served `RagJob`. */
 export interface RagJobRow {
+  /** Stable identity used only for React identity and control intent. Never render. */
   id: string;
-  /** The raw served phase word (the non-color identity). */
-  phase: string;
-  /** The facet group the phase maps onto. */
+  /** Closed semantic state. Unknown wire values fail closed. */
   group: RagJobPhaseGroup;
-  /** The current progress step, when the job reports one. */
-  step?: string;
   /** Progress fraction 0..1 when a completed/total is reported, else undefined. */
   fraction?: number;
   /** Start time (epoch seconds/ms as rag serves it), when present. */
   startedAt?: number;
   /** Runtime in seconds, when present. */
   durationSeconds?: number;
-  /** The trigger/source label (the "kind" column), when present. */
-  kind?: string;
 }
 
 /** The derived jobs-table view: the rendered rows plus header/sort metadata,
@@ -111,26 +105,21 @@ function toRow(job: RagJob): RagJobRow | null {
     total !== undefined && total > 0 && completed !== undefined
       ? Math.max(0, Math.min(1, completed / total))
       : undefined;
-  const kind = jobText(job?.trigger) ?? jobText(job?.source);
-  const step = jobText(job?.progress?.step);
   const startedAt = jobNumber(job?.started_at);
   const durationSeconds = jobNumber(job?.runtime_seconds);
   return {
     id,
-    phase,
     group: ragJobPhaseGroup(phase),
-    ...(step !== undefined ? { step } : {}),
     ...(fraction !== undefined ? { fraction } : {}),
     ...(startedAt !== undefined ? { startedAt } : {}),
     ...(durationSeconds !== undefined ? { durationSeconds } : {}),
-    ...(kind !== undefined ? { kind } : {}),
   };
 }
 
-/** The searchable text of a row: id + step + kind, lowercased (id/step/kind
- *  substring match, ADR D3). */
+/** Stable identity remains filterable for operators who already possess it, but
+ * it never crosses the rendering boundary. */
 function rowHaystack(row: RagJobRow): string {
-  return [row.id, row.step, row.kind].filter(Boolean).join(" ").toLowerCase();
+  return row.id.toLowerCase();
 }
 
 function compareRows(a: RagJobRow, b: RagJobRow, sort: RagJobSortKey): number {
@@ -142,7 +131,7 @@ function compareRows(a: RagJobRow, b: RagJobRow, sort: RagJobSortKey): number {
 }
 
 function emptyGroupCounts(): Record<RagJobPhaseGroup, number> {
-  return { running: 0, queued: 0, done: 0, failed: 0 };
+  return { running: 0, queued: 0, done: 0, failed: 0, unavailable: 0 };
 }
 
 /**

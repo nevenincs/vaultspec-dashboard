@@ -12,13 +12,14 @@
 // the one keymap registry; this module holds no global listener of its own.
 
 import { focusableDescendants } from "./focusTrap";
+import type { MessageDescriptor } from "../../platform/localization/message";
 
 /** A major focusable region of the shell. */
 export interface FocusRegionDef {
   /** Stable id, matched against the `data-focus-region` attribute. */
   id: string;
   /** Human-facing region name (announce region / future aria use). */
-  label: string;
+  label: MessageDescriptor;
 }
 
 export const FOCUS_REGION_ATTR = "data-focus-region";
@@ -30,10 +31,10 @@ export const FOCUS_REGION_ATTR = "data-focus-region";
  * the canvas focus contract, so it is not a separate top-level region here.
  */
 export const FOCUS_REGIONS: readonly FocusRegionDef[] = [
-  { id: "left-rail", label: "File browser" },
-  { id: "stage", label: "Graph and documents" },
-  { id: "right-rail", label: "Activity" },
-  { id: "timeline", label: "Timeline" },
+  { id: "left-rail", label: { key: "common:shell.regions.fileBrowser" } },
+  { id: "stage", label: { key: "common:shell.regions.workspace" } },
+  { id: "right-rail", label: { key: "common:shell.regions.activity" } },
+  { id: "timeline", label: { key: "common:shell.regions.timeline" } },
 ];
 
 // Entry memory: the last-focused element per region, so re-entering returns the

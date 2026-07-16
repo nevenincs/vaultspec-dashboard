@@ -35,6 +35,14 @@ import { stemFromPath } from "../liveAdapters";
 import { CONSUMED_SETTING_KEYS, resolveEffectiveSetting } from "../settingsSelectors";
 import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useMemo } from "react";
+import {
+  authoredDisplayText,
+  compareAuthoredDisplayText,
+  compareRepositoryPaths,
+  compareStableIdentifiers,
+  repositoryPath,
+  stableIdentifier,
+} from "../../../platform/localization/displayText";
 import { useDashboardState } from "./dashboard";
 import { normalizeGraphSliceScope } from "./graph";
 import { engineKeys, noopRetry, withManualRetry } from "./internal";
@@ -222,6 +230,7 @@ function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
 export function projectVaultTreeFeatureGroups(
   entries: readonly VaultTreeEntry[],
   sort: RailSortValue = DEFAULT_RAIL_SORT,
+  locale?: string,
 ): VaultTreeFeatureGroup[] {
   const UNTAGGED = "(untagged)";
   const byFeature = new Map<string, Map<string, VaultTreeEntry[]>>();
@@ -254,8 +263,9 @@ export function projectVaultTreeFeatureGroups(
           // the date-stamped stem); a chosen sort key reorders it through the
           // ONE comparator (ADR D3 — one sort concept for the whole tree).
           sort.key === "recency" || sort.key === "docs"
-            ? (sort.direction === "desc" ? 1 : -1) * a.path.localeCompare(b.path)
-            : compareVaultEntriesBySort(sort, a, b),
+            ? (sort.direction === "desc" ? 1 : -1) *
+              compareRepositoryPaths(repositoryPath(a.path), repositoryPath(b.path))
+            : compareVaultEntriesBySort(sort, a, b, locale),
         ),
     }));
     const count = docTypes.reduce((n, group) => n + group.entries.length, 0);
@@ -286,13 +296,14 @@ export function filterVaultTreeEntries(
 export function deriveVaultTreeBrowserView(
   entries: readonly VaultTreeEntry[],
   filter: string,
+  locale?: string,
 ): VaultTreeBrowserView {
   const activeFilter = filter.trim();
   const filteredEntries = filterVaultTreeEntries(entries, activeFilter);
   return {
     activeFilter,
     entries: filteredEntries,
-    groups: projectVaultTreeFeatureGroups(filteredEntries),
+    groups: projectVaultTreeFeatureGroups(filteredEntries, DEFAULT_RAIL_SORT, locale),
     filteredToNothing: activeFilter.length > 0 && filteredEntries.length === 0,
   };
 }
@@ -326,6 +337,7 @@ export interface EditorLinkingCorpus {
 
 export function deriveEditorLinkingCorpus(
   entries: readonly VaultTreeEntry[],
+  locale?: string,
 ): EditorLinkingCorpus {
   const documents: EditorCorpusDocument[] = entries.map((entry) => {
     const stem = stemFromPath(entry.path);
@@ -333,16 +345,24 @@ export function deriveEditorLinkingCorpus(
   });
   const featureTags = Array.from(
     new Set(entries.flatMap((entry) => entry.feature_tags)),
-  ).sort((a, b) => a.localeCompare(b));
+  ).sort((a, b) =>
+    compareAuthoredDisplayText(locale, authoredDisplayText(a), authoredDisplayText(b)),
+  );
   return { documents, featureTags };
 }
 
 /** Stores selector: the editor's link-picker corpus, derived in a useMemo over the
  *  raw vault-tree slice (store-selector law — never derived inside a selector). The
  *  corpus is empty until the tree resolves; the picker degrades to free entry. */
-export function useEditorLinkingCorpus(scope: unknown): EditorLinkingCorpus {
+export function useEditorLinkingCorpus(
+  scope: unknown,
+  locale?: string,
+): EditorLinkingCorpus {
   const entries = useVaultTree(scope).data?.entries;
-  return useMemo(() => deriveEditorLinkingCorpus(entries ?? []), [entries]);
+  return useMemo(
+    () => deriveEditorLinkingCorpus(entries ?? [], locale),
+    [entries, locale],
+  );
 }
 
 // --- left-rail Vault tab projections (binding `LeftRail` 238:600) -----------------
@@ -382,7 +402,7 @@ function compareVaultRecency(a: VaultTreeEntry, b: VaultTreeEntry): number {
   const am = a.dates.modified ?? "";
   const bm = b.dates.modified ?? "";
   if (am !== bm) return am < bm ? 1 : -1;
-  return a.path.localeCompare(b.path);
+  return compareRepositoryPaths(repositoryPath(a.path), repositoryPath(b.path));
 }
 
 /** A document's sortable field for a non-recency sort key (left-rail-tree-
@@ -396,7 +416,7 @@ function vaultEntrySortField(
 ): string | number | null {
   switch (key) {
     case "name":
-      return (entry.title ?? stemFromPath(entry.path)).toLowerCase();
+      return entry.title ?? stemFromPath(entry.path);
     case "created":
       return entry.dates.created ?? null;
     case "modified":
@@ -418,6 +438,7 @@ export function compareVaultEntriesBySort(
   sort: RailSortValue,
   a: VaultTreeEntry,
   b: VaultTreeEntry,
+  locale?: string,
 ): number {
   // `docs` is a FOLDER-count order — a document list has no per-item count, so
   // its leaves keep the historical recency order (direction still applies).
@@ -427,14 +448,27 @@ export function compareVaultEntriesBySort(
   }
   const av = vaultEntrySortField(a, sort.key);
   const bv = vaultEntrySortField(b, sort.key);
-  if (av === null && bv === null) return a.path.localeCompare(b.path);
+  if (av === null && bv === null) {
+    return compareRepositoryPaths(repositoryPath(a.path), repositoryPath(b.path));
+  }
   if (av === null) return 1;
   if (bv === null) return -1;
   const cmp =
     typeof av === "number" && typeof bv === "number"
       ? av - bv
-      : String(av).localeCompare(String(bv));
-  if (cmp === 0) return a.path.localeCompare(b.path);
+      : sort.key === "name"
+        ? compareAuthoredDisplayText(
+            locale,
+            authoredDisplayText(String(av)),
+            authoredDisplayText(String(bv)),
+          )
+        : compareStableIdentifiers(
+            stableIdentifier(String(av)),
+            stableIdentifier(String(bv)),
+          );
+  if (cmp === 0) {
+    return compareRepositoryPaths(repositoryPath(a.path), repositoryPath(b.path));
+  }
   return sort.direction === "asc" ? cmp : -cmp;
 }
 
@@ -444,6 +478,7 @@ export function compareVaultEntriesBySort(
 export function projectVaultDocTypeGroups(
   entries: readonly VaultTreeEntry[],
   sort: RailSortValue = DEFAULT_RAIL_SORT,
+  locale?: string,
 ): VaultDocTypeGroup[] {
   const byType = new Map<string, VaultTreeEntry[]>();
   for (const entry of entries) {
@@ -462,7 +497,7 @@ export function projectVaultDocTypeGroups(
       const list = byType
         .get(docType)!
         .slice()
-        .sort((a, b) => compareVaultEntriesBySort(sort, a, b));
+        .sort((a, b) => compareVaultEntriesBySort(sort, a, b, locale));
       return { docType, count: list.length, entries: list };
     });
 }
@@ -554,7 +589,7 @@ function featureGroupSortField(
   group: VaultTreeFeatureGroup,
   key: RailSortKey,
 ): string | number | null {
-  if (key === "name") return group.feature.toLowerCase();
+  if (key === "name") return group.feature;
   if (key === "weight") return group.weightBytes > 0 ? group.weightBytes : null;
   let maxDate: string | null = null;
   let words: number | null = null;
@@ -580,27 +615,55 @@ export function deriveVaultRailView(
   entries: readonly VaultTreeEntry[],
   facets: VaultRailFacets,
   sort: RailSortValue = DEFAULT_RAIL_SORT,
+  locale?: string,
 ): VaultRailView {
   const narrowed = narrowVaultRailEntries(entries, facets);
-  const featureGroups = projectVaultTreeFeatureGroups(narrowed, sort).sort((a, b) => {
-    if (sort.key === "recency" || sort.key === "docs") {
-      const cmp = b.count - a.count;
-      if (cmp !== 0) return sort.direction === "desc" ? cmp : -cmp;
-      return a.feature.localeCompare(b.feature);
-    }
-    const av = featureGroupSortField(a, sort.key);
-    const bv = featureGroupSortField(b, sort.key);
-    if (av === null && bv === null) return a.feature.localeCompare(b.feature);
-    if (av === null) return 1;
-    if (bv === null) return -1;
-    const cmp =
-      typeof av === "number" && typeof bv === "number"
-        ? av - bv
-        : String(av).localeCompare(String(bv));
-    if (cmp === 0) return a.feature.localeCompare(b.feature);
-    return sort.direction === "asc" ? cmp : -cmp;
-  });
-  const docTypeGroups = projectVaultDocTypeGroups(narrowed, sort);
+  const featureGroups = projectVaultTreeFeatureGroups(narrowed, sort, locale).sort(
+    (a, b) => {
+      if (sort.key === "recency" || sort.key === "docs") {
+        const cmp = b.count - a.count;
+        if (cmp !== 0) return sort.direction === "desc" ? cmp : -cmp;
+        return compareAuthoredDisplayText(
+          locale,
+          authoredDisplayText(a.feature),
+          authoredDisplayText(b.feature),
+        );
+      }
+      const av = featureGroupSortField(a, sort.key);
+      const bv = featureGroupSortField(b, sort.key);
+      if (av === null && bv === null) {
+        return compareAuthoredDisplayText(
+          locale,
+          authoredDisplayText(a.feature),
+          authoredDisplayText(b.feature),
+        );
+      }
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      const cmp =
+        typeof av === "number" && typeof bv === "number"
+          ? av - bv
+          : sort.key === "name"
+            ? compareAuthoredDisplayText(
+                locale,
+                authoredDisplayText(String(av)),
+                authoredDisplayText(String(bv)),
+              )
+            : compareStableIdentifiers(
+                stableIdentifier(String(av)),
+                stableIdentifier(String(bv)),
+              );
+      if (cmp === 0) {
+        return compareAuthoredDisplayText(
+          locale,
+          authoredDisplayText(a.feature),
+          authoredDisplayText(b.feature),
+        );
+      }
+      return sort.direction === "asc" ? cmp : -cmp;
+    },
+  );
+  const docTypeGroups = projectVaultDocTypeGroups(narrowed, sort, locale);
   const anyFacet =
     facets.featureQuery !== null ||
     facets.docTypes.length > 0 ||

@@ -15,6 +15,8 @@ import type { KeyboardEvent } from "react";
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
+import { authoredDisplayText } from "../../platform/localization/displayText";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { Category } from "../kit/category";
 import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
 import { SearchField, StatusDot } from "../kit";
@@ -93,6 +95,7 @@ export function AutocompleteCombobox({
   initialQuery = "",
   onSubmit,
 }: AutocompleteComboboxProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const listboxId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -253,7 +256,12 @@ export function AutocompleteCombobox({
           <ul
             id={listboxId}
             role="listbox"
-            aria-label={`${ariaLabel} suggestions`}
+            aria-label={
+              resolveMessage({
+                key: "documents:localizationWave.accessibility.suggestionsFor",
+                values: { label: authoredDisplayText(ariaLabel) },
+              }).message
+            }
             data-editor-combobox-list
             // Fixed + portaled (ContextMenuHost idiom): no dialog body or scroll
             // container can clip the list; height is space-aware (measured room
@@ -285,7 +293,7 @@ export function AutocompleteCombobox({
                     type="button"
                     id={`${listboxId}-opt-${index}`}
                     role="option"
-                    aria-label={option.primary}
+                    aria-label={authoredDisplayText(option.primary)}
                     aria-selected={index === activeIndex}
                     onMouseDown={(event) => {
                       event.preventDefault();

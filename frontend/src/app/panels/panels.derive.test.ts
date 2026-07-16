@@ -21,6 +21,7 @@ function rag(patch: Partial<RagStatusView> = {}): RagStatusView {
     degraded: false,
     running: true,
     ready: true,
+    presentation: { key: "operations:searchMaintenance.states.started" },
     ...patch,
   };
 }
@@ -50,42 +51,45 @@ describe("deriveBackendHealthRows", () => {
   it("reports every plane available when the wire is healthy", () => {
     const rows = deriveBackendHealthRows(rollup());
     expect(rows.map((r) => `${r.key}:${r.tone}`)).toEqual([
-      "engine:ok",
-      "core:ok",
-      "structural:ok",
-      "declared:ok",
-      "temporal:ok",
-      "semantic:ok",
+      "application:ok",
+      "projectTools:ok",
+      "documents:ok",
+      "links:ok",
+      "history:ok",
+      "search:ok",
     ]);
-    expect(rows.map((r) => r.label)).toEqual([
-      "Engine",
-      "Framework core",
-      "Documents",
-      "Links",
-      "History",
-      "Semantic search",
+    expect(rows.map((r) => r.label.key)).toEqual([
+      "common:systemStatus.labels.application",
+      "common:systemStatus.labels.projectTools",
+      "common:systemStatus.labels.documents",
+      "common:systemStatus.labels.links",
+      "common:systemStatus.labels.history",
+      "common:systemStatus.labels.search",
     ]);
   });
 
   it("marks every plane unavailable when the engine is unreachable", () => {
     const rows = deriveBackendHealthRows(rollup({ engineUnreachable: true }));
     expect(rows.every((r) => r.tone === "down")).toBe(true);
-    expect(rows.find((r) => r.key === "engine")?.statusWord).toBe("Unreachable");
+    expect(rows.find((r) => r.key === "application")?.status.key).toBe(
+      "common:systemStatus.states.unavailable",
+    );
   });
 
   it("marks a served-degraded tier unavailable, leaving siblings available", () => {
     const rows = deriveBackendHealthRows(rollup({ degradations: ["structural"] }));
-    expect(rows.find((r) => r.key === "structural")?.tone).toBe("down");
-    expect(rows.find((r) => r.key === "declared")?.tone).toBe("ok");
+    expect(rows.find((r) => r.key === "documents")?.tone).toBe("down");
+    expect(rows.find((r) => r.key === "links")?.tone).toBe("ok");
   });
 
   it("carries the served rag reason on a down semantic tier", () => {
     const rows = deriveBackendHealthRows(
       rollup({ rag: rag({ degraded: true, running: false, reason: "model loading" }) }),
     );
-    const semantic = rows.find((r) => r.key === "semantic");
+    const semantic = rows.find((r) => r.key === "search");
     expect(semantic?.tone).toBe("down");
-    expect(semantic?.reason).toBe("model loading");
+    expect(semantic?.status.key).toBe("common:systemStatus.states.unavailable");
+    expect(JSON.stringify(semantic)).not.toContain("model loading");
   });
 });
 

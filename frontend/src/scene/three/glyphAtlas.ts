@@ -103,7 +103,7 @@ export function buildGlyphAtlas(): GlyphAtlas | null {
     if (!def) return;
     let cov: boolean[];
     try {
-      cov = rasterizeBody(def.body, raster);
+      cov = rasterizeBody(def.svgBody, raster);
     } catch {
       return; // leave the cell empty; the node falls back to its circle
     }

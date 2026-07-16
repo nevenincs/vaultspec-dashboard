@@ -14,12 +14,22 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { FilterMenu, type FilterMenuSection } from "../app/stage/FilterMenu";
+import { bindDocumentLanguage } from "../platform/localization/documentLanguage";
+import { LocalizationProvider } from "../platform/localization/LocalizationProvider";
+import {
+  FILTER_MESSAGES,
+  authoredFilterLabel,
+  filterMessageLabel,
+} from "../stores/view/filterPresentation";
 import "../styles.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("missing #root element");
 }
+
+const unbindDocumentLanguage = bindDocumentLanguage();
+if (import.meta.hot) import.meta.hot.dispose(unbindDocumentLanguage);
 
 const params = new URLSearchParams(window.location.search);
 const theme = params.get("theme") ?? "light";
@@ -49,77 +59,140 @@ function FiltersHarness() {
     {
       type: "checkbox",
       key: "kind",
-      label: "KIND",
+      label: FILTER_MESSAGES.sections.kind,
       selected: kind,
       onToggle: (v) => setKind((s) => toggle(s, v)),
       options: [
-        { value: "research", label: "Research", count: 56 },
-        { value: "adr", label: "Decisions", count: 38 },
-        { value: "plan", label: "Plans", count: 142 },
-        { value: "exec", label: "Steps", count: 210 },
-        { value: "audit", label: "Audits", count: 24 },
-        { value: "summary", label: "Summaries", count: 18 },
+        {
+          value: "research",
+          label: filterMessageLabel(FILTER_MESSAGES.options.research),
+          count: 56,
+        },
+        {
+          value: "adr",
+          label: filterMessageLabel(FILTER_MESSAGES.options.adr),
+          count: 38,
+        },
+        {
+          value: "plan",
+          label: filterMessageLabel(FILTER_MESSAGES.options.plan),
+          count: 142,
+        },
+        {
+          value: "exec",
+          label: filterMessageLabel(FILTER_MESSAGES.options.exec),
+          count: 210,
+        },
+        {
+          value: "audit",
+          label: filterMessageLabel(FILTER_MESSAGES.options.audit),
+          count: 24,
+        },
+        {
+          value: "summary",
+          label: filterMessageLabel(FILTER_MESSAGES.options.summary),
+          count: 18,
+        },
       ],
     },
     {
       type: "checkbox",
       key: "feature",
-      label: "FEATURE",
+      label: FILTER_MESSAGES.sections.feature,
       selected: feature,
       onToggle: (v) => setFeature((s) => toggle(s, v)),
       search: {
         value: featureSearch,
         onChange: setFeatureSearch,
-        placeholder: "Search features…",
+        placeholder: FILTER_MESSAGES.searchFeatures,
       },
       options: [
-        { value: "delta-sync", label: "delta-sync", count: 8 },
-        { value: "design-system", label: "design-system", count: 44 },
-        { value: "timeline", label: "timeline", count: 73 },
+        { value: "delta-sync", label: authoredFilterLabel("delta-sync"), count: 8 },
+        {
+          value: "design-system",
+          label: authoredFilterLabel("design-system"),
+          count: 44,
+        },
+        { value: "timeline", label: authoredFilterLabel("timeline"), count: 73 },
       ],
     },
     {
       type: "checkbox",
       key: "status",
-      label: "STATUS",
+      label: FILTER_MESSAGES.sections.decisionStatus,
       selected: status,
       onToggle: (v) => setStatus((s) => toggle(s, v)),
       options: [
-        { value: "accepted", label: "accepted", count: 8, dot: "complete" },
-        { value: "proposed", label: "proposed", count: 12, dot: "provisional" },
-        { value: "in-progress", label: "in-progress", count: 3, dot: "active" },
-        { value: "finished", label: "finished", count: 5, dot: "complete" },
+        {
+          value: "accepted",
+          label: filterMessageLabel({ key: "graph:filters.statuses.accepted" }),
+          count: 8,
+          dot: "complete",
+        },
+        {
+          value: "proposed",
+          label: filterMessageLabel({ key: "graph:filters.statuses.proposed" }),
+          count: 12,
+          dot: "provisional",
+        },
+        {
+          value: "in-progress",
+          label: filterMessageLabel({ key: "graph:filters.statuses.inProgress" }),
+          count: 3,
+          dot: "active",
+        },
+        {
+          value: "finished",
+          label: filterMessageLabel({ key: "graph:filters.statuses.finished" }),
+          count: 5,
+          dot: "complete",
+        },
       ],
     },
     {
       type: "checkbox",
       key: "health",
-      label: "HEALTH",
+      label: FILTER_MESSAGES.sections.health,
       selected: health,
       onToggle: (v) => setHealth((s) => toggle(s, v)),
       options: [
-        { value: "dangling", label: "dangling links", count: 4, dot: "broken" },
+        {
+          value: "dangling",
+          label: filterMessageLabel({ key: "graph:filters.health.dangling" }),
+          count: 4,
+          dot: "broken",
+        },
         {
           value: "invalid",
-          label: "invalid frontmatter",
+          label: filterMessageLabel({ key: "graph:filters.health.invalid" }),
           count: 2,
           dot: "danger",
         },
-        { value: "empty", label: "empty scaffold", count: 7, dot: "stale" },
-        { value: "orphaned", label: "orphaned", count: 11, dot: "archived" },
+        {
+          value: "empty",
+          label: filterMessageLabel({ key: "graph:filters.health.emptyScaffold" }),
+          count: 7,
+          dot: "stale",
+        },
+        {
+          value: "orphaned",
+          label: filterMessageLabel({ key: "graph:filters.health.orphaned" }),
+          count: 11,
+          dot: "archived",
+        },
       ],
     },
     {
       type: "radio",
       key: "edited",
-      label: "EDITED",
+      label: FILTER_MESSAGES.sections.edited,
       value: edited,
       onSelect: setEdited,
       options: [
-        { value: "any", label: "Any time" },
-        { value: "7d", label: "Last 7 days" },
-        { value: "30d", label: "Last 30 days" },
-        { value: "year", label: "This year" },
+        { value: "any", label: FILTER_MESSAGES.edited.any },
+        { value: "7d", label: FILTER_MESSAGES.edited["7d"] },
+        { value: "30d", label: FILTER_MESSAGES.edited["30d"] },
+        { value: "year", label: FILTER_MESSAGES.edited.year },
       ],
     },
   ];
@@ -143,6 +216,8 @@ function FiltersHarness() {
 
 createRoot(rootElement).render(
   <StrictMode>
-    <FiltersHarness />
+    <LocalizationProvider>
+      <FiltersHarness />
+    </LocalizationProvider>
   </StrictMode>,
 );

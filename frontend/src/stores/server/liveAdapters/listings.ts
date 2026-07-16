@@ -737,7 +737,7 @@ export function adaptNodeDetail(body: unknown): NodeDetail {
 // (`adaptNodeDetail`/`adaptContent`/...) has a tolerant adapter and this did not. The
 // engine serde OMITS an empty evidence array, so a node with no code locations (or no
 // commits/documents) arrives MISSING that key; the pure evidence fold
-// (`deriveEvidenceGroups`/`hasEvidence`) then read `.length` of `undefined` and crashed
+// (`deriveHoverEvidenceSummary`/`hasEvidence`) then read `.length` of `undefined` and crashed
 // the whole graph (stage) panel on every hover/select. This adapter is the boundary
 // fix (mock-mirrors-live, one-code-path): floor all three arrays so EVERY evidence
 // consumer is protected, not just the hover card.

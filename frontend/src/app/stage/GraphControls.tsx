@@ -1,34 +1,8 @@
-// @figma GraphNavControls · SlhonORmySdoSMTQgDWw3w · 260:839
-// Graph overlay controls (binding Figma redesign `graph/Hero` 213:505 +
-// `graph/Sim + Display controls` 714:2630 + `NavControls/Vertical` 260:839). The
-// graph's top bar is RETIRED: every graph affordance is now a canvas OVERLAY, so
-// the field reads as the whole surface.
-//
-//   GraphNavControls — a VERTICAL camera cluster docked bottom-left (zoom in / out
-//              · a rule · fit / recenter), camera SceneCommands only. A kit Card
-//              over kit IconButtons (Lucide structural marks).
-//   GraphSettingsPanel — a top-right icon trigger that drops a "Graph controls"
-//              panel: a collapsible LAYOUT group (Spacing / Link length / Grouping
-//              / Freeze layout) and APPEARANCE group (Node size / Importance / Link
-//              thickness / Link opacity / Link colour) over the field's
-//              `set-force-params` / `set-appearance-params` / `set-frozen` seams,
-//              plus one "Reset to defaults".
-//
-// Every control resolves to a real, shared kit definition
-// (design-system-is-centralized) and every user-facing string is the BINDING Figma
-// plain-language vocabulary routed through the graph-controls chrome seam
-// (ui-labels-are-user-facing): the seam keeps the technical ids (charge /
-// linkStrength / nodeSalienceScale), the screen reads Spacing / Grouping /
-// Importance.
-//
-// Layer ownership (dashboard-layer-ownership): app chrome steering the scene.
-// Camera + layout affordances emit SceneController.command() ONLY; the panel
-// fetches nothing, reads no raw `tiers` block, holds no node shape. Tokens only —
-// no raw hex, no hardcoded px.
-
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 
 import {
   Card,
@@ -92,12 +66,13 @@ import { getScene } from "./Stage";
 
 const ICON_PX = 16;
 
-// ---------------------------------------------------------------------------
-// Field interaction coalescing: a drag/keyboard run is bracketed by
-// begin/end-interaction so the field can hold its energy floor for the duration
-// and settle once the run ends. A keyboard step has no pointerup, so a trailing
-// debounce ends the run once the steps stop.
-// ---------------------------------------------------------------------------
+function useGraphControlMessage() {
+  const resolveMessage = useLocalizedMessageResolver();
+  return useCallback(
+    (descriptor: MessageDescriptor) => resolveMessage(descriptor).message,
+    [resolveMessage],
+  );
+}
 
 const KEYBOARD_SETTLE_MS = 250;
 
@@ -126,24 +101,15 @@ function useFieldInteraction() {
     settleTimerRef.current = setTimeout(endInteraction, KEYBOARD_SETTLE_MS);
   }, [endInteraction]);
 
-  // End any in-flight interaction if the panel unmounts mid-drag.
   useEffect(() => endInteraction, [endInteraction]);
 
   return { beginInteraction, endInteraction, armKeyboardSettle };
 }
 
-// ---------------------------------------------------------------------------
-// GraphNavControls — the vertical camera cluster, docked bottom-left of the canvas
-// (binding NavControls/Vertical 260:839). Camera commands only. The layout +
-// divider classes come from the navigation chrome seam, never inline.
-// ---------------------------------------------------------------------------
-
 export function GraphNavControls() {
+  const message = useGraphControlMessage();
   const scene = getScene();
   const navigationView = deriveGraphControlsNavigationView();
-  // The camera cluster is ONE tab stop: arrows rove between the four buttons via
-  // the shared FocusZone, so the toolbar contributes a single stop to the stage
-  // tab ring (keyboard-navigation W02.P05.S16 — the APG toolbar pattern).
   const [activeNav, setActiveNav] = useState<string | null>(null);
   const zone = useFocusZone({
     orientation: "both",
@@ -155,8 +121,6 @@ export function GraphNavControls() {
   const zoomOut = zone.rove("zoom-out");
   const fit = zone.rove("fit-to-view");
   const autoframeRove = zone.rove("autoframe");
-  // Autoframe toggle (graph-autoframe): the 4th nav button. Keep the field synced to the
-  // store's flag (default ON) — dispatch on mount and on every change, mirroring FreezeRow.
   const autoframe = useGraphControlsAutoframe();
   useEffect(() => {
     scene.controller.command({ kind: "set-autoframe", enabled: autoframe });
@@ -167,7 +131,7 @@ export function GraphNavControls() {
       padded={false}
       className="pointer-events-auto absolute bottom-fg-2 left-fg-2 z-10 p-fg-1"
       role="toolbar"
-      aria-label={navigationView.ariaLabel}
+      aria-label={message(navigationView.ariaLabel)}
       data-graph-nav-controls
     >
       <div className={navigationView.containerClassName}>
@@ -176,7 +140,7 @@ export function GraphNavControls() {
           tabIndex={zoomIn.tabIndex}
           onKeyDown={zoomIn.onKeyDown}
           onFocus={() => setActiveNav("zoom-in")}
-          label={navigationView.zoomIn.label}
+          label={message(navigationView.zoomIn.label)}
           onClick={() => scene.controller.command({ kind: "zoom-in" })}
         >
           <Plus size={ICON_PX} aria-hidden />
@@ -186,7 +150,7 @@ export function GraphNavControls() {
           tabIndex={zoomOut.tabIndex}
           onKeyDown={zoomOut.onKeyDown}
           onFocus={() => setActiveNav("zoom-out")}
-          label={navigationView.zoomOut.label}
+          label={message(navigationView.zoomOut.label)}
           onClick={() => scene.controller.command({ kind: "zoom-out" })}
         >
           <Minus size={ICON_PX} aria-hidden />
@@ -197,8 +161,12 @@ export function GraphNavControls() {
           tabIndex={fit.tabIndex}
           onKeyDown={fit.onKeyDown}
           onFocus={() => setActiveNav("fit-to-view")}
-          label={navigationView.fitToView.label}
-          title={navigationView.fitToView.title}
+          label={message(navigationView.fitToView.label)}
+          title={
+            navigationView.fitToView.title
+              ? message(navigationView.fitToView.title)
+              : undefined
+          }
           onClick={() => scene.controller.command({ kind: "fit-to-view" })}
         >
           <Maximize size={ICON_PX} aria-hidden />
@@ -210,11 +178,11 @@ export function GraphNavControls() {
           onFocus={() => setActiveNav("autoframe")}
           active={autoframe}
           aria-pressed={autoframe}
-          label={navigationView.autoframe.label}
+          label={message(navigationView.autoframe.label)}
           title={
             autoframe
-              ? navigationView.autoframe.titleOn
-              : navigationView.autoframe.titleOff
+              ? message(navigationView.autoframe.titleOn)
+              : message(navigationView.autoframe.titleOff)
           }
           onClick={toggleGraphControlsAutoframe}
         >
@@ -225,20 +193,8 @@ export function GraphNavControls() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// GraphSimControl — the top-left play/pause control over the live layout. The
-// rendered state is the SIM'S OWN truth: the field emits `sim-state` on every
-// run-state transition, the Stage bridge mirrors it into the graph-controls chrome
-// store, and this button only reads that mirror — so it auto-flips back to "play"
-// when the cooling schedule settles the layout, with no wall-clock timer and no
-// drift between UI and graph internals. Play resumes a paused settle or gives a
-// settled graph the named explicit restart (`sim-play`); pause holds the in-flight
-// settle in place (`set-simulation-active`, energy-neutral). Play on a frozen
-// field unfreezes first through the same set-frozen seam FreezeRow uses, so the
-// freeze chrome flag never desyncs.
-// ---------------------------------------------------------------------------
-
 export function GraphSimControl() {
+  const message = useGraphControlMessage();
   const scene = getScene();
   const running = useGraphControlsSimRunning();
   const frozen = useGraphControlsFrozen();
@@ -255,8 +211,6 @@ export function GraphSimControl() {
     scene.controller.command({ kind: "sim-play" });
   }
   return (
-    // A single self-labelling control — deliberately NOT role="toolbar" (GPR-005:
-    // a one-button toolbar is misleading ARIA and would double the label).
     <Card
       elevation="raised"
       padded={false}
@@ -264,8 +218,8 @@ export function GraphSimControl() {
       data-graph-sim-control
     >
       <IconButton
-        label={view.label}
-        title={view.title}
+        label={message(view.label)}
+        title={message(view.title)}
         aria-pressed={running}
         active={running}
         onClick={toggle}
@@ -279,12 +233,6 @@ export function GraphSimControl() {
     </Card>
   );
 }
-
-// ---------------------------------------------------------------------------
-// PanelSlider — a binding panel row: a quiet label above a full-width kit Slider,
-// with NO numeric readout (binding 714:2630 rows). The drag/keyboard run is
-// bracketed for the field's interaction coalescing.
-// ---------------------------------------------------------------------------
 
 interface PanelSliderProps {
   label: string;
@@ -332,15 +280,8 @@ function PanelSlider({
   );
 }
 
-// ---------------------------------------------------------------------------
-// FreezeRow — the "Freeze layout" row: a label + a kit Switch over the field's
-// `set-frozen` seam. Pausing holds the simulation in place without adding energy;
-// it is meaningful only while the layout can settle, so it disables when freeze is
-// unavailable and clears when the active scope changes (a scope switch re-runs the
-// solver, so a stale frozen flag must not persist).
-// ---------------------------------------------------------------------------
-
 function FreezeRow() {
+  const message = useGraphControlMessage();
   const scene = getScene();
   const scope = useActiveScope();
   const { freezeAvailable } = useDashboardGraphControlsView(scope);
@@ -370,49 +311,39 @@ function FreezeRow() {
   }
 
   return (
-    <div className={tuneView.freezeRowClassName} title={freezeView.title}>
-      <span className={tuneView.freezeLabelClassName}>{tuneView.freezeLabel}</span>
+    <div className={tuneView.freezeRowClassName} title={message(freezeView.title)}>
+      <span className={tuneView.freezeLabelClassName}>
+        {message(tuneView.freezeLabel)}
+      </span>
       <Switch
         checked={frozen}
         disabled={!freezeAvailable}
         onChange={toggle}
-        label={freezeView.label}
+        label={message(freezeView.label)}
       />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// ReflowRow — the "Reflow on filter" row: a label + a kit Switch over the
-// canvas-local reflow flag. OFF (default) = filtering dims/hides nodes in place
-// (stable positions); ON = filtering REMOVES them from the live simulation so the
-// graph re-forms around the survivors. Unlike FreezeRow this dispatches no scene
-// command directly — Stage's reactive data effect reads the flag and re-feeds the
-// (filtered) set-data with the reflow hint. A canvas-behaviour toggle, never the
-// canonical filter (filtering-has-one-canonical-surface: the rail still authors WHAT
-// is filtered; this only changes HOW the canvas reacts).
-// ---------------------------------------------------------------------------
-
 function ReflowRow() {
+  const message = useGraphControlMessage();
   const reflow = useGraphReflowFilter();
   const tuneView = deriveGraphControlsTunePresentationView();
   const view = deriveGraphControlsReflowToggleView(reflow);
   return (
-    <div className={tuneView.freezeRowClassName} title={view.title}>
-      <span className={tuneView.freezeLabelClassName}>{view.label}</span>
-      <Switch checked={reflow} onChange={toggleGraphReflowFilter} label={view.label} />
+    <div className={tuneView.freezeRowClassName} title={message(view.title)}>
+      <span className={tuneView.freezeLabelClassName}>{message(view.label)}</span>
+      <Switch
+        checked={reflow}
+        onChange={toggleGraphReflowFilter}
+        label={message(view.label)}
+      />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// LayoutSection — the collapsible LAYOUT group: the field's d3-force knobs (Spacing
-// / Link length / Grouping) + the Freeze layout row. The sliders map onto
-// `set-force-params` (Spacing → −charge magnitude; link distance / spring straight
-// through).
-// ---------------------------------------------------------------------------
-
 function LayoutSection() {
+  const message = useGraphControlMessage();
   const open = useGraphControlsLayoutOpen();
   const params = useGraphControlsTuneParams();
   const tuneView = deriveGraphControlsTunePresentationView();
@@ -426,8 +357,6 @@ function LayoutSection() {
     const next = { ...params, ...update };
     setGraphControlsTuneParams(next);
     beginInteraction();
-    // Map the UI knobs onto the field's d3-force params: Spacing is the push
-    // MAGNITUDE → a negative charge; link distance / spring map straight through.
     getScene().controller.command({
       kind: "set-force-params",
       params: {
@@ -441,14 +370,14 @@ function LayoutSection() {
 
   return (
     <FoldableCategory
-      label={tuneView.categoryLabel}
+      label={message(tuneView.categoryLabel)}
       expanded={open}
       onToggle={toggleGraphControlsLayoutOpen}
       bodyId={bodyId}
     >
       <PanelSlider
-        label={spacing.label}
-        title={spacing.title}
+        label={message(spacing.label)}
+        title={message(spacing.title)}
         value={params.repulsion}
         min={spacing.min}
         max={spacing.max}
@@ -458,8 +387,8 @@ function LayoutSection() {
         onInteractEnd={endInteraction}
       />
       <PanelSlider
-        label={linkDistance.label}
-        title={linkDistance.title}
+        label={message(linkDistance.label)}
+        title={message(linkDistance.title)}
         value={params.linkDistance}
         min={linkDistance.min}
         max={linkDistance.max}
@@ -469,8 +398,8 @@ function LayoutSection() {
         onInteractEnd={endInteraction}
       />
       <PanelSlider
-        label={grouping.label}
-        title={grouping.title}
+        label={message(grouping.label)}
+        title={message(grouping.title)}
         value={params.linkSpring}
         min={grouping.min}
         max={grouping.max}
@@ -485,13 +414,8 @@ function LayoutSection() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// AppearanceSection — the collapsible APPEARANCE group: the node-size + link-look
-// knobs over `set-appearance-params`. Link colour is a Solid / Blended segmented
-// toggle (Blended — the leaf→parent gradient — is the binding default).
-// ---------------------------------------------------------------------------
-
 function AppearanceSection() {
+  const message = useGraphControlMessage();
   const open = useGraphControlsAppearanceOpen();
   const params = useGraphControlsAppearanceParams();
   const view = deriveGraphControlsAppearancePresentationView();
@@ -506,8 +430,6 @@ function AppearanceSection() {
     const next = { ...params, ...update };
     setGraphControlsAppearanceParams(next);
     beginInteraction();
-    // Dispatch the full appearance set (incl. the unsurfaced min ends) so the field
-    // merges a complete, consistent look.
     getScene().controller.command({
       kind: "set-appearance-params",
       params: {
@@ -526,14 +448,14 @@ function AppearanceSection() {
 
   return (
     <FoldableCategory
-      label={view.heading}
+      label={message(view.heading)}
       expanded={open}
       onToggle={toggleGraphControlsAppearanceOpen}
       bodyId={bodyId}
     >
       <PanelSlider
-        label={nodeSize.label}
-        title={nodeSize.title}
+        label={message(nodeSize.label)}
+        title={message(nodeSize.title)}
         value={params.nodeSizeScale}
         min={nodeSize.min}
         max={nodeSize.max}
@@ -543,8 +465,8 @@ function AppearanceSection() {
         onInteractEnd={endInteraction}
       />
       <PanelSlider
-        label={importance.label}
-        title={importance.title}
+        label={message(importance.label)}
+        title={message(importance.title)}
         value={params.nodeSalienceScale}
         min={importance.min}
         max={importance.max}
@@ -554,8 +476,8 @@ function AppearanceSection() {
         onInteractEnd={endInteraction}
       />
       <PanelSlider
-        label={linkThickness.label}
-        title={linkThickness.title}
+        label={message(linkThickness.label)}
+        title={message(linkThickness.title)}
         value={params.edgeWidthMax}
         min={linkThickness.min}
         max={linkThickness.max}
@@ -565,8 +487,8 @@ function AppearanceSection() {
         onInteractEnd={endInteraction}
       />
       <PanelSlider
-        label={linkOpacity.label}
-        title={linkOpacity.title}
+        label={message(linkOpacity.label)}
+        title={message(linkOpacity.title)}
         value={params.edgeOpacityMax}
         min={linkOpacity.min}
         max={linkOpacity.max}
@@ -576,9 +498,11 @@ function AppearanceSection() {
         onInteractEnd={endInteraction}
       />
       <div className="flex w-full flex-col gap-fg-1">
-        <span className="text-label text-ink-muted">{view.nodeColorModeLabel}</span>
+        <span className="text-label text-ink-muted">
+          {message(view.nodeColorModeLabel)}
+        </span>
         <SegmentedToggle
-          ariaLabel={view.nodeColorModeAriaLabel}
+          ariaLabel={message(view.nodeColorModeAriaLabel)}
           value={params.nodeColorMode}
           onChange={(v) =>
             apply({
@@ -587,14 +511,16 @@ function AppearanceSection() {
           }
           fullWidth
         >
-          <Segment value="category">{view.categoryLabel}</Segment>
-          <Segment value="recency">{view.recencyLabel}</Segment>
+          <Segment value="category">{message(view.categoryLabel)}</Segment>
+          <Segment value="recency">{message(view.recencyLabel)}</Segment>
         </SegmentedToggle>
       </div>
       <div className="flex w-full flex-col gap-fg-1">
-        <span className="text-label text-ink-muted">{view.colorModeLabel}</span>
+        <span className="text-label text-ink-muted">
+          {message(view.colorModeLabel)}
+        </span>
         <SegmentedToggle
-          ariaLabel={view.colorModeAriaLabel}
+          ariaLabel={message(view.colorModeAriaLabel)}
           value={params.edgeColorMode}
           onChange={(v) =>
             apply({
@@ -603,30 +529,24 @@ function AppearanceSection() {
           }
           fullWidth
         >
-          <Segment value="solid">{view.solidLabel}</Segment>
-          <Segment value="gradient">{view.gradientLabel}</Segment>
+          <Segment value="solid">{message(view.solidLabel)}</Segment>
+          <Segment value="gradient">{message(view.gradientLabel)}</Segment>
         </SegmentedToggle>
       </div>
       <div
         className="flex items-center justify-between gap-fg-2"
-        title={view.iconsTitle}
+        title={message(view.iconsTitle)}
       >
-        <span className="text-label text-ink-muted">{view.iconsLabel}</span>
+        <span className="text-label text-ink-muted">{message(view.iconsLabel)}</span>
         <Switch
           checked={params.nodeIcons}
           onChange={(v) => apply({ nodeIcons: v })}
-          label={view.iconsAriaLabel}
+          label={message(view.iconsAriaLabel)}
         />
       </div>
     </FoldableCategory>
   );
 }
-
-// ---------------------------------------------------------------------------
-// FoldableCategory — a collapsible group inside the panel, composing the ONE
-// canonical fold idiom (the kit twisty + SectionLabel eyebrow). Pure local
-// disclosure chrome owned by each section.
-// ---------------------------------------------------------------------------
 
 function FoldableCategory({
   label,
@@ -663,22 +583,8 @@ function FoldableCategory({
   );
 }
 
-// ---------------------------------------------------------------------------
-// ViewSection — the ONE dashboard-state graph switch: whether the graph nodes are
-// FEATURES (each node a cluster of related documents — the high-level map) or
-// DOCUMENTS (each node a single vault file — the full graph), i.e.
-// `graph_granularity`. Unlike the layout/appearance knobs this is NOT a scene
-// command / canvas-local flag: it writes dashboard-state through the stage-controls
-// intent, which re-keys the graph slice query (a real re-fetch), and reads its
-// active segment back from the served state — so the control can never drift from
-// what the graph is actually showing (display-state-is-backend-served;
-// views-are-projections-of-one-model). It is a pure view flip: it never touches the
-// corpus filter (one-filter-authority). The salience-lens ("Emphasis") switch was
-// removed — it changed nothing visible (feature nodes carry no salience; document
-// node size is driven by connectedness, not the lens).
-// ---------------------------------------------------------------------------
-
 function ViewSection() {
+  const message = useGraphControlMessage();
   const scope = useActiveScope();
   const { granularity } = useDashboardGraphControlsView(scope);
   const controls = useDashboardStageControlsIntent(scope);
@@ -686,32 +592,30 @@ function ViewSection() {
 
   return (
     <section className="flex w-full flex-col gap-fg-1-5" data-graph-view-section>
-      <SectionLabel>{view.heading}</SectionLabel>
+      <SectionLabel>{message(view.heading)}</SectionLabel>
       <SegmentedToggle
-        ariaLabel={view.detailAriaLabel}
+        ariaLabel={message(view.detailAriaLabel)}
         value={granularity}
         onChange={(v) => void controls.setGranularity(v).catch(() => undefined)}
         fullWidth
       >
         {view.detailOptions.map((option) => (
-          <Segment key={option.value} value={option.value} title={option.title}>
-            {option.label}
+          <Segment
+            key={option.value}
+            value={option.value}
+            title={message(option.title)}
+          >
+            {message(option.label)}
           </Segment>
         ))}
       </SegmentedToggle>
-      <p className="text-caption text-ink-muted">{view.caption}</p>
+      <p className="text-caption text-ink-muted">{message(view.caption)}</p>
     </section>
   );
 }
 
-// ---------------------------------------------------------------------------
-// GraphSettingsPanel — the top-right trigger (binding `graph-settings-trigger`)
-// that drops the "Graph controls" panel. Collapsed by default so the field is never
-// occluded; opening / closing (toggle / Escape / outside pointer) flows through the
-// shared Popover light-dismiss seam. One "Reset to defaults" restores both groups.
-// ---------------------------------------------------------------------------
-
 export function GraphSettingsPanel() {
+  const message = useGraphControlMessage();
   const open = useGraphControlsSettingsOpen();
   const tuneView = deriveGraphControlsTunePresentationView();
   const label = tuneView.title;
@@ -744,12 +648,12 @@ export function GraphSettingsPanel() {
       className="pointer-events-auto absolute right-fg-2 top-fg-2 z-30 flex items-center"
       data-graph-settings
     >
-      {/* Graph visibility is NOT toggled from here — it rides the dock's single
+      {/* Graph visibility is NOT toggled from here - it rides the dock's single
           top-right action cluster (DockWorkspace), so there is exactly one graph
           toggle and it is never duplicated against this settings trigger. */}
       <span data-popover-trigger>
         <IconButton
-          label={tuneView.title}
+          label={message(tuneView.title)}
           active={popover.active}
           aria-expanded={popover.ariaExpanded}
           aria-controls={panelId}
@@ -764,11 +668,11 @@ export function GraphSettingsPanel() {
           elevation="overlay"
           padded={false}
           role="group"
-          aria-label={popover.panelAriaLabel}
+          aria-label={message(popover.panelAriaLabel)}
           className={popover.panelClassName}
           data-popover-panel
         >
-          <p className="text-body font-medium text-ink">{tuneView.title}</p>
+          <p className="text-body font-medium text-ink">{message(tuneView.title)}</p>
           <ViewSection />
           <Divider />
           <LayoutSection />
@@ -779,7 +683,7 @@ export function GraphSettingsPanel() {
             onClick={resetAll}
             className={tuneView.resetButtonClassName}
           >
-            {tuneView.resetLabel}
+            {message(tuneView.resetLabel)}
           </button>
         </Card>
       )}

@@ -10,17 +10,16 @@
 //
 // INSTRUMENT REGISTER (warmth-lives-in-tokens-not-decoration): no gradients, no
 // textures, no second accent. Colour comes only from the semantic token tier — the
-// kind glyph in the category accent, the ink/paper/rule tokens, and the single
-// resolution-state tint on a code line. Shape and copy carry meaning. The kind
-// glyph is the shared domain-mark family so the card reads as one hand with the
-// canvas silhouettes.
+// kind glyph in the category accent and the ink/paper/rule tokens. Shape and copy
+// carry meaning. The kind glyph is the shared domain-mark family so the card reads
+// as one hand with the canvas silhouettes.
 
 import { ExternalLink } from "lucide-react";
 
+import { useLocalizedMessageResolver } from "../../../platform/localization/LocalizationProvider";
+import type { CountMessageDescriptor } from "../../../platform/localization/message";
 import { DocTypeMark } from "../../../scene/field/markComponents";
-import { docTypeLabel } from "../../../stores/server/docTypeVocabulary";
 import type { HoverCardModel } from "../../../stores/view/hoverCard";
-import { categoryTokenVar } from "../../../stores/view/hoverCardContent";
 
 export type { HoverCardModel } from "../../../stores/view/hoverCard";
 
@@ -31,34 +30,62 @@ export interface HoverCardProps {
   readonly onOpen?: (id: string) => void;
 }
 
-function stateTintClass(state: string | undefined): string {
-  switch (state) {
-    case "resolved":
-      return "text-state-active";
-    case "stale":
-      return "text-state-stale";
-    case "broken":
-      return "text-state-broken";
-    default:
-      return "text-ink-muted";
-  }
+function categoryTokenVar(category: NonNullable<HoverCardModel["category"]>): string {
+  return `--color-scene-category-${category}`;
+}
+
+type HoverCountKey =
+  | "graph:hover.evidence.codeLocations"
+  | "graph:hover.evidence.commits"
+  | "graph:hover.evidence.documents";
+
+function countMessage<Key extends HoverCountKey>(
+  key: Key,
+  count: number,
+): CountMessageDescriptor<Key> {
+  return { key, values: { count } };
 }
 
 export function HoverCard({ model, onOpen }: HoverCardProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   const accentVar = model.category ? categoryTokenVar(model.category) : undefined;
-  // The header glyph and the plain-language eyebrow both read the vault doc type
-  // (the marks are keyed by doc type, not the bare `document` kind); a synthesized
-  // feature node has no doc type, so it falls back to its species `kind`. The
-  // eyebrow word comes from the ONE canonical doc-type vocabulary.
-  const markKind = model.docType ?? model.kind;
-  const typeWord = model.docType ? docTypeLabel(model.docType) : undefined;
+  const typeWord = resolveMessage(model.typeLabel);
+  if (typeWord.usedFallback) return null;
+  const dialogLabel = resolveMessage({
+    key: "graph:hover.accessibility.detailsFor",
+    values: { title: model.title },
+  }).message;
+  const openLabel = resolveMessage({
+    key: "graph:hover.accessibility.open",
+    values: { title: model.title },
+  }).message;
+  const documentCount =
+    model.evidence.documentCount > 0
+      ? resolveMessage(
+          countMessage("graph:hover.evidence.documents", model.evidence.documentCount),
+        ).message
+      : null;
+  const codeLocationCount =
+    model.evidence.codeLocationCount > 0
+      ? resolveMessage(
+          countMessage(
+            "graph:hover.evidence.codeLocations",
+            model.evidence.codeLocationCount,
+          ),
+        ).message
+      : null;
+  const commitCount =
+    model.evidence.commitCount > 0
+      ? resolveMessage(
+          countMessage("graph:hover.evidence.commits", model.evidence.commitCount),
+        ).message
+      : null;
 
   return (
     <div
       role="dialog"
-      aria-label={`${model.kind} ${model.title}`}
+      aria-label={dialogLabel}
       data-hover-card
-      data-category={model.category}
       className="relative flex w-64 flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper-raised p-fg-2 pl-fg-3 text-ink shadow-fg-overlay"
     >
       {/* Category-accent strip: a single-token vertical rule naming the node's
@@ -81,17 +108,15 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
           style={accentVar ? { color: `var(${accentVar})` } : undefined}
           aria-hidden
         >
-          <DocTypeMark kind={markKind} size={16} />
+          <DocTypeMark kind={model.markKind} size={16} />
         </span>
         <div className="min-w-0 flex-1">
-          {typeWord && (
-            <p
-              data-hover-doc-type
-              className="text-caption font-medium tracking-[0.025rem] text-ink-muted"
-            >
-              {typeWord}
-            </p>
-          )}
+          <p
+            data-hover-doc-type
+            className="text-caption font-medium tracking-[0.025rem] text-ink-muted"
+          >
+            {typeWord.message}
+          </p>
           <h3 className="break-words text-body-strong font-medium text-ink line-clamp-2">
             {model.title}
           </h3>
@@ -100,7 +125,7 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
           <button
             type="button"
             onClick={() => onOpen(model.id)}
-            aria-label={`open ${model.title}`}
+            aria-label={openLabel}
             data-hover-open
             // The card may be hosted inside an inspect-only (pointer-events:none)
             // wrapper so the transient hover card never steals the pointer; the
@@ -126,40 +151,22 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
         </p>
       )}
 
-      {/* Evidence groups: documents / code / commits, each bounded, headed, and
-          tail-counted. Empty groups are not rendered (the fold omits them). */}
-      {model.evidence.map((group) => (
-        <section
-          key={group.heading}
-          className="text-label"
-          data-evidence-group={group.heading}
-        >
-          <div className="mb-fg-0-5 font-medium text-ink-muted">{group.heading}</div>
-          <ul className="space-y-fg-0-5 text-ink-muted">
-            {group.lines.map((line) => (
-              <li key={line.key} className="truncate" title={line.label}>
-                <span>{line.label}</span>
-                {line.detail !== undefined && (
-                  <span className="text-ink-muted"> {line.detail}</span>
-                )}
-                {line.state !== undefined && (
-                  <span className={stateTintClass(line.state)}> ({line.state})</span>
-                )}
-              </li>
-            ))}
-            {group.overflow > 0 && (
-              <li className="text-ink-muted" data-evidence-overflow>
-                +{group.overflow} more
-              </li>
-            )}
-          </ul>
-        </section>
-      ))}
-
-      {/* Identity tail: the node id is true identity → monospace. */}
-      <p className="break-all font-mono text-caption text-ink-muted" data-card-id>
-        {model.id}
-      </p>
+      {(documentCount || codeLocationCount || commitCount) && (
+        <div className="space-y-fg-1 text-label text-ink-muted">
+          {documentCount && <p data-hover-document-count>{documentCount}</p>}
+          {codeLocationCount && <p data-hover-code-count>{codeLocationCount}</p>}
+          {commitCount && <p data-hover-commit-count>{commitCount}</p>}
+          {model.evidence.commitSubjects.length > 0 && (
+            <ul className="space-y-fg-0-5">
+              {model.evidence.commitSubjects.map((subject, index) => (
+                <li key={index} className="truncate">
+                  {subject}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

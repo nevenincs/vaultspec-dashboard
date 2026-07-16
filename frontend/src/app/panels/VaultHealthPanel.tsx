@@ -59,6 +59,12 @@ export function deriveVaultHealthView(
 
 /** Project health status and check action. */
 export function VaultHealthPanel() {
+  const checkingLabel = useLocalizedMessage({
+    key: "common:systemStatus.states.checking",
+  });
+  const checkVaultLabel = useLocalizedMessage({
+    key: "operations:actions.checkVault",
+  });
   const projectHealthLabel = useLocalizedMessage(
     CONTROL_PANEL_VOCABULARY["vault-health"].label,
   );
@@ -91,7 +97,7 @@ export function VaultHealthPanel() {
           disabled={check.isPending}
           data-vault-check
         >
-          {check.isPending ? "Checking…" : "Run vault check"}
+          {check.isPending ? checkingLabel : checkVaultLabel}
         </Button>
         {receipt && (
           <p

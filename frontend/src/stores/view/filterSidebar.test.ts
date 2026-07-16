@@ -7,7 +7,6 @@ import {
   canSyncFilterSidebarVisualStateScope,
   closeFilterSidebar,
   clearFilterSidebarFeatureSearch,
-  deriveFilterSidebarFacetListView,
   deriveFilterSidebarMenuSections,
   deriveFilterSidebarVisualStateKey,
   expandFilterSidebarList,
@@ -15,14 +14,8 @@ import {
   FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS,
   FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES,
   FILTER_SIDEBAR_VOCABULARY_VALUE_MAX_CHARS,
-  filterSidebarDocTypeLabel,
-  filterSidebarFeatureOptions,
-  filterSidebarHealthDot,
-  filterSidebarHealthLabel,
-  filterSidebarStatusDot,
   normalizeFilterSidebarExpandedLists,
   normalizeFilterSidebarListKey,
-  normalizeFilterSidebarFacetLimit,
   normalizeFilterSidebarFacetValues,
   normalizeFilterSidebarOpen,
   normalizeFilterSidebarSectionKey,
@@ -139,9 +132,6 @@ describe("filter sidebar view store", () => {
       ),
     ).toHaveLength(FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES);
     expect(normalizeFilterSidebarFacetValues("adr")).toEqual([]);
-    expect(normalizeFilterSidebarFacetLimit(2.8)).toBe(2);
-    expect(normalizeFilterSidebarFacetLimit(0)).toBeUndefined();
-    expect(normalizeFilterSidebarFacetLimit("2")).toBeUndefined();
 
     setFilterSidebarOpen(true);
     setFilterSidebarOpen("false");
@@ -437,38 +427,6 @@ describe("filter sidebar view store", () => {
     ).not.toBe(canonical);
   });
 
-  it("normalizes served facet values into filter menu presentation", () => {
-    expect(filterSidebarDocTypeLabel("adr")).toBe("Decisions");
-    expect(filterSidebarDocTypeLabel("custom")).toBe("Document");
-    expect(filterSidebarStatusDot("accepted")).toBe("complete");
-    expect(filterSidebarStatusDot("in-progress")).toBe("active");
-    expect(filterSidebarStatusDot("unknown")).toBe("provisional");
-    expect(filterSidebarHealthLabel("dangling")).toBe("Dangling");
-    expect(filterSidebarHealthLabel("custom")).toBe("custom");
-    expect(filterSidebarHealthDot("invalid")).toBe("danger");
-    expect(filterSidebarHealthDot("custom")).toBe("stale");
-  });
-
-  it("filters feature options from the shared sidebar feature-search projection", () => {
-    expect(
-      filterSidebarFeatureOptions(
-        ["delta-sync", "design-system", "timeline"],
-        "DESIGN",
-      ),
-    ).toEqual(["design-system"]);
-    expect(filterSidebarFeatureOptions(["delta-sync", "timeline"], "   ")).toEqual([
-      "delta-sync",
-      "timeline",
-    ]);
-    expect(
-      filterSidebarFeatureOptions(
-        [" design-system ", "timeline", "design-system", null],
-        "design",
-      ),
-    ).toEqual(["design-system"]);
-    expect(filterSidebarFeatureOptions("design-system", "design")).toEqual([]);
-  });
-
   it("normalizes feature search before visual state or projection consumption", () => {
     expect(normalizeFilterSidebarFeatureSearch(null)).toBe("");
     expect(normalizeFilterSidebarFeatureSearch(" design ")).toBe("design");
@@ -574,11 +532,29 @@ describe("filter sidebar view store", () => {
       type: "checkbox",
       key: "status",
       selected: [],
-      options: [{ value: "accepted", label: "Accepted", dot: "complete" }],
+      options: [
+        {
+          value: "accepted",
+          label: {
+            kind: "message",
+            descriptor: { key: "graph:filters.statuses.accepted" },
+          },
+          dot: "complete",
+        },
+      ],
     });
     expect(sections[1]).toMatchObject({
       key: "health",
-      options: [{ value: "dangling", label: "Dangling", dot: "broken" }],
+      options: [
+        {
+          value: "dangling",
+          label: {
+            kind: "message",
+            descriptor: { key: "graph:filters.health.dangling" },
+          },
+          dot: "broken",
+        },
+      ],
     });
 
     if (sections[0]?.type === "checkbox") sections[0].onToggle("accepted");
@@ -595,8 +571,12 @@ describe("filter sidebar view store", () => {
         facetsLoading: false,
         docTypes: [" adr ", "adr", "", null] as unknown as string[],
         featureTags: [" state ", { value: "bad" }, "design"] as unknown as string[],
-        statuses: [" accepted ", "accepted"] as unknown as string[],
-        health: [" dangling ", 42] as unknown as string[],
+        statuses: [
+          " accepted ",
+          "accepted",
+          "private_status_token",
+        ] as unknown as string[],
+        health: [" dangling ", "../../private/path", 42] as unknown as string[],
         dateBounds: undefined,
       },
       filterView: {
@@ -649,12 +629,30 @@ describe("filter sidebar view store", () => {
     expect(sections[0]).toMatchObject({
       key: "status",
       selected: ["accepted"],
-      options: [{ value: "accepted", label: "Accepted", dot: "complete" }],
+      options: [
+        {
+          value: "accepted",
+          label: {
+            kind: "message",
+            descriptor: { key: "graph:filters.statuses.accepted" },
+          },
+          dot: "complete",
+        },
+      ],
     });
     expect(sections[1]).toMatchObject({
       key: "health",
       selected: ["dangling"],
-      options: [{ value: "dangling", label: "Dangling", dot: "broken" }],
+      options: [
+        {
+          value: "dangling",
+          label: {
+            kind: "message",
+            descriptor: { key: "graph:filters.health.dangling" },
+          },
+          dot: "broken",
+        },
+      ],
     });
 
     if (sections[0]?.type === "checkbox") {
@@ -689,85 +687,5 @@ describe("filter sidebar view store", () => {
 
     clearFilterSidebarFeatureSearch();
     expect(useFilterSidebarStore.getState().featureSearch).toBe("");
-  });
-
-  it("derives facet list loading, empty, and overflow presentation", () => {
-    expect(deriveFilterSidebarFacetListView([], [], 12, false, true)).toEqual({
-      shown: [],
-      rows: [],
-      overflow: 0,
-      overflowLabel: null,
-      emptyMessage: "loading...",
-      ariaBusy: true,
-    });
-
-    expect(deriveFilterSidebarFacetListView([], [], 12, false, false)).toEqual({
-      shown: [],
-      rows: [],
-      overflow: 0,
-      overflowLabel: null,
-      emptyMessage: "none in corpus",
-      ariaBusy: undefined,
-    });
-
-    expect(
-      deriveFilterSidebarFacetListView(["a", "b", "c"], ["b"], 2, false, false),
-    ).toEqual({
-      shown: ["a", "b"],
-      rows: [
-        {
-          value: "a",
-          checked: false,
-          inputClassName: "accent-accent",
-          labelClassName:
-            "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-          valueClassName: "text-ink-muted",
-        },
-        {
-          value: "b",
-          checked: true,
-          inputClassName: "accent-accent",
-          labelClassName:
-            "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-          valueClassName: "text-ink",
-        },
-      ],
-      overflow: 1,
-      overflowLabel: "+1 more",
-      emptyMessage: null,
-      ariaBusy: undefined,
-    });
-
-    expect(
-      deriveFilterSidebarFacetListView(["a", "b", "c"], ["c"], 2, true, false),
-    ).toMatchObject({
-      shown: ["a", "b", "c"],
-      rows: [
-        { value: "a", checked: false, valueClassName: "text-ink-muted" },
-        { value: "b", checked: false, valueClassName: "text-ink-muted" },
-        { value: "c", checked: true, valueClassName: "text-ink" },
-      ],
-      overflow: 1,
-      overflowLabel: null,
-    });
-
-    expect(
-      deriveFilterSidebarFacetListView(
-        [" a ", "b", "a", "", null],
-        [" a "],
-        2.8,
-        "yes",
-        "loading",
-      ),
-    ).toMatchObject({
-      shown: ["a", "b"],
-      rows: [
-        { value: "a", checked: true, valueClassName: "text-ink" },
-        { value: "b", checked: false, valueClassName: "text-ink-muted" },
-      ],
-      overflow: 0,
-      overflowLabel: null,
-      ariaBusy: undefined,
-    });
   });
 });

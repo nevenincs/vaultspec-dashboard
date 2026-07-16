@@ -53,28 +53,37 @@ import {
   ltrLanguageDisplayResources,
   rtlLanguageDisplayResources,
 } from "./languageDisplayResources";
+import {
+  ltrSearchMaintenanceResources,
+  rtlSearchMaintenanceResources,
+} from "./searchMaintenanceResources";
+import { ltrCS, ltrDS, rtlCS, rtlDS } from "./shellResources";
+import { ltrVW, rtlVW } from "./viewerWaveResources";
 
 export const ltrTestLocale = "fr" as const;
 export const rtlTestLocale = "ar" as const;
 
 export const ltrTestResources = {
   common: {
-    accessibility: {
-      ...en.common.accessibility,
-      actionsForItem: "Actions pour {{item}}",
-      back: "Retour",
-      recordShortcut: "Enregistrer un raccourci pour {{action}}",
-      resizeActivityPanel: "Redimensionner le panneau d’activité",
-      resizeNavigationPanel: "Redimensionner le panneau de navigation",
-      resizeTimeline: "Redimensionner la chronologie",
-      resetShortcut: "Réinitialiser le raccourci pour {{action}}",
-      skipToContent: "Aller au contenu",
-      switchWorkspace: "Changer d’espace de travail depuis {{workspace}}",
+    systemStatus: {
+      ...en.common.systemStatus,
+      labels: { ...en.common.systemStatus.labels, application: "Application test" },
+      states: {
+        ...en.common.systemStatus.states,
+        statusUnavailable: "État indisponible",
+      },
     },
+    accessibility: ltrCS.accessibility,
+    finalWave: ltrCS.finalWave,
+    kit: ltrCS.kit,
+    rail: ltrCS.rail,
+    shell: ltrCS.shell,
     actions: {
       ...en.common.actions,
+      ...ltrCS.actions,
       cancel: "Annuler",
       close: "Fermer",
+      clearSearch: "Effacer la recherche",
       collapseNavigationPanel: "Réduire le panneau de navigation",
       copyBranchName: "Copier le nom de la branche",
       copyCategoryName: "Copier le nom de la catégorie",
@@ -182,6 +191,7 @@ export const ltrTestResources = {
     },
     disabledReasons: {
       ...en.common.disabledReasons,
+      ...ltrCS.disabledReasons,
       itemUnavailableOnCanvas:
         "Actualisez les données, puis réessayez d’afficher cet élément sur le canevas.",
     },
@@ -228,6 +238,8 @@ export const ltrTestResources = {
   },
   documents: {
     ...en.documents,
+    ...ltrDS,
+    localizationWave: ltrVW,
     accessibility: {
       addDocumentToFeature: "Ajouter un document à une fonctionnalité",
       browserView: "Vue du navigateur",
@@ -561,7 +573,7 @@ export const ltrTestResources = {
       title: "Un problème est survenu",
     },
     unexpectedSection: {
-      message: "Réessayez cette section.",
+      message: "Réessayez {{section}}.",
       title: "Cette section ne peut pas être affichée",
     },
   },
@@ -590,8 +602,11 @@ export const ltrTestResources = {
   },
   graph: ltrGraphResources,
   operations: {
+    ...en.operations,
+    searchMaintenance: ltrSearchMaintenanceResources,
     actions: {
       applySearchSettings: "Appliquer les paramètres de recherche",
+      checkVault: "Vérifier le coffre",
       checkWorkspace: "Vérifier l’espace de travail",
       disableSearch: "Désactiver la recherche",
       enableSearch: "Activer la recherche",
@@ -778,22 +793,25 @@ export const ltrTestResources = {
 
 export const rtlTestResources = {
   common: {
-    accessibility: {
-      ...en.common.accessibility,
-      actionsForItem: "إجراءات {{item}}",
-      back: "رجوع",
-      recordShortcut: "تسجيل اختصار لـ {{action}}",
-      resizeActivityPanel: "تغيير حجم لوحة النشاط",
-      resizeNavigationPanel: "تغيير حجم لوحة التنقل",
-      resizeTimeline: "تغيير حجم المخطط الزمني",
-      resetShortcut: "إعادة تعيين اختصار {{action}}",
-      skipToContent: "التخطي إلى المحتوى",
-      switchWorkspace: "تبديل مساحة العمل من {{workspace}}",
+    systemStatus: {
+      ...en.common.systemStatus,
+      labels: { ...en.common.systemStatus.labels, application: "تطبيق اختباري" },
+      states: {
+        ...en.common.systemStatus.states,
+        statusUnavailable: "الحالة غير متاحة",
+      },
     },
+    accessibility: rtlCS.accessibility,
+    finalWave: rtlCS.finalWave,
+    kit: rtlCS.kit,
+    rail: rtlCS.rail,
+    shell: rtlCS.shell,
     actions: {
       ...en.common.actions,
+      ...rtlCS.actions,
       cancel: "إلغاء",
       close: "إغلاق",
+      clearSearch: "مسح البحث",
       collapseNavigationPanel: "طي لوحة التنقل",
       copyBranchName: "نسخ اسم الفرع",
       copyCategoryName: "نسخ اسم الفئة",
@@ -906,6 +924,7 @@ export const rtlTestResources = {
     },
     disabledReasons: {
       ...en.common.disabledReasons,
+      ...rtlCS.disabledReasons,
       itemUnavailableOnCanvas: "حدّث البيانات، ثم حاول إظهار هذا العنصر على اللوحة.",
     },
     feedback: {
@@ -945,6 +964,8 @@ export const rtlTestResources = {
   },
   documents: {
     ...en.documents,
+    ...rtlDS,
+    localizationWave: rtlVW,
     accessibility: {
       addDocumentToFeature: "إضافة مستند إلى ميزة",
       browserView: "عرض المتصفح",
@@ -1265,7 +1286,7 @@ export const rtlTestResources = {
       title: "حدث خطأ ما",
     },
     unexpectedSection: {
-      message: "حاول فتح هذا القسم مرة أخرى.",
+      message: "حاول فتح {{section}} مرة أخرى.",
       title: "تعذر عرض هذا القسم",
     },
   },
@@ -1292,8 +1313,11 @@ export const rtlTestResources = {
   },
   graph: rtlGraphResources,
   operations: {
+    ...en.operations,
+    searchMaintenance: rtlSearchMaintenanceResources,
     actions: {
       applySearchSettings: "تطبيق إعدادات البحث",
+      checkVault: "فحص الخزنة",
       checkWorkspace: "فحص مساحة العمل",
       disableSearch: "تعطيل البحث",
       enableSearch: "تمكين البحث",

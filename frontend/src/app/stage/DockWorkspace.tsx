@@ -88,6 +88,7 @@ function GraphTab(_props: IDockviewPanelHeaderProps) {
 // it never activates or drags the tab. dockview's `.dv-tab` wrapper still owns
 // click-to-activate, drag-to-dock, and the tokenized active/inactive background.
 function DocTab({ api }: IDockviewPanelHeaderProps) {
+  const resolveMessage = useLocalizedMessageResolver();
   // The panel id IS the document node id (deriveDockWorkspaceSyncPlan), so the
   // provisional lookup keys straight off it — drives the italic preview title (#15).
   const provisional = useIsProvisionalDoc(api.id);
@@ -145,12 +146,25 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
         <span
           className="shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1 text-caption text-ink-muted"
           title={scopeBadge.title}
-          aria-label={`in workspace ${scopeBadge.label}`}
+          aria-label={
+            resolveMessage({
+              key: "documents:workspace.accessibility.inWorkspace",
+              values: { workspace: scopeBadge.label },
+            }).message
+          }
         >
           {scopeBadge.label}
         </span>
       )}
-      <RowMenuDisclosure entity={docTabEntity} label={`${view.title} actions`} />
+      <RowMenuDisclosure
+        entity={docTabEntity}
+        label={
+          resolveMessage({
+            key: "common:accessibility.actionsForItem",
+            values: { item: view.title },
+          }).message
+        }
+      />
       <span
         role="button"
         tabIndex={0}
@@ -312,6 +326,8 @@ function syncGraphGroupHeader(api: DockviewApi): void {
 }
 
 export function DockWorkspace() {
+  const resolveMessage = useLocalizedMessageResolver();
+  const graphTitle = resolveMessage({ key: "graph:labels.graph" }).message;
   const apiRef = useRef<DockviewApi | null>(null);
   // Guards the store<->dockview sync against feedback loops: while we mutate
   // dockview to match the store, its echo events (active/remove) are ignored.
@@ -329,44 +345,47 @@ export function DockWorkspace() {
   // The restore seeds the tab slice; the reconcile effect below rebuilds panels.
   useWorkspacePersistence(useActiveScope());
 
-  const onReady = useCallback((event: DockviewReadyEvent) => {
-    const api = event.api;
-    apiRef.current = api;
-    // The graph panel seeds the layout (full width until a document opens to its
-    // left) — but only when the graph is visible; the graph-visibility effect
-    // below reconciles add/remove on later toggles.
-    if (graphVisibleRef.current) {
-      api.addPanel({
-        id: GRAPH_PANEL_ID,
-        component: "graph",
-        tabComponent: "graphTab",
-        title: "Graph",
+  const onReady = useCallback(
+    (event: DockviewReadyEvent) => {
+      const api = event.api;
+      apiRef.current = api;
+      // The graph panel seeds the layout (full width until a document opens to its
+      // left) — but only when the graph is visible; the graph-visibility effect
+      // below reconciles add/remove on later toggles.
+      if (graphVisibleRef.current) {
+        api.addPanel({
+          id: GRAPH_PANEL_ID,
+          component: "graph",
+          tabComponent: "graphTab",
+          title: graphTitle,
+        });
+        syncGraphGroupHeader(api);
+      }
+      // Any layout change re-measures the graph rect so the pinned canvas follows
+      // (a split, a sash drag, a dock, a float), and syncs dockview's tab order
+      // back into the slice after a user drag-reorder. Skipped during our own
+      // programmatic sync. [P06 persists here too.]
+      api.onDidLayoutChange(() => {
+        pokeGraphRect();
+        syncGraphGroupHeader(api);
+        if (syncingRef.current) return;
+        reorderDocTabs(
+          api.panels.filter((p) => p.id !== GRAPH_PANEL_ID).map((p) => p.id),
+        );
       });
-      syncGraphGroupHeader(api);
-    }
-    // Any layout change re-measures the graph rect so the pinned canvas follows
-    // (a split, a sash drag, a dock, a float), and syncs dockview's tab order
-    // back into the slice after a user drag-reorder. Skipped during our own
-    // programmatic sync. [P06 persists here too.]
-    api.onDidLayoutChange(() => {
-      pokeGraphRect();
-      syncGraphGroupHeader(api);
-      if (syncingRef.current) return;
-      reorderDocTabs(
-        api.panels.filter((p) => p.id !== GRAPH_PANEL_ID).map((p) => p.id),
-      );
-    });
-    // User-driven activation -> store (ignore the graph panel and our own syncs).
-    api.onDidActivePanelChange((panel) => {
-      if (syncingRef.current || !panel || panel.id === GRAPH_PANEL_ID) return;
-      activateDocTab(panel.id);
-    });
-    // User-driven tab close -> store (the graph panel is never closed this way).
-    api.onDidRemovePanel((panel) => {
-      if (syncingRef.current || panel.id === GRAPH_PANEL_ID) return;
-      closeDocTab(panel.id);
-    });
-  }, []);
+      // User-driven activation -> store (ignore the graph panel and our own syncs).
+      api.onDidActivePanelChange((panel) => {
+        if (syncingRef.current || !panel || panel.id === GRAPH_PANEL_ID) return;
+        activateDocTab(panel.id);
+      });
+      // User-driven tab close -> store (the graph panel is never closed this way).
+      api.onDidRemovePanel((panel) => {
+        if (syncingRef.current || panel.id === GRAPH_PANEL_ID) return;
+        closeDocTab(panel.id);
+      });
+    },
+    [graphTitle],
+  );
 
   // Reconcile the GRAPH panel to `graphVisible` (the toggle). Adding/removing the
   // placeholder panel is safe for the canvas: `GraphCanvasHost` (the real `<Stage/>`
@@ -388,7 +407,7 @@ export function DockWorkspace() {
           id: GRAPH_PANEL_ID,
           component: "graph",
           tabComponent: "graphTab",
-          title: "Graph",
+          title: graphTitle,
           ...(firstDoc
             ? { position: { referencePanel: firstDoc.id, direction: "right" } }
             : {}),
@@ -401,7 +420,7 @@ export function DockWorkspace() {
     } finally {
       syncingRef.current = false;
     }
-  }, [graphVisible]);
+  }, [graphTitle, graphVisible]);
 
   // Reconcile dockview panels to the tab slice (the source of truth). Runs on any
   // openDocs/activeDocId change: add new doc panels (to the LEFT of the graph, or

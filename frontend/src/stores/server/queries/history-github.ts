@@ -2,6 +2,11 @@
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId, normalizeNodeIds } from "../../nodeIds";
+import type { MessageDescriptor } from "../../../platform/localization/message";
+import {
+  authoredDisplayText,
+  type AuthoredDisplayText,
+} from "../../../platform/localization/displayText";
 import {
   EngineError,
   engineClient,
@@ -141,11 +146,7 @@ export interface RecentCommitRow {
   /** Whether the row has an expandable commit message body. */
   hasBody: boolean;
   /** Commit subject with the empty-subject fallback already applied. */
-  subjectLabel: string;
-  /** Accessible label for activating the row selection. */
-  rowAriaLabel: string;
-  /** Accessible label for expanding/collapsing the full message body. */
-  messageToggleLabel: (expanded: boolean) => string;
+  subjectLabel: AuthoredDisplayText | MessageDescriptor;
   /** Compact age label for the status rail; derived with the row projection. */
   ageLabel: string;
 }
@@ -235,17 +236,16 @@ export function deriveHistoryView(
     .slice(0, renderLimit)
     .map((commit): RecentCommitRow => {
       const touchedNodeIds = commit.node_ids.filter((id) => !id.startsWith("commit:"));
-      const subjectLabel = commit.subject || "(no subject)";
+      const commitLabel: AuthoredDisplayText | MessageDescriptor = commit.subject
+        ? authoredDisplayText(commit.subject)
+        : { key: "common:finalWave.history.commit" };
       return {
         commit,
         eventId: `commit:${commit.hash}`,
         touchedNodeIds,
         selectable: touchedNodeIds.length > 0,
         hasBody: commit.body.trim().length > 0,
-        subjectLabel,
-        rowAriaLabel: `commit ${commit.short_hash}: ${subjectLabel}`,
-        messageToggleLabel: (expanded) =>
-          `${expanded ? "collapse" : "expand"} message for ${commit.short_hash}`,
+        subjectLabel: commitLabel,
         ageLabel: recentCommitAgeLabel(commit.ts, now),
       };
     });
@@ -644,7 +644,7 @@ export type StatusTabSectionId =
 
 export interface StatusSectionCardView {
   id: StatusTabSectionId;
-  title: string;
+  title: MessageDescriptor;
   count?: number;
 }
 
@@ -669,7 +669,7 @@ export function deriveStatusTabSectionsView(counts: {
       id: "open-plans",
       // Titled just "Plans" (2026-07-14 wording refinement, like COMMITS): the
       // count receipt stays the actionable OPEN count; the section id stays.
-      title: "Plans",
+      title: { key: "common:finalWave.statusSections.plans" },
       count: positiveStatusCount(counts.openPlans),
     },
     // ONE pull-request section (2026-07-12 IA simplification, user-directed):
@@ -678,17 +678,20 @@ export function deriveStatusTabSectionsView(counts: {
     // ACTIONABLE open count, never open+merged.
     pullRequests: {
       id: "pull-requests",
-      title: "Pull requests",
+      title: { key: "common:finalWave.statusSections.pullRequests" },
       count: positiveStatusCount(counts.openPrs),
     },
     openIssues: {
       id: "open-issues",
-      title: "Issues",
+      title: { key: "common:finalWave.statusSections.issues" },
       count: positiveStatusCount(counts.openIssues),
     },
     // Titled just "Commits" (2026-07-14 wording refinement): the recency is
     // implicit in the list's newest-first order; the persisted section id stays.
-    recentCommits: { id: "recent-commits", title: "Commits" },
+    recentCommits: {
+      id: "recent-commits",
+      title: { key: "common:finalWave.statusSections.commits" },
+    },
   };
 }
 

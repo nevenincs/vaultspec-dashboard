@@ -338,129 +338,6 @@ export function useDashboardFilterChoices(scope: unknown): FilterChoices {
   return useDashboardFilterChoicesView(scope).choices;
 }
 
-export type DashboardEditedWindow = "any" | "7d" | "30d" | "year";
-
-const DAY_MS = 24 * 3600 * 1000;
-
-export interface DashboardEditedWindowOptionView {
-  key: DashboardEditedWindow;
-  label: string;
-}
-
-export interface DashboardEditedWindowRowView extends DashboardEditedWindowOptionView {
-  active: boolean;
-  inputClassName: string;
-  labelClassName: string;
-  valueClassName: string;
-}
-
-export interface DashboardFilterSidebarPresentationView {
-  panelAriaLabel: string;
-  panelClassName: string;
-  headerClassName: string;
-  titleClassName: string;
-  headerActionsClassName: string;
-  titleLabel: string;
-  clearAllClassName: string;
-  clearAllLabel: string;
-  clearAllAriaLabel: string;
-  closeButtonClassName: string;
-  closeAriaLabel: string;
-  sectionClassName: string;
-  sectionButtonClassName: string;
-  sectionMetaClassName: string;
-  sectionBadgeClassName: string;
-  sectionIconClassName: string;
-  sectionBodyClassName: string;
-  kindSectionLabel: string;
-  featureSectionLabel: string;
-  editedSectionLabel: string;
-  editedWindowAriaLabel: string;
-  facetEmptyClassName: string;
-  facetListClassName: string;
-  facetOverflowButtonClassName: string;
-  footerClassName: string;
-  footerTextClassName: string;
-  editedWindows: DashboardEditedWindowOptionView[];
-}
-
-export const DASHBOARD_FILTER_SIDEBAR_PRESENTATION: DashboardFilterSidebarPresentationView =
-  {
-    panelAriaLabel: "filter panel",
-    // The advanced-filter flyout is portalled to <body> and positioned (fixed) to
-    // the RIGHT of the rail's Filters button so it flies out OVER the stage — the
-    // graph and any open documents — rather than being clipped inside the rail
-    // column. The top/left are set inline from the trigger rect; this class owns
-    // only the layer and pointer surface. The entrance is a fade applied by the
-    // container ONLY once the anchor has settled (no slide — it would read as a
-    // jump while the rail header reflows into place on open).
-    panelClassName: "pointer-events-auto fixed z-50",
-    headerClassName:
-      "flex items-center justify-between border-b border-rule px-fg-3 py-fg-1-5",
-    titleClassName: "text-body font-medium text-ink",
-    headerActionsClassName: "flex items-center gap-fg-2",
-    titleLabel: "Filter documents",
-    clearAllClassName:
-      "text-caption text-accent-text underline-offset-2 hover:underline",
-    clearAllLabel: "Clear all",
-    clearAllAriaLabel: "clear all filters",
-    closeButtonClassName:
-      "rounded-fg-xs p-fg-0-5 text-ink-faint hover:bg-paper-sunken hover:text-ink",
-    closeAriaLabel: "close filter panel",
-    sectionClassName: "border-b border-rule",
-    sectionButtonClassName:
-      "flex w-full items-center justify-between px-fg-3 py-fg-1-5 text-left text-label font-medium tracking-wider text-ink-muted hover:bg-paper-sunken",
-    sectionMetaClassName: "flex items-center gap-fg-1-5",
-    sectionBadgeClassName:
-      "rounded-fg-pill bg-paper-sunken px-fg-1-5 py-fg-0-5 text-caption font-normal text-ink-muted",
-    sectionIconClassName: "text-ink-faint",
-    sectionBodyClassName: "pb-2",
-    kindSectionLabel: "Type",
-    featureSectionLabel: "Feature",
-    editedSectionLabel: "Edited",
-    editedWindowAriaLabel: "edited window",
-    facetEmptyClassName: "px-fg-3 py-fg-1 text-label italic text-ink-faint",
-    facetListClassName: "space-y-fg-0-5 px-fg-3",
-    facetOverflowButtonClassName:
-      "ml-fg-1 text-label text-ink-faint underline hover:text-ink-muted",
-    footerClassName: "border-t border-rule px-fg-3 py-fg-1-5",
-    footerTextClassName: "text-label text-state-stale",
-    editedWindows: [
-      { key: "any", label: "Any time" },
-      { key: "7d", label: "Last 7 days" },
-      { key: "30d", label: "Last 30 days" },
-      { key: "year", label: "This year" },
-    ],
-  };
-
-export function dashboardEditedWindowRange(
-  key: DashboardEditedWindow,
-  now = Date.now(),
-): DashboardDateRange {
-  if (key === "any") return {};
-  if (key === "7d") return { from: new Date(now - 7 * DAY_MS).toISOString() };
-  if (key === "30d") return { from: new Date(now - 30 * DAY_MS).toISOString() };
-  const year = new Date(now).getFullYear();
-  return { from: new Date(Date.UTC(year, 0, 1)).toISOString() };
-}
-
-export function dashboardEditedWindowFromRange(
-  range: DashboardDateRange,
-  now = Date.now(),
-): DashboardEditedWindow {
-  if (!range.from && !range.to) return "any";
-  if (range.to) return "any";
-  const fromDay = range.from?.slice(0, 10);
-  const dayFor = (offsetMs: number) =>
-    new Date(now - offsetMs).toISOString().slice(0, 10);
-  if (fromDay === dayFor(7 * DAY_MS)) return "7d";
-  if (fromDay === dayFor(30 * DAY_MS)) return "30d";
-  const yearStart = new Date(Date.UTC(new Date(now).getFullYear(), 0, 1))
-    .toISOString()
-    .slice(0, 10);
-  return fromDay === yearStart ? "year" : "any";
-}
-
 function hasActiveDashboardDateRange(range: DashboardDateRange): boolean {
   return Boolean(range.from || range.to);
 }
@@ -473,21 +350,16 @@ export interface DashboardFilterSidebarView {
   statuses: string[];
   planStates: string[];
   health: string[];
-  editedWindow: DashboardEditedWindow;
-  editedWindowRows: DashboardEditedWindowRowView[];
   dateActive: boolean;
   anyActive: boolean;
-  presentation: DashboardFilterSidebarPresentationView;
 }
 
 export function deriveDashboardFilterSidebarView(
   state: Pick<DashboardState, "filters" | "date_range"> | undefined,
-  now = Date.now(),
 ): DashboardFilterSidebarView {
   const filters = state?.filters ?? {};
   const dateRange = normalizeDashboardDateRange(state?.date_range);
   const dateActive = hasActiveDashboardDateRange(dateRange);
-  const editedWindow = dashboardEditedWindowFromRange(dateRange, now);
   return {
     filters,
     dateRange,
@@ -496,19 +368,7 @@ export function deriveDashboardFilterSidebarView(
     statuses: filters.statuses ?? [],
     planStates: filters.plan_states ?? [],
     health: filters.health ?? [],
-    editedWindow,
-    editedWindowRows: DASHBOARD_FILTER_SIDEBAR_PRESENTATION.editedWindows.map(
-      (option) => ({
-        ...option,
-        active: option.key === editedWindow,
-        inputClassName: "accent-accent",
-        labelClassName:
-          "flex cursor-pointer items-center gap-fg-2 rounded-fg-xs px-fg-1 py-fg-0-5 text-label hover:bg-paper-sunken",
-        valueClassName: option.key === editedWindow ? "text-ink" : "text-ink-muted",
-      }),
-    ),
     dateActive,
-    presentation: DASHBOARD_FILTER_SIDEBAR_PRESENTATION,
     anyActive:
       (filters.doc_types?.length ?? 0) > 0 ||
       (filters.feature_tags?.length ?? 0) > 0 ||

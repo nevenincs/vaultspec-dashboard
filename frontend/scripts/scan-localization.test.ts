@@ -19,6 +19,7 @@ const validFiles = [
   resolve(fixtureRoot, "valid/semantic-exclusions.ts"),
   resolve(fixtureRoot, "valid/authored-case-exclusions.tsx"),
   resolve(fixtureRoot, "valid/authored-case-exclusions.css"),
+  resolve(fixtureRoot, "valid/canonical-display-semantics.tsx"),
 ];
 const allRulesFile = resolve(fixtureRoot, "invalid/all-rules.tsx");
 const authoredCaseTransformFiles = [
@@ -43,6 +44,18 @@ const rawKeybindingPresentationFile = resolve(
   fixtureRoot,
   "invalid/raw-keybinding-presentation.ts",
 );
+const canonicalDisplayBypassFile = resolve(
+  fixtureRoot,
+  "invalid/canonical-display-bypass.tsx",
+);
+const dynamicPresentationBlindspotsFile = resolve(
+  fixtureRoot,
+  "invalid/dynamic-presentation-blindspots.tsx",
+);
+const historyPipelineIdentityLeaksFile = resolve(
+  fixtureRoot,
+  "invalid/history-pipeline-identity-leaks.tsx",
+);
 
 function baselineFor(
   findings: ReturnType<typeof scanFiles>,
@@ -55,11 +68,67 @@ describe("localization source scanner", () => {
     expect(scanFiles(validFiles)).toEqual([]);
   });
 
+  it("accepts only canonical display semantics and rejects local bypasses", () => {
+    expect(
+      scanFiles([resolve(fixtureRoot, "valid/canonical-display-semantics.tsx")]),
+    ).toEqual([]);
+    const findings = scanFiles([canonicalDisplayBypassFile]);
+    expect(
+      findings.filter(({ code }) => code === FINDING_CODES.directLocaleFormat),
+    ).toHaveLength(2);
+    expect(findings.some(({ code }) => code === FINDING_CODES.jsxText)).toBe(true);
+  });
+
+  it("detects camel-case aria fields, error arrays, setters, and raw identities", () => {
+    const findings = scanFiles([dynamicPresentationBlindspotsFile]);
+    expect(
+      findings.filter(({ code }) => code === FINDING_CODES.unsafeDynamicPresentation),
+    ).toHaveLength(3);
+    expect(
+      findings.filter(({ code }) => code === FINDING_CODES.presentationField),
+    ).toHaveLength(2);
+    expect(findings.some(({ code }) => code === FINDING_CODES.jsxAttribute)).toBe(true);
+  });
+
+  it("detects history hashes, pipeline ids, and raw lower-case action grammar", () => {
+    const findings = scanFiles([historyPipelineIdentityLeaksFile]);
+    expect(
+      findings.filter(({ code }) => code === FINDING_CODES.unsafeDynamicPresentation)
+        .length,
+    ).toBeGreaterThanOrEqual(4);
+    expect(
+      findings.filter(({ code }) => code === FINDING_CODES.presentationField).length,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  it("excludes exact graph catalog fixtures while scanning production titles", () => {
+    expect(
+      scanFiles([
+        resolve(import.meta.dirname, "../src/localization/testing/graphResources.ts"),
+      ]),
+    ).toEqual([]);
+    expect(
+      scanFiles([
+        resolve(
+          import.meta.dirname,
+          "../src/localization/testing/threeLabResources.ts",
+        ),
+      ]),
+    ).toEqual([]);
+    expect(
+      scanFiles([allRulesFile]).some(
+        ({ code, snippet }) =>
+          code === FINDING_CODES.presentationField && snippet.includes("title:"),
+      ),
+    ).toBe(true);
+  });
+
   it("reports every production finding code from real invalid source", () => {
     const findings = scanFiles([allRulesFile]);
     const legacyFindings = scanFiles([legacyActionPresentationFile]);
     const rawKeybindingFindings = scanFiles([rawKeybindingPresentationFile]);
     const authoredCaseFindings = scanFiles(authoredCaseTransformFiles);
+    const dynamicPresentationFindings = scanFiles([dynamicPresentationBlindspotsFile]);
 
     expect(
       new Set(
@@ -68,6 +137,7 @@ describe("localization source scanner", () => {
           ...legacyFindings,
           ...rawKeybindingFindings,
           ...authoredCaseFindings,
+          ...dynamicPresentationFindings,
         ].map(({ code }) => code),
       ),
     ).toEqual(new Set(Object.values(FINDING_CODES)));

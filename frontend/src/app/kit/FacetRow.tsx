@@ -45,7 +45,7 @@ export interface FacetRowProps {
   /** Toggle the facet. */
   onToggle: () => void;
   /** Optional trailing count (corpus members carrying this facet). */
-  count?: number;
+  count?: string;
   /** Optional leading status/health dot. */
   dot?: FacetDotTone;
   /** Control kind — checkbox (multi-select, default) or radio (single-select). */

@@ -11,6 +11,9 @@ import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
 import type { SceneController } from "../../scene/sceneController";
+import { useGraphNodeFromActiveSlice } from "../../stores/server/queries";
+import { nodeInteriorAuthoredTitle } from "../../stores/view/nodeInterior";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
 import { openContextMenu } from "../../stores/view/contextMenu";
@@ -40,6 +43,11 @@ interface IslandProps {
 
 function Island({ scene, id, scope, children }: IslandProps) {
   const anchor = useNodeAnchor(scene, id);
+  const resolveMessage = useLocalizedMessageResolver();
+  const node = useGraphNodeFromActiveSlice(id, scope);
+  const displayTitle =
+    (node === null ? null : nodeInteriorAuthoredTitle(node)) ??
+    resolveMessage({ key: "graph:labels.item" }).message;
   const islandEntity = { kind: "island" as const, id, scope };
   return (
     <div
@@ -53,12 +61,19 @@ function Island({ scene, id, scope, children }: IslandProps) {
       })}
     >
       <div className="flex items-center justify-between gap-fg-2">
-        {/* The opened node's id is true identity → monospace (typography law). */}
-        <span className="truncate font-mono text-label text-ink">{id}</span>
-        <RowMenuDisclosure entity={islandEntity} label={`${id} actions`} />
+        <span className="truncate text-label text-ink">{displayTitle}</span>
+        <RowMenuDisclosure
+          entity={islandEntity}
+          label={
+            resolveMessage({
+              key: "common:accessibility.actionsForItem",
+              values: { item: displayTitle },
+            }).message
+          }
+        />
         <button
           type="button"
-          aria-label={`Close ${id}`}
+          aria-label={resolveMessage({ key: "common:actions.close" }).message}
           className="shrink-0 text-ink-faint transition-colors duration-ui-fast hover:text-ink"
           onClick={() => closeNodeIsland(id)}
         >

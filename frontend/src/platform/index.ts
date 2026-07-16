@@ -15,7 +15,6 @@ export * from "./logger/workerBridge";
 
 // Exception containment (P02)
 export * from "./errors/ErrorBoundary";
-export * from "./errors/CrashInjector";
 
 // Dispatch seam (P03)
 export * from "./dispatch/dispatch";

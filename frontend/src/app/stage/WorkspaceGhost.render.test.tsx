@@ -23,13 +23,13 @@ describe("WorkspaceGhost", () => {
   it("offers both recovery affordances", () => {
     render(<WorkspaceGhost />);
     expect(screen.getByRole("button", { name: "Show graph" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add to a feature" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add to a feature…" })).toBeTruthy();
   });
 
   it("New document dispatches the shared create action (opens the create store)", () => {
     render(<WorkspaceGhost />);
     expect(useCreateDocChromeStore.getState().open).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Add to a feature" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add to a feature…" }));
     expect(useCreateDocChromeStore.getState().open).toBe(true);
   });
 });

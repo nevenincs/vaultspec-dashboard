@@ -13,6 +13,7 @@ import {
   encodeParamsToUrl,
   normalizeForcePresets,
   normalizePresetName,
+  presetNames,
   readPresets,
   readStoredParams,
   savePreset,
@@ -109,5 +110,21 @@ describe("three-lab force preset persistence", () => {
     expect(encoded).not.toBeNull();
     expect(decodeParamsFromUrl(encoded)?.linkDistance).toBe(42);
     expect(decodeParamsFromUrl("x".repeat(FORCE_PARAMS_URL_MAX_CHARS + 1))).toBeNull();
+  });
+
+  it("keeps preset names exact and sorts them for the active locale", () => {
+    const presets = {
+      Zebra: { ...FORCE_CONTROL_DEFAULTS },
+      Ångström: { ...FORCE_CONTROL_DEFAULTS },
+      Alpha: { ...FORCE_CONTROL_DEFAULTS },
+    };
+
+    expect(presetNames(presets, "sv")).toEqual([
+      DEFAULT_PRESET_NAME,
+      "Alpha",
+      "Zebra",
+      "Ångström",
+    ]);
+    expect(Object.keys(presets)).toEqual(["Zebra", "Ångström", "Alpha"]);
   });
 });

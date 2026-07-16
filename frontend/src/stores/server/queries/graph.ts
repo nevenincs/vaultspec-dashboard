@@ -30,6 +30,10 @@ import {
 import { useGraphSliceBuildingReconcilePoll } from "../graphSync";
 import { featureTagFromNodeId } from "../liveAdapters";
 import { normalizeStoreScope } from "../scopeIdentity";
+import {
+  authoredDisplayText,
+  compareAuthoredDisplayText,
+} from "../../../platform/localization/displayText";
 import { keepPreviousData, useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useDashboardStageSceneView, useDashboardState } from "./dashboard";
@@ -770,22 +774,44 @@ export const FEATURE_LIFECYCLE_AXIS = [
   "audit",
 ] as const;
 
-export function featureLifecycleRank(kind: string): number {
-  const i = (FEATURE_LIFECYCLE_AXIS as readonly string[]).indexOf(kind);
+export type FeatureLifecycleDocType = (typeof FEATURE_LIFECYCLE_AXIS)[number];
+
+export function featureLifecycleRank(docType: string): number {
+  const i = (FEATURE_LIFECYCLE_AXIS as readonly string[]).indexOf(docType);
   return i === -1 ? FEATURE_LIFECYCLE_AXIS.length : i;
+}
+
+/** Resolve only engine-served document types that belong on the lifecycle axis. */
+export function featureLifecycleDocType(
+  node: EngineNode,
+): FeatureLifecycleDocType | null {
+  const docType = node.doc_type;
+  return typeof docType === "string" &&
+    featureLifecycleRank(docType) < FEATURE_LIFECYCLE_AXIS.length
+    ? (docType as FeatureLifecycleDocType)
+    : null;
 }
 
 /** Order a feature's documents along the lifecycle axis, stable by title. */
 export function arrangeFeatureLifecycleAxis(
   nodes: readonly EngineNode[],
+  locale: string,
 ): EngineNode[] {
   return nodes
-    .filter((n) => featureLifecycleRank(n.kind) < FEATURE_LIFECYCLE_AXIS.length)
+    .flatMap((node) => {
+      const docType = featureLifecycleDocType(node);
+      return docType === null ? [] : [{ docType, node }];
+    })
     .sort(
       (a, b) =>
-        featureLifecycleRank(a.kind) - featureLifecycleRank(b.kind) ||
-        (a.title ?? a.id).localeCompare(b.title ?? b.id),
-    );
+        featureLifecycleRank(a.docType) - featureLifecycleRank(b.docType) ||
+        compareAuthoredDisplayText(
+          locale,
+          authoredDisplayText(a.node.title ?? a.node.id),
+          authoredDisplayText(b.node.title ?? b.node.id),
+        ),
+    )
+    .map(({ node }) => node);
 }
 
 export type FeatureLifecycleState = "loading" | "ready";
@@ -797,9 +823,10 @@ export interface FeatureLifecycleView {
 
 export function deriveFeatureLifecycleView(
   nodes: readonly EngineNode[] | undefined,
+  locale: string,
 ): FeatureLifecycleView {
   if (!nodes) return { state: "loading", docs: [] };
-  return { state: "ready", docs: arrangeFeatureLifecycleAxis(nodes) };
+  return { state: "ready", docs: arrangeFeatureLifecycleAxis(nodes, locale) };
 }
 
 /**
@@ -810,6 +837,7 @@ export function deriveFeatureLifecycleView(
 export function useFeatureLifecycleView(
   id: string,
   scope: string | null,
+  locale: string,
 ): FeatureLifecycleView {
   const tag = featureTagFromNodeId(id);
   const slice = useGraphSlice(
@@ -818,7 +846,7 @@ export function useFeatureLifecycleView(
     undefined,
     "document",
   );
-  return deriveFeatureLifecycleView(slice.data?.nodes);
+  return deriveFeatureLifecycleView(slice.data?.nodes, locale);
 }
 
 export function useNodeNeighbors(id: unknown, scope: unknown, depth: unknown = 1) {

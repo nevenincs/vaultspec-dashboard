@@ -566,18 +566,10 @@ export type RagStartStatus =
 export interface RagStartOutcome {
   status: RagStartStatus;
   attached: boolean;
-  reason?: string;
-  output?: string;
-  pid?: number;
-  port?: number;
 }
 
 function readLifecycleString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
-}
-
-function readLifecycleNumber(value: unknown): number | undefined {
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
 /** Interpret a `server-start` envelope into the typed attach outcome. The engine
@@ -606,10 +598,6 @@ export function interpretRagStartEnvelope(
   return {
     status,
     attached: envelope?.attached === true || !isFailure,
-    reason: readLifecycleString(envelope?.reason),
-    output: readLifecycleString(envelope?.output),
-    pid: readLifecycleNumber(envelope?.pid),
-    port: readLifecycleNumber(envelope?.port),
   };
 }
 
