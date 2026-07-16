@@ -289,9 +289,6 @@ export const REVIEW_STATION_MESSAGES = Object.freeze({
   loadingQueue: descriptor("documents:reviewStation.accessibility.loadingQueue"),
   showChanges: descriptor("documents:reviewStation.actions.showChanges"),
   hideChanges: descriptor("documents:reviewStation.actions.hideChanges"),
-  signIn: descriptor("documents:reviewStation.actions.signInAsReviewer"),
-  signOut: descriptor("documents:reviewStation.actions.signOut"),
-  signInToAct: descriptor("documents:reviewStation.disabledReasons.signInToAct"),
   actionInProgress: descriptor(
     "documents:reviewStation.disabledReasons.actionInProgress",
   ),
@@ -316,8 +313,6 @@ export const REVIEW_STATION_MESSAGES = Object.freeze({
   loading: descriptor("documents:reviewStation.states.loading"),
   moreAppliedChanges: descriptor("documents:reviewStation.states.moreAppliedChanges"),
   moreProposals: descriptor("documents:reviewStation.states.moreProposals"),
-  signedIn: descriptor("documents:reviewStation.states.signedIn"),
-  signingIn: descriptor("documents:reviewStation.states.signingIn"),
   untitledProposal: descriptor("documents:reviewStation.states.untitledProposal"),
   appliedAutomaticallySection: descriptor(
     "documents:reviewStation.sections.appliedAutomatically",

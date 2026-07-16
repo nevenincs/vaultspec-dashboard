@@ -101,20 +101,19 @@ describe("localization source scanner", () => {
     ).toBeGreaterThanOrEqual(3);
   });
 
-  it("excludes exact graph catalog fixtures while scanning production titles", () => {
-    expect(
-      scanFiles([
-        resolve(import.meta.dirname, "../src/localization/testing/graphResources.ts"),
-      ]),
-    ).toEqual([]);
-    expect(
-      scanFiles([
-        resolve(
-          import.meta.dirname,
-          "../src/localization/testing/threeLabResources.ts",
-        ),
-      ]),
-    ).toEqual([]);
+  it("excludes exact catalog fixtures while scanning production titles", () => {
+    for (const fixture of [
+      "agentResources.ts",
+      "graphResources.ts",
+      "settingsResources.ts",
+      "threeLabResources.ts",
+    ]) {
+      expect(
+        scanFiles([
+          resolve(import.meta.dirname, `../src/localization/testing/${fixture}`),
+        ]),
+      ).toEqual([]);
+    }
     expect(
       scanFiles([allRulesFile]).some(
         ({ code, snippet }) =>

@@ -44,6 +44,7 @@ describe("backgroundMenu resolver", () => {
       "app:keyboard-shortcuts",
       "window:reset-layout",
       "window:graph",
+      "agent:toggle-panel",
       "view:follow-mode",
     ]);
   });

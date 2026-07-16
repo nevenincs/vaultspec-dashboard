@@ -60,8 +60,10 @@ const CSS_SOURCE_EXT = /\.css$/u;
 const TEST_SOURCE = /\.(?:test|spec)\.(?:css|ts|tsx)$/u;
 const EXACT_SOURCE_EXCLUSIONS = new Set([
   "src/localization/testing/addProjectResources.ts",
+  "src/localization/testing/agentResources.ts",
   "src/localization/testing/graphResources.ts",
   "src/localization/testing/resources.ts",
+  "src/localization/testing/settingsResources.ts",
   "src/localization/testing/threeLabResources.ts",
 ]);
 const EXACT_GENERATED_SOURCES = new Set();

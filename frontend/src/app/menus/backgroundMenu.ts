@@ -13,6 +13,7 @@ import {
   toggleFollowModeAction,
   toggleGraphAction,
 } from "../../stores/view/chromeActions";
+import { agentTogglePanelAction } from "../../stores/view/agentActions";
 import { timelineDateCriterionActions } from "../timeline/menus/timelineFilterActions";
 
 export function backgroundMenu(entity: unknown): ActionDescriptor[] {
@@ -30,6 +31,7 @@ export function backgroundMenu(entity: unknown): ActionDescriptor[] {
     ...regional,
     ...chromeEscapeHatchActions(),
     toggleGraphAction(),
+    agentTogglePanelAction(),
     toggleFollowModeAction(),
   ];
 }
