@@ -76,7 +76,6 @@ import {
   useAgentCommentBatch,
   useAgentMentions,
   useAgentPendingInterrupt,
-  useAgentQueuedPrompt,
   type AgentCommentBatch,
   type AgentMention,
 } from "../../stores/view/agentComposer";
@@ -205,13 +204,14 @@ function ComposerChip({
 }
 
 /** The attached-context chip row above the input: `@`-mention chips, the D6
- *  "N comments" batch chip, and the D4 queued-prompt chip — one grammar. */
-function ComposerChipRow() {
+ *  "N comments" batch chip, and the SERVED queued-turn indicator — one grammar.
+ *  `queuedCount` is the served `queued_turn_ids.length` (S39): a read-only status
+ *  the engine owns, not a removable client slot. */
+function ComposerChipRow({ queuedCount }: { queuedCount: number }) {
   const resolveMessage = useLocalizedMessageResolver();
   const mentions = useAgentMentions();
   const commentBatch = useAgentCommentBatch();
-  const queuedPrompt = useAgentQueuedPrompt();
-  if (mentions.length === 0 && commentBatch === null && queuedPrompt === null) {
+  if (mentions.length === 0 && commentBatch === null && queuedCount === 0) {
     return null;
   }
   return (
@@ -220,15 +220,15 @@ function ComposerChipRow() {
       aria-label={resolveMessage({ key: MSG.attachedContext }).message}
       data-composer-chips
     >
-      {queuedPrompt !== null && (
+      {queuedCount > 0 && (
         <li>
-          <ComposerChip
-            glyph={<Clock3 size={12} aria-hidden />}
-            label={resolveMessage({ key: MSG.queuedChip }).message}
-            removeLabel={resolveMessage({ key: MSG.removeQueued }).message}
-            onRemove={() => useAgentComposer.getState().setQueuedPrompt(null)}
-            data="queued"
-          />
+          <span
+            className="inline-flex items-center gap-fg-1 rounded-fg-1 bg-fg-surface-sunken px-fg-2 py-fg-1 text-fg-caption text-fg-muted"
+            data-composer-chip="queued"
+          >
+            <Clock3 size={12} aria-hidden />
+            {`${queuedCount} ${resolveMessage({ key: MSG.queuedChip }).message}`}
+          </span>
         </li>
       )}
       {commentBatch !== null && (
@@ -426,7 +426,6 @@ export function Composer() {
   const mentions = useAgentMentions();
   const commentBatch = useAgentCommentBatch();
   const pendingInterrupt = useAgentPendingInterrupt();
-  const queuedPrompt = useAgentQueuedPrompt();
 
   const [text, setText] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -435,7 +434,6 @@ export function Composer() {
   const [sendFailed, setSendFailed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const submittingRef = useRef(false);
-  const queueDispatchedRef = useRef(false);
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
@@ -547,47 +545,10 @@ export function Composer() {
     ],
   );
 
-  // --- queued dispatch: the held prompt fires as the next turn the
-  // moment the run settles — exactly once (the slot clears before the send; a
-  // failed send restores it rather than losing the prompt). A settle-by-Stop
-  // cancelled the whole session, so the dispatch bootstraps a fresh one.
-  useEffect(() => {
-    if (activeRunId !== null) {
-      queueDispatchedRef.current = false;
-      return;
-    }
-    const bootstrap = sessionStatus !== null && sessionStatus !== "active";
-    if (
-      queuedPrompt === null ||
-      currentSessionId === null ||
-      session.data === undefined ||
-      (bootstrap && scope === null) ||
-      queueDispatchedRef.current
-    ) {
-      return;
-    }
-    queueDispatchedRef.current = true;
-    const prompt = queuedPrompt;
-    // Freeze whatever batch is staged at dispatch time (it stayed staged through
-    // the queue); clear it only on a successful send, restore the prompt on failure.
-    const batch = useAgentComposer.getState().commentBatch;
-    useAgentComposer.getState().setQueuedPrompt(null);
-    deliverPrompt(prompt, bootstrap, batch).then(
-      () => useAgentComposer.getState().stageCommentBatch(null),
-      () => {
-        useAgentComposer.getState().setQueuedPrompt(prompt);
-        setSendFailed(true);
-      },
-    );
-  }, [
-    activeRunId,
-    queuedPrompt,
-    currentSessionId,
-    session.data,
-    sessionStatus,
-    scope,
-    deliverPrompt,
-  ]);
+  // The client one-slot queue + its dispatch effect were REMOVED (S39): a mid-run
+  // submit dispatches the turn now (below), the engine enqueues it, and the engine
+  // auto-promotes the next queued turn when the active run settles — server-side, in
+  // the same unit of work — so there is no client dispatch-on-settle to manage.
 
   const submit = async () => {
     const prompt = buildAgentPrompt(text, mentions);
@@ -595,15 +556,10 @@ export function Composer() {
     // A submit needs SOME payload: prompt text/mentions, or a staged comment batch
     // (a comments-only turn rides the structured feedback batch, not the prompt).
     if (prompt.length === 0 && !hasComments) return;
-    if (destination === "queue") {
-      // Mid-run: hold the one queued slot (latest wins) — the input never locks.
-      // The staged comment batch stays staged (it no longer rides the prompt
-      // string) and is frozen into an engine batch when the queued prompt fires.
-      useAgentComposer.getState().setQueuedPrompt(prompt);
-      setText("");
-      useAgentComposer.getState().clearMentions();
-      return;
-    }
+    // A mid-run submit (`destination === "queue"`) is NOT a client-held slot anymore
+    // (S39): it takes the SAME deliver path as a normal turn — the engine enqueues it
+    // when a run is active (surfacing in served `queued_turn_ids`) and auto-promotes it
+    // on settle. So `queue` falls through to `deliverPrompt` below like `turn`.
     // A session cannot be created without a resolved scope; hold the submit
     // (the button is disabled in this state, and Enter is a no-op).
     if (destination === "bootstrap" && scope === null) return;
@@ -699,7 +655,7 @@ export function Composer() {
 
   return (
     <div className="relative flex flex-col gap-fg-1-5" data-agent-composer>
-      <ComposerChipRow />
+      <ComposerChipRow queuedCount={session.data?.queued_turn_ids.length ?? 0} />
       {mentionOpen && (
         <ComposerMentionPicker
           onDismiss={() => setMentionOpen(false)}

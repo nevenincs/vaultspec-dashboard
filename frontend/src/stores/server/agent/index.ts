@@ -55,6 +55,7 @@ import {
   type AgentToolCatalog,
   type InterruptListPage,
   type CancelRunPayload,
+  type CancelSessionPayload,
   type CreateFeedbackBatchPayload,
   type CreateSessionPayload,
   type FeedbackBatchReceipt,
@@ -275,6 +276,25 @@ export class AgentClient {
       await this.command(
         `/authoring/v1/runs/${encodeURIComponent(runId)}/cancel`,
         "cancel_run",
+        payload,
+        opts,
+      ),
+    );
+  }
+
+  /** `POST /authoring/v1/sessions/{id}/cancel` — explicitly END the conversation
+   *  (agent-wire-gaps D2, S45): cancels the active run, voids queued turns, and marks
+   *  the session cancelled. Distinct from the run-scoped `cancelRun` (Stop), which
+   *  leaves the session active. */
+  async cancelSession(
+    sessionId: string,
+    payload: CancelSessionPayload,
+    opts: CommandOptions,
+  ): Promise<SessionCommandOutcome> {
+    return adaptSessionCommandOutcome(
+      await this.command(
+        `/authoring/v1/sessions/${encodeURIComponent(sessionId)}/cancel`,
+        "cancel_session",
         payload,
         opts,
       ),
@@ -546,6 +566,19 @@ export function useCancelRun() {
   return useMutation({
     mutationFn: async (args: { runId: string; payload: CancelRunPayload }) =>
       agentClient.cancelRun(args.runId, args.payload, {
+        actorToken: await ensureActorToken(),
+      }),
+    onSuccess: invalidateAgent,
+  });
+}
+
+/** Explicitly END the conversation (S45): cancel the active run, void queued turns,
+ *  and mark the session cancelled. Distinct from Stop (`useCancelRun`), which is
+ *  run-scoped and leaves the session active. */
+export function useCancelSession() {
+  return useMutation({
+    mutationFn: async (args: { sessionId: string; payload: CancelSessionPayload }) =>
+      agentClient.cancelSession(args.sessionId, args.payload, {
         actorToken: await ensureActorToken(),
       }),
     onSuccess: invalidateAgent,

@@ -45,7 +45,6 @@ function resetStores(): void {
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
-    queuedPrompt: null,
     pendingInterrupt: null,
   });
 }
@@ -285,8 +284,8 @@ describe("Composer mention chips", () => {
   });
 });
 
-describe("Composer mid-run behavior (D4)", () => {
-  it("replaces Send with Stop while a real run streams, queues exactly one prompt, and dispatches it on settle", async () => {
+describe("Composer mid-run behavior (D4/S39)", () => {
+  it("replaces Send with Stop while a real run streams, and a mid-run submit ENQUEUES server-side", async () => {
     const sessionId = await createLiveSession(`Composer mid-run ${run}`);
     useAgentPanel.setState({ open: true, currentSessionId: sessionId });
     renderComposer();
@@ -300,41 +299,33 @@ describe("Composer mid-run behavior (D4)", () => {
     );
     expect(document.querySelector("[data-composer-send]")).toBeNull();
 
-    // A mid-run submit never locks the input: it holds the ONE queued chip.
+    // A mid-run submit never locks the input: S39 dispatches the turn, the engine
+    // ENQUEUES it server-side (`queued_turn_ids`) rather than a client one-slot
+    // queue, and the input clears. There is no client queue state to read.
     fireEvent.change(input(), { target: { value: "queued follow-up" } });
     fireEvent.keyDown(input(), { key: "Enter" });
+    await waitFor(() => expect(input().value).toBe(""));
+
+    // The queue state is SERVED: the session snapshot lists the enqueued turn, and
+    // the composer renders the read-only served queued indicator (not a removable
+    // client chip). Proven over the real wire.
+    await waitFor(
+      async () => {
+        const snapshot = await liveAgent.getSession(sessionId);
+        expect(snapshot.queued_turn_ids.length).toBeGreaterThanOrEqual(1);
+      },
+      { timeout: 20_000 },
+    );
     await waitFor(() =>
       expect(document.querySelector('[data-composer-chip="queued"]')).not.toBeNull(),
     );
-    expect(useAgentComposer.getState().queuedPrompt).toBe("queued follow-up");
-    expect(input().value).toBe("");
-
-    // Stop cancels the run over the real wire — which cancels the WHOLE session
-    // on this plane — so on settle the queued prompt dispatches exactly once
-    // into a FRESH bootstrapped session and the chip clears.
-    fireEvent.click(document.querySelector("[data-composer-stop]")!);
-    await waitFor(
-      () => {
-        const current = useAgentPanel.getState().currentSessionId;
-        expect(current).not.toBeNull();
-        expect(current).not.toBe(sessionId);
-      },
-      { timeout: 20_000 },
-    );
-    const nextSessionId = useAgentPanel.getState().currentSessionId!;
-    await waitFor(
-      async () => {
-        const snapshot = await liveAgent.getSession(nextSessionId);
-        expect(snapshot.turns).toHaveLength(1);
-        expect(snapshot.turns[0]!.prompt_text).toBe("queued follow-up");
-      },
-      { timeout: 20_000 },
-    );
-    const cancelled = await liveAgent.getSession(sessionId);
-    expect(cancelled.session.status).toBe("cancelled");
-    await waitFor(() =>
-      expect(document.querySelector('[data-composer-chip="queued"]')).toBeNull(),
-    );
+    // The enqueued turn carries the submitted prompt (the engine stored it).
+    const snapshot = await liveAgent.getSession(sessionId);
+    const queuedTurnId = snapshot.queued_turn_ids[0]!;
+    expect(snapshot.turns.some((t) => t.turn_id === queuedTurnId)).toBe(true);
+    // The session stays ACTIVE — the enqueue never cancelled it (S38: Stop, not a
+    // submit, is the run-scoped cancel; a submit only adds a turn).
+    expect(snapshot.session.status).toBe("active");
   });
 
   it("steers through the same input when an interrupt is staged, surfacing an honest failure on a faulting resume", async () => {

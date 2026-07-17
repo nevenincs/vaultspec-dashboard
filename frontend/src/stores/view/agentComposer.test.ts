@@ -40,7 +40,6 @@ function resetComposer(): void {
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
-    queuedPrompt: null,
     pendingInterrupt: null,
   });
 }
@@ -225,14 +224,9 @@ describe("composer store bounds", () => {
     ).toHaveLength(1);
   });
 
-  it("holds exactly one queued prompt, latest wins", () => {
-    const set = useAgentComposer.getState().setQueuedPrompt;
-    set("first");
-    set("second");
-    expect(useAgentComposer.getState().queuedPrompt).toBe("second");
-    set(null);
-    expect(useAgentComposer.getState().queuedPrompt).toBeNull();
-  });
+  // The client one-slot queued prompt was removed (S39): a mid-run submit now
+  // dispatches the turn and the engine enqueues it server-side (`queued_turn_ids`),
+  // so the composer store no longer holds a queue slot.
 
   it("appends comments to the pending batch, upserts by id, and bounds the set", () => {
     stageAgentComment(attachment({ commentId: "c1", body: "first note" }), SOURCE);

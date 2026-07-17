@@ -61,7 +61,6 @@ function resetStores(): void {
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
-    queuedPrompt: null,
     pendingInterrupt: null,
   });
 }

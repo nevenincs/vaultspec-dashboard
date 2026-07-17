@@ -244,6 +244,14 @@ export interface CancelRunPayload {
   reason: string;
 }
 
+/** `POST /authoring/v1/sessions/{id}/cancel` payload (agent-wire-gaps D2, S45): the
+ *  EXPLICIT end-the-conversation cancel — cancels the active run, voids queued turns,
+ *  and marks the session cancelled. Distinct from the run-scoped Stop (CancelRunPayload),
+ *  which since D2 leaves the session active. */
+export interface CancelSessionPayload {
+  reason: string;
+}
+
 export interface ResumeRunPayload {
   session_id?: string;
 }

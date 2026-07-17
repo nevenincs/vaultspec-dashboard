@@ -1,16 +1,20 @@
 // Local view chrome only (architecture-boundaries): the wire truth (session
-// snapshot, active run) lives in `stores/server/agent`; this store holds the
-// client-side attachment state the composer renders above its input: the
-// `@`-mention chips, staged comment batch, queued-prompt slot, and the
-// pending interrupt staged when a tool execution parks the
-// run on a permission interrupt (the engine serves no pending-interrupt read;
-// the only wire surface for an `interrupt_id` is the tool-execute
-// `awaiting_permission` arm, so the transcript forwards it here).
+// snapshot, active run, SERVED queued-turn state) lives in `stores/server/agent`;
+// this store holds the client-side attachment state the composer renders above
+// its input: the `@`-mention chips, staged comment batch, and the pending
+// interrupt staged when a tool execution parks the run on a permission interrupt
+// (the engine serves no pending-interrupt read; the only wire surface for an
+// `interrupt_id` is the tool-execute `awaiting_permission` arm, so the transcript
+// forwards it here).
+//
+// The one-slot queued prompt was REMOVED (agent-wire-gaps S39): a mid-run submit
+// now dispatches the turn to the engine, which enqueues it (`queued_turn_ids`) and
+// auto-promotes the next queued turn when the active run settles — server-side, in
+// the same unit of work — so the client holds no queue state.
 //
 // Every accumulator is bounded at creation (resource-bounds): the mention list
-// carries a hard cap, the queued prompt is exactly one slot (latest wins), the
-// comment batch and pending interrupt are single nullable records, and the
-// composer text itself is capped by `AGENT_COMPOSER_TEXT_CAP` at the input.
+// carries a hard cap, the comment batch and pending interrupt are single nullable
+// records, and the composer text itself is capped by `AGENT_COMPOSER_TEXT_CAP`.
 
 import { create } from "zustand";
 
@@ -90,7 +94,9 @@ export interface AgentPendingInterrupt {
  *    prompt opens a fresh session.
  *  - `turn`: an active session with no live run; start the next prompt turn.
  *  - `steer`: the live run is parked on an interrupt; the same input resumes it.
- *  - `queue`: a run is streaming and not parked; hold the queued prompt. */
+ *  - `queue`: a run is streaming and not parked; the submit dispatches a turn the
+ *    engine ENQUEUES server-side (S39) — the input never locks, and the queued
+ *    turn surfaces in the served `queued_turn_ids`, not a client slot. */
 export type AgentSubmitDestination = "bootstrap" | "turn" | "steer" | "queue";
 
 /** Resolve the input's destination from the session/run truth (pure — the
@@ -190,8 +196,6 @@ interface AgentComposerState {
   mentions: AgentMention[];
   /** The staged comment batch chip, or null when none is staged. */
   commentBatch: AgentCommentBatch | null;
-  /** The queued-prompt slot; latest submit wins. */
-  queuedPrompt: string | null;
   /** The interrupt the active run is parked on, staged by the transcript. */
   pendingInterrupt: AgentPendingInterrupt | null;
   addMention: (mention: AgentMention) => void;
@@ -202,14 +206,12 @@ interface AgentComposerState {
     source: { sourceDocument: string; sourceRevision: string },
   ) => void;
   stageCommentBatch: (batch: AgentCommentBatch | null) => void;
-  setQueuedPrompt: (prompt: string | null) => void;
   stageInterrupt: (interrupt: AgentPendingInterrupt | null) => void;
 }
 
 export const useAgentComposer = create<AgentComposerState>((set) => ({
   mentions: [],
   commentBatch: null,
-  queuedPrompt: null,
   pendingInterrupt: null,
   addMention: (mention) =>
     set((state) => {
@@ -255,10 +257,6 @@ export const useAgentComposer = create<AgentComposerState>((set) => ({
       };
     }),
   stageCommentBatch: (batch) => set({ commentBatch: batch }),
-  setQueuedPrompt: (prompt) =>
-    set({
-      queuedPrompt: prompt === null ? null : prompt.slice(0, AGENT_COMPOSER_TEXT_CAP),
-    }),
   stageInterrupt: (interrupt) => set({ pendingInterrupt: interrupt }),
 }));
 
@@ -270,10 +268,6 @@ export function useAgentMentions(): AgentMention[] {
 
 export function useAgentCommentBatch(): AgentCommentBatch | null {
   return useAgentComposer((state) => state.commentBatch);
-}
-
-export function useAgentQueuedPrompt(): string | null {
-  return useAgentComposer((state) => state.queuedPrompt);
 }
 
 export function useAgentPendingInterrupt(): AgentPendingInterrupt | null {
