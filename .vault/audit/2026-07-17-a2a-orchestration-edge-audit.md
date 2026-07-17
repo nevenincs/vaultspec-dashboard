@@ -45,3 +45,53 @@ The `edge-activation` branch (30 commits, worktree `Y:\code\vaultspec-dashboard-
 - RETIRE `edge-activation` (do not merge); its plan checkboxes S01, S03, S04, S05, S07, S08, S09, S10 close as DELIVERED-SUPERSEDED-BY-MAIN.
 - The S08 frame-level relay re-probe is OWED against MAIN's per-run endpoint `/ops/a2a/runs/{run_id}/stream` once an a2a gateway that actually serves the S06 `GET /v1/runs/{run_id}/stream` verb is resident (the gateway resident during the branch probe predates S06 and 404s the stream verb).
 - P05 ADR AMENDMENT SPEC (for the reviewer): the amendment must name the `agent` tier key (NOT `orchestration`); record the sibling-down-is-200-degraded ruling (a known-down sibling returns HTTP 200 with the degraded tier, 502/504 reserved for crash/timeout); and record the shipped surfaces — the `/ops/a2a/{verb}` five-verb pass-through, the per-run relay endpoint `/ops/a2a/runs/{run_id}/stream`, the feedback-batch create/read routes plus the `feedback_batch_id` turn field, and the run-completion `POST /authoring/v1/runs/{run_id}/complete` slice. Also scrutinize: the D4 source-revision fence (implemented as existence plus session-ownership; the revision fence is a documented partial), the feedback GET authz (principal-permissive capability-by-id read), and confirm the rag-dedup sweeps were run per the standing mandate.
+
+## P05 review verdicts (appended 2026-07-17, session c4903de7 — closing the S13 review half)
+
+Two formal reviews were run over the shipped edge, adjudicating the spec above.
+
+### review | high | engine-side scopes: PASS / PASS
+
+Scope A (agent-wire-gaps P02/P03: interrupt listing + typed decisions, provenance,
+mode read — `169ecd4aa0`, `4063e2b150`, `145d699f96`, `9f67b2af07`, `463a9dea29`)
+and Scope B (edge P02/P03/P04: `/ops/a2a` pass-through + D2 provisioning, per-run
+relay, feedback batches — `fd7069cb01`, `a8a68f6a8f`, `d5bfbac932`) both PASS with
+zero required code revisions. Independently verified: 822/822 lib tests, Rust
+fmt/clippy clean, digest-exclusion on run/turn provenance (no stable-key
+contamination), whitelist-403-before-discovery ordering, and token values absent
+from all logging. Two MEDIUM record-the-interpretation advisories were closed the
+same day as ADR amendments (`43fe7ffbe1`, `d7dfeef163`) satisfying the P05
+amendment spec above in full: `agent` tier key, sibling-down-200-degraded ruling,
+dedicated per-run relay endpoint reading of D3, complete shipped-surface list, and
+the D7 turn-fence reading (existence + session ownership at turn start; the
+`source_revision` fence binds at apply time through the base-revision fences).
+The feedback GET was reviewed as a principal-permissive capability-by-id read,
+consistent with every other authoring read.
+
+### review | high | a2a-side conformance: 6/6 CONFORM
+
+Cross-repo read-only review of `vaultspec-a2a` main: (1) gateway five verbs +
+run-stream under `/v1`, 64KiB run-start cap matching the engine boundary, typed
+refusals; (2) D2 token intake — bounded bundle, no mint/rename/share path,
+in-memory-only `RunTokenStore` dropped at run end, repr-redacted, zero token
+logging; (3) bounded versioned SSE frames with the `progress_dropped` sentinel the
+engine relay forwards verbatim, live-tested; (4) write seam adversarially proven
+(`test_acp_vault_deny.py` traversal/case/symlink denials as `forbidden_actor`
+VALUES, plus an observed-negative filesystem-watcher proof) — the sole
+document-creation path is the engine authoring client; (5) `feedback_batch_id`
+threads opaquely to worker dispatch with content retrieved only via
+`AuthoringClient.get_feedback_batch`, degrading to no-grounding on fault;
+(6) discovery contract (atomic service.json, 15s heartbeat, 120s staleness
+matching the engine constant, ungated dependency-probed `/health` with live pid).
+
+### review | medium | open items carried to closeout
+
+- The worker-side caller of `POST /authoring/v1/runs/{run_id}/complete` is NOT yet
+  landed in the a2a worktree (grep-confirmed absent); it is the parallel lead
+  session's in-flight lane. Until it lands, only client-driven runs complete;
+  a2a-driven runs rely on the janitor's abandoned-run reap (also that session's
+  claimed P04a lane). S13 holds open for this and for P04.S14's live proof.
+- The S08 frame-level relay re-probe against a resident S06-serving gateway
+  (recommendation above) remains owed.
+- The rag-dedup sweep confirmation named in the spec was not evidenced within
+  either review's scope; carried as a closeout check item.
