@@ -6,20 +6,9 @@
 // sole date_range writer). These helpers are DOM-free and unit-tested; the
 // component (`./TimelineRange`) composes them.
 
-export const SHORT_MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
+// Locale-aware date and month labels for the live timeline are formatted through
+// the localization `formatDate` seam in `stores/view/timeline.ts`; this pure
+// module holds only the DOM-free range math.
 
 /** Parse an ISO date string to epoch ms, or null when absent/unparseable. */
 export function parseISO(iso?: string | null): number | null {
@@ -28,36 +17,10 @@ export function parseISO(iso?: string | null): number | null {
   return Number.isFinite(ms) ? ms : null;
 }
 
-/** "12 Jun 2026" compact date readout. */
-export function dateLabel(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getUTCDate()} ${SHORT_MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-}
-
-/** "12 Jun" day+month readout (no year) — the approved thin-strip readout form. */
-export function dayMonth(ms: number): string {
-  const d = new Date(ms);
-  return `${d.getUTCDate()} ${SHORT_MONTHS[d.getUTCMonth()]}`;
-}
-
 /** The UTC day (yyyy-mm-dd) for a date_range bound — the engine compares on the
  *  date prefix, so day precision is the canonical wire form. */
 export function dayISO(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
-}
-
-/** Up to `max` month-start tick labels across the corpus span (inclusive). */
-export function monthTicks(minMs: number, maxMs: number, max = 6): string[] {
-  if (!Number.isFinite(minMs) || !Number.isFinite(maxMs) || maxMs <= minMs) return [];
-  const out: string[] = [];
-  const cur = new Date(minMs);
-  cur.setUTCDate(1);
-  cur.setUTCHours(0, 0, 0, 0);
-  while (cur.getTime() <= maxMs && out.length < max) {
-    if (cur.getTime() >= minMs) out.push(SHORT_MONTHS[cur.getUTCMonth()]!);
-    cur.setUTCMonth(cur.getUTCMonth() + 1);
-  }
-  return out;
 }
 
 /** Position (0..1) of `ms` within the corpus span `[lo, hi]`. */

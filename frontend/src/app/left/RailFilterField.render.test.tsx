@@ -28,7 +28,7 @@ import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { RailFilterField } from "./RailFilterField";
 import { ENGINE_WAIT } from "../../testing/timing";
 
-const FILTER_LABEL = "filter the vault by feature";
+const FILTER_LABEL = "Filter the vault by feature";
 
 let scope: string;
 let docType: string;
@@ -103,7 +103,7 @@ describe("RailFilterField (the canonical feature filter)", () => {
 
     const input = await screen.findByLabelText(FILTER_LABEL, undefined, ENGINE_WAIT);
     fireEvent.change(input, { target: { value: "stale" } });
-    fireEvent.click(screen.getByRole("button", { name: "clear search" }));
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
 
     await waitFor(async () => {
       const state = await createLiveClient().dashboardState(scope);

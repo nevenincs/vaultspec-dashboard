@@ -85,10 +85,22 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
       sections.openIssues,
       sections.recentCommits,
     ]).toEqual([
-      { id: "open-plans", title: "Plans", count: 3 },
-      { id: "pull-requests", title: "Pull requests", count: 2 },
-      { id: "open-issues", title: "Issues", count: 1 },
-      { id: "recent-commits", title: "Commits" },
+      {
+        id: "open-plans",
+        title: { key: "common:finalWave.statusSections.plans" },
+        count: 3,
+      },
+      {
+        id: "pull-requests",
+        title: { key: "common:finalWave.statusSections.pullRequests" },
+        count: 2,
+      },
+      {
+        id: "open-issues",
+        title: { key: "common:finalWave.statusSections.issues" },
+        count: 1,
+      },
+      { id: "recent-commits", title: { key: "common:finalWave.statusSections.commits" } },
     ]);
   });
 

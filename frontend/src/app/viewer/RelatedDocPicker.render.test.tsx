@@ -49,7 +49,7 @@ describe("RelatedDocPicker", () => {
       />,
     );
 
-    const input = screen.getByRole("combobox", { name: "link a related document" });
+    const input = screen.getByRole("combobox", { name: "Link a related document" });
     fireEvent.focus(input);
     // The edited document never lists itself as a link target.
     expect(screen.queryByText("Self")).toBeNull();
@@ -72,7 +72,7 @@ describe("RelatedDocPicker", () => {
     );
 
     expect(screen.getByText("alpha-plan")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "remove alpha-plan" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove alpha-plan" }));
     expect(onChange).toHaveBeenCalledWith("beta-adr");
   });
 
@@ -85,7 +85,7 @@ describe("RelatedDocPicker", () => {
         selfStem="self-doc"
       />,
     );
-    const input = screen.getByRole("combobox", { name: "link a related document" });
+    const input = screen.getByRole("combobox", { name: "Link a related document" });
     fireEvent.focus(input);
     fireEvent.change(input, { target: { value: "alpha" } });
     // "Alpha plan" is already linked, so it is not an option.

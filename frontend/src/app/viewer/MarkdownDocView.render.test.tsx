@@ -97,7 +97,7 @@ describe("MarkdownDocView edit mode", () => {
         name: en.documents.editor.accessibility.formattingToolbar,
       }),
     ).toBeTruthy();
-    expect(screen.getByLabelText("document body editor")).toBeTruthy();
+    expect(screen.getByLabelText("Document body editor")).toBeTruthy();
     // The properties surface is closed by default — no dialog, no permanent form.
     expect(screen.queryByRole("dialog", { name: "Document properties" })).toBeNull();
   });
@@ -111,14 +111,14 @@ describe("MarkdownDocView edit mode", () => {
   it("applies a formatting command from the toolbar to the selection", () => {
     renderEditing();
     const textarea = screen.getByLabelText(
-      "document body editor",
+      "Document body editor",
     ) as HTMLTextAreaElement;
     textarea.setSelectionRange(0, textarea.value.length);
     fireEvent.click(
       screen.getByRole("button", { name: en.documents.editor.actions.bold }),
     );
     const updated = screen.getByLabelText(
-      "document body editor",
+      "Document body editor",
     ) as HTMLTextAreaElement;
     expect(updated.value.startsWith("**")).toBe(true);
     expect(updated.value.endsWith("**")).toBe(true);
@@ -183,7 +183,7 @@ describe("MarkdownDocView edit mode", () => {
   it("does NOT swallow the global Mod+K / Mod+B chords (no bespoke formatting accelerator)", () => {
     renderEditing();
     const textarea = screen.getByLabelText(
-      "document body editor",
+      "Document body editor",
     ) as HTMLTextAreaElement;
     const before = textarea.value;
 
@@ -192,7 +192,7 @@ describe("MarkdownDocView edit mode", () => {
     fireEvent.keyDown(textarea, { key: "k", ctrlKey: true });
     fireEvent.keyDown(textarea, { key: "b", ctrlKey: true });
 
-    const after = (screen.getByLabelText("document body editor") as HTMLTextAreaElement)
+    const after = (screen.getByLabelText("Document body editor") as HTMLTextAreaElement)
       .value;
     expect(after).toBe(before);
     expect(after.includes("](url)")).toBe(false);

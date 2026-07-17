@@ -57,9 +57,9 @@ describe("edgeMenu", () => {
     const rel = find(bare, "edge:copy-relation");
     const dst = find(bare, "edge:copy-destination");
     expect(rel.disabled).toBe(true);
-    expect(rel.disabledReason).toBe("no relation");
+    expect(rel.disabledReason).toEqual({ key: "common:disabledReasons.noRelation" });
     expect(dst.disabled).toBe(true);
-    expect(dst.disabledReason).toBe("no destination");
+    expect(dst.disabledReason).toEqual({ key: "common:disabledReasons.noDestination" });
     // copy-id is always available — the edge always has an id.
     expect(find(bare, "edge:copy-id").disabled).toBeUndefined();
   });

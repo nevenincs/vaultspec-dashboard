@@ -2,9 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   clampToSpan,
-  dateLabel,
   dayISO,
-  monthTicks,
   msAtRatio,
   nextRangeForHandle,
   parseISO,
@@ -24,16 +22,8 @@ describe("timelineRange helpers", () => {
     expect(parseISO("not-a-date")).toBeNull();
   });
 
-  it("dateLabel and dayISO render UTC day forms", () => {
-    expect(dateLabel(JUN1)).toBe("1 Jun 2026");
+  it("dayISO renders the UTC day form for a date_range bound", () => {
     expect(dayISO(JUN30)).toBe("2026-06-30");
-  });
-
-  it("monthTicks lists month starts across the span (bounded)", () => {
-    const ticks = monthTicks(Date.parse("2026-04-15"), Date.parse("2026-06-15"));
-    expect(ticks).toEqual(["May", "Jun"]);
-    expect(monthTicks(JUN30, JUN1)).toEqual([]); // reversed span → none
-    expect(monthTicks(0, Date.parse("2030-01-01"), 3)).toHaveLength(3); // capped
   });
 
   it("spanRatio / msAtRatio are inverse within the span and clamp", () => {
