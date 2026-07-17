@@ -12,7 +12,7 @@ use rusqlite::{Connection, OptionalExtension};
 use super::super::model::CommandKind;
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-pub(crate) const SCHEMA_VERSION: i64 = 20;
+pub(crate) const SCHEMA_VERSION: i64 = 21;
 pub(crate) const STORE_KIND: &str = "vaultspec_authoring";
 
 pub(crate) const METADATA_SCHEMA: &str = "
@@ -1091,6 +1091,51 @@ SET schema_version = 20
 WHERE singleton = 1;
 ";
 
+// D1+D2/D4/D7 wire-gap closure (agent-wire-gaps plan P01.S01): ONE additive version
+// bump carrying three independent shapes so later phases add only code, not a second
+// migration. (1) `queue_state` on prompt turns backs the bounded FIFO turn queue —
+// existing turns backfill to `direct` (they each started their own run, the pre-queue
+// behavior); a queued turn carries no run until FIFO promotion flips it to `promoted`,
+// and session cancel flips a still-queued turn to `voided` (readable history, never
+// runnable). (2) `run_id`/`turn_id` provenance on changeset revisions is authored here
+// but stamped by P03's tool-executor dispatch (human/direct changesets stay NULL).
+// (3) `authoring_feedback_batches` is the immutable digest-addressed batch table P04
+// consumes; a shape change discovered at P04 time ships as a FRESH version bump, never
+// an edit of this landed version.
+const QUEUE_PROVENANCE_FEEDBACK_SCHEMA: &str = "
+ALTER TABLE authoring_prompt_turns
+    ADD COLUMN queue_state TEXT NOT NULL DEFAULT 'direct'
+    CHECK (queue_state IN ('direct', 'queued', 'promoted', 'voided'));
+
+CREATE INDEX idx_authoring_prompt_turns_queued
+    ON authoring_prompt_turns (session_id, turn_index ASC)
+    WHERE queue_state = 'queued';
+
+ALTER TABLE authoring_changeset_revisions ADD COLUMN run_id TEXT;
+ALTER TABLE authoring_changeset_revisions ADD COLUMN turn_id TEXT;
+
+CREATE TABLE authoring_feedback_batches (
+    feedback_batch_id            TEXT NOT NULL,
+    session_id                   TEXT NOT NULL,
+    source_revision              TEXT NOT NULL,
+    author_actor_id              TEXT NOT NULL,
+    author_actor_kind            TEXT NOT NULL,
+    author_delegated_by_actor_id TEXT NOT NULL DEFAULT '',
+    comment_count                INTEGER NOT NULL CHECK (comment_count >= 0),
+    total_bytes                  INTEGER NOT NULL CHECK (total_bytes >= 0),
+    record_json                  TEXT NOT NULL,
+    created_at_ms                INTEGER NOT NULL,
+    PRIMARY KEY (feedback_batch_id)
+) WITHOUT ROWID;
+
+CREATE INDEX idx_authoring_feedback_batches_session
+    ON authoring_feedback_batches (session_id, created_at_ms ASC);
+
+UPDATE authoring_store_metadata
+SET schema_version = 21
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Migration {
     pub(crate) version: i64,
@@ -1199,6 +1244,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         name: "create_authoring_comments",
         sql: COMMENTS_SCHEMA,
     },
+    Migration {
+        version: 21,
+        name: "add_queue_state_provenance_and_feedback_batches",
+        sql: QUEUE_PROVENANCE_FEEDBACK_SCHEMA,
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1258,6 +1308,10 @@ pub enum StoreError {
     Comment(String),
     #[error("authoring session error: {0}")]
     Session(String),
+    #[error("authoring run authorization error: {0}")]
+    RunForbidden(String),
+    #[error("authoring turn queue full: {0}")]
+    TurnQueueFull(String),
     #[error("command {command:?} is read-only and cannot open a mutating unit of work")]
     ReadOnlyCommandUnitOfWork { command: CommandKind },
 }

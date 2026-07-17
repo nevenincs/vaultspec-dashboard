@@ -9,9 +9,9 @@ use ingest_struct::reader::blob_oid;
 use serde_json::{Value, json};
 
 use super::super::api::{
-    CancelRunRequest, ChangesetChildOperationDraft, CompleteRunRequest, CreateProposalRequest,
-    CreateSessionRequest, InterruptResumeRequest, ResumeRunRequest, StartPromptTurnRequest,
-    ToolPermissionDecisionRequest,
+    CancelRunRequest, CancelSessionRequest, ChangesetChildOperationDraft, CompleteRunRequest,
+    CreateProposalRequest, CreateSessionRequest, InterruptResumeRequest, ResumeRunRequest,
+    StartPromptTurnRequest, ToolPermissionDecisionRequest,
 };
 use super::super::apply::ApplyOutcome;
 use super::super::approvals::{ApprovalError, ApprovalRequestRecord};
@@ -216,8 +216,8 @@ pub async fn get_session(
     }
 }
 
-/// `POST /authoring/v1/sessions/{session_id}/turns` — start a prompt turn or
-/// join the already-active run for the session.
+/// `POST /authoring/v1/sessions/{session_id}/turns` — start a prompt turn. When a run
+/// is already active the turn is ENQUEUED behind it (D2 bounded FIFO queue), not joined.
 pub async fn start_prompt_turn(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<SessionId>,
@@ -228,6 +228,26 @@ pub async fn start_prompt_turn(
     let context = session_context(actor, idempotency_key, now);
     match state.with_authoring_store(|store| {
         super::super::session::start_prompt_turn(store, context, session_id, payload)
+    }) {
+        Ok(result) => session_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/sessions/{session_id}/cancel` — explicitly terminate a session
+/// (D2): cancel its active run if one exists, void every queued turn, and mark the
+/// session `Cancelled`. Distinct from the run-scoped `POST /v1/runs/{run_id}/cancel`,
+/// which leaves the session `Active`.
+pub async fn cancel_session(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<SessionId>,
+    command: ResolvedCommand<CancelSessionRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let context = session_context(actor, idempotency_key, now);
+    match state.with_authoring_store(|store| {
+        super::super::session::cancel_session(store, context, session_id, payload)
     }) {
         Ok(result) => session_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),
@@ -348,6 +368,21 @@ pub(super) fn command_error_response(state: &AppState, err: &StoreError) -> Resp
         StoreError::Session(_) => (
             StatusCode::UNPROCESSABLE_ENTITY,
             "authoring_session_refused",
+            err.to_string(),
+        ),
+        // The completing principal is not the run's owner (or its delegator): an
+        // owner-only authorization refusal on the run-settle command (D1), a 403.
+        StoreError::RunForbidden(_) => (
+            StatusCode::FORBIDDEN,
+            "authoring_run_forbidden",
+            err.to_string(),
+        ),
+        // The per-session turn queue is at `TURN_QUEUE_CAP` (D2): a typed
+        // client-correctable refusal, a 422 with its own kind so the composer can
+        // surface "queue full" distinctly from a generic session refusal.
+        StoreError::TurnQueueFull(_) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "authoring_turn_queue_full",
             err.to_string(),
         ),
         // A comment CRUD fault (unknown comment, malformed anchor, cap/retention

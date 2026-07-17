@@ -75,10 +75,11 @@ export interface AgentPendingInterrupt {
 
 /** Where one composer submit goes:
  *  - `bootstrap`: no usable session; create one, then start the first turn.
- *    This includes a current session whose SERVED status is no longer `active`:
- *    the engine's `cancel_run` cancels the whole session and a non-active
- *    session rejects every further turn, so Stop ends the conversation and the
- *    next prompt opens a fresh session seamlessly.
+ *    This includes a current session whose SERVED status is no longer `active`.
+ *    Since D2 `cancel_run` is run-scoped and leaves the session `active`, Stop no
+ *    longer ends the conversation — the next prompt continues the same session.
+ *    Only an explicit session cancel makes a session non-active; then the next
+ *    prompt opens a fresh session.
  *  - `turn`: an active session with no live run; start the next prompt turn.
  *  - `steer`: the live run is parked on an interrupt; the same input resumes it.
  *  - `queue`: a run is streaming and not parked; hold the queued prompt. */

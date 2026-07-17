@@ -81,6 +81,33 @@ impl RunStatus {
     }
 }
 
+/// The queue lifecycle of a prompt turn (D2 bounded FIFO turn queue). `Direct` is a
+/// turn that started its own run immediately (the only state before the queue existed,
+/// and the state of every first turn). `Queued` is a turn submitted while a run was
+/// active — persisted with no run yet. `Promoted` is a formerly-queued turn that FIFO
+/// promotion has since given a fresh run. `Voided` is a queued turn a session cancel
+/// retired: it stays readable history but is never runnable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnQueueState {
+    #[default]
+    Direct,
+    Queued,
+    Promoted,
+    Voided,
+}
+
+impl TurnQueueState {
+    pub(super) fn as_str(self) -> &'static str {
+        match self {
+            Self::Direct => "direct",
+            Self::Queued => "queued",
+            Self::Promoted => "promoted",
+            Self::Voided => "voided",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionCommandContext {
     pub actor: ActorRef,
@@ -127,6 +154,10 @@ pub struct PromptTurnRecord {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub langgraph: Option<LangGraphRef>,
     pub created_at_ms: i64,
+    /// The turn's queue lifecycle (D2). Defaults to `Direct` so pre-migration turn
+    /// records — every one of which started its own run — deserialize unchanged.
+    #[serde(default)]
+    pub queue_state: TurnQueueState,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -144,6 +175,13 @@ pub struct RunRecord {
     pub langgraph: Option<LangGraphRef>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cancellation_reason: Option<String>,
+    /// The reason a run reached its terminal `Failed` state (D1 outcome enum, and the
+    /// janitor's `abandoned` reap in P04a). Distinct from `cancellation_reason` — a
+    /// cancel is not a failure. JSON-only: the source-of-truth record carries it; the
+    /// runs table needs no column since nothing queries it. Absent for a `Completed` or
+    /// non-terminal run, and for a `Failed` run whose caller supplied no reason.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
     pub created_at_ms: i64,
     pub updated_at_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -160,6 +198,12 @@ pub struct SessionSnapshot {
     pub runs: Vec<RunRecord>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub active_run: Option<RunRecord>,
+    /// The turn ids currently queued behind the active run (D2), oldest first by
+    /// `turn_index`, so the client reads queue depth explicitly instead of inferring
+    /// it from a turn's missing run. Empty when nothing is queued. `#[serde(default)]`
+    /// keeps a pre-D2 recorded outcome snapshot deserializing unchanged.
+    #[serde(default)]
+    pub queued_turn_ids: Vec<String>,
     pub caps: SessionSnapshotCaps,
 }
 

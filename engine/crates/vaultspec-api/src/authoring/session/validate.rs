@@ -260,3 +260,17 @@ pub(super) fn validate_completion_summary(summary: Option<&str>) -> StoreResult<
     }
     Ok(())
 }
+
+/// A `Failed` run's optional `failure_reason` (D1), validated like the cancel reason:
+/// non-empty, unpadded, and at most 500 bytes when present.
+pub(super) fn validate_failure_reason(reason: Option<&str>) -> StoreResult<()> {
+    if let Some(reason) = reason
+        && (reason.trim().is_empty() || reason != reason.trim() || reason.len() > 500)
+    {
+        return Err(StoreError::Session(
+            "failure reason must be non-empty, unpadded, and at most 500 bytes when present"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}

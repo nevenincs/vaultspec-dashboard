@@ -395,16 +395,42 @@ pub struct CancelRunRequest {
     pub reason: String,
 }
 
-/// Settle an active run into its terminal `Completed` state. Completion is the
-/// natural close of a run whose driver reports the turn's processing finished —
-/// unlike a cancel, it carries no reason and leaves the owning session `Active`
-/// so further turns may follow. The optional `summary` is a human-facing note the
-/// run.completed lifecycle event carries; it names no run-record field.
+/// The terminal outcome a run driver reports through `complete` (D1). The bounded
+/// two-token vocabulary rides inside the existing `RunStatus`, so one command and one
+/// `run.completed` event cover both arms. An absent `outcome` on the wire means
+/// `Completed`, preserving the shipped callers that predate this field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunOutcome {
+    #[default]
+    Completed,
+    Failed,
+}
+
+/// Settle an active run into its terminal state (D1). The `outcome` names `completed`
+/// or `failed` (absent means `completed`, preserving the shipped callers); a `failed`
+/// outcome may carry a `failure_reason` (validated like the cancel reason) that the
+/// run record and the `run.completed` event carry, while a `completed` outcome must
+/// carry none. Unlike a cancel it leaves the owning session `Active` so further turns
+/// may follow. The optional `summary` is a human-facing note the event carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompleteRunRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub outcome: Option<RunOutcome>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+}
+
+/// Explicitly terminate a whole session (D2), cancelling its active run if one exists
+/// and voiding any queued turns. Distinct from `CancelRunRequest`, which since D2 is
+/// run-scoped and leaves the session `Active`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CancelSessionRequest {
+    pub reason: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

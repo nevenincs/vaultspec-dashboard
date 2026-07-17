@@ -106,6 +106,10 @@ fn clean_open_creates_metadata_and_survives_restart() {
                     version: 20,
                     name: "create_authoring_comments".to_string(),
                 },
+                AppliedMigration {
+                    version: 21,
+                    name: "add_queue_state_provenance_and_feedback_batches".to_string(),
+                },
             ]
         );
         let table_count: i64 = store
@@ -138,19 +142,20 @@ fn clean_open_creates_metadata_and_survives_restart() {
                            'authoring_tool_call_records',
                            'authoring_leases',
                            'authoring_review_claims',
-                           'authoring_comments'
+                           'authoring_comments',
+                           'authoring_feedback_batches'
                         )",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(table_count, 24);
+        assert_eq!(table_count, 25);
     }
 
     let reopened = Store::open_at(&path).expect("authoring store reopens");
     let metadata = reopened.schema_metadata().unwrap();
     assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-    assert_eq!(metadata.applied_migrations.len(), 20);
+    assert_eq!(metadata.applied_migrations.len(), 21);
 }
 
 #[test]

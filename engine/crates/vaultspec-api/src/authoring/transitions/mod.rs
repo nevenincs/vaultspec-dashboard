@@ -399,6 +399,7 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         CommandKind::CreateSession
         | CommandKind::StartPromptTurn
         | CommandKind::CompleteRun
+        | CommandKind::CancelSession
         | CommandKind::ResumeRun
         | CommandKind::ClaimReview
         | CommandKind::ReleaseReview

@@ -55,8 +55,9 @@ describe("agentSubmitDestination", () => {
   });
 
   it("bootstraps a fresh session when the current one is no longer active", () => {
-    // `cancel_run` cancels the WHOLE session on this plane; a non-active session
-    // rejects every further turn, so the next submit opens a new session.
+    // Since D2, only an explicit session cancel makes a session non-active — Stop's
+    // run-scoped `cancel_run` leaves it active. A non-active session rejects every
+    // further turn, so the next submit opens a new session.
     expect(
       agentSubmitDestination({
         sessionId: "session:a",
