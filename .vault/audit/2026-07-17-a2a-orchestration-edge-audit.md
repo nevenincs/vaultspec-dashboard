@@ -95,7 +95,19 @@ matching the engine constant, ungated dependency-probed `/health` with live pid)
   session's in-flight lane. Until it lands, only client-driven runs complete;
   a2a-driven runs rely on the janitor's abandoned-run reap (also that session's
   claimed P04a lane). S13 holds open for this and for P04.S14's live proof.
-- The S08 frame-level relay re-probe against a resident S06-serving gateway
-  (recommendation above) remains owed.
+- The S08 frame-level relay re-probe against a fresh S06-serving gateway (port
+  8811) is COMPLETE. Through main's per-run endpoint `GET
+  /ops/a2a/runs/{run_id}/stream` a real SSE frame was captured over the wire
+  (`event: thread_terminal`, `id: 0`, `replay:true`, `seq:0`), replay-from-ring
+  and terminal-latch on reconnect were exercised (`Last-Event-ID: 0` still
+  re-delivers the terminal event), the `agent` tier was absent under a fresh
+  heartbeat, and zero frames were fabricated. The intermediate progress-frame
+  path (gap-on-lag, gap-on-eviction, `progress_dropped` sentinel over the wire)
+  could not be driven live: mock-autonomous runs resolve `provider_ready:false`
+  at execution and fail at `last_sequence:0` emitting no `sse_frames` — an
+  a2a-side emission gap (executor-service's domain), not a relay defect. Those
+  behaviors stay proven by main's hermetic `a2a_stream.rs` tests (17 passed, 0
+  failed on the main binary), which deterministically overflow the ring in a way
+  a live run cannot reliably reproduce. Recorded in the P03.S08 Step Record.
 - The rag-dedup sweep confirmation named in the spec was not evidenced within
   either review's scope; carried as a closeout check item.
