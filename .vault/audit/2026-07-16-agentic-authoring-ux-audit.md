@@ -3,29 +3,10 @@ tags:
   - '#audit'
   - '#agentic-authoring-ux'
 date: '2026-07-16'
-modified: '2026-07-16'
+modified: '2026-07-17'
 related:
   - "[[2026-07-16-agentic-authoring-ux-plan]]"
 ---
-
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #audit) and one feature tag.
-     Replace agentic-authoring-ux with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar]]'.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
 
 # `agentic-authoring-ux` audit: `wave W01 detangle and unify review` | APPROVED
 
@@ -269,3 +250,86 @@ Deferred D8 follow-up, non-blocking.
   read (so the autonomy control works pre-proposal).
 - Deferred follow-ups: the `stopRun`/`stop` "End conversation" dedup (W02) and
   the `comment:send-to-agent` ActionDescriptor (W04).
+
+## Wave W05 — a2a team runs and relay (S21/S22) | PASS
+
+Reviewed the Team selector's a2a wiring (S21) and the relayed SSE consumption with
+polling fallback (S22), unblocked once the a2a backend's edge cutover
+(`agent-wire-gaps`/`a2a-orchestration-edge`) landed. Reviewer-verified independently:
+scoped `tsc`, `eslint`, and `prettier` clean; 18 frontend unit tests
+(`a2aTeam.test.ts`, `a2aRelay.test.ts`) + 2 live tests (`a2aTeam.live.test.ts`) — all
+green; 17 engine relay tests (`routes::ops::a2a_stream`) — all green. Landed at
+commits `dcdcfaa83d` (Team selector + per-run relay consumption + polling fallback)
+and `212c322bbb` (the engine-side relay `seq` annotation the client dedup depends on).
+
+### tolerant-agent-tier-reader | none (confirmed) | matches the edge ADR D3 amendment, with a named canonical-seeding follow-up
+
+The frontend reads the a2a agent-tier vocabulary tolerantly rather than pinning an
+exact enum, matching the edge ADR's D3 amendment for forward-compatible tier naming.
+A named follow-up (canonical tier seeding on the served side) is filed, not blocking.
+
+### sole-wire-client-placement | none (confirmed) | mirrors the streams.ts split
+
+`A2aTeamClient` is the ONE wire client for the `/ops/a2a` pass-through, placed under
+`stores/server/agent` mirroring the existing `streams.ts` sole-wire-client split for
+other SSE-backed surfaces — no second caller reaches the pass-through directly.
+
+### bounded-consumption | none (confirmed) | 256-cap ring, seq-dedup, 5s poll, gcTime-paired
+
+The retained relay transcript is ring-capped (`RELAY_TRANSCRIPT_CAP`), deduped by the
+engine-annotated `seq`, the degraded-fallback `run-status` poll runs at a bounded 5s
+cadence, and the query's `gcTime` is paired to reclaim the transcript promptly once
+the run panel unmounts — no unbounded accumulator on either side of the relay.
+
+### engine-seq-annotation-validated | none (confirmed) | the id-line blind spot is real and correctly fixed
+
+The engine fix (`212c322bbb`) annotates the ring `seq` into the SSE frame's `data`
+payload because the transport's `id:` line is invisible to a `fetch`-stream parser —
+only `EventSource` reads SSE `id`, and the client deliberately uses a bearer-carrying
+`fetch` stream instead (`EventSource` cannot carry the machine bearer). Reviewer
+independently confirmed the client-side dedup logic reads the payload-embedded `seq`,
+not a transport-level `id`, so the fix closes a real blind spot rather than one that
+was already covered.
+
+### memo-discipline | none (confirmed) | derived state stays outside the query hooks
+
+`useRunProgress` composes `useRunRelay` + `useTeamRunStatus` and derives `degraded`
+and `latestSeq` in `useMemo` keyed on the raw query data, not inside a selector or the
+query hook itself — consistent with the frontend-store-selectors rule (derive outside
+the hook, in a memo keyed on the raw slice).
+
+### honest-degraded-only-live-coverage | none (confirmed) | the a2a-UP path is delegated, not silently skipped
+
+The frontend live suite (`a2aTeam.live.test.ts`) exercises the degraded/a2a-DOWN path
+against the real engine; it does not stand up a live a2a sibling to prove the
+a2a-UP happy path, which is deliberately delegated to the a2a repo's own gateway
+tests plus the cross-repo end-to-end acceptance pass rather than duplicated here.
+This is an explicit, reviewed scope boundary — not an unproven claim wearing a green
+checkmark.
+
+### since-resume-unwired | low (deferred) | a reconnect never resumes past the ring tail; the JSDoc overclaims
+
+`useRunRelay`'s `streamFn` calls `openRunStream(runId ?? "", undefined,
+context.signal)` with a hardcoded `undefined` `since` on every call, including
+TanStack Query's own retry/reconnect path. `latestRelaySeq(frames)` is computed and
+exposed on `RunProgress.latestSeq` but never fed back into a reconnect's `since=`
+resume point, so a reconnect always restarts from the ring tail rather than resuming
+past already-seen frames. `openRunStream`'s own JSDoc ("`since` resumes from the
+engine ring") correctly describes the method's capability but overclaims what the one
+caller actually does with it. Not a correctness defect — the reducer's seq-based
+dedup absorbs any overlap the ring still retains, and a gap beyond the ring's
+retention already triggers the honest degraded-polling fallback — but it is a missed
+optimization worth closing. Routed to the `agent-wire-gaps` plan's P05 working set for
+closure rather than fixed inline here.
+
+## Recommendations
+
+- W05 PASS; S21/S22 accepted with one low, non-blocking finding routed to
+  `agent-wire-gaps` P05 for closure.
+- `S23`'s full-gate half (running `just dev lint frontend` project-wide and persisting
+  this audit as part of one combined pass) remains OPEN: the gate is red only on the
+  frontend-localization lane's in-flight WIP (in-progress fixes for `S216`/`S234`/
+  `S59`/the `edgeMenu` copy-safety follow-up), not on anything in this wave's own
+  scope. S23 closes once that lane's gate turns green project-wide.
+- With W05 PASS, every wave of the agentic-authoring-ux epic that has landed code is
+  now reviewed; the epic's remaining open item is exactly `S23`'s full-gate closure.

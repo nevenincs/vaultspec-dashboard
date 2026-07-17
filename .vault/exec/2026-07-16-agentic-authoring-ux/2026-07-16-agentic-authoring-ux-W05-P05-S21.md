@@ -3,44 +3,11 @@ tags:
   - '#exec'
   - '#agentic-authoring-ux'
 date: '2026-07-16'
-modified: '2026-07-16'
+modified: '2026-07-17'
 step_id: 'S21'
 related:
   - "[[2026-07-16-agentic-authoring-ux-plan]]"
 ---
-
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace agentic-authoring-ux with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S21 and 2026-07-16-agentic-authoring-ux-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Wire the Team selector to the a2a presets-list pass-through and team run-start/status/cancel, degraded disabled-with-reason from tiers when a2a is down (D9) and ## Scope
-
-- `frontend/src/stores/server/agent` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
 
 # Wire the Team selector to the a2a presets-list pass-through and team run-start/status/cancel, degraded disabled-with-reason from tiers when a2a is down (D9)
 
@@ -50,10 +17,29 @@ related:
 
 ## Description
 
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
+- Added `A2aTeamClient` (`frontend/src/stores/server/agent/a2aTeam.ts`) as the sole
+  wire client for the `/ops/a2a` pass-through: `presetsList`, `runStart`, `runStatus`,
+  `cancelRun`, and `openRunStream`, each going through the one `passThrough`/
+  `baseFetch` seam so no caller reaches the engine directly.
+- Presets, run-start, and run-status all read degradation from the served `tiers`
+  block (wire-contract rule): when the a2a sibling is down, the Team selector renders
+  disabled-with-reason from that tiers truth rather than inferring offline from a
+  transport error or timeout.
+- Bounded query caches under `a2aKeys` (`presets`, `serviceState`, `runStatus(runId)`,
+  `runRelay(runId)`) — no unbounded accumulator.
 
 ## Outcome
 
+The Team selector is wired end to end to the a2a presets-list pass-through and the
+team run lifecycle (start/status/cancel), degrading honestly from `tiers` when a2a is
+unreachable.
+
 ## Notes
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+Landed at commit `dcdcfaa83d` ("Team selector over /ops/a2a + per-run relay
+consumption with polling fallback"). Reviewer-verified: scoped `tsc`/`eslint`/
+`prettier` clean, 18 unit tests (`a2aTeam.test.ts`) + 2 live tests
+(`a2aTeam.live.test.ts`) — independently reconfirmed live, 20/20 passing. Full review
+verdict and the six confirmed focus items are recorded in the W05 section of
+`2026-07-16-agentic-authoring-ux-audit.md`. This record was authored during a
+persistence pass alongside the review, not the review itself.

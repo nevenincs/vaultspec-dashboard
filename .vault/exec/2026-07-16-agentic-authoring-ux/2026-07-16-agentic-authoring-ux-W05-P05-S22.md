@@ -3,44 +3,11 @@ tags:
   - '#exec'
   - '#agentic-authoring-ux'
 date: '2026-07-16'
-modified: '2026-07-16'
+modified: '2026-07-17'
 step_id: 'S22'
 related:
   - "[[2026-07-16-agentic-authoring-ux-plan]]"
 ---
-
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace agentic-authoring-ux with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S22 and 2026-07-16-agentic-authoring-ux-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Consume the a2a relayed SSE channel for token/tool-call frames once the a2a team ships it, with bounded run-status polling fallback (D3/D9) and ## Scope
-
-- `frontend/src/stores/server/liveAdapters` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
 
 # Consume the a2a relayed SSE channel for token/tool-call frames once the a2a team ships it, with bounded run-status polling fallback (D3/D9)
 
@@ -50,10 +17,47 @@ related:
 
 ## Description
 
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
+- Added `frontend/src/stores/server/liveAdapters/a2aRelay.ts`: `adaptRelayFrame`
+  lifts the engine `seq` annotation from a raw SSE frame, `relayTranscriptReducer`
+  dedupes by that `seq` and ring-caps the retained transcript at
+  `RELAY_TRANSCRIPT_CAP` (bounded-by-default), and `relayFrameForcesReconcile`
+  classifies a `gap`/`relay_degraded` control frame as the honest signal to fall back
+  to polling rather than faking liveness.
+- Added `useRunRelay`/`useRunProgress` (`frontend/src/stores/server/agent/a2aTeam.ts`)
+  composing the relay transcript with the authoritative `run-status` poll: `degraded`
+  goes true on a relay error or a reconcile-forcing frame, and `useTeamRunStatus`
+  polls at a bounded cadence only while degraded — the relay is non-authoritative by
+  contract, truth is always recoverable from `run-status` + durable authoring events.
+- The engine-side counterpart (`212c322bbb`) annotates the ring `seq` into the SSE
+  frame's data payload, since the transport's `id:` line is invisible to a
+  `fetch`-stream parser (only `EventSource` reads SSE `id`), so client-side dedup
+  needed the seq inside the payload it can actually read.
 
 ## Outcome
 
+The docked agent panel consumes the a2a relayed SSE channel for live token/tool-call
+frames with a bounded transcript and an honest degraded-to-polling fallback; nothing
+fabricates liveness when the relay is down or has gapped.
+
 ## Notes
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+Landed at commits `dcdcfaa83d` (frontend consumption) and `212c322bbb` (engine seq
+annotation fix this consumption depends on). Reviewer-verified: scoped `tsc`/`eslint`/
+`prettier` clean, 17 engine relay tests green; independently reconfirmed live — the
+frontend unit suite (`a2aRelay.test.ts`, part of the 18-test unit total under S21) and
+`cargo test -p vaultspec-api --lib -- routes::ops::a2a_stream` (17/17) both pass.
+
+ONE LOW FINDING, routed to the wire-gaps P05 working set for closure (not fixed here):
+`useRunRelay`'s `streamFn` calls `a2aTeamClient.openRunStream(runId ?? "", undefined,
+context.signal)` with a hardcoded `undefined` `since` on every call, including
+TanStack Query's own retry/reconnect path — `latestRelaySeq(frames)` is computed and
+exposed on `RunProgress.latestSeq` but never fed back into a reconnect's `since=`
+resume point. `openRunStream`'s own JSDoc ("`since` resumes from the engine ring")
+correctly describes the method's own capability but overclaims what the one caller
+actually does with it — a reconnect always starts from the ring tail rather than
+resuming past already-seen frames. This is a missed optimization, not a correctness
+defect: the reducer's seq-based dedup absorbs any overlap the ring still retains, and
+a gap beyond the ring's retention already triggers the honest `gap`/degraded-polling
+fallback this step implements. Full review verdict recorded in the W05 section of
+`2026-07-16-agentic-authoring-ux-audit.md`. This record was authored during a
+persistence pass alongside the review, not the review itself.
