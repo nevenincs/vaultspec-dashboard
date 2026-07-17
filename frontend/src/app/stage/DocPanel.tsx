@@ -12,10 +12,13 @@
 // header bar.
 
 import type { IDockviewPanelProps } from "dockview";
+import { useMemo } from "react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
+import { useGitFileDiff } from "../../stores/server/queries/gitchanges";
 import { useDockDocPanelView } from "../../stores/view/tabs";
 import type { ViewerSurface } from "../../stores/view/viewStore";
+import { gitFileDiffToLineChanges } from "../viewer/codeChangeMarkers";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { buildDocTrail } from "../viewer/docTrail";
 import { MarkdownDocView } from "../viewer/MarkdownDocView";
@@ -36,6 +39,17 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
   const { nodeId, surface, scope } = props.params;
   const view = useDockDocPanelView(nodeId, surface, scope);
 
+  // The code file's git dirty-diff, as read-only gutter marks (editor-change-fidelity
+  // D5). The node id IS `code:<path>`, so the path is available before any branch —
+  // hooks must run unconditionally. The query self-disables (canReadGitFileDiff) for a
+  // non-code panel (null path) or when git is unavailable, so a doc tab fetches nothing.
+  const codePath = surface === "code" ? nodeId.replace(/^code:/, "") : null;
+  const fileDiff = useGitFileDiff(scope, codePath);
+  const codeChanges = useMemo(
+    () => gitFileDiffToLineChanges(fileDiff.diff),
+    [fileDiff.diff],
+  );
+
   if (view.state === "code") {
     return (
       <section
@@ -46,7 +60,7 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
         }
       >
         <div className="min-h-0 flex-1">
-          <CodeViewer content={view.content} />
+          <CodeViewer content={view.content} changes={codeChanges} />
         </div>
       </section>
     );

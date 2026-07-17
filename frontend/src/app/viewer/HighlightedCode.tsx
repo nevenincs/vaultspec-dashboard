@@ -13,8 +13,10 @@ import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
 
 /** The change-marker tone per kind. A bar for an edit, a tick for a deletion —
- *  all three carry the diff token tier, so they theme with everything else. */
-const MARKER_TONE: Record<LineMarker["kind"], string> = {
+ *  all three carry the diff token tier, so they theme with everything else.
+ *  Exported so the read-only code viewer's gutter renders the same three tones as
+ *  the editor's, and the two surfaces read identically. */
+export const MARKER_TONE: Record<LineMarker["kind"], string> = {
   added: "bg-diff-add",
   modified: "bg-diff-modified",
   removed: "bg-diff-remove",

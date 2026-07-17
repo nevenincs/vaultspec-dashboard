@@ -24,6 +24,7 @@ import {
   documentViewerTruncationDescriptor,
 } from "../../stores/server/documentViewerVocabulary";
 import type { ContentView } from "../../stores/server/queries";
+import type { LineChange } from "../authoring/editorChanges";
 import { CodeViewer } from "./CodeViewer";
 
 function available(text: string, patch: Partial<ContentView> = {}): ContentView {
@@ -44,11 +45,11 @@ function available(text: string, patch: Partial<ContentView> = {}): ContentView 
   };
 }
 
-function renderViewer(content: ContentView) {
+function renderViewer(content: ContentView, changes?: LineChange[]) {
   const runtime = createTestLocalizationRuntime();
   const result = render(
     <I18nextProvider i18n={runtime}>
-      <CodeViewer content={content} />
+      <CodeViewer content={content} changes={changes} />
     </I18nextProvider>,
   );
   return { ...result, runtime };
@@ -205,5 +206,26 @@ describe("CodeViewer", () => {
   it("remains display-only", () => {
     renderViewer(available("fn main() {}\n"));
     expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("renders read-only change markers for the file's git diff (D5)", () => {
+    // A modified line 1 and an added line 2 (0-based, in the visible window).
+    renderViewer(available("one\ntwo\nthree\n"), [
+      { line: 0, kind: "modified", span: 1 },
+      { line: 1, kind: "added", span: 1 },
+    ]);
+    // The gutter carries the same diff tones as the editor — no editing affordance
+    // is introduced (still read-only).
+    expect(document.querySelector('[data-change-marker="modified"]')).toBeTruthy();
+    expect(document.querySelector('[data-change-marker="added"]')).toBeTruthy();
+    expect(
+      document.querySelector('[data-change-marker="modified"]')?.className,
+    ).toContain("bg-diff-modified");
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("renders no markers for a clean file", () => {
+    renderViewer(available("one\ntwo\n"));
+    expect(document.querySelector("[data-change-marker]")).toBeNull();
   });
 });

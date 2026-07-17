@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from "react";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 
 import {
   deriveCodeViewerView,
@@ -23,7 +23,9 @@ import {
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
 import { Badge, Button, Skeleton, SkeletonBar } from "../kit";
-import { HighlightedLineContent } from "./HighlightedCode";
+import type { LineChange, LineMarker } from "../authoring/editorChanges";
+import { lineMarkers } from "../authoring/editorChanges";
+import { HighlightedLineContent, MARKER_TONE } from "./HighlightedCode";
 import { languageDisplayDescriptor } from "./languages";
 import { stopScrollKeyPropagation } from "./scrollRegion";
 import type { TokenLine } from "./useHighlighter";
@@ -37,10 +39,14 @@ function CodeLines({
   label,
   rawLines,
   tokenLines,
+  markersByLine,
 }: {
   label: string;
   rawLines: string[];
   tokenLines: TokenLine[] | null;
+  /** Per-line change marks from the file's git diff (editor-change-fidelity D5);
+   *  undefined when the file is clean or git is unavailable. */
+  markersByLine?: Map<number, LineMarker>;
 }): ReactElement {
   const scrollTop = useCodeViewerScrollTop();
   const scrollerRef = useRef<HTMLDivElement | null>(null);
@@ -70,9 +76,27 @@ function CodeLines({
           return (
             <div
               key={lineNo}
-              className={presentation.rowClassName}
+              className={`relative ${presentation.rowClassName}`}
               style={deriveCodeLineRowStyle(lineNo, lineWindow)}
             >
+              {(() => {
+                const marker = markersByLine?.get(lineNo);
+                if (!marker) return null;
+                const tone = MARKER_TONE[marker.kind];
+                return marker.tick ? (
+                  <span
+                    aria-hidden
+                    data-change-marker="removed"
+                    className={`pointer-events-none absolute left-0 top-0 h-[0.125rem] w-[0.375rem] rounded-fg-pill ${tone}`}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    data-change-marker={marker.kind}
+                    className={`pointer-events-none absolute bottom-0 left-0 top-0 w-[0.1875rem] rounded-fg-pill ${tone}`}
+                  />
+                );
+              })()}
               <span
                 className={presentation.gutterClassName}
                 style={presentation.gutterStyle}
@@ -93,10 +117,22 @@ function CodeLines({
 
 const CODE_ENCODING = "UTF-8";
 
-export function CodeViewer({ content }: { content: ContentView }): ReactElement {
+export function CodeViewer({
+  content,
+  changes,
+}: {
+  content: ContentView;
+  /** The file's git dirty-diff as gutter marks (editor-change-fidelity D5); the
+   *  DocPanel supplies it for a docked code tab, preview surfaces omit it. */
+  changes?: LineChange[];
+}): ReactElement {
   const resolveMessage = useLocalizedMessageResolver();
   const view = deriveCodeViewerView(content);
   const { lines: tokenLines } = useTokenLines(view.text, view.languageHint);
+  const markersByLine = useMemo(
+    () => (changes && changes.length > 0 ? lineMarkers(changes) : undefined),
+    [changes],
+  );
   const stateDescriptor = codeViewerStateDescriptor(view.state);
   const stateMessage =
     stateDescriptor === null ? null : resolveMessage(stateDescriptor);
@@ -175,6 +211,7 @@ export function CodeViewer({ content }: { content: ContentView }): ReactElement 
         label={contents.message}
         rawLines={view.rawLines}
         tokenLines={tokenLines}
+        markersByLine={markersByLine}
       />
       <footer className="flex shrink-0 items-center gap-fg-1-5 border-t border-rule bg-paper px-fg-4 py-fg-1-5 text-caption text-ink-muted">
         {footer.message}
