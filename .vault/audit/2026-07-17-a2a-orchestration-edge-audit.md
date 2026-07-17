@@ -339,3 +339,64 @@ frontend Composer/ProposalCard suites green — the full gate is clean at this
 commit.
 
 **Round 2: PASS-FINAL.** Plan tick at `044382d7d3`.
+
+## request_changes third-verdict review (appended 2026-07-17)
+
+Scope: the `request_changes` (third review verdict) activation — engine served
+eligibility + ReviewStation UI — committed as `5a620099b6`, nit-fixes `c0b7fdd3c3`.
+Reviewed against the D3 three-verdict amendment. **Verdict: APPROVE-WITH-NITS** (both
+nits fixed in `c0b7fdd3c3`).
+
+### review | high | all six invariants HOLD — served eligibility cannot drift from the decision predicate
+
+- **Served == accepted, enforced not advertised.** Both `approvals.rs::review_decision_eligibility`
+  (RequestChanges arm) and `projections/mod.rs::eligibility_for` (NeedsReview arm) call the
+  identical `transitions::edit_proposal_transition_eligibility`, which attaches NO
+  validation/review-decision freshness — so request_changes is legal on a stale/unvalidated
+  review, matching prior decision behavior. `submit_decision` returns early without persisting
+  when `!eligibility.allowed`, so the served predicate is enforced.
+- **Self-approval ban correctly N/A** to request_changes (`automated_self_approval_blocker`
+  invoked only in the Approve arm) — feedback, not an approval.
+- **Freshness/409 + append-only records UNCHANGED** — the diff touches only the RequestChanges
+  branch body; approve/reject freshness, idempotent-replay, the different-reviewer 409, and
+  `append_revision` are untouched.
+- **Required-comment gating HOLDS** — submit disabled until the trimmed note is non-empty; the
+  trimmed comment is carried with wire `decision:"edit"` through the same decisions seam.
+- **Third action served-only** — rendered from `proposal.eligibility` (`edit_proposal`), never
+  client-invented; `edit_proposal` added to the approval-identity guard; a "no served
+  edit_proposal → no button" test proves it.
+- **Architecture / store-selector / design-system rules clean** — no fresh-ref selector, no
+  hardcoded px/hex, displayed state backend-served.
+- **Adversarial probe (Approved-changeset drift):** the helper permits `Approved → Draft`, but
+  the projection advertises `edit_proposal` only for NeedsReview. Not drift: an Approved
+  changeset's approval already carries a decision, so `submit_decision` short-circuits to
+  idempotent-replay / different-reviewer 409 before re-evaluating eligibility. The Approved arc
+  is unreachable via the decisions route, so served (NeedsReview-only) matches accepted.
+- **Tests non-tautological** — projection test asserts approve/reject served-denied (missing
+  validation) + edit_proposal served-allowed; render test asserts the required-comment gate, the
+  trimmed carry, and zero approve/reject firings.
+
+### review | low | RESOLVED — dead `commentRequired` localized message
+
+`REQUEST_CHANGES_DIALOG.commentRequired` + its catalog key + locale strings were declared but
+never rendered (the disabled button was the only signal). FIXED in `c0b7fdd3c3`: rendered as a
+visible required-note hint under the comment field (`aria-describedby` + `aria-invalid`).
+
+### review | low | RESOLVED — duplicated EditProposal kind→target mapping
+
+The `Authoring|Direct → Draft` / `Rollback → RollbackProposed` table was duplicated across the
+eligibility helper's inline match, `command_allows_transition`, and `approvals.rs::edit_proposal_target`
+(agreeing today, silent-desync risk on a future edit). FIXED in `c0b7fdd3c3`: promoted a single
+`transitions::edit_proposal_target(kind)` that all three consult.
+
+### review | high | live-proved end-to-end
+
+Against a freshly-built engine, the a2a `test_verdict_subscriber_live.py` `service` tests pass:
+a human `request_changes` on the live decisions route → engine `approval.resolved(decision=request_changes)`
+→ the verdict subscriber resumes the parked run with `verdict=request_changes` to a real worker
+(thread → RUNNING = the writer re-enters its revision loop). No mocks.
+
+**Gate at `c0b7fdd3c3`:** engine 588 authoring tests + `cargo fmt --check` + clippy zero-warnings;
+frontend tsc + review-station vocabulary/outcome/render + catalog/action-vocabulary green. (Tree
+carries a PRE-EXISTING red from a parallel Composer team-run lane — `common:agent.composer.teamRunRefused`
+/ `teamRunDismiss` — unrelated to this feature.)
