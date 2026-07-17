@@ -109,8 +109,9 @@ pub async fn decide_tool_permission(
 
 /// `POST /authoring/v1/interrupts/{interrupt_id}/resume` — resume a paused run by
 /// resolving its interrupt BY ID (W12.P41, P32). Replay-safe: an already-resolved
-/// interrupt returns its recorded decision unchanged (never re-decides). The decision
-/// payload is opaque domain JSON.
+/// interrupt returns its recorded decision unchanged (never re-decides). The decision is
+/// the typed `InterruptResumeDecision` (S18): serialized as the stored blob so the read
+/// projection parses it back through the same schema (write and read one language).
 pub async fn resume_interrupt(
     State(state): State<Arc<AppState>>,
     Path(interrupt_id): Path<InterruptId>,
@@ -118,10 +119,23 @@ pub async fn resume_interrupt(
 ) -> Response {
     let now = now_ms();
     let (_actor, _command, _idempotency_key, payload) = command.into_parts();
+    // Serialize the typed decision as the stored value; a serialization failure is an
+    // internal fault, surfaced through the shared error taxonomy, never a silent drop.
+    let decision_blob = match serde_json::to_string(&payload.decision) {
+        Ok(blob) => blob,
+        Err(err) => {
+            return command_error_response(
+                &state,
+                &StoreError::Validation(format!(
+                    "interrupt decision could not be serialized: {err}"
+                )),
+            );
+        }
+    };
     match state.with_authoring_store(|store| {
         store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
             uow.interrupts()
-                .resolve_interrupt(&interrupt_id, payload.decision.to_string(), now)
+                .resolve_interrupt(&interrupt_id, decision_blob, now)
         })
     }) {
         Ok(outcome) => super::super::response::snapshot(

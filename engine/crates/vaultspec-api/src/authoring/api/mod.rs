@@ -2,6 +2,10 @@
 // attach these shapes to handlers, stores, event streams, and agent tools.
 
 use serde::{Deserialize, Serialize};
+// `Value` is used only by the `#[cfg(test)]` DTOs below (the untyped list-page /
+// snapshot fixtures); the typed DTOs carry concrete shapes (S18 narrowed the last
+// production `Value` field, InterruptResumeRequest.decision, to a typed enum).
+#[cfg(test)]
 use serde_json::Value;
 
 use super::leases::LeasePurpose;
@@ -1007,12 +1011,14 @@ pub struct ToolPermissionDecisionRequest {
     pub comment: Option<String>,
 }
 
-/// Resume a paused run by resolving its interrupt with an opaque domain decision
-/// payload (W12.P41, P32 resolve-by-id — replay-safe).
+/// Resume a paused run by resolving its interrupt with the typed decision schema
+/// (W12.P41, P32 resolve-by-id — replay-safe; narrowed from an opaque `Value` by
+/// agent-wire-gaps S18). The decision is the SAME [`InterruptResumeDecision`] the read
+/// projection parses, so write and read speak one language (`tool_permission` | `steer`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InterruptResumeRequest {
-    pub decision: Value,
+    pub decision: super::interrupts::InterruptResumeDecision,
 }
 
 #[cfg(test)]

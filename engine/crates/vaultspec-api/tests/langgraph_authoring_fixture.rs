@@ -442,7 +442,9 @@ async fn agent_run_loop_suspends_grants_resumes_and_redrives_effectively_once() 
             "api_version": "v1",
             "command": "resume_run",
             "idempotency_key": "idem:resume:loop",
-            "payload": { "decision": { "approved": true } },
+            // S18: the resume decision is now the typed `InterruptResumeDecision`
+            // (tool_permission approve/reject | steer), not an opaque blob.
+            "payload": { "decision": { "decision": "approve" } },
         })),
     )
     .await;

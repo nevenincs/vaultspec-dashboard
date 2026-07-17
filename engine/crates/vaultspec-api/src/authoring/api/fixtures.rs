@@ -115,7 +115,10 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
             CommandKind::ResumeRun,
             idempotency_key("idem:interrupt:resume"),
             InterruptResumeRequest {
-                decision: json!({ "approve": true }),
+                decision: super::super::interrupts::InterruptResumeDecision::ToolPermission {
+                    decision: ToolPermissionDecisionKind::Approve,
+                    comment: None,
+                },
             },
         )),
         // W12.P41 A3b: the route body is a bare `AgentToolCall` (not a domain DTO),

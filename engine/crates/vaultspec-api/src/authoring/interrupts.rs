@@ -97,24 +97,33 @@ impl InterruptRecord {
 /// builder fetches one past the cap to set an honest `truncated` marker.
 pub const INTERRUPT_LIST_CAP: u32 = 50;
 
-/// The typed `tool_permission` decision (agent-wire-gaps ADR D3): the SAME shape as
-/// `ToolPermissionDecisionRequest` (the resume write), so the read and write speak ONE
-/// language rather than an opaque decision string on the wire. A resolved interrupt's
-/// stored decision blob parses through this; a blob that predates the typed schema
-/// degrades to [`InterruptDecisionProjection::DecisionUnreadable`] per record.
+/// The typed human decision the resume WRITE records (agent-wire-gaps ADR D3 / S18):
+/// the ONE narrowed schema `POST /interrupts/{id}/resume` accepts, replacing the former
+/// opaque `Value`. `tool_permission` is the approve/reject the executor gate consumes;
+/// `steer` resumes the parked run with a fresh prompt. UNTAGGED so the `tool_permission`
+/// blob keeps its exact stored `{decision, comment}` shape (no migration of existing
+/// records, no break for any consumer that already parses it), while `steer` — disjoint
+/// by its required `prompt` field — round-trips as its own arm. The read projection
+/// ([`InterruptDecisionProjection`]) parses THIS type, so write and read speak one
+/// language; a blob matching neither arm is the legacy `decision_unreadable` escape.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ToolPermissionInterruptDecision {
-    pub decision: ToolPermissionDecisionKind,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub comment: Option<String>,
+#[serde(untagged)]
+pub enum InterruptResumeDecision {
+    ToolPermission {
+        decision: ToolPermissionDecisionKind,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        comment: Option<String>,
+    },
+    Steer {
+        prompt: String,
+    },
 }
 
-/// The typed, per-kind human decision projected onto a resolved interrupt (D3). For the
-/// sole V1 `tool_permission` kind this is the approve/reject + optional comment the
-/// resume write records; a stored decision that does not parse as the typed schema (a
-/// legacy opaque blob) projects as `decision_unreadable` so the page degrades per
-/// record rather than failing wholesale.
+/// The typed, per-kind human decision projected onto a resolved interrupt (D3 / S18):
+/// the approve/reject + optional comment OR the steer prompt the resume write records. A
+/// stored decision that does not parse as [`InterruptResumeDecision`] (a legacy opaque
+/// blob) projects as `decision_unreadable` so the page degrades per record rather than
+/// failing wholesale. Serialized TAGGED on the read wire so a client switches on `kind`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum InterruptDecisionProjection {
@@ -122,6 +131,9 @@ pub enum InterruptDecisionProjection {
         decision: ToolPermissionDecisionKind,
         #[serde(skip_serializing_if = "Option::is_none")]
         comment: Option<String>,
+    },
+    Steer {
+        prompt: String,
     },
     DecisionUnreadable,
 }
@@ -163,16 +175,18 @@ pub struct InterruptListPage {
 /// `DecisionUnreadable` rather than an error, so one legacy record never fails the page.
 pub fn project_interrupt_decision(record: &InterruptRecord) -> Option<InterruptDecisionProjection> {
     let raw = record.decision.as_deref()?;
-    Some(match record.kind {
-        InterruptKind::ToolPermission => {
-            match serde_json::from_str::<ToolPermissionInterruptDecision>(raw) {
-                Ok(parsed) => InterruptDecisionProjection::ToolPermission {
-                    decision: parsed.decision,
-                    comment: parsed.comment,
-                },
-                Err(_) => InterruptDecisionProjection::DecisionUnreadable,
-            }
+    // Parse the stored blob through the SAME typed schema the resume write records
+    // (S18): one language across write and read. A blob matching neither arm (a legacy
+    // opaque decision from before the typed schema) degrades to `decision_unreadable`
+    // per record rather than failing the whole page.
+    Some(match serde_json::from_str::<InterruptResumeDecision>(raw) {
+        Ok(InterruptResumeDecision::ToolPermission { decision, comment }) => {
+            InterruptDecisionProjection::ToolPermission { decision, comment }
         }
+        Ok(InterruptResumeDecision::Steer { prompt }) => {
+            InterruptDecisionProjection::Steer { prompt }
+        }
+        Err(_) => InterruptDecisionProjection::DecisionUnreadable,
     })
 }
 
@@ -1050,8 +1064,9 @@ mod tests {
     #[test]
     fn list_page_degrades_a_legacy_opaque_decision_without_failing() {
         // A resolved interrupt whose stored decision predates the typed schema (an opaque
-        // blob) projects as decision_unreadable — the page still serves, per-record
-        // degradation, never a failed listing.
+        // blob matching NEITHER the tool_permission nor the steer arm) projects as
+        // decision_unreadable — the page still serves, per-record degradation, never a
+        // failed listing.
         let (_dir, mut store) = temp_store();
         raise(
             &mut store,
@@ -1063,7 +1078,7 @@ mod tests {
         resolve(
             &mut store,
             "interrupt:legacy/a",
-            "{\"kind\":\"steer\",\"prompt\":\"keep going\"}",
+            "{\"legacy_opaque\":true,\"v\":0}",
             20,
         );
 
@@ -1074,6 +1089,36 @@ mod tests {
             page.items[0].decision,
             Some(InterruptDecisionProjection::DecisionUnreadable),
             "an unparseable legacy decision degrades rather than failing the page"
+        );
+    }
+
+    #[test]
+    fn list_page_projects_a_steer_decision_typed(/* S18 */) {
+        // A steer resume (the run continued with a fresh prompt) is stored as the typed
+        // `InterruptResumeDecision::Steer` blob and projects back as the typed Steer arm —
+        // write and read one language, no longer a `decision_unreadable` degradation.
+        let (_dir, mut store) = temp_store();
+        raise(
+            &mut store,
+            "interrupt:steer/a",
+            "run:steer",
+            InterruptKind::ToolPermission,
+            10,
+        );
+        let blob = serde_json::to_string(&InterruptResumeDecision::Steer {
+            prompt: "keep going, but skip the migration".to_string(),
+        })
+        .unwrap();
+        resolve(&mut store, "interrupt:steer/a", &blob, 20);
+
+        let page = list_page(&mut store, "run:steer", 50);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(
+            page.items[0].decision,
+            Some(InterruptDecisionProjection::Steer {
+                prompt: "keep going, but skip the migration".to_string(),
+            }),
+            "a steer decision round-trips through the typed schema"
         );
     }
 
