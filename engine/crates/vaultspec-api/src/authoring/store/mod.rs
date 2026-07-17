@@ -4,6 +4,7 @@
 //! metadata checks. Later W02 phases attach typed repositories for unit-of-work
 //! boundaries, idempotency, retention, and the transactional outbox.
 
+mod error;
 pub(crate) mod idempotency;
 pub(crate) mod outbox;
 pub(crate) mod retention;
@@ -17,12 +18,13 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::Connection;
 
+pub use error::StoreError;
 #[cfg(test)]
 pub(crate) use schema::{
     AppliedMigration, METADATA_SCHEMA, Migration, SCHEMA_VERSION, STORE_KIND, user_version,
 };
 pub(crate) use schema::{MIGRATIONS, configure_connection, read_schema_metadata, run_migrations};
-pub use schema::{Result, SchemaMetadata, StoreError};
+pub use schema::{Result, SchemaMetadata};
 
 pub const DB_FILENAME: &str = "authoring-state.sqlite3";
 const AUTHORING_DATA_DIR: &str = "authoring-state";

@@ -1005,3 +1005,125 @@ fn recovery_snapshot_can_be_read_by_session_or_run() {
     assert_eq!(by_session.caps.turn_cap, RECOVERY_TURN_CAP);
     assert_eq!(by_session.caps.run_cap, RECOVERY_RUN_CAP);
 }
+
+#[test]
+fn failure_reason_bounds_reject_empty_padded_and_oversized() {
+    let (_dir, _path, mut store) = temp_store();
+    let owner = actor();
+    register_actor(&mut store, &owner);
+    let session = accepted(
+        create_session(
+            &mut store,
+            context(&owner, "idem:session:create:frb", 100),
+            session_request("Failure-reason bounds session"),
+        )
+        .unwrap(),
+    );
+    let started = accepted(
+        start_prompt_turn(
+            &mut store,
+            context(&owner, "idem:frb:turn:1", 110),
+            session.session_id.clone(),
+            turn_request("A prompt whose run fails."),
+        )
+        .unwrap(),
+    );
+    let run_id = started.run_id.clone().unwrap();
+
+    for (key, reason) in [
+        ("idem:frb:empty", String::new()),
+        ("idem:frb:padded", " padded ".to_string()),
+        ("idem:frb:oversized", "x".repeat(501)),
+    ] {
+        let rejected = complete_run(
+            &mut store,
+            context(&owner, key, 120),
+            run_id.clone(),
+            CompleteRunRequest {
+                outcome: Some(RunOutcome::Failed),
+                summary: None,
+                failure_reason: Some(reason),
+            },
+        )
+        .unwrap_err();
+        assert!(
+            matches!(rejected, StoreError::Session(_)),
+            "`{key}` must be rejected by the failure-reason bounds, got {rejected:?}"
+        );
+    }
+
+    // The run is untouched by the rejected attempts and a 500-byte reason is the
+    // accepted maximum.
+    let failed = accepted(
+        complete_run(
+            &mut store,
+            context(&owner, "idem:frb:max", 130),
+            run_id,
+            CompleteRunRequest {
+                outcome: Some(RunOutcome::Failed),
+                summary: None,
+                failure_reason: Some("x".repeat(500)),
+            },
+        )
+        .unwrap(),
+    );
+    let snap = failed.snapshot.as_ref().unwrap();
+    assert_eq!(snap.runs[0].status, RunStatus::Failed);
+}
+
+#[test]
+fn a_delegator_may_complete_its_delegated_agents_run() {
+    let (_dir, _path, mut store) = temp_store();
+    let delegator = actor();
+    // Actor RECORDS are delegation-free by construction; delegated_by is
+    // runtime provenance on the resolved principal (token resolution), so the
+    // record registers bare and only the command-context ref carries it.
+    let delegated_agent_record = ActorRef {
+        id: ActorId::new("agent:delegated-worker").unwrap(),
+        kind: ActorKind::Agent,
+        delegated_by: None,
+    };
+    let delegated_agent = ActorRef {
+        delegated_by: Some(delegator.id.clone()),
+        ..delegated_agent_record.clone()
+    };
+    register_actor(&mut store, &delegator);
+    register_actor(&mut store, &delegated_agent_record);
+    let session = accepted(
+        create_session(
+            &mut store,
+            context(&delegated_agent, "idem:session:create:dlg", 100),
+            session_request("Delegated session"),
+        )
+        .unwrap(),
+    );
+    let started = accepted(
+        start_prompt_turn(
+            &mut store,
+            context(&delegated_agent, "idem:dlg:turn:1", 110),
+            session.session_id.clone(),
+            turn_request("A delegated prompt."),
+        )
+        .unwrap(),
+    );
+    let run_id = started.run_id.clone().unwrap();
+
+    // The delegator behind the run's owner may legitimately settle it (the
+    // positive branch of the owner guard), and the outcome records normally.
+    let completed = accepted(
+        complete_run(
+            &mut store,
+            context(&delegator, "idem:dlg:complete", 120),
+            run_id,
+            CompleteRunRequest {
+                outcome: None,
+                summary: None,
+                failure_reason: None,
+            },
+        )
+        .unwrap(),
+    );
+    let snap = completed.snapshot.as_ref().unwrap();
+    assert_eq!(snap.runs[0].status, RunStatus::Completed);
+    assert_eq!(snap.session.status, SessionStatus::Active);
+}
