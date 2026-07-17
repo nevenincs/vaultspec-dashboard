@@ -54,6 +54,7 @@ import {
   type InterruptListPage,
   type CancelRunPayload,
   type CancelSessionPayload,
+  type CompleteRunPayload,
   type CreateFeedbackBatchPayload,
   type CreateSessionPayload,
   type FeedbackBatchReceipt,
@@ -286,6 +287,26 @@ export class AgentClient {
       await this.command(
         `/authoring/v1/sessions/${encodeURIComponent(sessionId)}/cancel`,
         "cancel_session",
+        payload,
+        opts,
+      ),
+    );
+  }
+
+  /** `POST /authoring/v1/runs/{id}/complete` — the driver-reported run settle
+   *  (agent-wire-gaps D1, S61): transitions the run to its terminal state and emits
+   *  `run.completed`, which the lifecycle feed consumes to render Done/Failed and to
+   *  promote the next queued turn. Without this call a client-driven run never
+   *  completes. `completed` carries no failure_reason; `failed` requires one. */
+  async completeRun(
+    runId: string,
+    payload: CompleteRunPayload,
+    opts: CommandOptions,
+  ): Promise<SessionCommandOutcome> {
+    return adaptSessionCommandOutcome(
+      await this.command(
+        `/authoring/v1/runs/${encodeURIComponent(runId)}/complete`,
+        "complete_run",
         payload,
         opts,
       ),
@@ -562,6 +583,18 @@ export function useCancelSession() {
   return useMutation({
     mutationFn: async (args: { sessionId: string; payload: CancelSessionPayload }) =>
       agentClient.cancelSession(args.sessionId, args.payload, {
+        actorToken: await ensureActorToken(),
+      }),
+    onSuccess: invalidateAgent,
+  });
+}
+
+/** Report a run's terminal settle (S61): the driver calls this on finish so
+ *  `run.completed` fires and the run transitions to Done/Failed. */
+export function useCompleteRun() {
+  return useMutation({
+    mutationFn: async (args: { runId: string; payload: CompleteRunPayload }) =>
+      agentClient.completeRun(args.runId, args.payload, {
         actorToken: await ensureActorToken(),
       }),
     onSuccess: invalidateAgent,

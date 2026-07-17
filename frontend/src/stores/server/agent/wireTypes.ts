@@ -252,6 +252,16 @@ export interface CancelSessionPayload {
   reason: string;
 }
 
+/** `POST /authoring/v1/runs/{id}/complete` payload (agent-wire-gaps D1, S61): the
+ *  driver-reported run settle that transitions the run to its terminal state and emits
+ *  `run.completed`. The engine defaults `outcome` to `completed`; a `failed` outcome
+ *  REQUIRES a `failure_reason` and a `completed` outcome must NOT carry one. */
+export interface CompleteRunPayload {
+  outcome?: "completed" | "failed";
+  summary?: string;
+  failure_reason?: string;
+}
+
 export interface ResumeRunPayload {
   session_id?: string;
 }
