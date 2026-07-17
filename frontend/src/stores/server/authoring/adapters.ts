@@ -138,6 +138,11 @@ export function adaptProposalProjection(raw: unknown): ProposalProjection {
       child_key: asStr(rollback.child_key),
     },
     created_at_ms: asNum(r.created_at_ms),
+    // Served agent provenance (S42): the session/run/turn the changeset came from,
+    // when present. Only defined keys are carried so a non-agent changeset stays clean.
+    ...(asStr(r.session_id) ? { session_id: asStr(r.session_id) } : {}),
+    ...(asStr(r.run_id) ? { run_id: asStr(r.run_id) } : {}),
+    ...(asStr(r.turn_id) ? { turn_id: asStr(r.turn_id) } : {}),
   };
 }
 

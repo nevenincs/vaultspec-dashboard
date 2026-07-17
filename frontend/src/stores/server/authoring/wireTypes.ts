@@ -149,6 +149,13 @@ export interface ProposalProjection {
   eligibility: ActionEligibility[];
   rollback: RollbackAvailabilityProjection;
   created_at_ms: number;
+  /** The served agent provenance (agent-wire-gaps D4/D5): the session/run/turn the
+   *  changeset originated from, when the origin carried them. The transcript binds
+   *  the inline proposal card to `run_id` EXACTLY (S42), retiring the former
+   *  actor-identity heuristic. Absent for a changeset with no agent origin. */
+  session_id?: string;
+  run_id?: string;
+  turn_id?: string;
 }
 
 /** A changeset that has already applied under recorded mode-policy authority.

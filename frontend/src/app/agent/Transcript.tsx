@@ -172,17 +172,7 @@ function TurnStatusLine({ view }: { view: TranscriptTurnView }) {
   );
 }
 
-function TranscriptTurn({
-  view,
-  sessionActorId,
-  sessionStartedAtMs,
-  isLatestTurn,
-}: {
-  view: TranscriptTurnView;
-  sessionActorId: string;
-  sessionStartedAtMs: number;
-  isLatestTurn: boolean;
-}) {
+function TranscriptTurn({ view }: { view: TranscriptTurnView }) {
   const resolveMessage = useLocalizedMessageResolver();
   return (
     <li
@@ -215,23 +205,17 @@ function TranscriptTurn({
       {/* Final text: no wire surface serves the agent's message yet (a2a relay
           gap) — the position stays honestly empty rather than faking output. */}
       <TurnStatusLine view={view} />
-      {/* S16 proposal-card slot: the inline proposal card mounts here when the
-          turn's run settles into a proposal (ADR D5). The mount is gated to the
-          LATEST turn only, so `AgentTurnProposal`'s review-queue read + review
-          mutations mount ONCE for the transcript, never per-turn; the mounted
-          child correlates the served proposal (see its correlation-honesty note)
-          and the slot stays empty until one resolves. */}
+      {/* S16/S42 proposal-card slot: the inline proposal card mounts here bound to
+          THIS turn's run by the served `run_id` (ADR D5). Per-turn now — each turn
+          shows only the proposal its own run produced (an exact bind, not the former
+          latest-turn heuristic); the slot stays empty until that run's proposal
+          resolves. `AgentTurnProposal` reads the shared review-queue store. */}
       <div
         data-agent-proposal-slot
         data-turn-id={view.turnId}
         data-run-id={view.runId ?? undefined}
       >
-        {isLatestTurn && (
-          <AgentTurnProposal
-            sessionActorId={sessionActorId}
-            sessionStartedAtMs={sessionStartedAtMs}
-          />
-        )}
+        <AgentTurnProposal runId={view.runId} />
       </div>
     </li>
   );
@@ -259,14 +243,8 @@ export function Transcript({ snapshot }: { snapshot: SessionSnapshot }) {
         </p>
       )}
       <ol className="flex flex-col gap-fg-3" data-agent-transcript-entries>
-        {view.turns.map((turn, index) => (
-          <TranscriptTurn
-            key={turn.turnId}
-            view={turn}
-            sessionActorId={snapshot.session.actor.id}
-            sessionStartedAtMs={snapshot.session.created_at_ms}
-            isLatestTurn={index === view.turns.length - 1}
-          />
+        {view.turns.map((turn) => (
+          <TranscriptTurn key={turn.turnId} view={turn} />
         ))}
       </ol>
     </div>

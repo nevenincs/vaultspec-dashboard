@@ -14,23 +14,12 @@
 // proposal-card implementation in the product; the transcript just decides WHICH
 // proposal mounts WHERE.
 //
-// Correlation honesty (the load-bearing seam): a served `ProposalProjection`
-// carries NO `session_id`, `run_id`, or `turn_id` — only `origin_actor`/`actor`.
-// The changeset is tied to a session INTERNALLY (a create requires `session_id`),
-// but the projection omits it, and no run/turn link exists at all. So a proposal
-// cannot be bound to a SPECIFIC turn/run from the wire. The one shared SERVED
-// provenance is ACTOR identity — and in a single-operator product every session
-// runs under the SAME ambient principal, so actor identity alone barely
-// discriminates. We therefore floor the match on the session's OWN start time
-// (`session.created_at_ms`): a proposal created BEFORE this session began cannot
-// be this session's, which eliminates the realistic stale-earlier-session bleed
-// (operator opens Session B while Session A's proposal sits pending). Among what
-// survives the floor we take the NEWEST, bound to the session's LATEST turn only —
-// a marked heuristic, never a fabricated per-run link. RESIDUAL: two sessions
-// started in the same millisecond cannot be separated by this floor; only a served
-// `session_id` (already stored internally) closes that. When the engine serves it
-// (and ideally `run_id`), this narrows to an exact per-run bind without touching
-// the card.
+// Correlation (the load-bearing seam), now an EXACT per-run bind (S42): the served
+// `ProposalProjection` carries the agent provenance `run_id` (agent-wire-gaps D4/D5),
+// so a proposal binds to the turn whose run PRODUCED it — no heuristic. The former
+// actor-identity-floored-on-session-start guess (which could not separate two
+// same-millisecond sessions) is RETIRED; a proposal with no served `run_id` (a
+// non-agent changeset) simply does not correlate and the slot stays honestly empty.
 //
 // Layer ownership (architecture-boundaries): a DUMB app-chrome view. It consumes
 // the review-station store hooks (`useReviewStationView`, `useReviewActions`) and
@@ -45,55 +34,32 @@ import {
 import { ProposalCard, useReviewActions } from "../authoring/ReviewStation";
 
 /** The marker surfaced on the mounted list so a test/inspector can prove the
- *  correlation is the documented actor-identity heuristic, not a served link. */
-export const AGENT_PROPOSAL_CORRELATION = "session-actor-latest" as const;
+ *  correlation is the EXACT served-run_id bind, not a heuristic. */
+export const AGENT_PROPOSAL_CORRELATION = "run-id" as const;
 
-/** Correlate the session principal's newest proposal from the scope-wide review
- *  queue. Pure and exported so the correlation is unit-tested directly.
- *
- *  Honest bounds (see file header): the ONLY shared served provenance between an
- *  agent run and an authoring proposal is actor identity, so we match the session
- *  principal as either the proposal's origin actor OR its delegator (the a2a
- *  delegated-agent case), FLOORED on the session's own start time so a proposal
- *  from an earlier session can't bleed in, then take the newest by served creation
- *  time. Returns `null` when nothing matches — the slot stays honestly empty. */
-export function correlateSessionProposal(
+/** Bind the proposal whose served `run_id` matches this turn's run (S42). Pure and
+ *  exported so the correlation is unit-tested directly. Returns `null` when the run
+ *  is unknown or no proposal carries that run_id — the slot stays honestly empty. */
+export function correlateProposalByRun(
   rows: readonly ProposalProjection[],
-  sessionActorId: string,
-  sessionStartedAtMs: number,
+  runId: string | null,
 ): ProposalProjection | null {
-  if (!sessionActorId) return null;
-  const mine = rows.filter(
-    (row) =>
-      (row.origin_actor.id === sessionActorId ||
-        row.origin_actor.delegated_by === sessionActorId) &&
-      row.created_at_ms >= sessionStartedAtMs,
-  );
-  if (mine.length === 0) return null;
-  return mine.reduce((newest, row) =>
-    row.created_at_ms > newest.created_at_ms ? row : newest,
-  );
+  if (!runId) return null;
+  return rows.find((row) => row.run_id === runId) ?? null;
 }
 
 /**
- * The transcript's proposal mount. Mount-gated by the caller to the session's
- * LATEST turn only (so the review-queue read + review mutations mount ONCE, not
- * per-turn), since without a served run/turn link an older proposal cannot be
- * mapped to an older turn. Renders nothing until a correlated proposal exists — an
- * honest empty slot.
+ * The transcript's proposal mount, bound to ONE turn's run by its served `run_id`
+ * (S42). Renders nothing until a proposal carrying this run's id exists — an honest
+ * empty slot. The caller mounts it per-turn (each turn shows only its own run's
+ * proposal); the review-queue read + review mutations are shared store hooks.
  */
-export function AgentTurnProposal({
-  sessionActorId,
-  sessionStartedAtMs,
-}: {
-  sessionActorId: string;
-  sessionStartedAtMs: number;
-}) {
+export function AgentTurnProposal({ runId }: { runId: string | null }) {
   const view = useReviewStationView();
   const actions = useReviewActions();
   const proposal = useMemo(
-    () => correlateSessionProposal(view.rows, sessionActorId, sessionStartedAtMs),
-    [view.rows, sessionActorId, sessionStartedAtMs],
+    () => correlateProposalByRun(view.rows, runId),
+    [view.rows, runId],
   );
   if (!proposal) return null;
   return (
