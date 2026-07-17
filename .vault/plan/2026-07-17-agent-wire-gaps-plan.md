@@ -13,6 +13,16 @@ related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 <!-- RETIRED: S02, S03, S05, S49, S50 -->
 
 # `agent-wire-gaps` plan
@@ -38,8 +48,8 @@ Extend the already-shipped run-completion vertical slice (CompleteRun/complete/r
 
 Expose the existing interrupts_for_run store query through a new bounded read route with a typed per-kind decision schema shared by the read and the existing resume write, degrading legacy opaque decisions honestly instead of failing the page.
 
-- [ ] `P02.S15` - Expose the existing interrupts_for_run(run_id, cap) store query for the new read route, serving raise-order results as already returned, with pending entries flagged and a truncated marker at INTERRUPT_LIST_CAP=50, rather than adding a new store query; `engine/crates/vaultspec-api/src/authoring/store`.
-- [ ] `P02.S16` - Define the typed per-kind decision schema mirroring ToolPermissionDecisionRequest (decision: approve or deny, optional comment) and a decision_unreadable degradation marker for legacy opaque decisions; `engine/crates/vaultspec-api/src/authoring/interrupts`.
+- [x] `P02.S15` - Expose the existing interrupts_for_run(run_id, cap) store query for the new read route, serving raise-order results as already returned, with pending entries flagged and a truncated marker at INTERRUPT_LIST_CAP=50, rather than adding a new store query; `engine/crates/vaultspec-api/src/authoring/store`.
+- [x] `P02.S16` - Define the typed per-kind decision schema mirroring ToolPermissionDecisionRequest (decision: approve or deny, optional comment) and a decision_unreadable degradation marker for legacy opaque decisions; `engine/crates/vaultspec-api/src/authoring/interrupts`.
 - [ ] `P02.S17` - Wire the GET /v1/runs/{run_id}/interrupts route over the existing store query, serving interrupt_id, run_id, kind, tool_call_id, resume_state, timestamps, and the typed decision projection; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 - [ ] `P02.S18` - Narrow InterruptResumeRequest's opaque payload to the same typed decision schema in the same cutover, leaving the resume-by-id route otherwise unchanged; `engine/crates/vaultspec-api/src/authoring/api/mod.rs`.
 - [ ] `P02.S19` - Write tests covering the raise-order capped/truncation-marked list with pending entries flagged, the typed decision round-tripping the permission-decision write, a legacy opaque decision serving decision_unreadable without failing the page, and a live-test recovery case: a client that drops the /execute awaiting_permission response recovers the pending interrupt from the list; `engine/crates/vaultspec-api/src/authoring`.
