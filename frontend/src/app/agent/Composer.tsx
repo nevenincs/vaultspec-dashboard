@@ -591,8 +591,7 @@ export function Composer() {
 
   const submit = async () => {
     const prompt = buildAgentPrompt(text, mentions);
-    const hasComments =
-      commentBatch !== null && commentBatch.comments.length > 0;
+    const hasComments = commentBatch !== null && commentBatch.comments.length > 0;
     // A submit needs SOME payload: prompt text/mentions, or a staged comment batch
     // (a comments-only turn rides the structured feedback batch, not the prompt).
     if (prompt.length === 0 && !hasComments) return;

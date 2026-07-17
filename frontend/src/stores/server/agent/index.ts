@@ -474,7 +474,9 @@ export function useStartTurn() {
 export function useCreateFeedbackBatch() {
   return useMutation({
     mutationFn: async (payload: CreateFeedbackBatchPayload) =>
-      agentClient.createFeedbackBatch(payload, { actorToken: await ensureActorToken() }),
+      agentClient.createFeedbackBatch(payload, {
+        actorToken: await ensureActorToken(),
+      }),
   });
 }
 
