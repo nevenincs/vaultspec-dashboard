@@ -93,6 +93,44 @@ This ADR decides the wire shape of each closure — route, event kind, field, bo
 > reap), with compaction staying opportunistic and the janitor at most a
 > stated backstop sweep of the same bounded due-set.
 
+> **Amendment (2026-07-17, execution — the a2a caller resolution adds a second
+> session-terminal verb):** three records from how the build actually landed.
+> (1) **The session-terminal verb set is now {cancel_session, close_session},
+> not {cancel_session} alone.** D2 defined only the DESTRUCTIVE terminal:
+> `POST /v1/sessions/{id}/cancel` voids the queue and cancels the active run.
+> Execution added the BENIGN terminal the a2a resolution needed:
+> `POST /v1/sessions/{session_id}/close` (`CommandKind::CloseSession`,
+> optional bounded `reason`), shipped with these verified semantics: `Active`
+> → `Closed` stamping `closed_at_ms` and emitting the new `session.closed`
+> lifecycle kind; a session with a genuinely active run is REFUSED with a
+> typed error ("cancel the run or await its completion") so close only ever
+> retires a quiescent session and never tears down work; an already-terminal
+> session (`Closed` OR `Cancelled`) replays as an idempotent no-op, mirroring
+> cancel's re-entry semantics. The disposition boundary: cancel is "stop this
+> work" (destructive, always legal on an active session), close is "this
+> conversation is finished" (benign, legal only at quiescence). (2) **a2a
+> mints no engine runs — by resolution, not omission.** The a2a worker's
+> engine session carries proposals but never a run (`start_prompt_turn` is
+> uncalled on its production paths); team-run lifecycle UX rides the
+> `/ops/a2a/*` relay, not engine runs; and a2a's terminal act on run-settle
+> success is `close_session`, which its active-run refusal makes safe by
+> construction on a run-less session. D1's "who calls it" clause therefore
+> NARROWS: the run-completion reporters are the frontend dispatch loop
+> (single-agent plane) and the janitor's abandoned-run reap — the langgraph
+> adapter/a2a runtime is struck from that list. Shipped naming for D1's verb:
+> `POST /v1/runs/{run_id}/complete` (`complete_run`, optional `outcome`
+> defaulting to `completed`, `failure_reason` legal only with `failed`,
+> owner-only, session left `Active` for queue promotion) emitting
+> `run.completed` — the substance of D1's `settle`/`run.settled` under its
+> landed names. (3) **The mint-runs alternative is retired unexecuted**: a
+> design that had a2a open an engine run per worker execution burst (settle
+> on terminal, close on park) was drawn up and overtaken by (2). Return
+> trigger: if a2a work ever needs engine-run-rendered lifecycle (a team run
+> that must appear as `active_run`/"Working…" in the dashboard's session
+> surface rather than via the relay), the recorded `ensure_engine_run`
+> design — idempotent session-shared bootstrap, run-per-burst, complete at
+> the terminal choke point — is the blueprint.
+
 **D3 — Served interrupt state + typed decision schema.** The store already answers this: `interrupts_for_run(run_id, cap)` exists (raise-order, bounded, built in the backend epic's interrupt work) with no route over it, and a prior arch-reviewer advisory already proposed exactly `GET /v1/runs/{run_id}/interrupts` as a recovery listing for a client that loses the `/execute` `awaiting_permission` response. This decision SUBSUMES that advisory: same route, same recovery purpose, plus the typed decision schema the advisory did not cover. New principal-permissive read `GET /v1/runs/{run_id}/interrupts` exposing the existing store query as a bounded page (cap `INTERRUPT_LIST_CAP = 50`, raise-order as the store serves it with pending entries flagged, `truncated` marker) of interrupt projections: `interrupt_id`, `run_id`, `kind` (the existing bounded `InterruptKind` vocabulary — `tool_permission` today), `tool_call_id`, `resume_state` (`pending | resolved`), timestamps, and — replacing the opaque stored decision string on the wire — a TYPED per-kind decision projection: for `tool_permission`, `{ "decision": "approve" | "deny", "comment"?: string }`, mirroring the existing `ToolPermissionDecisionRequest` vocabulary so the write and read schemas are one language. The store gains the bounded list query (it has get-by-id only); the durable record keeps its opaque decision column, with the projection parsing it through the typed schema and serving a `decision_unreadable` marker rather than failing the list if an old record predates the discipline. The interrupt-resume write route is unchanged (resume-by-id stands); `InterruptResumeRequest`'s opaque payload is narrowed to the same typed schema in the same cutover. Unlocks: the W03 client-staged interrupt annex is deleted; a reloaded panel recovers pending permission prompts from the wire; steer renders served pending state instead of a client memory.
 
 **D4 — Proposal↔run correlation served.** Two additive changes. (a) `ProposalProjection` gains `session_id?` — a one-field exposure of what the changeset revision already stores. (b) The changeset revision input gains optional `run_id`/`turn_id` provenance, stamped at the one place the producing fact is in hand: the tool-executor dispatch (its request already carries `run_id`; the turn joins through the run record), flowing through `create_proposal` into the ledger record and out through the projection as `run_id?`/`turn_id?`. Human/direct changesets simply carry `None`. Per the wire-contract rule these are provenance fields naming the producing fact — admissible — and no stable-key composition changes: `changeset_id` remains client-supplied and no edge/node key derives from these fields; this posture is recorded here as the reviewed contract event for the record-shape change. Migration: additive optional fields; existing revisions deserialize as `None`. Unlocks: the inline proposal card binds exactly per-run (`data-correlation="run-id"`), retiring "session-actor-latest" matching without touching the reused card.
