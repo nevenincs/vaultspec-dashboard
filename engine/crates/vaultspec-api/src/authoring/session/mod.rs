@@ -49,6 +49,8 @@ mod validate;
 use validate::*;
 mod commands;
 pub use commands::*;
+mod janitor;
+pub use janitor::*;
 
 #[cfg(test)]
 mod tests;
@@ -256,6 +258,57 @@ impl SessionRepository<'_, '_> {
         run.cancellation_reason = Some(input.reason);
         run.updated_at_ms = now_ms;
         run.cancelled_at_ms = Some(now_ms);
+        self.insert_or_update_run(&run)?;
+        self.register_run_retention(&run)?;
+        Ok((run, true))
+    }
+
+    /// The bounded page of ABANDONED candidates for the janitor's run-reap (P04a/D1):
+    /// runs still `active = 1` whose `updated_at_ms` is older than the staleness
+    /// cutoff — a runtime that died without reporting settlement. Oldest first so the
+    /// longest-abandoned runs are reaped before the budget runs out.
+    pub fn stale_active_runs(&self, cutoff_ms: i64, cap: u32) -> StoreResult<Vec<RunRecord>> {
+        self.repo
+            .query_collect(
+                "SELECT record_json
+                 FROM authoring_runs
+                 WHERE active = 1 AND updated_at_ms < ?1
+                 ORDER BY updated_at_ms ASC
+                 LIMIT ?2",
+                rusqlite::params![cutoff_ms, i64::from(cap)],
+                read_json_record::<RunRecord>,
+            )?
+            .into_iter()
+            .map(validate_run_record)
+            .collect()
+    }
+
+    /// The janitor's abandoned-run transition (P04a/D1): the same `Failed` settle the
+    /// owner would report, applied as SYSTEM hygiene when no settlement report ever
+    /// arrived. Deliberately skips the owner guard — the owner is presumed dead, and
+    /// this path is reachable only from the in-process sweep, never from a route. An
+    /// already-terminal run replays as an idempotent no-op exactly like `complete_run`.
+    pub fn reap_abandoned_run(
+        &self,
+        run_id: &RunId,
+        failure_reason: &str,
+        now_ms: i64,
+    ) -> StoreResult<(RunRecord, bool)> {
+        validate_failure_reason(Some(failure_reason))?;
+        let mut run = self
+            .run(run_id)?
+            .ok_or_else(|| StoreError::Session(format!("run `{run_id}` does not exist")))?;
+        if matches!(
+            run.status,
+            RunStatus::Cancelled | RunStatus::Completed | RunStatus::Failed
+        ) {
+            return Ok((run, false));
+        }
+        run.status = RunStatus::Failed;
+        run.active = false;
+        run.failure_reason = Some(failure_reason.to_string());
+        run.updated_at_ms = now_ms;
+        run.completed_at_ms = Some(now_ms);
         self.insert_or_update_run(&run)?;
         self.register_run_retention(&run)?;
         Ok((run, true))

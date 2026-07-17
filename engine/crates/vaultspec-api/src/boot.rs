@@ -400,6 +400,13 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             eprintln!("vaultspec serve: shutting down gracefully");
         }
     };
+    // P04a: the ONE bounded background janitor — abandoned-run reap plus the undriven
+    // expiry seams, on a fixed cadence. Serve-time only; aborts with the serve future
+    // via the same abort-on-drop discipline as the heartbeat.
+    let _janitor = AbortOnDrop(crate::authoring::session::spawn_janitor(
+        state.clone(),
+        crate::authoring::session::JanitorConfig::default_bounds(),
+    ));
     let result = axum::serve(listener, build_router(state))
         .with_graceful_shutdown(shutdown_signal)
         .await

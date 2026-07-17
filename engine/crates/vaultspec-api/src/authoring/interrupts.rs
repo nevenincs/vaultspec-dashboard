@@ -403,6 +403,24 @@ impl InterruptRepository<'_, '_> {
         }
     }
 
+    /// The bounded global page of PENDING interrupts (janitor P04a.S56), oldest first.
+    /// The janitor drives the tool-permission lazy expiry from the interrupt side over
+    /// exactly this page — an interrupt itself carries no TTL and its record never
+    /// changes here (resolution stays the resume path's job); reaping means making the
+    /// gating permission's expiry eventual so a resume of a dead interrupt refuses.
+    pub fn pending_interrupts(&self, cap: u32) -> StoreResult<Vec<InterruptRecord>> {
+        let rows = self.repo.query_collect(
+            "SELECT record_json
+             FROM authoring_interrupts
+             WHERE resume_state = 'pending'
+             ORDER BY seq ASC
+             LIMIT ?1",
+            [cap],
+            |row| row.get::<_, String>(0),
+        )?;
+        rows.iter().map(|json| read_interrupt(json)).collect()
+    }
+
     /// Every interrupt for a run in raise order, bounded by `cap` — the resume listing
     /// that resolves BY ID rather than by position.
     pub fn interrupts_for_run(

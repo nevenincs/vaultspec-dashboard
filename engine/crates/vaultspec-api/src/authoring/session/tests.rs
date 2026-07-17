@@ -12,7 +12,7 @@ use super::super::store::retention::{
 };
 use super::*;
 
-fn temp_store() -> (tempfile::TempDir, PathBuf, Store) {
+pub(super) fn temp_store() -> (tempfile::TempDir, PathBuf, Store) {
     let dir = tempfile::tempdir().unwrap();
     let vault_root = dir.path().join(".vault");
     let path = super::super::store::db_path(&vault_root);
@@ -20,7 +20,7 @@ fn temp_store() -> (tempfile::TempDir, PathBuf, Store) {
     (dir, path, store)
 }
 
-fn actor() -> ActorRef {
+pub(super) fn actor() -> ActorRef {
     ActorRef {
         id: ActorId::new("human:session-tester").unwrap(),
         kind: ActorKind::Human,
@@ -28,7 +28,7 @@ fn actor() -> ActorRef {
     }
 }
 
-fn register_actor(store: &mut Store, actor: &ActorRef) {
+pub(super) fn register_actor(store: &mut Store, actor: &ActorRef) {
     store
         .with_unit_of_work(CommandKind::CreateSession, |uow| {
             uow.actors().put_record(ActorRecordInput::active(
@@ -41,7 +41,7 @@ fn register_actor(store: &mut Store, actor: &ActorRef) {
         .unwrap();
 }
 
-fn context(actor: &ActorRef, key: &str, now_ms: i64) -> SessionCommandContext {
+pub(super) fn context(actor: &ActorRef, key: &str, now_ms: i64) -> SessionCommandContext {
     SessionCommandContext {
         actor: actor.clone(),
         idempotency_key: IdempotencyKey::new(key).unwrap(),
@@ -51,14 +51,14 @@ fn context(actor: &ActorRef, key: &str, now_ms: i64) -> SessionCommandContext {
     }
 }
 
-fn session_request(title: &str) -> CreateSessionRequest {
+pub(super) fn session_request(title: &str) -> CreateSessionRequest {
     CreateSessionRequest {
         scope: "scope_sessions".to_string(),
         title: title.to_string(),
     }
 }
 
-fn turn_request(prompt: &str) -> StartPromptTurnRequest {
+pub(super) fn turn_request(prompt: &str) -> StartPromptTurnRequest {
     StartPromptTurnRequest {
         prompt: prompt.to_string(),
         summary: Some("turn summary".to_string()),
@@ -66,7 +66,7 @@ fn turn_request(prompt: &str) -> StartPromptTurnRequest {
     }
 }
 
-fn accepted(result: SessionCommandResult) -> SessionCommandOutcome {
+pub(super) fn accepted(result: SessionCommandResult) -> SessionCommandOutcome {
     match result {
         SessionCommandResult::Accepted { outcome, .. } => outcome,
         other => panic!("expected accepted command, got {other:?}"),
@@ -88,7 +88,7 @@ fn latest_seq(store: &mut Store) -> i64 {
         .unwrap()
 }
 
-fn event_kinds(store: &mut Store) -> Vec<String> {
+pub(super) fn event_kinds(store: &mut Store) -> Vec<String> {
     store
         .with_read_unit_of_work(CommandKind::SubscribeEvents, |uow| {
             uow.outbox().events_after(0, 50)

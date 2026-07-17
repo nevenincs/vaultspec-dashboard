@@ -605,7 +605,7 @@ fn append_session_event(
 /// also promotes the next queued turn, emitting `run.started` — passes a distinct
 /// discriminator so the two events do not collapse to one on the deduped outbox.
 #[allow(clippy::too_many_arguments)]
-fn append_session_event_keyed(
+pub(super) fn append_session_event_keyed(
     uow: &UnitOfWork<'_>,
     aggregate_kind: LifecycleAggregateKind,
     aggregate_id: &str,
@@ -637,7 +637,7 @@ fn append_session_event_keyed(
 /// settle/cancel command's unit of work — keyed distinctly from that command's own
 /// event so both reach the feed. It mirrors a direct start's `run.started` exactly, so
 /// the client renders a promoted run identically to a directly-started one.
-fn append_promoted_run_started(
+pub(super) fn append_promoted_run_started(
     uow: &UnitOfWork<'_>,
     run: &RunRecord,
     context: &SessionCommandContext,

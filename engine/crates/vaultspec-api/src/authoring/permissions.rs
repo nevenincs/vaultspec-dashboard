@@ -370,6 +370,38 @@ impl ToolPermissionRepository<'_, '_> {
         Ok(record)
     }
 
+    /// Sweep-driven expiry over pending requests (janitor P04a.S55): expire every
+    /// human-gated request past its decision window, bounded by `cap`. This is the SAME
+    /// transition the decision/resume paths perform lazily on touch — the sweep only
+    /// makes it eventual for records nothing ever touches again. Returns how many
+    /// requests actually expired.
+    pub fn expire_due(&self, now_ms: i64, cap: u32) -> StoreResult<usize> {
+        let ids = self.repo.query_collect(
+            "SELECT tool_call_id
+             FROM authoring_tool_permission_requests AS t1
+             WHERE queue_state = 'pending'
+               AND seq = (
+                   SELECT MAX(seq)
+                   FROM authoring_tool_permission_requests AS t2
+                   WHERE t2.tool_call_id = t1.tool_call_id
+               )
+             ORDER BY seq ASC
+             LIMIT ?1",
+            [cap],
+            |row| row.get::<_, String>(0),
+        )?;
+        let mut expired = 0;
+        for id in ids {
+            let tool_call_id =
+                ToolCallId::new(&id).map_err(|err| StoreError::Permission(err.to_string()))?;
+            let mut record = self.require(&tool_call_id)?;
+            if self.expire_in_place(&mut record, now_ms)?.is_some() {
+                expired += 1;
+            }
+        }
+        Ok(expired)
+    }
+
     /// The latest durable request for a tool call (by insert sequence).
     pub fn latest_for_tool_call(
         &self,
