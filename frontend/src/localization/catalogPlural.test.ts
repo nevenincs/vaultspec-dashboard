@@ -90,6 +90,9 @@ describe("plural catalog manifest", () => {
   it("provides every locale's complete cardinal category family", () => {
     expect(PLURAL_MESSAGE_KEYS).toEqual([
       "common:kit.activity.rowsLoaded",
+      "common:freshness.hours",
+      "common:freshness.days",
+      "common:freshness.weeks",
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
       "common:agent.composer.commentBatch",

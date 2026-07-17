@@ -55,7 +55,11 @@
     </style>
   </head>
   <body>
-    <div id="boot-shell" role="status" aria-label="Loading vaultspec dashboard">
+    <!-- Locale-neutral pre-hydration chrome: a purely visual spinner with no
+         announced or on-screen text, so the static shell never flashes a
+         source-language string before React commits the localized loading
+         state. -->
+    <div id="boot-shell">
       <div class="boot-spinner" aria-hidden="true"></div>
     </div>
     <div id="root"></div>

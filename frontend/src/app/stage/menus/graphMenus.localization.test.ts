@@ -103,22 +103,20 @@ describe("localized graph stage menus", () => {
       "node:open",
       "node:pin",
       "node:expand-ego",
-      "node:copy-id",
       "node:copy-title",
+      "node:copy-document-name",
     ]);
-    expect(action(node, "node:copy-id").dispatch).toMatchObject({
+    // A document node copies its document name (an approved public reference),
+    // never its raw internal id.
+    expect(action(node, "node:copy-document-name").dispatch).toMatchObject({
       type: "action:copy",
-      payload: { text: "doc:transport-value", what: "id" },
+      payload: { text: "transport-value", what: "stem" },
     });
+    // A meta-connection has no public reference, so no copy-id action exists.
     expect(connection.map(({ id }) => id)).toEqual([
       "meta-edge:goto-src",
       "meta-edge:goto-dst",
       "meta-edge:copy-summary",
-      "meta-edge:copy-id",
     ]);
-    expect(action(connection, "meta-edge:copy-id").dispatch).toMatchObject({
-      type: "action:copy",
-      payload: { text: "edge:raw", what: "id" },
-    });
   });
 });

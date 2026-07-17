@@ -105,12 +105,6 @@ export function graphNodeMenu(
           run: () => expandMenuWorkingSet(normalizedEntity.id),
           disabledInTimeTravel: true,
         },
-    copyAction({
-      id: "node:copy-id",
-      label: { key: "common:actions.copy" },
-      text: normalizedEntity.id,
-      what: "id",
-    }),
   ];
   actions.push(
     normalizedEntity.title
@@ -128,6 +122,21 @@ export function graphNodeMenu(
           disabledReason: { key: "graph:disabledReasons.chooseItemWithTitle" },
         },
   );
+  // The clipboard is user-facing output, so a node's raw internal id is never
+  // copied (context-menu-copy-safety CMCS-001). A DOCUMENT node exposes its
+  // document name — an approved public reference — instead; a non-document node
+  // has no public reference and omits the action rather than ship a raw id.
+  const documentName = docStemFromNodeId(normalizedEntity.id);
+  if (documentName !== null) {
+    actions.push(
+      copyAction({
+        id: "node:copy-document-name",
+        label: { key: "common:actions.copyDocumentName" },
+        text: documentName,
+        what: "stem",
+      }),
+    );
+  }
   // Relate this node to the focused node (vault link add) — enabled only for
   // document nodes with a different document focused.
   actions.push(

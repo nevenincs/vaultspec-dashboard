@@ -4,7 +4,7 @@
 // ARIA progressbar contract with a clamped value, and renders the optional
 // tabular readout.
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ProgressBar } from "./ProgressBar";
@@ -26,8 +26,12 @@ describe("ProgressBar", () => {
   });
 
   it("renders the optional tabular value readout", () => {
-    render(<ProgressBar value={3} max={10} showValue />);
-    const readout = screen.getByText("3/10");
-    expect(readout.hasAttribute("data-tabular")).toBe(true);
+    const { container } = render(<ProgressBar value={3} max={10} showValue />);
+    // The value and max sit either side of a decorative slash glyph, so the
+    // readout spans three nodes; assert the composed textContent, not a single
+    // text node.
+    const readout = container.querySelector("[data-tabular]");
+    expect(readout).not.toBeNull();
+    expect(readout?.textContent).toBe("3/10");
   });
 });

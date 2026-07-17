@@ -44,18 +44,15 @@ export function usePointerCoarse(): boolean {
 export interface RowMenuDisclosureProps {
   /** The entity descriptor the row's own `onContextMenu` would open. */
   entity: unknown;
-  /** Accessible name; defaults to the shared row-actions label. */
-  label?: string;
+  /** Accessible name — required; the caller resolves a localized row label. */
+  label: string;
 }
 
 /**
  * The per-row menu disclosure: renders only on coarse pointers and opens the
  * SAME resolver menu the row's right-click path serves, anchored at the button.
  */
-export function RowMenuDisclosure({
-  entity,
-  label = "Row actions",
-}: RowMenuDisclosureProps) {
+export function RowMenuDisclosure({ entity, label }: RowMenuDisclosureProps) {
   const coarse = usePointerCoarse();
   if (!coarse) return null;
   const open = (event: ReactMouseEvent<HTMLButtonElement>) => {

@@ -14,9 +14,8 @@ import { TreeBrowser, type TreeBrowserProps } from "./TreeBrowser";
 import { pathStem } from "./browserSelection";
 import {
   docMarkName as sharedDocMarkName,
-  freshnessLabel as sharedFreshnessLabel,
+  freshness as sharedFreshness,
   freshnessToneClass as sharedFreshnessToneClass,
-  isFresh as sharedIsFresh,
   VAULT_GROUPS as SHARED_VAULT_GROUPS,
 } from "./vaultRowPresentation";
 
@@ -24,9 +23,8 @@ import {
 // owns the feature tree.
 export const VAULT_GROUPS = SHARED_VAULT_GROUPS;
 export const docMarkName = sharedDocMarkName;
-export const freshnessLabel = sharedFreshnessLabel;
+export const freshness = sharedFreshness;
 export const freshnessToneClass = sharedFreshnessToneClass;
-export const isFresh = sharedIsFresh;
 export { filterVaultTreeEntries as filterTreeEntries };
 export { projectVaultTreeFeatureGroups as projectFeatureGroups };
 export type { VaultTreeFeatureGroup as FeatureGroup };

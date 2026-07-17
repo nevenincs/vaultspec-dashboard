@@ -14,7 +14,7 @@ import { Skeleton, SkeletonBar, SkeletonRow, StateBlock } from "../kit";
 
 /** LOADING — UI-only skeleton mimicking the rail's section-eyebrow + folder-row rhythm.
  *  No spinner, no "reading…" copy: the label is screen-reader-only (ADR D2). */
-export function RailSkeleton({ label = "Loading…" }: { label?: string }) {
+export function RailSkeleton({ label }: { label: string }) {
   const rows = ["w-[38%]", "w-[62%]", "w-[54%]", "w-[70%]", "w-[46%]"];
   return (
     <Skeleton label={label} className="px-fg-1 py-fg-1">

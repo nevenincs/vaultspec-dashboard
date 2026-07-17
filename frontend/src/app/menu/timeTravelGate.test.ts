@@ -41,7 +41,9 @@ describe("time-travel gate across surfaces", () => {
     });
   }
 
-  it("non-mutating actions survive time-travel (copy id stays on the node menu)", () => {
-    expect(ids({ kind: "node", id: "n1" }, true)).toContain("node:copy-id");
+  it("non-mutating actions survive time-travel (copy stays on the node menu)", () => {
+    expect(ids({ kind: "node", id: "doc:alpha", title: "Alpha" }, true)).toContain(
+      "node:copy-document-name",
+    );
   });
 });

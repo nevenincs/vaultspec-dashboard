@@ -9,8 +9,8 @@
 export interface SpinnerProps {
   /** Ring diameter: `md` (2rem) matches the boot shell; `sm` (1.25rem) inline. */
   size?: "sm" | "md";
-  /** Accessible label, announced through the wrapping `role="status"`. */
-  label?: string;
+  /** Accessible label — required; the caller supplies a localized load message. */
+  label: string;
 }
 
 const RING_SIZE: Record<NonNullable<SpinnerProps["size"]>, string> = {
@@ -18,7 +18,7 @@ const RING_SIZE: Record<NonNullable<SpinnerProps["size"]>, string> = {
   md: "size-8",
 };
 
-export function Spinner({ size = "md", label = "Loading" }: SpinnerProps) {
+export function Spinner({ size = "md", label }: SpinnerProps) {
   return (
     <span role="status" className="inline-flex items-center justify-center">
       <span

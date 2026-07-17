@@ -11,11 +11,12 @@ import {
   docMarkName,
   entryStem,
   filterVaultEntries,
-  freshnessLabel,
+  freshness,
   freshnessToneClass,
-  isFresh,
   projectFeatureGroups,
 } from "./VaultBrowser";
+import { createTestLocalizationRuntime } from "../../localization/testing";
+import { resolveMessage } from "../../platform/localization/fallback";
 
 const tagged = (path: string, docType: string, tags: string[]): VaultTreeEntry => ({
   path,
@@ -97,25 +98,29 @@ describe("entry presentation", () => {
   });
 
   it("labels freshness in compact buckets and cools to silence", () => {
+    const runtime = createTestLocalizationRuntime();
     const now = Date.parse("2026-06-12T12:00:00Z");
-    expect(freshnessLabel("2026-06-12T11:30:00Z", now)).toBe("now");
-    expect(freshnessLabel("2026-06-12T03:00:00Z", now)).toBe("9h");
-    expect(freshnessLabel("2026-06-09T12:00:00Z", now)).toBe("3d");
-    expect(freshnessLabel("2026-05-30T12:00:00Z", now)).toBe("1w");
-    expect(freshnessLabel("2026-01-01T00:00:00Z", now)).toBe("");
-    expect(freshnessLabel(undefined, now)).toBe("");
+    const rendered = (modified: string | undefined): string | null => {
+      const value = freshness(modified, now);
+      return value === null ? null : resolveMessage(runtime, value.descriptor);
+    };
+    expect(rendered("2026-06-12T11:30:00Z")).toBe("Now");
+    expect(rendered("2026-06-12T03:00:00Z")).toBe("9h");
+    expect(rendered("2026-06-09T12:00:00Z")).toBe("3d");
+    expect(rendered("2026-05-30T12:00:00Z")).toBe("1w");
+    expect(freshness("2026-01-01T00:00:00Z", now)).toBeNull();
+    expect(freshness(undefined, now)).toBeNull();
   });
 
   it("tints only genuinely-fresh items (the <1h 'now' bucket) with the accent", () => {
     // The accent freshness cue is a purposeful liveness signal tied to real
-    // recency, not ambient decoration — only "now" is accent-tinted.
-    expect(isFresh("now")).toBe(true);
-    expect(isFresh("9h")).toBe(false);
-    expect(isFresh("3d")).toBe(false);
-    expect(isFresh("")).toBe(false);
-    expect(freshnessToneClass("now")).toBe("text-state-active");
-    expect(freshnessToneClass("9h")).toBe("text-ink-muted");
-    expect(freshnessToneClass("")).toBe("text-ink-muted");
+    // recency, not ambient decoration — only the live bucket is accent-tinted.
+    const now = Date.parse("2026-06-12T12:00:00Z");
+    expect(freshness("2026-06-12T11:30:00Z", now)?.fresh).toBe(true);
+    expect(freshness("2026-06-12T03:00:00Z", now)?.fresh).toBe(false);
+    expect(freshness("2026-06-09T12:00:00Z", now)?.fresh).toBe(false);
+    expect(freshnessToneClass(true)).toBe("text-state-active");
+    expect(freshnessToneClass(false)).toBe("text-ink-muted");
   });
 
   it("derives the display stem from the path", () => {

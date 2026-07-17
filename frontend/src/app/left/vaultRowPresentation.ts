@@ -27,15 +27,10 @@ import {
 import type { MessageDescriptor } from "../../platform/localization/message";
 import { featureTagDisplayName } from "../../stores/featureQuery";
 import type { Category } from "../kit";
-import { freshnessLabel, isFresh } from "../presentation/freshness";
+import { freshness, freshnessToneClass } from "../presentation/freshness";
 
-export { freshnessLabel, isFresh };
-
-/** The token class for a compact freshness label. Only the truly live `now`
- * bucket receives active ink; older buckets stay quiet. */
-export function freshnessToneClass(label: string): string {
-  return isFresh(label) ? "text-state-active" : "text-ink-muted";
-}
+export { freshness, freshnessToneClass };
+export type { Freshness } from "../presentation/freshness";
 
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
 // 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure

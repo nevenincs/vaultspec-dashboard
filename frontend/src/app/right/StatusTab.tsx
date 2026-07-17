@@ -77,7 +77,7 @@ import {
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
 import { activateEntity } from "../../stores/view/activateEntity";
-import { freshnessLabel } from "../presentation/freshness";
+import { freshness } from "../presentation/freshness";
 import { ChangesOverview } from "./ChangesOverview";
 import { PlanStepTree } from "./PlanStepTree";
 import { RailDegraded, RailEmpty, RailLoading, type RailState } from "./railStates";
@@ -174,7 +174,8 @@ function PlanPill({
   nav,
 }: PlanPillProps) {
   const scope = useActiveScope();
-  const fresh = freshnessLabel(row.modifiedAt, now);
+  const resolveMessage = useLocalizedMessageResolver();
+  const fresh = freshness(row.modifiedAt, now);
   const treeId = `status-tree-${row.nodeId}`;
   const interior = usePlanInteriorView(expanded ? row.nodeId : null, scope);
   const Chevron = expanded ? ChevronDown : ChevronRight;
@@ -267,7 +268,8 @@ function PlanPill({
             )}
             {fresh && (
               <span className="shrink-0 text-meta text-ink-muted" data-freshness>
-                <DecorativeGlyph name="middleDot" /> {fresh}
+                <DecorativeGlyph name="middleDot" />{" "}
+                {resolveMessage(fresh.descriptor).message}
               </span>
             )}
           </div>

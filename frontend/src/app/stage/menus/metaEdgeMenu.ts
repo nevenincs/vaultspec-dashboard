@@ -72,12 +72,9 @@ export function metaEdgeMenu(entity: unknown): ActionDescriptor[] {
             key: "graph:disabledReasons.chooseConnectionWithSummary",
           },
         },
-    copyAction({
-      id: "meta-edge:copy-id",
-      label: { key: "common:actions.copy" },
-      text: normalizedEntity.id,
-      what: "id",
-    }),
+    // A meta-connection is a transient aggregated ribbon with no user-level
+    // reference, so its raw internal id is never copied to the user-facing
+    // clipboard (context-menu-copy-safety CMCS-001); the action is omitted.
   ];
 }
 

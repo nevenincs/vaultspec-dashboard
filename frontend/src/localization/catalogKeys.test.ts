@@ -241,6 +241,13 @@ const EXPECTED_CATALOG_KEYS = [
   "common:shortcutGroups.general",
   "common:shortcutGroups.graph",
   "common:shortcutGroups.window",
+  "common:freshness.now",
+  "common:freshness.hours_one",
+  "common:freshness.hours_other",
+  "common:freshness.days_one",
+  "common:freshness.days_other",
+  "common:freshness.weeks_one",
+  "common:freshness.weeks_other",
   "common:keycaps.alt",
   "common:keycaps.arrowDown",
   "common:keycaps.arrowLeft",
@@ -1065,6 +1072,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   ...EXPECTED_CATALOG_KEYS.filter(
     (key) =>
       !/^common:kit\.activity\.rowsLoaded_(?:one|other)$/u.test(key) &&
+      !/^common:freshness\.(?:hours|days|weeks)_(?:one|other)$/u.test(key) &&
       !/^common:finalWave\.work\.progress_(?:one|other)$/u.test(key) &&
       !/^common:agent\.composer\.commentBatch_(?:one|other)$/u.test(key) &&
       !/^documents:localizationWave\.plan\.(?:completion|phaseCount|stepCount|waveCount)_(?:one|other)$/u.test(
@@ -1081,6 +1089,9 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "common:commandPalette.selectionAnnouncement",
   "common:finalWave.work.progress",
   "common:kit.activity.rowsLoaded",
+  "common:freshness.hours",
+  "common:freshness.days",
+  "common:freshness.weeks",
   "documents:localizationWave.plan.completion",
   "documents:localizationWave.plan.phaseCount",
   "documents:localizationWave.plan.stepCount",
@@ -1173,6 +1184,9 @@ describe("shipped localization catalog keys", () => {
     expect([...MESSAGE_KEYS].sort()).toEqual([...EXPECTED_PUBLIC_MESSAGE_KEYS].sort());
     expect(PLURAL_MESSAGE_KEYS).toEqual([
       "common:kit.activity.rowsLoaded",
+      "common:freshness.hours",
+      "common:freshness.days",
+      "common:freshness.weeks",
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
       "common:agent.composer.commentBatch",

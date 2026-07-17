@@ -61,8 +61,8 @@ describe("graphNodeMenu (canonical node resolver)", () => {
       "node:open",
       "node:pin",
       "node:expand-ego",
-      "node:copy-id",
       "node:copy-title",
+      "node:copy-document-name",
       "node:relate",
       "node:autofix-feature",
       "node:archive-feature",
@@ -137,7 +137,21 @@ describe("graphNodeMenu (canonical node resolver)", () => {
     expect(find(a, "node:pin").disabledInTimeTravel).toBe(true);
     expect(find(a, "node:expand-ego").disabledInTimeTravel).toBe(true);
     expect(find(a, "node:focus").disabledInTimeTravel).toBeUndefined();
-    expect(find(a, "node:copy-id").disabledInTimeTravel).toBeUndefined();
+    expect(find(a, "node:copy-document-name").disabledInTimeTravel).toBeUndefined();
+  });
+
+  it("copies a document node's name as its public reference, never a raw id", () => {
+    const copy = find(graphNodeMenu(base), "node:copy-document-name");
+    expect(copy.label).toEqual({ key: "common:actions.copyDocumentName" });
+    expect(copy.dispatch).toMatchObject({
+      type: "action:copy",
+      payload: { text: "alpha", what: "stem" },
+    });
+    // A non-document node has no approved public reference, so it omits the
+    // action entirely rather than expose a raw internal id.
+    expect(
+      byId(graphNodeMenu({ kind: "node", id: "feature:dashboard" })),
+    ).not.toContain("node:copy-document-name");
   });
 
   it("disables copy-title with a reason when there is no title", () => {
@@ -221,7 +235,7 @@ describe("graphNodeMenu (canonical node resolver)", () => {
 });
 
 describe("metaEdgeMenu", () => {
-  it("copies the summary when present, plus the id", () => {
+  it("copies the summary when present, never a raw connection id", () => {
     const e = {
       kind: "meta-edge",
       id: " m1 ",
@@ -231,7 +245,6 @@ describe("metaEdgeMenu", () => {
       "meta-edge:goto-src",
       "meta-edge:goto-dst",
       "meta-edge:copy-summary",
-      "meta-edge:copy-id",
     ]);
     expect(find(metaEdgeMenu(e), "meta-edge:copy-summary").disabled).toBeUndefined();
   });

@@ -123,6 +123,15 @@ export const common = {
       open: "Open",
     },
   },
+  freshness: {
+    now: "Now",
+    hours_one: "{{count, number}}h",
+    hours_other: "{{count, number}}h",
+    days_one: "{{count, number}}d",
+    days_other: "{{count, number}}d",
+    weeks_one: "{{count, number}}w",
+    weeks_other: "{{count, number}}w",
+  },
   shell: {
     accessibility: {
       collapsedNavigation: "Collapsed navigation",
