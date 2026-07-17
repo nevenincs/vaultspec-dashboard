@@ -350,6 +350,175 @@ cite, by construction rather than by prohibition:
   save path reads; the buffer is a bounded HISTORY BESIDE it, not a
   replacement authority.
 
+**D11 — Agent marks survive user edits by per-edit RECLASSIFICATION over the
+retained raw baseline; there is no stored, transformed decoration state.**
+(Addendum, closing the D4 crux; supersedes the V1 clear-on-first-keystroke
+behavior as a full cutover, not a flagged bridge.) The anchor is not a range
+the client stores and transforms — it is a derivation the client repeats. The
+store keeps only the raw strings it already holds (`draftText`,
+`editorBaseText`, `editorAgentBaseline`); the app derives the effective change
+set per render:
+
+- `baseDiff = diffLines(editorBaseText, draftText)` — already computed for the
+  user marks today; the user runs come from `classifyDiff(baseDiff)` unchanged.
+- The agent runs come from `deriveAgentChanges(editorAgentBaseline,
+  editorBaseText)`, memoized on that pair — it changes only at a reconcile,
+  never per keystroke.
+- A line-space projection built from the SAME `baseDiff` walk (context lines
+  advance both counters; adds advance draft-space; removes advance base-space)
+  maps each agent run from base-line space into draft-line space.
+- Merge law: a user run wins every line it touches. An agent run that projects
+  onto untouched context keeps `agent` origin (and its `unseen` cue); an agent
+  line the user edited or deleted RECLASSIFIES as a user change — touching
+  agent text makes it yours, which matches the ledger's provenance truth (the
+  user's next save is the user's revision).
+
+Store deltas (primitive-only, all in `viewStore.ts`): `setDraft` DELETES its
+`editorAgentBaseline: null` clear arm (the cutover); `reconcileEditorBase`
+keeps the OLDEST baseline across stacked applies
+(`state.editorAgentBaseline ?? state.editorBaseText`) so marks compose across
+successive applies instead of resetting to the last; `markSaved` clears
+`editorAgentBaseline`/`editorAgentSeen` — a save folds the buffer into one
+committed revision whose durable provenance is the ledger (D4). Stated cost:
+saving before acknowledging drops the session-scoped dot; the durable unseen
+truth remains the backend acknowledgement plane (D6).
+
+Bounds: nothing is accumulated — two diffs per derivation, both under the
+existing `MAX_DIFF_LINES`/`MAX_DIFF_CELLS` honest-degrade caps, one of them
+memoized on a reconcile-frequency pair. Touch points: `editorChanges.ts` gains
+`lineSpaceProjection(diff)` + `deriveEffectiveChanges(agentBaseline, baseText,
+draftText)`; `MarkdownDocView.tsx` swaps its effective-change memo and the
+nav thunk's `changesFromState` onto the new derivation; `HighlightedCode.tsx`
+is untouched (same `LineMarker` grammar).
+
+Rejected alternatives:
+
+- *Transformed offset ranges (VS Code `IModelDeltaDecoration`).* VS Code's
+  stickiness works because its text model EMITS content-change deltas; a plain
+  textarea `onChange` yields only the new string, so the delta would have to be
+  inferred by diffing old-vs-new draft anyway — sticky ranges then add a
+  mutable decoration accumulator (its own cap, its own invalidation) on top of
+  the very diff that already answers the question. Failure mode: a mis-inferred
+  delta (paste-over-selection, IME composition, undo, autocorrect — each one
+  `onChange` event with multi-span effects) silently drifts a provenance mark
+  onto text the agent never wrote: a lying decoration, worse than none.
+- *Content-keyed recovery (re-find agent lines by content in the draft).*
+  Duplicate lines (blanks, list bullets) re-anchor to the wrong occurrence,
+  and an intra-line user edit either loses the mark or cannot distinguish
+  user-touched from vanished. Failure mode: nondeterministic anchoring.
+- *Adopting CodeMirror/Monaco for native decorations.* Replaces the
+  transparent-textarea overlay architecture (syntax-highlighting ADR)
+  wholesale — a view rewrite and contract event outside this epic.
+
+**D12 — The D2 dirty arm ships as an app-computed section three-way over the
+mirrored parser; the store holds one primitive pending base plus a decisions
+record; overlap resolves per-section through the ONE `DiffView`.** The
+existing reconcile effect in `MarkdownDocView.tsx` becomes the single
+dispatcher: when the served hash diverges from `baseBlobHash`, a CLEAN draft
+takes `reconcileEditorBase` exactly as today (its clean-only guard stays, and
+doubles as the race backstop); a DIRTY draft runs a new pure app module
+`app/authoring/sectionReconcile.ts` built on `parseHeadingBlocks` over
+(old base = `editorBaseText`, new base = the served text, draft =
+`draftText`). The save-refusal entry (D3) converges here too: `markConflict`
+→ content refetch → the same dispatcher.
+
+- *Partition.* Flat segments cut at EVERY heading boundary; the pseudo-section
+  is bytes 0 → first heading (frontmatter + preamble), keyed
+  `headingPathKey([])`. `HeadingBlock` gains a client-only `start` offset —
+  additive; the parse logic stays byte-identical to the engine, so parser
+  lockstep is untouched.
+- *Classification per segment key.* `userTouched` = draft bytes differ from
+  the old base's (or the segment is added/removed by the draft); `agentTouched`
+  = new-base bytes differ from the old base's (same test). Agent-only takes
+  the new base's bytes; user-only or untouched keeps the draft's bytes
+  verbatim; BOTH is a CONFLICT. Deny-to-conflict also covers every ambiguity,
+  mirroring the engine's `carry_forward_drafts` AnchorDrift law
+  (`authoring/rebase/mod.rs`: preserve the drafted intent, re-materialize
+  against the current base, and DENY drift as a value rather than guess):
+  duplicate segment keys in any of the three images, a user-added segment
+  whose preceding anchor segment vanished, and user-deleted vs agent-modified
+  (either direction). Merged order follows the NEW base; user-added segments
+  re-insert after their nearest preceding surviving segment.
+- *Disjoint arm.* The app computes the merged draft; a new store action
+  `rebaseDraft(mergedDraft, newBaseText, newBlobHash)` swaps draft, base, and
+  fence in one atomic set, keeps status `dirty`, retains the oldest
+  `editorAgentBaseline` (D11 then marks the incoming sections), and the editor
+  announces "Updated with agent changes". When the entry was a refused save,
+  the held save intent retries ONCE after the rebase — D3's
+  "rebase and re-save in one step".
+- *Overlap arm.* NO merge. New primitive store fields:
+  `editorPendingBaseText: string | null` and
+  `editorPendingBaseBlobHash: string` (the held new base — single values, the
+  same bounded class as `editorAgentBaseline`), plus
+  `editorConflictResolutions: Record<string, "mine" | "theirs">` (per-segment
+  decisions keyed on the segment path key). The conflicted-section SET is NOT
+  stored — it is derived live in the app from (old base, pending base, current
+  draft) by the same memoized reconcile, so it stays honest while the user
+  keeps typing: an edit can dissolve a conflict (they took theirs by hand) or
+  surface a new one, and the buffer never locks. Actions:
+  `holdPendingBase(newBaseText, newBlobHash)` (status becomes `conflict`; the
+  draft is untouched byte-for-byte), `resolveConflictSection(key, choice)`
+  (prunes decisions to currently-derived keys), and
+  `completeConflictReconcile(mergedText)` — invoked by the app only when every
+  derived conflict key has a decision; it sets draft = merged image, base =
+  pending base, fence = pending hash, clears the pending fields, retains the
+  oldest agent baseline, and re-arms status (`dirty` when the merge diverges
+  from the new base, else `idle`). While `editorPendingBaseText` is non-null
+  the save path is STRUCTURALLY disabled (save thunk guard + disabled
+  control), so a silent overwrite is impossible by construction, not by
+  discipline. A NEWER apply while a conflict is pending replaces the pending
+  base and the derived set recomputes; prior decisions are DROPPED with a
+  notice — a decision taken against superseded bytes is not consent to
+  different bytes.
+- *Presentation.* Conflicted segments take the D5 broken-tone gutter bar and
+  the one banner ("An agent changed a section you're editing"); the
+  resolution surface lists the conflicted sections, each opening the ONE
+  `DiffView` (the user's section bytes vs the new base's section bytes) with
+  two plain actions: "Keep my version" / "Use the agent's version".
+  `DiffViewSource` gains one value (`conflict-resolution`) — a
+  parameterization of the one primitive, never a second diff grammar.
+- *Authority.* Unchanged: the ledgered save fence (`blob_hash`) remains the
+  sole apply authority. The client three-way is a UX convenience over
+  view-local strings; its worst outcome is another honest conflict, never a
+  lost byte.
+
+Rejected alternatives:
+
+- *Line/hunk-granular auto-merge (git-style).* Silently fuses adjacent edits
+  inside one section — exactly the silent-mutation class the concurrency ADR
+  and the engine's deny arc forbid. Failure mode: plausible merged prose
+  nobody wrote.
+- *Whole-document conflict only (status quo).* Loses the common disjoint
+  case; forces the manual copy-out this ADR exists to end.
+- *Store-side section computation.* Requires importing the app parser into
+  `stores/` (layer violation) or duplicating it (a second lockstep hazard).
+  The app computes; the store holds primitives.
+- *Modal lock until resolution.* Blocks typing in untouched sections for no
+  safety gain; per-section conflict state with a live-derived set keeps the
+  buffer editable while remaining un-overwritable.
+
+**D13 — Boundary and rule sanity for D11/D12.** (a) *Layer law:* every new
+store field is a string or a record of string literals; parsing, diffing, and
+merging live in `app/authoring/` (`editorChanges.ts`,
+`sectionReconcile.ts`) — `stores/` imports no app type. (b) *Resource
+bounds:* the pending base is a single value (the same class as
+`editorAgentBaseline`); the decisions record is pruned to the derived
+conflict set, itself bounded by the parser's `MAX_HEADING_SECTIONS`; all
+diffs ride `MAX_DIFF_LINES`/`MAX_DIFF_CELLS`; if a diff caps or the partition
+is ambiguous document-wide, the reconcile degrades to ONE whole-document
+conflict — stated, coarser, never silent. (c) *No deprecation bridges:*
+`setDraft`'s clear-on-keystroke arm and the conflict dead-end arm are
+DELETED, not flagged. (d) *Design system:* no new colour (the D5 grammar and
+its tokens are reused, including the broken-tone conflict bar); every label is
+plain language; "rebase", "selector", "baseline" never render. (e) *Reviewed
+events to flag:* the view-store shape addition (three fields, four actions,
+two action-semantics changes) is the one deliberate store-contract change and
+is reviewed BY this addendum; `DiffViewSource` plus one value and
+`HeadingBlock.start` are additive client-only widenings; D11/D12 require NO
+engine or wire change — the un-served acknowledge verb (D6) remains the
+epic's only wire item and is unaffected.
+
+
 ## Rationale
 
 Every hard sub-problem here already has a settled in-repo answer; the
@@ -398,14 +567,32 @@ surface — the paragraph hash is to the section anchor what `range_hint` is to
   is the seam a future queued-turn or multi-agent concurrency story plugs
   into without touching the ledger contract.
 
+## Implementation status (2026-07-17)
+
+Every decision is IMPLEMENTED and committed to the local `main` branch (unpushed),
+each with tests:
+
+- D1–D6 (syntax themes, bounded diff, editor gutter, change navigation, agent
+  provenance, read-only code markers) — the modern-editing core for both surfaces.
+- D11 (anchor stability) — `deriveEffectiveChanges` re-projects agent marks per
+  render; the V1 clear-on-keystroke is cut over.
+- D12 (dirty-overlap reconcile) — `app/authoring/sectionReconcile.ts` section
+  three-way; disjoint auto-rebases, overlap holds the base and resolves per-section
+  through the one `DiffView` (`conflict-resolution` source); the user is
+  structurally never silently overwritten.
+- The `acknowledge_after_fact` HTTP route (D6 durable half) is now served
+  (`POST /authoring/v1/proposals/{changeset_id}/acknowledge`) and wired into the
+  Review lane.
+
 ## Open questions (for the owner)
 
-- **Acceptance of the `--color-diff-modified` token** as a semantic-tier plus
-  Figma addition (design-system says Figma binds; the token does not exist
-  there today).
-- **Wiring the acknowledge route:** the durable acknowledgement store verb
-  exists engine-side but is not yet HTTP-served (D6); confirm the route
-  addition rides this epic rather than a cross-team filing.
+- **`--color-diff-modified` Figma sync (the one outstanding item).** The token is
+  live in code (OKLCH tier + `styles.css`, contrast-proven) and recorded here; the
+  Figma variable is NOT yet added because the binding file was not reachable via the
+  MCP headless. EXACT one-step spec: add semantic variable `diff-modified` beside
+  `diff-add`/`diff-remove` in the same collection + modes — light `oklch(0.5 0.13
+  250)`, dark `oklch(0.72 0.13 250)`, high-contrast `oklch(0.8 0.15 250)`. A
+  documented code-first divergence, permitted by the design-system rule pending the
+  sync.
 - **Auto-save-then-comment:** D8 disables commenting on a dirty section
-  rather than auto-saving first; if the owner prefers auto-save, that is a
-  one-line policy change on the same seam.
+  rather than auto-saving first; owner ruled DISABLE-with-reason (2026-07-17).
