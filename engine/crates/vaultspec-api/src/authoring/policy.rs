@@ -305,26 +305,31 @@ pub fn tool_permission_eligibility(tier: ToolRiskTier) -> ActionEligibility {
     }
 }
 
-/// The four review actions (approval-gates ADR). Approve/Reject are the live V1
-/// subset; Edit (request-changes) and Respond are the review-loop actions.
+/// The review actions (approval-gates ADR). Approve/Reject/Edit are the live decision
+/// verdicts; Respond is a status-preserving clarification exchange, not a decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ReviewAction {
     Approve,
     Reject,
-    /// Request changes — a reviewer-driven return to draft. RESERVED for W05.P24.
+    /// Request changes — a reviewer-driven return to draft through the `EditProposal`
+    /// arc. ACTIVATED in W13.P24; decidable end-to-end (the third verdict).
     Edit,
-    /// Clarify / instruct without deciding. RESERVED for W05.P24.
+    /// Clarify / instruct without deciding — a status-preserving review-station
+    /// exchange (`respond`), never an approval decision.
     Respond,
 }
 
-/// Whether a review action is DECIDABLE in V1. Approve/Reject are live; Edit
-/// (request-changes) and Respond are review-loop actions RESERVED for W05.P24 — the
-/// transition engine does not yet support them (`ApprovalDecision::RequestChanges`
-/// returns a typed "reserved" denial today). The policy REPRESENTS them for a stable
-/// contract but reports them not-yet-supported rather than inventing the transition.
+/// Whether a review action is a DECIDABLE verdict in V1. Approve, Reject, and Edit
+/// (request-changes, activated W13.P24) all drive a changeset transition through
+/// `submit_decision`. Respond is a clarification exchange that preserves the changeset
+/// status, so it is not a decidable verdict — it is served through the review-station
+/// respond path, never the decisions route.
 pub fn review_action_supported_in_v1(action: ReviewAction) -> bool {
-    matches!(action, ReviewAction::Approve | ReviewAction::Reject)
+    matches!(
+        action,
+        ReviewAction::Approve | ReviewAction::Reject | ReviewAction::Edit
+    )
 }
 
 /// The conditions that make an approval stale (approval-gates ADR: "which conditions
@@ -713,14 +718,13 @@ mod tests {
     }
 
     #[test]
-    fn request_changes_and_respond_are_represented_but_reserved_in_v1() {
-        // Approve/Reject are the live V1 subset.
+    fn approve_reject_edit_are_decidable_verdicts_respond_is_not() {
+        // Approve/Reject/Edit (request-changes, activated W13.P24) are decidable verdicts
+        // that drive a changeset transition through `submit_decision`.
         assert!(review_action_supported_in_v1(ReviewAction::Approve));
         assert!(review_action_supported_in_v1(ReviewAction::Reject));
-        // Edit (request-changes) + Respond are represented for a stable contract but
-        // NOT decidable in V1 (reserved for W05.P24 — the transition engine returns a
-        // typed "reserved" denial today; we do not invent the transition here).
-        assert!(!review_action_supported_in_v1(ReviewAction::Edit));
+        assert!(review_action_supported_in_v1(ReviewAction::Edit));
+        // Respond is a status-preserving clarification exchange, not a decision.
         assert!(!review_action_supported_in_v1(ReviewAction::Respond));
     }
 

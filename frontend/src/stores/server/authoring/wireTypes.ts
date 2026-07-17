@@ -335,7 +335,10 @@ export interface SubmitForReviewPayload {
 export interface ReviewDecisionPayload {
   proposal_id: string;
   approval_id: string;
-  decision: "approve" | "reject";
+  /** The three-verdict vocabulary (approval-gates ADR, W13.P24): `approve` and
+   *  `reject` decide; `edit` is request-changes — a reviewer-driven return to draft
+   *  through the `EditProposal` arc, carrying the requested changes in `comment`. */
+  decision: "approve" | "reject" | "edit";
   reviewed_revision: string;
   comment?: string;
 }

@@ -14,6 +14,7 @@ import {
   reviewStaleDescriptor,
   reviewStatusDescriptor,
   reviewValidationDescriptor,
+  REQUEST_CHANGES_DIALOG,
   REVIEW_STATION_MESSAGES,
   useApplyChangeset,
   useCreateRollback,
@@ -40,6 +41,7 @@ import {
   StateBlock,
 } from "../kit";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
+import { Dialog } from "../chrome/Dialog";
 import { DiffPanel } from "./DiffPanel";
 
 type ResolveMessage = ReturnType<typeof useLocalizedMessageResolver>;
@@ -56,6 +58,13 @@ export interface ReviewActions {
   decide(
     proposal: ProposalProjection,
     decision: "approve" | "reject",
+  ): Promise<AuthoringCommandOutcome>;
+  /** Request changes (the third verdict): send the proposal back to draft with the
+   *  reviewer's requested changes carried in the required `comment`. Routes through
+   *  the same decisions seam as approve/reject with the wire verdict `edit`. */
+  requestChanges(
+    proposal: ProposalProjection,
+    comment: string,
   ): Promise<AuthoringCommandOutcome>;
   submit(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
   apply(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
@@ -77,6 +86,18 @@ export function useReviewActions(): ReviewActions {
           decision: kind,
           reviewed_revision:
             proposal.approval.reviewed_proposal_revision ?? proposal.changeset_revision,
+        },
+      }),
+    requestChanges: (proposal, comment) =>
+      decision.mutateAsync({
+        approvalId: proposal.approval.approval_id ?? "",
+        payload: {
+          proposal_id: proposal.approval.proposal_id ?? "",
+          approval_id: proposal.approval.approval_id ?? "",
+          decision: "edit",
+          reviewed_revision:
+            proposal.approval.reviewed_proposal_revision ?? proposal.changeset_revision,
+          comment,
         },
       }),
     submit: (proposal) =>
@@ -190,6 +211,9 @@ export function ProposalCard({
   const [feedback, setFeedback] = useState<CardFeedback>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [pending, setPending] = useState<PendingConfirmation | null>(null);
+  const [requestingChanges, setRequestingChanges] = useState<ProposalProjection | null>(
+    null,
+  );
 
   const status = safeMessage(resolveMessage, reviewStatusDescriptor(proposal.status));
   const author = safeMessage(
@@ -300,7 +324,10 @@ export function ProposalCard({
     const command = reviewCommand(entry.command);
     if (!command || command === "create_rollback") return [];
     if (
-      (command === "approve" || command === "reject" || command === "request_apply") &&
+      (command === "approve" ||
+        command === "reject" ||
+        command === "edit_proposal" ||
+        command === "request_apply") &&
       !hasApprovalIdentity
     ) {
       return [];
@@ -374,6 +401,8 @@ export function ProposalCard({
             onRun={() => {
               if (presentation.kind === "direct") {
                 void runCommand(presentation.command, proposal);
+              } else if (presentation.kind === "commented") {
+                setRequestingChanges(proposal);
               } else {
                 setPending({ command: presentation.command, proposal });
               }
@@ -434,7 +463,98 @@ export function ProposalCard({
           }}
         />
       )}
+
+      {requestingChanges && (
+        <RequestChangesDialog
+          busy={busy}
+          onCancel={() => setRequestingChanges(null)}
+          onSubmit={(comment) => {
+            const target = requestingChanges;
+            setRequestingChanges(null);
+            void run(() => actions.requestChanges(target, comment));
+          }}
+        />
+      )}
     </li>
+  );
+}
+
+/** The request-changes comment-capture dialog. The comment is REQUIRED — it carries
+ *  the changes the reviewer wants — so "Request changes" stays disabled until the
+ *  note is non-empty. On submit the proposal returns to draft with the reviewer's
+ *  feedback, the exact loop the a2a phase gate resumes into a revision cycle. */
+function RequestChangesDialog({
+  busy,
+  onCancel,
+  onSubmit,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onSubmit: (comment: string) => void;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const [comment, setComment] = useState("");
+  const title = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.title);
+  const body = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.body);
+  const commentLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.commentLabel);
+  const placeholder = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.placeholder);
+  const submitLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.submit);
+  const cancelLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.cancel);
+  if (
+    !title ||
+    !body ||
+    !commentLabel ||
+    !placeholder ||
+    !submitLabel ||
+    !cancelLabel
+  ) {
+    return null;
+  }
+
+  const trimmed = comment.trim();
+  const canSubmit = trimmed.length > 0 && !busy;
+
+  return (
+    <Dialog
+      open
+      onClose={onCancel}
+      title={title}
+      description={body}
+      footer={
+        <div className="flex items-center justify-end gap-fg-2">
+          <Button variant="secondary" onClick={onCancel}>
+            {cancelLabel}
+          </Button>
+          <Button
+            variant="primary"
+            disabled={!canSubmit}
+            onClick={() => canSubmit && onSubmit(trimmed)}
+            data-action="request_changes-submit"
+          >
+            {submitLabel}
+          </Button>
+        </div>
+      }
+    >
+      <div className="flex flex-col gap-fg-1 px-fg-4 py-fg-4">
+        <label
+          className="text-label text-ink-muted"
+          htmlFor="review-request-changes-comment"
+        >
+          {commentLabel}
+        </label>
+        <textarea
+          id="review-request-changes-comment"
+          value={comment}
+          onChange={(event) => setComment(event.target.value)}
+          rows={4}
+          autoFocus
+          placeholder={placeholder}
+          data-request-changes-comment
+          className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
+        />
+      </div>
+    </Dialog>
   );
 }
 

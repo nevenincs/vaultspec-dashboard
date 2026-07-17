@@ -4,6 +4,9 @@ import type { AuthoringCommandOutcome } from "./wireTypes";
 export type ReviewCommand =
   | "approve"
   | "reject"
+  // The request-changes verdict is served as the engine command `edit_proposal`
+  // (CommandKind::EditProposal); the UI presents it as "Request changes".
+  | "edit_proposal"
   | "submit_for_review"
   | "request_apply"
   | "create_rollback";
@@ -11,6 +14,7 @@ export type ReviewCommand =
 const REVIEW_COMMANDS: readonly ReviewCommand[] = [
   "approve",
   "reject",
+  "edit_proposal",
   "submit_for_review",
   "request_apply",
   "create_rollback",

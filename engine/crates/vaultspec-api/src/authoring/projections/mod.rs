@@ -51,7 +51,8 @@ use super::store::unit_of_work::{Repository, UnitOfWork};
 use super::transitions::{
     ApprovalFreshness, ReviewDecisionFreshness, RollbackChildEligibility, ValidationFreshness,
     apply_transition_eligibility, approve_transition_eligibility, create_rollback_eligibility,
-    reject_transition_eligibility, submit_for_review_transition_eligibility,
+    edit_proposal_transition_eligibility, reject_transition_eligibility,
+    submit_for_review_transition_eligibility,
 };
 use super::validation::{ValidationStatus, ValidationStatusRecord};
 
@@ -792,9 +793,15 @@ impl ProjectionRepository<'_, '_> {
             ChangesetStatus::NeedsReview => {
                 let review =
                     review_decision_freshness(latest, approval, current_digest, targets_current);
+                // The three-verdict review vocabulary (approval-gates ADR, activated
+                // W13.P24): approve and reject are freshness-gated; request-changes rides
+                // the shared `edit_proposal` predicate (feedback, deliberately legal on a
+                // stale or unvalidated review) so the queue advertises exactly what the
+                // decision path accepts (review-actions-are-backend-served).
                 vec![
                     approve_transition_eligibility(latest, review, validation),
                     reject_transition_eligibility(latest, review, validation),
+                    edit_proposal_transition_eligibility(latest),
                 ]
             }
             ChangesetStatus::Approved => {

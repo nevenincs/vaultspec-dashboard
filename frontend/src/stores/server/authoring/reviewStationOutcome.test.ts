@@ -16,6 +16,7 @@ describe("review station command vocabulary", () => {
       [
         "approve",
         "reject",
+        "edit_proposal",
         "submit_for_review",
         "request_apply",
         "create_rollback",
@@ -23,6 +24,7 @@ describe("review station command vocabulary", () => {
     ).toEqual([
       "approve",
       "reject",
+      "edit_proposal",
       "submit_for_review",
       "request_apply",
       "create_rollback",

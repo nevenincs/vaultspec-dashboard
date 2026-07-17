@@ -316,7 +316,7 @@ fn store_preimage(store: &mut Store, preimage: &PreimageRecord) {
 }
 
 #[test]
-fn needs_review_proposal_serves_approve_reject_eligibility() {
+fn needs_review_proposal_serves_approve_reject_request_changes_eligibility() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     let base = write_doc(root, "projection-a", "body\n");
@@ -346,23 +346,44 @@ fn needs_review_proposal_serves_approve_reject_eligibility() {
         "policy reason is backend-served: {:?}",
         projection.policy
     );
-    // Both review decisions are served, backend-owned. With no validation
-    // record seeded, the served reason is the MISSING validation record
-    // (absence is NOT staleness — a NeedsReview proposal that was never
-    // validated is "not yet validated", not "stale digest"), and it is NOT a
-    // target conflict (proving the live target-fence comparison passed on a
-    // fresh worktree base). The eligibility reasons are backend-served.
-    assert_eq!(projection.eligibility.len(), 2);
+    // All THREE review verdicts are served, backend-owned. Approve and reject are
+    // freshness-gated: with no validation record seeded, their served reason is the
+    // MISSING validation record (absence is NOT staleness — a NeedsReview proposal that
+    // was never validated is "not yet validated", not "stale digest"), and it is NOT a
+    // target conflict (proving the live target-fence comparison passed on a fresh
+    // worktree base). Request-changes (`edit_proposal`) rides the shared feedback
+    // predicate: it is deliberately ALLOWED on an unvalidated review, so it is served as
+    // an allowed action — the queue advertises exactly what the decision path accepts.
+    assert_eq!(projection.eligibility.len(), 3);
+    let decision_gated: Vec<_> = projection
+        .eligibility
+        .iter()
+        .filter(|entry| matches!(entry.command, CommandKind::Approve | CommandKind::Reject))
+        .collect();
+    assert_eq!(
+        decision_gated.len(),
+        2,
+        "approve + reject are freshness-gated"
+    );
     assert!(
-        projection.eligibility.iter().all(|entry| !entry.allowed
+        decision_gated.iter().all(|entry| !entry.allowed
             && entry.reason.as_deref().is_some_and(|reason| {
                 reason.contains("validation record")
                     && !reason.contains("target revisions")
                     && !reason.contains("stale")
             })),
-        "review decisions are served; the reason is the MISSING validation record, \
+        "approve/reject are served; the reason is the MISSING validation record, \
              not a stale digest or a target conflict: {:?}",
         projection.eligibility
+    );
+    let request_changes = projection
+        .eligibility
+        .iter()
+        .find(|entry| entry.command == CommandKind::EditProposal)
+        .expect("request-changes is served as the third review verdict");
+    assert!(
+        request_changes.allowed,
+        "request-changes is feedback — allowed on an unvalidated review: {request_changes:?}"
     );
     assert!(!projection.rollback.available);
 }

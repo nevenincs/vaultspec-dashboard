@@ -162,6 +162,49 @@ non-authoritative frames; a client recovering truth re-reads `run-status` and
 the durable events, never the relay. If the relay proves noisy, degrading to
 bounded polling of `run-status` is contract-conformant.
 
+> **Amendment (2026-07-17, three-verdict activation — `request_changes` is live
+> end-to-end):** the approval authority is the engine by ratified contract (no
+> second approval authority in A2A): A2A proposes into `/authoring/v1/proposals`,
+> the human decides in the dashboard, and A2A resumes on the SSE-delivered
+> verdict. That verdict vocabulary is now COMPLETE. `request_changes` — the
+> reviewer-driven return to draft that A2A's `phase_gate` loops back into a
+> revision cycle — is activated (W13.P24) alongside the already-live `approve`
+> and `reject`, closing the gap where the engine modeled but rejected the verb.
+> The decision:
+>
+> - **Wire shape.** `request_changes` flows through the SAME decisions route as
+>   approve/reject (`POST /authoring/v1/reviews/{approval_id}/decisions`, wire
+>   verdict `edit`) and the SAME `submit_decision` engine path. It drives the
+>   kind-aware `EditProposal` arc (`NeedsReview|Approved → Draft` /
+>   `RollbackProposed`) under the reviewer's identity — a reviewer edit — which
+>   stales the prior approval. Having no changeset status of its own, it is
+>   published on the durable outbox as `approval.resolved` carrying the
+>   authoritative `decision: "request_changes"` field (with the reviewer's
+>   comment), so A2A's verdict subscriber decodes the verdict from the field with
+>   the same envelope discipline as approve/reject.
+> - **Invariants preserved.** The self-approval ban (keyed on `origin_author`)
+>   is DELIBERATELY not applied to `request_changes`: requesting changes is
+>   feedback, not an approval, and a proposer requesting changes on their own
+>   proposal is legitimate — the arc is gated only by the transition itself
+>   (a terminal or non-reviewable head is refused as a denied value). Freshness /
+>   stale-review 409 semantics and append-only decision records are unchanged.
+>   `request_changes` is deliberately legal on a stale or unvalidated review —
+>   that is precisely why it is being sent back.
+> - **Served, never client-invented.** The review-station projection now
+>   advertises `edit_proposal` in the served eligibility for a `NeedsReview`
+>   proposal through the SAME predicate the decision path consults
+>   (`edit_proposal_transition_eligibility`), so what the queue offers can never
+>   drift from what `submit_decision` accepts (review-actions-are-backend-served).
+>   The ReviewStation surfaces it as a third action carrying a REQUIRED comment
+>   (the requested changes).
+> - **Scope fence.** This amendment covers `request_changes` only. `Respond`
+>   remains a status-preserving review-station clarification exchange, not a
+>   decision verdict; no verdict-vocabulary change is implied for it here.
+>
+> This is recorded as an amendment rather than a silent capability change per the
+> ratified-contract discipline: the three-verdict approval vocabulary is now the
+> stable cross-repo edge A2A's phase gate builds against.
+
 **D4 — Reads stay split: filesystem for corpus context, authoring API for
 in-flight state.** A2A's read-only, token-budgeted `.vault/` mount layer is
 retained for corpus context (compatible with engine read-and-infer; reads are

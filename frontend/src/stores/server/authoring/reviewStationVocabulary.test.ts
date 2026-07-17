@@ -52,6 +52,7 @@ const statuses = Object.freeze([
 const commands = Object.freeze([
   "approve",
   "reject",
+  "edit_proposal",
   "submit_for_review",
   "request_apply",
   "create_rollback",
@@ -119,9 +120,11 @@ describe("review station presentation vocabulary", () => {
       expect(presentation.kind).toBe(
         command === "submit_for_review"
           ? "direct"
-          : command === "reject"
-            ? "destructive"
-            : "guarded",
+          : command === "edit_proposal"
+            ? "commented"
+            : command === "reject"
+              ? "destructive"
+              : "guarded",
       );
       expect(Object.isFrozen(presentation)).toBe(true);
       expectTranslatedWithoutFallback(presentation.label);

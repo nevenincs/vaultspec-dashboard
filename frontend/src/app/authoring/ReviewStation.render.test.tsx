@@ -92,10 +92,15 @@ function needsReviewProposal(
 interface ActionCounts {
   approve: number;
   reject: number;
+  requestChanges: number;
   submit: number;
   apply: number;
   rollback: number;
 }
+
+/** The most recent comment carried by a request-changes call, so a test can assert
+ *  the required note reached the action seam (trimmed). */
+let lastRequestChangesComment: string | null = null;
 
 function actionCallbacks(
   counts: ActionCounts,
@@ -107,6 +112,11 @@ function actionCallbacks(
   return {
     decide: (_proposal, decision) => {
       counts[decision] += 1;
+      return result();
+    },
+    requestChanges: (_proposal, comment) => {
+      counts.requestChanges += 1;
+      lastRequestChangesComment = comment;
       return result();
     },
     submit: () => {
@@ -125,7 +135,8 @@ function actionCallbacks(
 }
 
 function emptyCounts(): ActionCounts {
-  return { approve: 0, reject: 0, submit: 0, apply: 0, rollback: 0 };
+  lastRequestChangesComment = null;
+  return { approve: 0, reject: 0, requestChanges: 0, submit: 0, apply: 0, rollback: 0 };
 }
 
 function localized(ui: React.ReactNode) {
@@ -229,6 +240,58 @@ describe("ProposalCard", () => {
     }
     expect(screen.queryByRole("button", { name: "Action unavailable" })).toBeNull();
     expect(screen.getByRole("button", { name: "Approve proposal" })).toBeTruthy();
+  });
+
+  it("requires a comment to request changes, then submits the served edit verdict", async () => {
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal({
+          eligibility: [
+            { command: "approve", allowed: true },
+            { command: "reject", allowed: true },
+            { command: "edit_proposal", allowed: true },
+          ],
+        })}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+
+    // The third verdict is served as its own action button.
+    fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+
+    // The comment is REQUIRED: submit stays disabled until a note is entered.
+    const dialog = screen.getByRole("dialog");
+    const submit = within(dialog).getByRole("button", {
+      name: "Request changes",
+    }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+
+    const textarea = within(dialog).getByRole("textbox") as HTMLTextAreaElement;
+    fireEvent.change(textarea, {
+      target: { value: "  Tighten the second paragraph.  " },
+    });
+    expect(submit.disabled).toBe(false);
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(counts.requestChanges).toBe(1));
+    // The note is trimmed and carried as the requested changes; no approve/reject fired.
+    expect(lastRequestChangesComment).toBe("Tighten the second paragraph.");
+    expect(counts.approve).toBe(0);
+    expect(counts.reject).toBe(0);
+  });
+
+  it("does not surface request changes without a served edit_proposal eligibility", () => {
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    // The fixture serves only approve/reject — the third verdict is backend-served,
+    // never client-invented, so no Request changes button appears.
+    expect(screen.queryByRole("button", { name: "Request changes" })).toBeNull();
   });
 
   it("uses served eligibility and approval identity without recomputing them", () => {

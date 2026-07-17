@@ -42,8 +42,8 @@ use super::store::retention::{
 use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
 use super::store::{Result as StoreResult, StoreError};
 use super::transitions::{
-    ReviewDecisionFreshness, TransitionRequest, ValidationFreshness,
-    approve_transition_eligibility, reject_transition_eligibility, transition_eligibility,
+    ReviewDecisionFreshness, ValidationFreshness, approve_transition_eligibility,
+    edit_proposal_transition_eligibility, reject_transition_eligibility,
 };
 
 const APPROVAL_SCHEMA: &str = "authoring.approval.v1";
@@ -296,16 +296,10 @@ pub fn review_decision_eligibility(
         // (NeedsReview|Approved -> Draft / RollbackProposed), which stales the reviewed
         // material. It is feedback, not an approval, so the self-approval ban does not
         // apply; it is gated only by the transition arc — a terminal or non-reviewable head
-        // is refused as a denied value.
-        ApprovalDecision::RequestChanges => transition_eligibility(
-            TransitionRequest::new(
-                CommandKind::EditProposal,
-                current.kind,
-                current.status,
-                edit_proposal_target(current.kind),
-            )
-            .with_operation_count(current.operation_count),
-        ),
+        // is refused as a denied value. The SAME `edit_proposal_transition_eligibility`
+        // predicate backs the review-station projection's served eligibility, so what the
+        // queue advertises can never drift from what this path accepts.
+        ApprovalDecision::RequestChanges => edit_proposal_transition_eligibility(current),
     }
 }
 

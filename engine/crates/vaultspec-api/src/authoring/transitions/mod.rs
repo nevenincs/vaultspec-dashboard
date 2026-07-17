@@ -503,6 +503,27 @@ pub fn reject_transition_eligibility(
     )
 }
 
+/// The served eligibility of the request-changes / reviewer-edit verdict (the third
+/// review action, W13.P24). It drives the changeset back through the kind-aware
+/// `EditProposal` arc (`NeedsReview|Approved -> Draft` / `RollbackProposed`). Unlike
+/// approve/reject it attaches NO review-decision or validation freshness: requesting
+/// changes is feedback, deliberately legal on a stale or unvalidated review (that is
+/// exactly why it is being sent back). This is the SINGLE predicate the approval
+/// decision path and the review-station projection both consult, so the served
+/// eligibility can never drift from what `submit_decision` will accept.
+pub fn edit_proposal_transition_eligibility(
+    record: &ChangesetAggregateRecord,
+) -> ActionEligibility {
+    let next = match record.kind {
+        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
+        ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
+    };
+    transition_eligibility(
+        TransitionRequest::new(CommandKind::EditProposal, record.kind, record.status, next)
+            .with_operation_count(record.operation_count),
+    )
+}
+
 pub fn apply_transition_eligibility(
     record: &ChangesetAggregateRecord,
     approval: ApprovalFreshness,

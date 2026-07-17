@@ -98,9 +98,32 @@ export const REVIEW_CONFIRMATIONS = Object.freeze({
   }),
 });
 
+/** The request-changes comment-capture dialog descriptors. The comment is REQUIRED
+ *  — it carries the changes the reviewer wants — so the dialog blocks submission
+ *  until it is non-empty. The verb reuses the action label for title + submit. */
+export const REQUEST_CHANGES_DIALOG = Object.freeze({
+  title: descriptor("documents:reviewStation.actions.requestChanges"),
+  body: descriptor("documents:reviewStation.requestChanges.body"),
+  commentLabel: descriptor("documents:reviewStation.requestChanges.commentLabel"),
+  placeholder: descriptor("documents:reviewStation.requestChanges.placeholder"),
+  commentRequired: descriptor("documents:reviewStation.requestChanges.commentRequired"),
+  submit: descriptor("documents:reviewStation.actions.requestChanges"),
+  cancel: cancelLabel,
+});
+
 interface DirectReviewCommandPresentation {
   readonly kind: "direct";
   readonly command: "submit_for_review";
+  readonly label: MessageDescriptor;
+  readonly confirmation?: never;
+}
+
+/** Request-changes is neither a one-click direct action nor a plain confirm: it
+ *  captures a REQUIRED comment (the requested changes) before it submits. Its own
+ *  presentation kind routes it to the comment-capture dialog. */
+interface CommentedReviewCommandPresentation {
+  readonly kind: "commented";
+  readonly command: "edit_proposal";
   readonly label: MessageDescriptor;
   readonly confirmation?: never;
 }
@@ -137,6 +160,7 @@ interface UnavailableReviewCommandPresentation {
 
 export type ReviewCommandPresentation =
   | DirectReviewCommandPresentation
+  | CommentedReviewCommandPresentation
   | GuardedReviewCommandPresentation
   | DestructiveReviewCommandPresentation
   | UnavailableReviewCommandPresentation;
@@ -158,6 +182,11 @@ const COMMAND_PRESENTATION = Object.freeze({
     kind: "direct",
     command: "submit_for_review",
     label: descriptor("documents:reviewStation.actions.submitForReview"),
+  }),
+  edit_proposal: Object.freeze({
+    kind: "commented",
+    command: "edit_proposal",
+    label: descriptor("documents:reviewStation.actions.requestChanges"),
   }),
   request_apply: Object.freeze({
     kind: "guarded",
