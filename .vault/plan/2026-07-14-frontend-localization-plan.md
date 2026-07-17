@@ -389,11 +389,11 @@ Exercise production resources, components, accessibility output, locale switchin
 - [ ] `W06.P19.S107` - Run the complete frontend lint recipe including formatting, TypeScript, ESLint, and localization enforcement; `frontend/`.
 - [ ] `W06.P19.S138` - Expand the bounded alternate-locale resources for full expanded-copy and right-to-left browser verification; `frontend/src/localization/testing/`.
 - [x] `W06.P19.S139` - Exercise live loading and progressive-result states without untranslated text or unresolved placeholders; `frontend/e2e/localization-loading.spec.ts`.
-- [ ] `W06.P19.S140` - Exercise live degraded states and prove every visible effect and recovery action is user-facing; `frontend/e2e/localization-degraded.spec.ts`.
+- [x] `W06.P19.S140` - Exercise live degraded states and prove every visible effect and recovery action is user-facing; `frontend/e2e/localization-degraded.spec.ts`.
 - [x] `W06.P19.S141` - Exercise live empty states and prove concise localized guidance across primary surfaces; `frontend/e2e/localization-empty.spec.ts`.
-- [ ] `W06.P19.S142` - Exercise production error boundaries and prove raw diagnostics never render in any build mode; `frontend/e2e/localization-errors.spec.ts`.
-- [ ] `W06.P19.S143` - Exercise destructive confirmations and prove explicit consequence, destructive verb, and safe cancel wording; `frontend/e2e/localization-confirmations.spec.ts`.
-- [ ] `W06.P19.S144` - Exercise menus, commands, and shortcuts and prove shared action wording and canonical verbs; `frontend/e2e/localization-actions.spec.ts`.
+- [x] `W06.P19.S142` - Exercise production error boundaries and prove raw diagnostics never render in any build mode; `frontend/e2e/localization-errors.spec.ts`.
+- [x] `W06.P19.S143` - Exercise destructive confirmations and prove explicit consequence, destructive verb, and safe cancel wording; `frontend/e2e/localization-confirmations.spec.ts`.
+- [x] `W06.P19.S144` - Exercise menus, commands, and shortcuts and prove shared action wording and canonical verbs; `frontend/e2e/localization-actions.spec.ts`.
 - [x] `W06.P19.S145` - Exercise compact and responsive surfaces and prove localized accessible navigation without source-language leakage; `frontend/e2e/localization-responsive.spec.ts`.
 
 ### Phase `W06.P20` - formal review and remediation

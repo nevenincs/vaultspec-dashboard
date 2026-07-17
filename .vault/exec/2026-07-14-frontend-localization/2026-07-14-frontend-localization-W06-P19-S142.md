@@ -118,3 +118,19 @@ The verified evidence in every note above (three consecutive uncontended
 `18/18` reruns of `2890e92df6`, `11/11` on the dev-harness pair) stands
 unchanged and will be cited again alongside the punch-list commit's own
 evidence when that pass runs. No code changes by me at any point.
+
+**TICK RE-CHECKED, END OF SEQUENCE (2026-07-17) — FINAL, no further action on
+any tick-state message short of the punch-list pass or S108.** The "TERMINAL
+FREEZE (unticked)" note directly above was itself superseded: the team lead's
+closing message explicitly named that freeze message as stale (it predates
+their processing of the earlier restore) and VOIDED it along with every
+other prior tick-state message. The state at `bc52be1f08` — four ticks
+RESTORED, full arc documented, "no further flips" — is declared the FINAL
+settled state, end of sequence: no message before it changes tick state, and
+no message after it will either, short of the finisher's punch-list commit
+triggering the one cold verification pass, or the team lead's own `S108`
+dispatch. This is the last tick-state action taken on this step; the
+verified evidence throughout (three consecutive uncontended `18/18` reruns of
+`2890e92df6`, `11/11` on the dev-harness pair) is unchanged and is what the
+cold pass will re-confirm and cite alongside the punch-list commit. No code
+changes by me at any point.

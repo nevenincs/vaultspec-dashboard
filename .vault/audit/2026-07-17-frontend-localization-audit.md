@@ -92,22 +92,23 @@ division of labor (coder owns source, reconciliation owns vault bookkeeping).
 
 Step counts below are TICKED / TOTAL for that wave as of this update; TOTAL excludes
 retired steps (`S40`, `S75`, `S180`, `S181`, `S219`, `S236`, `S238` — see Retirements
-below). Plan total: 226/244 (92.6%). Every step outside Wave W06 is ticked; W06.P18
+below). Plan total: 230/244 (94.3%). Every step outside Wave W06 is ticked; W06.P18
 (the enforcement suite) is 13/13, fully closed; W06.P19 (e2e verification) is
-5/14. **`S140`/`S142`/`S143`/`S144` went tick → reversal → restore →
-brief-untick → re-tick → TERMINAL FREEZE (unticked)** — see the dedicated note
-below and their Defect ledger rows. Every flip up to and including the
-"absolute settle" re-tick was independently justified at the time, each
-citing the same underlying evidence (three consecutive uncontended `18/18`
-combined runs of `2890e92df6`). The team lead then issued a TERMINAL
-instruction voiding every prior tick-state message, including the "restored"
-one this dossier had by then already acted on: the state at `d6e0d3078f`
-(unticked) is FROZEN, named explicitly as an instruction-ordering issue on
-the team lead's side, not a defect in the underlying evidence or in how this
-dossier tracked it. No further tick-state message is actioned until the ONE
-cold verification pass against the finisher's punch-list commit — the sole
-remaining authority to re-tick these four (and the rest of `P19`'s open
-steps) together.
+9/14. **`S140`/`S142`/`S143`/`S144` went tick → reversal → restore →
+brief-untick → re-tick → brief-freeze (unticked) → RE-TICK, END OF SEQUENCE**
+— see the dedicated note below and their Defect ledger rows. Every flip
+across this message-race sequence was independently justified at the time,
+each citing the same underlying evidence throughout (three consecutive
+uncontended `18/18` combined runs of `2890e92df6`, `11/11` on the
+dev-harness pair). The team lead's own closing message declared the
+sequence OVER: the intervening "TERMINAL FREEZE" instruction (which this
+dossier had briefly acted on, unticking the four) was itself stale — it
+predated the team lead's processing of the earlier restore — and is VOIDED
+along with every other prior tick-state message. The state at `bc52be1f08`
+(four ticks restored, "no further flips" noted) is the declared FINAL
+settled state: nothing before it changed tick state, and nothing after it
+will either, short of the finisher's punch-list commit triggering the one
+cold verification pass, or the team lead's own `S108` dispatch.
 
 - **W01** (localization substrate and source-locale policy) — 23/23. Pre-existing:
   implemented and reviewed before the reconciliation pass began; the exhaustive
@@ -183,24 +184,25 @@ steps) together.
   (gitchanges/pipeline count-plural builders and pipeline's raw state strings
   converted to catalog descriptors; `nowStrip.ts` resolved by deletion as
   orphaned dead code) all independently verified and ticked this update.
-  **`W06.P18` is now 13/13, fully closed.** `P19` is at 5/14: `S104`/`S105`
+  **`W06.P18` is now 13/13, fully closed.** `P19` is at 9/14: `S104`/`S105`
   (typical + expanded-copy/RTL layout, `164ea9fc1d`), `S139`/`S141` (loading +
   empty, `3aead802d2`), `S145` (responsive, `e9f64dec54`) landed clean on first
   verification and stay ticked. `S140`/`S142`/`S143`/`S144` (degraded, errors,
   confirmations, actions) went through tick → reversal → restore →
-  brief-untick → re-tick → TERMINAL FREEZE (unticked) across several
+  brief-untick → re-tick → brief-freeze (unticked) → RE-TICK across several
   message-race rounds, each move independently justified at the time it
   happened and citing the same underlying evidence throughout (three
-  consecutive uncontended `18/18` combined reruns of `2890e92df6`), until the
-  team lead issued a TERMINAL instruction voiding every prior tick-state
-  message: the state at `d6e0d3078f` (unticked) is FROZEN, an
-  instruction-ordering issue on the team lead's side named explicitly, not a
-  defect in the evidence. These four steps do not move again on any further
-  instruction short of the ONE cold verification pass against the finisher's
-  punch-list commit. See Honest Findings for the full diagnosis and Defect
-  ledger for the complete sequence. `P19`'s
-  remaining nine steps (`S102`/`S103`/`S106`/`S107`/`S138` plus these four)
-  are all still genuinely open, scheduled for that same final cold batch —
+  consecutive uncontended `18/18` combined reruns of `2890e92df6`, `11/11` on
+  the dev-harness pair), until the team lead's closing message declared the
+  sequence OVER: the intervening TERMINAL-FREEZE instruction had itself
+  crossed the earlier restore in flight and was VOIDED as stale — the state
+  at `bc52be1f08` (ticked, "no further flips") is the declared FINAL settled
+  state. These four steps do not move again on any further instruction short
+  of the ONE cold verification pass against the finisher's punch-list commit,
+  or the team lead's `S108` dispatch. See Honest Findings for the full
+  diagnosis and Defect ledger for the complete sequence. `P19`'s
+  remaining five steps (`S102`/`S103`/`S106`/`S107`/`S138`) are all still
+  genuinely open, scheduled for that same final cold batch —
   see Defect ledger and Open Items. `P20` 0/9 remains the coding lane's
   in-progress build.
 
@@ -234,7 +236,7 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S132` | `app/panels/VaultHealthPanel.tsx:42` ran a manual `titleCase()` on the served health word (line 57), a scanner-blind runtime-casing transform outside JSX literal text | Fixed, commit `8c4220b333`; `titleCase()` deleted outright, replaced with a fail-closed closed vocabulary (never echoes an unrecognized served token); independently reverified, part of the 77/77 combined batch run |
 | `S133` | `stores/server/queries/gitchanges.ts:504`'s `pluralLabel()` and `stores/server/queries/pipeline.ts` (two inline `` `${count} item${s}` ``-shape builders) hand-built plural/count sentences in manual-string `.ts` modules — the same scanner-blind class as `S113`'s `freshness.ts`. `pipeline.ts` ALSO carried raw English state strings (`"pipeline status unavailable"`, `"loading in-flight work"`, `"no in-flight work"`, `"reading in-flight work…"`, `"no work in flight on this branch"`), fixed in the same commit | Fixed, commit `8c4220b333`; both hand-builders and the raw state strings now `CountMessageDescriptor`/`MessageDescriptor` catalog resolutions; independently reverified, part of the 77/77 combined batch run |
 | `S133` | `stores/view/nowStrip.ts:176`'s `jobsLabel()` hand-built a `` `${jobs} job${s}` `` count sentence | Resolved by DELETION, commit `8c4220b333`: `nowStrip.ts` (228 lines) scouted as fully orphaned in production — only its own test imported it, the live status renderer (`deriveSystemStatusRows`) never consumed it — and deleted outright under the `S75`/`S236`/`S238` dead-code doctrine (team-lead approved) rather than localized. Independently reverified: grepped every importer in `src/`, confirmed none remain. `S192`'s exec record (which verified `nowStrip.test.ts` live) amended to note the ripple. |
-| `S140`/`S142`/`S143`/`S144` shared-state test-infrastructure race | Four `W06.P19` e2e specs (degraded, errors, confirmations, actions) shared one root cause the scanner cannot see: `ensureBrowserVisible`'s postcondition (the vault-documents tree visible) could ONLY be satisfied by leftover server-persisted "Documents" tab state from an unrelated PRIOR test run — nothing the helper itself did switched tabs. Reconciliation reproduced this live: `S140`/`S142` failed 2/2 and 3/4 respectively across separate cold runs; `S144` flaked ~50% across three runs; `S143` passed once only because state was warmed by unrelated prior activity. `S142`'s file additionally had a partial-edit gap (a stray call to the old, now-undefined helper name, throwing `ReferenceError`) | **Fixed for the reproduced defect; NOT ticked — TERMINAL FREEZE pending the campaign's one closing cold batch (tick → reversal → restore → brief untick → re-tick → TERMINAL freeze, unticked).** `2890e92df6`'s `bootHealthyThenBreakVaultTree` helper closed the reproduced shared-tree-state race, independently reverified on fresh evidence — 18/18 in three consecutive uncontended combined runs, 11/11 on the dev-harness pair — and this evidence was cited unchanged through every subsequent flip: ticked, reversed on a cold-state gap finding (`2890e92df6` drives only the rail's VISIBILITY lever, not its Vault/Files MODE toggle), restored on countermand, briefly unticked per an interim closing-protocol message, re-ticked and "absolutely settled" once that message was found to have crossed the restore in flight — then the team lead issued a TERMINAL instruction voiding every prior tick-state message and freezing the state at `d6e0d3078f` (unticked), naming the whole sequence an instruction-ordering issue on their side, not a defect in the evidence. `S140`/`S142`/`S143`/`S144` re-tick only against the finisher's punch-list commit, verified cold, in the one remaining closing pass — no further message changes this until then. |
+| `S140`/`S142`/`S143`/`S144` shared-state test-infrastructure race | Four `W06.P19` e2e specs (degraded, errors, confirmations, actions) shared one root cause the scanner cannot see: `ensureBrowserVisible`'s postcondition (the vault-documents tree visible) could ONLY be satisfied by leftover server-persisted "Documents" tab state from an unrelated PRIOR test run — nothing the helper itself did switched tabs. Reconciliation reproduced this live: `S140`/`S142` failed 2/2 and 3/4 respectively across separate cold runs; `S144` flaked ~50% across three runs; `S143` passed once only because state was warmed by unrelated prior activity. `S142`'s file additionally had a partial-edit gap (a stray call to the old, now-undefined helper name, throwing `ReferenceError`) | **Fixed for the reproduced defect; TICKED, END OF SEQUENCE (tick → reversal → restore → brief untick → re-tick → brief freeze → RE-TICK, final).** `2890e92df6`'s `bootHealthyThenBreakVaultTree` helper closed the reproduced shared-tree-state race, independently reverified on fresh evidence — 18/18 in three consecutive uncontended combined runs, 11/11 on the dev-harness pair — and this same evidence was cited unchanged through every subsequent flip: ticked, reversed on a cold-state gap finding (`2890e92df6` drives only the rail's VISIBILITY lever, not its Vault/Files MODE toggle), restored on countermand, briefly unticked per an interim closing-protocol message, re-ticked and "absolutely settled," briefly unticked again per a TERMINAL-FREEZE instruction — then RE-TICKED a final time once the team lead's closing message declared that freeze instruction itself stale (it had crossed the earlier restore in flight) and VOIDED every prior tick-state message. The state at `bc52be1f08` (ticked) is the declared FINAL settled state, end of sequence. `S140`/`S142`/`S143`/`S144` do not move again on any further tick-state message — only the finisher's punch-list commit's own cold verification pass, or the team lead's `S108` dispatch, changes anything further. |
 | `S102` | `messagePolicy.test.ts`'s "accepts every production English catalog value" is red on `common:agent.composer.teamRunRefused` (`"The team run couldn't be started."` — no actionable recovery clause, `not-actionable` policy code); `actionVocabulary.test.ts`'s canonical-imperative-verb sweep is red on `common:agent.composer.teamRunDismiss` (`"Dismiss"` — not in the canonical imperative-verb inventory; `"Close"` is). Both keys trace to `dfed1ae3c0` ("live team selector — wire the composer onto the a2a team client"), an unrelated agent-lane commit that landed without running the localization suite | **Open** — reconfirmed live at this update (unchanged since first found); needs a two-line catalog fix (`teamRunRefused` gains a recovery clause; `teamRunDismiss` becomes `"Close"` or is added to the canonical inventory) from the owning lane, not this reconciliation pass |
 | `S103` | Same two red tests as `S102` fall within its "app suites" scope | **Open** — same as `S102`. Also flagged, not blocking: `FeatureSearchField.test.tsx`/`leftRailActions.test.tsx` `vi.mock("stores/server/queries")`, pre-existing (predates this dossier's earlier tick of the former, confirmed via diff) — arguably covered by the project's unit-test pure-logic-isolation carve-out, in tension with `S103`'s literal "without mocks" text; routed to the team lead's judgment, not resolved here |
 | `S107` | `just dev lint frontend` fails at the `localization-scan` step before formatting/typecheck/tokens/figma ever run: `Composer.tsx` 2 findings (`unsafe-dynamic-presentation`, unrelated commit `c608584cac`) plus `localization/testing/reviewStationResources.ts` 4 findings (`presentation-field`, new French/Arabic `requestChanges.body`/`placeholder` test-fixture fields from `164ea9fc1d`, not covered by the scanner's test-resource exclusion pattern) | **Open** — reconfirmed live at this update, unresolved by the `2890e92df6` hardening pass (which did not touch either file); blocks `S106` (the full test recipe, red by inheritance from `S102`) and the whole gate |
@@ -553,7 +555,7 @@ reconciliation pass's own scope:
 ## Status
 
 **FINAL pending the remainder of Wave W06.P19 and all of P20.** Plan total:
-226/244 (92.6%). The consolidated wave review closed clean: W03 PASS, W04 PASS,
+230/244 (94.3%). The consolidated wave review closed clean: W03 PASS, W04 PASS,
 W05 PASS, retirements PASS, rescopes PASS, divergences PASS, the S183 amendment
 PASS, all fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`,
 `556f8967d9`, `90f8a3d5d5`, `b264490da0`, `8c4220b333`, `47a055f58f`), and
@@ -564,22 +566,21 @@ ripple retirement. The `errors:unexpectedSection` test-vehicle/production-key
 coupling (the sixth codification-candidate instance) is RESOLVED at
 `47a055f58f`.
 
-**`W06.P19` is at 5/14.** `S104`/`S105`/`S139`/`S141`/`S145` landed clean on
-first verification and stay ticked. `S140`/`S142`/`S143`/`S144` went through a
-full tick → reversal → restore → brief-untick → re-tick → TERMINAL FREEZE
-sequence, each move independently justified at the time it happened and
-citing the same underlying evidence throughout (18/18 across three
-consecutive uncontended combined runs of `2890e92df6`, plus 11/11 on the
-dev-harness pair). The team lead then issued a TERMINAL instruction voiding
-EVERY prior tick-state message about these four steps, including the
-"restored"/"absolute settle" one this dossier had already acted on: the
-state at `d6e0d3078f` (unticked) is FROZEN — named explicitly by the team
-lead as an instruction-ordering issue on their side, not a defect in the
-underlying evidence or in how this dossier tracked it (append, never erase,
-through every flip). No further tick-state message is actioned until the ONE
-cold verification pass against the finisher's punch-list commit — the sole
-remaining authority to re-tick these four together with the rest of `P19`'s
-open steps. See Defect ledger for the full record and the "P19 e2e harness
+**`W06.P19` is at 9/14.** `S104`/`S105`/`S139`/`S141`/`S145` landed clean on
+first verification and stay ticked. `S140`/`S142`/`S143`/`S144` went through
+a full tick → reversal → restore → brief-untick → re-tick → brief-freeze
+(unticked) → RE-TICK sequence, each move independently justified at the time
+it happened and citing the same underlying evidence throughout (18/18 across
+three consecutive uncontended combined runs of `2890e92df6`, plus 11/11 on
+the dev-harness pair). The team lead's own closing message declared the
+sequence OVER: the intervening TERMINAL-FREEZE instruction (which this
+dossier had briefly acted on) had itself crossed the earlier restore in
+flight and was stale, and is VOIDED along with every other prior tick-state
+message. The state at `bc52be1f08` (ticked, "no further flips" noted) is the
+declared FINAL settled state — nothing before it changed tick state, and
+nothing after it will either, short of the finisher's punch-list commit
+triggering the one cold verification pass, or the team lead's own `S108`
+dispatch. See Defect ledger for the full record and the "P19 e2e harness
 capabilities" section for the two new helpers (`ensureExpanded`,
 `bootHealthyThenBreakVaultTree`) recorded for future e2e specs regardless of
 this sequence. Remaining `P19` items, all scheduled for that same final cold
