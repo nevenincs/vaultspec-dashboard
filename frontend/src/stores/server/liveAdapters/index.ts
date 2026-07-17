@@ -12,3 +12,4 @@ export * from "./session";
 export * from "./pipeline";
 export * from "./git";
 export * from "./features";
+export * from "./a2aRelay";

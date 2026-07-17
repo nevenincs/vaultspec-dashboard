@@ -68,6 +68,7 @@ import {
 } from "./wireTypes";
 
 export * from "./wireTypes";
+export * from "./a2aTeam";
 
 // Same base rule as the authoring/engine clients: dev proxies /api → engine; in
 // production the SPA shares the engine origin and the prefix collapses.
