@@ -218,3 +218,30 @@ other filed asks): add a benign session-close command + route (e.g.
 (best-effort, typed-failure, never on cancel/fail). When it lands, the a2a caller
 is a small follow-on. Until then, a2a-left-Active sessions rely on the engine's
 session retention for reaping.
+
+### lane-takeover | RESOLVED (engine half) | benign `close_session` verb landed — `SessionStatus::Closed` is now reachable
+
+The ENGINE ASK above is RESOLVED on the engine side by `a91f38cab2` (dashboard
+main). `SessionStatus::Closed` now has a writer:
+
+- `CommandKind::CloseSession` + the `close_session` session command transition
+  `Active` → `Closed`, stamping `closed_at_ms` (JSON-only on the record like the
+  run `failure_reason` precedent — no column, no migration; the `authoring_sessions`
+  status CHECK already admitted `'closed'`).
+- Route `POST /authoring/v1/sessions/{session_id}/close`, kind-guarded (a mismatched
+  command is a `400 REQUEST_INVALID_KIND`), dual-auth through the `ResolvedCommand`
+  principal seam like the sibling session commands.
+- `LifecycleEventKind::SessionClosed` → `session.closed` on the durable outbox,
+  keyed `:session-closed` so it rides the deduped feed and replay.
+- Benign semantics (distinct from `cancel`): a close never tears down work — a
+  session with a genuinely active run is REFUSED (typed `StoreError::Session`, 422)
+  rather than force-cancelled; re-closing and closing an already-`Cancelled` session
+  are idempotent no-ops that publish no duplicate transition (mirrors
+  `cancel_session`'s non-`Active` re-entry). `vaultspec-api --lib` 830 passed / 0
+  failed, clippy + fmt clean.
+- Accuracy note: the run-active refusal is structurally moot for a2a-driven sessions
+  — they never carry engine runs (the run-complete lane-takeover finding above), so
+  the guard protects the dashboard's own CLIENT-driven sessions, not the a2a path.
+- Closing half: the a2a worker's submit-success caller of this route lands next
+  (executor-service holds the published envelope contract). Until that ships,
+  a2a-left-`Active` sessions still rely on session retention for reaping.
