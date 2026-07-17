@@ -13,7 +13,7 @@ use super::actors::{actor_kind_from_name, actor_kind_name, actor_provenance_key}
 use super::api::{ChangesetOperationKind, TargetRevisionFence};
 use super::model::{
     ActorId, ActorRef, AuthoringModelError, ChangesetId, ChangesetKind, ChangesetStatus,
-    RevisionToken, SessionId, validate_authoring_token,
+    RevisionToken, RunId, SessionId, validate_authoring_token,
 };
 use super::operations::MaterializedProposalOperation;
 use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
@@ -102,6 +102,18 @@ pub struct ChangesetAggregateRecord {
     pub status: ChangesetStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<SessionId>,
+    /// The agent run that produced this changeset (agent-wire-gaps ADR D4). Stamped
+    /// only for a changeset created through the tool-executor dispatch (the request
+    /// carries the `run_id`); a human/direct changeset carries `None`. Pure provenance
+    /// naming the producing fact — deliberately EXCLUDED from `aggregate_digest`, so it
+    /// changes no `changeset_revision` identity (the wire-contract stable-key rule).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<RunId>,
+    /// The prompt turn that produced this changeset (agent-wire-gaps ADR D4), joined
+    /// through the run record at dispatch. `None` for a human/direct changeset. Same
+    /// provenance class as `run_id`; excluded from the digest.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
     pub actor: ActorRef,
     pub actor_provenance_key: String,
     pub summary: String,
@@ -138,6 +150,12 @@ impl ChangesetAggregateRecord {
             kind: input.kind,
             status: input.status,
             session_id: input.session_id,
+            // Run/turn provenance is metadata, not identity: it is attached AFTER the
+            // digest is computed (via `with_run_provenance`), never in `new`, so it
+            // never perturbs the `changeset_revision`. Every direct constructor path
+            // therefore starts at `None`.
+            run_id: None,
+            turn_id: None,
             actor: input.actor,
             actor_provenance_key,
             summary: input.summary,
@@ -146,6 +164,16 @@ impl ChangesetAggregateRecord {
             children,
             created_at_ms: input.created_at_ms,
         })
+    }
+
+    /// Attach the agent run/turn provenance that produced this changeset (agent-wire-gaps
+    /// ADR D4). Applied AFTER `new` so it never enters `aggregate_digest` — provenance
+    /// names the producing fact and changes no `changeset_revision` identity. Called at
+    /// the tool-executor dispatch; a human/direct changeset never calls it (stays `None`).
+    pub fn with_run_provenance(mut self, run_id: Option<RunId>, turn_id: Option<String>) -> Self {
+        self.run_id = run_id;
+        self.turn_id = turn_id;
+        self
     }
 }
 
@@ -366,9 +394,9 @@ impl LedgerRepository<'_, '_> {
                 (changeset_id, changeset_revision, previous_revision, changeset_kind,
                  status, session_id, summary, operation_count, aggregate_digest,
                  actor_id, actor_kind, delegated_by_actor_id, actor_provenance_key,
-                 created_at_ms, record_json)
+                 created_at_ms, record_json, run_id, turn_id)
              VALUES
-                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             rusqlite::params![
                 record.changeset_id.as_str(),
                 record.changeset_revision.as_str(),
@@ -385,6 +413,8 @@ impl LedgerRepository<'_, '_> {
                 record.actor_provenance_key.as_str(),
                 record.created_at_ms,
                 record_json.as_str(),
+                record.run_id.as_ref().map(RunId::as_str),
+                record.turn_id.as_deref(),
             ],
         )?;
         for child in &record.children {

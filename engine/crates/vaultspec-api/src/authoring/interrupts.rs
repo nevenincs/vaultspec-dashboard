@@ -22,7 +22,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::model::{ActionEligibility, InterruptId, ProposalId, RunId, ToolCallId};
-use super::permissions::ToolPermissionRequestRecord;
+use super::permissions::{ToolPermissionDecisionKind, ToolPermissionRequestRecord};
 use super::policy::ToolRiskTier;
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
@@ -88,6 +88,107 @@ pub struct InterruptRecord {
 impl InterruptRecord {
     pub fn is_resolved(&self) -> bool {
         matches!(self.resume_state, InterruptResumeState::Resolved)
+    }
+}
+
+/// The bounded page cap for the served interrupt listing (agent-wire-gaps ADR D3): a
+/// recovery read of a run's interrupts is capped so a pathological run can never serve
+/// an unbounded page. The `interrupts_for_run` store query already `LIMIT`s; the page
+/// builder fetches one past the cap to set an honest `truncated` marker.
+pub const INTERRUPT_LIST_CAP: u32 = 50;
+
+/// The typed `tool_permission` decision (agent-wire-gaps ADR D3): the SAME shape as
+/// `ToolPermissionDecisionRequest` (the resume write), so the read and write speak ONE
+/// language rather than an opaque decision string on the wire. A resolved interrupt's
+/// stored decision blob parses through this; a blob that predates the typed schema
+/// degrades to [`InterruptDecisionProjection::DecisionUnreadable`] per record.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ToolPermissionInterruptDecision {
+    pub decision: ToolPermissionDecisionKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
+}
+
+/// The typed, per-kind human decision projected onto a resolved interrupt (D3). For the
+/// sole V1 `tool_permission` kind this is the approve/reject + optional comment the
+/// resume write records; a stored decision that does not parse as the typed schema (a
+/// legacy opaque blob) projects as `decision_unreadable` so the page degrades per
+/// record rather than failing wholesale.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum InterruptDecisionProjection {
+    ToolPermission {
+        decision: ToolPermissionDecisionKind,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        comment: Option<String>,
+    },
+    DecisionUnreadable,
+}
+
+/// One interrupt as served on the recovery listing (D3): the stable id, the run it
+/// gates, its kind, the gated tool call, its resume state (a `pending` entry is the
+/// flag a client recovers a still-open permission prompt from), the raise/resolve
+/// timestamps, and — when resolved — the typed decision projection. A pending
+/// interrupt carries no `decision`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterruptProjection {
+    pub interrupt_id: InterruptId,
+    pub run_id: RunId,
+    pub kind: InterruptKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<ToolCallId>,
+    pub resume_state: InterruptResumeState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub decision: Option<InterruptDecisionProjection>,
+    pub created_at_ms: i64,
+    pub updated_at_ms: i64,
+}
+
+/// A bounded page of interrupt projections for one run (D3): raise-order items, the
+/// applied `cap`, and an honest `truncated` marker set when more interrupts exist than
+/// the cap serves.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct InterruptListPage {
+    pub items: Vec<InterruptProjection>,
+    pub cap: u32,
+    pub truncated: bool,
+}
+
+/// Project the recorded human decision on an interrupt into its typed per-kind schema
+/// (D3). `None` for a still-pending interrupt (no decision recorded); a resolved
+/// interrupt whose opaque decision blob does not parse as the typed schema yields
+/// `DecisionUnreadable` rather than an error, so one legacy record never fails the page.
+pub fn project_interrupt_decision(record: &InterruptRecord) -> Option<InterruptDecisionProjection> {
+    let raw = record.decision.as_deref()?;
+    Some(match record.kind {
+        InterruptKind::ToolPermission => {
+            match serde_json::from_str::<ToolPermissionInterruptDecision>(raw) {
+                Ok(parsed) => InterruptDecisionProjection::ToolPermission {
+                    decision: parsed.decision,
+                    comment: parsed.comment,
+                },
+                Err(_) => InterruptDecisionProjection::DecisionUnreadable,
+            }
+        }
+    })
+}
+
+/// Project a durable interrupt record onto its served shape (D3), parsing its recorded
+/// decision through [`project_interrupt_decision`].
+pub fn project_interrupt(record: InterruptRecord) -> InterruptProjection {
+    let decision = project_interrupt_decision(&record);
+    InterruptProjection {
+        interrupt_id: record.interrupt_id,
+        run_id: record.run_id,
+        kind: record.kind,
+        tool_call_id: record.tool_call_id,
+        resume_state: record.resume_state,
+        decision,
+        created_at_ms: record.created_at_ms,
+        updated_at_ms: record.updated_at_ms,
     }
 }
 
@@ -305,6 +406,28 @@ impl InterruptRepository<'_, '_> {
             |row| row.get::<_, String>(0),
         )?;
         rows.iter().map(|json| read_interrupt(json)).collect()
+    }
+
+    /// The bounded, raise-order interrupt page for a run (agent-wire-gaps ADR D3) — the
+    /// recovery listing a client that lost its `/execute` `awaiting_permission` response
+    /// reads its pending interrupts back from. Reuses `interrupts_for_run` (no new store
+    /// query): it fetches one past the clamped cap to set an honest `truncated` marker,
+    /// then projects each record through the typed decision schema. The requested `cap`
+    /// is clamped to `INTERRUPT_LIST_CAP`.
+    pub fn interrupts_list_page(&self, run_id: &RunId, cap: u32) -> StoreResult<InterruptListPage> {
+        let cap = cap.clamp(1, INTERRUPT_LIST_CAP);
+        let rows = self.interrupts_for_run(run_id, cap.saturating_add(1))?;
+        let truncated = rows.len() as u32 > cap;
+        let items = rows
+            .into_iter()
+            .take(cap as usize)
+            .map(project_interrupt)
+            .collect();
+        Ok(InterruptListPage {
+            items,
+            cap,
+            truncated,
+        })
     }
 
     fn require(&self, interrupt_id: &InterruptId) -> StoreResult<InterruptRecord> {
@@ -860,5 +983,132 @@ mod tests {
         assert!(recorded.record.permitted);
         assert!(recorded.record.refusal_reason.is_none());
         assert_eq!(recorded.record.risk_tier, ToolRiskTier::ReadOnly);
+    }
+
+    // ---- D3: bounded interrupt list page + typed decision projection ----------------
+
+    fn list_page(store: &mut Store, run_id: &str, cap: u32) -> InterruptListPage {
+        store
+            .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                uow.interrupts()
+                    .interrupts_list_page(&RunId::new(run_id).unwrap(), cap)
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn list_page_projects_typed_decision_and_flags_pending_entries() {
+        // A resolved interrupt whose decision blob is the typed permission schema
+        // projects to the typed decision; a still-pending interrupt carries none and is
+        // recoverable as a pending entry. Raise order is preserved.
+        let (_dir, mut store) = temp_store();
+        raise(
+            &mut store,
+            "interrupt:d3/a",
+            "run:d3",
+            InterruptKind::ToolPermission,
+            10,
+        );
+        raise(
+            &mut store,
+            "interrupt:d3/b",
+            "run:d3",
+            InterruptKind::ToolPermission,
+            11,
+        );
+        resolve(
+            &mut store,
+            "interrupt:d3/a",
+            "{\"decision\":\"approve\",\"comment\":\"looks right\"}",
+            20,
+        );
+
+        let page = list_page(&mut store, "run:d3", 50);
+        assert_eq!(page.cap, 50);
+        assert!(!page.truncated);
+        assert_eq!(page.items.len(), 2);
+
+        assert_eq!(page.items[0].interrupt_id.as_str(), "interrupt:d3/a");
+        assert_eq!(page.items[0].resume_state, InterruptResumeState::Resolved);
+        assert_eq!(
+            page.items[0].decision,
+            Some(InterruptDecisionProjection::ToolPermission {
+                decision: ToolPermissionDecisionKind::Approve,
+                comment: Some("looks right".to_string()),
+            })
+        );
+
+        assert_eq!(page.items[1].interrupt_id.as_str(), "interrupt:d3/b");
+        assert_eq!(page.items[1].resume_state, InterruptResumeState::Pending);
+        assert!(
+            page.items[1].decision.is_none(),
+            "a pending interrupt carries no decision projection: {:?}",
+            page.items[1]
+        );
+    }
+
+    #[test]
+    fn list_page_degrades_a_legacy_opaque_decision_without_failing() {
+        // A resolved interrupt whose stored decision predates the typed schema (an opaque
+        // blob) projects as decision_unreadable — the page still serves, per-record
+        // degradation, never a failed listing.
+        let (_dir, mut store) = temp_store();
+        raise(
+            &mut store,
+            "interrupt:legacy/a",
+            "run:legacy",
+            InterruptKind::ToolPermission,
+            10,
+        );
+        resolve(
+            &mut store,
+            "interrupt:legacy/a",
+            "{\"kind\":\"steer\",\"prompt\":\"keep going\"}",
+            20,
+        );
+
+        let page = list_page(&mut store, "run:legacy", 50);
+        assert_eq!(page.items.len(), 1);
+        assert_eq!(page.items[0].resume_state, InterruptResumeState::Resolved);
+        assert_eq!(
+            page.items[0].decision,
+            Some(InterruptDecisionProjection::DecisionUnreadable),
+            "an unparseable legacy decision degrades rather than failing the page"
+        );
+    }
+
+    #[test]
+    fn list_page_caps_and_marks_truncation() {
+        // Three interrupts under a cap of 2: the page serves 2 in raise order and flags
+        // truncation; a cap above the total (and above INTERRUPT_LIST_CAP) clamps and
+        // does not over-report truncation.
+        let (_dir, mut store) = temp_store();
+        for (idx, now) in [("a", 10), ("b", 11), ("c", 12)] {
+            raise(
+                &mut store,
+                &format!("interrupt:cap/{idx}"),
+                "run:cap",
+                InterruptKind::ToolPermission,
+                now,
+            );
+        }
+
+        let capped = list_page(&mut store, "run:cap", 2);
+        assert_eq!(capped.cap, 2);
+        assert!(capped.truncated, "3 interrupts under a cap of 2 truncate");
+        assert_eq!(capped.items.len(), 2);
+        assert_eq!(capped.items[0].interrupt_id.as_str(), "interrupt:cap/a");
+        assert_eq!(capped.items[1].interrupt_id.as_str(), "interrupt:cap/b");
+
+        let whole = list_page(&mut store, "run:cap", 1_000);
+        assert_eq!(
+            whole.cap, INTERRUPT_LIST_CAP,
+            "a requested cap above the ceiling clamps to INTERRUPT_LIST_CAP"
+        );
+        assert!(
+            !whole.truncated,
+            "3 interrupts under the full cap do not truncate"
+        );
+        assert_eq!(whole.items.len(), 3);
     }
 }

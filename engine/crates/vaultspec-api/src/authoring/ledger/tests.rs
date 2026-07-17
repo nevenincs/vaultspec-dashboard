@@ -921,3 +921,101 @@ fn child_revision_fence_mismatch_is_rejected_on_reconstruction() {
 
     assert!(matches!(err, StoreError::Ledger(detail) if detail.contains("base_revision")));
 }
+
+// ---- D4: run/turn provenance on the ledger record --------------------------------
+
+#[test]
+fn run_provenance_round_trips_and_preserves_revision_identity() {
+    let (_dir, mut store) = temp_store();
+    let base = record(
+        None,
+        ChangesetStatus::Draft,
+        "agent proposal",
+        vec![child(
+            "child_1",
+            ChangesetOperationKind::ReplaceBody,
+            existing_doc("ledger-prov", "blob:aaa111"),
+        )],
+        100,
+    );
+    // Attaching provenance must NOT change the changeset_revision: provenance names the
+    // producing fact, it is not identity (excluded from the aggregate digest).
+    let stamped = base.clone().with_run_provenance(
+        Some(RunId::new("run:prov").unwrap()),
+        Some("turn:prov".to_string()),
+    );
+    assert_eq!(
+        stamped.changeset_revision, base.changeset_revision,
+        "run/turn provenance is metadata, not identity — the revision is unchanged"
+    );
+
+    store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.ledger().append_revision(&stamped)?;
+            Ok(())
+        })
+        .unwrap();
+
+    let latest = store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.ledger().history(&changeset_id())
+        })
+        .unwrap()
+        .latest()
+        .cloned()
+        .expect("history has latest revision");
+    assert_eq!(latest.run_id.as_ref().map(RunId::as_str), Some("run:prov"));
+    assert_eq!(latest.turn_id.as_deref(), Some("turn:prov"));
+
+    // The v21 provenance columns are populated to match the record, not left NULL.
+    let conn = rusqlite::Connection::open(store.path()).unwrap();
+    let (col_run, col_turn): (Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT run_id, turn_id
+             FROM authoring_changeset_revisions
+             WHERE changeset_revision = ?1",
+            [stamped.changeset_revision.as_str()],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(col_run.as_deref(), Some("run:prov"));
+    assert_eq!(col_turn.as_deref(), Some("turn:prov"));
+}
+
+#[test]
+fn a_human_changeset_carries_no_run_provenance() {
+    let (_dir, mut store) = temp_store();
+    let human = record(
+        None,
+        ChangesetStatus::Draft,
+        "human direct save",
+        vec![child(
+            "child_1",
+            ChangesetOperationKind::ReplaceBody,
+            existing_doc("ledger-human", "blob:bbb222"),
+        )],
+        100,
+    );
+    assert!(
+        human.run_id.is_none() && human.turn_id.is_none(),
+        "a changeset built without provenance carries none"
+    );
+
+    store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.ledger().append_revision(&human)?;
+            Ok(())
+        })
+        .unwrap();
+
+    let latest = store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.ledger().history(&changeset_id())
+        })
+        .unwrap()
+        .latest()
+        .cloned()
+        .expect("history has latest revision");
+    assert!(latest.run_id.is_none());
+    assert!(latest.turn_id.is_none());
+}
