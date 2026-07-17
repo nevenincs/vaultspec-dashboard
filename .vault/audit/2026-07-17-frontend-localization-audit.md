@@ -23,7 +23,7 @@ is named so the review knows exactly what remains.
 | --- | --- |
 | W02.P04.S17/S18 (action-contract closure gates) | **CLOSED** (post-review) — landed at `9b23233257`, independently reverified, 79/79 live; not part of the consolidated review's original scope, added here as it closed after |
 | W03 (core application surfaces) | **WITHHELD** — three red test files found (see Ledger by wave and Defect ledger) |
-| W04 (status, search, temporal surfaces) | **WITHHELD** — see W03 row; one of the three red files (`contextMenu.test.ts`) spans both waves' scope |
+| W04 (status, search, temporal surfaces) | **WITHHELD** — `contextMenu.test.ts` resolved (review snapshot predated the landed conversion, re-verified green at `9b23233257`); remaining withhold is the two W03-scope red files, which do not touch W04's own named steps |
 | W05 (authoring, viewer, settings, auxiliary) | **PASS** |
 | Retirements and rescopes (`S40`/`S75`/`S180`/`S181`/`S219`/`S236`/`S238` retired; `S59`/`S84`/`S192` rescoped) | **PASS** |
 | S183 amendment (edgeMenu CMCS-001 follow-up) | **PASS** |
@@ -105,13 +105,18 @@ below). Plan total: 209/244 (85.7%). Every step outside Wave W06 is now ticked.
   — `FeatureSearchField.test.tsx` (5/5 red, orphaned; see Defect Ledger) and
   `left/menus/leftMenus.test.ts` (2/34 red, a cross-step gap where `S227`'s later work
   invalidated tests `S228`'s tick had already vouched for; see Honest Findings).
-- **W04** (status, search, and temporal surfaces) — 45/45 steps ticked, but
-  **WITHHELD** by the consolidated review: `P10` (right rail status/changes) 13/13,
-  `P11` (search/palette) 9/9, `P12` (timeline/temporal) 7/7, `P13` (store-produced
-  messages) 16/16. The withhold is on `stores/view/contextMenu.test.ts`, named in
-  `S192`'s rescoped scope (`W04.P13`) — the review reported "2 red to verify" here;
-  reconciliation's own rerun at this update found it fully green (22/22), a
-  discrepancy flagged rather than resolved unilaterally (see Open Items).
+- **W04** (status, search, and temporal surfaces) — 45/45 steps ticked. `P10`
+  (right rail status/changes) 13/13, `P11` (search/palette) 9/9, `P12`
+  (timeline/temporal) 7/7, `P13` (store-produced messages) 16/16. The one W04-owned
+  item the consolidated review flagged, `stores/view/contextMenu.test.ts` (named in
+  `S192`'s rescoped scope, `W04.P13`; reported "2 red to verify"), is **resolved**:
+  the review's sweep predated commit `9b23233257`, which carried opus-l10n's
+  `contextMenu.test.ts` conversion as one of the S17/S18 four-file set; reconciliation's
+  post-commit rerun found it fully green (22/22), and that result is authoritative.
+  The wave's verdict stays **WITHHELD** only because the consolidated review's original
+  W03/W04 scope was reported jointly and W03 still carries two unresolved red files
+  (`FeatureSearchField.test.tsx`, `leftMenus.test.ts` — neither of which touches any
+  W04-named step); W04 has no outstanding defect of its own as of this update.
 - **W05** (authoring, viewer, settings, auxiliary surfaces) — 43/43, fully closed.
   `P14` (authoring editor/review) 10/10, `P15` (viewer/document presentation) 10/10,
   `P16` (settings/onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points)
@@ -323,15 +328,29 @@ from the production build, not to localize its content.
   `commandPaletteCommands.test.ts`, 8/14 and 1/41 red respectively, plus an open
   discrepancy on `stores/view/contextMenu.test.ts`).** At the point `S17`/`S18`
   closed, reconciliation incidentally reran all four of those files and found
-  them ALL green (72/72 combined) — but the fixes are UNCOMMITTED working-tree
-  changes at this update, not yet formally reported by the coding lane. Per the
+  them ALL green (72/72 combined) — but the fixes were UNCOMMITTED working-tree
+  changes at that update, not yet formally reported by the coding lane. Per the
   team's standing rule (cite only real landing commits, verify on report, not on
-  working-tree discovery), this dossier does NOT yet mark those defect-ledger rows
-  fixed or downgrade the W03/W04 WITHHELD verdict — that update is held for the
-  coding lane's explicit report and its own commit, even though the code appears
-  to already be there. The `contextMenu.test.ts` discrepancy from the paragraph
-  below may already be moot once that report lands (it explains why the file
-  reads green now, contrary to the earlier "2 red to verify" review note).
+  working-tree discovery), this dossier did not mark those defect-ledger rows
+  fixed or downgrade the W03/W04 WITHHELD verdict on the strength of that
+  working-tree observation alone.
+
+  **`stores/view/contextMenu.test.ts` — resolved.** The consolidated review's "2
+  red to verify" reading of this file was a stale snapshot: it predated commit
+  `9b23233257`, which is exactly the commit that carries opus-l10n's
+  `contextMenu.test.ts` conversion (one of the four files in the S17/S18 close, see
+  above). Reconciliation's post-commit rerun found it fully green (22/22), and per
+  the team lead's ruling this post-commit result is the authoritative state — the
+  discrepancy is closed, not merely moot.
+
+  **The genuinely-red set as of this update is exactly four files, all still with
+  opus-l10n and still uncommitted:** `FeatureSearchField.test.tsx` (5/5 red,
+  orphaned — W03), `left/menus/leftMenus.test.ts` (2/34 red, cross-step gap — W03),
+  `stores/view/commandRegistry.test.ts` (8/14 red, S17/S18 consumer-fixture
+  fallout), and `stores/view/commandPaletteCommands.test.ts` (1/41 red, same
+  cause). The W03/W04 WITHHELD verdict is unaffected by the `contextMenu.test.ts`
+  resolution and stays open pending the coding lane's explicit report and commit
+  for these four.
 - **`W06` (35 steps, `P18`/`P19`/`P20`)** — the final enforcement and cleanup wave,
   in progress on the coding lane, untouched by reconciliation by design per the
   original task brief. The coding lane's board: four `W06.P18` enforcement tests
@@ -339,12 +358,15 @@ from the production build, not to localize its content.
   batched scanner edits (`S98`/`S100`-rule/`S137`), and `P19` e2e specs.
 
 **Status as of this update: every step outside Wave W06 is now ticked (209/244,
-85.7%).** The consolidated wave review returned WITHHELD for W03/W04 (the two
-confirmed red files, `FeatureSearchField.test.tsx` and `leftMenus.test.ts`, plus the
-`contextMenu.test.ts` discrepancy noted above) and PASS for W05, the
-retirements/rescopes, and the S183 amendment. `W02.P04.S17`/`S18` are now CLOSED.
-Re-verification of the W03/W04 WITHHELD items — and likely closure, given the
-working-tree state just observed — is pending the coding lane's explicit report and
-commit for `FeatureSearchField.test.tsx`, `leftMenus.test.ts`,
-`commandRegistry.test.ts`, and `commandPaletteCommands.test.ts`. This dossier will
-be updated in place as that report lands and W06 progresses.
+85.7%).** The consolidated wave review returned WITHHELD for W03/W04 and PASS for
+W05, the retirements/rescopes, and the S183 amendment. `W02.P04.S17`/`S18` are now
+CLOSED. The `stores/view/contextMenu.test.ts` discrepancy is resolved: the
+review's "2 red to verify" reading predated the landed conversion, and
+reconciliation's post-commit rerun (22/22 green at `9b23233257`) is authoritative.
+The genuinely-red set is now exactly four files, all still with opus-l10n and
+uncommitted: `FeatureSearchField.test.tsx`, `leftMenus.test.ts`,
+`commandRegistry.test.ts`, and `commandPaletteCommands.test.ts`. Re-verification
+of the W03/W04 WITHHELD items — and likely closure, given the working-tree state
+already observed — is pending the coding lane's explicit report and commit for
+these four. This dossier will be updated in place as that report lands and W06
+progresses.
