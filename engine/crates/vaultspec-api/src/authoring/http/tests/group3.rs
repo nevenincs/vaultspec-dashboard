@@ -418,3 +418,154 @@ async fn comment_create_rejects_a_traversal_shaped_node_id_without_reading_outsi
         "the outside-vault file's contents must never appear on the wire: {env}"
     );
 }
+
+/// agent-wire-gaps D3 (S26): a client that lost the `/execute` `awaiting_permission`
+/// response recovers its pending interrupts from the bounded listing route — raise
+/// order, pending flagged, honest `truncated` — and a resolved interrupt serves its
+/// decision through the typed projection rather than an opaque string.
+#[tokio::test]
+async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
+    let (_dir, state) = fixture_state();
+    let reviewer = human_reviewer();
+    register_actor(&state, &reviewer);
+    let token = issue_token_in_state(&state, &reviewer);
+
+    state
+        .with_authoring_store(|store| {
+            store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
+                for (id, call, at) in [
+                    ("interrupt_list_1", "call_list_1", 100),
+                    ("interrupt_list_2", "call_list_2", 200),
+                ] {
+                    uow.interrupts().record_interrupt(
+                        crate::authoring::interrupts::RecordInterruptInput {
+                            interrupt_id: InterruptId::new(id).unwrap(),
+                            run_id: RunId::new("run_list_1").unwrap(),
+                            kind: crate::authoring::interrupts::InterruptKind::ToolPermission,
+                            tool_call_id: Some(ToolCallId::new(call).unwrap()),
+                            proposal_id: None,
+                            idempotency_key: format!("idem:seed:{id}"),
+                            created_at_ms: at,
+                        },
+                    )?;
+                }
+                Ok(())
+            })
+        })
+        .unwrap();
+
+    // Recovery read: both interrupts pending, raise order, not truncated.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/runs/run_list_1/interrupts")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    let items = body["data"]["items"].as_array().expect("items array");
+    assert_eq!(items.len(), 2, "{body}");
+    assert_eq!(items[0]["interrupt_id"], "interrupt_list_1", "raise order");
+    assert_eq!(items[1]["interrupt_id"], "interrupt_list_2");
+    assert!(items.iter().all(|i| i["resume_state"] == "pending"));
+    assert_eq!(body["data"]["truncated"], false);
+
+    // Resolve the first through the existing resume route, then re-read: the
+    // listing serves it resolved with a decision projection, never a raw string.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, _) = post_authoring(
+        router,
+        "/v1/interrupts/interrupt_list_1/resume",
+        &token,
+        request_fixture(EndpointFamily::Interrupt),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+
+    let router = authoring_router(state.clone()).with_state(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/runs/run_list_1/interrupts")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = json_body(response).await;
+    let items = body["data"]["items"].as_array().expect("items array");
+    let resolved = items
+        .iter()
+        .find(|i| i["interrupt_id"] == "interrupt_list_1")
+        .expect("resolved row present");
+    assert_eq!(resolved["resume_state"], "resolved", "{body}");
+    assert!(
+        resolved["decision"].is_object() || resolved["decision"] == "decision_unreadable",
+        "decision is the typed projection or the honest degradation marker: {body}"
+    );
+}
+
+/// agent-wire-gaps D5 (S26): `GET /v1/mode` serves the DEFAULT record on a fresh
+/// store and round-trips the mode write — the same record, read pre-proposal with
+/// no token (principal-permissive read).
+#[tokio::test]
+async fn mode_read_serves_default_and_round_trips_the_write() {
+    let (_dir, state) = fixture_state();
+
+    // Fresh store: the default record, from the same resolution the policy uses.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/mode")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["mode"], "manual", "default record: {body}");
+    assert!(
+        body["data"]["scope_id"]
+            .as_str()
+            .is_some_and(|s| !s.is_empty())
+    );
+    assert!(body["tiers"].is_object(), "every response carries tiers");
+
+    // Write through the shipped POST, then the read serves the same record.
+    let human = human_reviewer();
+    register_actor(&state, &human);
+    let token = issue_token_in_state(&state, &human);
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, envelope) = post_authoring(
+        router,
+        "/v1/mode",
+        &token,
+        request_fixture(EndpointFamily::Mode),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{envelope}");
+    let written_mode = envelope["data"]["mode"].clone();
+
+    let router = authoring_router(state.clone()).with_state(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/mode")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = json_body(response).await;
+    assert_eq!(body["data"]["mode"], written_mode, "round-trip: {body}");
+}
