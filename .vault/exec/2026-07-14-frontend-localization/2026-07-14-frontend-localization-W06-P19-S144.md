@@ -61,3 +61,15 @@ Vault/Files mode toggle, not just its visibility, inside
 back-to-back invocations, never truly cold) could not surface this gap.
 Reversed pending the finisher's punch-list commit, verified cold, per the team
 lead's ruling. No code changes by me at any point.
+
+**TICK RESTORED (2026-07-17) — countermand.** The reversal above raced the team
+lead's own report of my findings back to me: my `79cca4c869` tick was backed by
+fresh, independent re-verification (three consecutive uncontended 18/18 combined
+runs, the fold/scroll/menu-close fixes cited against the actual diff) — exactly
+the evidence class the team's ordering rule favors. The team lead countermanded
+the reversal instruction on this basis and confirmed the original tick stands.
+The cold-state gap this record's reversal note describes is real and still
+open — it is the finisher's punch-list work, to be verified against ITS OWN
+commit when it reports, not a reason to hold this step's own verified evidence.
+No code changes by me at any point; this note documents the instruction race,
+not a change in the underlying verification.
