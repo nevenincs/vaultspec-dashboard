@@ -41,7 +41,7 @@ beforeEach(() => {
   registerResolver("node", (entity) => [
     {
       id: "mutate",
-      label: "Mutate",
+      label: { key: "common:actions.copy" },
       section: "transform",
       dispatch: { type: TEST_VERB, payload: { id: entity.id } },
     },
@@ -60,9 +60,7 @@ describe("menu seam transit", () => {
   it("routes a dispatch action through appDispatcher to its terminal handler", async () => {
     render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 5, y: 5 }));
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Mutate" }, ENGINE_WAIT),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Copy" }, ENGINE_WAIT));
 
     // The terminal handler fired exactly once, with the action that transited
     // the seam (so it was logged/traced/guardable in one place).

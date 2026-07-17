@@ -53,8 +53,18 @@ beforeEach(() => {
   testClient = createMenuTestQueryClient();
   testLocalization = createTestLocalizationRuntime();
   registerResolver("node", () => [
-    { id: "first", label: "First", section: "navigate", run: first },
-    { id: "second", label: "Second", section: "navigate", run: second },
+    {
+      id: "first",
+      label: { key: "common:actions.copy" },
+      section: "navigate",
+      run: first,
+    },
+    {
+      id: "second",
+      label: { key: "common:actions.close" },
+      section: "navigate",
+      run: second,
+    },
   ]);
 });
 afterEach(() => {
@@ -78,7 +88,7 @@ describe("ContextMenuHost interactive", () => {
   it("moves focus to the first item on open", async () => {
     openAt();
     await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("First"),
+      () => expect(document.activeElement?.textContent).toContain("Copy"),
       ENGINE_WAIT,
     );
   });
@@ -87,17 +97,17 @@ describe("ContextMenuHost interactive", () => {
     openAt();
     const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("First"),
+      () => expect(document.activeElement?.textContent).toContain("Copy"),
       ENGINE_WAIT,
     );
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("Second"),
+      () => expect(document.activeElement?.textContent).toContain("Close"),
       ENGINE_WAIT,
     );
     fireEvent.keyDown(menu, { key: "ArrowUp" });
     await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("First"),
+      () => expect(document.activeElement?.textContent).toContain("Copy"),
       ENGINE_WAIT,
     );
   });
@@ -107,7 +117,7 @@ describe("ContextMenuHost interactive", () => {
     const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     fireEvent.keyDown(menu, { key: "ArrowDown" });
     await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("Second"),
+      () => expect(document.activeElement?.textContent).toContain("Close"),
       ENGINE_WAIT,
     );
     fireEvent.keyDown(menu, { key: "Enter" });

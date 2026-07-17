@@ -55,22 +55,33 @@ const remove = () => {
 };
 
 function registerNodeMenu() {
-  registerResolver("node", (entity) => [
+  registerResolver("node", () => [
     {
       id: "focus",
-      label: `Focus ${entity.title ?? entity.id}`,
+      label: { key: "common:actions.showOnCanvas" },
       section: "navigate",
       run: focus,
     },
-    { id: "copy-id", label: "Copy id", section: "copy", run: copy },
+    {
+      id: "copy-id",
+      label: { key: "common:actions.copy" },
+      section: "copy",
+      run: copy,
+    },
     {
       id: "noop",
-      label: "Unavailable",
+      label: { key: "common:actions.close" },
       section: "transform",
       disabled: true,
-      disabledReason: "nothing to do",
+      disabledReason: { key: "common:disabledReasons.noRelation" },
     },
-    { id: "remove", label: "Remove", section: "danger", confirm: true, run: remove },
+    {
+      id: "remove",
+      label: { key: "common:actions.open" },
+      section: "danger",
+      confirm: true,
+      run: remove,
+    },
   ]);
 }
 
@@ -113,9 +124,9 @@ describe("ContextMenuHost", () => {
     openNodeMenu();
     const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
     expect(menu.getAttribute("aria-label")).toBe("Actions");
-    expect(screen.getByRole("menuitem", { name: /Focus Alpha/ })).toBeTruthy();
-    expect(screen.getByText("Copy id")).toBeTruthy();
-    expect(screen.getByText("Remove")).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: /Show on canvas/ })).toBeTruthy();
+    expect(screen.getByText("Copy")).toBeTruthy();
+    expect(screen.getByText("Open")).toBeTruthy();
     // navigate, transform, copy, danger -> three separators between four groups.
     expect(menu.querySelectorAll('[role="separator"]').length).toBe(3);
   });
@@ -123,7 +134,7 @@ describe("ContextMenuHost", () => {
   it("runs a non-confirm item and closes the menu", async () => {
     openNodeMenu();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Focus Alpha/ }, ENGINE_WAIT),
+      await screen.findByRole("menuitem", { name: /Show on canvas/ }, ENGINE_WAIT),
     );
     expect(focusCount).toBe(1);
     expect(useContextMenuStore.getState().open).toBe(false);
@@ -131,11 +142,9 @@ describe("ContextMenuHost", () => {
 
   it("arms a destructive item on first click and fires on the second", async () => {
     openNodeMenu();
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Remove/ }, ENGINE_WAIT),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Open/ }, ENGINE_WAIT));
     expect(removeCount).toBe(0);
-    const armed = (await screen.findAllByText("Confirm Remove?"))[0]!.closest(
+    const armed = (await screen.findAllByText("Confirm Open?"))[0]!.closest(
       '[role="menuitem"]',
     );
     fireEvent.click(armed as HTMLElement);
@@ -146,7 +155,12 @@ describe("ContextMenuHost", () => {
   it("returns focus to the pending row and later restores the original opener", async () => {
     resetResolvers();
     registerResolver("node", () => [
-      { id: "focus", label: "Focus", section: "navigate", run: focus },
+      {
+        id: "focus",
+        label: { key: "common:actions.showOnCanvas" },
+        section: "navigate",
+        run: focus,
+      },
       {
         id: "archive",
         label: { key: "features:destructiveActions.archive" },
@@ -185,7 +199,12 @@ describe("ContextMenuHost", () => {
   it("clears a typed confirmation when the current action disappears", async () => {
     resetResolvers();
     registerResolver("node", () => [
-      { id: "focus", label: "Focus", section: "navigate", run: focus },
+      {
+        id: "focus",
+        label: { key: "common:actions.showOnCanvas" },
+        section: "navigate",
+        run: focus,
+      },
       {
         id: "archive",
         label: { key: "features:destructiveActions.archive" },
@@ -209,7 +228,7 @@ describe("ContextMenuHost", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull(), ENGINE_WAIT);
     expect(await screen.findByRole("menu", undefined, ENGINE_WAIT)).toBeTruthy();
     await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("Focus"),
+      () => expect(document.activeElement?.textContent).toContain("Show on canvas"),
       ENGINE_WAIT,
     );
     expect(removeCount).toBe(0);
@@ -246,18 +265,16 @@ describe("ContextMenuHost", () => {
     registerResolver("node", () => [
       {
         id: "archive",
-        label: "Archive feature",
+        // The label resolves from the still-present common bundle; only the typed
+        // confirmation copy (features) is unavailable, so the action fails closed.
+        label: { key: "common:actions.close" },
         section: "danger",
         confirmation: archiveConfirmation,
         run: remove,
       },
     ]);
     openNodeMenu();
-    const archive = await screen.findByRole(
-      "menuitem",
-      { name: "Archive feature" },
-      ENGINE_WAIT,
-    );
+    const archive = await screen.findByRole("menuitem", { name: "Close" }, ENGINE_WAIT);
 
     expect(archive.getAttribute("aria-disabled")).toBe("true");
     expect(archive.getAttribute("title")).toBe(
@@ -271,16 +288,31 @@ describe("ContextMenuHost", () => {
 
   it("fails closed when the catalog-owned legacy confirmation prompt is unavailable", async () => {
     testLocalization.removeResourceBundle("en", "common");
+    resetResolvers();
+    // The action label resolves from the still-present documents bundle; only the
+    // confirm-prompt template (common:accessibility.confirmAction) is unavailable,
+    // so arming fails closed.
+    registerResolver("node", () => [
+      {
+        id: "remove",
+        label: { key: "documents:editor.statuses.saved" },
+        section: "danger",
+        confirm: true,
+        run: remove,
+      },
+    ]);
     openNodeMenu();
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Remove/ }, ENGINE_WAIT),
+      await screen.findByRole("menuitem", { name: /Saved/ }, ENGINE_WAIT),
     );
     await waitFor(
       () =>
-        expect(screen.queryByRole("menuitem", { name: "Confirm Remove?" })).toBeNull(),
+        expect(screen.queryByRole("menuitem", { name: "Confirm Saved?" })).toBeNull(),
       ENGINE_WAIT,
     );
-    fireEvent.click(screen.getByRole("menuitem", { name: /Remove/ }));
+    // The armed row falls closed: its confirm prompt is unavailable, so it renders
+    // the safe fallback name (not "Confirm Saved?") and clicking it never fires.
+    fireEvent.click(screen.getByRole("menuitem"));
     expect(removeCount).toBe(0);
     expect(useContextMenuStore.getState().open).toBe(true);
   });
@@ -290,13 +322,13 @@ describe("ContextMenuHost", () => {
     registerResolver("node", () => [
       {
         id: "focus",
-        label: "Focus",
+        label: { key: "common:actions.showOnCanvas" },
         section: "navigate",
         run: focus,
       },
       {
         id: "remove",
-        label: "Remove",
+        label: { key: "common:actions.open" },
         section: "danger",
         confirm: true,
         disabledInTimeTravel: true,
@@ -306,26 +338,24 @@ describe("ContextMenuHost", () => {
     const view = render(<ContextMenuHost />, { wrapper: Providers });
     act(() => openContextMenu({ kind: "node", id: "n1" }, { x: 10, y: 10 }));
 
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: /Remove/ }, ENGINE_WAIT),
-    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Open/ }, ENGINE_WAIT));
     expect(useContextMenuStore.getState().armedItemId).toBe("remove");
 
     view.rerender(<ContextMenuHost timeTravel />);
 
-    expect(screen.queryByText("Confirm Remove?")).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: /Remove/ })).toBeNull();
+    expect(screen.queryByText("Confirm Open?")).toBeNull();
+    expect(screen.queryByRole("menuitem", { name: /Open/ })).toBeNull();
     expect(useContextMenuStore.getState().armedItemId).toBeNull();
     expect(useContextMenuStore.getState().open).toBe(true);
   });
 
   it("renders a disabled item with its reason and does not run it", async () => {
     openNodeMenu();
-    const item = (
-      await screen.findByText("Unavailable", undefined, ENGINE_WAIT)
-    ).closest('[role="menuitem"]');
+    const item = (await screen.findByText("Close", undefined, ENGINE_WAIT)).closest(
+      '[role="menuitem"]',
+    );
     expect(item?.getAttribute("aria-disabled")).toBe("true");
-    expect(item?.getAttribute("title")).toBe("nothing to do");
+    expect(item?.getAttribute("title")).toBe("No relation");
     fireEvent.click(item as HTMLElement);
     // Disabled: not runnable, menu stays open.
     expect(useContextMenuStore.getState().open).toBe(true);
@@ -358,7 +388,7 @@ describe("ContextMenuHost", () => {
     registerResolver("node", () => [
       {
         id: "ghost",
-        label: "Unregistered verb",
+        label: { key: "common:actions.cancel" },
         section: "transform",
         dispatch: { type: "contextmenu:does-not-exist" },
       },
@@ -369,7 +399,7 @@ describe("ContextMenuHost", () => {
     );
     // Activation must not throw inside the event handler; the menu just closes.
     expect(() =>
-      fireEvent.click(screen.getByRole("menuitem", { name: /Unregistered verb/ })),
+      fireEvent.click(screen.getByRole("menuitem", { name: /Cancel/ })),
     ).not.toThrow();
     expect(useContextMenuStore.getState().open).toBe(false);
   });

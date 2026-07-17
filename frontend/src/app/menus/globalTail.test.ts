@@ -47,10 +47,20 @@ describe("context-menu global tail (Refresh)", () => {
   it("surfaces Refresh LAST under the global section on every resolved kind", () => {
     registerGlobalTailActions(() => globalTailActions());
     registerResolver("node", () => [
-      { id: "node:focus", label: "Focus", section: "navigate", run: () => {} },
+      {
+        id: "node:focus",
+        label: { key: "common:actions.copy" },
+        section: "navigate",
+        run: () => {},
+      },
     ]);
     registerResolver("commit", (() => [
-      { id: "commit:copy-hash", label: "Copy hash", section: "copy", run: () => {} },
+      {
+        id: "commit:copy-hash",
+        label: { key: "common:actions.copy" },
+        section: "copy",
+        run: () => {},
+      },
     ]) as never);
 
     for (const entity of [
@@ -67,7 +77,12 @@ describe("context-menu global tail (Refresh)", () => {
   it("Refresh is non-mutating, so it survives time-travel (not gated)", () => {
     registerGlobalTailActions(() => globalTailActions());
     registerResolver("node", () => [
-      { id: "node:focus", label: "Focus", section: "navigate", run: () => {} },
+      {
+        id: "node:focus",
+        label: { key: "common:actions.copy" },
+        section: "navigate",
+        run: () => {},
+      },
     ]);
     const travel = resolveActions({ kind: "node", id: "doc:a" }, { timeTravel: true });
     expect(travel.map((a) => a.id)).toContain("reload:refresh-data");
