@@ -246,6 +246,41 @@ main). `SessionStatus::Closed` now has a writer:
   (executor-service holds the published envelope contract). Until that ships,
   a2a-left-`Active` sessions still rely on session retention for reaping.
 
+### lane-takeover | RESOLVED (a2a half) | submit-success close-session caller landed
+
+The a2a half is LANDED on a2a main (executor-service, 4 files): the worker now
+closes its engine authoring session on a run's terminal SUCCESS, so a2a-left-
+`Active` sessions no longer depend solely on retention for reaping.
+
+- `authoring.close_authoring_session(client, session_id)` wraps the enveloped
+  `close_session` command against `POST /v1/sessions/{id}/close`, dual-auth,
+  idempotent per the route.
+- `executor._close_authoring_session_best_effort` reads `authoring_session_id`
+  from the run's checkpoint state (`graph.aget_state`) and closes it, hooked in
+  BOTH the `_handle_ingest` AND `_handle_resume` finally blocks — the resume path
+  covers a gated `research_adr` run, which completes on its FINAL gate resume, not
+  the initial ingest. Placement: AFTER `emit_terminal_status` (the run's own
+  lifecycle truth lands first) and BEFORE `_mark_ingest_done` drops the session
+  owner's token (the close needs it). Success-only is STRUCTURAL, guarded on
+  `outcome == COMPLETED`; cancel and fail outcomes emit their own terminal and
+  never reach the close arm. Best-effort: any fault degrades to a log — a
+  completion-time housekeeping call never fails an already-succeeded run.
+- CORRECT no-op for non-authoring runs: a mock/coder run creates no engine
+  authoring session, so `authoring_session_id` is absent and the close correctly
+  no-ops. This is intended behaviour, not a gap.
+- Live-proven (dashboard main engine binary): `create_session` → close → the
+  session reads back `"closed"`; idempotent re-close (200, still closed); and a
+  benign no-op on an already-`Cancelled` session (stays cancelled, no overwrite).
+  ruff + ty clean; 63 executor/authoring unit tests green.
+- Integration proof OWED to the shared driven-run vehicle: the end-to-end
+  run-settle proof (a real run settling → the hook fires → `session.closed` on the
+  feed) needs a `research_adr` run with a WORKING provider, which cannot execute on
+  the mock lane (the same provider-readiness-at-execution wall from S08). It rides
+  the SAME named follow-on vehicle as the frame-content proof —
+  deterministic-`research_adr` or a real-provider lane — recorded above. The
+  caller's core (the close verb wire + the exact seam placement) is proven and
+  code-complete now.
+
 ### closure | high | P05.S13 closes — every hold dispositioned (appended 2026-07-17, session c4903de7)
 
 All three carried open items are resolved: the a2a-side run-complete caller is
