@@ -139,6 +139,32 @@ export function previousChange(
   return changes[changes.length - 1];
 }
 
+/** The 0-based draft line the caret at `caretIndex` sits on — the count of
+ *  newlines before it. Used to seed change navigation from the current caret. */
+export function caretToLine(value: string, caretIndex: number): number {
+  let line = 0;
+  const end = Math.min(caretIndex, value.length);
+  for (let i = 0; i < end; i += 1) {
+    if (value[i] === "\n") line += 1;
+  }
+  return line;
+}
+
+/** The character offset of the START of 0-based draft `line`. Past the last line
+ *  it returns the end of the text (so a target beyond EOF lands at the end, never
+ *  out of range). The inverse of `caretToLine` at a line boundary. */
+export function lineToCaret(value: string, line: number): number {
+  if (line <= 0) return 0;
+  let seen = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    if (value[i] === "\n") {
+      seen += 1;
+      if (seen === line) return i + 1;
+    }
+  }
+  return value.length;
+}
+
 /**
  * The change covering `line`, or null. A `removed` tick is reported for the line it
  * sits above, so clicking the gutter at that row opens the right hunk.

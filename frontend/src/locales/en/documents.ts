@@ -94,8 +94,10 @@ export const documents = {
     keepDocumentOpen: "Keep document open",
     keepTabOpen: "Keep tab open",
     linkToSelectedDocument: "Link to selected document",
+    nextChange: "Move to next change",
     nextTab: "Move to next document tab",
     openComments: "Open comments",
+    previousChange: "Move to previous change",
     previousTab: "Move to previous document tab",
     resetFilters: "Reset filters",
     resetSorting: "Reset sorting",
@@ -311,8 +313,15 @@ export const documents = {
     },
     actions: {
       hideChanges: "Hide changes",
+      requestChanges: "Request changes",
       showChanges: "Show changes",
       submitForReview: "Submit for review",
+    },
+    requestChanges: {
+      body: "Send this proposal back to the assistant with the changes you want made.",
+      commentLabel: "Requested changes",
+      commentRequired: "Add a note describing the requested changes.",
+      placeholder: "Describe the changes to make…",
     },
     confirmations: {
       approve: {

@@ -28,6 +28,8 @@ import {
   updateEditorDraft,
 } from "../../stores/view/editor";
 import {
+  EDITOR_NEXT_CHANGE_ACTION_ID,
+  EDITOR_PREVIOUS_CHANGE_ACTION_ID,
   EDITOR_TOGGLE_DIFF_ACTION_ID,
   deriveEditorKeybindings,
 } from "../../stores/view/editorKeybindings";
@@ -328,6 +330,31 @@ describe("editor:toggle-diff enrollment guard", () => {
     const command = commands.find((c) => c.id === EDITOR_TOGGLE_DIFF_ACTION_ID);
     expect(command).toBeTruthy();
     expect(command?.family).toBe("edit");
+  });
+
+  // Change navigation (editor-change-fidelity D5) shares this describe's provider
+  // lifecycle — a separate block would run after this one's afterAll reset and see
+  // no registered provider (the provider is a module-import side effect).
+  it("binds next/previous-change to the vetted Mod+Alt+Arrow vertical pair", () => {
+    // The horizontal pair (Mod+Alt+ArrowLeft/Right) is the tab strip; vertical is
+    // changes-within-a-doc. Vetted in the binding comment; pinned here so a silent
+    // re-chord to a reserved combo is caught.
+    const bindings = deriveEditorKeybindings();
+    expect(
+      bindings.find((b) => b.id === EDITOR_NEXT_CHANGE_ACTION_ID)?.defaultChord,
+    ).toBe("Mod+Alt+ArrowDown");
+    expect(
+      bindings.find((b) => b.id === EDITOR_PREVIOUS_CHANGE_ACTION_ID)?.defaultChord,
+    ).toBe("Mod+Alt+ArrowUp");
+  });
+
+  it("enrolls next/previous-change in the palette under their shared ids in the edit family", () => {
+    const commands = resolveCommands(editorCommandContext());
+    for (const id of [EDITOR_NEXT_CHANGE_ACTION_ID, EDITOR_PREVIOUS_CHANGE_ACTION_ID]) {
+      const command = commands.find((c) => c.id === id);
+      expect(command, id).toBeTruthy();
+      expect(command?.family).toBe("edit");
+    }
   });
 });
 

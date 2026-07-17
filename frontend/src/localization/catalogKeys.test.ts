@@ -115,6 +115,8 @@ const EXPECTED_CATALOG_KEYS = [
   "common:changeBuckets.modified",
   "common:changeBuckets.deleted",
   "common:changeBuckets.new",
+  "common:changes.filesChanged_one",
+  "common:changes.filesChanged_other",
   "common:commandFamilies.editing",
   "common:commandFamilies.filters",
   "common:commandFamilies.focus",
@@ -516,8 +518,10 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:actions.keepDocumentOpen",
   "documents:actions.keepTabOpen",
   "documents:actions.linkToSelectedDocument",
+  "documents:actions.nextChange",
   "documents:actions.nextTab",
   "documents:actions.openComments",
+  "documents:actions.previousChange",
   "documents:actions.previousTab",
   "documents:actions.resetFilters",
   "documents:actions.resetSorting",
@@ -683,7 +687,12 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:guardedActions.reviewStationApplyChanges",
   "documents:guardedActions.reviewStationApproveProposal",
   "documents:guardedActions.reviewStationPrepareRollback",
+  "documents:reviewStation.actions.requestChanges",
   "documents:reviewStation.actions.submitForReview",
+  "documents:reviewStation.requestChanges.body",
+  "documents:reviewStation.requestChanges.commentLabel",
+  "documents:reviewStation.requestChanges.commentRequired",
+  "documents:reviewStation.requestChanges.placeholder",
   "documents:reviewStation.labels.actionUnavailable",
   "documents:reviewStation.policy.assistedHumanApproval",
   "documents:reviewStation.policy.assistedSystemApproval",
@@ -1095,6 +1104,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       !/^common:kit\.activity\.rowsLoaded_(?:one|other)$/u.test(key) &&
       !/^common:freshness\.(?:hours|days|weeks)_(?:one|other)$/u.test(key) &&
       !/^common:finalWave\.work\.progress_(?:one|other)$/u.test(key) &&
+      !/^common:finalWave\.pipeline\.statusCount_(?:one|other)$/u.test(key) &&
       !/^common:agent\.composer\.commentBatch_(?:one|other)$/u.test(key) &&
       !/^documents:localizationWave\.plan\.(?:completion|phaseCount|stepCount|waveCount)_(?:one|other)$/u.test(
         key,
@@ -1102,12 +1112,13 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       !/^operations:searchMaintenance\.(?:jobs\.(?:count|partial)|projects\.(?:live|partial|summary))_(?:zero|one|two|few|many|other)$/u.test(
         key,
       ) &&
-      !/^(?:common:(?:palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:codeLocations|commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
+      !/^(?:common:(?:changes\.filesChanged|palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:codeLocations|commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
         key,
       ),
   ),
   "common:agent.composer.commentBatch",
   "common:commandPalette.selectionAnnouncement",
+  "common:finalWave.pipeline.statusCount",
   "common:finalWave.work.progress",
   "common:kit.activity.rowsLoaded",
   "common:freshness.hours",
@@ -1117,6 +1128,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "documents:localizationWave.plan.phaseCount",
   "documents:localizationWave.plan.stepCount",
   "documents:localizationWave.plan.waveCount",
+  "common:changes.filesChanged",
   "common:palette.commandCount",
   "common:searchPalette.counts.results",
   "operations:searchMaintenance.jobs.count",
@@ -1208,10 +1220,12 @@ describe("shipped localization catalog keys", () => {
       "common:freshness.hours",
       "common:freshness.days",
       "common:freshness.weeks",
+      "common:changes.filesChanged",
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
       "common:agent.composer.commentBatch",
       "common:palette.commandCount",
+      "common:finalWave.pipeline.statusCount",
       "common:finalWave.work.progress",
       "documents:localizationWave.plan.completion",
       "documents:localizationWave.plan.phaseCount",

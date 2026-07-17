@@ -76,6 +76,20 @@ describe("editor keybinding localization", () => {
         group: { key: "documents:shortcutGroups.editing" },
         context: "global",
       },
+      {
+        id: "editor:next-change",
+        defaultChord: "Mod+Alt+ArrowDown",
+        label: { key: "documents:actions.nextChange" },
+        group: { key: "documents:shortcutGroups.editing" },
+        context: "global",
+      },
+      {
+        id: "editor:previous-change",
+        defaultChord: "Mod+Alt+ArrowUp",
+        label: { key: "documents:actions.previousChange" },
+        group: { key: "documents:shortcutGroups.editing" },
+        context: "global",
+      },
     ]);
   });
 

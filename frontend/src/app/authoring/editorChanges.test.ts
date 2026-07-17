@@ -4,8 +4,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  caretToLine,
   changeAtLine,
   deriveLineChanges,
+  lineToCaret,
   nextChange,
   previousChange,
 } from "./editorChanges";
@@ -90,6 +92,34 @@ describe("change navigation", () => {
   it("returns null when there is nothing to navigate", () => {
     expect(nextChange([], 0)).toBeNull();
     expect(previousChange([], 0)).toBeNull();
+  });
+});
+
+describe("caret <-> line mapping", () => {
+  const text = "alpha\nbeta\ngamma";
+
+  it("maps a caret offset to its draft line", () => {
+    expect(caretToLine(text, 0)).toBe(0); // start of "alpha"
+    expect(caretToLine(text, 5)).toBe(0); // end of "alpha", before the newline
+    expect(caretToLine(text, 6)).toBe(1); // start of "beta"
+    expect(caretToLine(text, 11)).toBe(2); // into "gamma"
+  });
+
+  it("maps a draft line back to its start offset (round-trips at boundaries)", () => {
+    expect(lineToCaret(text, 0)).toBe(0);
+    expect(lineToCaret(text, 1)).toBe(6);
+    expect(lineToCaret(text, 2)).toBe(11);
+    // Each line start round-trips through caretToLine.
+    for (let line = 0; line < 3; line += 1) {
+      expect(caretToLine(text, lineToCaret(text, line))).toBe(line);
+    }
+  });
+
+  it("clamps a target past the last line to the end of the text", () => {
+    // A change navigation that lands beyond EOF must not produce an out-of-range
+    // caret; it settles at the end.
+    expect(lineToCaret(text, 99)).toBe(text.length);
+    expect(caretToLine(text, 999)).toBe(2);
   });
 });
 

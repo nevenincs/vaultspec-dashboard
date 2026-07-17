@@ -71,6 +71,8 @@ function migratedPresentations(): readonly ActionPresentation[] {
     reloadDoc: () => undefined,
     keepOpen: () => undefined,
     toggleDiff: () => undefined,
+    nextChange: () => undefined,
+    previousChange: () => undefined,
   }).slice(0, 4);
 
   return [

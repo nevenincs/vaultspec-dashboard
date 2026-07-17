@@ -31,6 +31,8 @@ export const EDITOR_SAVE_ACTION_ID = "editor:save-body";
 export const EDITOR_CLOSE_ACTION_ID = "editor:close";
 export const EDITOR_TOGGLE_MODE_ACTION_ID = "editor:toggle-mode";
 export const EDITOR_TOGGLE_DIFF_ACTION_ID = "editor:toggle-diff";
+export const EDITOR_NEXT_CHANGE_ACTION_ID = "editor:next-change";
+export const EDITOR_PREVIOUS_CHANGE_ACTION_ID = "editor:previous-change";
 
 export const EDITOR_SAVE_LABEL = { key: "documents:actions.save" } as const;
 export const EDITOR_CLOSE_LABEL = {
@@ -41,6 +43,12 @@ export const EDITOR_TOGGLE_MODE_LABEL = {
 } as const;
 export const EDITOR_TOGGLE_DIFF_LABEL = {
   key: "documents:actions.showOrHideChanges",
+} as const;
+export const EDITOR_NEXT_CHANGE_LABEL = {
+  key: "documents:actions.nextChange",
+} as const;
+export const EDITOR_PREVIOUS_CHANGE_LABEL = {
+  key: "documents:actions.previousChange",
 } as const;
 
 const EDITOR_GROUP = { key: "documents:shortcutGroups.editing" } as const;
@@ -146,6 +154,29 @@ export function showOrHideChangesAction(
   };
 }
 
+export function nextChangeAction(run: () => void, disabled = false): ActionDescriptor {
+  return {
+    id: EDITOR_NEXT_CHANGE_ACTION_ID,
+    label: EDITOR_NEXT_CHANGE_LABEL,
+    disabled,
+    disabledReason: disabled ? OPEN_FOR_EDITING_REASON : undefined,
+    run,
+  };
+}
+
+export function previousChangeAction(
+  run: () => void,
+  disabled = false,
+): ActionDescriptor {
+  return {
+    id: EDITOR_PREVIOUS_CHANGE_ACTION_ID,
+    label: EDITOR_PREVIOUS_CHANGE_LABEL,
+    disabled,
+    disabledReason: disabled ? OPEN_FOR_EDITING_REASON : undefined,
+    run,
+  };
+}
+
 export function deriveEditorKeybindings(): KeybindingDef[] {
   return [
     {
@@ -186,6 +217,32 @@ export function deriveEditorKeybindings(): KeybindingDef[] {
       id: EDITOR_TOGGLE_DIFF_ACTION_ID,
       defaultChord: "Mod+Alt+G",
       label: EDITOR_TOGGLE_DIFF_LABEL,
+      group: EDITOR_GROUP,
+      context: "global",
+    },
+    {
+      // Jump to the next/previous change in the dirty-diff gutter
+      // (editor-change-fidelity D5). Chord VETTING (default-chord-selection-vetting
+      // rule): Mod+Alt+ArrowUp/Down complements the tab strip's Mod+Alt+ArrowLeft/Right
+      // (docTabKeybindings) — horizontal arrows move between documents, vertical
+      // between changes within one, a deliberate axis split. Vetted: (1) not in
+      // reservedChords.ts (only Mod+Alt+D there); (2) the macOS Cmd+Opt reserved
+      // class is LETTERS (B/K/E/C/D/H/M) — arrows are unaffected, and Cmd+Opt+Up/Down
+      // is not an Apple system shortcut (Cmd+Opt+Left/Right is browser tab-switch,
+      // which the app already rebinds for its own tabs, proving the Mod+Alt+Arrow
+      // class reaches the page in the target browsers); (3) grep of the default-chord
+      // inventory shows Mod+Alt+ArrowUp/Down unused; (4) arrows need no AltGr on EU
+      // layouts. Down = next (toward the document end), Up = previous.
+      id: EDITOR_NEXT_CHANGE_ACTION_ID,
+      defaultChord: "Mod+Alt+ArrowDown",
+      label: EDITOR_NEXT_CHANGE_LABEL,
+      group: EDITOR_GROUP,
+      context: "global",
+    },
+    {
+      id: EDITOR_PREVIOUS_CHANGE_ACTION_ID,
+      defaultChord: "Mod+Alt+ArrowUp",
+      label: EDITOR_PREVIOUS_CHANGE_LABEL,
       group: EDITOR_GROUP,
       context: "global",
     },

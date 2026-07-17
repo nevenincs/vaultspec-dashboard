@@ -438,7 +438,7 @@ function ComposerTeamSelector({
 
   return (
     <div className="relative" data-composer-team>
-      <span title={controlDisabled ? reason : undefined}>
+      <span title={controlDisabled ? reason : undefined} data-composer-team-trigger>
         <DropdownButton
           label={pill}
           open={open}
@@ -451,6 +451,7 @@ function ComposerTeamSelector({
         <Popover
           open
           onDismiss={() => setOpen(false)}
+          ignoreSelector="[data-composer-team-trigger]"
           role="menu"
           aria-label={menuAria}
           data-composer-team-menu
@@ -463,7 +464,6 @@ function ComposerTeamSelector({
                 role="menuitemradio"
                 aria-checked={selected === null}
                 onClick={() => select(null)}
-                onKeyDown={(event) => event.stopPropagation()}
                 className="flex w-full flex-col rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken"
               >
                 {teamDefaultLabel}
@@ -481,7 +481,6 @@ function ComposerTeamSelector({
                     data-team-preset={preset.id}
                     title={preset.loadable ? undefined : presetReason}
                     onClick={preset.loadable ? () => select(preset.id) : undefined}
-                    onKeyDown={(event) => event.stopPropagation()}
                     className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                   >
                     <span className="truncate">{preset.display_name ?? preset.id}</span>
@@ -954,7 +953,7 @@ export function Composer() {
         <ComposerSelectorPills
           selectedTeamPreset={selectedTeamPreset}
           onSelectTeam={setSelectedTeamPreset}
-          locked={activeRun !== null || teamRunActive}
+          locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
         />
         {teamRunActive && !teamTerminal ? (
           <Button

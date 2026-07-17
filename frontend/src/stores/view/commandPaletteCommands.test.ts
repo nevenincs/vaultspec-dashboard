@@ -168,6 +168,8 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
     let reloaded = 0;
     let kept = 0;
     let diffToggled = 0;
+    let nextChanged = 0;
+    let prevChanged = 0;
     const commands = buildEditorCommands({
       closeDoc: () => {
         closed += 1;
@@ -184,6 +186,12 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
       toggleDiff: () => {
         diffToggled += 1;
       },
+      nextChange: () => {
+        nextChanged += 1;
+      },
+      previousChange: () => {
+        prevChanged += 1;
+      },
     });
     expect(commands.map((c) => c.id)).toEqual([
       "editor:close-document",
@@ -191,6 +199,8 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
       "editor:reload-document",
       "editor:keep-document-open",
       "editor:toggle-diff",
+      "editor:next-change",
+      "editor:previous-change",
     ]);
     // The lifecycle commands are in the "app" family; toggle-diff is in "edit".
     const appIds = [
@@ -203,6 +213,10 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
       commands.filter((c) => appIds.includes(c.id)).every((c) => c.family === "app"),
     ).toBe(true);
     expect(commands.find((c) => c.id === "editor:toggle-diff")?.family).toBe("edit");
+    expect(commands.find((c) => c.id === "editor:next-change")?.family).toBe("edit");
+    expect(commands.find((c) => c.id === "editor:previous-change")?.family).toBe(
+      "edit",
+    );
     expect(commands.find((c) => c.id === "editor:toggle-diff")?.label).toEqual({
       key: "documents:actions.showOrHideChanges",
     });
@@ -217,7 +231,17 @@ describe("buildTimelineCommands / buildEditorCommands", () => {
     commands[2]?.run();
     commands[3]?.run();
     commands[4]?.run();
-    expect([closed, closedAll, reloaded, kept, diffToggled]).toEqual([1, 1, 1, 1, 1]);
+    commands[5]?.run();
+    commands[6]?.run();
+    expect([
+      closed,
+      closedAll,
+      reloaded,
+      kept,
+      diffToggled,
+      nextChanged,
+      prevChanged,
+    ]).toEqual([1, 1, 1, 1, 1, 1, 1]);
   });
 });
 

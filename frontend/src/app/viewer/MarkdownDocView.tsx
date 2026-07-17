@@ -42,9 +42,13 @@ import { openContextMenu } from "../../stores/view/contextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import {
   EDITOR_CLOSE_LABEL,
+  EDITOR_NEXT_CHANGE_ACTION_ID,
+  EDITOR_PREVIOUS_CHANGE_ACTION_ID,
   EDITOR_SAVE_LABEL,
   EDITOR_TOGGLE_DIFF_LABEL,
   EDITOR_TOGGLE_MODE_ACTION_ID,
+  nextChangeAction,
+  previousChangeAction,
   switchReadingAndEditingAction,
 } from "../../stores/view/editorKeybindings";
 import { registerKeyAction } from "../../stores/view/keymapDispatcher";
@@ -71,7 +75,13 @@ import {
   promoteDocTab,
 } from "../../stores/view/tabs";
 import { DiffView } from "../authoring/DiffView";
-import { deriveLineChanges } from "../authoring/editorChanges";
+import {
+  caretToLine,
+  deriveLineChanges,
+  lineToCaret,
+  nextChange,
+  previousChange,
+} from "../authoring/editorChanges";
 import {
   Button,
   DecorativeGlyph,
@@ -408,6 +418,51 @@ export function MarkdownDocView({
     return registerKeyAction(EDITOR_TOGGLE_MODE_ACTION_ID, () =>
       switchReadingAndEditingAction(() => toggleModeRef.current()),
     );
+  }, []);
+
+  // Change navigation (editor-change-fidelity D5): move the caret to the next/
+  // previous change in the dirty-diff gutter. The thunk reads RAW store state at
+  // keypress (loop-safe, stable-selectors) and re-derives the changes — cheap now
+  // that the diff costs about what the edit costs. Disabled when nothing is open or
+  // there is no change to jump to.
+  useEffect(() => {
+    const jumpChange = (direction: "next" | "previous") => {
+      const state = useViewStore.getState();
+      const el = textareaRef.current;
+      if (state.editorTarget === null || el === null) return;
+      const changes = deriveLineChanges(state.editorBaseText, state.draftText);
+      if (changes.length === 0) return;
+      const fromLine = caretToLine(state.draftText, el.selectionStart);
+      const target =
+        direction === "next"
+          ? nextChange(changes, fromLine)
+          : previousChange(changes, fromLine);
+      if (target === null) return;
+      const offset = lineToCaret(state.draftText, target.line);
+      el.focus();
+      el.setSelectionRange(offset, offset);
+      // Nudge the target line into view. Reading the current line height keeps this
+      // wrap-agnostic without measuring every wrapped row.
+      const lineHeight = parseFloat(getComputedStyle(el).lineHeight) || 0;
+      el.scrollTop = Math.max(0, target.line * lineHeight - el.clientHeight / 2);
+    };
+    const hasNoChange = () => {
+      const state = useViewStore.getState();
+      return (
+        state.editorTarget === null ||
+        deriveLineChanges(state.editorBaseText, state.draftText).length === 0
+      );
+    };
+    const disposeNext = registerKeyAction(EDITOR_NEXT_CHANGE_ACTION_ID, () =>
+      nextChangeAction(() => jumpChange("next"), hasNoChange()),
+    );
+    const disposePrev = registerKeyAction(EDITOR_PREVIOUS_CHANGE_ACTION_ID, () =>
+      previousChangeAction(() => jumpChange("previous"), hasNoChange()),
+    );
+    return () => {
+      disposePrev();
+      disposeNext();
+    };
   }, []);
 
   // Right-click anywhere on the open document opens the SAME vault-doc menu the

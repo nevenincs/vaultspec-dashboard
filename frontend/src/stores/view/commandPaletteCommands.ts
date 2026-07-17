@@ -1,7 +1,11 @@
 import { useMemo } from "react";
 
 import type { MessageDescriptor } from "../../platform/localization/message";
-import { showOrHideChangesAction } from "./editorKeybindings";
+import {
+  nextChangeAction,
+  previousChangeAction,
+  showOrHideChangesAction,
+} from "./editorKeybindings";
 import {
   resolveCommands,
   normalizeCommandDescriptor,
@@ -397,6 +401,11 @@ export function buildEditorCommands(intents: {
   keepOpen: () => void;
   /** Toggle the draft-vs-saved diff panel (authoring-surface ADR D4). */
   toggleDiff: () => void;
+  /** Jump to the next/previous change (editor-change-fidelity D5). These fire the
+   *  SAME view-registered keymap action by shared id, so the palette entry and the
+   *  Mod+Alt+Arrow chord are one verb across two planes. */
+  nextChange: () => void;
+  previousChange: () => void;
 }): PaletteCommand[] {
   const commands: unknown[] = [
     {
@@ -427,6 +436,16 @@ export function buildEditorCommands(intents: {
       // Shared id with the keymap chord (Mod+Alt+G) so accelerators derive
       // correctly from the registry (actions-keymap-palette: one id per verb).
       ...showOrHideChangesAction(intents.toggleDiff),
+      family: "edit",
+    },
+    {
+      // Shared id with the Mod+Alt+ArrowDown chord; the run fires the same
+      // view-registered action (actions-keymap-palette: one verb across planes).
+      ...nextChangeAction(intents.nextChange),
+      family: "edit",
+    },
+    {
+      ...previousChangeAction(intents.previousChange),
       family: "edit",
     },
   ];
