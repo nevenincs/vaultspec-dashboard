@@ -73,6 +73,10 @@ export interface ReaderCommentSource extends ReaderCommentActions {
   /** The open document's stem, for the copy-section-link verb (`[[stem#slug]]`);
    *  null when the source is not a document (the verb renders disabled-with-reason). */
   docStem: string | null;
+  /** The open document's revision (content blob hash) — the `source_revision` a
+   *  "Send to agent" stage freezes into its feedback batch (feedback-loop ADR D4);
+   *  null when the source is not a document or its blob hash is unresolved. */
+  sourceRevision: string | null;
   /** A human actor token is bootstrapped — a comment command can fire. */
   actorReady: boolean;
   /** Whether a bootstrap mint is in flight (for the compose box's disabled state). */

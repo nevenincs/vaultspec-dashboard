@@ -178,6 +178,7 @@ function renderReader(
   const source: ReaderCommentSource = {
     comments: options.comments ?? [],
     docStem: "2026-06-16-x-adr",
+    sourceRevision: "blob-fixture",
     actorReady: true,
     actorBootstrapping: false,
     ensureActor() {

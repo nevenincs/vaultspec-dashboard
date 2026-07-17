@@ -40,6 +40,7 @@ import {
   type AuthoringLifecycleEvent,
 } from "../authoring";
 import {
+  adaptFeedbackBatchReceipt,
   adaptInterruptResumeOutcome,
   adaptPreparedToolCall,
   adaptSessionCommandOutcome,
@@ -50,7 +51,9 @@ import {
   type AgentToolCallInput,
   type AgentToolCatalog,
   type CancelRunPayload,
+  type CreateFeedbackBatchPayload,
   type CreateSessionPayload,
+  type FeedbackBatchReceipt,
   type InterruptResumeOutcome,
   type PreparedAgentToolCall,
   type ResumeInterruptPayload,
@@ -208,6 +211,25 @@ export class AgentClient {
       await this.command(
         `/authoring/v1/sessions/${encodeURIComponent(sessionId)}/turns`,
         "start_prompt_turn",
+        payload,
+        opts,
+      ),
+    );
+  }
+
+  /** `POST /authoring/v1/feedback-batches` — freeze the reviewer's chosen comments
+   *  into an immutable engine feedback batch (feedback-loop ADR D4). Dual-auth like
+   *  every authoring command (machine bearer + the ambient actor token; the author
+   *  is the server-resolved principal). Returns the content-addressed
+   *  `{batch_id, digest}`; the next turn carries the `batch_id`. */
+  async createFeedbackBatch(
+    payload: CreateFeedbackBatchPayload,
+    opts: CommandOptions,
+  ): Promise<FeedbackBatchReceipt> {
+    return adaptFeedbackBatchReceipt(
+      await this.command(
+        "/authoring/v1/feedback-batches",
+        "create_feedback_batch",
         payload,
         opts,
       ),
@@ -443,6 +465,16 @@ export function useStartTurn() {
         actorToken: await ensureActorToken(),
       }),
     onSuccess: invalidateAgent,
+  });
+}
+
+/** Freeze the composer's staged comments into an engine feedback batch, returning
+ *  its content-addressed id for the turn to carry (feedback-loop ADR D4). Does not
+ *  invalidate the session caches — a batch is immutable and not a session event. */
+export function useCreateFeedbackBatch() {
+  return useMutation({
+    mutationFn: async (payload: CreateFeedbackBatchPayload) =>
+      agentClient.createFeedbackBatch(payload, { actorToken: await ensureActorToken() }),
   });
 }
 

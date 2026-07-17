@@ -203,6 +203,7 @@ export function MarkdownDocView({
     () => ({
       comments,
       docStem: docStemFromNodeId(nodeId),
+      sourceRevision: content.blobHash ?? null,
       actorReady: editorIdentity.hasToken,
       actorBootstrapping: editorIdentity.bootstrapping,
       ensureActor: ensureActorRef.current,
@@ -224,6 +225,7 @@ export function MarkdownDocView({
     }),
     [
       comments,
+      content.blobHash,
       editorIdentity.hasToken,
       editorIdentity.bootstrapping,
       scope,

@@ -54,6 +54,7 @@ import {
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { useActiveScope, useEditorLinkingCorpus } from "../../stores/server/queries";
 import {
+  useCreateFeedbackBatch,
   useCreateSession,
   useResumeInterrupt,
   useSession,
@@ -68,6 +69,7 @@ import {
   AGENT_COMPOSER_MENTION_CAP,
   AGENT_COMPOSER_TEXT_CAP,
   buildAgentPrompt,
+  buildFeedbackBatchRequest,
   agentSubmitDestination,
   stageAgentInterrupt,
   useAgentComposer,
@@ -75,6 +77,7 @@ import {
   useAgentMentions,
   useAgentPendingInterrupt,
   useAgentQueuedPrompt,
+  type AgentCommentBatch,
   type AgentMention,
 } from "../../stores/view/agentComposer";
 import {
@@ -417,6 +420,7 @@ export function Composer() {
   const session = useSession(currentSessionId);
   const createSession = useCreateSession();
   const startTurn = useStartTurn();
+  const createFeedbackBatch = useCreateFeedbackBatch();
   const resumeInterrupt = useResumeInterrupt();
 
   const mentions = useAgentMentions();
@@ -492,13 +496,21 @@ export function Composer() {
 
   const createSessionAsync = createSession.mutateAsync;
   const startTurnAsync = startTurn.mutateAsync;
+  const createFeedbackBatchAsync = createFeedbackBatch.mutateAsync;
 
   /** Deliver one prompt: bootstrap a fresh session first when none is usable
    *  (no current session, or the current one is no longer active — Stop cancels
-   *  the whole session on this plane), then start the turn. Shared by the submit
-   *  path and the queued-dispatch effect so both take the SAME lane. */
+   *  the whole session on this plane), then start the turn. When a comment batch is
+   *  staged, freeze it into an engine feedback batch (once the session id is known,
+   *  since the batch is session-scoped) and carry its opaque id on the turn
+   *  (feedback-loop ADR D4) — a2a never sees the content, only the id. Shared by the
+   *  submit path and the queued-dispatch effect so both take the SAME lane. */
   const deliverPrompt = useCallback(
-    async (prompt: string, bootstrap: boolean) => {
+    async (
+      prompt: string,
+      bootstrap: boolean,
+      commentBatch: AgentCommentBatch | null = null,
+    ) => {
       let sessionId = currentSessionId;
       let createdSession = false;
       if (bootstrap || sessionId === null) {
@@ -512,10 +524,27 @@ export function Composer() {
         sessionId = outcome.session_id;
         createdSession = true;
       }
-      await startTurnAsync({ sessionId, payload: { prompt } });
+      const batchRequest = buildFeedbackBatchRequest(commentBatch, sessionId);
+      const feedbackBatchId =
+        batchRequest === null
+          ? undefined
+          : (await createFeedbackBatchAsync(batchRequest)).batchId;
+      await startTurnAsync({
+        sessionId,
+        payload:
+          feedbackBatchId === undefined
+            ? { prompt }
+            : { prompt, feedback_batch_id: feedbackBatchId },
+      });
       if (createdSession) setAgentCurrentSession(sessionId);
     },
-    [createSessionAsync, currentSessionId, scope, startTurnAsync],
+    [
+      createFeedbackBatchAsync,
+      createSessionAsync,
+      currentSessionId,
+      scope,
+      startTurnAsync,
+    ],
   );
 
   // --- queued dispatch: the held prompt fires as the next turn the
@@ -539,11 +568,17 @@ export function Composer() {
     }
     queueDispatchedRef.current = true;
     const prompt = queuedPrompt;
+    // Freeze whatever batch is staged at dispatch time (it stayed staged through
+    // the queue); clear it only on a successful send, restore the prompt on failure.
+    const batch = useAgentComposer.getState().commentBatch;
     useAgentComposer.getState().setQueuedPrompt(null);
-    deliverPrompt(prompt, bootstrap).catch(() => {
-      useAgentComposer.getState().setQueuedPrompt(prompt);
-      setSendFailed(true);
-    });
+    deliverPrompt(prompt, bootstrap, batch).then(
+      () => useAgentComposer.getState().stageCommentBatch(null),
+      () => {
+        useAgentComposer.getState().setQueuedPrompt(prompt);
+        setSendFailed(true);
+      },
+    );
   }, [
     activeRunId,
     queuedPrompt,
@@ -555,14 +590,19 @@ export function Composer() {
   ]);
 
   const submit = async () => {
-    const prompt = buildAgentPrompt(text, mentions, commentBatch);
-    if (prompt.length === 0) return;
+    const prompt = buildAgentPrompt(text, mentions);
+    const hasComments =
+      commentBatch !== null && commentBatch.comments.length > 0;
+    // A submit needs SOME payload: prompt text/mentions, or a staged comment batch
+    // (a comments-only turn rides the structured feedback batch, not the prompt).
+    if (prompt.length === 0 && !hasComments) return;
     if (destination === "queue") {
       // Mid-run: hold the one queued slot (latest wins) — the input never locks.
+      // The staged comment batch stays staged (it no longer rides the prompt
+      // string) and is frozen into an engine batch when the queued prompt fires.
       useAgentComposer.getState().setQueuedPrompt(prompt);
       setText("");
       useAgentComposer.getState().clearMentions();
-      useAgentComposer.getState().stageCommentBatch(null);
       return;
     }
     // A session cannot be created without a resolved scope; hold the submit
@@ -582,7 +622,7 @@ export function Composer() {
         });
         stageAgentInterrupt(null);
       } else {
-        await deliverPrompt(prompt, destination === "bootstrap");
+        await deliverPrompt(prompt, destination === "bootstrap", commentBatch);
       }
       setText("");
       useAgentComposer.getState().clearMentions();
@@ -648,7 +688,8 @@ export function Composer() {
     destination === "steer" ? MSG.steerPlaceholder : MSG.idlePlaceholder;
   const placeholder = resolveMessage({ key: placeholderKey }).message;
   const sendDisabled =
-    buildAgentPrompt(text, mentions, commentBatch).length === 0 ||
+    (buildAgentPrompt(text, mentions).length === 0 &&
+      (commentBatch === null || commentBatch.comments.length === 0)) ||
     slashMode ||
     (destination === "bootstrap" && scope === null);
   // Stop routes through the SHARED `agent:stop-run` descriptor so the button and

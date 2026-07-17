@@ -5,12 +5,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   AGENT_COMPOSER_COMMENT_CAP,
-  AGENT_COMPOSER_COMMENTS_PREFIX,
   AGENT_COMPOSER_CONTEXT_PREFIX,
   AGENT_COMPOSER_MENTION_CAP,
   agentSubmitDestination,
   buildAgentPrompt,
-  serializeCommentBatch,
+  buildFeedbackBatchRequest,
   stageAgentComment,
   stageAgentCommentBatch,
   stageAgentInterrupt,
@@ -19,13 +18,19 @@ import {
   type AgentMention,
 } from "./agentComposer";
 
+const SOURCE = {
+  sourceDocument: "node:2026-02-04-editor-demo-plan",
+  sourceRevision: "blob-abc",
+};
+
 function attachment(
   overrides: Partial<AgentCommentAttachment>,
 ): AgentCommentAttachment {
   return {
     commentId: "comment:1",
-    docStem: "2026-02-04-editor-demo-plan",
     headingPath: ["Overview"],
+    contentStart: 10,
+    contentEnd: 20,
     body: "tighten this",
     ...overrides,
   };
@@ -144,41 +149,64 @@ describe("buildAgentPrompt", () => {
     );
   });
 
-  it("serializes a staged comment batch as a deterministic block with provenance + anchor", () => {
+  it("no longer serializes staged comments into the prompt text", () => {
+    // Structured continuation (ADR D4): comments ride a feedback batch id on the
+    // turn, not the prompt string. buildAgentPrompt takes only text + mentions.
+    expect(buildAgentPrompt("revise", mentions)).toBe(
+      `revise\n\n${AGENT_COMPOSER_CONTEXT_PREFIX} [[2026-02-04-editor-demo-plan]] #editor-demo`,
+    );
+  });
+});
+
+describe("buildFeedbackBatchRequest", () => {
+  it("maps a staged single-document batch onto the engine create payload", () => {
     const batch = {
-      batchId: null,
+      ...SOURCE,
       comments: [
-        attachment({ commentId: "c1", headingPath: ["Intro"], body: "clarify scope" }),
+        attachment({
+          commentId: "c1",
+          headingPath: ["Intro"],
+          contentStart: 5,
+          contentEnd: 9,
+          body: "clarify scope",
+        }),
         attachment({
           commentId: "c2",
-          docStem: null,
           headingPath: ["Design", "Risks"],
+          contentStart: 40,
+          contentEnd: 62,
           body: "add a fallback",
         }),
       ],
     };
-    expect(serializeCommentBatch(batch)).toBe(
-      `${AGENT_COMPOSER_COMMENTS_PREFIX}\n` +
-        `- [[2026-02-04-editor-demo-plan]] Intro: clarify scope\n` +
-        `- Design › Risks: add a fallback`,
-    );
-    expect(serializeCommentBatch(null)).toBe("");
-    expect(serializeCommentBatch({ batchId: null, comments: [] })).toBe("");
+    expect(buildFeedbackBatchRequest(batch, "session:x")).toEqual({
+      session_id: "session:x",
+      source_document: SOURCE.sourceDocument,
+      source_revision: SOURCE.sourceRevision,
+      items: [
+        {
+          comment_id: "c1",
+          body: "clarify scope",
+          anchor: { heading_path: ["Intro"], content_start: 5, content_end: 9 },
+        },
+        {
+          comment_id: "c2",
+          body: "add a fallback",
+          anchor: {
+            heading_path: ["Design", "Risks"],
+            content_start: 40,
+            content_end: 62,
+          },
+        },
+      ],
+    });
   });
 
-  it("appends the comment block after the text and mentions in one prompt", () => {
-    const batch = {
-      batchId: null,
-      comments: [attachment({ commentId: "c1", headingPath: ["Intro"], body: "fix" })],
-    };
-    expect(buildAgentPrompt("revise", mentions, batch)).toBe(
-      `revise\n\n${AGENT_COMPOSER_CONTEXT_PREFIX} [[2026-02-04-editor-demo-plan]] #editor-demo\n\n` +
-        `${AGENT_COMPOSER_COMMENTS_PREFIX}\n- [[2026-02-04-editor-demo-plan]] Intro: fix`,
-    );
-    // Comments-only submit is valid (attached context is the prompt).
-    expect(buildAgentPrompt("", [], batch)).toBe(
-      `${AGENT_COMPOSER_COMMENTS_PREFIX}\n- [[2026-02-04-editor-demo-plan]] Intro: fix`,
-    );
+  it("returns null for an absent or empty batch (nothing to freeze)", () => {
+    expect(buildFeedbackBatchRequest(null, "session:x")).toBeNull();
+    expect(
+      buildFeedbackBatchRequest({ ...SOURCE, comments: [] }, "session:x"),
+    ).toBeNull();
   });
 });
 
@@ -207,26 +235,44 @@ describe("composer store bounds", () => {
   });
 
   it("appends comments to the pending batch, upserts by id, and bounds the set", () => {
-    stageAgentComment(attachment({ commentId: "c1", body: "first note" }));
-    stageAgentComment(attachment({ commentId: "c2" }));
+    stageAgentComment(attachment({ commentId: "c1", body: "first note" }), SOURCE);
+    stageAgentComment(attachment({ commentId: "c2" }), SOURCE);
     // Re-staging c1 UPSERTS in place: the set stays at 2 (no duplicate) but the
     // body refreshes to the latest (an edit after staging must not freeze stale).
-    stageAgentComment(attachment({ commentId: "c1", body: "edited note" }));
-    const comments = useAgentComposer.getState().commentBatch!.comments;
-    expect(comments).toHaveLength(2);
-    expect(comments[0]).toMatchObject({ commentId: "c1", body: "edited note" });
-    expect(comments[1]!.commentId).toBe("c2");
+    stageAgentComment(attachment({ commentId: "c1", body: "edited note" }), SOURCE);
+    const batch = useAgentComposer.getState().commentBatch!;
+    expect(batch.sourceDocument).toBe(SOURCE.sourceDocument);
+    expect(batch.sourceRevision).toBe(SOURCE.sourceRevision);
+    expect(batch.comments).toHaveLength(2);
+    expect(batch.comments[0]).toMatchObject({ commentId: "c1", body: "edited note" });
+    expect(batch.comments[1]!.commentId).toBe("c2");
 
     for (let i = 0; i < AGENT_COMPOSER_COMMENT_CAP + 5; i += 1) {
-      stageAgentComment(attachment({ commentId: `bulk-${i}` }));
+      stageAgentComment(attachment({ commentId: `bulk-${i}` }), SOURCE);
     }
     expect(useAgentComposer.getState().commentBatch?.comments).toHaveLength(
       AGENT_COMPOSER_COMMENT_CAP,
     );
   });
 
+  it("resets the batch to the new document when staging from a different source", () => {
+    // Single-document invariant: a turn carries one feedback_batch_id, so staging a
+    // comment from a different document (or revision) starts a fresh batch
+    // (latest-document-wins) rather than mixing documents into one batch.
+    stageAgentComment(attachment({ commentId: "a1" }), SOURCE);
+    stageAgentComment(attachment({ commentId: "a2" }), SOURCE);
+    expect(useAgentComposer.getState().commentBatch?.comments).toHaveLength(2);
+
+    const other = { sourceDocument: "node:other-doc", sourceRevision: "blob-zzz" };
+    stageAgentComment(attachment({ commentId: "b1" }), other);
+    const batch = useAgentComposer.getState().commentBatch!;
+    expect(batch.sourceDocument).toBe("node:other-doc");
+    expect(batch.sourceRevision).toBe("blob-zzz");
+    expect(batch.comments.map((c) => c.commentId)).toEqual(["b1"]);
+  });
+
   it("clears the whole staged batch through the batch seam", () => {
-    stageAgentComment(attachment({ commentId: "c1" }));
+    stageAgentComment(attachment({ commentId: "c1" }), SOURCE);
     expect(useAgentComposer.getState().commentBatch).not.toBeNull();
     stageAgentCommentBatch(null);
     expect(useAgentComposer.getState().commentBatch).toBeNull();

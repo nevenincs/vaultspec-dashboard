@@ -208,6 +208,32 @@ export interface CreateSessionPayload {
 export interface StartTurnPayload {
   prompt: string;
   summary?: string;
+  /** The opaque feedback-batch id this turn consumes (feedback-loop ADR D4). When
+   *  present the engine verifies the batch exists and belongs to the session before
+   *  starting the turn, and threads the id to the a2a run. */
+  feedback_batch_id?: string;
+}
+
+/** `POST /authoring/v1/feedback-batches` payload: the reviewer's chosen comments
+ *  frozen into an immutable batch keyed to one source document + revision and the
+ *  session (feedback-loop ADR D4). The author is the server-resolved principal. */
+export interface CreateFeedbackBatchPayload {
+  session_id: string;
+  source_document: string;
+  source_revision: string;
+  items: {
+    comment_id: string;
+    body: string;
+    anchor: { heading_path: string[]; content_start: number; content_end: number };
+  }[];
+  instruction?: string;
+}
+
+/** The `{batch_id, digest}` receipt the create returns; the turn carries `batch_id`
+ *  (content-addressed: `feedback-batch:<digest>`). */
+export interface FeedbackBatchReceipt {
+  batchId: string;
+  digest: string;
 }
 
 export interface CancelRunPayload {
@@ -416,5 +442,13 @@ export function adaptPreparedToolCall(raw: unknown): PreparedAgentToolCall {
     actor: r.actor == null ? null : adaptActorRef(r.actor),
     prepared: r.prepared ?? null,
     tiers: asTiers(r.tiers),
+  };
+}
+
+export function adaptFeedbackBatchReceipt(raw: unknown): FeedbackBatchReceipt {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    batchId: asStr(r.batch_id) ?? "",
+    digest: asStr(r.digest) ?? "",
   };
 }

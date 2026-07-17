@@ -36,29 +36,37 @@ export interface AgentMention {
 }
 
 /** One comment staged for the pending batch (feedback-loop ADR D2): the anchored
- *  text and provenance a "Send to agent" action captured. Held client-side so the
- *  interim serialization (below) can ride it into the prompt; the future
- *  `feedback_batch_id` continuation (ADR D4) is upstream-gated on the a2a edge. */
+ *  text and its byte-range anchor a "Send to agent" action captured. On submit the
+ *  batch is frozen into an engine feedback batch (ADR D4) and the turn carries its
+ *  opaque `feedback_batch_id`; a2a retrieves the authoritative context by id. Every
+ *  field maps to one `FeedbackBatchItem` field the engine freezes verbatim. */
 export interface AgentCommentAttachment {
   /** The durable comment id — the dedupe key so re-sending the same comment is a
-   *  no-op rather than a duplicate line. */
+   *  no-op, and the engine item's `comment_id`. */
   commentId: string;
-  /** The document stem the comment anchors to (provenance); null when unknown. */
-  docStem: string | null;
-  /** The section heading path the comment anchors to (the anchor). */
+  /** The section heading path the comment anchors to (`anchor.heading_path`). */
   headingPath: string[];
-  /** The comment body — the human note the agent should address. */
+  /** The anchor's resolved byte range in the source document (`anchor.content_start`
+   *  / `anchor.content_end`), snapshotted at stage time from the served anchor. */
+  contentStart: number;
+  contentEnd: number;
+  /** The comment body — the human note the agent should address (`body`). */
   body: string;
 }
 
-/** A staged comment batch (feedback-loop ADR D2). Callers append to it via
- *  `stageAgentComment`; the composer renders it as one removable "N comments" chip
- *  in the same chip grammar as mentions, and submitting the next turn serializes it
- *  into the prompt context (interim, until the structured continuation ships). */
+/** A staged comment batch (feedback-loop ADR D2), scoped to ONE source document:
+ *  a turn carries exactly one `feedback_batch_id` and the engine batch is
+ *  single-document, so staging a comment from a different document starts a fresh
+ *  batch (latest-document-wins). Callers append via `stageAgentComment`; the
+ *  composer renders it as one removable "N comments" chip and, on submit, creates
+ *  the engine batch and passes its id on the turn. */
 export interface AgentCommentBatch {
-  /** The immutable backend batch id, or null while the interim client
-   *  serialization is used (the structured `feedback_batch_id` is upstream-gated). */
-  batchId: string | null;
+  /** The document node id the batch's comments anchor to — the engine
+   *  `source_document`. */
+  sourceDocument: string;
+  /** The document revision (content blob hash) the batch was taken against — the
+   *  engine `source_revision`, the marker the D4 staleness fence checks. */
+  sourceRevision: string;
   /** The staged comments in stage order, bounded at `AGENT_COMPOSER_COMMENT_CAP`. */
   comments: AgentCommentAttachment[];
 }
@@ -116,34 +124,54 @@ export function agentSubmitDestination(args: {
  *  corpus's own grammar (`[[stem]]` wiki-links, `#feature` tags). */
 export const AGENT_COMPOSER_CONTEXT_PREFIX = "Context:";
 
-/** The deterministic heading of the serialized comment block. Prompt grammar (like
- *  `Context:` and `[[stem]]`), NOT UI copy — it rides IN the prompt text because the
- *  turn contract carries only `prompt` (the structured `feedback_batch_id` is
- *  upstream-gated, feedback-loop ADR D4). */
-export const AGENT_COMPOSER_COMMENTS_PREFIX = "Comments to address:";
-
-/** Serialize a staged comment batch into a deterministic prompt block: one line per
- *  comment, each carrying its provenance (`[[stem]]`), section anchor, and body.
- *  Pure and exported so the serialization is unit-tested directly. */
-export function serializeCommentBatch(batch: AgentCommentBatch | null): string {
-  if (batch === null || batch.comments.length === 0) return "";
-  const lines = batch.comments.map((comment) => {
-    const ref = comment.docStem !== null ? `[[${comment.docStem}]]` : "";
-    const anchor =
-      comment.headingPath.length > 0 ? comment.headingPath.join(" › ") : "";
-    const location = [ref, anchor].filter((part) => part.length > 0).join(" ");
-    return location.length > 0 ? `- ${location}: ${comment.body}` : `- ${comment.body}`;
-  });
-  return `${AGENT_COMPOSER_COMMENTS_PREFIX}\n${lines.join("\n")}`;
+/** The engine `POST /authoring/v1/feedback-batches` request payload (feedback-loop
+ *  ADR D4): the reviewer's chosen comments frozen into an immutable batch, keyed to
+ *  one source document + revision and the current session. The engine returns
+ *  `{batch_id, digest}`; the turn then carries the opaque `batch_id`. */
+export interface FeedbackBatchRequest {
+  session_id: string;
+  source_document: string;
+  source_revision: string;
+  items: {
+    comment_id: string;
+    body: string;
+    anchor: { heading_path: string[]; content_start: number; content_end: number };
+  }[];
 }
 
-/** Serialize the typed text plus attached mentions and staged comments into the one
- *  prompt string — each block deterministic and separated by a blank line. A
- *  comments-only or mentions-only submit is valid (attached context is the prompt). */
+/** Build the engine feedback-batch create request from a staged batch and the turn's
+ *  session. Pure and exported so the mapping is unit-tested directly; a2a never sees
+ *  this content - it receives only the returned opaque id. Returns null for an empty
+ *  batch (nothing to freeze). */
+export function buildFeedbackBatchRequest(
+  batch: AgentCommentBatch | null,
+  sessionId: string,
+): FeedbackBatchRequest | null {
+  if (batch === null || batch.comments.length === 0) return null;
+  return {
+    session_id: sessionId,
+    source_document: batch.sourceDocument,
+    source_revision: batch.sourceRevision,
+    items: batch.comments.map((comment) => ({
+      comment_id: comment.commentId,
+      body: comment.body,
+      anchor: {
+        heading_path: comment.headingPath,
+        content_start: comment.contentStart,
+        content_end: comment.contentEnd,
+      },
+    })),
+  };
+}
+
+/** Serialize the typed text plus attached mentions into the one prompt string —
+ *  each block deterministic and separated by a blank line. Staged comments no
+ *  longer ride the prompt text: they are frozen into a structured engine feedback
+ *  batch and the turn carries its opaque id (feedback-loop ADR D4). A mentions-only
+ *  submit is valid (attached context is the prompt). */
 export function buildAgentPrompt(
   text: string,
   mentions: readonly AgentMention[],
-  commentBatch: AgentCommentBatch | null = null,
 ): string {
   const parts: string[] = [];
   const body = text.trim();
@@ -154,8 +182,6 @@ export function buildAgentPrompt(
       .join(" ");
     parts.push(`${AGENT_COMPOSER_CONTEXT_PREFIX} ${refs}`);
   }
-  const comments = serializeCommentBatch(commentBatch);
-  if (comments.length > 0) parts.push(comments);
   return parts.join("\n\n");
 }
 
@@ -171,7 +197,10 @@ interface AgentComposerState {
   addMention: (mention: AgentMention) => void;
   removeMention: (value: string) => void;
   clearMentions: () => void;
-  stageComment: (attachment: AgentCommentAttachment) => void;
+  stageComment: (
+    attachment: AgentCommentAttachment,
+    source: { sourceDocument: string; sourceRevision: string },
+  ) => void;
   stageCommentBatch: (batch: AgentCommentBatch | null) => void;
   setQueuedPrompt: (prompt: string | null) => void;
   stageInterrupt: (interrupt: AgentPendingInterrupt | null) => void;
@@ -192,26 +221,36 @@ export const useAgentComposer = create<AgentComposerState>((set) => ({
     set((state) => ({ mentions: state.mentions.filter((m) => m.value !== value) })),
   clearMentions: () =>
     set((state) => (state.mentions.length === 0 ? state : { mentions: [] })),
-  stageComment: (attachment) =>
+  stageComment: (attachment, source) =>
     set((state) => {
-      const existing = state.commentBatch?.comments ?? [];
+      // Single-document invariant: the batch is scoped to one source document +
+      // revision (a turn carries one feedback_batch_id, the engine batch is
+      // single-document). A stage from a DIFFERENT document (or a new revision of
+      // the same one) starts a fresh batch — latest-document-wins, mirroring the
+      // queued-prompt slot — so the frozen batch always matches one document.
+      const current = state.commentBatch;
+      const sameSource =
+        current !== null &&
+        current.sourceDocument === source.sourceDocument &&
+        current.sourceRevision === source.sourceRevision;
+      const existing = sameSource ? current.comments : [];
       // Upsert by comment id: a re-stage of the same comment refreshes its body /
       // anchor in place (an edit after the first stage must not freeze a stale
-      // body), keeping its position. Only a NEW id grows the set, and only up to
-      // the bound.
+      // body), keeping its position. Only a NEW id grows the set, up to the bound.
       const index = existing.findIndex((c) => c.commentId === attachment.commentId);
+      let comments: AgentCommentAttachment[];
       if (index >= 0) {
-        const comments = existing.slice();
+        comments = existing.slice();
         comments[index] = attachment;
-        return {
-          commentBatch: { batchId: state.commentBatch?.batchId ?? null, comments },
-        };
+      } else {
+        if (existing.length >= AGENT_COMPOSER_COMMENT_CAP) return state;
+        comments = [...existing, attachment];
       }
-      if (existing.length >= AGENT_COMPOSER_COMMENT_CAP) return state;
       return {
         commentBatch: {
-          batchId: state.commentBatch?.batchId ?? null,
-          comments: [...existing, attachment],
+          sourceDocument: source.sourceDocument,
+          sourceRevision: source.sourceRevision,
+          comments,
         },
       };
     }),
@@ -244,10 +283,14 @@ export function useAgentPendingInterrupt(): AgentPendingInterrupt | null {
 // --- imperative seams --------------------------------------------------------------
 
 /** Append one comment to the composer's pending batch (feedback-loop ADR D2, the
- *  "Send to agent" action). Deduped by comment id and bounded; the composer renders
- *  the running "N comments" chip. */
-export function stageAgentComment(attachment: AgentCommentAttachment): void {
-  useAgentComposer.getState().stageComment(attachment);
+ *  "Send to agent" action), scoped to its source document + revision. Deduped by
+ *  comment id and bounded; a stage from a different document starts a fresh batch.
+ *  The composer renders the running "N comments" chip. */
+export function stageAgentComment(
+  attachment: AgentCommentAttachment,
+  source: { sourceDocument: string; sourceRevision: string },
+): void {
+  useAgentComposer.getState().stageComment(attachment, source);
 }
 
 /** Set or clear the whole staged batch. Passing null clears it (the chip's × and
