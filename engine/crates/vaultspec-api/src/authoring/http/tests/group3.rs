@@ -569,3 +569,101 @@ async fn mode_read_serves_default_and_round_trips_the_write() {
     let body = json_body(response).await;
     assert_eq!(body["data"]["mode"], written_mode, "round-trip: {body}");
 }
+
+/// The feedback-batch create + read routes (a2a-orchestration-edge P04.S09/S10):
+/// a create envelope carrying `command:"create_feedback_batch"` freezes a
+/// content-addressed batch, the GET route reads it back verbatim, an unknown id
+/// 404s, and a mismatched-but-valid command kind is a typed 400 refusal. Guards
+/// the exact wire contract the S12 frontend ships against.
+#[tokio::test]
+async fn feedback_batch_create_and_read_round_trips_through_the_routes() {
+    let (_dir, state) = fixture_state();
+    let actor = agent();
+    // register_actor also seeds the `session_http_1` session the batch is scoped to.
+    register_actor(&state, &actor);
+    let token = issue_token_in_state(&state, &actor);
+
+    let payload = json!({
+        "session_id": "session_http_1",
+        "source_document": "doc:x",
+        "source_revision": "blob:rev1",
+        "items": [{
+            "comment_id": "c1", "body": "tighten this",
+            "anchor": {"heading_path": ["Rationale"], "content_start": 0, "content_end": 5}
+        }]
+    });
+
+    // Create with the CORRECT command kind -> content-addressed batch.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, body) = post_authoring(
+        router,
+        "/v1/feedback-batches",
+        &token,
+        json!({
+            "api_version": "v1",
+            "command": "create_feedback_batch",
+            "idempotency_key": "idem:fb:create",
+            "payload": payload.clone(),
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["status"], "recorded");
+    let batch_id = body["data"]["batch_id"]
+        .as_str()
+        .expect("batch_id")
+        .to_string();
+    let digest = body["data"]["digest"].as_str().expect("digest");
+    assert_eq!(
+        batch_id,
+        format!("feedback-batch:{digest}"),
+        "content-addressed id"
+    );
+
+    // GET reads it back verbatim (the raw record under data.batch).
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, got) = send_authoring(
+        router,
+        "GET",
+        &format!("/v1/feedback-batches/{batch_id}"),
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{got}");
+    assert_eq!(got["data"]["batch"]["feedback_batch_id"], batch_id);
+    assert_eq!(got["data"]["batch"]["items"][0]["body"], "tighten this");
+    assert_eq!(got["data"]["batch"]["source_revision"], "blob:rev1");
+
+    // GET an unknown id -> honest 404.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, _) = send_authoring(
+        router,
+        "GET",
+        "/v1/feedback-batches/feedback-batch:nope",
+        Some(&token),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+
+    // A mismatched-but-valid command kind is refused (400, kind guard).
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, _) = post_authoring(
+        router,
+        "/v1/feedback-batches",
+        &token,
+        json!({
+            "api_version": "v1",
+            "command": "create_session",
+            "idempotency_key": "idem:fb:wrongkind",
+            "payload": payload,
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "wrong command kind is refused"
+    );
+}
