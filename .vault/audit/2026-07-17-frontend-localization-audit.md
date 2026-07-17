@@ -10,23 +10,27 @@ related:
 
 # `frontend-localization` audit: `Reconciliation closing dossier`
 
-**STATUS: DRAFT — pending re-verification of the combined fix set below and Wave W06
-completion.** This dossier pre-assembles the record of the reconciliation pass so the
-review verifies against a compiled ledger instead of reconstructing history from
-commits and chat. It is not itself a verdict. Sections below distinguish what is
-independently verified from what is reported-but-not-yet-verified, and every open item
-is named so the review knows exactly what remains.
+**STATUS: FINAL pending Wave W06 completion.** Every wave and every reconciliation
+decision below has closed clean on the consolidated review's re-verification. The
+dossier's only remaining open surface is Wave W06 (final enforcement and cleanup),
+still in progress on the coding lane and out of scope for this pass by design. This
+dossier pre-assembles the record of the reconciliation pass so the review verifies
+against a compiled ledger instead of reconstructing history from commits and chat.
 
 ## Wave verdicts (consolidated review)
 
 | Scope | Verdict |
 | --- | --- |
 | W02.P04.S17/S18 (action-contract closure gates) | **CLOSED** (post-review) — landed at `9b23233257`, independently reverified, 79/79 live; not part of the consolidated review's original scope, added here as it closed after |
-| W03 (core application surfaces) | **WITHHELD** — three red test files found (see Ledger by wave and Defect ledger) |
-| W04 (status, search, temporal surfaces) | **WITHHELD** — `contextMenu.test.ts` resolved (review snapshot predated the landed conversion, re-verified green at `9b23233257`); remaining withhold is the two W03-scope red files, which do not touch W04's own named steps |
+| W03 (core application surfaces) | **PASS** — both red files (`FeatureSearchField.test.tsx`, `leftMenus.test.ts`) fixed and independently reverified at `90f8a3d5d5`; 94/94 across the full former red set (72/72 for the four-file combined fix + 22/22 `contextMenu.test.ts`) |
+| W04 (status, search, temporal surfaces) | **PASS** — `contextMenu.test.ts` green (22/22), a collateral fix of `9b23233257` as the timeline established; review snapshot had predated that commit |
 | W05 (authoring, viewer, settings, auxiliary) | **PASS** |
-| Retirements and rescopes (`S40`/`S75`/`S180`/`S181`/`S219`/`S236`/`S238` retired; `S59`/`S84`/`S192` rescoped) | **PASS** |
+| Retirements (`S40`/`S75`/`S180`/`S181`/`S219`/`S236`/`S238`) | **PASS** |
+| Rescopes (`S59`/`S84`/`S192`) | **PASS** |
+| Divergences (`S70` letter-vs-mechanism, and others noted in Honest findings) | **PASS** |
 | S183 amendment (edgeMenu CMCS-001 follow-up) | **PASS** |
+| Fix commits (`3e66868d0f`, `578b4e5454`, `53426c75f8`, `556f8967d9`, `90f8a3d5d5`) | **PASS** |
+| Scanner + catalog integrity (`scan-localization.mjs`, `catalogKeys`/`catalogPlural`/`catalogVocabulary` suites) | **PASS** |
 
 Re-verification of W03/W04 is pending the coding lane's combined fix set for the three
 red files named below. This dossier's per-wave "fully closed" language further down
@@ -97,26 +101,23 @@ below). Plan total: 209/244 (85.7%). Every step outside Wave W06 is now ticked.
   `registry.test.ts` rewritten to PROVE rejection of a raw string label rather than
   merely tolerate typed input. `P05` (keymap/command/palette) 27/27, `P06` (shared
   presentation vocabularies) 7/7.
-- **W03** (core application surfaces) — 48/48 steps ticked, but **WITHHELD** by the
-  consolidated review: `P07` (global chrome/kit/shell) 15/15, `P08` (left rail
-  projects/browsing) 18/18, `P09` (stage graph/islands) 15/15. Every named STEP's own
-  scope is genuinely satisfied; the withhold is on two red test files this
-  reconciliation pass did not catch because neither is named in ANY plan step's scope
-  — `FeatureSearchField.test.tsx` (5/5 red, orphaned; see Defect Ledger) and
-  `left/menus/leftMenus.test.ts` (2/34 red, a cross-step gap where `S227`'s later work
-  invalidated tests `S228`'s tick had already vouched for; see Honest Findings).
-- **W04** (status, search, and temporal surfaces) — 45/45 steps ticked. `P10`
+- **W03** (core application surfaces) — 48/48 steps ticked, **PASS**. `P07` (global
+  chrome/kit/shell) 15/15, `P08` (left rail projects/browsing) 18/18, `P09` (stage
+  graph/islands) 15/15. Every named STEP's own scope is genuinely satisfied. The two
+  red test files this reconciliation pass did not catch because neither is named in
+  ANY plan step's scope — `FeatureSearchField.test.tsx` (orphaned; see Defect Ledger)
+  and `left/menus/leftMenus.test.ts` (a cross-step gap where `S227`'s later work
+  invalidated tests `S228`'s tick had already vouched for; see Honest Findings) — are
+  fixed and independently reverified at commit `90f8a3d5d5` (72/72 across the combined
+  four-file fix; `FeatureSearchField.test.tsx` alone: 5/5, `leftMenus.test.ts`
+  alone: 34/34).
+- **W04** (status, search, and temporal surfaces) — 45/45 steps ticked, **PASS**. `P10`
   (right rail status/changes) 13/13, `P11` (search/palette) 9/9, `P12`
   (timeline/temporal) 7/7, `P13` (store-produced messages) 16/16. The one W04-owned
   item the consolidated review flagged, `stores/view/contextMenu.test.ts` (named in
-  `S192`'s rescoped scope, `W04.P13`; reported "2 red to verify"), is **resolved**:
-  the review's sweep predated commit `9b23233257`, which carried opus-l10n's
-  `contextMenu.test.ts` conversion as one of the S17/S18 four-file set; reconciliation's
-  post-commit rerun found it fully green (22/22), and that result is authoritative.
-  The wave's verdict stays **WITHHELD** only because the consolidated review's original
-  W03/W04 scope was reported jointly and W03 still carries two unresolved red files
-  (`FeatureSearchField.test.tsx`, `leftMenus.test.ts` — neither of which touches any
-  W04-named step); W04 has no outstanding defect of its own as of this update.
+  `S192`'s rescoped scope, `W04.P13`; reported "2 red to verify"), is a collateral fix
+  of `9b23233257` (the S17/S18 four-file set) as the timeline established — the
+  review's sweep predated that commit. Independently reverified green: 22/22.
 - **W05** (authoring, viewer, settings, auxiliary surfaces) — 43/43, fully closed.
   `P14` (authoring editor/review) 10/10, `P15` (viewer/document presentation) 10/10,
   `P16` (settings/onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points)
@@ -148,10 +149,10 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S216` | `stores/view/editor.ts` carried a hardcoded `STATUS_LABEL` map (`"Saved"`, `"Unsaved changes"`, `"Saving…"`, `"Save failed"`, `"Conflict — the file changed on disk"`) and `advisoriesLabel: "Conformance advisories"`; also collapsed a raw `fixableLabel`/`fixableSuffix` string pair into a `fixable: boolean` resolved at the render boundary | Fixed, commit `53426c75f8`; a latent em-dash in the conflict status was also caught and fixed during this pass (message-policy punctuation rule) |
 | `S234` (blocked `S60`) | `stores/server/queries/gitchanges.ts` carried a hardcoded `GIT_CHANGE_BUCKET_LABEL` map (`"Staged"`, `"Modified"`, `"Deleted"`, etc.); `S60`'s `ChangesOverview.tsx` rendered these labels directly | Fixed, commit `53426c75f8`; both steps closed together |
 | edgeMenu `edge:copy-id`/`edge:copy-full` (CMCS-001 follow-up, no new step) | `right/menus/edgeMenu.ts` copied the raw internal edge id (`edge:copy-id`) and a raw JSON dump of the edge's fields (`edge:copy-full`) to the clipboard, same class as the already-fixed `S177`/`S179` — surfaced by the coder, out of `S183`'s original scope (that step's scanner pass predated the copy-safety audit) | Fixed, commit `556f8967d9`, recorded as an amendment to `S183`'s exec record (per the team lead's ruling, not a new tick). `edge:copy-id`/`edge:copy-full` removed outright; `edge:copy-destination` changed to copy the destination document name via the existing `docStemFromNodeId` seam, reusing the existing `common:actions.copyDocumentName` key (no catalog change). |
-| `FeatureSearchField.test.tsx` (ORPHANED — no owning step) | `app/left/FeatureSearchField.test.tsx` asserts lowercase `getByLabelText`/similar accessible-name text against the sentence-case catalog output — the same stale-casing defect class as `S174`/`S89`/`S198`, but `FeatureSearchField.test.tsx` itself is named in NO plan step, so no reconciliation pass ever verified or ticked it. All 5 of the file's tests are red. This is a plan-coverage gap, not a step regression — see Honest Findings. | **Open** — awaiting the coding lane's combined fix |
-| `leftMenus.test.ts` cross-step gap (`workspaceMenu` describe block) | `app/left/menus/leftMenus.test.ts` has 2 of 34 tests red: both assert a raw-string `disabledReason` (`"the launch project cannot be removed"`, `"no project path"`) where `workspaceMenu.ts` (`S227`, ticked) now returns typed key descriptors. `leftMenus.test.ts` itself is named in `S228`'s scope (already ticked, verified passing at the time), but `S227`'s later localization of `workspaceMenu.ts` broke these two assertions after `S228` closed — a cross-step invalidation, not a defect in either step's own scoped work at the time it was ticked. See Honest Findings. | **Open** — awaiting the coding lane's combined fix |
-| `stores/view/commandRegistry.test.ts` (S17/S18 consumer fixture, was conflated with `platform/actions/registry.test.ts` in an earlier draft of this dossier — see correction in Open Items) | 8 of 14 tests red: raw-string `cmd()` test fixtures normalize to `null` now that the legacy `ActionPresentation` string bridge is deleted from `action.ts` — the fixtures need to construct real `MessageDescriptor` labels. | **Open** — real code, the actual remaining `S17`/`S18` blocker |
-| `stores/view/commandPaletteCommands.test.ts` | 1 of 41 tests red (`normalizes palette command family and shared action descriptor fields`): same raw-string-fixture-vs-deleted-bridge cause as `commandRegistry.test.ts`. | **Open** — awaiting the coding lane's combined fix |
+| `FeatureSearchField.test.tsx` (ORPHANED — no owning step) | `app/left/FeatureSearchField.test.tsx` asserted lowercase `getByLabelText`/similar accessible-name text against the sentence-case catalog output — the same stale-casing defect class as `S174`/`S89`/`S198`, but `FeatureSearchField.test.tsx` itself is named in NO plan step, so no reconciliation pass ever verified or ticked it. This is a plan-coverage gap, not a step regression — see Honest Findings. | Fixed, commit `90f8a3d5d5`; independently reverified 5/5 |
+| `leftMenus.test.ts` cross-step gap (`workspaceMenu` describe block) | `app/left/menus/leftMenus.test.ts` had 2 of 34 tests red: both asserted a raw-string `disabledReason` (`"the launch project cannot be removed"`, `"no project path"`) where `workspaceMenu.ts` (`S227`, ticked) now returns typed key descriptors. `leftMenus.test.ts` itself is named in `S228`'s scope (already ticked, verified passing at the time), but `S227`'s later localization of `workspaceMenu.ts` broke these two assertions after `S228` closed — a cross-step invalidation, not a defect in either step's own scoped work at the time it was ticked. See Honest Findings. | Fixed, commit `90f8a3d5d5`; independently reverified 34/34 |
+| `stores/view/commandRegistry.test.ts` (S17/S18 consumer fixture, was conflated with `platform/actions/registry.test.ts` in an earlier draft of this dossier — see correction in Open Items) | 8 of 14 tests were red: raw-string `cmd()` test fixtures normalized to `null` once the legacy `ActionPresentation` string bridge was deleted from `action.ts` — the fixtures needed to construct real `MessageDescriptor` labels. This was the actual remaining `S17`/`S18` blocker. | Fixed, commit `90f8a3d5d5`; independently reverified 14/14 |
+| `stores/view/commandPaletteCommands.test.ts` | 1 test was red (`normalizes palette command family and shared action descriptor fields`): same raw-string-fixture-vs-deleted-bridge cause as `commandRegistry.test.ts`. | Fixed, commit `90f8a3d5d5`; independently reverified 19/19 |
 
 ## Retirements and rescopes
 
@@ -305,7 +306,7 @@ from the production build, not to localize its content.
   cross-reference from every step to every OTHER step touching the same file. Worth a
   process recommendation for future multi-step campaigns, not just a one-off fix.
 
-## Open at draft time
+## Resolved items and remaining open items
 
 - **`W02.P04.S17`/`S18` — CLOSED.** The action-contract closure gates landed at
   commit `9b23233257` ("delete the legacy action-presentation bridge —
@@ -343,30 +344,38 @@ from the production build, not to localize its content.
   the team lead's ruling this post-commit result is the authoritative state — the
   discrepancy is closed, not merely moot.
 
-  **The genuinely-red set as of this update is exactly four files, all still with
-  opus-l10n and still uncommitted:** `FeatureSearchField.test.tsx` (5/5 red,
-  orphaned — W03), `left/menus/leftMenus.test.ts` (2/34 red, cross-step gap — W03),
-  `stores/view/commandRegistry.test.ts` (8/14 red, S17/S18 consumer-fixture
-  fallout), and `stores/view/commandPaletteCommands.test.ts` (1/41 red, same
-  cause). The W03/W04 WITHHELD verdict is unaffected by the `contextMenu.test.ts`
-  resolution and stays open pending the coding lane's explicit report and commit
-  for these four.
-- **`W06` (35 steps, `P18`/`P19`/`P20`)** — the final enforcement and cleanup wave,
-  in progress on the coding lane, untouched by reconciliation by design per the
-  original task brief. The coding lane's board: four `W06.P18` enforcement tests
-  (`actionVocabulary`/`outcomeMessages`/`catalogVocabulary`/`catalogSafety`), the
-  batched scanner edits (`S98`/`S100`-rule/`S137`), and `P19` e2e specs.
+  **Closed.** The former four-file red set was fixed and committed at
+  `90f8a3d5d5` ("fix wave-review red set — stale casing/raw-string assertions +
+  strict-contract fixtures to MessageDescriptors"): `FeatureSearchField.test.tsx`,
+  `left/menus/leftMenus.test.ts`, `stores/view/commandRegistry.test.ts`, and
+  `stores/view/commandPaletteCommands.test.ts`. Independently reverified against
+  the commit (not the earlier working-tree observation): `git show 90f8a3d5d5
+  --stat` matches the reported four files exactly, and the live suite reruns
+  clean — 5/5, 34/34, 14/14, and 19/19 respectively (72/72 combined), plus
+  `contextMenu.test.ts` 22/22 (94/94 across the full former red set, matching the
+  consolidated re-review's figure). The W03/W04 WITHHELD verdict is now **PASS**
+  (see Wave verdicts). Per the standing rule, the coding lane's own report on
+  these four reconciles retroactively against this already-committed, already
+  independently-verified state.
 
-**Status as of this update: every step outside Wave W06 is now ticked (209/244,
-85.7%).** The consolidated wave review returned WITHHELD for W03/W04 and PASS for
-W05, the retirements/rescopes, and the S183 amendment. `W02.P04.S17`/`S18` are now
-CLOSED. The `stores/view/contextMenu.test.ts` discrepancy is resolved: the
-review's "2 red to verify" reading predated the landed conversion, and
-reconciliation's post-commit rerun (22/22 green at `9b23233257`) is authoritative.
-The genuinely-red set is now exactly four files, all still with opus-l10n and
-uncommitted: `FeatureSearchField.test.tsx`, `leftMenus.test.ts`,
-`commandRegistry.test.ts`, and `commandPaletteCommands.test.ts`. Re-verification
-of the W03/W04 WITHHELD items — and likely closure, given the working-tree state
-already observed — is pending the coding lane's explicit report and commit for
-these four. This dossier will be updated in place as that report lands and W06
-progresses.
+Two items remain open at this dossier's finalization, both explicitly out of the
+reconciliation pass's own scope:
+
+- **`tabs.test.ts`** — a red test unrelated to the localization scanner or catalog
+  (`deriveDocTabScopeBadge` returns an empty label), tracked separately as a
+  per-tab-scope-binding follow-up, not part of this plan.
+- **Standing codification recommendation** — defect class 4 (stale render tests
+  surviving behind a lint gate that never runs `vitest`) becomes a standing
+  `vitest` step in `just dev lint frontend`; decided in `W06.P18`, not actioned by
+  this dossier.
+
+## Status
+
+**FINAL pending Wave W06.** Every step outside Wave W06 is ticked (209/244,
+85.7%). The consolidated wave review closed clean: W03 PASS, W04 PASS, W05 PASS,
+retirements PASS, rescopes PASS, divergences PASS, the S183 amendment PASS, all
+fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`, `556f8967d9`,
+`90f8a3d5d5`), and scanner + catalog integrity PASS. `W02.P04.S17`/`S18` are
+CLOSED. After this update, the localization plan's remaining surface is Wave W06
+alone (`P18` enforcement tests, `P19` e2e specs, `P20`), in progress on the coding
+lane and out of scope for this reconciliation pass by design.
