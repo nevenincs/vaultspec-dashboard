@@ -20,6 +20,12 @@ extend-exclude = [
   "output/**",
   "*.png",
   "*.svg",
+  # Non-English locale content is not spell-checkable as English: the shipped
+  # locale catalogs, the pseudo-locale test resource fixtures, and the
+  # localization render tests that assert translated strings verbatim.
+  "frontend/src/locales/**",
+  "frontend/src/localization/testing/**",
+  "**/*.localization.*",
 ]
 
 [default]
