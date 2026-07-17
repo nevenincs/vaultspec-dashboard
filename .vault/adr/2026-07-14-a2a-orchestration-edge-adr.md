@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-07-14'
+modified: '2026-07-17'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-research]]"
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
@@ -132,7 +132,14 @@ namespace — it is orchestration control only.
 > into this shipping. Shipped surface: `routes/ops/a2a.rs` +
 > `routes/ops/a2a_stream.rs` at `fd7069cb01` (bounds: 64-relay registry cap,
 > 90s idle read, 512KiB frame cap, 6h stream lifetime; token values verified
-> absent from all logging).
+> absent from all logging). The full shipped edge surface additionally
+> comprises the feedback-batch create/read routes plus the `feedback_batch_id`
+> turn field (`d5bfbac932`, structurally-forgery-proof: the request type
+> carries no token fields a client could supply) and the adopted
+> run-completion slice `POST /authoring/v1/runs/{run_id}/complete`
+> (`19d845c499`, extended `1653b4b85d`) — matching the cross-session
+> reconciliation audit's P05 amendment spec
+> ([[2026-07-17-a2a-orchestration-edge-audit]]).
 
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
