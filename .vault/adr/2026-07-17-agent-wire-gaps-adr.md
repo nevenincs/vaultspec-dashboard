@@ -109,6 +109,18 @@ This decision is also the first record to touch the mode plane since the authori
 
 **D7 — Structured feedback on the turn contract (the feedback-loop D4 engine half).** The immutable feedback batch becomes engine state now; only its cross-repo transport stays on the a2a edge. New mutating command `POST /v1/feedback-batches`: snapshots an ordered set of comment ids (cap `FEEDBACK_BATCH_COMMENT_CAP = 32`, matching the shipped composer batch cap) with bodies, anchors, author identity, source revision, session id, optional general instruction — immutable once created, digest-addressed, stable `feedback_batch_id`, bounded total byte size; later comment edits never mutate it (the accepted feedback-loop D3 verbatim). New principal-permissive read `GET /v1/feedback-batches/{feedback_batch_id}` serves the snapshot. `StartPromptTurnRequest` gains `feedback_batch_id?`; the engine verifies existence, session ownership, and revision fences, and records the reference on the `PromptTurnRecord` — so a revision is auditable to the exact batch it consumed. The composer keeps serializing a human-readable comment block into the prompt for the agent's benefit, but the batch rides as DATA beside it; when the a2a edge later carries the continuation cross-repo it transports this same identifier (feedback-loop D4, unchanged as a contract, now with a real referent). Retention: batches register as protected product state while referenced by a turn, compactable after the turn's transcript window otherwise. Unlocks: comments attach as data, not prose; agent runs become batch-auditable; the a2a ask shrinks from "invent the primitive" to "carry the id".
 
+> **Amendment (2026-07-17, D7 turn-fence ruling, review-adjudicated):** D7's
+> "verifies existence, session ownership, and revision fences" is read as TWO
+> turn-start checks plus one apply-time binding: the turn-start fence verifies
+> the batch EXISTS and belongs to the submitting session; the batch's
+> `source_revision` is provenance whose enforcement point is the apply path's
+> existing base-revision fences (a stale-revision batch surfaces as the
+> proposal's own conflict, with full context, rather than refusing the turn —
+> a turn-start revision check would race ordinary concurrent edits and refuse
+> feedback the agent could still correctly reconcile). Shipped at
+> `d5bfbac932`; the batch id is its content digest (`feedback-batch:<oid>`),
+> making immutability structural (no update path exists).
+
 **Sequencing note (not a plan):** D1+D2 are one coupled store/lifecycle change (settlement is the queue's promotion trigger) and land first; D3, D4, D5 are independent exposures; D7 is independent but should trail D1/D2 so the turn contract changes once. One schema-version bump covers the batch table, queue state, and provenance columns together.
 
 ## Rationale

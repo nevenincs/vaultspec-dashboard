@@ -108,6 +108,32 @@ return the A2A envelope verbatim inside the shared tiers envelope;
 sibling-down is a 502-with-tier-block. No mutating vault semantics ride this
 namespace — it is orchestration control only.
 
+> **Amendment (2026-07-17, shipped-surface ruling, review-adjudicated):** three
+> interpretations recorded at implementation, each PASS-reviewed:
+> (1) **Sibling-down semantics.** This decision's raw "502-with-tier-block"
+> wording is read through its own reuse-the-rag-patterns rationale: the shipped
+> rag ops template returns **200 with a degraded tier** for a KNOWN-DOWN
+> sibling and reserves 502/504 for subprocess/proxy crash or timeout. The
+> `/ops/a2a/*` namespace ships with those template semantics; degradation is
+> read from tiers, never inferred from transport (wire-contract rule).
+> (2) **D3 transport shape.** The relayed progress channel ships as a
+> DEDICATED per-run SSE endpoint `GET /ops/a2a/runs/{run_id}/stream` rather
+> than a channel on the multiplexed scope `/stream` the `backends` precedent
+> literally names: run streams are per-run and upstream-sourced, and
+> multiplexing them onto the scope stream would broadcast every concurrent
+> run's frames to every scope subscriber. The endpoint reuses the shared
+> seq/since/gap replay mechanics, so the "identical channel semantics"
+> requirement holds; only the mount point differs.
+> (3) **Degradation tier.** a2a outages degrade a dedicated `agent` tier
+> (never `semantic` — an a2a outage must not misreport search), served
+> only-when-degraded today exactly like the shipped `structural` precedent.
+> Seeding `agent` as an always-present canonical tier in the engine-query
+> envelope is a FUTURE reviewed wire-contract event, deliberately not bundled
+> into this shipping. Shipped surface: `routes/ops/a2a.rs` +
+> `routes/ops/a2a_stream.rs` at `fd7069cb01` (bounds: 64-relay registry cap,
+> 90s idle read, 512KiB frame cap, 6h stream lifetime; token values verified
+> absent from all logging).
+
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
 re-resolves) one agent actor per pipeline role in the run (researcher,
