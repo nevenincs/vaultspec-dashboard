@@ -44,6 +44,19 @@ pub use super::git::ops_git;
 mod sibling;
 use sibling::*;
 
+/// The `/ops/a2a/{verb}` orchestration control pass-through to the resident
+/// vaultspec-a2a gateway (a2a-orchestration-edge ADR D1/D2), the rag ops
+/// template retargeted at an HTTP sibling.
+mod a2a;
+pub use a2a::ops_a2a;
+
+/// The `/ops/a2a/runs/{run_id}/stream` run-progress relay (a2a-orchestration-edge
+/// ADR D3): a new engine SSE channel re-serving the a2a gateway's run-stream verb
+/// with the engine's seq + since-replay + gap contract, degrading to run-status
+/// polling when the upstream is down.
+mod a2a_stream;
+pub use a2a_stream::a2a_run_stream;
+
 #[cfg(test)]
 mod tests;
 

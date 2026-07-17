@@ -81,6 +81,8 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/ops/core/archive",
     "/ops/rag/{verb}",
     "/ops/rag/storage/{verb}",
+    "/ops/a2a/{verb}",
+    "/ops/a2a/runs/{run_id}/stream",
     "/ops/git/{verb}",
     "/provision/status",
     "/provision/run",
@@ -219,6 +221,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route(
             "/ops/rag/storage/{verb}",
             post(routes::ops::ops_rag_storage),
+        )
+        // The a2a orchestration control pass-through (a2a-orchestration-edge ADR
+        // D1/D2): the whitelisted five-verb forward (run-start / run-status /
+        // run-cancel / presets-list / service-state) to the resident vaultspec-a2a
+        // gateway, the sibling envelope verbatim inside the tiers envelope,
+        // sibling-down degraded at 200, run-start actor-token provisioning. The rag
+        // ops template retargeted at an HTTP sibling; attach-never-own discovery.
+        .route("/ops/a2a/{verb}", post(routes::ops::ops_a2a))
+        // The a2a run-progress relay (a2a-orchestration-edge ADR D3): a new engine
+        // SSE channel re-serving the resident gateway's run-stream verb with the
+        // engine's seq + since-replay + gap contract, non-authoritative frames,
+        // and honest degradation to run-status polling. The CompressionLayer's
+        // DefaultPredicate skips text/event-stream, so this stream is not buffered.
+        .route(
+            "/ops/a2a/runs/{run_id}/stream",
+            get(routes::ops::a2a_run_stream),
         )
         // Read-only git pass-through (dashboard-pipeline-wire W04): porcelain
         // status, numstat, unified diff — whitelisted, no mutating verb.
