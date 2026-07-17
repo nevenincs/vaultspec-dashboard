@@ -55,6 +55,7 @@ Build the immutable feedback-batch snapshot and the structured continuation fiel
 - [ ] `P04.S10` - Add the typed feedback_batch_id field to StartPromptTurnRequest and verify ownership, revision fences, limits, and idempotency when a turn consumes a batch; `engine/crates/vaultspec-api/src/authoring/`.
 - [ ] `P04.S11` - Thread feedback_batch_id through a2a run-start and turn dispatch as an opaque identifier whose authoritative context is retrieved via the engine authoring client, in the vaultspec-a2a repository; `src/vaultspec_a2a/`.
 - [ ] `P04.S12` - Switch the composer comment batch from serialized prompt prose to the structured feedback_batch_id continuation and delete the prose interim outright; `frontend/src/`.
+- [ ] `P04.S14` - Ingest the retrieved feedback batch in the a2a worker flow: a feedback-aware step that reads the batch via the authoring client when feedback_batch_id is present in graph state and grounds the document revision on it, compiled into the worker graph, with live tests, in the vaultspec-a2a repository; `src/vaultspec_a2a/graph/, src/vaultspec_a2a/worker/`.
 
 ### Phase `P05` - Review and ratification
 
