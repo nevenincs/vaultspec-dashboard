@@ -457,13 +457,14 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
  *  section stays a single tab stop; the state rows carry the Open/Merged badge
  *  so mixed rows stay unambiguous. */
 function PullRequestsBody({ scope }: { scope: unknown }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const open = usePRsView(scope, "open");
   const merged = usePRsView(scope, "merged");
   const view = derivePullRequestsSectionView(open, merged);
   const nav = useRowZone();
   if (view.showLoading) {
     return (
-      <Skeleton label={view.loadingLabel}>
+      <Skeleton label={resolveMessage(view.loadingLabel).message}>
         <SkeletonRow width="w-2/3" />
         <SkeletonRow width="w-1/2" />
       </Skeleton>
@@ -475,7 +476,9 @@ function PullRequestsBody({ scope }: { scope: unknown }) {
     );
   }
   if (view.showEmpty) {
-    return <StateBlock mode="empty" message={view.emptyLabel} />;
+    return (
+      <StateBlock mode="empty" message={resolveMessage(view.emptyLabel).message} />
+    );
   }
   return (
     <div className="flex flex-col gap-fg-2">
@@ -488,7 +491,7 @@ function PullRequestsBody({ scope }: { scope: unknown }) {
       )}
       {view.mergedRows.length > 0 && (
         <div className="flex flex-col gap-fg-1-5" data-recent-prs-list>
-          <SectionLabel>{view.mergedLabel}</SectionLabel>
+          <SectionLabel>{resolveMessage(view.mergedLabel).message}</SectionLabel>
           <ul className={view.listClassName} role="list">
             {view.mergedRows.map((row) => (
               <PrRow key={row.pr.number} row={row} nav={nav} />
@@ -539,10 +542,11 @@ function IssueRow({ row }: { row: IssueRowView }) {
 }
 
 function OpenIssuesBody({ scope }: { scope: unknown }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const view = useIssuesView(scope, "open");
   if (view.showLoading) {
     return (
-      <Skeleton label={view.loadingLabel}>
+      <Skeleton label={resolveMessage(view.loadingLabel).message}>
         <SkeletonRow width="w-2/3" />
         <SkeletonRow width="w-1/2" />
       </Skeleton>
@@ -554,7 +558,9 @@ function OpenIssuesBody({ scope }: { scope: unknown }) {
     );
   }
   if (view.showEmpty) {
-    return <StateBlock mode="empty" message={view.emptyLabel} />;
+    return (
+      <StateBlock mode="empty" message={resolveMessage(view.emptyLabel).message} />
+    );
   }
   return (
     <ul className={view.listClassName} role="list" data-issues-list>
@@ -670,24 +676,31 @@ export function RecentCommitItem({
 }
 
 function RecentCommitsBody({ scope }: { scope: unknown }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const chrome = useRecentCommitsChrome(HISTORY_PAGE);
   const view = useHistoryView(scope, chrome.limit);
 
   if (view.showUnavailable) {
     return (
-      <StateBlock mode="degraded" layout="inline" message={view.unavailableLabel} />
+      <StateBlock
+        mode="degraded"
+        layout="inline"
+        message={resolveMessage(view.unavailableLabel).message}
+      />
     );
   }
   if (view.showLoading) {
     return (
-      <Skeleton label={view.loadingLabel}>
+      <Skeleton label={resolveMessage(view.loadingLabel).message}>
         <SkeletonRow width="w-2/3" />
         <SkeletonRow width="w-1/2" />
       </Skeleton>
     );
   }
   if (view.showEmpty) {
-    return <StateBlock mode="empty" message={view.emptyLabel} />;
+    return (
+      <StateBlock mode="empty" message={resolveMessage(view.emptyLabel).message} />
+    );
   }
 
   const chromeRows = deriveRecentCommitChromeRows(

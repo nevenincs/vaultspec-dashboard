@@ -122,9 +122,9 @@ export interface HistoryView extends TierAvailability {
   showUnavailable: boolean;
   showEmpty: boolean;
   showList: boolean;
-  unavailableLabel: string;
-  loadingLabel: string;
-  emptyLabel: string;
+  unavailableLabel: MessageDescriptor;
+  loadingLabel: MessageDescriptor;
+  emptyLabel: MessageDescriptor;
   showMoreLabel: string;
   loadingClassName: string;
   unavailableClassName: string;
@@ -266,9 +266,9 @@ export function deriveHistoryView(
     showUnavailable,
     showEmpty,
     showList,
-    unavailableLabel: "recent history unavailable",
-    loadingLabel: "reading recent commits...",
-    emptyLabel: "no commits yet on this branch.",
+    unavailableLabel: { key: "common:finalWave.recentCommits.unavailable" },
+    loadingLabel: { key: "common:finalWave.recentCommits.loading" },
+    emptyLabel: { key: "common:finalWave.recentCommits.empty" },
     showMoreLabel: "Show more",
     loadingClassName: STATUS_BODY_LOADING_CLASS,
     unavailableClassName: "text-label text-ink-muted",
@@ -326,8 +326,8 @@ export interface PRsView {
   reason: string | null;
   prs: PullRequest[];
   rows: PullRequestRowView[];
-  loadingLabel: string;
-  emptyLabel: string;
+  loadingLabel: MessageDescriptor;
+  emptyLabel: MessageDescriptor;
   unavailableLabel: string;
   loadingClassName: string;
   unavailableClassName: string;
@@ -346,8 +346,8 @@ export interface IssuesView {
   reason: string | null;
   issues: Issue[];
   rows: IssueRowView[];
-  loadingLabel: string;
-  emptyLabel: string;
+  loadingLabel: MessageDescriptor;
+  emptyLabel: MessageDescriptor;
   unavailableLabel: string;
   loadingClassName: string;
   unavailableClassName: string;
@@ -379,14 +379,22 @@ export interface IssueRowView {
   labels: string[];
 }
 
-function pullRequestLoadingLabel(state: "open" | "merged"): string {
-  return state === "merged" ? "reading recent PRs..." : "reading open PRs...";
+function pullRequestLoadingLabel(state: "open" | "merged"): MessageDescriptor {
+  return {
+    key:
+      state === "merged"
+        ? "common:finalWave.pullRequests.loadingMerged"
+        : "common:finalWave.pullRequests.loadingOpen",
+  };
 }
 
-function pullRequestEmptyLabel(state: "open" | "merged"): string {
-  return state === "merged"
-    ? "no recently-merged pull requests"
-    : "no open pull requests";
+function pullRequestEmptyLabel(state: "open" | "merged"): MessageDescriptor {
+  return {
+    key:
+      state === "merged"
+        ? "common:finalWave.pullRequests.emptyMerged"
+        : "common:finalWave.pullRequests.emptyOpen",
+  };
 }
 
 function pullRequestUnavailableLabel(reason: string | null): string {
@@ -555,8 +563,8 @@ export function deriveIssuesView(
     ...availability,
     issues,
     rows: issues.map(deriveIssueRowView),
-    loadingLabel: "reading open issues...",
-    emptyLabel: "no open issues",
+    loadingLabel: { key: "common:finalWave.issues.loading" },
+    emptyLabel: { key: "common:finalWave.issues.empty" },
     unavailableLabel: issueUnavailableLabel(data?.reason ?? null),
     loadingClassName: STATUS_BODY_LOADING_CLASS,
     unavailableClassName: STATUS_BODY_UNAVAILABLE_CLASS,
@@ -704,12 +712,12 @@ export interface PullRequestsSectionView {
   showLoading: boolean;
   showUnavailable: boolean;
   showEmpty: boolean;
-  loadingLabel: string;
+  loadingLabel: MessageDescriptor;
   unavailableLabel: string;
-  emptyLabel: string;
+  emptyLabel: MessageDescriptor;
   openRows: PullRequestRowView[];
   mergedRows: PullRequestRowView[];
-  mergedLabel: string;
+  mergedLabel: MessageDescriptor;
   listClassName: string;
 }
 
@@ -739,10 +747,10 @@ export function derivePullRequestsSectionView(
     showEmpty,
     loadingLabel: open.loadingLabel,
     unavailableLabel: open.unavailableLabel,
-    emptyLabel: "No pull requests.",
+    emptyLabel: { key: "common:finalWave.pullRequests.emptySection" },
     openRows: settled ? open.rows : [],
     mergedRows,
-    mergedLabel: "Recently merged",
+    mergedLabel: { key: "common:finalWave.pullRequests.mergedLabel" },
     listClassName: open.listClassName,
   };
 }

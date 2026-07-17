@@ -1040,6 +1040,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Replace",
   "Reset",
   "Reopen",
+  "Request",
   "Resolve",
   "Resume",
   "Retry",

@@ -443,6 +443,23 @@ export const common = {
       truncated:
         "showing {{returned, number}} of {{total, number}} nodes: this plan exceeds the interior ceiling; open it on the stage to see the full tree.",
     },
+    recentCommits: {
+      unavailable: "recent history unavailable",
+      loading: "reading recent commits…",
+      empty: "no commits yet on this branch.",
+    },
+    pullRequests: {
+      loadingOpen: "reading open pull requests…",
+      loadingMerged: "reading recent pull requests…",
+      emptyOpen: "no open pull requests",
+      emptyMerged: "no recently-merged pull requests",
+      emptySection: "no pull requests.",
+      mergedLabel: "Recently merged",
+    },
+    issues: {
+      loading: "reading open issues…",
+      empty: "no open issues",
+    },
     settings: {
       global: "Global",
       matchGlobal: "Reset to global",

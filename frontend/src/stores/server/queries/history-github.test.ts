@@ -837,9 +837,13 @@ describe("deriveHistoryView", () => {
     expect(view.loading).toBe(true);
     expect(view.degraded).toBe(false);
     expect(view.errored).toBe(false);
-    expect(view.loadingLabel).toBe("reading recent commits...");
-    expect(view.unavailableLabel).toBe("recent history unavailable");
-    expect(view.emptyLabel).toBe("no commits yet on this branch.");
+    expect(view.loadingLabel).toEqual({
+      key: "common:finalWave.recentCommits.loading",
+    });
+    expect(view.unavailableLabel).toEqual({
+      key: "common:finalWave.recentCommits.unavailable",
+    });
+    expect(view.emptyLabel).toEqual({ key: "common:finalWave.recentCommits.empty" });
     expect(view.showMoreLabel).toBe("Show more");
   });
 });
@@ -879,8 +883,10 @@ describe("derivePRsView and deriveIssuesView", () => {
       "open",
     );
 
-    expect(view.loadingLabel).toBe("reading open PRs...");
-    expect(view.emptyLabel).toBe("no open pull requests");
+    expect(view.loadingLabel).toEqual({
+      key: "common:finalWave.pullRequests.loadingOpen",
+    });
+    expect(view.emptyLabel).toEqual({ key: "common:finalWave.pullRequests.emptyOpen" });
     expect(view.unavailableLabel).toBe(
       "pull requests unavailable - GitHub not reachable",
     );
@@ -951,8 +957,12 @@ describe("derivePRsView and deriveIssuesView", () => {
       "merged",
     );
 
-    expect(merged.loadingLabel).toBe("reading recent PRs...");
-    expect(merged.emptyLabel).toBe("no recently-merged pull requests");
+    expect(merged.loadingLabel).toEqual({
+      key: "common:finalWave.pullRequests.loadingMerged",
+    });
+    expect(merged.emptyLabel).toEqual({
+      key: "common:finalWave.pullRequests.emptyMerged",
+    });
     expect(merged.rows[0]).toMatchObject({
       icon: "merged",
       iconTone: "muted",
@@ -1008,8 +1018,8 @@ describe("derivePRsView and deriveIssuesView", () => {
       false,
     );
 
-    expect(view.loadingLabel).toBe("reading open issues...");
-    expect(view.emptyLabel).toBe("no open issues");
+    expect(view.loadingLabel).toEqual({ key: "common:finalWave.issues.loading" });
+    expect(view.emptyLabel).toEqual({ key: "common:finalWave.issues.empty" });
     expect(view.unavailableLabel).toBe("issues unavailable - GitHub not reachable");
     expect(view).toMatchObject({
       showLoading: false,
@@ -1150,13 +1160,15 @@ describe("derivePRsView and deriveIssuesView", () => {
     // Both settled empty → the one empty state.
     expect(derivePullRequestsSectionView(openEmpty, mergedEmpty)).toMatchObject({
       showEmpty: true,
-      emptyLabel: "No pull requests.",
+      emptyLabel: { key: "common:finalWave.pullRequests.emptySection" },
     });
     // Open empty, merged populated → NEVER empty; the merged lane renders.
     const mergedOnly = derivePullRequestsSectionView(openEmpty, mergedWithRows);
     expect(mergedOnly.showEmpty).toBe(false);
     expect(mergedOnly.mergedRows).toHaveLength(1);
-    expect(mergedOnly.mergedLabel).toBe("Recently merged");
+    expect(mergedOnly.mergedLabel).toEqual({
+      key: "common:finalWave.pullRequests.mergedLabel",
+    });
     // Capability-down is led by the open view; no lane renders rows.
     expect(derivePullRequestsSectionView(unavailable, mergedWithRows)).toMatchObject({
       showUnavailable: true,
