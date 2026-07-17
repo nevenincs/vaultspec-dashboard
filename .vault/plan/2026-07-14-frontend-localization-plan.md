@@ -228,8 +228,8 @@ Migrate right-rail, search, timeline, status, degradation, and store-produced pr
 Localize status, search-service, changes, review, and operational surfaces with safe user-facing state and recovery language.
 
 - [x] `W04.P10.S58` - Localize status-tab summaries, freshness, unavailable states, and recovery guidance; `frontend/src/app/right/StatusTab.tsx, frontend/src/app/right/FrameworkStatusCluster.tsx`.
-- [ ] `W04.P10.S59` - Replace search-service lifecycle and indexing internals with user-facing setup, progress, and recovery copy; `frontend/src/app/right/RagOpsConsole.tsx`.
-- [ ] `W04.P10.S60` - Localize changes overview summaries, comparisons, and actions with consistent verbs; `frontend/src/app/right/ChangesOverview.tsx`.
+- [x] `W04.P10.S59` - Replace search-service lifecycle and indexing internals with user-facing setup, progress, and recovery copy; `frontend/src/app/right/RagOpsConsole.tsx`.
+- [x] `W04.P10.S60` - Localize changes overview summaries, comparisons, and actions with consistent verbs; `frontend/src/app/right/ChangesOverview.tsx`.
 - [x] `W04.P10.S61` - Localize right-rail empty, loading, degraded, error, and partial states; `frontend/src/app/right/railStates.tsx`.
 - [x] `W04.P10.S62` - Standardize and localize change menu actions; `frontend/src/app/right/menus/changeMenu.ts`.
 - [x] `W04.P10.S63` - Migrate right-rail status render tests through production catalogs; `frontend/src/app/right/FrameworkStatusCluster.render.test.tsx, frontend/src/app/right/PlanStepTree.render.test.tsx`.
@@ -281,7 +281,7 @@ Replace resolved strings near server and view-store boundaries with typed outcom
 - [x] `W04.P13.S231` - Replace listing query copy with typed messages and locale-aware counts; `frontend/src/stores/server/queries/listings.ts`.
 - [x] `W04.P13.S232` - Replace dashboard query copy with typed messages and locale-aware summaries; `frontend/src/stores/server/queries/dashboard.ts`.
 - [x] `W04.P13.S233` - Replace history query copy with typed outcomes and safe user concepts; `frontend/src/stores/server/queries/history-github.ts`.
-- [ ] `W04.P13.S234` - Replace change query copy with typed outcomes and safe user concepts; `frontend/src/stores/server/queries/gitchanges.ts`.
+- [x] `W04.P13.S234` - Replace change query copy with typed outcomes and safe user concepts; `frontend/src/stores/server/queries/gitchanges.ts`.
 - [x] `W04.P13.S235` - Replace workspace query copy with typed outcomes and safe user concepts; `frontend/src/stores/server/queries/workspaces.ts`.
 - [x] `W04.P13.S237` - Replace now-strip strings with typed descriptors and actionable recovery; `frontend/src/stores/view/nowStrip.ts`.
 - [x] `W04.P13.S239` - Replace work-tab presentation strings with typed descriptors; `frontend/src/stores/view/workTabChrome.ts`.
@@ -305,7 +305,7 @@ Localize document creation, editing, review, diff, comments, confirmations, conf
 - [x] `W05.P14.S193` - Localize document creation and editor tag-autocomplete messages; `frontend/src/app/viewer/AutocompleteCombobox.tsx, frontend/src/stores/view/editor.ts`.
 - [x] `W05.P14.S194` - Migrate editor-toolbar and tag behavior tests through production catalogs; `frontend/src/app/viewer/EditorToolbar.render.test.tsx, frontend/src/app/viewer/editorTags.test.ts`.
 - [x] `W05.P14.S195` - Migrate comment-thread and reader-comment tests through production catalogs; `frontend/src/app/viewer/ReaderComments.render.test.tsx, frontend/src/app/viewer/readerComments.test.ts`.
-- [ ] `W05.P14.S216` - Replace editor store mutation and unsaved-change messages with typed outcomes; `frontend/src/stores/view/editor.ts`.
+- [x] `W05.P14.S216` - Replace editor store mutation and unsaved-change messages with typed outcomes; `frontend/src/stores/view/editor.ts`.
 
 ### Phase `W05.P15` - viewer and document presentation
 

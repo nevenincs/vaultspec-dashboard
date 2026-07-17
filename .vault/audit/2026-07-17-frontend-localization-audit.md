@@ -66,9 +66,9 @@ division of labor (coder owns source, reconciliation owns vault bookkeeping).
 
 ## Ledger by wave
 
-Step counts below are TICKED / TOTAL for that wave as of this draft; TOTAL excludes
+Step counts below are TICKED / TOTAL for that wave as of this update; TOTAL excludes
 retired steps (`S40`, `S75`, `S180`, `S181`, `S219`, `S236`, `S238` — see Retirements
-below). Plan total: 203/244 (83.2%).
+below). Plan total: 207/244 (84.8%).
 
 - **W01** (localization substrate and source-locale policy) — 23/23. Pre-existing:
   implemented and reviewed before the reconciliation pass began; the exhaustive
@@ -77,18 +77,18 @@ below). Plan total: 203/244 (83.2%).
 - **W02** (shared action and presentation contracts) — 47/49. `P04` (action descriptor
   convergence) 13/15, `P05` (keymap/command/palette) 27/27, `P06` (shared presentation
   vocabularies) 7/7. Open: `P04.S17`/`S18`, the action-contract closure gates — see
-  Open Items, not resolvable by reconciliation.
+  Open Items, not resolvable by reconciliation. This is now the ONLY open item outside
+  W06.
 - **W03** (core application surfaces) — 48/48, fully closed. `P07` (global chrome/kit/
   shell) 15/15, `P08` (left rail projects/browsing) 18/18, `P09` (stage graph/islands)
   15/15.
-- **W04** (status, search, and temporal surfaces) — 42/45. `P10` (right rail status/
-  changes) 11/13, `P11` (search/palette) 9/9, `P12` (timeline/temporal) 7/7, `P13`
-  (store-produced messages) 15/16. Open: `P10.S59`/`S60`, `P13.S234` — see Defect
-  Ledger.
-- **W05** (authoring, viewer, settings, auxiliary surfaces) — 42/43. `P14` (authoring
-  editor/review) 9/10, `P15` (viewer/document presentation) 10/10, `P16` (settings/
-  onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points) 12/12. Open:
-  `P14.S216`.
+- **W04** (status, search, and temporal surfaces) — 45/45, fully closed. `P10` (right
+  rail status/changes) 13/13, `P11` (search/palette) 9/9, `P12` (timeline/temporal)
+  7/7, `P13` (store-produced messages) 16/16.
+- **W05** (authoring, viewer, settings, auxiliary surfaces) — 43/43, fully closed.
+  `P14` (authoring editor/review) 10/10, `P15` (viewer/document presentation) 10/10,
+  `P16` (settings/onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points)
+  12/12.
 - **W06** (final enforcement and cleanup) — 1/36. `P18` 1/13 (`S251` pre-dates
   reconciliation), `P19` 0/14, `P20` 0/9. Entirely the coding lane's in-progress build,
   untouched by reconciliation by design — see Open Items.
@@ -113,8 +113,8 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S89` | `viewer/MarkdownDocView.render.test.tsx` asserted lowercase `getByLabelText` text (5 sites) against the catalog's sentence-case output | Fixed, commit `578b4e5454` |
 | `S198` | `viewer/RelatedDocPicker.render.test.tsx` asserted lowercase combobox/button names against the catalog's sentence-case output | Fixed, commit `578b4e5454` |
 | `S70` | `app/timeline/timelineRangeMath.ts` carried a hardcoded `SHORT_MONTHS` array and month-label helpers | Fixed (dead code removed; the live path already used a locale-aware formatter elsewhere), commit `578b4e5454` |
-| `S216` | `stores/view/editor.ts` carries a hardcoded `STATUS_LABEL` map (`"Saved"`, `"Unsaved changes"`, `"Saving…"`, `"Save failed"`, `"Conflict — the file changed on disk"`) and `advisoriesLabel: "Conformance advisories"` | **Open** — not yet fixed |
-| `S234` (blocks `S60`) | `stores/server/queries/gitchanges.ts` carries a hardcoded `GIT_CHANGE_BUCKET_LABEL` map (`"Staged"`, `"Modified"`, `"Deleted"`, etc.); `S60`'s `ChangesOverview.tsx` renders these labels directly and cannot close until `S234` does | **Open** — not yet fixed |
+| `S216` | `stores/view/editor.ts` carried a hardcoded `STATUS_LABEL` map (`"Saved"`, `"Unsaved changes"`, `"Saving…"`, `"Save failed"`, `"Conflict — the file changed on disk"`) and `advisoriesLabel: "Conformance advisories"`; also collapsed a raw `fixableLabel`/`fixableSuffix` string pair into a `fixable: boolean` resolved at the render boundary | Fixed, working tree (uncommitted at this update); a latent em-dash in the conflict status was also caught and fixed during this pass (message-policy punctuation rule) |
+| `S234` (blocked `S60`) | `stores/server/queries/gitchanges.ts` carried a hardcoded `GIT_CHANGE_BUCKET_LABEL` map (`"Staged"`, `"Modified"`, `"Deleted"`, etc.); `S60`'s `ChangesOverview.tsx` rendered these labels directly | Fixed, working tree (uncommitted at this update); both steps closed together |
 | edgeMenu `edge:copy-id` (CMCS-001 follow-up, no new step) | `right/menus/edgeMenu.ts` still copies the raw internal edge id to the clipboard, same class as the already-fixed `S177`/`S179` — surfaced by the coder, out of `S183`'s original scope (that step's scanner pass predated the copy-safety audit) | **Open** — per the team lead's ruling, lands as an AMENDMENT to `S183`'s existing exec record when fixed, not a new tick |
 
 ## Retirements and rescopes
@@ -146,13 +146,15 @@ Every defect reconciliation found, with its fix status as of this draft.
   `DiffView.render.test.tsx` when the diff renderer was unified in commit
   `b15c6dc51e`; `DiffPanel.tsx` itself survives as a thin wrapper over the new
   `DiffView.tsx` and remains in scope for `S81`.
-- **`S59`** (status-gallery-adjacent — the RagOpsConsole successor sweep) — STILL
-  OPEN, not yet rescoped or ticked. `RagOpsConsole.tsx` (the step's original scope) was
-  deleted and split into `RagJobDashboard.tsx`/`RagJobsTable.tsx`/
-  `RagDashboardFooter.tsx` as part of the 2026-07-14 rag job-dashboard campaign. The
-  coding lane is running a fresh sweep of the successor files against this step's
-  literal text (lifecycle/indexing internals → user-facing setup/progress/recovery
-  copy); reconciliation will verify+tick or rescope once that sweep reports.
+- **`S59`** (search-service lifecycle/indexing internals → user-facing copy) —
+  RESCOPED in place (its exec record's scope, not a `vault plan step edit` — the
+  step's own text still names the deleted file). `RagOpsConsole.tsx` (the step's
+  original scope) was deleted and split into `RagJobDashboard.tsx`/
+  `RagJobsTable.tsx`/`RagDashboardFooter.tsx`/`ragDashboardView.ts`/
+  `ragDashboard.ts` as part of the 2026-07-14 rag job-dashboard campaign. The coding
+  lane swept the five successor files against the four scanner-blind classes above
+  (finding none) and reconciliation independently reran the sweep and all five files'
+  live test suites (37/37) before ticking. Closed.
 
 ## Codification candidates: four scanner-blind defect classes
 
@@ -248,9 +250,12 @@ narrower rule promotion (`vaultspec-core vault rule promote`) suffices.
 - **`W06` (36 steps, `P18`/`P19`/`P20`)** — the final enforcement and cleanup wave, in
   progress on the coding lane, untouched by reconciliation by design per the original
   task brief.
-- **`S59`, `S216`, `S234`(→`S60`), the edgeMenu `S183` amendment** — the coding lane's
-  stated next targets; reconciliation will verify+tick or amend each independently as
-  they land, per the dual-verification method above.
+- **The edgeMenu `S183` amendment** — the coding lane's one remaining stated target
+  outside `S17`/`S18`/`W06`; reconciliation will amend `S183`'s exec record once it
+  lands, per the team lead's ruling (not a new step tick).
 
-This dossier will be updated in place as the remaining opens close and finalized once
-the consolidated wave review renders its verdict.
+**Status as of this update: every wave through W05 is fully closed except the
+`S17`/`S18` action-contract bridge deletion (flagged as needing real code, not
+bookkeeping). The only outstanding work outside that gate and W06 is the edgeMenu
+amendment.** This dossier will be updated in place as the remaining opens close and
+finalized once the consolidated wave review renders its verdict.
