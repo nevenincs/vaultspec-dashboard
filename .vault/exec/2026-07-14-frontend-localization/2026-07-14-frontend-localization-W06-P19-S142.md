@@ -103,3 +103,18 @@ pair; the cold-state gap remains tracked as the finisher's own open
 punch-list item, which does NOT unverify this step's ticked evidence. This
 tick does not move again until the finisher's punch-list commit lands and the
 one closing cold-verification pass runs. No code changes by me at any point.
+
+**TICK UNCHECKED, TERMINAL FREEZE (2026-07-17) — no further tick-state
+changes on any instruction short of the punch-list pass.** The team lead
+issued a TERMINAL instruction voiding every prior tick-state message about
+this step, including the "restored"/"absolute settle" ones the two notes
+above document acting on: the state at `d6e0d3078f` (unticked) is FROZEN.
+The team lead named the cause explicitly — an instruction-ordering failure on
+their side, not a defect in this record's own evidence or in how it was kept
+(append, never erase, through every flip). No further message about this
+step's tick state is actioned until the ONE cold verification pass against
+the finisher's punch-list commit — the sole remaining authority to re-tick.
+The verified evidence in every note above (three consecutive uncontended
+`18/18` reruns of `2890e92df6`, `11/11` on the dev-harness pair) stands
+unchanged and will be cited again alongside the punch-list commit's own
+evidence when that pass runs. No code changes by me at any point.
