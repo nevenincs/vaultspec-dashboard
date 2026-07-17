@@ -303,18 +303,6 @@ export interface InterruptListPage {
   tiers: TiersBlock;
 }
 
-/** The active scope's operation-mode record (engine `GET /authoring/v1/mode`,
- *  agent-wire-gaps D5): the SERVED mode the autonomy control renders pre-proposal.
- *  `mode` is the bounded served token the client maps to a plain label. */
-export interface AgentOperationMode {
-  scope_id: string;
-  mode: string;
-  policy_id: string | null;
-  policy_version: number | null;
-  updated_at_ms: number;
-  tiers: TiersBlock;
-}
-
 export interface ToolPermissionDecisionPayload {
   decision: "approve" | "reject";
   comment?: string;
@@ -499,18 +487,6 @@ export function adaptInterruptListPage(raw: unknown): InterruptListPage {
     items: adaptList(r.items, adaptInterrupt),
     cap: asNum(r.cap),
     truncated: asBool(r.truncated),
-    tiers: asTiers(r.tiers),
-  };
-}
-
-export function adaptOperationMode(raw: unknown): AgentOperationMode {
-  const r: Rec = isRec(raw) ? raw : {};
-  return {
-    scope_id: asStr(r.scope_id) ?? "",
-    mode: asStr(r.mode) ?? "",
-    policy_id: asStr(r.policy_id) ?? null,
-    policy_version: r.policy_version == null ? null : asNum(r.policy_version),
-    updated_at_ms: asNum(r.updated_at_ms),
     tiers: asTiers(r.tiers),
   };
 }

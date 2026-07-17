@@ -43,14 +43,12 @@ import {
   adaptFeedbackBatchReceipt,
   adaptInterruptListPage,
   adaptInterruptResumeOutcome,
-  adaptOperationMode,
   adaptPreparedToolCall,
   adaptSessionCommandOutcome,
   adaptSessionListPage,
   adaptSessionSnapshot,
   adaptToolCatalog,
   adaptToolPermissionOutcome,
-  type AgentOperationMode,
   type AgentToolCallInput,
   type AgentToolCatalog,
   type InterruptListPage,
@@ -209,13 +207,6 @@ export class AgentClient {
         signal,
       ),
     );
-  }
-
-  /** `GET /authoring/v1/mode` — the active scope's operation-mode record (agent-wire-
-   *  gaps D5). The SERVED mode the autonomy control renders pre-proposal, instead of
-   *  inferring mode from an empty review queue. */
-  async operationMode(signal?: AbortSignal): Promise<AgentOperationMode> {
-    return adaptOperationMode(await this.get("/authoring/v1/mode", signal));
   }
 
   // --- mutating commands (ambient actor token) ---
@@ -430,7 +421,6 @@ export const agentKeys = {
   toolCatalog: () => [...agentKeys.all, "tool-catalog"] as const,
   runInterrupts: (runId: string) =>
     [...agentKeys.all, "run-interrupts", runId] as const,
-  operationMode: () => [...agentKeys.all, "operation-mode"] as const,
 };
 
 /** Invalidate the whole agent read cache — fired after a mutating command and by
@@ -515,17 +505,10 @@ export function useRunInterrupts(
   });
 }
 
-/** The active scope's operation mode (agent-wire-gaps D5, S43): the SERVED mode the
- *  autonomy control renders pre-proposal. Bounded caches; the mode changes rarely so
- *  a modest staleTime keeps the control fresh without a tight poll. */
-export function useOperationMode(): UseQueryResult<AgentOperationMode, Error> {
-  return useQuery({
-    queryKey: agentKeys.operationMode(),
-    queryFn: ({ signal }) => agentClient.operationMode(signal),
-    staleTime: 5_000,
-    gcTime: 60_000,
-  });
-}
+// The operation-mode read lives in ONE home (S43): the authoring store's
+// `useAuthoringOperationMode`, consumed by `useReviewStationView` for the autonomy
+// control's pre-proposal fallback. It was consolidated OUT of this slice (no agent
+// surface reads it) to avoid a duplicate hook against the same route.
 
 // --- mutating commands (ambient actor token) -----------------------------------
 

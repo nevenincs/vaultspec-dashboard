@@ -454,6 +454,18 @@ export class AuthoringClient {
     return this.command("/authoring/v1/mode", "set_operation_mode", payload, opts);
   }
 
+  /** `GET /authoring/v1/mode` — read the active worktree operation mode
+   *  (agent-wire-gaps D5): the SERVED scope-level mode, so the autonomy control
+   *  renders pre-proposal instead of only through a proposal's policy. Reads the
+   *  same record the write round-trips (the store resolves the default when the
+   *  scope was never set), so a mode is always present; falls back to `manual` only
+   *  if the wire omits it. */
+  async readOperationMode(signal?: AbortSignal): Promise<OperationMode> {
+    const body = await this.get("/authoring/v1/mode", signal);
+    const mode = (body as { mode?: unknown }).mode;
+    return typeof mode === "string" ? (mode as OperationMode) : "manual";
+  }
+
   // --- section-anchored document comments (authoring-surface ADR D2) ---
   //
   // The comment routes are NOT denials-are-values commands: a create/edit/delete
@@ -977,7 +989,22 @@ export const authoringKeys = {
   // free, the same delta path the review queue rides.
   comments: (scope: string, nodeId: string) =>
     [...authoringKeys.all, "comments", scope, nodeId] as const,
+  operationMode: () => [...authoringKeys.all, "operation-mode"] as const,
 };
+
+/** The served active-scope operation mode (agent-wire-gaps D5, S43): the one home
+ *  for the mode read (consolidated from the agent slice). Feeds the autonomy
+ *  control's pre-proposal fallback via `useReviewStationView`. Bounded caches; the
+ *  mode changes rarely, and a `set_operation_mode` write invalidates the queue which
+ *  re-reads the effective mode. */
+export function useAuthoringOperationMode(): UseQueryResult<OperationMode, Error> {
+  return useQuery({
+    queryKey: authoringKeys.operationMode(),
+    queryFn: ({ signal }) => authoringClient.readOperationMode(signal),
+    staleTime: 5_000,
+    gcTime: 60_000,
+  });
+}
 
 export function proposalsQueryOptions() {
   return queryOptions({
@@ -1033,10 +1060,10 @@ export interface ReviewStationView {
   truncated: boolean;
   /** The after-the-fact lane has more items than the served page cap. */
   afterFactTruncated: boolean;
-  /** The active worktree operation mode, read from the served policy on the first
-   *  available proposal (no scope-level mode read exists; it is observable only
-   *  through a proposal's `policy.effective_mode`). Null when the queue is empty —
-   *  the autonomy control then has no served mode to reflect. */
+  /** The active worktree operation mode: a proposal's served `policy.effective_mode`
+   *  when the queue carries one (the most specific truth), else the served
+   *  scope-level `GET /v1/mode` read (S43) so the autonomy control renders
+   *  pre-proposal. Null only until the served mode read resolves. */
   operationMode: OperationMode | null;
 }
 
@@ -1049,6 +1076,8 @@ export interface ReviewStationView {
 export function useReviewStationView(): ReviewStationView {
   useAuthoringLifecycleSubscription();
   const query = useProposals();
+  // S43: the SERVED scope-level mode, so the autonomy control renders pre-proposal.
+  const servedMode = useAuthoringOperationMode().data;
   const data = query.data;
   const error = query.error;
   const isLoading = query.isLoading;
@@ -1056,12 +1085,14 @@ export function useReviewStationView(): ReviewStationView {
     const degradation = readAuthoringDegradation({ data, error });
     const rows = data?.items ?? [];
     const afterFactRows = data?.applied_under_policy.items ?? [];
-    // The worktree mode is a scope-level setting the wire exposes only through a
-    // proposal's served policy; read it from the first available projection (queue
-    // row, else after-fact row), null when nothing carries one.
+    // The worktree mode: a proposal's served policy is the MOST SPECIFIC truth when
+    // one exists (queue row, else after-fact row); otherwise the served scope-level
+    // `GET /v1/mode` read is the pre-proposal fallback (S43) so the control renders
+    // on an empty queue. Null only until the served read resolves.
     const operationMode =
       rows[0]?.policy?.effective_mode ??
       afterFactRows[0]?.proposal.policy?.effective_mode ??
+      servedMode ??
       null;
     const availabilityIssue = degradation.storeUnavailable
       ? "queueUnavailable"
@@ -1080,7 +1111,7 @@ export function useReviewStationView(): ReviewStationView {
       afterFactTruncated: data?.applied_under_policy.truncated ?? false,
       operationMode,
     };
-  }, [data, error, isLoading]);
+  }, [data, error, isLoading, servedMode]);
 }
 
 /** One changeset's review DETAIL — the projection plus the base+proposed diff

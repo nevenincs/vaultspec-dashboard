@@ -3,7 +3,6 @@ import { describe, expect, it } from "vitest";
 import {
   adaptInterrupt,
   adaptInterruptListPage,
-  adaptOperationMode,
   adaptRunRecord,
   adaptSessionRecord,
   adaptSessionSnapshot,
@@ -91,17 +90,6 @@ describe("interrupt-list adapters (S41)", () => {
   });
 });
 
-describe("operation-mode adapter (S43)", () => {
-  it("passes the served mode token through for the autonomy control", () => {
-    const mode = adaptOperationMode({
-      scope_id: "scope:x",
-      mode: "apply_automatically",
-      policy_id: "policy:1",
-      policy_version: 3,
-      updated_at_ms: 99,
-      tiers: {},
-    });
-    expect(mode.mode).toBe("apply_automatically");
-    expect(mode.policy_version).toBe(3);
-  });
-});
+// The operation-mode read was consolidated into the authoring store (S43): the
+// autonomy control reads it via `useReviewStationView`, so the agent slice no longer
+// carries a mode adapter.
