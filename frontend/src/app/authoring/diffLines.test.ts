@@ -4,11 +4,11 @@ import { describe, expect, it } from "vitest";
 
 import { diffCapped, diffLines, diffStat, MAX_DIFF_LINES } from "./diffLines";
 
-/** Reconstruct both sides from a diff. This is THE correctness invariant, and the
- *  reason it is worth stating: the diff is now Myers with a linear-space
- *  divide-and-conquer recursion, which is subtle enough that example-based tests
- *  alone would not catch an off-by-one in the middle-snake search. Whatever the
- *  algorithm does internally, `context+remove` must rebuild `base` exactly and
+/** Reconstruct both sides from a diff. This is THE correctness invariant, and it is
+ *  stated because a diff can be wrong in ways example-based tests do not reach: an
+ *  earlier Myers attempt here passed every hand-written case while silently
+ *  mis-pairing lines under randomized edits, and this is what caught it. Whatever
+ *  the algorithm does internally, `context+remove` must rebuild `base` exactly and
  *  `context+add` must rebuild `proposed` exactly. */
 function reconstruct(lines: ReturnType<typeof diffLines>) {
   const base: string[] = [];
@@ -131,7 +131,8 @@ describe("diffLines correctness (trim + bounded exact middle)", () => {
   });
 
   it("reconstructs both sides for two wholly unrelated documents", () => {
-    // The adverse case for Myers: nothing in common, so D approaches n+m.
+    // The adverse case: nothing in common, so the trim removes nothing and the
+    // whole document IS the middle.
     const base = Array.from({ length: 60 }, (_, i) => `alpha ${i}`).join("\n");
     const proposed = Array.from({ length: 60 }, (_, i) => `omega ${i}`).join("\n");
     const { base: rebuiltBase, proposed: rebuiltProposed } = reconstruct(
