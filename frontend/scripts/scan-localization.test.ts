@@ -1,17 +1,10 @@
-import { spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  compareAllowlist,
-  FINDING_CODES,
-  LIMITS,
-  scanFiles,
-  validateAllowlistEntries,
-} from "./scan-localization.mjs";
+import { FINDING_CODES, LIMITS, scanFiles } from "./scan-localization.mjs";
 
 const fixtureRoot = resolve(import.meta.dirname, "fixtures/localization");
 const validFiles = [
@@ -22,6 +15,7 @@ const validFiles = [
   resolve(fixtureRoot, "valid/canonical-display-semantics.tsx"),
 ];
 const allRulesFile = resolve(fixtureRoot, "invalid/all-rules.tsx");
+const punctuationFile = resolve(fixtureRoot, "invalid/punctuation.tsx");
 const authoredCaseTransformFiles = [
   resolve(fixtureRoot, "invalid/authored-case-transform.tsx"),
   resolve(fixtureRoot, "invalid/authored-case-transform.css"),
@@ -36,10 +30,6 @@ const excludedAuthoredCaseFiles = [
   resolve(import.meta.dirname, "../src/locales/en/common.ts"),
 ];
 const generatedCommentFile = resolve(fixtureRoot, "invalid/generated-comment.tsx");
-const legacyActionPresentationFile = resolve(
-  fixtureRoot,
-  "invalid/legacy-action-presentation.ts",
-);
 const rawKeybindingPresentationFile = resolve(
   fixtureRoot,
   "invalid/raw-keybinding-presentation.ts",
@@ -56,12 +46,6 @@ const historyPipelineIdentityLeaksFile = resolve(
   fixtureRoot,
   "invalid/history-pipeline-identity-leaks.tsx",
 );
-
-function baselineFor(
-  findings: ReturnType<typeof scanFiles>,
-): Array<{ id: string; path: string; rule: string }> {
-  return findings.map(({ code, id, path }) => ({ id, path, rule: code }));
-}
 
 describe("localization source scanner", () => {
   it("recognizes production translation bindings and semantic exclusions", () => {
@@ -124,22 +108,30 @@ describe("localization source scanner", () => {
 
   it("reports every production finding code from real invalid source", () => {
     const findings = scanFiles([allRulesFile]);
-    const legacyFindings = scanFiles([legacyActionPresentationFile]);
     const rawKeybindingFindings = scanFiles([rawKeybindingPresentationFile]);
     const authoredCaseFindings = scanFiles(authoredCaseTransformFiles);
     const dynamicPresentationFindings = scanFiles([dynamicPresentationBlindspotsFile]);
+    const punctuationFindings = scanFiles([punctuationFile]);
 
     expect(
       new Set(
         [
           ...findings,
-          ...legacyFindings,
           ...rawKeybindingFindings,
           ...authoredCaseFindings,
           ...dynamicPresentationFindings,
+          ...punctuationFindings,
         ].map(({ code }) => code),
       ),
     ).toEqual(new Set(Object.values(FINDING_CODES)));
+    // The punctuation rule fires for BOTH prohibited forms and BOTH carrier
+    // positions: the em dash in jsx text and the hand-typed ellipsis in an
+    // attribute (each also reported as an untranslated literal — the rule is
+    // additive, never a replacement).
+    expect(
+      punctuationFindings.filter(({ code }) => code === FINDING_CODES.punctuation)
+        .length,
+    ).toBeGreaterThanOrEqual(2);
     expect(
       findings.some(
         ({ code, snippet }) =>
@@ -274,88 +266,6 @@ describe("localization source scanner", () => {
     );
   });
 
-  it("tracks only the canonical legacy action-presentation bridge", () => {
-    const findings = scanFiles([legacyActionPresentationFile]);
-
-    expect(findings).toMatchObject([
-      {
-        code: FINDING_CODES.legacyActionPresentation,
-        snippet: 'directLegacyPresentation("Legacy static action")',
-      },
-      {
-        code: FINDING_CODES.legacyActionPresentation,
-        snippet: "directLegacyPresentation(dynamicCopy)",
-      },
-      {
-        code: FINDING_CODES.legacyActionPresentation,
-        snippet: 'reexportedLegacyPresentation("Legacy re-exported action")',
-      },
-      {
-        code: FINDING_CODES.legacyActionPresentation,
-        snippet: 'localLegacyPresentation("Legacy locally aliased action")',
-      },
-      {
-        code: FINDING_CODES.presentationField,
-        snippet: 'label: unresolvedLegacyPresentation("Unresolved legacy action")',
-      },
-      {
-        code: FINDING_CODES.presentationField,
-        snippet: 'label: legacyActionPresentation("Counterfeit legacy action")',
-      },
-    ]);
-    expect(
-      findings.filter(({ code }) => code === FINDING_CODES.legacyActionPresentation),
-    ).toHaveLength(4);
-    expect(
-      findings.some(
-        ({ code, snippet }) =>
-          code === FINDING_CODES.presentationField &&
-          snippet.includes("directLegacyPresentation"),
-      ),
-    ).toBe(false);
-  });
-
-  it("compares exact legacy bridge entries as new, stale, and tampered", () => {
-    const findings = scanFiles([legacyActionPresentationFile]);
-    const baseline = validateAllowlistEntries(baselineFor(findings));
-    const firstLegacyIndex = findings.findIndex(
-      ({ code }) => code === FINDING_CODES.legacyActionPresentation,
-    );
-    const firstLegacy = findings[firstLegacyIndex];
-    if (firstLegacy === undefined) throw new Error("Expected a legacy finding.");
-
-    expect(compareAllowlist(findings, baseline)).toEqual({
-      metadataMismatches: [],
-      newFindings: [],
-      stale: [],
-    });
-
-    const withoutFirstLegacy = baseline.filter(
-      (_, index) => index !== firstLegacyIndex,
-    );
-    expect(compareAllowlist(findings, withoutFirstLegacy).newFindings).toEqual([
-      firstLegacy,
-    ]);
-
-    const staleEntry = {
-      id: "f".repeat(24),
-      path: "scripts/fixtures/localization/invalid/removed-legacy.ts",
-      rule: FINDING_CODES.legacyActionPresentation,
-    };
-    expect(compareAllowlist(findings, [...baseline, staleEntry]).stale).toEqual([
-      staleEntry,
-    ]);
-
-    const tampered = baseline.map((entry, index) =>
-      index === firstLegacyIndex
-        ? { ...entry, rule: FINDING_CODES.presentationField }
-        : entry,
-    );
-    expect(compareAllowlist(findings, tampered).metadataMismatches).toEqual([
-      firstLegacy,
-    ]);
-  });
-
   it("returns identical ordered findings and IDs across repeated scans", () => {
     const first = scanFiles([allRulesFile]);
     expect(scanFiles([allRulesFile])).toEqual(first);
@@ -376,40 +286,6 @@ describe("localization source scanner", () => {
       "0ce0163dfdc76fb7f3a1cde7",
       "befb64a7b32ef58615b03c31",
       "efd39eb35f00920207a45041",
-    ]);
-  });
-
-  it("detects new, stale, and metadata-tampered baseline entries", () => {
-    const findings = scanFiles([allRulesFile]);
-    const baseline = validateAllowlistEntries(baselineFor(findings));
-    expect(compareAllowlist(findings, baseline)).toEqual({
-      metadataMismatches: [],
-      newFindings: [],
-      stale: [],
-    });
-
-    const withoutFirst = baseline.slice(1);
-    expect(compareAllowlist(findings, withoutFirst).newFindings).toEqual([findings[0]]);
-
-    const staleEntry = {
-      id: "0".repeat(24),
-      path: "scripts/fixtures/localization/invalid/stale.tsx",
-      rule: FINDING_CODES.jsxText,
-    };
-    expect(compareAllowlist(findings, [...baseline, staleEntry]).stale).toEqual([
-      staleEntry,
-    ]);
-
-    const first = baseline[0];
-    if (first === undefined) throw new Error("Expected scanner findings.");
-    const alternateRule = Object.values(FINDING_CODES).find(
-      (rule) => rule !== first.rule,
-    );
-    if (alternateRule === undefined)
-      throw new Error("Expected multiple scanner rules.");
-    const tampered = [{ ...first, rule: alternateRule }, ...baseline.slice(1)];
-    expect(compareAllowlist(findings, tampered).metadataMismatches).toEqual([
-      findings[0],
     ]);
   });
 
@@ -457,32 +333,6 @@ describe("localization source scanner", () => {
     } finally {
       rmSync(directory, { force: true, recursive: true });
     }
-  });
-
-  it("rejects invalid and out-of-root baseline metadata", () => {
-    const findings = scanFiles([generatedCommentFile]);
-    const entry = baselineFor(findings)[0];
-    if (entry === undefined) throw new Error("Expected a scanner finding.");
-
-    expect(() =>
-      validateAllowlistEntries([{ ...entry, rule: "unknown-rule" }]),
-    ).toThrowError("Localization allowlist contains an invalid entry.");
-    expect(() =>
-      validateAllowlistEntries([{ ...entry, path: "../outside.ts" }]),
-    ).toThrowError("Localization allowlist contains an invalid entry.");
-    for (const path of [
-      "scripts\\outside.ts",
-      "C:\\outside.ts",
-      "\\\\server\\share\\outside.ts",
-      "/outside.ts",
-    ]) {
-      expect(() => validateAllowlistEntries([{ ...entry, path }]), path).toThrowError(
-        "Localization allowlist contains an invalid entry.",
-      );
-    }
-    expect(() => validateAllowlistEntries([entry, entry])).toThrowError(
-      "Localization allowlist contains an invalid entry.",
-    );
   });
 
   it("fails closed at expression, file, and finding limits", () => {
@@ -538,21 +388,4 @@ describe("localization source scanner", () => {
       rmSync(compositionDirectory, { force: true, recursive: true });
     }
   }, 60_000);
-
-  it("refuses to overwrite the checked-in baseline", () => {
-    const result = spawnSync(
-      process.execPath,
-      [resolve(import.meta.dirname, "scan-localization.mjs"), "--init"],
-      {
-        cwd: resolve(import.meta.dirname, ".."),
-        encoding: "utf8",
-        maxBuffer: 4 * 1024 * 1024,
-      },
-    );
-
-    expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "Localization allowlist already exists; initialization cannot overwrite it.",
-    );
-  }, 30_000);
 });

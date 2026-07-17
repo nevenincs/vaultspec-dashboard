@@ -3,12 +3,10 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 import {
-  existsSync,
   lstatSync,
   readFileSync,
   readdirSync,
   realpathSync,
-  writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -16,21 +14,16 @@ import process from "node:process";
 
 import ts from "typescript";
 import {
-  baselineEntries,
-  compareAllowlist,
   PRESENTATION_FIELD_NAMES,
-  reportCounts,
   UNSAFE_DYNAMIC_PRESENTATION_NAMES,
 } from "./scan-localization-policy.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const frontendRoot = resolve(here, "..");
 const sourceRoot = join(frontendRoot, "src");
-const allowlistPath = join(here, "localization-allowlist.json");
 const tsconfigPath = join(frontendRoot, "tsconfig.json");
 
 const LIMITS = Object.freeze({
-  allowlistEntries: 50_000,
   constantDepth: 8,
   files: 5_000,
   fileBytes: 2 * 1024 * 1024,
@@ -47,13 +40,17 @@ const FINDING_CODES = Object.freeze({
   imperativeDisplay: "imperative-display",
   jsxAttribute: "jsx-attribute",
   jsxText: "jsx-text",
-  legacyActionPresentation: "legacy-action-presentation",
   presentationField: "presentation-field",
+  punctuation: "punctuation",
   translatedFragment: "translated-fragment",
   translationDefault: "translation-default",
   unsafeDynamicPresentation: "unsafe-dynamic-presentation",
 });
 
+// Em dash (U+2014) is prohibited in user copy, and a run of two or more ASCII
+// periods is the hand-typed ellipsis that must be the single "…" character. Any
+// user-facing source literal carrying either is a punctuation defect.
+const PROHIBITED_PUNCTUATION = /—|\.{2,}/u;
 const SOURCE_EXT = /\.(?:css|ts|tsx)$/u;
 const TYPESCRIPT_SOURCE_EXT = /\.(?:ts|tsx)$/u;
 const CSS_SOURCE_EXT = /\.css$/u;
@@ -69,8 +66,6 @@ const EXACT_SOURCE_EXCLUSIONS = new Set([
 const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
 const AUTHORED_DISPLAY_OWNER = "src/platform/localization/displayText.ts";
-const LEGACY_ACTION_PRESENTATION_OWNER = "src/platform/actions/action.ts";
-const LEGACY_ACTION_PRESENTATION_EXPORT = "legacyActionPresentation";
 
 const JSX_ATTRIBUTE_NAMES = new Set([
   "accessibleName",
@@ -468,74 +463,6 @@ function symbolAt(node, checker) {
   return node ? checker.getSymbolAtLocation(node) : undefined;
 }
 
-function isCanonicalLegacyPresentation(
-  expression,
-  checker,
-  exportName,
-  owner,
-  seen = new Set(),
-  depth = 0,
-) {
-  if (depth > LIMITS.constantDepth) return false;
-  const lookup = ts.isPropertyAccessExpression(expression)
-    ? expression.name
-    : expression;
-  const symbol = unwrapAlias(symbolAt(lookup, checker), checker);
-  if (!symbol || seen.has(symbol)) return false;
-  if (
-    symbol.getName() === exportName &&
-    (symbol.declarations ?? []).some(
-      (declaration) => toRelative(declaration.getSourceFile().fileName) === owner,
-    )
-  ) {
-    return true;
-  }
-  const nextSeen = new Set(seen);
-  nextSeen.add(symbol);
-  return (symbol.declarations ?? []).some(
-    (declaration) =>
-      isConstDeclaration(declaration) &&
-      declaration.initializer !== undefined &&
-      (ts.isIdentifier(declaration.initializer) ||
-        ts.isPropertyAccessExpression(declaration.initializer)) &&
-      isCanonicalLegacyPresentation(
-        declaration.initializer,
-        checker,
-        exportName,
-        owner,
-        nextSeen,
-        depth + 1,
-      ),
-  );
-}
-
-function isCanonicalLegacyActionPresentation(expression, checker) {
-  return isCanonicalLegacyPresentation(
-    expression,
-    checker,
-    LEGACY_ACTION_PRESENTATION_EXPORT,
-    LEGACY_ACTION_PRESENTATION_OWNER,
-  );
-}
-
-function isLegacyPresentationType(node, checker, typeName, owner) {
-  const alias = unwrapAlias(checker.getTypeAtLocation(node).aliasSymbol, checker);
-  return (
-    alias?.getName() === typeName &&
-    (alias.declarations ?? []).some(
-      (declaration) => toRelative(declaration.getSourceFile().fileName) === owner,
-    )
-  );
-}
-
-function isLegacyActionPresentationType(node, checker) {
-  return isLegacyPresentationType(
-    node,
-    checker,
-    "LegacyActionPresentation",
-    LEGACY_ACTION_PRESENTATION_OWNER,
-  );
-}
 
 function translationBindings(sourceFile, checker) {
   const bindings = {
@@ -661,9 +588,6 @@ function isReceiverExpression(expression, bindings, checker) {
 function translationCallKind(node, bindings, checker) {
   if (!ts.isCallExpression(node)) return null;
   const expression = node.expression;
-  if (isCanonicalLegacyActionPresentation(expression, checker)) {
-    return "legacy-action-presentation";
-  }
   if (ts.isIdentifier(expression)) {
     const symbol = symbolAt(expression, checker);
     if (bindings.calls.has(symbol)) return "translation";
@@ -892,10 +816,16 @@ function scanProgram(files, allowOutsideSource = false) {
     const formatterOwner = toRelative(file) === FORMATTER_OWNER;
     const authoredDisplayOwner = toRelative(file) === AUTHORED_DISPLAY_OWNER;
 
+    const reportPunctuation = (node, context, text) => {
+      if (PROHIBITED_PUNCTUATION.test(text))
+        add(FINDING_CODES.punctuation, node, sourceFile, context, text);
+    };
     const reportStatic = (code, node, context, expression = node) => {
       const parts = staticParts(expression, checker, bindings);
-      for (const text of parts.texts.filter(meaningful))
+      for (const text of parts.texts.filter(meaningful)) {
         add(code, node, sourceFile, context, text);
+        reportPunctuation(node, context, text);
+      }
     };
     const reportUnsafeDynamic = (node, context, expression) => {
       if (
@@ -946,6 +876,7 @@ function scanProgram(files, allowOutsideSource = false) {
       }
       if (ts.isJsxText(node) && meaningful(node.text)) {
         add(FINDING_CODES.jsxText, node, sourceFile, "jsx-child", node.text);
+        reportPunctuation(node, "jsx-child", node.text);
       } else if (
         ts.isJsxExpression(node) &&
         node.expression &&
@@ -954,6 +885,7 @@ function scanProgram(files, allowOutsideSource = false) {
         const parts = staticParts(node.expression, checker, bindings);
         for (const text of parts.texts.filter(meaningful)) {
           add(FINDING_CODES.jsxText, node, sourceFile, "jsx-expression", text);
+          reportPunctuation(node, "jsx-expression", text);
         }
         reportUnsafeDynamic(node, "jsx-expression", node.expression);
       } else if (ts.isJsxAttribute(node)) {
@@ -1039,27 +971,8 @@ function scanProgram(files, allowOutsideSource = false) {
               propertyName(property.name) === "defaultChord",
           );
         if (name && (PRESENTATION_FIELD_NAMES.has(name) || rawKeybindingGroupField)) {
-          const unresolvedLegacyActionFactory =
-            ts.isCallExpression(node.initializer) &&
-            !isCanonicalLegacyActionPresentation(
-              node.initializer.expression,
-              checker,
-            ) &&
-            (callName(node.initializer.expression) ===
-              LEGACY_ACTION_PRESENTATION_EXPORT ||
-              isLegacyActionPresentationType(node.initializer, checker));
-          if (unresolvedLegacyActionFactory) {
-            add(
-              FINDING_CODES.presentationField,
-              node,
-              sourceFile,
-              name,
-              node.initializer.arguments[0]?.getText(sourceFile) ?? "",
-            );
-          } else {
-            reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
-            reportUnsafeDynamic(node, name, node.initializer);
-          }
+          reportStatic(FINDING_CODES.presentationField, node, name, node.initializer);
+          reportUnsafeDynamic(node, name, node.initializer);
         }
       } else if (
         ts.isShorthandPropertyAssignment(node) &&
@@ -1177,14 +1090,6 @@ function scanProgram(files, allowOutsideSource = false) {
               );
             }
           }
-        } else if (translationKind === "legacy-action-presentation") {
-          add(
-            FINDING_CODES.legacyActionPresentation,
-            node,
-            sourceFile,
-            LEGACY_ACTION_PRESENTATION_EXPORT,
-            node.arguments[0]?.getText(sourceFile) ?? "",
-          );
         }
 
         if (!formatterOwner && ts.isPropertyAccessExpression(node.expression)) {
@@ -1384,99 +1289,28 @@ export function scanProductionSources() {
   return scanProgram(collectSourceFiles());
 }
 
-function readAllowlist() {
-  return validateAllowlistEntries(JSON.parse(readFileSync(allowlistPath, "utf8")));
-}
-
-export function validateAllowlistEntries(parsed) {
-  if (!Array.isArray(parsed) || parsed.length > LIMITS.allowlistEntries) {
-    throw new Error("Localization allowlist has an invalid size.");
-  }
-  const ids = new Set();
-  const rules = new Set(Object.values(FINDING_CODES));
-  for (const entry of parsed) {
-    const resolvedPath =
-      typeof entry?.path === "string" ? resolve(frontendRoot, entry.path) : "";
-    if (
-      entry === null ||
-      typeof entry !== "object" ||
-      Object.keys(entry).sort().join(",") !== "id,path,rule" ||
-      typeof entry.id !== "string" ||
-      !/^[a-f0-9]{24}$/u.test(entry.id) ||
-      typeof entry.path !== "string" ||
-      typeof entry.rule !== "string" ||
-      !rules.has(entry.rule) ||
-      isAbsolute(entry.path) ||
-      entry.path.includes("\\") ||
-      !insideRoot(resolvedPath, frontendRoot) ||
-      toRelative(resolvedPath) !== entry.path ||
-      ids.has(entry.id)
-    ) {
-      throw new Error("Localization allowlist contains an invalid entry.");
-    }
-    ids.add(entry.id);
-  }
-  return parsed;
-}
 
 function run() {
-  const init = process.argv.includes("--init");
+  // Zero user-facing source literals is structural: the localization migration is
+  // complete, so ANY finding fails the scan. There is no allowlist / exemption
+  // mechanism to re-argue a literal past the gate (W06.P18.S98).
   const findings = scanProductionSources();
-  if (init) {
-    if (existsSync(allowlistPath)) {
-      throw new Error(
-        "Localization allowlist already exists; initialization cannot overwrite it.",
-      );
-    }
-    writeFileSync(
-      allowlistPath,
-      `${JSON.stringify(baselineEntries(findings), null, 2)}\n`,
-    );
-    process.stdout.write(
-      `localization-scan: initialized ${findings.length} exact finding(s).\n`,
-    );
-    for (const [code, count] of reportCounts(findings))
-      process.stdout.write(`  ${code}: ${count}\n`);
-    return;
-  }
 
-  if (!existsSync(allowlistPath)) throw new Error("Localization allowlist is missing.");
-  const allowlist = readAllowlist();
-  const { metadataMismatches, newFindings, stale } = compareAllowlist(
-    findings,
-    allowlist,
-  );
-
-  if (newFindings.length > 0) {
-    process.stderr.write("localization-scan: new user-facing source findings:\n");
-    for (const finding of newFindings) {
+  if (findings.length > 0) {
+    process.stderr.write("localization-scan: user-facing source literals are not permitted:\n");
+    for (const finding of findings) {
       process.stderr.write(
         `  ${finding.code} ${finding.path}:${finding.line}:${finding.column} ${finding.snippet}\n`,
       );
     }
-  }
-  if (stale.length > 0) {
     process.stderr.write(
-      "localization-scan: stale allowlist entries must be removed:\n",
+      "  Move the copy into the locale catalogs and resolve it at the render boundary.\n",
     );
-    for (const entry of stale)
-      process.stderr.write(`  ${entry.rule} ${entry.path} ${entry.id}\n`);
-  }
-  if (metadataMismatches.length > 0) {
-    process.stderr.write("localization-scan: allowlist metadata mismatches:\n");
-    for (const finding of metadataMismatches) {
-      process.stderr.write(`  ${finding.code} ${finding.path} ${finding.id}\n`);
-    }
-  }
-  if (newFindings.length > 0 || stale.length > 0 || metadataMismatches.length > 0) {
     process.exitCode = 1;
     return;
   }
-  process.stdout.write(
-    `localization-scan: clean. ${findings.length} exact finding(s) remain.\n`,
-  );
-  for (const [code, count] of reportCounts(findings))
-    process.stdout.write(`  ${code}: ${count}\n`);
+
+  process.stdout.write("localization-scan: clean. 0 user-facing source literals.\n");
 }
 
 const invokedPath = process.argv[1] ? pathToFileURL(resolve(process.argv[1])).href : "";
@@ -1491,4 +1325,4 @@ if (import.meta.url === invokedPath) {
   }
 }
 
-export { compareAllowlist, FINDING_CODES, LIMITS };
+export { FINDING_CODES, LIMITS };
