@@ -31,7 +31,10 @@ import { diffLines, diffStat, type DiffLineKind } from "./diffLines";
  *  is an agent proposal's served base against its proposed body. The primitive is
  *  otherwise source-agnostic; the value is surfaced as `data-diff-source` so both
  *  call sites are provably exercising the one implementation. */
-export type DiffViewSource = "draft-vs-saved" | "proposal-preview";
+export type DiffViewSource =
+  | "draft-vs-saved"
+  | "proposal-preview"
+  | "conflict-resolution";
 
 const GUTTER: Record<DiffLineKind, string> = {
   add: "+",

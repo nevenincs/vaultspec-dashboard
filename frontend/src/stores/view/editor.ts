@@ -50,6 +50,14 @@ export interface DocumentEditorView {
   agentBaseline: string | null;
   /** Whether the pending agent changes have been acknowledged this session (D6). */
   agentSeen: boolean;
+  /** The held new base of an unresolved dirty-overlap reconcile (D12), or null when
+   *  none is pending. While non-null the save path is disabled and the conflict
+   *  resolution surface is shown. */
+  pendingBaseText: string | null;
+  /** The blob hash of the held pending base (adopted on resolve). */
+  pendingBaseBlobHash: string;
+  /** Per-section conflict decisions keyed on the segment path key (D12). */
+  conflictResolutions: Record<string, "mine" | "theirs">;
   status: EditorStatus;
   statusLabel: MessageDescriptor;
   statusTone: EditorStatusTone;
@@ -292,6 +300,9 @@ export function deriveDocumentEditorView(
     | "editorBaseText"
     | "editorAgentBaseline"
     | "editorAgentSeen"
+    | "editorPendingBaseText"
+    | "editorPendingBaseBlobHash"
+    | "editorConflictResolutions"
     | "editorDiffVisible"
   >,
   nodeId: unknown,
@@ -308,6 +319,9 @@ export function deriveDocumentEditorView(
     baseText: state.editorBaseText,
     agentBaseline: state.editorAgentBaseline,
     agentSeen: state.editorAgentSeen,
+    pendingBaseText: state.editorPendingBaseText,
+    pendingBaseBlobHash: state.editorPendingBaseBlobHash,
+    conflictResolutions: state.editorConflictResolutions,
     diffVisible: state.editorDiffVisible,
     status,
     statusLabel: STATUS_LABEL[status],
@@ -328,6 +342,13 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
   const editorBaseText = useViewStore((state) => state.editorBaseText);
   const editorAgentBaseline = useViewStore((state) => state.editorAgentBaseline);
   const editorAgentSeen = useViewStore((state) => state.editorAgentSeen);
+  const editorPendingBaseText = useViewStore((state) => state.editorPendingBaseText);
+  const editorPendingBaseBlobHash = useViewStore(
+    (state) => state.editorPendingBaseBlobHash,
+  );
+  const editorConflictResolutions = useViewStore(
+    (state) => state.editorConflictResolutions,
+  );
   const editorDiffVisible = useViewStore((state) => state.editorDiffVisible);
   return useMemo(
     () =>
@@ -340,6 +361,9 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
           editorBaseText,
           editorAgentBaseline,
           editorAgentSeen,
+          editorPendingBaseText,
+          editorPendingBaseBlobHash,
+          editorConflictResolutions,
           editorDiffVisible,
         },
         nodeId,
@@ -352,6 +376,9 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
       editorBaseText,
       editorAgentBaseline,
       editorAgentSeen,
+      editorPendingBaseText,
+      editorPendingBaseBlobHash,
+      editorConflictResolutions,
       editorDiffVisible,
       nodeId,
     ],
@@ -494,6 +521,30 @@ export function reconcileEditorBase(text: unknown, blobHash: unknown): void {
 /** Acknowledge the pending agent changes (D6): NEW → seen. */
 export function acknowledgeAgentChanges(): void {
   useViewStore.getState().acknowledgeAgentChanges();
+}
+
+/** Adopt a disjoint agent apply's section three-way merge (D12). */
+export function rebaseDraft(
+  mergedDraft: string,
+  newBaseText: string,
+  newBlobHash: string,
+): void {
+  useViewStore.getState().rebaseDraft(mergedDraft, newBaseText, newBlobHash);
+}
+
+/** Hold an overlapping agent apply's new base for explicit resolution (D12). */
+export function holdPendingBase(newBaseText: string, newBlobHash: string): void {
+  useViewStore.getState().holdPendingBase(newBaseText, newBlobHash);
+}
+
+/** Record one per-section conflict decision (D12). */
+export function resolveConflictSection(key: string, choice: "mine" | "theirs"): void {
+  useViewStore.getState().resolveConflictSection(key, choice);
+}
+
+/** Complete an overlap reconcile with the app-merged text (D12). */
+export function completeConflictReconcile(mergedText: string): void {
+  useViewStore.getState().completeConflictReconcile(mergedText);
 }
 
 export function setMarkdownEditorRenameDraft(draft: unknown): void {

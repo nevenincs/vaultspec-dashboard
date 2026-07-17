@@ -390,3 +390,79 @@ describe("agent-edit reconcile (editor-change-fidelity D2/D4)", () => {
     expect(useViewStore.getState().editorBaseText).toBe("");
   });
 });
+
+describe("dirty-overlap reconcile (D12)", () => {
+  beforeEach(() => closeDocumentEditor());
+
+  it("rebaseDraft (disjoint) swaps draft+base+fence and keeps the editor dirty", () => {
+    openDocumentEditor("doc:alpha", "old base\n", "hash-0");
+    updateEditorDraft("my edit\n");
+    useViewStore.getState().rebaseDraft("merged\n", "new base\n", "hash-1");
+    const s = useViewStore.getState();
+    expect(s.draftText).toBe("merged\n");
+    expect(s.editorBaseText).toBe("new base\n");
+    expect(s.baseBlobHash).toBe("hash-1");
+    expect(s.editorStatus).toBe("dirty");
+    // The oldest agent baseline is retained so D11 marks the incoming sections.
+    expect(s.editorAgentBaseline).toBe("old base\n");
+  });
+
+  it("holdPendingBase (overlap) holds the new base and NEVER touches the draft", () => {
+    openDocumentEditor("doc:alpha", "old\n", "hash-0");
+    updateEditorDraft("my unsaved work\n");
+    useViewStore.getState().holdPendingBase("agent base\n", "hash-1");
+    const s = useViewStore.getState();
+    // THE guarantee: the draft is preserved byte-for-byte; the base is NOT advanced;
+    // status is conflict (which disables save structurally).
+    expect(s.draftText).toBe("my unsaved work\n");
+    expect(s.editorBaseText).toBe("old\n");
+    expect(s.editorStatus).toBe("conflict");
+    expect(s.editorPendingBaseText).toBe("agent base\n");
+    expect(s.editorPendingBaseBlobHash).toBe("hash-1");
+  });
+
+  it("save is structurally disabled while a pending base is held", () => {
+    openDocumentEditor("doc:alpha", "old\n", "hash-0");
+    updateEditorDraft("mine\n");
+    useViewStore.getState().holdPendingBase("theirs\n", "hash-1");
+    // deriveEditorSaveAvailability disables on conflict status.
+    expect(useViewStore.getState().editorStatus).toBe("conflict");
+  });
+
+  it("resolveConflictSection records a per-section decision", () => {
+    openDocumentEditor("doc:alpha", "old\n", "hash-0");
+    updateEditorDraft("mine\n");
+    useViewStore.getState().holdPendingBase("theirs\n", "hash-1");
+    useViewStore.getState().resolveConflictSection("h:Alpha", "theirs");
+    expect(useViewStore.getState().editorConflictResolutions).toEqual({
+      "h:Alpha": "theirs",
+    });
+  });
+
+  it("completeConflictReconcile adopts the merge, swaps the fence, clears pending", () => {
+    openDocumentEditor("doc:alpha", "old\n", "hash-0");
+    updateEditorDraft("mine\n");
+    useViewStore.getState().holdPendingBase("theirs\n", "hash-1");
+    useViewStore.getState().completeConflictReconcile("resolved merge\n");
+    const s = useViewStore.getState();
+    expect(s.draftText).toBe("resolved merge\n");
+    expect(s.editorBaseText).toBe("theirs\n");
+    expect(s.baseBlobHash).toBe("hash-1");
+    expect(s.editorPendingBaseText).toBeNull();
+    expect(s.editorConflictResolutions).toEqual({});
+    // Diverges from the adopted base → dirty.
+    expect(s.editorStatus).toBe("dirty");
+  });
+
+  it("a newer apply while a conflict is pending drops prior decisions", () => {
+    openDocumentEditor("doc:alpha", "old\n", "hash-0");
+    updateEditorDraft("mine\n");
+    useViewStore.getState().holdPendingBase("agent v1\n", "hash-1");
+    useViewStore.getState().resolveConflictSection("h:Alpha", "theirs");
+    // A second agent apply supersedes the pending base.
+    useViewStore.getState().holdPendingBase("agent v2\n", "hash-2");
+    expect(useViewStore.getState().editorPendingBaseText).toBe("agent v2\n");
+    // Decisions taken against superseded bytes are dropped.
+    expect(useViewStore.getState().editorConflictResolutions).toEqual({});
+  });
+});

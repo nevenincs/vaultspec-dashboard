@@ -32,6 +32,7 @@ const BLOCK: HeadingBlock = {
   path: ["Authored document", "Authored section"],
   level: 2,
   sectionText: "## Authored section\n\nAuthored body.\n",
+  start: 0,
 };
 
 const EMPTY_INDEX: CommentAnchorIndex = {

@@ -58,12 +58,16 @@ import {
   acknowledgeAgentChanges,
   applyEditorWriteResult,
   applyRenameEditorResult,
+  completeConflictReconcile,
   deriveMarkdownEditorFrontmatterPatch,
   deriveMarkdownEditorDocumentView,
+  holdPendingBase,
   markEditorFailed,
   markEditorSaving,
   openDocumentEditor,
+  rebaseDraft,
   reconcileEditorBase,
+  resolveConflictSection,
   setMarkdownEditorFrontmatterDraft,
   setMarkdownEditorRenameDraft,
   toggleEditorDiff,
@@ -85,6 +89,8 @@ import {
   previousChange,
   type LineChange,
 } from "../authoring/editorChanges";
+import { ConflictResolutionPanel } from "../authoring/ConflictResolutionPanel";
+import { reconcileSections, segmentTextByKey } from "../authoring/sectionReconcile";
 import {
   Button,
   DecorativeGlyph,
@@ -199,14 +205,37 @@ export function MarkdownDocView({
   // dirty draft is never overwritten (the eventual save hits the existing conflict
   // path). `initialText`/`initialBlobHash` are the same derivation the editor opened
   // from, so the reconciled base is in the editor's own text space.
+  // The ONE reconcile dispatcher (editor-change-fidelity D2/D12). A served hash that
+  // diverges from the editor's base means an agent applied externally. CLEAN draft →
+  // adopt the new base (D2 clean arm, D11 marks it). DIRTY draft → a section three-way:
+  // disjoint sections rebase in place (user bytes kept verbatim), overlapping sections
+  // hold the new base for explicit per-section resolution — the user is NEVER silently
+  // overwritten. Already-holding-this-base is skipped so the effect never wipes the
+  // user's in-progress conflict decisions.
   useEffect(() => {
     if (!editor.isEditing) return;
     const servedHash = documentEditor.initialBlobHash;
-    if (!servedHash || servedHash === editor.baseBlobHash) return;
-    reconcileEditorBase(documentEditor.initialText, servedHash);
+    if (!servedHash) return;
+    // Already holding this served base for conflict resolution — don't reprocess.
+    if (servedHash === editor.pendingBaseBlobHash) return;
+    if (servedHash === editor.baseBlobHash) return;
+    const servedText = documentEditor.initialText;
+    if (editor.draftText === editor.baseText) {
+      reconcileEditorBase(servedText, servedHash);
+      return;
+    }
+    const result = reconcileSections(editor.baseText, servedText, editor.draftText);
+    if (result.kind === "disjoint") {
+      rebaseDraft(result.mergedDraft, servedText, servedHash);
+    } else {
+      holdPendingBase(servedText, servedHash);
+    }
   }, [
     editor.isEditing,
     editor.baseBlobHash,
+    editor.pendingBaseBlobHash,
+    editor.baseText,
+    editor.draftText,
     documentEditor.initialBlobHash,
     documentEditor.initialText,
   ]);
@@ -226,6 +255,45 @@ export function MarkdownDocView({
       ),
     [editor.agentBaseline, editor.agentSeen, editor.baseText, editor.draftText],
   );
+
+  // The LIVE conflict set of a held overlap reconcile (editor-change-fidelity D12),
+  // recomputed as the user keeps typing (an edit can dissolve or surface a conflict —
+  // the buffer never locks). Derived in a memo over raw slices (frontend-store-
+  // selectors), null when no pending base is held.
+  const conflictReconcile = useMemo(
+    () =>
+      editor.pendingBaseText === null
+        ? null
+        : reconcileSections(editor.baseText, editor.pendingBaseText, editor.draftText),
+    [editor.pendingBaseText, editor.baseText, editor.draftText],
+  );
+  const conflictSections = useMemo(
+    () =>
+      editor.pendingBaseText === null
+        ? { mine: new Map<string, string>(), theirs: new Map<string, string>() }
+        : {
+            mine: segmentTextByKey(editor.draftText),
+            theirs: segmentTextByKey(editor.pendingBaseText),
+          },
+    [editor.pendingBaseText, editor.draftText],
+  );
+  // Auto-complete the overlap reconcile (D12): once the user's edits dissolve every
+  // conflict (disjoint), or every conflicted section has a decision, adopt the merge.
+  useEffect(() => {
+    if (editor.pendingBaseText === null || conflictReconcile === null) return;
+    if (conflictReconcile.kind === "disjoint") {
+      completeConflictReconcile(conflictReconcile.mergedDraft);
+      return;
+    }
+    const allResolved = conflictReconcile.conflictKeys.every(
+      (key) => editor.conflictResolutions[key] !== undefined,
+    );
+    if (allResolved) {
+      completeConflictReconcile(
+        conflictReconcile.mergeWith(editor.conflictResolutions),
+      );
+    }
+  }, [editor.pendingBaseText, conflictReconcile, editor.conflictResolutions]);
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
@@ -730,6 +798,18 @@ export function MarkdownDocView({
           comparing the base text captured at open against the current draft.
           Zero new wire calls — both sides are client-held strings. Only mounts
           while editing; cleared when the editor closes or a new session opens. */}
+      {conflictReconcile?.kind === "conflict" && (
+        <div className="max-h-80 overflow-y-auto">
+          <ConflictResolutionPanel
+            conflictKeys={conflictReconcile.conflictKeys}
+            mineByKey={conflictSections.mine}
+            theirsByKey={conflictSections.theirs}
+            resolutions={editor.conflictResolutions}
+            onResolve={resolveConflictSection}
+            docLabel={content.path ?? docStemFromNodeId(nodeId) ?? nodeId}
+          />
+        </div>
+      )}
       {editor.diffVisible && (
         <div
           className="max-h-64 overflow-y-auto border-b border-rule bg-paper-sunken px-fg-3 py-fg-2"

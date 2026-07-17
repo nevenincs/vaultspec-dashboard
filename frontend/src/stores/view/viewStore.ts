@@ -336,6 +336,23 @@ export interface ViewState {
    *  false renders them as NEW (a dot), true as seen (a muted bar). */
   editorAgentSeen: boolean;
   /**
+   * The NEW base an agent applied while the user's draft was DIRTY and OVERLAPPING
+   * (editor-change-fidelity D12 overlap arm), held un-adopted until the user resolves
+   * every conflicted section, or null when no conflict is pending. While non-null the
+   * save path is STRUCTURALLY disabled, so the draft can never be silently overwritten
+   * — the guarantee is by construction, not discipline. A single string (bounded,
+   * same class as `editorAgentBaseline`); the conflicted-section SET is derived live
+   * in the app, never stored.
+   */
+  editorPendingBaseText: string | null;
+  /** The blob hash of the held pending base — the save fence adopted on resolve. */
+  editorPendingBaseBlobHash: string;
+  /** Per-section conflict decisions keyed on the segment path key (D12). A record of
+   *  string literals only (layer law): the app maps keys → chosen bytes. Pruned to the
+   *  live conflict set at read time; dropped wholesale when a newer apply supersedes
+   *  the pending base. */
+  editorConflictResolutions: Record<string, "mine" | "theirs">;
+  /**
    * Whether the in-editor diff panel is expanded (authoring-surface ADR D4).
    * False when no editor is open or the panel is collapsed. View-local chrome —
    * the toggle is reachable from keymap + palette under one shared action id.
@@ -471,6 +488,24 @@ export interface ViewState {
   /** Acknowledge the pending agent changes (D6): flips them from NEW to seen. A
    *  no-op when none are pending. */
   acknowledgeAgentChanges: () => void;
+  /** Adopt an agent apply's DISJOINT three-way merge (editor-change-fidelity D12):
+   *  swap draft + base + fence atomically, keep the editor dirty, retain the oldest
+   *  agent baseline so D11 marks the incoming sections. The app computed the merge. */
+  rebaseDraft: (
+    mergedDraft: unknown,
+    newBaseText: unknown,
+    newBlobHash: unknown,
+  ) => void;
+  /** Hold an agent apply's new base UN-ADOPTED because it OVERLAPS the user's dirty
+   *  edits (D12 overlap arm): status → `conflict`, the draft untouched byte-for-byte,
+   *  the save path structurally disabled until every conflicted section is resolved. */
+  holdPendingBase: (newBaseText: unknown, newBlobHash: unknown) => void;
+  /** Record one per-section conflict decision (D12). */
+  resolveConflictSection: (key: unknown, choice: "mine" | "theirs") => void;
+  /** Complete an overlap reconcile once every conflicted section is resolved (D12):
+   *  adopt the app-merged text, swap base + fence to the held pending base, clear the
+   *  pending state, retain the oldest agent baseline. */
+  completeConflictReconcile: (mergedText: unknown) => void;
   /** Mark a save failure (status → `save-failed`): a transport fault or a
    *  validation refusal. The draft is retained so the edit is not lost. */
   markFailed: () => void;
@@ -710,6 +745,9 @@ function corpusLocalViewState(scope: unknown) {
     editorBaseText: "",
     editorAgentBaseline: null,
     editorAgentSeen: false,
+    editorPendingBaseText: null,
+    editorPendingBaseBlobHash: "",
+    editorConflictResolutions: {},
     editorDiffVisible: false,
   };
 }
@@ -733,6 +771,9 @@ export const useViewStore = create<ViewState>((set) => ({
   editorBaseText: "",
   editorAgentBaseline: null,
   editorAgentSeen: false,
+  editorPendingBaseText: null,
+  editorPendingBaseBlobHash: "",
+  editorConflictResolutions: {},
   editorDiffVisible: false,
   overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
   renderCapability: DEFAULT_RENDER_CAPABILITY,
@@ -956,6 +997,9 @@ export const useViewStore = create<ViewState>((set) => ({
               editorBaseText: "",
               editorAgentBaseline: null,
               editorAgentSeen: false,
+              editorPendingBaseText: null,
+              editorPendingBaseBlobHash: "",
+              editorConflictResolutions: {},
               editorDiffVisible: false,
             }
           : {}),
@@ -978,6 +1022,9 @@ export const useViewStore = create<ViewState>((set) => ({
         editorBaseText: "",
         editorAgentBaseline: null,
         editorAgentSeen: false,
+        editorPendingBaseText: null,
+        editorPendingBaseBlobHash: "",
+        editorConflictResolutions: {},
         editorDiffVisible: false,
       };
     }),
@@ -1022,6 +1069,9 @@ export const useViewStore = create<ViewState>((set) => ({
         editorBaseText: normalizedText,
         editorAgentBaseline: null,
         editorAgentSeen: false,
+        editorPendingBaseText: null,
+        editorPendingBaseBlobHash: "",
+        editorConflictResolutions: {},
         editorDiffVisible: false,
       };
     }),
@@ -1085,6 +1135,63 @@ export const useViewStore = create<ViewState>((set) => ({
     set((state) =>
       state.editorAgentBaseline === null ? state : { editorAgentSeen: true },
     ),
+  rebaseDraft: (mergedDraft, newBaseText, newBlobHash) =>
+    set((state) => {
+      if (state.editorTarget === null) return state;
+      return {
+        draftText: normalizeEditorTextValue(mergedDraft),
+        editorBaseText: normalizeEditorTextValue(newBaseText),
+        baseBlobHash: normalizeEditorBlobHash(newBlobHash),
+        editorStatus: "dirty",
+        // Keep the oldest baseline (D11) so the incoming agent sections mark.
+        editorAgentBaseline: state.editorAgentBaseline ?? state.editorBaseText,
+        editorAgentSeen: false,
+      };
+    }),
+  holdPendingBase: (newBaseText, newBlobHash) =>
+    set((state) => {
+      if (state.editorTarget === null) return state;
+      return {
+        // The draft is UNTOUCHED — an overlapping agent change is never auto-adopted.
+        editorStatus: "conflict",
+        editorPendingBaseText: normalizeEditorTextValue(newBaseText),
+        editorPendingBaseBlobHash: normalizeEditorBlobHash(newBlobHash),
+        // A newer apply supersedes prior decisions — they were taken against bytes
+        // that no longer hold (D12).
+        editorConflictResolutions: {},
+      };
+    }),
+  resolveConflictSection: (key, choice) =>
+    set((state) => {
+      if (typeof key !== "string" || state.editorPendingBaseText === null) return state;
+      return {
+        editorConflictResolutions: {
+          ...state.editorConflictResolutions,
+          [key]: choice,
+        },
+      };
+    }),
+  completeConflictReconcile: (mergedText) =>
+    set((state) => {
+      if (state.editorTarget === null || state.editorPendingBaseText === null) {
+        return state;
+      }
+      const merged = normalizeEditorTextValue(mergedText);
+      const newBase = state.editorPendingBaseText;
+      return {
+        draftText: merged,
+        editorBaseText: newBase,
+        baseBlobHash: state.editorPendingBaseBlobHash,
+        editorPendingBaseText: null,
+        editorPendingBaseBlobHash: "",
+        editorConflictResolutions: {},
+        // Dirty when the resolved merge still diverges from the adopted base, else the
+        // buffer now matches disk.
+        editorStatus: merged === newBase ? "idle" : "dirty",
+        editorAgentBaseline: state.editorAgentBaseline ?? newBase,
+        editorAgentSeen: false,
+      };
+    }),
   markFailed: () => set({ editorStatus: "save-failed" }),
   closeEditor: () =>
     set({
@@ -1095,6 +1202,9 @@ export const useViewStore = create<ViewState>((set) => ({
       editorBaseText: "",
       editorAgentBaseline: null,
       editorAgentSeen: false,
+      editorPendingBaseText: null,
+      editorPendingBaseBlobHash: "",
+      editorConflictResolutions: {},
       editorDiffVisible: false,
     }),
   toggleEditorDiff: () =>

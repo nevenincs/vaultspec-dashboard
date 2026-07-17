@@ -41,6 +41,11 @@ export interface HeadingBlock {
   /** The section bytes: the heading line through the next same-or-shallower heading
    *  (or EOF) — exactly what the engine hashes. */
   sectionText: string;
+  /** The character offset of the section's start (its heading line) in the body —
+   *  a CLIENT-ONLY field (never sent to the engine, so parser lockstep is untouched)
+   *  used by the section-reconcile three-way (editor-change-fidelity D12) to cut the
+   *  document into ordered segments. */
+  start: number;
 }
 
 /** The git blob object id of `content` — `sha1("blob " + byteLength + "\0" + bytes)`,
@@ -167,6 +172,7 @@ export function parseHeadingBlocks(body: string): HeadingBlock[] {
       path,
       level: heading.level,
       sectionText: body.slice(heading.lineStart, contentEnd),
+      start: heading.lineStart,
     });
   }
   return blocks;

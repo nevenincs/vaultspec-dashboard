@@ -10,6 +10,13 @@ export const documents = {
       truncatedPreview:
         "Preview truncated. Showing {{returned, number}} of {{total, number}} bytes. Open the document for the full body.",
     },
+    conflict: {
+      banner:
+        "An agent changed a section you’re editing. Resolve each section to continue.",
+      keepMine: "Keep my version",
+      useTheirs: "Use the agent’s version",
+      untitledSection: "Opening section",
+    },
     accessibility: {
       documentActions: "Document actions",
       documentBodyEditor: "Document body editor",

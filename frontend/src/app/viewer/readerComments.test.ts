@@ -63,6 +63,7 @@ const block: HeadingBlock = {
   path: ["Title", "Alpha"],
   level: 2,
   sectionText: "## Alpha\n\nbody\n",
+  start: 0,
 };
 
 describe("commentSectionAction (action-plane enrollment)", () => {
