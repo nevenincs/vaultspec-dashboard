@@ -42,5 +42,6 @@ FINDING: this was the same stale-casing defect class as `W05.P15.S89`/`S198`
 sentence-case catalog output) — a case-sensitivity gap in `screen.getByLabelText`/
 `getByRole({ name })` lookups, not a component defect. `RailFilterField.tsx` itself
 was never broken. Fixed by opus-l10n, independently reverified: reran all four
-files live — 15/15 passed. This record was authored during a reconciliation pass;
-not a fresh implementation on my part.
+files live — 15/15 passed. Landed at commit `578b4e5454` ("batch #2 test-only
+stale assertions to typed/sentence-case output ... dual-verified"). This record
+was authored during a reconciliation pass; not a fresh implementation on my part.

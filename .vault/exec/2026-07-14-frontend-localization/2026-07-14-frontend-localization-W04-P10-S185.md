@@ -42,5 +42,8 @@ exist and be enabled. That action is the same CMCS-001 copy-safety class as the
 `edgeMenu.ts` itself was NOT touched by this fix — `W04.P10.S183` (already ticked)
 did not catch it because the plan step's own scanner/grep pass predates the
 copy-safety audit. This is a live gap for a follow-up fix, not resolved by this
-record. Independently reran both files live — part of the 15/15 passing set. Fixed
-by opus-l10n, not a fresh implementation on my part.
+record — per the team lead's ruling, it will land as an amendment to `S183`'s own
+exec record, not a new step tick. Independently reran both files live — part of
+the 15/15 passing set. Fixed by opus-l10n, landed at commit `578b4e5454` ("batch
+#2 test-only stale assertions to typed/sentence-case output ... dual-verified"),
+not a fresh implementation on my part.

@@ -38,5 +38,6 @@ mocks or stubs the localization runtime.
 Same stale-casing defect class as `W03.P08.S174`/`W05.P15.S198`. The component
 under test (`MarkdownDocView.tsx`, `W05.P15.S88`) was never broken. Fixed by
 opus-l10n, independently reverified: reran `MarkdownDocView.render.test.tsx` live
-— part of the 78/78 passing set for this batch. Not a fresh implementation on my
-part.
+— part of the 78/78 passing set for this batch. Landed at commit `578b4e5454`
+("batch #2 test-only stale assertions to typed/sentence-case output ...
+dual-verified"). Not a fresh implementation on my part.

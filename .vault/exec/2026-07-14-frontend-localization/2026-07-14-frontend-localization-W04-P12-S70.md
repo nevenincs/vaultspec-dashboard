@@ -53,5 +53,7 @@ hardcoded `SHORT_MONTHS` array — but if the review specifically wants those
 helpers kept-and-localized (e.g. for a future non-live consumer), this is a
 one-commit revert away; opus-l10n flagged the same in its own report.
 Independently reran `timelineRangeMath.test.ts` live (8/8 passed, part of the
-78-test batch total) and confirmed the zero-reference grep myself. Not a fresh
+78-test batch total) and confirmed the zero-reference grep myself. Landed at
+commit `578b4e5454` ("batch #2 test-only stale assertions to typed/sentence-case
+output + remove dead English-month helpers ... dual-verified"). Not a fresh
 implementation on my part.

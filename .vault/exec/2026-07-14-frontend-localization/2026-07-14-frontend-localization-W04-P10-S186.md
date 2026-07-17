@@ -33,4 +33,6 @@ produces.
 ## Notes
 
 Fixed by opus-l10n, independently reverified: reran both files live — part of the
-15/15 passing set. Not a fresh implementation on my part.
+15/15 passing set. Landed at commit `578b4e5454` ("batch #2 test-only stale
+assertions to typed/sentence-case output ... dual-verified"). Not a fresh
+implementation on my part.
