@@ -4,10 +4,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  ACTION_DESCRIPTOR_ID_MAX_CHARS,
-  legacyActionPresentation,
-} from "../../platform/actions/action";
+import { ACTION_DESCRIPTOR_ID_MAX_CHARS } from "../../platform/actions/action";
 import { registerResolver, resetResolvers } from "../../platform/actions/registry";
 import type { EntityDescriptor } from "../../platform/actions/entity";
 import {
@@ -325,11 +322,11 @@ describe("context-menu slice", () => {
   it("groups resolved actions in canonical menu order with navigate as default", () => {
     expect(
       groupContextMenuActions([
-        { id: "copy", label: legacyActionPresentation("Copy"), section: "copy" },
-        { id: "focus", label: legacyActionPresentation("Focus") },
+        { id: "copy", label: { key: "common:actions.copy" as const }, section: "copy" },
+        { id: "focus", label: { key: "common:actions.copy" as const } },
         {
           id: "remove",
-          label: legacyActionPresentation("Remove"),
+          label: { key: "common:actions.copy" as const },
           section: "danger",
         },
       ]).map((group) => ({
@@ -345,11 +342,16 @@ describe("context-menu slice", () => {
 
   it("derives the resolved host view from the open slice and time-travel gate", () => {
     registerResolver("node", () => [
-      { id: "focus", label: "Focus", run: () => undefined },
-      { id: "disabled", label: "Disabled", disabled: true, run: () => undefined },
+      { id: "focus", label: { key: "common:actions.copy" as const }, run: () => undefined },
+      {
+        id: "disabled",
+        label: { key: "common:actions.copy" as const },
+        disabled: true,
+        run: () => undefined,
+      },
       {
         id: "pin",
-        label: "Pin",
+        label: { key: "common:actions.copy" as const },
         section: "transform",
         disabledInTimeTravel: true,
         run: () => undefined,
@@ -368,7 +370,7 @@ describe("context-menu slice", () => {
     expect(live.activeRow).toMatchObject({
       id: "focus",
       index: 0,
-      label: "Focus",
+      label: { key: "common:actions.copy" },
       className: "bg-accent-subtle font-medium text-ink",
       selected: true,
       armed: false,
@@ -419,14 +421,20 @@ describe("context-menu slice", () => {
 
     resetResolvers();
     registerResolver("node", () => [
-      { id: "delete", label: "Delete", section: "danger", confirm: true, run: noop },
+      {
+        id: "delete",
+        label: { key: "common:actions.copy" as const },
+        section: "danger",
+        confirm: true,
+        run: noop,
+      },
     ]);
     openContextMenu(NODE, { x: 10, y: 20 });
     armContextMenuItem("delete");
     const armed = deriveContextMenuResolvedView(useContextMenuStore.getState(), false);
     expect(armed.activeRow).toMatchObject({
       id: "delete",
-      label: "Delete",
+      label: { key: "common:actions.copy" },
       armed: true,
       labelClassName: "flex-1 truncate text-state-stale",
       confirmShortcutLabel: "⏎⏎",
@@ -437,7 +445,7 @@ describe("context-menu slice", () => {
     });
     expect(armed.rowGroups[0]!.rows[0]).toMatchObject({
       id: "delete",
-      label: "Delete",
+      label: { key: "common:actions.copy" },
       armed: true,
     });
   });
@@ -457,18 +465,18 @@ describe("context-menu slice", () => {
   it("derives activation outcomes for disabled, confirm, run, and dispatch paths", () => {
     const run = {
       id: "focus",
-      label: legacyActionPresentation("Focus"),
+      label: { key: "common:actions.copy" as const },
       run: noop,
     };
     const confirm = {
       id: "delete",
-      label: legacyActionPresentation("Delete"),
+      label: { key: "common:actions.copy" as const },
       confirm: true,
       run: noop,
     };
     const dispatch = {
       id: "host",
-      label: legacyActionPresentation("Reveal"),
+      label: { key: "common:actions.copy" as const },
       dispatch: { type: "host:reveal" },
     };
     const typedConfirmation = {
@@ -488,7 +496,7 @@ describe("context-menu slice", () => {
       deriveContextMenuActivation(
         {
           id: "disabled",
-          label: legacyActionPresentation("Disabled"),
+          label: { key: "common:actions.copy" as const },
           disabled: true,
         },
         null,
@@ -530,7 +538,7 @@ describe("context-menu slice", () => {
     registerResolver("node", () => [
       {
         id: "focus",
-        label: legacyActionPresentation("Focus"),
+        label: { key: "common:actions.copy" as const },
         accelerator: "F",
         run: noop,
       },
@@ -552,10 +560,10 @@ describe("context-menu slice", () => {
     const ordered = [
       {
         id: "disabled",
-        label: legacyActionPresentation("Disabled"),
+        label: { key: "common:actions.copy" as const },
         disabled: true,
       },
-      { id: "focus", label: legacyActionPresentation("Focus"), run: noop },
+      { id: "focus", label: { key: "common:actions.copy" as const }, run: noop },
     ];
 
     expect(

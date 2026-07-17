@@ -8,25 +8,17 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   ACTION_DESCRIPTOR_ID_MAX_CHARS,
   ACTION_DESCRIPTOR_LABEL_MAX_CHARS,
-  ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS,
-  LEGACY_ACTION_PRESENTATION_MAX_CHARS,
   fireActionDescriptor,
   isRunnable,
-  legacyActionPresentation,
   normalizeActionDescriptorId,
   normalizeActionDescriptorLabel,
   normalizeActionDescriptorText,
   normalizeActionDescriptor,
-  normalizeLegacyActionPresentation,
   resolveActionPresentation,
   type ActionDescriptor,
-  type LegacyActionPresentation,
 } from "./action";
 import { chordToKeycaps } from "../keymap/chord";
-import {
-  resolveMessageResult,
-  SAFE_FALLBACK_SOURCE_MESSAGE,
-} from "../localization/fallback";
+import { resolveMessageResult } from "../localization/fallback";
 import type { MessageDescriptor } from "../localization/message";
 import { createLocalizationRuntime } from "../localization/runtime";
 import {
@@ -161,17 +153,17 @@ describe("resolver registry", () => {
 
   it("resolves a kind through its registered resolver", () => {
     registerResolver("node", (entity) => [
-      { id: `focus:${entity.id}`, label: `focus ${entity.title ?? entity.id}` },
+      { id: `focus:${entity.id}`, label: { key: "common:actions.copy" } },
     ]);
     const entity: NodeEntity = { kind: "node", id: "n1", title: "Alpha" };
     const actions = resolveActions(entity, LIVE);
     expect(actions).toHaveLength(1);
-    expect(actions[0].label).toBe("focus Alpha");
+    expect(actions[0].label).toEqual({ key: "common:actions.copy" });
   });
 
   it("uses normalized kinds for registration, lookup, resolution, and disposal", () => {
     const dispose = registerResolver(" node " as unknown, (entity: NodeEntity) => [
-      { id: `focus:${entity.id}`, label: `focus ${entity.id}` },
+      { id: `focus:${entity.id}`, label: { key: "common:actions.copy" } },
     ]);
 
     expect(hasResolver(" node ")).toBe(true);
@@ -189,7 +181,9 @@ describe("resolver registry", () => {
   });
 
   it("quietly ignores malformed runtime entities during resolution", () => {
-    registerResolver("node", () => [{ id: "focus", label: "Focus" }]);
+    registerResolver("node", () => [
+      { id: "focus", label: { key: "common:actions.copy" } },
+    ]);
 
     expect(resolveActions({ kind: "unknown", id: "n1" }, LIVE)).toEqual([]);
     expect(resolveActions({ kind: "node", id: "   " }, LIVE)).toEqual([]);
@@ -222,7 +216,9 @@ describe("resolver registry", () => {
   });
 
   it("the disposer removes the resolver", () => {
-    const dispose = registerResolver("edge", () => [{ id: "x", label: "x" }]);
+    const dispose = registerResolver("edge", () => [
+      { id: "x", label: { key: "common:actions.copy" } },
+    ]);
     expect(hasResolver("edge")).toBe(true);
     dispose();
     expect(hasResolver("edge")).toBe(false);
@@ -230,10 +226,14 @@ describe("resolver registry", () => {
   });
 
   it("re-registering a kind replaces the prior resolver", () => {
-    registerResolver("node", () => [{ id: "a", label: "first" }]);
-    registerResolver("node", () => [{ id: "b", label: "second" }]);
+    registerResolver("node", () => [
+      { id: "a", label: { key: "common:actions.copy" } },
+    ]);
+    registerResolver("node", () => [
+      { id: "b", label: { key: "common:actions.close" } },
+    ]);
     const actions = resolveActions({ kind: "node", id: "n1" }, LIVE);
-    expect(actions.map((a) => a.label)).toEqual(["second"]);
+    expect(actions.map((a) => a.label)).toEqual([{ key: "common:actions.close" }]);
   });
 
   it("normalizes resolver-produced descriptors before consumers see them", () => {
@@ -244,16 +244,27 @@ describe("resolver registry", () => {
         [
           {
             id: " focus ",
-            label: " Focus ",
+            label: { key: "common:actions.copy" },
             section: " copy ",
-            disabledReason: " no target ",
+            disabledReason: { key: "common:disabledReasons.noRelation" },
             accelerator: chordToKeycaps("F", false),
             run,
             rogue: "local payload",
           },
-          { id: "bad", label: "   ", run },
-          { id: "dispatch", label: " Dispatch ", dispatch: { type: " host:reveal " } },
-          { id: "ambiguous", label: " Ambiguous ", run, dispatch: { type: "noop" } },
+          // A raw string label is rejected outright (the strict typed contract),
+          // so this descriptor is dropped rather than coerced.
+          { id: "bad", label: "Plain string", run },
+          {
+            id: "dispatch",
+            label: { key: "common:actions.close" },
+            dispatch: { type: " host:reveal " },
+          },
+          {
+            id: "ambiguous",
+            label: { key: "common:actions.open" },
+            run,
+            dispatch: { type: "noop" },
+          },
         ] as unknown as ActionDescriptor[],
     );
 
@@ -262,20 +273,20 @@ describe("resolver registry", () => {
     expect(actions).toEqual([
       {
         id: "focus",
-        label: "Focus",
+        label: { key: "common:actions.copy" },
         section: "copy",
-        disabledReason: "no target",
+        disabledReason: { key: "common:disabledReasons.noRelation" },
         accelerator: [{ kind: "literal", value: "F" }],
         run,
       },
       {
         id: "dispatch",
-        label: "Dispatch",
+        label: { key: "common:actions.close" },
         dispatch: { type: "host:reveal" },
       },
       {
         id: "ambiguous",
-        label: "Ambiguous",
+        label: { key: "common:actions.open" },
       },
     ]);
   });
@@ -284,10 +295,20 @@ describe("resolver registry", () => {
 describe("time-travel gate (W02.P06.S26)", () => {
   it("removes disabledInTimeTravel actions in time-travel, keeps them live", () => {
     registerResolver("node", () => [
-      { id: "focus", label: "Focus" },
-      { id: "copy", label: "Copy id", section: "copy" },
-      { id: "pin", label: "Pin", section: "transform", disabledInTimeTravel: true },
-      { id: "remove", label: "Remove", section: "danger", disabledInTimeTravel: true },
+      { id: "focus", label: { key: "common:actions.copy" } },
+      { id: "copy", label: { key: "common:actions.copy" }, section: "copy" },
+      {
+        id: "pin",
+        label: { key: "common:actions.copy" },
+        section: "transform",
+        disabledInTimeTravel: true,
+      },
+      {
+        id: "remove",
+        label: { key: "common:actions.copy" },
+        section: "danger",
+        disabledInTimeTravel: true,
+      },
     ]);
     const node = { kind: "node", id: "n1" } as const;
     expect(resolveActions(node, { timeTravel: false }).map((a) => a.id)).toEqual([
@@ -306,56 +327,58 @@ describe("time-travel gate (W02.P06.S26)", () => {
 describe("isRunnable", () => {
   const base = {
     id: "i",
-    label: legacyActionPresentation("l"),
+    label: { key: "common:actions.copy" },
   } satisfies ActionDescriptor;
   it("normalizes raw action descriptor presentation and execution lanes", () => {
     const run = () => {};
 
+    // A raw string label is rejected by the strict typed contract.
+    expect(normalizeActionDescriptor({ id: "x", label: "X", run })).toBeNull();
+
     expect(
       normalizeActionDescriptor({
         id: " x ",
-        label: " X ",
+        label: { key: "common:actions.copy" },
         section: " danger ",
         confirm: true,
         disabled: true,
-        disabledReason: " wait ",
+        disabledReason: { key: "common:disabledReasons.noRelation" },
         disabledInTimeTravel: true,
         accelerator: chordToKeycaps("Mod+X", false),
         run,
       }),
     ).toEqual({
       id: "x",
-      label: "X",
+      label: { key: "common:actions.copy" },
       section: "danger",
       confirm: true,
       disabled: true,
-      disabledReason: "wait",
+      disabledReason: { key: "common:disabledReasons.noRelation" },
       disabledInTimeTravel: true,
       accelerator: [{ key: "common:keycaps.control" }, { kind: "literal", value: "X" }],
       run,
     });
 
-    expect(normalizeActionDescriptor({ id: "x", label: "   " })).toBeNull();
+    // An unknown descriptor key is rejected.
+    expect(
+      normalizeActionDescriptor({ id: "x", label: { key: "common:actions.bogus" } }),
+    ).toBeNull();
     expect(
       normalizeActionDescriptor({
         id: "x".repeat(ACTION_DESCRIPTOR_ID_MAX_CHARS + 1),
-        label: "X",
+        label: { key: "common:actions.copy" },
       }),
     ).toBeNull();
+    // A string disabledReason and an invalid accelerator are dropped; the typed
+    // label survives.
     expect(
       normalizeActionDescriptor({
         id: "x",
-        label: "x".repeat(ACTION_DESCRIPTOR_LABEL_MAX_CHARS + 1),
-      }),
-    ).toBeNull();
-    expect(
-      normalizeActionDescriptor({
-        id: "x",
-        label: "X",
-        disabledReason: "x".repeat(ACTION_DESCRIPTOR_META_TEXT_MAX_CHARS + 1),
+        label: { key: "common:actions.copy" },
+        disabledReason: "wait",
         accelerator: "not a keycap presentation",
       }),
-    ).toEqual({ id: "x", label: "X" });
+    ).toEqual({ id: "x", label: { key: "common:actions.copy" } });
     expect(
       normalizeActionDescriptorId(
         "x".repeat(ACTION_DESCRIPTOR_ID_MAX_CHARS + 1),
@@ -374,11 +397,11 @@ describe("isRunnable", () => {
     expect(
       normalizeActionDescriptor({
         id: "ambiguous",
-        label: "Ambiguous",
+        label: { key: "common:actions.copy" },
         run,
         dispatch: { type: "noop" },
       }),
-    ).toEqual({ id: "ambiguous", label: "Ambiguous" });
+    ).toEqual({ id: "ambiguous", label: { key: "common:actions.copy" } });
   });
 
   it("normalizes typed presentation and discriminated confirmations", () => {
@@ -423,47 +446,17 @@ describe("isRunnable", () => {
     ).toBeNull();
   });
 
-  it("resolves transitional action presentation through the localization runtime", () => {
+  it("resolves typed action presentation through the localization runtime", () => {
     const runtime = createLocalizationRuntime();
     const resolveDescriptor = (descriptor: MessageDescriptor) =>
       resolveMessageResult(runtime, descriptor);
 
     expect(
-      resolveActionPresentation(
-        legacyActionPresentation(" Legacy label "),
-        resolveDescriptor,
-      ),
-    ).toEqual({ message: "Legacy label", usedFallback: false });
+      resolveActionPresentation({ key: "common:actions.copy" }, resolveDescriptor),
+    ).toEqual({ message: "Copy", usedFallback: false });
     expect(
       resolveActionPresentation({ key: "common:actions.retry" }, resolveDescriptor),
     ).toEqual({ message: "Retry", usedFallback: false });
-  });
-
-  it("bounds legacy presentation and safely resolves invalid bridge data", () => {
-    expect(normalizeLegacyActionPresentation(" Legacy label ")).toBe("Legacy label");
-    expect(normalizeLegacyActionPresentation("   ")).toBeNull();
-    expect(
-      normalizeLegacyActionPresentation({ key: "common:actions.retry" }),
-    ).toBeNull();
-    expect(
-      normalizeLegacyActionPresentation(
-        "x".repeat(LEGACY_ACTION_PRESENTATION_MAX_CHARS + 1),
-      ),
-    ).toBeNull();
-    expect(
-      normalizeLegacyActionPresentation(
-        "x".repeat(LEGACY_ACTION_PRESENTATION_MAX_CHARS + 1),
-        LEGACY_ACTION_PRESENTATION_MAX_CHARS + 1,
-      ),
-    ).toBeNull();
-
-    const runtime = createLocalizationRuntime();
-    const invalidBridgePresentation = " " as LegacyActionPresentation;
-    expect(
-      resolveActionPresentation(invalidBridgePresentation, (descriptor) =>
-        resolveMessageResult(runtime, descriptor),
-      ),
-    ).toEqual({ message: SAFE_FALLBACK_SOURCE_MESSAGE, usedFallback: true });
   });
 
   it("is true for a run action", () => {
@@ -495,15 +488,21 @@ describe("isRunnable", () => {
     expect(
       fireActionDescriptor({
         id: " x ",
-        label: " X ",
+        label: { key: "common:actions.copy" },
         run,
       }),
     ).toBe(1);
-    fireActionDescriptor({ id: "disabled", label: "Disabled", disabled: true, run });
-    fireActionDescriptor({ id: "bad", label: "   ", run });
+    fireActionDescriptor({
+      id: "disabled",
+      label: { key: "common:actions.copy" },
+      disabled: true,
+      run,
+    });
+    // A raw string label is rejected, so this descriptor never fires.
+    fireActionDescriptor({ id: "bad", label: "Plain string", run });
     fireActionDescriptor({
       id: "ambiguous",
-      label: "Ambiguous",
+      label: { key: "common:actions.copy" },
       run,
       dispatch: { type: "noop" },
     });
@@ -516,7 +515,7 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
   const refreshTail = (): ActionDescriptor[] => [
     {
       id: "reload:refresh-data",
-      label: legacyActionPresentation("refresh"),
+      label: { key: "common:actions.copy" },
       section: "global",
       run: () => {},
     },
@@ -524,7 +523,7 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
 
   it("appends the tail AFTER the per-kind body, last, for a resolved kind", () => {
     registerResolver("node", () => [
-      { id: "node:focus", label: "Focus", section: "navigate", run: () => {} },
+      { id: "node:focus", label: { key: "common:actions.copy" }, section: "navigate", run: () => {} },
     ]);
     registerGlobalTailActions(refreshTail);
 
@@ -535,10 +534,10 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
 
   it("reaches EVERY resolved kind (kind-agnostic)", () => {
     registerResolver("node", () => [
-      { id: "node:focus", label: "Focus", run: () => {} },
+      { id: "node:focus", label: { key: "common:actions.copy" }, run: () => {} },
     ]);
     registerResolver("change", () => [
-      { id: "change:open", label: "Open", path: "a.ts", run: () => {} } as never,
+      { id: "change:open", label: { key: "common:actions.open" }, path: "a.ts", run: () => {} } as never,
     ]);
     registerGlobalTailActions(refreshTail);
 
@@ -559,12 +558,12 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
 
   it("inherits the ONE time-travel gate: a disabledInTimeTravel tail action is filtered", () => {
     registerResolver("node", () => [
-      { id: "node:focus", label: "Focus", run: () => {} },
+      { id: "node:focus", label: { key: "common:actions.copy" }, run: () => {} },
     ]);
     registerGlobalTailActions(() => [
       {
         id: "x:mutate",
-        label: legacyActionPresentation("Mutate"),
+        label: { key: "common:actions.copy" },
         section: "global",
         disabledInTimeTravel: true,
         dispatch: { type: "noop" },
@@ -579,7 +578,7 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
 
   it("the disposer removes the tail contributor", () => {
     registerResolver("node", () => [
-      { id: "node:focus", label: "Focus", run: () => {} },
+      { id: "node:focus", label: { key: "common:actions.copy" }, run: () => {} },
     ]);
     const dispose = registerGlobalTailActions(refreshTail);
     expect(

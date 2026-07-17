@@ -2,10 +2,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  legacyActionPresentation,
-  type ActionDescriptor,
-} from "../../platform/actions/action";
+import { type ActionDescriptor } from "../../platform/actions/action";
 import { type ChordEvent } from "../../platform/keymap/chord";
 import { type KeybindingDef, resetKeybindings } from "../../platform/keymap/registry";
 import {
@@ -34,7 +31,7 @@ const def = (
 
 const runAction = (run: () => void): ActionDescriptor => ({
   id: "x",
-  label: legacyActionPresentation("x"),
+  label: { key: "common:actions.copy" },
   run,
 });
 
@@ -147,7 +144,7 @@ describe("handleKeymapEvent", () => {
     let fireCount = 0;
     const mutating: ActionDescriptor = {
       id: "m",
-      label: legacyActionPresentation("m"),
+      label: { key: "common:actions.copy" },
       dispatch: { type: "noop" },
       disabledInTimeTravel: true,
     };
@@ -195,7 +192,7 @@ describe("handleKeymapEvent", () => {
         getDefs: () => [def({ id: "palette", defaultChord: "Mod+K" })],
         resolveAction: () => ({
           id: " palette ",
-          label: legacyActionPresentation(" Palette "),
+          label: { key: "common:actions.copy" },
           dispatch: { type: " ui:palette " },
           rogue: "local payload",
         }),
@@ -208,7 +205,7 @@ describe("handleKeymapEvent", () => {
     expect(consumed).toBe(true);
     expect(firedAction).toEqual({
       id: "palette",
-      label: "Palette",
+      label: { key: "common:actions.copy" },
       dispatch: { type: "ui:palette" },
     });
   });
@@ -238,14 +235,14 @@ describe("registerKeyAction / resolveKeyAction", () => {
   it("normalizes registered live descriptors at the key action seam", () => {
     const dispose = registerKeyAction(" palette ", () => ({
       id: " palette ",
-      label: legacyActionPresentation(" Palette "),
+      label: { key: "common:actions.copy" },
       dispatch: { type: " ui:palette " },
       rogue: "local payload",
     }));
 
     expect(resolveKeyAction("palette")).toEqual({
       id: "palette",
-      label: "Palette",
+      label: { key: "common:actions.copy" },
       dispatch: { type: "ui:palette" },
     });
 
