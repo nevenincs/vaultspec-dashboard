@@ -9,39 +9,6 @@ related:
   - "[[2026-07-17-agent-wire-gaps-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace agent-wire-gaps with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S22 and 2026-07-17-agent-wire-gaps-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Add optional run_id/turn_id fields to the changeset revision input and ledger record, stamped at tool-executor dispatch where ExecuteToolCallRequest already carries run_id and the turn joins through the run record and ## Scope
-
-- `engine/crates/vaultspec-api/src/authoring/executor.rs` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Add optional run_id/turn_id fields to the changeset revision input and ledger record, stamped at tool-executor dispatch where ExecuteToolCallRequest already carries run_id and the turn joins through the run record
 
 ## Scope
@@ -63,4 +30,14 @@ The ledger-record half of S22 is landed at commit `169ecd4aa0`: the schema field
 
 The plan step's full scope also names the tool-executor dispatch site (`engine/crates/vaultspec-api/src/authoring/executor.rs`) stamping `with_run_provenance` from `ExecuteToolCallRequest`'s `run_id` and the joined turn. That call site is NOT yet wired — `with_run_provenance` is defined and unit-tested but not called anywhere outside its own tests (verified via `grep -rn with_run_provenance engine/crates/vaultspec-api/src/`). Do not tick `P03.S22` fully closed on the plan until the dispatch-site wiring lands; report this gap to the lead rather than mark it done.
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+AMENDMENT (2026-07-17): the pending condition above is satisfied. `P03.S23` (commit
+`4063e2b150`) wired the dispatch site: `handlers3.rs::dispatch_agent_tool_command`
+reads the granted tool call's recorded `run_id` off `outcome.tool_call_record`, joins
+the run's `turn_id` via `uow.sessions().run(&run_id)`, and calls the new
+`create_agent_proposal` (which applies `with_run_provenance` inside
+`create_proposal_of_kind`, `proposal/mod.rs`) rather than the unstamped
+`create_proposal`. Re-verified via `grep -rn with_run_provenance
+engine/crates/vaultspec-api/src/authoring/` — the call now appears in
+`proposal/mod.rs` outside any test module, confirming production wiring. `S22` is
+fully closed as of this amendment; see `P03.S23`'s own record for the dispatch-site
+detail.
