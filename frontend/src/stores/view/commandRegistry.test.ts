@@ -63,7 +63,7 @@ function ctx(overrides: Partial<CommandContext> = {}): CommandContext {
 
 const cmd = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
-  label: id,
+  label: { key: "common:actions.copy" },
   family: "app" as const,
   run: () => undefined,
   ...extra,
@@ -84,7 +84,11 @@ describe("normalizeCommandDescriptor", () => {
 
   it("rejects a descriptor with no run", () => {
     expect(
-      normalizeCommandDescriptor({ id: "a", label: "a", family: "app" }),
+      normalizeCommandDescriptor({
+        id: "a",
+        label: { key: "common:actions.copy" },
+        family: "app",
+      }),
     ).toBeNull();
   });
 
@@ -92,7 +96,7 @@ describe("normalizeCommandDescriptor", () => {
     expect(
       normalizeCommandDescriptor({
         id: "a",
-        label: "a",
+        label: { key: "common:actions.copy" },
         family: "app",
         dispatch: { type: "x" },
       }),
@@ -145,11 +149,15 @@ describe("resolveCommands gating and bounds", () => {
   });
 
   it("de-duplicates by id across providers (first wins)", () => {
-    registerCommandProvider("p1", () => [cmd("dup", { label: "first" })]);
-    registerCommandProvider("p2", () => [cmd("dup", { label: "second" })]);
+    registerCommandProvider("p1", () => [
+      cmd("dup", { label: { key: "common:actions.copy" } }),
+    ]);
+    registerCommandProvider("p2", () => [
+      cmd("dup", { label: { key: "common:actions.close" } }),
+    ]);
     const resolved = resolveCommands(ctx());
     expect(resolved).toHaveLength(1);
-    expect(resolved[0]?.label).toBe("first");
+    expect(resolved[0]?.label).toEqual({ key: "common:actions.copy" });
   });
 
   it("caps a single provider's contribution", () => {

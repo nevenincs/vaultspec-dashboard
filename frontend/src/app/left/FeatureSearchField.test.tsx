@@ -38,7 +38,7 @@ afterEach(() => cleanup());
 describe("FeatureSearchField (feature autofill)", () => {
   it("shows the preloaded vocabulary on focus and applies a chosen tag", () => {
     render(createElement(FeatureSearchField));
-    const input = screen.getByLabelText("filter the vault by feature");
+    const input = screen.getByLabelText("Filter the vault by feature");
 
     // No list until focused — focusing reveals the preloaded suggestions.
     expect(screen.queryByRole("listbox")).toBeNull();
@@ -61,7 +61,7 @@ describe("FeatureSearchField (feature autofill)", () => {
       draftValue = typeof v === "string" ? v : "";
     });
     render(createElement(FeatureSearchField));
-    const input = screen.getByLabelText("filter the vault by feature");
+    const input = screen.getByLabelText("Filter the vault by feature");
     fireEvent.focus(input);
     // Typing is what narrows the list — a keystroke marks the query as edited.
     fireEvent.change(input, { target: { value: "Left Rail" } });
@@ -77,7 +77,7 @@ describe("FeatureSearchField (feature autofill)", () => {
     // never constrain the dropdown (it narrows the rail tree, not this list).
     draftValue = "dashboard-left-rail";
     render(createElement(FeatureSearchField));
-    fireEvent.focus(screen.getByLabelText("filter the vault by feature"));
+    fireEvent.focus(screen.getByLabelText("Filter the vault by feature"));
 
     expect(screen.getByText("dashboard-left-rail")).toBeTruthy();
     expect(screen.getByText("dashboard-gui")).toBeTruthy();
@@ -86,7 +86,7 @@ describe("FeatureSearchField (feature autofill)", () => {
 
   it("commits the active suggestion on Enter after ArrowDown", () => {
     render(createElement(FeatureSearchField));
-    const input = screen.getByLabelText("filter the vault by feature");
+    const input = screen.getByLabelText("Filter the vault by feature");
     fireEvent.focus(input);
     fireEvent.keyDown(input, { key: "ArrowDown" });
     fireEvent.keyDown(input, { key: "Enter" });
@@ -96,7 +96,7 @@ describe("FeatureSearchField (feature autofill)", () => {
 
   it("closes the suggestion list on Escape without clearing", () => {
     render(createElement(FeatureSearchField));
-    const input = screen.getByLabelText("filter the vault by feature");
+    const input = screen.getByLabelText("Filter the vault by feature");
     fireEvent.focus(input);
     expect(screen.getByRole("listbox")).toBeTruthy();
     fireEvent.keyDown(input, { key: "Escape" });

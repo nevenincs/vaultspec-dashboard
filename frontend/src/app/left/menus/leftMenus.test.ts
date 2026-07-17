@@ -67,7 +67,9 @@ describe("workspaceMenu", () => {
       "workspace:forget",
     );
     expect(action?.disabled).toBe(true);
-    expect(action?.disabledReason).toBe("the launch project cannot be removed");
+    expect(action?.disabledReason).toEqual({
+      key: "common:disabledReasons.launchProjectCannotBeRemoved",
+    });
     expect(action?.dispatch).toBeUndefined();
   });
 
@@ -75,7 +77,9 @@ describe("workspaceMenu", () => {
     const actions = workspaceMenu({ kind: "workspace", id: "ws1" });
     expect(ids(actions)).toEqual(["workspace:forget"]);
     expect(byId(actions, "workspace:forget")?.disabled).toBe(true);
-    expect(byId(actions, "workspace:forget")?.disabledReason).toBe("no project path");
+    expect(byId(actions, "workspace:forget")?.disabledReason).toEqual({
+      key: "common:disabledReasons.noProjectPath",
+    });
   });
 
   it("rejects non-workspace entities at resolver ingress", () => {

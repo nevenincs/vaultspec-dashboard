@@ -308,7 +308,7 @@ describe("command palette command projection", () => {
     expect(
       normalizePaletteCommand({
         id: " window:timeline ",
-        label: " Hide timeline ",
+        label: { key: "common:actions.copy" },
         family: " window ",
         confirm: true,
         disabledInTimeTravel: true,
@@ -317,16 +317,20 @@ describe("command palette command projection", () => {
       }),
     ).toEqual({
       id: "window:timeline",
-      label: "Hide timeline",
+      label: { key: "common:actions.copy" },
       family: "window",
       confirm: true,
       disabledInTimeTravel: true,
       run,
     });
+    // A raw string label is rejected by the strict typed contract.
+    expect(
+      normalizePaletteCommand({ id: "x", label: "X", family: "window", run }),
+    ).toBeNull();
     expect(
       normalizePaletteCommand({
         id: "x",
-        label: "X",
+        label: { key: "common:actions.copy" },
         family: "window",
         dispatch: { type: "ui:x" },
       }),
@@ -334,7 +338,7 @@ describe("command palette command projection", () => {
     expect(
       normalizePaletteCommand({
         id: "x",
-        label: "X",
+        label: { key: "common:actions.copy" },
         family: "unknown",
         run,
       }),
