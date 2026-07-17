@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#pw7-acceptance-codex-1784166683'
 date: '2026-07-16'
-modified: '2026-07-16'
+modified: '2026-07-17'
 related:
   - "[[2026-07-16-pw7-acceptance-codex-1784166683-research]]"
 ---

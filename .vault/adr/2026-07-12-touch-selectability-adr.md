@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#touch-selectability'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-17'
 related:
   - "[[2026-07-12-touch-selectability-audit]]"
   - "[[2026-06-15-dashboard-context-menus-adr]]"

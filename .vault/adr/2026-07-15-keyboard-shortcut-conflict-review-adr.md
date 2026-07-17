@@ -3,12 +3,10 @@ tags:
   - '#adr'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-research]]"
 ---
-
-
 
 # `keyboard-shortcut-conflict-review` adr: `one scope-aware conflict definition, a platform-reserved denylist, and three cross-platform chord fixes` | (**status:** `accepted`)
 

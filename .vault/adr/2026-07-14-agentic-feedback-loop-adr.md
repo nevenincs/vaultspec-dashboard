@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#agentic-feedback-loop'
 date: '2026-07-14'
-modified: '2026-07-14'
+modified: '2026-07-17'
 related:
   - "[[2026-07-14-agentic-feedback-loop-research]]"
   - "[[2026-07-14-agentic-document-offering-research]]"

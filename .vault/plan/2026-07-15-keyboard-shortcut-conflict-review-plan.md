@@ -3,26 +3,17 @@ tags:
   - '#plan'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 tier: L2
 related:
   - '[[2026-07-15-keyboard-shortcut-conflict-review-adr]]'
+  - '[[2026-07-15-keyboard-shortcut-conflict-review-research]]'
 ---
-
-
-
-
-
-
-
-
 # `keyboard-shortcut-conflict-review` plan
 
 ### Phase `P01` - Scope-aware conflict definition
 
 One formal equal-specificity conflict predicate in the registry, consumed by the Settings recorder and the guard alike, with the D8 amendment notes on the priors (ADR D1, D2, D8)
-
-
 
 - [x] `P01.S01` - Export the specificity helper and narrow findConflicts/conflictsForCandidate to equal-specificity pairs, stating the formal conflict definition in the module comment (D1); `frontend/src/platform/keymap/registry.ts`.
 - [x] `P01.S02` - Rewrite the conflicts guard onto the shared predicate (delete its local specificityRank) and add settings-control cases: empty presentations for the ten previously-flagged stock rows, plus a synthetic same-specificity override collision that still warns (D2); `frontend/src/stores/view/defaultKeybindingConflicts.guard.test.ts, frontend/src/stores/view/settingsControls.test.ts`.
@@ -52,17 +43,8 @@ Full gate plus the unchanged keymap and navigation suites, then mandatory code r
 
 ## Description
 
-
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 
-
 ## Verification
-

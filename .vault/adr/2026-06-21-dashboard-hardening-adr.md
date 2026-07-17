@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-hardening'
 date: '2026-06-21'
-modified: '2026-06-21'
+modified: '2026-07-17'
 related:
   - "[[2026-06-21-dashboard-hardening-audit]]"
   - "[[2026-06-15-resource-hardening-research]]"

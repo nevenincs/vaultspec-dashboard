@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S03'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Add per-entry is_registered via the engine workspace registry and the roots-level places block (home directory plus drives with labels), with unit tests
 

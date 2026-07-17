@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#on-demand-cold-start'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-17'
 related:
   - "[[2026-07-12-on-demand-cold-start-reference]]"
   - "[[2026-07-11-universal-data-loading-adr]]"

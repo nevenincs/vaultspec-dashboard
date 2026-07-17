@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S04'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Carry a typed machine reason (not_a_directory, not_a_git_workspace, already_registered, unreadable) in the add_workspace refusal envelope beside the human message, with route tests
 

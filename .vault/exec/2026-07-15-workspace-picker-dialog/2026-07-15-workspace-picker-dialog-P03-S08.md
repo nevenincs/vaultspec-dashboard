@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S08'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Add the places rail (home, drives, registered projects, recents) composed from the served places block and the existing useWorkspaces and useProjectHistory seams, collapsing to a chip row on compact, with tests
 

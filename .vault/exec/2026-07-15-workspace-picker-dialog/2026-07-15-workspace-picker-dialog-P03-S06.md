@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S06'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Extend the fs-list wire types and useFsList seam with q and hidden params, the enriched entry fields, the places block, placeholderData keepPreviousData, and a typed add_workspace refusal reason on the engine client error surface, with stores tests
 

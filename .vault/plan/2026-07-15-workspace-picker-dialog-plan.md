@@ -3,27 +3,18 @@ tags:
   - '#plan'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 tier: L2
 related:
   - '[[2026-07-14-workspace-picker-dialog-adr]]'
   - '[[2026-07-14-workspace-picker-dialog-research]]'
 ---
 
-
-
-
-
-
-
-
 # `workspace-picker-dialog` plan
 
 ### Phase `P01` - Figma design frames
 
 Close the design-system violation first (ADR D7): author the binding Figma frames for the redesigned picker dialog before any code, composed from Kit atoms and semantic tokens, node names equal to the React exports.
-
-
 
 - [x] `P01.S01` - Author the picker dialog Figma frames in the binding file covering default, selection, filter, hidden-shown, error, truncated, degraded, and first-run states at desktop and compact widths, from Kit atoms and tokens with node names equal to the React exports; `figma:SlhonORmySdoSMTQgDWw3w`.
 
@@ -65,12 +56,6 @@ the shared `left-rail:add-project` action id, and all five entry points stay
 untouched.
 
 ## Steps
-
-
-
-
-
-
 
 ## Parallelization
 

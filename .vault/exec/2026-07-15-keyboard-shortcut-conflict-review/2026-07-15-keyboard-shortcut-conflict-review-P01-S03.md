@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S03'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
 ---
-
-
-
 
 # Record the D8 amendment notes on keyboard-action-system decision 7 and audit finding KAR-008 via body-prose amendment blocks
 

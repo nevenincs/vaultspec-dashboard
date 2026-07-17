@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S10'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Run the full frontend gate (eslint, prettier, tsc, vitest) and confirm exit 0
 

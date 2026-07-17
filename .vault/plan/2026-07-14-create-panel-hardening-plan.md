@@ -3,22 +3,12 @@ tags:
   - '#plan'
   - '#create-panel-hardening'
 date: '2026-07-14'
-modified: '2026-07-14'
+modified: '2026-07-17'
 tier: L2
 related:
   - '[[2026-07-14-create-panel-hardening-audit]]'
   - '[[2026-07-14-feature-group-authoring-adr]]'
 ---
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 # `create-panel-hardening` plan
 

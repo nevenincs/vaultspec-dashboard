@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S02'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
 ---
-
-
-
 
 # Rewrite the conflicts guard onto the shared predicate (delete its local specificityRank) and add settings-control cases: empty presentations for the ten previously-flagged stock rows, plus a synthetic same-specificity override collision that still warns (D2)
 

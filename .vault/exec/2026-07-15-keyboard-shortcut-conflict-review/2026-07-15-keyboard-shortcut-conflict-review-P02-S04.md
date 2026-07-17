@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S04'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
 ---
-
-
-
 
 # Create the reserved-chords module (Mod+1..9, Mod+W/T/N/Q, macOS Cmd+H/M/Q, Mod+P
 

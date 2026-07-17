@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S09'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Rebuild the dialog: full-height browser body, unified path field (typing re-roots the browser, segment autocomplete, Enter never registers), footer confirm labeled with the selected folder name, and typed-reason error mapping deleting the message-regex mapper, with tests
 

@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#single-app-runtime'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-17'
 related:
   - '[[2026-07-12-single-app-runtime-W01-P01-S01]]'
   - '[[2026-07-12-single-app-runtime-W01-P01-S02]]'

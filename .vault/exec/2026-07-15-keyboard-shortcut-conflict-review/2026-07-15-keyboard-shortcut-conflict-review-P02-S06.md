@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S06'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
 ---
-
-
-
 
 # Re-chord the search palette Mod+P to Mod+Shift+P with a reservation comment, updating palette and localization tests (D5)
 

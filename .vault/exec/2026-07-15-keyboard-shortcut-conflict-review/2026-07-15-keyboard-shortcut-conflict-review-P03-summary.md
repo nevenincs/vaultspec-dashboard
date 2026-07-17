@@ -3,13 +3,10 @@ tags:
   - '#exec'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
 ---
-
-
-
 
 # `keyboard-shortcut-conflict-review` `P03` summary
 

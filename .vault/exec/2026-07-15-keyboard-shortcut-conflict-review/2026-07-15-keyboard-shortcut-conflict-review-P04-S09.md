@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S09'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"
 ---
-
-
-
 
 # Run the full frontend gate and the existing keymap/navigation suites unchanged, confirming the Class A/B split and canvas-shadow behavior are preserved
 

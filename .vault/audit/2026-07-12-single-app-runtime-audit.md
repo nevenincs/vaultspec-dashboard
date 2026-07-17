@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#single-app-runtime'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-17'
 related:
   - '[[2026-07-12-single-app-runtime-plan]]'
   - '[[2026-07-12-single-app-runtime-adr]]'

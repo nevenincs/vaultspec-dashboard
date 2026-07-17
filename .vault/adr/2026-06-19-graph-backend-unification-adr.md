@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#graph-backend-unification'
 date: '2026-06-19'
-modified: '2026-06-19'
+modified: '2026-07-17'
 related:
   - '[[2026-06-16-graph-force-stability-research]]'
 ---

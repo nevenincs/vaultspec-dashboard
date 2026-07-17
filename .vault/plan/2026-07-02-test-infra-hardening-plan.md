@@ -3,13 +3,13 @@ tags:
   - '#plan'
   - '#test-infra-hardening'
 date: '2026-07-02'
-modified: '2026-07-12'
+modified: '2026-07-17'
 tier: L2
 related:
   - '[[2026-07-02-test-infra-hardening-audit]]'
   - '[[2026-07-13-test-infra-hardening-adr]]'
+  - '[[2026-07-13-test-infra-hardening-research]]'
 ---
-
 # `test-infra-hardening` plan
 
 ### Phase `P01` - Timeout policy

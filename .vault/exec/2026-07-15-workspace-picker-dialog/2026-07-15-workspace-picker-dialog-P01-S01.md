@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S01'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Author the picker dialog Figma frames in the binding file covering default, selection, filter, hidden-shown, error, truncated, degraded, and first-run states at desktop and compact widths, from Kit atoms and tokens with node names equal to the React exports
 

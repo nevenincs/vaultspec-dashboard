@@ -3,10 +3,9 @@ tags:
   - '#adr'
   - '#graph-slice-delta'
 date: '2026-07-13'
-modified: '2026-07-13'
+modified: '2026-07-17'
 related:
   - '[[2026-07-12-vault-tree-delta-adr]]'
-  - '[[2026-07-11-on-demand-cold-start-adr]]'
 ---
 
 # `graph-slice-delta` adr: `generation-keyed graph-slice delta + refetch storm floor` | (**status:** `accepted`)

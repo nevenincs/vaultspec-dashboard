@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#workspace-picker-dialog'
 date: '2026-07-14'
-modified: '2026-07-14'
+modified: '2026-07-17'
 related:
   - "[[2026-07-14-workspace-picker-dialog-research]]"
   - "[[2026-07-12-single-app-runtime-adr]]"

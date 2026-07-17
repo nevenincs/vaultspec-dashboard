@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#rag-console-review'
 date: '2026-07-03'
-modified: '2026-07-03'
+modified: '2026-07-17'
 related:
   - "[[2026-07-02-rag-console-review-audit]]"
   - "[[2026-07-02-rag-console-review-plan]]"

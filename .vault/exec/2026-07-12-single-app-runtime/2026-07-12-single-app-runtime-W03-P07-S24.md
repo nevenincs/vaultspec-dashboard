@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#single-app-runtime'
 date: '2026-07-12'
-modified: '2026-07-12'
+modified: '2026-07-17'
 step_id: 'S24'
 related:
   - "[[2026-07-12-single-app-runtime-plan]]"

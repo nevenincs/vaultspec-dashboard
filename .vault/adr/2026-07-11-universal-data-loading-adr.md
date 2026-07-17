@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#universal-data-loading'
 date: '2026-07-11'
-modified: '2026-07-11'
+modified: '2026-07-17'
 related:
   - '[[2026-07-11-universal-data-loading-reference]]'
   - '[[2026-06-22-graph-filter-fetch-split-adr]]'

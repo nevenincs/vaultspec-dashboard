@@ -3,14 +3,11 @@ tags:
   - '#exec'
   - '#workspace-picker-dialog'
 date: '2026-07-15'
-modified: '2026-07-15'
+modified: '2026-07-17'
 step_id: 'S07'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"
 ---
-
-
-
 
 # Rebuild the folder browser with select-then-confirm rows, clickable breadcrumbs, level filter box, hidden toggle with de-emphasized rows, registered markers, and preserved keyboard focus across level changes, with pure-resolver tests
 

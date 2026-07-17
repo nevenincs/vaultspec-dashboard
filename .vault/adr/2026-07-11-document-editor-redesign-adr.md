@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#document-editor-redesign'
 date: '2026-07-11'
-modified: '2026-07-11'
+modified: '2026-07-17'
 related:
   - '[[2026-06-18-editor-dock-workspace-research]]'
 ---
