@@ -11,6 +11,17 @@ related:
   - '[[2026-07-16-agentic-authoring-ux-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `a2a-orchestration-edge` plan
 
 ### Phase `P01` - Run completion lifecycle
@@ -32,7 +43,7 @@ Build the whitelisted engine pass-through namespace forwarding the five a2a gate
 
 Expose the a2a run stream on the versioned gateway surface, then relay it as a bounded engine SSE channel per edge ADR D3 with uniform replay and gap semantics.
 
-- [ ] `P03.S06` - Add a versioned run stream verb under the v1 a2a gateway re-serving the bounded SSE progress frames on the public surface, with live tests, in the vaultspec-a2a repository; `src/vaultspec_a2a/api/`.
+- [x] `P03.S06` - Add a versioned run stream verb under the v1 a2a gateway re-serving the bounded SSE progress frames on the public surface, with live tests, in the vaultspec-a2a repository; `src/vaultspec_a2a/api/`.
 - [ ] `P03.S07` - Relay the a2a run stream as a new engine SSE channel feeding bounded versioned frames into the shared ring with seq and gap semantics and honest degradation to run-status polling; `engine/crates/vaultspec-api/src/routes/`.
 - [ ] `P03.S08` - Prove the relay live end to end including replay from since, gap emission on eviction and lag, and the oversized-frame drop sentinel passing through unaltered; `engine/crates/vaultspec-api/src/routes/`.
 
