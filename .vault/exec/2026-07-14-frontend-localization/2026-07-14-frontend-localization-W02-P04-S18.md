@@ -9,39 +9,6 @@ related:
   - "[[2026-07-14-frontend-localization-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace frontend-localization with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S18 and 2026-07-14-frontend-localization-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Prove the final strict action contract, normalization, execution lanes, descriptor safety, and explicit destructive copy and ## Scope
-
-- `frontend/src/platform/actions/registry.test.ts` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Prove the final strict action contract, normalization, execution lanes, descriptor safety, and explicit destructive copy
 
 ## Scope
@@ -50,10 +17,34 @@ related:
 
 ## Description
 
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
+- Deleted the `normalizeLegacyActionPresentation` bridge-test block entirely — no
+  test exercises the removed legacy path anymore.
+- Inverted the normalization/fire tests to PROVE rejection rather than acceptance:
+  a raw string label is asserted to be dropped/rejected (`null`, action not fired)
+  rather than coerced into a presentable descriptor; every normalized-label
+  assertion in the file now expects a `MessageDescriptor`, never a string.
+- Confirmed via direct read: the file contains multiple explicit "a raw string
+  label is rejected by the strict typed contract" comment-anchored assertions
+  (normalization, disabled-reason drop, and fire-path rejection), proving the
+  contract at three separate seams rather than one.
 
 ## Outcome
 
+`registry.test.ts` proves the FINAL strict action contract end to end: a raw
+string can never normalize into a presentable label/reason, execution lanes and
+descriptor safety are unchanged, and destructive confirmations still require
+explicit typed copy.
+
 ## Notes
 
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
+Landed at commit `9b23233257`, alongside `S17`. Independently reverified: `git
+diff` matches the reported change exactly, read the three "raw string label is
+rejected" assertion sites directly to confirm the inversion claim (not just
+trusting the report's framing), and reran the file live — 26/26 passed as part of
+the combined 79/79 suite run (`registry.test.ts` + `contextMenu.test.ts` +
+`keymapDispatcher.test.ts` + `actionCoverage.guard.test.ts` +
+`commandPalette.guard.test.ts` + `chromeActions.test.ts`). Fixed by opus-l10n;
+this record documents the fix, not a fresh implementation on my part. This closes
+`W02.P04.S18`, the plan's final closure gate alongside `S17` — see the corrected
+Open Items section of the 2026-07-17 reconciliation closing dossier for the full
+history of this gate's mis-description and correction.
