@@ -16,7 +16,6 @@ import {
   engineKeys,
   useActiveScope,
   useContentView,
-  workspaceRootName,
   type ContentView,
   type MarkdownHeaderView,
 } from "../server/queries";
@@ -249,12 +248,25 @@ export function useDocTabScope(nodeId: unknown): string | null {
  *  DIFFERENT worktree than the dashboard's active one shows a small plain-language
  *  workspace label so its foreign origin is legible; the full scope path is the
  *  tooltip only (labels-are-user-facing: no raw paths on screen). Null when the tab
- *  is same-scope (or scope-less) — no badge. The short label reuses the registry's
- *  `workspaceRootName` heuristic (…/aeat-worktrees/main → "aeat"), a pure string
- *  derivation, so the badge needs no extra wire read. */
+ *  is same-scope (or scope-less) — no badge. The short label is a pure derivation
+ *  from the scope path (…/aeat-worktrees/main → "aeat"), so the badge needs no extra
+ *  wire read. (It does NOT reuse `workspaceRootName`, which is label-only by design —
+ *  the picker relies on its empty return for its "no project name" branch.) */
 export interface DocTabScopeBadgeView {
   label: string;
   title: string;
+}
+
+/** Derive a short, human-legible label from a scope path: the name before a
+ *  `-worktrees` segment (`…/aeat-worktrees/main` → `aeat`), else the last path
+ *  segment, else the scope string itself. Pure — no wire read. */
+export function deriveScopeShortName(scope: string): string {
+  const segments = scope.split(/[/\\]/).filter((segment) => segment.length > 0);
+  const worktreeSegment = segments.find((segment) => segment.endsWith("-worktrees"));
+  if (worktreeSegment !== undefined) {
+    return worktreeSegment.slice(0, -"-worktrees".length);
+  }
+  return segments.at(-1) ?? scope;
 }
 
 export function deriveDocTabScopeBadge(
@@ -265,7 +277,7 @@ export function deriveDocTabScopeBadge(
   const normalizedActive = normalizeViewStoreSessionString(activeScope);
   if (normalizedTab === null || normalizedTab === normalizedActive) return null;
   return {
-    label: workspaceRootName({ label: "", path: normalizedTab }),
+    label: deriveScopeShortName(normalizedTab),
     title: normalizedTab,
   };
 }
