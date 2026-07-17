@@ -1,4 +1,10 @@
-import { useCallback, type ReactElement, type ReactNode } from "react";
+import {
+  useCallback,
+  useSyncExternalStore,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import type { i18n } from "i18next";
 import { I18nextProvider, useTranslation } from "react-i18next";
 
 import { defaultNS } from "../../locales/en";
@@ -12,6 +18,37 @@ import { localization, localizationNamespaces } from "./runtime";
 
 const LOCALIZATION_HOOK_OPTIONS = Object.freeze({ useSuspense: false });
 
+// Dev-only e2e verification lever (W06.P19.S105/S138): a bounded escape hatch
+// that swaps the bound runtime instance so a real browser render exercises
+// expanded-copy/right-to-left behavior against the PRODUCTION component tree —
+// never a separate mock tree, never faked DOM. Every normal boot (production
+// AND ordinary dev sessions) resolves to the one application-lifetime
+// `localization` singleton below; the swap surface is entirely inert unless a
+// dev-only caller invokes `setActiveLocalizationInstance` (see main.tsx's
+// `__localizationControls`, consumed only by localization-layout.spec.ts /
+// localization-errors.spec.ts under playwright.localization.config.ts).
+let activeLocalizationInstance: i18n = localization;
+const activeInstanceListeners = new Set<() => void>();
+
+function subscribeActiveInstance(listener: () => void): () => void {
+  activeInstanceListeners.add(listener);
+  return () => {
+    activeInstanceListeners.delete(listener);
+  };
+}
+
+function getActiveInstance(): i18n {
+  return activeLocalizationInstance;
+}
+
+/** Dev-only: swap the runtime instance every `LocalizationProvider` binds to. */
+export function setActiveLocalizationInstance(instance: i18n): void {
+  activeLocalizationInstance = instance;
+  for (const listener of activeInstanceListeners) {
+    listener();
+  }
+}
+
 export interface LocalizationProviderProps {
   readonly children: ReactNode;
 }
@@ -20,8 +57,13 @@ export interface LocalizationProviderProps {
 export function LocalizationProvider({
   children,
 }: LocalizationProviderProps): ReactElement {
+  const instance = useSyncExternalStore(
+    subscribeActiveInstance,
+    getActiveInstance,
+    getActiveInstance,
+  );
   return (
-    <I18nextProvider i18n={localization} defaultNS={defaultNS}>
+    <I18nextProvider i18n={instance} defaultNS={defaultNS}>
       {children}
     </I18nextProvider>
   );

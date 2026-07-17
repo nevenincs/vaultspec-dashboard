@@ -4,8 +4,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
-import { bindDocumentLanguage } from "./platform/localization/documentLanguage";
-import { LocalizationProvider } from "./platform/localization/LocalizationProvider";
+import {
+  applyDocumentLanguage,
+  bindDocumentLanguage,
+} from "./platform/localization/documentLanguage";
+import {
+  LocalizationProvider,
+  setActiveLocalizationInstance,
+} from "./platform/localization/LocalizationProvider";
+import { localization } from "./platform/localization/runtime";
 import { installGlobalTraps } from "./platform/logger/globalTraps";
 import { ringBuffer } from "./platform/logger/logger";
 import { failurePolicy } from "./platform/policy/failurePolicy";
@@ -53,6 +60,10 @@ if (import.meta.env.DEV) {
       setStreamConnected: (connected: boolean) => void;
     };
     __viewStore?: unknown;
+    __localizationControls?: {
+      loadTestLocale: (locale: "fr" | "ar") => Promise<void>;
+      resetLocale: () => void;
+    };
   };
   devGlobals.__platformRingBuffer = ringBuffer;
   devGlobals.__liveStatusControls = {
@@ -64,6 +75,31 @@ if (import.meta.env.DEV) {
   void import("./stores/view/viewStore").then((m) => {
     devGlobals.__viewStore = m.useViewStore;
   });
+  // Expanded-copy/right-to-left browser verification lever (W06.P19.S105/S138):
+  // swaps the bound runtime for the alternate-locale e2e harness (the SAME
+  // fixtures the unit suites exercise) and rebinds document lang/dir to
+  // follow it, so localization-layout.spec.ts drives real French/Arabic
+  // rendering through the production component tree. Dynamically imported so
+  // the test-only fixture module never enters the production bundle graph
+  // (dead-code-eliminated with this whole block when `import.meta.env.DEV`
+  // is statically `false`).
+  let unbindTestLocaleDocumentLanguage: (() => void) | undefined;
+  devGlobals.__localizationControls = {
+    async loadTestLocale(locale) {
+      const { createTestLocalizationRuntime } =
+        await import("./localization/testing/runtime");
+      const instance = createTestLocalizationRuntime(locale);
+      unbindTestLocaleDocumentLanguage?.();
+      unbindTestLocaleDocumentLanguage = bindDocumentLanguage(instance);
+      setActiveLocalizationInstance(instance);
+    },
+    resetLocale() {
+      unbindTestLocaleDocumentLanguage?.();
+      unbindTestLocaleDocumentLanguage = undefined;
+      setActiveLocalizationInstance(localization);
+      applyDocumentLanguage(localization);
+    },
+  };
 }
 
 createRoot(rootElement).render(

@@ -5,8 +5,15 @@ export const ltrReviewStationResources = {
   accessibility: { loadingQueue: "Chargement des approbations" },
   actions: {
     hideChanges: "Masquer les modifications",
+    requestChanges: "Demander des modifications",
     showChanges: "Afficher les modifications",
     submitForReview: "Soumettre pour révision",
+  },
+  requestChanges: {
+    body: "Renvoyez cette proposition à l’assistant avec les modifications souhaitées.",
+    commentLabel: "Modifications demandées",
+    commentRequired: "Ajoutez une note décrivant les modifications demandées.",
+    placeholder: "Décrivez les modifications à apporter…",
   },
   confirmations: {
     approve: {
@@ -134,8 +141,15 @@ export const rtlReviewStationResources = {
   accessibility: { loadingQueue: "جارٍ تحميل الموافقات" },
   actions: {
     hideChanges: "إخفاء التغييرات",
+    requestChanges: "طلب تغييرات",
     showChanges: "إظهار التغييرات",
     submitForReview: "الإرسال للمراجعة",
+  },
+  requestChanges: {
+    body: "أعد هذا المقترح إلى المساعد مع التغييرات التي تريدها.",
+    commentLabel: "التغييرات المطلوبة",
+    commentRequired: "أضف ملاحظة تصف التغييرات المطلوبة.",
+    placeholder: "صف التغييرات المطلوب إجراؤها…",
   },
   confirmations: {
     approve: {

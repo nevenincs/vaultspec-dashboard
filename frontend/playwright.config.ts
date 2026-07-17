@@ -9,9 +9,11 @@ import { DEV_PORTS } from "./dev-ports";
 
 export default defineConfig({
   testDir: "./e2e",
-  // The adverse pass runs against the Vite dev server (dev affordances), not
-  // this live-origin smoke config; it has its own playwright.adverse.config.ts.
-  testIgnore: /adverse\.spec\.ts/,
+  // The adverse pass and the two locale-swap/crash-injector localization specs
+  // run against the Vite dev server (dev affordances), not this live-origin
+  // smoke config; they have their own playwright.adverse.config.ts /
+  // playwright.localization.config.ts.
+  testIgnore: /adverse\.spec\.ts|localization-(layout|errors)\.spec\.ts/,
   timeout: 30_000,
   use: {
     baseURL:
