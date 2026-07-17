@@ -90,7 +90,8 @@ division of labor (coder owns source, reconciliation owns vault bookkeeping).
 
 Step counts below are TICKED / TOTAL for that wave as of this update; TOTAL excludes
 retired steps (`S40`, `S75`, `S180`, `S181`, `S219`, `S236`, `S238` — see Retirements
-below). Plan total: 209/244 (85.7%). Every step outside Wave W06 is now ticked.
+below). Plan total: 216/244 (88.5%). Every step outside Wave W06 is ticked; W06.P18
+(the enforcement suite) is now 8/13.
 
 - **W01** (localization substrate and source-locale policy) — 23/23. Pre-existing:
   implemented and reviewed before the reconciliation pass began; the exhaustive
@@ -148,9 +149,16 @@ below). Plan total: 209/244 (85.7%). Every step outside Wave W06 is now ticked.
   `P14` (authoring editor/review) 10/10, `P15` (viewer/document presentation) 10/10,
   `P16` (settings/onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points)
   12/12.
-- **W06** (final enforcement and cleanup) — 1/36. `P18` 1/13 (`S251` pre-dates
-  reconciliation), `P19` 0/14, `P20` 0/9. Entirely the coding lane's in-progress build,
-  untouched by reconciliation by design — see Open Items.
+- **W06** (final enforcement and cleanup) — 8/36. `P18` 8/13: `S251` pre-dates
+  reconciliation; `S98` (allowlist mechanism removed outright — structural
+  zero-literals, stronger than the step's own "empty allowlist" text), `S100`
+  (locale-resource + production-source punctuation rejection), `S130`/`S135`/`S136`
+  (action-verb/prohibited-vocabulary/raw-interpolation-safety enforcement over the
+  full catalog), `S131` (exhaustive outcome-condition mapping), and `S137`
+  (verify-and-record: the three finding codes it asks for pre-existed from `S14`,
+  confirmed live by the scanner's own fixture-union test) all independently
+  verified and ticked this update. `P19` 0/14, `P20` 0/9 remain the coding lane's
+  in-progress build — see Open Items.
 
 ## Defect ledger
 
@@ -263,11 +271,26 @@ than relying on a future reconciliation pass to catch them by hand:
    run` invocation to the gate recipe (or a dedicated CI step) so a red test can never
    again coexist with a reported-green gate.
 
+**The vitest-gate recommendation now carries three live evidence instances**, each
+an independent proof a red test can hide behind the reported-green "full gate":
+(1) the original 9-file `S17`/`S18` strict-contract fallout (5 files the
+consolidated review named plus 4 more found by `opus-l10n`'s broader sweep,
+`90f8a3d5d5` + `b264490da0`); (2) the scanner-test discovery itself — `S98`'s
+allowlist-removal work and `S137`'s verify-and-record pass both depended on
+`scan-localization.test.ts` staying green, which it did, but the discovery
+process that surfaced the fallout files above only ran because someone manually
+invoked `vitest`, not because the gate did; (3) the reviewer's own 3-file sweep
+(`ContextMenuHost.render.test.tsx`, `.interactive.test.tsx`, `seamTransit.test.tsx`
+— a subset of the 4-file broader sweep in instance 1, re-surfaced independently by
+the reviewer's own "run everything" pass before `opus-l10n`'s sweep landed).
 Recommend the review decide, per class, whether W06.P18's enforcement suite should
 encode a standing gate (e.g. a lint rule banning a bare string default on any prop
 whose name matches `label`/`title`/`name` in an accessible-name position, and the
 project-wide `vitest run` gate above) or whether a narrower rule promotion
-(`vaultspec-core vault rule promote`) suffices.
+(`vaultspec-core vault rule promote`) suffices. `W06.P18`'s enforcement steps
+(`S98`/`S100`/`S130`/`S131`/`S135`/`S136`/`S137`) close the CATALOG/SCANNER side of
+this campaign's invariants; the standing gate recommendation itself remains a
+process decision for the review, not something any of those steps encodes.
 
 **Explicitly NOT a codification candidate, per the reviewer:** the non-`src/`-shape
 dev-only harness pages (`filters-visual`, `graph-visual`, `status-visual`,
@@ -392,16 +415,23 @@ reconciliation pass's own scope:
   per-tab-scope-binding follow-up, not part of this plan.
 - **Standing codification recommendation** — defect class 4 (stale render tests
   surviving behind a lint gate that never runs `vitest`) becomes a standing
-  `vitest` step in `just dev lint frontend`; decided in `W06.P18`, not actioned by
-  this dossier.
+  `vitest` step in `just dev lint frontend`. The recommendation now carries three
+  independent live evidence instances (see Codification candidates); `W06.P18`'s
+  catalog/scanner enforcement steps (`S98`/`S100`/`S130`/`S131`/`S135`/`S136`/`S137`)
+  are verified and ticked as of this update, but the standing-gate DECISION itself
+  (whether to add a project-wide `vitest run` to the lint recipe) remains open —
+  not actioned by this dossier, still pending the review/coding lane's call.
 
 ## Status
 
-**FINAL pending Wave W06.** Every step outside Wave W06 is ticked (209/244,
-85.7%). The consolidated wave review closed clean: W03 PASS, W04 PASS, W05 PASS,
+**FINAL pending Wave W06.** Every step outside Wave W06 is ticked (216/244,
+88.5%). The consolidated wave review closed clean: W03 PASS, W04 PASS, W05 PASS,
 retirements PASS, rescopes PASS, divergences PASS, the S183 amendment PASS, all
 fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`, `556f8967d9`,
-`90f8a3d5d5`), and scanner + catalog integrity PASS. `W02.P04.S17`/`S18` are
-CLOSED. After this update, the localization plan's remaining surface is Wave W06
-alone (`P18` enforcement tests, `P19` e2e specs, `P20`), in progress on the coding
+`90f8a3d5d5`, `b264490da0`), and scanner + catalog integrity PASS. `W02.P04.S17`/`S18`
+are CLOSED, including the sweep-proven closure at `b264490da0`. `W06.P18`'s
+enforcement suite is now 8/13 (`S98`, `S100`, `S130`, `S131`, `S135`, `S136`,
+`S137` verified and ticked this update, alongside the pre-existing `S251`).
+Remaining: `P18.S99`/`S101`/`S132`/`S133`/`S134` (five steps), `P19` (e2e specs,
+14 steps), `P20` (9 steps) — genuine remaining code, in progress on the coding
 lane and out of scope for this reconciliation pass by design.
