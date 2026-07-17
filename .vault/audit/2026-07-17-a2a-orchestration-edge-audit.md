@@ -294,3 +294,48 @@ Together with the engine review (PASS/PASS), the a2a-side conformance review
 scope of P05.S13 is complete. Abandoned-run reaping for client-created runs
 remains the agent-wire-gaps P04a janitor's duty (claimed by the parallel lead),
 outside this plan's scope by the committed ownership annotations.
+
+### review | high | wire-gaps P05.S48 — frontend cutover review, two rounds (appended 2026-07-17, session c4903de7)
+
+**Round 1: PASS with one HIGH.** `resume_interrupt` had no authorization floor —
+any standing registered actor could resolve ANY run's pending interrupt, whether
+approving a stranger's pending tool-permission grant or injecting a steering
+prompt into a run they neither owned nor had a delegation relationship to. The
+route's write-side counterpart, `complete_run`, already enforced a
+run-owner-or-delegator floor; `resume_interrupt` acted on the same run-scoped
+authority (granting permission, steering an agent mid-run) without the matching
+check.
+
+**Test-integrity finding, carried for the closing audit.** The bug was hidden
+behind a test that had normalized it: `Composer.render.test.tsx`'s original S41
+steer test carried a header comment asserting "resume is a capability-by-id, not
+owner-fenced" as a documented DESIGN choice, when it was in fact the undetected
+gap. The test never modeled two DIFFERENT principals where one lacked ownership —
+it exercised the SAME ambient principal throughout, so the missing floor could
+never surface as a failure. The lesson: a test that only ever drives the
+happy-path identity can bake in and normalize the exact defect a later review
+catches: model the ADVERSARIAL principal, not just the authorized one, whenever a
+route claims an ownership or delegation floor.
+
+**Fix, verified PASS-FINAL (`ff3863dbec`).** Added the run-owner-or-delegator
+floor inside the SAME unit-of-work as the interrupt resolve — atomic with the
+write it protects, matching `complete_run`'s existing pattern. Proven two ways: a
+new engine test (`interrupt_resume_refuses_a_standing_stranger`) shows the
+stranger fence firing as a 403 naming "owner" in the refusal AND the interrupt
+staying `pending` on the served list afterward (not merely an error code — the
+state is provably untouched); two pre-existing tests
+(`interrupt_resume_route_resolves_by_id_and_replays`,
+`run_interrupt_listing_recovers_pending_and_serves_typed_decisions`) were
+re-seeded with real owned runs so the legitimate owner path is honestly exercised,
+not accidentally bypassed via a bare literal run id. The frontend steer test was
+rewritten to model product ownership correctly: an ambient human owns the session
+and run, a separate agent principal parks the interrupt, and the SAME owning human
+steers — which the fixed route now correctly authorizes. A stale LOW in
+`ProposalCard.live.test.tsx`'s header comment (still describing the pre-`S42`
+actor-identity correlation heuristic) was also corrected to describe the actual
+exact-`run_id`-bind behavior. Independent re-check: 831/831 engine lib tests,
+`cargo fmt --check` clean, `cargo clippy --all-targets` zero warnings, and the
+frontend Composer/ProposalCard suites green — the full gate is clean at this
+commit.
+
+**Round 2: PASS-FINAL.** Plan tick at `044382d7d3`.
