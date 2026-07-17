@@ -10,12 +10,27 @@ related:
 
 # `frontend-localization` audit: `Reconciliation closing dossier`
 
-**STATUS: DRAFT — pending the consolidated wave-review verdict and Wave W06 completion.**
-This dossier pre-assembles the record of the reconciliation pass so the review verifies
-against a compiled ledger instead of reconstructing history from commits and chat. It is
-not itself a verdict. Sections below distinguish what is independently verified from
-what is reported-but-not-yet-verified, and every open item is named so the review knows
-exactly what remains.
+**STATUS: DRAFT — pending re-verification of the combined fix set below and Wave W06
+completion.** This dossier pre-assembles the record of the reconciliation pass so the
+review verifies against a compiled ledger instead of reconstructing history from
+commits and chat. It is not itself a verdict. Sections below distinguish what is
+independently verified from what is reported-but-not-yet-verified, and every open item
+is named so the review knows exactly what remains.
+
+## Wave verdicts (consolidated review)
+
+| Scope | Verdict |
+| --- | --- |
+| W03 (core application surfaces) | **WITHHELD** — three red test files found (see Ledger by wave and Defect ledger) |
+| W04 (status, search, temporal surfaces) | **WITHHELD** — see W03 row; one of the three red files (`contextMenu.test.ts`) spans both waves' scope |
+| W05 (authoring, viewer, settings, auxiliary) | **PASS** |
+| Retirements and rescopes (`S40`/`S75`/`S180`/`S181`/`S219`/`S236`/`S238` retired; `S59`/`S84`/`S192` rescoped) | **PASS** |
+| S183 amendment (edgeMenu CMCS-001 follow-up) | **PASS** |
+
+Re-verification of W03/W04 is pending the coding lane's combined fix set for the three
+red files named below. This dossier's per-wave "fully closed" language further down
+predates this verdict and is corrected in place rather than deleted, so the record
+shows what reconciliation believed at each point in time.
 
 ## Scope
 
@@ -77,14 +92,25 @@ below). Plan total: 207/244 (84.8%).
 - **W02** (shared action and presentation contracts) — 47/49. `P04` (action descriptor
   convergence) 13/15, `P05` (keymap/command/palette) 27/27, `P06` (shared presentation
   vocabularies) 7/7. Open: `P04.S17`/`S18`, the action-contract closure gates — see
-  Open Items, not resolvable by reconciliation. This is now the ONLY open item outside
-  W06.
-- **W03** (core application surfaces) — 48/48, fully closed. `P07` (global chrome/kit/
-  shell) 15/15, `P08` (left rail projects/browsing) 18/18, `P09` (stage graph/islands)
-  15/15.
-- **W04** (status, search, and temporal surfaces) — 45/45, fully closed. `P10` (right
-  rail status/changes) 13/13, `P11` (search/palette) 9/9, `P12` (timeline/temporal)
-  7/7, `P13` (store-produced messages) 16/16.
+  Open Items, not resolvable by reconciliation; its real remaining blocker is
+  consumer-fixture fallout in `stores/view/commandRegistry.test.ts` and
+  `commandPaletteCommands.test.ts`, not the legacy bridge (already deleted — see the
+  correction in Open Items).
+- **W03** (core application surfaces) — 48/48 steps ticked, but **WITHHELD** by the
+  consolidated review: `P07` (global chrome/kit/shell) 15/15, `P08` (left rail
+  projects/browsing) 18/18, `P09` (stage graph/islands) 15/15. Every named STEP's own
+  scope is genuinely satisfied; the withhold is on two red test files this
+  reconciliation pass did not catch because neither is named in ANY plan step's scope
+  — `FeatureSearchField.test.tsx` (5/5 red, orphaned; see Defect Ledger) and
+  `left/menus/leftMenus.test.ts` (2/34 red, a cross-step gap where `S227`'s later work
+  invalidated tests `S228`'s tick had already vouched for; see Honest Findings).
+- **W04** (status, search, and temporal surfaces) — 45/45 steps ticked, but
+  **WITHHELD** by the consolidated review: `P10` (right rail status/changes) 13/13,
+  `P11` (search/palette) 9/9, `P12` (timeline/temporal) 7/7, `P13` (store-produced
+  messages) 16/16. The withhold is on `stores/view/contextMenu.test.ts`, named in
+  `S192`'s rescoped scope (`W04.P13`) — the review reported "2 red to verify" here;
+  reconciliation's own rerun at this update found it fully green (22/22), a
+  discrepancy flagged rather than resolved unilaterally (see Open Items).
 - **W05** (authoring, viewer, settings, auxiliary surfaces) — 43/43, fully closed.
   `P14` (authoring editor/review) 10/10, `P15` (viewer/document presentation) 10/10,
   `P16` (settings/onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points)
@@ -116,6 +142,10 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S216` | `stores/view/editor.ts` carried a hardcoded `STATUS_LABEL` map (`"Saved"`, `"Unsaved changes"`, `"Saving…"`, `"Save failed"`, `"Conflict — the file changed on disk"`) and `advisoriesLabel: "Conformance advisories"`; also collapsed a raw `fixableLabel`/`fixableSuffix` string pair into a `fixable: boolean` resolved at the render boundary | Fixed, commit `53426c75f8`; a latent em-dash in the conflict status was also caught and fixed during this pass (message-policy punctuation rule) |
 | `S234` (blocked `S60`) | `stores/server/queries/gitchanges.ts` carried a hardcoded `GIT_CHANGE_BUCKET_LABEL` map (`"Staged"`, `"Modified"`, `"Deleted"`, etc.); `S60`'s `ChangesOverview.tsx` rendered these labels directly | Fixed, commit `53426c75f8`; both steps closed together |
 | edgeMenu `edge:copy-id`/`edge:copy-full` (CMCS-001 follow-up, no new step) | `right/menus/edgeMenu.ts` copied the raw internal edge id (`edge:copy-id`) and a raw JSON dump of the edge's fields (`edge:copy-full`) to the clipboard, same class as the already-fixed `S177`/`S179` — surfaced by the coder, out of `S183`'s original scope (that step's scanner pass predated the copy-safety audit) | Fixed, commit `556f8967d9`, recorded as an amendment to `S183`'s exec record (per the team lead's ruling, not a new tick). `edge:copy-id`/`edge:copy-full` removed outright; `edge:copy-destination` changed to copy the destination document name via the existing `docStemFromNodeId` seam, reusing the existing `common:actions.copyDocumentName` key (no catalog change). |
+| `FeatureSearchField.test.tsx` (ORPHANED — no owning step) | `app/left/FeatureSearchField.test.tsx` asserts lowercase `getByLabelText`/similar accessible-name text against the sentence-case catalog output — the same stale-casing defect class as `S174`/`S89`/`S198`, but `FeatureSearchField.test.tsx` itself is named in NO plan step, so no reconciliation pass ever verified or ticked it. All 5 of the file's tests are red. This is a plan-coverage gap, not a step regression — see Honest Findings. | **Open** — awaiting the coding lane's combined fix |
+| `leftMenus.test.ts` cross-step gap (`workspaceMenu` describe block) | `app/left/menus/leftMenus.test.ts` has 2 of 34 tests red: both assert a raw-string `disabledReason` (`"the launch project cannot be removed"`, `"no project path"`) where `workspaceMenu.ts` (`S227`, ticked) now returns typed key descriptors. `leftMenus.test.ts` itself is named in `S228`'s scope (already ticked, verified passing at the time), but `S227`'s later localization of `workspaceMenu.ts` broke these two assertions after `S228` closed — a cross-step invalidation, not a defect in either step's own scoped work at the time it was ticked. See Honest Findings. | **Open** — awaiting the coding lane's combined fix |
+| `stores/view/commandRegistry.test.ts` (S17/S18 consumer fixture, was conflated with `platform/actions/registry.test.ts` in an earlier draft of this dossier — see correction in Open Items) | 8 of 14 tests red: raw-string `cmd()` test fixtures normalize to `null` now that the legacy `ActionPresentation` string bridge is deleted from `action.ts` — the fixtures need to construct real `MessageDescriptor` labels. | **Open** — real code, the actual remaining `S17`/`S18` blocker |
+| `stores/view/commandPaletteCommands.test.ts` | 1 of 41 tests red (`normalizes palette command family and shared action descriptor fields`): same raw-string-fixture-vs-deleted-bridge cause as `commandRegistry.test.ts`. | **Open** — awaiting the coding lane's combined fix |
 
 ## Retirements and rescopes
 
@@ -183,18 +213,38 @@ than relying on a future reconciliation pass to catch them by hand:
    (`getByText` across a decorative-glyph split), `S174`/`S89`/`S198` (lowercase
    `getByLabelText`/`getByRole({ name })` lookups against the sentence-case label-
    casing policy), `S185`/`S186` (raw-string assertions against a shape that is now a
-   typed key descriptor). None of these represent a broken component — every
-   component under test was independently confirmed correct — but the bulk migration
-   commits changed the DOM/wire shape those tests assert against without touching the
-   tests themselves. This class is architecturally distinct from 1–3 (it is a test-
-   suite hygiene gap, not a scanner blind spot) but shares the same root cause: the
-   bulk commits were not run through the tests they should have broken before
-   landing.
+   typed key descriptor), and — per the reviewer's upgrade of this class — the newly
+   found `FeatureSearchField.test.tsx`, `leftMenus.test.ts`,
+   `stores/view/commandRegistry.test.ts`, and `commandPaletteCommands.test.ts`
+   failures. None of these represent a broken component — every component under test
+   was independently confirmed correct — but the bulk migration commits (and, for the
+   `S17`/`S18` bridge deletion, the in-flight cutover) changed the DOM/wire shape
+   those tests assert against without touching the tests themselves. **The
+   reviewer's root-cause upgrade for this class:** it is not merely a hygiene gap
+   inside individual commits — the project's `just dev lint frontend` / "full gate"
+   recipe never RUNS the test suite at all (it lints, formats, type-checks, and scans,
+   but does not `vitest run`), so a red test can sit behind a green "full gate" report
+   indefinitely, surviving exactly the check this campaign's own methodology treats as
+   authoritative. This is a standing-gate gap, not a per-commit oversight, and is
+   recommended as the highest-priority W06.P18 candidate: add a project-wide `vitest
+   run` invocation to the gate recipe (or a dedicated CI step) so a red test can never
+   again coexist with a reported-green gate.
 
 Recommend the review decide, per class, whether W06.P18's enforcement suite should
 encode a standing gate (e.g. a lint rule banning a bare string default on any prop
-whose name matches `label`/`title`/`name` in an accessible-name position) or whether a
-narrower rule promotion (`vaultspec-core vault rule promote`) suffices.
+whose name matches `label`/`title`/`name` in an accessible-name position, and the
+project-wide `vitest run` gate above) or whether a narrower rule promotion
+(`vaultspec-core vault rule promote`) suffices.
+
+**Explicitly NOT a codification candidate, per the reviewer:** the non-`src/`-shape
+dev-only harness pages (`filters-visual`, `graph-visual`, `status-visual`,
+`viewer-visual`, `three-lab`/`three.html`, and the prototype shell that no longer
+exists) are LEGITIMATELY out of scope for any future "fix" — `vite.config.ts`
+restricts the production Rollup input to `index.html` only (confirmed under
+`W05.P17.S94`–`S214`), so none of these pages ever ship. A future contributor
+tightening scanner coverage should not spend effort localizing or gating them; the
+correct action if one is ever found non-compliant is to confirm it stays excluded
+from the production build, not to localize its content.
 
 ## Honest findings
 
@@ -232,32 +282,64 @@ narrower rule promotion (`vaultspec-core vault rule promote`) suffices.
   review should decide whether this satisfies the step's letter or whether the
   helpers should have been kept-and-localized instead of removed; reverting to that
   alternative is a one-commit change if the review prefers it.
+- **A tick is only as durable as the last run of its tests — the `S227`/`S228`
+  cross-step invalidation.** `W03.P08.S228` ticked `leftMenus.test.ts` as fully
+  passing (its own scope explicitly names the file); at the time it closed, that was
+  true. `W03.P08.S227` (a distinct step, localizing `workspaceMenu.ts`'s own
+  disabled-reasons to typed key descriptors) landed its own work AFTER `S228` closed,
+  and two of `leftMenus.test.ts`'s `workspaceMenu` assertions — which had been
+  correct against `S227`'s pre-fix output — went stale the moment `S227`'s fix
+  landed. Neither step's own reconciliation verification was wrong at the time it
+  ran; the gap is structural: one test file can be named in multiple steps' scopes
+  (or, as here, exercise a module owned by a step that doesn't name the file at all),
+  and a later step's landing can silently invalidate an earlier step's already-ticked
+  test evidence with no mechanism to re-flag it. This reconciliation campaign's
+  methodology (verify once, tick, move on) cannot catch this class by construction —
+  it would require either a full-suite rerun before every wave close, or an explicit
+  cross-reference from every step to every OTHER step touching the same file. Worth a
+  process recommendation for future multi-step campaigns, not just a one-off fix.
 
 ## Open at draft time
 
-- **`W02.P04.S17`/`S18`** — the action-contract closure gates. NOT resolvable by
-  reconciliation: `frontend/src/platform/actions/action.ts` still exports the full
-  legacy compatibility bridge (`LegacyActionPresentation`, `legacyActionPresentation()`,
+- **`W02.P04.S17`/`S18`** — the action-contract closure gates. **CORRECTION to an
+  earlier draft of this section:** the paragraph below previously described the
+  legacy bridge (`LegacyActionPresentation`, `legacyActionPresentation()`,
   `normalizeLegacyActionPresentation()`, `resolveActionPresentation()`'s legacy
-  branch), and the `ActionDescriptor.label` contract type still admits that legacy
-  union rather than requiring `MessageDescriptor` alone. No production producer calls
-  the legacy helper anymore (confirmed by grep), but `registry.test.ts` (`S18`'s own
-  scope) still exercises the bridge as first-class contract behavior across 10+ call
-  sites. Closing this requires deleting the bridge type/functions and rewriting three
-  test files to construct fixtures from real `MessageDescriptor` objects — a genuine
-  code change, flagged to the team lead as needing the coding lane rather than
-  bookkeeping.
+  branch) as still present in `frontend/src/platform/actions/action.ts` — that is now
+  STALE. The coding lane's in-flight cutover has already deleted it from
+  `action.ts`: `grep -rn "legacyActionPresentation\|LegacyActionPresentation"
+  frontend/src/platform/actions/action.ts` returns zero matches, and
+  `frontend/src/platform/actions/registry.test.ts` (`S18`'s own named scope) runs
+  fully green in-tree, 26/26, with no legacy-bridge fixtures left in it. The earlier
+  draft also conflated this file with a DIFFERENT, near-identically-named file,
+  `frontend/src/stores/view/commandRegistry.test.ts` — the two are distinct modules
+  in distinct directories.
+
+  **The real remaining blocker is consumer-fixture fallout, not the bridge itself:**
+  deleting the string-typed `ActionPresentation` union broke test fixtures elsewhere
+  that still construct a raw-string `cmd()`/command descriptor and expect it to
+  normalize as before. Independently reran and confirmed:
+  `stores/view/commandRegistry.test.ts` — 8 of 14 red (raw-string `cmd()` fixtures now
+  normalize to `null`); `stores/view/commandPaletteCommands.test.ts` — 1 of 41 red
+  (same cause, one fixture); `stores/view/contextMenu.test.ts` — reconciliation's own
+  rerun found this file fully GREEN (22/22) at this update, contradicting the
+  reviewer's "2 red to verify" note for it — flagged as a discrepancy rather than
+  silently accepted or silently dismissed; either the review's snapshot predates a
+  fix that already landed, or there is a flake/environment difference worth the
+  coding lane confirming. Closing `S17`/`S18` requires updating these fixture files
+  to construct real `MessageDescriptor` labels — real code, correctly still flagged
+  as needing the coding lane rather than bookkeeping, but the specific blocking files
+  are now named precisely rather than described by the (already-deleted) bridge.
 - **`W06` (36 steps, `P18`/`P19`/`P20`)** — the final enforcement and cleanup wave, in
   progress on the coding lane, untouched by reconciliation by design per the original
-  task brief. The coding lane has now moved on to `S17`/`S18` (the legacy
-  action-presentation bridge deletion) as its next real-code target.
+  task brief. The coding lane is on `S17`/`S18` (the consumer-fixture fallout above)
+  as its next real-code target.
 
-**Status as of this update: W03, W04, and W05 are ALL fully closed** (48/48, 45/45,
-43/43 respectively) — every defect and rescope batch #2 surfaced, including the
-edgeMenu copy-safety follow-up (recorded as an `S183` amendment, not a new tick), is
-now fixed and independently reverified. **The only work remaining outside W06 is
-`W02.P04.S17`/`S18`**, the action-contract closure gates, which need real code
-(deleting the legacy bridge type/functions and rewriting three test files) rather than
-bookkeeping — the coding lane is starting that now. This dossier is ready for the
-consolidated wave review the team lead will fire once `S17`/`S18` land, and will be
-updated in place as W06 progresses.
+**Status as of this update: the consolidated wave review returned WITHHELD for W03
+and W04** (three red test files found: `FeatureSearchField.test.tsx`,
+`leftMenus.test.ts`, and — pending resolution of the discrepancy above —
+`contextMenu.test.ts`) **and PASS for W05, the retirements/rescopes, and the S183
+amendment.** Re-verification of W03/W04 is pending the coding lane's combined fix
+set for those three files. `W02.P04.S17`/`S18`'s remaining blocker is the four
+consumer-fixture files named above, not the (already-deleted) legacy bridge. This
+dossier will be updated in place as the combined fix set lands and W06 progresses.
