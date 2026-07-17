@@ -70,7 +70,10 @@ describe("structured feedback batch → turn (edge-activation engine)", () => {
         session_id: sessionId,
         source_document: `node:doc-${run}`,
         source_revision: `blob-${run}`,
-        items: [item(`c1-${run}`, "expand the scope"), item(`c2-${run}`, "cite the ADR")],
+        items: [
+          item(`c1-${run}`, "expand the scope"),
+          item(`c2-${run}`, "cite the ADR"),
+        ],
       },
       { actorToken: token },
     );
@@ -95,7 +98,10 @@ describe("structured feedback batch → turn (edge-activation engine)", () => {
         session_id: sessionId,
         source_document: `node:doc-${run}`,
         source_revision: `blob-${run}`,
-        items: [item(`c1-${run}`, "expand the scope"), item(`c2-${run}`, "cite the ADR")],
+        items: [
+          item(`c1-${run}`, "expand the scope"),
+          item(`c2-${run}`, "cite the ADR"),
+        ],
       },
       { actorToken: token },
     );

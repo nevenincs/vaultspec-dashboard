@@ -373,21 +373,6 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     )) as Record<string, unknown>;
     expect(executed.disposition).toBe("awaiting_permission");
 
-    // DIAGNOSTIC: prove the wire surfaces the active run + pending interrupt.
-    const probe = await liveAgent.getSession(sessionId);
-    // eslint-disable-next-line no-console
-    console.log(
-      "STEER-PROBE active_run:",
-      probe.active_run?.run_id,
-      probe.active_run?.status,
-    );
-    const probeList = await liveAgent.listRunInterrupts(runId!);
-    // eslint-disable-next-line no-console
-    console.log(
-      "STEER-PROBE interrupts:",
-      JSON.stringify(probeList.items.map((i) => [i.interrupt_id, i.resume_state])),
-    );
-
     useAgentPanel.setState({ open: true, currentSessionId: sessionId });
     renderComposer();
 

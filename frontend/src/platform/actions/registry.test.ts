@@ -523,7 +523,12 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
 
   it("appends the tail AFTER the per-kind body, last, for a resolved kind", () => {
     registerResolver("node", () => [
-      { id: "node:focus", label: { key: "common:actions.copy" }, section: "navigate", run: () => {} },
+      {
+        id: "node:focus",
+        label: { key: "common:actions.copy" },
+        section: "navigate",
+        run: () => {},
+      },
     ]);
     registerGlobalTailActions(refreshTail);
 
@@ -537,7 +542,12 @@ describe("global-tail seam (global-context-actions D2/D3)", () => {
       { id: "node:focus", label: { key: "common:actions.copy" }, run: () => {} },
     ]);
     registerResolver("change", () => [
-      { id: "change:open", label: { key: "common:actions.open" }, path: "a.ts", run: () => {} } as never,
+      {
+        id: "change:open",
+        label: { key: "common:actions.open" },
+        path: "a.ts",
+        run: () => {},
+      } as never,
     ]);
     registerGlobalTailActions(refreshTail);
 

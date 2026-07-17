@@ -342,7 +342,11 @@ describe("context-menu slice", () => {
 
   it("derives the resolved host view from the open slice and time-travel gate", () => {
     registerResolver("node", () => [
-      { id: "focus", label: { key: "common:actions.copy" as const }, run: () => undefined },
+      {
+        id: "focus",
+        label: { key: "common:actions.copy" as const },
+        run: () => undefined,
+      },
       {
         id: "disabled",
         label: { key: "common:actions.copy" as const },
