@@ -410,6 +410,7 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::DirectWrite
         | CommandKind::MapLangGraphRuntime
         | CommandKind::RequestToolPermission
+        | CommandKind::CreateFeedbackBatch
         | CommandKind::CreateComment
         | CommandKind::UpdateComment
         | CommandKind::DeleteComment

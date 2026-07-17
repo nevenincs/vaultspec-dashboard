@@ -494,6 +494,11 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/runs/{run_id}/complete", post(complete_run))
         .route("/v1/runs/{run_id}/resume", post(resume_run))
         .route("/v1/runs/{run_id}/interrupts", get(get_run_interrupts))
+        .route("/v1/feedback-batches", post(create_feedback_batch_route))
+        .route(
+            "/v1/feedback-batches/{feedback_batch_id}",
+            get(get_feedback_batch),
+        )
         .route(
             "/v1/runs/{run_id}/agent-tools/execute",
             post(execute_agent_tool_call),

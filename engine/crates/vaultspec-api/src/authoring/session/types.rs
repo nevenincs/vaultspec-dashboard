@@ -158,6 +158,11 @@ pub struct PromptTurnRecord {
     /// records — every one of which started its own run — deserialize unchanged.
     #[serde(default)]
     pub queue_state: TurnQueueState,
+    /// The verified feedback batch this turn consumed (D7) — the audit reference
+    /// tying a revision to the exact frozen comment set. Absent on ordinary turns
+    /// and on every pre-migration record.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feedback_batch_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

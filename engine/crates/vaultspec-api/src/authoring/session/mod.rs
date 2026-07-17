@@ -150,6 +150,7 @@ impl SessionRepository<'_, '_> {
             langgraph: langgraph.clone(),
             created_at_ms: now_ms,
             queue_state,
+            feedback_batch_id: input.feedback_batch_id,
         };
         self.insert_turn(&turn)?;
         self.register_turn_retention(&turn)?;

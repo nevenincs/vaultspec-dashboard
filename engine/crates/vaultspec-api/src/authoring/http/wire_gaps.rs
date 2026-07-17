@@ -10,9 +10,12 @@
 use std::sync::Arc;
 
 use axum::extract::{Path, State};
+use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::json;
 
+use super::super::api::CreateFeedbackBatchRequest;
+use super::super::feedback::CreateFeedbackBatchInput;
 use super::super::interrupts::INTERRUPT_LIST_CAP;
 use super::super::model::{CommandKind, RunId};
 use super::super::modes::scope_id_for_worktree;
@@ -66,6 +69,86 @@ pub async fn get_operation_mode(State(state): State<Arc<AppState>>) -> Response 
                 "policy_version": record.policy_version,
                 "updated_at_ms": record.created_at_ms,
             }),
+        )
+        .into_response(),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/feedback-batches` — freeze an immutable, digest-addressed
+/// feedback batch (agent-wire-gaps ADR D7 / feedback-loop ADR D3+D4). The author is
+/// the middleware-resolved principal; the target session must exist (the batch is
+/// session-scoped — the turn-time consumption fence re-verifies ownership). Identical
+/// content replays the stored record idempotently; the receipt is `{batch_id, digest}`.
+pub async fn create_feedback_batch_route(
+    State(state): State<Arc<AppState>>,
+    command: ResolvedCommand<CreateFeedbackBatchRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, command_kind, _idempotency_key, payload) = command.into_parts();
+    if command_kind != CommandKind::CreateFeedbackBatch {
+        return super::super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "feedback-batch route requires command `create_feedback_batch`",
+        )
+        .into_response();
+    }
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::CreateFeedbackBatch, |uow| {
+            if uow.sessions().session(&payload.session_id)?.is_none() {
+                return Err(crate::authoring::store::StoreError::Validation(format!(
+                    "unknown session `{}` for feedback batch",
+                    payload.session_id.as_str()
+                )));
+            }
+            uow.feedback_batches().create(CreateFeedbackBatchInput {
+                session_id: payload.session_id.clone(),
+                source_document: payload.source_document.clone(),
+                source_revision: payload.source_revision.clone(),
+                author: actor.clone(),
+                items: payload.items.clone(),
+                instruction: payload.instruction.clone(),
+                created_at_ms: now,
+            })
+        })
+    }) {
+        Ok(outcome) => super::super::response::snapshot(
+            &state,
+            json!({
+                "status": if outcome.replayed { "replayed" } else { "recorded" },
+                "batch_id": outcome.record.feedback_batch_id,
+                "digest": outcome.record.digest,
+                "comment_count": outcome.record.items.len(),
+                "total_bytes": outcome.record.total_bytes,
+            }),
+        )
+        .into_response(),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `GET /authoring/v1/feedback-batches/{feedback_batch_id}` — the frozen snapshot
+/// (principal-permissive read, like every authoring read). An unknown id is an
+/// honest 404, never an empty fabrication.
+pub async fn get_feedback_batch(
+    State(state): State<Arc<AppState>>,
+    Path(feedback_batch_id): Path<String>,
+) -> Response {
+    match state.with_authoring_store(|store| {
+        store.with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+            uow.feedback_batches().get(&feedback_batch_id)
+        })
+    }) {
+        Ok(Some(record)) => {
+            super::super::response::snapshot(&state, json!({ "batch": record })).into_response()
+        }
+        Ok(None) => super::super::response::typed_error(
+            &state,
+            StatusCode::NOT_FOUND,
+            "authoring_feedback_batch_not_found",
+            "no feedback batch exists under that id",
         )
         .into_response(),
         Err(err) => command_error_response(&state, &err),

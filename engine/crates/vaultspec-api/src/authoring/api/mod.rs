@@ -387,6 +387,12 @@ pub struct StartPromptTurnRequest {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// The immutable feedback batch this turn consumes (agent-wire-gaps ADR D7 /
+    /// feedback-loop ADR D4). Verified at submit: the batch must exist and belong
+    /// to this session; the reference is recorded on the turn so every revision is
+    /// auditable to the exact batch it consumed. Opaque to a2a — only the id rides.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feedback_batch_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -787,6 +793,21 @@ pub struct LeaseReleaseRequest {
 pub struct CreateCommentRequest {
     pub selector: SectionSelector,
     pub body: String,
+}
+
+/// Freeze the reviewer's chosen comments into an immutable, digest-addressed
+/// feedback batch (agent-wire-gaps ADR D7 / feedback-loop ADR D3+D4). The author
+/// is the middleware-resolved principal; the served receipt is
+/// `{batch_id, digest}` and the next turn carries `batch_id` as opaque data.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CreateFeedbackBatchRequest {
+    pub session_id: SessionId,
+    pub source_document: String,
+    pub source_revision: String,
+    pub items: Vec<super::feedback::FeedbackBatchItem>,
+    #[serde(default)]
+    pub instruction: Option<String>,
 }
 
 /// Mutate an existing comment (authoring-surface ADR D2): edit the body, toggle the

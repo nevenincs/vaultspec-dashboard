@@ -62,6 +62,7 @@ fn turn_request(prompt: &str) -> StartPromptTurnRequest {
     StartPromptTurnRequest {
         prompt: prompt.to_string(),
         summary: Some("turn summary".to_string()),
+        feedback_batch_id: None,
     }
 }
 

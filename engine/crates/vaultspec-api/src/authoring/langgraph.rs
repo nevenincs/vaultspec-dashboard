@@ -375,6 +375,7 @@ mod tests {
         StartPromptTurnRequest {
             prompt: "Draft an authoring proposal through semantic tools.".to_string(),
             summary: Some("runtime mapping turn".to_string()),
+            feedback_batch_id: None,
         }
     }
 

@@ -73,6 +73,20 @@ pub fn start_prompt_turn(
                 request_digest: request_digest.clone(),
             },
             |receipt_id| {
+                // D7 consumption fence: a referenced feedback batch must exist and
+                // belong to THIS session before the turn is accepted. The batch's
+                // `source_revision` is provenance; the apply path's base-revision
+                // fences bind it later — the turn fence is existence + ownership.
+                if let Some(batch_id) = &request.feedback_batch_id {
+                    let batch = uow.feedback_batches().get(batch_id)?.ok_or_else(|| {
+                        StoreError::Validation(format!("unknown feedback batch `{batch_id}`"))
+                    })?;
+                    if batch.session_id != session_id {
+                        return Err(StoreError::Validation(format!(
+                            "feedback batch `{batch_id}` belongs to another session"
+                        )));
+                    }
+                }
                 let (turn, run) = uow.sessions().start_prompt_turn(
                     &session_id,
                     request,
