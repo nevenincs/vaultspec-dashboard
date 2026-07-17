@@ -10,6 +10,16 @@ related:
   - '[[2026-07-16-agentic-authoring-ux-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 <!-- RETIRED: S01 -->
 
 # `agentic-authoring-ux` plan
@@ -79,7 +89,7 @@ Team selector on presets-list, team run-start/status/cancel wiring, and relayed-
 
 - [x] `W05.P05.S21` - Wire the Team selector to the a2a presets-list pass-through and team run-start/status/cancel, degraded disabled-with-reason from tiers when a2a is down (D9); `frontend/src/stores/server/agent`.
 - [x] `W05.P05.S22` - Consume the a2a relayed SSE channel for token/tool-call frames once the a2a team ships it, with bounded run-status polling fallback (D3/D9); `frontend/src/stores/server/liveAdapters`.
-- [ ] `W05.P05.S23` - Run the full gate and live-wire suite, route the W05 a2a wiring through code review, and persist the audit; `frontend/`.
+- [x] `W05.P05.S23` - Run the full gate and live-wire suite, route the W05 a2a wiring through code review, and persist the audit; `frontend/`.
 
 ## Description
 
