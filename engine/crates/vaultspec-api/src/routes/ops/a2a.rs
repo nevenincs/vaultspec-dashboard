@@ -720,8 +720,10 @@ pub async fn ops_a2a(
         Ok(raw) => {
             // The sibling answered 2xx: forward its envelope VERBATIM under
             // `data.envelope`. Non-JSON output is wrapped, never reshaped.
-            let envelope =
-                serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| Value::String(raw));
+            let envelope = match serde_json::from_str::<Value>(&raw) {
+                Ok(value) => value,
+                Err(_) => Value::String(raw),
+            };
             Ok(super::super::envelope(
                 json!({ "envelope": envelope }),
                 super::super::query_tiers(&cell),
