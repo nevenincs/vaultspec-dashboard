@@ -28,8 +28,8 @@ related:
 
 Close the load-bearing gap first: the engine never completes a run, so Done can never render from the wire. Net-new completion transition modeled on the existing cancel path, then the frontend consumes it.
 
-- [ ] `P01.S01` - Emit a run.completed lifecycle event and transition RunStatus to Completed at the run-settle seam, modeled on the cancel_run transition, riding the durable outbox with sequence replay, with engine tests proving emission, status transition, and replay; `engine/crates/vaultspec-api/src/authoring/`.
-- [ ] `P01.S02` - Consume run.completed in the frontend lifecycle adapter with terminal-aware invalidation and render the Done turn status from the wire, with live-wire tests; `frontend/src/stores/`.
+- [x] `P01.S01` - Emit a run.completed lifecycle event and transition RunStatus to Completed at the run-settle seam, modeled on the cancel_run transition, riding the durable outbox with sequence replay, with engine tests proving emission, status transition, and replay; `engine/crates/vaultspec-api/src/authoring/`.
+- [x] `P01.S02` - Consume run.completed in the frontend lifecycle adapter with terminal-aware invalidation and render the Done turn status from the wire, with live-wire tests; `frontend/src/stores/`.
 
 ### Phase `P02` - Ops pass-through
 
