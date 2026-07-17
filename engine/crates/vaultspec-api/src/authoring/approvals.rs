@@ -43,7 +43,7 @@ use super::store::unit_of_work::{Repository, SqliteRepository, UnitOfWork};
 use super::store::{Result as StoreResult, StoreError};
 use super::transitions::{
     ReviewDecisionFreshness, ValidationFreshness, approve_transition_eligibility,
-    edit_proposal_transition_eligibility, reject_transition_eligibility,
+    edit_proposal_target, edit_proposal_transition_eligibility, reject_transition_eligibility,
 };
 
 const APPROVAL_SCHEMA: &str = "authoring.approval.v1";
@@ -311,16 +311,6 @@ fn resulting_status(decision: ApprovalDecision, kind: ChangesetKind) -> Changese
         ApprovalDecision::Approve => ChangesetStatus::Approved,
         ApprovalDecision::Reject => ChangesetStatus::Rejected,
         ApprovalDecision::RequestChanges => edit_proposal_target(kind),
-    }
-}
-
-/// The revision-target the EditProposal arc drives a changeset back to for reviewer edits /
-/// request-changes: `Draft` for an authoring-like changeset, `RollbackProposed` for a
-/// rollback — matching `transitions::command_allows_transition` for `EditProposal`.
-fn edit_proposal_target(kind: ChangesetKind) -> ChangesetStatus {
-    match kind {
-        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
-        ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
     }
 }
 

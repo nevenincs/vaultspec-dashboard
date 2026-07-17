@@ -500,13 +500,18 @@ function RequestChangesDialog({
   const placeholder = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.placeholder);
   const submitLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.submit);
   const cancelLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.cancel);
+  const commentRequired = safeMessage(
+    resolveMessage,
+    REQUEST_CHANGES_DIALOG.commentRequired,
+  );
   if (
     !title ||
     !body ||
     !commentLabel ||
     !placeholder ||
     !submitLabel ||
-    !cancelLabel
+    !cancelLabel ||
+    !commentRequired
   ) {
     return null;
   }
@@ -550,9 +555,22 @@ function RequestChangesDialog({
           rows={4}
           autoFocus
           placeholder={placeholder}
+          aria-invalid={trimmed.length === 0}
+          aria-describedby="review-request-changes-required"
           data-request-changes-comment
           className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
         />
+        {/* Why the submit is disabled: the requested-changes note is required. */}
+        {trimmed.length === 0 && (
+          <p
+            id="review-request-changes-required"
+            className="text-meta text-ink-muted"
+            role="note"
+            data-request-changes-required
+          >
+            {commentRequired}
+          </p>
+        )}
       </div>
     </Dialog>
   );

@@ -415,6 +415,7 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::CreateComment
         | CommandKind::UpdateComment
         | CommandKind::DeleteComment
+        | CommandKind::Acknowledge
         | CommandKind::ReadContext
         | CommandKind::SearchGraph
         | CommandKind::SubscribeEvents
@@ -511,16 +512,30 @@ pub fn reject_transition_eligibility(
 /// exactly why it is being sent back). This is the SINGLE predicate the approval
 /// decision path and the review-station projection both consult, so the served
 /// eligibility can never drift from what `submit_decision` will accept.
+/// The kind-aware revision target the `EditProposal` arc drives a changeset back to
+/// (reviewer edit / request-changes): `Draft` for an authoring-like changeset,
+/// `RollbackProposed` for a rollback. The SINGLE source of this mapping — the
+/// eligibility helper, the transition-legality check, and the approvals decision path
+/// all consult it, so the served target, the accepted target, and the persisted target
+/// can never desync.
+pub fn edit_proposal_target(kind: ChangesetKind) -> ChangesetStatus {
+    match kind {
+        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
+        ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
+    }
+}
+
 pub fn edit_proposal_transition_eligibility(
     record: &ChangesetAggregateRecord,
 ) -> ActionEligibility {
-    let next = match record.kind {
-        ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
-        ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
-    };
     transition_eligibility(
-        TransitionRequest::new(CommandKind::EditProposal, record.kind, record.status, next)
-            .with_operation_count(record.operation_count),
+        TransitionRequest::new(
+            CommandKind::EditProposal,
+            record.kind,
+            record.status,
+            edit_proposal_target(record.kind),
+        )
+        .with_operation_count(record.operation_count),
     )
 }
 
@@ -887,11 +902,7 @@ fn command_allows_transition(request: TransitionRequest) -> bool {
             matches!(
                 request.current,
                 ChangesetStatus::NeedsReview | ChangesetStatus::Approved
-            ) && request.next
-                == match request.kind {
-                    ChangesetKind::Authoring | ChangesetKind::Direct => ChangesetStatus::Draft,
-                    ChangesetKind::Rollback => ChangesetStatus::RollbackProposed,
-                }
+            ) && request.next == edit_proposal_target(request.kind)
         }
         CommandKind::Respond => {
             request.current == ChangesetStatus::NeedsReview
