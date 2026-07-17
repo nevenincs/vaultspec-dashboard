@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { ensureBrowserVisible } from "./localizationHelpers";
+import { ensureBrowserVisible, ensureExpanded } from "./localizationHelpers";
 
 /** Internal-vocabulary shapes that must never render: registry action ids
  *  (`app:command-palette`), dispatch verbs (`feature-archive`), wire fields. */
@@ -67,23 +67,29 @@ test.describe("actions, commands, and shortcuts (live)", () => {
     await expect(tree).toBeVisible({ timeout: 10_000 });
 
     // Leaf document rows render only once a category fold (e.g. "Plans") is
-    // expanded — both collapsed by default.
-    await tree.getByText("Documents", { exact: true }).first().click();
-    await tree.getByText("Plans", { exact: true }).first().click();
+    // expanded — both collapsed by default. Fold headers TOGGLE, so check the
+    // real `aria-expanded` state rather than blindly clicking (a prior spec
+    // in the same worker/session may have already expanded either).
+    await ensureExpanded(tree.getByRole("button", { name: /^Documents\b/ }).first());
+    await ensureExpanded(tree.getByRole("button", { name: /^Plans\b/ }).first());
 
     // Probe rows until a substantive per-kind menu appears, then prove it
     // renders the SHARED canonical verbs (the one-descriptor plane: Open in
     // editor / Show on canvas / Reveal / Copy) with zero internal-id leakage.
     const rows = tree.getByRole("button", { name: /completed|Jun|Jul/ });
     await expect(rows.first()).toBeVisible({ timeout: 10_000 });
+    // Let the fold-expand re-render/virtualization settle before targeting row
+    // coordinates — a right-click mid-animation can land on nothing.
+    await rows.first().waitFor({ state: "attached" });
+    const menu = page.getByRole("menu");
     const rowCount = Math.min(await rows.count(), 24);
     let sawCanonicalMenu = false;
     for (let i = 0; i < rowCount; i += 1) {
+      await rows.nth(i).scrollIntoViewIfNeeded();
       await rows.nth(i).click({ button: "right" });
-      const menu = page.getByRole("menu");
       await menu
         .first()
-        .waitFor({ state: "visible", timeout: 1_500 })
+        .waitFor({ state: "visible", timeout: 3_000 })
         .catch(() => {});
       if (await menu.count()) {
         const items = await menu.getByRole("menuitem").allInnerTexts();
@@ -105,6 +111,10 @@ test.describe("actions, commands, and shortcuts (live)", () => {
         }
       }
       await page.keyboard.press("Escape");
+      await menu
+        .first()
+        .waitFor({ state: "hidden", timeout: 1_000 })
+        .catch(() => {});
     }
     expect(sawCanonicalMenu).toBe(true);
     await page.keyboard.press("Escape");

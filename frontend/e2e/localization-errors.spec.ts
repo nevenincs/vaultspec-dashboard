@@ -13,6 +13,8 @@
 
 import { expect, test } from "@playwright/test";
 
+import { bootHealthyThenBreakVaultTree } from "./localizationHelpers";
+
 const DIAGNOSTIC_BODY = JSON.stringify({
   error: "TypeError: Cannot read properties of undefined (reading 'nodes')",
   stack:
@@ -55,17 +57,15 @@ test.describe("production error-boundary diagnostic safety (live)", () => {
   test("a malformed vault-listing failure never leaks its raw diagnostic body", async ({
     page,
   }) => {
-    await page.route("**/vault-tree**", (route) =>
-      route.fulfill({
-        status: 500,
-        contentType: "application/json",
-        body: DIAGNOSTIC_BODY,
-      }),
-    );
-
-    await page.goto("/");
-    await expect(page.locator("[data-left-rail]")).toBeVisible({ timeout: 20_000 });
-    await page.getByText("Documents", { exact: true }).first().click();
+    await bootHealthyThenBreakVaultTree(page, async () => {
+      await page.route("**/vault-tree**", (route) =>
+        route.fulfill({
+          status: 500,
+          contentType: "application/json",
+          body: DIAGNOSTIC_BODY,
+        }),
+      );
+    });
 
     const leftRail = page.locator("[data-left-rail]");
     await expect(leftRail).toContainText(/unavailable/i, { timeout: 10_000 });
@@ -91,17 +91,15 @@ test.describe("production error-boundary diagnostic safety (live)", () => {
   test("a completely malformed (non-JSON) response body never surfaces raw text", async ({
     page,
   }) => {
-    await page.route("**/vault-tree**", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "text/plain",
-        body: "panic: index out of bounds at engine/src/graph.rs:88",
-      }),
-    );
-
-    await page.goto("/");
-    await expect(page.locator("[data-left-rail]")).toBeVisible({ timeout: 20_000 });
-    await page.getByText("Documents", { exact: true }).first().click();
+    await bootHealthyThenBreakVaultTree(page, async () => {
+      await page.route("**/vault-tree**", (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: "text/plain",
+          body: "panic: index out of bounds at engine/src/graph.rs:88",
+        }),
+      );
+    });
     await page.waitForTimeout(1_000);
 
     await expectNoDiagnosticLeak(page, page.locator("[data-left-rail]"));
@@ -110,11 +108,9 @@ test.describe("production error-boundary diagnostic safety (live)", () => {
   test("an aborted request never leaves a raw network-error message on screen", async ({
     page,
   }) => {
-    await page.route("**/vault-tree**", (route) => route.abort("failed"));
-
-    await page.goto("/");
-    await expect(page.locator("[data-left-rail]")).toBeVisible({ timeout: 20_000 });
-    await page.getByText("Documents", { exact: true }).first().click();
+    await bootHealthyThenBreakVaultTree(page, async () => {
+      await page.route("**/vault-tree**", (route) => route.abort("failed"));
+    });
     await page.waitForTimeout(1_000);
 
     const leftRail = page.locator("[data-left-rail]");

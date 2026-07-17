@@ -5,32 +5,32 @@
 // through Playwright's network-layer route interception on the real
 // `/vault-tree` endpoint (an honest lever external to the app, never faked
 // DOM), mirroring degradation-is-read-from-tiers-not-guessed-from-errors: the
-// UI must react to the REAL failed response, not a simulated flag.
+// UI must react to the REAL failed response, not a simulated flag. The page
+// boots against the real working wire first (`bootHealthyThenBreakVaultTree`)
+// and only then hits the intercepted failure, proving the genuine
+// working-to-degraded transition.
 
 import { expect, test } from "@playwright/test";
+
+import { bootHealthyThenBreakVaultTree } from "./localizationHelpers";
 
 test.describe("degraded states (live)", () => {
   test("a failed vault listing shows a translated degraded notice with a real retry action", async ({
     page,
   }) => {
     let failing = true;
-    await page.route("**/vault-tree**", (route) => {
-      if (failing) {
-        return route.fulfill({
-          status: 502,
-          contentType: "application/json",
-          body: JSON.stringify({ error: "boom" }),
-        });
-      }
-      return route.continue();
+    await bootHealthyThenBreakVaultTree(page, async () => {
+      await page.route("**/vault-tree**", (route) => {
+        if (failing) {
+          return route.fulfill({
+            status: 502,
+            contentType: "application/json",
+            body: JSON.stringify({ error: "boom" }),
+          });
+        }
+        return route.continue();
+      });
     });
-
-    await page.goto("/");
-    await expect(page.locator("[data-left-rail]")).toBeVisible({ timeout: 20_000 });
-
-    // Switch to the Vault documents tab (the failing endpoint's consumer).
-    const documentsTab = page.getByText("Documents", { exact: true }).first();
-    await documentsTab.click();
 
     const leftRail = page.locator("[data-left-rail]");
     await expect(leftRail).toContainText(/unavailable/i, { timeout: 10_000 });
@@ -58,17 +58,15 @@ test.describe("degraded states (live)", () => {
   test("the degraded notice never leaks the raw served reason string", async ({
     page,
   }) => {
-    await page.route("**/vault-tree**", (route) =>
-      route.fulfill({
-        status: 502,
-        contentType: "application/json",
-        body: JSON.stringify({ error: "boom" }),
-      }),
-    );
-
-    await page.goto("/");
-    await expect(page.locator("[data-left-rail]")).toBeVisible({ timeout: 20_000 });
-    await page.getByText("Documents", { exact: true }).first().click();
+    await bootHealthyThenBreakVaultTree(page, async () => {
+      await page.route("**/vault-tree**", (route) =>
+        route.fulfill({
+          status: 502,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "boom" }),
+        }),
+      );
+    });
 
     const leftRail = page.locator("[data-left-rail]");
     await expect(leftRail).toContainText(/unavailable/i, { timeout: 10_000 });

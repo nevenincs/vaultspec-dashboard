@@ -1,9 +1,12 @@
 // Localization dev-affordance E2E (W06.P19.S105/S142): like
 // playwright.adverse.config.ts, runs against the Vite DEV server so the
-// dev-only affordances the specs drive - the alternate-locale injection
-// lever (LocalizationProvider instance swap) and the crash injector - are
-// present. Both only exist when `import.meta.env.DEV` is true, so a
-// production `vaultspec serve` build cannot host these specs. Shares the
+// dev-only alternate-locale injection lever (LocalizationProvider instance
+// swap) the layout spec drives is present — it only exists when
+// `import.meta.env.DEV` is true, so a production `vaultspec serve` build
+// cannot host that spec. localization-errors.spec.ts carries no dev-only
+// dependency; it is matched here too so its diagnostic-safety proof runs
+// against BOTH this dev build and the production smoke config
+// (playwright.config.ts), genuinely covering "any build mode". Shares the
 // adverse harness's port: the two configs are never run concurrently.
 
 import { defineConfig } from "@playwright/test";

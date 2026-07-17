@@ -33,3 +33,40 @@ export async function ensureBrowserVisible(page: Page) {
     timeout: 10_000,
   });
 }
+
+/**
+ * Boot the app against the REAL, working wire first (so `ensureBrowserVisible`'s
+ * own command round-trip — which re-fetches `/vault-tree` — never races an
+ * already-broken interception), switch to the Vault documents tab, THEN
+ * install the given failing route and reload to hit it. This proves the
+ * genuine working-to-broken transition rather than a page that starts broken
+ * before it ever painted a working state.
+ */
+export async function bootHealthyThenBreakVaultTree(
+  page: Page,
+  installRoute: () => Promise<void>,
+) {
+  await page.goto("/");
+  await ensureBrowserVisible(page);
+  await page.getByText("Documents", { exact: true }).first().click();
+  await expect(page.locator("[data-vault-browser]")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  await installRoute();
+  await page.reload();
+  await ensureBrowserVisible(page).catch(() => undefined);
+}
+
+/** Every expandable tree/fold row carries a real `aria-expanded` state
+ *  (TreeBrowser.tsx). Fold headers TOGGLE on click — a prior spec in the same
+ *  worker (or the same server-persisted session) may have already expanded
+ *  it, so a blind click can COLLAPSE it instead. Check the real state first
+ *  and only click when it is genuinely collapsed, so this is idempotent
+ *  regardless of what earlier tests left behind. */
+export async function ensureExpanded(row: import("@playwright/test").Locator) {
+  const expanded = await row.getAttribute("aria-expanded");
+  if (expanded === "false") {
+    await row.click();
+  }
+}

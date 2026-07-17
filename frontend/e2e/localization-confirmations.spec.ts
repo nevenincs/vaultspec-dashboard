@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { ensureBrowserVisible } from "./localizationHelpers";
+import { ensureBrowserVisible, ensureExpanded } from "./localizationHelpers";
 
 test.describe("destructive confirmation wording (live)", () => {
   test("the feature-archive confirmation names consequence, destructive verb, and safe cancel", async ({
@@ -22,7 +22,7 @@ test.describe("destructive confirmation wording (live)", () => {
     await page.getByText("Documents", { exact: true }).first().click();
     const tree = page.locator("[data-vault-browser]");
     await expect(tree).toBeVisible({ timeout: 10_000 });
-    await tree.getByText("Features", { exact: true }).first().click();
+    await ensureExpanded(tree.getByRole("button", { name: /^Features\b/ }).first());
 
     const featureRows = tree.getByRole("button", { name: /\s\d+$/ });
     await expect(featureRows.first()).toBeVisible({ timeout: 10_000 });
