@@ -245,3 +245,17 @@ main). `SessionStatus::Closed` now has a writer:
 - Closing half: the a2a worker's submit-success caller of this route lands next
   (executor-service holds the published envelope contract). Until that ships,
   a2a-left-`Active` sessions still rely on session retention for reaping.
+
+### closure | high | P05.S13 closes — every hold dispositioned (appended 2026-07-17, session c4903de7)
+
+All three carried open items are resolved: the a2a-side run-complete caller is
+NOT APPLICABLE per the lane-takeover grounding above (a2a-driven authoring work
+creates zero engine run records — code chain + live probe); the S08 relay
+re-probe is recorded with frames+replay proven over the per-run endpoint
+(`72b0742959`), with the remaining frame-content proof pinned to graph execution
+as a named follow-on; the rag-dedup sweep pointers are compiled (`9c3cff381a`).
+Together with the engine review (PASS/PASS), the a2a-side conformance review
+(6/6), and the D1–D3 + D7 ADR amendments, the cross-repo review-and-ratification
+scope of P05.S13 is complete. Abandoned-run reaping for client-created runs
+remains the agent-wire-gaps P04a janitor's duty (claimed by the parallel lead),
+outside this plan's scope by the committed ownership annotations.

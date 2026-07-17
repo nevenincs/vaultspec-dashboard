@@ -12,6 +12,16 @@ related:
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `a2a-orchestration-edge` plan
 
 ### Phase `P01` - Run completion lifecycle
@@ -51,7 +61,7 @@ Build the immutable feedback-batch snapshot and the structured continuation fiel
 
 Mandatory cross-repo code review, edge ADR amendment recording the sibling-down ruling and shipped surfaces, and audit persistence.
 
-- [ ] `P05.S13` - Run cross-repo code review over every phase, amend the edge ADR with the sibling-down semantics ruling and the shipped-surface record, and persist the audit; `.vault/`.
+- [x] `P05.S13` - Run cross-repo code review over every phase, amend the edge ADR with the sibling-down semantics ruling and the shipped-surface record, and persist the audit; `.vault/`.
 
 ## Description
 
