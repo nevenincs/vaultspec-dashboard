@@ -324,6 +324,18 @@ export interface ViewState {
    */
   editorBaseText: string;
   /**
+   * The base text the user last saw BEFORE an external (agent) apply reconciled the
+   * editor to a new base (editor-change-fidelity D4), or null when there are no
+   * pending agent changes. The app derives the agent-change decorations as the diff
+   * of this against `editorBaseText`. A SINGLE string (not a history) — bounded, and
+   * cleared the moment the user edits (superseded) or the editor closes. Stored as
+   * raw text, not a derived change list, so the store holds no app-layer type.
+   */
+  editorAgentBaseline: string | null;
+  /** Whether the pending agent changes have been acknowledged this session (D6):
+   *  false renders them as NEW (a dot), true as seen (a muted bar). */
+  editorAgentSeen: boolean;
+  /**
    * Whether the in-editor diff panel is expanded (authoring-surface ADR D4).
    * False when no editor is open or the panel is collapsed. View-local chrome —
    * the toggle is reachable from keymap + palette under one shared action id.
@@ -448,6 +460,17 @@ export interface ViewState {
   /** Mark a blob-hash conflict (status → `conflict`): the optimistic base went
    *  stale (someone else wrote). The draft is retained for the reconcile UI. */
   markConflict: () => void;
+  /** Reconcile the editor base to a newly-served body after an EXTERNAL change
+   *  (an agent applied through the ledger; the SSE re-ingest refreshed the content
+   *  query) — editor-change-fidelity D2 clean arm. SAFE BY GUARD: it reseeds base +
+   *  draft to `text` ONLY when the draft is clean (draft === base); a dirty draft is
+   *  left untouched (never a silent overwrite — the dirty overlap resolves through
+   *  the existing save-conflict path). Returns nothing; the caller derives the
+   *  agent-change decorations from the pre/post base it passes in. */
+  reconcileEditorBase: (text: unknown, blobHash: unknown) => void;
+  /** Acknowledge the pending agent changes (D6): flips them from NEW to seen. A
+   *  no-op when none are pending. */
+  acknowledgeAgentChanges: () => void;
   /** Mark a save failure (status → `save-failed`): a transport fault or a
    *  validation refusal. The draft is retained so the edit is not lost. */
   markFailed: () => void;
@@ -685,6 +708,8 @@ function corpusLocalViewState(scope: unknown) {
     baseBlobHash: "",
     editorStatus: "idle" as const,
     editorBaseText: "",
+    editorAgentBaseline: null,
+    editorAgentSeen: false,
     editorDiffVisible: false,
   };
 }
@@ -706,6 +731,8 @@ export const useViewStore = create<ViewState>((set) => ({
   baseBlobHash: "",
   editorStatus: "idle",
   editorBaseText: "",
+  editorAgentBaseline: null,
+  editorAgentSeen: false,
   editorDiffVisible: false,
   overlays: normalizeGraphOverlays(DEFAULT_GRAPH_OVERLAYS),
   renderCapability: DEFAULT_RENDER_CAPABILITY,
@@ -927,6 +954,8 @@ export const useViewStore = create<ViewState>((set) => ({
               baseBlobHash: "",
               editorStatus: "idle" as const,
               editorBaseText: "",
+              editorAgentBaseline: null,
+              editorAgentSeen: false,
               editorDiffVisible: false,
             }
           : {}),
@@ -947,6 +976,8 @@ export const useViewStore = create<ViewState>((set) => ({
         baseBlobHash: "",
         editorStatus: "idle" as const,
         editorBaseText: "",
+        editorAgentBaseline: null,
+        editorAgentSeen: false,
         editorDiffVisible: false,
       };
     }),
@@ -989,15 +1020,25 @@ export const useViewStore = create<ViewState>((set) => ({
         // Capture the opening text as the diff base; reset the diff panel so
         // each new editing session starts collapsed (authoring-surface ADR D4).
         editorBaseText: normalizedText,
+        editorAgentBaseline: null,
+        editorAgentSeen: false,
         editorDiffVisible: false,
       };
     }),
   setDraft: (text) =>
     set((state) => {
       const draftText = normalizeEditorTextValue(text);
+      // A user edit supersedes any pending agent decorations: clear the baseline so
+      // the gutter switches to the user diff. This is the safe, anchor-free behavior
+      // (agent marks are not re-anchored through subsequent user edits in V1).
       return state.draftText === draftText
         ? state
-        : { draftText, editorStatus: "dirty" };
+        : {
+            draftText,
+            editorStatus: "dirty",
+            editorAgentBaseline: null,
+            editorAgentSeen: false,
+          };
     }),
   markSaving: () => set({ editorStatus: "saving" }),
   // Adopt the new blob hash as the next concurrency base so a follow-on edit saves
@@ -1015,6 +1056,31 @@ export const useViewStore = create<ViewState>((set) => ({
       editorBaseText: savedText,
     })),
   markConflict: () => set({ editorStatus: "conflict" }),
+  reconcileEditorBase: (text, blobHash) =>
+    set((state) => {
+      if (state.editorTarget === null) return state;
+      // Clean-arm guard (editor-change-fidelity D2): adopt the new base only when
+      // the draft has NOT diverged. A dirty draft is never silently overwritten —
+      // it is left as-is and the existing save-time conflict path handles the
+      // eventual collision.
+      if (state.draftText !== state.editorBaseText) return state;
+      const normalizedText = normalizeEditorTextValue(text);
+      if (normalizedText === state.editorBaseText) return state;
+      return {
+        draftText: normalizedText,
+        editorBaseText: normalizedText,
+        baseBlobHash: normalizeEditorBlobHash(blobHash),
+        editorStatus: "idle",
+        // Capture what the user last saw so the app can diff it against the new base
+        // to decorate the agent's changes; they start unseen (NEW).
+        editorAgentBaseline: state.editorBaseText,
+        editorAgentSeen: false,
+      };
+    }),
+  acknowledgeAgentChanges: () =>
+    set((state) =>
+      state.editorAgentBaseline === null ? state : { editorAgentSeen: true },
+    ),
   markFailed: () => set({ editorStatus: "save-failed" }),
   closeEditor: () =>
     set({
@@ -1023,6 +1089,8 @@ export const useViewStore = create<ViewState>((set) => ({
       baseBlobHash: "",
       editorStatus: "idle",
       editorBaseText: "",
+      editorAgentBaseline: null,
+      editorAgentSeen: false,
       editorDiffVisible: false,
     }),
   toggleEditorDiff: () =>

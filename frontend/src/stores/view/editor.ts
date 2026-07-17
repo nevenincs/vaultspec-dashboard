@@ -44,6 +44,12 @@ export interface DocumentEditorView {
   baseText: string;
   /** Whether the in-editor draft-vs-saved diff section is expanded. */
   diffVisible: boolean;
+  /** The base the user saw before an external (agent) apply reconciled the editor
+   *  (editor-change-fidelity D4), or null when no agent change is pending. The app
+   *  diffs it against `baseText` to decorate the agent's changed lines. */
+  agentBaseline: string | null;
+  /** Whether the pending agent changes have been acknowledged this session (D6). */
+  agentSeen: boolean;
   status: EditorStatus;
   statusLabel: MessageDescriptor;
   statusTone: EditorStatusTone;
@@ -284,6 +290,8 @@ export function deriveDocumentEditorView(
     | "baseBlobHash"
     | "editorStatus"
     | "editorBaseText"
+    | "editorAgentBaseline"
+    | "editorAgentSeen"
     | "editorDiffVisible"
   >,
   nodeId: unknown,
@@ -298,6 +306,8 @@ export function deriveDocumentEditorView(
     draftText: state.draftText,
     baseBlobHash: state.baseBlobHash,
     baseText: state.editorBaseText,
+    agentBaseline: state.editorAgentBaseline,
+    agentSeen: state.editorAgentSeen,
     diffVisible: state.editorDiffVisible,
     status,
     statusLabel: STATUS_LABEL[status],
@@ -316,6 +326,8 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
   const baseBlobHash = useViewStore((state) => state.baseBlobHash);
   const editorStatus = useViewStore((state) => state.editorStatus);
   const editorBaseText = useViewStore((state) => state.editorBaseText);
+  const editorAgentBaseline = useViewStore((state) => state.editorAgentBaseline);
+  const editorAgentSeen = useViewStore((state) => state.editorAgentSeen);
   const editorDiffVisible = useViewStore((state) => state.editorDiffVisible);
   return useMemo(
     () =>
@@ -326,6 +338,8 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
           baseBlobHash,
           editorStatus,
           editorBaseText,
+          editorAgentBaseline,
+          editorAgentSeen,
           editorDiffVisible,
         },
         nodeId,
@@ -336,6 +350,8 @@ export function useDocumentEditorView(nodeId: unknown): DocumentEditorView {
       baseBlobHash,
       editorStatus,
       editorBaseText,
+      editorAgentBaseline,
+      editorAgentSeen,
       editorDiffVisible,
       nodeId,
     ],
@@ -466,6 +482,18 @@ export function closeDocumentEditor(): void {
 /** Toggle the in-editor draft-vs-saved diff panel (authoring-surface ADR D4). */
 export function toggleEditorDiff(): void {
   useViewStore.getState().toggleEditorDiff();
+}
+
+/** Reconcile the open editor to a newly-served body after an external (agent) apply
+ *  (editor-change-fidelity D2 clean arm). Safe by the store guard: a dirty draft is
+ *  never overwritten. */
+export function reconcileEditorBase(text: unknown, blobHash: unknown): void {
+  useViewStore.getState().reconcileEditorBase(text, blobHash);
+}
+
+/** Acknowledge the pending agent changes (D6): NEW → seen. */
+export function acknowledgeAgentChanges(): void {
+  useViewStore.getState().acknowledgeAgentChanges();
 }
 
 export function setMarkdownEditorRenameDraft(draft: unknown): void {

@@ -6,7 +6,9 @@ import { describe, expect, it } from "vitest";
 import {
   caretToLine,
   changeAtLine,
+  deriveAgentChanges,
   deriveLineChanges,
+  lineMarkers,
   lineToCaret,
   nextChange,
   previousChange,
@@ -92,6 +94,36 @@ describe("change navigation", () => {
   it("returns null when there is nothing to navigate", () => {
     expect(nextChange([], 0)).toBeNull();
     expect(previousChange([], 0)).toBeNull();
+  });
+});
+
+describe("agent provenance (D4)", () => {
+  it("tags an agent change with origin agent and unseen", () => {
+    // old base → new base (an agent applied a modified line 2).
+    expect(deriveAgentChanges("a\nb\nc\n", "a\nB\nc\n")).toEqual([
+      { line: 1, kind: "modified", span: 1, origin: "agent", unseen: true },
+    ]);
+  });
+
+  it("carries origin and unseen into the gutter markers", () => {
+    const markers = lineMarkers(deriveAgentChanges("a\nb\n", "a\nB\n"));
+    expect(markers.get(1)).toEqual({
+      kind: "modified",
+      origin: "agent",
+      unseen: true,
+      tick: false,
+    });
+  });
+
+  it("defaults a user change to origin user, seen", () => {
+    // A plain deriveLineChanges result carries no origin; lineMarkers fills user.
+    const markers = lineMarkers(deriveLineChanges("a\nb\n", "a\nB\n"));
+    expect(markers.get(1)).toEqual({
+      kind: "modified",
+      origin: "user",
+      unseen: false,
+      tick: false,
+    });
   });
 });
 

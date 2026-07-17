@@ -55,6 +55,7 @@ import { registerKeyAction } from "../../stores/view/keymapDispatcher";
 import { useViewStore } from "../../stores/view/viewStore";
 import { requestCloseDocumentEditor } from "../../stores/view/unsavedEditGuard";
 import {
+  acknowledgeAgentChanges,
   applyEditorWriteResult,
   applyRenameEditorResult,
   deriveMarkdownEditorFrontmatterPatch,
@@ -62,6 +63,7 @@ import {
   markEditorFailed,
   markEditorSaving,
   openDocumentEditor,
+  reconcileEditorBase,
   setMarkdownEditorFrontmatterDraft,
   setMarkdownEditorRenameDraft,
   toggleEditorDiff,
@@ -77,10 +79,12 @@ import {
 import { DiffView } from "../authoring/DiffView";
 import {
   caretToLine,
+  deriveAgentChanges,
   deriveLineChanges,
   lineToCaret,
   nextChange,
   previousChange,
+  type LineChange,
 } from "../authoring/editorChanges";
 import {
   Button,
@@ -188,14 +192,40 @@ export function MarkdownDocView({
   // bootstraps it lazily (on first thread open) in view mode via `ensureActor`.
   const editorIdentity = useEnsureCurrentEditorIdentity(editor.isEditing);
 
-  // The dirty-diff the gutter paints (editor-change-fidelity D5). Derived from the
-  // LIVE draft against the store-maintained saved base — no debounce, because the
-  // bounded line diff now costs about what the edit costs (see diffLines.ts), so a
-  // per-keystroke gutter is cheap. Empty when the draft matches the base → no gutter.
-  const editorChanges = useMemo(
-    () => deriveLineChanges(editor.baseText, editor.draftText),
-    [editor.baseText, editor.draftText],
-  );
+  // Reconcile an EXTERNAL change into the open editor (editor-change-fidelity D2
+  // clean arm). The served content query refetches when an agent applies through the
+  // ledger (the SSE re-ingest invalidates `content` — document-edit-hardening
+  // W03.P04.S10), so a served blob hash that no longer matches the editor's base
+  // means someone else wrote. Adopt it via the store, which GUARDS clean-only: a
+  // dirty draft is never overwritten (the eventual save hits the existing conflict
+  // path). `initialText`/`initialBlobHash` are the same derivation the editor opened
+  // from, so the reconciled base is in the editor's own text space.
+  useEffect(() => {
+    if (!editor.isEditing) return;
+    const servedHash = documentEditor.initialBlobHash;
+    if (!servedHash || servedHash === editor.baseBlobHash) return;
+    reconcileEditorBase(documentEditor.initialText, servedHash);
+  }, [
+    editor.isEditing,
+    editor.baseBlobHash,
+    documentEditor.initialBlobHash,
+    documentEditor.initialText,
+  ]);
+
+  // The changes the gutter paints (editor-change-fidelity D5). Two provenance
+  // sources, never overlapping: when an agent change is pending (a reconcile just
+  // landed and the draft is still clean), show the AGENT delta (old base → new base)
+  // tagged agent/unseen; otherwise show the USER's own draft-vs-base dirty diff. The
+  // store clears the agent baseline on the first user edit, so the two never mix (V1
+  // does not re-anchor agent marks through subsequent user edits). No debounce — the
+  // bounded diff is cheap enough per keystroke (see diffLines.ts).
+  const editorChanges = useMemo<LineChange[]>(() => {
+    if (editor.agentBaseline !== null) {
+      const agent = deriveAgentChanges(editor.agentBaseline, editor.baseText);
+      return editor.agentSeen ? agent.map((c) => ({ ...c, unseen: false })) : agent;
+    }
+    return deriveLineChanges(editor.baseText, editor.draftText);
+  }, [editor.agentBaseline, editor.agentSeen, editor.baseText, editor.draftText]);
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
@@ -426,12 +456,20 @@ export function MarkdownDocView({
   // that the diff costs about what the edit costs. Disabled when nothing is open or
   // there is no change to jump to.
   useEffect(() => {
+    // The change set to navigate, from RAW store state: the AGENT delta when one is
+    // pending (so agent changes are navigable too), else the user's own diff.
+    const changesFromState = (state: ReturnType<typeof useViewStore.getState>) =>
+      state.editorAgentBaseline !== null
+        ? deriveAgentChanges(state.editorAgentBaseline, state.editorBaseText)
+        : deriveLineChanges(state.editorBaseText, state.draftText);
     const jumpChange = (direction: "next" | "previous") => {
       const state = useViewStore.getState();
       const el = textareaRef.current;
       if (state.editorTarget === null || el === null) return;
-      const changes = deriveLineChanges(state.editorBaseText, state.draftText);
+      const changes = changesFromState(state);
       if (changes.length === 0) return;
+      // Landing on an agent change acknowledges the pending set (D6): NEW → seen.
+      if (state.editorAgentBaseline !== null) acknowledgeAgentChanges();
       const fromLine = caretToLine(state.draftText, el.selectionStart);
       const target =
         direction === "next"
@@ -448,10 +486,7 @@ export function MarkdownDocView({
     };
     const hasNoChange = () => {
       const state = useViewStore.getState();
-      return (
-        state.editorTarget === null ||
-        deriveLineChanges(state.editorBaseText, state.draftText).length === 0
-      );
+      return state.editorTarget === null || changesFromState(state).length === 0;
     };
     const disposeNext = registerKeyAction(EDITOR_NEXT_CHANGE_ACTION_ID, () =>
       nextChangeAction(() => jumpChange("next"), hasNoChange()),

@@ -111,6 +111,45 @@ describe("change-marker gutter", () => {
     // A tick, not a full-height bar: it carries the remove tone and zero-ish height.
     expect(tick?.className).toContain("bg-diff-remove");
   });
+
+  it("distinguishes an unseen agent change with a dot and full emphasis (D5)", () => {
+    render(
+      <HighlightedTextarea
+        value={"a\nB\nc"}
+        languageHint="markdown"
+        onChange={() => {}}
+        ariaLabel="doc"
+        changes={[
+          { line: 1, kind: "modified", span: 1, origin: "agent", unseen: true },
+        ]}
+      />,
+    );
+    const bar = document.querySelector('[data-change-marker="modified"]');
+    expect(bar?.getAttribute("data-change-origin")).toBe("agent");
+    // The dot is the ONLY state that adds a glyph — an unacknowledged agent edit.
+    expect(document.querySelector("[data-change-unseen]")).toBeTruthy();
+    // Full emphasis (not muted) while unseen.
+    expect(bar?.className).not.toContain("opacity-50");
+  });
+
+  it("mutes a seen agent change and drops the dot (D5)", () => {
+    render(
+      <HighlightedTextarea
+        value={"a\nB\nc"}
+        languageHint="markdown"
+        onChange={() => {}}
+        ariaLabel="doc"
+        changes={[
+          { line: 1, kind: "modified", span: 1, origin: "agent", unseen: false },
+        ]}
+      />,
+    );
+    const bar = document.querySelector('[data-change-marker="modified"]');
+    expect(bar?.getAttribute("data-change-origin")).toBe("agent");
+    // Seen agent change: reduced emphasis, no dot.
+    expect(bar?.className).toContain("opacity-50");
+    expect(document.querySelector("[data-change-unseen]")).toBeNull();
+  });
 });
 
 describe("splitHighlightedTextLines", () => {

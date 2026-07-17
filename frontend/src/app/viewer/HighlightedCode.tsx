@@ -26,24 +26,45 @@ export const MARKER_TONE: Record<LineMarker["kind"], string> = {
  *  line through soft-wrap and scroll for free — a bar down the left inset for an
  *  edit, a short tick at the top edge for a deletion sitting above this line. The
  *  inset (`left`) sits within the editor's existing 1.5rem left padding, so the
- *  gutter reserves no extra width. */
+ *  gutter reserves no extra width.
+ *
+ *  Provenance (editor-change-fidelity D5), restrained per the no-bloat mandate —
+ *  the same three diff tones, differentiated by weight not by new colour:
+ *   - user edit:        full-emphasis bar (the manual-edit default);
+ *   - agent change seen: the same bar at reduced emphasis (muted), orientation
+ *     without noise;
+ *   - agent change NEW:  full bar plus a small dot — the only state that also gets
+ *     the dot, so an unacknowledged agent edit is the one thing that stands out. */
 function ChangeMarker({ marker }: { marker: LineMarker }): ReactElement {
   const tone = MARKER_TONE[marker.kind];
+  const agentSeen = marker.origin === "agent" && !marker.unseen;
+  const emphasis = agentSeen ? "opacity-50" : "";
   if (marker.tick) {
     return (
       <span
         aria-hidden
         data-change-marker="removed"
-        className={`pointer-events-none absolute left-[-0.9rem] top-0 h-[0.125rem] w-[0.5rem] -translate-y-1/2 rounded-fg-pill ${tone}`}
+        data-change-origin={marker.origin}
+        className={`pointer-events-none absolute left-[-0.9rem] top-0 h-[0.125rem] w-[0.5rem] -translate-y-1/2 rounded-fg-pill ${tone} ${emphasis}`}
       />
     );
   }
   return (
-    <span
-      aria-hidden
-      data-change-marker={marker.kind}
-      className={`pointer-events-none absolute bottom-0 left-[-0.9rem] top-0 w-[0.1875rem] rounded-fg-pill ${tone}`}
-    />
+    <>
+      <span
+        aria-hidden
+        data-change-marker={marker.kind}
+        data-change-origin={marker.origin}
+        className={`pointer-events-none absolute bottom-0 left-[-0.9rem] top-0 w-[0.1875rem] rounded-fg-pill ${tone} ${emphasis}`}
+      />
+      {marker.origin === "agent" && marker.unseen && (
+        <span
+          aria-hidden
+          data-change-unseen
+          className={`pointer-events-none absolute left-[-1.15rem] top-[0.35em] h-[0.375rem] w-[0.375rem] rounded-fg-pill ${tone}`}
+        />
+      )}
+    </>
   );
 }
 

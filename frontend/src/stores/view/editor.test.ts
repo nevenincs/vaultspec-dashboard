@@ -302,3 +302,68 @@ describe("editor view seam", () => {
     expect(useViewStore.getState().draftText).toBe("v3");
   });
 });
+
+describe("agent-edit reconcile (editor-change-fidelity D2/D4)", () => {
+  beforeEach(() => closeDocumentEditor());
+
+  it("clean arm: adopts the new base and captures the agent baseline", () => {
+    openDocumentEditor("doc:alpha", "line one\nline two\n", "hash-0");
+    // An agent applied externally: the served body advanced under a CLEAN draft.
+    useViewStore.getState().reconcileEditorBase("line one\nAGENT two\n", "hash-1");
+    const s = useViewStore.getState();
+    // Base + draft adopt the new body; the concurrency base advances; status idle.
+    expect(s.editorBaseText).toBe("line one\nAGENT two\n");
+    expect(s.draftText).toBe("line one\nAGENT two\n");
+    expect(s.baseBlobHash).toBe("hash-1");
+    expect(s.editorStatus).toBe("idle");
+    // The pre-apply body is captured so the app can decorate the agent's change,
+    // starting UNSEEN.
+    expect(s.editorAgentBaseline).toBe("line one\nline two\n");
+    expect(s.editorAgentSeen).toBe(false);
+  });
+
+  it("dirty arm: NEVER silently overwrites the user's draft", () => {
+    // THE safety guarantee. The user is mid-edit when an agent applies.
+    openDocumentEditor("doc:alpha", "original\n", "hash-0");
+    updateEditorDraft("my unsaved work\n");
+    useViewStore.getState().reconcileEditorBase("agent rewrote everything\n", "hash-1");
+    const s = useViewStore.getState();
+    // The draft is preserved byte-for-byte; the base is NOT advanced; no agent
+    // baseline is captured. (The eventual save hits the existing conflict path.)
+    expect(s.draftText).toBe("my unsaved work\n");
+    expect(s.editorBaseText).toBe("original\n");
+    expect(s.baseBlobHash).toBe("hash-0");
+    expect(s.editorAgentBaseline).toBeNull();
+  });
+
+  it("a user edit clears the pending agent baseline (V1 no re-anchoring)", () => {
+    openDocumentEditor("doc:alpha", "a\nb\n", "hash-0");
+    useViewStore.getState().reconcileEditorBase("a\nB\n", "hash-1");
+    expect(useViewStore.getState().editorAgentBaseline).toBe("a\nb\n");
+    // The user starts editing → the agent decorations are superseded.
+    updateEditorDraft("a\nB\nc\n");
+    expect(useViewStore.getState().editorAgentBaseline).toBeNull();
+    expect(useViewStore.getState().editorAgentSeen).toBe(false);
+  });
+
+  it("acknowledge flips the pending agent changes from new to seen", () => {
+    openDocumentEditor("doc:alpha", "a\nb\n", "hash-0");
+    useViewStore.getState().reconcileEditorBase("a\nB\n", "hash-1");
+    expect(useViewStore.getState().editorAgentSeen).toBe(false);
+    useViewStore.getState().acknowledgeAgentChanges();
+    expect(useViewStore.getState().editorAgentSeen).toBe(true);
+  });
+
+  it("acknowledge is a no-op when no agent change is pending", () => {
+    openDocumentEditor("doc:alpha", "a\n", "hash-0");
+    useViewStore.getState().acknowledgeAgentChanges();
+    expect(useViewStore.getState().editorAgentSeen).toBe(false);
+  });
+
+  it("reconcile is inert when no editor is open", () => {
+    closeDocumentEditor();
+    useViewStore.getState().reconcileEditorBase("whatever", "hash-9");
+    expect(useViewStore.getState().editorTarget).toBeNull();
+    expect(useViewStore.getState().editorBaseText).toBe("");
+  });
+});

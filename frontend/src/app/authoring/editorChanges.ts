@@ -22,6 +22,10 @@ import { diffLines, type DiffLine } from "./diffLines";
 /** How a run of draft lines differs from the saved base. */
 export type ChangeKind = "added" | "modified" | "removed";
 
+/** Who authored a change (editor-change-fidelity D4): the USER's own manual edit,
+ *  or an AGENT change that landed externally through the ledger. */
+export type ChangeOrigin = "user" | "agent";
+
 /** One contiguous changed run, addressed in DRAFT line space (what the gutter and
  *  the caret both index by). */
 export interface LineChange {
@@ -32,14 +36,33 @@ export interface LineChange {
   /** How many draft lines the run covers. Always 0 for `removed`: a deletion has
    *  no lines left to mark, so it renders as a tick between rows, never as a bar. */
   span: number;
+  /** Author of the change; absent means `user` (the manual-edit default). */
+  origin?: ChangeOrigin;
+  /** An agent change not yet acknowledged in this session (D6). Absent = seen. */
+  unseen?: boolean;
 }
 
 /**
  * The changed runs between the saved base and the current draft, in draft-line
- * order. An unchanged document yields an empty list.
+ * order — the USER's manual edits. An unchanged document yields an empty list.
  */
 export function deriveLineChanges(base: string, draft: string): LineChange[] {
   return classifyDiff(diffLines(base, draft));
+}
+
+/**
+ * The changed runs an AGENT introduced, as the diff of the OLD base (what the user
+ * last saw) against the NEW base an external apply landed (editor-change-fidelity
+ * D4). Addressed in new-base line space, which — in the D2 clean arm, where the
+ * draft is reseeded to the new base — is the draft's own line space. Tagged
+ * `agent` + `unseen` so the gutter renders the distinct provenance treatment.
+ */
+export function deriveAgentChanges(oldBase: string, newBase: string): LineChange[] {
+  return classifyDiff(diffLines(oldBase, newBase)).map((change) => ({
+    ...change,
+    origin: "agent",
+    unseen: true,
+  }));
 }
 
 /** The classification half, over an already-computed diff — exported so the gutter
@@ -84,10 +107,14 @@ export function changeCount(changes: LineChange[]): number {
   return changes.length;
 }
 
-/** The gutter mark for one draft line: the change kind, and whether it is a
- *  zero-height tick (a deletion sitting above the line) rather than a bar. */
+/** The gutter mark for one draft line: the change kind, its author, whether the
+ *  agent change is still unseen, and whether it is a zero-height tick (a deletion
+ *  sitting above the line) rather than a bar. */
 export interface LineMarker {
   kind: ChangeKind;
+  origin: ChangeOrigin;
+  /** True for an agent change not yet acknowledged this session (D6). */
+  unseen: boolean;
   /** True for a `removed` deletion — rendered as a tick between rows, since the
    *  deleted lines occupy no space in the draft. */
   tick: boolean;
@@ -97,20 +124,23 @@ export interface LineMarker {
  * A draft-line → marker lookup for the gutter: every line of an added/modified run
  * gets a bar of that kind (so a multi-line run reads as one continuous region), and
  * a removal gets a single tick on the line it sits above. Built once per render
- * rather than probing `changeAtLine` per row.
+ * rather than probing `changeAtLine` per row. Origin/unseen ride from the change so
+ * the gutter renders the user-vs-agent (and seen-vs-new) treatment.
  */
 export function lineMarkers(changes: LineChange[]): Map<number, LineMarker> {
   const markers = new Map<number, LineMarker>();
   for (const change of changes) {
+    const origin = change.origin ?? "user";
+    const unseen = change.unseen ?? false;
     if (change.kind === "removed") {
       // A tick wins its row only if no bar already claims it (an edit that both
       // deletes and changes a line reads as the in-place change, not the tick).
       if (!markers.has(change.line))
-        markers.set(change.line, { kind: "removed", tick: true });
+        markers.set(change.line, { kind: "removed", origin, unseen, tick: true });
       continue;
     }
     for (let line = change.line; line < change.line + change.span; line += 1) {
-      markers.set(line, { kind: change.kind, tick: false });
+      markers.set(line, { kind: change.kind, origin, unseen, tick: false });
     }
   }
   return markers;
