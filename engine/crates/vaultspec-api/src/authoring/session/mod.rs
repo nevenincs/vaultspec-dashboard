@@ -10,7 +10,8 @@ use serde_json::{Value, json};
 
 use super::actors::{actor_kind_from_name, actor_kind_name};
 use super::api::{
-    CancelRunRequest, CreateSessionRequest, ResumeRunRequest, StartPromptTurnRequest,
+    CancelRunRequest, CompleteRunRequest, CreateSessionRequest, ResumeRunRequest,
+    StartPromptTurnRequest,
 };
 use super::events::{
     LifecycleAggregateKind, LifecycleEventInput, LifecycleEventKind, lifecycle_event_draft,
@@ -41,6 +42,8 @@ const RECOVERY_RUN_CAP: u32 = 20;
 
 mod types;
 pub use types::*;
+mod validate;
+use validate::*;
 
 #[cfg(test)]
 mod tests;
@@ -197,6 +200,31 @@ impl SessionRepository<'_, '_> {
         session.cancelled_at_ms = Some(now_ms);
         self.insert_or_update_session(&session)?;
         self.register_session_retention(&session)?;
+        Ok((run, true))
+    }
+
+    pub fn complete_run(
+        &self,
+        run_id: &RunId,
+        input: CompleteRunRequest,
+        now_ms: i64,
+    ) -> StoreResult<(RunRecord, bool)> {
+        validate_completion_summary(input.summary.as_deref())?;
+        let mut run = self
+            .run(run_id)?
+            .ok_or_else(|| StoreError::Session(format!("run `{run_id}` does not exist")))?;
+        if matches!(
+            run.status,
+            RunStatus::Cancelled | RunStatus::Completed | RunStatus::Failed
+        ) {
+            return Ok((run, false));
+        }
+        run.status = RunStatus::Completed;
+        run.active = false;
+        run.updated_at_ms = now_ms;
+        run.completed_at_ms = Some(now_ms);
+        self.insert_or_update_run(&run)?;
+        self.register_run_retention(&run)?;
         Ok((run, true))
     }
 
@@ -869,6 +897,65 @@ pub fn cancel_run(
     })
 }
 
+pub fn complete_run(
+    store: &mut Store,
+    context: SessionCommandContext,
+    run_id: RunId,
+    request: CompleteRunRequest,
+) -> StoreResult<SessionCommandResult> {
+    let request_digest = digest_value("complete_run_request", &request)?;
+    let scope = IdempotencyScope::new(
+        "run",
+        run_id.as_str(),
+        None,
+        digest_value(
+            "run_scope",
+            &json!({ "run_id": run_id, "request_digest": request_digest }),
+        )?,
+    );
+    store.with_unit_of_work(CommandKind::CompleteRun, |uow| {
+        run_idempotent(
+            uow,
+            &context,
+            IdempotentCoordinates {
+                command: CommandKind::CompleteRun,
+                aggregate_kind: "run",
+                aggregate_id: run_id.as_str().to_string(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            |receipt_id| {
+                let (run, changed) =
+                    uow.sessions()
+                        .complete_run(&run_id, request, context.now_ms)?;
+                if changed {
+                    append_session_event(
+                        uow,
+                        LifecycleAggregateKind::Run,
+                        run.run_id.as_str(),
+                        LifecycleEventKind::RunCompleted,
+                        &context,
+                        receipt_id,
+                        json!({ "run": run }),
+                    )?;
+                }
+                let snapshot = uow
+                    .sessions()
+                    .snapshot(&run.session_id, Some(&run.run_id))?;
+                Ok(SessionCommandOutcome {
+                    schema_version: OUTCOME_SCHEMA.to_string(),
+                    command: CommandKind::CompleteRun,
+                    session_id: run.session_id,
+                    status: "completed".to_string(),
+                    receipt_id: receipt_id.clone(),
+                    run_id: Some(run.run_id),
+                    snapshot: Some(snapshot),
+                })
+            },
+        )
+    })
+}
+
 pub fn resume_run(
     store: &mut Store,
     context: SessionCommandContext,
@@ -1099,6 +1186,7 @@ fn context_command(event_kind: LifecycleEventKind) -> CommandKind {
         LifecycleEventKind::SessionCreated => CommandKind::CreateSession,
         LifecycleEventKind::RunStarted => CommandKind::StartPromptTurn,
         LifecycleEventKind::CancellationRecorded => CommandKind::CancelRun,
+        LifecycleEventKind::RunCompleted => CommandKind::CompleteRun,
         _ => CommandKind::ResumeRun,
     }
 }
@@ -1125,247 +1213,4 @@ fn idempotency_conflict(conflict: &IdempotencyConflict) -> StoreError {
         conflict.key_scope.key.as_str(),
         conflict.existing_scope.id
     ))
-}
-
-fn session_scope(
-    session_id: &SessionId,
-    revision: Option<String>,
-    request_digest: &str,
-) -> IdempotencyScope {
-    IdempotencyScope::new(
-        "session",
-        session_id.as_str(),
-        revision,
-        digest_value(
-            "session_scope",
-            &json!({ "session_id": session_id, "request_digest": request_digest }),
-        )
-        .expect("scope digest serializes"),
-    )
-}
-
-fn derive_session_id(
-    actor: &ActorRef,
-    idempotency_key: &IdempotencyKey,
-    request_digest: &str,
-) -> StoreResult<SessionId> {
-    SessionId::new(format!(
-        "session:{}",
-        blob_oid(
-            serde_json::to_string(&json!({
-                "actor": actor,
-                "idempotency_key": idempotency_key,
-                "request_digest": request_digest,
-            }))
-            .map_err(|err| StoreError::Session(err.to_string()))?
-            .as_bytes(),
-        )
-    ))
-    .map_err(|err| StoreError::Session(err.to_string()))
-}
-
-fn derive_turn_id(
-    session_id: &SessionId,
-    turn_index: i64,
-    prompt_digest: &str,
-) -> StoreResult<String> {
-    Ok(format!(
-        "turn:{}",
-        blob_oid(format!("{}:{turn_index}:{prompt_digest}", session_id.as_str()).as_bytes())
-    ))
-}
-
-fn derive_run_id(session_id: &SessionId, turn_id: &str) -> StoreResult<RunId> {
-    RunId::new(format!(
-        "run:{}",
-        blob_oid(format!("{}:{turn_id}", session_id.as_str()).as_bytes())
-    ))
-    .map_err(|err| StoreError::Session(err.to_string()))
-}
-
-fn digest_value(prefix: &str, value: &impl Serialize) -> StoreResult<String> {
-    let bytes =
-        serde_json::to_vec(value).map_err(|err| StoreError::Idempotency(err.to_string()))?;
-    Ok(format!("{prefix}:{}", blob_oid(&bytes)))
-}
-
-fn receipt_id(
-    command: CommandKind,
-    aggregate_id: &str,
-    request_digest: &str,
-) -> StoreResult<ReceiptId> {
-    ReceiptId::new(format!(
-        "receipt:{:?}:{}:{}",
-        command,
-        aggregate_id,
-        digest_suffix(request_digest)
-    ))
-    .map_err(|err| StoreError::Idempotency(err.to_string()))
-}
-
-fn digest_suffix(digest: &str) -> &str {
-    digest.rsplit_once(':').map_or(digest, |(_, suffix)| suffix)
-}
-
-fn delegated_by_key(actor: &ActorRef) -> &str {
-    actor.delegated_by.as_ref().map_or("", ActorId::as_str)
-}
-
-fn langgraph_columns(
-    langgraph: Option<&LangGraphRef>,
-) -> (Option<&str>, Option<&str>, Option<&str>) {
-    (
-        langgraph.map(|value| value.thread_id.as_str()),
-        langgraph.and_then(|value| value.run_id.as_ref().map(|id| id.as_str())),
-        langgraph.and_then(|value| value.checkpoint_id.as_ref().map(|id| id.as_str())),
-    )
-}
-
-fn merge_langgraph_ref(
-    existing: Option<LangGraphRef>,
-    incoming: LangGraphRef,
-    aggregate_kind: &str,
-    aggregate_id: &str,
-) -> StoreResult<LangGraphRef> {
-    let Some(mut current) = existing else {
-        return Ok(incoming);
-    };
-    if current.thread_id != incoming.thread_id {
-        return Err(StoreError::Session(format!(
-            "LangGraph thread for {aggregate_kind} `{aggregate_id}` is already `{}`",
-            current.thread_id
-        )));
-    }
-    if let Some(incoming_run_id) = incoming.run_id {
-        if let Some(current_run_id) = current.run_id.as_ref()
-            && *current_run_id != incoming_run_id
-        {
-            return Err(StoreError::Session(format!(
-                "LangGraph run for {aggregate_kind} `{aggregate_id}` is already `{current_run_id}`"
-            )));
-        }
-        current.run_id = Some(incoming_run_id);
-    }
-    if incoming.checkpoint_id.is_some() {
-        current.checkpoint_id = incoming.checkpoint_id;
-    }
-    Ok(current)
-}
-
-fn read_json_record<T: for<'de> Deserialize<'de>>(row: &rusqlite::Row<'_>) -> rusqlite::Result<T> {
-    let record_json: String = row.get(0)?;
-    serde_json::from_str(&record_json).map_err(|err| {
-        rusqlite::Error::FromSqlConversionFailure(0, rusqlite::types::Type::Text, Box::new(err))
-    })
-}
-
-fn validate_session_record(record: AuthoringSessionRecord) -> StoreResult<AuthoringSessionRecord> {
-    if record.schema_version != SESSION_RECORD_SCHEMA {
-        return Err(StoreError::Session(format!(
-            "unsupported session schema `{}`",
-            record.schema_version
-        )));
-    }
-    validate_scope(&record.scope)?;
-    validate_title(&record.title)?;
-    if record.updated_at_ms < record.created_at_ms {
-        return Err(StoreError::Session(
-            "session updated_at_ms predates created_at_ms".to_string(),
-        ));
-    }
-    let _ = SessionStatus::from_str(record.status.as_str())?;
-    let _ = actor_kind_from_name(actor_kind_name(record.actor.kind))?;
-    Ok(record)
-}
-
-fn session_lifecycle_status(status: SessionStatus) -> LifecycleStatus {
-    match status {
-        SessionStatus::Active => LifecycleStatus::Active,
-        SessionStatus::Cancelled | SessionStatus::Closed => LifecycleStatus::Expired,
-    }
-}
-
-fn run_lifecycle_status(status: RunStatus) -> LifecycleStatus {
-    match status {
-        RunStatus::Active | RunStatus::CancelRequested => LifecycleStatus::Active,
-        RunStatus::Cancelled | RunStatus::Completed | RunStatus::Failed => LifecycleStatus::Expired,
-    }
-}
-
-fn validate_turn_record(record: PromptTurnRecord) -> StoreResult<PromptTurnRecord> {
-    if record.schema_version != PROMPT_TURN_RECORD_SCHEMA {
-        return Err(StoreError::Session(format!(
-            "unsupported prompt turn schema `{}`",
-            record.schema_version
-        )));
-    }
-    validate_prompt(&record.prompt_text)?;
-    if record.turn_index <= 0 {
-        return Err(StoreError::Session(
-            "prompt turn index must be positive".to_string(),
-        ));
-    }
-    Ok(record)
-}
-
-fn validate_run_record(record: RunRecord) -> StoreResult<RunRecord> {
-    if record.schema_version != RUN_RECORD_SCHEMA {
-        return Err(StoreError::Session(format!(
-            "unsupported run schema `{}`",
-            record.schema_version
-        )));
-    }
-    let _ = RunStatus::from_str(record.status.as_str())?;
-    if record.active != (record.status.active_flag() == 1) {
-        return Err(StoreError::Session(
-            "run active flag does not match status".to_string(),
-        ));
-    }
-    if record.updated_at_ms < record.created_at_ms {
-        return Err(StoreError::Session(
-            "run updated_at_ms predates created_at_ms".to_string(),
-        ));
-    }
-    Ok(record)
-}
-
-fn validate_scope(scope: &str) -> StoreResult<()> {
-    if scope.trim().is_empty() || scope != scope.trim() || scope.len() > 160 {
-        return Err(StoreError::Session(
-            "session scope must be non-empty, unpadded, and at most 160 bytes".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_title(title: &str) -> StoreResult<()> {
-    if title.trim().is_empty() || title != title.trim() || title.len() > 200 {
-        return Err(StoreError::Session(
-            "session title must be non-empty, unpadded, and at most 200 bytes".to_string(),
-        ));
-    }
-    Ok(())
-}
-
-fn validate_prompt(prompt: &str) -> StoreResult<()> {
-    if prompt.trim().is_empty() {
-        return Err(StoreError::Session(
-            "prompt turn must contain non-whitespace text".to_string(),
-        ));
-    }
-    if prompt.len() > PROMPT_TEXT_MAX_BYTES {
-        return Err(StoreError::Session(format!(
-            "prompt turn exceeds {PROMPT_TEXT_MAX_BYTES} bytes"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_reason(reason: &str) -> StoreResult<()> {
-    if reason.trim().is_empty() || reason != reason.trim() || reason.len() > 500 {
-        return Err(StoreError::Session(
-            "cancellation reason must be non-empty, unpadded, and at most 500 bytes".to_string(),
-        ));
-    }
-    Ok(())
 }

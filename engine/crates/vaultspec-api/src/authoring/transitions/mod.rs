@@ -398,6 +398,7 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::RequestApply => CommandLifecycleScope::ChangesetTransition,
         CommandKind::CreateSession
         | CommandKind::StartPromptTurn
+        | CommandKind::CompleteRun
         | CommandKind::ResumeRun
         | CommandKind::ClaimReview
         | CommandKind::ReleaseReview

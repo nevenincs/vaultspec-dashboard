@@ -1258,6 +1258,57 @@ async fn every_mounted_mutating_route_refuses_an_unregistered_actor() {
     );
 }
 
+/// The run-settle route drives a live run to `Completed`, renders the terminal
+/// status straight from the wire, and leaves the session `Active`; a replay of the
+/// same completion is idempotent and carries the same terminal snapshot.
+#[tokio::test]
+async fn complete_run_route_settles_the_run_and_replays_idempotently() {
+    let (_dir, state) = fixture_state();
+    let requester = agent();
+    register_actor(&state, &requester);
+    let token = issue_token_in_state(&state, &requester);
+    let run_id = seed_run(&state, &token).await;
+
+    let body = json!({
+        "api_version": "v1",
+        "command": "complete_run",
+        "idempotency_key": "idem:complete-route:1",
+        "payload": { "summary": "generation finished" }
+    });
+
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, envelope) = post_authoring(
+        router,
+        &format!("/v1/runs/{run_id}/complete"),
+        &token,
+        body.clone(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{envelope}");
+    assert_eq!(envelope["data"]["status"], "completed");
+    assert_eq!(envelope["data"]["run_id"], run_id.as_str());
+    assert_eq!(
+        envelope["data"]["snapshot"]["runs"][0]["status"],
+        "completed"
+    );
+    assert!(
+        envelope["data"]["snapshot"]["active_run"].is_null(),
+        "a completed run is no longer the session's active run: {envelope}"
+    );
+    assert_eq!(
+        envelope["data"]["snapshot"]["session"]["status"], "active",
+        "completing a run leaves the session active for further turns: {envelope}"
+    );
+
+    // Same idempotency key → the recorded terminal outcome replays verbatim.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, replayed) =
+        post_authoring(router, &format!("/v1/runs/{run_id}/complete"), &token, body).await;
+    assert_eq!(status, StatusCode::OK, "{replayed}");
+    assert_eq!(replayed["data"]["status"], "completed");
+    assert_eq!(replayed["data"]["run_id"], run_id.as_str());
+}
+
 /// NEGATIVE: an unregistered actor is refused at the extractor floor with a redacted
 /// 403 — never leaking the offending id, and never a store fault.
 #[tokio::test]

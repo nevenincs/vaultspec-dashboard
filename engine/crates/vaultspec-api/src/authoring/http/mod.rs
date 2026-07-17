@@ -488,6 +488,7 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/sessions/{session_id}", get(get_session))
         .route("/v1/sessions/{session_id}/turns", post(start_prompt_turn))
         .route("/v1/runs/{run_id}/cancel", post(cancel_run))
+        .route("/v1/runs/{run_id}/complete", post(complete_run))
         .route("/v1/runs/{run_id}/resume", post(resume_run))
         .route(
             "/v1/runs/{run_id}/agent-tools/execute",

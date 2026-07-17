@@ -82,6 +82,7 @@ pub(crate) enum LifecycleEventKind {
     ProposalRejected,
     RollbackCreated,
     CancellationRecorded,
+    RunCompleted,
     FailureRecorded,
     LeaseUpdated,
     RecoverySnapshotServed,
@@ -95,6 +96,7 @@ impl LifecycleEventKind {
         match self {
             Self::SessionCreated => "session.created",
             Self::RunStarted => "run.started",
+            Self::RunCompleted => "run.completed",
             Self::ProposalCreated => "proposal.created",
             Self::ProposalUpdated => "proposal.updated",
             Self::PreviewUpdated => "preview.updated",
@@ -121,6 +123,7 @@ impl LifecycleEventKind {
         match value {
             "session.created" => Some(Self::SessionCreated),
             "run.started" => Some(Self::RunStarted),
+            "run.completed" => Some(Self::RunCompleted),
             "proposal.created" => Some(Self::ProposalCreated),
             "proposal.updated" => Some(Self::ProposalUpdated),
             "preview.updated" => Some(Self::PreviewUpdated),

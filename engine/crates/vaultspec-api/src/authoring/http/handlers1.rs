@@ -9,8 +9,8 @@ use ingest_struct::reader::blob_oid;
 use serde_json::{Value, json};
 
 use super::super::api::{
-    CancelRunRequest, ChangesetChildOperationDraft, CreateProposalRequest, CreateSessionRequest,
-    InterruptResumeRequest, ResumeRunRequest, StartPromptTurnRequest,
+    CancelRunRequest, ChangesetChildOperationDraft, CompleteRunRequest, CreateProposalRequest,
+    CreateSessionRequest, InterruptResumeRequest, ResumeRunRequest, StartPromptTurnRequest,
     ToolPermissionDecisionRequest,
 };
 use super::super::apply::ApplyOutcome;
@@ -245,6 +245,27 @@ pub async fn cancel_run(
     let context = session_context(actor, idempotency_key, now);
     match state.with_authoring_store(|store| {
         super::super::session::cancel_run(store, context, run_id, payload)
+    }) {
+        Ok(result) => session_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/runs/{run_id}/complete` — settle an active run into its
+/// terminal `Completed` state and emit `run.completed` on the durable feed. This
+/// is the run-settle callback a run's driver reports through when turn processing
+/// finishes; it is idempotent (a re-complete or a completion of an already-terminal
+/// run publishes no duplicate transition) and leaves the owning session `Active`.
+pub async fn complete_run(
+    State(state): State<Arc<AppState>>,
+    Path(run_id): Path<RunId>,
+    command: ResolvedCommand<CompleteRunRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    let context = session_context(actor, idempotency_key, now);
+    match state.with_authoring_store(|store| {
+        super::super::session::complete_run(store, context, run_id, payload)
     }) {
         Ok(result) => session_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),

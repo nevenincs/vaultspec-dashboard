@@ -350,6 +350,143 @@ fn prompt_turn_joins_active_run_cancel_survives_restart() {
 }
 
 #[test]
+fn run_completion_transitions_emits_run_completed_and_replays_across_restart() {
+    let (_dir, path, mut store) = temp_store();
+    let actor = actor();
+    register_actor(&mut store, &actor);
+    let session = accepted(
+        create_session(
+            &mut store,
+            context(&actor, "idem:session:create:complete", 200),
+            session_request("Completion session"),
+        )
+        .unwrap(),
+    );
+
+    let started = accepted(
+        start_prompt_turn(
+            &mut store,
+            context(&actor, "idem:session:turn:complete", 210),
+            session.session_id.clone(),
+            turn_request("Draft then settle the run."),
+        )
+        .unwrap(),
+    );
+    let run_id = started.run_id.clone().expect("run id is returned");
+    assert_eq!(latest_seq(&mut store), 2, "session.created + run.started");
+
+    let completed = accepted(
+        complete_run(
+            &mut store,
+            context(&actor, "idem:session:complete:1", 220),
+            run_id.clone(),
+            CompleteRunRequest {
+                summary: Some("generation finished".to_string()),
+            },
+        )
+        .unwrap(),
+    );
+    assert_eq!(completed.status, "completed");
+    let snapshot = completed
+        .snapshot
+        .as_ref()
+        .expect("completion returns snapshot");
+    assert!(
+        snapshot.active_run.is_none(),
+        "a completed run is no longer active"
+    );
+    assert_eq!(snapshot.runs[0].status, RunStatus::Completed);
+    assert_eq!(snapshot.runs[0].completed_at_ms, Some(220));
+    assert_eq!(
+        snapshot.session.status,
+        SessionStatus::Active,
+        "completing a run must leave its session active for further turns"
+    );
+    assert_eq!(
+        latest_seq(&mut store),
+        3,
+        "completion publishes exactly one run.completed transition"
+    );
+
+    let emitted = store
+        .with_read_unit_of_work(CommandKind::SubscribeEvents, |uow| {
+            uow.outbox().events_after(0, 50)
+        })
+        .unwrap();
+    let kinds: Vec<&str> = emitted
+        .iter()
+        .map(|event| event.event_kind.as_str())
+        .collect();
+    assert_eq!(
+        kinds,
+        vec!["session.created", "run.started", "run.completed"]
+    );
+
+    // Re-completing is idempotent: the recorded outcome replays and no duplicate
+    // transition lands on the durable feed.
+    let replayed_completion = replayed(
+        complete_run(
+            &mut store,
+            context(&actor, "idem:session:complete:1", 220),
+            run_id.clone(),
+            CompleteRunRequest {
+                summary: Some("generation finished".to_string()),
+            },
+        )
+        .unwrap(),
+    );
+    assert_eq!(replayed_completion.status, "completed");
+    assert_eq!(
+        latest_seq(&mut store),
+        3,
+        "an idempotent re-completion publishes no duplicate transition"
+    );
+
+    // A fresh completion command against an already-terminal run is a no-op transition:
+    // it records its own outcome but appends no lifecycle event.
+    let terminal_noop = accepted(
+        complete_run(
+            &mut store,
+            context(&actor, "idem:session:complete:2", 225),
+            run_id.clone(),
+            CompleteRunRequest { summary: None },
+        )
+        .unwrap(),
+    );
+    assert_eq!(terminal_noop.status, "completed");
+    assert_eq!(
+        latest_seq(&mut store),
+        3,
+        "completing an already-terminal run must not publish a second transition"
+    );
+
+    drop(store);
+    let mut reopened = Store::open_at(&path).unwrap();
+    let recovered = session_snapshot(&mut reopened, session.session_id.clone()).unwrap();
+    assert_eq!(recovered.session.status, SessionStatus::Active);
+    assert!(recovered.active_run.is_none());
+    assert_eq!(recovered.runs[0].status, RunStatus::Completed);
+    assert_eq!(recovered.runs[0].completed_at_ms, Some(220));
+
+    let feed = reopened
+        .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+            let latest = uow.outbox().latest_seq()?;
+            super::super::events::projector_feed_page(uow.outbox().events_after(0, 50)?, latest)
+        })
+        .unwrap();
+    let replayed_kinds: Vec<&str> = feed
+        .items
+        .iter()
+        .map(|item| item.event_kind.as_str())
+        .collect();
+    assert_eq!(
+        replayed_kinds,
+        vec!["session.created", "run.started", "run.completed"],
+        "run.completed replays from the durable outbox after restart"
+    );
+}
+
+#[test]
 fn session_listing_is_bounded_and_reports_next_marker() {
     let (_dir, _path, mut store) = temp_store();
     let actor = actor();
