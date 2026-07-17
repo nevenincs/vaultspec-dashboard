@@ -43,7 +43,8 @@
       "focus": { "$type": "color", "$value": "{semantic.focus.ring}", "$extensions": { "com.vaultspec.css": { "var": "--color-focus", "emit": "alias" } } },
       "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.55, 0.11, 160] }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-live", "emit": "raw" } } },
       "diff-add": { "$type": "color", "$value": "{primitive.diff.add-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-add", "emit": "alias" } } },
-      "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-remove", "emit": "alias" } } }
+      "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-remove", "emit": "alias" } } },
+      "diff-modified": { "$type": "color", "$value": "{primitive.diff.modified-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-modified", "emit": "alias" } } }
     },
     "scene": {
       "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#fdfaf6" }, "$extensions": { "com.vaultspec.css": { "var": "--color-canvas-bg", "emit": "hex" } } },

@@ -34,7 +34,8 @@
       "accent-text": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.92, 0.08, 150] } },
       "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.12, 160] } },
       "diff-add": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 150] } },
-      "diff-remove": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.17, 28] } }
+      "diff-remove": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.17, 28] } },
+      "diff-modified": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 250] } }
     },
     "scene": {
       "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#050403" } },

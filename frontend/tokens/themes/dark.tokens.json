@@ -34,7 +34,8 @@
       "accent-text": { "$type": "color", "$value": "{primitive.accent.800}" },
       "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.75, 0.11, 160] } },
       "diff-add": { "$type": "color", "$value": "{primitive.diff.add-d}" },
-      "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-d}" }
+      "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-d}" },
+      "diff-modified": { "$type": "color", "$value": "{primitive.diff.modified-d}" }
     },
     "scene": {
       "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#1a1713" } },

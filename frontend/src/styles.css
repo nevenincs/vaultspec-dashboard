@@ -110,8 +110,10 @@
   --primitive-tier-semantic-d: oklch(0.7 0.08 290);
   --primitive-diff-add-l: oklch(0.5 0.13 150);
   --primitive-diff-remove-l: oklch(0.52 0.16 28);
+  --primitive-diff-modified-l: oklch(0.5 0.13 250);
   --primitive-diff-add-d: oklch(0.72 0.13 150);
   --primitive-diff-remove-d: oklch(0.68 0.15 28);
+  --primitive-diff-modified-d: oklch(0.72 0.13 250);
   --semantic-surface-base: var(--primitive-neutral-50);
   --semantic-surface-raised: var(--primitive-neutral-0);
   --semantic-surface-sunken: var(--primitive-neutral-150);
@@ -139,6 +141,7 @@
   --color-state-live: oklch(0.55 0.11 160);
   --color-diff-add: var(--primitive-diff-add-l);
   --color-diff-remove: var(--primitive-diff-remove-l);
+  --color-diff-modified: var(--primitive-diff-modified-l);
   --color-canvas-bg: #fdfaf6;
   --color-ink: #312d27;
   --color-ink-muted: #5f5a53;
@@ -340,6 +343,7 @@
     --color-state-live: oklch(0.55 0.11 160);
     --color-diff-add: var(--primitive-diff-add-l);
     --color-diff-remove: var(--primitive-diff-remove-l);
+    --color-diff-modified: var(--primitive-diff-modified-l);
     --color-canvas-bg: #fdfaf6;
     --color-ink: #312d27;
     --color-ink-muted: #5f5a53;
@@ -388,6 +392,7 @@
     --color-state-live: oklch(0.75 0.11 160);
     --color-diff-add: var(--primitive-diff-add-d);
     --color-diff-remove: var(--primitive-diff-remove-d);
+    --color-diff-modified: var(--primitive-diff-modified-d);
     --color-canvas-bg: #1a1713;
     --color-ink: #f4efea;
     --color-ink-muted: #a9a49c;
@@ -436,6 +441,7 @@
     --color-state-live: oklch(0.8 0.12 160);
     --color-diff-add: oklch(0.8 0.15 150);
     --color-diff-remove: oklch(0.7 0.17 28);
+    --color-diff-modified: oklch(0.8 0.15 250);
     --color-canvas-bg: #050403;
     --color-ink: #fefcf9;
     --color-ink-muted: #ddd8d2;
@@ -988,6 +994,7 @@
      state-live / paper ........  4.40 : 1   PASS (>=3)
      diff-add / paper ..........  5.42 : 1   PASS (>=4.5)
      diff-remove / paper .......  5.73 : 1   PASS (>=4.5)
+     diff-modified / paper .....  5.74 : 1   PASS (>=4.5)
      tier-declared / canvas ....  13.15 : 1  PASS (>=3)
      tier-structural / canvas ..   5.10 : 1  PASS (>=3)
      tier-temporal / canvas ....   7.54 : 1  PASS (>=3)
@@ -1002,6 +1009,7 @@
      focus-ring / paper ........  6.48 : 1   PASS (>=3)
      diff-add / paper ..........  7.09 : 1   PASS (>=4.5)
      diff-remove / paper .......  5.43 : 1   PASS (>=4.5)
+     diff-modified / paper .....  6.76 : 1   PASS (>=4.5)
      state-active / canvas .....  5.53 : 1   PASS (>=3)
      state-complete / canvas ...  8.32 : 1   PASS (>=3)
      state-archived / canvas ...  3.67 : 1   PASS (>=3)
@@ -1020,6 +1028,7 @@
      focus-ring / paper ........ 13.12 : 1   PASS (>=3)
      diff-add / paper .......... 11.44 : 1   PASS (>=4.5)
      diff-remove / paper .......  7.06 : 1   PASS (>=4.5)
+     diff-modified / paper ..... 10.56 : 1   PASS (>=4.5)
      state-active / canvas .....  8.04 : 1   PASS (>=4.5)
      state-complete / canvas ... 12.90 : 1   PASS (>=4.5)
      state-archived / canvas ...  5.20 : 1   PASS (>=4.5)

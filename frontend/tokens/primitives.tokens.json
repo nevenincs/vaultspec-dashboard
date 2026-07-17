@@ -46,8 +46,10 @@
       "$description": "Sacred diff hues, high-contrast in every theme (S13). -l light, -d dark.",
       "add-l": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.5, 0.13, 150] } },
       "remove-l": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.52, 0.16, 28] } },
+      "modified-l": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.5, 0.13, 250] } },
       "add-d": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.72, 0.13, 150] } },
-      "remove-d": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.68, 0.15, 28] } }
+      "remove-d": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.68, 0.15, 28] } },
+      "modified-d": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.72, 0.13, 250] } }
     }
   }
 }
