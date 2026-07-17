@@ -336,12 +336,35 @@ describe("agent-edit reconcile (editor-change-fidelity D2/D4)", () => {
     expect(s.editorAgentBaseline).toBeNull();
   });
 
-  it("a user edit clears the pending agent baseline (V1 no re-anchoring)", () => {
+  it("KEEPS the agent baseline across user edits (D11 anchor stability)", () => {
     openDocumentEditor("doc:alpha", "a\nb\n", "hash-0");
     useViewStore.getState().reconcileEditorBase("a\nB\n", "hash-1");
     expect(useViewStore.getState().editorAgentBaseline).toBe("a\nb\n");
-    // The user starts editing → the agent decorations are superseded.
+    // The user edits elsewhere → the baseline PERSISTS (marks re-project, not clear).
     updateEditorDraft("a\nB\nc\n");
+    expect(useViewStore.getState().editorAgentBaseline).toBe("a\nb\n");
+  });
+
+  it("keeps the OLDEST baseline across stacked agent applies (D11)", () => {
+    openDocumentEditor("doc:alpha", "v1\n", "hash-0");
+    useViewStore.getState().reconcileEditorBase("v2\n", "hash-1");
+    expect(useViewStore.getState().editorAgentBaseline).toBe("v1\n");
+    // A second agent apply while still clean must not reset the baseline to v2 —
+    // the user last SAW v1, so marks compose from v1.
+    useViewStore.getState().reconcileEditorBase("v3\n", "hash-2");
+    expect(useViewStore.getState().editorAgentBaseline).toBe("v1\n");
+    expect(useViewStore.getState().editorBaseText).toBe("v3\n");
+  });
+
+  it("a save folds provenance into the ledger — clears the agent baseline (D11)", () => {
+    openDocumentEditor("doc:alpha", "a\nb\n", "hash-0");
+    useViewStore.getState().reconcileEditorBase("a\nB\n", "hash-1");
+    expect(useViewStore.getState().editorAgentBaseline).toBe("a\nb\n");
+    // Simulate a save landing.
+    applyEditorWriteResult(
+      { kind: "saved", path: "alpha.md", blobHash: "hash-2", checks: [] },
+      "a\nB\n",
+    );
     expect(useViewStore.getState().editorAgentBaseline).toBeNull();
     expect(useViewStore.getState().editorAgentSeen).toBe(false);
   });

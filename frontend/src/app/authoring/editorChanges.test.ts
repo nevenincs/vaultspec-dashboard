@@ -7,12 +7,15 @@ import {
   caretToLine,
   changeAtLine,
   deriveAgentChanges,
+  deriveEffectiveChanges,
   deriveLineChanges,
   lineMarkers,
+  lineSpaceProjection,
   lineToCaret,
   nextChange,
   previousChange,
 } from "./editorChanges";
+import { diffLines } from "./diffLines";
 
 describe("deriveLineChanges", () => {
   it("reports nothing for an unedited draft", () => {
@@ -124,6 +127,65 @@ describe("agent provenance (D4)", () => {
       unseen: false,
       tick: false,
     });
+  });
+});
+
+describe("anchor stability (D11: deriveEffectiveChanges)", () => {
+  it("with no agent change, is exactly the user diff", () => {
+    expect(deriveEffectiveChanges(null, "a\nb\n", "a\nB\n", false)).toEqual(
+      deriveLineChanges("a\nb\n", "a\nB\n"),
+    );
+  });
+
+  it("keeps an agent mark in place when the user edits a DIFFERENT line", () => {
+    // Agent modified line 1 (baseline a\nb → base a\nB). The user then appends a new
+    // line 3. The agent mark must stay on line 1 (now still line 1 in the draft),
+    // and the user's addition shows separately.
+    const baseline = "a\nb\nc\n";
+    const base = "a\nB\nc\n"; // agent changed line 1
+    const draft = "a\nB\nc\nd\n"; // user appended line 3
+    const changes = deriveEffectiveChanges(baseline, base, draft, false);
+    const markers = lineMarkers(changes);
+    // Agent mark survived at draft line 1.
+    expect(markers.get(1)).toMatchObject({ origin: "agent", kind: "modified" });
+    // The user's appended line is a user add.
+    expect(markers.get(3)).toMatchObject({ origin: "user", kind: "added" });
+  });
+
+  it("re-projects an agent mark DOWN when the user inserts lines above it", () => {
+    const baseline = "a\nb\n";
+    const base = "a\nB\n"; // agent changed line 1
+    const draft = "x\ny\na\nB\n"; // user inserted two lines at the top
+    const markers = lineMarkers(deriveEffectiveChanges(baseline, base, draft, false));
+    // The agent's line, originally index 1, is now index 3 in the draft.
+    expect(markers.get(3)).toMatchObject({ origin: "agent", kind: "modified" });
+    // The inserted lines are user adds.
+    expect(markers.get(0)?.origin).toBe("user");
+  });
+
+  it("reclassifies an agent line as the user's once the user edits it (merge law)", () => {
+    const baseline = "a\nb\n";
+    const base = "a\nAGENT\n"; // agent changed line 1
+    const draft = "a\nUSER\n"; // user overwrote the agent's line 1
+    const markers = lineMarkers(deriveEffectiveChanges(baseline, base, draft, false));
+    // Touching agent text makes it yours: line 1 is a USER change now, not agent.
+    expect(markers.get(1)?.origin).toBe("user");
+  });
+
+  it("honors agentSeen (unseen cue drops once acknowledged)", () => {
+    const args = ["a\nb\n", "a\nB\n", "a\nB\n"] as const;
+    expect(deriveEffectiveChanges(...args, false)[0]).toMatchObject({ unseen: true });
+    expect(deriveEffectiveChanges(...args, true)[0]).toMatchObject({ unseen: false });
+  });
+});
+
+describe("lineSpaceProjection", () => {
+  it("maps surviving base lines to their draft positions, dropping edited ones", () => {
+    // base a,b,c → draft a,c,d: b removed, d added. Surviving: a(0→0), c(2→1).
+    const proj = lineSpaceProjection(diffLines("a\nb\nc\n", "a\nc\nd\n"));
+    expect(proj.get(0)).toBe(0); // a
+    expect(proj.has(1)).toBe(false); // b removed → no draft counterpart
+    expect(proj.get(2)).toBe(1); // c shifted up
   });
 });
 

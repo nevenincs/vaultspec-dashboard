@@ -79,8 +79,7 @@ import {
 import { DiffView } from "../authoring/DiffView";
 import {
   caretToLine,
-  deriveAgentChanges,
-  deriveLineChanges,
+  deriveEffectiveChanges,
   lineToCaret,
   nextChange,
   previousChange,
@@ -212,20 +211,21 @@ export function MarkdownDocView({
     documentEditor.initialText,
   ]);
 
-  // The changes the gutter paints (editor-change-fidelity D5). Two provenance
-  // sources, never overlapping: when an agent change is pending (a reconcile just
-  // landed and the draft is still clean), show the AGENT delta (old base → new base)
-  // tagged agent/unseen; otherwise show the USER's own draft-vs-base dirty diff. The
-  // store clears the agent baseline on the first user edit, so the two never mix (V1
-  // does not re-anchor agent marks through subsequent user edits). No debounce — the
-  // bounded diff is cheap enough per keystroke (see diffLines.ts).
-  const editorChanges = useMemo<LineChange[]>(() => {
-    if (editor.agentBaseline !== null) {
-      const agent = deriveAgentChanges(editor.agentBaseline, editor.baseText);
-      return editor.agentSeen ? agent.map((c) => ({ ...c, unseen: false })) : agent;
-    }
-    return deriveLineChanges(editor.baseText, editor.draftText);
-  }, [editor.agentBaseline, editor.agentSeen, editor.baseText, editor.draftText]);
+  // The changes the gutter paints (editor-change-fidelity D5 + D11). The user's own
+  // edits PLUS the agent's changes PROJECTED into the current draft line space, so
+  // agent marks survive as the user edits above/around them (anchor stability by
+  // per-edit reclassification — no stored decoration state). No debounce — the two
+  // bounded diffs are cheap per keystroke (see diffLines.ts).
+  const editorChanges = useMemo<LineChange[]>(
+    () =>
+      deriveEffectiveChanges(
+        editor.agentBaseline,
+        editor.baseText,
+        editor.draftText,
+        editor.agentSeen,
+      ),
+    [editor.agentBaseline, editor.agentSeen, editor.baseText, editor.draftText],
+  );
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
@@ -456,12 +456,15 @@ export function MarkdownDocView({
   // that the diff costs about what the edit costs. Disabled when nothing is open or
   // there is no change to jump to.
   useEffect(() => {
-    // The change set to navigate, from RAW store state: the AGENT delta when one is
-    // pending (so agent changes are navigable too), else the user's own diff.
+    // The change set to navigate, from RAW store state: user edits plus projected
+    // agent changes (D11), so agent changes are navigable alongside the user's own.
     const changesFromState = (state: ReturnType<typeof useViewStore.getState>) =>
-      state.editorAgentBaseline !== null
-        ? deriveAgentChanges(state.editorAgentBaseline, state.editorBaseText)
-        : deriveLineChanges(state.editorBaseText, state.draftText);
+      deriveEffectiveChanges(
+        state.editorAgentBaseline,
+        state.editorBaseText,
+        state.draftText,
+        state.editorAgentSeen,
+      );
     const jumpChange = (direction: "next" | "previous") => {
       const state = useViewStore.getState();
       const el = textareaRef.current;

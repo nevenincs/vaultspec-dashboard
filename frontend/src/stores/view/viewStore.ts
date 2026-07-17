@@ -1028,17 +1028,14 @@ export const useViewStore = create<ViewState>((set) => ({
   setDraft: (text) =>
     set((state) => {
       const draftText = normalizeEditorTextValue(text);
-      // A user edit supersedes any pending agent decorations: clear the baseline so
-      // the gutter switches to the user diff. This is the safe, anchor-free behavior
-      // (agent marks are not re-anchored through subsequent user edits in V1).
+      // The agent baseline is KEPT across user edits (editor-change-fidelity D11):
+      // the effective-change derivation re-projects the agent marks into the new
+      // draft line space each render, so an edit above or around an agent change
+      // does not lose its provenance. A line the user actually edits reclassifies as
+      // theirs by the merge law — no clear needed here.
       return state.draftText === draftText
         ? state
-        : {
-            draftText,
-            editorStatus: "dirty",
-            editorAgentBaseline: null,
-            editorAgentSeen: false,
-          };
+        : { draftText, editorStatus: "dirty" };
     }),
   markSaving: () => set({ editorStatus: "saving" }),
   // Adopt the new blob hash as the next concurrency base so a follow-on edit saves
@@ -1054,6 +1051,12 @@ export const useViewStore = create<ViewState>((set) => ({
       baseBlobHash: normalizeEditorBlobHash(blobHash),
       editorStatus: state.editorStatus === "dirty" ? "dirty" : "saved",
       editorBaseText: savedText,
+      // A save folds the buffer into one committed revision whose durable provenance
+      // is the ledger (editor-change-fidelity D11/D4): the session-scoped agent marks
+      // clear. Stated cost — saving before acknowledging drops the session dot; the
+      // durable unseen truth remains the backend acknowledgement plane (D6).
+      editorAgentBaseline: null,
+      editorAgentSeen: false,
     })),
   markConflict: () => set({ editorStatus: "conflict" }),
   reconcileEditorBase: (text, blobHash) =>
@@ -1071,9 +1074,10 @@ export const useViewStore = create<ViewState>((set) => ({
         editorBaseText: normalizedText,
         baseBlobHash: normalizeEditorBlobHash(blobHash),
         editorStatus: "idle",
-        // Capture what the user last saw so the app can diff it against the new base
-        // to decorate the agent's changes; they start unseen (NEW).
-        editorAgentBaseline: state.editorBaseText,
+        // Keep the OLDEST baseline across stacked applies (editor-change-fidelity
+        // D11) so marks compose across successive agent applies instead of resetting
+        // to the last — what the user last SAW is the earliest un-acknowledged base.
+        editorAgentBaseline: state.editorAgentBaseline ?? state.editorBaseText,
         editorAgentSeen: false,
       };
     }),

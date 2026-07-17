@@ -65,6 +65,94 @@ export function deriveAgentChanges(oldBase: string, newBase: string): LineChange
   }));
 }
 
+/**
+ * A base-line → draft-line map over a base→draft diff (editor-change-fidelity D11):
+ * every SURVIVING (context) base line maps to the draft line it now occupies. A
+ * removed base line (the user deleted or edited it) is absent — it has no draft
+ * counterpart. This is the projection that carries an agent mark, addressed in base
+ * space, onto the draft the user is editing: an agent line the user left untouched
+ * is context here and keeps its mark; an agent line the user changed is a remove
+ * here (absent) and reclassifies as the user's own change.
+ */
+export function lineSpaceProjection(lines: DiffLine[]): Map<number, number> {
+  const projection = new Map<number, number>();
+  let baseLine = 0;
+  let draftLine = 0;
+  for (const line of lines) {
+    if (line.kind === "context") {
+      projection.set(baseLine, draftLine);
+      baseLine += 1;
+      draftLine += 1;
+    } else if (line.kind === "remove") {
+      baseLine += 1;
+    } else {
+      draftLine += 1;
+    }
+  }
+  return projection;
+}
+
+/**
+ * The effective change set the gutter paints (editor-change-fidelity D11): the
+ * user's own edits PLUS the agent's changes projected into the current draft's line
+ * space, so agent marks survive as the user edits above or around them. Recomputed
+ * per render (two diffs, both bounded) — there is no stored, transformed decoration
+ * state; the anchor is a derivation the client repeats.
+ *
+ * Merge law: a user run wins every line it touches. An agent line the user left
+ * untouched keeps `agent` origin (and its unseen cue); an agent line the user edited
+ * or deleted falls out of the projection and shows as the user's change — touching
+ * agent text makes it yours, matching the ledger's provenance (the next save is the
+ * user's revision). `userChanges` are appended LAST so the per-line marker map lets
+ * a user edit overwrite a coincident projected agent line.
+ */
+export function deriveEffectiveChanges(
+  agentBaseline: string | null,
+  baseText: string,
+  draftText: string,
+  agentSeen: boolean,
+): LineChange[] {
+  const baseDiff = diffLines(baseText, draftText);
+  const userChanges = classifyDiff(baseDiff);
+  if (agentBaseline === null) return userChanges;
+
+  const agentChanges = deriveAgentChanges(agentBaseline, baseText);
+  const projection = lineSpaceProjection(baseDiff);
+  const projectedAgent: LineChange[] = [];
+  for (const change of agentChanges) {
+    if (change.kind === "removed") {
+      // A deletion tick sits above base line `change.line`; project that anchor.
+      const draftLine = projection.get(change.line);
+      if (draftLine !== undefined) {
+        projectedAgent.push({
+          line: draftLine,
+          kind: "removed",
+          span: 0,
+          origin: "agent",
+          unseen: !agentSeen,
+        });
+      }
+      continue;
+    }
+    // An added/modified run covers base lines [line, line + span); project each
+    // surviving line individually (adjacent per-line bars read as one region), so a
+    // user edit that splits the run drops only the touched lines, not the whole run.
+    for (let base = change.line; base < change.line + change.span; base += 1) {
+      const draftLine = projection.get(base);
+      if (draftLine !== undefined) {
+        projectedAgent.push({
+          line: draftLine,
+          kind: change.kind,
+          span: 1,
+          origin: "agent",
+          unseen: !agentSeen,
+        });
+      }
+    }
+  }
+  return [...projectedAgent, ...userChanges];
+}
+
 /** The classification half, over an already-computed diff — exported so the gutter
  *  can reuse a diff it already has rather than diffing the same pair twice. */
 export function classifyDiff(lines: DiffLine[]): LineChange[] {
