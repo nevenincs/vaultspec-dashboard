@@ -4,19 +4,15 @@
 // (agentic-authoring-ux W03.P03.S16), ONLINE against the real `vaultspec serve`
 // the global setup spawns over a scratch fixture workspace — never a mocked wire.
 //
-// The scenario mirrors the authoring happy-path but drives it through the AGENT
-// transcript surface: an agent principal opens a session + turn and proposes a
-// real changeset, submits it for review; the transcript's latest-turn slot
-// correlates and mounts the ONE proposal card; Show-changes opens the ONE diff
-// primitive (proposal-preview) over the served base/proposed texts; and Approve
-// fires the REAL review decision with zero prior editing — the ambient reviewer
-// (`human:local-operator`) is a distinct principal from the agent author, so the
-// self-approval ban is cleared (ADR D5 ambient provenance). The approve leg needs
-// no core (a decision is recorded, not applied), so it is not core-gated.
-//
-// Correlation note: no run/turn link is served on a proposal projection, so the
-// card binds by the actor-identity heuristic the component documents; here the
-// session actor IS the proposal's origin actor, the exact happy case.
+// The scenario proves S42/D4's EXACT run binding negatively: an agent principal
+// opens a session + turn and proposes a real changeset through the DIRECT
+// authoring route — which by design carries no run provenance — and the
+// transcript's turn slot must therefore stay EMPTY (no heuristic fallback).
+// The served projection independently confirms `run_id` is null on the wire.
+// The POSITIVE correlated-card flow (tool-executor-dispatched proposal → card
+// mounts → diff → approve) needs a genuinely agent-driven run and lands with
+// the first cross-repo e2e; the card's approve mechanics are live-covered by
+// the review-station suite.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, waitFor } from "@testing-library/react";

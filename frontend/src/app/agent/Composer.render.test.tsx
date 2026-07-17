@@ -21,7 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import { liveScope, liveTransport } from "../../testing/liveClient";
-import { AuthoringClient } from "../../stores/server/authoring";
+import { AuthoringClient, ensureActorToken } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
 import { queryClient } from "../../stores/server/queryClient";
 import { useAgentPanel } from "../../stores/view/agentPanel";
@@ -329,39 +329,38 @@ describe("Composer mid-run behavior (D4/S39)", () => {
   });
 
   it("flips to steer from the SERVED pending-interrupt list and resumes the parked run (S41)", async () => {
-    // Steer-eligibility is now read from the wire (`useRunInterrupts`), not a
-    // client-staged record: an AGENT-owned run parked on a REAL permission interrupt
-    // must flip the composer to steer after the served list refreshes. Requester is
-    // an agent (never self-grants → the tool suspends); the composer's ambient human
-    // principal resumes it — a different principal, so the resume faults honestly on
-    // the wire and the inline failure surfaces with the draft intact (the honest
-    // path the original staged-interrupt test proved, now over the served list).
+    // Steer-eligibility is read from the wire (`useRunInterrupts`), not a
+    // client-staged record. OWNERSHIP MODELS THE PRODUCT (P05 review floor): the
+    // AMBIENT human owns the session and its run (the composer bootstrapped it);
+    // an AGENT principal parks a permission interrupt on that run by executing a
+    // mutating tool without a grant; the same ambient human — the run's OWNER —
+    // steers, which the resume route authorizes and resolves on the wire.
     const authoring = new AuthoringClient({ baseUrl: "", fetchImpl: liveTransport });
+    const ambientToken = await ensureActorToken();
     const agentToken = (
       await authoring.issueActorToken({
         actor: { id: `agent:composer-steer-${run}`, kind: "agent" },
       })
     ).raw_token;
 
-    // Open the session + first turn as the agent so it OWNS the run, then set it
-    // current and render the composer against it.
+    // The AMBIENT principal opens the session + first turn (owns the run).
     const scope = await liveScope();
     const created = await liveAgent.createSession(
       { scope, title: `Composer steer ${run}` },
-      { actorToken: agentToken },
+      { actorToken: ambientToken },
     );
     if (created.kind !== "settled") throw new Error("session did not settle");
     const sessionId = created.session_id;
     const turned = await liveAgent.startTurn(
       sessionId,
       { prompt: "start work" },
-      { actorToken: agentToken },
+      { actorToken: ambientToken },
     );
     const runId = turned.kind === "settled" ? (turned.run_id ?? null) : null;
     expect(runId).toBeTruthy();
 
-    // Park a REAL interrupt on the run: a mutating tool without a grant suspends as
-    // `awaiting_permission`, creating the pending interrupt the served list returns.
+    // The AGENT parks a REAL interrupt on the human's run: a mutating tool
+    // without a grant suspends as `awaiting_permission`.
     const executed = (await liveAgent.executeToolCall(
       runId!,
       {
@@ -383,11 +382,10 @@ describe("Composer mid-run behavior (D4/S39)", () => {
       { timeout: 15_000 },
     );
 
-    // Submitting steers: the typed `{prompt}` resume resolves the parked interrupt
-    // on the real wire (steering an agent's parked run is the human's designed
-    // affordance — resume is a capability-by-id, not owner-fenced), the draft
-    // clears, and the composer returns to the idle placeholder once the served
-    // list no longer holds a pending entry.
+    // Submitting steers: the typed `{prompt}` resume comes from the run's OWNER,
+    // so the authorization floor admits it, the interrupt resolves on the real
+    // wire, the draft clears, and the composer returns to the idle placeholder
+    // once the served list no longer holds a pending entry.
     fireEvent.change(input(), { target: { value: "go left instead" } });
     fireEvent.keyDown(input(), { key: "Enter" });
     await waitFor(() => expect(input().value).toBe(""), { timeout: 15_000 });

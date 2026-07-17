@@ -118,7 +118,7 @@ pub async fn resume_interrupt(
     command: ResolvedCommand<InterruptResumeRequest>,
 ) -> Response {
     let now = now_ms();
-    let (_actor, _command, _idempotency_key, payload) = command.into_parts();
+    let (actor, _command, _idempotency_key, payload) = command.into_parts();
     // Serialize the typed decision as the stored value; a serialization failure is an
     // internal fault, surfaced through the shared error taxonomy, never a silent drop.
     let decision_blob = match serde_json::to_string(&payload.decision) {
@@ -134,6 +134,21 @@ pub async fn resume_interrupt(
     };
     match state.with_authoring_store(|store| {
         store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
+            // Authorization floor (P05 review, HIGH): resuming an interrupt acts ON its
+            // run — granting a pending tool permission or steering the agent — so the
+            // resuming principal must be that run's owner or the owner's delegator,
+            // exactly like `complete_run`. Without this, any standing actor could
+            // approve a stranger's grant or inject prompts into an unrelated run.
+            let interrupt = uow.interrupts().get(&interrupt_id)?.ok_or_else(|| {
+                StoreError::Validation(format!("unknown interrupt `{interrupt_id}`"))
+            })?;
+            let run = uow.sessions().run(&interrupt.run_id)?.ok_or_else(|| {
+                StoreError::Validation(format!(
+                    "interrupt `{interrupt_id}` references unknown run `{}`",
+                    interrupt.run_id
+                ))
+            })?;
+            super::super::session::authorize_run_owner(&run, &actor)?;
             uow.interrupts()
                 .resolve_interrupt(&interrupt_id, decision_blob, now)
         })

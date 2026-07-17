@@ -430,6 +430,34 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
     register_actor(&state, &reviewer);
     let token = issue_token_in_state(&state, &reviewer);
 
+    // A REAL run owned by the resuming principal (P05 authorization floor).
+    let listed_run_id = state
+        .with_authoring_store(|store| {
+            store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let session_id = SessionId::new("session_interrupt_list").unwrap();
+                uow.sessions().create_session(
+                    session_id.clone(),
+                    crate::authoring::api::CreateSessionRequest {
+                        scope: "worktree".to_string(),
+                        title: "Interrupt list session".to_string(),
+                    },
+                    reviewer.clone(),
+                    now_ms(),
+                )?;
+                let (_turn, run) = uow.sessions().start_prompt_turn(
+                    &session_id,
+                    crate::authoring::api::StartPromptTurnRequest {
+                        prompt: "park two tools".to_string(),
+                        summary: None,
+                        feedback_batch_id: None,
+                    },
+                    reviewer.clone(),
+                    now_ms(),
+                )?;
+                Ok(run.expect("first turn opens a run").run_id)
+            })
+        })
+        .unwrap();
     state
         .with_authoring_store(|store| {
             store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
@@ -440,7 +468,7 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
                     uow.interrupts().record_interrupt(
                         crate::authoring::interrupts::RecordInterruptInput {
                             interrupt_id: InterruptId::new(id).unwrap(),
-                            run_id: RunId::new("run_list_1").unwrap(),
+                            run_id: listed_run_id.clone(),
                             kind: crate::authoring::interrupts::InterruptKind::ToolPermission,
                             tool_call_id: Some(ToolCallId::new(call).unwrap()),
                             proposal_id: None,
@@ -460,7 +488,7 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/runs/run_list_1/interrupts")
+                .uri(&format!("/v1/runs/{}/interrupts", listed_run_id.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -492,7 +520,7 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/v1/runs/run_list_1/interrupts")
+                .uri(&format!("/v1/runs/{}/interrupts", listed_run_id.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -734,5 +762,99 @@ async fn close_session_marks_closed_and_refuses_a_mismatched_kind() {
         status,
         StatusCode::BAD_REQUEST,
         "wrong command kind is refused"
+    );
+}
+
+/// P05 review floor (HIGH finding fix): a STANDING, registered actor with no
+/// connection to the run — not its owner, not the owner's delegator — may not
+/// resume its interrupt (neither approving a stranger's pending tool grant nor
+/// injecting a steering prompt). Typed refusal; the interrupt stays pending.
+#[tokio::test]
+async fn interrupt_resume_refuses_a_standing_stranger() {
+    let (_dir, state) = fixture_state();
+    let owner = human_reviewer();
+    register_actor(&state, &owner);
+    let stranger = ActorRef {
+        id: ActorId::new("agent:unrelated-bystander").unwrap(),
+        kind: ActorKind::Agent,
+        delegated_by: None,
+    };
+    register_actor(&state, &stranger);
+    let stranger_token = issue_token_in_state(&state, &stranger);
+
+    // A real run owned by `owner`, parked on an interrupt.
+    let run_id = state
+        .with_authoring_store(|store| {
+            store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let session_id = SessionId::new("session_stranger_fence").unwrap();
+                uow.sessions().create_session(
+                    session_id.clone(),
+                    crate::authoring::api::CreateSessionRequest {
+                        scope: "worktree".to_string(),
+                        title: "Stranger fence session".to_string(),
+                    },
+                    owner.clone(),
+                    now_ms(),
+                )?;
+                let (_turn, run) = uow.sessions().start_prompt_turn(
+                    &session_id,
+                    crate::authoring::api::StartPromptTurnRequest {
+                        prompt: "park a tool".to_string(),
+                        summary: None,
+                        feedback_batch_id: None,
+                    },
+                    owner.clone(),
+                    now_ms(),
+                )?;
+                let run = run.expect("first turn opens a run");
+                uow.interrupts().record_interrupt(
+                    crate::authoring::interrupts::RecordInterruptInput {
+                        interrupt_id: InterruptId::new("interrupt_fence_1").unwrap(),
+                        run_id: run.run_id.clone(),
+                        kind: crate::authoring::interrupts::InterruptKind::ToolPermission,
+                        tool_call_id: Some(ToolCallId::new("call_fence_1").unwrap()),
+                        proposal_id: None,
+                        idempotency_key: "idem:seed:fence".to_string(),
+                        created_at_ms: now_ms(),
+                    },
+                )?;
+                Ok(run.run_id)
+            })
+        })
+        .unwrap();
+
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, envelope) = post_authoring(
+        router,
+        "/v1/interrupts/interrupt_fence_1/resume",
+        &stranger_token,
+        request_fixture(EndpointFamily::Interrupt),
+    )
+    .await;
+    assert_eq!(status, StatusCode::FORBIDDEN, "{envelope}");
+    assert!(
+        envelope["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("owner"),
+        "the refusal names the owner floor: {envelope}"
+    );
+
+    // The interrupt is untouched — still pending on the served list.
+    let router = authoring_router(state.clone()).with_state(state);
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri(&format!("/v1/runs/{}/interrupts", run_id.as_str()))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let body = json_body(response).await;
+    assert_eq!(
+        body["data"]["items"][0]["resume_state"], "pending",
+        "{body}"
     );
 }

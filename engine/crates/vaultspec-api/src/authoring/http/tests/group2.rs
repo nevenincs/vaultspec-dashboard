@@ -939,14 +939,42 @@ async fn interrupt_resume_route_resolves_by_id_and_replays() {
     register_actor(&state, &reviewer);
     let token = issue_token_in_state(&state, &reviewer);
 
-    // Seed a paused run's interrupt to resolve by id (the sole V1 kind).
+    // Seed a REAL run owned by the resuming principal (the P05 authorization floor
+    // requires resume to come from the run's owner), then its paused interrupt.
+    let owned_run_id = state
+        .with_authoring_store(|store| {
+            store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let session_id = SessionId::new("session_interrupt_route").unwrap();
+                uow.sessions().create_session(
+                    session_id.clone(),
+                    crate::authoring::api::CreateSessionRequest {
+                        scope: "worktree".to_string(),
+                        title: "Interrupt route session".to_string(),
+                    },
+                    reviewer.clone(),
+                    now_ms(),
+                )?;
+                let (_turn, run) = uow.sessions().start_prompt_turn(
+                    &session_id,
+                    crate::authoring::api::StartPromptTurnRequest {
+                        prompt: "park a tool".to_string(),
+                        summary: None,
+                        feedback_batch_id: None,
+                    },
+                    reviewer.clone(),
+                    now_ms(),
+                )?;
+                Ok(run.expect("first turn opens a run").run_id)
+            })
+        })
+        .unwrap();
     state
         .with_authoring_store(|store| {
             store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
                 uow.interrupts().record_interrupt(
                     crate::authoring::interrupts::RecordInterruptInput {
                         interrupt_id: InterruptId::new("interrupt_route_1").unwrap(),
-                        run_id: RunId::new("run_route_1").unwrap(),
+                        run_id: owned_run_id.clone(),
                         kind: crate::authoring::interrupts::InterruptKind::ToolPermission,
                         tool_call_id: Some(ToolCallId::new("call_route_seed").unwrap()),
                         proposal_id: None,

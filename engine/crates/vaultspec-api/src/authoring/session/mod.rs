@@ -974,10 +974,12 @@ impl SessionRepository<'_, '_> {
     }
 }
 
-/// Owner-only authorization for the run-settle command (D1): the settling principal
-/// must be the run's `owner` or that owner's delegator. Any other actor is a typed
-/// `RunForbidden` (403) — nobody may forge another run's settlement.
-fn authorize_run_owner(run: &RunRecord, actor: &ActorRef) -> StoreResult<()> {
+/// Owner-only authorization for the run-settle command (D1) and the interrupt-resume
+/// command (P05 review floor): the acting principal must be the run's `owner` or that
+/// owner's delegator. Any other actor is a typed `RunForbidden` (403) — nobody may
+/// forge another run's settlement, approve a stranger's pending tool permission, or
+/// inject a steering prompt into a run they have no connection to.
+pub(crate) fn authorize_run_owner(run: &RunRecord, actor: &ActorRef) -> StoreResult<()> {
     let is_owner = actor.id == run.owner.id;
     let is_delegator = run.owner.delegated_by.as_ref() == Some(&actor.id);
     if is_owner || is_delegator {
