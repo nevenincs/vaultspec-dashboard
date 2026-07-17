@@ -31,7 +31,7 @@ The composer now speaks the structured feedback continuation end to end and the 
 
 ## Notes
 
-Checkbox held OPEN by protocol, like S02: S12's create-batch command hits POST /authoring/v1/feedback-batches, which exists only on the unmerged edge-activation branch, so the batch creation 404s against main's engine until the merge. The end-to-end live-wire proof (create batch -> turn accepted by id; unknown id -> refused) was WRITTEN and PROVEN GREEN against the rebuilt edge binary (create_feedback_batch CommandKind), then parked with the merge-gate set; the offline tests run green on main. Restore the parked test and close this step at the edge-activation merge.
+RESOLVED at the reconciliation gate: dashboard main independently adopted the feedback-batch routes, so the parked live proof now runs GREEN against main's own binary. feedbackBatchTurn.live.test.ts (create->turn round-trip: a turn is accepted by a valid batch id and refused for an unknown one) landed on main and DOUBLES as the contract verification that the S12 frontend matches main's route - command "create_feedback_batch", dual auth, {batch_id, digest} response - it does, exactly. Main's digest is timestamp-FREE, so content-idempotency now holds (same comments re-freeze to the same batch_id); the P05 digest note is resolved and the test asserts it. Step closed as delivered. No skips.
 
 Approved design decisions recorded (team lead confirmed all three): single-document batch (latest-document-wins), source_revision = the open document's blob hash (the D4 staleness fence is a known-unenforced P05 partial), comments-only submit via an empty prompt plus the batch id. No skips introduced. S14 (worker feedback ingest) follows.
 
