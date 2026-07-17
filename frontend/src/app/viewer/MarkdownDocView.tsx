@@ -71,7 +71,13 @@ import {
   promoteDocTab,
 } from "../../stores/view/tabs";
 import { DiffView } from "../authoring/DiffView";
-import { Button, Divider, IconButton, type BreadcrumbItem } from "../kit";
+import {
+  Button,
+  DecorativeGlyph,
+  Divider,
+  IconButton,
+  type BreadcrumbItem,
+} from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { EditorToolbar } from "./EditorToolbar";
 import { HighlightedTextarea } from "./HighlightedCode";
@@ -489,7 +495,7 @@ export function MarkdownDocView({
       />
       <div className="flex flex-wrap items-center justify-between gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
         <span className={`shrink-0 text-label ${editor.statusToneClass}`}>
-          {editor.statusLabel}
+          {resolveMessage(editor.statusLabel).message}
         </span>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-fg-2">
           <div className="min-w-0 overflow-x-auto" data-editor-toolbar-scroll-region>
@@ -540,11 +546,11 @@ export function MarkdownDocView({
       {editorChrome.hasAdvisories && (
         <div
           className="border-b border-rule bg-paper-sunken px-fg-3 py-fg-2"
-          aria-label={editorChrome.advisoriesLabel}
+          aria-label={resolveMessage(editorChrome.advisoriesLabel).message}
         >
           <div className="flex items-center justify-between gap-fg-2">
             <span className="text-label text-ink-muted">
-              {editorChrome.advisoriesLabel}
+              {resolveMessage(editorChrome.advisoriesLabel).message}
             </span>
             {/* Fix conformance for this document's feature (vault check all --fix
                 --feature), routed through the ops dispatch seam. Feature-scoped (the
@@ -602,7 +608,13 @@ export function MarkdownDocView({
                 {row.messageDescriptor
                   ? resolveMessage(row.messageDescriptor).message
                   : row.message}
-                {row.fixableSuffix}
+                {row.fixable && (
+                  <span className="text-ink-faint">
+                    {" "}
+                    <DecorativeGlyph name="middleDot" />{" "}
+                    {resolveMessage({ key: "documents:editor.advisories.fixable" }).message}
+                  </span>
+                )}
               </li>
             ))}
           </ul>

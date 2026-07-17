@@ -293,6 +293,17 @@ export const documents = {
       link: "Add link",
       linkToDocument: "Add document link",
     },
+    advisories: {
+      label: "Conformance advisories",
+      fixable: "Fixable",
+    },
+    statuses: {
+      saved: "Saved",
+      unsaved: "Unsaved changes",
+      saving: "Saving…",
+      saveFailed: "Save failed",
+      conflict: "Conflict: the file changed on disk",
+    },
   },
   reviewStation: {
     accessibility: {

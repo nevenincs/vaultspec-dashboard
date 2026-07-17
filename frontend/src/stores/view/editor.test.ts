@@ -42,7 +42,7 @@ describe("editor view seam", () => {
       renameTarget: "beta",
       frontmatterDraft: { tags: "#ui", date: "2026-06-19", related: "alpha" },
       hasAdvisories: true,
-      advisoriesLabel: "Conformance advisories",
+      advisoriesLabel: { key: "documents:editor.advisories.label" },
       advisoryRows: [
         {
           key: "check-0",
@@ -50,8 +50,7 @@ describe("editor view seam", () => {
           marker: "!",
           message: "check frontmatter",
           messageDescriptor: null,
-          fixableLabel: null,
-          fixableSuffix: "",
+          fixable: false,
         },
       ],
     });
@@ -101,8 +100,7 @@ describe("editor view seam", () => {
         marker: "x",
         message: "frontmatter",
         messageDescriptor: null,
-        fixableLabel: "fixable",
-        fixableSuffix: " - fixable",
+        fixable: true,
       },
     ]);
   });

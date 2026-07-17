@@ -51,6 +51,7 @@ import {
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
 import { previewDocTab } from "../../stores/view/tabs";
+import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { ButtonHTMLAttributes, Ref } from "react";
 
 import {
@@ -143,6 +144,7 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
   const sectionId = `changes:${group.id}`;
   const open = useStatusSectionOpen(sectionId, false);
   const chrome = deriveStatusSectionChromeView(sectionId, open);
+  const resolveMessage = useLocalizedMessageResolver();
   return (
     <FoldSection
       open={open}
@@ -151,7 +153,11 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
       twistyPx={chrome.twistyPx}
       headerClassName={chrome.headerClassName}
       bodyClassName={chrome.bodyClassName}
-      label={<SectionLabel className="min-w-0 flex-1">{group.label}</SectionLabel>}
+      label={
+        <SectionLabel className="min-w-0 flex-1">
+          {resolveMessage(group.label).message}
+        </SectionLabel>
+      }
       trailing={
         <span className="shrink-0 text-meta text-ink-faint" data-tabular>
           {group.count}

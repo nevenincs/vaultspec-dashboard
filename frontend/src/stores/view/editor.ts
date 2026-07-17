@@ -45,7 +45,7 @@ export interface DocumentEditorView {
   /** Whether the in-editor draft-vs-saved diff section is expanded. */
   diffVisible: boolean;
   status: EditorStatus;
-  statusLabel: string;
+  statusLabel: MessageDescriptor;
   statusTone: EditorStatusTone;
   statusToneClass: string;
   canSave: boolean;
@@ -76,8 +76,9 @@ export interface MarkdownEditorAdvisoryRowView {
   marker: string;
   message: string;
   messageDescriptor: MessageDescriptor | null;
-  fixableLabel: string | null;
-  fixableSuffix: string;
+  /** True when the conformance check is auto-fixable; the label is resolved and
+   *  rendered at the boundary. */
+  fixable: boolean;
 }
 
 export interface MarkdownEditorChromeView {
@@ -86,7 +87,7 @@ export interface MarkdownEditorChromeView {
   renameTarget: string | null;
   frontmatterDraft: MarkdownEditorFrontmatterDraft;
   hasAdvisories: boolean;
-  advisoriesLabel: string;
+  advisoriesLabel: MessageDescriptor;
   advisoryRows: readonly MarkdownEditorAdvisoryRowView[];
 }
 
@@ -239,7 +240,7 @@ export function deriveMarkdownEditorChromeView(
         : null,
     frontmatterDraft,
     hasAdvisories: advisories.length > 0,
-    advisoriesLabel: "Conformance advisories",
+    advisoriesLabel: { key: "documents:editor.advisories.label" },
     advisoryRows: advisories.map((check, index) => {
       const error = check.severity === "error";
       return {
@@ -248,20 +249,19 @@ export function deriveMarkdownEditorChromeView(
         marker: error ? "x" : "!",
         message: check.message ?? check.check ?? "",
         messageDescriptor: check.messageDescriptor ?? null,
-        fixableLabel: check.fixable ? "fixable" : null,
-        fixableSuffix: check.fixable ? " - fixable" : "",
+        fixable: check.fixable === true,
       };
     }),
   };
 }
 
-const STATUS_LABEL: Record<EditorStatus, string> = {
-  idle: "Saved",
-  dirty: "Unsaved changes",
-  saving: "Saving…",
-  saved: "Saved",
-  "save-failed": "Save failed",
-  conflict: "Conflict — the file changed on disk",
+const STATUS_LABEL: Record<EditorStatus, MessageDescriptor> = {
+  idle: { key: "documents:editor.statuses.saved" },
+  dirty: { key: "documents:editor.statuses.unsaved" },
+  saving: { key: "documents:editor.statuses.saving" },
+  saved: { key: "documents:editor.statuses.saved" },
+  "save-failed": { key: "documents:editor.statuses.saveFailed" },
+  conflict: { key: "documents:editor.statuses.conflict" },
 };
 
 function editorStatusTone(status: EditorStatus): EditorStatusTone {

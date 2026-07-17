@@ -22,6 +22,7 @@ import {
   stemFromPath,
 } from "../liveAdapters";
 import { useQuery } from "@tanstack/react-query";
+import type { MessageDescriptor } from "../../../platform/localization/message";
 import { engineKeys, normalizeGitDiffArg } from "./internal";
 import {
   CHANGED_FILES_LIST_SERVED,
@@ -282,12 +283,13 @@ const GIT_CHANGE_BUCKET_ORDER: readonly GitChangeBucket[] = [
   "new",
 ] as const;
 
-// Keep eyebrow labels in catalog casing so SectionLabel can render them verbatim.
-const GIT_CHANGE_BUCKET_LABEL: Record<GitChangeBucket, string> = {
-  staged: "Staged",
-  modified: "Modified",
-  deleted: "Deleted",
-  new: "New",
+// The eyebrow label descriptor per bucket; resolved at the render boundary so the
+// SectionLabel shows localized copy.
+const GIT_CHANGE_BUCKET_LABEL: Record<GitChangeBucket, MessageDescriptor> = {
+  staged: { key: "common:changeBuckets.staged" },
+  modified: { key: "common:changeBuckets.modified" },
+  deleted: { key: "common:changeBuckets.deleted" },
+  new: { key: "common:changeBuckets.new" },
 };
 
 /** Map a porcelain status group onto its tree bucket. An index-side change
@@ -333,8 +335,8 @@ export interface GitChangeRow {
 
 export interface GitChangeGroupView {
   id: GitChangeBucket;
-  /** Catalog-cased label rendered verbatim by the SectionLabel eyebrow. */
-  label: string;
+  /** The eyebrow label descriptor, resolved by the SectionLabel consumer. */
+  label: MessageDescriptor;
   count: number;
   rows: GitChangeRow[];
 }

@@ -158,6 +158,12 @@ export const common = {
     changes: "Changes",
     status: "Status",
   },
+  changeBuckets: {
+    staged: "Staged",
+    modified: "Modified",
+    deleted: "Deleted",
+    new: "New",
+  },
   commandFamilies: {
     editing: "Editing",
     filters: "Filters",

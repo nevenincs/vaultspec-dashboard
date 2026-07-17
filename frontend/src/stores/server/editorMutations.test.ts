@@ -270,7 +270,7 @@ describe("editor-state slice (bounded, single-value)", () => {
       draftText: "body",
       baseBlobHash: "hash-1",
       status: "idle",
-      statusLabel: "Saved",
+      statusLabel: { key: "documents:editor.statuses.saved" },
       statusTone: "muted",
       statusToneClass: "text-ink-muted",
       canSave: false,
@@ -281,7 +281,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     expect(view).toMatchObject({
       draftText: "changed",
       status: "dirty",
-      statusLabel: "Unsaved changes",
+      statusLabel: { key: "documents:editor.statuses.unsaved" },
       statusTone: "ink",
       statusToneClass: "text-ink",
       canSave: true,
@@ -291,7 +291,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     view = deriveDocumentEditorView(useViewStore.getState(), DOC_ID);
     expect(view).toMatchObject({
       status: "conflict",
-      statusLabel: "Conflict — the file changed on disk",
+      statusLabel: { key: "documents:editor.statuses.conflict" },
       statusTone: "broken",
       statusToneClass: "text-state-broken",
       canSave: false,
