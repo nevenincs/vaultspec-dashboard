@@ -33,17 +33,17 @@ the menus produce.
 
 ## Notes
 
-FLAG (out of scope for this step, reported by opus-l10n, cross-referencing here for
-the record): the same `rightMenus.test.ts` file still asserts
-`find(bare, "edge:copy-id").disabled` is `undefined` — i.e. the test still
-expects `edgeMenu.ts`'s `edge:copy-id` action (which copies the RAW edge id) to
-exist and be enabled. That action is the same CMCS-001 copy-safety class as the
-`S177`/`S179` defects already fixed on `graphNodeMenu.ts`/`metaEdgeMenu.ts`, but
-`edgeMenu.ts` itself was NOT touched by this fix — `W04.P10.S183` (already ticked)
-did not catch it because the plan step's own scanner/grep pass predates the
-copy-safety audit. This is a live gap for a follow-up fix, not resolved by this
-record — per the team lead's ruling, it will land as an amendment to `S183`'s own
-exec record, not a new step tick. Independently reran both files live — part of
-the 15/15 passing set. Fixed by opus-l10n, landed at commit `578b4e5454` ("batch
-#2 test-only stale assertions to typed/sentence-case output ... dual-verified"),
-not a fresh implementation on my part.
+FLAG RESOLVED: the same `rightMenus.test.ts` file previously asserted
+`find(bare, "edge:copy-id").disabled` is `undefined` — i.e. the test expected
+`edgeMenu.ts`'s `edge:copy-id` action (which copied the RAW edge id) to exist and be
+enabled. That was the same CMCS-001 copy-safety class as the `S177`/`S179` defects
+already fixed on `graphNodeMenu.ts`/`metaEdgeMenu.ts`; the flag noted `edgeMenu.ts`
+itself had NOT been touched by that fix. It has since been fixed (`edge:copy-id` and
+`edge:copy-full` removed, `edge:copy-destination` changed to copy the destination
+document name) and the assertion updated to match — recorded as an amendment to
+`W04.P10.S183`'s own exec record per the team lead's ruling, not a new step tick.
+
+Independently reran both files live — part of the 15/15 passing set at the time this
+step closed. Fixed by opus-l10n, landed at commit `578b4e5454` ("batch #2 test-only
+stale assertions to typed/sentence-case output ... dual-verified"), not a fresh
+implementation on my part.

@@ -115,7 +115,7 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S70` | `app/timeline/timelineRangeMath.ts` carried a hardcoded `SHORT_MONTHS` array and month-label helpers | Fixed (dead code removed; the live path already used a locale-aware formatter elsewhere), commit `578b4e5454` |
 | `S216` | `stores/view/editor.ts` carried a hardcoded `STATUS_LABEL` map (`"Saved"`, `"Unsaved changes"`, `"Saving…"`, `"Save failed"`, `"Conflict — the file changed on disk"`) and `advisoriesLabel: "Conformance advisories"`; also collapsed a raw `fixableLabel`/`fixableSuffix` string pair into a `fixable: boolean` resolved at the render boundary | Fixed, commit `53426c75f8`; a latent em-dash in the conflict status was also caught and fixed during this pass (message-policy punctuation rule) |
 | `S234` (blocked `S60`) | `stores/server/queries/gitchanges.ts` carried a hardcoded `GIT_CHANGE_BUCKET_LABEL` map (`"Staged"`, `"Modified"`, `"Deleted"`, etc.); `S60`'s `ChangesOverview.tsx` rendered these labels directly | Fixed, commit `53426c75f8`; both steps closed together |
-| edgeMenu `edge:copy-id` (CMCS-001 follow-up, no new step) | `right/menus/edgeMenu.ts` still copies the raw internal edge id to the clipboard, same class as the already-fixed `S177`/`S179` — surfaced by the coder, out of `S183`'s original scope (that step's scanner pass predated the copy-safety audit) | **Open** — per the team lead's ruling, lands as an AMENDMENT to `S183`'s existing exec record when fixed, not a new tick |
+| edgeMenu `edge:copy-id`/`edge:copy-full` (CMCS-001 follow-up, no new step) | `right/menus/edgeMenu.ts` copied the raw internal edge id (`edge:copy-id`) and a raw JSON dump of the edge's fields (`edge:copy-full`) to the clipboard, same class as the already-fixed `S177`/`S179` — surfaced by the coder, out of `S183`'s original scope (that step's scanner pass predated the copy-safety audit) | Fixed, recorded as an amendment to `S183`'s exec record (per the team lead's ruling, not a new tick). `edge:copy-id`/`edge:copy-full` removed outright; `edge:copy-destination` changed to copy the destination document name via the existing `docStemFromNodeId` seam, reusing the existing `common:actions.copyDocumentName` key (no catalog change). |
 
 ## Retirements and rescopes
 
@@ -249,13 +249,15 @@ narrower rule promotion (`vaultspec-core vault rule promote`) suffices.
   bookkeeping.
 - **`W06` (36 steps, `P18`/`P19`/`P20`)** — the final enforcement and cleanup wave, in
   progress on the coding lane, untouched by reconciliation by design per the original
-  task brief.
-- **The edgeMenu `S183` amendment** — the coding lane's one remaining stated target
-  outside `S17`/`S18`/`W06`; reconciliation will amend `S183`'s exec record once it
-  lands, per the team lead's ruling (not a new step tick).
+  task brief. The coding lane has now moved on to `S17`/`S18` (the legacy
+  action-presentation bridge deletion) as its next real-code target.
 
-**Status as of this update: every wave through W05 is fully closed except the
-`S17`/`S18` action-contract bridge deletion (flagged as needing real code, not
-bookkeeping). The only outstanding work outside that gate and W06 is the edgeMenu
-amendment.** This dossier will be updated in place as the remaining opens close and
-finalized once the consolidated wave review renders its verdict.
+**Status as of this update: W03, W04, and W05 are ALL fully closed** (48/48, 45/45,
+43/43 respectively) — every defect and rescope batch #2 surfaced, including the
+edgeMenu copy-safety follow-up (recorded as an `S183` amendment, not a new tick), is
+now fixed and independently reverified. **The only work remaining outside W06 is
+`W02.P04.S17`/`S18`**, the action-contract closure gates, which need real code
+(deleting the legacy bridge type/functions and rewriting three test files) rather than
+bookkeeping — the coding lane is starting that now. This dossier is ready for the
+consolidated wave review the team lead will fire once `S17`/`S18` land, and will be
+updated in place as W06 progresses.
