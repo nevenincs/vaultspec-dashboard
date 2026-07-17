@@ -52,9 +52,9 @@ Expose the existing interrupts_for_run store query through a new bounded read ro
 - [x] `P02.S16` - Define the typed per-kind decision schema mirroring ToolPermissionDecisionRequest (decision: approve or deny, optional comment) and a decision_unreadable degradation marker for legacy opaque decisions; `engine/crates/vaultspec-api/src/authoring/interrupts`.
 - [x] `P02.S17` - Wire the GET /v1/runs/{run_id}/interrupts route over the existing store query, serving interrupt_id, run_id, kind, tool_call_id, resume_state, timestamps, and the typed decision projection; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 - [x] `P02.S18` - Narrow InterruptResumeRequest's opaque payload to the same typed decision schema in the same cutover, leaving the resume-by-id route otherwise unchanged; `engine/crates/vaultspec-api/src/authoring/api/mod.rs`.
-- [ ] `P02.S19` - Write tests covering the raise-order capped/truncation-marked list with pending entries flagged, the typed decision round-tripping the permission-decision write, a legacy opaque decision serving decision_unreadable without failing the page, and a live-test recovery case: a client that drops the /execute awaiting_permission response recovers the pending interrupt from the list; `engine/crates/vaultspec-api/src/authoring`.
-- [ ] `P02.S20` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
-- [ ] `P02.S21` - Route Phase P02 to the team reviewer for verification against the D3 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
+- [x] `P02.S19` - Write tests covering the raise-order capped/truncation-marked list with pending entries flagged, the typed decision round-tripping the permission-decision write, a legacy opaque decision serving decision_unreadable without failing the page, and a live-test recovery case: a client that drops the /execute awaiting_permission response recovers the pending interrupt from the list; `engine/crates/vaultspec-api/src/authoring`.
+- [x] `P02.S20` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
+- [x] `P02.S21` - Route Phase P02 to the team reviewer for verification against the D3 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
 ### Phase `P03` - Proposal-run correlation and scope-level mode read (D4+D5)
 
@@ -65,8 +65,8 @@ Stamp run/turn provenance on changesets at tool-executor dispatch, expose sessio
 - [x] `P03.S24` - Add session_id, run_id, and turn_id optional fields to ProposalProjection, exposing the session_id the changeset revision already stores internally; `engine/crates/vaultspec-api/src/authoring/api/mod.rs`.
 - [x] `P03.S25` - Wire the GET /v1/mode route serving the active workspace scope's OperationModeRecord (mode, scope_id, setting actor, updated_at_ms) off the store's existing current_record resolution, matching the write path's default-record behavior; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 - [x] `P03.S26` - Write tests covering the projection serving session_id/run_id/turn_id for a tool-dispatched proposal and None for a human one, pre-migration record deserialization, and GET /v1/mode round-tripping POST /v1/mode including the default record on a fresh store; `engine/crates/vaultspec-api/src/authoring`.
-- [ ] `P03.S27` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
-- [ ] `P03.S28` - Route Phase P03 to the team reviewer for verification against the D4/D5 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
+- [x] `P03.S27` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
+- [x] `P03.S28` - Route Phase P03 to the team reviewer for verification against the D4/D5 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
 ### Phase `P04` - Structured feedback batch primitive (D7) [OWNED BY a2a-orchestration-edge P04]
 
@@ -77,9 +77,9 @@ Stamp run/turn provenance on changesets at tool-executor dispatch, expose sessio
 - [ ] `P04.S31` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Wire the GET /v1/feedback-batches/{feedback_batch_id} read route serving the snapshot; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 - [ ] `P04.S32` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Add the optional feedback_batch_id field to StartPromptTurnRequest, verify batch existence, session ownership, and revision fences on submit, and record the reference on PromptTurnRecord; `engine/crates/vaultspec-api/src/authoring/session`.
 - [ ] `P04.S33` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Implement the retention posture: a batch registers as protected product state while referenced by a turn and becomes compactable after the turn's transcript window otherwise; `engine/crates/vaultspec-api/src/authoring/store`.
-- [ ] `P04.S34` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Write tests covering batch immutability under later comment edits, cap and byte-bound enforcement, typed turn-reference fence violations, and the turn record carrying the batch id; `engine/crates/vaultspec-api/src/authoring`.
-- [ ] `P04.S35` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
-- [ ] `P04.S36` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Route Phase P04 to the team reviewer for verification against the D7 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
+- [x] `P04.S34` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Write tests covering batch immutability under later comment edits, cap and byte-bound enforcement, typed turn-reference fence violations, and the turn record carrying the batch id; `engine/crates/vaultspec-api/src/authoring`.
+- [x] `P04.S35` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
+- [x] `P04.S36` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Route Phase P04 to the team reviewer for verification against the D7 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
 ### Phase `P04a` - Background janitor: bounded sweep for the genuinely undriven duties and run-reap (D1 abandoned-run reaping)
 
