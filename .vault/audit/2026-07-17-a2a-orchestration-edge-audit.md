@@ -109,5 +109,17 @@ matching the engine constant, ungated dependency-probed `/health` with live pid)
   behaviors stay proven by main's hermetic `a2a_stream.rs` tests (17 passed, 0
   failed on the main binary), which deterministically overflow the ring in a way
   a live run cannot reliably reproduce. Recorded in the P03.S08 Step Record.
+- a2a-side finding (cross-verified, for a P05 note): the reason no intermediate
+  frames are drivable on mock presets is a discovery-vs-execution provider
+  readiness gap in a2a. executor-service reproduced it against a full local mock
+  stack (vidaimock docker + gateway + auto-worker, `worker_connected:true`):
+  `probe_provider_readiness` hard-returns ready for MOCK/DETERMINISTIC providers
+  at DISCOVERY, yet single/multi/pipeline mock runs all terminate at
+  `last_sequence:0` producing zero `sse_frames` at EXECUTION. So mock presets
+  emit no progress frames regardless of when a subscriber attaches, and a
+  compose-stack capture would hit the same wall unless the mock provider is made
+  to actually stream at execution. Two findings for the a2a backlog: (1) mock
+  presets emit no progress frames; (2) provider readiness diverges between
+  discovery and execution for mock/deterministic providers.
 - The rag-dedup sweep confirmation named in the spec was not evidenced within
   either review's scope; carried as a closeout check item.
