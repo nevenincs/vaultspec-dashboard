@@ -307,13 +307,35 @@ invoked `vitest`, not because the gate did; (3) the reviewer's own 3-file sweep
 — a subset of the 4-file broader sweep in instance 1, re-surfaced independently by
 the reviewer's own "run everything" pass before `opus-l10n`'s sweep landed).
 
-**A sixth instance is reported in flight, not yet landed** — relayed by the team
-lead, not independently verified here since it has no commit to check against
-yet: a pre-existing `errors:unexpectedSection` contract conflict, with a
-tokenless ruling and a "vehicle-swap" fix in progress. Recorded for visibility
-per the standing discipline of this dossier (cite only real commits, verify on
-report, not on relay); will be independently reverified and folded into this
-section's evidence count once it lands with its own commit.
+**A sixth, related instance — a test-vehicle/production-key coupling, resolved.**
+`runtime.test.ts` and `reactivity.test.tsx`'s interpolation-MECHANICS tests
+(named-value substitution, RTL resolution, frozen-descriptor invariants, unsafe-
+value handling) had commandeered `errors:unexpectedSection.message` — a REAL
+production error-boundary message — purely as their test vehicle, because it
+happened to have one named interpolation value (`{{section}}`). This created a
+hidden contract conflict distinct from class 4 above: not a stale assertion
+against a shape that changed, but an ONGOING coupling where any future edit to
+this production error message's wording or interpolation shape would silently
+break unrelated mechanics tests that have nothing to do with error-boundary
+copy — and, symmetrically, the mechanics tests' assumptions could constrain how
+the production message is allowed to evolve. Ruled and fixed at `47a055f58f`
+("rework interpolation-mechanics vehicle off the tokenless recovery key —
+errors:unexpectedSection contract conflict resolved per ruling"): the mechanics
+vehicle moved to `common:finalWave.history.openCommit` (`"Open {{commit}}"`), a
+key introduced by the `S133` batch with no other consumer, so the mechanics tests
+now couple to nothing production-meaningful. `errors:unexpectedSection.message`
+and `catalogInterpolation.test.ts` (which exercises it as the actual production
+contract) are untouched by this commit. Independently reverified against the
+landed commit, not the earlier relayed report: `git show 47a055f58f --stat`
+matches the reported 2 files exactly; live rerun of `runtime.test.ts` +
+`reactivity.test.tsx` — 17/17 passed, matching the claimed count, with every
+structural mechanics assertion (named interpolation, RTL non-token-leak,
+frozen-descriptor invariants, unsafe user-value passthrough) preserved on the new
+vehicle; confirmed via `git status`/`git show` that `frontend/src/locales/en/errors.ts`,
+`ErrorBoundary.tsx`, and `catalogInterpolation.test.ts` are genuinely untouched by
+this commit; live rerun of `catalogInterpolation.test.ts` — 5/5 passed; confirmed
+`common:finalWave.history.openCommit` is a real, already-shipped production
+catalog key (added by the `S133` batch), not a test-only fabrication.
 
 Recommend the review decide, per class, whether W06.P18's enforcement suite should
 encode a standing gate (e.g. a lint rule banning a bare string default on any prop
@@ -462,16 +484,16 @@ reconciliation pass's own scope:
 (221/244, 90.6%). The consolidated wave review closed clean: W03 PASS, W04 PASS,
 W05 PASS, retirements PASS, rescopes PASS, divergences PASS, the S183 amendment
 PASS, all fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`,
-`556f8967d9`, `90f8a3d5d5`, `b264490da0`, `8c4220b333`), and scanner + catalog
-integrity PASS. `W02.P04.S17`/`S18` are CLOSED, including the sweep-proven
-closure at `b264490da0`. **`W06.P18`'s enforcement suite is now 13/13, fully
-closed** (`S98`, `S99`, `S100`, `S101`, `S130`, `S131`, `S132`, `S133`, `S134`,
-`S135`, `S136`, `S137` verified and ticked across this dossier's updates,
-alongside the pre-existing `S251`). `S192`'s exec record was amended to note the
-`nowStrip.test.ts` ripple retirement. Remaining: `P19` (e2e specs, 14 steps,
-including `S138`'s RTL/expanded-copy test-resource groundwork) and `P20` (9
-steps) — genuine remaining code, in progress on the coding lane and out of scope
-for this reconciliation pass by design. One item is reported in flight and
-carried for visibility, not yet independently verified (no commit to check
-against): a pre-existing `errors:unexpectedSection` contract conflict with a
-tokenless ruling and a "vehicle-swap" fix — see Codification candidates.
+`556f8967d9`, `90f8a3d5d5`, `b264490da0`, `8c4220b333`, `47a055f58f`), and
+scanner + catalog integrity PASS. `W02.P04.S17`/`S18` are CLOSED, including the
+sweep-proven closure at `b264490da0`. **`W06.P18`'s enforcement suite is now
+13/13, fully closed** (`S98`, `S99`, `S100`, `S101`, `S130`, `S131`, `S132`,
+`S133`, `S134`, `S135`, `S136`, `S137` verified and ticked across this dossier's
+updates, alongside the pre-existing `S251`). `S192`'s exec record was amended to
+note the `nowStrip.test.ts` ripple retirement. The `errors:unexpectedSection`
+test-vehicle/production-key coupling (the sixth codification-candidate instance)
+is RESOLVED at `47a055f58f`, independently reverified — see Codification
+candidates. Remaining: `P19` (e2e specs, 14 steps, including `S138`'s
+RTL/expanded-copy test-resource groundwork) and `P20` (9 steps) — genuine
+remaining code, in progress on the coding lane and out of scope for this
+reconciliation pass by design.
