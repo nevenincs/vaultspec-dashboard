@@ -35,17 +35,17 @@ Close the load-bearing gap first: the engine never completes a run, so Done can 
 
 Build the whitelisted engine pass-through namespace forwarding the five a2a gateway verbs per edge ADR D1 and D2, copying the shipped rag ops template including its sibling-down semantics.
 
-- [ ] `P02.S03` - Build the ops a2a verb namespace on the rag ops template forwarding the five whitelisted verbs to the a2a v1 gateway with bounded arg validation, verbatim sibling envelope inside the tiers envelope, degraded-tier 200 on sibling-down, 502 on crash or timeout, and attach-never-own discovery; `engine/crates/vaultspec-api/src/routes/ops/`.
-- [ ] `P02.S04` - Provision per-role actors and engine-minted tokens at run-start and inject the ActorTokenBundle into the forwarded payload, never logging token values; `engine/crates/vaultspec-api/src/routes/ops/, engine/crates/vaultspec-api/src/authoring/`.
-- [ ] `P02.S05` - Write guard tests mirroring the rag ops suite plus a live loopback test against a real a2a gateway covering whitelist miss, degraded sibling, crash, and verbatim envelope pass-through; `engine/crates/vaultspec-api/src/routes/ops/tests.rs`.
+- [x] `P02.S03` - Build the ops a2a verb namespace on the rag ops template forwarding the five whitelisted verbs to the a2a v1 gateway with bounded arg validation, verbatim sibling envelope inside the tiers envelope, degraded-tier 200 on sibling-down, 502 on crash or timeout, and attach-never-own discovery; `engine/crates/vaultspec-api/src/routes/ops/`.
+- [x] `P02.S04` - Provision per-role actors and engine-minted tokens at run-start and inject the ActorTokenBundle into the forwarded payload, never logging token values; `engine/crates/vaultspec-api/src/routes/ops/, engine/crates/vaultspec-api/src/authoring/`.
+- [x] `P02.S05` - Write guard tests mirroring the rag ops suite plus a live loopback test against a real a2a gateway covering whitelist miss, degraded sibling, crash, and verbatim envelope pass-through; `engine/crates/vaultspec-api/src/routes/ops/tests.rs`.
 
 ### Phase `P03` - Progress relay
 
 Expose the a2a run stream on the versioned gateway surface, then relay it as a bounded engine SSE channel per edge ADR D3 with uniform replay and gap semantics.
 
 - [x] `P03.S06` - Add a versioned run stream verb under the v1 a2a gateway re-serving the bounded SSE progress frames on the public surface, with live tests, in the vaultspec-a2a repository; `src/vaultspec_a2a/api/`.
-- [ ] `P03.S07` - Relay the a2a run stream as a new engine SSE channel feeding bounded versioned frames into the shared ring with seq and gap semantics and honest degradation to run-status polling; `engine/crates/vaultspec-api/src/routes/`.
-- [ ] `P03.S08` - Prove the relay live end to end including replay from since, gap emission on eviction and lag, and the oversized-frame drop sentinel passing through unaltered; `engine/crates/vaultspec-api/src/routes/`.
+- [x] `P03.S07` - Relay the a2a run stream as a new engine SSE channel feeding bounded versioned frames into the shared ring with seq and gap semantics and honest degradation to run-status polling; `engine/crates/vaultspec-api/src/routes/`.
+- [x] `P03.S08` - Prove the relay live end to end including replay from since, gap emission on eviction and lag, and the oversized-frame drop sentinel passing through unaltered; `engine/crates/vaultspec-api/src/routes/`.
 
 ### Phase `P04` - Feedback batch
 
