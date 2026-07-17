@@ -1,16 +1,19 @@
 // The Agent panel composer uses one multiline input for three destinations,
 // resolved by the
 // pure `agentSubmitDestination` machine from the session snapshot's `active_run`
-// and the staged interrupt:
+// and the SERVED pending-interrupt list (`useRunInterrupts`, agent-wire-gaps S41):
 //
 //   idle (no run)      → Enter starts the next prompt turn (creating the session
 //                        first when none is current — the ambient-token path).
 //   run parked on an
 //   interrupt          → the same input resumes the interrupt (steer); the
-//                        placeholder reflects it. Zero new chrome.
-//   run streaming      → Enter holds the queued prompt client-side, rendered
-//                        as a removable "Queued" chip and dispatched as the next
-//                        turn when the run settles. Exactly one slot, latest wins.
+//                        placeholder reflects it. Zero new chrome. The pending
+//                        interrupt is read from the wire, so a reloaded panel
+//                        recovers it — never a client-staged record.
+//   run streaming      → Enter dispatches the turn; the engine ENQUEUES it behind
+//                        the active run (served `queued_turn_ids`) and auto-promotes
+//                        it on settle. The composer renders the served queue count
+//                        as a read-only indicator — no client slot (S39).
 //
 // The input NEVER locks during a run. Enter submits; Shift+Enter newlines. `/` at
 // column 0 opens an inline popover fed by the ONE command-provider registry
@@ -57,6 +60,7 @@ import {
   useCreateFeedbackBatch,
   useCreateSession,
   useResumeInterrupt,
+  useRunInterrupts,
   useSession,
   useStartTurn,
 } from "../../stores/server/agent";
@@ -71,11 +75,9 @@ import {
   buildAgentPrompt,
   buildFeedbackBatchRequest,
   agentSubmitDestination,
-  stageAgentInterrupt,
   useAgentComposer,
   useAgentCommentBatch,
   useAgentMentions,
-  useAgentPendingInterrupt,
   type AgentCommentBatch,
   type AgentMention,
 } from "../../stores/view/agentComposer";
@@ -425,7 +427,6 @@ export function Composer() {
 
   const mentions = useAgentMentions();
   const commentBatch = useAgentCommentBatch();
-  const pendingInterrupt = useAgentPendingInterrupt();
 
   const [text, setText] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -437,15 +438,26 @@ export function Composer() {
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
-  // The SERVED session status (bounded enum). Stopping a run cancels the whole
-  // session on this plane, and a non-active session rejects every further turn —
-  // so a non-active current session routes the next submit to a fresh session.
+  // Steer-eligibility is SERVED (agent-wire-gaps S41): the active run's pending
+  // interrupts come from `GET /runs/{id}/interrupts` (D3), not a client-staged
+  // record, so a reloaded panel recovers a parked permission prompt from the wire.
+  // The list is scoped to the active run, so its first `pending` entry is the one
+  // the same input steers.
+  const runInterrupts = useRunInterrupts(activeRunId);
+  const pendingInterrupt = useMemo(
+    () =>
+      runInterrupts.data?.items.find((item) => item.resume_state === "pending") ?? null,
+    [runInterrupts.data],
+  );
+  // The SERVED session status (bounded enum). Since D2 the run-scoped Stop leaves
+  // the session active; only an explicit session cancel makes it non-active, which
+  // then routes the next submit to a fresh session.
   const sessionStatus = session.data?.session.status ?? null;
   const destination = agentSubmitDestination({
     sessionId: currentSessionId,
     sessionStatus,
     activeRunId,
-    pendingInterrupt,
+    hasPendingInterrupt: pendingInterrupt !== null,
   });
 
   // --- slash mode: `/` at column 0, fed by the command plane --------------------
@@ -480,17 +492,9 @@ export function Composer() {
     if (el.scrollHeight > 0) el.style.height = `${el.scrollHeight / 16}rem`;
   }, [text]);
 
-  // --- hygiene: an interrupt staged for a run that is no longer the active run
-  // is stale — drop it so the input never steers a settled run (bounded, honest).
-  useEffect(() => {
-    if (
-      pendingInterrupt !== null &&
-      pendingInterrupt.runId !== null &&
-      pendingInterrupt.runId !== activeRunId
-    ) {
-      stageAgentInterrupt(null);
-    }
-  }, [pendingInterrupt, activeRunId]);
+  // No stale-interrupt hygiene is needed: the served list is scoped to the active
+  // run and the shared lifecycle feed invalidates it, so a settled/replaced run's
+  // interrupts drop from the read on their own (agent-wire-gaps S41).
 
   const createSessionAsync = createSession.mutateAsync;
   const startTurnAsync = startTurn.mutateAsync;
@@ -570,13 +574,13 @@ export function Composer() {
       if (destination === "steer" && pendingInterrupt !== null) {
         // D4/S18: the same input resumes the parked run through the TYPED steer
         // decision (`{prompt}` — the engine's `InterruptResumeDecision::Steer`),
-        // no longer an opaque client-defined blob. The read projection parses it
-        // back through the same schema.
+        // no longer an opaque client-defined blob. The interrupt id is read from
+        // the SERVED pending list (S41); the resume's invalidation refreshes it, so
+        // the resolved interrupt drops from the read with no client clearing.
         await resumeInterrupt.mutateAsync({
-          interruptId: pendingInterrupt.interruptId,
+          interruptId: pendingInterrupt.interrupt_id,
           payload: { decision: { prompt } },
         });
-        stageAgentInterrupt(null);
       } else {
         await deliverPrompt(prompt, destination === "bootstrap", commentBatch);
       }

@@ -61,7 +61,6 @@ function resetStores(): void {
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
-    pendingInterrupt: null,
   });
 }
 
@@ -433,8 +432,9 @@ describe("Transcript rendering (live wire)", () => {
     expect(executed.disposition).toBe("awaiting_permission");
     expect(typeof executed.interrupt_id).toBe("string");
 
-    // Record the SERVED envelope into the annex (the recorder seam also stages
-    // the composer's steer interrupt from the awaiting arm).
+    // Record the SERVED envelope into the annex; the awaiting arm's interrupt id
+    // rides the record so the inline prompt's Allow closes the durable interrupt
+    // after the decision (S41 — no client steer-staging seam anymore).
     recordAgentToolCall({
       toolCallId,
       runId: runId!,
@@ -446,10 +446,6 @@ describe("Transcript rendering (live wire)", () => {
       result: null,
       detail: null,
       recordedAtMs: Date.now(),
-    });
-    expect(useAgentComposer.getState().pendingInterrupt).toMatchObject({
-      interruptId: executed.interrupt_id,
-      runId,
     });
 
     const snapshot = await liveAgent.getSession(sessionId);

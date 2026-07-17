@@ -10,10 +10,13 @@
 // (no wire carries reasoning today, so it is absent, never faked; see
 // `stores/view/agentTranscript`).
 //
-// Layer ownership (architecture-boundaries): dumb app chrome. Allow/Deny fire
-// the agent slice's `useDecideToolPermission` (ambient actor token); the served
-// outcome is written back onto the annex record through
-// `resolveAgentToolPermission`. Expand/collapse is view-local state on the one
+// Layer ownership (architecture-boundaries): dumb app chrome. Allow/Deny drive
+// the two-write decision the D3 ruling names: first the AUTHORITATIVE gate flip
+// (`useDecideToolPermission`, ambient actor token) whose served outcome is written
+// back onto the annex record through `resolveAgentToolPermission`, then the
+// interrupt resume (`useResumeInterrupt`) that CLOSES the durable recovery record
+// with the SAME typed decision. Both are replay-safe, so a crash between them
+// recovers by re-driving both. Expand/collapse is view-local state on the one
 // shared `FoldSection` disclosure grammar.
 
 import { useState } from "react";
@@ -22,7 +25,7 @@ import { Wrench } from "lucide-react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageDescriptor } from "../../platform/localization/message";
 import { authoredDisplayText } from "../../platform/localization/displayText";
-import { useDecideToolPermission } from "../../stores/server/agent";
+import { useDecideToolPermission, useResumeInterrupt } from "../../stores/server/agent";
 import {
   resolveAgentToolPermission,
   type AgentThinkingSegment,
@@ -137,19 +140,34 @@ export function ThinkingEntry({ segment }: { segment: AgentThinkingSegment | nul
 function ToolPermissionPrompt({ record }: { record: AgentToolCallRecord }) {
   const resolveMessage = useLocalizedMessageResolver();
   const decide = useDecideToolPermission();
+  const resumeInterrupt = useResumeInterrupt();
   const [failed, setFailed] = useState(false);
+  const deciding = decide.isPending || resumeInterrupt.isPending;
 
   const submit = async (decision: "approve" | "reject") => {
     setFailed(false);
     try {
+      // (1) The AUTHORITATIVE gate flip: a granted decision lets the same
+      // tool_call_id proceed on re-execute; a denial refuses it.
       const outcome = await decide.mutateAsync({
         toolCallId: record.toolCallId,
         payload: { decision },
       });
       resolveAgentToolPermission(record.toolCallId, outcome.status);
+      // (2) Close the durable interrupt record with the SAME typed decision (D3
+      // ruling). Nothing auto-resolves the interrupt on decide, so this second
+      // write is what lets a reloaded panel see the prompt as resolved. Skipped
+      // only when the awaiting arm carried no interrupt id (defensive).
+      if (record.interruptId !== null) {
+        await resumeInterrupt.mutateAsync({
+          interruptId: record.interruptId,
+          payload: { decision: { decision } },
+        });
+      }
     } catch {
-      // The decision did not reach the ledger; surface it inline and keep the
-      // prompt so the operator can retry — never silently drop a pending gate.
+      // Either write did not land; surface it inline and keep the prompt so the
+      // operator can retry — both writes are replay-safe, so a retry re-drives
+      // decide then resume and converges. Never silently drop a pending gate.
       setFailed(true);
     }
   };
@@ -186,7 +204,7 @@ function ToolPermissionPrompt({ record }: { record: AgentToolCallRecord }) {
       <div className="flex items-center justify-end gap-fg-2">
         <Button
           variant="secondary"
-          disabled={decide.isPending}
+          disabled={deciding}
           onClick={() => void submit("reject")}
           data-permission-deny
         >
@@ -194,7 +212,7 @@ function ToolPermissionPrompt({ record }: { record: AgentToolCallRecord }) {
         </Button>
         <Button
           variant="primary"
-          disabled={decide.isPending}
+          disabled={deciding}
           onClick={() => void submit("approve")}
           data-permission-allow
         >

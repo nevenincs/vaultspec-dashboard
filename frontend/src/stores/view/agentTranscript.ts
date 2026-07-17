@@ -17,8 +17,6 @@
 
 import { create } from "zustand";
 
-import { stageAgentInterrupt } from "./agentComposer";
-
 /** Hard cap on retained tool-call records across the panel (bounded-by-default;
  *  oldest evicted first — durable truth is never this annex). */
 export const AGENT_TOOL_CALL_CAP = 64;
@@ -135,15 +133,13 @@ export function useAgentThinking(): AgentThinkingSegment[] {
 
 // --- imperative seams -------------------------------------------------------------
 
-/** Record one tool call from its SERVED execute envelope. An awaiting call also
- *  stages its interrupt for the composer (ADR D4: the same input steers the
- *  parked run; the engine serves no pending-interrupt read, so this forward is
- *  the only path from the awaiting arm to the steer machine). */
+/** Record one tool call from its SERVED execute envelope. The awaiting arm's
+ *  `interrupt_id` is retained on the record for the inline permission prompt's
+ *  resume follow-up; steer-eligibility is no longer forwarded from here — the
+ *  composer reads pending interrupts from the served list (`useRunInterrupts`,
+ *  agent-wire-gaps S41), so a reloaded panel recovers them from the wire. */
 export function recordAgentToolCall(record: AgentToolCallRecord): void {
   useAgentTranscript.getState().recordToolCall(record);
-  if (record.disposition === "awaiting_permission" && record.interruptId !== null) {
-    stageAgentInterrupt({ interruptId: record.interruptId, runId: record.runId });
-  }
 }
 
 /** Record the SERVED permission-decision outcome onto its tool-call row. */

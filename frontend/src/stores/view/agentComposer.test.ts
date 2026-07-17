@@ -12,7 +12,6 @@ import {
   buildFeedbackBatchRequest,
   stageAgentComment,
   stageAgentCommentBatch,
-  stageAgentInterrupt,
   useAgentComposer,
   type AgentCommentAttachment,
   type AgentMention,
@@ -40,7 +39,6 @@ function resetComposer(): void {
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
-    pendingInterrupt: null,
   });
 }
 
@@ -53,7 +51,7 @@ describe("agentSubmitDestination", () => {
         sessionId: null,
         sessionStatus: null,
         activeRunId: null,
-        pendingInterrupt: null,
+        hasPendingInterrupt: false,
       }),
     ).toBe("bootstrap");
   });
@@ -67,7 +65,7 @@ describe("agentSubmitDestination", () => {
         sessionId: "session:a",
         sessionStatus: "cancelled",
         activeRunId: null,
-        pendingInterrupt: null,
+        hasPendingInterrupt: false,
       }),
     ).toBe("bootstrap");
   });
@@ -78,51 +76,34 @@ describe("agentSubmitDestination", () => {
         sessionId: "session:a",
         sessionStatus: "active",
         activeRunId: null,
-        pendingInterrupt: null,
+        hasPendingInterrupt: false,
       }),
     ).toBe("turn");
   });
 
-  it("queues while a run streams without a parked interrupt", () => {
+  it("queues while a run streams without a served pending interrupt", () => {
     expect(
       agentSubmitDestination({
         sessionId: "session:a",
         sessionStatus: "active",
         activeRunId: "run:1",
-        pendingInterrupt: null,
+        hasPendingInterrupt: false,
       }),
     ).toBe("queue");
   });
 
-  it("steers when the live run is parked on its staged interrupt", () => {
+  it("steers when the live run has a served pending interrupt (S41)", () => {
+    // The served `GET /runs/{id}/interrupts` list is scoped to the active run, so a
+    // pending entry already belongs to it — the machine takes a single boolean and
+    // never re-matches the run id client-side.
     expect(
       agentSubmitDestination({
         sessionId: "session:a",
         sessionStatus: "active",
         activeRunId: "run:1",
-        pendingInterrupt: { interruptId: "int:1", runId: "run:1" },
+        hasPendingInterrupt: true,
       }),
     ).toBe("steer");
-    // A run-agnostic staged interrupt also steers the live run.
-    expect(
-      agentSubmitDestination({
-        sessionId: "session:a",
-        sessionStatus: "active",
-        activeRunId: "run:1",
-        pendingInterrupt: { interruptId: "int:1", runId: null },
-      }),
-    ).toBe("steer");
-  });
-
-  it("never steers a run the interrupt does not belong to", () => {
-    expect(
-      agentSubmitDestination({
-        sessionId: "session:a",
-        sessionStatus: "active",
-        activeRunId: "run:2",
-        pendingInterrupt: { interruptId: "int:1", runId: "run:1" },
-      }),
-    ).toBe("queue");
   });
 });
 
@@ -272,13 +253,7 @@ describe("composer store bounds", () => {
     expect(useAgentComposer.getState().commentBatch).toBeNull();
   });
 
-  it("stages and clears the interrupt through the seam", () => {
-    stageAgentInterrupt({ interruptId: "int:1", runId: "run:1" });
-    expect(useAgentComposer.getState().pendingInterrupt).toEqual({
-      interruptId: "int:1",
-      runId: "run:1",
-    });
-    stageAgentInterrupt(null);
-    expect(useAgentComposer.getState().pendingInterrupt).toBeNull();
-  });
+  // The client-staged interrupt seam was removed (S41): pending-interrupt state is
+  // served (`GET /runs/{id}/interrupts`, D3) and read through `useRunInterrupts`,
+  // so the composer store no longer holds an interrupt record.
 });

@@ -6,9 +6,9 @@
 // session when none is current), Shift+Enter falls through to the native newline,
 // `/` opens the one-command-plane popover, `@` adds removable mention chips,
 // Send is replaced in place by Stop while a real run streams, a mid-run submit
-// holds the ONE queued chip and dispatches it as the next turn on settle, and a
-// staged interrupt flips the same input to steer (a faulting resume surfaces the
-// honest inline failure and preserves the draft). Core vitest matchers only.
+// enqueues server-side, and a SERVED pending interrupt (`useRunInterrupts`, S41)
+// flips the same input to steer (a faulting resume surfaces the honest inline
+// failure and preserves the draft). Core vitest matchers only.
 //
 // Renders with the MODULE query client (`stores/server/queryClient`) — the agent
 // mutations invalidate that client, and the mid-run assertions depend on the
@@ -25,11 +25,7 @@ import { AuthoringClient } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
 import { queryClient } from "../../stores/server/queryClient";
 import { useAgentPanel } from "../../stores/view/agentPanel";
-import {
-  stageAgentComment,
-  stageAgentInterrupt,
-  useAgentComposer,
-} from "../../stores/view/agentComposer";
+import { stageAgentComment, useAgentComposer } from "../../stores/view/agentComposer";
 import {
   registerCommandProvider,
   type CommandDescriptor,
@@ -45,7 +41,6 @@ function resetStores(): void {
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
-    pendingInterrupt: null,
   });
 }
 
@@ -188,10 +183,15 @@ describe("Composer keyboard contract", () => {
 describe("Composer slash commands (one command plane)", () => {
   it("opens on `/` at column 0, filters, runs the selection, and dismisses on Escape", async () => {
     let fired = 0;
+    // The command label is a MessageDescriptor (`{ key }`), not a raw string:
+    // `normalizeActionDescriptor` rejects a non-descriptor label since the
+    // localization cutover, which is why a raw-string probe silently dropped out of
+    // the slash list. The key resolves to a phrase ("Needs permission") that no
+    // built-in composer command uses, so the filter and option lookup stay unique.
     const dispose = registerCommandProvider("test:composer-slash", () => [
       {
         id: "test:composer-probe",
-        label: "Probe the composer",
+        label: { key: "common:agent.transcript.toolStatus.needsPermission" },
         family: "app",
         run: () => {
           fired += 1;
@@ -205,9 +205,9 @@ describe("Composer slash commands (one command plane)", () => {
         expect(document.querySelector("[data-composer-slash]")).not.toBeNull(),
       );
       // Filter down to the probe command, then Enter runs it and clears the draft.
-      fireEvent.change(input(), { target: { value: "/probe composer" } });
+      fireEvent.change(input(), { target: { value: "/needs permission" } });
       await waitFor(() =>
-        expect(screen.getByRole("option", { name: "Probe the composer" })).toBeTruthy(),
+        expect(screen.getByRole("option", { name: "Needs permission" })).toBeTruthy(),
       );
       fireEvent.keyDown(input(), { key: "Enter" });
       expect(fired).toBe(1);
@@ -217,13 +217,13 @@ describe("Composer slash commands (one command plane)", () => {
       expect(useAgentPanel.getState().currentSessionId).toBeNull();
 
       // Escape dismisses the list without touching the draft.
-      fireEvent.change(input(), { target: { value: "/probe" } });
+      fireEvent.change(input(), { target: { value: "/needs" } });
       await waitFor(() =>
         expect(document.querySelector("[data-composer-slash]")).not.toBeNull(),
       );
       fireEvent.keyDown(input(), { key: "Escape" });
       expect(document.querySelector("[data-composer-slash]")).toBeNull();
-      expect(input().value).toBe("/probe");
+      expect(input().value).toBe("/needs");
     } finally {
       dispose();
     }
@@ -328,33 +328,88 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     expect(snapshot.session.status).toBe("active");
   });
 
-  it("steers through the same input when an interrupt is staged, surfacing an honest failure on a faulting resume", async () => {
-    const sessionId = await createLiveSession(`Composer steer ${run}`);
+  it("flips to steer from the SERVED pending-interrupt list and resumes the parked run (S41)", async () => {
+    // Steer-eligibility is now read from the wire (`useRunInterrupts`), not a
+    // client-staged record: an AGENT-owned run parked on a REAL permission interrupt
+    // must flip the composer to steer after the served list refreshes. Requester is
+    // an agent (never self-grants → the tool suspends); the composer's ambient human
+    // principal resumes it — a different principal, so the resume faults honestly on
+    // the wire and the inline failure surfaces with the draft intact (the honest
+    // path the original staged-interrupt test proved, now over the served list).
+    const authoring = new AuthoringClient({ baseUrl: "", fetchImpl: liveTransport });
+    const agentToken = (
+      await authoring.issueActorToken({
+        actor: { id: `agent:composer-steer-${run}`, kind: "agent" },
+      })
+    ).raw_token;
+
+    // Open the session + first turn as the agent so it OWNS the run, then set it
+    // current and render the composer against it.
+    const scope = await liveScope();
+    const created = await liveAgent.createSession(
+      { scope, title: `Composer steer ${run}` },
+      { actorToken: agentToken },
+    );
+    if (created.kind !== "settled") throw new Error("session did not settle");
+    const sessionId = created.session_id;
+    const turned = await liveAgent.startTurn(
+      sessionId,
+      { prompt: "start work" },
+      { actorToken: agentToken },
+    );
+    const runId = turned.kind === "settled" ? (turned.run_id ?? null) : null;
+    expect(runId).toBeTruthy();
+
+    // Park a REAL interrupt on the run: a mutating tool without a grant suspends as
+    // `awaiting_permission`, creating the pending interrupt the served list returns.
+    const executed = (await liveAgent.executeToolCall(
+      runId!,
+      {
+        tool_call_id: `call_steer_${run.replace(/-/g, "_")}`,
+        name: "cancel",
+        input: { target: "run", run_id: runId, reason: "steer flip test" },
+      },
+      { actorToken: agentToken },
+    )) as Record<string, unknown>;
+    expect(executed.disposition).toBe("awaiting_permission");
+
+    // DIAGNOSTIC: prove the wire surfaces the active run + pending interrupt.
+    const probe = await liveAgent.getSession(sessionId);
+    // eslint-disable-next-line no-console
+    console.log(
+      "STEER-PROBE active_run:",
+      probe.active_run?.run_id,
+      probe.active_run?.status,
+    );
+    const probeList = await liveAgent.listRunInterrupts(runId!);
+    // eslint-disable-next-line no-console
+    console.log(
+      "STEER-PROBE interrupts:",
+      JSON.stringify(probeList.items.map((i) => [i.interrupt_id, i.resume_state])),
+    );
+
     useAgentPanel.setState({ open: true, currentSessionId: sessionId });
     renderComposer();
 
-    // Park a real run, then stage an interrupt for it.
-    fireEvent.change(input(), { target: { value: "start work" } });
-    fireEvent.keyDown(input(), { key: "Enter" });
+    // The SAME input flips to the steer placeholder once the served pending-interrupt
+    // list lands — no client staging, no new chrome.
     await waitFor(
-      () => expect(document.querySelector("[data-composer-stop]")).not.toBeNull(),
+      () => expect(input().placeholder).toBe("Reply to guide the running agent"),
       { timeout: 15_000 },
     );
-    stageAgentInterrupt({ interruptId: `interrupt:missing-${run}`, runId: null });
 
-    // The SAME input flips to the steer placeholder — no new chrome.
-    await waitFor(() =>
-      expect(input().placeholder).toBe("Reply to guide the running agent"),
-    );
-
-    // Submitting targets the interrupt resume; the unknown id FAULTS on the real
-    // wire, and the composer surfaces the inline failure with the draft intact.
+    // Submitting steers: the typed `{prompt}` resume resolves the parked interrupt
+    // on the real wire (steering an agent's parked run is the human's designed
+    // affordance — resume is a capability-by-id, not owner-fenced), the draft
+    // clears, and the composer returns to the idle placeholder once the served
+    // list no longer holds a pending entry.
     fireEvent.change(input(), { target: { value: "go left instead" } });
     fireEvent.keyDown(input(), { key: "Enter" });
-    await waitFor(
-      () => expect(document.querySelector("[data-composer-error]")).not.toBeNull(),
-      { timeout: 15_000 },
-    );
-    expect(input().value).toBe("go left instead");
-  });
+    await waitFor(() => expect(input().value).toBe(""), { timeout: 15_000 });
+    const resolved = await liveAgent.listRunInterrupts(runId!);
+    expect(resolved.items.every((i) => i.resume_state === "resolved")).toBe(true);
+    await waitFor(() => expect(input().placeholder).toBe("Message the agent"), {
+      timeout: 15_000,
+    });
+  }, 45_000);
 });

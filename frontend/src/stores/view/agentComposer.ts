@@ -1,11 +1,14 @@
 // Local view chrome only (architecture-boundaries): the wire truth (session
-// snapshot, active run, SERVED queued-turn state) lives in `stores/server/agent`;
-// this store holds the client-side attachment state the composer renders above
-// its input: the `@`-mention chips, staged comment batch, and the pending
-// interrupt staged when a tool execution parks the run on a permission interrupt
-// (the engine serves no pending-interrupt read; the only wire surface for an
-// `interrupt_id` is the tool-execute `awaiting_permission` arm, so the transcript
-// forwards it here).
+// snapshot, active run, SERVED queued-turn state, SERVED pending-interrupt state)
+// lives in `stores/server/agent`; this store holds only the client-side attachment
+// state the composer renders above its input: the `@`-mention chips and the staged
+// comment batch.
+//
+// The client-staged interrupt annex was REMOVED (agent-wire-gaps S41): the engine
+// now serves the pending-interrupt read (`GET /runs/{id}/interrupts`, D3), so the
+// composer derives steer-eligibility from that served list (`useRunInterrupts`)
+// instead of a record forwarded from the tool-execute `awaiting_permission` arm —
+// pending permission prompts recover from the wire on reload, not client memory.
 //
 // The one-slot queued prompt was REMOVED (agent-wire-gaps S39): a mid-run submit
 // now dispatches the turn to the engine, which enqueues it (`queued_turn_ids`) and
@@ -13,8 +16,8 @@
 // the same unit of work — so the client holds no queue state.
 //
 // Every accumulator is bounded at creation (resource-bounds): the mention list
-// carries a hard cap, the comment batch and pending interrupt are single nullable
-// records, and the composer text itself is capped by `AGENT_COMPOSER_TEXT_CAP`.
+// carries a hard cap, the comment batch is a single nullable record, and the
+// composer text itself is capped by `AGENT_COMPOSER_TEXT_CAP`.
 
 import { create } from "zustand";
 
@@ -75,16 +78,6 @@ export interface AgentCommentBatch {
   comments: AgentCommentAttachment[];
 }
 
-/** The interrupt the active run is parked on. Staged from the tool-execute
- *  `awaiting_permission` response; the session
- *  snapshot serves no interrupt state, so this client record is the only way the
- *  composer knows the same input should target the interrupt resume. */
-export interface AgentPendingInterrupt {
-  interruptId: string;
-  /** The run the interrupt belongs to, so a settled/replaced run drops it. */
-  runId: string | null;
-}
-
 /** Where one composer submit goes:
  *  - `bootstrap`: no usable session; create one, then start the first turn.
  *    This includes a current session whose SERVED status is no longer `active`.
@@ -100,28 +93,24 @@ export interface AgentPendingInterrupt {
 export type AgentSubmitDestination = "bootstrap" | "turn" | "steer" | "queue";
 
 /** Resolve the input's destination from the session/run truth (pure — the
- *  component feeds it the snapshot's session status + `active_run` and this
- *  store's staged interrupt). `sessionStatus` is the SERVED bounded token (null
- *  while the snapshot loads — treated as active, and a stale submit faults
- *  honestly on the wire). An interrupt staged for a DIFFERENT run never steers. */
+ *  component feeds it the snapshot's session status + `active_run` and whether the
+ *  active run has a SERVED pending interrupt). `sessionStatus` is the SERVED bounded
+ *  token (null while the snapshot loads — treated as active, and a stale submit
+ *  faults honestly on the wire). `hasPendingInterrupt` is read from the served
+ *  `GET /runs/{id}/interrupts` list scoped to the active run (D3), so a pending
+ *  entry there already belongs to the active run — no client run-matching needed. */
 export function agentSubmitDestination(args: {
   sessionId: string | null;
   sessionStatus: string | null;
   activeRunId: string | null;
-  pendingInterrupt: AgentPendingInterrupt | null;
+  hasPendingInterrupt: boolean;
 }): AgentSubmitDestination {
   if (args.sessionId === null) return "bootstrap";
   if (args.sessionStatus !== null && args.sessionStatus !== "active") {
     return "bootstrap";
   }
   if (args.activeRunId === null) return "turn";
-  const interrupt = args.pendingInterrupt;
-  if (
-    interrupt !== null &&
-    (interrupt.runId === null || interrupt.runId === args.activeRunId)
-  ) {
-    return "steer";
-  }
+  if (args.hasPendingInterrupt) return "steer";
   return "queue";
 }
 
@@ -196,8 +185,6 @@ interface AgentComposerState {
   mentions: AgentMention[];
   /** The staged comment batch chip, or null when none is staged. */
   commentBatch: AgentCommentBatch | null;
-  /** The interrupt the active run is parked on, staged by the transcript. */
-  pendingInterrupt: AgentPendingInterrupt | null;
   addMention: (mention: AgentMention) => void;
   removeMention: (value: string) => void;
   clearMentions: () => void;
@@ -206,13 +193,11 @@ interface AgentComposerState {
     source: { sourceDocument: string; sourceRevision: string },
   ) => void;
   stageCommentBatch: (batch: AgentCommentBatch | null) => void;
-  stageInterrupt: (interrupt: AgentPendingInterrupt | null) => void;
 }
 
 export const useAgentComposer = create<AgentComposerState>((set) => ({
   mentions: [],
   commentBatch: null,
-  pendingInterrupt: null,
   addMention: (mention) =>
     set((state) => {
       if (state.mentions.length >= AGENT_COMPOSER_MENTION_CAP) return state;
@@ -257,7 +242,6 @@ export const useAgentComposer = create<AgentComposerState>((set) => ({
       };
     }),
   stageCommentBatch: (batch) => set({ commentBatch: batch }),
-  stageInterrupt: (interrupt) => set({ pendingInterrupt: interrupt }),
 }));
 
 // --- selector hooks (raw references; derive downstream in useMemo) ---------------
@@ -268,10 +252,6 @@ export function useAgentMentions(): AgentMention[] {
 
 export function useAgentCommentBatch(): AgentCommentBatch | null {
   return useAgentComposer((state) => state.commentBatch);
-}
-
-export function useAgentPendingInterrupt(): AgentPendingInterrupt | null {
-  return useAgentComposer((state) => state.pendingInterrupt);
 }
 
 // --- imperative seams --------------------------------------------------------------
@@ -291,11 +271,4 @@ export function stageAgentComment(
  *  the post-submit cleanup). */
 export function stageAgentCommentBatch(batch: AgentCommentBatch | null): void {
   useAgentComposer.getState().stageCommentBatch(batch);
-}
-
-/** Stage the interrupt a tool execution parked the run
- *  on (`awaiting_permission` → `interrupt_id`); the composer flips to steer mode.
- *  Passing null clears it (after a successful resume, or when the run settles). */
-export function stageAgentInterrupt(interrupt: AgentPendingInterrupt | null): void {
-  useAgentComposer.getState().stageInterrupt(interrupt);
 }
