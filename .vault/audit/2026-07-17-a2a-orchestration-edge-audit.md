@@ -121,6 +121,19 @@ matching the engine constant, ungated dependency-probed `/health` with live pid)
   to actually stream at execution. Two findings for the a2a backlog: (1) mock
   presets emit no progress frames; (2) provider readiness diverges between
   discovery and execution for mock/deterministic providers.
+- FINDING (D3 progress-frame emission unverified) — HEADLINE: whether D3 carries
+  progress frames from a genuinely executing run is UNVERIFIED — the seam is
+  coded (`ingest.py` `astream_events` → `emit_*`) but end-to-end coverage is
+  injection-based (`test_aggregator` direct calls, `test_gateway_live`
+  `relay_payload` injection), no test drives `handle_dispatch` → `astream_events`
+  → `emit_*` → wire, and every drivable run shows `last_sequence:0` with
+  `roles:[]`.
+- NAMED FOLLOW-ON (spawns a successor step/plan; does NOT reopen this plan):
+  prove (or repair) end-to-end progress-frame emission from an executing run
+  through worker → gateway → S06 → relay, with a driven-not-injected test.
+  Vehicle: the deterministic `research_adr` capability (needs actor tokens plus a
+  reachable authoring engine) or a real-provider lane (Z.ai near-term; Claude
+  gated ~Jul-20).
 - Rag-dedup sweep evidence (closeout — resolves the reviewers' carried item).
   Each Step Record carries its own dedup verdict; the pointer list below shows
   every step grounded against an existing analogue and reused or extended it
