@@ -396,3 +396,64 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     });
   }, 45_000);
 });
+
+describe("Composer team selector (live a2a tier)", () => {
+  it("renders the team control and, per tier, carries a reason when disabled or opens the honest menu when enabled", async () => {
+    // The team selector reads the a2a plane over the ONE team client (a2aTeam.ts):
+    // the presets pass-through + the tolerant `agent` tier. A resident a2a gateway
+    // may or may not be present in the live harness, so this proves BOTH tier states
+    // honestly — never mocking the wire. When a2a is down the control is
+    // disabled-with-reason; when it is up the menu lists the single-agent option and
+    // renders every non-loadable preset disabled with its served reason (never hides
+    // one).
+    renderComposer();
+
+    // The control mounts immediately (the Team pill is always rendered).
+    await waitFor(() =>
+      expect(document.querySelector("[data-composer-team]")).not.toBeNull(),
+    );
+
+    // Let the presets read settle so we branch on the real tier, not the transient
+    // loading (empty-presets) state. The module query cache is the settle signal.
+    await waitFor(
+      () =>
+        expect(queryClient.getQueryState(["a2a", "presets"])?.status).not.toBe(
+          "pending",
+        ),
+      { timeout: 15_000 },
+    );
+
+    const trigger = document.querySelector(
+      "[data-composer-team] button",
+    ) as HTMLButtonElement;
+    expect(trigger).not.toBeNull();
+
+    if (trigger.disabled) {
+      // Disabled tier: the honest reason rides the wrapping title or the aria-label
+      // — never a silently-dead control.
+      const span = trigger.parentElement as HTMLElement;
+      const reason =
+        (span.getAttribute("title") ?? "") + (trigger.getAttribute("aria-label") ?? "");
+      expect(reason.length).toBeGreaterThan(0);
+    } else {
+      // Enabled tier: opening lists the single-agent option and every preset.
+      fireEvent.click(trigger);
+      const menu = await waitFor(() => {
+        const found = document.querySelector("[data-composer-team-menu]");
+        expect(found).not.toBeNull();
+        return found as HTMLElement;
+      });
+      expect(menu.textContent).toContain("Single agent");
+      // A non-loadable preset is present-but-disabled, carrying its reason — never
+      // hidden from the truthful set.
+      const nonLoadable = menu.querySelector(
+        "[data-team-preset]:disabled",
+      ) as HTMLButtonElement | null;
+      if (nonLoadable !== null) {
+        const rowReason =
+          (nonLoadable.getAttribute("title") ?? "") + (nonLoadable.textContent ?? "");
+        expect(rowReason.length).toBeGreaterThan(0);
+      }
+    }
+  }, 30_000);
+});

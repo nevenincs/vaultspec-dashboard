@@ -57,13 +57,18 @@ import {
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { useActiveScope, useEditorLinkingCorpus } from "../../stores/server/queries";
 import {
+  useCancelTeamRun,
   useCreateFeedbackBatch,
   useCreateSession,
   useResumeInterrupt,
   useRunInterrupts,
+  useRunProgress,
   useSession,
+  useStartTeamRun,
   useStartTurn,
+  useTeamSelectorState,
 } from "../../stores/server/agent";
+import { relayFrameIsTerminal } from "../../stores/server/liveAdapters/a2aRelay";
 import {
   setAgentCurrentSession,
   useAgentCurrentSessionId,
@@ -86,7 +91,7 @@ import {
   type CommandDescriptor,
 } from "../../stores/view/commandPaletteCommands";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
-import { Button, DropdownButton, Popover } from "../kit";
+import { Button, DropdownButton, Popover, Spinner } from "../kit";
 
 const MSG = {
   idlePlaceholder: "common:agent.composer.placeholder",
@@ -112,6 +117,15 @@ const MSG = {
   team: "common:agent.composer.team",
   teamDefault: "common:agent.composer.teamDefault",
   teamUnavailable: "common:agent.composer.teamUnavailable",
+  teamMenuAria: "common:agent.composer.teamMenuAria",
+  teamPresetUnavailable: "common:agent.composer.teamPresetUnavailable",
+  startTeamRun: "common:agent.composer.startTeamRun",
+  cancelTeamRun: "common:agent.composer.cancelTeamRun",
+  teamRunPhase: "common:agent.composer.teamRunPhase",
+  teamRunRefused: "common:agent.composer.teamRunRefused",
+  teamRunDegraded: "common:agent.composer.teamRunDegraded",
+  teamRunDismiss: "common:agent.composer.teamRunDismiss",
+  teamRunLocked: "common:agent.composer.teamRunLocked",
 } as const;
 
 /** Cap the slash popover's rendered rows (bounded-by-default). */
@@ -361,18 +375,149 @@ interface SlashRow {
   label: string;
 }
 
-/** The two disabled-with-reason selector pills (Model and Team). The wire
- *  serves no model options and no team presets; the pills
- *  render the honest single-agent default and carry their reason — never hidden,
- *  never a silently-dead control. */
-function ComposerSelectorPills() {
+/** The LIVE agent-team selector: fed by the a2a team store layer (`a2aTeam.ts`, the
+ *  SOLE team-run client). It lists the loadable presets AND every non-loadable one
+ *  (never hides an unavailable team — the truthful set) and folds the tolerant
+ *  `agent` tier read into a disabled-with-reason verdict when a2a is down. `locked`
+ *  disables it while any run (single-agent or team) is in flight. Selecting a preset
+ *  flips the composer into team mode; "Single agent" clears back to the single-agent
+ *  path. */
+function ComposerTeamSelector({
+  selectedPresetId,
+  onSelectPreset,
+  locked,
+}: {
+  selectedPresetId: string | null;
+  onSelectPreset: (id: string | null) => void;
+  locked: boolean;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const state = useTeamSelectorState();
+  const [open, setOpen] = useState(false);
+
+  const selected =
+    selectedPresetId !== null
+      ? (state.presets.find((preset) => preset.id === selectedPresetId) ?? null)
+      : null;
+  const teamLabel = resolveMessage({ key: MSG.team }).message;
+  const teamDefaultLabel = resolveMessage({ key: MSG.teamDefault }).message;
+  const valueLabel = selected
+    ? (selected.display_name ?? selected.id)
+    : teamDefaultLabel;
+  const noTeams = state.presets.length === 0;
+  const controlDisabled = state.disabled || noTeams || locked;
+  const reason = state.disabled
+    ? state.disabledReason
+    : noTeams
+      ? resolveMessage({ key: MSG.teamUnavailable }).message
+      : locked
+        ? resolveMessage({ key: MSG.teamRunLocked }).message
+        : undefined;
+
+  const pill = resolveMessage({
+    key: MSG.selectorValue,
+    values: { selector: teamLabel, value: authoredDisplayText(valueLabel) },
+  }).message;
+  const ariaLabel = controlDisabled
+    ? resolveMessage({
+        key: MSG.selectorDisabled,
+        values: {
+          selector: teamLabel,
+          value: authoredDisplayText(valueLabel),
+          reason: authoredDisplayText(reason ?? ""),
+        },
+      }).message
+    : pill;
+  const menuAria = resolveMessage({ key: MSG.teamMenuAria }).message;
+  const presetUnavailable = resolveMessage({ key: MSG.teamPresetUnavailable }).message;
+
+  const select = (id: string | null) => {
+    onSelectPreset(id);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative" data-composer-team>
+      <span title={controlDisabled ? reason : undefined}>
+        <DropdownButton
+          label={pill}
+          open={open}
+          onClick={() => setOpen((current) => !current)}
+          disabled={controlDisabled}
+          ariaLabel={ariaLabel}
+        />
+      </span>
+      {open && !controlDisabled && (
+        <Popover
+          open
+          onDismiss={() => setOpen(false)}
+          role="menu"
+          aria-label={menuAria}
+          data-composer-team-menu
+          className="absolute left-0 bottom-full z-40 mb-fg-1 min-w-56 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
+        >
+          <ul className="flex flex-col gap-fg-0-5">
+            <li>
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={selected === null}
+                onClick={() => select(null)}
+                onKeyDown={(event) => event.stopPropagation()}
+                className="flex w-full flex-col rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken"
+              >
+                {teamDefaultLabel}
+              </button>
+            </li>
+            {state.presets.map((preset) => {
+              const presetReason = preset.unavailable_reason ?? presetUnavailable;
+              return (
+                <li key={preset.id}>
+                  <button
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={selectedPresetId === preset.id}
+                    disabled={!preset.loadable}
+                    data-team-preset={preset.id}
+                    title={preset.loadable ? undefined : presetReason}
+                    onClick={preset.loadable ? () => select(preset.id) : undefined}
+                    onKeyDown={(event) => event.stopPropagation()}
+                    className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+                  >
+                    <span className="truncate">{preset.display_name ?? preset.id}</span>
+                    {!preset.loadable && (
+                      <span className="truncate text-meta text-ink-faint">
+                        {presetReason}
+                      </span>
+                    )}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Popover>
+      )}
+    </div>
+  );
+}
+
+/** The composer's left-side selector pills: the LIVE Team selector and the
+ *  still-static Model pill. The wire serves no model options, so Model stays
+ *  disabled-with-reason (honest single-agent default); Team is now a live selector
+ *  fed by the a2a store layer. */
+function ComposerSelectorPills({
+  selectedTeamPreset,
+  onSelectTeam,
+  locked,
+}: {
+  selectedTeamPreset: string | null;
+  onSelectTeam: (id: string | null) => void;
+  locked: boolean;
+}) {
   const resolveMessage = useLocalizedMessageResolver();
   const modelLabel = resolveMessage({ key: MSG.model }).message;
   const modelValue = resolveMessage({ key: MSG.modelDefault }).message;
   const modelReason = resolveMessage({ key: MSG.modelUnavailable }).message;
-  const teamLabel = resolveMessage({ key: MSG.team }).message;
-  const teamValue = resolveMessage({ key: MSG.teamDefault }).message;
-  const teamReason = resolveMessage({ key: MSG.teamUnavailable }).message;
   const modelPill = resolveMessage({
     key: MSG.selectorValue,
     values: { selector: modelLabel, value: modelValue },
@@ -380,14 +525,6 @@ function ComposerSelectorPills() {
   const modelAria = resolveMessage({
     key: MSG.selectorDisabled,
     values: { selector: modelLabel, value: modelValue, reason: modelReason },
-  }).message;
-  const teamPill = resolveMessage({
-    key: MSG.selectorValue,
-    values: { selector: teamLabel, value: teamValue },
-  }).message;
-  const teamAria = resolveMessage({
-    key: MSG.selectorDisabled,
-    values: { selector: teamLabel, value: teamValue, reason: teamReason },
   }).message;
   return (
     <div className="flex min-w-0 items-center gap-fg-1">
@@ -399,14 +536,11 @@ function ComposerSelectorPills() {
           ariaLabel={modelAria}
         />
       </span>
-      <span title={teamReason} data-composer-team>
-        <DropdownButton
-          label={teamPill}
-          onClick={() => undefined}
-          disabled
-          ariaLabel={teamAria}
-        />
-      </span>
+      <ComposerTeamSelector
+        selectedPresetId={selectedTeamPreset}
+        onSelectPreset={onSelectTeam}
+        locked={locked}
+      />
     </div>
   );
 }
@@ -435,6 +569,27 @@ export function Composer() {
   const [sendFailed, setSendFailed] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const submittingRef = useRef(false);
+
+  // The LIVE team plane (a2a `a2aTeam.ts`, the sole team-run client): the selected
+  // preset drives team mode; the started run id feeds the authoritative progress
+  // read; a business refusal is surfaced honestly inline. Team runs do NOT carry
+  // the comment feedback batch — that is the single-agent path only.
+  const [selectedTeamPreset, setSelectedTeamPreset] = useState<string | null>(null);
+  const [teamRunId, setTeamRunId] = useState<string | null>(null);
+  const [teamRefused, setTeamRefused] = useState<{ detail?: string } | null>(null);
+  const startTeamRun = useStartTeamRun();
+  const cancelTeamRun = useCancelTeamRun();
+  const teamProgress = useRunProgress(teamRunId);
+  const teamRunActive = teamRunId !== null;
+  // Terminal-ness is decided by the relay adapter (never a client status-string
+  // compare): the LAST frame's classified kind. The served status snapshot stays
+  // authoritative for the displayed phase.
+  const teamTerminal = (() => {
+    const frame = teamProgress.frames.at(-1);
+    return frame ? relayFrameIsTerminal(frame) : false;
+  })();
+  const teamPhase = teamProgress.status?.semantic_phase ?? teamProgress.status?.status;
+  const teamMode = selectedTeamPreset !== null;
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
@@ -570,6 +725,7 @@ export function Composer() {
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSendFailed(false);
+    setTeamRefused(null);
     try {
       if (destination === "steer" && pendingInterrupt !== null) {
         // D4/S18: the same input resumes the parked run through the TYPED steer
@@ -589,6 +745,38 @@ export function Composer() {
       useAgentComposer.getState().stageCommentBatch(null);
     } catch {
       // The draft is preserved; the failure is surfaced inline below the input.
+      setSendFailed(true);
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  /** Start a TEAM run over the sole a2a team client. Requires a non-empty prompt
+   *  and a selected preset (both re-verified engine-side). On a successful start the
+   *  run id feeds the progress read and the draft clears; a business refusal (the
+   *  sibling's forwarded 4xx) surfaces honestly inline rather than as a fake start. */
+  const startTeam = async () => {
+    const prompt = buildAgentPrompt(text, mentions);
+    if (prompt.length === 0 || selectedTeamPreset === null) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSendFailed(false);
+    setTeamRefused(null);
+    try {
+      const result = await startTeamRun.mutateAsync({
+        team_preset: selectedTeamPreset,
+        message: prompt,
+        title: sessionTitleFromPrompt(prompt),
+      });
+      if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
+        setTeamRunId(result.run_id);
+        setText("");
+        useAgentComposer.getState().clearMentions();
+      } else {
+        setSendFailed(true);
+        setTeamRefused({ detail: result.refusal_detail });
+      }
+    } catch {
       setSendFailed(true);
     } finally {
       submittingRef.current = false;
@@ -637,10 +825,18 @@ export function Composer() {
       }
     }
     if (event.key === "Enter" && !event.shiftKey) {
-      // Enter submits; Shift+Enter falls through to the native newline.
+      // Enter submits; Shift+Enter falls through to the native newline. In team
+      // mode (a preset selected, no run in flight) Enter starts the team run so the
+      // key matches the primary button; while a team run is active Enter is inert
+      // (the run is driven by the Stop/Dismiss control, not a fresh submit).
       event.preventDefault();
       event.stopPropagation();
-      if (!slashMode) void submit();
+      if (slashMode || teamRunActive) return;
+      if (teamMode && activeRun === null) {
+        void startTeam();
+      } else {
+        void submit();
+      }
     }
   };
 
@@ -652,6 +848,19 @@ export function Composer() {
       (commentBatch === null || commentBatch.comments.length === 0)) ||
     slashMode ||
     (destination === "bootstrap" && scope === null);
+  // A team start needs a prompt (mentions count), no open slash draft, and no
+  // in-flight start. The comment batch never rides a team run (single-agent path
+  // only), so it does not enable a team start.
+  const teamStartDisabled =
+    buildAgentPrompt(text, mentions).length === 0 ||
+    slashMode ||
+    startTeamRun.isPending;
+  // The served run phase, rendered verbatim (never client-classified). Falls back
+  // to an ellipsis before the first status snapshot lands.
+  const teamPhaseLabel = resolveMessage({
+    key: MSG.teamRunPhase,
+    values: { phase: authoredDisplayText(teamPhase ?? "…") },
+  }).message;
   // Stop routes through the SHARED `agent:stop-run` descriptor so the button and
   // the Cmd+K command are one seam. The already-requested state disables
   // it; the imperative seam is idempotent besides.
@@ -717,12 +926,54 @@ export function Composer() {
       />
       {sendFailed && (
         <p className="text-meta text-state-broken" data-composer-error role="status">
-          {resolveMessage({ key: MSG.sendFailed }).message}
+          {teamRefused !== null
+            ? `${resolveMessage({ key: MSG.teamRunRefused }).message}${
+                teamRefused.detail !== undefined && teamRefused.detail.length > 0
+                  ? ` ${teamRefused.detail}`
+                  : ""
+              }`
+            : resolveMessage({ key: MSG.sendFailed }).message}
         </p>
       )}
+      {teamRunActive && (
+        <div
+          className="flex items-center gap-fg-2 text-meta text-ink-muted"
+          role="status"
+          data-composer-team-run
+        >
+          {!teamTerminal && <Spinner size="sm" label={teamPhaseLabel} />}
+          <span className="min-w-0 truncate">{teamPhaseLabel}</span>
+          {teamProgress.degraded && (
+            <span className="text-ink-faint" data-composer-team-degraded>
+              {resolveMessage({ key: MSG.teamRunDegraded }).message}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-fg-2">
-        <ComposerSelectorPills />
-        {activeRun !== null ? (
+        <ComposerSelectorPills
+          selectedTeamPreset={selectedTeamPreset}
+          onSelectTeam={setSelectedTeamPreset}
+          locked={activeRun !== null || teamRunActive}
+        />
+        {teamRunActive && !teamTerminal ? (
+          <Button
+            variant="danger"
+            disabled={cancelTeamRun.isPending}
+            onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
+            data-composer-team-cancel
+          >
+            {resolveMessage({ key: MSG.cancelTeamRun }).message}
+          </Button>
+        ) : teamRunActive && teamTerminal ? (
+          <Button
+            variant="secondary"
+            onClick={() => setTeamRunId(null)}
+            data-composer-team-dismiss
+          >
+            {resolveMessage({ key: MSG.teamRunDismiss }).message}
+          </Button>
+        ) : activeRun !== null ? (
           <Button
             variant="danger"
             disabled={stopDisabled}
@@ -730,6 +981,15 @@ export function Composer() {
             data-composer-stop
           >
             {resolveMessage({ key: MSG.stop }).message}
+          </Button>
+        ) : teamMode ? (
+          <Button
+            variant="primary"
+            disabled={teamStartDisabled}
+            onClick={() => void startTeam()}
+            data-composer-team-start
+          >
+            {resolveMessage({ key: MSG.startTeamRun }).message}
           </Button>
         ) : (
           <Button
