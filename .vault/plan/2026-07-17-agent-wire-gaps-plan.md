@@ -13,6 +13,16 @@ related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 <!-- RETIRED: S02, S03, S05, S49, S50 -->
 
 # `agent-wire-gaps` plan
@@ -41,7 +51,7 @@ Expose the existing interrupts_for_run store query through a new bounded read ro
 - [x] `P02.S15` - Expose the existing interrupts_for_run(run_id, cap) store query for the new read route, serving raise-order results as already returned, with pending entries flagged and a truncated marker at INTERRUPT_LIST_CAP=50, rather than adding a new store query; `engine/crates/vaultspec-api/src/authoring/store`.
 - [x] `P02.S16` - Define the typed per-kind decision schema mirroring ToolPermissionDecisionRequest (decision: approve or deny, optional comment) and a decision_unreadable degradation marker for legacy opaque decisions; `engine/crates/vaultspec-api/src/authoring/interrupts`.
 - [x] `P02.S17` - Wire the GET /v1/runs/{run_id}/interrupts route over the existing store query, serving interrupt_id, run_id, kind, tool_call_id, resume_state, timestamps, and the typed decision projection; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
-- [ ] `P02.S18` - Narrow InterruptResumeRequest's opaque payload to the same typed decision schema in the same cutover, leaving the resume-by-id route otherwise unchanged; `engine/crates/vaultspec-api/src/authoring/api/mod.rs`.
+- [x] `P02.S18` - Narrow InterruptResumeRequest's opaque payload to the same typed decision schema in the same cutover, leaving the resume-by-id route otherwise unchanged; `engine/crates/vaultspec-api/src/authoring/api/mod.rs`.
 - [ ] `P02.S19` - Write tests covering the raise-order capped/truncation-marked list with pending entries flagged, the typed decision round-tripping the permission-decision write, a legacy opaque decision serving decision_unreadable without failing the page, and a live-test recovery case: a client that drops the /execute awaiting_permission response recovers the pending interrupt from the list; `engine/crates/vaultspec-api/src/authoring`.
 - [ ] `P02.S20` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
 - [ ] `P02.S21` - Route Phase P02 to the team reviewer for verification against the D3 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
@@ -90,14 +100,14 @@ Build the one bounded, timed background janitor sweep and wire it to drive the g
 
 Wire the dispatch-loop-finish call to the (already-shipped, D1-extended) complete route that D1's own unlock depends on, then delete the three remaining named frontend interims (client one-slot queue, client-staged interrupt annex, session-actor-latest correlation) and the proposal-gated mode control in favor of the served run.completed, turn.queued, session.cancelled, interrupt-list, correlation, and mode-read wire shapes. The fresh-session-bootstrap-on-Stop deletion ships structurally in P01, not here. The feedback-batch composer cutover (S44) is owned by the a2a plan's P04.S12, not executed from here.
 
-- [ ] `P05.S37` - Add SSE adapter cases for the two remaining lifecycle event kinds, turn.queued and session.cancelled (run.completed was already consumed with terminal-aware invalidation by commit 506daa04a2). Verify the shipped run.completed adapter case renders a janitor-reaped run (outcome failed, reason abandoned) honestly as Failed, needing no separate adapter arm; `frontend/src/stores/server/agent`.
+- [x] `P05.S37` - Add SSE adapter cases for the two remaining lifecycle event kinds, turn.queued and session.cancelled (run.completed was already consumed with terminal-aware invalidation by commit 506daa04a2). Verify the shipped run.completed adapter case renders a janitor-reaped run (outcome failed, reason abandoned) honestly as Failed, needing no separate adapter arm; `frontend/src/stores/server/agent`.
 - [ ] `P05.S61` - Wire the frontend dispatch loop's finish (success and error paths) to call the already-shipped POST /authoring/v1/runs/{run_id}/complete with the completed or failed outcome, closing D1's own unlock: without this call no run ever completes, run.completed never fires from the client-driven loop, and Done/Failed can still never render even after the engine and adapter work land; `frontend/src/stores/view/agentComposer.ts`.
-- [ ] `P05.S39` - Delete the client one-slot queue chip rendering and read queued state from the session snapshot's queued_turn_ids instead; `frontend/src/app/agent`.
-- [ ] `P05.S40` - Render transcript Done and Failed terminal states from run.completed instead of the relay-gap seam placeholder; `frontend/src/stores/view/agentTranscript.ts`.
+- [x] `P05.S39` - Delete the client one-slot queue chip rendering and read queued state from the session snapshot's queued_turn_ids instead; `frontend/src/app/agent`.
+- [x] `P05.S40` - Render transcript Done and Failed terminal states from run.completed instead of the relay-gap seam placeholder; `frontend/src/stores/view/agentTranscript.ts`.
 - [ ] `P05.S41` - Delete the client-staged interrupt annex and fetch pending interrupts from GET /v1/runs/{run_id}/interrupts, wiring Approve/Deny through the narrowed typed decision payload; `frontend/src/stores/server/agent`.
-- [ ] `P05.S42` - Retire the session-actor-latest correlation mark and bind the inline proposal card to its proposal's served run_id; `frontend/src/app/agent`.
+- [x] `P05.S42` - Retire the session-actor-latest correlation mark and bind the inline proposal card to its proposal's served run_id; `frontend/src/app/agent`.
 - [ ] `P05.S43` - Move the AutonomyControl off proposal-gating onto GET /v1/mode so it renders pre-proposal; `frontend/src/app/agent`.
-- [ ] `P05.S44` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04.S12 - do not execute from this plan unless that plan releases it] Ride the composer's staged comment batch along as a feedback_batch_id created via POST /v1/feedback-batches on submit, recorded on the turn alongside the existing serialized prompt block; `frontend/src/stores/view/agentComposer.ts`.
+- [x] `P05.S44` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04.S12 - do not execute from this plan unless that plan releases it] Ride the composer's staged comment batch along as a feedback_batch_id created via POST /v1/feedback-batches on submit, recorded on the turn alongside the existing serialized prompt block; `frontend/src/stores/view/agentComposer.ts`.
 - [ ] `P05.S45` - Wire the new explicit POST /v1/sessions/{session_id}/cancel command for deliberately ending the conversation, leaving Stop's already-shipped P01 run-scoped cancel default unchanged; `frontend/src/stores/view/agentComposer.ts`.
 - [ ] `P05.S46` - Write and re-run the live-wire frontend suites covering the new run.completed/turn.queued/session.cancelled adapter cases, the dispatch-loop-finish complete call (the run actually completes and Done/Failed renders end to end), the queue chip and staged-interrupt-annex deletions, the correlation mark retirement, and the mode control's pre-proposal render; `frontend/src/stores/server/agent`.
 - [ ] `P05.S47` - Run the full lint gate (just dev lint frontend) and confirm exit 0 before routing the phase to review; `frontend`.
