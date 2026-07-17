@@ -71,6 +71,11 @@ unchanged. No catalog change was needed — both `docStemFromNodeId` and
 Independently reverified: `git diff` matches the reported change exactly, the
 localization scanner is clean, and the live suite (`rightMenus.test.ts` +
 `rightMenus.localization.test.ts` + `actionCoverage.guard.test.ts` +
-`commandPalette.guard.test.ts`) — 39/39 passed, matching the reported count. Fixed by
-opus-l10n; this amendment documents the fix, not a fresh implementation on my part.
+`commandPalette.guard.test.ts`) — 39/39 passed, matching the reported count. Landed
+at commit `556f8967d9` ("remove raw edge-id copy actions, copy destination document
+name instead"), reverified against that commit after it landed (the initial
+verification pass above was against matching working-tree state, per the team's
+rule that a citation always names the real landing commit, never working-tree
+state). Fixed by opus-l10n; this amendment documents the fix, not a fresh
+implementation on my part.
 
