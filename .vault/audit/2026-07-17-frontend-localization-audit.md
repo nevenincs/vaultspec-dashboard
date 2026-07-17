@@ -10,12 +10,14 @@ related:
 
 # `frontend-localization` audit: `Reconciliation closing dossier`
 
-**STATUS: FINAL pending Wave W06 completion.** Every wave and every reconciliation
-decision below has closed clean on the consolidated review's re-verification. The
-dossier's only remaining open surface is Wave W06 (final enforcement and cleanup),
-still in progress on the coding lane and out of scope for this pass by design. This
-dossier pre-assembles the record of the reconciliation pass so the review verifies
-against a compiled ledger instead of reconstructing history from commits and chat.
+**STATUS: FINAL pending Wave W06.P19/P20 completion.** Every wave and every
+reconciliation decision below has closed clean on the consolidated review's
+re-verification, including `W06.P18`'s enforcement suite (13/13). The dossier's
+only remaining open surface is `W06.P19`/`P20` (live-behavior e2e verification
+and final closeout), still in progress on the coding lane and out of scope for
+this pass by design. This dossier pre-assembles the record of the reconciliation
+pass so the review verifies against a compiled ledger instead of reconstructing
+history from commits and chat.
 
 ## Wave verdicts (consolidated review)
 
@@ -90,8 +92,8 @@ division of labor (coder owns source, reconciliation owns vault bookkeeping).
 
 Step counts below are TICKED / TOTAL for that wave as of this update; TOTAL excludes
 retired steps (`S40`, `S75`, `S180`, `S181`, `S219`, `S236`, `S238` — see Retirements
-below). Plan total: 219/244 (89.8%). Every step outside Wave W06 is ticked; W06.P18
-(the enforcement suite) is now 11/13.
+below). Plan total: 221/244 (90.6%). Every step outside Wave W06 is ticked; W06.P18
+(the enforcement suite) is now 13/13, fully closed.
 
 - **W01** (localization substrate and source-locale policy) — 23/23. Pre-existing:
   implemented and reviewed before the reconciliation pass began; the exhaustive
@@ -149,7 +151,7 @@ below). Plan total: 219/244 (89.8%). Every step outside Wave W06 is ticked; W06.
   `P14` (authoring editor/review) 10/10, `P15` (viewer/document presentation) 10/10,
   `P16` (settings/onboarding/responsive) 11/11, `P17` (auxiliary/visual entry points)
   12/12.
-- **W06** (final enforcement and cleanup) — 11/36. `P18` 11/13: `S251` pre-dates
+- **W06** (final enforcement and cleanup) — 13/36. `P18` 13/13, fully closed: `S251` pre-dates
   reconciliation; `S98` (allowlist mechanism removed outright — structural
   zero-literals, stronger than the step's own "empty allowlist" text), `S100`
   (locale-resource + production-source punctuation rejection), `S130`/`S135`/`S136`
@@ -160,13 +162,15 @@ below). Plan total: 219/244 (89.8%). Every step outside Wave W06 is ticked; W06.
   record: every named superseded-label-map candidate is already a typed
   `MessageDescriptor`, nothing to delete), `S101` (source guard swept clean over
   every production and auxiliary entry point; the six auxiliary HTML pages
-  confirmed production-excluded by `vite.config.ts`), and `S134` (verify-and-
+  confirmed production-excluded by `vite.config.ts`), `S134` (verify-and-
   record: zero fixed-locale/manual-month-formatting sites remain, `SHORT_MONTHS`
-  already dead-code-removed at `S70`) all independently verified and ticked this
-  update. `S132`/`S133` remain OPEN — five genuine scanner-blind `.ts`-label-
-  builder findings recorded in the Defect ledger, not ticked, queued for the
-  coding lane's revival. `P19` 0/14, `P20` 0/9 remain the coding lane's
-  in-progress build — see Open Items.
+  already dead-code-removed at `S70`), `S132` (fail-closed catalog vocabulary
+  replaces the served-health-word `titleCase()` transform), and `S133`
+  (gitchanges/pipeline count-plural builders and pipeline's raw state strings
+  converted to catalog descriptors; `nowStrip.ts` resolved by deletion as
+  orphaned dead code) all independently verified and ticked this update.
+  **`W06.P18` is now 13/13, fully closed.** `P19` 0/14, `P20` 0/9 remain the
+  coding lane's in-progress build — see Open Items.
 
 ## Defect ledger
 
@@ -195,14 +199,9 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `leftMenus.test.ts` cross-step gap (`workspaceMenu` describe block) | `app/left/menus/leftMenus.test.ts` had 2 of 34 tests red: both asserted a raw-string `disabledReason` (`"the launch project cannot be removed"`, `"no project path"`) where `workspaceMenu.ts` (`S227`, ticked) now returns typed key descriptors. `leftMenus.test.ts` itself is named in `S228`'s scope (already ticked, verified passing at the time), but `S227`'s later localization of `workspaceMenu.ts` broke these two assertions after `S228` closed — a cross-step invalidation, not a defect in either step's own scoped work at the time it was ticked. See Honest Findings. | Fixed, commit `90f8a3d5d5`; independently reverified 34/34 |
 | `stores/view/commandRegistry.test.ts` (S17/S18 consumer fixture, was conflated with `platform/actions/registry.test.ts` in an earlier draft of this dossier — see correction in Open Items) | 8 of 14 tests were red: raw-string `cmd()` test fixtures normalized to `null` once the legacy `ActionPresentation` string bridge was deleted from `action.ts` — the fixtures needed to construct real `MessageDescriptor` labels. This was the actual remaining `S17`/`S18` blocker. | Fixed, commit `90f8a3d5d5`; independently reverified 14/14 |
 | `stores/view/commandPaletteCommands.test.ts` | 1 test was red (`normalizes palette command family and shared action descriptor fields`): same raw-string-fixture-vs-deleted-bridge cause as `commandRegistry.test.ts`. | Fixed, commit `90f8a3d5d5`; independently reverified 19/19 |
-| `S132` | `app/panels/VaultHealthPanel.tsx:42` runs a manual `titleCase()` on the served health word (line 57), a scanner-blind runtime-casing transform outside JSX literal text — same defect class as the module-decomposition-era title-casing gaps `S132` targets project-wide | **Open** — queued for the coding lane's `W06.P18` revival; needs the vocabulary's catalog/formatter/fail-closed token owner, not a hand-rolled transform |
-| `S133` | `stores/server/queries/gitchanges.ts:504`'s `pluralLabel()` and `stores/server/queries/pipeline.ts` (two inline `` `${count} item${s}` ``-shape builders, ~line 350 and ~line 373) hand-build plural/count sentences in manual-string `.ts` modules — the same scanner-blind class as `S113`'s `freshness.ts`. `pipeline.ts` ALSO carries raw English state strings (`"pipeline status unavailable"`, `"loading in-flight work"`, `"no in-flight work"`, `"reading in-flight work…"`, `"no work in flight on this branch"`) discovered in the same sweep — folded into the same fix, not a separate finding | **Open** — queued for the coding lane's `W06.P18` revival |
-| `S133` | `stores/view/nowStrip.ts:176`'s `jobsLabel()` hand-builds a `` `${jobs} job${s}` `` count sentence — same class as the row above | **Open** — queued for the coding lane's `W06.P18` revival |
-
-Each `S132`/`S133` finding above needs the count-plural catalog family treatment
-(the established `kit.activity.rowsLoaded` pattern) plus consumer rewiring and
-tests; none is ticked by this dossier — recorded as the P18 open remainder per the
-team lead's explicit instruction, not verified-and-closed like the rows above it.
+| `S132` | `app/panels/VaultHealthPanel.tsx:42` ran a manual `titleCase()` on the served health word (line 57), a scanner-blind runtime-casing transform outside JSX literal text | Fixed, commit `8c4220b333`; `titleCase()` deleted outright, replaced with a fail-closed closed vocabulary (never echoes an unrecognized served token); independently reverified, part of the 77/77 combined batch run |
+| `S133` | `stores/server/queries/gitchanges.ts:504`'s `pluralLabel()` and `stores/server/queries/pipeline.ts` (two inline `` `${count} item${s}` ``-shape builders) hand-built plural/count sentences in manual-string `.ts` modules — the same scanner-blind class as `S113`'s `freshness.ts`. `pipeline.ts` ALSO carried raw English state strings (`"pipeline status unavailable"`, `"loading in-flight work"`, `"no in-flight work"`, `"reading in-flight work…"`, `"no work in flight on this branch"`), fixed in the same commit | Fixed, commit `8c4220b333`; both hand-builders and the raw state strings now `CountMessageDescriptor`/`MessageDescriptor` catalog resolutions; independently reverified, part of the 77/77 combined batch run |
+| `S133` | `stores/view/nowStrip.ts:176`'s `jobsLabel()` hand-built a `` `${jobs} job${s}` `` count sentence | Resolved by DELETION, commit `8c4220b333`: `nowStrip.ts` (228 lines) scouted as fully orphaned in production — only its own test imported it, the live status renderer (`deriveSystemStatusRows`) never consumed it — and deleted outright under the `S75`/`S236`/`S238` dead-code doctrine (team-lead approved) rather than localized. Independently reverified: grepped every importer in `src/`, confirmed none remain. `S192`'s exec record (which verified `nowStrip.test.ts` live) amended to note the ripple. |
 
 ## Retirements and rescopes
 
@@ -262,10 +261,18 @@ than relying on a future reconciliation pass to catch them by hand:
    already supplied a localized value — a stronger, compile-time-enforced closure of
    the gap.
 3. **Manual-string `.ts` label-builder modules.** `freshness.ts` (`S113`),
-   `timelineRangeMath.ts`'s `SHORT_MONTHS` (`S70`) — a semantic-data or pure-utility
-   module that builds display strings by hand sits outside whatever JSX-focused
-   heuristic the scanner uses, even when its output reaches the DOM through a
-   perfectly ordinary render path.
+   `timelineRangeMath.ts`'s `SHORT_MONTHS` (`S70`), `VaultHealthPanel.tsx`'s
+   `titleCase()` (`S132`), and `gitchanges.ts`'s `pluralLabel()` plus
+   `pipeline.ts`'s two inline count-plural builders and raw English state
+   strings (`S133`) — a semantic-data or pure-utility module (or a component's
+   own inline helper) that builds display strings by hand sits outside whatever
+   JSX-focused heuristic the scanner uses, even when its output reaches the DOM
+   through a perfectly ordinary render path. `S132` additionally carried a
+   latent HONESTY gap the scanner is structurally blind to: a runtime
+   title-case of an unrecognized served token can echo arbitrary served text
+   verbatim, where a fail-closed catalog classification cannot — the fix
+   pattern (classify into a closed vocabulary, never echo) is stronger than the
+   step's own literal "remove title-casing" text.
 4. **Stale render tests asserting pre-migration DOM/casing shape.** `S45`
    (`getByText` across a decorative-glyph split), `S174`/`S89`/`S198` (lowercase
    `getByLabelText`/`getByRole({ name })` lookups against the sentence-case label-
@@ -299,14 +306,25 @@ invoked `vitest`, not because the gate did; (3) the reviewer's own 3-file sweep
 (`ContextMenuHost.render.test.tsx`, `.interactive.test.tsx`, `seamTransit.test.tsx`
 — a subset of the 4-file broader sweep in instance 1, re-surfaced independently by
 the reviewer's own "run everything" pass before `opus-l10n`'s sweep landed).
+
+**A sixth instance is reported in flight, not yet landed** — relayed by the team
+lead, not independently verified here since it has no commit to check against
+yet: a pre-existing `errors:unexpectedSection` contract conflict, with a
+tokenless ruling and a "vehicle-swap" fix in progress. Recorded for visibility
+per the standing discipline of this dossier (cite only real commits, verify on
+report, not on relay); will be independently reverified and folded into this
+section's evidence count once it lands with its own commit.
+
 Recommend the review decide, per class, whether W06.P18's enforcement suite should
 encode a standing gate (e.g. a lint rule banning a bare string default on any prop
 whose name matches `label`/`title`/`name` in an accessible-name position, and the
 project-wide `vitest run` gate above) or whether a narrower rule promotion
-(`vaultspec-core vault rule promote`) suffices. `W06.P18`'s enforcement steps
-(`S98`/`S100`/`S130`/`S131`/`S135`/`S136`/`S137`) close the CATALOG/SCANNER side of
-this campaign's invariants; the standing gate recommendation itself remains a
-process decision for the review, not something any of those steps encodes.
+(`vaultspec-core vault rule promote`) suffices. `W06.P18` is now 13/13, fully
+closed: the CATALOG/SCANNER/DEAD-CODE side of this campaign's invariants
+(`S98`/`S99`/`S100`/`S101`/`S130`/`S131`/`S132`/`S133`/`S134`/`S135`/`S136`/`S137`,
+alongside the pre-existing `S251`); the standing gate recommendation itself
+remains a process decision for the review, not something any of those steps
+encodes.
 
 **Explicitly NOT a codification candidate, per the reviewer:** the non-`src/`-shape
 dev-only harness pages (`filters-visual`, `graph-visual`, `status-visual`,
@@ -440,15 +458,20 @@ reconciliation pass's own scope:
 
 ## Status
 
-**FINAL pending Wave W06.** Every step outside Wave W06 is ticked (219/244,
-89.8%). The consolidated wave review closed clean: W03 PASS, W04 PASS, W05 PASS,
-retirements PASS, rescopes PASS, divergences PASS, the S183 amendment PASS, all
-fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`, `556f8967d9`,
-`90f8a3d5d5`, `b264490da0`), and scanner + catalog integrity PASS. `W02.P04.S17`/`S18`
-are CLOSED, including the sweep-proven closure at `b264490da0`. `W06.P18`'s
-enforcement suite is now 11/13 (`S98`, `S99`, `S100`, `S101`, `S130`, `S131`,
-`S134`, `S135`, `S136`, `S137` verified and ticked this update, alongside the
-pre-existing `S251`). Remaining: `P18.S132`/`S133` (five findings recorded in the
-Defect ledger, not ticked — see Codification/Defect ledger), `P19` (e2e specs, 14
-steps), `P20` (9 steps) — genuine remaining code, in progress on the coding lane
-and out of scope for this reconciliation pass by design.
+**FINAL pending Waves W06.P19/P20.** Every step outside `P19`/`P20` is ticked
+(221/244, 90.6%). The consolidated wave review closed clean: W03 PASS, W04 PASS,
+W05 PASS, retirements PASS, rescopes PASS, divergences PASS, the S183 amendment
+PASS, all fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`,
+`556f8967d9`, `90f8a3d5d5`, `b264490da0`, `8c4220b333`), and scanner + catalog
+integrity PASS. `W02.P04.S17`/`S18` are CLOSED, including the sweep-proven
+closure at `b264490da0`. **`W06.P18`'s enforcement suite is now 13/13, fully
+closed** (`S98`, `S99`, `S100`, `S101`, `S130`, `S131`, `S132`, `S133`, `S134`,
+`S135`, `S136`, `S137` verified and ticked across this dossier's updates,
+alongside the pre-existing `S251`). `S192`'s exec record was amended to note the
+`nowStrip.test.ts` ripple retirement. Remaining: `P19` (e2e specs, 14 steps,
+including `S138`'s RTL/expanded-copy test-resource groundwork) and `P20` (9
+steps) — genuine remaining code, in progress on the coding lane and out of scope
+for this reconciliation pass by design. One item is reported in flight and
+carried for visibility, not yet independently verified (no commit to check
+against): a pre-existing `errors:unexpectedSection` contract conflict with a
+tokenless ruling and a "vehicle-swap" fix — see Codification candidates.

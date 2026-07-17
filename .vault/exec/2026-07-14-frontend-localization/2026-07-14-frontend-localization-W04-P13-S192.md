@@ -43,3 +43,16 @@ remove` on the same ruling; this step's scope was correspondingly edited via
 `vaultspec-core vault plan step edit` to the five files that still exist. This record
 retroactively documents and ticks the rescoped step; verification was a live
 focused-test run, not a fresh implementation.
+
+**Amendment (2026-07-17, ripple from `S133`'s deletion):** `nowStrip.test.ts` — one
+of this step's five verified-live files — retired with its own module at commit
+`8c4220b333`. `nowStrip.ts` was scouted as fully orphaned in production (only its
+own test imported it; the live system-status renderer,
+`deriveSystemStatusRows`, is already descriptor-based and never consumed it) and
+deleted outright under the same `S75`/`S236`/`S238` dead-code doctrine this
+record already documents, approved by the team lead. This does not retroactively
+invalidate this step's tick — at the time `S192` verified `nowStrip.test.ts`
+live, the module was genuinely live and the test genuinely passed against real
+production code; the file's later retirement is `S133`'s ripple, recorded here
+for continuity rather than left as a dangling scope reference to a file that no
+longer exists.
