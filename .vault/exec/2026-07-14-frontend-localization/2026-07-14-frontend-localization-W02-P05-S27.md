@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#frontend-localization'
 date: '2026-07-14'
-modified: '2026-07-14'
+modified: '2026-07-17'
 step_id: 'S27'
 related:
   - "[[2026-07-14-frontend-localization-plan]]"
