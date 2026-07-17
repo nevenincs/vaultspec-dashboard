@@ -1,0 +1,54 @@
+---
+tags:
+  - '#exec'
+  - '#frontend-localization'
+date: '2026-07-17'
+modified: '2026-07-17'
+step_id: 'S144'
+related:
+  - "[[2026-07-14-frontend-localization-plan]]"
+---
+
+# Exercise menus, commands, and shortcuts and prove shared action wording and canonical verbs
+
+## Scope
+
+- `frontend/e2e/localization-actions.spec.ts`
+- `frontend/e2e/localizationHelpers.ts`
+- `frontend/playwright.config.ts`
+
+## Description
+
+Added a Playwright spec against the live served application proving: the command
+palette lists Title Case commands with no internal ids; and a document context
+menu renders shared canonical verbs (Open in editor / Show on canvas / Reveal /
+Copy) with zero internal-id leakage. Content first landed at `500b45adb7`, which
+named a pair-order shared-tree-state interference with `S143` as a hardening
+item.
+
+**Hardening (`2890e92df6`).** My own reconciliation found this test flaking
+roughly 50% standalone across three runs — the context-menu test switched to
+`ensureExpanded` (real `aria-expanded` check before clicking a fold, so a prior
+spec's already-expanded fold is never blindly re-collapsed); a
+`scrollIntoViewIfNeeded()` before each row's right-click, since a probe row
+outside the viewport could not receive the click; the row-menu wait timeout
+raised from 1.5s to 3s to tolerate fold-expand virtualization settling; and an
+explicit `waitFor({ state: "hidden" })` after each `Escape` so the NEXT probe
+iteration's right-click never races a still-closing menu from the PREVIOUS
+iteration. Plus `workers: 1`.
+
+## Outcome
+
+Menu/command/shortcut wording is proven live, and the menu-close race that made
+the multi-row probe loop flaky is closed.
+
+## Notes
+
+This record was authored during a fill pass reconciling the team lead's
+verification request across two rounds — no code changes by me.
+
+Independently reverified against the hardening commit: `git show 2890e92df6
+--stat` confirms this file's fold/scroll/menu-close changes; live reran the
+nine-spec combined set under `playwright.config.ts` THREE consecutive times,
+uncontended — 18/18 every time (this file's own 2 tests included, with the
+previously-flaky context-menu test green in all three).

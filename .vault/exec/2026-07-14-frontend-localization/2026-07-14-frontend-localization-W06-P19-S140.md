@@ -1,0 +1,59 @@
+---
+tags:
+  - '#exec'
+  - '#frontend-localization'
+date: '2026-07-17'
+modified: '2026-07-17'
+step_id: 'S140'
+related:
+  - "[[2026-07-14-frontend-localization-plan]]"
+---
+
+# Exercise live degraded states and prove every visible effect and recovery action is user-facing
+
+## Scope
+
+- `frontend/e2e/localization-degraded.spec.ts`
+- `frontend/e2e/localizationHelpers.ts`
+- `frontend/playwright.config.ts`
+
+## Description
+
+Added a Playwright spec against the live served application proving: a failed
+vault listing shows a translated degraded notice with a real, working retry
+action; and the degraded notice never leaks the raw served reason string. Content
+first landed at `3aead802d2`.
+
+**Hardening (`2890e92df6`).** My own reconciliation pass found this spec
+reproducibly red standalone (2/2 fails across two separate cold runs) — traced to
+`ensureBrowserVisible`'s postcondition (the vault-documents tree visible)
+depending entirely on leftover server-persisted "Documents" tab state from an
+unrelated prior test, since nothing the helper itself does switches tabs. Fixed
+by: the new `bootHealthyThenBreakVaultTree` helper, which boots the app against
+the REAL working wire first, explicitly switches to Documents, confirms the tree
+is genuinely visible, THEN installs the failing route and reloads — proving the
+honest working-to-broken transition rather than racing an already-broken
+interception against the boot sequence; and `workers: 1` added to
+`playwright.config.ts`, since the single live `vaultspec serve` origin holds
+server-side view state not test-isolated across files/workers.
+
+## Outcome
+
+Degraded states are proven live over a genuine working→broken transition, with
+the underlying test-infrastructure race that made this reproducibly flaky/red now
+closed.
+
+## Notes
+
+This record was authored during a fill pass reconciling the team lead's
+verification request across two rounds — no code changes by me.
+
+Independently reverified against the hardening commit, not the earlier flaky
+report: `git show 2890e92df6 --stat` matches; live reran the full nine-spec
+combined set (`localization-typical/loading/degraded/empty/errors/confirmations/
+actions/responsive.spec.ts` under `playwright.config.ts`) THREE consecutive
+times with no other concurrent test load running — 18/18 every time (this spec's
+own 2 tests included in each). Earlier runs made concurrently with a heavy
+background `vitest run` showed intermittent reds in this combined set
+(resource-contention noise, not a defect in the hardening itself) — the
+isolated, uncontended reruns are the authoritative signal.
