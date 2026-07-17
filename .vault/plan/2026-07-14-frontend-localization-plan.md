@@ -364,15 +364,15 @@ Close every temporary exemption, prove catalog and copy invariants, exercise the
 Remove every migration exemption and make untranslated rendered copy, fixed locales, unsafe fallbacks, em dashes, and prohibited vocabulary fail the standard gate.
 
 - [x] `W06.P18.S98` - Remove every temporary scanner exemption and require zero production user-facing literals; `frontend/scripts/scan-localization.mjs`.
-- [ ] `W06.P18.S99` - Delete superseded English label maps after their catalog replacements land; `frontend/src/`.
+- [x] `W06.P18.S99` - Delete superseded English label maps after their catalog replacements land; `frontend/src/`.
 - [x] `W06.P18.S100` - Reject em dashes and invalid ellipsis punctuation in locale resources and production copy; `frontend/src/localization/catalogPunctuation.test.ts, frontend/scripts/scan-localization.mjs`.
-- [ ] `W06.P18.S101` - Run the source guard across every production and auxiliary frontend entry point and repair all findings; `frontend/src/, frontend/*.html`.
+- [x] `W06.P18.S101` - Run the source guard across every production and auxiliary frontend entry point and repair all findings; `frontend/src/, frontend/*.html`.
 - [x] `W06.P18.S130` - Define the canonical operation-to-verb inventory and reject divergent synonyms across action IDs; `frontend/src/localization/actionVocabulary.test.ts`.
 - [x] `W06.P18.S131` - Prove every typed error and status condition maps exhaustively to actionable copy or a safe fallback; `frontend/src/localization/outcomeMessages.test.ts`.
 - [x] `W06.P18.S251` - Remove authored CSS and JSX case transforms and enforce their absence with a zero-exception source guard; `frontend/src/, frontend/src/styles.css, frontend/scripts/scan-localization.mjs`.
 - [ ] `W06.P18.S132` - Remove manual runtime title-casing from user-facing presentation paths through each vocabulary's catalog, formatter, or fail-closed token owner; `frontend/src/`.
 - [ ] `W06.P18.S133` - Remove manual singular, plural, and count sentence construction from production presentation paths; `frontend/src/`.
-- [ ] `W06.P18.S134` - Remove fixed-locale and manual month formatting from production presentation paths; `frontend/src/`.
+- [x] `W06.P18.S134` - Remove fixed-locale and manual month formatting from production presentation paths; `frontend/src/`.
 - [x] `W06.P18.S135` - Reject prohibited internal and development vocabulary in catalog values and rendered fallback mappings; `frontend/src/localization/catalogVocabulary.test.ts`.
 - [x] `W06.P18.S136` - Reject raw exception, token, identifier, path, command, and served-reason interpolation into general UI messages; `frontend/src/localization/catalogSafety.test.ts`.
 - [x] `W06.P18.S137` - Reject English call-site defaults, dynamic message keys, and concatenated translated fragments; `frontend/scripts/scan-localization.mjs`.
