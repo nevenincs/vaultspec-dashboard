@@ -77,3 +77,15 @@ is real and still open — it is the finisher's punch-list work, to be verified
 against ITS OWN commit when it reports, not a reason to hold this step's own
 verified evidence. No code changes by me at any point; this note documents the
 instruction race, not a change in the underlying verification.
+
+**TICK UNCHECKED again (2026-07-17) — final protocol, not a fourth
+disagreement.** The team lead's countermand message and my restore both landed
+mid-race; a further team-lead message set the closing protocol for the whole
+remaining set: leave `S140`/`S142`/`S143`/`S144` unticked as the conservative
+default, and re-tick ALL of `S102`/`S103`/`S106`/`S107`/`S138`/these four
+together in ONE clean cold verification pass once the finisher's punch-list
+commit lands — a single batch close rather than a fourth flip-flop on this
+step alone. This is a process decision about HOW the campaign closes, not a
+dispute of this record's own verified evidence (which stands, and which this
+step's eventual re-tick will cite alongside the punch-list commit). No code
+changes by me at any point.
