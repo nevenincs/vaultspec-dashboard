@@ -1128,3 +1128,113 @@ fn a_delegator_may_complete_its_delegated_agents_run() {
     assert_eq!(snap.runs[0].status, RunStatus::Completed);
     assert_eq!(snap.session.status, SessionStatus::Active);
 }
+
+/// D7 turn-consumption fence negatives (ADR verification: "turn-reference fence
+/// violations typed"): an unknown batch id and a batch frozen under ANOTHER
+/// session are both typed validation refusals, and no turn record is created.
+#[test]
+fn a_turn_referencing_an_unknown_or_foreign_feedback_batch_is_refused() {
+    let (_dir, _path, mut store) = temp_store();
+    let actor = actor();
+    register_actor(&mut store, &actor);
+
+    let session_a = accepted(
+        create_session(
+            &mut store,
+            context(&actor, "idem:fbfence:session:a", 10),
+            session_request("Fence session A"),
+        )
+        .unwrap(),
+    )
+    .session_id;
+    let session_b = accepted(
+        create_session(
+            &mut store,
+            context(&actor, "idem:fbfence:session:b", 20),
+            session_request("Fence session B"),
+        )
+        .unwrap(),
+    )
+    .session_id;
+
+    // Freeze a batch under session A.
+    let batch_id = store
+        .with_unit_of_work(CommandKind::CreateFeedbackBatch, |uow| {
+            Ok(uow
+                .feedback_batches()
+                .create(super::super::feedback::CreateFeedbackBatchInput {
+                    session_id: session_a.clone(),
+                    source_document: "doc:fence-target".to_string(),
+                    source_revision: "blob:fence123".to_string(),
+                    author: actor.clone(),
+                    items: vec![super::super::feedback::FeedbackBatchItem {
+                        comment_id: "comment_fence_1".to_string(),
+                        body: "Tighten this section.".to_string(),
+                        anchor: super::super::feedback::FeedbackAnchor {
+                            heading_path: vec!["Decisions".to_string()],
+                            content_start: 1,
+                            content_end: 9,
+                        },
+                    }],
+                    instruction: None,
+                    created_at_ms: 30,
+                })?
+                .record
+                .feedback_batch_id)
+        })
+        .unwrap();
+
+    // Unknown batch id → typed refusal, no turn created.
+    let mut unknown = turn_request("A prompt with a bad batch.");
+    unknown.feedback_batch_id = Some("feedback-batch:doesnotexist".to_string());
+    let err = start_prompt_turn(
+        &mut store,
+        context(&actor, "idem:fbfence:turn:unknown", 40),
+        session_a.clone(),
+        unknown,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("unknown feedback batch"),
+        "typed unknown-batch refusal: {err}"
+    );
+
+    // Session B consuming A's batch → typed ownership refusal.
+    let mut foreign = turn_request("A prompt stealing another session's batch.");
+    foreign.feedback_batch_id = Some(batch_id.clone());
+    let err = start_prompt_turn(
+        &mut store,
+        context(&actor, "idem:fbfence:turn:foreign", 50),
+        session_b,
+        foreign,
+    )
+    .unwrap_err();
+    assert!(
+        err.to_string().contains("belongs to another session"),
+        "typed ownership refusal: {err}"
+    );
+
+    // The legitimate owner consumes it fine and the turn records the reference.
+    let mut ok = turn_request("A prompt with the right batch.");
+    ok.feedback_batch_id = Some(batch_id.clone());
+    let outcome = accepted(
+        start_prompt_turn(
+            &mut store,
+            context(&actor, "idem:fbfence:turn:ok", 60),
+            session_a.clone(),
+            ok,
+        )
+        .unwrap(),
+    );
+    assert_eq!(outcome.status, "started");
+    let turn = store
+        .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+            uow.sessions().snapshot(&session_a, None)
+        })
+        .unwrap()
+        .turns
+        .into_iter()
+        .max_by_key(|turn| turn.turn_index)
+        .expect("the accepted turn is on the snapshot");
+    assert_eq!(turn.feedback_batch_id.as_deref(), Some(batch_id.as_str()));
+}
