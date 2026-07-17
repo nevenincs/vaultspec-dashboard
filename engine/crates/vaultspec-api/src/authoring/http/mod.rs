@@ -55,9 +55,11 @@ pub(crate) struct SessionListParams {
 mod handlers1;
 mod handlers2;
 mod handlers3;
+mod wire_gaps;
 pub(super) use handlers1::*;
 pub(super) use handlers2::*;
 pub(super) use handlers3::*;
+pub(super) use wire_gaps::*;
 pub(super) const COMMAND_IN_FLIGHT_TTL_MS: i64 = 60_000;
 
 /// A recorded command outcome's replay-retention window (bounded; a duplicate
@@ -491,6 +493,7 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/runs/{run_id}/cancel", post(cancel_run))
         .route("/v1/runs/{run_id}/complete", post(complete_run))
         .route("/v1/runs/{run_id}/resume", post(resume_run))
+        .route("/v1/runs/{run_id}/interrupts", get(get_run_interrupts))
         .route(
             "/v1/runs/{run_id}/agent-tools/execute",
             post(execute_agent_tool_call),
@@ -541,7 +544,7 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/review-claims/respond", post(respond_review))
         .route("/v1/apply-requests", post(apply_changeset))
         .route("/v1/rollback-proposals", post(create_rollback))
-        .route("/v1/mode", post(set_operation_mode))
+        .route("/v1/mode", post(set_operation_mode).get(get_operation_mode))
         .route("/v1/direct-writes", post(direct_write))
         // Advisory leases (W13.P26, wired W14.P42a): acquire / renew / release a
         // per-document lease + its monotonic fencing token. Mutating → standing-authorized

@@ -17,7 +17,7 @@ use super::ledger::{
 };
 use super::model::{
     ActionEligibility, ActorRef, ChangesetId, ChangesetKind, ChangesetStatus, CommandKind,
-    DocumentRef, IdempotencyKey, ReceiptId, RevisionToken,
+    DocumentRef, IdempotencyKey, ReceiptId, RevisionToken, RunId,
 };
 use super::operations::MaterializedProposalOperation;
 use super::snapshots::{PreimageCaptureRequest, PreimageRecord, SnapshotReader};
@@ -125,13 +125,51 @@ pub struct ProposalSnapshot {
 }
 
 /// Open a new authoring (agent/human proposal) changeset — `kind=authoring`.
+/// Run/turn provenance stamped onto an AGENT-produced changeset (agent-wire-gaps ADR
+/// D4): the run whose tool-executor dispatch created this changeset, and the prompt turn
+/// it joined through the run record. A human/direct changeset has none.
+#[derive(Debug, Clone)]
+pub struct RunProvenance {
+    pub run_id: RunId,
+    pub turn_id: Option<String>,
+}
+
 pub fn create_proposal(
     store: &mut Store,
     reader: &SnapshotReader,
     context: ProposalCommandContext,
     request: CreateProposalRequest,
 ) -> StoreResult<ProposalCommandResult> {
-    create_proposal_of_kind(store, reader, context, request, ChangesetKind::Authoring)
+    create_proposal_of_kind(
+        store,
+        reader,
+        context,
+        request,
+        ChangesetKind::Authoring,
+        None,
+    )
+}
+
+/// Open an agent's changeset (the tool-executor `propose_changeset`/create dispatch)
+/// carrying run/turn provenance (agent-wire-gaps ADR D4). Identical to `create_proposal`
+/// but stamps `run_provenance` onto the ledger record so the changeset is auditable to
+/// the exact run and turn that produced it. Provenance is metadata, not identity — it
+/// never changes the `changeset_revision`.
+pub fn create_agent_proposal(
+    store: &mut Store,
+    reader: &SnapshotReader,
+    context: ProposalCommandContext,
+    request: CreateProposalRequest,
+    provenance: RunProvenance,
+) -> StoreResult<ProposalCommandResult> {
+    create_proposal_of_kind(
+        store,
+        reader,
+        context,
+        request,
+        ChangesetKind::Authoring,
+        Some(provenance),
+    )
 }
 
 /// Open a human editor's DIRECT save changeset — `kind=direct` (operation-modes ADR;
@@ -144,7 +182,7 @@ pub fn create_direct_proposal(
     context: ProposalCommandContext,
     request: CreateProposalRequest,
 ) -> StoreResult<ProposalCommandResult> {
-    create_proposal_of_kind(store, reader, context, request, ChangesetKind::Direct)
+    create_proposal_of_kind(store, reader, context, request, ChangesetKind::Direct, None)
 }
 
 fn create_proposal_of_kind(
@@ -153,6 +191,7 @@ fn create_proposal_of_kind(
     context: ProposalCommandContext,
     request: CreateProposalRequest,
     kind: ChangesetKind,
+    run_provenance: Option<RunProvenance>,
 ) -> StoreResult<ProposalCommandResult> {
     let request_digest = digest_value("proposal_request", &request)?;
     let scope = proposal_scope(&request.changeset_id, None, &request_digest);
@@ -199,6 +238,14 @@ fn create_proposal_of_kind(
                     created_at_ms: context.now_ms,
                 })
                 .map_err(|err| StoreError::Ledger(err.to_string()))?;
+                // D4: stamp the agent run/turn that produced this changeset (a human/direct
+                // save carries None). Applied after `new`, so it never enters the digest.
+                let record = match &run_provenance {
+                    Some(prov) => {
+                        record.with_run_provenance(Some(prov.run_id.clone()), prov.turn_id.clone())
+                    }
+                    None => record,
+                };
                 uow.ledger().append_revision(&record)?;
                 Ok(outcome(
                     CommandKind::CreateProposal,

@@ -727,13 +727,33 @@ pub(super) async fn dispatch_agent_tool_command(
         PreparedToolDispatch::ProposeChangeset { dispatch } => match dispatch {
             ProposeChangesetDispatch::Create { command } => {
                 let context = proposal_context(actor, command_key, now);
-                match state.with_authoring_store(|store| {
-                    super::super::proposal::create_proposal(
+                // D4: the granted tool call recorded its run before dispatch; stamp that
+                // run and its prompt turn (joined through the run record) as the
+                // changeset's provenance so a proposal is auditable to the exact run.
+                let run_id = outcome
+                    .tool_call_record
+                    .as_ref()
+                    .map(|record| record.run_id.clone());
+                match state.with_authoring_store(|store| match run_id {
+                    Some(run_id) => {
+                        let turn_id = store
+                            .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
+                                Ok(uow.sessions().run(&run_id)?.and_then(|run| run.turn_id))
+                            })?;
+                        super::super::proposal::create_agent_proposal(
+                            store,
+                            &reader,
+                            context,
+                            command.payload,
+                            super::super::proposal::RunProvenance { run_id, turn_id },
+                        )
+                    }
+                    None => super::super::proposal::create_proposal(
                         store,
                         &reader,
                         context,
                         command.payload,
-                    )
+                    ),
                 }) {
                     Ok(result) => proposal_result_value(&result),
                     Err(err) => return command_error_response(&state, &err),
