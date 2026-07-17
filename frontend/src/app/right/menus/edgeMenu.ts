@@ -15,13 +15,16 @@ import { normalizeEntityDescriptor } from "../../../platform/actions/entity";
 import type { ActionResolver } from "../../../platform/actions/registry";
 import { registerResolver } from "../../../platform/actions/registry";
 import { focusMenuNode } from "../../../stores/view/menuActions";
+import { docStemFromNodeId } from "../../menus/sharedActions";
 import { selectEdge } from "../../../stores/view/selection";
 
 /**
- * The menu for a provenance edge. Highlight it on the stage (a selection), and
- * copy its id (always), relation (when present), and destination (when present).
- * Relation and destination are optional on the descriptor, so their copy actions
- * are rendered disabled-with-reason when absent rather than omitted.
+ * The menu for a provenance edge. Highlight it on the stage (a selection), copy
+ * its relation label, and copy the destination's document name. The clipboard is
+ * user-facing output, so the edge's raw internal id and a raw JSON dump are never
+ * copied (context-menu-copy-safety CMCS-001); the destination reference is the
+ * document name of a document endpoint, disabled-with-reason when the destination
+ * is absent or not a document.
  */
 export function edgeMenu(entity: unknown): ActionDescriptor[] {
   const normalizedEntity = normalizeEntityDescriptor(entity);
@@ -56,15 +59,6 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
         },
   );
 
-  actions.push(
-    copyAction({
-      id: "edge:copy-id",
-      label: { key: "common:actions.copy" },
-      text: normalizedEntity.id,
-      what: "id",
-    }),
-  );
-
   if (normalizedEntity.relation) {
     actions.push(
       copyAction({
@@ -83,38 +77,28 @@ export function edgeMenu(entity: unknown): ActionDescriptor[] {
     });
   }
 
-  if (normalizedEntity.dst) {
+  // The destination's public reference is its document name (an endpoint document
+  // node's stem), never the raw destination node id. Omitted-with-reason when the
+  // destination is absent or is not a document.
+  const destinationName = docStemFromNodeId(normalizedEntity.dst);
+  if (destinationName !== null) {
     actions.push(
       copyAction({
         id: "edge:copy-destination",
-        label: { key: "common:actions.copy" },
-        text: normalizedEntity.dst,
+        label: { key: "common:actions.copyDocumentName" },
+        text: destinationName,
+        what: "stem",
       }),
     );
   } else {
     actions.push({
       id: "edge:copy-destination",
-      label: { key: "common:actions.copy" },
+      label: { key: "common:actions.copyDocumentName" },
       section: "copy",
       disabled: true,
       disabledReason: { key: "common:disabledReasons.noDestination" },
     });
   }
-
-  // The whole edge as one JSON blob (id + relation + dst + tier) for pasting into
-  // an issue / note.
-  actions.push(
-    copyAction({
-      id: "edge:copy-full",
-      label: { key: "common:actions.copy" },
-      text: JSON.stringify({
-        id: normalizedEntity.id,
-        relation: normalizedEntity.relation ?? null,
-        dst: normalizedEntity.dst ?? null,
-        tier: normalizedEntity.tier ?? null,
-      }),
-    }),
-  );
 
   return actions;
 }

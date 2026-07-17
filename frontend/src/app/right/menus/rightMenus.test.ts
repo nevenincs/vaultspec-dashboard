@@ -30,15 +30,19 @@ describe("edgeMenu", () => {
     tier: "structural",
   };
 
-  it("offers highlight, goto-destination, the three copies, and copy-full", () => {
+  it("offers highlight, goto-destination, and the copy-safe references only", () => {
+    // Raw edge id and the JSON dump are never copied to the user-facing clipboard
+    // (context-menu-copy-safety CMCS-001); the destination copies its document name.
     expect(byId(edgeMenu(full))).toEqual([
       "edge:highlight",
       "edge:goto-destination",
-      "edge:copy-id",
       "edge:copy-relation",
       "edge:copy-destination",
-      "edge:copy-full",
     ]);
+    expect(find(edgeMenu(full), "edge:copy-destination").dispatch).toMatchObject({
+      type: "action:copy",
+      payload: { text: "beta", what: "stem" },
+    });
   });
 
   it("highlight is a non-mutating navigate selection (not gated)", () => {
@@ -60,8 +64,8 @@ describe("edgeMenu", () => {
     expect(rel.disabledReason).toEqual({ key: "common:disabledReasons.noRelation" });
     expect(dst.disabled).toBe(true);
     expect(dst.disabledReason).toEqual({ key: "common:disabledReasons.noDestination" });
-    // copy-id is always available — the edge always has an id.
-    expect(find(bare, "edge:copy-id").disabled).toBeUndefined();
+    // The raw edge id is never a copy target (CMCS-001).
+    expect(byId(bare)).not.toContain("edge:copy-id");
   });
 });
 
