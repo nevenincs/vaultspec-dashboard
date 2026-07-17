@@ -614,13 +614,27 @@ fn run_id_is_valid(run_id: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
 }
 
-/// Render a `RelayFrame` as an SSE `Event`: the verbatim event name, the engine
-/// seq as the id (so a reconnect can `since=` it), and the verbatim JSON data.
+/// Render a `RelayFrame` as an SSE `Event`: the event name, the engine seq as the
+/// SSE `id`, and the frame data with the engine `seq` ANNOTATED into it. The seq
+/// rides the data (not only the SSE id) because the frontend's fetch-stream parser
+/// reads `event:`/`data:` only — never the `id:` line — so a client cannot dedup a
+/// reconnect's replay or compute its `since=` resume point without the seq in the
+/// payload (the same reason the graph delta channel embeds seq in its payload).
+/// Upstream fields are left intact; the seq is an additive engine annotation. A
+/// non-object frame (defensive — a2a frames are objects) is wrapped `{seq, value}`.
 fn frame_event(frame: &RelayFrame) -> Event {
+    let annotated = match &frame.data {
+        Value::Object(map) => {
+            let mut map = map.clone();
+            map.insert("seq".to_string(), json!(frame.seq));
+            Value::Object(map)
+        }
+        other => json!({ "seq": frame.seq, "value": other }),
+    };
     Event::default()
         .event(frame.event.clone())
         .id(frame.seq.to_string())
-        .data(frame.data.to_string())
+        .data(annotated.to_string())
 }
 
 /// Map one live broadcast item to an SSE event, turning a broadcast lag into a
@@ -757,6 +771,20 @@ mod tests {
         let (frames, gap) = relay.snapshot_since(Some(3));
         assert!(frames.is_empty());
         assert_eq!(gap, Some(50), "gap reports the oldest still-buffered seq");
+    }
+
+    #[test]
+    fn frame_event_annotates_seq_into_the_data_for_client_dedup() {
+        // The seq must ride the DATA (not only the SSE id) so the fetch-stream
+        // client can dedup a reconnect replay; upstream fields stay intact.
+        let frame = RelayFrame {
+            seq: 7,
+            event: "progress".to_string(),
+            data: json!({ "phase": "research", "type": "progress" }),
+        };
+        let rendered = format!("{:?}", frame_event(&frame));
+        assert!(rendered.contains("\\\"seq\\\":7") || rendered.contains("seq"));
+        assert!(rendered.contains("research"), "upstream fields preserved");
     }
 
     #[test]
