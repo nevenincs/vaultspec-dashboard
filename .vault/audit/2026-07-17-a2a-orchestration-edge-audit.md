@@ -127,7 +127,16 @@ matching the engine constant, ungated dependency-probed `/health` with live pid)
   injection-based (`test_aggregator` direct calls, `test_gateway_live`
   `relay_payload` injection), no test drives `handle_dispatch` → `astream_events`
   → `emit_*` → wire, and every drivable run shows `last_sequence:0` with
-  `roles:[]`.
+  `roles:[]`. Seam precision (executor-service's read-only root-cause pass): the
+  gap is NOT at streaming-consumption or aggregation — the consumption seam IS
+  wired (`graph.astream_events(version='v2')` →
+  `emit_agent_status`/`emit_message_chunk`/`emit_tool_call` → aggregator) and the
+  aggregator does not drop. It is upstream of both: a mock run's graph never
+  EXECUTES its nodes (hence `roles:[]` / `last_sequence:0`), so `astream_events`
+  yields nothing and the emitters are never reached. The a2a backlog item is
+  therefore: graph nodes don't execute for mock runs → emitters unreached, plus
+  the missing driven-not-injected `handle_dispatch` → `astream_events` →
+  `emit_*` → wire test.
 - NAMED FOLLOW-ON (spawns a successor step/plan; does NOT reopen this plan):
   prove (or repair) end-to-end progress-frame emission from an executing run
   through worker → gateway → S06 → relay, with a driven-not-injected test.
