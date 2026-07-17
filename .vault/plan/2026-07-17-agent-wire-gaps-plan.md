@@ -111,7 +111,7 @@ Wire the dispatch-loop-finish call to the (already-shipped, D1-extended) complet
 - [x] `P05.S45` - Wire the new explicit POST /v1/sessions/{session_id}/cancel command for deliberately ending the conversation, leaving Stop's already-shipped P01 run-scoped cancel default unchanged; `frontend/src/stores/view/agentComposer.ts`.
 - [x] `P05.S46` - Write and re-run the live-wire frontend suites covering the new run.completed/turn.queued/session.cancelled adapter cases, the dispatch-loop-finish complete call (the run actually completes and Done/Failed renders end to end), the queue chip and staged-interrupt-annex deletions, the correlation mark retirement, and the mode control's pre-proposal render; `frontend/src/stores/server/agent`.
 - [x] `P05.S47` - Run the full lint gate (just dev lint frontend) and confirm exit 0 before routing the phase to review; `frontend`.
-- [ ] `P05.S48` - Route Phase P05 to the team reviewer for verification against the frontend cutover acceptance criteria; `frontend/src/app/agent`.
+- [x] `P05.S48` - Route Phase P05 to the team reviewer for verification against the frontend cutover acceptance criteria; `frontend/src/app/agent`.
 
 ## Description
 
