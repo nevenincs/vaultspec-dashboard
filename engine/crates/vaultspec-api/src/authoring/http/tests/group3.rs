@@ -488,7 +488,7 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/v1/runs/{}/interrupts", listed_run_id.as_str()))
+                .uri(format!("/v1/runs/{}/interrupts", listed_run_id.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -520,7 +520,7 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/v1/runs/{}/interrupts", listed_run_id.as_str()))
+                .uri(format!("/v1/runs/{}/interrupts", listed_run_id.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
@@ -846,7 +846,7 @@ async fn interrupt_resume_refuses_a_standing_stranger() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(&format!("/v1/runs/{}/interrupts", run_id.as_str()))
+                .uri(format!("/v1/runs/{}/interrupts", run_id.as_str()))
                 .body(Body::empty())
                 .unwrap(),
         )
