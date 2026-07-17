@@ -1,4 +1,4 @@
-import type { i18n, TOptions } from "i18next";
+import type { TOptions } from "i18next";
 
 import { errors } from "../../locales/en/errors";
 import {
@@ -14,7 +14,18 @@ export const SAFE_FALLBACK_MESSAGE_KEY =
 
 export const SAFE_FALLBACK_SOURCE_MESSAGE = errors.fallback.contentUnavailable;
 
-export type MessageTranslator = Pick<i18n, "exists" | "t">;
+// A plain-string key surface (never `Pick<i18n, "exists" | "t">`): the catalog's
+// growing `MessageKey` union structurally compared against i18next's own
+// per-resource key-inferred `t` overload blows past TypeScript's union
+// comparison complexity budget (TS2859) once the catalog crosses roughly
+// ~1600 physical keys. Every call site here already validates the key against
+// our own `MessageKey`/`isMessageKey` before calling in, so i18next's separate
+// generic key inference buys nothing — a real `i18n` instance still
+// structurally satisfies this narrower shape (method-parameter bivariance).
+export interface MessageTranslator {
+  exists: (key: string, options?: TOptions) => boolean;
+  t: (key: string, options?: TOptions) => unknown;
+}
 
 export interface MessageResolutionResult {
   readonly message: string;

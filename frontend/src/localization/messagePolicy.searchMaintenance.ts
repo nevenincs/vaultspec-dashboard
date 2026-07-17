@@ -10,6 +10,10 @@ export const SEARCH_MAINTENANCE_MESSAGE_POLICY = {
   "common:systemStatus.states.reachable": { role: "status" },
   "common:systemStatus.states.statusUnavailable": { role: "status" },
   "common:systemStatus.states.unavailable": { role: "status" },
+  "common:vaultHealth.attention": { role: "status" },
+  "common:vaultHealth.checking": { role: "status" },
+  "common:vaultHealth.healthy": { role: "status" },
+  "common:vaultHealth.unreachable": { role: "status" },
   "operations:searchMaintenance.accessibility.filterByStatus": {
     role: "accessibility",
   },

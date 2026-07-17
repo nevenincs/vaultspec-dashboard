@@ -16,6 +16,12 @@ export const common = {
       unavailable: "Unavailable",
     },
   },
+  vaultHealth: {
+    attention: "Needs attention",
+    checking: "Checking…",
+    healthy: "Healthy",
+    unreachable: "Unreachable",
+  },
   accessibility: {
     actionsForItem: "Actions for {{item}}",
     actionsMenu: "Actions",
@@ -163,6 +169,10 @@ export const common = {
     modified: "Modified",
     deleted: "Deleted",
     new: "New",
+  },
+  changes: {
+    filesChanged_one: "{{count, number}} file changed",
+    filesChanged_other: "{{count, number}} files changed",
   },
   commandFamilies: {
     editing: "Editing",
@@ -412,6 +422,26 @@ export const common = {
       openGenericRecord: "Open record for this plan step",
       openRecord: "Open record for {{step}}",
       recordUnavailable: "No record available for {{step}}",
+    },
+    pipeline: {
+      tier: "complexity level {{level}}",
+      openPlan: "open plan {{title}} in the reader",
+      expandSteps: "expand steps for {{title}}",
+      collapseSteps: "collapse steps for {{title}}",
+      planCompletion: "{{title}} completion",
+      statusUnavailable: "pipeline status unavailable",
+      statusLoading: "reading in-flight work…",
+      statusEmpty: "no plans in flight on this branch",
+      statusCount_one: "{{count, number}} plan in flight",
+      statusCount_other: "{{count, number}} plans in flight",
+    },
+    planInterior: {
+      loading: "loading steps…",
+      notServed: "step tree pending: the plan interior is not yet served.",
+      empty: "no steps in this plan yet.",
+      list: "plan steps",
+      truncated:
+        "showing {{returned, number}} of {{total, number}} nodes: this plan exceeds the interior ceiling; open it on the stage to see the full tree.",
     },
     settings: {
       global: "Global",

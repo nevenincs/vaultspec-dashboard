@@ -67,18 +67,33 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
       modifiedAt: undefined,
       phaseLabel: "execute",
       tierLabel: "L3",
-      tierAriaLabel: "tier L3",
-      openAriaLabel: "open plan x plan in the reader",
+      tierAriaLabel: {
+        key: "common:finalWave.pipeline.tier",
+        values: { level: "L3" },
+      },
+      openAriaLabel: {
+        key: "common:finalWave.pipeline.openPlan",
+        values: { title: "x plan" },
+      },
       selectAriaLabel: "select plan x plan on the stage",
       showProgress: true,
       progressDone: 2,
       progressTotal: 5,
       progressTextLabel: "2/5",
-      progressLabel: "x plan completion",
+      progressLabel: {
+        key: "common:finalWave.pipeline.planCompletion",
+        values: { title: "x plan" },
+      },
       progressPercentLabel: "40%",
     });
-    expect(view.planRows[0]!.toggleLabel(false)).toBe("expand steps for x plan");
-    expect(view.planRows[0]!.toggleLabel(true)).toBe("collapse steps for x plan");
+    expect(view.planRows[0]!.toggleLabel(false)).toEqual({
+      key: "common:finalWave.pipeline.expandSteps",
+      values: { title: "x plan" },
+    });
+    expect(view.planRows[0]!.toggleLabel(true)).toEqual({
+      key: "common:finalWave.pipeline.collapseSteps",
+      values: { title: "x plan" },
+    });
     expect(view.adrs.map((artifact) => artifact.node_id)).toEqual([
       "doc:2026-06-14-x-adr",
     ]);
@@ -115,7 +130,10 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     expect(view.liveMessage).toBe("2 in-flight items");
     expect(view.workStatusTitle).toBe("2 in-flight items");
     expect(view.workStatusDetail).toBe("");
-    expect(view.openPlansStatusLabel).toBe("1 plan in flight");
+    expect(view.openPlansStatusLabel).toEqual({
+      key: "common:finalWave.pipeline.statusCount",
+      values: { count: 1 },
+    });
     expect(view.workSurfaceAriaLabel).toBe("work pipeline status");
     expect(view.workStatusSectionClassName).toBe(
       "flex flex-col items-center gap-fg-2 px-fg-2 py-fg-6 text-center text-label text-ink-muted",
@@ -199,7 +217,9 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     expect(view.workStatusDetail).toBe(
       "the pipeline read is degraded — vault index rebuilding",
     );
-    expect(view.openPlansStatusLabel).toBe("pipeline status unavailable");
+    expect(view.openPlansStatusLabel).toEqual({
+      key: "common:finalWave.pipeline.statusUnavailable",
+    });
   });
 
   it("carries the designed degraded fallback copy when the tier reason is absent", () => {
@@ -236,16 +256,25 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
       phaseLabel: "plan",
       tierLabel: null,
       tierAriaLabel: null,
-      openAriaLabel: "open plan Backtick plan in the reader",
+      openAriaLabel: {
+        key: "common:finalWave.pipeline.openPlan",
+        values: { title: "Backtick plan" },
+      },
       selectAriaLabel: "select plan Backtick plan on the stage",
       showProgress: false,
       progressDone: 0,
       progressTotal: 0,
       progressTextLabel: "0/0",
-      progressLabel: "Backtick plan completion",
+      progressLabel: {
+        key: "common:finalWave.pipeline.planCompletion",
+        values: { title: "Backtick plan" },
+      },
       progressPercentLabel: null,
     });
-    expect(view.planRows[0]!.toggleLabel(false)).toBe("expand steps for Backtick plan");
+    expect(view.planRows[0]!.toggleLabel(false)).toEqual({
+      key: "common:finalWave.pipeline.expandSteps",
+      values: { title: "Backtick plan" },
+    });
   });
 
   it("derives the WorkTab roving tab stop from the first plan, then first ADR", () => {
@@ -312,7 +341,9 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
       "flex flex-col items-center gap-fg-2 px-fg-2 py-fg-6 text-center text-label text-ink-faint",
     );
     expect(view.workStatusTitleClassName).toBe("animate-pulse-live");
-    expect(view.openPlansStatusLabel).toBe("reading in-flight work…");
+    expect(view.openPlansStatusLabel).toEqual({
+      key: "common:finalWave.pipeline.statusLoading",
+    });
   });
 
   it("carries the designed empty-state copy from the stores layer", () => {
@@ -327,7 +358,9 @@ describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () 
     expect(view.workStatusDetail).toBe(
       "no in-flight pipeline work in the current scope; active ADRs and plans will appear here as they advance.",
     );
-    expect(view.openPlansStatusLabel).toBe("no plans in flight on this branch");
+    expect(view.openPlansStatusLabel).toEqual({
+      key: "common:finalWave.pipeline.statusEmpty",
+    });
   });
 
   it("does not expose cached pipeline data when no scope is selected", () => {
@@ -514,7 +547,7 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
     expect(view.rollup).toEqual({ done: 4500, total: 9001 });
     expect(view.empty).toBe(false);
     expect(view.hasUngroupedSteps).toBe(true);
-    expect(view.listAriaLabel).toBe("plan steps");
+    expect(view.listAriaLabel).toEqual({ key: "common:finalWave.planInterior.list" });
     expect(view.steps).toMatchObject([
       {
         targetNodeId: "doc:exec-a",
@@ -555,9 +588,10 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
       returned_nodes: 2000,
       reason: "node ceiling",
     });
-    expect(view.truncatedMessage).toBe(
-      "showing 2000 of 9001 nodes - this plan exceeds the interior ceiling; open it on the stage to see the full tree.",
-    );
+    expect(view.truncatedMessage).toEqual({
+      key: "common:finalWave.planInterior.truncated",
+      values: { returned: 2000, total: 9001 },
+    });
   });
 
   it("is the inert empty view while loading with no held interior", () => {
@@ -565,12 +599,14 @@ describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", 
     expect(view.loading).toBe(true);
     expect(view.served).toBe(true);
     expect(view.empty).toBe(true);
-    expect(view.loadingMessage).toBe("loading steps...");
-    expect(view.placeholderMessage).toBe(
-      "step tree pending - the plan interior is not yet served.",
-    );
-    expect(view.emptyMessage).toBe("no steps in this plan yet.");
-    expect(view.listAriaLabel).toBe("plan steps");
+    expect(view.loadingMessage).toEqual({
+      key: "common:finalWave.planInterior.loading",
+    });
+    expect(view.placeholderMessage).toEqual({
+      key: "common:finalWave.planInterior.notServed",
+    });
+    expect(view.emptyMessage).toEqual({ key: "common:finalWave.planInterior.empty" });
+    expect(view.listAriaLabel).toEqual({ key: "common:finalWave.planInterior.list" });
     expect(view.truncatedMessage).toBeNull();
     expect(view.rollup).toEqual({ done: 0, total: 0 });
     expect(view.waves).toEqual([]);

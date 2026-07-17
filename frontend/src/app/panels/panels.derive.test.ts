@@ -97,33 +97,36 @@ describe("deriveVaultHealthView", () => {
   it("reads an unreachable core as down", () => {
     expect(deriveVaultHealthView(core({ reachable: false }))).toEqual({
       tone: "down",
-      word: "Unreachable",
+      word: { key: "common:vaultHealth.unreachable" },
     });
     expect(deriveVaultHealthView(core({ errored: true, reachable: false }))).toEqual({
       tone: "down",
-      word: "Unreachable",
+      word: { key: "common:vaultHealth.unreachable" },
     });
   });
 
   it("reads an in-flight snapshot as checking", () => {
     expect(deriveVaultHealthView(core({ loading: true, reachable: false }))).toEqual({
       tone: "unknown",
-      word: "Checking…",
+      word: { key: "common:vaultHealth.checking" },
     });
   });
 
-  it("maps a healthy served word to ok and an unhealthy word to attention", () => {
+  it("maps a healthy served word to ok and fails an unhealthy word closed to attention", () => {
     expect(deriveVaultHealthView(core({ vaultHealth: "healthy" }))).toEqual({
       tone: "ok",
-      word: "Healthy",
+      word: { key: "common:vaultHealth.healthy" },
     });
     expect(deriveVaultHealthView(core({ vaultHealth: "warnings" }))).toEqual({
       tone: "attention",
-      word: "Warnings",
+      word: { key: "common:vaultHealth.attention" },
     });
   });
 
   it("states a reachable core with no served word honestly, inventing no verdict", () => {
-    expect(deriveVaultHealthView(core())).toEqual({ tone: "ok", word: "Reachable" });
+    expect(deriveVaultHealthView(core())).toEqual({
+      tone: "ok",
+      word: { key: "common:vaultHealth.healthy" },
+    });
   });
 });

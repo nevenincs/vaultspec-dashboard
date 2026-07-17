@@ -2,7 +2,11 @@
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
-import type { MessageDescriptor } from "../../../platform/localization/message";
+import {
+  createCountMessageDescriptor,
+  type AnyMessageDescriptor,
+  type MessageDescriptor,
+} from "../../../platform/localization/message";
 import { authoredDisplayText } from "../../../platform/localization/displayText";
 import {
   engineClient,
@@ -161,7 +165,7 @@ export interface PipelineStatusView extends TierAvailability {
   /** Full Work tab status detail for degraded/empty states. */
   workStatusDetail: string;
   /** Compact Status tab open-plans status label for degraded/loading/empty states. */
-  openPlansStatusLabel: string;
+  openPlansStatusLabel: AnyMessageDescriptor;
   /** Work tab section accessible label. */
   workSurfaceAriaLabel: string;
   /** Work tab status-state section class. */
@@ -193,16 +197,16 @@ export interface PipelinePlanRowView {
   modifiedAt: string | undefined;
   phaseLabel: string;
   tierLabel: string | null;
-  tierAriaLabel: string | null;
-  openAriaLabel: string;
+  tierAriaLabel: MessageDescriptor | null;
+  openAriaLabel: MessageDescriptor;
   selectAriaLabel: string;
   showProgress: boolean;
   progressDone: number;
   progressTotal: number;
   progressTextLabel: string;
-  progressLabel: string;
+  progressLabel: MessageDescriptor;
   progressPercentLabel: string | null;
-  toggleLabel: (expanded: boolean) => string;
+  toggleLabel: (expanded: boolean) => MessageDescriptor;
 }
 
 export interface PipelineAdrRowView {
@@ -255,6 +259,7 @@ function pipelineArtifactTitleLabel(artifact: PipelineArtifact): string {
 
 function pipelinePlanRowView(artifact: PipelineArtifact): PipelinePlanRowView {
   const titleLabel = pipelineArtifactTitleLabel(artifact);
+  const title = authoredDisplayText(titleLabel);
   const done = artifact.progress?.done ?? 0;
   const total = artifact.progress?.total ?? 0;
   const tierLabel = artifact.tier ?? null;
@@ -266,17 +271,27 @@ function pipelinePlanRowView(artifact: PipelineArtifact): PipelinePlanRowView {
     modifiedAt: artifact.dates?.modified,
     phaseLabel: artifact.phase,
     tierLabel,
-    tierAriaLabel: tierLabel === null ? null : `tier ${tierLabel}`,
-    openAriaLabel: `open plan ${titleLabel} in the reader`,
+    tierAriaLabel:
+      tierLabel === null
+        ? null
+        : { key: "common:finalWave.pipeline.tier", values: { level: tierLabel } },
+    openAriaLabel: { key: "common:finalWave.pipeline.openPlan", values: { title } },
     selectAriaLabel: `select plan ${titleLabel} on the stage`,
     showProgress: total > 0,
     progressDone: done,
     progressTotal: total,
     progressTextLabel: `${done}/${total}`,
-    progressLabel: `${titleLabel} completion`,
+    progressLabel: {
+      key: "common:finalWave.pipeline.planCompletion",
+      values: { title },
+    },
     progressPercentLabel: progressPercent === null ? null : `${progressPercent}%`,
-    toggleLabel: (expanded) =>
-      `${expanded ? "collapse" : "expand"} steps for ${titleLabel}`,
+    toggleLabel: (expanded) => ({
+      key: expanded
+        ? "common:finalWave.pipeline.collapseSteps"
+        : "common:finalWave.pipeline.expandSteps",
+      values: { title },
+    }),
   };
 }
 
@@ -364,13 +379,16 @@ export function derivePipelineStatusView(
       : count === 0
         ? "no in-flight pipeline work in the current scope; active ADRs and plans will appear here as they advance."
         : "";
-  const openPlansStatusLabel = availability.degraded
-    ? "pipeline status unavailable"
+  const openPlansStatusLabel: AnyMessageDescriptor = availability.degraded
+    ? { key: "common:finalWave.pipeline.statusUnavailable" }
     : loading
-      ? "reading in-flight work…"
+      ? { key: "common:finalWave.pipeline.statusLoading" }
       : plans.length === 0
-        ? "no plans in flight on this branch"
-        : `${plans.length} plan${plans.length === 1 ? "" : "s"} in flight`;
+        ? { key: "common:finalWave.pipeline.statusEmpty" }
+        : createCountMessageDescriptor(
+            "common:finalWave.pipeline.statusCount",
+            plans.length,
+          )!;
   return {
     loading,
     workSurfaceState,
@@ -489,12 +507,28 @@ export interface PlanInteriorView {
   summary: PlanSummary;
   /** Honest bounded-interior truncation when the engine capped the tree; null otherwise. */
   truncated: PlanInterior["truncated"];
-  loadingMessage: string;
-  placeholderMessage: string;
-  emptyMessage: string;
-  listAriaLabel: string;
-  truncatedMessage: string | null;
+  loadingMessage: MessageDescriptor;
+  placeholderMessage: MessageDescriptor;
+  emptyMessage: MessageDescriptor;
+  listAriaLabel: MessageDescriptor;
+  truncatedMessage: MessageDescriptor | null;
 }
+
+// Stable descriptor references for the plan-interior tree's static state copy — one
+// instance each so a consumer memoizing on these fields does not see a fresh identity
+// every render.
+const PLAN_INTERIOR_LOADING_MESSAGE: MessageDescriptor = {
+  key: "common:finalWave.planInterior.loading",
+};
+const PLAN_INTERIOR_PLACEHOLDER_MESSAGE: MessageDescriptor = {
+  key: "common:finalWave.planInterior.notServed",
+};
+const PLAN_INTERIOR_EMPTY_MESSAGE: MessageDescriptor = {
+  key: "common:finalWave.planInterior.empty",
+};
+const PLAN_INTERIOR_LIST_ARIA_LABEL: MessageDescriptor = {
+  key: "common:finalWave.planInterior.list",
+};
 
 /** The inert zero summary for a collapsed/unserved interior — a stable reference
  *  so a consumer memoizing on `view.summary` does not recompute every render. */
@@ -562,10 +596,10 @@ export function derivePlanInteriorView(
       rollup: { done: 0, total: 0 },
       summary: EMPTY_PLAN_SUMMARY,
       truncated: null,
-      loadingMessage: "loading steps...",
-      placeholderMessage: "step tree pending - the plan interior is not yet served.",
-      emptyMessage: "no steps in this plan yet.",
-      listAriaLabel: "plan steps",
+      loadingMessage: PLAN_INTERIOR_LOADING_MESSAGE,
+      placeholderMessage: PLAN_INTERIOR_PLACEHOLDER_MESSAGE,
+      emptyMessage: PLAN_INTERIOR_EMPTY_MESSAGE,
+      listAriaLabel: PLAN_INTERIOR_LIST_ARIA_LABEL,
       truncatedMessage: null,
     };
   }
@@ -603,12 +637,18 @@ export function derivePlanInteriorView(
     rollup: planRollup,
     summary: interior.summary,
     truncated,
-    loadingMessage: "loading steps...",
-    placeholderMessage: "step tree pending - the plan interior is not yet served.",
-    emptyMessage: "no steps in this plan yet.",
-    listAriaLabel: "plan steps",
+    loadingMessage: PLAN_INTERIOR_LOADING_MESSAGE,
+    placeholderMessage: PLAN_INTERIOR_PLACEHOLDER_MESSAGE,
+    emptyMessage: PLAN_INTERIOR_EMPTY_MESSAGE,
+    listAriaLabel: PLAN_INTERIOR_LIST_ARIA_LABEL,
     truncatedMessage: truncated
-      ? `showing ${truncated.returned_nodes} of ${truncated.total_nodes} nodes - this plan exceeds the interior ceiling; open it on the stage to see the full tree.`
+      ? {
+          key: "common:finalWave.planInterior.truncated",
+          values: {
+            returned: truncated.returned_nodes,
+            total: truncated.total_nodes,
+          },
+        }
       : null,
   };
 }

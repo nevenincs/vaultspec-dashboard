@@ -74,10 +74,10 @@ const emptyView: PlanInteriorView = {
     plan_state: null,
   },
   truncated: null,
-  loadingMessage: "loading steps...",
-  placeholderMessage: "step tree pending - the plan interior is not yet served.",
-  emptyMessage: "no steps in this plan yet.",
-  listAriaLabel: "plan steps",
+  loadingMessage: { key: "common:finalWave.planInterior.loading" },
+  placeholderMessage: { key: "common:finalWave.planInterior.notServed" },
+  emptyMessage: { key: "common:finalWave.planInterior.empty" },
+  listAriaLabel: { key: "common:finalWave.planInterior.list" },
   truncatedMessage: null,
 };
 
@@ -121,8 +121,10 @@ describe("PlanStepTree", () => {
         },
       ],
       truncated: { returned_nodes: 40, total_nodes: 90, reason: "node ceiling" },
-      truncatedMessage:
-        "showing 40 of 90 nodes - this plan exceeds the interior ceiling; open it on the stage to see the full tree.",
+      truncatedMessage: {
+        key: "common:finalWave.planInterior.truncated",
+        values: { returned: 40, total: 90 },
+      },
     });
 
     expect(screen.getByRole("status").textContent).toContain("showing 40 of 90");

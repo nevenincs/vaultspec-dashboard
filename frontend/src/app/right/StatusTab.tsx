@@ -179,6 +179,11 @@ function PlanPill({
   const treeId = `status-tree-${row.nodeId}`;
   const interior = usePlanInteriorView(expanded ? row.nodeId : null, scope);
   const Chevron = expanded ? ChevronDown : ChevronRight;
+  const toggleAriaLabel = resolveMessage(row.toggleLabel(expanded)).message;
+  const openAriaLabel = resolveMessage(row.openAriaLabel).message;
+  const tierAriaLabel =
+    row.tierAriaLabel === null ? null : resolveMessage(row.tierAriaLabel).message;
+  const progressLabel = resolveMessage(row.progressLabel).message;
 
   const openPlan = () => {
     // Read-mode open through the ONE `activateEntity` seam with `frame: true`: the
@@ -221,7 +226,7 @@ function PlanPill({
             tabIndex={-1}
             aria-expanded={expanded}
             aria-controls={treeId}
-            aria-label={row.toggleLabel(expanded)}
+            aria-label={toggleAriaLabel}
             data-open-plan-toggle
             className="flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
@@ -235,14 +240,14 @@ function PlanPill({
             onFocus={() => nav?.setActive(row.nodeId)}
             onClick={openPlan}
             data-open-plan-row
-            aria-label={row.openAriaLabel}
+            aria-label={openAriaLabel}
             className="min-w-0 flex-1 select-text truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             title={row.titleLabel}
           >
             {row.titleLabel}
           </button>
-          {row.tierLabel && row.tierAriaLabel && (
-            <span data-plan-tier aria-label={row.tierAriaLabel}>
+          {row.tierLabel && tierAriaLabel && (
+            <span data-plan-tier aria-label={tierAriaLabel}>
               <Badge>{row.tierLabel}</Badge>
             </span>
           )}
@@ -252,7 +257,7 @@ function PlanPill({
             <ProgressBar
               value={row.progressDone}
               max={row.progressTotal}
-              label={row.progressLabel}
+              label={progressLabel}
               className="flex-1"
             />
             <span
@@ -290,6 +295,7 @@ function PlanPill({
 }
 
 function OpenPlansBody({ scope }: { scope: unknown }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const timeline = useDashboardTimelineModeView(scope);
   const asOf = timeline.asOf;
   const isTimeTravel = timeline.timeTravel;
@@ -300,22 +306,21 @@ function OpenPlansBody({ scope }: { scope: unknown }) {
   // One roving zone over the plan rows: the list is a single tab stop and arrows
   // move between plans (the open button holds the stop; the chevron rides along).
   const nav = useRowZone();
+  const statusLabel = resolveMessage(view.openPlansStatusLabel).message;
 
   if (view.degraded) {
-    return (
-      <StateBlock mode="degraded" layout="inline" message={view.openPlansStatusLabel} />
-    );
+    return <StateBlock mode="degraded" layout="inline" message={statusLabel} />;
   }
   if (view.loading) {
     return (
-      <Skeleton label={view.openPlansStatusLabel}>
+      <Skeleton label={statusLabel}>
         <SkeletonRow width="w-2/3" />
         <SkeletonRow width="w-1/2" />
       </Skeleton>
     );
   }
   if (view.planRows.length === 0) {
-    return <StateBlock mode="empty" message={view.openPlansStatusLabel} />;
+    return <StateBlock mode="empty" message={statusLabel} />;
   }
   return (
     <ul className="space-y-fg-1-5" role="list" data-open-plans-list>

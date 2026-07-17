@@ -10,13 +10,16 @@ import { useOpsRunMutation } from "../../stores/view/opsRun";
 import { useOpsReceipt } from "../../stores/view/opsReceipt";
 import type { OpsReceipt } from "../../stores/server/queries";
 import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 import { Button } from "../kit";
 
-/** Projected status word and visual tone. */
+/** Projected status word and visual tone. The word is a fail-closed catalog
+ *  descriptor — the served vault-health token is classified into a closed
+ *  vocabulary, never echoed back title-cased. */
 export interface VaultHealthView {
   tone: FrameworkStatusTone;
-  word: string;
+  word: MessageDescriptor;
 }
 
 const TONE_DOT_CLASS: Record<FrameworkStatusTone, string> = {
@@ -39,22 +42,26 @@ const RECEIPT_TONE_CLASS: Record<OpsReceipt["tone"], string> = {
   down: "text-state-stale",
 };
 
-function titleCase(word: string): string {
-  return word.charAt(0).toUpperCase() + word.slice(1);
-}
-
-/** Derive the status shown from the interpreted project state. */
+/** Derive the status shown from the interpreted project state. The served
+ *  vault-health token is classified into the closed `vaultHealth` vocabulary:
+ *  healthy words resolve to "Healthy", anything else the engine serves is a real
+ *  condition and fails closed to "Needs attention" — the raw token is never
+ *  surfaced. */
 export function deriveVaultHealthView(
   core: Pick<CoreStatusView, "loading" | "errored" | "reachable" | "vaultHealth">,
 ): VaultHealthView {
   if (core.errored || (!core.reachable && !core.loading)) {
-    return { tone: "down", word: "Unreachable" };
+    return { tone: "down", word: { key: "common:vaultHealth.unreachable" } };
   }
-  if (core.loading) return { tone: "unknown", word: "Checking…" };
+  if (core.loading) {
+    return { tone: "unknown", word: { key: "common:vaultHealth.checking" } };
+  }
   const raw = core.vaultHealth?.trim();
-  if (!raw) return { tone: "ok", word: "Reachable" };
+  if (!raw) return { tone: "ok", word: { key: "common:vaultHealth.healthy" } };
   const healthy = HEALTHY_VAULT_WORDS.has(raw.toLowerCase());
-  return { tone: healthy ? "ok" : "attention", word: titleCase(raw) };
+  return healthy
+    ? { tone: "ok", word: { key: "common:vaultHealth.healthy" } }
+    : { tone: "attention", word: { key: "common:vaultHealth.attention" } };
 }
 
 /** Project health status and check action. */
@@ -70,6 +77,7 @@ export function VaultHealthPanel() {
   );
   const core = useCoreStatus();
   const view = deriveVaultHealthView(core);
+  const healthWord = useLocalizedMessage(view.word);
   const check = useOpsRunMutation();
   // Show only the receipt produced by this panel's action.
   const lastReceipt = useOpsReceipt();
@@ -86,7 +94,7 @@ export function VaultHealthPanel() {
           {projectHealthLabel}
         </span>
         <span className={`shrink-0 text-meta ${TONE_TEXT_CLASS[view.tone]}`}>
-          {view.word}
+          {healthWord}
         </span>
       </div>
 

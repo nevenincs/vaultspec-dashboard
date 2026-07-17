@@ -70,6 +70,8 @@ describe("VaultHealthPanel localization", () => {
         </QueryClientProvider>
       </I18nextProvider>,
     );
-    expect(screen.getByText(SAFE_FALLBACK_SOURCE_MESSAGE)).toBeTruthy();
+    // Both the panel heading and the fail-closed health word are common-bundle
+    // keys, so with the bundle removed each renders the safe fallback copy.
+    expect(screen.getAllByText(SAFE_FALLBACK_SOURCE_MESSAGE).length).toBeGreaterThan(0);
   });
 });

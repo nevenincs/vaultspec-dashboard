@@ -472,6 +472,13 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:guardedActions.reviewStationPrepareRollback": { role: "action" },
   "documents:guardedActions.moveCommentToThisSection": { role: "action" },
   "documents:reviewStation.actions.submitForReview": { role: "action" },
+  "documents:reviewStation.actions.requestChanges": { role: "action" },
+  "documents:reviewStation.requestChanges.body": { role: "description" },
+  "documents:reviewStation.requestChanges.commentLabel": { role: "label" },
+  "documents:reviewStation.requestChanges.placeholder": { role: "label" },
+  "documents:reviewStation.requestChanges.commentRequired": {
+    role: "disabled-reason",
+  },
   "documents:destructiveActions.reviewStationRejectProposal": {
     role: "destructive-action",
   },

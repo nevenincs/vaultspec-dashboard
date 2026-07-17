@@ -567,7 +567,7 @@ describe("deriveChangesOverviewView", () => {
     });
     expect(view.summary.total).toBe(2);
     expect(view.summaryLabels).toEqual({
-      total: "2 files changed",
+      total: { key: "common:changes.filesChanged", values: { count: 2 } },
       additions: "+6",
       deletions: "−1",
     });
@@ -739,7 +739,7 @@ describe("deriveChangesOverviewView", () => {
         total: 0,
       },
       summaryLabels: {
-        total: "0 files changed",
+        total: { key: "common:changes.filesChanged", values: { count: 0 } },
         additions: "+0",
         deletions: "−0",
       },
@@ -787,7 +787,7 @@ describe("useChangesSummary git availability boundary", () => {
     expect(result.current).toMatchObject({
       degraded: true,
       hasChanges: false,
-      summaryLabels: { total: "0 files changed" },
+      summaryLabels: { total: { key: "common:changes.filesChanged", values: { count: 0 } } },
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(summaryRequests).toEqual([]);
@@ -843,7 +843,7 @@ describe("deriveChangesSummaryView", () => {
       clean: false,
       hasChanges: true,
       summaryLabels: {
-        total: "3 files changed",
+        total: { key: "common:changes.filesChanged", values: { count: 3 } },
         additions: "+12",
         deletions: "−1",
       },
@@ -894,7 +894,7 @@ describe("deriveChangesSummaryView", () => {
     ).toMatchObject({
       clean: true,
       hasChanges: false,
-      summaryLabels: { total: "0 files changed" },
+      summaryLabels: { total: { key: "common:changes.filesChanged", values: { count: 0 } } },
     });
   });
 
@@ -910,7 +910,7 @@ describe("deriveChangesSummaryView", () => {
       degraded: true,
       hasChanges: false,
       summaryLabels: {
-        total: "0 files changed",
+        total: { key: "common:changes.filesChanged", values: { count: 0 } },
         additions: "+0",
         deletions: "−0",
       },

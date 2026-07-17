@@ -51,7 +51,10 @@ import {
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
 import { previewDocTab } from "../../stores/view/tabs";
-import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import {
+  useLocalizedMessageResolver,
+  type LocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
 import type { ButtonHTMLAttributes, Ref } from "react";
 
 import {
@@ -194,11 +197,14 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
  *  the in-flight / degraded / errored / clean copy so the collapsed header always
  *  states the working-tree truth. Derived from the LIGHT engine summary, never
  *  the full changed-files lists (changes-summary-projection). */
-function changesHeadLabel(changes: ChangesSummaryView): string {
+function changesHeadLabel(
+  changes: ChangesSummaryView,
+  resolveMessage: LocalizedMessageResolver,
+): string {
   if (changes.loading) return changes.loadingLabel;
   if (changes.degraded) return changes.degradedLabel;
   if (changes.errored) return changes.errorTitle;
-  if (changes.hasChanges) return changes.summaryLabels.total;
+  if (changes.hasChanges) return resolveMessage(changes.summaryLabels.total).message;
   return changes.cleanLabel;
 }
 
@@ -306,8 +312,11 @@ export function ChangesOverview({
       </span>
     </span>
   ) : undefined;
+  const resolveMessage = useLocalizedMessageResolver();
   const label = (
-    <span className={changes.summaryPrimaryClassName}>{changesHeadLabel(changes)}</span>
+    <span className={changes.summaryPrimaryClassName}>
+      {changesHeadLabel(changes, resolveMessage)}
+    </span>
   );
 
   return (

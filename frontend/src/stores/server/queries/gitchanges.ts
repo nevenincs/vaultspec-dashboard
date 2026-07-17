@@ -22,7 +22,11 @@ import {
   stemFromPath,
 } from "../liveAdapters";
 import { useQuery } from "@tanstack/react-query";
-import type { MessageDescriptor } from "../../../platform/localization/message";
+import {
+  createCountMessageDescriptor,
+  type CountMessageDescriptor,
+  type MessageDescriptor,
+} from "../../../platform/localization/message";
 import { engineKeys, normalizeGitDiffArg } from "./internal";
 import {
   CHANGED_FILES_LIST_SERVED,
@@ -471,7 +475,7 @@ export interface ChangesOverviewView {
    *  are files too; a files-vs-documents split read as two unrelated counts
    *  (2026-07-14 wording refinement). */
   summaryLabels: {
-    total: string;
+    total: CountMessageDescriptor;
     additions: string;
     deletions: string;
   };
@@ -501,15 +505,18 @@ export interface ChangesOverviewView {
   retry: () => void;
 }
 
-function pluralLabel(count: number, singular: string): string {
-  return `${count} ${singular}${count === 1 ? "" : "s"}`;
+function filesChangedLabel(total: number): CountMessageDescriptor {
+  return (
+    createCountMessageDescriptor("common:changes.filesChanged", total) ??
+    createCountMessageDescriptor("common:changes.filesChanged", 0)!
+  );
 }
 
 function changedSummaryLabels(
   summary: ChangedFilesView["summary"],
 ): ChangesOverviewView["summaryLabels"] {
   return {
-    total: `${pluralLabel(summary.total, "file")} changed`,
+    total: filesChangedLabel(summary.total),
     additions: `+${summary.additions}`,
     deletions: `−${summary.deletions}`,
   };

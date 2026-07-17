@@ -294,6 +294,7 @@ export function PlanStepTree({
    *  with an explaining `title` attribute. */
   isTimeTravel?: boolean;
 }) {
+  const resolveMessage = useLocalizedMessageResolver();
   // One FocusZone over all steps: the step tree is a single tab stop and arrows /
   // Home / End rove the steps (keyboard-navigation W04.P07.S23). All steps join
   // the zone now (not just selectable ones) because the checkbox is the tab stop.
@@ -318,7 +319,10 @@ export function PlanStepTree({
     // Loading is UI-only (state-mode-uniformity ADR D2): a skeleton of pending step
     // rows; the message is the screen-reader label only, never on-screen copy.
     return (
-      <Skeleton label={view.loadingMessage} className="px-fg-2 py-fg-1">
+      <Skeleton
+        label={resolveMessage(view.loadingMessage).message}
+        className="px-fg-2 py-fg-1"
+      >
         <SkeletonRow width="w-2/3" />
         <SkeletonRow width="w-1/2" />
         <SkeletonRow width="w-3/5" />
@@ -332,7 +336,7 @@ export function PlanStepTree({
         className="px-fg-2 py-fg-1 text-label text-ink-muted"
         data-step-tree-placeholder
       >
-        {view.placeholderMessage}
+        {resolveMessage(view.placeholderMessage).message}
       </p>
     );
   }
@@ -340,14 +344,23 @@ export function PlanStepTree({
   if (view.empty) {
     return (
       <p className="px-fg-2 py-fg-1 text-label text-ink-muted" data-step-tree-empty>
-        {view.emptyMessage}
+        {resolveMessage(view.emptyMessage).message}
       </p>
     );
   }
 
+  const truncatedMessage =
+    view.truncatedMessage === null
+      ? null
+      : resolveMessage(view.truncatedMessage).message;
+
   return (
     <div className="space-y-fg-1 border-l border-rule pl-fg-2" data-step-tree>
-      <ul className="space-y-fg-1" role="list" aria-label={view.listAriaLabel}>
+      <ul
+        className="space-y-fg-1"
+        role="list"
+        aria-label={resolveMessage(view.listAriaLabel).message}
+      >
         {view.waves.map((w) => (
           <WaveGroup key={w.node_id} wave={w} nav={nav} tick={tick} />
         ))}
@@ -364,7 +377,7 @@ export function PlanStepTree({
           </li>
         )}
       </ul>
-      {view.truncatedMessage && (
+      {truncatedMessage && (
         <p
           className="flex items-start gap-fg-1-5 rounded-fg-xs border border-state-stale/40 bg-paper-sunken px-fg-2 py-fg-1 text-caption text-ink-muted"
           data-step-tree-truncated
@@ -373,7 +386,7 @@ export function PlanStepTree({
           <span className="mt-px shrink-0 text-state-stale" aria-hidden>
             <CircleSlash size={SMALL_PX} />
           </span>
-          <span>{view.truncatedMessage}</span>
+          <span>{truncatedMessage}</span>
         </p>
       )}
     </div>
