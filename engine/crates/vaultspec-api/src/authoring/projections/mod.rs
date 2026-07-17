@@ -41,7 +41,7 @@ use super::conflicts::{
 use super::ledger::{ChangesetAggregateRecord, ChangesetChildOperationRecord};
 use super::model::{
     ActionEligibility, ActorRef, ApprovalId, ChangesetId, ChangesetKind, ChangesetStatus,
-    DocumentRef, ProposalId, RevisionToken,
+    DocumentRef, ProposalId, RevisionToken, RunId, SessionId,
 };
 use super::modes::{SystemPolicyApprovalRecord, scope_id_for_worktree};
 use super::policy::{OperationMode, PolicyDecisionProjection, decide_changeset_approval};
@@ -189,6 +189,15 @@ pub struct ProposalProjection {
     pub eligibility: Vec<ActionEligibility>,
     pub rollback: RollbackAvailabilityProjection,
     pub created_at_ms: i64,
+    /// Provenance naming the producing fact (agent-wire-gaps D4): the session,
+    /// run, and turn that created the changeset, read from the ORIGIN revision.
+    /// Human/direct changesets serve `None`. Never part of any stable key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<SessionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<RunId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
 }
 
 /// A bounded page of proposal projections. `truncated` is set when the corpus has
@@ -648,6 +657,9 @@ impl ProjectionRepository<'_, '_> {
             eligibility,
             rollback,
             created_at_ms: latest.created_at_ms,
+            session_id: origin.session_id.clone(),
+            run_id: origin.run_id.clone(),
+            turn_id: origin.turn_id.clone(),
         }))
     }
 

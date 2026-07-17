@@ -11,7 +11,7 @@ use crate::authoring::approvals::{
 use crate::authoring::ledger::{ChangesetChildOperationInput, ChangesetRevisionInput};
 use crate::authoring::model::{
     ActorId, ActorKind, ApprovalId, ChangesetKind, CommandKind, ProposalId,
-    ProvisionalCollisionStatus, SessionId,
+    ProvisionalCollisionStatus, RunId, SessionId,
 };
 use crate::authoring::policy::{ApprovalRequirement, OperationMode, RiskClass};
 use crate::authoring::snapshots::{PreimageCaptureRequest, PreimageRecord, SnapshotReader};
@@ -1099,5 +1099,78 @@ fn list_projection_never_carries_document_bodies() {
     assert!(
         !serialized.contains("BETA"),
         "the proposed body must never appear on the list projection"
+    );
+}
+
+/// agent-wire-gaps D4: the projection serves session/run/turn provenance from
+/// the ORIGIN revision for a tool-dispatched changeset, and a changeset created
+/// without run provenance (the human/direct path) serves `None` — with the two
+/// run fields absent from the serialized wire shape entirely.
+#[test]
+fn proposal_projection_serves_origin_run_provenance_and_none_for_human() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    let base = write_doc(root, "plan-provenance", "ALPHA body");
+    let mut store = temp_store(root);
+    let author = actor("agent:author", ActorKind::Agent);
+
+    // Tool-dispatched: the origin (Draft) revision carries run provenance.
+    let tool_changeset = ChangesetId::new("changeset_prov_tool").unwrap();
+    store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            let draft = record(
+                &tool_changeset,
+                None,
+                ChangesetStatus::Draft,
+                &author,
+                vec![child("child_1", existing_doc("plan-provenance", &base))],
+                10,
+            )
+            .with_run_provenance(
+                Some(RunId::new("run_prov_1").unwrap()),
+                Some("turn_prov_1".to_string()),
+            );
+            uow.ledger().append_revision(&draft)?;
+            Ok(())
+        })
+        .unwrap();
+    let projection = project(&mut store, root, &tool_changeset);
+    assert_eq!(
+        projection.session_id.as_ref().map(|s| s.as_str()),
+        Some("session_1")
+    );
+    assert_eq!(
+        projection.run_id.as_ref().map(|r| r.as_str()),
+        Some("run_prov_1")
+    );
+    assert_eq!(projection.turn_id.as_deref(), Some("turn_prov_1"));
+
+    // Human/direct: no run provenance on any revision → None, and absent on the wire.
+    let human_changeset = ChangesetId::new("changeset_prov_human").unwrap();
+    store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            let draft = record(
+                &human_changeset,
+                None,
+                ChangesetStatus::Draft,
+                &author,
+                vec![child("child_1", existing_doc("plan-provenance", &base))],
+                20,
+            );
+            uow.ledger().append_revision(&draft)?;
+            Ok(())
+        })
+        .unwrap();
+    let projection = project(&mut store, root, &human_changeset);
+    assert_eq!(projection.run_id, None);
+    assert_eq!(projection.turn_id, None);
+    let wire = serde_json::to_value(&projection).unwrap();
+    assert!(
+        wire.get("run_id").is_none(),
+        "absent run_id must not serialize"
+    );
+    assert!(
+        wire.get("turn_id").is_none(),
+        "absent turn_id must not serialize"
     );
 }
