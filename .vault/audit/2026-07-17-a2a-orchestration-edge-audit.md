@@ -175,3 +175,46 @@ last open item, previously the parallel lead session's claimed lane) is verified
 NOT landed on a2a main and is hereby taken over by the edge-activation team on the
 owner's instruction. Executor-service drives it to completion in the a2a
 repository; S13 closes on its landing plus live proof.
+
+### lane-takeover | high | run-complete caller is NOT APPLICABLE — a2a-driven work creates no engine run
+
+Grounding (executor-service, code + live probe) shows the run-complete caller has
+nothing to call: a2a-driven authoring work creates ZERO engine run records.
+Evidence chain:
+
+- The a2a worker's sole authoring driver is `authoring/submitter.py`; its only
+  engine verbs are `create_session`, `create_proposal`, `submit_for_review`, and
+  `recovery_snapshot` (a read). It never starts a prompt turn.
+- `start_prompt_turn` — the ONLY command that builds a `RunRecord{status: Active}`
+  (engine `authoring/session/mod.rs`) — has ZERO non-test callers anywhere in a2a.
+  `AuthoringSession.start_turn` exists but nothing in the worker/graph/submitter
+  invokes it; no a2a path uses `execute_agent_tool` / `resume_run` / any `/runs/`
+  verb; proposals carry only OPTIONAL run provenance and the a2a `create_proposal`
+  payload sends no `run_id`.
+- LIVE PROBE against dashboard main's engine binary, running a2a's exact sequence:
+  after `create_session` → `active_run: None`, `runs: []`, `latest_run_id: None`;
+  after `create_proposal` (status `draft`) → `active_run: None`, `runs: []` STILL.
+
+Disposition: the run-complete caller is closed as NOT APPLICABLE; nothing
+implemented. The reviewer's "a2a-driven runs strand active engine runs" does not
+hold — a2a strands no runs because it creates none.
+
+### lane-takeover | medium | ENGINE ASK — a benign session-terminal verb (a2a strands SESSIONS, not runs)
+
+The real stranding is SESSIONS: `create_session` sets `SessionStatus::Active` and
+the a2a worker never closes the session on submit-success (no session-terminal
+call on the success path). Closing it needs a BENIGN session-terminal verb — but
+the engine exposes none. `SessionStatus::Closed` IS defined (as_str `"closed"`,
+maps to `LifecycleStatus::Expired` in `session/validate.rs`) but has NO writer:
+no `CommandKind` (session commands are only `CreateSession` / `CancelSession`), no
+route (only `/v1/sessions/{id}/cancel` is mounted), no function sets `Closed`. The
+only session-terminal path is `cancel_session` → `Cancelled`, which is wrong
+semantics for success (cancellation, not completion).
+
+Named cross-repo ASK (engine-side, wire-gaps owner's surface, same register as the
+other filed asks): add a benign session-close command + route (e.g.
+`complete_session` / `close_session`) that transitions the already-defined
+`SessionStatus::Closed`, callable by the a2a worker at submit-success settle
+(best-effort, typed-failure, never on cancel/fail). When it lands, the a2a caller
+is a small follow-on. Until then, a2a-left-Active sessions rely on the engine's
+session retention for reaping.
