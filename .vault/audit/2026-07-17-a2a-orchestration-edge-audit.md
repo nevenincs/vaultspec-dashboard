@@ -121,5 +121,27 @@ matching the engine constant, ungated dependency-probed `/health` with live pid)
   to actually stream at execution. Two findings for the a2a backlog: (1) mock
   presets emit no progress frames; (2) provider readiness diverges between
   discovery and execution for mock/deterministic providers.
-- The rag-dedup sweep confirmation named in the spec was not evidenced within
-  either review's scope; carried as a closeout check item.
+- Rag-dedup sweep evidence (closeout — resolves the reviewers' carried item).
+  Each Step Record carries its own dedup verdict; the pointer list below shows
+  every step grounded against an existing analogue and reused or extended it
+  rather than forking a parallel implementation. Explicit `vaultspec-rag` sweeps:
+  `P03.S06` (found no prior stream verb — reuses the run/thread mapping
+  run-status already uses), `P04.S11` (`--type code only:prod` — found no prior
+  feedback/comment/revision path; `feature_tag` is the sole opaque-carrier
+  analogue, mirrored exactly), `P04.S12` (grepped every comment-batch consumer —
+  confirmed no existing feedback-batch client method or chip helper to reuse),
+  and `P04.S14` (`--type code only:prod` — surfaced the mount-node grounding
+  pattern as the closest analogue). Reuse-of-existing grounding (no new parallel
+  home): `P02.S03` (mirrors the shipped rag ops module's whitelisted-dispatch /
+  bounded-validation / discovery-predicate shape), `P02.S04` (token minting added
+  inside the existing `ops_a2a` run-start dispatch, no parallel provisioning
+  module), `P02.S05` (mirrors the shipped rag ops guard suite shape and its
+  live-loopback harness), `P03.S07` (matches the existing engine SSE channels'
+  shape; per-run relay chosen over a new multiplexed channel), `P03.S08`
+  (verification of S07's relay — shares its grounding, no new production code),
+  `P04.S09` (reused agent-wire-gaps' additive `authoring_feedback_batches` table
+  — explicitly no second migration authored), and `P04.S10` (reused the apply
+  path's existing base-revision fence machinery for the turn field). The strongest
+  anti-duplication act was the reconciliation itself: this audit found the
+  `edge-activation` branch's parallel implementation of the entire edge surface
+  and retired it in favor of main's single adopted home.

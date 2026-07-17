@@ -139,7 +139,7 @@ namespace — it is orchestration control only.
 > run-completion slice `POST /authoring/v1/runs/{run_id}/complete`
 > (`19d845c499`, extended `1653b4b85d`) — matching the cross-session
 > reconciliation audit's P05 amendment spec
-> ([[2026-07-17-a2a-orchestration-edge-audit]]).
+> (`2026-07-17-a2a-orchestration-edge-audit`).
 
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or
