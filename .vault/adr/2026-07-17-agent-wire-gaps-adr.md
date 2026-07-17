@@ -52,6 +52,24 @@ This ADR decides the wire shape of each closure — route, event kind, field, bo
 
 **D1 — Run settlement: a reported terminal transition + one lifecycle event.** New mutating command route `POST /authoring/v1/runs/{run_id}/settle`, body `{outcome, summary?, failure_reason?}` with `outcome` a bounded two-token enum `completed | failed` (`summary` ≤ the existing turn-summary bound; `failure_reason` validated like the cancel reason, ≤ 500 bytes). Semantics: `Active`/`CancelRequested` → `Completed` or `Failed`, `active=false`, `completed_at_ms` stamped (the fields and enum variants already exist — this is the missing transition); an already-terminal run replays its recorded outcome idempotently, exactly like cancel. Authorization: the settling principal must be the run's `owner` (or its delegator per the existing delegation guards) — the party driving the run reports it; nobody else may forge settlement. The transition emits a new `LifecycleEventKind::RunSettled` (`run.settled`) on the authoring SSE feed carrying `{ "run": RunRecord }` — the terminal status rides inside the bounded `RunStatus` vocabulary, so one event kind covers both outcomes; `cancellation.recorded` remains the cancel path's event, unchanged. Who calls it: the langgraph adapter/a2a runtime as its final act of a run; in today's client-driven serial loop the frontend session principal owns the run and settles it when its dispatch loop finishes — both are the same wire contract. One hazard is named rather than papered over: a runtime that dies without reporting leaves its run `active` forever. No new loop ships for that; abandoned-run reaping (an active run whose `updated_at_ms` is older than a bounded `RUN_STALE_AFTER_MS` → `Failed` with a distinct `abandoned` failure reason, emitting the same `run.settled`) is assigned to the ONE bounded, timed background janitor a prior arch-reviewer advisory already proposes — its duties are the genuinely undriven expiry seams (tool-permission expiry, interrupt reaping, lease expiry, and now this abandoned-run reap). Generation-transcript compaction is NOT a janitor duty: it already runs opportunistically inside every prompt-turn unit of work by a deliberate no-background-loop decision, and it stays there; at most the janitor may run a stated BACKSTOP sweep of the same bounded due-set for a session that never receives another turn, never a second owner. This ADR adds the run-reap duty to that single-janitor posture and explicitly does not create a second timer. Unlocks: "Done"/"Failed" renders from the wire; run-settle is the promotion trigger for D2's queue; the transcript's relay-gap seam gets an honest terminal boundary.
 
+> **Amendment (2026-07-17, D1 vocabulary — adopt-and-extend ruling):** while this
+> ADR was in review, the a2a lane independently landed a run-completion vertical
+> slice in the shared worktree (adopted at `19d845c499`): `CommandKind::CompleteRun`,
+> `POST /authoring/v1/runs/{run_id}/complete`, lifecycle kind `run.completed`,
+> idempotent terminal replay, session stays Active — the success arm of D1 under
+> different names. Coordination ruling (user-approved): ADOPT and EXTEND, one
+> vocabulary, no bridges. D1's names are hereby amended to the shipped ones —
+> the route is `/complete` (not `/settle`), the event is `run.completed` (not
+> `run.settled`), the command is `CompleteRun` — and the remaining D1 substance
+> is unchanged and still owed: `CompleteRunRequest` gains the bounded
+> `outcome: completed | failed` enum with optional `failure_reason` (defaulting
+> posture decided at build: an absent outcome means `completed`, preserving the
+> shipped callers), owner-only authorization on the settling principal, and the
+> `RunStatus::Failed` arm. Every later reference in this ADR to "settle"/
+> `run.settled` reads as `complete`/`run.completed` — including D2's promotion
+> trigger and the janitor's abandoned-run reap, which emits the same
+> `run.completed` carrying the `Failed`/`abandoned` outcome.
+
 **D2 — Run-scoped cancel, explicit session cancel, and a real queued-turn primitive.** Three coupled changes, one cutover, no bridges:
 - `POST /v1/runs/{run_id}/cancel` becomes run-scoped: the run → `Cancelled` exactly as today, but the session-cascade (session.status → cancelled) is DELETED. The session stays `Active`; Stop halts the run and the conversation continues. `cancellation.recorded` is unchanged.
 - Session termination becomes its own explicit command: `POST /v1/sessions/{session_id}/cancel`, body `{reason}` (same 500-byte validation), cancelling the session AND its active run if one exists, emitting `cancellation.recorded` for the run (when one was cancelled) and a new `session.cancelled` lifecycle kind for the session aggregate. The `start_prompt_turn` 422-on-non-active-session behavior stands — it is correct once cancel no longer collapses the session.
