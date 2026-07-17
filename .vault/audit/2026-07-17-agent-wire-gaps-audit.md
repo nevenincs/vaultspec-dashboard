@@ -72,6 +72,32 @@ the authoring crate; the coverage previously believed adjacent
 interrupt-resume command. Pre-existing recovery-path surface, not new D1/D2
 behavior — non-blocking, filed as follow-up.
 
+### p04a-janitor-review | low | APPROVED after one revision round — single-janitor posture verified end to end
+
+Independent review of the P04a background janitor (base commit plus the
+revision commit). Verified by code trace: one background task, serve-spawned
+only, abort-on-drop, `janitor_sweep` directly testable; the abandoned-run reap
+skips the owner guard deliberately and its only call site is the in-process
+sweep (unreachable from any route); reap + `run.completed` + queued-turn
+promotion share one unit of work with an exactly-once event proof; the
+interrupt duty honestly drives the gating permission's existing lazy expiry
+rather than inventing interrupt-record state; the compaction backstop reuses
+the per-turn `compact_due` with no second ownership; the `system` actor kind
+was already a safe frontend fallback. Two interim findings — `budget_exhausted`
+honesty missing for four of five duties, and a tautological backstop test
+(nothing was compaction-due within the test's 30-minute horizon against the
+7-day retention window) — were closed in the revision commit with scanned-row
+reporting on every duty and a real two-path backstop proof (owner-compacted →
+janitor adds nothing; orphaned due transcript → only the backstop reaches it).
+
+### tree-wide-gate-held | low | OPEN — S13/S59 await the parallel lane's frontend settle
+
+The plan's two tree-wide full-gate steps stay open honestly: the Rust gate is
+green across the workspace, but the shared worktree's parallel session has
+live frontend WIP (a localization-scan failure in its Composer team-selector
+wiring) that fails `just dev lint all` at the tree level. The steps tick when
+that lane commits clean.
+
 ## Recommendations
 
 - P01 APPROVED after revision re-check; all three named revision scenarios are
