@@ -238,6 +238,36 @@ describe("assembleTranscript (pure reconciler)", () => {
   });
 });
 
+describe("completed run status renders Done from the wire", () => {
+  it("reconciles a completed run to a settled, non-live Done turn", () => {
+    // The wire shape a `run.completed` lifecycle refetch lands: the run settled to
+    // the served `completed` token (through the REAL tolerant adapter, never a
+    // hand-typed status). The reconciler must read it as terminal, not live.
+    const snapshot = syntheticSnapshot({
+      turns: [{ id: "turn:1", index: 1, prompt: "draft the intro" }],
+      runs: [{ id: "run:1", turnId: "turn:1", status: "completed" }],
+    });
+    const view = assembleTranscript(snapshot, [], []);
+    expect(view.turns[0]).toMatchObject({ runStatus: "completed", live: false });
+  });
+
+  it("renders the Done turn status word and collapses the streaming chrome", () => {
+    const snapshot = syntheticSnapshot({
+      turns: [{ id: "turn:1", index: 1, prompt: "draft the intro" }],
+      runs: [{ id: "run:1", turnId: "turn:1", status: "completed" }],
+    });
+    renderTranscript(snapshot);
+
+    // Collapse-on-settle: no residual streaming indicator; the terminal status
+    // line carries the served `completed` token rendered as the Done word.
+    expect(document.querySelector("[data-transcript-streaming]")).toBeNull();
+    const status = document.querySelector("[data-transcript-status]");
+    expect(status).not.toBeNull();
+    expect(status!.getAttribute("data-transcript-status")).toBe("completed");
+    expect(screen.getByText("Done")).toBeTruthy();
+  });
+});
+
 describe("tool-call status mapping (served tokens only)", () => {
   it("maps each served disposition/decision pair to one bounded status", () => {
     expect(toolCallStatus(toolRecord({ disposition: "dispatched" }))).toEqual({

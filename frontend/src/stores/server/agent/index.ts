@@ -16,7 +16,11 @@
 // authoring SSE feed the review store already pumps. This slice registers a
 // listener on that shared feed (`onAuthoringLifecycleEvent`) so a
 // `session.created`/`run.started` refreshes the session caches WITHOUT a poll —
-// stopping the silent data loss the current-state inventory named.
+// stopping the silent data loss the current-state inventory named. A terminal
+// `run.completed` (and the cancel/fail terminals) refetches even an inactive
+// cached session so the settled snapshot — which the transcript renders as the
+// Done turn status — lands durably rather than sitting stale behind a collapsed
+// panel.
 
 import {
   keepPreviousData,
@@ -363,9 +367,20 @@ export function invalidateAgent(): void {
 
 /** Invalidate only the session caches (list + open snapshots). Fired by the
  *  lifecycle listener on a session/run event so an open panel refreshes without a
- *  poll while the tool catalog (static) is left untouched. */
-function invalidateAgentSessions(): void {
-  void defaultQueryClient.invalidateQueries({ queryKey: agentKeys.sessions() });
+ *  poll while the tool catalog (static) is left untouched.
+ *
+ *  `includeInactive` carries the terminal-vs-in-flight distinction: an in-flight
+ *  event refreshes only the ACTIVE (on-screen) caches — react-query's default —
+ *  so a streaming run does not churn every backgrounded session. A terminal run
+ *  event is the run's LAST event, so it refetches even an INACTIVE cached session
+ *  detail (`refetchType: "all"`); the settled snapshot (and its served terminal
+ *  status the transcript renders as Done) lands durably rather than sitting stale-
+ *  "working" behind a collapsed panel until the next focus-driven refetch. */
+function invalidateAgentSessions(options: { includeInactive?: boolean } = {}): void {
+  void defaultQueryClient.invalidateQueries({
+    queryKey: agentKeys.sessions(),
+    refetchType: options.includeInactive ? "all" : "active",
+  });
 }
 
 // --- reads (bounded staleTime/gcTime per resource-bounds) -----------------------
@@ -484,10 +499,22 @@ export function useDecideToolPermission() {
 // --- shared-feed lifecycle routing ----------------------------------------------
 
 /** The lifecycle aggregate kinds whose events belong to the agent plane. A
- *  `session.created`/`run.started` (and every later session/run transition) rides
- *  the SHARED authoring SSE feed; this slice refreshes its session caches on them
- *  so a session/run appears without a poll. */
+ *  `session.created`/`run.started` (and every later session/run transition,
+ *  through the terminal `run.completed`/`run.cancelled`/`run.failed`) rides the
+ *  SHARED authoring SSE feed; this slice refreshes its session caches on them so a
+ *  session/run transition appears without a poll. */
 const AGENT_LIFECYCLE_AGGREGATES: ReadonlySet<string> = new Set(["session", "run"]);
+
+/** The run lifecycle event kinds that SETTLE a run. `run.completed` (the driver-
+ *  reported normal settle) joins the cancel/fail terminals: each is the run's LAST
+ *  event, after which the transcript renders the served terminal status verbatim
+ *  (`completed` -> Done). A terminal event therefore invalidates more aggressively
+ *  than an in-flight one — see `invalidateAgentSessions`. */
+const TERMINAL_RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
+  "run.completed",
+  "run.cancelled",
+  "run.failed",
+]);
 
 /** True when a shared-feed lifecycle event belongs to the agent plane (a session
  *  or run aggregate) and this slice should refresh for it. */
@@ -495,10 +522,21 @@ export function isAgentLifecycleEvent(event: AuthoringLifecycleEvent): boolean {
   return AGENT_LIFECYCLE_AGGREGATES.has(event.aggregate_kind);
 }
 
+/** True when a shared-feed event is a run that has settled (terminal), so its
+ *  invalidation must reach inactive caches to land the settled snapshot. Exported
+ *  so the adapter test drives the terminal-vs-in-flight distinction directly. */
+export function isTerminalRunLifecycleEvent(event: AuthoringLifecycleEvent): boolean {
+  return (
+    event.aggregate_kind === "run" && TERMINAL_RUN_EVENT_KINDS.has(event.event_kind)
+  );
+}
+
 /** Route one shared-feed lifecycle event into the agent caches. Exported so the
- *  adapter test drives it directly, and registered on the shared feed below. */
+ *  adapter test drives it directly, and registered on the shared feed below. A
+ *  terminal run event lands the settled snapshot even for an inactive session. */
 export function routeAgentLifecycleEvent(event: AuthoringLifecycleEvent): void {
-  if (isAgentLifecycleEvent(event)) invalidateAgentSessions();
+  if (!isAgentLifecycleEvent(event)) return;
+  invalidateAgentSessions({ includeInactive: isTerminalRunLifecycleEvent(event) });
 }
 
 /**

@@ -9,7 +9,7 @@
 //
 // Pure logic over the real seam with no mocked engine wire.
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   handleAuthoringStreamChunk,
@@ -18,7 +18,12 @@ import {
 } from "./authoring";
 import type { StreamChunk } from "./queries";
 import { queryClient } from "./queryClient";
-import { agentKeys, isAgentLifecycleEvent, routeAgentLifecycleEvent } from "./agent";
+import {
+  agentKeys,
+  isAgentLifecycleEvent,
+  isTerminalRunLifecycleEvent,
+  routeAgentLifecycleEvent,
+} from "./agent";
 
 function lifecycleEvent(
   overrides: Partial<AuthoringLifecycleEvent> = {},
@@ -86,6 +91,93 @@ describe("routeAgentLifecycleEvent", () => {
     seedAgentSessionCache();
     routeAgentLifecycleEvent(lifecycleEvent({ aggregate_kind: "proposal" }));
     expect(agentSessionsInvalidated()).toBe(false);
+  });
+});
+
+describe("isTerminalRunLifecycleEvent", () => {
+  it("claims the settled run terminals (completed, cancelled, failed)", () => {
+    for (const event_kind of ["run.completed", "run.cancelled", "run.failed"]) {
+      expect(
+        isTerminalRunLifecycleEvent(
+          lifecycleEvent({ aggregate_kind: "run", event_kind }),
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("does not claim an in-flight run.started", () => {
+    expect(
+      isTerminalRunLifecycleEvent(
+        lifecycleEvent({ aggregate_kind: "run", event_kind: "run.started" }),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not claim a session event that merely names a run-like kind", () => {
+    expect(
+      isTerminalRunLifecycleEvent(
+        lifecycleEvent({ aggregate_kind: "session", event_kind: "run.completed" }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("terminal-aware invalidation: run.completed lands the settled snapshot", () => {
+  // Seed an INACTIVE (no-observer) session-detail query carrying a counting
+  // fetcher, so a later invalidation's refetchType is observable through the
+  // fetch count — a backgrounded, cached open session. Real react-query, no mock.
+  async function seedInactiveSessionDetail(
+    sessionId: string,
+    counter: { n: number },
+  ): Promise<void> {
+    await queryClient.prefetchQuery({
+      queryKey: agentKeys.session(sessionId),
+      queryFn: () => {
+        counter.n += 1;
+        return { seeded: true, sessionId };
+      },
+    });
+  }
+
+  it("refetches an inactive session detail on a terminal run.completed", async () => {
+    const counter = { n: 0 };
+    await seedInactiveSessionDetail("session:backgrounded", counter);
+    expect(counter.n).toBe(1);
+
+    routeAgentLifecycleEvent(
+      lifecycleEvent({
+        aggregate_kind: "run",
+        aggregate_id: "run:done",
+        event_kind: "run.completed",
+      }),
+    );
+
+    // A terminal event forces a refetch even of the inactive query so the settled
+    // snapshot (which the transcript renders as Done) lands durably.
+    await vi.waitFor(() => expect(counter.n).toBe(2));
+  });
+
+  it("leaves an inactive session detail unfetched on an in-flight run.started", async () => {
+    const counter = { n: 0 };
+    await seedInactiveSessionDetail("session:backgrounded-2", counter);
+    expect(counter.n).toBe(1);
+
+    routeAgentLifecycleEvent(
+      lifecycleEvent({
+        aggregate_kind: "run",
+        aggregate_id: "run:live",
+        event_kind: "run.started",
+      }),
+    );
+
+    // The in-flight event only refreshes active (on-screen) caches, so a
+    // backgrounded session is marked stale but not refetched — no churn.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(counter.n).toBe(1);
+    expect(
+      queryClient.getQueryState(agentKeys.session("session:backgrounded-2"))
+        ?.isInvalidated,
+    ).toBe(true);
   });
 });
 
