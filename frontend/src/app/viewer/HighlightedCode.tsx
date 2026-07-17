@@ -1,4 +1,10 @@
-import type { ChangeEvent, KeyboardEventHandler, ReactElement, Ref } from "react";
+import type {
+  CSSProperties,
+  ChangeEvent,
+  KeyboardEventHandler,
+  ReactElement,
+  Ref,
+} from "react";
 import { useState } from "react";
 
 import type { TokenLine } from "./useHighlighter";
@@ -12,7 +18,16 @@ export function splitHighlightedTextLines(
   return source.length === 0 ? [""] : source.split("\n");
 }
 
-/** Render one tokenized source line, degrading to the raw text while Shiki loads. */
+/** Render one tokenized source line, degrading to the raw text while Shiki loads.
+ *
+ *  Tokens are multi-theme (`defaultColor: false`), so a token carries no `color`
+ *  and no `fontStyle` — both ride in `htmlStyle` as one custom property per theme
+ *  and per property (`--shiki-dark`, `--shiki-dark-font-weight`, …), because the
+ *  themes may disagree. `styles.css` maps the active `[data-theme]` onto the
+ *  matching set, which is what lets a theme flip repaint without re-tokenizing.
+ *  Emphasis therefore must NOT be re-derived from `token.fontStyle` here: it is
+ *  undefined under multi-theme, and doing so silently drops bold headings and
+ *  italic emphasis in the Markdown editor. */
 export function HighlightedLineContent({
   raw,
   tokens,
@@ -24,18 +39,7 @@ export function HighlightedLineContent({
   return (
     <>
       {tokens.map((token, i) => (
-        <span
-          key={i}
-          data-highlight-token
-          style={{
-            color: token.color,
-            ...(token.fontStyle && token.fontStyle & 1 ? { fontStyle: "italic" } : {}),
-            ...(token.fontStyle && token.fontStyle & 2 ? { fontWeight: 700 } : {}),
-            ...(token.fontStyle && token.fontStyle & 4
-              ? { textDecoration: "underline" }
-              : {}),
-          }}
-        >
+        <span key={i} data-highlight-token style={token.htmlStyle as CSSProperties}>
           {token.content || " "}
         </span>
       ))}

@@ -91,28 +91,31 @@ describe("language resolver", () => {
 });
 
 describe("Shiki core tokenization (real engine)", () => {
-  it("tokenizes rust to HAST with token-bound CSS-variable foregrounds", async () => {
+  it("tokenizes rust to HAST carrying every theme's foreground as a CSS variable", async () => {
     // Use the real fine-grained core directly: this is the same pipeline
-    // useHighlighter drives, proving the token-bound theme emits var(--color-*)
-    // foregrounds (the OKLCH theme binding) against the real tokenizer.
+    // useHighlighter drives, proving multi-theme tokenization emits one
+    // --shiki-<key> variable per theme against the real tokenizer.
     const { createHighlighterCore } = await import("shiki/core");
     const { createJavaScriptRegexEngine } = await import("shiki/engine/javascript");
-    const { VAULTSPEC_SHIKI_THEME, VAULTSPEC_SHIKI_THEME_NAME } =
+    const { SYNTAX_THEMES, SYNTAX_THEME_INPUTS, SYNTAX_THEME_KEYS, syntaxThemeVar } =
       await import("./highlighterTheme");
     const rust = (await import("@shikijs/langs/rust")).default;
 
     const hl = await createHighlighterCore({
-      themes: [VAULTSPEC_SHIKI_THEME],
+      themes: SYNTAX_THEME_INPUTS,
       langs: [rust],
       engine: createJavaScriptRegexEngine(),
     });
     const hast = await hl.codeToHast("fn main() {}", {
       lang: "rust",
-      theme: VAULTSPEC_SHIKI_THEME_NAME,
+      themes: SYNTAX_THEMES,
+      defaultColor: false,
     });
-    // The HAST serializes to spans whose inline styles reference theme tokens.
     const serialized = JSON.stringify(hast);
-    expect(serialized).toContain("var(--color-");
+    // Every theme's foreground rides along, so a theme flip needs no re-tokenize.
+    for (const key of Object.values(SYNTAX_THEME_KEYS)) {
+      expect(serialized).toContain(syntaxThemeVar(key));
+    }
     // The keyword `fn` tokenizes (a non-trivial grammar match, not plain text).
     expect(serialized).toContain("fn");
     hl.dispose?.();

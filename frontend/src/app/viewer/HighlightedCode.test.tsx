@@ -44,7 +44,10 @@ describe("HighlightedTextarea", () => {
     await waitFor(() => {
       const token = document.querySelector("[data-highlight-token]") as HTMLElement;
       expect(token).toBeTruthy();
-      expect(token.getAttribute("style") ?? "").toContain("var(--color-");
+      // Multi-theme tokens carry one foreground variable per theme; styles.css
+      // selects one by [data-theme]. No baked colour on the span.
+      expect(token.getAttribute("style") ?? "").toContain("--shiki-light:");
+      expect(token.getAttribute("style") ?? "").toContain("--shiki-dark:");
     }, ENGINE_WAIT);
 
     fireEvent.change(editor, {

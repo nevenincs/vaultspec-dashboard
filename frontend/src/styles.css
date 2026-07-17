@@ -1179,3 +1179,60 @@
 .h-px {
   height: 0.0625rem;
 }
+
+/* ============================================================================
+   SYNTAX TOKEN THEME BINDING (editor-change-fidelity).
+
+   The highlighter tokenizes ONCE against all three GitHub themes at once (Shiki
+   multi-theme, `defaultColor: false`), emitting each theme's foreground onto the
+   token span as a custom property rather than a baked colour:
+
+     --shiki-light  (github-light)  --shiki-dark (github-dark)
+     --shiki-hc     (github-dark-high-contrast)
+
+   These rules select the one matching the active [data-theme]. So switching theme
+   is a pure CSS repaint of already-tokenized text - the one-tokenization property
+   the review-rail-viewers ADR required, preserved while retiring its ten-scope
+   token-bound palette (which could not separate the scopes a grammar emits, and so
+   rendered code near-monochrome).
+
+   The variable KEYS are a contract with SYNTAX_THEME_KEYS in
+   `app/viewer/highlighterTheme.ts` - renaming one side silently drops colour, so
+   `highlighterTheme.test.tsx` pins them.
+
+   Syntax colour is a legibility instrument, not decoration: the design-system rule
+   resolves the conflict with warmth in its own precedence clause ("Contrast, diff
+   legibility, density, and reactivity override warmth on any conflict"). The hexes
+   are vendored upstream theme DATA, never authored here, so no raw hex enters the
+   token tier.
+
+   Light is the unprefixed base so a token still paints if [data-theme] is somehow
+   absent before first paint (fail-visible, never invisible text).
+
+   EMPHASIS rides the same way. A theme may set weight/style/decoration per scope
+   (github-* bolds Markdown headings and italicises emphasis), and multi-theme mode
+   emits those as `--shiki-<key>-font-weight` / `-font-style` / `-text-decoration`
+   rather than on the token, so they must be mapped here too - otherwise Markdown
+   headings lose their bold. Each falls back to `inherit` for the majority of tokens
+   that set no emphasis.
+   ============================================================================ */
+[data-highlight-token] {
+  color: var(--shiki-light);
+  font-style: var(--shiki-light-font-style, inherit);
+  font-weight: var(--shiki-light-font-weight, inherit);
+  text-decoration: var(--shiki-light-text-decoration, inherit);
+}
+
+[data-theme="dark"] [data-highlight-token] {
+  color: var(--shiki-dark);
+  font-style: var(--shiki-dark-font-style, inherit);
+  font-weight: var(--shiki-dark-font-weight, inherit);
+  text-decoration: var(--shiki-dark-text-decoration, inherit);
+}
+
+[data-theme="high-contrast"] [data-highlight-token] {
+  color: var(--shiki-hc);
+  font-style: var(--shiki-hc-font-style, inherit);
+  font-weight: var(--shiki-hc-font-weight, inherit);
+  text-decoration: var(--shiki-hc-text-decoration, inherit);
+}

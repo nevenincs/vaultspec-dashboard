@@ -9,9 +9,11 @@
 // surfaces share one tokenizer (the ADR's one-highlighter requirement).
 //
 // Tokenization runs to HAST (`codeToHast`) for React rendering; the consumer
-// converts the HAST to React elements. The theme is the single token-bound theme
-// (highlighterTheme.ts), so a theme switch repaints with no re-tokenization —
-// the `var(--color-*)` foregrounds resolve against the active [data-theme].
+// converts the HAST to React elements. Tokenization is MULTI-THEME
+// (`defaultColor: false`): every token is resolved against all three GitHub themes
+// at once and carries its colours as CSS variables (`htmlStyle`), so a theme switch
+// repaints with no re-tokenization — `styles.css` maps the active [data-theme] to
+// the matching variable. See highlighterTheme.ts for the binding.
 
 import { useEffect, useSyncExternalStore } from "react";
 import type { Root } from "hast";
@@ -20,7 +22,7 @@ import { createHighlighterCore } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 
 import { resolveGrammar } from "./languages";
-import { VAULTSPEC_SHIKI_THEME, VAULTSPEC_SHIKI_THEME_NAME } from "./highlighterTheme";
+import { SYNTAX_THEMES, SYNTAX_THEME_INPUTS } from "./highlighterTheme";
 
 // The single highlighter instance, created lazily on first use and reused across
 // every viewer mount for the session. A module-level promise dedupes concurrent
@@ -34,8 +36,10 @@ const TOKENIZATION_CACHE_CAP = 48;
 
 function getHighlighter(): Promise<HighlighterCore> {
   highlighterPromise ??= createHighlighterCore({
-    // The single token-bound theme; languages load lazily below.
-    themes: [VAULTSPEC_SHIKI_THEME],
+    // The three GitHub themes (light / dark / high-contrast), registered up front
+    // because every tokenization resolves against all three at once; languages
+    // still load lazily below.
+    themes: SYNTAX_THEME_INPUTS,
     langs: [],
     // The JavaScript regex engine: no Oniguruma WASM asset (clean Vite build,
     // SSR-safe), per the ADR's engine choice.
@@ -150,7 +154,10 @@ function ensureHighlightedHast(
         // A resolved grammar, or the plain "text" language for an unknown hint
         // (Shiki's built-in no-op grammar: a plain, un-tokenized render).
         lang: languageId ?? "text",
-        theme: VAULTSPEC_SHIKI_THEME_NAME,
+        themes: SYNTAX_THEMES,
+        // No baked foreground: emit every theme's colour as a CSS variable so the
+        // active [data-theme] selects one without re-tokenizing.
+        defaultColor: false,
       });
       entry.result = { hast, loading: false, languageId };
       entry.promise = null;
@@ -253,9 +260,13 @@ function ensureTokenLines(
     try {
       const highlighter = await getHighlighter();
       const languageId = await ensureLanguage(highlighter, languageHint);
-      const lines = await highlighter.codeToTokensBase(code, {
+      // `codeToTokens` (not `codeToTokensBase`, which is single-theme only) is the
+      // multi-theme seam: each token carries `htmlStyle` with one CSS variable per
+      // registered theme, and no `color`.
+      const { tokens: lines } = highlighter.codeToTokens(code, {
         lang: languageId ?? "text",
-        theme: VAULTSPEC_SHIKI_THEME_NAME,
+        themes: SYNTAX_THEMES,
+        defaultColor: false,
       });
       entry.result = { lines, loading: false, languageId };
       entry.promise = null;
