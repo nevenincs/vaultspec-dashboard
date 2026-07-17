@@ -108,19 +108,19 @@ describe("localization runtime and messages", () => {
   });
 
   it("normalizes bounded descriptors and resolves named interpolation", () => {
-    const descriptor = createMessageDescriptor("errors:unexpectedSection.message", {
-      section: "history",
+    const descriptor = createMessageDescriptor("common:finalWave.history.openCommit", {
+      commit: "history",
     });
     const runtime = createTestLocalizationRuntime(ltrTestLocale);
 
     expect(descriptor).not.toBeNull();
     expect(descriptor).toEqual({
-      key: "errors:unexpectedSection.message",
-      values: { section: "history" },
+      key: "common:finalWave.history.openCommit",
+      values: { commit: "history" },
     });
     expect(Object.isFrozen(descriptor)).toBe(true);
     expect(Object.isFrozen(descriptor?.values)).toBe(true);
-    expect(resolveMessage(runtime, descriptor)).toBe("Réessayez history.");
+    expect(resolveMessage(runtime, descriptor)).toBe("Ouvrir history");
 
     const tooManyValues = Object.fromEntries(
       Array.from({ length: MESSAGE_VALUE_COUNT_MAX + 1 }, (_, index) => [
@@ -302,7 +302,7 @@ describe("localization runtime and messages", () => {
     expectSafeVisibleMessage(malformed, malformedKey);
 
     const incompleteRuntime = createTestLocalizationRuntime(ltrTestLocale);
-    const incompleteKey = "errors:unexpectedSection.message";
+    const incompleteKey = "common:finalWave.history.openCommit";
     const incomplete = resolveMessage(incompleteRuntime, { key: incompleteKey });
     expect(
       resolveMessageResult(incompleteRuntime, { key: incompleteKey }).usedFallback,
@@ -337,10 +337,10 @@ describe("localization runtime and messages", () => {
     const userValue = "literal $t(common:actions.retry) and {{untouched}}";
     expect(
       resolveMessage(userDataRuntime, {
-        key: "errors:unexpectedSection.message",
-        values: { section: userValue },
+        key: "common:finalWave.history.openCommit",
+        values: { commit: userValue },
       }),
-    ).toBe(`Réessayez ${userValue}.`);
+    ).toBe(`Ouvrir ${userValue}`);
   });
 
   it("does not expose invalid descriptor metadata in fallback copy", () => {

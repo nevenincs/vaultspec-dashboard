@@ -138,13 +138,13 @@ describe.sequential("React localization and document language", () => {
 
   it("uses real right-to-left test resources without unresolved copy", async () => {
     const runtime = createTestLocalizationRuntime(rtlTestLocale);
-    const message = runtime.t("errors:unexpectedSection.message", {
-      section: "السجل",
+    const message = runtime.t("common:finalWave.history.openCommit", {
+      commit: "السجل",
     });
 
-    expect(message).toBe("حاول فتح السجل مرة أخرى.");
+    expect(message).toBe("فتح السجل");
     expect(message).not.toContain("{{");
-    expect(message).not.toContain("errors:");
+    expect(message).not.toContain("common:");
     expect(message).not.toContain("\u2014");
     expect(rtlTestResources.errors.fallback.contentUnavailable).not.toContain("\u2014");
   });
