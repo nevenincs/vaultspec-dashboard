@@ -165,7 +165,12 @@ pub fn janitor_sweep(store: &mut Store, now_ms: i64, config: &JanitorConfig) -> 
     match store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
         uow.tool_permissions().expire_due(now_ms, budget)
     }) {
-        Ok(expired) => report.expired_permissions = expired,
+        Ok((expired, scanned)) => {
+            report.expired_permissions = expired;
+            if scanned >= budget {
+                report.budget_exhausted.push("permission_expiry");
+            }
+        }
         Err(err) => report.duty_errors.push(format!("permission_expiry: {err}")),
     }
 
@@ -175,6 +180,7 @@ pub fn janitor_sweep(store: &mut Store, now_ms: i64, config: &JanitorConfig) -> 
     // suspending forever.
     match store.with_unit_of_work(CommandKind::RequestToolPermission, |uow| {
         let pending = uow.interrupts().pending_interrupts(budget)?;
+        let scanned = pending.len() as u32;
         let mut expired = 0usize;
         for interrupt in pending {
             let Some(tool_call_id) = interrupt.tool_call_id else {
@@ -194,9 +200,14 @@ pub fn janitor_sweep(store: &mut Store, now_ms: i64, config: &JanitorConfig) -> 
                 expired += 1;
             }
         }
-        Ok(expired)
+        Ok((expired, scanned))
     }) {
-        Ok(expired) => report.interrupt_driven_expiries = expired,
+        Ok((expired, scanned)) => {
+            report.interrupt_driven_expiries = expired;
+            if scanned >= budget {
+                report.budget_exhausted.push("interrupt_reap");
+            }
+        }
         Err(err) => report.duty_errors.push(format!("interrupt_reap: {err}")),
     }
 
@@ -204,7 +215,12 @@ pub fn janitor_sweep(store: &mut Store, now_ms: i64, config: &JanitorConfig) -> 
     match store.with_unit_of_work(CommandKind::RenewLease, |uow| {
         uow.leases().expire_due(now_ms, budget)
     }) {
-        Ok(expired) => report.expired_leases = expired,
+        Ok((expired, scanned)) => {
+            report.expired_leases = expired;
+            if scanned >= budget {
+                report.budget_exhausted.push("lease_expiry");
+            }
+        }
         Err(err) => report.duty_errors.push(format!("lease_expiry: {err}")),
     }
 
@@ -219,7 +235,14 @@ pub fn janitor_sweep(store: &mut Store, now_ms: i64, config: &JanitorConfig) -> 
             GENERATION_TRANSCRIPT_SUMMARY_HASH,
         )
     }) {
-        Ok(summary) => report.backstop_compacted = summary.compacted_count,
+        Ok(summary) => {
+            report.backstop_compacted = summary.compacted_count;
+            // `limited_count` is the still-due remainder the bounded sweep could not
+            // reach — the backstop's own budget-exhaustion signal.
+            if summary.limited_count > 0 {
+                report.budget_exhausted.push("compaction_backstop");
+            }
+        }
         Err(err) => report
             .duty_errors
             .push(format!("compaction_backstop: {err}")),
@@ -513,18 +536,87 @@ mod tests {
             first.budget_exhausted.contains(&"run_reap"),
             "the report names the exhausted duty: {first:?}"
         );
-        // The compaction backstop ran as a pure no-op on a store whose per-turn path owns
-        // every compactable record — never a second compaction of the same due set.
-        assert_eq!(first.backstop_compacted, 0, "{first:?}");
 
         let second = janitor_sweep(&mut store, 300 + STALE + 2, &janitor_config(2));
         assert_eq!(
             second.reaped_runs, 1,
             "the remainder reaps next sweep: {second:?}"
         );
+    }
+
+    #[test]
+    fn janitor_backstop_compacts_only_what_the_per_turn_path_left_behind() {
+        use super::super::super::store::retention::{
+            LifecycleStatus, PayloadState, RetentionClass,
+        };
+        use super::super::tests::{payload_state, seed_retention};
+
+        let (_dir, _path, mut store) = temp_store();
+        let owner = actor();
+        register_actor(&mut store, &owner);
+        let now = 10_000_000;
+
+        // A session with a due terminal transcript: the PER-TURN path compacts it when
+        // the next prompt turn arrives — the owner acting first.
+        let session = accepted(
+            create_session(
+                &mut store,
+                context(&owner, "idem:jan:bkstp:create", now - 100),
+                session_request("Backstop session"),
+            )
+            .unwrap(),
+        );
+        seed_retention(
+            &mut store,
+            "authoring_prompt_turn",
+            "turn_owner_compacted",
+            RetentionClass::GenerationTranscript,
+            LifecycleStatus::Superseded,
+            Some(now - 1),
+            now,
+        );
+        accepted(
+            start_prompt_turn(
+                &mut store,
+                context(&owner, "idem:jan:bkstp:turn", now),
+                session.session_id.clone(),
+                turn_request("A turn whose hook compacts the due transcript."),
+            )
+            .unwrap(),
+        );
         assert_eq!(
-            second.backstop_compacted, 0,
-            "still nothing due: {second:?}"
+            payload_state(&mut store, "authoring_prompt_turn", "turn_owner_compacted"),
+            PayloadState::Summarized,
+            "the per-turn path owned this compaction"
+        );
+
+        // The janitor sweep after the owner acted: NOTHING due — the backstop never
+        // re-compacts what the per-turn path already summarized.
+        let after_owner = janitor_sweep(&mut store, now + 10, &janitor_config(16));
+        assert_eq!(
+            after_owner.backstop_compacted, 0,
+            "never a second compaction of the owner's due set: {after_owner:?}"
+        );
+
+        // A due transcript in a session that never receives another turn: ONLY the
+        // backstop can reach it — the stated purpose of the janitor's compaction duty.
+        seed_retention(
+            &mut store,
+            "authoring_prompt_turn",
+            "turn_orphaned",
+            RetentionClass::GenerationTranscript,
+            LifecycleStatus::Superseded,
+            Some(now + 50),
+            now + 50,
+        );
+        let backstop = janitor_sweep(&mut store, now + 100, &janitor_config(16));
+        assert_eq!(
+            backstop.backstop_compacted, 1,
+            "the backstop compacts the no-more-turns leftover: {backstop:?}"
+        );
+        assert_eq!(
+            payload_state(&mut store, "authoring_prompt_turn", "turn_orphaned"),
+            PayloadState::Summarized
         );
     }
 }

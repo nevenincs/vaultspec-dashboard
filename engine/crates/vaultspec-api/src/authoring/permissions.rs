@@ -374,8 +374,9 @@ impl ToolPermissionRepository<'_, '_> {
     /// human-gated request past its decision window, bounded by `cap`. This is the SAME
     /// transition the decision/resume paths perform lazily on touch — the sweep only
     /// makes it eventual for records nothing ever touches again. Returns how many
-    /// requests actually expired.
-    pub fn expire_due(&self, now_ms: i64, cap: u32) -> StoreResult<usize> {
+    /// requests actually expired and how many pending rows were scanned — a scan that
+    /// fills the cap means work may remain for the next sweep.
+    pub fn expire_due(&self, now_ms: i64, cap: u32) -> StoreResult<(usize, u32)> {
         let ids = self.repo.query_collect(
             "SELECT tool_call_id
              FROM authoring_tool_permission_requests AS t1
@@ -390,6 +391,7 @@ impl ToolPermissionRepository<'_, '_> {
             [cap],
             |row| row.get::<_, String>(0),
         )?;
+        let scanned = ids.len() as u32;
         let mut expired = 0;
         for id in ids {
             let tool_call_id =
@@ -399,7 +401,7 @@ impl ToolPermissionRepository<'_, '_> {
                 expired += 1;
             }
         }
-        Ok(expired)
+        Ok((expired, scanned))
     }
 
     /// The latest durable request for a tool call (by insert sequence).

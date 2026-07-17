@@ -377,15 +377,18 @@ impl LeaseRepository<'_, '_> {
     /// Sweep-driven expiry (janitor P04a.S57): the SAME expire-on-read transition,
     /// driven eventually for leases nothing touches again. Bounded by `cap` (the table
     /// holds at most one row per scope, so the page is inherently small). Returns how
-    /// many leases actually expired.
-    pub fn expire_due(&self, now_ms: i64, cap: u32) -> StoreResult<usize> {
+    /// many leases actually expired and how many rows were scanned — a scan that fills
+    /// the cap means work may remain for the next sweep.
+    pub fn expire_due(&self, now_ms: i64, cap: u32) -> StoreResult<(usize, u32)> {
+        let rows = self.list_leases(cap)?;
+        let scanned = rows.len() as u32;
         let mut expired = 0;
-        for mut record in self.list_leases(cap)? {
+        for mut record in rows {
             if self.expire_in_place(&mut record, now_ms)? {
                 expired += 1;
             }
         }
-        Ok(expired)
+        Ok((expired, scanned))
     }
 
     /// Expire-on-read: transition a `Held` row past its TTL to `Expired` and persist it,

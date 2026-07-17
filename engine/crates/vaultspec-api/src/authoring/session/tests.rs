@@ -107,7 +107,7 @@ fn other_actor() -> ActorRef {
     }
 }
 
-fn seed_retention(
+pub(super) fn seed_retention(
     store: &mut Store,
     kind: &str,
     id: &str,
@@ -135,7 +135,7 @@ fn seed_retention(
         .unwrap();
 }
 
-fn payload_state(store: &mut Store, kind: &str, id: &str) -> PayloadState {
+pub(super) fn payload_state(store: &mut Store, kind: &str, id: &str) -> PayloadState {
     store
         .with_read_unit_of_work(CommandKind::RecoverEventStream, |uow| {
             Ok(uow
