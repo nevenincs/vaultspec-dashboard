@@ -78,6 +78,22 @@ describe("isAgentLifecycleEvent", () => {
       expect(isAgentLifecycleEvent(lifecycleEvent({ aggregate_kind }))).toBe(false);
     }
   });
+
+  it("claims the specific turn.queued kind WITHOUT widening the whole turn aggregate (S37)", () => {
+    // turn.queued changes served queued_turn_ids, so the agent slice reacts to it.
+    expect(
+      isAgentLifecycleEvent(
+        lifecycleEvent({ aggregate_kind: "turn", event_kind: "turn.queued" }),
+      ),
+    ).toBe(true);
+    // But an unrelated turn-aggregate event is NOT claimed — the widening is scoped
+    // to the one kind, so other consumers never receive turn events they never handled.
+    expect(
+      isAgentLifecycleEvent(
+        lifecycleEvent({ aggregate_kind: "turn", event_kind: "turn.created" }),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe("routeAgentLifecycleEvent", () => {
@@ -119,6 +135,30 @@ describe("isTerminalRunLifecycleEvent", () => {
         lifecycleEvent({ aggregate_kind: "session", event_kind: "run.completed" }),
       ),
     ).toBe(false);
+  });
+
+  it("claims a terminal session.cancelled so its settled snapshot lands inactive (S37)", () => {
+    expect(
+      isTerminalRunLifecycleEvent(
+        lifecycleEvent({ aggregate_kind: "session", event_kind: "session.cancelled" }),
+      ),
+    ).toBe(true);
+    // A non-terminal session event stays in-flight (active-only invalidation).
+    expect(
+      isTerminalRunLifecycleEvent(
+        lifecycleEvent({ aggregate_kind: "session", event_kind: "session.created" }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("turn.queued routing (S37)", () => {
+  it("invalidates the agent session caches so served queued_turn_ids refresh", () => {
+    seedAgentSessionCache();
+    routeAgentLifecycleEvent(
+      lifecycleEvent({ aggregate_kind: "turn", event_kind: "turn.queued" }),
+    );
+    expect(agentSessionsInvalidated()).toBe(true);
   });
 });
 

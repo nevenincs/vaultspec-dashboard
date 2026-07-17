@@ -125,6 +125,10 @@ export interface SessionSnapshot {
   turns: PromptTurnRecord[];
   runs: AgentRunRecord[];
   active_run: AgentRunRecord | null;
+  /** The ids of turns QUEUED behind the active run (engine `queued_turn_ids`,
+   *  agent-wire-gaps D1): the SERVED queue state the composer reads instead of a
+   *  client one-slot queue. Empty when nothing is queued. */
+  queued_turn_ids: string[];
   caps: SessionSnapshotCaps;
   tiers: TiersBlock;
 }
@@ -244,9 +248,63 @@ export interface ResumeRunPayload {
   session_id?: string;
 }
 
+/** The typed decision the resume WRITE carries (engine `InterruptResumeDecision`,
+ *  agent-wire-gaps S18): approve/reject a tool permission, OR steer the parked run
+ *  with a fresh prompt. UNTAGGED on the wire (disjoint by their required fields), the
+ *  SAME language the read projection speaks. */
+export type AgentInterruptDecision =
+  | { decision: "approve" | "reject"; comment?: string }
+  | { prompt: string };
+
 export interface ResumeInterruptPayload {
-  /** Opaque domain decision JSON the run resumes with. */
-  decision: unknown;
+  /** The typed decision the run resumes with (S18: no longer opaque). */
+  decision: AgentInterruptDecision;
+}
+
+/** Bounded interrupt resume state (engine `InterruptResumeState`). A `pending`
+ *  entry is the flag a client recovers a still-open permission prompt from. */
+export type InterruptResumeState = "pending" | "resolved";
+
+/** The typed, per-kind human decision projected onto a RESOLVED interrupt (engine
+ *  `InterruptDecisionProjection`, D3/S18): tagged so the client switches on `kind`.
+ *  A legacy opaque blob projects as `decision_unreadable`. */
+export type InterruptDecisionProjection =
+  | { kind: "tool_permission"; decision: "approve" | "reject"; comment?: string }
+  | { kind: "steer"; prompt: string }
+  | { kind: "decision_unreadable" };
+
+/** One interrupt as served on the recovery listing (engine `InterruptProjection`,
+ *  D3): the stable id, the run it gates, its kind, the gated tool call, its resume
+ *  state, and — when resolved — the typed decision projection. */
+export interface AgentInterrupt {
+  interrupt_id: string;
+  run_id: string;
+  kind: string;
+  tool_call_id: string | null;
+  resume_state: InterruptResumeState;
+  decision: InterruptDecisionProjection | null;
+  created_at_ms: number;
+  updated_at_ms: number;
+}
+
+/** A bounded page of interrupt projections for one run (engine `InterruptListPage`). */
+export interface InterruptListPage {
+  items: AgentInterrupt[];
+  cap: number;
+  truncated: boolean;
+  tiers: TiersBlock;
+}
+
+/** The active scope's operation-mode record (engine `GET /authoring/v1/mode`,
+ *  agent-wire-gaps D5): the SERVED mode the autonomy control renders pre-proposal.
+ *  `mode` is the bounded served token the client maps to a plain label. */
+export interface AgentOperationMode {
+  scope_id: string;
+  mode: string;
+  policy_id: string | null;
+  policy_version: number | null;
+  updated_at_ms: number;
+  tiers: TiersBlock;
 }
 
 export interface ToolPermissionDecisionPayload {
@@ -353,6 +411,12 @@ function adaptList<T>(raw: unknown, adapt: (item: unknown) => T): T[] {
   return Array.isArray(raw) ? raw.map(adapt) : [];
 }
 
+function adaptStrList(raw: unknown): string[] {
+  return Array.isArray(raw)
+    ? raw.filter((x): x is string => typeof x === "string")
+    : [];
+}
+
 export function adaptSessionSnapshot(raw: unknown): SessionSnapshot {
   const r: Rec = isRec(raw) ? raw : {};
   return {
@@ -360,6 +424,7 @@ export function adaptSessionSnapshot(raw: unknown): SessionSnapshot {
     turns: adaptList(r.turns, adaptTurnRecord),
     runs: adaptList(r.runs, adaptRunRecord),
     active_run: r.active_run == null ? null : adaptRunRecord(r.active_run),
+    queued_turn_ids: adaptStrList(r.queued_turn_ids),
     caps: adaptCaps(r.caps),
     tiers: asTiers(r.tiers),
   };
@@ -373,6 +438,71 @@ export function adaptSessionListPage(raw: unknown): SessionListPage {
     truncated: asBool(r.truncated),
     next_after_ms: r.next_after_ms == null ? null : asNum(r.next_after_ms),
     next_after_session_id: asStr(r.next_after_session_id) ?? null,
+    tiers: asTiers(r.tiers),
+  };
+}
+
+const INTERRUPT_RESUME_STATES: readonly InterruptResumeState[] = [
+  "pending",
+  "resolved",
+];
+
+function adaptInterruptDecisionProjection(
+  raw: unknown,
+): InterruptDecisionProjection | null {
+  if (!isRec(raw)) return null;
+  const kind = asStr(raw.kind);
+  if (kind === "tool_permission") {
+    const decision = asStr(raw.decision);
+    return {
+      kind: "tool_permission",
+      decision: decision === "reject" ? "reject" : "approve",
+      ...(asStr(raw.comment) ? { comment: asStr(raw.comment) } : {}),
+    };
+  }
+  if (kind === "steer") {
+    return { kind: "steer", prompt: asStr(raw.prompt) ?? "" };
+  }
+  // Any unrecognized/legacy projection degrades to the unreadable escape.
+  return { kind: "decision_unreadable" };
+}
+
+export function adaptInterrupt(raw: unknown): AgentInterrupt {
+  const r: Rec = isRec(raw) ? raw : {};
+  const state = asStr(r.resume_state);
+  return {
+    interrupt_id: asStr(r.interrupt_id) ?? "",
+    run_id: asStr(r.run_id) ?? "",
+    kind: asStr(r.kind) ?? "",
+    tool_call_id: asStr(r.tool_call_id) ?? null,
+    resume_state:
+      state && (INTERRUPT_RESUME_STATES as readonly string[]).includes(state)
+        ? (state as InterruptResumeState)
+        : "pending",
+    decision: r.decision == null ? null : adaptInterruptDecisionProjection(r.decision),
+    created_at_ms: asNum(r.created_at_ms),
+    updated_at_ms: asNum(r.updated_at_ms),
+  };
+}
+
+export function adaptInterruptListPage(raw: unknown): InterruptListPage {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    items: adaptList(r.items, adaptInterrupt),
+    cap: asNum(r.cap),
+    truncated: asBool(r.truncated),
+    tiers: asTiers(r.tiers),
+  };
+}
+
+export function adaptOperationMode(raw: unknown): AgentOperationMode {
+  const r: Rec = isRec(raw) ? raw : {};
+  return {
+    scope_id: asStr(r.scope_id) ?? "",
+    mode: asStr(r.mode) ?? "",
+    policy_id: asStr(r.policy_id) ?? null,
+    policy_version: r.policy_version == null ? null : asNum(r.policy_version),
+    updated_at_ms: asNum(r.updated_at_ms),
     tiers: asTiers(r.tiers),
   };
 }

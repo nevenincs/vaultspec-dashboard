@@ -612,12 +612,13 @@ export function Composer() {
     setSendFailed(false);
     try {
       if (destination === "steer" && pendingInterrupt !== null) {
-        // D4: the same input resumes the parked run. The decision body is the
-        // opaque domain JSON the engine stores verbatim; the steer grammar is
-        // client-defined until the interrupt plane serves a decision schema.
+        // D4/S18: the same input resumes the parked run through the TYPED steer
+        // decision (`{prompt}` — the engine's `InterruptResumeDecision::Steer`),
+        // no longer an opaque client-defined blob. The read projection parses it
+        // back through the same schema.
         await resumeInterrupt.mutateAsync({
           interruptId: pendingInterrupt.interruptId,
-          payload: { decision: { kind: "steer", prompt } },
+          payload: { decision: { prompt } },
         });
         stageAgentInterrupt(null);
       } else {

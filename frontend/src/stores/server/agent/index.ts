@@ -41,15 +41,19 @@ import {
 } from "../authoring";
 import {
   adaptFeedbackBatchReceipt,
+  adaptInterruptListPage,
   adaptInterruptResumeOutcome,
+  adaptOperationMode,
   adaptPreparedToolCall,
   adaptSessionCommandOutcome,
   adaptSessionListPage,
   adaptSessionSnapshot,
   adaptToolCatalog,
   adaptToolPermissionOutcome,
+  type AgentOperationMode,
   type AgentToolCallInput,
   type AgentToolCatalog,
+  type InterruptListPage,
   type CancelRunPayload,
   type CreateFeedbackBatchPayload,
   type CreateSessionPayload,
@@ -187,6 +191,30 @@ export class AgentClient {
   /** `GET /authoring/v1/agent-tools` — the semantic agent-tool catalog. */
   async toolCatalog(signal?: AbortSignal): Promise<AgentToolCatalog> {
     return adaptToolCatalog(await this.get("/authoring/v1/agent-tools", signal));
+  }
+
+  /** `GET /authoring/v1/runs/{run_id}/interrupts` — the bounded, raise-order pending
+   *  interrupt listing for a run (agent-wire-gaps D3). The SERVED recovery read that
+   *  replaces the client-staged interrupt annex: a client reads its pending
+   *  `awaiting_permission` interrupts (and their typed decision projections) back from
+   *  here instead of retaining the tool-execute response. */
+  async listRunInterrupts(
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<InterruptListPage> {
+    return adaptInterruptListPage(
+      await this.get(
+        `/authoring/v1/runs/${encodeURIComponent(runId)}/interrupts`,
+        signal,
+      ),
+    );
+  }
+
+  /** `GET /authoring/v1/mode` — the active scope's operation-mode record (agent-wire-
+   *  gaps D5). The SERVED mode the autonomy control renders pre-proposal, instead of
+   *  inferring mode from an empty review queue. */
+  async operationMode(signal?: AbortSignal): Promise<AgentOperationMode> {
+    return adaptOperationMode(await this.get("/authoring/v1/mode", signal));
   }
 
   // --- mutating commands (ambient actor token) ---
@@ -380,6 +408,9 @@ export const agentKeys = {
   session: (sessionId: string) =>
     [...agentKeys.sessions(), "detail", sessionId] as const,
   toolCatalog: () => [...agentKeys.all, "tool-catalog"] as const,
+  runInterrupts: (runId: string) =>
+    [...agentKeys.all, "run-interrupts", runId] as const,
+  operationMode: () => [...agentKeys.all, "operation-mode"] as const,
 };
 
 /** Invalidate the whole agent read cache — fired after a mutating command and by
@@ -444,6 +475,35 @@ export function useAgentToolCatalog(): UseQueryResult<AgentToolCatalog, Error> {
     queryFn: ({ signal }) => agentClient.toolCatalog(signal),
     staleTime: 300_000,
     gcTime: 600_000,
+  });
+}
+
+/** The bounded pending-interrupt listing for a run (agent-wire-gaps D3, S41): the
+ *  SERVED recovery read the transcript's Approve/Deny surface consumes instead of a
+ *  client-staged annex. Enabled only for a live run; the shared lifecycle feed
+ *  invalidates the agent caches so a newly-parked run refreshes without a poll. */
+export function useRunInterrupts(
+  runId: string | null,
+): UseQueryResult<InterruptListPage, Error> {
+  return useQuery({
+    queryKey: agentKeys.runInterrupts(runId ?? ""),
+    queryFn: ({ signal }) => agentClient.listRunInterrupts(runId ?? "", signal),
+    enabled: !!runId,
+    placeholderData: keepPreviousData,
+    staleTime: 2_000,
+    gcTime: 60_000,
+  });
+}
+
+/** The active scope's operation mode (agent-wire-gaps D5, S43): the SERVED mode the
+ *  autonomy control renders pre-proposal. Bounded caches; the mode changes rarely so
+ *  a modest staleTime keeps the control fresh without a tight poll. */
+export function useOperationMode(): UseQueryResult<AgentOperationMode, Error> {
+  return useQuery({
+    queryKey: agentKeys.operationMode(),
+    queryFn: ({ signal }) => agentClient.operationMode(signal),
+    staleTime: 5_000,
+    gcTime: 60_000,
   });
 }
 
@@ -540,6 +600,14 @@ export function useDecideToolPermission() {
  *  session/run transition appears without a poll. */
 const AGENT_LIFECYCLE_AGGREGATES: ReadonlySet<string> = new Set(["session", "run"]);
 
+/** The specific TURN-aggregate event kinds the agent slice reacts to (S37). We do
+ *  NOT widen `AGENT_LIFECYCLE_AGGREGATES` to include the whole `turn` aggregate —
+ *  that would push every turn-aggregate event to every consumer of this predicate
+ *  (which none of them handle). Only `turn.queued` changes a session snapshot's
+ *  served `queued_turn_ids`, so we match that ONE kind precisely and refresh the
+ *  session caches for it. */
+const AGENT_TURN_EVENT_KINDS: ReadonlySet<string> = new Set(["turn.queued"]);
+
 /** The run lifecycle event kinds that SETTLE a run. `run.completed` (the driver-
  *  reported normal settle) joins the cancel/fail terminals: each is the run's LAST
  *  event, after which the transcript renders the served terminal status verbatim
@@ -551,24 +619,40 @@ const TERMINAL_RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
   "run.failed",
 ]);
 
-/** True when a shared-feed lifecycle event belongs to the agent plane (a session
- *  or run aggregate) and this slice should refresh for it. */
+/** The SESSION lifecycle event kinds that terminate a session (S37): an explicit
+ *  `session.cancelled` is the session's last state change, so — like a terminal run —
+ *  it must reach inactive caches to land the cancelled snapshot even behind a
+ *  collapsed panel. */
+const TERMINAL_SESSION_EVENT_KINDS: ReadonlySet<string> = new Set([
+  "session.cancelled",
+]);
+
+/** True when a shared-feed lifecycle event belongs to the agent plane and this slice
+ *  should refresh for it: a session or run aggregate event, OR the specific
+ *  `turn.queued` kind (S37) that changes served queue state. */
 export function isAgentLifecycleEvent(event: AuthoringLifecycleEvent): boolean {
-  return AGENT_LIFECYCLE_AGGREGATES.has(event.aggregate_kind);
+  return (
+    AGENT_LIFECYCLE_AGGREGATES.has(event.aggregate_kind) ||
+    AGENT_TURN_EVENT_KINDS.has(event.event_kind)
+  );
 }
 
-/** True when a shared-feed event is a run that has settled (terminal), so its
- *  invalidation must reach inactive caches to land the settled snapshot. Exported
+/** True when a shared-feed event is a run or session that has settled (terminal), so
+ *  its invalidation must reach inactive caches to land the settled snapshot. Exported
  *  so the adapter test drives the terminal-vs-in-flight distinction directly. */
 export function isTerminalRunLifecycleEvent(event: AuthoringLifecycleEvent): boolean {
   return (
-    event.aggregate_kind === "run" && TERMINAL_RUN_EVENT_KINDS.has(event.event_kind)
+    (event.aggregate_kind === "run" &&
+      TERMINAL_RUN_EVENT_KINDS.has(event.event_kind)) ||
+    (event.aggregate_kind === "session" &&
+      TERMINAL_SESSION_EVENT_KINDS.has(event.event_kind))
   );
 }
 
 /** Route one shared-feed lifecycle event into the agent caches. Exported so the
  *  adapter test drives it directly, and registered on the shared feed below. A
- *  terminal run event lands the settled snapshot even for an inactive session. */
+ *  terminal run/session event lands the settled snapshot even for an inactive
+ *  session; a `turn.queued` refreshes the active session's served queue state. */
 export function routeAgentLifecycleEvent(event: AuthoringLifecycleEvent): void {
   if (!isAgentLifecycleEvent(event)) return;
   invalidateAgentSessions({ includeInactive: isTerminalRunLifecycleEvent(event) });

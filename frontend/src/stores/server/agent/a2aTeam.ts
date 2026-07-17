@@ -475,10 +475,19 @@ async function* relayFrames(
   }
 }
 
-/** The live relay transcript for a run (bounded, seq-deduped). A reconnect is
- *  handled by TanStack's `retry`; the engine ring replays from the last seq the
- *  reducer holds. Non-authoritative by contract — pair with `useRunProgress` for
- *  the authoritative fallback. */
+/** The live relay transcript for a run (bounded, seq-deduped). A reconnect
+ *  (TanStack `retry`) re-opens the stream WITHOUT a `since=`, so the engine
+ *  replays its full bounded ring and the reducer's seq-dedup drops the overlap —
+ *  correct and bounded, though not bandwidth-minimal on a reconnect. Non-
+ *  authoritative by contract — pair with `useRunProgress` for the authoritative
+ *  fallback.
+ *
+ *  FOLLOW-UP (targeted resume): pass `since=latestRelaySeq(currentFrames)` to
+ *  `openRunStream` so a reconnect resumes from the last seq (mirror
+ *  graphSync's `since=keyframeSeq` anchoring), trimming the replay to the delta.
+ *  Deferred because reading the in-flight accumulator inside `streamedQuery`'s
+ *  `streamFn` across a retry is not a pinned contract; the full-ring replay is
+ *  the safe interim and the seq-dedup already makes it idempotent. */
 export function useRunRelay(
   runId: string | null,
 ): UseQueryResult<RelayTranscriptFrame[], Error> {
