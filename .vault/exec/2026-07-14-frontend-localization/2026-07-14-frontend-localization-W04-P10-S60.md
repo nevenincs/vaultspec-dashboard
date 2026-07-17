@@ -36,5 +36,6 @@ one hardcoded-label defect split across the query layer and its render
 consumer). Independently reverified: `git diff` matches the reported change
 exactly, localization scanner clean, and the live suite (`gitchanges.test.ts` +
 `catalogKeys.test.ts` + `messagePolicy.test.ts`, the same 51/51 batch as S234)
-passed. This record was authored during a reconciliation pass; not a fresh
+passed. Landed at commit `53426c75f8`, reverified against that commit after it
+landed. This record was authored during a reconciliation pass; not a fresh
 implementation on my part.

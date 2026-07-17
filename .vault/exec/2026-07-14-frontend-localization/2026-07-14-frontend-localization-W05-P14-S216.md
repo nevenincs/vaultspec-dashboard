@@ -53,6 +53,7 @@ change exactly across both files (type changes, catalog keys, the
 localization scanner clean, and the live suite (`editor.test.ts` +
 `editorMutations.test.ts` + `MarkdownDocView.render.test.tsx` +
 `catalogKeys.test.ts` + `messagePolicy.test.ts`) — 71/71 passed, matching the
-reported count. This record was authored during a reconciliation pass; not a
+reported count. Landed at commit `53426c75f8`, reverified against that commit
+after it landed. This record was authored during a reconciliation pass; not a
 fresh implementation on my part. This also closes the note left on
 `W05.P14.S193`'s record flagging this file's separate defect.

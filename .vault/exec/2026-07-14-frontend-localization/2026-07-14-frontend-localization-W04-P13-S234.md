@@ -39,6 +39,9 @@ Fixed by opus-l10n. Independently reverified: `git diff` matches the reported
 change exactly (type widened to `Record<GitChangeBucket, MessageDescriptor>`,
 four new `common:changeBuckets.*` catalog entries), localization scanner clean,
 and the live suite (`gitchanges.test.ts` + `catalogKeys.test.ts` +
-`messagePolicy.test.ts`) — 51/51 passed, matching the reported count. This record
-was authored during a reconciliation pass; not a fresh implementation on my part.
-This closes the `W04.P10.S60` blocker reported earlier.
+`messagePolicy.test.ts`) — 51/51 passed, matching the reported count. Landed at
+commit `53426c75f8` ("git-change buckets + editor statuses/advisories to typed
+catalog descriptors, em-dash policy fix"), reverified against that commit after
+it landed. This record was authored during a reconciliation pass; not a fresh
+implementation on my part. This closes the `W04.P10.S60` blocker reported
+earlier.
