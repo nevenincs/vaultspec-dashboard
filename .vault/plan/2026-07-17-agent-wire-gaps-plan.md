@@ -58,18 +58,18 @@ Stamp run/turn provenance on changesets at tool-executor dispatch, expose sessio
 - [ ] `P03.S27` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
 - [ ] `P03.S28` - Route Phase P03 to the team reviewer for verification against the D4/D5 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
-### Phase `P04` - Structured feedback batch primitive (D7)
+### Phase `P04` - Structured feedback batch primitive (D7) [OWNED BY a2a-orchestration-edge P04]
 
-Introduce the immutable, digest-addressed feedback batch as durable engine state referenced by StartPromptTurnRequest and PromptTurnRecord, riding alongside the existing prose-serialized comment block.
+[OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - every step in this phase duplicates that plan's P04 (S09-S12), which is actively executing and has already landed engine steps; do not execute this phase unless that plan releases the scope back here.] Introduce the immutable, digest-addressed feedback batch as durable engine state referenced by StartPromptTurnRequest and PromptTurnRecord, riding alongside the existing prose-serialized comment block.
 
-- [ ] `P04.S29` - Add the feedback_batches store model over the P01-authored migration table: ordered comment ids capped at FEEDBACK_BATCH_COMMENT_CAP=32 with bodies, anchors, author identity, source revision, session id, optional general instruction, digest-addressed feedback_batch_id, and bounded total byte size; `engine/crates/vaultspec-api/src/authoring/store`.
-- [ ] `P04.S30` - Wire the POST /v1/feedback-batches mutating command creating the immutable snapshot and rejecting any mutation after creation; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
-- [ ] `P04.S31` - Wire the GET /v1/feedback-batches/{feedback_batch_id} read route serving the snapshot; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
-- [ ] `P04.S32` - Add the optional feedback_batch_id field to StartPromptTurnRequest, verify batch existence, session ownership, and revision fences on submit, and record the reference on PromptTurnRecord; `engine/crates/vaultspec-api/src/authoring/session`.
-- [ ] `P04.S33` - Implement the retention posture: a batch registers as protected product state while referenced by a turn and becomes compactable after the turn's transcript window otherwise; `engine/crates/vaultspec-api/src/authoring/store`.
-- [ ] `P04.S34` - Write tests covering batch immutability under later comment edits, cap and byte-bound enforcement, typed turn-reference fence violations, and the turn record carrying the batch id; `engine/crates/vaultspec-api/src/authoring`.
-- [ ] `P04.S35` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
-- [ ] `P04.S36` - Route Phase P04 to the team reviewer for verification against the D7 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
+- [ ] `P04.S29` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Add the feedback_batches store model over the P01-authored migration table: ordered comment ids capped at FEEDBACK_BATCH_COMMENT_CAP=32 with bodies, anchors, author identity, source revision, session id, optional general instruction, digest-addressed feedback_batch_id, and bounded total byte size; `engine/crates/vaultspec-api/src/authoring/store`.
+- [ ] `P04.S30` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Wire the POST /v1/feedback-batches mutating command creating the immutable snapshot and rejecting any mutation after creation; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
+- [ ] `P04.S31` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Wire the GET /v1/feedback-batches/{feedback_batch_id} read route serving the snapshot; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
+- [ ] `P04.S32` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Add the optional feedback_batch_id field to StartPromptTurnRequest, verify batch existence, session ownership, and revision fences on submit, and record the reference on PromptTurnRecord; `engine/crates/vaultspec-api/src/authoring/session`.
+- [ ] `P04.S33` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Implement the retention posture: a batch registers as protected product state while referenced by a turn and becomes compactable after the turn's transcript window otherwise; `engine/crates/vaultspec-api/src/authoring/store`.
+- [ ] `P04.S34` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Write tests covering batch immutability under later comment edits, cap and byte-bound enforcement, typed turn-reference fence violations, and the turn record carrying the batch id; `engine/crates/vaultspec-api/src/authoring`.
+- [ ] `P04.S35` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
+- [ ] `P04.S36` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04 - do not execute from this plan unless that plan releases it] Route Phase P04 to the team reviewer for verification against the D7 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
 ### Phase `P04a` - Background janitor: bounded sweep for the genuinely undriven duties and run-reap (D1 abandoned-run reaping)
 
@@ -88,16 +88,16 @@ Build the one bounded, timed background janitor sweep and wire it to drive the g
 
 ### Phase `P05` - Frontend cutovers onto the served wire shapes
 
-Wire the dispatch-loop-finish call to the (already-shipped, D1-extended) complete route that D1's own unlock depends on, then delete the three remaining named frontend interims (client one-slot queue, client-staged interrupt annex, session-actor-latest correlation) and the proposal-gated mode control in favor of the served run.completed, turn.queued, session.cancelled, interrupt-list, correlation, mode-read, and feedback-batch wire shapes. The fresh-session-bootstrap-on-Stop deletion ships structurally in P01, not here.
+Wire the dispatch-loop-finish call to the (already-shipped, D1-extended) complete route that D1's own unlock depends on, then delete the three remaining named frontend interims (client one-slot queue, client-staged interrupt annex, session-actor-latest correlation) and the proposal-gated mode control in favor of the served run.completed, turn.queued, session.cancelled, interrupt-list, correlation, and mode-read wire shapes. The fresh-session-bootstrap-on-Stop deletion ships structurally in P01, not here. The feedback-batch composer cutover (S44) is owned by the a2a plan's P04.S12, not executed from here.
 
-- [ ] `P05.S37` - Add SSE adapter cases for the run.completed, turn.queued, and session.cancelled lifecycle event kinds, verifying a janitor-reaped run's run.completed (outcome failed, reason abandoned) renders through the existing case honestly as Failed, needing no separate adapter arm; `frontend/src/stores/server/agent`.
+- [ ] `P05.S37` - Add SSE adapter cases for the two remaining lifecycle event kinds, turn.queued and session.cancelled (run.completed was already consumed with terminal-aware invalidation by commit 506daa04a2). Verify the shipped run.completed adapter case renders a janitor-reaped run (outcome failed, reason abandoned) honestly as Failed, needing no separate adapter arm; `frontend/src/stores/server/agent`.
 - [ ] `P05.S61` - Wire the frontend dispatch loop's finish (success and error paths) to call the already-shipped POST /authoring/v1/runs/{run_id}/complete with the completed or failed outcome, closing D1's own unlock: without this call no run ever completes, run.completed never fires from the client-driven loop, and Done/Failed can still never render even after the engine and adapter work land; `frontend/src/stores/view/agentComposer.ts`.
 - [ ] `P05.S39` - Delete the client one-slot queue chip rendering and read queued state from the session snapshot's queued_turn_ids instead; `frontend/src/app/agent`.
 - [ ] `P05.S40` - Render transcript Done and Failed terminal states from run.completed instead of the relay-gap seam placeholder; `frontend/src/stores/view/agentTranscript.ts`.
 - [ ] `P05.S41` - Delete the client-staged interrupt annex and fetch pending interrupts from GET /v1/runs/{run_id}/interrupts, wiring Approve/Deny through the narrowed typed decision payload; `frontend/src/stores/server/agent`.
 - [ ] `P05.S42` - Retire the session-actor-latest correlation mark and bind the inline proposal card to its proposal's served run_id; `frontend/src/app/agent`.
 - [ ] `P05.S43` - Move the AutonomyControl off proposal-gating onto GET /v1/mode so it renders pre-proposal; `frontend/src/app/agent`.
-- [ ] `P05.S44` - Ride the composer's staged comment batch along as a feedback_batch_id created via POST /v1/feedback-batches on submit, recorded on the turn alongside the existing serialized prompt block; `frontend/src/stores/view/agentComposer.ts`.
+- [ ] `P05.S44` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04.S12 - do not execute from this plan unless that plan releases it] Ride the composer's staged comment batch along as a feedback_batch_id created via POST /v1/feedback-batches on submit, recorded on the turn alongside the existing serialized prompt block; `frontend/src/stores/view/agentComposer.ts`.
 - [ ] `P05.S45` - Wire the new explicit POST /v1/sessions/{session_id}/cancel command for deliberately ending the conversation, leaving Stop's already-shipped P01 run-scoped cancel default unchanged; `frontend/src/stores/view/agentComposer.ts`.
 - [ ] `P05.S46` - Write and re-run the live-wire frontend suites covering the new run.completed/turn.queued/session.cancelled adapter cases, the dispatch-loop-finish complete call (the run actually completes and Done/Failed renders end to end), the queue chip and staged-interrupt-annex deletions, the correlation mark retirement, and the mode control's pre-proposal render; `frontend/src/stores/server/agent`.
 - [ ] `P05.S47` - Run the full lint gate (just dev lint frontend) and confirm exit 0 before routing the phase to review; `frontend`.
@@ -153,7 +153,21 @@ complete route (without which no run ever completes and Done/Failed still
 never renders even after the engine work lands) and adds the explicit
 session-cancel command as new scope distinct from Stop. A janitor-reaped
 run's `run.completed` needs no new adapter case in P05, only verification
-that the existing case renders its `abandoned` failure reason honestly.
+that the existing case renders its `abandoned` failure reason honestly (the
+SSE adapter step, S37, is scoped to only the two remaining lifecycle kinds,
+`turn.queued` and `session.cancelled`, since the a2a lane's commit
+`506daa04a2` already consumed `run.completed` with terminal-aware
+invalidation).
+
+**Territory note (2026-07-17):** the a2a session runs its own activation
+plan (`.vault/plan/2026-07-17-a2a-orchestration-edge-plan.md`) in this same
+worktree and commits to our shared main. Its P04 (S09-S12) is the same D7
+structured-feedback-batch work as this plan's P04, and its S12 is the same
+composer feedback_batch_id cutover as this plan's P05.S44; both are
+mechanically annotated `[OWNED BY 2026-07-17-a2a-orchestration-edge-plan
+...]` in place rather than removed, so the scope is visible but not
+double-built. Do not execute P04 or P05.S44 from this plan unless the a2a
+plan explicitly releases that scope back here.
 
 D6 (served model options) is explicitly DEFERRED by the ADR and is NOT
 planned here; its return trigger is the agent runtime (langgraph adapter or
@@ -179,15 +193,19 @@ principal). The dedicated janitor phase (P04a) is described above.
 P01 lands first and alone: it authors the single schema-version migration
 that P03 (provenance columns) and P04 (feedback_batches table) both build on,
 and it is the coupled D1+D2 change the ADR's sequencing note calls out as one
-unit. P02 (D3), P03 (D4+D5), P04 (D7), and P04a (the janitor) are
-independent exposures once P01's migration has landed and may run in
-parallel against separate coding agents; P04a touches the same run-lifecycle
-module P01 does, so route it to a coding agent only once P01 has landed
-(sequential-after-P01, parallel-with P02/P03/P04) to avoid two agents
-racing the same run-completion code paths. P05 depends on P01-P04a all
-being reviewed and merged, since its SSE adapter cases and deletions
-consume the served shapes each earlier phase produces; it does not
-parallelize against them. The fresh-session-bootstrap-on-Stop deletion
+unit. P02 (D3), P03 (D4+D5), and P04a (the janitor) are independent
+exposures once P01's migration has landed and may run in parallel against
+separate coding agents; P04a touches the same run-lifecycle module P01
+does, so route it to a coding agent only once P01 has landed
+(sequential-after-P01, parallel-with P02/P03) to avoid two agents racing
+the same run-completion code paths. P04 is OWNED BY the a2a plan's own P04
+and is not dispatched to a coding agent from here at all (see the Territory
+note in the Description); P05.S44 carries the same ownership annotation and
+is skipped when P05 executes, leaving the rest of P05 unaffected. P05
+depends on P01-P04a all being reviewed and merged, since its SSE adapter
+cases and deletions consume the served shapes each earlier phase produces;
+it does not parallelize against them. The fresh-session-bootstrap-on-Stop
+deletion
 (`P01.S38`) is no longer a cross-phase coupling risk to track in prose: it
 was moved structurally into P01 itself, in the same phase as the engine's
 run-scoped cancel, so the frontend and engine halves of that
@@ -218,9 +236,12 @@ the ADR's Verification strategy scenarios for its closures:
   for a tool-dispatched proposal and `None` for a human one; pre-migration
   records still deserialize; `GET /v1/mode` round-trips `POST /v1/mode` and
   serves the default record on a fresh store.
-- P04 (D7): batch immutability holds under later comment edits; the
-  comment-count cap and byte-bound are enforced; turn-reference fence
-  violations are typed; the turn record carries the batch id.
+- P04 (D7) [OWNED BY a2a-orchestration-edge P04]: batch immutability holds
+  under later comment edits; the comment-count cap and byte-bound are
+  enforced; turn-reference fence violations are typed; the turn record
+  carries the batch id. These scenarios are verified by the a2a plan's own
+  P04 review, not this plan's; P04's review step (S36) is not routed to a
+  coding agent from here.
 - P04a (janitor): a stale active run is reaped to `Failed`/`abandoned` with
   exactly one `run.completed` emitted; a fresh active run is left untouched;
   each of the three genuinely undriven duties (tool-permission expiry,
