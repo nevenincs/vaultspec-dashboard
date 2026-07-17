@@ -89,3 +89,17 @@ step alone. This is a process decision about HOW the campaign closes, not a
 dispute of this record's own verified evidence (which stands, and which this
 step's eventual re-tick will cite alongside the punch-list commit). No code
 changes by me at any point.
+
+**TICK RE-CHECKED, ABSOLUTE SETTLE (2026-07-17) — final state, no further
+flips.** The "unticked, final protocol" message above and the team lead's
+countermand-confirmed "ticked" state (`eb68ad0115`) crossed in flight; the
+"leave as-is" instruction that produced the unticked state was WRITTEN before
+the team lead saw the restore and was stale by the time it was delivered. The
+team lead explicitly settled this: `eb68ad0115`'s ticked state — four ticks
+restored, full tick/reversal/restore arc preserved in these records — is
+FINAL for this step. The evidence base is my own three consecutive
+uncontended `18/18` reruns of `2890e92df6` plus `11/11` on the dev-harness
+pair; the cold-state gap remains tracked as the finisher's own open
+punch-list item, which does NOT unverify this step's ticked evidence. This
+tick does not move again until the finisher's punch-list commit lands and the
+one closing cold-verification pass runs. No code changes by me at any point.
