@@ -167,3 +167,11 @@ matching the engine constant, ungated dependency-probed `/health` with live pid)
   anti-duplication act was the reconciliation itself: this audit found the
   `edge-activation` branch's parallel implementation of the entire edge surface
   and retired it in favor of main's single adopted home.
+
+## Lane takeover (2026-07-17, owner-ordered)
+
+The a2a-side caller of `POST /authoring/v1/runs/{run_id}/complete` (the S13 hold's
+last open item, previously the parallel lead session's claimed lane) is verified
+NOT landed on a2a main and is hereby taken over by the edge-activation team on the
+owner's instruction. Executor-service drives it to completion in the a2a
+repository; S13 closes on its landing plus live proof.
