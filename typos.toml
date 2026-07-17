@@ -49,3 +49,6 @@ extend-ignore-identifiers-re = ["\\b[0-9a-f]{7,64}\\b"]
   commandes = "commandes"
   commentaires = "commentaires"
   sur = "sur"
+  fixe = "fixe"
+  complet = "complet"
+  espace = "espace"
