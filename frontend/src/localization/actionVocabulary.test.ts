@@ -119,9 +119,10 @@ describe("action vocabulary", () => {
   it("keeps the canonical inventory active — each operation owns real action ids", () => {
     for (const operation of CANONICAL_OPERATION_VERBS) {
       const owned = ACTION_KEYS.filter((key) => operation.ownsKey(key));
-      expect(owned.length, `${operation.operation} must own at least one action id`).toBeGreaterThan(
-        0,
-      );
+      expect(
+        owned.length,
+        `${operation.operation} must own at least one action id`,
+      ).toBeGreaterThan(0);
       for (const key of owned) {
         expect(leadingVerb(catalogValue(key))).toBe(operation.verb);
       }

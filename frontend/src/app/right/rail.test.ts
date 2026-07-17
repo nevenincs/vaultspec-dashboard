@@ -100,7 +100,10 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
         title: { key: "common:finalWave.statusSections.issues" },
         count: 1,
       },
-      { id: "recent-commits", title: { key: "common:finalWave.statusSections.commits" } },
+      {
+        id: "recent-commits",
+        title: { key: "common:finalWave.statusSections.commits" },
+      },
     ]);
   });
 

@@ -9,10 +9,7 @@
 import { describe, expect, it } from "vitest";
 
 import { resources, sourceLocale } from "../locales/en";
-import {
-  validateEnglishMessage,
-  type MessagePolicyIssueCode,
-} from "./messagePolicy";
+import { validateEnglishMessage, type MessagePolicyIssueCode } from "./messagePolicy";
 import { MESSAGE_KEYS, type MessageKey } from "../platform/localization/message";
 
 const SAFETY_CODES: ReadonlySet<MessagePolicyIssueCode> = new Set([

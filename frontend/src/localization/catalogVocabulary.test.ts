@@ -53,7 +53,10 @@ describe("catalog vocabulary", () => {
   it("contains no prohibited internal or development vocabulary", () => {
     const offenders = sourceCatalogValues()
       .filter(({ value }) => prohibitedHits(value).length > 0)
-      .map(({ identity, value }) => `${identity}: "${value}" [${prohibitedHits(value).join(", ")}]`);
+      .map(
+        ({ identity, value }) =>
+          `${identity}: "${value}" [${prohibitedHits(value).join(", ")}]`,
+      );
 
     expect(offenders).toEqual([]);
   });

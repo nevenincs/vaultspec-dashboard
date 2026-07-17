@@ -19,14 +19,7 @@
 // session actor IS the proposal's origin actor, the exact happy case.
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 

@@ -612,7 +612,10 @@ export function MarkdownDocView({
                   <span className="text-ink-faint">
                     {" "}
                     <DecorativeGlyph name="middleDot" />{" "}
-                    {resolveMessage({ key: "documents:editor.advisories.fixable" }).message}
+                    {
+                      resolveMessage({ key: "documents:editor.advisories.fixable" })
+                        .message
+                    }
                   </span>
                 )}
               </li>
