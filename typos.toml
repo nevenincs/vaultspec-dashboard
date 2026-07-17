@@ -42,3 +42,10 @@ extend-ignore-identifiers-re = ["\\b[0-9a-f]{7,64}\\b"]
   grap = "grap"               # truncated draft fixture ("graph"->"grap", max-len-4 control draft test)
   gir = "gir"                 # audit finding prefix (graph-implementation-review GIR-xxx)
   alls = "alls"               # vitest beforeAll pluralized in prose ("beforeAlls")
+  styl = "styl"               # the Stylus stylesheet file extension (languages.ts)
+  # French pseudo-locale assertions embedded in general test files (the dedicated
+  # locale fixtures are path-excluded above; these words appear inline in mixed
+  # English tests asserting translated output verbatim).
+  commandes = "commandes"
+  commentaires = "commentaires"
+  sur = "sur"
