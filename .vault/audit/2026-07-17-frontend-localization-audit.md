@@ -32,10 +32,11 @@ against a compiled ledger instead of reconstructing history from commits and cha
 | Fix commits (`3e66868d0f`, `578b4e5454`, `53426c75f8`, `556f8967d9`, `90f8a3d5d5`) | **PASS** |
 | Scanner + catalog integrity (`scan-localization.mjs`, `catalogKeys`/`catalogPlural`/`catalogVocabulary` suites) | **PASS** |
 
-Re-verification of W03/W04 is pending the coding lane's combined fix set for the three
-red files named below. This dossier's per-wave "fully closed" language further down
-predates this verdict and is corrected in place rather than deleted, so the record
-shows what reconciliation believed at each point in time.
+W03/W04 re-verification is complete (see Ledger by wave and Defect ledger for the
+per-file citations against `90f8a3d5d5`). Some of this dossier's earlier per-wave
+"fully closed"/"WITHHELD" language further down was corrected in place rather than
+deleted as each verdict landed, so the record shows what reconciliation believed at
+each point in time.
 
 ## Scope
 
