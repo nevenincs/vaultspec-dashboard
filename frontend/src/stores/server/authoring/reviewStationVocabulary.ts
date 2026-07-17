@@ -316,6 +316,7 @@ export function reviewFailureDescriptor(
 
 export const REVIEW_STATION_MESSAGES = Object.freeze({
   loadingQueue: descriptor("documents:reviewStation.accessibility.loadingQueue"),
+  acknowledge: descriptor("documents:reviewStation.actions.acknowledge"),
   showChanges: descriptor("documents:reviewStation.actions.showChanges"),
   hideChanges: descriptor("documents:reviewStation.actions.hideChanges"),
   actionInProgress: descriptor(

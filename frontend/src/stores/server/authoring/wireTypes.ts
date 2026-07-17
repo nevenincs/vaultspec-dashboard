@@ -356,6 +356,15 @@ export interface RollbackPayload {
   reason: string;
 }
 
+/** `POST /authoring/v1/proposals/{changesetId}/acknowledge` payload (W10): a durable
+ *  after-fact "seen" over a system-auto-applied changeset. The reviewer is the
+ *  server-resolved principal — never named in the body (ASA-010). */
+export interface AcknowledgeAppliedPayload {
+  changeset_id: string;
+  approval_id: string;
+  comment?: string;
+}
+
 /** `POST /authoring/v1/mode` payload (engine `SetOperationModeRequest`): set the
  *  active worktree's operation mode. The scope is backend-derived from the active
  *  workspace root — never client-claimed. */

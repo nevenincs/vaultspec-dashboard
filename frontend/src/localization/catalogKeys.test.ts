@@ -651,6 +651,7 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:labels.document",
   "documents:labels.vault",
   "documents:reviewStation.accessibility.loadingQueue",
+  "documents:reviewStation.actions.acknowledge",
   "documents:reviewStation.actions.hideChanges",
   "documents:reviewStation.actions.showChanges",
   "documents:reviewStation.authorKinds.agent",

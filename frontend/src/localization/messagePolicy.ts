@@ -465,6 +465,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:reviewStation.accessibility.loadingQueue": {
     role: "accessibility",
   },
+  "documents:reviewStation.actions.acknowledge": { role: "action" },
   "documents:reviewStation.actions.hideChanges": { role: "action" },
   "documents:reviewStation.actions.showChanges": { role: "action" },
   "documents:guardedActions.reviewStationApproveProposal": { role: "action" },
@@ -990,6 +991,7 @@ export const ENGLISH_MESSAGE_POLICY = {
 } as const satisfies Record<MessageKey, MessagePolicyEntry>;
 
 export const IMPERATIVE_ACTION_VERBS = [
+  "Acknowledge",
   "Add",
   "Allow",
   "Approve",

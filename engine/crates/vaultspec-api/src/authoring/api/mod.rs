@@ -49,6 +49,7 @@ pub enum EndpointFamily {
     Rebase,
     Replacement,
     ReviewClaim,
+    Acknowledge,
 }
 
 #[cfg(test)]
@@ -71,6 +72,7 @@ impl EndpointFamily {
         Self::Rebase,
         Self::Replacement,
         Self::ReviewClaim,
+        Self::Acknowledge,
     ];
 }
 
@@ -326,6 +328,22 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         negative_contract_cases: &[
             "missing_idempotency_key",
             "claim_contended",
+            "unknown_field",
+        ],
+    },
+    // W10: durable after-fact acknowledgement of a system-auto-applied changeset (the
+    // `AppliedUnderPolicyProjection` lane's "seen" action). Non-destructive and
+    // status-preserving; mutating → floor-authorized by the extractor.
+    RouteFixture {
+        family: EndpointFamily::Acknowledge,
+        method: "POST",
+        path_template: "/authoring/v1/proposals/{changeset_id}/acknowledge",
+        command: Some(CommandKind::Acknowledge),
+        mutating: true,
+        idempotency_required: true,
+        negative_contract_cases: &[
+            "missing_idempotency_key",
+            "path_body_changeset_mismatch",
             "unknown_field",
         ],
     },
@@ -868,6 +886,19 @@ pub struct ReviewReleaseRequest {
 pub struct ReviewRespondRequest {
     pub changeset_id: ChangesetId,
     pub comment: String,
+}
+
+/// Durable after-fact acknowledgement (W10) of a system-auto-applied changeset (the
+/// `AppliedUnderPolicyProjection` lane): a reviewer's advisory "seen" over an already-
+/// applied changeset. It never transitions changeset status — it only records who
+/// acknowledged which applied approval, and is idempotent per `idempotency_key`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AcknowledgeAppliedRequest {
+    pub changeset_id: ChangesetId,
+    pub approval_id: ApprovalId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

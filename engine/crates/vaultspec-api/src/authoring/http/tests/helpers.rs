@@ -3,16 +3,16 @@
 
 pub(super) use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
 pub(super) use crate::authoring::api::{
+    AcknowledgeAppliedRequest, ApplyRequest as ApplyRequestDto, CommentUpdateRequest,
+    CreateCommentRequest, CreateProposalRequest, DeleteCommentRequest, IssueActorTokenRequest,
+    LeaseAcquireRequest, LeaseReleaseRequest, ReviewClaimRequest, ReviewDecisionRequest,
+    ReviewReleaseRequest, ReviewRespondRequest, RollbackRequest as RollbackRequestDto,
+    SetOperationModeRequest, SubmitForReviewRequest,
+};
+pub(super) use crate::authoring::api::{
     ApiVersion, ChangesetChildOperationDraft, ChangesetOperationKind, CreateSessionRequest,
     DirectWriteRequest, DraftMode, DraftMutation, EndpointFamily, RollbackChildSource,
     TargetRevisionFence, request_fixture,
-};
-pub(super) use crate::authoring::api::{
-    ApplyRequest as ApplyRequestDto, CommentUpdateRequest, CreateCommentRequest,
-    CreateProposalRequest, DeleteCommentRequest, IssueActorTokenRequest, LeaseAcquireRequest,
-    LeaseReleaseRequest, ReviewClaimRequest, ReviewDecisionRequest, ReviewReleaseRequest,
-    ReviewRespondRequest, RollbackRequest as RollbackRequestDto, SetOperationModeRequest,
-    SubmitForReviewRequest,
 };
 pub(super) use crate::authoring::apply::ApplyOutcome;
 pub(super) use crate::authoring::documents::{DocumentResolver, ExistingDocumentLookup};
@@ -495,6 +495,25 @@ pub(super) fn submit_command(
         payload: SubmitForReviewRequest {
             expected_revision: RevisionToken::new(expected_revision).unwrap(),
             summary: "submit for review".to_string(),
+        },
+    };
+    ResolvedCommand::from_principal(principal, envelope)
+}
+
+pub(super) fn acknowledge_command(
+    principal: AuthenticatedPrincipal,
+    changeset_id: &str,
+    approval_id: &str,
+    idem: &str,
+) -> ResolvedCommand<AcknowledgeAppliedRequest> {
+    let envelope = CommandEnvelope {
+        api_version: ApiVersion::V1,
+        command: CommandKind::Acknowledge,
+        idempotency_key: IdempotencyKey::new(idem).unwrap(),
+        payload: AcknowledgeAppliedRequest {
+            changeset_id: ChangesetId::new(changeset_id).unwrap(),
+            approval_id: ApprovalId::new(approval_id).unwrap(),
+            comment: Some("seen".to_string()),
         },
     };
     ResolvedCommand::from_principal(principal, envelope)

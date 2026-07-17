@@ -533,6 +533,13 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/proposals/{changeset_id}/provenance",
             get(proposal_provenance),
         )
+        // Durable after-fact acknowledgement (W10) of a system-auto-applied changeset —
+        // the `AppliedUnderPolicyProjection` lane's "seen" action. Non-destructive and
+        // status-preserving; mutating → floor-authorized by the extractor.
+        .route(
+            "/v1/proposals/{changeset_id}/acknowledge",
+            post(acknowledge_applied_change),
+        )
         .route(
             "/v1/proposals/{changeset_id}/submit",
             post(submit_for_review),

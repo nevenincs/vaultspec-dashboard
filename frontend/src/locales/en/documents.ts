@@ -312,6 +312,7 @@ export const documents = {
       loadingQueue: "Loading approvals",
     },
     actions: {
+      acknowledge: "Acknowledge",
       hideChanges: "Hide changes",
       requestChanges: "Request changes",
       showChanges: "Show changes",

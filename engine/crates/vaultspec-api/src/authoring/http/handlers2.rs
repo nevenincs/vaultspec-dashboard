@@ -9,6 +9,7 @@ use ingest_struct::reader::blob_oid;
 use serde_json::{Value, json};
 
 use super::super::api::{
+    AcknowledgeAppliedRequest as AcknowledgeAppliedRequestDto,
     DirectWriteRequest as DirectWriteRequestDto, ReviewClaimRequest, ReviewDecisionRequest,
     ReviewReleaseRequest, ReviewRespondRequest, SetOperationModeRequest, SubmitForReviewRequest,
 };
@@ -726,6 +727,61 @@ pub(super) fn respond_via_review_decision(
     }) {
         Ok(outcome) => review_claim_outcome_response(state, &outcome),
         Err(err) => command_error_response(state, &err),
+    }
+}
+
+/// `POST /authoring/v1/proposals/{changeset_id}/acknowledge` — durable after-fact
+/// acknowledgement (W10) of a system-auto-applied changeset served on the
+/// `AppliedUnderPolicyProjection` lane. Non-destructive and status-preserving (it
+/// never transitions the changeset); idempotent per `idempotency_key` — a replay
+/// serves the SAME record rather than double-counting. The reviewer is the
+/// middleware-resolved principal.
+pub async fn acknowledge_applied_change(
+    State(state): State<Arc<AppState>>,
+    Path(changeset_id): Path<String>,
+    command: ResolvedCommand<AcknowledgeAppliedRequestDto>,
+) -> Response {
+    let path_changeset_id = match ChangesetId::new(&changeset_id) {
+        Ok(id) => id,
+        Err(err) => {
+            return super::super::response::typed_error(
+                &state,
+                StatusCode::BAD_REQUEST,
+                REQUEST_INVALID_KIND,
+                &format!("invalid changeset id: {err}"),
+            )
+            .into_response();
+        }
+    };
+    let now = now_ms();
+    let (actor, _command, idempotency_key, payload) = command.into_parts();
+    if path_changeset_id != payload.changeset_id {
+        return super::super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "path changeset id does not match the request body",
+        )
+        .into_response();
+    }
+    match state.with_authoring_store(|store| {
+        store.with_unit_of_work(CommandKind::Acknowledge, |uow| {
+            uow.modes().acknowledge_after_fact(
+                &payload.changeset_id,
+                &payload.approval_id,
+                &actor,
+                &idempotency_key,
+                payload.comment.clone(),
+                now,
+            )
+        })
+    }) {
+        Ok(record) => super::super::response::snapshot(
+            &state,
+            serde_json::to_value(record).expect("acknowledgement record serializes"),
+        )
+        .into_response(),
+        Err(err) => command_error_response(&state, &err),
     }
 }
 

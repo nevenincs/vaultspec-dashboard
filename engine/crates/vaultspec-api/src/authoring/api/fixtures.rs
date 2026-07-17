@@ -164,6 +164,15 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 ttl_ms: Some(900_000),
             },
         )),
+        EndpointFamily::Acknowledge => command_value(CommandEnvelope::new(
+            CommandKind::Acknowledge,
+            idempotency_key("idem:acknowledge:1"),
+            AcknowledgeAppliedRequest {
+                changeset_id: changeset_id(),
+                approval_id: approval_id(),
+                comment: Some("seen".to_string()),
+            },
+        )),
     }
 }
 
@@ -184,7 +193,8 @@ pub fn response_fixture(family: EndpointFamily) -> Value {
         | EndpointFamily::DirectWrite
         | EndpointFamily::AgentToolExecute
         | EndpointFamily::Rebase
-        | EndpointFamily::ReviewClaim => AggregateRef::Changeset {
+        | EndpointFamily::ReviewClaim
+        | EndpointFamily::Acknowledge => AggregateRef::Changeset {
             changeset_id: changeset_id(),
         },
         EndpointFamily::Replacement => AggregateRef::Changeset {

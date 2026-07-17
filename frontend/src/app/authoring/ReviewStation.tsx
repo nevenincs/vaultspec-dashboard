@@ -16,6 +16,7 @@ import {
   reviewValidationDescriptor,
   REQUEST_CHANGES_DIALOG,
   REVIEW_STATION_MESSAGES,
+  useAcknowledgeApplied,
   useApplyChangeset,
   useCreateRollback,
   useReviewDecision,
@@ -69,6 +70,9 @@ export interface ReviewActions {
   submit(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
   apply(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
   rollback(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
+  /** Durable after-fact acknowledgement (W10) of a system-auto-applied changeset —
+   *  the `AppliedUnderPolicyProjection` lane's "seen" action. Non-destructive. */
+  acknowledge(proposal: ProposalProjection): Promise<AuthoringCommandOutcome>;
 }
 
 export function useReviewActions(): ReviewActions {
@@ -76,6 +80,7 @@ export function useReviewActions(): ReviewActions {
   const submit = useSubmitForReview();
   const apply = useApplyChangeset();
   const rollback = useCreateRollback();
+  const acknowledge = useAcknowledgeApplied();
   return {
     decide: (proposal, kind) =>
       decision.mutateAsync({
@@ -120,6 +125,14 @@ export function useReviewActions(): ReviewActions {
           ? [{ source_child_key: proposal.rollback.child_key }]
           : [],
         reason: "reviewer-initiated rollback",
+      }),
+    acknowledge: (proposal) =>
+      acknowledge.mutateAsync({
+        changesetId: proposal.changeset_id,
+        payload: {
+          changeset_id: proposal.changeset_id,
+          approval_id: proposal.approval.approval_id ?? "",
+        },
       }),
   };
 }
@@ -230,6 +243,10 @@ export function ProposalCard({
   );
   const showChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.showChanges);
   const hideChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.hideChanges);
+  const acknowledgeLabel = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.acknowledge,
+  );
   const policy = proposal.policy
     ? safeMessage(
         resolveMessage,
@@ -279,7 +296,8 @@ export function ProposalCard({
     ((proposal.approval.stale || proposal.approval.stale_reason) && !stale) ||
     (proposal.conflict && !conflict) ||
     (appliedPolicy && !appliedAutomatically) ||
-    (appliedPolicy && appliedPolicy.acknowledgement_count > 0 && !acknowledgements)
+    (appliedPolicy && appliedPolicy.acknowledgement_count > 0 && !acknowledgements) ||
+    (appliedPolicy && !acknowledgeLabel)
   ) {
     return null;
   }
@@ -429,6 +447,24 @@ export function ProposalCard({
               </Button>
             );
           })()}
+        {appliedPolicy && (
+          <Button
+            variant="secondary"
+            disabled={busy}
+            title={
+              busy
+                ? (safeMessage(
+                    resolveMessage,
+                    REVIEW_STATION_MESSAGES.actionInProgress,
+                  ) ?? undefined)
+                : undefined
+            }
+            onClick={() => void run(() => actions.acknowledge(proposal))}
+            data-action="acknowledge"
+          >
+            {acknowledgeLabel}
+          </Button>
+        )}
         <Button
           variant="ghost"
           onClick={() => setShowDiff((open) => !open)}

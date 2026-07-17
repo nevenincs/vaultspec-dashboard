@@ -54,6 +54,7 @@ import { queryClient as defaultQueryClient } from "../queryClient";
 import { sseChunks, streamReducer, type StreamChunk } from "../queries";
 
 import type {
+  AcknowledgeAppliedPayload,
   ActorRef,
   AppliedUnderPolicyProjection,
   ApplyPayload,
@@ -439,6 +440,23 @@ export class AuthoringClient {
     return this.command(
       "/authoring/v1/rollback-proposals",
       "create_rollback",
+      payload,
+      opts,
+    );
+  }
+
+  /** `POST /authoring/v1/proposals/{changesetId}/acknowledge` — durable after-fact
+   *  acknowledgement (W10) of a system-auto-applied changeset (the
+   *  `AppliedUnderPolicyProjection` lane's "seen" action). Non-destructive and
+   *  status-preserving; idempotent per idempotency key. */
+  async acknowledgeApplied(
+    changesetId: string,
+    payload: AcknowledgeAppliedPayload,
+    opts: CommandOptions,
+  ): Promise<AuthoringCommandOutcome> {
+    return this.command(
+      `/authoring/v1/proposals/${encodeURIComponent(changesetId)}/acknowledge`,
+      "acknowledge",
       payload,
       opts,
     );
@@ -1343,6 +1361,20 @@ export function useCreateRollback() {
   return useMutation({
     mutationFn: async (payload: RollbackPayload) =>
       authoringClient.createRollback(payload, { actorToken: await ensureActorToken() }),
+    onSuccess: invalidateAuthoring,
+  });
+}
+
+/** Durable after-fact acknowledgement (W10) of a system-auto-applied changeset. */
+export function useAcknowledgeApplied() {
+  return useMutation({
+    mutationFn: async (args: {
+      changesetId: string;
+      payload: AcknowledgeAppliedPayload;
+    }) =>
+      authoringClient.acknowledgeApplied(args.changesetId, args.payload, {
+        actorToken: await ensureActorToken(),
+      }),
     onSuccess: invalidateAuthoring,
   });
 }

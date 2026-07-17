@@ -96,6 +96,7 @@ interface ActionCounts {
   submit: number;
   apply: number;
   rollback: number;
+  acknowledge: number;
 }
 
 /** The most recent comment carried by a request-changes call, so a test can assert
@@ -131,12 +132,24 @@ function actionCallbacks(
       counts.rollback += 1;
       return result();
     },
+    acknowledge: () => {
+      counts.acknowledge += 1;
+      return result();
+    },
   };
 }
 
 function emptyCounts(): ActionCounts {
   lastRequestChangesComment = null;
-  return { approve: 0, reject: 0, requestChanges: 0, submit: 0, apply: 0, rollback: 0 };
+  return {
+    approve: 0,
+    reject: 0,
+    requestChanges: 0,
+    submit: 0,
+    apply: 0,
+    rollback: 0,
+    acknowledge: 0,
+  };
 }
 
 function localized(ui: React.ReactNode) {
@@ -668,5 +681,21 @@ describe("ReviewStation states", () => {
     expect(document.body.textContent).not.toContain("private.policy.id");
     expect(document.body.textContent).not.toContain("private.policy.version");
     expect(document.body.textContent).not.toContain("system:private");
+
+    const acknowledgeButton = screen.getByText("Acknowledge");
+    fireEvent.click(acknowledgeButton);
+    expect(counts.acknowledge).toBe(1);
+  });
+
+  it("renders no acknowledge action on the ordinary review queue (after-fact only)", () => {
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+
+    expect(screen.queryByText("Acknowledge")).toBeNull();
   });
 });
