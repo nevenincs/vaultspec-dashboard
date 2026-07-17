@@ -52,3 +52,12 @@ Independently reverified against the hardening commit: `git show 2890e92df6
 nine-spec combined set under `playwright.config.ts` THREE consecutive times,
 uncontended — 18/18 every time (this file's own 2 tests included, with the
 previously-flaky context-menu test green in all three).
+
+**TICK REVERSED (2026-07-17), pending cold-state fix.** After ticking against
+`2890e92df6`, a further uncommitted follow-up edit surfaced in the working tree
+driving a second lever `2890e92df6` itself did not yet close (the rail's
+Vault/Files mode toggle, not just its visibility, inside
+`ensureBrowserVisible`). My own warmed reruns (state carried across my own
+back-to-back invocations, never truly cold) could not surface this gap.
+Reversed pending the finisher's punch-list commit, verified cold, per the team
+lead's ruling. No code changes by me at any point.

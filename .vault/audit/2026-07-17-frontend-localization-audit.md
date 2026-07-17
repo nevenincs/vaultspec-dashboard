@@ -92,9 +92,14 @@ division of labor (coder owns source, reconciliation owns vault bookkeeping).
 
 Step counts below are TICKED / TOTAL for that wave as of this update; TOTAL excludes
 retired steps (`S40`, `S75`, `S180`, `S181`, `S219`, `S236`, `S238` — see Retirements
-below). Plan total: 230/244 (94.3%). Every step outside Wave W06 is ticked; W06.P18
-(the enforcement suite) is 13/13, fully closed; W06.P19 (e2e verification) is now
-9/14.
+below). Plan total: 226/244 (92.6%). Every step outside Wave W06 is ticked; W06.P18
+(the enforcement suite) is 13/13, fully closed; W06.P19 (e2e verification) is
+5/14. **`S140`/`S142`/`S143`/`S144` were ticked then REVERSED** — see the
+dedicated note below and their Defect ledger rows; released against
+`2890e92df6` on a stale instruction, then reversed once reconciliation's own
+cold-state findings (a gap `2890e92df6` had not yet closed) and a superseding
+instruction both arrived. They re-tick only against the finisher's next
+punch-list commit, verified cold.
 
 - **W01** (localization substrate and source-locale policy) — 23/23. Pre-existing:
   implemented and reviewed before the reconciliation pass began; the exhaustive
@@ -170,13 +175,17 @@ below). Plan total: 230/244 (94.3%). Every step outside Wave W06 is ticked; W06.
   (gitchanges/pipeline count-plural builders and pipeline's raw state strings
   converted to catalog descriptors; `nowStrip.ts` resolved by deletion as
   orphaned dead code) all independently verified and ticked this update.
-  **`W06.P18` is now 13/13, fully closed.** `P19` is now 9/14: `S104`/`S105`
+  **`W06.P18` is now 13/13, fully closed.** `P19` is at 5/14: `S104`/`S105`
   (typical + expanded-copy/RTL layout, `164ea9fc1d`), `S139`/`S141` (loading +
   empty, `3aead802d2`), `S145` (responsive, `e9f64dec54`) landed clean on first
-  verification; `S140`/`S142`/`S143`/`S144` (degraded, errors, confirmations,
-  actions) required a dedicated hardening pass (`2890e92df6`) after
-  reconciliation found them reproducibly red or flaky standalone — see Honest
-  Findings for the diagnosis and Defect ledger for per-step detail. `P19`'s
+  verification and stay ticked. `S140`/`S142`/`S143`/`S144` (degraded, errors,
+  confirmations, actions) were briefly ticked against a hardening pass
+  (`2890e92df6`) and then REVERSED: reconciliation's cold-state verification
+  surfaced a further gap (the rail's Vault/Files mode toggle, not just its
+  visibility) that `2890e92df6` had not yet closed — a gap the warmed reruns
+  used for the original tick could not have caught — see Honest Findings for
+  the full diagnosis and Defect ledger for the reversal record. They re-tick
+  only against the finisher's next punch-list commit, verified cold. `P19`'s
   remaining five steps (`S102`/`S103`/`S106`/`S107`/`S138`) are the RUN steps
   plus `S138` itself, all still genuinely open — see Defect ledger and Open
   Items. `P20` 0/9 remains the coding lane's in-progress build.
@@ -211,7 +220,7 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S132` | `app/panels/VaultHealthPanel.tsx:42` ran a manual `titleCase()` on the served health word (line 57), a scanner-blind runtime-casing transform outside JSX literal text | Fixed, commit `8c4220b333`; `titleCase()` deleted outright, replaced with a fail-closed closed vocabulary (never echoes an unrecognized served token); independently reverified, part of the 77/77 combined batch run |
 | `S133` | `stores/server/queries/gitchanges.ts:504`'s `pluralLabel()` and `stores/server/queries/pipeline.ts` (two inline `` `${count} item${s}` ``-shape builders) hand-built plural/count sentences in manual-string `.ts` modules — the same scanner-blind class as `S113`'s `freshness.ts`. `pipeline.ts` ALSO carried raw English state strings (`"pipeline status unavailable"`, `"loading in-flight work"`, `"no in-flight work"`, `"reading in-flight work…"`, `"no work in flight on this branch"`), fixed in the same commit | Fixed, commit `8c4220b333`; both hand-builders and the raw state strings now `CountMessageDescriptor`/`MessageDescriptor` catalog resolutions; independently reverified, part of the 77/77 combined batch run |
 | `S133` | `stores/view/nowStrip.ts:176`'s `jobsLabel()` hand-built a `` `${jobs} job${s}` `` count sentence | Resolved by DELETION, commit `8c4220b333`: `nowStrip.ts` (228 lines) scouted as fully orphaned in production — only its own test imported it, the live status renderer (`deriveSystemStatusRows`) never consumed it — and deleted outright under the `S75`/`S236`/`S238` dead-code doctrine (team-lead approved) rather than localized. Independently reverified: grepped every importer in `src/`, confirmed none remain. `S192`'s exec record (which verified `nowStrip.test.ts` live) amended to note the ripple. |
-| `S140`/`S142`/`S143`/`S144` shared-state test-infrastructure race | Four `W06.P19` e2e specs (degraded, errors, confirmations, actions) shared one root cause the scanner cannot see: `ensureBrowserVisible`'s postcondition (the vault-documents tree visible) could ONLY be satisfied by leftover server-persisted "Documents" tab state from an unrelated PRIOR test run — nothing the helper itself did switched tabs. Reconciliation reproduced this live: `S140`/`S142` failed 2/2 and 3/4 respectively across separate cold runs; `S144` flaked ~50% across three runs; `S143` passed once only because state was warmed by unrelated prior activity. `S142`'s file additionally had a partial-edit gap (a stray call to the old, now-undefined helper name, throwing `ReferenceError`) | Fixed, commit `2890e92df6`: the new `bootHealthyThenBreakVaultTree` helper boots the app against the REAL working wire, explicitly switches to Documents, confirms the tree is genuinely visible, THEN breaks the route and reloads (proving the honest working→broken transition, not a race); `ensureExpanded` checks the real `aria-expanded` state before clicking a fold rather than blindly toggling it; a menu-close race in the actions probe loop was also closed (explicit `waitFor({ state: "hidden" })` after `Escape`); `workers: 1` serializes the whole smoke/localization suite against the one live-state-holding server origin. Independently reverified: full nine-spec combined set — 18/18 in three consecutive UNCONTENDED runs; dev-harness pair — 11/11. |
+| `S140`/`S142`/`S143`/`S144` shared-state test-infrastructure race | Four `W06.P19` e2e specs (degraded, errors, confirmations, actions) shared one root cause the scanner cannot see: `ensureBrowserVisible`'s postcondition (the vault-documents tree visible) could ONLY be satisfied by leftover server-persisted "Documents" tab state from an unrelated PRIOR test run — nothing the helper itself did switched tabs. Reconciliation reproduced this live: `S140`/`S142` failed 2/2 and 3/4 respectively across separate cold runs; `S144` flaked ~50% across three runs; `S143` passed once only because state was warmed by unrelated prior activity. `S142`'s file additionally had a partial-edit gap (a stray call to the old, now-undefined helper name, throwing `ReferenceError`) | **PARTIALLY fixed, TICK REVERSED.** `2890e92df6`'s `bootHealthyThenBreakVaultTree` helper closed the reproduced defect (18/18 in three consecutive uncontended combined runs, 11/11 on the dev-harness pair — all independently reverified) but a genuinely COLD run still fails: `2890e92df6` drives only the rail's VISIBILITY lever, not its Vault/Files MODE toggle, so a session that starts on the "Files" segment (the true cold-start default) never reaches `[data-vault-browser]`. Reconciliation's warmed reruns (state carried across back-to-back invocations) could not surface this; a further uncommitted fix was found addressing it directly. Ticked against `2890e92df6`, then REVERSED per the team lead's ruling once this cold-state gap and a superseding instruction both landed — re-ticks only against the finisher's next punch-list commit, verified cold. |
 | `S102` | `messagePolicy.test.ts`'s "accepts every production English catalog value" is red on `common:agent.composer.teamRunRefused` (`"The team run couldn't be started."` — no actionable recovery clause, `not-actionable` policy code); `actionVocabulary.test.ts`'s canonical-imperative-verb sweep is red on `common:agent.composer.teamRunDismiss` (`"Dismiss"` — not in the canonical imperative-verb inventory; `"Close"` is). Both keys trace to `dfed1ae3c0` ("live team selector — wire the composer onto the a2a team client"), an unrelated agent-lane commit that landed without running the localization suite | **Open** — reconfirmed live at this update (unchanged since first found); needs a two-line catalog fix (`teamRunRefused` gains a recovery clause; `teamRunDismiss` becomes `"Close"` or is added to the canonical inventory) from the owning lane, not this reconciliation pass |
 | `S103` | Same two red tests as `S102` fall within its "app suites" scope | **Open** — same as `S102`. Also flagged, not blocking: `FeatureSearchField.test.tsx`/`leftRailActions.test.tsx` `vi.mock("stores/server/queries")`, pre-existing (predates this dossier's earlier tick of the former, confirmed via diff) — arguably covered by the project's unit-test pure-logic-isolation carve-out, in tension with `S103`'s literal "without mocks" text; routed to the team lead's judgment, not resolved here |
 | `S107` | `just dev lint frontend` fails at the `localization-scan` step before formatting/typecheck/tokens/figma ever run: `Composer.tsx` 2 findings (`unsafe-dynamic-presentation`, unrelated commit `c608584cac`) plus `localization/testing/reviewStationResources.ts` 4 findings (`presentation-field`, new French/Arabic `requestChanges.body`/`placeholder` test-fixture fields from `164ea9fc1d`, not covered by the scanner's test-resource exclusion pattern) | **Open** — reconfirmed live at this update, unresolved by the `2890e92df6` hardening pass (which did not touch either file); blocks `S106` (the full test recipe, red by inheritance from `S102`) and the whole gate |
@@ -530,7 +539,7 @@ reconciliation pass's own scope:
 ## Status
 
 **FINAL pending the remainder of Wave W06.P19 and all of P20.** Plan total:
-230/244 (94.3%). The consolidated wave review closed clean: W03 PASS, W04 PASS,
+226/244 (92.6%). The consolidated wave review closed clean: W03 PASS, W04 PASS,
 W05 PASS, retirements PASS, rescopes PASS, divergences PASS, the S183 amendment
 PASS, all fix commits PASS (`3e66868d0f`, `578b4e5454`, `53426c75f8`,
 `556f8967d9`, `90f8a3d5d5`, `b264490da0`, `8c4220b333`, `47a055f58f`), and
@@ -541,13 +550,22 @@ ripple retirement. The `errors:unexpectedSection` test-vehicle/production-key
 coupling (the sixth codification-candidate instance) is RESOLVED at
 `47a055f58f`.
 
-**`W06.P19` is now 9/14.** `S104`/`S105`/`S139`/`S141`/`S145` landed clean on
-first verification. `S140`/`S142`/`S143`/`S144` needed the `2890e92df6`
-hardening pass (a shared-tree-state test-infrastructure race, diagnosed and
-reproduced live, plus a menu-close race) — see Defect ledger and the new "P19
-e2e harness capabilities" section. Two new harness capabilities
-(`ensureExpanded`, `bootHealthyThenBreakVaultTree`) are recorded there for any
-future e2e spec. Remaining `P19` items, all still genuinely open:
+**`W06.P19` is at 5/14.** `S104`/`S105`/`S139`/`S141`/`S145` landed clean on
+first verification and stay ticked. `S140`/`S142`/`S143`/`S144` were briefly
+ticked against the `2890e92df6` hardening pass, then REVERSED: reconciliation's
+own cold-state verification found `2890e92df6` closes the reproduced
+shared-tree-state race (18/18 across three consecutive uncontended combined
+runs) but leaves a genuinely COLD run still broken — it drives the rail's
+visibility lever but not its Vault/Files mode toggle, so a session starting on
+the true cold-start default ("Files") never reaches the vault-documents tree. A
+further uncommitted fix addressing this directly was found in the working tree.
+Per the team lead's ruling (independently-verified findings supersede a stale
+relayed instruction at equal or lesser recency), the tick is reversed and will
+re-land only against the finisher's next punch-list commit, verified cold — see
+Defect ledger for the reversal record and the new "P19 e2e harness
+capabilities" section for the two new helpers (`ensureExpanded`,
+`bootHealthyThenBreakVaultTree`) recorded for future e2e specs regardless of
+this reversal. Remaining `P19` items, all still genuinely open:
 `S102`/`S103`/`S106` (catalog policy violations in `common:agent.composer.
 teamRunRefused`/`teamRunDismiss`, traced to an unrelated commit, not this
 campaign's own work), `S107` (the full lint gate, blocked at the localization

@@ -57,3 +57,14 @@ own 2 tests included in each). Earlier runs made concurrently with a heavy
 background `vitest run` showed intermittent reds in this combined set
 (resource-contention noise, not a defect in the hardening itself) — the
 isolated, uncontended reruns are the authoritative signal.
+
+**TICK REVERSED (2026-07-17), pending cold-state fix.** After ticking against
+`2890e92df6`, a further uncommitted follow-up edit surfaced in the working tree
+(driving a second lever — the rail's Vault/Files mode toggle, not just its
+visibility) that `2890e92df6` itself did not yet drive. My own "warmed" reruns
+(state carried across my own back-to-back invocations, never truly cold) could
+not surface this gap; a genuinely cold engine/session start still needs the
+finisher's punch-list fix to pass. Reconciliation's original hold was correct;
+this tick was released on a stale instruction and is now reversed pending the
+finisher's punch-list commit, verified cold, per the team lead's ruling. No code
+changes by me at any point.
