@@ -281,6 +281,60 @@ pub fn cancel_session(
     })
 }
 
+pub fn close_session(
+    store: &mut Store,
+    context: SessionCommandContext,
+    session_id: SessionId,
+    request: CloseSessionRequest,
+) -> StoreResult<SessionCommandResult> {
+    let request_digest = digest_value("close_session_request", &request)?;
+    let scope = session_scope(&session_id, None, &request_digest);
+    store.with_unit_of_work(CommandKind::CloseSession, |uow| {
+        run_idempotent(
+            uow,
+            &context,
+            IdempotentCoordinates {
+                command: CommandKind::CloseSession,
+                aggregate_kind: "session",
+                aggregate_id: session_id.as_str().to_string(),
+                scope,
+                request_digest: request_digest.clone(),
+            },
+            |receipt_id| {
+                let (session, changed) =
+                    uow.sessions()
+                        .close_session(&session_id, request, context.now_ms)?;
+                if changed {
+                    // The benign terminal transition — no run to cancel (an active run
+                    // is refused upstream) and no queue to void, so the session records
+                    // its single new `session.closed` kind, keyed distinctly like the
+                    // sibling `session.cancelled` so it reaches the deduped feed.
+                    append_session_event_keyed(
+                        uow,
+                        LifecycleAggregateKind::Session,
+                        session_id.as_str(),
+                        LifecycleEventKind::SessionClosed,
+                        &context,
+                        receipt_id,
+                        ":session-closed",
+                        json!({ "session": session }),
+                    )?;
+                }
+                let snapshot = uow.sessions().snapshot(&session_id, None)?;
+                Ok(SessionCommandOutcome {
+                    schema_version: OUTCOME_SCHEMA.to_string(),
+                    command: CommandKind::CloseSession,
+                    session_id: session.session_id.clone(),
+                    status: "closed".to_string(),
+                    receipt_id: receipt_id.clone(),
+                    run_id: None,
+                    snapshot: Some(snapshot),
+                })
+            },
+        )
+    })
+}
+
 pub fn complete_run(
     store: &mut Store,
     context: SessionCommandContext,
@@ -635,6 +689,7 @@ fn context_command(event_kind: LifecycleEventKind) -> CommandKind {
         LifecycleEventKind::RunCompleted => CommandKind::CompleteRun,
         LifecycleEventKind::TurnQueued => CommandKind::StartPromptTurn,
         LifecycleEventKind::SessionCancelled => CommandKind::CancelSession,
+        LifecycleEventKind::SessionClosed => CommandKind::CloseSession,
         _ => CommandKind::ResumeRun,
     }
 }

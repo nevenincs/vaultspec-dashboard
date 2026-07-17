@@ -443,6 +443,17 @@ pub struct CancelSessionRequest {
     pub reason: String,
 }
 
+/// Gracefully close a session (S13): the benign terminal path (`Active` → `Closed`)
+/// that never tears down work. The `reason` is optional — a close needs no
+/// justification — and, unlike `CancelSessionRequest`, closing refuses while a run is
+/// active rather than cancelling it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct CloseSessionRequest {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ResumeRunRequest {

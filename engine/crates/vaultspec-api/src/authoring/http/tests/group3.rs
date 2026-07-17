@@ -667,3 +667,72 @@ async fn feedback_batch_create_and_read_round_trips_through_the_routes() {
         "wrong command kind is refused"
     );
 }
+
+/// HTTP-level route contract for the S13 session-close verb: an envelope carrying
+/// `command:"close_session"` marks the (quiescent) session `Closed`, a re-close replays
+/// as a benign no-op that still reports `closed`, and a mismatched-but-valid command
+/// kind is a typed 400 refusal. Guards the exact wire contract the a2a submit-success
+/// caller settles on.
+#[tokio::test]
+async fn close_session_marks_closed_and_refuses_a_mismatched_kind() {
+    let (_dir, state) = fixture_state();
+    let actor = agent();
+    // register_actor seeds the `session_http_1` session (Active, no run) to close.
+    register_actor(&state, &actor);
+    let token = issue_token_in_state(&state, &actor);
+
+    // Close with the CORRECT command kind -> Active -> Closed.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, body) = post_authoring(
+        router,
+        "/v1/sessions/session_http_1/close",
+        &token,
+        json!({
+            "api_version": "v1",
+            "command": "close_session",
+            "idempotency_key": "idem:close:1",
+            "payload": { "reason": "done here" },
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["status"], "closed");
+    assert_eq!(body["data"]["snapshot"]["session"]["status"], "closed");
+
+    // Re-closing (fresh idempotency key) is a benign no-op: still 200, still closed.
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, body) = post_authoring(
+        router,
+        "/v1/sessions/session_http_1/close",
+        &token,
+        json!({
+            "api_version": "v1",
+            "command": "close_session",
+            "idempotency_key": "idem:close:2",
+            "payload": {},
+        }),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(body["data"]["snapshot"]["session"]["status"], "closed");
+
+    // A mismatched-but-valid command kind is refused (400, kind guard).
+    let router = authoring_router(state.clone()).with_state(state.clone());
+    let (status, _) = post_authoring(
+        router,
+        "/v1/sessions/session_http_1/close",
+        &token,
+        json!({
+            "api_version": "v1",
+            "command": "create_session",
+            "idempotency_key": "idem:close:wrongkind",
+            "payload": {},
+        }),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "wrong command kind is refused"
+    );
+}

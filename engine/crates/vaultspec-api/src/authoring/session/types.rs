@@ -136,6 +136,13 @@ pub struct AuthoringSessionRecord {
     pub updated_at_ms: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cancelled_at_ms: Option<i64>,
+    /// The graceful-close timestamp (session `Active` → `Closed`). Mirrors
+    /// `cancelled_at_ms` but for the benign terminal path. JSON-only: the
+    /// source-of-truth `record_json` carries it and nothing queries a dedicated
+    /// column, so `#[serde(default)]` keeps every pre-close-verb record
+    /// deserializing unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub closed_at_ms: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

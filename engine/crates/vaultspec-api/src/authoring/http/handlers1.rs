@@ -9,9 +9,9 @@ use ingest_struct::reader::blob_oid;
 use serde_json::{Value, json};
 
 use super::super::api::{
-    CancelRunRequest, CancelSessionRequest, ChangesetChildOperationDraft, CompleteRunRequest,
-    CreateProposalRequest, CreateSessionRequest, InterruptResumeRequest, ResumeRunRequest,
-    StartPromptTurnRequest, ToolPermissionDecisionRequest,
+    CancelRunRequest, CancelSessionRequest, ChangesetChildOperationDraft, CloseSessionRequest,
+    CompleteRunRequest, CreateProposalRequest, CreateSessionRequest, InterruptResumeRequest,
+    ResumeRunRequest, StartPromptTurnRequest, ToolPermissionDecisionRequest,
 };
 use super::super::apply::ApplyOutcome;
 use super::super::approvals::{ApprovalError, ApprovalRequestRecord};
@@ -262,6 +262,36 @@ pub async fn cancel_session(
     let context = session_context(actor, idempotency_key, now);
     match state.with_authoring_store(|store| {
         super::super::session::cancel_session(store, context, session_id, payload)
+    }) {
+        Ok(result) => session_result_response(&state, result),
+        Err(err) => command_error_response(&state, &err),
+    }
+}
+
+/// `POST /authoring/v1/sessions/{session_id}/close` — gracefully close a session
+/// (S13): the BENIGN terminal path marking it `Closed` and emitting `session.closed`.
+/// Unlike `cancel`, it never tears down work — a session with a genuinely active run is
+/// refused; it is idempotent (re-closing, or closing an already-terminal session,
+/// publishes no duplicate transition).
+pub async fn close_session(
+    State(state): State<Arc<AppState>>,
+    Path(session_id): Path<SessionId>,
+    command: ResolvedCommand<CloseSessionRequest>,
+) -> Response {
+    let now = now_ms();
+    let (actor, command_kind, idempotency_key, payload) = command.into_parts();
+    if command_kind != CommandKind::CloseSession {
+        return super::super::response::typed_error(
+            &state,
+            StatusCode::BAD_REQUEST,
+            REQUEST_INVALID_KIND,
+            "session-close route requires command `close_session`",
+        )
+        .into_response();
+    }
+    let context = session_context(actor, idempotency_key, now);
+    match state.with_authoring_store(|store| {
+        super::super::session::close_session(store, context, session_id, payload)
     }) {
         Ok(result) => session_result_response(&state, result),
         Err(err) => command_error_response(&state, &err),

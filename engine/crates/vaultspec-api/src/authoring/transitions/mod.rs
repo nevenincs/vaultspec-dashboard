@@ -400,6 +400,7 @@ pub fn command_lifecycle_scope(command: CommandKind) -> CommandLifecycleScope {
         | CommandKind::StartPromptTurn
         | CommandKind::CompleteRun
         | CommandKind::CancelSession
+        | CommandKind::CloseSession
         | CommandKind::ResumeRun
         | CommandKind::ClaimReview
         | CommandKind::ReleaseReview

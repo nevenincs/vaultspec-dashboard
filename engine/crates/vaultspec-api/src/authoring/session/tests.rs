@@ -567,6 +567,170 @@ fn session_cancel_emits_dual_events_and_voids_the_queue() {
 }
 
 #[test]
+fn session_close_marks_closed_emits_the_event_and_replays_idempotently() {
+    let (_dir, _path, mut store) = temp_store();
+    let actor = actor();
+    register_actor(&mut store, &actor);
+    let session = accepted(
+        create_session(
+            &mut store,
+            context(&actor, "idem:session:create:cl", 100),
+            session_request("Session-close session"),
+        )
+        .unwrap(),
+    );
+
+    // A quiescent session (no active run) closes: Active -> Closed, stamping closed_at.
+    let closed = accepted(
+        close_session(
+            &mut store,
+            context(&actor, "idem:cl:close", 130),
+            session.session_id.clone(),
+            CloseSessionRequest {
+                reason: Some("work is done here".to_string()),
+            },
+        )
+        .unwrap(),
+    );
+    assert_eq!(closed.status, "closed");
+    let snap = closed.snapshot.as_ref().unwrap();
+    assert_eq!(snap.session.status, SessionStatus::Closed);
+    assert_eq!(
+        snap.session.closed_at_ms,
+        Some(130),
+        "the benign terminal path stamps closed_at_ms"
+    );
+    assert!(
+        snap.session.cancelled_at_ms.is_none(),
+        "a close is not a cancel"
+    );
+    let after_first = event_kinds(&mut store);
+    assert_eq!(
+        after_first
+            .iter()
+            .filter(|kind| *kind == "session.closed")
+            .count(),
+        1,
+        "closing emits exactly one session.closed transition: {after_first:?}"
+    );
+
+    // Re-closing an already-Closed session (fresh idempotency key) is a benign no-op:
+    // it publishes NO duplicate transition.
+    let reclosed = accepted(
+        close_session(
+            &mut store,
+            context(&actor, "idem:cl:close:again", 140),
+            session.session_id.clone(),
+            CloseSessionRequest { reason: None },
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        reclosed.snapshot.as_ref().unwrap().session.status,
+        SessionStatus::Closed
+    );
+    let after_second = event_kinds(&mut store);
+    assert_eq!(
+        after_second
+            .iter()
+            .filter(|kind| *kind == "session.closed")
+            .count(),
+        1,
+        "re-closing publishes no duplicate transition: {after_second:?}"
+    );
+}
+
+#[test]
+fn session_close_refuses_while_a_run_is_active() {
+    let (_dir, _path, mut store) = temp_store();
+    let actor = actor();
+    register_actor(&mut store, &actor);
+    let session = accepted(
+        create_session(
+            &mut store,
+            context(&actor, "idem:session:create:clr", 100),
+            session_request("Close-refusal session"),
+        )
+        .unwrap(),
+    );
+    // The first prompt starts a run — the session is no longer quiescent.
+    accepted(
+        start_prompt_turn(
+            &mut store,
+            context(&actor, "idem:clr:turn:1", 110),
+            session.session_id.clone(),
+            turn_request("A prompt starts an active run."),
+        )
+        .unwrap(),
+    );
+
+    let refused = close_session(
+        &mut store,
+        context(&actor, "idem:clr:close", 120),
+        session.session_id.clone(),
+        CloseSessionRequest { reason: None },
+    );
+    assert!(
+        matches!(&refused, Err(StoreError::Session(message)) if message.contains("active")),
+        "closing a session with an active run is a typed refusal, got {refused:?}"
+    );
+    // The refusal is inert: the session stays Active and emits no session.closed.
+    let kinds = event_kinds(&mut store);
+    assert!(
+        !kinds.contains(&"session.closed".to_string()),
+        "a refused close emits no transition: {kinds:?}"
+    );
+}
+
+#[test]
+fn session_close_is_a_benign_no_op_on_a_cancelled_session() {
+    let (_dir, _path, mut store) = temp_store();
+    let actor = actor();
+    register_actor(&mut store, &actor);
+    let session = accepted(
+        create_session(
+            &mut store,
+            context(&actor, "idem:session:create:clc", 100),
+            session_request("Cancel-then-close session"),
+        )
+        .unwrap(),
+    );
+    accepted(
+        cancel_session(
+            &mut store,
+            context(&actor, "idem:clc:cancel", 110),
+            session.session_id.clone(),
+            CancelSessionRequest {
+                reason: "end it".to_string(),
+            },
+        )
+        .unwrap(),
+    );
+
+    // Closing an already-Cancelled session is a benign no-op — it never resurrects or
+    // overwrites the terminal state, mirroring cancel_session's non-Active re-entry.
+    let closed = accepted(
+        close_session(
+            &mut store,
+            context(&actor, "idem:clc:close", 120),
+            session.session_id.clone(),
+            CloseSessionRequest { reason: None },
+        )
+        .unwrap(),
+    );
+    assert_eq!(
+        closed.snapshot.as_ref().unwrap().session.status,
+        SessionStatus::Cancelled,
+        "a close never overwrites a cancelled session's terminal state"
+    );
+    let kinds = event_kinds(&mut store);
+    assert!(
+        !kinds.contains(&"session.closed".to_string()),
+        "closing a cancelled session emits no session.closed: {kinds:?}"
+    );
+}
+
+#[test]
 fn completing_a_run_covers_the_outcome_enum_owner_and_failed_arm() {
     let (_dir, _path, mut store) = temp_store();
     let owner = actor();

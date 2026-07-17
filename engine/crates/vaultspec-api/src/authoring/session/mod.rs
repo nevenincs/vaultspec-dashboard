@@ -10,8 +10,8 @@ use serde_json::{Value, json};
 
 use super::actors::{actor_kind_from_name, actor_kind_name};
 use super::api::{
-    CancelRunRequest, CancelSessionRequest, CompleteRunRequest, CreateSessionRequest,
-    ResumeRunRequest, RunOutcome, StartPromptTurnRequest,
+    CancelRunRequest, CancelSessionRequest, CloseSessionRequest, CompleteRunRequest,
+    CreateSessionRequest, ResumeRunRequest, RunOutcome, StartPromptTurnRequest,
 };
 use super::events::{
     LifecycleAggregateKind, LifecycleEventInput, LifecycleEventKind, lifecycle_event_draft,
@@ -90,6 +90,7 @@ impl SessionRepository<'_, '_> {
             created_at_ms: now_ms,
             updated_at_ms: now_ms,
             cancelled_at_ms: None,
+            closed_at_ms: None,
         };
         self.insert_or_update_session(&record)?;
         self.register_session_retention(&record)?;
@@ -298,6 +299,41 @@ impl SessionRepository<'_, '_> {
         self.insert_or_update_session(&session)?;
         self.register_session_retention(&session)?;
         Ok((session, cancelled_run, true))
+    }
+
+    /// Gracefully close a session (S13): the BENIGN terminal path, `Active` → `Closed`.
+    /// Unlike `cancel_session` this never tears down work — a session with a genuinely
+    /// active run is REFUSED (cancel the run or await its settlement first), so a close
+    /// only ever retires a quiescent session. Returns the session and whether anything
+    /// changed: an already-terminal session (`Closed` OR `Cancelled`) replays as an
+    /// idempotent no-op, mirroring `cancel_session`'s non-`Active` re-entry semantics.
+    pub fn close_session(
+        &self,
+        session_id: &SessionId,
+        input: CloseSessionRequest,
+        now_ms: i64,
+    ) -> StoreResult<(AuthoringSessionRecord, bool)> {
+        if let Some(reason) = input.reason.as_deref() {
+            validate_reason(reason)?;
+        }
+        let mut session = self
+            .session(session_id)?
+            .ok_or_else(|| StoreError::Session(format!("session `{session_id}` does not exist")))?;
+        if session.status != SessionStatus::Active {
+            return Ok((session, false));
+        }
+        if let Some(run) = self.active_run(session_id)? {
+            return Err(StoreError::Session(format!(
+                "cannot close session `{session_id}` while run `{}` is active; cancel the run or await its completion",
+                run.run_id
+            )));
+        }
+        session.status = SessionStatus::Closed;
+        session.updated_at_ms = now_ms;
+        session.closed_at_ms = Some(now_ms);
+        self.insert_or_update_session(&session)?;
+        self.register_session_retention(&session)?;
+        Ok((session, true))
     }
 
     /// Settle an active run into its terminal state (D1). The reported `outcome`
