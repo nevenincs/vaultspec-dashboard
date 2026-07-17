@@ -88,7 +88,7 @@ const MSG = {
   idlePlaceholder: "common:agent.composer.placeholder",
   steerPlaceholder: "common:agent.composer.steerPlaceholder",
   send: "common:agent.composer.send",
-  stop: "common:agent.composer.stop",
+  stop: "common:agent.actions.stopRun",
   sendFailed: "common:agent.composer.sendFailed",
   attachedContext: "common:agent.composer.attachedContext",
   queuedChip: "common:agent.composer.queuedChip",

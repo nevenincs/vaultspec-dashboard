@@ -314,7 +314,6 @@ export const common = {
       placeholder: "Message the agent",
       steerPlaceholder: "Reply to guide the running agent",
       send: "Send",
-      stop: "End conversation",
       sendFailed: "The message couldn’t be sent. Try again.",
       attachedContext: "Attached context",
       queuedChip: "Next prompt",

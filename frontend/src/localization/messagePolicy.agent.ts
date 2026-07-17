@@ -53,7 +53,6 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.placeholder": { role: "label" },
   "common:agent.composer.steerPlaceholder": { role: "label" },
   "common:agent.composer.send": { role: "action" },
-  "common:agent.composer.stop": { role: "action" },
   "common:agent.composer.sendFailed": { role: "error-message" },
   "common:agent.composer.attachedContext": { role: "accessibility" },
   "common:agent.composer.queuedChip": { role: "label" },

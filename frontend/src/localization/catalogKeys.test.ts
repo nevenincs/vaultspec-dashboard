@@ -197,7 +197,6 @@ const EXPECTED_CATALOG_KEYS = [
   "common:agent.composer.placeholder",
   "common:agent.composer.steerPlaceholder",
   "common:agent.composer.send",
-  "common:agent.composer.stop",
   "common:agent.composer.sendFailed",
   "common:agent.composer.attachedContext",
   "common:agent.composer.queuedChip",
