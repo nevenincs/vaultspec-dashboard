@@ -22,6 +22,7 @@ against a compiled ledger instead of reconstructing history from commits and cha
 | Scope | Verdict |
 | --- | --- |
 | W02.P04.S17/S18 (action-contract closure gates) | **CLOSED** (post-review) — landed at `9b23233257`, independently reverified, 79/79 live; not part of the consolidated review's original scope, added here as it closed after |
+| S17/S18 strict-contract fixture fallout, full sweep-proven closure | **PASS** — beyond the reviewer's named five files, a broad at-risk sweep found and fixed four MORE consumer fixtures (`ContextMenuHost.render.test.tsx`, `ContextMenuHost.interactive.test.tsx`, `seamTransit.test.tsx`, `globalTail.test.ts`), landed at `b264490da0`; independently reverified across the full 9-file set at 119/119, ESLint clean, scanner clean — see Ledger by wave for the closure argument |
 | W03 (core application surfaces) | **PASS** — both red files (`FeatureSearchField.test.tsx`, `leftMenus.test.ts`) fixed and independently reverified at `90f8a3d5d5`; 94/94 across the full former red set (72/72 for the four-file combined fix + 22/22 `contextMenu.test.ts`) |
 | W04 (status, search, temporal surfaces) | **PASS** — `contextMenu.test.ts` green (22/22), a collateral fix of `9b23233257` as the timeline established; review snapshot had predated that commit |
 | W05 (authoring, viewer, settings, auxiliary) | **PASS** |
@@ -102,6 +103,30 @@ below). Plan total: 209/244 (85.7%). Every step outside Wave W06 is now ticked.
   `registry.test.ts` rewritten to PROVE rejection of a raw string label rather than
   merely tolerate typed input. `P05` (keymap/command/palette) 27/27, `P06` (shared
   presentation vocabularies) 7/7.
+
+  **Sweep-proven closure of the S17/S18 strict-contract fallout.** The reviewer's
+  own recommendation — "run everything, not just the named suspects" — was
+  vindicated: beyond the five files the consolidated review named
+  (`commandRegistry.test.ts`, `commandPaletteCommands.test.ts`,
+  `contextMenu.test.ts`, plus the two orphan/cross-step W03 files), a broad at-risk
+  sweep found FOUR MORE consumer fixtures still asserting raw-string labels against
+  the now-strict `MessageDescriptor`-only contract: `ContextMenuHost.render.test.tsx`,
+  `ContextMenuHost.interactive.test.tsx`, `seamTransit.test.tsx`, and
+  `app/menus/globalTail.test.ts`. All four fixed and landed at `b264490da0`. The
+  closure argument: every consumer that registers, normalizes, or resolves an
+  `ActionDescriptor`/`ActionPresentation` label was enumerated and swept; the only
+  remaining raw-string label assertions left in `registry.test.ts` and
+  `commandPaletteCommands.test.ts` are the INTENTIONAL rejection-proof tests (they
+  assert the strict contract rejects a raw string, not that one is accepted).
+  Independently reverified against the commit, not the report alone: `git show
+  b264490da0 --stat` matches the reported four files exactly; a live rerun of the
+  full 9-file former-fallout set (the five originally named plus these four) —
+  119/119 passed; `npx eslint` on the same nine files — clean; `scan-localization.mjs`
+  — clean. (Note: the reporting agent's own tally cited 161 tests across this set;
+  my independent count of these exact nine files is 119/119 — the discrepancy is
+  unresolved and likely reflects a broader file set on their side, flagged rather
+  than silently adopted, but doesn't change the verdict since every test I ran is
+  green.)
 - **W03** (core application surfaces) — 48/48 steps ticked, **PASS**. `P07` (global
   chrome/kit/shell) 15/15, `P08` (left rail projects/browsing) 18/18, `P09` (stage
   graph/islands) 15/15. Every named STEP's own scope is genuinely satisfied. The two
