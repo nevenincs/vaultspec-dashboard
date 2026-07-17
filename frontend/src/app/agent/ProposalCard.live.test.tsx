@@ -113,7 +113,7 @@ function renderTranscript(snapshot: SessionSnapshot) {
 }
 
 describe("inline proposal card (live wire)", () => {
-  it("correlates the served proposal into the latest turn's slot, previews it, and approves it", async () => {
+  it("binds the turn slot ONLY by served run provenance — a direct-route proposal stays out (S42)", async () => {
     const authorToken = (
       await liveAuthoring.issueActorToken({
         actor: { id: `agent:proposal-panel-${run}`, kind: "agent" },
@@ -158,53 +158,33 @@ describe("inline proposal card (live wire)", () => {
     expect(snapshot.session.actor.id).toBe(`agent:proposal-panel-${run}`);
     renderTranscript(snapshot);
 
-    // The correlated card mounts in the latest turn's slot once the queue loads.
-    const card = await waitFor(
-      () => {
-        const el = document.querySelector<HTMLElement>(
-          "[data-agent-proposal] [data-proposal]",
-        );
-        expect(el).not.toBeNull();
-        return el!;
-      },
-      { timeout: 15_000 },
-    );
-    expect(card.getAttribute("data-changeset-id")).toBe(changesetId);
-    // Served summary + change count are rendered (never re-derived client-side).
-    expect(card.querySelector("[data-proposal-ops]")).not.toBeNull();
-
-    // Eligibility-driven, ambient: Approve/Reject render enabled with no sign-in.
-    const approve = within(card).getByRole("button", { name: "Approve proposal" });
-    const reject = within(card).getByRole("button", { name: "Reject proposal" });
-    expect(approve.getAttribute("disabled")).toBeNull();
-    expect(reject.getAttribute("disabled")).toBeNull();
-
-    // Show changes opens the ONE diff primitive in proposal-preview mode over the
-    // served base/proposed texts (the unified DiffView, ADR D7).
-    fireEvent.click(card.querySelector("[data-toggle-diff]")!);
+    // EXACT BINDING (agent-wire-gaps S42/D4): the transcript slot binds ONLY by
+    // the proposal's SERVED run_id. This proposal was created through the DIRECT
+    // authoring route, which by design carries no run provenance (provenance is
+    // server-stamped at tool-executor dispatch and can never be client-supplied)
+    // — so the slot must stay EMPTY: no heuristic fallback resurrects the retired
+    // session-actor-latest matching. Wait for the turn row to render (the slot's
+    // host exists), then assert the card is absent.
     await waitFor(
       () =>
         expect(
-          document.querySelector('[data-diff-source="proposal-preview"]'),
+          document.querySelector("[data-agent-transcript-entries] li"),
         ).not.toBeNull(),
       { timeout: 15_000 },
     );
-
-    // Approve fires the REAL review decision end-to-end (confirm → recorded
-    // acceptance). Zero prior editing; the ambient reviewer is a distinct principal.
-    fireEvent.click(approve);
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "Approve proposal" }));
-    await waitFor(
-      () =>
-        expect(
-          document.querySelector('[data-card-feedback="accepted"]'),
-        ).not.toBeNull(),
-      { timeout: 15_000 },
-    );
-
-    // The decision really landed: the served projection now reads approved.
-    const afterApprove = await liveAuthoring.projectProposal(changesetId);
-    expect(afterApprove?.proposal.status).toBe("approved");
-  });
+    // Give the proposal queue query a settle window, then assert NO card mounted
+    // anywhere in the transcript (the slot renders nothing without a run match).
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+    expect(document.querySelector("[data-proposal]")).toBeNull();
+    // The served projection confirms the proposal is REAL and session-scoped with
+    // no run provenance — the review station is its home, not the turn slot.
+    const projected = await liveAuthoring.projectProposal(changesetId);
+    expect(projected?.proposal.session_id).toBe(sessionId);
+    expect(projected?.proposal.run_id ?? null).toBeNull();
+    // The live CORRELATED card flow (tool-executor-dispatched proposal carrying
+    // served run provenance → card mounts → diff → approve) requires the executor
+    // choreography no frontend path can mint — it lands with the first
+    // agent-driven run e2e; the card's approve mechanics are live-covered by the
+    // review-station suite today.
+  }, 45_000);
 });
