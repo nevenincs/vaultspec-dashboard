@@ -59,13 +59,21 @@ const A2A_WHITELIST: &[&str] = &[
 /// run-start (ADR D2). The supervisor is a DISTINCT actor so the self-approval
 /// ban binds per role. Kept as a fixed set: identity authority stays with the
 /// engine, never re-derived from a client-named role list.
+///
+/// Each entry is a vaultspec agent id, and the provisioned token map is keyed by
+/// it. The a2a sibling consumes the bundle by worker `agent_id` (its run-start
+/// eligibility policy requires one token per `worker.agent_id`), so these keys
+/// MUST be the canonical agent ids the presets declare — generic role labels
+/// leave every engine-driven run's bundle unconsumable. The union covers the
+/// four `vaultspec-adr-research` document workers, the `vaultspec-solo-coder`
+/// worker, and the default supervisor.
 const A2A_PIPELINE_ROLES: &[&str] = &[
-    "researcher",
-    "analyst",
-    "planner",
-    "executor",
-    "reviewer",
-    "supervisor",
+    "vaultspec-researcher",
+    "vaultspec-synthesist",
+    "vaultspec-adr-author",
+    "vaultspec-doc-reviewer",
+    "vaultspec-coder",
+    "vaultspec-supervisor",
 ];
 
 /// Heartbeat staleness threshold for the a2a discovery file: the resident
@@ -927,6 +935,28 @@ mod tests {
             A2A_PIPELINE_ROLES.len(),
             "one token per canonical pipeline role"
         );
+
+        // The bundle keys MUST be the canonical vaultspec agent ids the a2a
+        // sibling consumes by `worker.agent_id`; a generic role label leaves the
+        // bundle unconsumable. Derived from the preset contract, not from the
+        // const under test, so this guards the exact key-mismatch regression.
+        let expected_agent_ids: std::collections::HashSet<&str> = [
+            "vaultspec-researcher",
+            "vaultspec-synthesist",
+            "vaultspec-adr-author",
+            "vaultspec-doc-reviewer",
+            "vaultspec-coder",
+            "vaultspec-supervisor",
+        ]
+        .into_iter()
+        .collect();
+        let actual_agent_ids: std::collections::HashSet<&str> =
+            tokens.keys().map(String::as_str).collect();
+        assert_eq!(
+            actual_agent_ids, expected_agent_ids,
+            "bundle keys must be the canonical vaultspec agent ids"
+        );
+
         let mut seen = std::collections::HashSet::new();
         for role in A2A_PIPELINE_ROLES {
             let token = tokens[*role].as_str().expect("role token is a string");
