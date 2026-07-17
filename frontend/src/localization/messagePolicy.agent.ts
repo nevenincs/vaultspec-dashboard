@@ -23,6 +23,7 @@ export const AGENT_MESSAGE_POLICY = {
   // "New session" is the Figma-bound noun-phrase menu name (like "New document"),
   // not imperative copy — classified as a label, mirroring that precedent.
   "common:agent.panel.newSession": { role: "label" },
+  "common:agent.panel.endConversation": { role: "label" },
   "common:agent.panel.recentSessions": { role: "label" },
   "common:agent.panel.untitledSession": { role: "label" },
   "common:agent.panel.close": { role: "accessibility" },

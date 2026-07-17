@@ -171,6 +171,7 @@ const EXPECTED_CATALOG_KEYS = [
   "common:agent.panel.region",
   "common:agent.panel.sessionsMenu",
   "common:agent.panel.newSession",
+  "common:agent.panel.endConversation",
   "common:agent.panel.recentSessions",
   "common:agent.panel.untitledSession",
   "common:agent.panel.close",

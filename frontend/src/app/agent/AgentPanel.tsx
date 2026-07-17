@@ -29,7 +29,10 @@ import {
   useAgentPanelOpen,
 } from "../../stores/view/agentPanel";
 import { useAgentPanelWidth } from "../../stores/view/shellLayout";
-import { agentNewSessionAction } from "../../stores/view/agentActions";
+import {
+  agentNewSessionAction,
+  endActiveAgentSession,
+} from "../../stores/view/agentActions";
 import {
   Divider,
   DropdownButton,
@@ -48,6 +51,7 @@ const AGENT = {
   region: "common:agent.panel.region",
   sessionsMenu: "common:agent.panel.sessionsMenu",
   newSession: "common:agent.panel.newSession",
+  endConversation: "common:agent.panel.endConversation",
   recentSessions: "common:agent.panel.recentSessions",
   untitledSession: "common:agent.panel.untitledSession",
   close: "common:agent.panel.close",
@@ -66,10 +70,18 @@ function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | nul
   const untitled = resolveMessage({ key: AGENT.untitledSession }).message;
   const agentLabel = resolveMessage({ key: AGENT.region }).message;
   const newSessionLabel = resolveMessage({ key: AGENT.newSession }).message;
+  const endConversationLabel = resolveMessage({ key: AGENT.endConversation }).message;
   const sessionsMenuLabel = resolveMessage({ key: AGENT.sessionsMenu }).message;
   const recentsLabel = resolveMessage({ key: AGENT.recentSessions }).message;
 
   const title = currentSessionId ? session.data?.session.title || untitled : agentLabel;
+
+  // Whether the current conversation can be explicitly ended (S45): a current,
+  // still-active session. Derived from the reactive session query (a loading
+  // snapshot is treated as endable so the control is not falsely hidden).
+  const canEndConversation =
+    currentSessionId !== null &&
+    (session.data?.session.status ?? "active") === "active";
 
   // New session routes through the shared `agent:new-session` descriptor,
   // so the header control and the Cmd+K command are one seam. It clears to a blank
@@ -77,6 +89,13 @@ function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | nul
   const onNewSession = () => {
     setMenuOpen(false);
     agentNewSessionAction().run?.();
+  };
+
+  // End conversation is the EXPLICIT session-cancel (S45): distinct from Stop
+  // (run-scoped). Fires the one `endActiveAgentSession` seam.
+  const onEndConversation = () => {
+    setMenuOpen(false);
+    void endActiveAgentSession();
   };
 
   const recents = list.data?.items ?? [];
@@ -107,6 +126,17 @@ function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | nul
             >
               {newSessionLabel}
             </button>
+            {canEndConversation && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={onEndConversation}
+                data-agent-end-conversation
+                className="rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-state-broken transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
+              >
+                {endConversationLabel}
+              </button>
+            )}
             {recents.length > 0 && (
               <>
                 <Divider />
