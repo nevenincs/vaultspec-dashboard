@@ -5,10 +5,45 @@ import type {
   ReactElement,
   Ref,
 } from "react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
+import type { LineChange, LineMarker } from "../authoring/editorChanges";
+import { lineMarkers } from "../authoring/editorChanges";
 import type { TokenLine } from "./useHighlighter";
 import { useTokenLines } from "./useHighlighter";
+
+/** The change-marker tone per kind. A bar for an edit, a tick for a deletion —
+ *  all three carry the diff token tier, so they theme with everything else. */
+const MARKER_TONE: Record<LineMarker["kind"], string> = {
+  added: "bg-diff-add",
+  modified: "bg-diff-modified",
+  removed: "bg-diff-remove",
+};
+
+/** One line's change mark, laid out INSIDE the line's flow block so it tracks the
+ *  line through soft-wrap and scroll for free — a bar down the left inset for an
+ *  edit, a short tick at the top edge for a deletion sitting above this line. The
+ *  inset (`left`) sits within the editor's existing 1.5rem left padding, so the
+ *  gutter reserves no extra width. */
+function ChangeMarker({ marker }: { marker: LineMarker }): ReactElement {
+  const tone = MARKER_TONE[marker.kind];
+  if (marker.tick) {
+    return (
+      <span
+        aria-hidden
+        data-change-marker="removed"
+        className={`pointer-events-none absolute left-[-0.9rem] top-0 h-[0.125rem] w-[0.5rem] -translate-y-1/2 rounded-fg-pill ${tone}`}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden
+      data-change-marker={marker.kind}
+      className={`pointer-events-none absolute bottom-0 left-[-0.9rem] top-0 w-[0.1875rem] rounded-fg-pill ${tone}`}
+    />
+  );
+}
 
 export function splitHighlightedTextLines(
   text: string,
@@ -51,22 +86,30 @@ export function HighlightedTextLines({
   rawLines,
   tokenLines,
   lineClassName = "",
+  markersByLine,
 }: {
   rawLines: string[];
   tokenLines: TokenLine[] | null;
   lineClassName?: string;
+  /** Per-line change marks (editor-change-fidelity D5). A marked line renders its
+   *  bar/tick as a flow child, so the mark tracks the line through wrap + scroll. */
+  markersByLine?: Map<number, LineMarker>;
 }): ReactElement {
   return (
     <>
-      {rawLines.map((raw, index) => (
-        <span
-          key={index}
-          className={`block min-h-[1em] whitespace-pre-wrap break-words ${lineClassName}`}
-          data-highlight-line
-        >
-          <HighlightedLineContent raw={raw} tokens={tokenLines?.[index]} />
-        </span>
-      ))}
+      {rawLines.map((raw, index) => {
+        const marker = markersByLine?.get(index);
+        return (
+          <span
+            key={index}
+            className={`relative block min-h-[1em] whitespace-pre-wrap break-words ${lineClassName}`}
+            data-highlight-line
+          >
+            {marker && <ChangeMarker marker={marker} />}
+            <HighlightedLineContent raw={raw} tokens={tokenLines?.[index]} />
+          </span>
+        );
+      })}
     </>
   );
 }
@@ -78,6 +121,7 @@ export function HighlightedTextarea({
   ariaLabel,
   inputRef,
   onKeyDown,
+  changes,
 }: {
   value: string;
   languageHint: string | null;
@@ -89,10 +133,17 @@ export function HighlightedTextarea({
   /** Keydown handler on the textarea — for the editor's widget-intrinsic (Class-B)
    *  formatting accelerators, kept in the component, never the keymap registry. */
   onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
+  /** The dirty-diff of the draft against the saved base (editor-change-fidelity
+   *  D5). When provided, changed lines carry a gutter mark; omitted → no gutter. */
+  changes?: LineChange[];
 }): ReactElement {
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
   const rawLines = splitHighlightedTextLines(value);
   const { lines: tokenLines } = useTokenLines(value, languageHint);
+  const markersByLine = useMemo(
+    () => (changes && changes.length > 0 ? lineMarkers(changes) : undefined),
+    [changes],
+  );
 
   return (
     <div
@@ -108,7 +159,11 @@ export function HighlightedTextarea({
           className="block whitespace-pre-wrap break-words"
           style={{ marginLeft: -scroll.left, marginTop: -scroll.top }}
         >
-          <HighlightedTextLines rawLines={rawLines} tokenLines={tokenLines} />
+          <HighlightedTextLines
+            rawLines={rawLines}
+            tokenLines={tokenLines}
+            markersByLine={markersByLine}
+          />
         </code>
       </pre>
       <textarea

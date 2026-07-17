@@ -71,6 +71,7 @@ import {
   promoteDocTab,
 } from "../../stores/view/tabs";
 import { DiffView } from "../authoring/DiffView";
+import { deriveLineChanges } from "../authoring/editorChanges";
 import {
   Button,
   DecorativeGlyph,
@@ -176,6 +177,15 @@ export function MarkdownDocView({
   // Bootstrap the shared editor actor eagerly while editing; the comment plane
   // bootstraps it lazily (on first thread open) in view mode via `ensureActor`.
   const editorIdentity = useEnsureCurrentEditorIdentity(editor.isEditing);
+
+  // The dirty-diff the gutter paints (editor-change-fidelity D5). Derived from the
+  // LIVE draft against the store-maintained saved base — no debounce, because the
+  // bounded line diff now costs about what the edit costs (see diffLines.ts), so a
+  // per-keystroke gutter is cheap. Empty when the draft matches the base → no gutter.
+  const editorChanges = useMemo(
+    () => deriveLineChanges(editor.baseText, editor.draftText),
+    [editor.baseText, editor.draftText],
+  );
 
   const saveBody = useSaveBody();
   const setFrontmatter = useSetFrontmatter();
@@ -664,6 +674,7 @@ export function MarkdownDocView({
             }).message
           }
           inputRef={textareaRef}
+          changes={editorChanges}
         />
       </div>
     </div>

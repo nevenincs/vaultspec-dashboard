@@ -57,6 +57,62 @@ describe("HighlightedTextarea", () => {
   });
 });
 
+describe("change-marker gutter", () => {
+  it("renders no marker when there are no changes", () => {
+    render(
+      <HighlightedTextarea
+        value={"a\nb\nc"}
+        languageHint="markdown"
+        onChange={() => {}}
+        ariaLabel="doc"
+        changes={[]}
+      />,
+    );
+    expect(document.querySelector("[data-change-marker]")).toBeNull();
+  });
+
+  it("marks each changed line with the right tone, on the right row", () => {
+    // A modified line 1 and an added line 2 (in draft space).
+    render(
+      <HighlightedTextarea
+        value={"a\nB\nnew\nc"}
+        languageHint="markdown"
+        onChange={() => {}}
+        ariaLabel="doc"
+        changes={[
+          { line: 1, kind: "modified", span: 1 },
+          { line: 2, kind: "added", span: 1 },
+        ]}
+      />,
+    );
+    const lines = document.querySelectorAll("[data-highlight-line]");
+    // Marker lives INSIDE its line's flow block (so it tracks wrap + scroll), not
+    // in a separate absolutely-positioned column.
+    expect(lines[0].querySelector("[data-change-marker]")).toBeNull();
+    expect(lines[1].querySelector('[data-change-marker="modified"]')).toBeTruthy();
+    expect(lines[2].querySelector('[data-change-marker="added"]')).toBeTruthy();
+    expect(lines[1].querySelector("[data-change-marker]")?.className).toContain(
+      "bg-diff-modified",
+    );
+  });
+
+  it("renders a deletion as a tick on the line it sits above", () => {
+    render(
+      <HighlightedTextarea
+        value={"a\nc"}
+        languageHint="markdown"
+        onChange={() => {}}
+        ariaLabel="doc"
+        changes={[{ line: 1, kind: "removed", span: 0 }]}
+      />,
+    );
+    const tick = document.querySelector('[data-change-marker="removed"]');
+    expect(tick).toBeTruthy();
+    // A tick, not a full-height bar: it carries the remove tone and zero-ish height.
+    expect(tick?.className).toContain("bg-diff-remove");
+  });
+});
+
 describe("splitHighlightedTextLines", () => {
   it("preserves a trailing editor line unless the caller asks for viewer behavior", () => {
     expect(splitHighlightedTextLines("line\n")).toEqual(["line", ""]);

@@ -84,6 +84,38 @@ export function changeCount(changes: LineChange[]): number {
   return changes.length;
 }
 
+/** The gutter mark for one draft line: the change kind, and whether it is a
+ *  zero-height tick (a deletion sitting above the line) rather than a bar. */
+export interface LineMarker {
+  kind: ChangeKind;
+  /** True for a `removed` deletion — rendered as a tick between rows, since the
+   *  deleted lines occupy no space in the draft. */
+  tick: boolean;
+}
+
+/**
+ * A draft-line → marker lookup for the gutter: every line of an added/modified run
+ * gets a bar of that kind (so a multi-line run reads as one continuous region), and
+ * a removal gets a single tick on the line it sits above. Built once per render
+ * rather than probing `changeAtLine` per row.
+ */
+export function lineMarkers(changes: LineChange[]): Map<number, LineMarker> {
+  const markers = new Map<number, LineMarker>();
+  for (const change of changes) {
+    if (change.kind === "removed") {
+      // A tick wins its row only if no bar already claims it (an edit that both
+      // deletes and changes a line reads as the in-place change, not the tick).
+      if (!markers.has(change.line))
+        markers.set(change.line, { kind: "removed", tick: true });
+      continue;
+    }
+    for (let line = change.line; line < change.line + change.span; line += 1) {
+      markers.set(line, { kind: change.kind, tick: false });
+    }
+  }
+  return markers;
+}
+
 /**
  * The next change strictly after `fromLine`, wrapping to the first when there is
  * none below. Returns null only when there are no changes at all. Wrapping matches
