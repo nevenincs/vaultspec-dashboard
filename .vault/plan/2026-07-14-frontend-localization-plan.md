@@ -11,6 +11,16 @@ related:
   - '[[2026-07-14-frontend-localization-reference]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 <!-- RETIRED: S40, S75, S180, S181, S219, S236, S238 -->
 
 # `frontend-localization` plan
@@ -181,7 +191,7 @@ Localize project selection, document browsing, filtering, dialogs, menus, and ev
 - [x] `W03.P08.S171` - Localize left-rail loading, degraded, empty, and partial state blocks; `frontend/src/app/left/railStates.tsx`.
 - [x] `W03.P08.S172` - Localize create-document dialog fields, validation, confirmations, and actions; `frontend/src/app/left/CreateDocDialog.tsx, frontend/src/stores/view/createDocChrome.ts, frontend/src/stores/server/queries/mutations.ts, catalogs, policy, focused tests, and exact allowlist`.
 - [x] `W03.P08.S173` - Migrate project and worktree render tests through production catalogs; `frontend/src/app/left/ProjectNavigator.render.test.tsx, frontend/src/app/left/WorktreePicker.render.test.tsx`.
-- [ ] `W03.P08.S174` - Migrate filter and state render tests through production catalogs; `frontend/src/app/left/RailFilterField.render.test.tsx, frontend/src/app/left/railStates.render.test.tsx, frontend/src/app/stage/FilterMenu.render.test.tsx, frontend/src/app/stage/FilterSidebar.planStates.test.ts`.
+- [x] `W03.P08.S174` - Migrate filter and state render tests through production catalogs; `frontend/src/app/left/RailFilterField.render.test.tsx, frontend/src/app/left/railStates.render.test.tsx, frontend/src/app/stage/FilterMenu.render.test.tsx, frontend/src/app/stage/FilterSidebar.planStates.test.ts`.
 - [x] `W03.P08.S223` - Standardize and localize vault-category menu actions while keeping localized category labels out of raw clipboard payloads; `frontend/src/app/left/menus/vaultCategoryMenu.ts, shared clipboard outcome handling, catalogs, allowlist, and focused tests`.
 - [x] `W03.P08.S224` - Standardize and localize vault-document menu actions through the shared canvas action boundary; `frontend/src/app/left/menus/vaultDocMenu.ts, frontend/src/app/menus/sharedActions.ts, catalogs, allowlist, and focused tests`.
 - [x] `W03.P08.S225` - Standardize and localize vault-feature menu actions through shared action and raw clipboard boundaries; `frontend/src/app/left/menus/vaultFeatureMenu.ts, shared action and clipboard handling, catalogs, allowlist, and focused tests`.
@@ -227,8 +237,8 @@ Localize status, search-service, changes, review, and operational surfaces with 
 - [x] `W04.P10.S182` - Standardize and localize commit menu navigation, recovery, and copy actions; `frontend/src/app/right/menus/commitMenu.ts, frontend/src/app/right/menus/commitMenu.timeTravel.test.ts, frontend/src/app/right/menus/rightMenus.test.ts, frontend/src/app/right/menus/rightMenus.localization.test.ts, frontend/src/locales/en/common.ts, frontend/src/locales/en/timeline.ts, frontend/src/localization/catalogKeys.test.ts, frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts, frontend/src/localization/testing/resources.ts, frontend/src/platform/actions/clipboardActions.ts, frontend/src/platform/actions/clipboardActions.test.ts, frontend/src/platform/actions/clipboardActions.localization.test.ts, frontend/scripts/localization-allowlist.json`.
 - [x] `W04.P10.S183` - Standardize and localize connection menu actions without node, ID, or JSON vocabulary; `frontend/src/app/right/menus/edgeMenu.ts`.
 - [x] `W04.P10.S184` - Standardize and localize pull-request menu navigation, recovery, and copy actions; `frontend/src/app/right/menus/prMenu.ts, frontend/src/app/right/menus/rightMenus.test.ts, frontend/src/app/right/menus/rightMenus.localization.test.ts, frontend/src/locales/en/common.ts, frontend/src/locales/en/projects.ts, frontend/src/localization/catalogKeys.test.ts, frontend/src/localization/messagePolicy.ts, frontend/src/localization/messagePolicy.test.ts, frontend/src/localization/testing/resources.ts, frontend/src/platform/actions/clipboardActions.ts, frontend/src/platform/actions/clipboardActions.test.ts, frontend/src/platform/actions/clipboardActions.localization.test.ts, frontend/scripts/localization-allowlist.json`.
-- [ ] `W04.P10.S185` - Migrate right-rail menu tests through production catalogs; `frontend/src/app/right/menus/rightMenus.test.ts, frontend/src/app/right/menus/commitMenu.timeTravel.test.ts`.
-- [ ] `W04.P10.S186` - Migrate right-rail action and rail-state tests through production catalogs; `frontend/src/app/right/rightRailActions.test.tsx, frontend/src/app/right/rail.test.ts`.
+- [x] `W04.P10.S185` - Migrate right-rail menu tests through production catalogs; `frontend/src/app/right/menus/rightMenus.test.ts, frontend/src/app/right/menus/commitMenu.timeTravel.test.ts`.
+- [x] `W04.P10.S186` - Migrate right-rail action and rail-state tests through production catalogs; `frontend/src/app/right/rightRailActions.test.tsx, frontend/src/app/right/rail.test.ts`.
 - [x] `W04.P10.S243` - Production-fence the crash injector from user-facing builds; `frontend/src/platform/errors/CrashInjector.tsx`.
 
 ### Phase `W04.P11` - search and palette surfaces
@@ -250,7 +260,7 @@ Complete search dialog, result, provider, empty, degraded, live-region, and resu
 Localize timeline controls, range labels, time-travel messaging, criteria, and every date or relative-time formatter.
 
 - [x] `W04.P12.S69` - Localize timeline range controls, handles, summaries, and accessibility names; `frontend/src/app/timeline/TimelineRangeSelector.tsx`.
-- [ ] `W04.P12.S70` - Replace manual month names and fixed date layouts with locale-aware temporal formatters; `frontend/src/app/timeline/timelineRangeMath.ts, frontend/src/stores/view/timeline.ts`.
+- [x] `W04.P12.S70` - Replace manual month names and fixed date layouts with locale-aware temporal formatters; `frontend/src/app/timeline/timelineRangeMath.ts, frontend/src/stores/view/timeline.ts`.
 - [x] `W04.P12.S71` - Localize time-travel status and return actions with consistent verbs; `frontend/src/app/timeline/TimeTravelChip.tsx`.
 - [x] `W04.P12.S72` - Migrate timeline range and criterion tests through production catalogs; `frontend/src/app/timeline/TimelineRangeSelector.criterion.render.test.tsx, frontend/src/app/timeline/timelineRangeMath.test.ts`.
 - [x] `W04.P12.S190` - Localize timeline mode, lane, playback, empty, and status presentation; `frontend/src/app/timeline/Timeline.tsx`.
@@ -305,10 +315,10 @@ Localize readers, code views, metadata, hover content, language names, truncatio
 - [x] `W05.P15.S86` - Localize document chrome, properties, metadata, and viewer menu labels; `frontend/src/app/viewer/DocChrome.tsx, frontend/src/app/viewer/PropertiesPopover.tsx`.
 - [x] `W05.P15.S87` - Replace bundled language, code-fence, and badge display names with locale catalog mappings; `frontend/src/app/viewer/languages.ts`.
 - [x] `W05.P15.S88` - Localize Markdown document presentation while preserving titles, paths, headings, and user-authored content as data; `frontend/src/app/viewer/MarkdownDocView.tsx`.
-- [ ] `W05.P15.S89` - Migrate Markdown and code reader tests through production catalogs; `frontend/src/app/viewer/MarkdownReader.test.tsx, frontend/src/app/viewer/CodeViewer.test.tsx, frontend/src/app/viewer/MarkdownDocView.render.test.tsx`.
+- [x] `W05.P15.S89` - Migrate Markdown and code reader tests through production catalogs; `frontend/src/app/viewer/MarkdownReader.test.tsx, frontend/src/app/viewer/CodeViewer.test.tsx, frontend/src/app/viewer/MarkdownDocView.render.test.tsx`.
 - [x] `W05.P15.S196` - Localize related-document selection and autocomplete controls; `frontend/src/app/viewer/RelatedDocPicker.tsx, frontend/src/app/viewer/AutocompleteCombobox.tsx`.
 - [x] `W05.P15.S197` - Localize plan summary labels and states without exposing internal metadata; `frontend/src/app/viewer/PlanSummaryCard.tsx`.
-- [ ] `W05.P15.S198` - Migrate document chrome, properties, and related-document tests through production catalogs; `frontend/src/app/viewer/DocChrome.render.test.tsx, frontend/src/app/viewer/PropertiesPopover.render.test.tsx, frontend/src/app/viewer/RelatedDocPicker.render.test.tsx`.
+- [x] `W05.P15.S198` - Migrate document chrome, properties, and related-document tests through production catalogs; `frontend/src/app/viewer/DocChrome.render.test.tsx, frontend/src/app/viewer/PropertiesPopover.render.test.tsx, frontend/src/app/viewer/RelatedDocPicker.render.test.tsx`.
 - [x] `W05.P15.S199` - Migrate highlighted-code and highlighter-theme tests through production locale behavior; `frontend/src/app/viewer/HighlightedCode.test.tsx, frontend/src/app/viewer/highlighterTheme.test.tsx, frontend/src/app/viewer/useHighlighter.test.ts`.
 - [x] `W05.P15.S242` - Localize code viewer states, controls, truncation notices, and accessible navigation; `frontend/src/app/viewer/CodeViewer.tsx`.
 
