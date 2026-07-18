@@ -764,3 +764,63 @@ the unit/component level and end-to-end in a real browser: `formatters`
 5/5, `localeController` 7/7, `runtimeFactory` 1/1, `reactivity` 6/6,
 `localization-layout.spec.ts` 7/7 (one transient flake reproduced as
 harness-timing, not product behavior, via standalone + repeated reruns).
+
+## `W06.P20.S159` — Audit: visible, accessible, responsive, auxiliary, and right-to-left surface evidence
+
+**Requirement.** Localized text is genuinely visible and accessible
+(real accessible names, no source-key leakage, no blank/empty bodies),
+compact/responsive surfaces keep their localized labels intact, and
+auxiliary surfaces (entry points outside the primary catalog-served
+shell) do not silently bypass the localization contract.
+
+**Full production e2e sweep, this update.** Ran the complete
+production-config (`vaultspec serve` origin) localization e2e set
+fresh, live: `localization-typical.spec.ts` (3/3 — four-region shell
+landmark labels, document title + `html lang` carry the source locale,
+status rail section labels with no source-key leakage),
+`localization-degraded.spec.ts` (2/2 — translated degraded notice with a
+real retry action, never leaking the raw served reason string),
+`localization-empty.spec.ts` (2/2 — concise empty guidance rather than a
+blank body, no `aria-live` region left announcing raw/empty content),
+`localization-loading.spec.ts` (2/2 — catalog-driven progress
+announcement, real localized drain guidance rather than a bare
+percentage), `localization-actions.spec.ts` (2/2 — Title Case command
+palette with no internal ids, shared canonical verbs on a context menu),
+`localization-responsive.spec.ts` (2/2 — compact shell accessible
+navigation, compact pane-switching with localized labels intact),
+`localization-errors.spec.ts` (4/4), `localization-confirmations.spec.ts`
+(1/1) — 18/18 total, zero flakes this run (the full production set, not
+a subset).
+
+**Right-to-left evidence.** Carried by `S158`'s
+`localization-layout.spec.ts` run (dev-harness config, the only config
+hosting the dev-only locale-injection lever): Arabic sets `lang`, flips
+`dir`, and the computed direction genuinely mirrors; keyboard focus
+order still lands the skip link on the stage under RTL; the activity
+rail's live region keeps a real translated accessible label under RTL.
+Not re-run redundantly here — cited by reference to avoid double-billing
+the same live evidence across two audit sections.
+
+**Auxiliary-surface evidence.** `S101`'s independently-confirmed finding
+(cited in `S111`'s section): the scanner's one PRODUCTION entry point
+(`index.html`, per `vite.config.ts`'s `rollupOptions.input`) carries no
+literal beyond the exempt product-name title, and six auxiliary dev-only
+HTML pages are genuinely production-excluded (never shipped, never a
+user-facing surface), not merely unscanned — so there is no shipped
+auxiliary surface silently bypassing the catalog contract.
+
+**Named, not swept: pre-existing unrelated failures.** The live smoke/perf
+suite (`smoke.spec.ts` + `perf.spec.ts`) carries 4 pre-existing
+WebGL-canvas-render/stale-selector failures, already recorded in this
+dossier's "P19 e2e harness capabilities" section as predating this
+reconciliation entirely (last touched by an unrelated graph-feature
+commit, `132f31703e`) — not localization defects, not re-litigated here.
+
+**Verdict: PASS.** Visible/accessible/responsive/auxiliary/RTL surface
+evidence is fully live-proven at this update: the complete production
+e2e set — 18/18, zero flakes — plus the dev-harness RTL set cited from
+`S158` (7/7), plus the auxiliary-entry-point sweep from `S101`/`S111`.
+The one open item in this audit's evidence base (`S157`'s em-dash
+defect) is a punctuation-policy violation on a transcript status
+message, not a visibility/accessibility/responsive/RTL defect — it does
+not affect this step's verdict.
