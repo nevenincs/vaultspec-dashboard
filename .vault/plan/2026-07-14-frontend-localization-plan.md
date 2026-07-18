@@ -400,9 +400,9 @@ Exercise production resources, components, accessibility output, locale switchin
 
 Audit the entire campaign against the ADR and original objective, repair every required finding, and close the plan only after independent re-verification.
 
-- [ ] `W06.P20.S108` - Scaffold and perform a formal localization code review against the accepted ADR and original campaign objective; `.vault/audit/2026-07-14-frontend-localization-audit.md, frontend/src/, frontend/scripts/, frontend/e2e/`.
-- [ ] `W06.P20.S109` - Repair every critical, high, and required review finding before forward completion; `frontend/src/, frontend/scripts/, frontend/e2e/`.
-- [ ] `W06.P20.S110` - Repeat full test, lint, live-browser, catalog, and zero-literal checks after remediation; `frontend/`.
+- [x] `W06.P20.S108` - Scaffold and perform a formal localization code review against the accepted ADR and original campaign objective; `.vault/audit/2026-07-14-frontend-localization-audit.md, frontend/src/, frontend/scripts/, frontend/e2e/`.
+- [x] `W06.P20.S109` - Repair every critical, high, and required review finding before forward completion; `frontend/src/, frontend/scripts/, frontend/e2e/`.
+- [x] `W06.P20.S110` - Repeat full test, lint, live-browser, catalog, and zero-literal checks after remediation; `frontend/`.
 - [x] `W06.P20.S111` - Audit catalog completeness and source-literal evidence against the accepted requirements; `.vault/audit/2026-07-14-frontend-localization-audit.md, .vault/plan/2026-07-14-frontend-localization-plan.md, frontend/src/localization/, frontend/scripts/`.
 - [x] `W06.P20.S156` - Audit canonical action verbs and cross-ID synonym evidence against the accepted requirements; `.vault/audit/2026-07-14-frontend-localization-audit.md, frontend/src/localization/, frontend/src/stores/view/`.
 - [x] `W06.P20.S157` - Audit concise plain-language error, status, confirmation, actionability, and diagnostic-safety evidence against the accepted requirements; `.vault/audit/2026-07-14-frontend-localization-audit.md, frontend/src/localization/, frontend/src/platform/errors/, frontend/e2e/localization-errors.spec.ts, frontend/e2e/localization-confirmations.spec.ts`.
