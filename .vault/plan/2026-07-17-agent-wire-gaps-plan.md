@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#agent-wire-gaps'
 date: '2026-07-17'
-modified: '2026-07-17'
+modified: '2026-07-18'
 tier: L2
 related:
   - '[[2026-07-17-agent-wire-gaps-adr]]'
@@ -41,7 +41,7 @@ Extend the already-shipped run-completion vertical slice (CompleteRun/complete/r
 - [x] `P01.S11` - Serve queued_turn_ids on the session snapshot so the client reads queued state explicitly instead of inferring it from run absence; `engine/crates/vaultspec-api/src/authoring/api/mod.rs`.
 - [x] `P01.S38` - Delete the fresh-session-bootstrap-on-Stop behavior in the same phase as the engine's run-scoped cancel: Stop keeps calling POST /v1/runs/{run_id}/cancel unchanged, now observed via the existing cancellation.recorded case with the session staying Active, and a submit made during an active run dispatches through the served queued-turn state instead of a client one-slot queue; `frontend/src/stores/view/agentComposer.ts`.
 - [x] `P01.S12` - Extend the existing run_completion test to cover the outcome-enum extension, absent-outcome-defaults-to-completed, failure_reason validation, owner-only 403, the Failed arm, and one run.completed SSE delivery per completion, plus new tests for session-preserving run cancel, session-cancel dual-event emission, session-cancel voiding the queue (no promotion into a cancelled session, voided turns remain readable history and never runnable), queue-cap 422, FIFO promotion atomicity under a crash-injection between complete and promote, removal of the joined status from the codebase, and a live-test Stop-path scenario (Stop leaves the session Active, no fresh-session bootstrap fires, and the conversation continues); `engine/crates/vaultspec-api/src/authoring`.
-- [ ] `P01.S13` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
+- [x] `P01.S13` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
 - [x] `P01.S14` - Route Phase P01 to the team reviewer for verification against the D1/D2 acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
 ### Phase `P02` - Served interrupt state and typed decision schema (D3)
@@ -93,7 +93,7 @@ Build the one bounded, timed background janitor sweep and wire it to drive the g
 - [x] `P04a.S56` - Wire the existing interrupt reaping duty into the sweep; `engine/crates/vaultspec-api/src/authoring/session`.
 - [x] `P04a.S57` - Wire the existing lease expiry duty into the sweep; `engine/crates/vaultspec-api/src/authoring/session`.
 - [x] `P04a.S58` - Write tests covering a stale active run reaped to Failed with the abandoned reason and exactly one run.completed emitted, a fresh active run left untouched by the sweep, each of the three genuinely undriven duties (tool-permission expiry, interrupt reaping, lease expiry) observably driven by the sweep, the compaction backstop sweep never double-compacting a session already compacted by its own per-turn path, and the sweep staying within its bounded budget under a large backlog; `engine/crates/vaultspec-api/src/authoring`.
-- [ ] `P04a.S59` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
+- [x] `P04a.S59` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review; `engine`.
 - [x] `P04a.S60` - Route the janitor phase to the team reviewer for verification against the single-janitor posture and the D1 abandoned-run acceptance criteria; `engine/crates/vaultspec-api/src/authoring`.
 
 ### Phase `P05` - Frontend cutovers onto the served wire shapes
