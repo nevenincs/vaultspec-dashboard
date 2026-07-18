@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useLocalizedMessageResolver } from "../platform/localization/LocalizationProvider";
 
 import { ErrorBoundary } from "../platform/errors/ErrorBoundary";
+import { CrashZone } from "../platform/errors/crashInjection";
 import { useActiveScope } from "../stores/server/queries";
 import { useBackendSignalSubscription } from "../stores/view/backendSignals";
 import {
@@ -255,6 +256,7 @@ export function AppShell() {
         )}
         {shellFrame.showExpandedLeftRail && (
           <ErrorBoundary region="left-rail">
+            <CrashZone region="left-rail" />
             <div
               className={shellFrame.leftRailContentClassName}
               data-keymap-context={LEFT_RAIL_KEYMAP_CONTEXT}
@@ -285,6 +287,7 @@ export function AppShell() {
             full width; with neither, the dock workspace shows its ghost empty state. */}
         <div className={shellFrame.stageBodyClassName}>
           <ErrorBoundary region="stage">
+            <CrashZone region="stage" />
             <DockWorkspace />
           </ErrorBoundary>
         </div>
@@ -294,6 +297,7 @@ export function AppShell() {
       <aside className={shellFrame.rightRailClassName}>
         {shellFrame.showRightRail && (
           <ErrorBoundary region="right-rail">
+            <CrashZone region="right-rail" />
             <ShellResizeHandle side="left" axis="right" current={rightRailWidth} />
             <ActivityRail shellFrame={shellFrame} />
           </ErrorBoundary>

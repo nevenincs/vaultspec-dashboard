@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { ErrorBoundary } from "./platform/errors/ErrorBoundary";
+import { crashControls } from "./platform/errors/crashInjection";
 import {
   applyDocumentLanguage,
   bindDocumentLanguage,
@@ -64,8 +65,13 @@ if (import.meta.env.DEV) {
       loadTestLocale: (locale: "fr" | "ar") => Promise<void>;
       resetLocale: () => void;
     };
+    __crashControls?: ReturnType<typeof crashControls>;
   };
   devGlobals.__platformRingBuffer = ringBuffer;
+  // Crash-injection lever for the adverse e2e pass (ADR D5, chrome-less
+  // restoration per the localization S108 review): arms a CrashZone inside a
+  // real region boundary. Dev-only like every lever in this block.
+  devGlobals.__crashControls = crashControls();
   devGlobals.__liveStatusControls = {
     markStreamLost: markLiveStreamLost,
     setStreamConnected: setLiveStreamConnected,

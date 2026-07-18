@@ -18,6 +18,7 @@ import { useEffect, useRef } from "react";
 import type { IDockviewPanelProps } from "dockview";
 
 import { ErrorBoundary } from "../../platform/errors/ErrorBoundary";
+import { CrashZone } from "../../platform/errors/crashInjection";
 import { useActiveScope } from "../../stores/server/queries";
 import { useShellFrameView } from "../../stores/view/shellLayout";
 import { openContextMenu } from "../../stores/view/contextMenu";
@@ -64,6 +65,7 @@ export function GraphPanel(_props: IDockviewPanelProps) {
       {showTimeline && (
         <div className={timelineClassName} data-focus-region="timeline">
           <ErrorBoundary region="timeline">
+            <CrashZone region="timeline" />
             <div
               className={timelineBodyClassName}
               onContextMenu={backgroundContextMenuHandler(
