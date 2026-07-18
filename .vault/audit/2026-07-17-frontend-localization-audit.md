@@ -240,6 +240,7 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S106` | The full frontend test recipe needed a clean run against the punch-list commit | Two independent full `frontend/` suite runs against `c169ad5a98` — 3682/3683 each, with the SAME single failure both times: `authoring.happyPath.live.test.ts`'s "propose → approve → apply → rollback → history" (`applied.kind` expected `"ok"`, got `"denied"`). Confirmed as resource-contention flakiness, not a regression: both full runs that surfaced it were racing CONCURRENTLY against the same live engine (a team-lead backstop run in parallel with reconciliation's own); the file is untouched by the punch-list commit, and reran standalone with zero concurrent load — 1/1 passed, twice. Recorded as an environmental/concurrency-sensitivity note for `P20`, not swept as a punch-list defect. |
 | `S107` | `just dev lint frontend` failed at the `localization-scan` step before formatting/typecheck/tokens/figma ever ran: `Composer.tsx` 2 findings (`unsafe-dynamic-presentation`, unrelated commit `c608584cac`) plus `localization/testing/reviewStationResources.ts` 4 findings (`presentation-field`, new French/Arabic `requestChanges.body`/`placeholder` test-fixture fields from `164ea9fc1d`, not covered by the scanner's test-resource exclusion pattern) | Fixed, commit `c169ad5a98`: `Composer.tsx`'s served reason/preset-id now route through `authoredDisplayText` locals; the scanner's exact-file test-resource allowlist replaced by a structural `src/localization/testing/*Resources.ts` pattern. `e2fe6aa32b` additionally unblocked the tree-wide gate (a `group2.rs` module-size overflow from a parallel session's landed work, split into `group4.rs`; a legitimate Myers O(ND) term tripping the typos gate, allowlisted). Independently reverified: `just dev lint frontend` AND the broader `just dev lint all` (Rust fmt/clippy included) both exit 0. |
 | `S138` | Its own commit (`164ea9fc1d`) is the one that introduced the `reviewStationResources.ts` scanner findings above | Fixed alongside `S107` — the structural `src/localization/testing/*Resources.ts` exclusion pattern (confirmed by reading `scan-localization.mjs` directly) closes the gap by shape+location rather than exact-file, so any future fixture in that directory is excluded automatically. Independently reverified: `lint:localization` clean; `S104`/`S105`'s e2e specs (driven by this fixture expansion) — 3/3 and 7/7. |
+| `S157` (found during `P20` evidence audit, NOT swept) | `common:agent.transcript.team.degraded` (`"Live updates paused — showing status only."`) contains an em-dash (`—`), violating the project's own message-policy punctuation rule (`messagePolicy.ts`'s `em-dash` issue code). Introduced by `c169ad5a98` itself — the P19 punch-list commit's "actionable team-run copy" change — so it postdates every prior verification pass in this dossier. Both `messagePolicy.test.ts` ("accepts every production English catalog value", 25/26) and `catalogPunctuation.test.ts` (4/5) independently catch it live; the failure was NOT visible to `just dev lint frontend`'s `lint:localization` scanner step (a literal-syntax scanner, not a punctuation-policy check) — this is the same lint-gate-never-runs-vitest gap already codified below, now with a live instance that reached a commit already cited as a fix. | **OPEN — unfixed as of this audit.** No code fix authored (audit records evidence, does not touch `frontend/`); reported to the team lead for routing to a coding lane. |
 
 ## Retirements and rescopes
 
@@ -670,3 +671,54 @@ verb inventory.
 rejection are both proven live over the FULL production catalog and verb
 table, with adversarial proof the check is genuinely live-catching:
 `actionVocabulary.test.ts` — 5/5, independently reverified at this update.
+
+## `W06.P20.S157` — Audit: error, status, confirmation, actionability, and diagnostic-safety evidence
+
+**Requirement.** Every error/status/confirmation message is concise and
+plain-language, every actionable state carries a recovery clause where one
+exists, and no served diagnostic (raw backend error body, network failure
+detail, malformed response) ever reaches the screen unmasked.
+
+**Diagnostic-safety evidence (live, e2e).** `localization-errors.spec.ts`
+run live against the production `vaultspec serve` origin — 4/4: a
+malformed vault-listing failure, a malformed status-endpoint failure, a
+completely malformed non-JSON response body, and an aborted request all
+resolve to the catalog's fixed-copy error message with no raw diagnostic
+text reaching the DOM. `localization-confirmations.spec.ts` — 1/1: the
+feature-archive destructive confirmation names the consequence, the
+destructive verb, and a safe cancel path, live.
+
+**Catalog-level evidence.** `outcomeMessages.test.ts` — 4/4, independently
+reverified, over the production outcome-message set.
+`catalogSafety.test.ts` — 5/5, independently reverified: the production
+catalog carries no raw diagnostic/stack-trace-shaped value under any
+error-role key. `messagePolicy.test.ts`'s actionability check
+(`not-actionable` issue code — an error-role message with no recovery
+clause) is enforced live across the full catalog; `S102`'s defect
+(`common:agent.composer.teamRunRefused` lacking a recovery clause) is the
+proof this check is genuinely live-catching, not vacuous — it caught a
+real instance before this dossier's own P19 pass fixed it.
+
+**Defect found, NOT swept.** Rerunning `messagePolicy.test.ts` and
+`catalogPunctuation.test.ts` live at this audit surfaced a NEW failure
+postdating every earlier verification pass in this dossier:
+`common:agent.transcript.team.degraded` (`"Live updates paused — showing
+status only."`) contains an em-dash, tripping the message policy's
+`em-dash` issue code — `messagePolicy.test.ts` 25/26,
+`catalogPunctuation.test.ts` 4/5. Traced via `git log -S` to `c169ad5a98`
+itself (the P19 punch-list commit's "actionable team-run copy" change),
+so this is a live regression introduced by a commit this dossier already
+cites as a fix, not a pre-existing gap this audit merely rediscovered.
+Recorded in the Defect ledger as `S157` (found during `P20` evidence
+audit); no code fix authored here (audit records evidence only). This is
+also a second live instance of the codified `lint:localization`-never-runs-
+`vitest` gap below: the punctuation-policy violation is invisible to the
+scanner and to `just dev lint frontend`, and reached a "fixed" commit
+uncaught.
+
+**Verdict: FAIL (open defect).** Diagnostic-safety, actionability, and
+plain-language evidence are otherwise strong and live-proven (e2e 5/5,
+catalog suites clean elsewhere), but the punctuation-policy check itself
+is NOT clean at this update — one production catalog message violates it.
+This step cannot be recorded PASS; the defect is open and routed to the
+team lead for a coding-lane fix, not resolved by this audit.
