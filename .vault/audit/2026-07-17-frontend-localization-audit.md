@@ -240,7 +240,7 @@ Every defect reconciliation found, with its fix status as of this draft.
 | `S106` | The full frontend test recipe needed a clean run against the punch-list commit | Two independent full `frontend/` suite runs against `c169ad5a98` — 3682/3683 each, with the SAME single failure both times: `authoring.happyPath.live.test.ts`'s "propose → approve → apply → rollback → history" (`applied.kind` expected `"ok"`, got `"denied"`). Confirmed as resource-contention flakiness, not a regression: both full runs that surfaced it were racing CONCURRENTLY against the same live engine (a team-lead backstop run in parallel with reconciliation's own); the file is untouched by the punch-list commit, and reran standalone with zero concurrent load — 1/1 passed, twice. Recorded as an environmental/concurrency-sensitivity note for `P20`, not swept as a punch-list defect. |
 | `S107` | `just dev lint frontend` failed at the `localization-scan` step before formatting/typecheck/tokens/figma ever ran: `Composer.tsx` 2 findings (`unsafe-dynamic-presentation`, unrelated commit `c608584cac`) plus `localization/testing/reviewStationResources.ts` 4 findings (`presentation-field`, new French/Arabic `requestChanges.body`/`placeholder` test-fixture fields from `164ea9fc1d`, not covered by the scanner's test-resource exclusion pattern) | Fixed, commit `c169ad5a98`: `Composer.tsx`'s served reason/preset-id now route through `authoredDisplayText` locals; the scanner's exact-file test-resource allowlist replaced by a structural `src/localization/testing/*Resources.ts` pattern. `e2fe6aa32b` additionally unblocked the tree-wide gate (a `group2.rs` module-size overflow from a parallel session's landed work, split into `group4.rs`; a legitimate Myers O(ND) term tripping the typos gate, allowlisted). Independently reverified: `just dev lint frontend` AND the broader `just dev lint all` (Rust fmt/clippy included) both exit 0. |
 | `S138` | Its own commit (`164ea9fc1d`) is the one that introduced the `reviewStationResources.ts` scanner findings above | Fixed alongside `S107` — the structural `src/localization/testing/*Resources.ts` exclusion pattern (confirmed by reading `scan-localization.mjs` directly) closes the gap by shape+location rather than exact-file, so any future fixture in that directory is excluded automatically. Independently reverified: `lint:localization` clean; `S104`/`S105`'s e2e specs (driven by this fixture expansion) — 3/3 and 7/7. |
-| `S157` (found during `P20` evidence audit, NOT swept) | `common:agent.transcript.team.degraded` (`"Live updates paused — showing status only."`) contains an em-dash (`—`), violating the project's own message-policy punctuation rule (`messagePolicy.ts`'s `em-dash` issue code). Introduced by `c169ad5a98` itself — the P19 punch-list commit's "actionable team-run copy" change — so it postdates every prior verification pass in this dossier. Both `messagePolicy.test.ts` ("accepts every production English catalog value", 25/26) and `catalogPunctuation.test.ts` (4/5) independently catch it live; the failure was NOT visible to `just dev lint frontend`'s `lint:localization` scanner step (a literal-syntax scanner, not a punctuation-policy check) — this is the same lint-gate-never-runs-vitest gap already codified below, now with a live instance that reached a commit already cited as a fix. | **OPEN — unfixed as of this audit.** No code fix authored (audit records evidence, does not touch `frontend/`); reported to the team lead for routing to a coding lane. |
+| `S157` (found during `P20` evidence audit, NOT swept) | `common:agent.transcript.team.degraded` (`"Live updates paused — showing status only."`) contains an em-dash (`—`), violating the project's own message-policy punctuation rule (`messagePolicy.ts`'s `em-dash` issue code). Introduced by `c169ad5a98` itself — the P19 punch-list commit's "actionable team-run copy" change — so it postdates every prior verification pass in this dossier. Both `messagePolicy.test.ts` ("accepts every production English catalog value", 25/26) and `catalogPunctuation.test.ts` (4/5) independently catch it live; the failure was NOT visible to `just dev lint frontend`'s `lint:localization` scanner step (a literal-syntax scanner, not a punctuation-policy check) — this is the same lint-gate-never-runs-vitest gap already codified below, now with a live instance that reached a commit already cited as a fix. | **RESOLVED (`2617653ff0` + `0e181bcff9`, same day).** The team lead fixed it inline; the fix unmasked TWO sibling policy reds in the same newly-landed block (interior title-case in `workingAgents` — now verb-first "Working… · {{agents}}" — and a missing recovery clause in `transcript.team.error`), all three corrected in one commit with the block's pure-data companions (key registry + policy roles) landed for bare-HEAD consistency. Policy set 42/42, agent suites 48/48, gate exit 0. Root cause: the whole `transcript.team` block was the parallel lane's uncommitted catalog WIP. Counted as the third and fourth live instances of the lint-gate-never-runs-vitest class. |
 
 ## Retirements and rescopes
 
@@ -865,3 +865,60 @@ Every one of the six named adjudication items has a clear, evidence-backed dispo
 
 - **S109 (repair every critical/high/required finding): closed as a verified no-op.** The S108 verdict is APPROVED with zero critical, high, or required-revision findings; the two carried items are explicitly process/coverage recommendations for follow-up tracking, adjudicated non-blocking by the reviewer.
 - **S110 (repeat full checks after remediation): closed on the post-approval evidence set.** With no remediation to apply, the required repeat is the verification state at `c169ad5a98`: the reviewer's independent `just dev lint all` (exit 0), production-build byte-absence proof, and live suite runs; recon's two full-suite S106 runs (3682/3683 with the single failure traced to two full runs racing one live engine's apply lock — 1/1 standalone twice) and the cold nine-spec e2e set (18/18); and the localization scanner clean. No check regressed after the review.
+
+## S160 — Final closeout audit: test, lint, live-browser, and formal-review evidence (team lead)
+
+The campaign closes on four independent evidence pillars, each verified by more
+than one party at the same tree state (`c169ad5a98` + the docs-only commits
+after it):
+
+- **Test evidence.** The full frontend suite ran twice independently for S106
+  (3682/3683 in both concurrent runs, with the single failure traced precisely
+  to the two full runs racing one live engine's authoring apply lock — the same
+  file passes 1/1 standalone, twice), and the reviewer re-ran the
+  localization/catalog/policy/agent suites live during S108 (19/19 + 45/45 +
+  50/50 + 98/98). The engine-side suites for the split test module pass
+  (group4: 3/3).
+- **Lint evidence.** `just dev lint all` — the widest gate this repo has (rust
+  fmt/clippy, eslint, prettier, tsc, localization scanner, px scan,
+  module-size, typos, token-drift, figma:names) — exit 0, run independently by
+  three parties (team lead, recon, reviewer) on the same day.
+- **Live-browser evidence.** All nine localization e2e specs pass against the
+  real served application; the four cold-sensitive specs were re-proven under
+  a genuinely forced cold state (Files radio + hidden rail) after the
+  `ensureBrowserVisible` two-lever fix, with the previously-flaky actions spec
+  run cold twice (2/2 both). The compact/responsive and RTL surfaces are
+  covered by the same set.
+- **Formal-review evidence.** S108's closing review: **APPROVED, zero required
+  revisions**, with all six carried adjudication items dispositioned
+  (pre-existing WebGL smoke/perf flakes ruled out of scope; the S103 vi.mock
+  carve-out permitted with a recommended step-text narrowing; vitest-in-gate
+  codification strongly recommended; the adverse.spec crash-injector loss ruled
+  out of scope with a follow-up recommendation; pair-order hardening verified
+  sound and tested; the dev-only locale lever proven byte-absent from the
+  production bundle).
+
+**S157's live find, resolved before closure.** The evidence audit caught a
+genuine em-dash policy violation in the newly-landed `transcript.team.degraded`
+key; the fix unmasked two sibling violations in the same block (interior
+title-case in `workingAgents`, missing recovery clause in
+`transcript.team.error`). All three fixed (`2617653ff0`) with the block's
+pure-data companions landed for bare-HEAD consistency (`0e181bcff9`); policy
+set 42/42, agent suites 48/48, gate exit 0. These are the third and fourth
+live instances of the red-tests-behind-a-green-lint-gate class, strengthening
+follow-up 1 below.
+
+**Carried follow-ups (non-blocking, routed to post-campaign tracking):**
+
+1. Codify a required `vitest run` verification step (e.g. `just dev verify
+   frontend`) distinct from the lint gate — the campaign produced six
+   independent instances of red tests hiding behind a green lint gate.
+2. Disposition `adverse.spec.ts`'s permanently-red crash-injection block:
+   restore a dev-gated injection lever (the `import.meta.env.DEV` pattern) or
+   formally retire the block citing S243.
+3. Narrow S103-class step text to name the permitted data/store-mock carve-out
+   explicitly.
+
+With S108–S111 and S156–S159 recorded above and every P19 verification step
+closed cold, the frontend-localization plan is complete at 244/244. Campaign
+closed.
