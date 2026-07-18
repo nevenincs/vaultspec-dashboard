@@ -3,16 +3,252 @@ generated: true
 tags:
   - '#index'
   - '#frontend-localization'
-date: '2026-07-14'
-modified: '2026-07-14'
+date: '2026-07-18'
+modified: '2026-07-18'
 related:
   - '[[2026-07-14-frontend-localization-W01-P01-S01]]'
   - '[[2026-07-14-frontend-localization-W01-P01-S02]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S03]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S04]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S05]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S06]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S07]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S116]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S117]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S118]]'
+  - '[[2026-07-14-frontend-localization-W01-P01-S244]]'
+  - '[[2026-07-14-frontend-localization-W01-P02-S08]]'
+  - '[[2026-07-14-frontend-localization-W01-P02-S09]]'
+  - '[[2026-07-14-frontend-localization-W01-P02-S10]]'
+  - '[[2026-07-14-frontend-localization-W01-P02-S11]]'
+  - '[[2026-07-14-frontend-localization-W01-P02-S12]]'
+  - '[[2026-07-14-frontend-localization-W01-P02-summary]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S119]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S120]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S121]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S13]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S14]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S15]]'
+  - '[[2026-07-14-frontend-localization-W01-P03-S16]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S122]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S123]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S124]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S125]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S148]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S149]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S150]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S17]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S18]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S19]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S20]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S21]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S245]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S246]]'
+  - '[[2026-07-14-frontend-localization-W02-P04-S247]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S126]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S127]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S146]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S151]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S152]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S153]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S154]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S155]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S217]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S218]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S220]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S22]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S23]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S248]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S249]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S24]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S250]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S25]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S26]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S27]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S28]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S29]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S30]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S31]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S32]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S33]]'
+  - '[[2026-07-14-frontend-localization-W02-P05-S34]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S221]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S222]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S35]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S36]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S37]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S38]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-S39]]'
+  - '[[2026-07-14-frontend-localization-W02-P06-summary]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S112]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S113]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S161]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S162]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S163]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S164]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S165]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S166]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S167]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S168]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S41]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S42]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S43]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S44]]'
+  - '[[2026-07-14-frontend-localization-W03-P07-S45]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S169]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S170]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S171]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S172]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S173]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S174]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S223]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S224]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S225]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S226]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S227]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S228]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S46]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S47]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S48]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S49]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S50]]'
+  - '[[2026-07-14-frontend-localization-W03-P08-S51]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S114]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S128]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S147]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S175]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S176]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S177]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S178]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S179]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S215]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S52]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S53]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S54]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S55]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S56]]'
+  - '[[2026-07-14-frontend-localization-W03-P09-S57]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S115]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S182]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S183]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S184]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S185]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S186]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S243]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S58]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S59]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S60]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S61]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S62]]'
+  - '[[2026-07-14-frontend-localization-W04-P10-S63]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S187]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S188]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S189]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S229]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S64]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S65]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S66]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S67]]'
+  - '[[2026-07-14-frontend-localization-W04-P11-S68]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S190]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S191]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S230]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S69]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S70]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S71]]'
+  - '[[2026-07-14-frontend-localization-W04-P12-S72]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S129]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S192]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S231]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S232]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S233]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S234]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S235]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S237]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S239]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S240]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S241]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S73]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S74]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S76]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S77]]'
+  - '[[2026-07-14-frontend-localization-W04-P13-S78]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S193]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S194]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S195]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S216]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S79]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S80]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S81]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S82]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S83]]'
+  - '[[2026-07-14-frontend-localization-W05-P14-S84]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S196]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S197]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S198]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S199]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S242]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S85]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S86]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S87]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S88]]'
+  - '[[2026-07-14-frontend-localization-W05-P15-S89]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S200]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S201]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S202]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S203]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S204]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S205]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S206]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S90]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S91]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S92]]'
+  - '[[2026-07-14-frontend-localization-W05-P16-S93]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S207]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S208]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S209]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S210]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S211]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S212]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S213]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S214]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S94]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S95]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S96]]'
+  - '[[2026-07-14-frontend-localization-W05-P17-S97]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S100]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S101]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S130]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S131]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S132]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S133]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S134]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S135]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S136]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S137]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S251]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S98]]'
+  - '[[2026-07-14-frontend-localization-W06-P18-S99]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S102]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S103]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S104]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S105]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S106]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S107]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S138]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S139]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S140]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S141]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S142]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S143]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S144]]'
+  - '[[2026-07-14-frontend-localization-W06-P19-S145]]'
   - '[[2026-07-14-frontend-localization-adr]]'
   - '[[2026-07-14-frontend-localization-audit]]'
   - '[[2026-07-14-frontend-localization-plan]]'
   - '[[2026-07-14-frontend-localization-reference]]'
   - '[[2026-07-14-frontend-localization-research]]'
+  - '[[2026-07-17-frontend-localization-audit]]'
 ---
 
 # `frontend-localization` feature index
@@ -28,11 +264,247 @@ Auto-generated index of all documents tagged with `#frontend-localization`.
 ### audit
 
 - `2026-07-14-frontend-localization-audit` - `frontend-localization` audit: `Implementation safety and UX language compliance`
+- `2026-07-17-frontend-localization-audit` - `frontend-localization` audit: `Reconciliation closing dossier`
 
 ### exec
 
 - `2026-07-14-frontend-localization-W01-P01-S01` - Install the approved localization dependencies and lock exact compatible versions
 - `2026-07-14-frontend-localization-W01-P01-S02` - Create the English namespace catalogs and typed resource aggregate
+- `2026-07-14-frontend-localization-W01-P01-S03` - Define bounded typed message keys, values, descriptors, and confirmation descriptors
+- `2026-07-14-frontend-localization-W01-P01-S04` - Implement synchronous localization runtime initialization
+- `2026-07-14-frontend-localization-W01-P01-S05` - Implement locale-aware number, date, relative-time, list, duration, percentage, and byte formatters
+- `2026-07-14-frontend-localization-W01-P01-S06` - Mount localization before the application boundary without changing theme or data-provider authority
+- `2026-07-14-frontend-localization-W01-P01-S07` - Prove runtime initialization, descriptor resolution, formatting, missing-key safety, and locale reactivity with production resources
+- `2026-07-14-frontend-localization-W01-P01-S116` - Implement the React localization provider over the initialized production runtime
+- `2026-07-14-frontend-localization-W01-P01-S117` - Implement safe production fallback that never exposes missing keys or diagnostic values
+- `2026-07-14-frontend-localization-W01-P01-S118` - Apply and reactively update document language and direction attributes
+- `2026-07-14-frontend-localization-W01-P01-S244` - Create bounded non-shipped alternate-locale resources for real locale-reactivity tests
+- `2026-07-14-frontend-localization-W01-P03-S119` - Validate interpolation parameter parity across every shipped locale
+- `2026-07-14-frontend-localization-W01-P03-S120` - Add a safe plural message contract
+- `2026-07-14-frontend-localization-W01-P03-S121` - Enforce concise plain-language wording, sentence case, canonical imperative verbs, prohibited vocabulary, and actionable recovery in source locale messages
+- `2026-07-14-frontend-localization-W01-P03-S13` - Validate the complete required key set across every shipped locale
+- `2026-07-14-frontend-localization-W01-P03-S14` - Implement the bounded production-source localization scanner with narrow semantic exclusions
+- `2026-07-14-frontend-localization-W01-P03-S15` - Add the localization scanner to the standard frontend lint gate
+- `2026-07-14-frontend-localization-W01-P03-S16` - Prove the scanner against production files and real rule fixtures without mirrored business logic
+- `2026-07-14-frontend-localization-W02-P04-S122` - Localize host shell actions
+- `2026-07-14-frontend-localization-W02-P04-S123` - Localize shared chrome actions
+- `2026-07-14-frontend-localization-W02-P04-S124` - Localize project actions
+- `2026-07-14-frontend-localization-W02-P04-S125` - Localize document link actions
+- `2026-07-14-frontend-localization-W02-P04-S148` - Localize the shared relate action
+- `2026-07-14-frontend-localization-W02-P04-S149` - Localize the shared feature repair action
+- `2026-07-14-frontend-localization-W02-P04-S150` - Localize the shared feature archive action
+- `2026-07-14-frontend-localization-W02-P04-S19` - Migrate clipboard actions to canonical localized verbs
+- `2026-07-14-frontend-localization-W02-P04-S20` - Localize the shared open-entity action once
+- `2026-07-14-frontend-localization-W02-P04-S21` - Preserve shared action composition boundaries
+- `2026-07-14-frontend-localization-W02-P04-S245` - Seed canonical shared action, disabled-reason, and explicit confirmation catalog ownership before changing producer types
+- `2026-07-14-frontend-localization-W02-P04-S246` - Introduce the exact legacy action-presentation bridge
+- `2026-07-14-frontend-localization-W02-P04-S247` - Resolve shared action presentation at React boundaries
+- `2026-07-14-frontend-localization-W02-P05-S126` - Replace palette operation feedback strings with typed outcomes
+- `2026-07-14-frontend-localization-W02-P05-S127` - Define canonical operation concepts
+- `2026-07-14-frontend-localization-W02-P05-S146` - Migrate the refresh-data producer
+- `2026-07-14-frontend-localization-W02-P05-S22` - Establish the typed keybinding message contract
+- `2026-07-14-frontend-localization-W02-P05-S23` - Localize keycap display
+- `2026-07-14-frontend-localization-W02-P05-S24` - Localize left-rail shortcuts
+- `2026-07-14-frontend-localization-W02-P05-S248` - Localize keyboard shortcut settings
+- `2026-07-14-frontend-localization-W02-P05-S25` - Migrate editor keybinding definitions and actionable disabled reasons
+- `2026-07-14-frontend-localization-W02-P05-S26` - Migrate graph and panel navigation shortcuts
+- `2026-07-14-frontend-localization-W02-P05-S27` - Confirm typed command presentation normalization
+- `2026-07-14-frontend-localization-W02-P05-S28` - Localize palette shortcut presentations
+- `2026-07-14-frontend-localization-W02-P05-S29` - Localize command family headings
+- `2026-07-14-frontend-localization-W02-P05-S30` - Localize operation command labels
+- `2026-07-14-frontend-localization-W02-P05-S31` - Resolve context-menu feedback at the React boundary
+- `2026-07-14-frontend-localization-W02-P05-S32` - Resolve command palette messages at the React boundary
+- `2026-07-14-frontend-localization-W02-P05-S33` - Localize the keyboard shortcuts dialog
+- `2026-07-14-frontend-localization-W02-P05-S34` - Prove cross-plane action wording parity
+- `2026-07-14-frontend-localization-W02-P06-S35` - Localize browser mode vocabulary
+- `2026-07-14-frontend-localization-W02-P06-S39` - Replace menu outcome strings with typed feedback conditions
+- `2026-07-14-frontend-localization-W06-P18-S251` - Remove authored case transforms and enforce their absence
+- `2026-07-14-frontend-localization-W01-P02-S08` - Add the global language setting and semantic display metadata while preserving the schema-owned settings contract
+- `2026-07-14-frontend-localization-W01-P02-S09` - Adapt settings wire types and selectors to expose locale identity without serving resolved English
+- `2026-07-14-frontend-localization-W01-P02-S10` - Implement the locale preference controller with system resolution and synchronous cache reconciliation
+- `2026-07-14-frontend-localization-W01-P02-S11` - Render the schema-owned language control through localized setting metadata
+- `2026-07-14-frontend-localization-W01-P02-S12` - Prove authoritative locale reconciliation through the real engine and application bridge
+- `2026-07-14-frontend-localization-W01-P02-summary` - `frontend-localization` `W01.P02` summary
+- `2026-07-14-frontend-localization-W02-P05-S151` - Standardize window-management command builders on imperative sentence-case messages
+- `2026-07-14-frontend-localization-W02-P05-S152` - Standardize timeline command builders on complete localized range and navigation messages
+- `2026-07-14-frontend-localization-W02-P05-S153` - Standardize editor command builders on canonical document action verbs
+- `2026-07-14-frontend-localization-W02-P05-S154` - Standardize graph command builders without focus, node, or layout implementation jargon
+- `2026-07-14-frontend-localization-W02-P05-S155` - Standardize theme and settings command builders on user-facing preference language
+- `2026-07-14-frontend-localization-W02-P05-S217` - Migrate right-rail keybinding definitions to shared canonical action wording
+- `2026-07-14-frontend-localization-W02-P05-S218` - Migrate document-tab keybinding definitions and actionable disabled reasons
+- `2026-07-14-frontend-localization-W02-P05-S220` - Resolve mobile top-bar accessibility messages from strict typed descriptors while preserving an operable Back escape
+- `2026-07-14-frontend-localization-W02-P05-S249` - Migrate keyboard navigation, project, and working-set bindings and orphaned presentation copy
+- `2026-07-14-frontend-localization-W02-P05-S250` - Remove the temporary keybinding presentation bridge and retain scanner enforcement for raw keybinding fields
+- `2026-07-14-frontend-localization-W02-P06-S221` - Localize rail sorting
+- `2026-07-14-frontend-localization-W02-P06-S222` - Localize category display vocabulary
+- `2026-07-14-frontend-localization-W02-P06-S36` - Localize activity-panel and shell-layout vocabulary
+- `2026-07-14-frontend-localization-W02-P06-S37` - Localize timeline date criteria
+- `2026-07-14-frontend-localization-W02-P06-S38` - Localize document-type vocabulary
+- `2026-07-14-frontend-localization-W02-P06-summary` - `frontend-localization` `W02.P06` summary
+- `2026-07-14-frontend-localization-W03-P08-S172` - Localize create-document dialog fields, validation, confirmations, and actions
+- `2026-07-14-frontend-localization-W03-P08-S223` - Standardize and localize vault-category menu actions while keeping localized category labels out of raw clipboard payloads
+- `2026-07-14-frontend-localization-W03-P08-S224` - Standardize and localize vault-document menu actions through the shared canvas action boundary
+- `2026-07-14-frontend-localization-W03-P08-S225` - Standardize and localize vault-feature menu actions through shared action and raw clipboard boundaries
+- `2026-07-14-frontend-localization-W03-P08-S228` - Standardize and localize worktree menu actions without exposing internal identifiers
+- `2026-07-14-frontend-localization-W03-P08-S50` - Standardize and localize code-file menu actions through shared action and clipboard presentation boundaries
+- `2026-07-14-frontend-localization-W03-P09-S178` - Standardize and localize document-tab menu actions and disabled reasons
+- `2026-07-14-frontend-localization-W03-P09-S53` - Localize project setup guidance, progress, results, and recovery
+- `2026-07-14-frontend-localization-W03-P09-S55` - Standardize and localize canvas background menu actions through canonical graph descriptors
+- `2026-07-14-frontend-localization-W03-P09-S57` - Prove localized project setup and stage overlay behavior
+- `2026-07-14-frontend-localization-W04-P10-S182` - Standardize and localize commit menu actions
+- `2026-07-14-frontend-localization-W04-P10-S184` - Standardize and localize pull-request menu actions
+- `2026-07-14-frontend-localization-W04-P11-S66` - Localize search-result menus without internal ranking or record copy
+- `2026-07-14-frontend-localization-W04-P13-S241` - Replace project setup action strings with typed descriptors
+- `2026-07-14-frontend-localization-W05-P16-S92` - Localize compact application shell navigation and accessibility copy through canonical shared descriptors
+- `2026-07-14-frontend-localization-W02-P04-S17` - After every action producer through S82 is migrated, remove the legacy bridge and require bounded typed labels, reasons, and confirmations in the final action contract
+- `2026-07-14-frontend-localization-W02-P04-S18` - Prove the final strict action contract, normalization, execution lanes, descriptor safety, and explicit destructive copy
+- `2026-07-14-frontend-localization-W03-P07-S112` - Localize the pre-hydration boot shell or make it locale-neutral so static HTML never flashes English
+- `2026-07-14-frontend-localization-W03-P07-S113` - Localize shared keyboard-navigation accessibility guidance and freshness presentation
+- `2026-07-14-frontend-localization-W03-P07-S161` - Localize shared search-field placeholders and accessible names
+- `2026-07-14-frontend-localization-W03-P07-S162` - Localize shared loading, empty, degraded, and status primitives
+- `2026-07-14-frontend-localization-W03-P07-S163` - Localize shared section, breadcrumb, property, and progress display labels
+- `2026-07-14-frontend-localization-W03-P07-S164` - Localize bottom-sheet and popover accessibility and dismissal copy
+- `2026-07-14-frontend-localization-W03-P07-S165` - Localize rail-section and row-menu disclosure accessibility copy
+- `2026-07-14-frontend-localization-W03-P07-S166` - Localize data-activity and resize-handle announcements
+- `2026-07-14-frontend-localization-W03-P07-S167` - Localize compact shell and unified-rail navigation
+- `2026-07-14-frontend-localization-W03-P07-S168` - Localize mobile top-bar and bottom-tab navigation
+- `2026-07-14-frontend-localization-W03-P07-S41` - Remove raw error rendering and localize safe application and region recovery actions
+- `2026-07-14-frontend-localization-W03-P07-S42` - Localize activity progress counts and accessibility announcements
+- `2026-07-14-frontend-localization-W03-P07-S43` - Localize shared dialog and confirmation titles, descriptions, and actions
+- `2026-07-14-frontend-localization-W03-P07-S44` - Localize desktop shell and icon-rail navigation
+- `2026-07-14-frontend-localization-W03-P07-S45` - Migrate global chrome render tests through production catalogs and safe error fallbacks
+- `2026-07-14-frontend-localization-W03-P08-S169` - Localize folder-browser navigation, empty states, and accessible names
+- `2026-07-14-frontend-localization-W03-P08-S170` - Localize vault-browser grouping, document states, and accessible names
+- `2026-07-14-frontend-localization-W03-P08-S171` - Localize left-rail loading, degraded, empty, and partial state blocks
+- `2026-07-14-frontend-localization-W03-P08-S173` - Migrate project and worktree render tests through production catalogs
+- `2026-07-14-frontend-localization-W03-P08-S174` - Migrate filter and state render tests through production catalogs
+- `2026-07-14-frontend-localization-W03-P08-S226` - Standardize and localize vault-section menu actions without internal IDs
+- `2026-07-14-frontend-localization-W03-P08-S227` - Standardize and localize workspace menu actions with user-facing concepts
+- `2026-07-14-frontend-localization-W03-P08-S46` - Localize project, workspace, and worktree selection with one user-facing identity vocabulary
+- `2026-07-14-frontend-localization-W03-P08-S47` - Localize tree-browser sections, counts, loading, and partial-result copy
+- `2026-07-14-frontend-localization-W03-P08-S48` - Localize filter sidebar and filter menu labels, counts, states, and actions
+- `2026-07-14-frontend-localization-W03-P08-S49` - Localize add-project dialog guidance, refusal, validation, and actions
+- `2026-07-14-frontend-localization-W03-P08-S51` - Migrate left-rail browser render tests through production catalogs
+- `2026-07-14-frontend-localization-W03-P09-S114` - Move production graph-control labels and descriptions into catalogs while retaining technical lab-only vocabulary internally
+- `2026-07-14-frontend-localization-W03-P09-S128` - Localize right-menu hover-card accessible names, states, overflow counts, and actions without raw IDs
+- `2026-07-14-frontend-localization-W03-P09-S147` - Replace graph-control store labels, titles, descriptions, and fallback copy with typed descriptors
+- `2026-07-14-frontend-localization-W03-P09-S175` - Localize stage-level labels and accessibility names without rendering internals
+- `2026-07-14-frontend-localization-W03-P09-S176` - Localize graph category legend labels and descriptions
+- `2026-07-14-frontend-localization-W03-P09-S177` - Replace raw graph-node identifier copy with an approved public reference and finish graph-node menu localization
+- `2026-07-14-frontend-localization-W03-P09-S179` - Remove raw meta-connection identifier copy and finish connection menu localization
+- `2026-07-14-frontend-localization-W03-P09-S215` - Standardize and localize island focus, close, and copy menu actions
+- `2026-07-14-frontend-localization-W03-P09-S52` - Localize canvas loading, empty, degraded, truncated, unavailable, and recovery states
+- `2026-07-14-frontend-localization-W03-P09-S54` - Localize graph control labels, descriptions, and accessibility names
+- `2026-07-14-frontend-localization-W03-P09-S56` - Localize graph-island interior, empty, loading, and accessibility presentation
+- `2026-07-14-frontend-localization-W04-P10-S115` - Production-fence the degradation debug switch from user-facing builds
+- `2026-07-14-frontend-localization-W04-P10-S183` - Standardize and localize connection menu actions without node, ID, or JSON vocabulary
+- `2026-07-14-frontend-localization-W04-P10-S185` - Migrate right-rail menu tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P10-S186` - Migrate right-rail action and rail-state tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P10-S243` - Production-fence the crash injector from user-facing builds
+- `2026-07-14-frontend-localization-W04-P10-S58` - Localize status-tab summaries, freshness, unavailable states, and recovery guidance
+- `2026-07-14-frontend-localization-W04-P10-S59` - Replace search-service lifecycle and indexing internals with user-facing setup, progress, and recovery copy
+- `2026-07-14-frontend-localization-W04-P10-S60` - Localize changes overview summaries, comparisons, and actions with consistent verbs
+- `2026-07-14-frontend-localization-W04-P10-S61` - Localize right-rail empty, loading, degraded, error, and partial states
+- `2026-07-14-frontend-localization-W04-P10-S62` - Standardize and localize change menu actions
+- `2026-07-14-frontend-localization-W04-P10-S63` - Migrate right-rail status render tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P11-S187` - Localize global search surface fields, scopes, results, footer guidance, and live regions
+- `2026-07-14-frontend-localization-W04-P11-S188` - Localize search-result pill species, excerpts, dates, selection state, and accessible actions
+- `2026-07-14-frontend-localization-W04-P11-S189` - Migrate real search-provider and result-presentation tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P11-S229` - Move search-result pill species, date, and selection copy onto typed messages
+- `2026-07-14-frontend-localization-W04-P11-S64` - Localize document-search dialog, fields, scopes, results, and live regions
+- `2026-07-14-frontend-localization-W04-P11-S65` - Move search-provider species, degradation, selection, and no-result copy onto typed messages
+- `2026-07-14-frontend-localization-W04-P11-S67` - Replace manual result counts and relative dates with locale-aware complete messages
+- `2026-07-14-frontend-localization-W04-P11-S68` - Migrate command-palette render and presentation tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P12-S190` - Localize timeline mode, lane, playback, empty, and status presentation
+- `2026-07-14-frontend-localization-W04-P12-S191` - Migrate time-travel state and store formatting tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P12-S230` - Localize timeline filter criteria and unavailable-state messages with consistent verbs
+- `2026-07-14-frontend-localization-W04-P12-S69` - Localize timeline range controls, handles, summaries, and accessibility names
+- `2026-07-14-frontend-localization-W04-P12-S70` - Replace manual month names and fixed date layouts with locale-aware temporal formatters
+- `2026-07-14-frontend-localization-W04-P12-S71` - Localize time-travel status and return actions with consistent verbs
+- `2026-07-14-frontend-localization-W04-P12-S72` - Migrate timeline range and criterion tests through production catalogs
+- `2026-07-14-frontend-localization-W04-P13-S129` - Replace hover-card store presentation strings and evidence fallbacks with typed descriptors
+- `2026-07-14-frontend-localization-W04-P13-S192` - Migrate view-store presentation tests against real production descriptors and formatters
+- `2026-07-14-frontend-localization-W04-P13-S231` - Replace listing query copy with typed messages and locale-aware counts
+- `2026-07-14-frontend-localization-W04-P13-S232` - Replace dashboard query copy with typed messages and locale-aware summaries
+- `2026-07-14-frontend-localization-W04-P13-S233` - Replace history query copy with typed outcomes and safe user concepts
+- `2026-07-14-frontend-localization-W04-P13-S234` - Replace change query copy with typed outcomes and safe user concepts
+- `2026-07-14-frontend-localization-W04-P13-S235` - Replace workspace query copy with typed outcomes and safe user concepts
+- `2026-07-14-frontend-localization-W04-P13-S237` - Replace now-strip strings with typed descriptors and actionable recovery
+- `2026-07-14-frontend-localization-W04-P13-S239` - Replace work-tab presentation strings with typed descriptors
+- `2026-07-14-frontend-localization-W04-P13-S240` - Replace context-menu presentation strings with typed descriptors
+- `2026-07-14-frontend-localization-W04-P13-S73` - Replace document query copy with typed messages and locale-aware truncation details
+- `2026-07-14-frontend-localization-W04-P13-S74` - Replace pipeline query copy with typed outcomes and safe user concepts
+- `2026-07-14-frontend-localization-W04-P13-S76` - Replace settings-row presentation strings with typed descriptors
+- `2026-07-14-frontend-localization-W04-P13-S77` - Replace hover-card and shared relative-time presentation with locale-aware formatters and safe labels
+- `2026-07-14-frontend-localization-W04-P13-S78` - Migrate localized document, listing, dashboard, pipeline, history, change, and workspace query tests against production descriptors and live wire data
+- `2026-07-14-frontend-localization-W05-P14-S193` - Localize document creation and editor tag-autocomplete messages
+- `2026-07-14-frontend-localization-W05-P14-S194` - Migrate editor-toolbar and tag behavior tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P14-S195` - Migrate comment-thread and reader-comment tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P14-S216` - Replace editor store mutation and unsaved-change messages with typed outcomes
+- `2026-07-14-frontend-localization-W05-P14-S79` - Localize review-station queues, decisions, eligibility, feedback, conflicts, and confirmations
+- `2026-07-14-frontend-localization-W05-P14-S80` - Localize editor toolbar formatting, save, close, and unsaved-change actions
+- `2026-07-14-frontend-localization-W05-P14-S81` - Localize diff previews, truncation, change summaries, and copy actions without hunk or implementation terminology
+- `2026-07-14-frontend-localization-W05-P14-S82` - Localize comment threads, orphaned-anchor states, edit, resolve, delete, and re-anchor actions
+- `2026-07-14-frontend-localization-W05-P14-S83` - Replace authoring store mutation messages and served reasons with typed outcomes
+- `2026-07-14-frontend-localization-W05-P14-S84` - Migrate review-station and diff tests through production catalogs and real behavior
+- `2026-07-14-frontend-localization-W05-P15-S196` - Localize related-document selection and autocomplete controls
+- `2026-07-14-frontend-localization-W05-P15-S197` - Localize plan summary labels and states without exposing internal metadata
+- `2026-07-14-frontend-localization-W05-P15-S198` - Migrate document chrome, properties, and related-document tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P15-S199` - Migrate highlighted-code and highlighter-theme tests through production locale behavior
+- `2026-07-14-frontend-localization-W05-P15-S242` - Localize code viewer states, controls, truncation notices, and accessible navigation
+- `2026-07-14-frontend-localization-W05-P15-S85` - Localize Markdown reader states, controls, truncation notices, and accessible navigation
+- `2026-07-14-frontend-localization-W05-P15-S86` - Localize document chrome, properties, metadata, and viewer menu labels
+- `2026-07-14-frontend-localization-W05-P15-S87` - Replace bundled language, code-fence, and badge display names with locale catalog mappings
+- `2026-07-14-frontend-localization-W05-P15-S88` - Localize Markdown document presentation while preserving titles, paths, headings, and user-authored content as data
+- `2026-07-14-frontend-localization-W05-P15-S89` - Migrate Markdown and code reader tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P16-S200` - Localize settings control labels, options, validation, and accessible descriptions
+- `2026-07-14-frontend-localization-W05-P16-S201` - Localize compact document-reader controls and accessibility text
+- `2026-07-14-frontend-localization-W05-P16-S202` - Localize compact unified-rail sections, actions, and accessibility text
+- `2026-07-14-frontend-localization-W05-P16-S203` - Localize compact timeline controls and status text
+- `2026-07-14-frontend-localization-W05-P16-S204` - Migrate settings-control and theme tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P16-S205` - Migrate onboarding render tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P16-S206` - Migrate compact-shell and bottom-navigation tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P16-S90` - Localize settings dialog categories, descriptions, inheritance, reset, and validation copy
+- `2026-07-14-frontend-localization-W05-P16-S91` - Localize first-run onboarding, project setup, progress, refusal, and recovery copy
+- `2026-07-14-frontend-localization-W05-P16-S93` - Migrate settings dialog and effect tests through production catalogs
+- `2026-07-14-frontend-localization-W05-P17-S207` - Localize or production-fence the standalone prototype HTML shell
+- `2026-07-14-frontend-localization-W05-P17-S208` - Localize the filter visual-review entry point through production catalogs
+- `2026-07-14-frontend-localization-W05-P17-S209` - Localize the status visual-review entry point through production catalogs
+- `2026-07-14-frontend-localization-W05-P17-S210` - Localize the viewer visual-review entry point through production catalogs
+- `2026-07-14-frontend-localization-W05-P17-S211` - Localize or explicitly development-fence the three-lab graph surface
+- `2026-07-14-frontend-localization-W05-P17-S212` - Localize or production-fence the standalone three-lab HTML shell
+- `2026-07-14-frontend-localization-W05-P17-S213` - Prove prototype entry points never expose message keys, development metadata, raw tokens, or untranslated English
+- `2026-07-14-frontend-localization-W05-P17-S214` - Prove three-lab entry points never expose message keys, development metadata, raw tokens, or untranslated English
+- `2026-07-14-frontend-localization-W05-P17-S94` - Localize or production-fence the status-gallery prototype entry point
+- `2026-07-14-frontend-localization-W05-P17-S95` - Localize the graph visual-review entry point through production catalogs
+- `2026-07-14-frontend-localization-W05-P17-S96` - Localize or explicitly development-fence three-lab appearance controls and descriptions
+- `2026-07-14-frontend-localization-W05-P17-S97` - Prove visual-review entry points never expose message keys, development metadata, raw tokens, or untranslated English
+- `2026-07-14-frontend-localization-W06-P18-S100` - Reject em dashes and invalid ellipsis punctuation in locale resources and production copy
+- `2026-07-14-frontend-localization-W06-P18-S101` - Run the source guard across every production and auxiliary frontend entry point and repair all findings
+- `2026-07-14-frontend-localization-W06-P18-S130` - Define the canonical operation-to-verb inventory and reject divergent synonyms across action IDs
+- `2026-07-14-frontend-localization-W06-P18-S131` - Prove every typed error and status condition maps exhaustively to actionable copy or a safe fallback
+- `2026-07-14-frontend-localization-W06-P18-S132` - Remove manual runtime title-casing from user-facing presentation paths through each vocabulary's catalog, formatter, or fail-closed token owner
+- `2026-07-14-frontend-localization-W06-P18-S133` - Remove manual singular, plural, and count sentence construction from production presentation paths
+- `2026-07-14-frontend-localization-W06-P18-S134` - Remove fixed-locale and manual month formatting from production presentation paths
+- `2026-07-14-frontend-localization-W06-P18-S135` - Reject prohibited internal and development vocabulary in catalog values and rendered fallback mappings
+- `2026-07-14-frontend-localization-W06-P18-S136` - Reject raw exception, token, identifier, path, command, and served-reason interpolation into general UI messages
+- `2026-07-14-frontend-localization-W06-P18-S137` - Reject English call-site defaults, dynamic message keys, and concatenated translated fragments
+- `2026-07-14-frontend-localization-W06-P18-S98` - Remove every temporary scanner exemption and require zero production user-facing literals
+- `2026-07-14-frontend-localization-W06-P18-S99` - Delete superseded English label maps after their catalog replacements land
+- `2026-07-14-frontend-localization-W06-P19-S104` - Exercise the live served application in its typical localized state
+- `2026-07-14-frontend-localization-W06-P19-S105` - Verify expanded and right-to-left test locale behavior for layout, focus, rich interpolation, live regions, lang, and dir
+- `2026-07-14-frontend-localization-W06-P19-S139` - Exercise live loading and progressive-result states without untranslated text or unresolved placeholders
+- `2026-07-14-frontend-localization-W06-P19-S140` - Exercise live degraded states and prove every visible effect and recovery action is user-facing
+- `2026-07-14-frontend-localization-W06-P19-S141` - Exercise live empty states and prove concise localized guidance across primary surfaces
+- `2026-07-14-frontend-localization-W06-P19-S142` - Exercise production error boundaries and prove raw diagnostics never render in any build mode
+- `2026-07-14-frontend-localization-W06-P19-S143` - Exercise destructive confirmations and prove explicit consequence, destructive verb, and safe cancel wording
+- `2026-07-14-frontend-localization-W06-P19-S144` - Exercise menus, commands, and shortcuts and prove shared action wording and canonical verbs
+- `2026-07-14-frontend-localization-W06-P19-S145` - Exercise compact and responsive surfaces and prove localized accessible navigation without source-language leakage
+- `2026-07-14-frontend-localization-W06-P19-S102` - Run catalog, runtime, formatter, descriptor, error-safety, and locale-reactivity suites against production resources
+- `2026-07-14-frontend-localization-W06-P19-S103` - Run all copy-sensitive component suites across every migrated domain without mocks, fakes, stubs, patches, skip, or xfail
+- `2026-07-14-frontend-localization-W06-P19-S106` - Run the complete frontend test recipe against the real live-engine harness
+- `2026-07-14-frontend-localization-W06-P19-S107` - Run the complete frontend lint recipe including formatting, TypeScript, ESLint, and localization enforcement
+- `2026-07-14-frontend-localization-W06-P19-S138` - Expand the bounded alternate-locale resources for full expanded-copy and right-to-left browser verification
 
 ### plan
 
