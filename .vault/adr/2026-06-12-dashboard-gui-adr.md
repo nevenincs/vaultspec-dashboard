@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-gui'
 date: '2026-06-12'
-modified: '2026-06-22'
+modified: '2026-07-18'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
   - '[[2026-07-18-dashboard-gui-research]]'
