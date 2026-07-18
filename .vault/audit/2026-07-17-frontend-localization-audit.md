@@ -588,3 +588,50 @@ confirmed to predate this pass, plus the `authoring.happyPath.live.test.ts`
 concurrency-flakiness note above. `P20` (9 steps) remains the coding lane's
 in-progress build, out of scope for this reconciliation pass by design —
 the frontend-localization plan's only remaining surface.
+
+## `W06.P20.S111` — Audit: catalog completeness and source-literal evidence
+
+**Requirement.** Every user-facing string resolves through the typed catalog
+(no missing keys, no untranslated production literal anywhere in `src/`), and
+the campaign's own scanner/catalog-integrity machinery is itself provably
+sound (not merely quiet).
+
+**Catalog completeness evidence.**
+`catalogKeys.test.ts` (9 tests) proves the shipped catalog matches the
+explicit namespace-qualified leaf-key contract, keeps locale/namespace
+aggregates aligned with the source catalog, and provides every required
+message directly in every shipped locale (English, French, Arabic) —
+independently reverified live, 9/9. `catalogInterpolation.test.ts` (5 tests)
+proves production interpolation syntax and shipped-locale token parity —
+5/5. `catalogPlural.test.ts` (3 tests) proves every locale's complete
+cardinal category family and a closed CLDR-cardinal-suffix vocabulary —
+3/3.
+
+**Source-literal (zero-literal) evidence.**
+`scan-localization.mjs` reports "clean, 0 user-facing source literals" over
+the full `src/` tree at the campaign's closing commit (`c169ad5a98` +
+`e2fe6aa32b`) — independently reverified via `just dev lint frontend`
+(exit 0) AND the standalone scanner invocation. The scanner's OWN test
+suite (`scan-localization.test.ts`, 14 tests) proves the mechanism itself is
+sound: it recognizes production translation bindings, detects every
+production finding class from a real invalid-source fixture (the union of
+every fixture-driven finding equals the full `FINDING_CODES` set — S137's
+verify-and-record evidence), fails closed at expression/file/finding limits,
+and excludes exact catalog test fixtures structurally
+(`src/localization/testing/*Resources.ts`, S138's fix) rather than by an
+ever-growing per-file allowlist. `S98` independently confirmed the
+allowlist MECHANISM was removed outright (`git log --diff-filter=D` on
+`localization-allowlist.json`), not merely emptied — the zero-literal
+invariant is structural, with no exemption surface left to regress open.
+`S101` confirmed the scanner's ONE production entry point
+(`index.html`, per `vite.config.ts`'s `rollupOptions.input`) carries no
+literal beyond the exempt product-name title, and the six auxiliary
+dev-only HTML pages are genuinely production-excluded, not merely
+unscanned.
+
+**Verdict: PASS.** Catalog completeness and zero-literal enforcement are
+both independently reverified live and structural (not merely
+report-derived), at this update: the full `src/localization/` suite
+(9 catalog-adjacent test files) plus `scan-localization.test.ts` — 10 files,
+72 tests, all green; `just dev lint frontend`'s `lint:localization` step —
+clean.
