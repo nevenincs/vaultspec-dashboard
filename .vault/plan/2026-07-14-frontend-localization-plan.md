@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#frontend-localization'
 date: '2026-07-14'
-modified: '2026-07-17'
+modified: '2026-07-18'
 tier: L3
 related:
   - '[[2026-07-14-frontend-localization-adr]]'
@@ -381,13 +381,13 @@ Remove every migration exemption and make untranslated rendered copy, fixed loca
 
 Exercise production resources, components, accessibility output, locale switching, formatting, and the real served application across all state modes.
 
-- [ ] `W06.P19.S102` - Run catalog, runtime, formatter, descriptor, error-safety, and locale-reactivity suites against production resources; `frontend/src/localization/, frontend/src/platform/localization/`.
-- [ ] `W06.P19.S103` - Run all copy-sensitive component suites across every migrated domain without mocks, fakes, stubs, patches, skip, or xfail; `frontend/src/app/`.
+- [x] `W06.P19.S102` - Run catalog, runtime, formatter, descriptor, error-safety, and locale-reactivity suites against production resources; `frontend/src/localization/, frontend/src/platform/localization/`.
+- [x] `W06.P19.S103` - Run all copy-sensitive component suites across every migrated domain without mocks, fakes, stubs, patches, skip, or xfail; `frontend/src/app/`.
 - [x] `W06.P19.S104` - Exercise the live served application in its typical localized state; `frontend/e2e/localization-typical.spec.ts`.
 - [x] `W06.P19.S105` - Verify expanded and right-to-left test locale behavior for layout, focus, rich interpolation, live regions, lang, and dir; `frontend/e2e/localization-layout.spec.ts`.
-- [ ] `W06.P19.S106` - Run the complete frontend test recipe against the real live-engine harness; `frontend/`.
-- [ ] `W06.P19.S107` - Run the complete frontend lint recipe including formatting, TypeScript, ESLint, and localization enforcement; `frontend/`.
-- [ ] `W06.P19.S138` - Expand the bounded alternate-locale resources for full expanded-copy and right-to-left browser verification; `frontend/src/localization/testing/`.
+- [x] `W06.P19.S106` - Run the complete frontend test recipe against the real live-engine harness; `frontend/`.
+- [x] `W06.P19.S107` - Run the complete frontend lint recipe including formatting, TypeScript, ESLint, and localization enforcement; `frontend/`.
+- [x] `W06.P19.S138` - Expand the bounded alternate-locale resources for full expanded-copy and right-to-left browser verification; `frontend/src/localization/testing/`.
 - [x] `W06.P19.S139` - Exercise live loading and progressive-result states without untranslated text or unresolved placeholders; `frontend/e2e/localization-loading.spec.ts`.
 - [x] `W06.P19.S140` - Exercise live degraded states and prove every visible effect and recovery action is user-facing; `frontend/e2e/localization-degraded.spec.ts`.
 - [x] `W06.P19.S141` - Exercise live empty states and prove concise localized guidance across primary surfaces; `frontend/e2e/localization-empty.spec.ts`.
