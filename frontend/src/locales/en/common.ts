@@ -335,6 +335,16 @@ export const common = {
       allow: "Allow",
       deny: "Deny",
       permissionFailed: "The decision couldn’t be saved. Try again.",
+      team: {
+        thinking: "Thinking",
+        thinkingLive: "Thinking…",
+        working: "Working…",
+        workingAgents: "Working… · {{agents}}",
+        callingTool: "Calling {{tool}}",
+        result: "Result",
+        degraded: "Live updates paused. Showing status only.",
+        error: "The team run reported a problem. Check the run’s status and try again.",
+      },
     },
     composer: {
       placeholder: "Message the agent",
