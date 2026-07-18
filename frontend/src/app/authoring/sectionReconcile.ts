@@ -31,9 +31,17 @@ export interface DocSegment {
 }
 
 /**
- * Cut a document body into ordered segments at every heading boundary. The first
- * segment is the pseudo-section (bytes 0 → first heading), keyed by the empty path;
- * it is emitted only when non-empty. Order is document order.
+ * Cut a document body into ordered FLAT segments at every heading boundary. The
+ * first segment is the pseudo-section (bytes 0 → first heading), keyed by the empty
+ * path; it is emitted only when non-empty. Order is document order.
+ *
+ * A segment's bytes run from its heading line to the NEXT heading of ANY level —
+ * never `HeadingBlock.sectionText`, which spans the heading's whole SUBTREE (the
+ * comment-anchor hashing extent). Subtree extents OVERLAP for a parent heading
+ * (an H1 title owns every `##` below it), which would make any parent-scope
+ * document read every edit pair as a whole-doc conflict AND duplicate the nested
+ * sections when the resolved segments are re-joined. Flat cuts tile the document
+ * exactly once, so the join is byte-preserving by construction.
  */
 export function partitionSegments(body: string): DocSegment[] {
   const blocks = parseHeadingBlocks(body);
@@ -43,8 +51,12 @@ export function partitionSegments(body: string): DocSegment[] {
   if (preamble.length > 0) {
     segments.push({ key: headingPathKey([]), text: preamble });
   }
-  for (const block of blocks) {
-    segments.push({ key: headingPathKey(block.path), text: block.sectionText });
+  for (const [index, block] of blocks.entries()) {
+    const end = index + 1 < blocks.length ? blocks[index + 1].start : body.length;
+    segments.push({
+      key: headingPathKey(block.path),
+      text: body.slice(block.start, end),
+    });
   }
   return segments;
 }

@@ -104,3 +104,49 @@ describe("reconcileSections — conflict (never silently overwrites)", () => {
     expect(result.kind).toBe("conflict");
   });
 });
+
+// The standard vault template shape: one H1 title owning every `##` subsection.
+// `HeadingBlock.sectionText` spans the H1's whole SUBTREE (the comment-anchor
+// hashing extent), so partitioning must cut FLAT — otherwise the H1 segment
+// overlaps its children: every disjoint edit pair false-conflicts at the H1 key,
+// and re-joining the resolved segments DUPLICATES each subsection (live-caught by
+// the editor e2e suite over the real apply path).
+describe("reconcileSections — H1-owning document (flat segmentation)", () => {
+  const H1DOC = (alpha: string, gamma: string) =>
+    `# title\n\nintro\n\n## Alpha\n\n${alpha}\n\n## Gamma\n\n${gamma}\n`;
+
+  it("tiles the document exactly once — flat segments, no subtree overlap", () => {
+    const segs = partitionSegments(H1DOC("alpha", "gamma"));
+    expect(segs.map((s) => s.text).join("")).toBe(H1DOC("alpha", "gamma"));
+    expect(segs.map((s) => s.text)).toEqual([
+      "# title\n\nintro\n\n",
+      "## Alpha\n\nalpha\n\n",
+      "## Gamma\n\ngamma\n",
+    ]);
+  });
+
+  it("rebases disjoint edits under a shared H1 instead of whole-doc conflicting", () => {
+    const oldBase = H1DOC("alpha", "gamma");
+    const newBase = H1DOC("ALPHA-agent", "gamma"); // agent changed Alpha only
+    const draft = H1DOC("alpha", "gamma-user"); // user changed Gamma only
+    const result = reconcileSections(oldBase, newBase, draft);
+    expect(result.kind).toBe("disjoint");
+    if (result.kind !== "disjoint") return;
+    expect(result.mergedDraft).toBe(H1DOC("ALPHA-agent", "gamma-user"));
+  });
+
+  it("scopes an overlap to the contested subsection and merges without duplication", () => {
+    const oldBase = H1DOC("alpha", "gamma");
+    const newBase = H1DOC("ALPHA-agent", "gamma");
+    const draft = H1DOC("alpha-user", "gamma");
+    const result = reconcileSections(oldBase, newBase, draft);
+    if (result.kind !== "conflict") throw new Error("expected conflict");
+    expect(result.conflictKeys).toEqual(['["title","Alpha"]']);
+    expect(result.mergeWith({ '["title","Alpha"]': "mine" })).toBe(
+      H1DOC("alpha-user", "gamma"),
+    );
+    expect(result.mergeWith({ '["title","Alpha"]': "theirs" })).toBe(
+      H1DOC("ALPHA-agent", "gamma"),
+    );
+  });
+});
