@@ -13,16 +13,6 @@ related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 <!-- RETIRED: S02, S03, S05, S49, S50 -->
 
 # `agent-wire-gaps` plan

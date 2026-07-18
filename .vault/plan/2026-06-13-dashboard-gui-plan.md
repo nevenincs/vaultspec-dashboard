@@ -10,8 +10,8 @@ related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
   - '[[2026-06-12-dashboard-gui-audit]]'
   - '[[2026-06-13-vaultspec-engine-plan]]'
+  - '[[2026-07-18-dashboard-gui-research]]'
 ---
-
 # `dashboard-gui` plan
 
 - [x] `S01` - Add granularity to the typed graph query and request feature granularity for the constellation; `frontend/src/stores/server/engine.ts`.

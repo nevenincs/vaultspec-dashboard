@@ -518,7 +518,6 @@ is reviewed BY this addendum; `DiffViewSource` plus one value and
 engine or wire change — the un-served acknowledge verb (D6) remains the
 epic's only wire item and is unaffected.
 
-
 ## Rationale
 
 Every hard sub-problem here already has a settled in-repo answer; the

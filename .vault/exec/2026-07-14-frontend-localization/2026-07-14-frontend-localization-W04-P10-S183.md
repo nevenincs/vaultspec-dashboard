@@ -78,4 +78,3 @@ verification pass above was against matching working-tree state, per the team's
 rule that a citation always names the real landing commit, never working-tree
 state). Fixed by opus-l10n; this amendment documents the fix, not a fresh
 implementation on my part.
-

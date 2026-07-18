@@ -11,16 +11,6 @@ related:
   - '[[2026-07-14-frontend-localization-reference]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 <!-- RETIRED: S40, S75, S180, S181, S219, S236, S238 -->
 
 # `frontend-localization` plan
