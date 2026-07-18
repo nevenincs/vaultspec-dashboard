@@ -716,6 +716,17 @@ rename_target/materialized_result document variants.",
                     "type": "array",
                     "items": {
                         "type": "object",
+                        "description": "Scope note: only the create_document / \
+provisional_create document / whole_document draft path is fully modeled here. \
+The enumerated draft surface (mode, body, frontmatter) covers the create/ \
+replace_body/append_body body path, and the existing + provisional_create \
+document variants are fully described. NOT enumerated in this schema: the \
+per-kind draft fields required by other operation kinds (new_stem for rename, \
+section_selector for section_edit, plan_step for set_plan_step_state) and the \
+rename_target/materialized_result document variants. The engine validates each \
+kind and each variant with deny_unknown_fields, so composing a non-create kind \
+here from only the create-shaped fields is rejected - fully modeling those \
+kinds is a scoped follow-up.",
                         "properties": {
                             "child_key": {"type": "string"},
                             "operation": {

@@ -727,12 +727,22 @@ fn propose_changeset_serves_valid_top_level_json_schema() {
     assert!(required.contains(&json!("summary")));
     assert!(required.contains(&json!("operations")));
 
-    // The scoped follow-up is recorded honestly in the description.
+    // The scoped follow-up is recorded honestly in the tool-level description.
     let description = schema["description"].as_str().unwrap();
     assert!(description.contains("new_stem"));
     assert!(description.contains("section_selector"));
     assert!(description.contains("plan_step"));
     assert!(description.contains("materialized_result"));
+
+    // And, crucially, ALSO served on the operations item itself - where the model
+    // constructs each operation - so the scope-B truncation is not silent to a
+    // model reading only the array item's schema (reviewer MEDIUM).
+    let item_description = props["operations"]["items"]["description"]
+        .as_str()
+        .expect("operations item carries a served scope description");
+    assert!(item_description.contains("deny_unknown_fields"));
+    assert!(item_description.contains("new_stem"));
+    assert!(item_description.contains("rename_target"));
 
     // Dispatcher-injected ids never appear as advertised properties. (The
     // description names them as injected-below-the-model, so scope the property
