@@ -82,9 +82,10 @@ export const ltrAgentResources = {
     startTeamRun: "Démarrer l’équipe",
     cancelTeamRun: "Arrêter l’exécution de l’équipe",
     teamRunPhase: "Exécution de l’équipe : {{phase}}",
-    teamRunRefused: "L’exécution de l’équipe n’a pas pu démarrer.",
+    teamRunRefused:
+      "L’exécution de l’équipe n’a pas pu démarrer. Vérifiez l’état de l’équipe, puis réessayez.",
     teamRunDegraded: "Récupération de l’état de l’exécution…",
-    teamRunDismiss: "Ignorer",
+    teamRunDismiss: "Fermer",
     teamRunLocked: "Une exécution est en cours.",
   },
   chip: {
@@ -183,9 +184,9 @@ export const rtlAgentResources = {
     startTeamRun: "بدء الفريق",
     cancelTeamRun: "إيقاف تشغيل الفريق",
     teamRunPhase: "تشغيل الفريق: {{phase}}",
-    teamRunRefused: "تعذّر بدء تشغيل الفريق.",
+    teamRunRefused: "تعذّر بدء تشغيل الفريق. تحقّق من حالة الفريق ثم أعد المحاولة.",
     teamRunDegraded: "جارٍ استرداد حالة التشغيل…",
-    teamRunDismiss: "تجاهل",
+    teamRunDismiss: "إغلاق",
     teamRunLocked: "هناك تشغيل قيد التنفيذ.",
   },
   chip: {

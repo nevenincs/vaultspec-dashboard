@@ -7,7 +7,7 @@
 
 import { expect, test } from "@playwright/test";
 
-import { ensureBrowserVisible, ensureExpanded } from "./localizationHelpers";
+import { ensureVaultFoldsExpanded } from "./localizationHelpers";
 
 /** Internal-vocabulary shapes that must never render: registry action ids
  *  (`app:command-palette`), dispatch verbs (`feature-archive`), wire fields. */
@@ -54,29 +54,31 @@ test.describe("actions, commands, and shortcuts (live)", () => {
   test("a document context menu renders shared canonical verbs, no raw ids", async ({
     page,
   }) => {
+    // A genuinely cold boot streams thousands of documents progressively and
+    // the fold-expand/mode-switch retry sequence needs real headroom beyond
+    // the config's warm-boot 30s default.
+    test.setTimeout(60_000);
     await page.goto("/");
     await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
-    await ensureBrowserVisible(page);
 
-    // The Vault documents tree (as opposed to the default Files tab) only
-    // mounts `[data-vault-browser]` once its "Documents" tab is active; leaf
-    // document rows render only once a category fold (e.g. "Plans") is
-    // expanded — both collapsed by default.
-    await page.getByText("Documents", { exact: true }).first().click();
+    // Leaf document rows render only once the rail is visible, the
+    // Vault/Files radiogroup is on "Documents", AND a category fold (e.g.
+    // "Plans") is expanded — all collapsed/off by default, and a cold,
+    // heavily-draining boot can even revert an earlier step, so this drives
+    // and RE-VERIFIES the whole chain rather than trusting one pass.
     const tree = page.locator("[data-vault-browser]");
-    await expect(tree).toBeVisible({ timeout: 10_000 });
-
-    // Leaf document rows render only once a category fold (e.g. "Plans") is
-    // expanded — both collapsed by default. Fold headers TOGGLE, so check the
-    // real `aria-expanded` state rather than blindly clicking (a prior spec
-    // in the same worker/session may have already expanded either).
-    await ensureExpanded(tree.getByRole("button", { name: /^Documents\b/ }).first());
-    await ensureExpanded(tree.getByRole("button", { name: /^Plans\b/ }).first());
+    await ensureVaultFoldsExpanded(page, [/^Documents\b/, /^Plans\b/]);
 
     // Probe rows until a substantive per-kind menu appears, then prove it
     // renders the SHARED canonical verbs (the one-descriptor plane: Open in
     // editor / Show on canvas / Reveal / Copy) with zero internal-id leakage.
-    const rows = tree.getByRole("button", { name: /completed|Jun|Jul/ });
+    // Scope structurally (every leaf row is a `<button>` inside a `listitem`,
+    // while fold headers are siblings BEFORE the list) rather than matching
+    // an accessible-name pattern: a leaf's name reflects its REAL status
+    // ("Plan complete" for a finished plan carries no "completed" substring,
+    // no date — a fully-done corpus slice matched nothing under the old
+    // text-pattern probe).
+    const rows = tree.getByRole("listitem").getByRole("button");
     await expect(rows.first()).toBeVisible({ timeout: 10_000 });
     // Let the fold-expand re-render/virtualization settle before targeting row
     // coordinates — a right-click mid-animation can land on nothing.

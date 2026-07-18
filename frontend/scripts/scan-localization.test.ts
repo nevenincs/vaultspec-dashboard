@@ -89,6 +89,8 @@ describe("localization source scanner", () => {
     for (const fixture of [
       "agentResources.ts",
       "graphResources.ts",
+      "resources.ts",
+      "reviewStationResources.ts",
       "settingsResources.ts",
       "threeLabResources.ts",
     ]) {

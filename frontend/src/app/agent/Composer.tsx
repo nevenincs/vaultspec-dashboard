@@ -428,6 +428,8 @@ function ComposerTeamSelector({
         },
       }).message
     : pill;
+  const disabledTitle =
+    controlDisabled && reason !== undefined ? authoredDisplayText(reason) : undefined;
   const menuAria = resolveMessage({ key: MSG.teamMenuAria }).message;
   const presetUnavailable = resolveMessage({ key: MSG.teamPresetUnavailable }).message;
 
@@ -438,7 +440,7 @@ function ComposerTeamSelector({
 
   return (
     <div className="relative" data-composer-team>
-      <span title={controlDisabled ? reason : undefined} data-composer-team-trigger>
+      <span title={disabledTitle} data-composer-team-trigger>
         <DropdownButton
           label={pill}
           open={open}
@@ -471,6 +473,7 @@ function ComposerTeamSelector({
             </li>
             {state.presets.map((preset) => {
               const presetReason = preset.unavailable_reason ?? presetUnavailable;
+              const presetLabel = authoredDisplayText(preset.display_name ?? preset.id);
               return (
                 <li key={preset.id}>
                   <button
@@ -483,7 +486,7 @@ function ComposerTeamSelector({
                     onClick={preset.loadable ? () => select(preset.id) : undefined}
                     className="flex w-full flex-col gap-fg-0-5 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[checked=true]:bg-paper-sunken disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                   >
-                    <span className="truncate">{preset.display_name ?? preset.id}</span>
+                    <span className="truncate">{presetLabel}</span>
                     {!preset.loadable && (
                       <span className="truncate text-meta text-ink-faint">
                         {presetReason}

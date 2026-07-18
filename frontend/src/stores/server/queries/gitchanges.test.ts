@@ -787,7 +787,9 @@ describe("useChangesSummary git availability boundary", () => {
     expect(result.current).toMatchObject({
       degraded: true,
       hasChanges: false,
-      summaryLabels: { total: { key: "common:changes.filesChanged", values: { count: 0 } } },
+      summaryLabels: {
+        total: { key: "common:changes.filesChanged", values: { count: 0 } },
+      },
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(summaryRequests).toEqual([]);
@@ -894,7 +896,9 @@ describe("deriveChangesSummaryView", () => {
     ).toMatchObject({
       clean: true,
       hasChanges: false,
-      summaryLabels: { total: { key: "common:changes.filesChanged", values: { count: 0 } } },
+      summaryLabels: {
+        total: { key: "common:changes.filesChanged", values: { count: 0 } },
+      },
     });
   });
 

@@ -7,22 +7,26 @@
 
 import { expect, test } from "@playwright/test";
 
-import { ensureBrowserVisible, ensureExpanded } from "./localizationHelpers";
+import { ensureVaultFoldsExpanded } from "./localizationHelpers";
 
 test.describe("destructive confirmation wording (live)", () => {
   test("the feature-archive confirmation names consequence, destructive verb, and safe cancel", async ({
     page,
   }) => {
+    // A genuinely cold boot streams thousands of documents progressively and
+    // the fold-expand/mode-switch retry sequence needs real headroom beyond
+    // the config's warm-boot 30s default.
+    test.setTimeout(60_000);
     await page.goto("/");
     await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
-    await ensureBrowserVisible(page);
 
-    // The archive verb lives on FEATURE rows (vaultFeatureMenu.ts), which render
-    // only once the tree's "Features" fold is expanded (collapsed by default).
-    await page.getByText("Documents", { exact: true }).first().click();
+    // The archive verb lives on FEATURE rows (vaultFeatureMenu.ts), which
+    // render only once the rail is visible, the Vault/Files radiogroup is on
+    // "Documents", AND the tree's "Features" fold is expanded — all
+    // collapsed/off by default, and a cold, heavily-draining boot can even
+    // revert an earlier step, so this drives and RE-VERIFIES the whole chain.
     const tree = page.locator("[data-vault-browser]");
-    await expect(tree).toBeVisible({ timeout: 10_000 });
-    await ensureExpanded(tree.getByRole("button", { name: /^Features\b/ }).first());
+    await ensureVaultFoldsExpanded(page, [/^Features\b/]);
 
     const featureRows = tree.getByRole("button", { name: /\s\d+$/ });
     await expect(featureRows.first()).toBeVisible({ timeout: 10_000 });

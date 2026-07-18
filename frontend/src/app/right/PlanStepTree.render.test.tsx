@@ -93,7 +93,7 @@ describe("PlanStepTree", () => {
     expect(status.getAttribute("aria-busy")).toBe("true");
     // The message is the screen-reader label ONLY — never visible body copy (ADR D2).
     const srOnly = container.querySelector(".sr-only");
-    expect(srOnly?.textContent).toContain("loading steps");
+    expect(srOnly?.textContent).toContain("Loading steps");
     const visible = (status.textContent ?? "")
       .replace(srOnly?.textContent ?? "", "")
       .trim();
@@ -105,7 +105,7 @@ describe("PlanStepTree", () => {
   it("renders an empty designed state for plans without interior steps", () => {
     renderPure(emptyView);
 
-    expect(screen.getByText("no steps in this plan yet.")).toBeTruthy();
+    expect(screen.getByText("No steps in this plan yet.")).toBeTruthy();
   });
 
   it("renders the honest bounded-truncation message", () => {
@@ -127,7 +127,7 @@ describe("PlanStepTree", () => {
       },
     });
 
-    expect(screen.getByRole("status").textContent).toContain("showing 40 of 90");
+    expect(screen.getByRole("status").textContent).toContain("40 of 90 steps shown");
   });
 
   it("keeps hostile plan identities out of same-node localized presentation", async () => {

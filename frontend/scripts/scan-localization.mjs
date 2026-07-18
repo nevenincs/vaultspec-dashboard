@@ -2,12 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
-import {
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  realpathSync,
-} from "node:fs";
+import { lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import process from "node:process";
@@ -55,14 +50,15 @@ const SOURCE_EXT = /\.(?:css|ts|tsx)$/u;
 const TYPESCRIPT_SOURCE_EXT = /\.(?:ts|tsx)$/u;
 const CSS_SOURCE_EXT = /\.css$/u;
 const TEST_SOURCE = /\.(?:test|spec)\.(?:css|ts|tsx)$/u;
-const EXACT_SOURCE_EXCLUSIONS = new Set([
-  "src/localization/testing/addProjectResources.ts",
-  "src/localization/testing/agentResources.ts",
-  "src/localization/testing/graphResources.ts",
-  "src/localization/testing/resources.ts",
-  "src/localization/testing/settingsResources.ts",
-  "src/localization/testing/threeLabResources.ts",
-]);
+// Alternate-locale catalog fixtures for the localization test harness: every
+// `*Resources.ts` module under `src/localization/testing/` is translated
+// catalog DATA by construction (French/Arabic string tables the e2e specs
+// inject), never rendering code — the directory's mechanism modules
+// (`runtime.ts`, `index.ts`) stay scanned. Structural by location+shape, not a
+// per-file allowlist: a new fixture is excluded the moment it is authored in
+// the right place with the right name.
+const TEST_LOCALE_RESOURCE_SOURCE =
+  /^src\/localization\/testing\/\w*[rR]esources\.ts$/u;
 const EXACT_GENERATED_SOURCES = new Set();
 const FORMATTER_OWNER = "src/platform/localization/formatters.ts";
 const AUTHORED_DISPLAY_OWNER = "src/platform/localization/displayText.ts";
@@ -174,7 +170,7 @@ function sourceIsExcluded(file) {
     TEST_SOURCE.test(rel) ||
     rel.endsWith(".d.ts") ||
     rel.startsWith("src/locales/") ||
-    EXACT_SOURCE_EXCLUSIONS.has(rel) ||
+    TEST_LOCALE_RESOURCE_SOURCE.test(rel) ||
     EXACT_GENERATED_SOURCES.has(rel)
   );
 }
@@ -462,7 +458,6 @@ function isConstDeclaration(declaration) {
 function symbolAt(node, checker) {
   return node ? checker.getSymbolAtLocation(node) : undefined;
 }
-
 
 function translationBindings(sourceFile, checker) {
   const bindings = {
@@ -1289,7 +1284,6 @@ export function scanProductionSources() {
   return scanProgram(collectSourceFiles());
 }
 
-
 function run() {
   // Zero user-facing source literals is structural: the localization migration is
   // complete, so ANY finding fails the scan. There is no allowlist / exemption
@@ -1297,7 +1291,9 @@ function run() {
   const findings = scanProductionSources();
 
   if (findings.length > 0) {
-    process.stderr.write("localization-scan: user-facing source literals are not permitted:\n");
+    process.stderr.write(
+      "localization-scan: user-facing source literals are not permitted:\n",
+    );
     for (const finding of findings) {
       process.stderr.write(
         `  ${finding.code} ${finding.path}:${finding.line}:${finding.column} ${finding.snippet}\n`,
