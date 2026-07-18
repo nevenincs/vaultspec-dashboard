@@ -681,3 +681,29 @@ fn typed_inputs_can_still_represent_the_backend_domain_without_core_capabilities
     assert!(!rendered.contains("vaultspec-core"));
     assert!(!rendered.contains("/ops/core"));
 }
+
+#[test]
+fn propose_changeset_create_inlines_model_owned_operation_content() {
+    // The create branch inlines the model-owned content as JSON Schema so a
+    // bridged agent can construct operations (the opaque `payload` type ref was
+    // the S20 blocker); the a2a-injected ids are NOT advertised.
+    let schema = input_schema(SemanticToolName::ProposeChangeset);
+    let create = &schema["oneOf"][0];
+    assert_eq!(create["operation"], "create");
+    let item = &create["properties"]["operations"]["items"]["properties"];
+    assert!(item.get("child_key").is_some());
+    let op_enum = item["operation"]["enum"].as_array().unwrap();
+    assert!(op_enum.contains(&json!("create_document")));
+    assert_eq!(op_enum.len(), 10);
+    let document = &item["target"]["properties"]["document"]["properties"];
+    assert!(document.get("provisional_doc_id").is_some());
+    let collision = document["collision_status"]["enum"].as_array().unwrap();
+    assert!(collision.contains(&json!("available")));
+    assert!(item["draft"]["properties"].get("body").is_some());
+
+    // Dispatcher-injected ids never appear in the served schema.
+    let rendered = schema.to_string();
+    assert!(!rendered.contains("session_id"));
+    assert!(!rendered.contains("changeset_id"));
+    assert!(!rendered.contains("expected_revision"));
+}

@@ -665,7 +665,108 @@ fn input_schema(name: SemanticToolName) -> Value {
         }),
         SemanticToolName::ProposeChangeset => json!({
             "oneOf": [
-                {"operation": "create", "payload": "CreateProposalRequest"},
+                {
+                    // Model-owned content for a create proposal, inlined as JSON
+                    // Schema so a bridged agent can construct it (the opaque
+                    // `payload: CreateProposalRequest` type ref left it unable to,
+                    // the S20 blocker). session_id + changeset_id are injected by
+                    // the a2a dispatcher BELOW the model and are deliberately NOT
+                    // advertised here.
+                    "operation": "create",
+                    "properties": {
+                        "summary": {"type": "string"},
+                        "operations": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "child_key": {"type": "string"},
+                                    "operation": {
+                                        "type": "string",
+                                        "enum": [
+                                            "create_document", "replace_body",
+                                            "append_body", "edit_frontmatter",
+                                            "rename", "archive", "unarchive",
+                                            "link", "section_edit",
+                                            "set_plan_step_state"
+                                        ]
+                                    },
+                                    "target": {
+                                        "type": "object",
+                                        "properties": {
+                                            "document": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "kind": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "existing",
+                                                            "provisional_create",
+                                                            "rename_target",
+                                                            "materialized_result"
+                                                        ]
+                                                    },
+                                                    "provisional_doc_id": {"type": "string"},
+                                                    "doc_type": {"type": "string"},
+                                                    "feature": {"type": "string"},
+                                                    "title": {"type": "string"},
+                                                    "collision_status": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "unknown", "available",
+                                                            "conflicting"
+                                                        ]
+                                                    },
+                                                    "proposed_stem": {"type": "string"},
+                                                    "related": {
+                                                        "type": "array",
+                                                        "items": {"type": "string"}
+                                                    }
+                                                },
+                                                "required": ["kind"]
+                                            },
+                                            "base_revision": {"type": "string"},
+                                            "current_revision": {"type": "string"}
+                                        },
+                                        "required": ["document"]
+                                    },
+                                    "draft": {
+                                        "type": "object",
+                                        "properties": {
+                                            "mode": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "whole_document", "append",
+                                                    "section_scoped"
+                                                ]
+                                            },
+                                            "body": {"type": "string"},
+                                            "frontmatter": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "date": {"type": "string"},
+                                                    "tags": {
+                                                        "type": "array",
+                                                        "items": {"type": "string"}
+                                                    },
+                                                    "related": {
+                                                        "type": "array",
+                                                        "items": {"type": "string"}
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        "required": ["mode", "body"]
+                                    }
+                                },
+                                "required": [
+                                    "child_key", "operation", "target", "draft"
+                                ]
+                            }
+                        }
+                    },
+                    "required": ["summary", "operations"]
+                },
                 {"operation": "append", "alias_of": "append_draft"},
                 {"operation": "replace", "alias_of": "replace_draft"}
             ],
