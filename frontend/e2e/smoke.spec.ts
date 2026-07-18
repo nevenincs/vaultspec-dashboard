@@ -27,13 +27,16 @@ test("the served shell carries the token bootstrap and boots the app", async ({
 
 test("the constellation renders from the live graph", async ({ page }) => {
   await page.goto("/");
-  // The field mounts its canvas into the stage host…
-  const canvas = page.locator("[data-stage-host] canvas");
+  // The field mounts its canvas into the stage host… (the scene renders
+  // through LAYERED canvases now — base field + overlay — so target the
+  // first rather than tripping strict mode on the multi-match)
+  const canvas = page.locator("[data-stage-host] canvas").first();
   await expect(canvas).toBeVisible({ timeout: 15_000 });
   // ...and the current activity rail is mounted while the live corpus is read
-  // through the engine status endpoint below. The active tab is persisted state,
-  // so assert the rail shell instead of a specific tab panel.
-  await expect(page.locator("[data-rail-tabs]")).toBeVisible();
+  // through the engine status endpoint below. The rail's tabs were retired by
+  // the activity-rail realignment — the rail IS the one status surface now, so
+  // assert its status marker rather than the removed tab strip.
+  await expect(page.locator("[data-status-tab]")).toBeVisible();
   const engineNodes = await page.evaluate(async () => {
     const token = document
       .querySelector('meta[name="vaultspec-token"]')
@@ -51,11 +54,17 @@ test("the constellation renders from the live graph", async ({ page }) => {
 
 test("search round-trips through the live pass-through", async ({ page }) => {
   await page.goto("/");
-  await page.getByRole("tab", { name: "search" }).click();
-  await page.getByLabel("search query").fill("dashboard");
-  // The control is never dead: rag is up, so no offline banner appears
-  // and the query round-trips ok through the engine pass-through.
-  await expect(page.locator("[data-semantic-offline]")).toHaveCount(0);
+  await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
+  // The right-rail Search tab was retired (activity-rail realignment): search
+  // is now the Cmd/Ctrl+Alt+S palette over the one provider seam. Prove the
+  // live surface opens, then prove the wire round-trip directly.
+  await page.keyboard.press("Control+Alt+s");
+  const searchDialog = page.getByRole("dialog", {
+    name: "Search documents and code",
+  });
+  await expect(searchDialog.first()).toBeVisible({ timeout: 10_000 });
+  await searchDialog.first().getByRole("combobox").first().fill("dashboard");
+  await page.keyboard.press("Escape");
   const roundTrip = await page.evaluate(async () => {
     const token = document
       .querySelector('meta[name="vaultspec-token"]')
@@ -83,30 +92,13 @@ test("search round-trips through the live pass-through", async ({ page }) => {
   });
   expect(roundTrip.status).toBe(200);
   expect(roundTrip.ok).toBe(true);
-  // Result-bearing click-through: exercised when the rag index carries
-  // this workspace (currently empty — S50 record, divergence item 6);
-  // the UI path is covered against the mock and the adapter is live.
-  const results = page.locator("[data-search-tab] li button");
-  if ((await results.count()) > 0 && roundTrip.count > 0) {
-    await results.first().click();
-    await page.getByRole("tab", { name: "activity" }).click();
-    await expect(page.locator("[data-inspector]")).toBeVisible();
-  }
 });
 
-// Scrubbing the playhead exercises the time-travel path end-to-end: the
-// frontend sends ms-timestamps to /graph/asof and /graph/diff; the engine
-// resolves them via the commit-time-sorted walk in asof.rs (resolve_commit
-// ms-timestamp fallback, S49 divergence item 1 now closed). The frontend
-// normalizes the echoed `t` string → number and derives a splice-safe keyframe
-// seq from the diff batch (timeTravel.ts scrubTo, fixed alongside this test).
-test("scrubbing the playhead renders the network as of T", async ({ page }) => {
-  await page.goto("/");
-  await page.locator("[data-playhead-live]").click();
-  await expect(page.locator("[data-time-travel-chip]")).toHaveCount(0);
-  const grip = page.locator("[data-playhead-grip]");
-  await grip.dragTo(page.locator("[data-timeline]"), {
-    targetPosition: { x: 200, y: 10 },
-  });
-  await expect(page.locator("[data-time-travel-chip]")).toBeVisible();
-});
+// RETIRED (localization-S108 follow-up sweep): "scrubbing the playhead renders
+// the network as of T". The timeline rebuild tore down the playhead overlay
+// and its grip entirely (Timeline.tsx: "no visual playhead overlay"), and the
+// time-travel driver (timeTravel.ts scrubTo) currently has NO production call
+// site — there is no user-reachable scrub entry to drive end-to-end. The
+// driver itself stays unit-covered by timeTravel.test.ts; when a scrub entry
+// point returns to the product, restore an end-to-end as-of test here rather
+// than resurrecting the removed playhead selectors.
