@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#frontend-localization'
 date: '2026-07-17'
-modified: '2026-07-17'
+modified: '2026-07-18'
 related:
   - "[[2026-07-14-frontend-localization-plan]]"
 ---
@@ -922,3 +922,30 @@ follow-up 1 below.
 With S108–S111 and S156–S159 recorded above and every P19 verification step
 closed cold, the frontend-localization plan is complete at 244/244. Campaign
 closed.
+
+## Post-closure addendum — carried follow-ups executed (team lead, same day)
+
+All three carried follow-ups closed within hours of campaign closure, plus the
+four out-of-scope e2e failures dispositioned for real:
+
+- **Follow-up 1 (tests-in-green codification)**: the dev-workflow rule gained
+  "Green includes the tests" (`.vaultspec/rules/dev-workflow.md`, synced) —
+  touched-scope vitest/cargo test before reporting green, full `just dev test`
+  before review/close, the no-concurrent-full-suites caveat, and the S103
+  store-mock carve-out (closing follow-up 3 in the same clause). `63162deeeb`.
+- **Follow-up 2 (crash-injection loss)**: the lever returned CHROME-LESS as
+  the dev-only `__crashControls` global with CrashZones re-mounted in all four
+  region boundaries — no rendered panel, so none of the unlocalizable chrome
+  that led S243 to delete the original. `adverse.spec.ts` 6/6 green again
+  (was 1/6), with two stale assertions updated to current architecture
+  (timeline nests inside the stage dock; the bespoke reconnecting chrome was
+  retired by the canvas-overlay redesign). `63162deeeb`.
+- **The 4 "pre-existing WebGL/stale-selector" failures** (`d8c0863349`): three
+  smoke tests repaired against the current product (status-rail marker,
+  layered-canvas strict mode, Ctrl+Alt+S search palette) — 3/3 green; the
+  playhead-scrub test RETIRED with citation (no production scrub entry point
+  survives the timeline rebuild; driver stays unit-covered); the graph-lab
+  perf harness DELETED (it instrumented the pre-rebuild scene API, which no
+  longer exists — coverage was already zero). OPEN follow-on for a future
+  campaign: author a new perf harness against the current
+  SceneController/ThreeField seam.
