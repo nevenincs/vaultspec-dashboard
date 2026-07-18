@@ -722,3 +722,45 @@ catalog suites clean elsewhere), but the punctuation-policy check itself
 is NOT clean at this update — one production catalog message violates it.
 This step cannot be recorded PASS; the defect is open and routed to the
 team lead for a coding-lane fix, not resolved by this audit.
+
+## `W06.P20.S158` — Audit: locale-sensitive formatting and reactive locale behavior evidence
+
+**Requirement.** Number, date, and count formatting is locale-sensitive
+(never a hardcoded English format), and every mounted surface reacts
+live to a locale change (text, `lang`, and `dir` all update together,
+with no stale-locale surface left behind).
+
+**Formatting evidence.** `formatters.test.ts` (5/5, independently
+reverified) proves the shared formatter seam resolves through
+`Intl`-backed, locale-parameterized formatting rather than a hardcoded
+English shape. `localeController.test.ts` (7/7) proves preference
+resolution reads only validated locale tokens from the synchronous cache
+and fails closed on an invalid/corrupt cached token (`reason:
+'cache-invalid'` observed live in this rerun — the fail-closed path is
+exercised, not merely asserted). `runtimeFactory.test.ts` (1/1) proves
+the runtime construction seam wires a real, non-default locale
+correctly.
+
+**Reactivity evidence.** `reactivity.test.tsx` (6/6, independently
+reverified) proves mounted consumers re-render on a locale change without
+a remount. `localization-layout.spec.ts` (7/7, live, dev-harness config)
+proves this end-to-end in a real browser: French sets `lang` and keeps
+`ltr`; Arabic sets `lang`, flips `dir`, and mirrors the computed
+direction; keyboard focus order still lands the skip link correctly
+under RTL; rich named interpolation resolves with real values in both
+directions (no raw `{{token}}` leakage); the activity rail's live region
+keeps a real translated accessible label under RTL; and resetting the
+locale restores the source `lang`, `dir`, and English copy. One run of
+this spec showed a single flake (`page.evaluate: Execution context was
+destroyed, most likely because of a navigation` on the reset test) —
+reran the single test standalone (1/1 passed) and the full file twice
+more (7/7 both times), confirming a navigation-timing race in the
+harness's `page.evaluate` helper, not a locale-reactivity regression.
+
+**Verdict: PASS.** Locale-sensitive formatting and full reactive
+locale-change behavior (text + `lang` + `dir` in lockstep, RTL mirroring,
+focus order, live-region labels, interpolation) are proven live, both at
+the unit/component level and end-to-end in a real browser: `formatters`
+5/5, `localeController` 7/7, `runtimeFactory` 1/1, `reactivity` 6/6,
+`localization-layout.spec.ts` 7/7 (one transient flake reproduced as
+harness-timing, not product behavior, via standalone + repeated reruns).
