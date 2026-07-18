@@ -19,12 +19,16 @@ import { isRec, type Rec } from "./internal";
  *  capped tail; older truth is recoverable from `run-status` + durable events. */
 export const RELAY_TRANSCRIPT_CAP = 256;
 
-/** The bounded relay frame kinds the transcript renders. `token`/`tool_call` are
- *  the D3 progress payloads; `status` is the engine's degraded-poll snapshot
- *  frame; `gap`/`degraded` are the honest re-keyframe/poll-fallback signals;
- *  `terminal` ends the run; `dropped` is the upstream oversized-frame sentinel;
- *  `heartbeat` is a keep-alive; `progress` is any other progress frame. */
+/** The bounded relay frame kinds the transcript renders. `thought` is the a2a
+ *  `thought_chunk` reasoning stream (rendered as the collapsible "Thinking…"
+ *  section); `token` is the `message_chunk` final-answer stream; `tool_call` is
+ *  the `tool_call_start`/`tool_call_update` pair; `status` carries
+ *  `agent_status`/`team_status` (and the engine's degraded-poll snapshot);
+ *  `gap`/`degraded` are the honest re-keyframe/poll-fallback signals; `terminal`
+ *  ends the run; `dropped` is the upstream oversized-frame sentinel; `heartbeat`
+ *  is a keep-alive; `error` is a run fault; `progress` is any other frame. */
 export type RelayFrameKind =
+  | "thought"
   | "token"
   | "tool_call"
   | "status"
@@ -33,6 +37,7 @@ export type RelayFrameKind =
   | "gap"
   | "degraded"
   | "dropped"
+  | "error"
   | "progress";
 
 /** One adapted relay frame: the engine `seq` (when present — the annotation the
@@ -77,8 +82,14 @@ export function classifyRelayFrame(event: string, payload: Rec): RelayFrameKind 
   if (signal.includes("progress_dropped") || signal.includes("dropped"))
     return "dropped";
   if (signal.includes("heartbeat")) return "heartbeat";
+  // Reasoning (`thought_chunk`) MUST be matched before the tool/token lanes and
+  // never fall to the generic `progress` bucket — it drives the "Thinking…"
+  // section. It shares no substring with "tool"/"message"/"token"/"status".
+  if (signal.includes("thought")) return "thought";
   if (signal.includes("tool")) return "tool_call";
   if (signal.includes("token") || signal.includes("message")) return "token";
+  // `error` is a run fault the transcript surfaces honestly (a2a `ErrorOccurred`).
+  if (signal.includes("error")) return "error";
   if (signal.includes("status")) return "status";
   return "progress";
 }
@@ -139,4 +150,64 @@ export function latestRelaySeq(
     }
   }
   return latest;
+}
+
+// --- tolerant payload field accessors (a2a `graph/events.py` shapes) -------------
+// Every frame payload passes through verbatim (wire values stay as served), so a
+// consumer reads named fields through these tolerant accessors rather than trusting
+// a raw shape. Each returns a safe fallback for a missing/mistyped field.
+
+const asStr = (v: unknown): string => (typeof v === "string" ? v : "");
+
+/** The emitting agent id (`agent_id`; `""` for team-scoped frames). */
+export function relayAgentId(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.agent_id);
+}
+
+/** The agent lifecycle state on an `agent_status` frame (`working`/`idle`/…). */
+export function relayAgentState(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.state);
+}
+
+/** A stream chunk's text content (`message_chunk`/`thought_chunk` carry `content`;
+ *  a2a's own `finish_reason` marks the end of a message stream). */
+export function relayContent(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.content);
+}
+
+/** The stream id grouping a run of chunks into one message/thought (`message_id`). */
+export function relayMessageId(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.message_id);
+}
+
+/** The tool-call correlation id on `tool_call_start`/`tool_call_update`. */
+export function relayToolCallId(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.tool_call_id);
+}
+
+/** The tool title (`tool_call_start` sets it; an update may refine it). */
+export function relayToolTitle(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.title);
+}
+
+/** The tool-call status (`pending`/`running`/`completed`/`failed`); `""` when the
+ *  frame carries no status (an early update). */
+export function relayToolStatus(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.status);
+}
+
+/** Flatten a tool-call frame's `content` list (`[{content_type,text}]`) into one
+ *  bounded text blob — the args on start, the result text on update. */
+export function relayToolContentText(frame: RelayTranscriptFrame): string {
+  const content = frame.payload.content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => (isRec(part) ? asStr(part.text) : ""))
+    .filter((t) => t.length > 0)
+    .join("\n");
+}
+
+/** An `error` frame's plain message (a2a `ErrorOccurred.message`). */
+export function relayErrorMessage(frame: RelayTranscriptFrame): string {
+  return asStr(frame.payload.message);
 }

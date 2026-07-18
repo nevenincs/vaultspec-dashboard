@@ -6,15 +6,19 @@
 // client-held annex (`stores/view/agentTranscript`).
 //
 // Wire honesty (the load-bearing contract): the snapshot serves the USER prompt
-// text and the run's bounded lifecycle status ONLY. No wire surface serves
-// reasoning content, streamed tool-call state, or the agent's final text — the
-// a2a relay channel that would carry them (a2a ADR D3) does not exist yet. So a
-// live turn shows the served run state as its streaming indicator (never a fake
-// token stream), thinking renders only when a recorded segment exists (today:
-// never), tool calls render only what the client itself dispatched and recorded
-// from SERVED execute envelopes, and the final-text position is honestly empty
-// until a wire carries one. Settled turns collapse transient running chrome to
-// the terminal served status only.
+// text and the run's bounded lifecycle status ONLY. For a SINGLE-AGENT run no wire
+// surface serves reasoning content, streamed tool-call state, or the agent's final
+// text, so a live turn shows the served run state as its streaming indicator (never
+// a fake token stream), thinking renders only when a recorded segment exists, tool
+// calls render only what the client itself dispatched and recorded from SERVED
+// execute envelopes, and the final-text position is honestly empty until a wire
+// carries one. Settled turns collapse transient running chrome to the terminal
+// served status only.
+//
+// TEAM runs are the exception: the a2a relay channel (a2a ADR D3) that carries
+// reasoning / tool calls / final text now exists end-to-end, and `TeamRunTranscript`
+// renders it as live collapsible activity — mounted beside this single-agent
+// transcript by `AgentPanel`, not through this reconciler.
 //
 // Bounded: the rendered window is capped at `AGENT_TRANSCRIPT_TURN_CAP` (the
 // engine snapshot's own recovery window); older truth stays recoverable from

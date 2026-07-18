@@ -27,6 +27,7 @@ import {
   setAgentCurrentSession,
   useAgentCurrentSessionId,
   useAgentPanelOpen,
+  useAgentTeamRunId,
 } from "../../stores/view/agentPanel";
 import { useAgentPanelWidth } from "../../stores/view/shellLayout";
 import {
@@ -46,6 +47,7 @@ import {
 import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import { Composer } from "./Composer";
 import { Transcript } from "./Transcript";
+import { TeamRunTranscript } from "./TeamRunTranscript";
 
 const AGENT = {
   region: "common:agent.panel.region",
@@ -178,15 +180,22 @@ function AgentTranscriptContainer({
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const session = useSession(currentSessionId);
+  // A team run renders independently of a single-agent session (the two planes are
+  // distinct); it may be active with no session at all. So the session branching
+  // only decides the SESSION body, and the team-run block mounts alongside it.
+  const teamRunId = useAgentTeamRunId();
 
   let body: ReactNode;
   if (currentSessionId === null) {
-    body = (
-      <StateBlock
-        mode="empty"
-        message={resolveMessage({ key: AGENT.noSession }).message}
-      />
-    );
+    // No session: the empty prompt shows ONLY when no team run is carrying the
+    // panel; otherwise the team-run block below is the content.
+    body =
+      teamRunId === null ? (
+        <StateBlock
+          mode="empty"
+          message={resolveMessage({ key: AGENT.noSession }).message}
+        />
+      ) : null;
   } else if (session.isLoading) {
     body = (
       <Skeleton label={resolveMessage({ key: AGENT.loading }).message}>
@@ -215,11 +224,12 @@ function AgentTranscriptContainer({
 
   return (
     <div
-      className="min-h-0 flex-1 overflow-y-auto px-fg-2 py-fg-2"
+      className="flex min-h-0 flex-1 flex-col gap-fg-3 overflow-y-auto px-fg-2 py-fg-2"
       data-agent-transcript
       aria-live="polite"
     >
       {body}
+      {teamRunId !== null && <TeamRunTranscript />}
     </div>
   );
 }

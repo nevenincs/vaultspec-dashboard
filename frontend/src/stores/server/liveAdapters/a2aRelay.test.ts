@@ -5,8 +5,17 @@ import {
   adaptRelayFrame,
   classifyRelayFrame,
   latestRelaySeq,
+  relayAgentId,
+  relayAgentState,
+  relayContent,
+  relayErrorMessage,
   relayFrameForcesReconcile,
   relayFrameIsTerminal,
+  relayMessageId,
+  relayToolCallId,
+  relayToolContentText,
+  relayToolStatus,
+  relayToolTitle,
   relayTranscriptReducer,
   type RelayTranscriptFrame,
 } from "./a2aRelay";
@@ -30,6 +39,63 @@ describe("classifyRelayFrame", () => {
     expect(classifyRelayFrame("status", { status_snapshot: {} })).toBe("status");
     // An unrecognized future kind degrades to progress, never throws.
     expect(classifyRelayFrame("some_new_node", {})).toBe("progress");
+  });
+
+  it("routes the a2a graph-event vocabulary to its rendering lanes", () => {
+    // Reasoning MUST NOT fall to the generic `progress` bucket — it drives the
+    // "Thinking…" section and shares no substring with the tool/token lanes.
+    expect(classifyRelayFrame("thought_chunk", { type: "thought_chunk" })).toBe(
+      "thought",
+    );
+    expect(classifyRelayFrame("message_chunk", { type: "message_chunk" })).toBe(
+      "token",
+    );
+    expect(classifyRelayFrame("tool_call_start", { type: "tool_call_start" })).toBe(
+      "tool_call",
+    );
+    expect(classifyRelayFrame("tool_call_update", { type: "tool_call_update" })).toBe(
+      "tool_call",
+    );
+    expect(classifyRelayFrame("agent_status", { type: "agent_status" })).toBe("status");
+    expect(classifyRelayFrame("team_status", { type: "team_status" })).toBe("status");
+    expect(classifyRelayFrame("error", { type: "error", code: "INGEST_ERROR" })).toBe(
+      "error",
+    );
+  });
+});
+
+describe("relay payload accessors", () => {
+  const frame = (payload: Record<string, unknown>): RelayTranscriptFrame => ({
+    kind: "progress",
+    event: "x",
+    payload,
+  });
+
+  it("reads the a2a event fields tolerantly with safe fallbacks", () => {
+    expect(relayAgentId(frame({ agent_id: "mock-planner" }))).toBe("mock-planner");
+    expect(relayAgentId(frame({}))).toBe("");
+    expect(relayAgentState(frame({ state: "working" }))).toBe("working");
+    expect(relayContent(frame({ content: "hi" }))).toBe("hi");
+    expect(relayMessageId(frame({ message_id: "m1" }))).toBe("m1");
+    expect(relayToolCallId(frame({ tool_call_id: "tc1" }))).toBe("tc1");
+    expect(relayToolTitle(frame({ title: "read_file" }))).toBe("read_file");
+    expect(relayToolStatus(frame({ status: "running" }))).toBe("running");
+    expect(relayErrorMessage(frame({ message: "boom" }))).toBe("boom");
+    // A mistyped field never throws — it degrades to the empty fallback.
+    expect(relayContent(frame({ content: 42 }))).toBe("");
+  });
+
+  it("flattens a tool-call content list into bounded text", () => {
+    const text = relayToolContentText(
+      frame({
+        content: [
+          { content_type: "text", text: '{"path":"a.ts"}' },
+          { content_type: "text", text: "second" },
+        ],
+      }),
+    );
+    expect(text).toBe('{"path":"a.ts"}\nsecond');
+    expect(relayToolContentText(frame({ content: "not-a-list" }))).toBe("");
   });
 });
 

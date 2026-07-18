@@ -71,7 +71,9 @@ import {
 import { relayFrameIsTerminal } from "../../stores/server/liveAdapters/a2aRelay";
 import {
   setAgentCurrentSession,
+  setAgentTeamRun,
   useAgentCurrentSessionId,
+  useAgentTeamRunId,
 } from "../../stores/view/agentPanel";
 import { agentStopRunAction } from "../../stores/view/agentActions";
 import {
@@ -577,7 +579,9 @@ export function Composer() {
   // read; a business refusal is surfaced honestly inline. Team runs do NOT carry
   // the comment feedback batch — that is the single-agent path only.
   const [selectedTeamPreset, setSelectedTeamPreset] = useState<string | null>(null);
-  const [teamRunId, setTeamRunId] = useState<string | null>(null);
+  // Lifted to the shared panel store so the Transcript renders this run's live
+  // relayed activity; the Composer still owns start/cancel/clear.
+  const teamRunId = useAgentTeamRunId();
   const [teamRefused, setTeamRefused] = useState<{ detail?: string } | null>(null);
   const startTeamRun = useStartTeamRun();
   const cancelTeamRun = useCancelTeamRun();
@@ -771,7 +775,7 @@ export function Composer() {
         title: sessionTitleFromPrompt(prompt),
       });
       if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
-        setTeamRunId(result.run_id);
+        setAgentTeamRun({ runId: result.run_id, prompt });
         setText("");
         useAgentComposer.getState().clearMentions();
       } else {
@@ -970,7 +974,7 @@ export function Composer() {
         ) : teamRunActive && teamTerminal ? (
           <Button
             variant="secondary"
-            onClick={() => setTeamRunId(null)}
+            onClick={() => setAgentTeamRun(null)}
             data-composer-team-dismiss
           >
             {resolveMessage({ key: MSG.teamRunDismiss }).message}
