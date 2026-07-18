@@ -20,6 +20,7 @@
     "typecheck": "tsc -b",
     "test": "vitest run",
     "e2e": "playwright test",
+    "e2e:editor": "playwright test --config playwright.editor.config.ts",
     "tokens:build": "node style-dictionary.config.ts && prettier --write src/styles.css",
     "tokens:check": "node scripts/token-drift-check.ts",
     "tokens:figma": "node scripts/figma-export.ts",

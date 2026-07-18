@@ -119,7 +119,7 @@ function freePort(): Promise<number> {
   });
 }
 
-function git(dir: string, args: string[]): void {
+export function git(dir: string, args: string[]): void {
   const r = spawnSync("git", args, { cwd: dir, env: { ...process.env, ...GIT_ENV } });
   if (r.status !== 0) {
     throw new Error(
@@ -128,7 +128,7 @@ function git(dir: string, args: string[]): void {
   }
 }
 
-function gitBlob(dir: string, rel: string): string {
+export function gitBlob(dir: string, rel: string): string {
   const r = spawnSync("git", ["hash-object", rel], { cwd: dir });
   if (r.status !== 0) {
     throw new Error(
