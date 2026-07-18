@@ -683,26 +683,61 @@ fn typed_inputs_can_still_represent_the_backend_domain_without_core_capabilities
 }
 
 #[test]
-fn propose_changeset_create_inlines_model_owned_operation_content() {
-    // The create branch inlines the model-owned content as JSON Schema so a
+fn propose_changeset_serves_valid_top_level_json_schema() {
+    // The served schema is a STANDARD, valid JSON Schema (top-level object +
+    // properties) - the shape the a2a normalizer passes through verbatim - so a
     // bridged agent can construct operations (the opaque `payload` type ref was
-    // the S20 blocker); the a2a-injected ids are NOT advertised.
+    // the S20 blocker). create/append/replace share the model-owned surface
+    // {summary, operations}; the a2a-injected ids are NOT advertised.
     let schema = input_schema(SemanticToolName::ProposeChangeset);
-    let create = &schema["oneOf"][0];
-    assert_eq!(create["operation"], "create");
-    let item = &create["properties"]["operations"]["items"]["properties"];
+    assert_eq!(schema["type"], "object");
+    let props = &schema["properties"];
+    let op_leg = props["operation"]["enum"].as_array().unwrap();
+    assert!(op_leg.contains(&json!("create")));
+    assert!(op_leg.contains(&json!("append")));
+    assert!(op_leg.contains(&json!("replace")));
+    assert!(props.get("summary").is_some());
+
+    let item = &props["operations"]["items"]["properties"];
     assert!(item.get("child_key").is_some());
     let op_enum = item["operation"]["enum"].as_array().unwrap();
     assert!(op_enum.contains(&json!("create_document")));
+    assert!(op_enum.contains(&json!("set_plan_step_state")));
     assert_eq!(op_enum.len(), 10);
+
     let document = &item["target"]["properties"]["document"]["properties"];
+    // ProvisionalCreate variant, fully described.
     assert!(document.get("provisional_doc_id").is_some());
     let collision = document["collision_status"]["enum"].as_array().unwrap();
+    assert!(collision.contains(&json!("unknown")));
     assert!(collision.contains(&json!("available")));
-    assert!(item["draft"]["properties"].get("body").is_some());
+    assert!(collision.contains(&json!("conflicting")));
+    // Existing variant, also fully described (model.rs:162).
+    assert!(document.get("node_id").is_some());
+    assert!(document.get("stem").is_some());
+    assert!(document.get("path").is_some());
 
-    // Dispatcher-injected ids never appear in the served schema.
-    let rendered = schema.to_string();
+    // create/replace_body draft surface, fully described.
+    assert!(item["draft"]["properties"].get("body").is_some());
+    assert!(item["draft"]["properties"].get("mode").is_some());
+
+    // Top-level required is the shared model-owned surface.
+    let required = schema["required"].as_array().unwrap();
+    assert!(required.contains(&json!("operation")));
+    assert!(required.contains(&json!("summary")));
+    assert!(required.contains(&json!("operations")));
+
+    // The scoped follow-up is recorded honestly in the description.
+    let description = schema["description"].as_str().unwrap();
+    assert!(description.contains("new_stem"));
+    assert!(description.contains("section_selector"));
+    assert!(description.contains("plan_step"));
+    assert!(description.contains("materialized_result"));
+
+    // Dispatcher-injected ids never appear as advertised properties. (The
+    // description names them as injected-below-the-model, so scope the property
+    // check to the properties tree, not the whole rendered blob.)
+    let rendered = props.to_string();
     assert!(!rendered.contains("session_id"));
     assert!(!rendered.contains("changeset_id"));
     assert!(!rendered.contains("expected_revision"));

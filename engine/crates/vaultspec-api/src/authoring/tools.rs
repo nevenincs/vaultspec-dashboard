@@ -663,114 +663,154 @@ fn input_schema(name: SemanticToolName) -> Value {
             },
             "additionalProperties": false
         }),
+        // Standard, valid JSON Schema (top-level `type: object` + `properties`)
+        // for the model-owned content of a propose_changeset call, so a bridged
+        // agent can construct `operations` (the opaque `payload:
+        // CreateProposalRequest` type ref left it unable to - the S20 blocker).
+        // The a2a normalizer detects this shape and passes it through verbatim;
+        // an older engine still serves the DSL fallback. create/append/replace
+        // share the same model-owned surface - {summary, operations}; the
+        // `operation` discriminator selects the leg. The proposal-lifecycle ids
+        // (session_id, changeset_id, expected_revision) are injected by the a2a
+        // dispatcher BELOW the model and are deliberately NOT advertised.
+        //
+        // Fields derived field-for-field from the serde types in
+        // authoring/api/mod.rs and authoring/model.rs:
+        //   - CreateProposalRequest (api/mod.rs:503) -> summary, operations
+        //     (session_id:504, changeset_id:505 injected, omitted here)
+        //   - ChangesetChildOperationDraft (api/mod.rs:512) -> child_key,
+        //     operation, target, draft
+        //   - ChangesetOperationKind (api/mod.rs:521) -> the complete 10-kind enum
+        //   - TargetRevisionFence (api/mod.rs:536) -> document, base_revision?,
+        //     current_revision?
+        //   - DocumentRef (model.rs:161) -> `kind`-tagged; Existing (:162) and
+        //     ProvisionalCreate (:170) inlined fully, both cheap string objects
+        //   - DraftMutation (api/mod.rs:546) -> mode, body, frontmatter?
+        //   - FrontmatterEditFields (api/mod.rs:615) -> date?, tags?, related?
+        //
+        // Scope (#44 create-leg-complete): the operation-kind enum is COMPLETE
+        // and the create/replace_body draft surface plus the Existing and
+        // ProvisionalCreate document variants are fully described. The per-kind
+        // specialized DraftMutation fields (new_stem for Rename, section_selector
+        // for SectionEdit, plan_step for SetPlanStepState - api/mod.rs:562/570/577)
+        // and the RenameTarget/MaterializedResult DocumentRef variants
+        // (model.rs:187/192) are enum-vocabulary only; the `description` records
+        // this as the scoped follow-up.
         SemanticToolName::ProposeChangeset => json!({
-            "oneOf": [
-                {
-                    // Model-owned content for a create proposal, inlined as JSON
-                    // Schema so a bridged agent can construct it (the opaque
-                    // `payload: CreateProposalRequest` type ref left it unable to,
-                    // the S20 blocker). session_id + changeset_id are injected by
-                    // the a2a dispatcher BELOW the model and are deliberately NOT
-                    // advertised here.
-                    "operation": "create",
-                    "properties": {
-                        "summary": {"type": "string"},
-                        "operations": {
-                            "type": "array",
-                            "items": {
+            "type": "object",
+            "description": "Propose a changeset. Injected below the model and NOT \
+supplied here: session_id, changeset_id, expected_revision. Fully described for \
+this (create-leg-complete) scope: the complete operation-kind enum, the \
+whole_document/append draft surface (mode, body, frontmatter), and the Existing \
+and ProvisionalCreate document variants. Scoped follow-up (#44, enum-vocabulary \
+only, not field-expanded here): the rename/section_edit/set_plan_step_state \
+per-kind draft fields (new_stem, section_selector, plan_step) and the \
+rename_target/materialized_result document variants.",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["create", "append", "replace"]
+                },
+                "summary": {"type": "string"},
+                "operations": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "child_key": {"type": "string"},
+                            "operation": {
+                                "type": "string",
+                                "enum": [
+                                    "create_document", "replace_body",
+                                    "append_body", "edit_frontmatter",
+                                    "rename", "archive", "unarchive",
+                                    "link", "section_edit",
+                                    "set_plan_step_state"
+                                ]
+                            },
+                            "target": {
                                 "type": "object",
                                 "properties": {
-                                    "child_key": {"type": "string"},
-                                    "operation": {
-                                        "type": "string",
-                                        "enum": [
-                                            "create_document", "replace_body",
-                                            "append_body", "edit_frontmatter",
-                                            "rename", "archive", "unarchive",
-                                            "link", "section_edit",
-                                            "set_plan_step_state"
-                                        ]
-                                    },
-                                    "target": {
+                                    "document": {
                                         "type": "object",
                                         "properties": {
-                                            "document": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "kind": {
-                                                        "type": "string",
-                                                        "enum": [
-                                                            "existing",
-                                                            "provisional_create",
-                                                            "rename_target",
-                                                            "materialized_result"
-                                                        ]
-                                                    },
-                                                    "provisional_doc_id": {"type": "string"},
-                                                    "doc_type": {"type": "string"},
-                                                    "feature": {"type": "string"},
-                                                    "title": {"type": "string"},
-                                                    "collision_status": {
-                                                        "type": "string",
-                                                        "enum": [
-                                                            "unknown", "available",
-                                                            "conflicting"
-                                                        ]
-                                                    },
-                                                    "proposed_stem": {"type": "string"},
-                                                    "related": {
-                                                        "type": "array",
-                                                        "items": {"type": "string"}
-                                                    }
-                                                },
-                                                "required": ["kind"]
-                                            },
-                                            "base_revision": {"type": "string"},
-                                            "current_revision": {"type": "string"}
-                                        },
-                                        "required": ["document"]
-                                    },
-                                    "draft": {
-                                        "type": "object",
-                                        "properties": {
-                                            "mode": {
+                                            "kind": {
                                                 "type": "string",
                                                 "enum": [
-                                                    "whole_document", "append",
-                                                    "section_scoped"
+                                                    "existing",
+                                                    "provisional_create",
+                                                    "rename_target",
+                                                    "materialized_result"
                                                 ]
                                             },
-                                            "body": {"type": "string"},
-                                            "frontmatter": {
-                                                "type": "object",
-                                                "properties": {
-                                                    "date": {"type": "string"},
-                                                    "tags": {
-                                                        "type": "array",
-                                                        "items": {"type": "string"}
-                                                    },
-                                                    "related": {
-                                                        "type": "array",
-                                                        "items": {"type": "string"}
-                                                    }
-                                                }
+                                            // DocumentRef::Existing (model.rs:162)
+                                            "scope": {"type": "string"},
+                                            "node_id": {"type": "string"},
+                                            "stem": {"type": "string"},
+                                            "path": {"type": "string"},
+                                            "base_revision": {"type": "string"},
+                                            // DocumentRef::ProvisionalCreate (model.rs:170)
+                                            "provisional_doc_id": {"type": "string"},
+                                            // doc_type is shared by both variants
+                                            "doc_type": {"type": "string"},
+                                            "feature": {"type": "string"},
+                                            "title": {"type": "string"},
+                                            "collision_status": {
+                                                "type": "string",
+                                                "enum": [
+                                                    "unknown", "available",
+                                                    "conflicting"
+                                                ]
+                                            },
+                                            "proposed_stem": {"type": "string"},
+                                            "related": {
+                                                "type": "array",
+                                                "items": {"type": "string"}
                                             }
                                         },
-                                        "required": ["mode", "body"]
+                                        "required": ["kind"]
+                                    },
+                                    "base_revision": {"type": "string"},
+                                    "current_revision": {"type": "string"}
+                                },
+                                "required": ["document"]
+                            },
+                            "draft": {
+                                "type": "object",
+                                "properties": {
+                                    "mode": {
+                                        "type": "string",
+                                        "enum": [
+                                            "whole_document", "append",
+                                            "section_scoped"
+                                        ]
+                                    },
+                                    "body": {"type": "string"},
+                                    "frontmatter": {
+                                        "type": "object",
+                                        "properties": {
+                                            "date": {"type": "string"},
+                                            "tags": {
+                                                "type": "array",
+                                                "items": {"type": "string"}
+                                            },
+                                            "related": {
+                                                "type": "array",
+                                                "items": {"type": "string"}
+                                            }
+                                        }
                                     }
                                 },
-                                "required": [
-                                    "child_key", "operation", "target", "draft"
-                                ]
+                                "required": ["mode", "body"]
                             }
-                        }
-                    },
-                    "required": ["summary", "operations"]
-                },
-                {"operation": "append", "alias_of": "append_draft"},
-                {"operation": "replace", "alias_of": "replace_draft"}
-            ],
-            "additionalProperties": false
+                        },
+                        "required": [
+                            "child_key", "operation", "target", "draft"
+                        ]
+                    }
+                }
+            },
+            "required": ["operation", "summary", "operations"]
         }),
         SemanticToolName::ValidateProposal => json!({
             "alias_of": "validate_proposal",
