@@ -948,4 +948,12 @@ four out-of-scope e2e failures dispositioned for real:
   perf harness DELETED (it instrumented the pre-rebuild scene API, which no
   longer exists — coverage was already zero). OPEN follow-on for a future
   campaign: author a new perf harness against the current
-  SceneController/ThreeField seam.
+  SceneController/ThreeField seam. Grounding note (rag-verified): this is
+  D1-conformance work, not hygiene — the dashboard-optimization ADR's D1
+  commits to a CI-gated frame budget (p95 < 16.7ms on the 1000-node spike
+  corpus) whose gating vehicle the deleted harness was; the budget decision
+  stands and needs a new vehicle. The scrub-test retirement is likewise
+  corpus-grounded: audit finding TTR-005 (timeline-temporal-review) already
+  records time travel as a zombie capability with no reachable entry; the
+  crash-lever restoration satisfies the dashboard-platform ADR's D5, which
+  REQUIRES a dev-only injection affordance making every boundary reachable.
