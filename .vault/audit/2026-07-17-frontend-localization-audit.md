@@ -635,3 +635,38 @@ report-derived), at this update: the full `src/localization/` suite
 (9 catalog-adjacent test files) plus `scan-localization.test.ts` — 10 files,
 72 tests, all green; `just dev lint frontend`'s `lint:localization` step —
 clean.
+
+## `W06.P20.S156` — Audit: canonical action verbs and cross-ID synonym evidence
+
+**Requirement.** Every action-role catalog message leads with a canonical
+imperative verb, and any operation carrying synonym-drift risk (the same
+underlying action reachable through multiple action ids/surfaces) uses
+EXACTLY ONE verb across every one of those ids — never a mix of synonyms
+(e.g. "Reload" on one surface, "Refresh" on another) for the same
+operation.
+
+**Evidence.** `actionVocabulary.test.ts` (5 tests, independently reverified
+live) enumerates the REAL production catalog and the REAL production verb
+table (`IMPERATIVE_ACTION_VERBS`) directly — not a hand-copied or shrinking
+corpus — and proves: every action-role label (263 keys swept, non-vacuous)
+leads with a canonical imperative verb; the canonical operation→verb
+inventory is ACTIVE (each operation genuinely owns real action ids in the
+current catalog, not a stale table); and, the specific cross-ID synonym
+check this audit targets — `"uses one canonical verb per synonym-drift
+operation across every action id"` — proves the recovery-verb-drift class
+this campaign's own defect ledger caught (`S70`'s divergence, the
+project-wide "Reload never Refresh" convention) holds across every action
+id in the corpus, not just a spot-checked sample. Adverse coverage: the
+same test suite proves the inventory REJECTS a crafted divergent synonym
+(`"rejects a divergent synonym for an operation"`), so the check is
+live-catching, not vacuously green. `S99` independently confirmed the four
+candidate superseded-label-map sites this audit could have flagged as gaps
+(`REGION_CYCLE_*_LABEL`, `GRAPH_WALK_*_LABEL`, `SYSTEM_ROW_LABELS`,
+`COMMAND_PALETTE_SHORTCUT_LABEL`) are already typed `MessageDescriptor`s
+resolving through this same catalog, not raw string maps bypassing the
+verb inventory.
+
+**Verdict: PASS.** Canonical-verb leading and cross-ID synonym-drift
+rejection are both proven live over the FULL production catalog and verb
+table, with adversarial proof the check is genuinely live-catching:
+`actionVocabulary.test.ts` — 5/5, independently reverified at this update.
