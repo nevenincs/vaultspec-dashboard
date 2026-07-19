@@ -12,6 +12,13 @@ import {
 } from "./a2aTeam";
 
 describe("adaptActiveRuns", () => {
+  const tiers = {
+    declared: { available: true },
+    structural: { available: true },
+    temporal: { available: true },
+    semantic: { available: true },
+  };
+
   it("adapts an exact bounded active-run discovery projection", () => {
     const pass: PassThrough = {
       envelope: {
@@ -19,11 +26,11 @@ describe("adaptActiveRuns", () => {
         state: "active",
         runs: [
           { run_id: "run-a", status: "running", feature_tag: "editor" },
-          { run_id: "run-b", status: "starting" },
+          { run_id: "run-b", status: "submitted" },
         ],
         truncated: true,
       },
-      tiers: { agent: { available: true } },
+      tiers,
     };
     const result = adaptActiveRuns(pass);
     expect(result.runs.map((r) => r.run_id)).toEqual(["run-a", "run-b"]);
@@ -36,7 +43,7 @@ describe("adaptActiveRuns", () => {
   it("returns an empty list when a2a is down (null envelope)", () => {
     const result = adaptActiveRuns({
       envelope: null,
-      tiers: { agent: { available: false } },
+      tiers: { ...tiers, agent: { available: false } },
     });
     expect(result.runs).toEqual([]);
     expect(result.truncated).toBe(true);
@@ -51,6 +58,7 @@ describe("adaptActiveRuns", () => {
         runs: [{ run_id: "run-only", status: "running" }],
         truncated: false,
       },
+      tiers,
     });
     expect(recoverableActiveRunId(unique)).toBe("run-only");
     expect(recoverableActiveRunId({ ...unique, truncated: true })).toBeNull();
@@ -60,10 +68,32 @@ describe("adaptActiveRuns", () => {
         ...unique,
         runs: [
           { run_id: "run-a", status: "running" },
-          { run_id: "run-b", status: "starting" },
+          { run_id: "run-b", status: "submitted" },
         ],
       }),
     ).toBeNull();
+  });
+
+  it("accepts exactly the upstream active ThreadStatus vocabulary", () => {
+    for (const status of [
+      "submitted",
+      "running",
+      "input_required",
+      "cancelling",
+      "repair_needed",
+      "reconciling",
+    ]) {
+      const result = adaptActiveRuns({
+        envelope: {
+          api_version: "v1",
+          state: "active",
+          runs: [{ run_id: `run-${status}`, status }],
+          truncated: false,
+        },
+        tiers,
+      });
+      expect(result.contractValid, status).toBe(true);
+    }
   });
 
   it("fails closed on version, state, completeness, refusal, row, or bound drift", () => {
@@ -74,16 +104,46 @@ describe("adaptActiveRuns", () => {
       truncated: false,
     };
     const drifted: PassThrough[] = [
-      { envelope: { ...exact, api_version: "v2" } },
-      { envelope: { ...exact, state: "completed" } },
-      { envelope: { ...exact, truncated: "true" } },
-      { envelope: { api_version: "v1", state: "active", runs: exact.runs } },
-      { envelope: exact, siblingStatus: 422 },
+      { envelope: { ...exact, api_version: "v2" }, tiers },
+      { envelope: { ...exact, state: "completed" }, tiers },
+      { envelope: { ...exact, truncated: "true" }, tiers },
+      { envelope: { api_version: "v1", state: "active", runs: exact.runs }, tiers },
+      { envelope: exact, siblingStatus: 422, tiers },
+      { envelope: exact },
+      { envelope: exact, tiers: {} },
+      { envelope: exact, tiers: { ...tiers, semantic: { available: "yes" } } as never },
+      { envelope: exact, tiers: { ...tiers, agent: {} } as never },
+      { envelope: exact, tiers: { ...tiers, agent: null } as never },
+      {
+        envelope: exact,
+        tiers: { ...tiers, agent: { available: "no" } } as never,
+      },
+      {
+        envelope: { ...exact, runs: [{ run_id: "terminal", status: "completed" }] },
+        tiers,
+      },
+      {
+        envelope: { ...exact, runs: [{ run_id: "terminal", status: "failed" }] },
+        tiers,
+      },
+      {
+        envelope: { ...exact, runs: [{ run_id: "terminal", status: "cancelled" }] },
+        tiers,
+      },
+      {
+        envelope: { ...exact, runs: [{ run_id: "terminal", status: "archived" }] },
+        tiers,
+      },
+      {
+        envelope: { ...exact, runs: [{ run_id: "future", status: "waiting" }] },
+        tiers,
+      },
       {
         envelope: {
           ...exact,
           runs: [exact.runs[0], { run_id: "missing-status" }],
         },
+        tiers,
       },
       {
         envelope: {
@@ -94,6 +154,7 @@ describe("adaptActiveRuns", () => {
             { run_id: "run-three", status: "running" },
           ],
         },
+        tiers,
       },
     ];
     for (const pass of drifted) {

@@ -28,8 +28,8 @@ related:
 
 ## Outcome
 
-The Agent panel can recover one unambiguous active team run after reload without persisting client authority, accepting contract drift, crossing scopes, or resurrecting consumed results. Focused frontend verification passed 37 tests, TypeScript, Prettier, and ESLint.
+The Agent panel can recover one unambiguous active team run after reload without persisting client authority, accepting contract drift, crossing scopes, or resurrecting consumed results. Focused frontend verification passed 36 tests, TypeScript, Prettier, and ESLint; the focused Rust pass-through suite passed 13 tests and Clippy.
 
 ## Notes
 
-The live render suite emitted existing shutdown-time socket reset diagnostics after all tests passed. No mock, fake, skip, or xfail was introduced.
+The live render suite emitted existing shutdown-time socket reset diagnostics after all focused tests passed. The repository-wide frontend command exceeded its 15-minute execution budget, and the unrelated full Rust conformance suite retains a locale-order failure; both baseline validation findings are recorded in the audit queue. No mock, fake, skip, or xfail was introduced.

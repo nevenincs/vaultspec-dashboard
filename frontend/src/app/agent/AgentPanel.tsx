@@ -316,38 +316,37 @@ export function AgentAutonomyControl() {
  *  conservative — multiple or truncated results stay unrecovered, and the rebound
  *  run carries no prompt because discovery is identity-only. The query is mounted
  *  only for the visible transcript while recovery is needed. */
-function useRecoverActiveTeamRun(
-  open: boolean,
-  panelView: "transcript" | "pending",
-): void {
-  const queryClient = useQueryClient();
+function useReconcileTeamRunScope(): void {
   const scope = useActiveScope();
   const teamRunId = useAgentTeamRunId();
   const teamRunPrompt = useAgentTeamRunPrompt();
   const teamRunScope = useAgentTeamRunScope();
-  const needRecovery = open && panelView === "transcript" && teamRunId === null;
-  const active = useActiveTeamRuns(scope, { enabled: needRecovery });
-  const recoverableRunId =
-    active.isSuccess && !active.isFetching ? recoverableActiveRunId(active.data) : null;
 
-  // A local start predating scope-aware bindings is stamped with the current
-  // served scope. A genuinely cross-scope binding is cleared before the next
-  // workspace's discovery can attach, so its relay is never rendered under B.
+  // Unknown or cross-scope provenance is cleared before this workspace's
+  // discovery can attach, so a run can never render under an inferred root.
   useEffect(() => {
     if (teamRunId === null || scope === null) return;
     const action = teamRunScopeAction(teamRunId, teamRunScope, scope);
-    if (action === "stamp") {
-      setAgentTeamRun({ runId: teamRunId, prompt: teamRunPrompt, scope });
-    } else if (action === "clear") {
-      setAgentTeamRun(null);
-    }
+    if (action === "clear") setAgentTeamRun(null);
   }, [scope, teamRunId, teamRunPrompt, teamRunScope]);
+}
+
+/** Mounted only while recovery is active. `refetchOnMount:"always"` therefore
+ * turns every close/reopen or pending/transcript transition into a fresh bounded
+ * discovery read, instead of resurrecting a cached zero/ambiguous result. */
+function ActiveTeamRunRecovery({ scope }: { scope: string }) {
+  const queryClient = useQueryClient();
+  const active = useActiveTeamRuns(scope);
+  const recoverableRunId =
+    active.isSuccess && !active.isFetching ? recoverableActiveRunId(active.data) : null;
 
   useEffect(() => {
-    if (!needRecovery || scope === null || recoverableRunId === null) return;
+    if (recoverableRunId === null) return;
     setAgentTeamRun({ runId: recoverableRunId, prompt: null, scope });
     queryClient.removeQueries({ queryKey: a2aKeys.activeRuns(scope), exact: true });
-  }, [needRecovery, queryClient, recoverableRunId, scope]);
+  }, [queryClient, recoverableRunId, scope]);
+
+  return null;
 }
 
 /** The bottom composer slot hosts the multiline composer. */
@@ -371,7 +370,9 @@ export function AgentPanel({ className }: { className: string }) {
   useAgentLifecycleSubscription();
   const open = useAgentPanelOpen();
   const panelView = useAgentPanelView();
-  useRecoverActiveTeamRun(open, panelView);
+  useReconcileTeamRunScope();
+  const scope = useActiveScope();
+  const teamRunId = useAgentTeamRunId();
   const width = useAgentPanelWidth();
   const currentSessionId = useAgentCurrentSessionId();
   const resolveMessage = useLocalizedMessageResolver();
@@ -383,6 +384,9 @@ export function AgentPanel({ className }: { className: string }) {
       role="complementary"
       aria-label={resolveMessage({ key: AGENT.region }).message}
     >
+      {panelView === "transcript" && teamRunId === null && scope !== null ? (
+        <ActiveTeamRunRecovery scope={scope} />
+      ) : null}
       <ShellResizeHandle side="agent" axis="agent" current={width} />
       <AgentPanelHeader currentSessionId={currentSessionId} />
       <AgentViewSwitcher panelView={panelView} />

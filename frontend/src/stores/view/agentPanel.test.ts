@@ -60,7 +60,7 @@ describe("team-run viewing binding", () => {
     expect(teamRunScopeAction("run-a", "Y:/workspace-a", "Y:/workspace-b")).toBe(
       "clear",
     );
-    expect(teamRunScopeAction("run-a", null, "Y:/workspace-a")).toBe("stamp");
+    expect(teamRunScopeAction("run-a", null, "Y:/workspace-a")).toBe("clear");
     expect(teamRunScopeAction("run-a", "Y:/workspace-a", null)).toBe("keep");
     expect(scopedTeamRunId("run-a", "Y:/workspace-a", "Y:/workspace-b")).toBeNull();
     expect(scopedTeamRunId("run-a", "Y:/workspace-a", "Y:/workspace-a")).toBe("run-a");

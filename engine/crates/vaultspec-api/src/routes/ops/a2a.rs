@@ -360,7 +360,11 @@ fn validate_expected_scope(
         )
     })?;
     let expected = validate_bounded_text(state, "expected_scope", expected, MAX_A2A_SCOPE_CHARS)?;
-    let actual = cell.root.to_string_lossy();
+    // The browser receives the route token, not the filesystem's raw spelling.
+    // On Windows a cold cell may retain a `\\?\` prefix while `scope_token`
+    // deliberately serves the canonical drive-path spelling. Compare like with
+    // like; the downstream workspace_root remains the engine-owned real root.
+    let actual = crate::routes::scope_token(&cell.root);
     if expected != actual {
         return Err(super::super::api_error(
             state,
@@ -425,7 +429,7 @@ fn build_forwarded_call(
             // The workspace_root is the ENGINE-controlled active scope root, never
             // a client field, so the caller can never point preset discovery at an
             // arbitrary path (mirrors the rag reindex `project_root` discipline).
-            let root = cell.root.to_string_lossy();
+            let root = crate::routes::scope_token(&cell.root);
             Ok(ForwardedCall {
                 method: Method::Get,
                 path: format!("/v1/presets?workspace_root={}", percent_encode(&root)),
@@ -535,7 +539,7 @@ fn build_forwarded_call(
                 // metadata. It is the selector the bounded active-runs read
                 // matches after reload; no browser-supplied metadata is accepted.
                 "metadata": {
-                    "workspace_root": cell.root.to_string_lossy(),
+                    "workspace_root": crate::routes::scope_token(&cell.root),
                 },
             });
             let obj = forwarded.as_object_mut().expect("object literal");
@@ -876,10 +880,35 @@ mod tests {
     }
 
     #[test]
+    fn scope_fence_accepts_the_same_canonical_token_the_routes_serve() {
+        let (_dir, state) = test_state();
+        let cell = state.active_cell();
+        let served = crate::routes::scope_token(&cell.root);
+        validate_expected_scope(
+            &state,
+            &cell,
+            &A2aVerbBody {
+                expected_scope: Some(served),
+                ..Default::default()
+            },
+            "active-runs",
+        )
+        .expect("the served route token is the generation fence token");
+
+        #[cfg(windows)]
+        assert_eq!(
+            crate::routes::scope_token(std::path::Path::new(
+                r"\\?\Y:\code\vaultspec-dashboard-worktrees\cold"
+            )),
+            "Y:/code/vaultspec-dashboard-worktrees/cold"
+        );
+    }
+
+    #[test]
     fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
         let (_dir, state) = test_state();
         let cell = state.active_cell();
-        let expected_scope = cell.root.to_string_lossy().into_owned();
+        let expected_scope = crate::routes::scope_token(&cell.root);
 
         let service =
             build_forwarded_call(&state, "service-state", &cell, &A2aVerbBody::default()).unwrap();
@@ -980,7 +1009,7 @@ mod tests {
     fn build_run_start_validates_and_omits_actor_tokens() {
         let (_dir, state) = test_state();
         let cell = state.active_cell();
-        let expected_scope = cell.root.to_string_lossy().into_owned();
+        let expected_scope = crate::routes::scope_token(&cell.root);
 
         // A valid run-start body: the forwarded payload carries the preset +
         // message + optional fields but NEVER an actor_tokens field (the handler
@@ -1207,7 +1236,7 @@ mod tests {
         // round-trip. The sibling envelope is preserved without reshaping.
         let (_state_dir, state) = test_state();
         let cell = state.active_cell();
-        let expected_scope = cell.root.to_string_lossy().into_owned();
+        let expected_scope = crate::routes::scope_token(&cell.root);
         let call = build_forwarded_call(
             &state,
             "active-runs",

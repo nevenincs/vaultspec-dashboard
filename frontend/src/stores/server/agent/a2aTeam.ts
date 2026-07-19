@@ -21,7 +21,13 @@ import {
 } from "@tanstack/react-query";
 import { useMemo } from "react";
 
-import { bearerToken, EngineError, type FetchLike, type TiersBlock } from "../engine";
+import {
+  bearerToken,
+  CANONICAL_TIERS,
+  EngineError,
+  type FetchLike,
+  type TiersBlock,
+} from "../engine";
 import { tiersFromQuery } from "../engine/tiers";
 import { unwrapEnvelope } from "../liveAdapters";
 import {
@@ -224,6 +230,27 @@ export interface ActiveRunsResult {
   readonly tiers?: TiersBlock;
 }
 
+const ACTIVE_THREAD_STATUSES = new Set([
+  "submitted",
+  "running",
+  "input_required",
+  "cancelling",
+  "repair_needed",
+  "reconciling",
+]);
+
+/** Active discovery is a reload binding, so its envelope is intentionally
+ * stricter than the presentation-oriented adapters: every canonical tier must
+ * be present with a boolean verdict before any identity can be trusted. */
+function hasCanonicalTiers(tiers: TiersBlock | undefined): tiers is TiersBlock {
+  const agent = tiers?.agent;
+  return (
+    tiers !== undefined &&
+    CANONICAL_TIERS.every((tier) => typeof tiers[tier]?.available === "boolean") &&
+    (agent === undefined || typeof agent?.available === "boolean")
+  );
+}
+
 export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
   const env = pass.envelope;
   const invalid = (): ActiveRunsResult => ({
@@ -235,6 +262,7 @@ export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
   });
   if (
     pass.siblingStatus !== undefined ||
+    !hasCanonicalTiers(pass.tiers) ||
     !readAgentTierAvailability(pass.tiers).available ||
     !isRec(env) ||
     env.api_version !== "v1" ||
@@ -267,7 +295,12 @@ export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
       raw.feature_tag === undefined || raw.feature_tag === null
         ? undefined
         : boundedToken(raw.feature_tag, 128);
-    if (!run_id || !status || (raw.feature_tag != null && !feature_tag))
+    if (
+      !run_id ||
+      !status ||
+      !ACTIVE_THREAD_STATUSES.has(status) ||
+      (raw.feature_tag != null && !feature_tag)
+    )
       return invalid();
     runs.push({ run_id, status, feature_tag });
   }
@@ -554,6 +587,7 @@ export function useActiveTeamRuns(
     enabled: scope !== null && (options.enabled ?? true),
     staleTime: 10_000,
     gcTime: 30_000,
+    refetchOnMount: "always",
     retry: false,
   });
 }

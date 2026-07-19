@@ -129,6 +129,11 @@ namespace — it is orchestration control only.
 > no D5 ownership: reload may lose or restore only the dashboard binding; the
 > durable run remains A2A-owned throughout. The frontend fails closed on any
 > version, state, completeness, tier, refusal, row-shape, or result-bound drift;
+> accepts only the six reviewed non-terminal `ThreadStatus` values; requires
+> boolean verdicts for every canonical tier and for the optional `agent` tier
+> when present; refreshes discovery whenever recovery is reactivated; clears
+> any binding whose scope provenance is absent or different; and compares the
+> generation fence using the same canonical scope token served to the browser;
 > consumes a successful discovery snapshot after binding; and gates every
 > transcript/relay render synchronously on binding scope equality.
 

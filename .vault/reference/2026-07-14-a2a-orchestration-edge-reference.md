@@ -120,8 +120,7 @@ the dashboard consumes without your involvement.
 
 Adopt the machine-global discovery contract so the engine's attach-never-own
 predicate applies verbatim: publish a service discovery file in a
-machine-global home location (the rag precedent: `~/.vaultspec-rag/
-service.json` — yours would be the A2A equivalent) carrying pid, port, and a
+machine-global home location (the rag precedent: `~/.vaultspec-rag/ service.json` — yours would be the A2A equivalent) carrying pid, port, and a
 heartbeat the engine can test for freshness, plus an ungated health endpoint
 reporting ready + live pid. One resident service per machine; the engine
 starts you only when genuinely absent and attaches otherwise.
@@ -138,11 +137,11 @@ record the engine owns.
 
 1. Deletions first (UI, protocol stub, agent file-write tools) — shrinks the
    surface before conformance work.
-2. Authoring-API client + one solo-coder preset producing a research document
+1. Authoring-API client + one solo-coder preset producing a research document
    end-to-end (propose → submit → visible in the dashboard review lane).
-3. Token-bundle handling on `run-start` + the five-verb gateway surface.
-4. Discovery/heartbeat contract; engine-side pass-through lands opposite it.
-5. Full team preset (multi-role) — this is also the event that re-arms the
+1. Token-bundle handling on `run-start` + the five-verb gateway surface.
+1. Discovery/heartbeat contract; engine-side pass-through lands opposite it.
+1. Full team preset (multi-role) — this is also the event that re-arms the
    dashboard's multiagent-composition decision (ADR D8), so flag it when it
    happens.
 
@@ -169,7 +168,9 @@ loopback response ceiling continue to apply.
 Both `run-start` and `active-runs` carry an `expected_scope` echo. The engine
 compares it to the same selected scope cell used for the operation and returns
 409 when a concurrent workspace switch wins; the echo is never forwarded as a
-filesystem authority. Run start always injects that cell's root into sibling
+filesystem authority. The comparison and durable selector use the canonical
+scope token served by the engine, avoiding Windows extended-path spelling
+drift. Run start always injects that controlled selector into sibling
 `metadata.workspace_root`, ensuring dashboard-started rows are discoverable by
 the later workspace filter.
 
@@ -195,6 +196,13 @@ from the prior scope before any new discovery can attach, and render-time scope
 gating prevents even one stale frame from appearing under the new workspace.
 Any malformed or drifted discovery envelope fails closed, and the consumed
 query snapshot is removed so dismissing a terminal run cannot resurrect it.
+Recovery accepts only `submitted`, `running`, `input_required`, `cancelling`,
+`repair_needed`, and `reconciling`; all terminal, archived, or unknown states
+are rejected. Every canonical tier must carry a boolean availability verdict,
+and a present optional `agent` tier must do the same. Closing and reopening the
+panel, or otherwise reactivating recovery, always performs a fresh bounded
+read rather than trusting a cached empty or ambiguous result. A binding with
+missing scope provenance is cleared, never stamped onto the current workspace.
 
 Sibling bounds are a response limit of 100, stable newest-first ordering, a
 1,000-row scan budget, 100-row pages, and a 16,384-character metadata selector

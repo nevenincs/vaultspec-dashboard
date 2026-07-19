@@ -17,7 +17,7 @@ import { create } from "zustand";
  *  the folded-in cross-run "Pending changes" inbox. Local chrome — the transcript
  *  is the default; the inbox has no composer of its own. */
 export type AgentPanelView = "transcript" | "pending";
-export type TeamRunScopeAction = "keep" | "stamp" | "clear";
+export type TeamRunScopeAction = "keep" | "clear";
 
 /** Decide the synchronous local action when the served active scope changes. */
 export function teamRunScopeAction(
@@ -26,7 +26,7 @@ export function teamRunScopeAction(
   activeScope: string | null,
 ): TeamRunScopeAction {
   if (runId === null || activeScope === null) return "keep";
-  if (bindingScope === null) return "stamp";
+  if (bindingScope === null) return "clear";
   return bindingScope === activeScope ? "keep" : "clear";
 }
 
@@ -74,7 +74,7 @@ interface AgentPanelState {
   setPanelView: (view: AgentPanelView) => void;
   setCurrentSession: (sessionId: string | null) => void;
   setTeamRun: (
-    run: { runId: string; prompt: string | null; scope?: string | null } | null,
+    run: { runId: string; prompt: string | null; scope: string } | null,
   ) => void;
 }
 
@@ -163,7 +163,7 @@ export function setAgentCurrentSession(sessionId: string | null): void {
 
 /** Bind (or clear, with `null`) the active a2a team run the panel renders. */
 export function setAgentTeamRun(
-  run: { runId: string; prompt: string | null; scope?: string | null } | null,
+  run: { runId: string; prompt: string | null; scope: string } | null,
 ): void {
   useAgentPanel.getState().setTeamRun(run);
 }

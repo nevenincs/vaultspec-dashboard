@@ -26,6 +26,12 @@ import { setAgentTeamRun, useAgentPanel } from "../../stores/view/agentPanel";
 import { AgentPanel } from "./AgentPanel";
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+const canonicalTiers = {
+  declared: { available: true },
+  structural: { available: true },
+  temporal: { available: true },
+  semantic: { available: true },
+};
 
 function resetStore(): void {
   useAgentPanel.setState({
@@ -136,9 +142,13 @@ describe("AgentPanel transcript states", () => {
       truncated: false,
       contractValid: true,
     };
-    queryClient.setQueryData(key, discovery);
     useAgentPanel.setState({ open: true, currentSessionId: null });
     renderPanel(queryClient);
+    await waitFor(
+      () => expect(queryClient.getQueryState(key)?.fetchStatus).toBe("idle"),
+      { timeout: 10_000 },
+    );
+    queryClient.setQueryData(key, { ...discovery, tiers: canonicalTiers });
     await waitFor(() =>
       expect(useAgentPanel.getState().teamRunId).toBe("run-recovered"),
     );
@@ -147,6 +157,57 @@ describe("AgentPanel transcript states", () => {
     setAgentTeamRun(null);
     await waitFor(
       () => expect(queryClient.getQueryState(key)?.fetchStatus).toBe("idle"),
+      { timeout: 10_000 },
+    );
+    expect(useAgentPanel.getState().teamRunId).toBeNull();
+  });
+
+  it("refetches bounded discovery whenever recovery is reactivated", async () => {
+    const scope = await liveScope();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const key = a2aKeys.activeRuns(scope);
+    queryClient.setQueryData(key, {
+      state: "active",
+      runs: [],
+      truncated: false,
+      contractValid: true,
+      tiers: canonicalTiers,
+    } satisfies ActiveRunsResult);
+    const seededAt = queryClient.getQueryState(key)?.dataUpdatedAt ?? 0;
+
+    useAgentPanel.setState({ open: true, currentSessionId: null });
+    renderPanel(queryClient);
+    await waitFor(
+      () => {
+        const state = queryClient.getQueryState(key);
+        expect(state?.fetchStatus).toBe("idle");
+        expect(
+          Math.max(state?.dataUpdatedAt ?? 0, state?.errorUpdatedAt ?? 0),
+        ).toBeGreaterThan(seededAt);
+      },
+      { timeout: 10_000 },
+    );
+    const firstState = queryClient.getQueryState(key);
+    const firstUpdatedAt = Math.max(
+      firstState?.dataUpdatedAt ?? 0,
+      firstState?.errorUpdatedAt ?? 0,
+    );
+
+    useAgentPanel.setState({ open: false });
+    await waitFor(() =>
+      expect(document.querySelector("[data-agent-panel]")).toBeNull(),
+    );
+    useAgentPanel.setState({ open: true });
+    await waitFor(
+      () => {
+        const state = queryClient.getQueryState(key);
+        expect(state?.fetchStatus).toBe("idle");
+        expect(
+          Math.max(state?.dataUpdatedAt ?? 0, state?.errorUpdatedAt ?? 0),
+        ).toBeGreaterThan(firstUpdatedAt);
+      },
       { timeout: 10_000 },
     );
     expect(useAgentPanel.getState().teamRunId).toBeNull();
