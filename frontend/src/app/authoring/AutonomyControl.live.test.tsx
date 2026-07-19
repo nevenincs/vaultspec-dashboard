@@ -2,7 +2,8 @@
 //
 // The autonomy / operation-mode control, ONLINE against the real `vaultspec serve`
 // the global setup spawns over a scratch fixture workspace (agentic-authoring-ux
-// W04.P04.S19). Drives the control through `ReviewStationSection` against a real
+// W04.P04.S19; relocated composer-adjacent by review-surface-flow ADR F2). Drives
+// the control through its production host `AgentAutonomyControl` against a real
 // review queue: it reads the SERVED worktree mode from a proposal's policy
 // projection, and clicking "Apply automatically" fires the real `POST
 // /authoring/v1/mode` and round-trips — the re-projected policy reads autonomous
@@ -10,9 +11,9 @@
 // operator token (human:local-operator), the human/system principal the engine
 // allows to change mode. No cargo rebuild — reuses the running engine.
 //
-// Served-shape honesty: there is NO scope-level mode read; the mode is observable
-// only through a proposal's `policy.effective_mode`, so the control needs a queued
-// proposal to reflect a mode (an empty queue shows no control).
+// The control reflects a mode from either a proposal's `policy.effective_mode` or
+// the served scope-level `GET /v1/mode` read; this test drives the proposal-derived
+// path with a queued proposal.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
@@ -26,7 +27,7 @@ import {
   type CreateProposalPayload,
 } from "../../stores/server/authoring";
 import { queryClient } from "../../stores/server/queryClient";
-import { ReviewStationSection } from "./ReviewStation";
+import { AgentAutonomyControl } from "../agent/AgentPanel";
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -118,12 +119,12 @@ async function createLiveSession(actorToken: string): Promise<string> {
   return body.data.session_id;
 }
 
-function renderReviewStation() {
+function renderAutonomyControl() {
   const runtime = createTestLocalizationRuntime();
   return render(
     <I18nextProvider i18n={runtime}>
       <QueryClientProvider client={queryClient}>
-        <ReviewStationSection />
+        <AgentAutonomyControl />
       </QueryClientProvider>
     </I18nextProvider>,
   );
@@ -153,7 +154,7 @@ describe("autonomy control (live wire)", () => {
       { actorToken: authorToken },
     );
 
-    renderReviewStation();
+    renderAutonomyControl();
 
     // The control appears once the queue serves a proposal, reflecting the default
     // worktree mode (manual → "Review each change" active).

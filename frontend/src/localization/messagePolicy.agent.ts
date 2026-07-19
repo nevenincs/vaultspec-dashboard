@@ -102,4 +102,9 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.chip.label": { role: "accessibility" },
   "common:agent.chip.status.active": { role: "status" },
   "common:agent.chip.status.cancelRequested": { role: "status" },
+  // The bridge affordance's visible text names a COUNT/state of pending changes (a
+  // chip-like label), not an imperative action button — classified as a label. The
+  // truncated variant drops the numeral honestly.
+  "common:agent.pendingBridge.count": { role: "label" },
+  "common:agent.pendingBridge.more": { role: "label" },
 } as const satisfies Partial<Record<MessageKey, MessagePolicyEntry>>;

@@ -23,6 +23,10 @@ import {
   useSessionList,
 } from "../../stores/server/agent";
 import {
+  useReviewStationView,
+  useSetOperationMode,
+} from "../../stores/server/authoring";
+import {
   closeAgentPanel,
   setAgentPanelView,
   setAgentCurrentSession,
@@ -48,8 +52,10 @@ import {
   SkeletonRow,
   StateBlock,
 } from "../kit";
+import { AutonomyControl } from "../authoring/ReviewStation";
 import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import { Composer } from "./Composer";
+import { PendingChangesBridge } from "./PendingChangesBridge";
 import { PendingChangesView } from "./PendingChangesView";
 import { Transcript } from "./Transcript";
 import { TeamRunTranscript } from "./TeamRunTranscript";
@@ -268,6 +274,26 @@ function AgentViewSwitcher({ panelView }: { panelView: "transcript" | "pending" 
   );
 }
 
+/** The composer-adjacent autonomy control (review-surface-flow ADR F2): the
+ *  operation-mode toggle governs THIS conversation's autonomy, so it lives beside
+ *  the composer, not in the review inbox. Fed exactly as the retired
+ *  `ReviewStationSection` fed it — the SERVED worktree mode (scope-level GET /v1/mode
+ *  when the queue is empty, a proposal's policy when not) plus the mode-set seam —
+ *  and renders only when a mode is observable (never a fabricated selection). */
+export function AgentAutonomyControl() {
+  const view = useReviewStationView();
+  const setMode = useSetOperationMode();
+  if (view.operationMode === null) return null;
+  return (
+    <div className="border-t border-rule px-fg-2 py-fg-2">
+      <AutonomyControl
+        mode={view.operationMode}
+        onSelect={(mode) => setMode.mutateAsync(mode)}
+      />
+    </div>
+  );
+}
+
 /** The bottom composer slot hosts the multiline composer. */
 function AgentComposerSlot() {
   return (
@@ -308,6 +334,11 @@ export function AgentPanel({ className }: { className: string }) {
       ) : (
         <>
           <AgentTranscriptContainer currentSessionId={currentSessionId} />
+          {/* Composer-adjacent, transcript-view only: the cross-run bridge into the
+              inbox (nothing when the queue is fully represented inline), then the
+              autonomy control (nothing until a mode is observable), then the composer. */}
+          <PendingChangesBridge />
+          <AgentAutonomyControl />
           <AgentComposerSlot />
         </>
       )}

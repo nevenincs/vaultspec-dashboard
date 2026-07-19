@@ -96,6 +96,12 @@ export const ltrAgentResources = {
       cancelRequested: "Arrêt en cours",
     },
   },
+  pendingBridge: {
+    count_many: "{{count, number}} autres modifications en attente",
+    count_one: "{{count, number}} autre modification en attente",
+    count_other: "{{count, number}} autres modifications en attente",
+    more: "Plus de modifications en attente",
+  },
 } as const;
 
 export const rtlAgentResources = {
@@ -196,5 +202,14 @@ export const rtlAgentResources = {
       active: "قيد التشغيل",
       cancelRequested: "جارٍ الإيقاف",
     },
+  },
+  pendingBridge: {
+    count_few: "{{count, number}} تغييرات معلقة أخرى",
+    count_many: "{{count, number}} تغييرًا معلقًا آخر",
+    count_one: "{{count, number}} تغيير معلق آخر",
+    count_other: "{{count, number}} تغيير معلق آخر",
+    count_two: "{{count, number}} تغييران معلقان آخران",
+    count_zero: "{{count, number}} تغيير معلق",
+    more: "المزيد من التغييرات المعلقة",
   },
 } as const;

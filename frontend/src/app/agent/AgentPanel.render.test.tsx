@@ -14,7 +14,7 @@ import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createTestLocalizationRuntime } from "../../localization/testing";
-import { liveScope, liveTransport } from "../../testing/liveClient";
+import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import {
   AuthoringClient,
   getAuthoringStreamCursor,
@@ -185,6 +185,141 @@ describe("AgentPanel view switcher (review-surface-flow ADR F1)", () => {
     renderPanel();
     expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
     expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
+  });
+});
+
+/** Seed a live, out-of-session pending proposal (not correlated to the panel's
+ *  current session) so the bridge has something to signpost. Mirrors the authoring
+ *  live suites' create+submit flow against the scratch fixture; created proposals
+ *  accumulate in the shared queue exactly as the sibling live tests leave them. */
+async function seedOutOfSessionProposal(): Promise<void> {
+  const authoring = new AuthoringClient({ baseUrl: "", fetchImpl: liveTransport });
+  const agent = new AgentClient({ baseUrl: "", fetchImpl: liveTransport });
+  const engine = createLiveClient();
+  const token = (
+    await authoring.issueActorToken({
+      actor: { id: `agent:bridge-${run}`, kind: "agent" },
+    })
+  ).raw_token;
+  const scope = await liveScope();
+  const created = await agent.createSession(
+    { scope, title: `bridge seed ${run}` },
+    { actorToken: token },
+  );
+  if (created.kind !== "settled") throw new Error("seed session did not settle");
+  const stem = "2026-01-04-beta-research";
+  const nodeId = `doc:${stem}`;
+  const content = await engine.content(nodeId, scope);
+  const baseRevision = `blob:${content.blob_hash}`;
+  const changesetId = `changeset_bridge_${run}`;
+  const proposed = await authoring.createProposal(
+    {
+      session_id: created.session_id,
+      changeset_id: changesetId,
+      summary: "Bridge live-test proposal",
+      operations: [
+        {
+          child_key: "child_1",
+          operation: "replace_body",
+          target: {
+            document: {
+              kind: "existing",
+              scope,
+              node_id: nodeId,
+              stem,
+              path: ".vault/research/2026-01-04-beta-research.md",
+              doc_type: "research",
+              base_revision: baseRevision,
+            },
+            base_revision: baseRevision,
+            current_revision: baseRevision,
+          },
+          draft: {
+            mode: "whole_document",
+            body:
+              "---\ntags:\n  - '#research'\n  - '#beta'\ndate: '2026-01-04'\n---\n\n" +
+              "# `beta` research: scope\n\nAdded by the pending-bridge render test.\n",
+          },
+        },
+      ],
+    },
+    { actorToken: token },
+  );
+  if (proposed.kind !== "ok") throw new Error("seed proposal was not accepted");
+  const queued = await authoring.projectProposal(changesetId);
+  await authoring.submitForReview(
+    changesetId,
+    { expected_revision: queued!.proposal.changeset_revision, summary: "ready" },
+    { actorToken: token },
+  );
+}
+
+describe("AgentPanel autonomy + bridge (review-surface-flow ADR F2/F1)", () => {
+  it("renders the autonomy control composer-adjacent in the transcript view", async () => {
+    useAgentPanel.setState({
+      open: true,
+      currentSessionId: null,
+      panelView: "transcript",
+    });
+    renderPanel();
+    // The served scope-level mode (GET /v1/mode) resolves to a default, so the
+    // control renders even with an empty queue — composer-adjacent, inside the panel.
+    const control = await waitFor(
+      () => {
+        const el = document.querySelector<HTMLElement>("[data-autonomy-control]");
+        expect(el).not.toBeNull();
+        return el!;
+      },
+      { timeout: 15_000 },
+    );
+    const panel = document.querySelector("[data-agent-panel]");
+    const composer = document.querySelector("[data-agent-composer-slot]");
+    expect(panel?.contains(control)).toBe(true);
+    expect(composer).not.toBeNull();
+    // Composer-adjacent: the control sits ABOVE the composer in document order.
+    expect(
+      control.compareDocumentPosition(composer!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("does not render the autonomy control (or a composer) in the pending view", () => {
+    useAgentPanel.setState({
+      open: true,
+      currentSessionId: null,
+      panelView: "pending",
+    });
+    renderPanel();
+    // The pending view hosts only the queue body — structurally no autonomy control
+    // and no composer (the inbox has neither).
+    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
+    expect(document.querySelector("[data-autonomy-control]")).toBeNull();
+    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
+  });
+
+  it("shows the pending bridge for out-of-session changes and switches to the inbox", async () => {
+    await seedOutOfSessionProposal();
+    useAgentPanel.setState({
+      open: true,
+      currentSessionId: null,
+      panelView: "transcript",
+    });
+    renderPanel();
+    const bridge = await waitFor(
+      () => {
+        const el = document.querySelector<HTMLElement>("[data-pending-changes-bridge]");
+        expect(el).not.toBeNull();
+        return el!;
+      },
+      { timeout: 15_000 },
+    );
+    // The affordance is composer-adjacent in the transcript view (not a modal).
+    expect(document.querySelector("[data-agent-panel]")?.contains(bridge)).toBe(true);
+    fireEvent.click(bridge);
+    // Clicking switches the panel to the pending inbox view.
+    expect(useAgentPanel.getState().panelView).toBe("pending");
+    await waitFor(() =>
+      expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull(),
+    );
   });
 });
 
