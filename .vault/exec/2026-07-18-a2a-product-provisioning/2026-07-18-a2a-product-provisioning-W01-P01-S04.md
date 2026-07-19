@@ -9,7 +9,7 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-# Define the dashboard-owned complete release-set schema binding the dashboard build to the pinned A2A component manifest, runtime inputs, protocols, state schemas, digests, licenses, and SBOM
+# Define the complete release-set member and five-target cohort contracts
 
 ## Scope
 
@@ -17,30 +17,33 @@ related:
 
 ## Description
 
-- Authored `schemas/release-set-manifest.json` (JSON Schema draft 2020-12): the
-  dashboard-owned complete release-set contract for one target.
-- Bound every ADR-required facet: `target` (five-triple enum), `dashboard` build
-  (version/commit/digest), `a2a_component` (commit + release identity + references to
-  the `S03` component lock and the A2A capsule manifest + emitted capsule digest),
-  `runtimes` (cpython/node/acp, each exact version + license + digest), `protocol`
-  (gateway API version range), `state_schema` (migration range), `licenses` (SPDX per
-  component), and `sbom` (format/path/digest); optional `file_digests` table.
-- Enforced no-floating pins through shared `$defs`: `GitCommit` (40-hex), `Sha256`
-  (64-hex), `ExactVersion` (no range operator/wildcard/`latest`), `digest_algorithm`
-  const sha256.
+- Replace the incomplete draft with the closed `2.0` release-set member
+  contract.
+- Bind dashboard, updater, trusted component-lock join, A2A manifest, capsule
+  archive, installed-tree evidence, runtimes, protocol, migration range,
+  licenses, software bill of materials, and every immutable installed file.
+- Exclude only the member manifest from its own file table and require its raw
+  bytes to be independently bound by candidate/cohort authority and the active
+  receipt.
+- Define the closed external five-member cohort descriptor and its exact RFC
+  8785 canonical JSON digest preimage without embedding a circular cohort
+  digest back into member manifests.
+- Enforce the ordered five-target roster, non-floating identities, portable
+  path and resource bounds, positive artifact sizes, and strict object shapes.
 
 ## Outcome
 
-The release-set schema binds the dashboard build to the pinned A2A component and runtime
-inputs with exact, digest-verifiable identities, and references the `S03` lock + the A2A
-capsule manifest as the authoritative producer contracts. Verified: valid JSON, all eight
-ADR-required top-level bindings present and required, runtimes cover cpython/node/acp, and
-the exact-pin `$defs` reject a branch/tag commit, a non-64-hex digest, or a ranged version.
-The `vaultspec-product` parser (`S06`) will consume this schema to reject unpinned
-identity, target mismatch, or digest drift.
+The schema now provides a recomputable, non-self-referential product identity
+for each target and for the complete five-target cohort. Draft 2020-12
+meta-schema validation, representative member and cohort validation, adversarial
+boundary cases, diff hygiene, and independent code review passed. The reviewed
+schema SHA-256 is
+`2215407e43a7639c8ba800be963d8200760833967a1720a47d20e1b03bca5233`.
 
 ## Notes
 
-Authored ahead of the `S06` parser (plan order), so the schema is grounded in the accepted
-ADR's release-set-manifest binding clause; `S06` formalizes consumption and rejection.
-
+This is intentionally incompatible with the earlier unshipped `1.0` draft.
+S06 must implement the cross-field, installed-byte, trusted-lock, collision,
+and member-to-cohort joins; S166 must aggregate all five member digests and
+emit the canonical cohort descriptor before publication. Completing S04 alone
+does not authorize a target artifact or release.

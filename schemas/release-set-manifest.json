@@ -2,42 +2,94 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vaultspec.dev/schemas/release-set-manifest.json",
   "title": "ReleaseSetManifest",
-  "description": "The dashboard-owned complete release-set manifest (a2a-product-provisioning plan W01.P01.S04). One target's composite release set binds the dashboard build to the pinned A2A component (commit + emitted capsule), the runtime inputs (CPython, Node.js, ACP), the served protocol range, the state-schema/migration range, every file digest, the license set, and the software bill of materials. The dashboard consumes the A2A capsule as an opaque versioned artifact via `schemas/desktop-capsule-manifest.json` and the pin in `packaging/a2a-component.lock.json`; it rejects mismatch, floating identity, or runtime dependency resolution.",
+  "description": "The dashboard-owned complete release-set member manifest (a2a-product-provisioning W01.P01.S04). Each target manifest binds one member of an exact five-target cohort to the trusted dashboard component lock, the A2A-emitted capsule manifest, capsule archive and installed-tree evidence, the dashboard and updater binaries, runtime inputs, installed-file digests, license evidence, and a software bill of materials. A candidate manifest never authorizes its own component lock: consumers compare the declared component-lock digest with independently trusted lock bytes and verify all five cohort members together. The cohort digest is intentionally external to every member manifest so hashing the five raw member documents is non-circular.",
+  "x-vaultspec-invariants": [
+    "W04.P08.S166 emits a separate descriptor validated by $defs/CohortDescriptor only after the raw-byte SHA-256 digest of each of the five member manifests exists.",
+    "The cohort-digest preimage is exactly the RFC 8785 JSON Canonicalization Scheme serialization of the validated CohortDescriptor, encoded as UTF-8 with no byte-order mark and no trailing bytes. SHA-256 of exactly those bytes is the cohort digest.",
+    "CohortDescriptor.members maps each TargetTriple to its member-manifest raw-byte SHA-256 digest in canonical TargetTriple enum order. The descriptor's own JCS-byte digest is bound by candidate authority and the active receipt and is never embedded back into a member manifest.",
+    "Every member cohort.id must equal the validated external CohortDescriptor.id; W04.P08.S166 enforces this across publication inputs and S06 enforces it for candidate verification.",
+    "file_digests covers every immutable installed regular file except exactly release_manifest.path. S06 rejects release_manifest.path in file_digests, permits no other exclusion, and requires the manifest raw bytes to match the independently supplied member digest from cohort or candidate authority and later the receipt.",
+    "The component_lock digest is only a join claim. Candidate bytes cannot authorize their own lock; S06 compares it with independently trusted component-lock bytes."
+  ],
   "type": "object",
   "additionalProperties": false,
   "required": [
     "schema_version",
     "target",
     "digest_algorithm",
+    "cohort",
+    "release_manifest",
     "dashboard",
+    "updater",
     "a2a_component",
     "runtimes",
     "protocol",
     "state_schema",
     "licenses",
-    "sbom"
+    "sbom",
+    "file_digests"
   ],
   "properties": {
     "schema_version": {
-      "description": "Canonical MAJOR.MINOR grammar version; a consumer requires the same major and a declared minor no newer than it supports.",
+      "description": "The first complete release-set member contract. This is a breaking replacement for the incomplete draft shape.",
       "type": "string",
-      "pattern": "^[0-9]+\\.[0-9]+$"
+      "const": "2.0"
     },
     "target": { "$ref": "#/$defs/TargetTriple" },
     "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
-    "dashboard": {
-      "description": "The dashboard executable build bound into this release set.",
+    "cohort": {
+      "description": "The immutable member-visible identity shared by all five target manifests. Consumers verify five manifests with one common id and the closed target roster below. After all five raw member digests exist, S166 emits the external $defs/CohortDescriptor; every member cohort.id must equal descriptor.id. SHA-256 of the descriptor's RFC 8785 JCS UTF-8 bytes is the receipt-bound cohort digest and is never embedded in a member.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "commit", "digest"],
+      "required": ["id", "targets"],
+      "properties": {
+        "id": { "$ref": "#/$defs/IdentityToken" },
+        "targets": {
+          "description": "The complete cohort roster in canonical TargetTriple enum order.",
+          "$ref": "#/$defs/TargetRoster"
+        }
+      }
+    },
+    "release_manifest": {
+      "description": "Identity of this member manifest in the installed tree. Its bytes cannot digest themselves: this is the sole file excluded from file_digests and is instead bound by the independently supplied member-manifest raw-byte digest in the external cohort or candidate authority and later the active receipt.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "binding_mode"],
+      "properties": {
+        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "binding_mode": {
+          "type": "string",
+          "const": "external-cohort-and-receipt"
+        }
+      }
+    },
+    "dashboard": {
+      "description": "The principal dashboard executable installed by this target release set.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "commit", "path", "size", "digest"],
       "properties": {
         "version": { "$ref": "#/$defs/ExactVersion" },
         "commit": { "$ref": "#/$defs/GitCommit" },
+        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "size": { "$ref": "#/$defs/PositiveByteCount" },
+        "digest": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "updater": {
+      "description": "The product-owned external updater copied for transactional activation and rollback.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "path", "size", "digest"],
+      "properties": {
+        "version": { "$ref": "#/$defs/ExactVersion" },
+        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "size": { "$ref": "#/$defs/PositiveByteCount" },
         "digest": { "$ref": "#/$defs/Sha256" }
       }
     },
     "a2a_component": {
-      "description": "The pinned A2A build and its emitted immutable capsule for this target, referencing the component lock and capsule manifest contract.",
+      "description": "The pinned A2A build plus independently verifiable evidence for its component lock, emitted manifest, target capsule archive, and installed tree.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -45,7 +97,8 @@
         "release_identity",
         "component_lock",
         "capsule_manifest",
-        "capsule_digest"
+        "capsule_archive",
+        "tree_evidence"
       ],
       "properties": {
         "commit": { "$ref": "#/$defs/GitCommit" },
@@ -54,26 +107,55 @@
           "additionalProperties": false,
           "required": ["name", "version"],
           "properties": {
-            "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "name": { "$ref": "#/$defs/IdentityToken" },
             "version": { "$ref": "#/$defs/ExactVersion" }
           }
         },
         "component_lock": {
-          "description": "Path to the dashboard-owned component lock pinning this A2A build.",
-          "const": "packaging/a2a-component.lock.json"
+          "description": "Identity of the dashboard-owned component lock. The digest is a join claim only; authorization comes from independently trusted lock bytes supplied by the installed product or release verifier.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "digest"],
+          "properties": {
+            "path": { "const": "packaging/a2a-component.lock.json" },
+            "digest": { "$ref": "#/$defs/Sha256" }
+          }
         },
         "capsule_manifest": {
-          "description": "Path to the A2A-owned capsule manifest contract the dashboard verifies.",
-          "const": "schemas/desktop-capsule-manifest.json"
+          "description": "The A2A-emitted component manifest instance shipped with this target capsule.",
+          "$ref": "#/$defs/EvidenceFile"
         },
-        "capsule_digest": {
-          "description": "Digest of the emitted immutable capsule artifact for this target.",
-          "$ref": "#/$defs/Sha256"
+        "capsule_archive": {
+          "description": "The immutable target-specific A2A capsule archive distributed in this release set.",
+          "$ref": "#/$defs/ArtifactFile"
+        },
+        "tree_evidence": {
+          "description": "Canonical installed-tree inventory plus the digest derived from its ordered path, mode, size, and content identities.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "size", "digest", "tree_digest", "file_count"],
+          "properties": {
+            "path": { "$ref": "#/$defs/PortableRelativePath" },
+            "size": { "$ref": "#/$defs/PositiveByteCount" },
+            "digest": {
+              "description": "Digest of the canonical inventory document bytes.",
+              "$ref": "#/$defs/Sha256"
+            },
+            "tree_digest": {
+              "description": "Digest of the canonical installed-tree records themselves.",
+              "$ref": "#/$defs/Sha256"
+            },
+            "file_count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 80000
+            }
+          }
         }
       }
     },
     "runtimes": {
-      "description": "The base-closure runtimes, each pinned to an exact version and a digest from the component lock — never a floating minor, `latest`, or runtime resolution.",
+      "description": "The base-closure runtimes, each pinned to an exact version and a digest from the independently trusted component lock.",
       "type": "object",
       "additionalProperties": false,
       "required": ["cpython", "node", "acp"],
@@ -89,46 +171,54 @@
       "additionalProperties": false,
       "required": ["gateway_api_version_range"],
       "properties": {
-        "gateway_api_version_range": { "$ref": "#/$defs/VersionRange" }
+        "gateway_api_version_range": { "$ref": "#/$defs/GatewayVersionRange" }
       }
     },
     "state_schema": {
-      "description": "The packaged Alembic migration range for the mutable schema-bearing stores.",
+      "description": "The packaged migration range for every mutable schema-bearing store.",
       "type": "object",
       "additionalProperties": false,
       "required": ["migration_range"],
       "properties": {
-        "migration_range": { "$ref": "#/$defs/VersionRange" }
+        "migration_range": { "$ref": "#/$defs/MigrationVersionRange" }
       }
     },
     "licenses": {
-      "description": "The SPDX license identifier for every bound component.",
+      "description": "Installed license evidence for every bound component. Each evidence path and digest must join to file_digests during complete verification.",
       "type": "array",
       "minItems": 1,
+      "maxItems": 4096,
+      "uniqueItems": true,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["component", "spdx"],
+        "required": ["component", "spdx", "path", "digest"],
         "properties": {
-          "component": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "spdx": { "type": "string", "minLength": 1, "maxLength": 128 }
+          "component": { "$ref": "#/$defs/IdentityToken" },
+          "spdx": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "path": { "$ref": "#/$defs/PortableRelativePath" },
+          "digest": { "$ref": "#/$defs/Sha256" }
         }
       }
     },
     "sbom": {
-      "description": "The software bill of materials for this release set, referenced by path and pinned by digest.",
+      "description": "The complete software bill of materials installed with this release set. Its path and digest must join to file_digests during complete verification.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["format", "path", "digest"],
+      "required": ["format", "path", "size", "digest"],
       "properties": {
         "format": { "type": "string", "enum": ["spdx", "cyclonedx"] },
-        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "size": { "$ref": "#/$defs/PositiveByteCount" },
         "digest": { "$ref": "#/$defs/Sha256" }
       }
     },
     "file_digests": {
-      "description": "Optional per-file digest table for the release set's non-runtime artifacts.",
+      "description": "Required complete digest inventory of every immutable installed regular file except exactly release_manifest.path, keyed by canonical product-root-relative path. Complete verification rejects release_manifest.path in this table, permits no other exclusion, requires every referenced artifact to join its entry, and additionally rejects case-folded path collisions and Windows reserved names.",
       "type": "object",
+      "minProperties": 1,
+      "maxProperties": 100000,
+      "propertyNames": { "$ref": "#/$defs/PortableRelativePath" },
       "additionalProperties": { "$ref": "#/$defs/Sha256" }
     }
   },
@@ -144,25 +234,145 @@
         "x86_64-pc-windows-msvc"
       ]
     },
+    "TargetRoster": {
+      "description": "Every supported target exactly once in the order used by the canonical external cohort descriptor.",
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "prefixItems": [
+        { "const": "aarch64-apple-darwin" },
+        { "const": "x86_64-apple-darwin" },
+        { "const": "aarch64-unknown-linux-gnu" },
+        { "const": "x86_64-unknown-linux-gnu" },
+        { "const": "x86_64-pc-windows-msvc" }
+      ],
+      "items": false
+    },
+    "CohortDescriptor": {
+      "description": "The closed external five-member cohort contract emitted by W04.P08.S166 after every member-manifest raw-byte digest exists. Validate this object first. Its cohort-digest preimage is exactly its RFC 8785 JSON Canonicalization Scheme serialization encoded as UTF-8, with no byte-order mark and no trailing bytes; SHA-256 of exactly that JCS byte sequence is the cohort digest. The descriptor carries no digest of itself.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema_version", "id", "digest_algorithm", "members"],
+      "properties": {
+        "schema_version": { "type": "string", "const": "1.0" },
+        "id": { "$ref": "#/$defs/IdentityToken" },
+        "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
+        "members": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "member_manifest_digest"],
+              "properties": {
+                "target": { "const": "aarch64-apple-darwin" },
+                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "member_manifest_digest"],
+              "properties": {
+                "target": { "const": "x86_64-apple-darwin" },
+                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "member_manifest_digest"],
+              "properties": {
+                "target": { "const": "aarch64-unknown-linux-gnu" },
+                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "member_manifest_digest"],
+              "properties": {
+                "target": { "const": "x86_64-unknown-linux-gnu" },
+                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["target", "member_manifest_digest"],
+              "properties": {
+                "target": { "const": "x86_64-pc-windows-msvc" },
+                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
+              }
+            }
+          ],
+          "items": false
+        }
+      }
+    },
     "DigestAlgorithm": {
       "description": "The algorithm governing every digest in this manifest.",
       "type": "string",
       "const": "sha256"
     },
     "Sha256": {
-      "description": "A lowercase hex SHA-256 digest.",
+      "description": "A lowercase hexadecimal SHA-256 digest.",
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
     },
     "GitCommit": {
-      "description": "A full 40-hex git commit sha — never a branch, tag, or floating ref.",
+      "description": "A full 40-hex git commit SHA, never a branch, tag, or floating ref.",
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"
     },
     "ExactVersion": {
-      "description": "An exact version — no range operator, wildcard, or `latest`.",
+      "description": "An exact numeric version with no range operator, wildcard, or latest selector.",
       "type": "string",
+      "maxLength": 128,
       "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "IdentityToken": {
+      "description": "A bounded non-path identity token.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$"
+    },
+    "PortableRelativePath": {
+      "description": "An ASCII product-root-relative path using forward slashes, at most 32 segments, with each segment at most 128 ASCII characters/bytes. It cannot be rooted, carry a drive prefix or backslash, contain empty/dot segments, or end a segment with a dot. Complete verification also rejects case-fold and platform-reserved collisions.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4096,
+      "pattern": "^[A-Za-z0-9@_+.-]{1,128}(?:/[A-Za-z0-9@_+.-]{1,128}){0,31}$",
+      "not": { "pattern": "(^|/)(\\.{1,2}|[^/]*\\.)(/|$)" }
+    },
+    "PositiveByteCount": {
+      "description": "A positive exact byte count bounded to the maximum expanded release-set evidence size.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8589934592
+    },
+    "EvidenceFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "digest"],
+      "properties": {
+        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "digest": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "ArtifactFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "size", "digest"],
+      "properties": {
+        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "size": { "$ref": "#/$defs/PositiveByteCount" },
+        "digest": { "$ref": "#/$defs/Sha256" }
+      }
     },
     "PinnedRuntime": {
       "type": "object",
@@ -174,13 +384,34 @@
         "digest": { "$ref": "#/$defs/Sha256" }
       }
     },
-    "VersionRange": {
+    "CanonicalGatewayVersion": {
+      "description": "A gateway protocol version emitted by the current A2A producer contract.",
+      "type": "string",
+      "enum": ["v1"]
+    },
+    "GatewayVersionRange": {
       "type": "object",
       "additionalProperties": false,
       "required": ["minimum", "maximum"],
       "properties": {
-        "minimum": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "maximum": { "type": "string", "minLength": 1, "maxLength": 128 }
+        "minimum": { "$ref": "#/$defs/CanonicalGatewayVersion" },
+        "maximum": { "$ref": "#/$defs/CanonicalGatewayVersion" }
+      }
+    },
+    "MigrationIdentifier": {
+      "description": "A bounded exact migration revision identifier, never the floating Alembic selectors head, heads, base, latest, or x.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^(?!(?:[Ll][Aa][Tt][Ee][Ss][Tt]|[Hh][Ee][Aa][Dd][Ss]?|[Bb][Aa][Ss][Ee]|[Xx])$)[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+    },
+    "MigrationVersionRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": { "$ref": "#/$defs/MigrationIdentifier" },
+        "maximum": { "$ref": "#/$defs/MigrationIdentifier" }
       }
     }
   }

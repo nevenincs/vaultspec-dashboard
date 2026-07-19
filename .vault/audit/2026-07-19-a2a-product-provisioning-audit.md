@@ -174,3 +174,42 @@ graceful and signal paths are covered. Tracked as a non-blocking follow-up.
   to concurrent untracked working-tree WIP (`routes/ops/a2a_tests.rs` run-start
   replay; `vaultspec-product/src/generation.rs` unneeded-return) and provably not
   the reviewed change, whose scope matches no run-start or generation symbols.
+
+## `W01.P01.S04` complete release-set schema review
+
+Status: PASS AFTER TWO REVISION CYCLES.
+
+The first review rejected a declarative cohort digest with no recomputable
+preimage and a complete file table that would have required the installed
+manifest to digest itself. The second review rejected an underspecified
+external descriptor serialization plus path, migration, and zero-size evidence
+bounds. Those rejected snapshots remain useful evidence for why structural
+schema validity alone was insufficient.
+
+The accepted `2.0` member contract removes both cycles. Each target member
+carries a common cohort id and an exact ordered five-target roster but no cohort
+digest. The closed external `CohortDescriptor` binds the five raw member-manifest
+SHA-256 digests in canonical target order. Its receipt-bound cohort digest is
+SHA-256 over exactly its RFC 8785 JSON Canonicalization Scheme UTF-8 bytes, with
+no byte-order mark or trailing bytes. The release manifest is the sole installed
+file-table exclusion and its raw bytes are instead bound by candidate/cohort
+authority and later the active receipt.
+
+The schema requires independently trusted component-lock comparison and binds
+the dashboard, updater, component manifest, capsule archive, installed-tree
+evidence, runtimes, protocol, state range, license evidence, software bill of
+materials, and every other immutable installed regular file. It closes the
+gateway version to `v1`, rejects floating migration selectors, enforces the
+producer's path and 80,000-file bounds, and rejects zero-byte principal
+artifacts.
+
+Independent final review found no critical, high, or medium finding. JSON,
+Draft 2020-12 meta-schema, representative member and descriptor, adversarial
+ordering/digest/version/path/migration/size cases, and diff checks passed. The
+reviewed schema SHA-256 is
+``2215407E43A7639C8BA800BE963D8200760833967A1720A47D20E1B03BCA5233``.
+
+This closes S04 only. S06 must enforce trusted-byte and cross-field joins; S08
+must bind member and cohort digests into a separately durable active receipt;
+S166 must build all five unique target members and emit the descriptor. No
+release or target certification is authorized by this schema step.
