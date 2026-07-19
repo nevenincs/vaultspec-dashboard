@@ -3102,7 +3102,6 @@ dependencies = [
  "getrandom",
  "nix 0.29.0",
  "rustix",
- "same-file",
  "serde",
  "serde_json",
  "sha2",

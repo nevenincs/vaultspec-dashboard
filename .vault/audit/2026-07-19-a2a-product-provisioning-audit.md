@@ -393,3 +393,67 @@ failure returns the same owned authority and source error.
 All 10 native tests, strict all-target Clippy, Windows and Linux target checks,
 formatting, scoped diff checking, and the forbidden-test-technique scan passed.
 No critical, high, medium, or low finding remains open.
+
+## `W01.P01.S169` retained unpublished-generation authority review
+
+Status: PASS after two revision cycles.
+
+S169 binds non-`Clone` `LockedProduct<'lock>` to the verified installation
+guard and retains the product-root, generation-parent, and receipt-parent
+(app-home) directory authorities. Successful creation adds the retained
+unpublished-generation authority under the unique mutable product loan. Active
+selection derives only from S167's separately retained fixed-journal reader;
+the count is bounded to exactly eight nonactive generations, and discard
+consumes only its joined authority.
+
+### post-create-authority-loss | medium (remediated) | Validation and cleanup failure could lose the created authority
+
+The first formal review returned NOT PASS C0/H0/M1. Retained post-create
+validation or reopen failure could bypass cleanup, and the prior cleanup helper
+dropped authority if exact retained cleanup failed. The repair constructs the
+token before validation, routes all later failure through one consuming
+finalizer, returns `Refused` after successful removal, and returns boxed
+`Retained(PoisonedGeneration)` with the exact child authority and unique product
+loan when removal fails. Real nonempty-retention and empty-removal regressions
+exercise the production finalizer.
+
+### unix-created-state-gap | medium (remediated) | Successful mkdirat could leave residue before exact child authority existed
+
+The second formal review returned NOT PASS C0/H0/M1. Unix `mkdirat` could
+succeed before `open_child` or `fstat` failed, bypassing the token/finalizer and
+falsely returning `Refused` with a final-name residue. The repair captures a
+parent-relative no-follow snapshot of device, inode, directory type, owner, and
+permission bits; accepts the retained descriptor only when its full snapshot
+matches; and otherwise performs only full-snapshot-checked parent cleanup.
+
+Successful cleanup returns `Refused`. Missing or unacceptable initial state,
+name loss, substitution, type/owner/mode drift, nonempty residue, or unlink
+failure returns boxed `IndeterminateGenerationCreation`, retaining
+`&mut LockedProduct`, product and parent authority, name, path, and combined
+diagnostics without a retry, recovery, publication, or activation conversion.
+Real Unix empty, nonempty, substituted-name, and permission-drift regressions
+exercise this production created-state finalizer.
+
+Unix cleanup is parent-relative and full-snapshot checked within the
+cooperative same-euid/install-lock model. The POSIX `statat` to `unlinkat`
+sequence retains a hostile-peer TOCTOU boundary and is not handle-exact. Windows
+continues to use the S168 retained-handle relative child and consuming exact
+empty-directory primitive. No raw handle, cloneable authority, recursive
+deletion, caller-selected active generation, lint allowance, or unsafe surface
+was introduced.
+
+Final independent re-review reported PASS C0/H0/M0/L0. The separate Unix
+architecture audit also reported PASS C0/H0/M0/L0.
+
+Verification:
+
+- Native product check and strict library Clippy passed with no lint allowance.
+- Focused native generation tests passed 12/12; all native product library tests
+  passed 79/79.
+- The locked Linux `--lib --tests` target check passed and compiled all four
+  Unix-only regressions without executing them.
+- Strict Linux-target Clippy reached only the pre-existing, out-of-scope
+  `receipt.rs:685` `let _ = identity_handle` `let_unit_value` blocker and
+  reported no `generation.rs` finding.
+- Formatting, scoped diff, forbidden-shape, dependency-cleanup, and
+  no-unsafe-expansion checks passed.
