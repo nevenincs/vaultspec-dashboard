@@ -17,11 +17,28 @@ pub struct TierStatus {
 
 pub type TiersBlock = BTreeMap<&'static str, TierStatus>;
 
-/// Build a degradation block. `unavailable` lists (tier, reason) pairs;
-/// every other tier reports available.
+/// The four always-available-by-default corpus tiers.
+const DEFAULT_AVAILABLE_TIERS: &[&str] = &["declared", "structural", "temporal", "semantic"];
+
+/// The reason the `agent` tier carries when no controller context has resolved
+/// the real A2A orchestration state. The seeded default is DEGRADED, never
+/// optimistic (a2a-product-provisioning W02.P04.S29): absence of a resolution
+/// must never masquerade as availability. A response served with a live product
+/// controller (the seated dashboard) overwrites this with the real classification.
+const AGENT_TIER_UNRESOLVED: &str = "a2a orchestration state not resolved on this response";
+
+/// Build a degradation block. `unavailable` lists (tier, reason) pairs; every
+/// other corpus tier reports available.
+///
+/// The dedicated `agent` orchestration tier (a2a-product-provisioning) is ALWAYS
+/// present, seeded DEGRADED-honest: absence of an explicit `agent` entry in
+/// `unavailable` leaves it unavailable-with-reason, never available. The API
+/// layer overlays the real product-controller classification onto this seed so a
+/// live gateway reports available; an engine-query consumer without a controller
+/// keeps the honest degraded default rather than a false "up".
 pub fn tiers_block(unavailable: &[(&'static str, &str)]) -> TiersBlock {
     let mut block = TiersBlock::new();
-    for tier in ["declared", "structural", "temporal", "semantic"] {
+    for tier in DEFAULT_AVAILABLE_TIERS {
         block.insert(
             tier,
             TierStatus {
@@ -30,6 +47,15 @@ pub fn tiers_block(unavailable: &[(&'static str, &str)]) -> TiersBlock {
             },
         );
     }
+    // The agent tier is seeded degraded-honest and only flips to available when a
+    // controller resolves a usable gateway (overlaid in the API tiers builder).
+    block.insert(
+        "agent",
+        TierStatus {
+            available: false,
+            reason: Some(AGENT_TIER_UNRESOLVED.to_string()),
+        },
+    );
     for (tier, reason) in unavailable {
         block.insert(
             tier,
@@ -132,8 +158,29 @@ mod tests {
             block["semantic"].reason.as_deref(),
             Some("rag service down")
         );
-        // Always all four tiers — absent tiers are stated, never implied.
-        assert_eq!(block.len(), 4);
+        // The four corpus tiers plus the always-present dedicated `agent` tier —
+        // absent tiers are stated, never implied.
+        assert_eq!(block.len(), 5);
+    }
+
+    #[test]
+    fn agent_tier_is_always_present_and_seeded_degraded_honest() {
+        // With no explicit agent degradation, the tier is still present and
+        // DEGRADED — absence of a controller resolution can never masquerade as
+        // availability (a2a-product-provisioning W02.P04.S29).
+        let block = tiers_block(&[]);
+        let agent = &block["agent"];
+        assert!(
+            !agent.available,
+            "the seeded agent tier is degraded, never optimistically available"
+        );
+        assert!(
+            agent.reason.as_deref().is_some_and(|r| !r.is_empty()),
+            "the degraded agent tier always carries a reason"
+        );
+        // An explicit agent reason (the API degraded builder) overrides the seed.
+        let explicit = tiers_block(&[("agent", "gateway stopped")]);
+        assert_eq!(explicit["agent"].reason.as_deref(), Some("gateway stopped"));
     }
 
     #[test]

@@ -137,7 +137,26 @@ pub fn open_app() -> Result<Value, String> {
         "url": url,
         "workspace": workspace,
         "browser_opened": browser.is_ok(),
+        // A cold seat launch reconciles ONLY the receipt-owned A2A gateway before
+        // the dashboard opens (a2a-product-provisioning W02.P04.S48): the seat we
+        // just spawned starts or authenticates its own receipt-owned gateway in
+        // its boot path (S27) and leaves every compatible foreign resident
+        // immutable (ADR D4) — the launcher never owns a gateway process itself.
+        // We surface the reconciled product readiness read-only here.
+        "a2a": reconciled_a2a_facts(),
     }))
+}
+
+/// The receipt-owned A2A product readiness the cold seat reconciled during its
+/// boot (S27/S48), read-only. The launcher never starts or owns the gateway
+/// itself (ADR D4); it only reflects what the seat reconciled. Compacted to the
+/// installed + readiness facts the front door needs.
+fn reconciled_a2a_facts() -> Value {
+    let facts = super::a2a_lifecycle::facts();
+    json!({
+        "installed": facts.get("installed").cloned().unwrap_or(json!(false)),
+        "readiness": facts.get("readiness").cloned().unwrap_or(Value::Null),
+    })
 }
 
 /// Open the user's default browser, detached. On failure the caller still

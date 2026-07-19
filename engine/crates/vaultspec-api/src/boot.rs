@@ -362,6 +362,25 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         let _ = launcher.save(&guard.home);
     }
 
+    // Reconcile the receipt-owned A2A gateway (a2a-product-provisioning
+    // W02.P04.S27). A SEATED dashboard starts or authenticates ONLY a gateway its
+    // receipt owns and leaves every compatible foreign resident immutable
+    // (ADR D4); an exempt (--no-seat / --port 0) or bootstrap boot never touches
+    // product state. Best-effort: a not-installed product is a no-op, a start
+    // failure degrades the agent tier honestly rather than aborting the seat.
+    if seat_guard.is_some() && !bootstrap {
+        let plane = state.a2a_lifecycle.clone();
+        let outcome = tokio::task::spawn_blocking(move || plane.reconcile_seated_boot())
+            .await
+            .unwrap_or(serde_json::Value::Null);
+        if !matches!(
+            outcome.get("action").and_then(|a| a.as_str()),
+            Some("none") | None
+        ) {
+            eprintln!("vaultspec serve: a2a gateway reconcile: {outcome}");
+        }
+    }
+
     // The index is done and the wire is about to serve: flip discovery to
     // `ready` (single-app-runtime S23). The heartbeat keeps republishing it.
     ready.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -407,10 +426,23 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         state.clone(),
         crate::authoring::session::JanitorConfig::default_bounds(),
     ));
-    let result = axum::serve(listener, build_router(state))
+    let result = axum::serve(listener, build_router(state.clone()))
         .with_graceful_shutdown(shutdown_signal)
         .await
         .map_err(std::io::Error::other);
+    // Terminate the owned A2A gateway tree within a bound (a2a-product-
+    // provisioning W02.P04.S27, ADR D4) BEFORE releasing the seat, so a clean
+    // exit never orphans a gateway this dashboard started. A no-op when nothing
+    // was started here (cold install, or attached to a foreign-owned gateway).
+    if let Some(forced) = state
+        .a2a_lifecycle
+        .terminate_owned_gateway(Duration::from_secs(10))
+    {
+        eprintln!(
+            "vaultspec serve: owned a2a gateway terminated ({})",
+            if forced { "forced" } else { "graceful" }
+        );
+    }
     // Retract discovery (owner-checked) so no stale port/token survives a
     // clean exit; the seat lock releases when the guard drops right after.
     app::remove_service_json_if_owned(&discovery_dir);

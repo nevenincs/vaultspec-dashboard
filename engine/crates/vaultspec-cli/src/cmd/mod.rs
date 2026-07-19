@@ -2,6 +2,7 @@
 //! No domain logic lives here: each verb resolves its scope, drives the
 //! engine crates, and renders an envelope.
 
+pub mod a2a_lifecycle;
 pub mod events;
 pub mod graph;
 pub mod index;

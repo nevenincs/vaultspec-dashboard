@@ -61,6 +61,24 @@ fn tiers_value(unavailable: &[(&'static str, String)]) -> serde_json::Value {
         unavailable.iter().map(|(t, r)| (*t, r.as_str())).collect();
     let mut tiers =
         serde_json::to_value(engine_query::envelope::tiers_block(&refs)).expect("tiers serialize");
+    // Overlay the REAL agent-orchestration state onto the degraded-honest seed
+    // (a2a-product-provisioning W02.P04.S29): the engine-query base seeds `agent`
+    // unavailable so absence can never masquerade as availability; here the
+    // product controller's machine-global classification flips it to available
+    // when a usable gateway is live, or replaces the reason with the truthful
+    // one. An explicit `agent` degradation passed by a caller (the a2a
+    // pass-through) is authoritative and is never overwritten.
+    if !unavailable.iter().any(|(t, _)| *t == "agent") {
+        let (available, reason) = a2a_lifecycle::resolve_agent_tier();
+        if let Some(obj) = tiers.as_object_mut() {
+            let mut agent = serde_json::Map::new();
+            agent.insert("available".into(), Value::Bool(available));
+            if let Some(reason) = reason {
+                agent.insert("reason".into(), Value::String(reason));
+            }
+            obj.insert("agent".into(), Value::Object(agent));
+        }
+    }
     crate::handshake::decorate_tiers(&mut tiers);
     tiers
 }

@@ -35,8 +35,8 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 use vaultspec_product::credentials::CredentialStore;
-use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery};
-use vaultspec_product::lifecycle::LifecycleController;
+use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, ImmutableReason, Verdict};
+use vaultspec_product::lifecycle::{AttachMode, LifecycleController};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
@@ -293,6 +293,239 @@ impl Registry {
     }
 }
 
+// --- shared gateway resolution (S27/S29/S30/S31/S33) ---------------------------
+
+/// The protocol/state-schema ranges the dashboard's installed release set
+/// supports. v1 gateway API today; the state-schema window is deliberately wide
+/// (the packaged migration head advances independently). Kept in one place so
+/// the discovery context, resolution, and handshake all agree.
+fn supported_protocol() -> RangeBounds {
+    RangeBounds {
+        minimum: "v1".to_string(),
+        maximum: "v1".to_string(),
+    }
+}
+
+fn supported_state_schema() -> RangeBounds {
+    RangeBounds {
+        minimum: "0001".to_string(),
+        maximum: "9999".to_string(),
+    }
+}
+
+/// Read and parse the product gateway discovery record under an app home, if the
+/// gateway has published one. Secret-free by construction (`GatewayDiscovery`
+/// rejects any secret-bearing key at parse). `None` on absent or malformed —
+/// both are "no discoverable gateway", never an optimistic assumption of one.
+fn read_gateway_discovery(paths: &ProductPaths) -> Option<GatewayDiscovery> {
+    let raw = std::fs::read_to_string(paths.app_home().join(DISCOVERY_FILE)).ok()?;
+    GatewayDiscovery::parse(&raw).ok()
+}
+
+/// The classification context for our owner identity at the current instant.
+fn discovery_ctx(owner_id: &str) -> DiscoveryContext {
+    DiscoveryContext {
+        our_owner: owner_id.to_string(),
+        now_ms: crate::app::now_ms(),
+        freshness_ms: DISCOVERY_FRESHNESS.as_millis() as i64,
+        supported_protocol: supported_protocol(),
+        supported_state_schema: supported_state_schema(),
+    }
+}
+
+/// A short, non-secret reason string for an immutable-foreign verdict.
+fn immutable_reason(reason: &ImmutableReason) -> &'static str {
+    match reason {
+        ImmutableReason::DeadOrStale => "recorded process dead or heartbeat stale",
+        ImmutableReason::NoTrustedHandoff => "no readable owner-ACL attach handoff",
+        ImmutableReason::Incompatible => "protocol or state-schema mismatch",
+    }
+}
+
+/// The honest agent-orchestration availability derived from product state under
+/// an app home, WITHOUT reading any credential secret (the tiers-block hot path,
+/// S29): a usable gateway (owned-live or foreign-attachable-live) is available;
+/// every other state degrades with a truthful, non-secret reason. Scope-
+/// independent (a2a is one machine-global resident).
+pub(crate) fn agent_availability_at(
+    paths: &ProductPaths,
+    owner_id: &str,
+) -> (bool, Option<String>) {
+    let Some(discovery) = read_gateway_discovery(paths) else {
+        // No live discovery. Distinguish installed-but-stopped (a valid cold
+        // state) from genuinely not installed, and surface a receipt fault.
+        let controller = LifecycleController::new(paths.clone());
+        return match controller.active_receipt() {
+            Ok(Some(_)) => (
+                false,
+                Some("a2a gateway installed but stopped (no live discovery)".to_string()),
+            ),
+            Ok(None) => (
+                false,
+                Some("a2a orchestration is not installed".to_string()),
+            ),
+            Err(e) => (false, Some(format!("a2a install state unverifiable: {e}"))),
+        };
+    };
+    match discovery.classify(&discovery_ctx(owner_id)) {
+        Verdict::OwnedLive | Verdict::ForeignAttachable => (true, None),
+        Verdict::OwnedStale => (
+            false,
+            Some("owned a2a gateway is stale (recorded process not alive)".to_string()),
+        ),
+        Verdict::ForeignImmutable { reason } => (
+            false,
+            Some(format!(
+                "a foreign a2a gateway holds the runtime and stays immutable: {}",
+                immutable_reason(&reason)
+            )),
+        ),
+    }
+}
+
+/// Resolve the agent-orchestration tier MACHINE-GLOBALLY for the shared tiers
+/// builder (S29): every served response overlays this honest classification onto
+/// the degraded-by-default seed, so absence can never masquerade as availability.
+/// Derives the product paths from the machine app home (the same home the seated
+/// plane roots at); a path-resolution failure degrades honestly, never optimism.
+pub(crate) fn resolve_agent_tier() -> (bool, Option<String>) {
+    match ProductPaths::derive() {
+        Ok(paths) => {
+            let owner_id = paths.root().to_string_lossy().to_string();
+            agent_availability_at(&paths, &owner_id)
+        }
+        Err(e) => (false, Some(format!("a2a product paths unresolved: {e}"))),
+    }
+}
+
+/// The component-handshake projection for a product state under an app home
+/// (S28): installed release set, owned-or-foreign gateway identity, protocol and
+/// state-schema ranges, and the one authenticated readiness model. No secret is
+/// ever projected (the attach token never appears). Shared by the seated plane
+/// and the machine-global handshake decoration.
+pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value {
+    let controller = LifecycleController::new(paths.clone());
+    let receipt = controller.active_receipt().ok().flatten();
+    let discovery = read_gateway_discovery(paths);
+    let verdict = discovery
+        .as_ref()
+        .map(|d| d.classify(&discovery_ctx(owner_id)));
+    let (available, reason) = agent_availability_at(paths, owner_id);
+    let readiness = controller.readiness(
+        matches!(verdict, Some(Verdict::OwnedLive)),
+        WorkerState::Cold,
+    );
+    let gateway = discovery.as_ref().map(|d| {
+        json!({
+            "endpoint": d.endpoint,
+            "pid": d.pid,
+            "generation": d.generation,
+            "protocol": { "minimum": d.protocol.minimum, "maximum": d.protocol.maximum },
+            "state_schema": {
+                "minimum": d.state_schema.minimum,
+                "maximum": d.state_schema.maximum,
+            },
+            "ownership": match verdict {
+                Some(Verdict::OwnedLive) => "owned",
+                Some(Verdict::OwnedStale) => "owned-stale",
+                Some(Verdict::ForeignAttachable) => "foreign-attachable",
+                Some(Verdict::ForeignImmutable { .. }) => "foreign-immutable",
+                None => "unknown",
+            },
+        })
+    });
+    json!({
+        "installed": receipt.is_some(),
+        "release_set": receipt.as_ref().map(|r| json!({
+            "name": r.a2a_identity.name,
+            "version": r.a2a_identity.version,
+            "target": r.target.triple(),
+            "active_generation": r.active_generation,
+        })),
+        "readiness": readiness,
+        "supported": {
+            "protocol": {
+                "minimum": supported_protocol().minimum,
+                "maximum": supported_protocol().maximum,
+            },
+            "state_schema": {
+                "minimum": supported_state_schema().minimum,
+                "maximum": supported_state_schema().maximum,
+            },
+        },
+        "gateway": gateway,
+        "available": available,
+        "reason": reason,
+    })
+}
+
+/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration
+/// (S28): the same projection the seated plane serves, derived from the machine
+/// app home. A path-resolution failure degrades honestly.
+pub(crate) fn resolve_agent_handshake() -> Value {
+    match ProductPaths::derive() {
+        Ok(paths) => {
+            let owner_id = paths.root().to_string_lossy().to_string();
+            agent_handshake_at(&paths, &owner_id)
+        }
+        Err(e) => json!({
+            "installed": false,
+            "available": false,
+            "reason": format!("a2a product paths unresolved: {e}"),
+        }),
+    }
+}
+
+/// The resolved orchestration endpoint for the run edge (S30/S31), or the honest
+/// reason it is unavailable. `Available` carries the loopback endpoint and the
+/// attach-control bearer the forwarded verb calls authenticate with — the
+/// dashboard control token for our OWNED gateway, or the foreign owner's
+/// owner-ACL attach credential (read through the trusted handoff reference) for a
+/// read-only foreign attach.
+pub(crate) enum ResolvedGateway {
+    Available(ResolvedEndpoint),
+    Unavailable { reason: String },
+}
+
+/// A usable, authenticated gateway endpoint.
+pub(crate) struct ResolvedEndpoint {
+    /// The loopback `host:port` the gateway published.
+    pub endpoint: String,
+    /// The attach-control bearer for forwarded calls. Never logged.
+    pub attach_token: String,
+    /// Whether we OWN this gateway or attach to a foreign one read-only.
+    pub mode: AttachMode,
+    /// The active generation the gateway serves.
+    pub generation: String,
+}
+
+// Redact the bearer from any `{:?}` surface (mirrors the product crate's
+// credential-redacting Debug law).
+impl std::fmt::Debug for ResolvedEndpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedEndpoint")
+            .field("endpoint", &self.endpoint)
+            .field("attach_token", &"<redacted>")
+            .field("mode", &self.mode)
+            .field("generation", &self.generation)
+            .finish()
+    }
+}
+
+impl ResolvedEndpoint {
+    /// Parse the loopback port out of the `host:port` endpoint string.
+    pub(crate) fn port(&self) -> Option<u16> {
+        self.endpoint
+            .rsplit_once(':')
+            .and_then(|(_, p)| p.parse().ok())
+    }
+
+    /// Whether this resolution owns the gateway (vs. a read-only foreign attach).
+    pub(crate) fn is_owned(&self) -> bool {
+        matches!(self.mode, AttachMode::Owned)
+    }
+}
+
 // --- the lifecycle plane (owned by AppState) ----------------------------------
 
 /// The A2A lifecycle plane: the `vaultspec-product` controller plus the bounded
@@ -302,6 +535,12 @@ pub struct LifecyclePlane {
     paths: ProductPaths,
     owner_id: String,
     registry: Mutex<Registry>,
+    /// The gateway process this seated dashboard OWNS after a boot start (S27).
+    /// Retained for the process lifetime so the child is never orphaned and the
+    /// bounded termination contract (D4) can reach its tree on shutdown. `None`
+    /// when nothing was started here (cold, not-installed, or attached to a
+    /// gateway another process owns).
+    owned_gateway: Mutex<Option<vaultspec_product::process::GatewayProcess>>,
 }
 
 impl std::fmt::Debug for LifecyclePlane {
@@ -323,6 +562,7 @@ impl LifecyclePlane {
             paths,
             owner_id,
             registry: Mutex::new(Registry::new()),
+            owned_gateway: Mutex::new(None),
         }
     }
 
@@ -333,33 +573,323 @@ impl LifecyclePlane {
     /// The one readiness model, derived from the installed receipt and the live
     /// gateway discovery (if any). A cold worker on a live gateway is still ready.
     fn readiness_now(&self) -> Readiness {
-        let live = matches!(
-            self.current_verdict(),
-            Some(vaultspec_product::discovery::Verdict::OwnedLive)
-        );
+        let live = matches!(self.current_verdict(), Some(Verdict::OwnedLive));
         self.controller.readiness(live, WorkerState::Cold)
     }
 
     /// Read and classify the current gateway discovery record, if the seated
     /// controller has published one (W02.P04). `None` when no gateway is
     /// discoverable — so a mutation gate cannot see an owned live gateway.
-    fn current_verdict(&self) -> Option<vaultspec_product::discovery::Verdict> {
-        let raw = std::fs::read_to_string(self.paths.app_home().join(DISCOVERY_FILE)).ok()?;
-        let discovery = GatewayDiscovery::parse(&raw).ok()?;
-        let ctx = DiscoveryContext {
-            our_owner: self.owner_id.clone(),
-            now_ms: crate::app::now_ms(),
-            freshness_ms: DISCOVERY_FRESHNESS.as_millis() as i64,
-            supported_protocol: RangeBounds {
-                minimum: "v1".to_string(),
-                maximum: "v1".to_string(),
-            },
-            supported_state_schema: RangeBounds {
-                minimum: "0001".to_string(),
-                maximum: "9999".to_string(),
-            },
+    fn current_verdict(&self) -> Option<Verdict> {
+        let discovery = read_gateway_discovery(&self.paths)?;
+        Some(discovery.classify(&discovery_ctx(&self.owner_id)))
+    }
+
+    /// The honest agent-tier availability for this plane's product state (S29):
+    /// no credential read, just the discovery classification.
+    pub(crate) fn agent_availability(&self) -> (bool, Option<String>) {
+        agent_availability_at(&self.paths, &self.owner_id)
+    }
+
+    /// Resolve the authenticated run-edge endpoint (S30/S31): a usable gateway
+    /// with its attach-control bearer, or the honest unavailable reason. This is
+    /// the ONE resolution the `/ops/a2a` pass-through and the run-stream relay both
+    /// consume, replacing the retired token-bearing `service.json` discovery.
+    pub(crate) fn resolve_gateway(&self) -> ResolvedGateway {
+        let Some(discovery) = read_gateway_discovery(&self.paths) else {
+            let (_, reason) = self.agent_availability();
+            return ResolvedGateway::Unavailable {
+                reason: reason.unwrap_or_else(|| "a2a gateway not discoverable".to_string()),
+            };
         };
-        Some(discovery.classify(&ctx))
+        match discovery.classify(&discovery_ctx(&self.owner_id)) {
+            Verdict::OwnedLive => {
+                // Our own dashboard control (attach-control) token authenticates
+                // the forwarded calls to the gateway we own.
+                match CredentialStore::new(self.paths.credentials_dir()).read_attach_control() {
+                    Ok(cred) => ResolvedGateway::Available(ResolvedEndpoint {
+                        endpoint: discovery.endpoint.clone(),
+                        attach_token: cred.secret().to_string(),
+                        mode: AttachMode::Owned,
+                        generation: discovery.generation.clone(),
+                    }),
+                    Err(e) => ResolvedGateway::Unavailable {
+                        reason: format!("owned gateway attach credential unreadable: {e}"),
+                    },
+                }
+            }
+            Verdict::ForeignAttachable => {
+                // A compatible foreign gateway with a trusted handoff: read the
+                // foreign owner's owner-ACL attach credential from the non-secret
+                // handoff reference. Attachment is READ-ONLY (ADR D4).
+                match std::fs::read_to_string(&discovery.handoff_reference) {
+                    Ok(secret) => ResolvedGateway::Available(ResolvedEndpoint {
+                        endpoint: discovery.endpoint.clone(),
+                        attach_token: secret.trim().to_string(),
+                        mode: AttachMode::ForeignReadOnly,
+                        generation: discovery.generation.clone(),
+                    }),
+                    Err(e) => ResolvedGateway::Unavailable {
+                        reason: format!("foreign gateway handoff credential unreadable: {e}"),
+                    },
+                }
+            }
+            Verdict::OwnedStale => ResolvedGateway::Unavailable {
+                reason: "owned a2a gateway is stale (recorded process not alive)".to_string(),
+            },
+            Verdict::ForeignImmutable { reason } => ResolvedGateway::Unavailable {
+                reason: format!(
+                    "a foreign a2a gateway holds the runtime and stays immutable: {}",
+                    immutable_reason(&reason)
+                ),
+            },
+        }
+    }
+
+    /// Reconcile the receipt-owned gateway during seated boot (S27). The seated
+    /// dashboard starts or authenticates ONLY a gateway its receipt owns, and
+    /// leaves every compatible foreign resident immutable (ADR D4):
+    ///
+    /// - not installed (no receipt): nothing to own — no-op;
+    /// - owned + live discovery: AUTHENTICATE via the attach-control token and
+    ///   confirm readiness; nothing is spawned;
+    /// - owned + stale discovery (recorded process proven dead): quarantine the
+    ///   owner-matched stale record under the install lock, then start;
+    /// - installed + no discovery (cold): START the owned gateway from the active
+    ///   generation;
+    /// - foreign (attachable or immutable): LEAVE IT — never displace or mutate a
+    ///   foreign resident.
+    ///
+    /// Returns a non-secret projection of what was reconciled (for the boot log).
+    /// Best-effort: a start failure degrades the agent tier honestly rather than
+    /// aborting the seat.
+    pub(crate) fn reconcile_seated_boot(&self) -> Value {
+        let _ = self.controller.initialize();
+        let receipt = match self.controller.active_receipt() {
+            Ok(Some(r)) => r,
+            Ok(None) => {
+                return json!({ "action": "none", "reason": "a2a is not installed" });
+            }
+            Err(e) => {
+                return json!({ "action": "error", "reason": format!("receipt unverifiable: {e}") });
+            }
+        };
+        let verdict = self.current_verdict();
+        match verdict {
+            Some(Verdict::OwnedLive) => self.authenticate_owned(&receipt),
+            Some(Verdict::OwnedStale) => self.recover_stale_then_start(&receipt),
+            Some(Verdict::ForeignAttachable) => json!({
+                "action": "attach-foreign",
+                "reason": "a compatible foreign gateway satisfies run demand read-only; left immutable",
+            }),
+            Some(Verdict::ForeignImmutable { reason }) => json!({
+                "action": "leave-foreign",
+                "reason": format!("foreign gateway left immutable: {}", immutable_reason(&reason)),
+            }),
+            None => self.start_owned(&receipt),
+        }
+    }
+
+    /// Authenticate an already-running owned gateway: read the attach-control
+    /// token and probe readiness over the real loopback endpoint. A resolution
+    /// whose endpoint carries no parseable loopback port is refused before a
+    /// socket is opened.
+    fn authenticate_owned(&self, _receipt: &vaultspec_product::receipt::Receipt) -> Value {
+        match self.resolve_gateway() {
+            ResolvedGateway::Available(ep) => {
+                if ep.port().is_none() {
+                    return json!({
+                        "action": "authenticate",
+                        "ready": false,
+                        "reason": "owned gateway endpoint has no parseable loopback port",
+                    });
+                }
+                let owned = ep.is_owned();
+                let endpoint = ep.endpoint.clone();
+                let generation = ep.generation.clone();
+                let client =
+                    vaultspec_product::control::ControlClient::new(ep.endpoint, ep.attach_token);
+                match client.readiness() {
+                    Ok(r) => json!({
+                        "action": "authenticate",
+                        "endpoint": endpoint,
+                        "generation": generation,
+                        "owned": owned,
+                        "ready": r.service_ready(),
+                    }),
+                    Err(e) => json!({
+                        "action": "authenticate",
+                        "endpoint": endpoint,
+                        "owned": owned,
+                        "ready": false,
+                        "reason": format!("owned gateway readiness probe failed: {e}"),
+                    }),
+                }
+            }
+            ResolvedGateway::Unavailable { reason } => {
+                json!({ "action": "authenticate", "ready": false, "reason": reason })
+            }
+        }
+    }
+
+    /// Recover a stale owned discovery record under the install lock (prove the
+    /// recorded process dead, quarantine the owner-matched stale state), then
+    /// start the owned gateway.
+    fn recover_stale_then_start(&self, receipt: &vaultspec_product::receipt::Receipt) -> Value {
+        use vaultspec_product::locking::{
+            Actor, InstallLock, StaleState, quarantine_owner_matched_stale,
+        };
+        let Some(discovery) = read_gateway_discovery(&self.paths) else {
+            return self.start_owned(receipt);
+        };
+        let lock = InstallLock::new(self.paths.install_lock_path());
+        let guard = match lock.acquire(Actor::Installer, &self.owner_id) {
+            Ok(Ok(guard)) => guard,
+            Ok(Err(busy)) => {
+                return json!({
+                    "action": "recover-stale",
+                    "reason": format!("install lock busy: {busy:?}"),
+                });
+            }
+            Err(e) => {
+                return json!({
+                    "action": "recover-stale",
+                    "reason": format!("install lock error: {e}"),
+                });
+            }
+        };
+        let stale = StaleState {
+            owner: self.owner_id.clone(),
+            pid: discovery.pid,
+        };
+        if let Err(refusal) = quarantine_owner_matched_stale(&self.owner_id, &stale) {
+            drop(guard);
+            return json!({
+                "action": "recover-stale",
+                "reason": format!("stale quarantine refused: {refusal}"),
+            });
+        }
+        // The stale discovery is owner-matched and proven dead: retract it, then
+        // start fresh. The guard holds the install lock across the retract+start.
+        let _ = std::fs::remove_file(self.paths.app_home().join(DISCOVERY_FILE));
+        let out = self.start_owned(receipt);
+        drop(guard);
+        out
+    }
+
+    /// Start the owned gateway from the active generation's verified capsule and
+    /// retain the process for its lifetime. Reads the capsule manifest and the
+    /// pinned component lock the install laid down under the active generation;
+    /// an absent capsule is an honest "cannot start", never a fabricated success.
+    fn start_owned(&self, receipt: &vaultspec_product::receipt::Receipt) -> Value {
+        let capsule_root = match self.paths.generation_dir(&receipt.active_generation) {
+            Ok(dir) => dir,
+            Err(e) => {
+                return json!({
+                    "action": "start",
+                    "started": false,
+                    "reason": format!("generation path invalid: {e}"),
+                });
+            }
+        };
+        let manifest_path = capsule_root.join("component-manifest.json");
+        let lock_path = capsule_root.join("component.lock");
+        let (raw_manifest, raw_lock) = match (
+            std::fs::read_to_string(&manifest_path),
+            std::fs::read_to_string(&lock_path),
+        ) {
+            (Ok(m), Ok(l)) => (m, l),
+            _ => {
+                return json!({
+                    "action": "start",
+                    "started": false,
+                    "reason": "installed generation is missing its capsule manifest or component lock",
+                });
+            }
+        };
+        let lock = match vaultspec_product::manifest::ComponentLock::parse(&raw_lock) {
+            Ok(l) => l,
+            Err(e) => {
+                return json!({
+                    "action": "start",
+                    "started": false,
+                    "reason": format!("component lock unreadable: {e}"),
+                });
+            }
+        };
+        let manifest = match LifecycleController::load_verified_capsule(
+            &raw_manifest,
+            &lock,
+            receipt.target,
+        ) {
+            Ok(m) => m,
+            Err(e) => {
+                return json!({
+                    "action": "start",
+                    "started": false,
+                    "reason": format!("capsule verification failed: {e}"),
+                });
+            }
+        };
+        match self
+            .controller
+            .spawn_owned_gateway(&capsule_root, &manifest)
+        {
+            Ok(process) => {
+                let pid = process.pid();
+                *self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner()) = Some(process);
+                json!({
+                    "action": "start",
+                    "started": true,
+                    "pid": pid,
+                    "generation": receipt.active_generation,
+                })
+            }
+            Err(e) => json!({
+                "action": "start",
+                "started": false,
+                "reason": format!("gateway spawn failed: {e}"),
+            }),
+        }
+    }
+
+    /// Terminate the owned gateway process tree within a bound (D4), if this
+    /// dashboard started one. Called on seated shutdown. No-op when nothing was
+    /// started here (cold, or attached to a gateway another process owns).
+    pub(crate) fn terminate_owned_gateway(&self, graceful: Duration) -> Option<bool> {
+        let mut slot = self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner());
+        let mut process = slot.take()?;
+        match process.terminate_tree(graceful) {
+            Ok(t) => Some(t.forced),
+            Err(_) => Some(true),
+        }
+    }
+
+    /// The A2A product facts for the `/status` backends block (S32): installation,
+    /// gateway identity, the ONE readiness model, and lifecycle admission. A cold
+    /// worker on a live gateway reports READY, never degraded (ADR D4). The worker
+    /// and provider processes are gateway-owned, run-scoped children — the
+    /// dashboard reports the gateway's readiness and its own admission state, never
+    /// a fabricated worker/provider census it does not own.
+    pub(crate) fn stream_facts(&self) -> Value {
+        let mut facts = agent_handshake_at(&self.paths, &self.owner_id);
+        let in_flight = self.lock().running().count();
+        if let Some(obj) = facts.as_object_mut() {
+            obj.insert(
+                "admission".into(),
+                json!({
+                    "in_flight": in_flight,
+                    "single_flight_ceiling": MAX_CONCURRENT,
+                }),
+            );
+            // Worker/provider processes are gateway-owned run-scoped children
+            // (ADR D4); the dashboard does not census them. State honestly.
+            obj.insert(
+                "worker_and_providers".into(),
+                json!("gateway-owned run-scoped children; not dashboard-tracked"),
+            );
+        }
+        facts
     }
 
     /// The SINGLE guarded-mutation seam: a mutating operation composes BOTH the
@@ -561,6 +1091,34 @@ pub(crate) async fn a2a_lifecycle_job(
 
 #[cfg(test)]
 impl LifecyclePlane {
+    /// Build a plane over an isolated product app home (test-only): the S34
+    /// runtime-identity suite drives the real reconcile against a temp home.
+    pub(crate) fn testonly_new(app_home: &std::path::Path) -> Self {
+        Self::new(app_home)
+    }
+
+    /// The stable owner id this plane classifies discovery against (test-only):
+    /// the S34 suite writes a discovery record whose `owner` must match it.
+    pub(crate) fn testonly_owner_id(&self) -> &str {
+        &self.owner_id
+    }
+
+    /// The product paths this plane roots at (test-only), so the S34 suite can
+    /// write the receipt, credentials, and discovery record the reconcile reads.
+    pub(crate) fn testonly_paths(&self) -> &ProductPaths {
+        &self.paths
+    }
+
+    /// Inject an owned gateway process (test-only), so the S34 suite can prove the
+    /// bounded owned-tree termination contract against a real capsule-interpreter
+    /// process without the not-yet-built install layout.
+    pub(crate) fn testonly_set_owned_gateway(
+        &self,
+        process: vaultspec_product::process::GatewayProcess,
+    ) {
+        *self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner()) = Some(process);
+    }
+
     /// Occupy the component single-flight slot with a running job (test-only), so
     /// a route acceptance test can prove a concurrent different-op mutation is
     /// refused while the component is busy.

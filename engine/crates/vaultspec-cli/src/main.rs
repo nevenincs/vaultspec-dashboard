@@ -117,6 +117,39 @@ enum Command {
     /// Self-update a receipt-marked install (stop, update, relaunch).
     /// Package-manager installs are refused with their own remediation.
     Update,
+    /// The dashboard-owned A2A companion lifecycle: bounded status and
+    /// mutation subcommands over the typed product authority — no free-form
+    /// executable or path operands (a2a-product-provisioning W02.P04.S47).
+    A2a {
+        #[command(subcommand)]
+        action: A2aAction,
+    },
+}
+
+/// The bounded A2A lifecycle actions. A closed enum — clap rejects any token
+/// outside this set, so the verb selects semantic intent, never a free-form
+/// path or executable.
+#[derive(Subcommand)]
+enum A2aAction {
+    /// The A2A product status + ownership projection (read-only).
+    Status,
+    /// Read-only readiness and ownership diagnosis.
+    Doctor,
+    /// Authenticate and stop the running owned gateway.
+    Stop,
+    /// Remove owned generations and receipts, preserving user data.
+    Remove,
+}
+
+impl From<&A2aAction> for cmd::a2a_lifecycle::Action {
+    fn from(a: &A2aAction) -> Self {
+        match a {
+            A2aAction::Status => cmd::a2a_lifecycle::Action::Status,
+            A2aAction::Doctor => cmd::a2a_lifecycle::Action::Doctor,
+            A2aAction::Stop => cmd::a2a_lifecycle::Action::Stop,
+            A2aAction::Remove => cmd::a2a_lifecycle::Action::Remove,
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -281,6 +314,7 @@ fn main() -> std::process::ExitCode {
             | Command::Restart
             | Command::Update
             | Command::Provision { .. }
+            | Command::A2a { .. }
     ) {
         let (name, result) = match command {
             Command::Open => ("open", cmd::launch::open_app()),
@@ -288,6 +322,7 @@ fn main() -> std::process::ExitCode {
             Command::Restart => ("restart", cmd::lifecycle::restart()),
             Command::Update => ("update", cmd::lifecycle::update()),
             Command::Provision { action } => ("provision", run_provision(action)),
+            Command::A2a { action } => ("a2a", cmd::a2a_lifecycle::run((&action).into())),
             _ => unreachable!(),
         };
         // Provision results carry the plane's own served tiers; lifecycle
@@ -331,7 +366,8 @@ fn main() -> std::process::ExitCode {
         | Command::Stop
         | Command::Restart
         | Command::Update
-        | Command::Provision { .. } => {
+        | Command::Provision { .. }
+        | Command::A2a { .. } => {
             unreachable!("handled above")
         }
     };
@@ -386,7 +422,8 @@ fn main() -> std::process::ExitCode {
         | Command::Stop
         | Command::Restart
         | Command::Update
-        | Command::Provision { .. } => {
+        | Command::Provision { .. }
+        | Command::A2a { .. } => {
             unreachable!("handled above")
         }
     };

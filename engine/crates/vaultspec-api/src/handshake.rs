@@ -36,6 +36,14 @@ pub const CORE_FLOOR: (u64, u64, u64) = (0, 1, 36);
 /// honestly `null` rather than inventing one.
 pub const RAG_FLOOR: &str = "0.2.28";
 
+/// The A2A gateway API version the dashboard's release set is built against
+/// (a2a-product-provisioning W02.P04.S28). The A2A component is a dashboard-owned
+/// COMPANION, not an attach-never-own sibling, so its handshake carries the
+/// installed release set, owned-or-foreign gateway identity, protocol/state-
+/// schema ranges, and authenticated readiness — resolved live per response, not
+/// a memoized `--version` line.
+pub const A2A_PROTOCOL_FLOOR: &str = "v1";
+
 /// Bound on any `--version` probe: output cap (the line is tiny; the cap
 /// guards a pathological child) and wall-clock deadline (generous enough for
 /// a cold `uv run` resolve), per the resource-bounds rule — every subprocess
@@ -214,6 +222,25 @@ pub fn decorate_tiers(tiers: &mut Value) {
             "floor": RAG_FLOOR,
             "version": Value::Null,
         });
+    }
+    decorate_agent_tier(tiers);
+}
+
+/// Decorate the dedicated `agent` tier with the A2A component handshake (D6/S28):
+/// the installed release set, the owned-or-foreign gateway identity, the declared
+/// protocol/state-schema ranges, and the one authenticated readiness model. The
+/// A2A component is dashboard-OWNED, so — unlike the memoized `--version` probes
+/// for core/rag — this projects the product controller's live classification
+/// (resolved machine-globally). Availability and reason stay whatever the tier
+/// computation already set; this only adds the `component` block.
+pub fn decorate_agent_tier(tiers: &mut Value) {
+    if let Some(agent) = tiers.get_mut("agent") {
+        let mut component = crate::routes::a2a_lifecycle::resolve_agent_handshake();
+        if let Some(obj) = component.as_object_mut() {
+            obj.insert("name".into(), json!("vaultspec-a2a"));
+            obj.insert("protocol_floor".into(), json!(A2A_PROTOCOL_FLOOR));
+        }
+        agent["component"] = component;
     }
 }
 

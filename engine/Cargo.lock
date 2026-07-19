@@ -3008,6 +3008,7 @@ dependencies = [
  "engine-model",
  "engine-query",
  "engine-store",
+ "flate2",
  "fs4",
  "futures-core",
  "getrandom",
@@ -3022,6 +3023,8 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2",
+ "tar",
  "tempfile",
  "thiserror",
  "tokio",
@@ -3030,6 +3033,7 @@ dependencies = [
  "tower-http",
  "vaultspec-product",
  "vaultspec-session",
+ "zip",
 ]
 
 [[package]]
@@ -3050,6 +3054,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "vaultspec-api",
+ "vaultspec-product",
  "vaultspec-session",
 ]
 

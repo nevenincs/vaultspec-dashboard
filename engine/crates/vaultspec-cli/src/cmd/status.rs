@@ -55,6 +55,11 @@ pub fn run(ctx: &Ctx) -> Result<Value, CliError> {
                 None => json!({"available": true}),
                 Some(reason) => json!({"available": false, "reason": reason}),
             },
+            // The dashboard-owned A2A companion (a2a-product-provisioning
+            // W02.P04.S33): the complete product + ownership projection —
+            // installed release set, the one readiness model, ownership
+            // retention, and the owned-or-foreign gateway identity.
+            "a2a": super::a2a_lifecycle::facts(),
         },
         "git": git,
         // The machine seat (single-app-runtime D5): running state, identity,

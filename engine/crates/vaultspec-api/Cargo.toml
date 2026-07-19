@@ -48,5 +48,13 @@ embed-spa = ["dep:rust-embed"]
 workspace = true
 
 [dev-dependencies]
+# The S34 A2A runtime-identity suite extracts a REAL built A2A desktop capsule
+# (a DEFLATE zip) and its bundled CPython runtime (a gzip tar) to launch a real
+# owned process from the capsule's own interpreter and prove the seated-boot
+# reconcile. Dev-only; the shipped crate depends on none of these.
+flate2 = "1.0"
+sha2 = "0.10"
+tar = "0.4"
 tempfile = "3.27.0"
 tower = { version = "0.5.3", features = ["util"] }
+zip = { version = "2.2", default-features = false, features = ["deflate"] }

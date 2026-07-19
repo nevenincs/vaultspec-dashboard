@@ -83,6 +83,11 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         "backends": {
             "core": {"invocation": core.invocation.join(" ")},
             "rag": rag,
+            // The dashboard-owned A2A companion (a2a-product-provisioning
+            // W02.P04.S32): installation, gateway identity, the one readiness
+            // model, and lifecycle admission. A cold worker on a live gateway is
+            // READY here, never collapsed into a degraded backend.
+            "a2a": state.a2a_lifecycle.stream_facts(),
         },
         // A dead watcher is stated, never papered over (DF-4 residual):
         // heartbeat-alive-but-rebuilds-stopped is a zombie, and the
