@@ -21,6 +21,7 @@ ingest-code = { version = "0.1.0", path = "../ingest-code" }
 ingest-git = { version = "0.1.0", path = "../ingest-git" }
 ingest-struct = { version = "0.1.0", path = "../ingest-struct" }
 rag-client = { version = "0.1.0", path = "../rag-client" }
+vaultspec-product = { version = "0.1.0", path = "../vaultspec-product" }
 vaultspec-session = { version = "0.1.0", path = "../vaultspec-session" }
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 rust-embed = { version = "8.11.0", optional = true, features = ["debug-embed"] }

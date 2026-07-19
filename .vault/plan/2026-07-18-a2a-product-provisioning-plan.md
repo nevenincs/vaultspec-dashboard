@@ -79,14 +79,14 @@ Dispatch to vaultspec-high-executor to implement the opaque capsule entrypoint c
 
 Dispatch to vaultspec-high-executor to mount lifecycle status, run, and job routes whose hard-cap admission and component single-flight happen atomically.
 
-- [ ] `W01.P03.S19` - Depend on the product-contract crate and required bounded runtime features from the resident API; `engine/crates/vaultspec-api/Cargo.toml`.
-- [ ] `W01.P03.S20` - Own the lifecycle registry and controller inside AppState so tests and seated instances cannot share global mutation state; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `W01.P03.S21` - Export the dedicated lifecycle route module without adding any orchestration run verb; `engine/crates/vaultspec-api/src/routes/mod.rs`.
-- [ ] `W01.P03.S22` - Serve typed lifecycle status, run, and job endpoints with one atomic check-and-reserve admission critical section, capped output, TTL retention, deadlines, and component-scoped single-flight; `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
-- [ ] `W01.P03.S23` - Mount and inventory the bearer-gated lifecycle routes separately from the fixed ops A2A namespace; `engine/crates/vaultspec-api/src/lib.rs`.
-- [ ] `W01.P03.S24` - Reserve the lifecycle prefix from SPA fallback routing so route mistakes fail visibly; `engine/crates/vaultspec-api/src/routes/spa.rs`.
-- [ ] `W01.P03.S25` - Register the lifecycle route acceptance suite in the API test module; `engine/crates/vaultspec-api/src/lib_tests/mod.rs`.
-- [ ] `W01.P03.S26` - Prove typed refusal, initial bootstrap, active-receipt mutation, at-cap atomic race rejection, and concurrent cross-operation single-flight using production routes and a real registry; `engine/crates/vaultspec-api/src/lib_tests/a2a_lifecycle.rs`.
+- [x] `W01.P03.S19` - Depend on the product-contract crate and required bounded runtime features from the resident API; `engine/crates/vaultspec-api/Cargo.toml`.
+- [x] `W01.P03.S20` - Own the lifecycle registry and controller inside AppState so tests and seated instances cannot share global mutation state; `engine/crates/vaultspec-api/src/app.rs`.
+- [x] `W01.P03.S21` - Export the dedicated lifecycle route module without adding any orchestration run verb; `engine/crates/vaultspec-api/src/routes/mod.rs`.
+- [x] `W01.P03.S22` - Serve typed lifecycle status, run, and job endpoints with one atomic check-and-reserve admission critical section, capped output, TTL retention, deadlines, and component-scoped single-flight; `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
+- [x] `W01.P03.S23` - Mount and inventory the bearer-gated lifecycle routes separately from the fixed ops A2A namespace; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `W01.P03.S24` - Reserve the lifecycle prefix from SPA fallback routing so route mistakes fail visibly; `engine/crates/vaultspec-api/src/routes/spa.rs`.
+- [x] `W01.P03.S25` - Register the lifecycle route acceptance suite in the API test module; `engine/crates/vaultspec-api/src/lib_tests/mod.rs`.
+- [x] `W01.P03.S26` - Prove typed refusal, initial bootstrap, active-receipt mutation, at-cap atomic race rejection, and concurrent cross-operation single-flight using production routes and a real registry; `engine/crates/vaultspec-api/src/lib_tests/a2a_lifecycle.rs`.
 
 ## Wave `W02` - integrate authenticated gateway ownership and run admission
 

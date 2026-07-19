@@ -1,0 +1,65 @@
+---
+tags:
+  - '#exec'
+  - '#a2a-product-provisioning'
+date: '2026-07-19'
+modified: '2026-07-19'
+step_id: 'S24'
+related:
+  - "[[2026-07-18-a2a-product-provisioning-plan]]"
+---
+
+<!-- FRONTMATTER RULES:
+     tags: one directory tag (hardcoded #exec) and one feature tag.
+     Replace a2a-product-provisioning with a kebab-case feature tag, e.g. #foo-bar.
+     Additional tags may be appended below the required pair.
+
+     modified: CLI-maintained last-modified stamp; set at scaffold time,
+     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
+
+     step_id is the originating Step's canonical identifier, e.g. S01.
+     The S24 and 2026-07-18-a2a-product-provisioning-plan placeholders are machine-filled by
+     `vaultspec-core vault add exec`; do not fill them by hand.
+
+     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
+     parent plan.
+
+     DO NOT add fields beyond those scaffolded; metadata lives
+     only in the frontmatter. -->
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
+     - NEVER use [[wiki-links]] or markdown links in the document body.
+     - NEVER reference file paths in the body. If you must name a source file,
+       class, or function, use inline backtick code: `src/module.py`. -->
+
+<!-- STEP RECORD:
+     This file represents one Step from the originating plan. Identified
+     by its canonical leaf identifier (S##) and ancestor display path.
+     The Reserve the lifecycle prefix from SPA fallback routing so route mistakes fail visibly and ## Scope
+
+- `engine/crates/vaultspec-api/src/routes/spa.rs` placeholders below are machine-filled
+     by `vaultspec-core vault add exec` from the originating Step row;
+     do not fill them by hand. -->
+
+# Reserve the lifecycle prefix from SPA fallback routing so route mistakes fail visibly
+
+## Scope
+
+- `engine/crates/vaultspec-api/src/routes/spa.rs`
+
+## Description
+
+- Reserve the `/a2a` prefix in the SPA fallback API-prefix list so an unknown
+  `/a2a/lifecycle/*` path fails loud as a bearer-gated JSON 404 instead of
+  rendering the SPA shell.
+
+## Outcome
+
+The lifecycle prefix is reserved from SPA fallback and is on the bearer boundary;
+a route mistake under `/a2a` fails visibly.
+
+## Notes
+
+The `API_PREFIXES` list is a security boundary bound to `CONTRACT_ROUTES`; adding
+`/a2a` there keeps the new routes gated and the two lists non-drifting.

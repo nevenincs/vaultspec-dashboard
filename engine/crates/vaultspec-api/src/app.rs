@@ -1064,6 +1064,12 @@ pub struct AppState {
     /// serializes every unit of work through this one handle, exactly like
     /// `user_state`.
     pub authoring_store: Mutex<Option<crate::authoring::store::Store>>,
+    /// The A2A component lifecycle plane (a2a-product-provisioning W01.P03): the
+    /// `vaultspec-product` lifecycle controller plus its bounded, atomic job
+    /// registry, rooted at the machine product app home. Owned HERE inside
+    /// `AppState` — never a process-global static — so seated instances and tests
+    /// each get their own registry and cannot share lifecycle mutation state.
+    pub a2a_lifecycle: Arc<crate::routes::a2a_lifecycle::LifecyclePlane>,
 }
 
 impl AppState {
@@ -1302,9 +1308,36 @@ pub fn mint_bearer() -> String {
     hex
 }
 
+/// Resolve the product app home the A2A lifecycle plane roots at. The install is
+/// machine-global (single-app-runtime app home); when no home variable is set the
+/// engine's re-derivable data dir under the workspace is the deterministic
+/// fallback. A test isolates itself with [`build_state_with_product_home`].
+fn resolve_product_app_home(root: &std::path::Path) -> PathBuf {
+    vaultspec_session::app_home::app_home_dir()
+        .unwrap_or_else(|| root.join(".vault/data/engine-data"))
+}
+
+/// [`build_state_with_bearer`] with an explicit product app home, so a test can
+/// isolate the A2A lifecycle plane from the real machine app home.
+#[cfg(test)]
+pub(crate) fn build_state_with_product_home(
+    root: PathBuf,
+    bearer: String,
+    product_app_home: PathBuf,
+) -> Arc<AppState> {
+    build_state_full(root, bearer, product_app_home)
+}
+
 /// [`build_state`] with a caller-minted bearer (the boot path mints early so
 /// discovery can publish before the index).
 pub fn build_state_with_bearer(root: PathBuf, bearer: String) -> Arc<AppState> {
+    let product_home = resolve_product_app_home(&root);
+    build_state_full(root, bearer, product_home)
+}
+
+/// The shared state builder: [`build_state_with_bearer`] and the test isolation
+/// builder both funnel here so the A2A lifecycle plane is constructed once.
+fn build_state_full(root: PathBuf, bearer: String, product_app_home: PathBuf) -> Arc<AppState> {
     let workspace_root = root.clone();
     let active_token = crate::routes::scope_token(&workspace_root);
     // The single shared user-state handle, opened ONCE per workspace. Like the
@@ -1325,6 +1358,9 @@ pub fn build_state_with_bearer(root: PathBuf, bearer: String) -> Arc<AppState> {
         shutdown: tokio::sync::Notify::new(),
         started_ms: now_ms(),
         authoring_store: Mutex::new(None),
+        a2a_lifecycle: Arc::new(crate::routes::a2a_lifecycle::LifecyclePlane::new(
+            &product_app_home,
+        )),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned

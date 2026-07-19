@@ -1,5 +1,6 @@
 //! Route families (contract §3–§8).
 
+pub mod a2a_lifecycle;
 pub mod code_files;
 pub mod content;
 pub mod file_tree;

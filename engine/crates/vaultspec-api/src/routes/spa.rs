@@ -199,6 +199,11 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/authoring",
     "/search",
     "/ops",
+    // The A2A component lifecycle plane (a2a-product-provisioning W01.P03),
+    // distinct from the fixed `/ops/a2a` orchestration namespace. Reserved so an
+    // unknown `/a2a/lifecycle/*` path fails loud as a bearer-gated JSON 404,
+    // never the SPA shell.
+    "/a2a",
     // Rides ahead of the in-flight provisioning plane (shared-tree commit
     // sweep, kept deliberately): this list is a bearer boundary, and the
     // /provision routes must never land without their prefix already gated.

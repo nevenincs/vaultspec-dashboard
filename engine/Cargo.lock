@@ -3028,6 +3028,7 @@ dependencies = [
  "tokio-stream",
  "tower",
  "tower-http",
+ "vaultspec-product",
  "vaultspec-session",
 ]
 

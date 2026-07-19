@@ -84,6 +84,9 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/ops/a2a/{verb}",
     "/ops/a2a/runs/{run_id}/stream",
     "/ops/git/{verb}",
+    "/a2a/lifecycle/status",
+    "/a2a/lifecycle/run",
+    "/a2a/lifecycle/jobs/{id}",
     "/provision/status",
     "/provision/run",
     "/provision/jobs/{id}",
@@ -241,6 +244,24 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Read-only git pass-through (dashboard-pipeline-wire W04): porcelain
         // status, numstat, unified diff — whitelisted, no mutating verb.
         .route("/ops/git/{verb}", post(routes::ops::ops_git))
+        // The A2A component lifecycle plane (a2a-product-provisioning W01.P03):
+        // typed install/ensure/start/stop/.../doctor as bounded, atomically-
+        // admitted, component-single-flight jobs over the vaultspec-product
+        // controller. A DEDICATED namespace, deliberately SEPARATE from the fixed
+        // five-verb `/ops/a2a` orchestration surface above — no run verb here.
+        // Bearer-gated by the same middleware as every other data route.
+        .route(
+            "/a2a/lifecycle/status",
+            get(routes::a2a_lifecycle::a2a_lifecycle_status),
+        )
+        .route(
+            "/a2a/lifecycle/run",
+            post(routes::a2a_lifecycle::a2a_lifecycle_run),
+        )
+        .route(
+            "/a2a/lifecycle/jobs/{id}",
+            get(routes::a2a_lifecycle::a2a_lifecycle_job),
+        )
         // The framework acquisition + provisioning plane (project-provisioning
         // ADR): a served status projection over a registry-resolved target, and
         // job-shaped install/upgrade/migrate/acquire that BROKERS the owning

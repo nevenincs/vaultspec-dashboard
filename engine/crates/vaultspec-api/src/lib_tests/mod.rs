@@ -116,6 +116,7 @@ fn percent_encode(s: &str) -> String {
     out
 }
 
+mod a2a_lifecycle;
 mod auth_and_query;
 mod browser_and_contract;
 mod provision_and_recovery;
