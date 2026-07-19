@@ -255,9 +255,9 @@ describe("ProposalCard", () => {
     expect(screen.getByRole("button", { name: "Approve proposal" })).toBeTruthy();
   });
 
-  it("requires a comment to request changes, then submits the served edit verdict", async () => {
+  it("requests changes via an INLINE in-card composer (no modal) and submits the edit verdict", async () => {
     const counts = emptyCounts();
-    localized(
+    const { container } = localized(
       <ProposalCard
         proposal={needsReviewProposal({
           eligibility: [
@@ -270,21 +270,28 @@ describe("ProposalCard", () => {
       />,
     );
 
-    // The third verdict is served as its own action button.
+    // The third verdict opens an INLINE composer INSIDE the card — never a
+    // route-blocking modal (the note is a message to the agent, composed in-flow).
     fireEvent.click(screen.getByRole("button", { name: "Request changes" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
+    const composer = container.querySelector("[data-request-changes-composer]");
+    expect(composer).toBeTruthy();
 
-    // The comment is REQUIRED: submit stays disabled until a note is entered.
-    const dialog = screen.getByRole("dialog");
-    const submit = within(dialog).getByRole("button", {
-      name: "Request changes",
-    }) as HTMLButtonElement;
+    // The comment is REQUIRED: Send stays disabled with the required-note hint until typed.
+    const submit = composer!.querySelector(
+      '[data-action="request_changes-submit"]',
+    ) as HTMLButtonElement;
     expect(submit.disabled).toBe(true);
+    expect(composer!.querySelector("[data-request-changes-required]")).toBeTruthy();
 
-    const textarea = within(dialog).getByRole("textbox") as HTMLTextAreaElement;
+    const textarea = composer!.querySelector(
+      "[data-request-changes-comment]",
+    ) as HTMLTextAreaElement;
     fireEvent.change(textarea, {
       target: { value: "  Tighten the second paragraph.  " },
     });
     expect(submit.disabled).toBe(false);
+    expect(composer!.querySelector("[data-request-changes-required]")).toBeNull();
 
     fireEvent.click(submit);
     await waitFor(() => expect(counts.requestChanges).toBe(1));

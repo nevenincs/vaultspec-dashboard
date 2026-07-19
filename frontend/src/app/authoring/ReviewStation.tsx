@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
@@ -14,7 +14,7 @@ import {
   reviewStaleDescriptor,
   reviewStatusDescriptor,
   reviewValidationDescriptor,
-  REQUEST_CHANGES_DIALOG,
+  REQUEST_CHANGES_COMPOSER,
   REVIEW_STATION_MESSAGES,
   useAcknowledgeApplied,
   useApplyChangeset,
@@ -42,7 +42,6 @@ import {
   StateBlock,
 } from "../kit";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
-import { Dialog } from "../chrome/Dialog";
 import { DiffPanel } from "./DiffPanel";
 
 type ResolveMessage = ReturnType<typeof useLocalizedMessageResolver>;
@@ -224,9 +223,12 @@ export function ProposalCard({
   const [feedback, setFeedback] = useState<CardFeedback>(null);
   const [showDiff, setShowDiff] = useState(false);
   const [pending, setPending] = useState<PendingConfirmation | null>(null);
-  const [requestingChanges, setRequestingChanges] = useState<ProposalProjection | null>(
-    null,
-  );
+  // Request-changes captures its required note INLINE inside the card (agentic-authoring
+  // -ux ADR: review is in the transcript flow, never a route-blocking modal). The note
+  // is a message to the agent — it returns the proposal to draft and the a2a phase gate
+  // resumes the writer — so it is composed in-flow, not in a dialog floating over the
+  // very composer built for messaging the agent.
+  const [composing, setComposing] = useState(false);
 
   const status = safeMessage(resolveMessage, reviewStatusDescriptor(proposal.status));
   const author = safeMessage(
@@ -420,7 +422,7 @@ export function ProposalCard({
               if (presentation.kind === "direct") {
                 void runCommand(presentation.command, proposal);
               } else if (presentation.kind === "commented") {
-                setRequestingChanges(proposal);
+                setComposing((open) => !open);
               } else {
                 setPending({ command: presentation.command, proposal });
               }
@@ -475,6 +477,17 @@ export function ProposalCard({
         </Button>
       </div>
 
+      {composing && (
+        <RequestChangesComposer
+          busy={busy}
+          onCancel={() => setComposing(false)}
+          onSubmit={(comment) => {
+            setComposing(false);
+            void run(() => actions.requestChanges(proposal, comment));
+          }}
+        />
+      )}
+
       {showDiff && <DiffPanel changesetId={proposal.changeset_id} />}
 
       {feedbackMessage && feedback && (
@@ -499,27 +512,18 @@ export function ProposalCard({
           }}
         />
       )}
-
-      {requestingChanges && (
-        <RequestChangesDialog
-          busy={busy}
-          onCancel={() => setRequestingChanges(null)}
-          onSubmit={(comment) => {
-            const target = requestingChanges;
-            setRequestingChanges(null);
-            void run(() => actions.requestChanges(target, comment));
-          }}
-        />
-      )}
     </li>
   );
 }
 
-/** The request-changes comment-capture dialog. The comment is REQUIRED — it carries
- *  the changes the reviewer wants — so "Request changes" stays disabled until the
- *  note is non-empty. On submit the proposal returns to draft with the reviewer's
- *  feedback, the exact loop the a2a phase gate resumes into a revision cycle. */
-function RequestChangesDialog({
+/** The INLINE request-changes composer (agentic-authoring-ux ADR: review lives in the
+ *  transcript flow, never a route-blocking modal). Requesting changes returns the
+ *  proposal to draft and the a2a phase gate resumes the writer against the note — so
+ *  the note IS a message to the agent, composed in-flow inside the card rather than in
+ *  a dialog floating over the composer. The comment is REQUIRED: Send stays disabled
+ *  until it is non-empty. Rendered inside the shared card, so it is identical in the
+ *  transcript mount and the review-queue mount. */
+function RequestChangesComposer({
   busy,
   onCancel,
   onSubmit,
@@ -529,20 +533,23 @@ function RequestChangesDialog({
   onSubmit: (comment: string) => void;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
+  const fieldId = useId();
+  const hintId = `${fieldId}-required`;
   const [comment, setComment] = useState("");
-  const title = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.title);
-  const body = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.body);
-  const commentLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.commentLabel);
-  const placeholder = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.placeholder);
-  const submitLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.submit);
-  const cancelLabel = safeMessage(resolveMessage, REQUEST_CHANGES_DIALOG.cancel);
+  const instruction = safeMessage(resolveMessage, REQUEST_CHANGES_COMPOSER.body);
+  const commentLabel = safeMessage(
+    resolveMessage,
+    REQUEST_CHANGES_COMPOSER.commentLabel,
+  );
+  const placeholder = safeMessage(resolveMessage, REQUEST_CHANGES_COMPOSER.placeholder);
+  const submitLabel = safeMessage(resolveMessage, REQUEST_CHANGES_COMPOSER.submit);
+  const cancelLabel = safeMessage(resolveMessage, REQUEST_CHANGES_COMPOSER.cancel);
   const commentRequired = safeMessage(
     resolveMessage,
-    REQUEST_CHANGES_DIALOG.commentRequired,
+    REQUEST_CHANGES_COMPOSER.commentRequired,
   );
   if (
-    !title ||
-    !body ||
+    !instruction ||
     !commentLabel ||
     !placeholder ||
     !submitLabel ||
@@ -554,61 +561,64 @@ function RequestChangesDialog({
 
   const trimmed = comment.trim();
   const canSubmit = trimmed.length > 0 && !busy;
+  const submit = () => {
+    if (canSubmit) onSubmit(trimmed);
+  };
 
   return (
-    <Dialog
-      open
-      onClose={onCancel}
-      title={title}
-      description={body}
-      footer={
-        <div className="flex items-center justify-end gap-fg-2">
-          <Button variant="secondary" onClick={onCancel}>
-            {cancelLabel}
-          </Button>
-          <Button
-            variant="primary"
-            disabled={!canSubmit}
-            onClick={() => canSubmit && onSubmit(trimmed)}
-            data-action="request_changes-submit"
-          >
-            {submitLabel}
-          </Button>
-        </div>
-      }
+    <div
+      className="flex flex-col gap-fg-1 rounded-fg-sm border border-rule bg-paper-sunken px-fg-2 py-fg-2"
+      data-request-changes-composer
     >
-      <div className="flex flex-col gap-fg-1 px-fg-4 py-fg-4">
-        <label
-          className="text-label text-ink-muted"
-          htmlFor="review-request-changes-comment"
+      <p className="text-meta text-ink-muted">{instruction}</p>
+      <label className="text-label text-ink-muted" htmlFor={fieldId}>
+        {commentLabel}
+      </label>
+      <textarea
+        id={fieldId}
+        value={comment}
+        onChange={(event) => setComment(event.target.value)}
+        onKeyDown={(event) => {
+          // Enter + Cmd/Ctrl sends — composer-native, so the note goes to the agent
+          // without leaving the keyboard (Enter alone stays a newline for multi-line).
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+            event.preventDefault();
+            submit();
+          }
+        }}
+        rows={3}
+        autoFocus
+        placeholder={placeholder}
+        aria-invalid={trimmed.length === 0}
+        aria-describedby={hintId}
+        data-request-changes-comment
+        className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
+      />
+      {/* Why Send is disabled: the requested-changes note is required. */}
+      {trimmed.length === 0 && (
+        <p
+          id={hintId}
+          className="text-meta text-ink-muted"
+          role="note"
+          data-request-changes-required
         >
-          {commentLabel}
-        </label>
-        <textarea
-          id="review-request-changes-comment"
-          value={comment}
-          onChange={(event) => setComment(event.target.value)}
-          rows={4}
-          autoFocus
-          placeholder={placeholder}
-          aria-invalid={trimmed.length === 0}
-          aria-describedby="review-request-changes-required"
-          data-request-changes-comment
-          className="w-full resize-y rounded-fg-sm border border-rule bg-paper px-fg-2 py-fg-1 text-body text-ink outline-none focus-visible:border-accent"
-        />
-        {/* Why the submit is disabled: the requested-changes note is required. */}
-        {trimmed.length === 0 && (
-          <p
-            id="review-request-changes-required"
-            className="text-meta text-ink-muted"
-            role="note"
-            data-request-changes-required
-          >
-            {commentRequired}
-          </p>
-        )}
+          {commentRequired}
+        </p>
+      )}
+      <div className="flex items-center justify-end gap-fg-2">
+        <Button variant="ghost" onClick={onCancel}>
+          {cancelLabel}
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!canSubmit}
+          onClick={submit}
+          data-action="request_changes-submit"
+        >
+          {submitLabel}
+        </Button>
       </div>
-    </Dialog>
+    </div>
   );
 }
 

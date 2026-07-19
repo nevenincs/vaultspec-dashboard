@@ -101,8 +101,10 @@ export const REVIEW_CONFIRMATIONS = Object.freeze({
 /** The request-changes comment-capture dialog descriptors. The comment is REQUIRED
  *  — it carries the changes the reviewer wants — so the dialog blocks submission
  *  until it is non-empty. The verb reuses the action label for title + submit. */
-export const REQUEST_CHANGES_DIALOG = Object.freeze({
-  title: descriptor("documents:reviewStation.actions.requestChanges"),
+/** The INLINE request-changes composer descriptors. The comment is REQUIRED — it is
+ *  the message the agent revises against — so Send stays disabled until it is
+ *  non-empty. The verb reuses the action label for its Send button. */
+export const REQUEST_CHANGES_COMPOSER = Object.freeze({
   body: descriptor("documents:reviewStation.requestChanges.body"),
   commentLabel: descriptor("documents:reviewStation.requestChanges.commentLabel"),
   placeholder: descriptor("documents:reviewStation.requestChanges.placeholder"),
