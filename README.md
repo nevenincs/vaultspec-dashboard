@@ -69,7 +69,7 @@ The dashboard uses two independently installed companions:
 
 - [vaultspec-core](https://github.com/nevenincs/vaultspec-core/blob/main/README.md) supplies
   governed vault operations. Without core, the dashboard warns and continues with those
-  capabilities unavailable. Full authoring requires core 0.1.36 or later.
+  capabilities unavailable. Full authoring requires core 0.1.34 or later.
 - [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag/blob/main/docs/service-mode.md)
   supplies optional semantic search. The dashboard discovers the machine-wide service and
   can broker explicit lifecycle actions. Stopping it also affects its other clients.
@@ -134,11 +134,11 @@ Confirm the installation:
 vaultspec --version
 ```
 
-Your project must use Git. Governed capabilities also require vaultspec-core 0.1.36 or
+Your project must use Git. Governed capabilities also require vaultspec-core 0.1.34 or
 later. Install it separately with `uv`:
 
 ```console
-uv tool install 'vaultspec-core>=0.1.36'
+uv tool install 'vaultspec-core>=0.1.34'
 ```
 
 From the project directory, verify that the project is ready:
@@ -149,7 +149,7 @@ vaultspec-core --version
 vaultspec-core status --json -t .
 ```
 
-The Git command must print `true`. The core version must be 0.1.36 or later. The status
+The Git command must print `true`. The core version must be 0.1.34 or later. The status
 command must exit successfully, proving that core can read the managed vault.
 
 If the project isn't managed yet, create only the core scaffolding:
