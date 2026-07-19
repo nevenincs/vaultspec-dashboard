@@ -49,3 +49,32 @@ not an S01 implementation defect.
 - Cargo metadata, focused check and test, warning-denied Clippy, workspace format,
   `just dev lint all`, and `git diff --check` passed independently.
 - Plan validation reports only the intentional plan-wide `PLAN022` warning.
+
+## `W01 P01 S02` dependency review
+
+Status: PASS
+
+No critical, high, medium, or low findings were identified. The declaration
+reuses the existing compatible serialization, SHA-256, file-lock, and Unix
+signal versions, adds the smallest safe process-inspection and Windows process
+group surfaces, and leaves serialization byte caps as explicit implementation
+invariants.
+
+Source inspection confirmed that `command-group` creates the Windows child
+suspended, assigns it to a Job Object before resumption, and exposes whole-job
+termination through a safe public API. Dependency-internal system calls do not
+breach the product crate's workspace-wide unsafe-code prohibition. Targeted
+dependency trees confirm Windows activates `command-group` without `nix`, Unix
+activates direct `nix` 0.29 without `command-group`, and macOS resolves the
+expected Core Foundation and IOKit process-inspection closure.
+
+The lock-only `nix` 0.27 edge belongs to `command-group`'s inactive Unix
+implementation and is never active alongside direct `nix` 0.29 on a supported
+target. `sysinfo` requires Rust 1.95, below the workspace's Rust 1.96 floor.
+No ACL mutation dependency or later product contract was introduced.
+
+Focused Windows and Linux checks, tests, warning-denied Clippy, formatting,
+target-specific feature trees, duplicate inspection, dependency policy,
+repository lint, and scoped diff validation passed independently. The focused
+crate currently has zero tests, which is appropriate for this declaration-only
+step.

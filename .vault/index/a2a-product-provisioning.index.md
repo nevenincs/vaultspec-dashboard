@@ -7,6 +7,7 @@ date: '2026-07-19'
 modified: '2026-07-19'
 related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S02]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -31,6 +32,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 ### exec
 
 - `2026-07-18-a2a-product-provisioning-W01-P01-S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers
+- `2026-07-18-a2a-product-provisioning-W01-P01-S02` - Declare bounded serialization, digest, file-lock, process, and platform dependencies for product lifecycle authority
 
 ### plan
 
