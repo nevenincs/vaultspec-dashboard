@@ -1,0 +1,64 @@
+{
+  "lock_version": "1.0",
+  "description": "Dashboard-owned lock pinning the exact A2A source commit, release identity, and every base-closure artifact digest for the desktop capsule (a2a-product-provisioning plan W01.P01.S03). Every value is an exact pin: no floating minor, no `latest`, and no runtime resolution. The A2A repository owns the emitted capsule and its `schemas/desktop-capsule-manifest.json` contract; this lock is the dashboard's authoritative pin of that producer output, verified by `vaultspec-product`'s manifest parser (W01.P01.S06).",
+  "a2a_source": {
+    "repository": "vaultspec-a2a",
+    "commit": "7df84b1de4455ed79895136ab085c821ce988c9a",
+    "release_identity": {
+      "name": "vaultspec-a2a",
+      "version": "0.1.0"
+    }
+  },
+  "capsule_contract": {
+    "manifest_schema": "schemas/desktop-capsule-manifest.json",
+    "digest_algorithm": "sha256",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc"
+    ]
+  },
+  "base_closure": {
+    "acp": {
+      "kind": "acp_adapter",
+      "version": "0.59.0",
+      "license": "Apache-2.0",
+      "source": "registry.npmjs.org/@agentclientprotocol/claude-agent-acp",
+      "sha256": "b62c8ed1deed6172abb6b1d49a4d30024efe88bba062c5458845c256e7218f61"
+    },
+    "python": {
+      "kind": "cpython_runtime",
+      "version": "3.13.5",
+      "build": "python-build-standalone 20250702 install_only",
+      "license": "PSF-2.0",
+      "per_target_sha256": {
+        "aarch64-apple-darwin": "66577414e9f4b0caa116a8e15fa50306db91bce13d49278079bb22adaeefb1fa",
+        "x86_64-apple-darwin": "0682afbb238b4762b8f5e383fe19cc52969c780871016c50d4cb7088a536167c",
+        "aarch64-unknown-linux-gnu": "272a8817921856d7ac47f44c076fb62fbaf5649aa1d97b2d67a3a6adee969ff0",
+        "x86_64-unknown-linux-gnu": "9f5d5260f333fcb5372ec681851d92ddac79a33362aa85626b6cc96ffe75eeef",
+        "x86_64-pc-windows-msvc": "f11f915437250657019c71adb81ec523d2932c2c3ea4441b592aa3bdce0e7ef7"
+      }
+    },
+    "node": {
+      "kind": "node_runtime",
+      "version": "22.17.0",
+      "source": "nodejs.org/dist/v22.17.0",
+      "license": "MIT",
+      "per_target_sha256": {
+        "aarch64-apple-darwin": "615dda58b5fb41fad2be43940b6398ca56554cbe05800953afadc724729cb09e",
+        "x86_64-apple-darwin": "c39c8ec3cdadedfcc75de0cb3305df95ae2aecebc5db8d68a9b67bd74616d2ad",
+        "aarch64-unknown-linux-gnu": "3e99df8b01b27dc8b334a2a30d1cd500442b3b0877d217b308fd61a9ccfc33d4",
+        "x86_64-unknown-linux-gnu": "0fa01328a0f3d10800623f7107fbcd654a60ec178fab1ef5b9779e94e0419e1a",
+        "x86_64-pc-windows-msvc": "721ab118a3aac8584348b132767eadf51379e0616f0db802cc1e66d7f0d98f85"
+      }
+    }
+  },
+  "resolution_policy": {
+    "floating_forbidden": true,
+    "latest_forbidden": true,
+    "runtime_resolution_forbidden": true,
+    "digest_required": true
+  }
+}

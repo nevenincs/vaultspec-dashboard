@@ -11,6 +11,16 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
+
 # `a2a-product-provisioning` plan
 
 ## Description
@@ -37,8 +47,8 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 
 - [x] `W01.P01.S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers; `engine/Cargo.toml`.
 - [x] `W01.P01.S02` - Declare bounded serialization, digest, file-lock, process, and platform dependencies for product lifecycle authority; `engine/crates/vaultspec-product/Cargo.toml`.
-- [ ] `W01.P01.S03` - Pin the exact A2A source commit and release identity plus emitted capsule artifact, CPython 3.13, Node 22, and ACP 0.59.0 digests without floating, latest, or runtime resolution; `packaging/a2a-component.lock.json`.
-- [ ] `W01.P01.S04` - Define the dashboard-owned complete release-set schema binding the dashboard build to the pinned A2A component manifest, runtime inputs, protocols, state schemas, digests, licenses, and SBOM; `schemas/release-set-manifest.json`.
+- [x] `W01.P01.S03` - Pin the exact A2A source commit and release identity plus emitted capsule artifact, CPython 3.13, Node 22, and ACP 0.59.0 digests without floating, latest, or runtime resolution; `packaging/a2a-component.lock.json`.
+- [x] `W01.P01.S04` - Define the dashboard-owned complete release-set schema binding the dashboard build to the pinned A2A component manifest, runtime inputs, protocols, state schemas, digests, licenses, and SBOM; `schemas/release-set-manifest.json`.
 - [ ] `W01.P01.S05` - Expose only stable product contract, lifecycle, update, and build-tool modules to dashboard consumers; `engine/crates/vaultspec-product/src/lib.rs`.
 - [ ] `W01.P01.S06` - Parse and verify the tracked component lock, the A2A-emitted schemas/desktop-capsule-manifest.json contract, and the complete release-set manifest while rejecting unpinned identities, target mismatch, digest drift, and floating latest selectors; `engine/crates/vaultspec-product/src/manifest.rs`.
 - [ ] `W01.P01.S07` - Derive product-owned install, generation, app-home, transaction, staging, snapshot, and updater paths without accepting client paths; `engine/crates/vaultspec-product/src/paths.rs`.

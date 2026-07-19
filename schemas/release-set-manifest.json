@@ -1,0 +1,187 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vaultspec.dev/schemas/release-set-manifest.json",
+  "title": "ReleaseSetManifest",
+  "description": "The dashboard-owned complete release-set manifest (a2a-product-provisioning plan W01.P01.S04). One target's composite release set binds the dashboard build to the pinned A2A component (commit + emitted capsule), the runtime inputs (CPython, Node.js, ACP), the served protocol range, the state-schema/migration range, every file digest, the license set, and the software bill of materials. The dashboard consumes the A2A capsule as an opaque versioned artifact via `schemas/desktop-capsule-manifest.json` and the pin in `packaging/a2a-component.lock.json`; it rejects mismatch, floating identity, or runtime dependency resolution.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "target",
+    "digest_algorithm",
+    "dashboard",
+    "a2a_component",
+    "runtimes",
+    "protocol",
+    "state_schema",
+    "licenses",
+    "sbom"
+  ],
+  "properties": {
+    "schema_version": {
+      "description": "Canonical MAJOR.MINOR grammar version; a consumer requires the same major and a declared minor no newer than it supports.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+$"
+    },
+    "target": { "$ref": "#/$defs/TargetTriple" },
+    "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
+    "dashboard": {
+      "description": "The dashboard executable build bound into this release set.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "commit", "digest"],
+      "properties": {
+        "version": { "$ref": "#/$defs/ExactVersion" },
+        "commit": { "$ref": "#/$defs/GitCommit" },
+        "digest": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "a2a_component": {
+      "description": "The pinned A2A build and its emitted immutable capsule for this target, referencing the component lock and capsule manifest contract.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "release_identity",
+        "component_lock",
+        "capsule_manifest",
+        "capsule_digest"
+      ],
+      "properties": {
+        "commit": { "$ref": "#/$defs/GitCommit" },
+        "release_identity": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "version": { "$ref": "#/$defs/ExactVersion" }
+          }
+        },
+        "component_lock": {
+          "description": "Path to the dashboard-owned component lock pinning this A2A build.",
+          "const": "packaging/a2a-component.lock.json"
+        },
+        "capsule_manifest": {
+          "description": "Path to the A2A-owned capsule manifest contract the dashboard verifies.",
+          "const": "schemas/desktop-capsule-manifest.json"
+        },
+        "capsule_digest": {
+          "description": "Digest of the emitted immutable capsule artifact for this target.",
+          "$ref": "#/$defs/Sha256"
+        }
+      }
+    },
+    "runtimes": {
+      "description": "The base-closure runtimes, each pinned to an exact version and a digest from the component lock — never a floating minor, `latest`, or runtime resolution.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cpython", "node", "acp"],
+      "properties": {
+        "cpython": { "$ref": "#/$defs/PinnedRuntime" },
+        "node": { "$ref": "#/$defs/PinnedRuntime" },
+        "acp": { "$ref": "#/$defs/PinnedRuntime" }
+      }
+    },
+    "protocol": {
+      "description": "The served gateway API version range this release set answers.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gateway_api_version_range"],
+      "properties": {
+        "gateway_api_version_range": { "$ref": "#/$defs/VersionRange" }
+      }
+    },
+    "state_schema": {
+      "description": "The packaged Alembic migration range for the mutable schema-bearing stores.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["migration_range"],
+      "properties": {
+        "migration_range": { "$ref": "#/$defs/VersionRange" }
+      }
+    },
+    "licenses": {
+      "description": "The SPDX license identifier for every bound component.",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["component", "spdx"],
+        "properties": {
+          "component": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "spdx": { "type": "string", "minLength": 1, "maxLength": 128 }
+        }
+      }
+    },
+    "sbom": {
+      "description": "The software bill of materials for this release set, referenced by path and pinned by digest.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "path", "digest"],
+      "properties": {
+        "format": { "type": "string", "enum": ["spdx", "cyclonedx"] },
+        "path": { "type": "string", "minLength": 1, "maxLength": 4096 },
+        "digest": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "file_digests": {
+      "description": "Optional per-file digest table for the release set's non-runtime artifacts.",
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/Sha256" }
+    }
+  },
+  "$defs": {
+    "TargetTriple": {
+      "description": "The five accepted desktop release targets, as Rust-style triples.",
+      "type": "string",
+      "enum": [
+        "aarch64-apple-darwin",
+        "x86_64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-unknown-linux-gnu",
+        "x86_64-pc-windows-msvc"
+      ]
+    },
+    "DigestAlgorithm": {
+      "description": "The algorithm governing every digest in this manifest.",
+      "type": "string",
+      "const": "sha256"
+    },
+    "Sha256": {
+      "description": "A lowercase hex SHA-256 digest.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "GitCommit": {
+      "description": "A full 40-hex git commit sha — never a branch, tag, or floating ref.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "ExactVersion": {
+      "description": "An exact version — no range operator, wildcard, or `latest`.",
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+    },
+    "PinnedRuntime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "license", "digest"],
+      "properties": {
+        "version": { "$ref": "#/$defs/ExactVersion" },
+        "license": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "digest": { "$ref": "#/$defs/Sha256" }
+      }
+    },
+    "VersionRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minimum", "maximum"],
+      "properties": {
+        "minimum": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "maximum": { "type": "string", "minLength": 1, "maxLength": 128 }
+      }
+    }
+  }
+}
