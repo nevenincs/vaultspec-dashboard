@@ -85,6 +85,88 @@ fn install_owned_gateway(product_home: &std::path::Path, owner_override: Option<
     .unwrap();
 }
 
+/// Install a real active receipt, ownership credentials, a generation to remove,
+/// and mutable user data under the product home — but publish NO gateway
+/// discovery record. This is the ADR's "installed-but-stopped" cold state: a
+/// cleanly stopped gateway has no `gateway-discovery.json`.
+fn install_stopped(product_home: &std::path::Path) -> ProductPaths {
+    let paths = ProductPaths::under_app_home(product_home);
+    paths.ensure().unwrap();
+    CredentialStore::new(paths.credentials_dir())
+        .bootstrap()
+        .unwrap();
+    let generation = paths.generation_dir("g0").unwrap();
+    std::fs::create_dir_all(&generation).unwrap();
+    std::fs::write(generation.join("immutable.bin"), b"immutable").unwrap();
+    std::fs::write(paths.data_dir().join("user.db"), b"precious").unwrap();
+    Receipt::bootstrap(
+        Channel::SelfInstall,
+        Target::X86_64PcWindowsMsvc,
+        ReleaseIdentity {
+            name: "vaultspec-a2a".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        "g0",
+        1,
+    )
+    .persist(&paths.receipt_path())
+    .unwrap();
+    paths
+}
+
+#[tokio::test]
+async fn remove_on_a_stopped_install_is_admitted_and_deletes() {
+    // The P03 review HIGH: a cleanly STOPPED install (no discovery record) must
+    // still admit a receipt-bound mutation on local receipt + ownership authority
+    // alone (ADR D4/D6 cold state) — not be blocked as ForeignResident. `remove`
+    // is fully effectful today, so this proves real deletion.
+    let (_ws, product, state) = lifecycle_state();
+    let paths = install_stopped(product.path());
+    assert!(paths.receipt_path().exists());
+
+    let (status, body) = post_json_with_token(
+        build_router(state.clone()),
+        "/a2a/lifecycle/run",
+        json!({ "op": "remove" }),
+        Some(&state.bearer),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::OK,
+        "remove on a stopped install must be ADMITTED, not refused: {body}"
+    );
+    let job_id = body["data"]["job"]["id"].as_str().unwrap().to_string();
+
+    let mut terminal = Value::Null;
+    for _ in 0..40 {
+        let (_s, polled) = get_with_token(
+            build_router(state.clone()),
+            &format!("/a2a/lifecycle/jobs/{job_id}"),
+            Some(&state.bearer),
+        )
+        .await;
+        if polled["data"]["job"]["state"] != "running" {
+            terminal = polled;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    assert_eq!(terminal["data"]["job"]["state"], "succeeded");
+    assert_eq!(terminal["data"]["job"]["outcome"]["removed"], true);
+    // Real deletion: the receipt and generation are gone.
+    assert!(!paths.receipt_path().exists(), "remove deleted the receipt");
+    assert!(
+        !paths.generation_dir("g0").unwrap().exists(),
+        "remove deleted the generation"
+    );
+    // Mutable user data is preserved (untyped removal).
+    assert_eq!(
+        std::fs::read(paths.data_dir().join("user.db")).unwrap(),
+        b"precious"
+    );
+}
+
 #[tokio::test]
 async fn uninstalled_mutation_is_a_typed_refusal() {
     let (_ws, _product, state) = lifecycle_state();

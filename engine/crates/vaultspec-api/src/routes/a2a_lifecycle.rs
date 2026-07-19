@@ -362,24 +362,26 @@ impl LifecyclePlane {
         Some(discovery.classify(&ctx))
     }
 
-    /// The SINGLE guarded-mutation seam: a mutating operation must clear BOTH the
-    /// attach gate (our owned live gateway) AND the authority gate (receipt-bound
-    /// ownership capability) before any control-plane mutation. The two gates are
-    /// composed in `guard_owned_mutation`, so no route can satisfy only one.
+    /// The SINGLE guarded-mutation seam: a mutating operation composes BOTH the
+    /// attach gate and the authority gate through `guard_owned_mutation` before
+    /// any control-plane mutation, so no route can satisfy only one.
+    ///
+    /// The discovery record is published ONLY while the gateway runs (ADR D5), so
+    /// its ABSENCE is a cleanly stopped install — a VALID precondition for a
+    /// receipt-bound mutation (ADR D4/D6 cold state), NOT a `ForeignResident`
+    /// refusal. Absent discovery is passed as `None` and the receipt + ownership
+    /// authority governs; only a genuinely uninstalled component (no receipt) is
+    /// refused `NotInstalled`.
     fn guard_mutation(&self, op: LifecycleOp) -> Result<(), Refusal> {
-        let Some(verdict) = self.current_verdict() else {
-            // No discoverable owned live gateway to mutate. If nothing is even
-            // installed, that is the honest cause; otherwise the gateway is not
-            // running/owned.
-            return Err(match self.controller.active_receipt() {
-                Ok(None) => Refusal::NotInstalled,
-                _ => Refusal::ForeignResident,
-            });
-        };
+        let verdict = self.current_verdict();
+        // Absent discovery AND no active receipt = genuinely not installed.
+        if verdict.is_none() && matches!(self.controller.active_receipt(), Ok(None)) {
+            return Err(Refusal::NotInstalled);
+        }
         let store = CredentialStore::new(self.paths.credentials_dir());
         let ownership = store.read_ownership().ok();
         self.controller
-            .guard_owned_mutation(op, ownership.as_ref(), &verdict)
+            .guard_owned_mutation(op, ownership.as_ref(), verdict.as_ref())
     }
 
     /// The served status projection: installed release-set, readiness, ownership,

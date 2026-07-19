@@ -135,19 +135,56 @@ impl LifecycleController {
     ///
     /// A `control.rs` mutation (stop/repair/update/rollback/remove) must pass
     /// through this before it is issued.
+    ///
+    /// The discovery state is `Option<&Verdict>`: `None` means no discovery
+    /// record exists at all. Per ADR D5 the gateway publishes discovery ONLY
+    /// while it runs, and per D4 "installed-but-stopped is a valid cold state,
+    /// not a degradation" — so an absent record is a VALID precondition, not a
+    /// refusal. The attach gate follows the ADR D6 four-branch model:
+    ///
+    /// - (a) NO discovery: nothing live to protect — the local receipt +
+    ///   ownership authority alone governs (this is how `remove`/`repair` reach a
+    ///   cleanly stopped install);
+    /// - (b) discovery present, FOREIGN / foreign-immutable: refuse
+    ///   `ForeignResident` (a live foreign resident is never mutated);
+    /// - (c) discovery present, OURS but stale/dead: refuse `StaleUnproven` — the
+    ///   owner-matched quarantine dance (`locking::quarantine_owner_matched_stale`)
+    ///   is wired in W02.P04; until then refuse with the HONEST reason;
+    /// - (d) discovery present, OURS and live: permit the gate (the
+    ///   drain/authenticate/stop control effect is W02.P04).
+    ///
+    /// The authority gate (`authorize`: active receipt + verified ownership
+    /// capability) is REQUIRED in every permit branch — an absent discovery never
+    /// permits a mutation without verified ownership.
     pub fn guard_owned_mutation(
         &self,
         op: LifecycleOp,
         ownership: Option<&Credential>,
-        verdict: &crate::discovery::Verdict,
+        verdict: Option<&crate::discovery::Verdict>,
     ) -> std::result::Result<(), Refusal> {
-        // Attach gate: only our OWNED live gateway is mutable; a read-only
-        // foreign attach (or any non-owned verdict) is refused for a mutation.
-        match resolve_attach(verdict)? {
-            AttachMode::Owned => {}
-            AttachMode::ForeignReadOnly => return Err(Refusal::ForeignResident),
+        use crate::discovery::{ImmutableReason, Verdict};
+        match verdict {
+            // (a) No discovery: absent/dead gateway, valid cold precondition.
+            None => {}
+            // (d) Ours and live: the gate passes (control effect is W02.P04).
+            Some(Verdict::OwnedLive) => {}
+            // (c) Ours but stale/dead: honest refusal until quarantine lands.
+            Some(Verdict::OwnedStale) => return Err(Refusal::StaleUnproven),
+            // (b) A live foreign gateway (attachable read-only or immutable) is
+            // never mutated.
+            Some(Verdict::ForeignAttachable) => return Err(Refusal::ForeignResident),
+            Some(Verdict::ForeignImmutable { reason }) => {
+                return Err(match reason {
+                    ImmutableReason::Incompatible => Refusal::Incompatible {
+                        detail: "foreign gateway protocol/state-schema mismatch".to_string(),
+                    },
+                    ImmutableReason::NoTrustedHandoff | ImmutableReason::DeadOrStale => {
+                        Refusal::ForeignResident
+                    }
+                });
+            }
         }
-        // Authority gate: active receipt + receipt-bound ownership capability.
+        // Authority gate ALWAYS required: active receipt + ownership capability.
         self.authorize(op, ownership)
     }
 
