@@ -33,3 +33,14 @@ pr-run-mode = "plan"
 create-release = false
 # Post-announce jobs to run in CI
 post-announce-jobs = ["./scoop-bump"]
+
+# Artifact builds run on the shared self-hosted fleet (hosted multiplatform
+# runners are cost-prohibitive). Labels are the auto-assigned OS labels of the
+# registered machines: Windows = gw-workstation-win, Linux = gw-workstation-wsl,
+# macOS = macbook-neo. aarch64-linux cross-compiles on the WSL runner.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macOS"
+x86_64-apple-darwin = "macOS"
+aarch64-unknown-linux-gnu = "Linux"
+x86_64-unknown-linux-gnu = "Linux"
+x86_64-pc-windows-msvc = "Windows"
