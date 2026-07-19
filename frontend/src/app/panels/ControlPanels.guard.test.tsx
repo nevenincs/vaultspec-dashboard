@@ -104,12 +104,6 @@ describe("ControlPanels", () => {
       rtlTestResources.common.controlPanels.labels.search,
     ],
     [
-      "approvals",
-      en.common.controlPanels.labels.approvals,
-      ltrTestResources.common.controlPanels.labels.approvals,
-      rtlTestResources.common.controlPanels.labels.approvals,
-    ],
-    [
       "backend-health",
       en.common.controlPanels.labels.systemStatus,
       ltrTestResources.common.controlPanels.labels.systemStatus,
@@ -143,8 +137,20 @@ describe("ControlPanels", () => {
     },
   );
 
-  it("uses safe fallback copy when the common bundle is unavailable", () => {
+  it("no longer hosts an approvals modal (review folded into the Agent panel)", () => {
+    // The retired approvals id is not a modal ControlPanelId: opening it is a no-op
+    // at the boundary, so no dialog can be summoned and the review station never
+    // mounts in this host (review-surface-flow ADR F1).
     openControlPanel("approvals");
+    expect(useControlPanels.getState().open).toBeNull();
+    renderPanels();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelector("[data-review-station]")).toBeNull();
+    expect(document.querySelector("[data-proposal-list]")).toBeNull();
+  });
+
+  it("uses safe fallback copy when the common bundle is unavailable", () => {
+    openControlPanel("backend-health");
     const runtime = createTestLocalizationRuntime();
     runtime.removeResourceBundle("en", "common");
     const client = new QueryClient({

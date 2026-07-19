@@ -1,5 +1,5 @@
 import type { MessageDescriptor } from "../../platform/localization/message";
-import type { ControlPanelId } from "./controlPanels";
+import type { ControlSurfaceId } from "./controlPanels";
 
 type ControlPanelLabelKey =
   | "common:controlPanels.labels.search"
@@ -24,7 +24,7 @@ type ControlPanelUnavailableTitleKey =
   | "common:controlPanels.unavailableTitles.projectHealth";
 
 interface ControlPanelVocabularyEntry<
-  Id extends ControlPanelId,
+  Id extends ControlSurfaceId,
   LabelKey extends ControlPanelLabelKey,
   ShowKey extends ControlPanelActionKey,
   HideKey extends ControlPanelActionKey,
@@ -68,7 +68,7 @@ export type ControlPanelVocabulary =
     >;
 
 type ControlPanelVocabularyMap = Readonly<{
-  [Id in ControlPanelId]: Extract<ControlPanelVocabulary, { readonly id: Id }>;
+  [Id in ControlSurfaceId]: Extract<ControlPanelVocabulary, { readonly id: Id }>;
 }>;
 
 const descriptor = <Key extends MessageDescriptor["key"]>(

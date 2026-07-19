@@ -27,6 +27,11 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.panel.recentSessions": { role: "label" },
   "common:agent.panel.untitledSession": { role: "label" },
   "common:agent.panel.close": { role: "accessibility" },
+  "common:agent.panel.view.switcher": { role: "accessibility" },
+  // The two view names the switcher selects (radio-style segmented labels), not
+  // imperative action buttons — classified as labels like the autonomy segments.
+  "common:agent.panel.view.transcript": { role: "label" },
+  "common:agent.panel.view.pending": { role: "label" },
   "common:agent.transcript.loading": { role: "status" },
   "common:agent.transcript.empty": { role: "status" },
   "common:agent.transcript.noSession": { role: "status" },

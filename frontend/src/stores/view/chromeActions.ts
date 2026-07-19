@@ -25,7 +25,9 @@ import {
   CONTROL_PANEL_IDS,
   toggleControlPanel,
   type ControlPanelId,
+  type FooterChipId,
 } from "./controlPanels";
+import { openAgentPanel } from "./agentPanel";
 import { chordToKeycaps } from "../../platform/keymap/chord";
 import { effectiveChord, getKeybinding } from "../../platform/keymap/registry";
 import { COMMAND_PALETTE_ACTION_ID, openCommandPalette } from "./commandPalette";
@@ -152,17 +154,21 @@ export function toggleFollowModeAction(): ActionDescriptor {
  *  the palette command, and the keymap accelerator all resolve under this one id. */
 export const CONTROL_PANEL_ACTION_IDS: Record<ControlPanelId, string> = {
   "search-service": "panel:search-service",
-  approvals: "panel:approvals",
   "backend-health": "panel:backend-health",
   "vault-health": "panel:vault-health",
 };
 
 const CONTROL_PANEL_ACTION_ICONS: Record<ControlPanelId, ActionIcon> = {
   "search-service": Search,
-  approvals: ClipboardCheck,
   "backend-health": Activity,
   "vault-health": ShieldCheck,
 };
+
+/** The review chip's stable action id (review-surface-flow ADR F1). PRESERVED from
+ *  the retired Approvals modal so keymap + command-palette enrollment carries over
+ *  unchanged — one descriptor, one id — even though the verb now opens the Agent
+ *  panel's pending-changes view rather than a modal. */
+export const REVIEW_INBOX_ACTION_ID = "panel:approvals";
 
 /** Toggle one framework control panel (activity-rail-realignment D4): ONE shared
  *  descriptor per panel under a single id, composed by the rail-footer chip, the
@@ -183,11 +189,39 @@ export function controlPanelToggleAction(
   });
 }
 
-/** Every control-panel toggle descriptor, in cluster order. */
+/** Every modal control-panel toggle descriptor, in cluster order. */
 export function controlPanelActions(
   openControlPanel: ControlPanelId | null,
 ): ActionDescriptor[] {
   return CONTROL_PANEL_IDS.map((id) => controlPanelToggleAction(id, openControlPanel));
+}
+
+/** Open the review inbox (review-surface-flow ADR F1): the SHARED descriptor for the
+ *  footer Review chip and its Cmd+K command, under the preserved `panel:approvals`
+ *  id. It opens the Agent panel's pending-changes view — not a modal — so the queue
+ *  opens beside the work, never blocking it. Its label + count source stay the
+ *  retired panel's vocabulary (the chip's identity is preserved, its host is not). */
+export function reviewInboxAction(): ActionDescriptor {
+  return withAccelerator({
+    id: REVIEW_INBOX_ACTION_ID,
+    label: CONTROL_PANEL_VOCABULARY.approvals.showLabel,
+    section: "navigate",
+    icon: ClipboardCheck,
+    run: () => openAgentPanel({ view: "pending" }),
+  });
+}
+
+/** The ONE shared descriptor for a rail-footer status chip, dispatched by id: the
+ *  two panel-backed chips fire their modal toggle; the review chip opens the Agent
+ *  panel's pending view. Composed identically by the footer cluster and the command
+ *  palette so no chip can drift (actions-keymap-palette). */
+export function footerChipAction(
+  id: FooterChipId,
+  openControlPanel: ControlPanelId | null,
+): ActionDescriptor {
+  return id === "approvals"
+    ? reviewInboxAction()
+    : controlPanelToggleAction(id, openControlPanel);
 }
 
 /** The full app-chrome escape-hatch set, in menu order. */

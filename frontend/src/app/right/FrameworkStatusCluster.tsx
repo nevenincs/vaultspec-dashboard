@@ -1,16 +1,18 @@
 // The rail-footer framework status cluster (activity-rail-realignment ADR D2). A
 // slim strip pinned to the activity rail's bottom edge — OUTSIDE the scroll region
-// — with one chip per FOOTER control panel: Search service, Approvals, Vault
-// health. Each chip shows only a served health tone (the standard status-dot
-// vocabulary) plus at most one served count, and toggles its modal panel. Backend
-// health is NOT a footer chip — its engine-status read unclearly, so it was pulled
-// from the strip (user UX decision); the Cmd+K palette is its only surfacing path.
+// — with one chip per FOOTER surface: Search service, Review, Vault health. Each
+// chip shows only a served health tone (the standard status-dot vocabulary) plus
+// at most one served count. Search service and Vault health toggle their modal
+// panel; Review opens the Agent panel's pending-changes view (review-surface-flow
+// ADR F1). Backend health is NOT a footer chip — its engine-status read unclearly,
+// so it was pulled from the strip (user UX decision); the Cmd+K palette is its only
+// surfacing path.
 //
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
 // DUMB app-chrome view. Tones and counts come from ONE interpreted stores
 // projection (`useFrameworkStatusView`) — it fetches nothing and never inspects
-// the raw `tiers` block. Each chip dispatches the ONE shared ActionDescriptor per
-// panel (`controlPanelToggleAction`), the same verb the command palette and the
+// the raw `tiers` block. Each chip dispatches the ONE shared ActionDescriptor for
+// its surface (`footerChipAction`), the same verb the command palette and the
 // keymap fire — never a bespoke per-surface handler (actions-keymap-palette).
 //
 // Keyboard (keyboard-navigation): the footer chips are ONE FocusZone tab stop —
@@ -25,11 +27,11 @@ import type { MessageDescriptor } from "../../platform/localization/message";
 import {
   FOOTER_CHIP_IDS,
   useOpenControlPanel,
-  type ControlPanelId,
   type FooterChipId,
 } from "../../stores/view/controlPanels";
 import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
-import { controlPanelToggleAction } from "../../stores/view/chromeActions";
+import { footerChipAction } from "../../stores/view/chromeActions";
+import { useAgentPanelOpen, useAgentPanelView } from "../../stores/view/agentPanel";
 import {
   useFrameworkStatusView,
   type FrameworkStatusChip,
@@ -62,11 +64,13 @@ const PANEL_STATUS_MESSAGE = {
 } as const;
 
 export interface StatusChipProps {
-  id: ControlPanelId;
+  id: FooterChipId;
   chip: FrameworkStatusChip;
-  /** Whether this chip's panel is the open one. */
+  /** Whether this chip's surface is the open one (its modal panel, or — for the
+   *  review chip — the Agent panel's pending-changes view). */
   open: boolean;
-  /** Toggle this chip's panel (the shared descriptor's run). */
+  /** Activate this chip's surface — toggle its modal panel, or open the Agent
+   *  pending view for the review chip (the shared descriptor's run). */
   onToggle: () => void;
   /** FocusZone item ref registering the button in the roving order. */
   chipRef: (el: HTMLElement | null) => void;
@@ -149,6 +153,10 @@ export function FrameworkStatusCluster() {
   // The panels are MODAL (single-open), so one selector yields the open id and
   // each chip's open flag is a value compare — no per-chip store hook in a loop.
   const openPanel = useOpenControlPanel();
+  // The review chip's pressed state tracks the Agent panel's pending view (its
+  // surface is that view, not a modal), so read the panel's open + view flags once.
+  const agentOpen = useAgentPanelOpen();
+  const agentView = useAgentPanelView();
   // On touch-first devices the chips grow to the 2.75rem tap floor (the compact
   // rail pins this same strip as its footer); mouse pointers keep the slim strip.
   const coarse = usePointerCoarse();
@@ -174,16 +182,19 @@ export function FrameworkStatusCluster() {
     >
       {FOOTER_CHIP_IDS.map((id: FooterChipId) => {
         const item = zone.rove(id);
-        // The ONE shared toggle descriptor for this panel — composed here exactly
-        // as the command palette and keymap compose it, so the chip cannot drift.
-        const action = controlPanelToggleAction(id, openPanel);
+        // The ONE shared descriptor for this chip — composed here exactly as the
+        // command palette and keymap compose it, so the chip cannot drift. Panel
+        // chips toggle their modal; the review chip opens the Agent pending view.
+        const action = footerChipAction(id, openPanel);
         if (action.run === undefined) return null;
+        const open =
+          id === "approvals" ? agentOpen && agentView === "pending" : openPanel === id;
         return (
           <StatusChip
             key={id}
             id={id}
             chip={view[id]}
-            open={openPanel === id}
+            open={open}
             onToggle={action.run}
             chipRef={item.ref}
             tabIndex={item.tabIndex}

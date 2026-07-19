@@ -21,8 +21,8 @@ describe("useControlPanels store", () => {
   });
 
   it("opens one panel and closes it", () => {
-    openControlPanel("approvals");
-    expect(useControlPanels.getState().open).toBe("approvals");
+    openControlPanel("backend-health");
+    expect(useControlPanels.getState().open).toBe("backend-health");
     closeControlPanel();
     expect(useControlPanels.getState().open).toBeNull();
   });
@@ -42,8 +42,8 @@ describe("useControlPanels store", () => {
   });
 
   it("toggling a different panel while one is open switches to it", () => {
-    toggleControlPanel("approvals");
-    expect(useControlPanels.getState().open).toBe("approvals");
+    toggleControlPanel("backend-health");
+    expect(useControlPanels.getState().open).toBe("backend-health");
     toggleControlPanel("search-service");
     expect(useControlPanels.getState().open).toBe("search-service");
   });
@@ -51,9 +51,18 @@ describe("useControlPanels store", () => {
   it("ignores an unknown id on open and toggle", () => {
     openControlPanel("nope");
     expect(useControlPanels.getState().open).toBeNull();
-    openControlPanel("approvals");
+    openControlPanel("backend-health");
     toggleControlPanel("nope");
-    expect(useControlPanels.getState().open).toBe("approvals");
+    expect(useControlPanels.getState().open).toBe("backend-health");
+  });
+
+  it("no longer treats the retired approvals id as a modal panel", () => {
+    // Review folded into the Agent panel (review-surface-flow ADR F1): `approvals`
+    // is a footer-chip id only, so it can never open a modal here.
+    openControlPanel("approvals");
+    expect(useControlPanels.getState().open).toBeNull();
+    toggleControlPanel("approvals");
+    expect(useControlPanels.getState().open).toBeNull();
   });
 });
 
@@ -66,6 +75,8 @@ describe("normalizeControlPanelId", () => {
 
   it("rejects unknown, empty, and non-string input", () => {
     expect(normalizeControlPanelId("settings")).toBeNull();
+    // The retired approvals modal id is no longer a control panel.
+    expect(normalizeControlPanelId("approvals")).toBeNull();
     expect(normalizeControlPanelId("")).toBeNull();
     expect(normalizeControlPanelId(null)).toBeNull();
     expect(normalizeControlPanelId(undefined)).toBeNull();

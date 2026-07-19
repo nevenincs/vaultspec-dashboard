@@ -1,9 +1,14 @@
 // Shared open-state for the framework control panels (activity-rail-realignment
-// ADR D3). The rail is status-only; the four admin surfaces — Search service,
-// Approvals, Backend health, Vault health — live in modal control panels toggled
-// from the rail-footer status cluster. Each panel is the one modal Dialog idiom
-// over this tiny shared view-store flag, mirroring `settingsDialog`, so the chip,
-// the command palette, and the keymap all drive the same panel.
+// ADR D3). The rail is status-only; the three admin surfaces — Search service,
+// Backend health, Vault health — live in modal control panels toggled from the
+// rail-footer status cluster. Each panel is the one modal Dialog idiom over this
+// tiny shared view-store flag, mirroring `settingsDialog`, so the chip, the
+// command palette, and the keymap all drive the same panel.
+//
+// Review is NOT a modal panel (review-surface-flow ADR F1): its queue folded into
+// the Agent panel as a "Pending changes" view, so it lives on the footer cluster
+// as a first-class chip (`FooterChipId`) whose action opens that view — never a
+// `ControlPanelId`. The two spaces are deliberately decoupled here.
 //
 // The panels are MODAL: at most one is open at a time, so the open state is one
 // nullable id rather than four independent flags — opening one closes another.
@@ -11,31 +16,32 @@
 
 import { create } from "zustand";
 
-export type ControlPanelId =
-  | "search-service"
-  | "approvals"
-  | "backend-health"
-  | "vault-health";
+export type ControlPanelId = "search-service" | "backend-health" | "vault-health";
 
-/** Every panel id, in cluster order. */
+/** Every modal panel id, in cluster order. */
 export const CONTROL_PANEL_IDS: readonly ControlPanelId[] = [
   "search-service",
-  "approvals",
   "backend-health",
   "vault-health",
 ];
 
-/** The control panels that ALSO surface an ambient status chip in the rail-footer
- *  cluster. Backend health is intentionally excluded: its engine-status chip did not
- *  make its purpose clear within ~2s, so it was pulled from the footer (user UX
- *  decision, 2026-07-15). The Backend health panel and its Cmd+K palette command
- *  stay — the palette is now that panel's only surfacing path. */
-export type FooterChipId = Exclude<ControlPanelId, "backend-health">;
+/** The rail-footer status chips (activity-rail-realignment ADR D2). A standalone
+ *  union — NOT derived from `ControlPanelId` — because two of the three chips open
+ *  modal panels while `approvals` opens the Agent panel's pending-changes view
+ *  (review-surface-flow ADR F1). Backend health has no chip: its engine-status read
+ *  unclearly, so it was pulled from the footer (user UX decision, 2026-07-15); the
+ *  Cmd+K palette is its only surfacing path. */
+export type FooterChipId = "search-service" | "approvals" | "vault-health";
 export const FOOTER_CHIP_IDS: readonly FooterChipId[] = [
   "search-service",
   "approvals",
   "vault-health",
 ];
+
+/** Every named control surface — the modal panels plus the footer review chip —
+ *  the shared vocabulary carries labels for. The review chip (`approvals`) is a
+ *  `FooterChipId` only, never a modal `ControlPanelId`. */
+export type ControlSurfaceId = ControlPanelId | FooterChipId;
 
 /** Validate unknown input at the boundary (a persisted blob, a palette id, a wire
  *  value): a known panel id or `null`. */

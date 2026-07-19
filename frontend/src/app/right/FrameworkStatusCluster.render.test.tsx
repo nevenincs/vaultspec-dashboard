@@ -13,13 +13,13 @@ import {
 } from "../../localization/testing";
 import { en, sourceLocale } from "../../locales/en";
 import type { FrameworkStatusChip } from "../../stores/server/queries";
-import type { ControlPanelId } from "../../stores/view/controlPanels";
+import type { FooterChipId } from "../../stores/view/controlPanels";
 import { StatusChip } from "./FrameworkStatusCluster";
 
 afterEach(cleanup);
 
 function renderChip(
-  id: ControlPanelId,
+  id: FooterChipId,
   chip: FrameworkStatusChip,
   over: { open?: boolean; tabIndex?: 0 | -1; coarse?: boolean } = {},
 ) {
@@ -110,7 +110,7 @@ describe.sequential("StatusChip", () => {
       unknown: "bg-ink-faint",
     };
     for (const [tone, className] of Object.entries(toneToClass)) {
-      const { container } = renderChip("backend-health", {
+      const { container } = renderChip("vault-health", {
         tone: tone as FrameworkStatusChip["tone"],
       });
       const dot = container.querySelector("[data-framework-chip] span[aria-hidden]");

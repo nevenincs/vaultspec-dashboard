@@ -24,9 +24,11 @@ import {
 } from "../../stores/server/agent";
 import {
   closeAgentPanel,
+  setAgentPanelView,
   setAgentCurrentSession,
   useAgentCurrentSessionId,
   useAgentPanelOpen,
+  useAgentPanelView,
   useAgentTeamRunId,
 } from "../../stores/view/agentPanel";
 import { useAgentPanelWidth } from "../../stores/view/shellLayout";
@@ -40,12 +42,15 @@ import {
   IconButton,
   Popover,
   SectionLabel,
+  Segment,
+  SegmentedToggle,
   Skeleton,
   SkeletonRow,
   StateBlock,
 } from "../kit";
 import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import { Composer } from "./Composer";
+import { PendingChangesView } from "./PendingChangesView";
 import { Transcript } from "./Transcript";
 import { TeamRunTranscript } from "./TeamRunTranscript";
 
@@ -57,6 +62,9 @@ const AGENT = {
   recentSessions: "common:agent.panel.recentSessions",
   untitledSession: "common:agent.panel.untitledSession",
   close: "common:agent.panel.close",
+  viewSwitcher: "common:agent.panel.view.switcher",
+  viewTranscript: "common:agent.panel.view.transcript",
+  viewPending: "common:agent.panel.view.pending",
   loading: "common:agent.transcript.loading",
   empty: "common:agent.transcript.empty",
   noSession: "common:agent.transcript.noSession",
@@ -234,6 +242,32 @@ function AgentTranscriptContainer({
   );
 }
 
+/** The panel-header view switcher (review-surface-flow ADR F1): a two-segment
+ *  radiogroup flipping the open panel between the running conversation and the
+ *  folded-in "Pending changes" inbox. Local chrome — it writes only the panel's
+ *  view-store flag; the transcript is the default. */
+function AgentViewSwitcher({ panelView }: { panelView: "transcript" | "pending" }) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const switcherLabel = resolveMessage({ key: AGENT.viewSwitcher }).message;
+  const transcriptLabel = resolveMessage({ key: AGENT.viewTranscript }).message;
+  const pendingLabel = resolveMessage({ key: AGENT.viewPending }).message;
+  return (
+    <div className="border-b border-rule px-fg-2 py-fg-1-5" data-agent-view-switcher>
+      <SegmentedToggle
+        value={panelView}
+        ariaLabel={switcherLabel}
+        fullWidth
+        onChange={(next) => {
+          if (next === "transcript" || next === "pending") setAgentPanelView(next);
+        }}
+      >
+        <Segment value="transcript">{transcriptLabel}</Segment>
+        <Segment value="pending">{pendingLabel}</Segment>
+      </SegmentedToggle>
+    </div>
+  );
+}
+
 /** The bottom composer slot hosts the multiline composer. */
 function AgentComposerSlot() {
   return (
@@ -256,6 +290,7 @@ export function AgentPanel({ className }: { className: string }) {
   const open = useAgentPanelOpen();
   const width = useAgentPanelWidth();
   const currentSessionId = useAgentCurrentSessionId();
+  const panelView = useAgentPanelView();
   const resolveMessage = useLocalizedMessageResolver();
   if (!open) return null;
   return (
@@ -267,8 +302,15 @@ export function AgentPanel({ className }: { className: string }) {
     >
       <ShellResizeHandle side="agent" axis="agent" current={width} />
       <AgentPanelHeader currentSessionId={currentSessionId} />
-      <AgentTranscriptContainer currentSessionId={currentSessionId} />
-      <AgentComposerSlot />
+      <AgentViewSwitcher panelView={panelView} />
+      {panelView === "pending" ? (
+        <PendingChangesView />
+      ) : (
+        <>
+          <AgentTranscriptContainer currentSessionId={currentSessionId} />
+          <AgentComposerSlot />
+        </>
+      )}
     </aside>
   );
 }
