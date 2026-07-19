@@ -38,7 +38,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use axum::extract::{Path, Query};
+use axum::extract::{Path, Query, State};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -46,6 +46,9 @@ use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+
+use crate::app::AppState;
+use crate::routes::a2a_lifecycle::LifecyclePlane;
 
 /// Per-run ring depth for `since=` replay. A run's progress stream is bursty but
 /// bounded; 1024 frames covers a generous reconnect window while capping memory
@@ -477,8 +480,10 @@ fn get_or_create_relay(run_id: &str) -> Option<Arc<RunRelay>> {
 }
 
 /// Start at most one producer for a resident relay. A compare-exchange makes
-/// concurrent browser reconnects converge on one reader thread.
-fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>) {
+/// concurrent browser reconnects converge on one reader thread. The seated
+/// `LifecyclePlane` is carried so the reader dual-resolves its upstream endpoint
+/// through the product controller with the service.json fallback (S31).
+fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>, plane: Arc<LifecyclePlane>) {
     if !relay.claim_producer() {
         return;
     }
@@ -491,23 +496,33 @@ fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>) {
     std::thread::spawn(move || {
         // Always restore lifecycle state, even if an unexpected parser bug panics.
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_relay_thread(&run_id_owned, &relay_for_thread)
+            run_relay_thread(&run_id_owned, &relay_for_thread, &plane)
         }));
         let restart_if_subscribed = matches!(outcome, Ok(true));
-        finish_relay_reader(&run_id_owned, &relay_for_thread, restart_if_subscribed);
+        finish_relay_reader(
+            &run_id_owned,
+            &relay_for_thread,
+            restart_if_subscribed,
+            plane,
+        );
     });
 }
 
 /// Publish producer exit under the registry lock. If a reconnect subscribed in
 /// the narrow stop/cleanup race, immediately start a replacement; otherwise
 /// remove the tombstone regardless of terminal state so churn frees its slot.
-fn finish_relay_reader(run_id: &str, relay: &Arc<RunRelay>, restart_if_subscribed: bool) {
+fn finish_relay_reader(
+    run_id: &str,
+    relay: &Arc<RunRelay>,
+    restart_if_subscribed: bool,
+    plane: Arc<LifecyclePlane>,
+) {
     let restart = {
         let mut registry = relays().lock().unwrap_or_else(|e| e.into_inner());
         registry.reader_finished(run_id, relay, restart_if_subscribed)
     };
     if restart {
-        ensure_relay_reader(run_id, relay);
+        ensure_relay_reader(run_id, relay, plane);
     }
 }
 
@@ -516,9 +531,9 @@ fn finish_relay_reader(run_id: &str, relay: &Arc<RunRelay>, restart_if_subscribe
 /// on any connection fault emit one degraded signal. The browser owns authoritative
 /// status polling. Bounded by `RELAY_MAX_LIFETIME` overall and
 /// `UPSTREAM_IDLE_TIMEOUT` per read.
-fn run_relay_thread(run_id: &str, relay: &RunRelay) -> bool {
+fn run_relay_thread(run_id: &str, relay: &RunRelay, plane: &LifecyclePlane) -> bool {
     let deadline = Instant::now() + RELAY_MAX_LIFETIME;
-    let (port, bearer) = match super::a2a::a2a_endpoint() {
+    let (port, bearer) = match super::a2a::a2a_endpoint(plane) {
         Ok(endpoint) => endpoint,
         Err(reason) => {
             // The browser owns authoritative degraded polling. Emit one signal and
@@ -1020,6 +1035,7 @@ fn map_live_frame(
 /// so a degraded/closed stream is never an error surface — the client reconciles
 /// from `run-status`.
 pub async fn a2a_run_stream(
+    State(state): State<Arc<AppState>>,
     Path(run_id): Path<String>,
     Query(params): Query<RunStreamParams>,
 ) -> Sse<impl futures_core::Stream<Item = Result<Event, Infallible>>> {
@@ -1042,7 +1058,7 @@ pub async fn a2a_run_stream(
     // a frame landing between the two is then present in the live receiver's queue
     // rather than lost; the dedup threshold removes the snapshot/queue overlap.
     let receiver = relay.tx.subscribe();
-    ensure_relay_reader(&run_id, &relay);
+    ensure_relay_reader(&run_id, &relay, state.a2a_lifecycle.clone());
     let (frames, gap) = relay.snapshot_since(params.since);
 
     let emitted_up_to = frames

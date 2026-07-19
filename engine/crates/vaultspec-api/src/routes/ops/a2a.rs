@@ -295,14 +295,39 @@ fn read_a2a_handoff(discovery_path: &std::path::Path, reference: &str) -> Result
     Ok(token)
 }
 
-/// Resolve the RESIDENT a2a gateway's endpoint (`port`, bearer) under the
-/// attach-never-own predicate, or the truthful "a2a down" reason. Fresh discovery
-/// gates a cheap ungated `/health` liveness confirm (ADR D1's `service file +
-/// heartbeat freshness + ungated health`); either gate failing is a known-down
-/// sibling the caller degrades honestly on, never a 5xx. Shared by the pass-through
-/// transport (`ops_a2a`) and the run-stream relay (`a2a_stream`).
-pub(super) fn a2a_endpoint() -> Result<(u16, Option<String>), String> {
-    a2a_endpoint_from(&a2a_service_json_candidates())
+/// DUAL-RESOLVE the resident a2a gateway endpoint (a2a-product-provisioning
+/// W02.P04.S30): PREFER the product controller's authenticated, versioned
+/// discovery (the secret-free `gateway-discovery.json` + the attach-control
+/// credential the `LifecyclePlane` resolves under ADR D5), and FALL BACK to the
+/// resident `service.json` + owner-restricted handoff path when the product path
+/// resolves nothing.
+///
+/// The product path is the ADR-D5 target. The `service.json` fallback keeps the
+/// live `/ops/a2a` edge green until the A2A capsule publishes the product
+/// discovery format, and retires when it does — it is NOT deleted. A product
+/// discovery that is stale, incompatible, or untrusted resolves `Unavailable`
+/// (never a usable endpoint) and DEFERS to the fallback rather than displacing a
+/// working resident; both down surfaces the fallback's honest reason. Shared by
+/// the pass-through transport (`ops_a2a`) and the run-stream relay (`a2a_stream`).
+fn a2a_endpoint_dual(
+    plane: &crate::routes::a2a_lifecycle::LifecyclePlane,
+    candidates: &[PathBuf],
+) -> Result<(u16, Option<String>), String> {
+    if let crate::routes::a2a_lifecycle::ResolvedGateway::Available(ep) = plane.resolve_gateway()
+        && let Some(port) = ep.port()
+    {
+        return Ok((port, Some(ep.attach_token)));
+    }
+    a2a_endpoint_from(candidates)
+}
+
+/// [`a2a_endpoint_dual`] over the machine-global `service.json` candidates — the
+/// production fallback list. Used by the run-stream relay (`a2a_stream`), which
+/// holds the seated `LifecyclePlane` but not an explicit candidate list.
+pub(super) fn a2a_endpoint(
+    plane: &crate::routes::a2a_lifecycle::LifecyclePlane,
+) -> Result<(u16, Option<String>), String> {
+    a2a_endpoint_dual(plane, &a2a_service_json_candidates())
 }
 
 /// [`a2a_endpoint`] over an explicit candidate list — hermetic for a real-socket
@@ -329,21 +354,6 @@ fn a2a_endpoint_from(candidates: &[PathBuf]) -> Result<(u16, Option<String>), St
         }
         A2aDiscovery::Down { reason } => Err(reason),
     }
-}
-
-/// Build a bounded loopback transport over an explicit discovery candidate list.
-/// Production supplies the machine-global candidates; real-socket tests use an
-/// isolated service record without mutating process-global environment variables.
-fn a2a_transport_from(
-    candidates: &[PathBuf],
-    budget: Duration,
-) -> Result<LoopbackTransport, String> {
-    let (port, bearer) = a2a_endpoint_from(candidates)?;
-    Ok(LoopbackTransport {
-        port,
-        bearer,
-        timeout: budget,
-    })
 }
 
 /// Validate a bounded, path-safe run id: non-empty, not flag-shaped, restricted
@@ -831,8 +841,14 @@ fn execute_broker_call(
 ) -> BrokeredRoundTrip {
     let _run_guard = run_start_id.map(lock_run_start);
 
-    let transport = match a2a_transport_from(discovery_candidates, call.budget) {
-        Ok(transport) => transport,
+    // DUAL-RESOLVE (S30): prefer the product controller's authenticated discovery,
+    // fall back to the resident service.json + handoff so the live edge stays green.
+    let transport = match a2a_endpoint_dual(&state.a2a_lifecycle, discovery_candidates) {
+        Ok((port, bearer)) => LoopbackTransport {
+            port,
+            bearer,
+            timeout: call.budget,
+        },
         Err(reason) => return BrokeredRoundTrip::Down(reason),
     };
 
