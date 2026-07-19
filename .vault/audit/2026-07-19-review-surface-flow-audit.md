@@ -73,6 +73,23 @@ truncation-honest out-of-session count above the composer and routes to the inbo
 the orphaned `ReviewStationSection` is deleted (clean cutover). Gate green (tsc +
 `just dev lint frontend` + touched-scope vitest 13/13 + 42/42).
 
+### review-surface-flow | pass | P03 APPROVED (independent review of `694550e50d`)
+
+Independent review verified all four invariants: the autonomy relocation is honest
+(renders composer-adjacent in the transcript view only, `null` when no mode is
+observable, and renders on an empty conversation via P01's served scope-level mode);
+the `derivePendingChangesBridge` derivation is a pure, directly-unit-tested,
+truncation-honest function (out-of-session correlation counts no-run_id rows and
+excludes in-session runs; a truncated slice degrades to a count-less "More pending
+changes", never a fabricated total; nothing at zero); the `ReviewStationSection`
+deletion is clean (unused imports dropped, live test re-pointed to the new host, no
+shim); and store-selector / view-freeze / localization / test-integrity rules hold
+(the bridge render test seeds a REAL out-of-session proposal over the live wire, not
+a mock). Verified `tsc -b` exit 0 + 33 tests/4 files green. One INFO note (not a
+defect): the bridge is deliberately silent in the extreme corner where every
+out-of-session row is hidden beyond the page cap — a documented choice, with the
+always-present footer Review chip as the unconditional route to the inbox.
+
 ### review-surface-flow | pass | FULL acceptance set live-driven (A1–A5, P04)
 
 Assembled-app headless drive proves every ADR acceptance criterion: A1 inbox opens
