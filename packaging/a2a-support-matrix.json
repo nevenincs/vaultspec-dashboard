@@ -1,0 +1,294 @@
+{
+  "matrix_version": "1.0",
+  "description": "The explicit five-target by channel support matrix for the composite A2A product (dashboard executable + adjacent immutable A2A capsule as one release set) — a2a-product-provisioning plan W01.P01.S146. Every supported channel installs the SAME logical release set (ADR constraint). `support_status` is `supported` (product-owned, proven), `feasibility_gated` (a package-manager channel whose support is contingent on the phase-zero clean-machine install/upgrade/downgrade/repair/uninstall proof in `.github/workflows/a2a-channel-feasibility.yml`, gated by W01.P01.S148 — a channel without a proven reversible adapter is NOT a supported update channel, ADR D2), or `unsupported` (with a reason). Self-installed copies let the external updater helper own file activation and rollback; package-manager-owned copies use a two-phase adapter (manager stages/activates/rolls back; the product helper does preflight/drain/snapshot/verify).",
+  "channels": [
+    "self-install",
+    "msi",
+    "scoop",
+    "winget",
+    "cargo-binstall",
+    "cargo-install"
+  ],
+  "targets": {
+    "x86_64-pc-windows-msvc": {
+      "self-install": {
+        "support_status": "supported",
+        "payload_type": "complete-product-tree",
+        "installer_authority": "product-owned-powershell-installer",
+        "updater_authority": "external-updater-helper",
+        "downgrade_path": "external-updater staged-generation activation of the prior release set",
+        "rollback_path": "external-updater snapshot + prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "msi": {
+        "support_status": "supported",
+        "payload_type": "complete-product-msi",
+        "installer_authority": "product-owned-wix-msi",
+        "updater_authority": "external-updater-helper",
+        "downgrade_path": "reinstall the prior versioned MSI (product-owned)",
+        "rollback_path": "external-updater snapshot + prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "scoop": {
+        "support_status": "feasibility_gated",
+        "payload_type": "complete-windows-zip",
+        "installer_authority": "scoop",
+        "updater_authority": "scoop-two-phase-adapter",
+        "downgrade_path": "scoop manager downgrade (declared adapter)",
+        "rollback_path": "adapter transaction rollback + mutable-state and prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "winget": {
+        "support_status": "feasibility_gated",
+        "payload_type": "complete-product-msi",
+        "installer_authority": "winget",
+        "updater_authority": "winget-two-phase-adapter",
+        "downgrade_path": "winget manager downgrade (declared adapter)",
+        "rollback_path": "adapter transaction rollback + mutable-state and prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "cargo-binstall": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "binary-only; cannot preserve the release set, receipt, verification, update, and removal guarantees (ADR D2)"
+      },
+      "cargo-install": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "compiles a binary-only artifact; no composite release set, receipt, or reversible update (ADR D2)"
+      }
+    },
+    "x86_64-apple-darwin": {
+      "self-install": {
+        "support_status": "supported",
+        "payload_type": "complete-product-tree",
+        "installer_authority": "product-owned-shell-installer",
+        "updater_authority": "external-updater-helper",
+        "downgrade_path": "external-updater staged-generation activation of the prior release set",
+        "rollback_path": "external-updater snapshot + prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "msi": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "MSI is a Windows-only installer format"
+      },
+      "scoop": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "Scoop is a Windows-only package manager"
+      },
+      "winget": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "WinGet is a Windows-only package manager"
+      },
+      "cargo-binstall": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "binary-only; cannot preserve the release-set guarantees (ADR D2)"
+      },
+      "cargo-install": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "compiles a binary-only artifact; no composite release set (ADR D2)"
+      }
+    },
+    "aarch64-apple-darwin": {
+      "self-install": {
+        "support_status": "supported",
+        "payload_type": "complete-product-tree",
+        "installer_authority": "product-owned-shell-installer",
+        "updater_authority": "external-updater-helper",
+        "downgrade_path": "external-updater staged-generation activation of the prior release set",
+        "rollback_path": "external-updater snapshot + prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "msi": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "MSI is a Windows-only installer format"
+      },
+      "scoop": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "Scoop is a Windows-only package manager"
+      },
+      "winget": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "WinGet is a Windows-only package manager"
+      },
+      "cargo-binstall": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "binary-only; cannot preserve the release-set guarantees (ADR D2)"
+      },
+      "cargo-install": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "compiles a binary-only artifact; no composite release set (ADR D2)"
+      }
+    },
+    "x86_64-unknown-linux-gnu": {
+      "self-install": {
+        "support_status": "supported",
+        "payload_type": "complete-product-tree",
+        "installer_authority": "product-owned-shell-installer",
+        "updater_authority": "external-updater-helper",
+        "downgrade_path": "external-updater staged-generation activation of the prior release set",
+        "rollback_path": "external-updater snapshot + prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "msi": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "MSI is a Windows-only installer format"
+      },
+      "scoop": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "Scoop is a Windows-only package manager"
+      },
+      "winget": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "WinGet is a Windows-only package manager"
+      },
+      "cargo-binstall": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "binary-only; cannot preserve the release-set guarantees (ADR D2)"
+      },
+      "cargo-install": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "compiles a binary-only artifact; no composite release set (ADR D2)"
+      }
+    },
+    "aarch64-unknown-linux-gnu": {
+      "self-install": {
+        "support_status": "supported",
+        "payload_type": "complete-product-tree",
+        "installer_authority": "product-owned-shell-installer",
+        "updater_authority": "external-updater-helper",
+        "downgrade_path": "external-updater staged-generation activation of the prior release set",
+        "rollback_path": "external-updater snapshot + prior-receipt restore",
+        "unsupported_reason": null
+      },
+      "msi": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "MSI is a Windows-only installer format"
+      },
+      "scoop": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "Scoop is a Windows-only package manager"
+      },
+      "winget": {
+        "support_status": "unsupported",
+        "payload_type": null,
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "WinGet is a Windows-only package manager"
+      },
+      "cargo-binstall": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "binary-only; cannot preserve the release-set guarantees (ADR D2)"
+      },
+      "cargo-install": {
+        "support_status": "unsupported",
+        "payload_type": "binary-only",
+        "installer_authority": null,
+        "updater_authority": null,
+        "downgrade_path": null,
+        "rollback_path": null,
+        "unsupported_reason": "compiles a binary-only artifact; no composite release set (ADR D2)"
+      }
+    }
+  }
+}
