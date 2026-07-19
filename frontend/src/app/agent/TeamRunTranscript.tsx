@@ -18,7 +18,6 @@ import { Wrench } from "lucide-react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { authoredDisplayText } from "../../platform/localization/displayText";
-import { useRunProgress } from "../../stores/server/agent/a2aTeam";
 import { useAgentTeamRunId, useAgentTeamRunPrompt } from "../../stores/view/agentPanel";
 import { FoldSection, SectionLabel, Spinner } from "../kit";
 import {
@@ -28,6 +27,7 @@ import {
   type TeamThinkingEntry,
   type TeamToolEntry,
 } from "./teamRun";
+import { useTeamRunProgress } from "./TeamRunProgressContext";
 
 const MSG = {
   thinking: "common:agent.transcript.team.thinking",
@@ -194,9 +194,12 @@ export function TeamRunTranscript() {
   const resolveMessage = useLocalizedMessageResolver();
   const runId = useAgentTeamRunId();
   const prompt = useAgentTeamRunPrompt();
-  const progress = useRunProgress(runId);
+  const progress = useTeamRunProgress();
   const frames = progress.frames;
-  const view = useMemo(() => assembleTeamRun(frames), [frames]);
+  const view = useMemo(
+    () => assembleTeamRun(frames, progress.terminal),
+    [frames, progress.terminal],
+  );
 
   if (runId === null) return null;
 

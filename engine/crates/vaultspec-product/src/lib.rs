@@ -33,6 +33,7 @@
 pub mod control;
 pub mod credentials;
 pub mod discovery;
+pub mod generation;
 pub mod lifecycle;
 pub mod locking;
 pub mod manifest;

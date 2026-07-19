@@ -80,7 +80,7 @@ export interface TeamRunView {
   readonly entries: TeamActivityEntry[];
   /** Agent ids currently `working` (drives the live pulsing indicator). */
   readonly activeAgents: string[];
-  /** True once a terminal frame arrived (collapses all live chrome). */
+  /** True only when the authoritative run-status snapshot is terminal. */
   readonly terminal: boolean;
   /** A run-fault message when an `error` frame arrived, else null. */
   readonly error: string | null;
@@ -88,7 +88,13 @@ export interface TeamRunView {
 
 /** A mutable accumulator entry (internal; frozen into the readonly view at end). */
 type MutableEntry =
-  | { kind: "thinking"; key: string; agentId: string; text: string; lastSeq: number }
+  | {
+      kind: "thinking";
+      key: string;
+      agentId: string;
+      parts: string[];
+      lastSeq: number;
+    }
   | {
       kind: "tool";
       key: string;
@@ -100,17 +106,25 @@ type MutableEntry =
       result: string | null;
       lastSeq: number;
     }
-  | { kind: "message"; key: string; agentId: string; text: string; lastSeq: number };
+  | {
+      kind: "message";
+      key: string;
+      agentId: string;
+      parts: string[];
+      lastSeq: number;
+    };
 
 /** Fold a run's relay frames into the ordered team-run view. Iterates in frame
  *  order (the relay reducer already appends seq-ordered, dedup'd frames), grouping
  *  streams by their correlation id so multi-chunk reasoning/answers/tool calls
  *  collapse into one entry positioned at their first frame. */
-export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRunView {
+export function assembleTeamRun(
+  frames: readonly RelayTranscriptFrame[],
+  terminal: boolean,
+): TeamRunView {
   // Insertion-ordered map: first frame of a group fixes its position.
   const groups = new Map<string, MutableEntry>();
   const agentState = new Map<string, string>();
-  let terminal = false;
   let error: string | null = null;
   let seqCounter = 0;
 
@@ -122,7 +136,8 @@ export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRu
 
     switch (frame.kind) {
       case "terminal":
-        terminal = true;
+        // Presentation-only. The owning status query immediately reconciles on
+        // this frame; lifecycle posture changes only after run-status confirms it.
         break;
       case "error":
         error = relayErrorMessage(frame) || "The team run reported an error.";
@@ -150,14 +165,14 @@ export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRu
         const key = `thought:${agentId}:${relayMessageId(frame) || "_"}`;
         const existing = groups.get(key);
         if (existing && existing.kind === "thinking") {
-          existing.text += relayContent(frame);
+          existing.parts.push(relayContent(frame));
           existing.lastSeq = order;
         } else {
           groups.set(key, {
             kind: "thinking",
             key,
             agentId,
-            text: relayContent(frame),
+            parts: [relayContent(frame)],
             lastSeq: order,
           });
         }
@@ -169,14 +184,14 @@ export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRu
         const key = `msg:${agentId}:${relayMessageId(frame) || "_"}`;
         const existing = groups.get(key);
         if (existing && existing.kind === "message") {
-          existing.text += relayContent(frame);
+          existing.parts.push(relayContent(frame));
           existing.lastSeq = order;
         } else {
           groups.set(key, {
             kind: "message",
             key,
             agentId,
-            text: relayContent(frame),
+            parts: [relayContent(frame)],
             lastSeq: order,
           });
         }
@@ -249,8 +264,20 @@ export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRu
     }
     const live = !terminal && e.lastSeq === liveStreamSeq;
     return e.kind === "thinking"
-      ? { kind: "thinking", key: e.key, agentId: e.agentId, text: e.text, live }
-      : { kind: "message", key: e.key, agentId: e.agentId, text: e.text, live };
+      ? {
+          kind: "thinking",
+          key: e.key,
+          agentId: e.agentId,
+          text: e.parts.join(""),
+          live,
+        }
+      : {
+          kind: "message",
+          key: e.key,
+          agentId: e.agentId,
+          text: e.parts.join(""),
+          live,
+        };
   });
 
   const capped =

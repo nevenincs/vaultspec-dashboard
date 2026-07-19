@@ -466,19 +466,30 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     let foreign = discovery_verdict("someone-else", &handoff, &ctx);
     assert_eq!(foreign, Verdict::ForeignAttachable);
 
-    // BOTH gates hold -> the mutation is allowed.
+    // BOTH gates hold (live owned gateway) -> the mutation is allowed.
     assert!(
-        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), &owned)
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), Some(&owned))
             .is_ok()
+    );
+    // (a) NO discovery (cleanly stopped install) + ownership -> PERMIT: the
+    // local receipt + ownership authority alone governs a cold-state mutation.
+    assert!(
+        ctrl.guard_owned_mutation(LifecycleOp::Remove, Some(&creds.ownership), None)
+            .is_ok()
+    );
+    // NO discovery but NO ownership capability -> refused (authority still required).
+    assert_eq!(
+        ctrl.guard_owned_mutation(LifecycleOp::Remove, None, None),
+        Err(Refusal::NotOwner)
     );
     // Owned gateway but NO ownership capability -> refused (authority gate).
     assert_eq!(
-        ctrl.guard_owned_mutation(LifecycleOp::Stop, None, &owned),
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, None, Some(&owned)),
         Err(Refusal::NotOwner)
     );
     // Ownership held but a FOREIGN (read-only) gateway -> refused (attach gate).
     assert_eq!(
-        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), &foreign),
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), Some(&foreign)),
         Err(Refusal::ForeignResident)
     );
 
@@ -486,7 +497,7 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     // the real gateway socket and settles; without it the gateway rejects it.
     let endpoint = spawn_shutdown_stub(creds.ownership.secret().to_string());
     let client = ControlClient::new(&endpoint, creds.attach_control.secret());
-    ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), &owned)
+    ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), Some(&owned))
         .expect("gate passes");
     client
         .shutdown(&creds.ownership)

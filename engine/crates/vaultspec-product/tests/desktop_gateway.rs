@@ -96,6 +96,7 @@ fn owner_attaches_to_a_live_owned_gateway_over_a_real_socket() {
     let dir = tempfile::tempdir().unwrap();
     let handoff = dir.path().join("attach-control.cred");
     std::fs::write(&handoff, "handoff-present").unwrap();
+    vaultspec_product::discovery::restrict_handoff_to_current_user(&handoff).unwrap();
     let endpoint = spawn_gateway_stub("attach-secret", 1);
 
     let raw = discovery_json(

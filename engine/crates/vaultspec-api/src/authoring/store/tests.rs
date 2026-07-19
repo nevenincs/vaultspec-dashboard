@@ -110,6 +110,10 @@ fn clean_open_creates_metadata_and_survives_restart() {
                     version: 21,
                     name: "add_queue_state_provenance_and_feedback_batches".to_string(),
                 },
+                AppliedMigration {
+                    version: 22,
+                    name: "bound_actor_token_lifecycle".to_string(),
+                },
             ]
         );
         let table_count: i64 = store
@@ -155,7 +159,7 @@ fn clean_open_creates_metadata_and_survives_restart() {
     let reopened = Store::open_at(&path).expect("authoring store reopens");
     let metadata = reopened.schema_metadata().unwrap();
     assert_eq!(metadata.schema_version, SCHEMA_VERSION);
-    assert_eq!(metadata.applied_migrations.len(), 21);
+    assert_eq!(metadata.applied_migrations.len(), 22);
 }
 
 #[test]

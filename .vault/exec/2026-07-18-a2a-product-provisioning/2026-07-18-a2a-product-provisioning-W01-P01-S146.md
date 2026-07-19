@@ -49,4 +49,3 @@ Authored as a self-contained data artifact (like the S03 component lock and S04
 release-set schema) while the phase's Rust executor pipeline was unavailable. The
 phase-zero CI feasibility workflows (S145/S147/S149) require clean-machine
 package-manager runs that only execute on CI runners, not in-session.
-

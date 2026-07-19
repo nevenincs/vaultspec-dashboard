@@ -14,9 +14,11 @@
 //! matching receipt owner may quarantine stale discovery, and only after proving
 //! the recorded process dead ([`quarantine_owner_matched_stale`]).
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use fs4::fs_std::FileExt;
+
+use crate::paths::ProductPaths;
 
 /// Which component is requesting the installation lock. The actor gates the
 /// request: only installer/updater authority may hold it.
@@ -83,7 +85,9 @@ pub struct LockBusy {
 pub struct InstallLockGuard {
     file: std::fs::File,
     owner: String,
-    sidecar: std::path::PathBuf,
+    sidecar: PathBuf,
+    canonical_path: PathBuf,
+    identity: same_file::Handle,
 }
 
 impl InstallLockGuard {
@@ -91,6 +95,26 @@ impl InstallLockGuard {
     #[must_use]
     pub fn owner(&self) -> &str {
         &self.owner
+    }
+
+    /// Verify that this held guard is the canonical installation lock for the
+    /// supplied product path authority.
+    ///
+    /// Later lifecycle and generation APIs must call this before mutating
+    /// product state. Path equality alone is not authority: the lock entry may
+    /// have been replaced after acquisition, or a guard from another product
+    /// root may have been supplied. This check therefore re-derives the only
+    /// permitted lock path from [`ProductPaths`], rejects a symbolic-link or
+    /// non-file entry, and requires both its canonical path and filesystem
+    /// identity to match the still-locked file handle.
+    pub fn verify_for_product(&self, paths: &ProductPaths) -> Result<(), LockAuthorityError> {
+        let expected_path = paths.install_lock_path();
+        let (canonical_path, path_identity) = lock_identity_at_path(&expected_path)?;
+
+        if canonical_path != self.canonical_path || path_identity != self.identity {
+            return Err(LockAuthorityError::AuthorityMismatch);
+        }
+        Ok(())
     }
 }
 
@@ -107,14 +131,14 @@ impl Drop for InstallLockGuard {
 /// The installation transaction lock at a fixed product-owned path.
 #[derive(Debug, Clone)]
 pub struct InstallLock {
-    path: std::path::PathBuf,
+    path: PathBuf,
 }
 
 impl InstallLock {
     /// Bind the lock to its product-owned path (typically
     /// `ProductPaths::install_lock_path`).
     #[must_use]
-    pub fn new(path: impl Into<std::path::PathBuf>) -> Self {
+    pub fn new(path: impl Into<PathBuf>) -> Self {
         Self { path: path.into() }
     }
 
@@ -145,6 +169,13 @@ impl InstallLock {
             let (o, p) = read_lock_identity(&sidecar);
             return Ok(Err(LockBusy { owner: o, pid: p }));
         }
+        let held_identity = same_file::Handle::from_file(file.try_clone()?)?;
+        let (canonical_path, path_identity) = lock_identity_at_path(&self.path)?;
+        if held_identity != path_identity {
+            return Err(LockError::Io(std::io::Error::other(
+                "product install lock entry changed while it was being acquired",
+            )));
+        }
         // Advisory identity in an UNLOCKED sidecar, not the lock file itself:
         // the OS holds an exclusive lock on `self.path`, and on Windows a reader
         // cannot open a locked region, so a concurrent LockBusy reader would see
@@ -155,6 +186,8 @@ impl InstallLock {
             file,
             owner: owner.to_string(),
             sidecar,
+            canonical_path,
+            identity: held_identity,
         }))
     }
 
@@ -168,6 +201,50 @@ impl InstallLock {
         name.push(".owner");
         self.path.with_file_name(name)
     }
+}
+
+/// Why a held guard does not authorize mutation of the expected product tree.
+#[derive(Debug)]
+pub enum LockAuthorityError {
+    /// The expected lock path could not be resolved or inspected safely.
+    Io(std::io::Error),
+    /// The canonical path or filesystem identity does not match the held lock.
+    AuthorityMismatch,
+}
+
+impl std::fmt::Display for LockAuthorityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LockAuthorityError::Io(error) => {
+                write!(f, "cannot validate canonical product install lock: {error}")
+            }
+            LockAuthorityError::AuthorityMismatch => write!(
+                f,
+                "held guard is not the canonical product installation transaction lock"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LockAuthorityError {}
+
+impl From<std::io::Error> for LockAuthorityError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
+    }
+}
+
+/// Resolve a lock entry without accepting a symbolic-link alias and capture
+/// the identity of the directory entry that callers will subsequently use.
+fn lock_identity_at_path(path: &Path) -> std::io::Result<(PathBuf, same_file::Handle)> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err(std::io::Error::other(
+            "product install lock must be a regular non-symlink file",
+        ));
+    }
+    let canonical_path = std::fs::canonicalize(path)?;
+    Ok((canonical_path, same_file::Handle::from_path(path)?))
 }
 
 /// Read the owner id and pid from the advisory sidecar, tolerantly.

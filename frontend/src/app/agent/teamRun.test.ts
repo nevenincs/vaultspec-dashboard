@@ -13,20 +13,23 @@ function wire(event: string, data: Record<string, unknown>): RelayTranscriptFram
 
 describe("assembleTeamRun", () => {
   it("derives active agents from agent_status/team_status with no entries (the mock team)", () => {
-    const view = assembleTeamRun([
-      wire("agent_status", {
-        seq: 1,
-        type: "agent_status",
-        agent_id: "mock-planner",
-        state: "working",
-      }),
-      wire("agent_status", {
-        seq: 2,
-        type: "agent_status",
-        agent_id: "mock-coder",
-        state: "idle",
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("agent_status", {
+          seq: 1,
+          type: "agent_status",
+          agent_id: "mock-planner",
+          state: "working",
+        }),
+        wire("agent_status", {
+          seq: 2,
+          type: "agent_status",
+          agent_id: "mock-coder",
+          state: "idle",
+        }),
+      ],
+      false,
+    );
     expect(view.entries).toEqual([]);
     expect(view.activeAgents).toEqual(["mock-planner"]);
     expect(view.terminal).toBe(false);
@@ -34,22 +37,25 @@ describe("assembleTeamRun", () => {
   });
 
   it("groups a thought_chunk stream into one live Thinking entry", () => {
-    const view = assembleTeamRun([
-      wire("thought_chunk", {
-        seq: 1,
-        type: "thought_chunk",
-        agent_id: "planner",
-        message_id: "m1",
-        content: "Let me ",
-      }),
-      wire("thought_chunk", {
-        seq: 2,
-        type: "thought_chunk",
-        agent_id: "planner",
-        message_id: "m1",
-        content: "think.",
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("thought_chunk", {
+          seq: 1,
+          type: "thought_chunk",
+          agent_id: "planner",
+          message_id: "m1",
+          content: "Let me ",
+        }),
+        wire("thought_chunk", {
+          seq: 2,
+          type: "thought_chunk",
+          agent_id: "planner",
+          message_id: "m1",
+          content: "think.",
+        }),
+      ],
+      false,
+    );
     expect(view.entries).toHaveLength(1);
     const entry = view.entries[0]!;
     expect(entry.kind).toBe("thinking");
@@ -61,24 +67,27 @@ describe("assembleTeamRun", () => {
   });
 
   it("merges tool_call_start + tool_call_update by tool_call_id", () => {
-    const view = assembleTeamRun([
-      wire("tool_call_start", {
-        seq: 1,
-        type: "tool_call_start",
-        agent_id: "coder",
-        tool_call_id: "tc1",
-        title: "read_file",
-        status: "pending",
-        content: [{ content_type: "text", text: '{"path":"a.ts"}' }],
-      }),
-      wire("tool_call_update", {
-        seq: 2,
-        type: "tool_call_update",
-        tool_call_id: "tc1",
-        status: "completed",
-        content: [{ content_type: "text", text: "ok" }],
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("tool_call_start", {
+          seq: 1,
+          type: "tool_call_start",
+          agent_id: "coder",
+          tool_call_id: "tc1",
+          title: "read_file",
+          status: "pending",
+          content: [{ content_type: "text", text: '{"path":"a.ts"}' }],
+        }),
+        wire("tool_call_update", {
+          seq: 2,
+          type: "tool_call_update",
+          tool_call_id: "tc1",
+          status: "completed",
+          content: [{ content_type: "text", text: "ok" }],
+        }),
+      ],
+      false,
+    );
     expect(view.entries).toHaveLength(1);
     const entry = view.entries[0]!;
     expect(entry.kind).toBe("tool");
@@ -94,16 +103,19 @@ describe("assembleTeamRun", () => {
   it("labels a first-seen tool_call_update (dropped start) content as result, not args", () => {
     // The `tool_call_start` was evicted/dropped; the first frame we see is a
     // completed update. Its content is a RESULT — labeling it `args` would lie.
-    const view = assembleTeamRun([
-      wire("tool_call_update", {
-        seq: 5,
-        type: "tool_call_update",
-        agent_id: "coder",
-        tool_call_id: "tc9",
-        status: "completed",
-        content: [{ content_type: "text", text: "42 rows" }],
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("tool_call_update", {
+          seq: 5,
+          type: "tool_call_update",
+          agent_id: "coder",
+          tool_call_id: "tc9",
+          status: "completed",
+          content: [{ content_type: "text", text: "42 rows" }],
+        }),
+      ],
+      false,
+    );
     expect(view.entries).toHaveLength(1);
     const entry = view.entries[0]!;
     expect(entry.kind).toBe("tool");
@@ -115,22 +127,25 @@ describe("assembleTeamRun", () => {
   });
 
   it("groups a message_chunk stream into one final-text entry", () => {
-    const view = assembleTeamRun([
-      wire("message_chunk", {
-        seq: 1,
-        type: "message_chunk",
-        agent_id: "reviewer",
-        message_id: "a1",
-        content: "Looks ",
-      }),
-      wire("message_chunk", {
-        seq: 2,
-        type: "message_chunk",
-        agent_id: "reviewer",
-        message_id: "a1",
-        content: "good.",
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("message_chunk", {
+          seq: 1,
+          type: "message_chunk",
+          agent_id: "reviewer",
+          message_id: "a1",
+          content: "Looks ",
+        }),
+        wire("message_chunk", {
+          seq: 2,
+          type: "message_chunk",
+          agent_id: "reviewer",
+          message_id: "a1",
+          content: "good.",
+        }),
+      ],
+      false,
+    );
     expect(view.entries).toHaveLength(1);
     const entry = view.entries[0]!;
     expect(entry.kind).toBe("message");
@@ -138,72 +153,112 @@ describe("assembleTeamRun", () => {
   });
 
   it("keeps entries in first-appearance order across kinds", () => {
-    const view = assembleTeamRun([
-      wire("thought_chunk", {
-        seq: 1,
-        type: "thought_chunk",
-        agent_id: "p",
-        message_id: "t1",
-        content: "hmm",
-      }),
-      wire("tool_call_start", {
-        seq: 2,
-        type: "tool_call_start",
-        agent_id: "p",
-        tool_call_id: "tc1",
-        title: "grep",
-        status: "running",
-      }),
-      wire("message_chunk", {
-        seq: 3,
-        type: "message_chunk",
-        agent_id: "p",
-        message_id: "a1",
-        content: "done",
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("thought_chunk", {
+          seq: 1,
+          type: "thought_chunk",
+          agent_id: "p",
+          message_id: "t1",
+          content: "hmm",
+        }),
+        wire("tool_call_start", {
+          seq: 2,
+          type: "tool_call_start",
+          agent_id: "p",
+          tool_call_id: "tc1",
+          title: "grep",
+          status: "running",
+        }),
+        wire("message_chunk", {
+          seq: 3,
+          type: "message_chunk",
+          agent_id: "p",
+          message_id: "a1",
+          content: "done",
+        }),
+      ],
+      false,
+    );
     expect(view.entries.map((e) => e.kind)).toEqual(["thinking", "tool", "message"]);
   });
 
-  it("collapses live chrome and clears active agents on a terminal frame", () => {
-    const view = assembleTeamRun([
-      wire("agent_status", {
-        seq: 1,
-        type: "agent_status",
-        agent_id: "planner",
-        state: "working",
-      }),
-      wire("thought_chunk", {
-        seq: 2,
-        type: "thought_chunk",
-        agent_id: "planner",
-        message_id: "m1",
-        content: "reasoning",
-      }),
-      wire("tool_call_start", {
-        seq: 3,
-        type: "tool_call_start",
-        agent_id: "planner",
-        tool_call_id: "tc1",
-        title: "grep",
-        status: "running",
-      }),
-      wire("thread_terminal", { seq: 4, type: "thread_terminal", status: "completed" }),
-    ]);
-    expect(view.terminal).toBe(true);
-    expect(view.activeAgents).toEqual([]);
-    for (const entry of view.entries) expect(entry.live).toBe(false);
+  it("ignores relay terminal authority until run-status confirms terminal", () => {
+    const view = assembleTeamRun(
+      [
+        wire("agent_status", {
+          seq: 1,
+          type: "agent_status",
+          agent_id: "planner",
+          state: "working",
+        }),
+        wire("thought_chunk", {
+          seq: 2,
+          type: "thought_chunk",
+          agent_id: "planner",
+          message_id: "m1",
+          content: "reasoning",
+        }),
+        wire("tool_call_start", {
+          seq: 3,
+          type: "tool_call_start",
+          agent_id: "planner",
+          tool_call_id: "tc1",
+          title: "grep",
+          status: "running",
+        }),
+        wire("thread_terminal", {
+          seq: 4,
+          type: "thread_terminal",
+          status: "completed",
+        }),
+      ],
+      false,
+    );
+    expect(view.terminal).toBe(false);
+    expect(view.activeAgents).toEqual(["planner"]);
+    expect(view.entries.some((entry) => entry.live)).toBe(true);
+
+    const confirmed = assembleTeamRun(
+      [
+        wire("agent_status", {
+          seq: 1,
+          type: "agent_status",
+          agent_id: "planner",
+          state: "working",
+        }),
+        wire("thought_chunk", {
+          seq: 2,
+          type: "thought_chunk",
+          agent_id: "planner",
+          message_id: "m1",
+          content: "reasoning",
+        }),
+        wire("thread_terminal", {
+          seq: 4,
+          type: "thread_terminal",
+          status: "completed",
+        }),
+      ],
+      true,
+    );
+    expect(confirmed.terminal).toBe(true);
+    expect(confirmed.activeAgents).toEqual([]);
+    for (const entry of confirmed.entries) expect(entry.live).toBe(false);
   });
 
   it("surfaces a run error frame honestly", () => {
-    const view = assembleTeamRun([
-      wire("error", {
-        seq: 1,
-        type: "error",
-        code: "INGEST_ERROR",
-        message: "Graph event stream failed unexpectedly",
-      }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        wire("error", {
+          seq: 1,
+          type: "error",
+          code: "INGEST_ERROR",
+          message: "Graph event stream failed unexpectedly",
+        }),
+      ],
+      false,
+    );
     expect(view.error).toBe("Graph event stream failed unexpectedly");
   });
 
@@ -221,7 +276,7 @@ describe("assembleTeamRun", () => {
         }),
       );
     }
-    expect(assembleTeamRun(frames).entries.length).toBe(TEAM_RUN_ENTRY_CAP);
+    expect(assembleTeamRun(frames, false).entries.length).toBe(TEAM_RUN_ENTRY_CAP);
   });
 });
 
@@ -273,22 +328,38 @@ const REAL_THREAD_TERMINAL = {
 
 describe("assembleTeamRun (live-captured golden frames)", () => {
   it("derives the working agent from a real agent_status/team_status pair", () => {
-    const view = assembleTeamRun([
-      adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
-      adaptRelayFrame({ channel: "team_status", data: REAL_TEAM_STATUS }),
-    ]);
+    const view = assembleTeamRun(
+      [
+        adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
+        adaptRelayFrame({ channel: "team_status", data: REAL_TEAM_STATUS }),
+      ],
+      false,
+    );
     expect(view.terminal).toBe(false);
     expect(view.activeAgents).toContain("mock-coder-success");
     // The roster's `role`/`display_name` fields are ignored — only agent_id/state.
     expect(view.entries).toEqual([]);
   });
 
-  it("collapses to terminal on the real thread_terminal frame", () => {
-    const view = assembleTeamRun([
-      adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
-      adaptRelayFrame({ channel: "thread_terminal", data: REAL_THREAD_TERMINAL }),
-    ]);
-    expect(view.terminal).toBe(true);
-    expect(view.activeAgents).toEqual([]);
+  it("treats a real thread_terminal frame as presentation-only", () => {
+    const view = assembleTeamRun(
+      [
+        adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
+        adaptRelayFrame({ channel: "thread_terminal", data: REAL_THREAD_TERMINAL }),
+      ],
+      false,
+    );
+    expect(view.terminal).toBe(false);
+    expect(view.activeAgents).toEqual(["mock-coder-success"]);
+
+    const confirmed = assembleTeamRun(
+      [
+        adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
+        adaptRelayFrame({ channel: "thread_terminal", data: REAL_THREAD_TERMINAL }),
+      ],
+      true,
+    );
+    expect(confirmed.terminal).toBe(true);
+    expect(confirmed.activeAgents).toEqual([]);
   });
 });

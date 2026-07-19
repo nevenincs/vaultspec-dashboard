@@ -17,10 +17,11 @@ use std::path::Path;
 use std::time::{Duration, Instant};
 
 use vaultspec_product::credentials::{CredentialError, CredentialRole, CredentialStore};
-use vaultspec_product::locking::{Actor, InstallLock, LockBusy, LockError};
+use vaultspec_product::locking::{Actor, InstallLock, LockAuthorityError, LockBusy, LockError};
 use vaultspec_product::manifest::{
     CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target,
 };
+use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::receipt::{
     Channel, InterruptionMarker, RECEIPT_SCHEMA_VERSION, Receipt, ReceiptState,
 };
@@ -287,6 +288,62 @@ fn credential_files_are_separate_and_owner_restricted() {
 // ---------------------------------------------------------------------------
 // Cross-process installation-lock exclusion
 // ---------------------------------------------------------------------------
+
+#[test]
+fn install_lock_guard_is_bound_to_its_canonical_product_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let first_paths = ProductPaths::under_app_home(&dir.path().join("first"));
+    let other_paths = ProductPaths::under_app_home(&dir.path().join("other"));
+    first_paths.ensure().unwrap();
+    other_paths.ensure().unwrap();
+
+    // Leave a real lock file at the unrelated canonical product path, then
+    // prove that holding another product tree's genuine lock is insufficient.
+    let other_lock = InstallLock::new(other_paths.install_lock_path());
+    drop(
+        other_lock
+            .acquire(Actor::Installer, "other-owner")
+            .unwrap()
+            .unwrap(),
+    );
+
+    let first_lock = InstallLock::new(first_paths.install_lock_path());
+    let guard = first_lock
+        .acquire(Actor::Installer, "first-owner")
+        .unwrap()
+        .unwrap();
+    guard.verify_for_product(&first_paths).unwrap();
+    assert!(matches!(
+        guard.verify_for_product(&other_paths),
+        Err(LockAuthorityError::AuthorityMismatch)
+    ));
+}
+
+#[test]
+fn install_lock_guard_rejects_a_replaced_lock_entry() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock_path = paths.install_lock_path();
+    let displaced_path = paths.transaction_dir().join("displaced-install.lock");
+
+    let lock = InstallLock::new(&lock_path);
+    let guard = lock
+        .acquire(Actor::CopiedUpdater, "update-owner")
+        .unwrap()
+        .unwrap();
+    guard.verify_for_product(&paths).unwrap();
+
+    // Keep the original locked handle alive while the canonical directory
+    // entry is replaced by a different real file. A path-only guard would now
+    // authorize the wrong lock; filesystem identity must reject it.
+    std::fs::rename(&lock_path, &displaced_path).unwrap();
+    std::fs::write(&lock_path, b"replacement lock entry").unwrap();
+    assert!(matches!(
+        guard.verify_for_product(&paths),
+        Err(LockAuthorityError::AuthorityMismatch)
+    ));
+}
 
 const ENV_LOCK: &str = "PRODUCT_LOCK_CHILD_LOCK";
 const ENV_READY: &str = "PRODUCT_LOCK_CHILD_READY";

@@ -13,6 +13,7 @@ getrandom = "0.4.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
 sha2 = { version = "0.10.9", default-features = false }
+same-file = "1.0.6"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 
 [target.'cfg(unix)'.dependencies]
@@ -20,6 +21,7 @@ nix = { version = "0.29", default-features = false, features = ["signal"] }
 
 [target.'cfg(windows)'.dependencies]
 command-group = { version = "5.0.1", default-features = false }
+windows-acl = "0.3.0"
 
 [dev-dependencies]
 # The S18 capsule-ownership acceptance test extracts a REAL built A2A desktop

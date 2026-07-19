@@ -17,9 +17,10 @@ import {
   keepPreviousData,
   useMutation,
   useQuery,
+  useQueryClient,
   type UseQueryResult,
 } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   bearerToken,
@@ -32,11 +33,16 @@ import { tiersFromQuery } from "../engine/tiers";
 import { unwrapEnvelope } from "../liveAdapters";
 import {
   adaptRelayFrame,
+  EMPTY_RELAY_TRANSCRIPT,
   latestRelaySeq,
   relayFrameForcesReconcile,
+  relayFrameIsTerminal,
   relayTranscriptReducer,
+  relayTranscriptReconciliationGeneration,
   type RelayTranscriptFrame,
+  type RelayTranscriptState,
 } from "../liveAdapters/a2aRelay";
+import { StreamLostError } from "../../../platform/policy/failurePolicy";
 import { sseChunks } from "../queries/streams";
 import { asBool, asStr, asTiers, isRec, type Rec } from "../authoring";
 
@@ -125,6 +131,7 @@ export interface PassThrough {
 }
 
 export interface TeamRunStartPayload {
+  run_id: string;
   team_preset: string;
   message: string;
   expected_scope: string;
@@ -132,6 +139,37 @@ export interface TeamRunStartPayload {
   profile_id?: string;
   title?: string;
   autonomous?: boolean;
+}
+
+/** Create the path-safe idempotency identity for one deliberate run-start
+ * submission. The exact payload object (and therefore this id) is retained by
+ * `startRun` across its bounded transport retry. A later user submit calls this
+ * again and receives a fresh identity. */
+export function createTeamRunId(): string {
+  return `run-${crypto.randomUUID().replaceAll("-", "")}`;
+}
+
+const TERMINAL_TEAM_RUN_STATUSES: ReadonlySet<string> = new Set([
+  "archived",
+  "cancelled",
+  "completed",
+  "failed",
+]);
+
+/** Authoritative lifecycle classification over the reviewed sibling vocabulary.
+ * Unknown/future values fail closed as nonterminal, so a relay presentation frame
+ * can never independently license Dismiss or hide Cancel. */
+export function isTeamRunTerminalStatus(status: string | undefined): boolean {
+  return status !== undefined && TERMINAL_TEAM_RUN_STATUSES.has(status);
+}
+
+/** Scope-gate a cached authoritative snapshot before it can affect another run's
+ * controls. This specifically fences React Query's `keepPreviousData` handoff. */
+export function scopedTeamRunStatus(
+  runId: string | null,
+  status: TeamRunStatus | undefined,
+): TeamRunStatus | undefined {
+  return status?.run_id === runId ? status : undefined;
 }
 
 // --- tolerant adapters ----------------------------------------------------------
@@ -435,7 +473,18 @@ export class A2aTeamClient {
   }
 
   async startRun(payload: TeamRunStartPayload): Promise<TeamRunStartResult> {
-    return adaptRunStart(await this.passThrough("run-start", payload));
+    // `run-start` is idempotent by its caller-supplied run_id. Retry one transport
+    // failure with the EXACT same payload object; never retry an engine response
+    // (EngineError) or a deliberate abort. This closes the lost-ack window without
+    // turning a later user submit into the same run.
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        return adaptRunStart(await this.passThrough("run-start", payload));
+      } catch (error) {
+        const aborted = error instanceof DOMException && error.name === "AbortError";
+        if (attempt >= 1 || error instanceof EngineError || aborted) throw error;
+      }
+    }
   }
 
   async runStatus(runId: string, signal?: AbortSignal): Promise<TeamRunStatus> {
@@ -606,7 +655,12 @@ export function useTeamRunStatus(
     placeholderData: keepPreviousData,
     staleTime: 2_000,
     gcTime: 60_000,
-    refetchInterval: options.pollWhileDegraded ? RUN_STATUS_POLL_MS : false,
+    refetchInterval: (query) => {
+      const snapshot = query.state.data;
+      const scopedTerminal =
+        snapshot?.run_id === runId && isTeamRunTerminalStatus(snapshot.status);
+      return options.pollWhileDegraded && !scopedTerminal ? RUN_STATUS_POLL_MS : false;
+    },
     retry: false,
   });
 }
@@ -630,40 +684,79 @@ export function useCancelTeamRun() {
 // --- the run-progress relay + bounded polling fallback (S22, ADR D3) ------------
 
 /** Adapt an SSE Response into a bounded stream of transcript frames. */
-async function* relayFrames(
+export async function* relayFrames(
   response: Response,
 ): AsyncGenerator<RelayTranscriptFrame, void, unknown> {
-  for await (const chunk of sseChunks(response)) {
-    yield adaptRelayFrame({ channel: chunk.channel, data: chunk.data });
+  let terminalObserved = false;
+  try {
+    for await (const chunk of sseChunks(response)) {
+      const frame = adaptRelayFrame({ channel: chunk.channel, data: chunk.data });
+      terminalObserved ||= relayFrameIsTerminal(frame);
+      yield frame;
+    }
+  } catch (cause) {
+    // The engine closes a relay after its terminal frame. That EOF is expected
+    // completion; every pre-terminal EOF remains retryable transport loss.
+    if (terminalObserved && cause instanceof StreamLostError) return;
+    throw cause;
   }
 }
 
-/** The live relay transcript for a run (bounded, seq-deduped). A reconnect
- *  (TanStack `retry`) re-opens the stream WITHOUT a `since=`, so the engine
- *  replays its full bounded ring and the reducer's seq-dedup drops the overlap —
- *  correct and bounded, though not bandwidth-minimal on a reconnect. Non-
- *  authoritative by contract — pair with `useRunProgress` for the authoritative
- *  fallback.
- *
- *  FOLLOW-UP (targeted resume): pass `since=latestRelaySeq(currentFrames)` to
- *  `openRunStream` so a reconnect resumes from the last seq (mirror
- *  graphSync's `since=keyframeSeq` anchoring), trimming the replay to the delta.
- *  Deferred because reading the in-flight accumulator inside `streamedQuery`'s
- *  `streamFn` across a retry is not a pinned contract; the full-ring replay is
- *  the safe interim and the seq-dedup already makes it idempotent. */
+export interface RelayResumeCursor {
+  readonly runId: string | null;
+  readonly since?: number;
+}
+
+/** Advance one hook-local resume cursor. A run change synchronously discards the
+ * old identity; within one run only monotone engine sequences advance it. */
+export function advanceRelayResumeCursor(
+  current: RelayResumeCursor,
+  runId: string | null,
+  frame?: RelayTranscriptFrame,
+): RelayResumeCursor {
+  const since = current.runId === runId ? current.since : undefined;
+  const candidate = frame?.seq;
+  return {
+    runId,
+    since:
+      candidate !== undefined && (since === undefined || candidate > since)
+        ? candidate
+        : since,
+  };
+}
+
+/** The live relay transcript for a run. The cursor lives outside TanStack's
+ * streamed accumulator, so a retry sends `since=<last accepted seq>` even while
+ * the query is refetching. Append refetch mode preserves the rendered transcript
+ * while only delta frames cross the wire; the reducer independently enforces its
+ * item and byte ceilings. */
 export function useRunRelay(
   runId: string | null,
-): UseQueryResult<RelayTranscriptFrame[], Error> {
+): UseQueryResult<RelayTranscriptState, Error> {
+  const resume = useRef<RelayResumeCursor>({ runId: null });
+  if (resume.current.runId !== runId) {
+    resume.current = advanceRelayResumeCursor(resume.current, runId);
+  }
   return useQuery({
     queryKey: a2aKeys.runRelay(runId ?? ""),
     enabled: !!runId,
     queryFn: streamedQuery({
       streamFn: async (context) =>
         relayFrames(
-          await a2aTeamClient.openRunStream(runId ?? "", undefined, context.signal),
+          await a2aTeamClient.openRunStream(
+            runId ?? "",
+            resume.current.since,
+            context.signal,
+          ),
         ),
-      reducer: relayTranscriptReducer,
-      initialValue: [] as RelayTranscriptFrame[],
+      reducer: (frames, frame) => {
+        // Advance even when the presentation reducer drops an oversized frame;
+        // otherwise a reconnect would request that rejected frame forever.
+        resume.current = advanceRelayResumeCursor(resume.current, runId, frame);
+        return relayTranscriptReducer(frames, frame);
+      },
+      initialValue: EMPTY_RELAY_TRANSCRIPT,
+      refetchMode: "append",
     }),
     staleTime: Infinity,
     // Bounded (bounded-by-default): the retained transcript array is reclaimed
@@ -673,6 +766,102 @@ export function useRunRelay(
     retryDelay: (attempt) =>
       attempt === 0 ? 250 : Math.min(30_000, 1_000 * 2 ** attempt),
   });
+}
+
+export interface RunReconciliationState {
+  readonly runId: string | null;
+  readonly required: boolean;
+  readonly generation: number;
+  readonly relayGeneration: number;
+  readonly relayFailed: boolean;
+}
+
+const EMPTY_RECONCILIATION: RunReconciliationState = {
+  runId: null,
+  required: false,
+  generation: 0,
+  relayGeneration: 0,
+  relayFailed: false,
+};
+
+/** The newest retained presentation frame that requires an authoritative
+ * re-keyframe. Terminal is included: it may stop animation, but cannot itself
+ * make lifecycle controls terminal. */
+export function latestRelayReconciliationSignal(
+  frames: readonly RelayTranscriptFrame[],
+): RelayTranscriptFrame | undefined {
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    const frame = frames[index];
+    if (frame !== undefined && relayFrameForcesReconcile(frame)) return frame;
+  }
+  return undefined;
+}
+
+/** Whether the browser must remain the sole degraded-status poll owner. A
+ * heartbeat is connection plumbing, not proof the upstream producer recovered,
+ * so it cannot clear an earlier degraded signal; a later real upstream activity
+ * frame can. */
+export function relayStreamNeedsStatusPolling(
+  frames: readonly RelayTranscriptFrame[],
+  relayFailed: boolean,
+): boolean {
+  if (relayFailed) return true;
+  for (let index = frames.length - 1; index >= 0; index -= 1) {
+    const kind = frames[index]?.kind;
+    if (kind === "degraded") return true;
+    if (
+      kind === "thought" ||
+      kind === "token" ||
+      kind === "tool_call" ||
+      kind === "status" ||
+      kind === "progress" ||
+      kind === "error" ||
+      kind === "dropped"
+    ) {
+      return false;
+    }
+  }
+  return false;
+}
+
+/** Observe relay state without clearing an outstanding requirement. A later
+ * ordinary frame leaves `required` latched; only `resolveRunReconciliation`
+ * clears the matching generation after a status request started post-signal. */
+export function observeRunReconciliation(
+  current: RunReconciliationState,
+  runId: string | null,
+  relayGeneration: number,
+  relayFailed: boolean,
+): RunReconciliationState {
+  const sameRun = current.runId === runId;
+  const prior = sameRun ? current : { ...EMPTY_RECONCILIATION, runId };
+  const newSignal = relayGeneration > prior.relayGeneration;
+  const newFailure = relayFailed && !prior.relayFailed;
+  if (newSignal || newFailure) {
+    return {
+      runId,
+      required: true,
+      generation: prior.generation + 1,
+      relayGeneration,
+      relayFailed,
+    };
+  }
+  if (prior.relayFailed !== relayFailed || prior.relayGeneration !== relayGeneration) {
+    return { ...prior, relayFailed, relayGeneration };
+  }
+  return prior;
+}
+
+/** Resolve only the exact observed generation. A stale status response from an
+ * earlier gap cannot clear a newer reconciliation requirement. */
+export function resolveRunReconciliation(
+  current: RunReconciliationState,
+  runId: string | null,
+  generation: number,
+): RunReconciliationState {
+  return current.runId === runId && current.generation === generation
+    ? { ...current, required: false }
+    : current;
 }
 
 /** The composed run progress a consumer renders: the live relay frames, the
@@ -685,25 +874,102 @@ export interface RunProgress {
   readonly frames: RelayTranscriptFrame[];
   readonly status?: TeamRunStatus;
   readonly degraded: boolean;
+  readonly terminal: boolean;
   readonly latestSeq?: number;
 }
 
 export function useRunProgress(runId: string | null): RunProgress {
+  const queryClient = useQueryClient();
   const relay = useRunRelay(runId);
-  const frames = useMemo(() => relay.data ?? [], [relay.data]);
-  const degraded = useMemo(() => {
-    if (relay.isError) return true;
-    const last = frames[frames.length - 1];
-    return last !== undefined && relayFrameForcesReconcile(last);
-  }, [frames, relay.isError]);
-  const status = useTeamRunStatus(runId, { pollWhileDegraded: degraded });
+  const transcript = relay.data ?? EMPTY_RELAY_TRANSCRIPT;
+  const frames = transcript.frames;
+  const relayGeneration = useMemo(
+    () => relayTranscriptReconciliationGeneration(transcript),
+    [transcript],
+  );
+  const [reconciliation, setReconciliation] = useState<RunReconciliationState>({
+    ...EMPTY_RECONCILIATION,
+    runId,
+  });
+  useEffect(() => {
+    setReconciliation((current) =>
+      observeRunReconciliation(current, runId, relayGeneration, relay.isError),
+    );
+  }, [relay.isError, relayGeneration, runId]);
+
+  const relayUnavailable = useMemo(
+    () => relayStreamNeedsStatusPolling(frames, relay.isError),
+    [frames, relay.isError],
+  );
+  const reconciliationRequired =
+    reconciliation.runId === runId && reconciliation.required;
+  // The immediate reconciliation loop owns polling until one request that starts
+  // after the signal succeeds. Once reconciled, the normal query interval owns
+  // continued degraded-stream polling (one browser owner, never two loops).
+  const status = useTeamRunStatus(runId, {
+    pollWhileDegraded: relayUnavailable && !reconciliationRequired,
+  });
+  const refetchStatus = status.refetch;
+  useEffect(() => {
+    if (!reconciliationRequired || runId === null) return;
+    const generation = reconciliation.generation;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let wake: (() => void) | undefined;
+    const reconcile = async () => {
+      // A pre-signal initial status request is not a valid re-keyframe. Cancel it
+      // first so the next successful request is guaranteed to have started after
+      // this reconciliation generation was observed.
+      await queryClient.cancelQueries({
+        queryKey: a2aKeys.runStatus(runId),
+        exact: true,
+      });
+      if (cancelled) return;
+      while (!cancelled) {
+        const result = await refetchStatus();
+        if (cancelled) return;
+        if (result.isSuccess && result.data.run_id === runId) {
+          setReconciliation((current) =>
+            resolveRunReconciliation(current, runId, generation),
+          );
+          return;
+        }
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+          timer = setTimeout(() => {
+            wake = undefined;
+            resolve();
+          }, RUN_STATUS_POLL_MS);
+        });
+      }
+    };
+    void reconcile();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      wake?.();
+    };
+  }, [
+    queryClient,
+    reconciliation.generation,
+    reconciliationRequired,
+    refetchStatus,
+    runId,
+  ]);
+
+  // `keepPreviousData` may transiently expose the prior query-key's snapshot on a
+  // run switch. Scope-gate identity before it can affect controls or transcript.
+  const authoritativeStatus = scopedTeamRunStatus(runId, status.data);
+  const terminal = isTeamRunTerminalStatus(authoritativeStatus?.status);
+  const degraded = !terminal && (reconciliationRequired || relayUnavailable);
   return useMemo(
     () => ({
       frames,
-      status: status.data,
+      status: authoritativeStatus,
       degraded,
+      terminal,
       latestSeq: latestRelaySeq(frames),
     }),
-    [frames, status.data, degraded],
+    [authoritativeStatus, degraded, frames, terminal],
   );
 }

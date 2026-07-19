@@ -34,6 +34,16 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P03-S24]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P03-S25]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P03-S26]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S27]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S28]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S29]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S32]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S33]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S34]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S45]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S46]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S47]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S48]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -85,6 +95,16 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P03-S24` - Reserve the lifecycle prefix from SPA fallback routing so route mistakes fail visibly
 - `2026-07-18-a2a-product-provisioning-W01-P03-S25` - Register the lifecycle route acceptance suite in the API test module
 - `2026-07-18-a2a-product-provisioning-W01-P03-S26` - Prove typed refusal, initial bootstrap, active-receipt mutation, at-cap atomic race rejection, and concurrent cross-operation single-flight using production routes and a real registry
+- `2026-07-18-a2a-product-provisioning-W02-P04-S27` - Start or authenticate the receipt-owned gateway during seated boot and leave compatible foreign residents immutable
+- `2026-07-18-a2a-product-provisioning-W02-P04-S28` - Report installed release set, owned or foreign gateway identity, protocol, state schema, and authenticated readiness in the component handshake
+- `2026-07-18-a2a-product-provisioning-W02-P04-S29` - Seed the agent tier on every response so absence can no longer masquerade as A2A availability
+- `2026-07-18-a2a-product-provisioning-W02-P04-S32` - Expose product installation, gateway, worker, provider, and admission facts without collapsing cold worker state into degradation
+- `2026-07-18-a2a-product-provisioning-W02-P04-S33` - Include the complete A2A product and ownership projection in the one-shot status command
+- `2026-07-18-a2a-product-provisioning-W02-P04-S34` - Prove seated boot, authenticated attach, cold readiness, foreign immutability, stale recovery, and clean gateway shutdown against the real desktop entrypoint
+- `2026-07-18-a2a-product-provisioning-W02-P04-S45` - Reuse the same typed product lifecycle authority for one-shot A2A status and mutation commands
+- `2026-07-18-a2a-product-provisioning-W02-P04-S46` - Export the one-shot product lifecycle command module
+- `2026-07-18-a2a-product-provisioning-W02-P04-S47` - Expose bounded A2A lifecycle status and action subcommands without free-form executable or path operands
+- `2026-07-18-a2a-product-provisioning-W02-P04-S48` - Make cold seat launch reconcile only the receipt-owned A2A gateway before opening the dashboard
 
 ### plan
 

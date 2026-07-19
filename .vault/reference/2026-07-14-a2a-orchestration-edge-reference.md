@@ -97,24 +97,32 @@ accept the token bundle and thread it to the right workers.
 
 ### Workstream 3 — the engine-facing control surface (ADR D1, D3)
 
-The engine forwards exactly five verbs to your gateway; expose stable
-endpoints for them and version their shapes:
+The engine exposes a six-member reviewed whitelist: five control verbs plus
+one bounded discovery read. Expose stable endpoints for them and version their
+shapes:
 
-- `run-start` — preset id + prompt/message + target feature tag + the actor
-  token bundle. Returns your run/thread id and echoes the Vaultspec session
-  id once created.
+- `run-start` — caller-generated, path-safe UUID run id + preset id +
+  prompt/message + target feature tag + the actor token bundle. The client
+  retains the exact payload for one bounded transport retry; a new deliberate
+  submission uses a new id. Returns the run/thread id and echoes the Vaultspec
+  session id once created.
 - `run-status` — authoritative snapshot of the run (topology position,
   per-role state, produced proposal ids). This is the recovery read; design
   it so a client that saw nothing else can render the run.
 - `run-cancel` — idempotent cancel by run id.
 - `presets-list` — enumerate team presets with plain-language names.
 - `service-state` — health/doctor rollup.
+- `active-runs` — bounded identity-only discovery by canonical workspace and
+  optional exact feature tag. It exists only to recover a viewer binding;
+  `run-status` remains authoritative.
 
 Progress streaming: your orchestration events (node transitions, agent turns,
 bounded token frames) are relayed by the engine as a non-authoritative SSE
 channel. Emit them versioned and bounded; assume any frame can be dropped —
 durable truth lives in `run-status` plus the engine's authoring events, which
-the dashboard consumes without your involvement.
+the dashboard consumes without your involvement. The browser is the sole owner
+of degraded status polling. A relay terminal frame triggers reconciliation but
+never authorizes terminal controls.
 
 ### Workstream 4 — lifecycle and discovery (ADR D7c)
 
@@ -122,8 +130,11 @@ Adopt the machine-global discovery contract so the engine's attach-never-own
 predicate applies verbatim: publish a service discovery file in a
 machine-global home location (the rag precedent: `~/.vaultspec-rag/ service.json` — yours would be the A2A equivalent) carrying pid, port, and a
 heartbeat the engine can test for freshness, plus an ungated health endpoint
-reporting ready + live pid. One resident service per machine; the engine
-starts you only when genuinely absent and attaches otherwise.
+reporting ready + live pid. Bind to `127.0.0.1` by default and require the
+configured service token on every `/v1` route; an absent or empty token fails
+closed outside the explicit in-process test mode. One resident service per
+machine; the engine starts you only when genuinely absent and attaches
+otherwise.
 
 ### What stays yours (ADR D5)
 
@@ -139,7 +150,7 @@ record the engine owns.
    surface before conformance work.
 1. Authoring-API client + one solo-coder preset producing a research document
    end-to-end (propose → submit → visible in the dashboard review lane).
-1. Token-bundle handling on `run-start` + the five-verb gateway surface.
+1. Token-bundle handling on `run-start` + the six-member gateway whitelist.
 1. Discovery/heartbeat contract; engine-side pass-through lands opposite it.
 1. Full team preset (multi-role) — this is also the event that re-arms the
    dashboard's multiagent-composition decision (ADR D8), so flag it when it
@@ -204,9 +215,31 @@ panel, or otherwise reactivating recovery, always performs a fresh bounded
 read rather than trusting a cached empty or ambiguous result. A binding with
 missing scope provenance is cleared, never stamped onto the current workspace.
 
-Sibling bounds are a response limit of 100, stable newest-first ordering, a
-1,000-row scan budget, 100-row pages, and a 16,384-character metadata selector
-projection. The dashboard deliberately narrows the upstream limit to two for
-ambiguity detection. Actor filtering is absent by contract until a stable
-non-secret actor identifier exists; oversized otherwise-valid metadata may be
-safely omitted by the sibling and remains a documented medium follow-up.
+Sibling bounds are a response limit of 100 and stable newest-first ordering.
+Canonical workspace, bounded feature tag, and active-lifecycle selectors are
+persisted at the thread write seam and queried through a single indexed
+`limit + 1` projection; discovery performs no metadata table scan or per-row
+filesystem probe. The dashboard deliberately narrows the upstream limit to two
+for ambiguity detection. Actor filtering is absent by contract until a stable
+non-secret actor identifier exists.
+
+## Resource and reconciliation bounds (2026-07-19)
+
+The engine rejects oversized HTTP status lines, header lines, aggregate heads,
+chunk declarations, chunks, and incomplete SSE frames before unbounded
+allocation. Its run relay retains at most 4 MiB of replay data per run, 8 MiB
+across all live references for one relay, and 64 MiB globally. The browser caps
+an incomplete SSE frame and the viewing transcript at 2 MiB each.
+
+Reconnects send the last admitted sequence as `since`. A sequence gap creates a
+generation-fenced reconciliation obligation that remains sticky until a
+successful authoritative `run-status` read for that generation. Only
+authoritative `TeamRunStatus` enables Cancel or Dismiss and declares terminal
+state; `archived` is terminal. Loss of the browser binding or relay does not
+alter the durable sibling run.
+
+The complete synchronous broker chain—discovery, health, status preflight,
+token persistence, and forwarding—runs off Tokio workers. Starts serialize
+through a fixed 64-stripe table keyed by stable run id. Purpose-keyed actor
+tokens remain random and unrecoverable, expired or revoked rows are reclaimed,
+and retained rows have a hard ceiling of 4,096.

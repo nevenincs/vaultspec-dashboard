@@ -179,7 +179,7 @@ impl GatewayDiscovery {
     #[must_use]
     pub fn has_trusted_handoff(&self) -> bool {
         let path = Path::new(&self.handoff_reference);
-        path.is_file() && std::fs::File::open(path).is_ok()
+        handoff_is_owner_restricted(path) && std::fs::File::open(path).is_ok()
     }
 
     /// Classify the attach/ownership decision for this discovered gateway. Live
@@ -220,6 +220,119 @@ impl GatewayDiscovery {
         }
         Verdict::ForeignAttachable
     }
+}
+
+/// Verify that a local handoff file grants no ordinary peer account access.
+///
+/// Unix uses the owner-bit contract. Windows accepts allow ACEs only for the
+/// current account, LocalSystem, and the built-in Administrators group. This is
+/// deliberately stricter than mere readability: a shared custom app-home must
+/// not silently turn a bearer into machine-wide ambient authority.
+#[must_use]
+pub fn handoff_is_owner_restricted(path: &Path) -> bool {
+    let Ok(metadata) = std::fs::symlink_metadata(path) else {
+        return false;
+    };
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return false;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return metadata.permissions().mode() & 0o077 == 0;
+    }
+
+    #[cfg(windows)]
+    {
+        use windows_acl::acl::{ACL, AceType};
+        use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
+
+        let Some(path) = path.to_str() else {
+            return false;
+        };
+        let Some(user) = current_user() else {
+            return false;
+        };
+        let Ok(user_sid) = name_to_sid(&user, None) else {
+            return false;
+        };
+        let Ok(user_sid) = sid_to_string(user_sid.as_ptr().cast_mut().cast()) else {
+            return false;
+        };
+        let Ok(acl) = ACL::from_file_path(path, false) else {
+            return false;
+        };
+        let Ok(entries) = acl.all() else {
+            return false;
+        };
+        let allowed = [user_sid.as_str(), "S-1-5-18", "S-1-5-32-544"];
+        let mut user_allowed = false;
+        for entry in entries {
+            match entry.entry_type {
+                AceType::AccessAllow => {
+                    if !allowed.contains(&entry.string_sid.as_str()) {
+                        return false;
+                    }
+                    user_allowed |= entry.string_sid == user_sid;
+                }
+                AceType::AccessDeny => {}
+                _ => return false,
+            }
+        }
+        return user_allowed;
+    }
+
+    #[allow(unreachable_code)]
+    false
+}
+
+/// Apply the local owner-only handoff policy to an existing regular file.
+///
+/// This is also the canonical setup seam for components that publish product
+/// handoffs: readers and writers therefore share one platform policy.
+pub fn restrict_handoff_to_current_user(path: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+
+    #[cfg(windows)]
+    {
+        use std::io::{Error, ErrorKind};
+        use std::process::Command;
+        use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
+
+        let user = current_user().ok_or_else(|| {
+            Error::new(
+                ErrorKind::PermissionDenied,
+                "current Windows user is unknown",
+            )
+        })?;
+        let raw_sid =
+            name_to_sid(&user, None).map_err(|code| Error::from_raw_os_error(code as i32))?;
+        let sid = sid_to_string(raw_sid.as_ptr().cast_mut().cast())
+            .map_err(|code| Error::from_raw_os_error(code as i32))?;
+        let status = Command::new("icacls.exe")
+            .arg(path)
+            .args([
+                "/inheritance:r",
+                "/grant:r",
+                &format!("*{sid}:F"),
+                "*S-1-5-18:F",
+                "*S-1-5-32-544:F",
+            ])
+            .status()?;
+        if !status.success() {
+            return Err(Error::new(
+                ErrorKind::PermissionDenied,
+                "failed to apply owner-only Windows handoff ACL",
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// Whether two inclusive string-bounded ranges overlap. Ranges are compared
@@ -308,6 +421,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let handoff = dir.path().join("attach-control.cred");
         std::fs::write(&handoff, "not-read-here").unwrap();
+        restrict_handoff_to_current_user(&handoff).unwrap();
         let mut v = record();
         v["owner"] = serde_json::json!("seat-b");
         v["handoff_reference"] = serde_json::json!(handoff.to_string_lossy());

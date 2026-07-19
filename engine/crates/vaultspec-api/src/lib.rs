@@ -226,16 +226,17 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             post(routes::ops::ops_rag_storage),
         )
         // The a2a orchestration control pass-through (a2a-orchestration-edge ADR
-        // D1/D2): the whitelisted five-verb forward (run-start / run-status /
-        // run-cancel / presets-list / service-state) to the resident vaultspec-a2a
+        // D1/D2): five whitelisted control verbs (run-start / run-status /
+        // run-cancel / presets-list / service-state) plus bounded active-runs
+        // discovery forwarded to the resident vaultspec-a2a
         // gateway, the sibling envelope verbatim inside the tiers envelope,
         // sibling-down degraded at 200, run-start actor-token provisioning. The rag
         // ops template retargeted at an HTTP sibling; attach-never-own discovery.
         .route("/ops/a2a/{verb}", post(routes::ops::ops_a2a))
         // The a2a run-progress relay (a2a-orchestration-edge ADR D3): a new engine
         // SSE channel re-serving the resident gateway's run-stream verb with the
-        // engine's seq + since-replay + gap contract, non-authoritative frames,
-        // and honest degradation to run-status polling. The CompressionLayer's
+        // engine's seq + since-replay + gap contract and non-authoritative frames;
+        // the browser owns degraded run-status polling. The CompressionLayer's
         // DefaultPredicate skips text/event-stream, so this stream is not buffered.
         .route(
             "/ops/a2a/runs/{run_id}/stream",
@@ -248,7 +249,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // typed install/ensure/start/stop/.../doctor as bounded, atomically-
         // admitted, component-single-flight jobs over the vaultspec-product
         // controller. A DEDICATED namespace, deliberately SEPARATE from the fixed
-        // five-verb `/ops/a2a` orchestration surface above — no run verb here.
+        // six-member `/ops/a2a` whitelist above — no lifecycle verb here.
         // Bearer-gated by the same middleware as every other data route.
         .route(
             "/a2a/lifecycle/status",

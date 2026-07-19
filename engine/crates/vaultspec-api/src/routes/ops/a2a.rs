@@ -28,8 +28,9 @@
 //! attach-never-own: the engine reaches whatever a2a service is resident, never
 //! starts or owns one.
 
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use std::time::Duration;
 
 use axum::Json;
@@ -105,6 +106,23 @@ const MAX_A2A_TITLE_CHARS: usize = 200;
 const MAX_A2A_RUN_ID_CHARS: usize = 128;
 const MAX_A2A_SCOPE_CHARS: usize = 4096;
 
+/// Fixed-size serialization stripes for brokered run starts. A stable `run_id`
+/// always maps to one stripe, so concurrent retries cannot both pass the status
+/// preflight and mint separate token bundles. The array is allocation-invariant:
+/// unlike a per-run map it cannot accumulate completed-run keys indefinitely.
+const A2A_RUN_START_LOCK_STRIPES: usize = 64;
+static A2A_RUN_START_LOCKS: LazyLock<[Mutex<()>; A2A_RUN_START_LOCK_STRIPES]> =
+    LazyLock::new(|| std::array::from_fn(|_| Mutex::new(())));
+
+fn lock_run_start(run_id: &str) -> MutexGuard<'static, ()> {
+    let mut hasher = DefaultHasher::new();
+    run_id.hash(&mut hasher);
+    let stripe = (hasher.finish() as usize) % A2A_RUN_START_LOCK_STRIPES;
+    A2A_RUN_START_LOCKS[stripe]
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 /// The typed request body for `POST /ops/a2a/{verb}`. Every field is optional at
 /// the type level and validated/bounded per verb before anything reaches the
 /// sibling; `actor_tokens` is deliberately ABSENT — the engine mints and injects
@@ -116,9 +134,9 @@ pub struct A2aVerbBody {
     /// whose root it injects, then drops it; it is never forwarded as authority.
     #[serde(default)]
     pub expected_scope: Option<String>,
-    /// The stable run/idempotency id. REQUIRED for run-status and run-cancel
-    /// (it is the URL path segment); OPTIONAL for run-start (dispatch-exactly-
-    /// once when present). Restricted to a path-safe token so it can never carry
+    /// The stable run/idempotency id. REQUIRED for run-status, run-cancel, and
+    /// brokered run-start (dispatch-exactly-once plus token-lifecycle identity).
+    /// Restricted to a path-safe token so it can never carry
     /// a path separator into `/v1/runs/{run_id}`.
     #[serde(default)]
     pub run_id: Option<String>,
@@ -143,9 +161,8 @@ pub struct A2aVerbBody {
 }
 
 /// The a2a discovery record shape (`~/.vaultspec-a2a/service.json`): the R8
-/// `ServiceInfo` contract the resident gateway publishes. Only the fields the
-/// engine needs to build a transport + classify freshness are read; the
-/// `service_token` is the sibling bearer for the loopback call.
+/// `ServiceInfo` contract the resident gateway publishes. Discovery itself is
+/// secret-free; `handoff_reference` names the sibling bearer file.
 #[derive(Debug, Clone, serde::Deserialize)]
 struct A2aServiceInfo {
     port: u16,
@@ -155,6 +172,8 @@ struct A2aServiceInfo {
     #[serde(default)]
     last_heartbeat: Option<i64>,
     #[serde(default)]
+    handoff_reference: Option<String>,
+    #[serde(skip)]
     service_token: Option<String>,
 }
 
@@ -201,8 +220,17 @@ fn discover_a2a_at(candidates: &[PathBuf]) -> A2aDiscovery {
         let Ok(raw) = std::fs::read_to_string(path) else {
             continue;
         };
+        if serde_json::from_str::<Value>(&raw)
+            .ok()
+            .and_then(|value| value.get("service_token").cloned())
+            .is_some()
+        {
+            return A2aDiscovery::Down {
+                reason: "a2a service.json illegally contains a raw credential".to_string(),
+            };
+        }
         match serde_json::from_str::<A2aServiceInfo>(&raw) {
-            Ok(info) => {
+            Ok(mut info) => {
                 if let Some(heartbeat) = info.last_heartbeat {
                     let now = now_ms();
                     if now.saturating_sub(heartbeat) > A2A_HEARTBEAT_STALE_MS {
@@ -212,6 +240,13 @@ fn discover_a2a_at(candidates: &[PathBuf]) -> A2aDiscovery {
                         };
                     }
                 }
+                info.service_token = match info.handoff_reference.as_deref() {
+                    Some(reference) => match read_a2a_handoff(path, reference) {
+                        Ok(token) => Some(token),
+                        Err(reason) => return A2aDiscovery::Down { reason },
+                    },
+                    None => None,
+                };
                 return A2aDiscovery::Fresh(info);
             }
             Err(e) => malformed = Some(format!("a2a service.json unreadable: {e}")),
@@ -221,6 +256,43 @@ fn discover_a2a_at(candidates: &[PathBuf]) -> A2aDiscovery {
         reason: malformed
             .unwrap_or_else(|| "a2a gateway not running (no service.json discovered)".to_string()),
     }
+}
+
+fn read_a2a_handoff(discovery_path: &std::path::Path, reference: &str) -> Result<String, String> {
+    let expected = discovery_path.with_file_name("service.token");
+    let expected = expected
+        .canonicalize()
+        .map_err(|_| "a2a handoff credential is absent".to_string())?;
+    let candidate = PathBuf::from(reference)
+        .canonicalize()
+        .map_err(|_| "a2a handoff credential is unreadable".to_string())?;
+    if candidate != expected {
+        return Err("a2a handoff reference escaped its discovery directory".to_string());
+    }
+    let metadata = std::fs::symlink_metadata(&candidate)
+        .map_err(|_| "a2a handoff credential metadata is unreadable".to_string())?;
+    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
+        return Err("a2a handoff credential is not a regular file".to_string());
+    }
+    if !vaultspec_product::discovery::handoff_is_owner_restricted(&candidate) {
+        return Err("a2a handoff credential is not owner-restricted".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        let discovery_metadata = std::fs::metadata(discovery_path)
+            .map_err(|_| "a2a discovery owner is unreadable".to_string())?;
+        if metadata.uid() != discovery_metadata.uid() {
+            return Err("a2a handoff credential is not owner-restricted".to_string());
+        }
+    }
+    let token = std::fs::read_to_string(candidate)
+        .map_err(|_| "a2a handoff credential is unreadable".to_string())?;
+    let token = token.trim().to_string();
+    if token.is_empty() {
+        return Err("a2a handoff credential is empty".to_string());
+    }
+    Ok(token)
 }
 
 /// Resolve the RESIDENT a2a gateway's endpoint (`port`, bearer) under the
@@ -259,12 +331,14 @@ fn a2a_endpoint_from(candidates: &[PathBuf]) -> Result<(u16, Option<String>), St
     }
 }
 
-/// Build a bounded loopback transport to a RESIDENT a2a gateway, or the truthful
-/// "a2a down" reason (the pass-through's per-verb request/response transport). The
-/// returned transport carries the per-verb `budget` as its wall-clock and the
-/// discovered bearer.
-fn a2a_transport(budget: Duration) -> Result<LoopbackTransport, String> {
-    let (port, bearer) = a2a_endpoint()?;
+/// Build a bounded loopback transport over an explicit discovery candidate list.
+/// Production supplies the machine-global candidates; real-socket tests use an
+/// isolated service record without mutating process-global environment variables.
+fn a2a_transport_from(
+    candidates: &[PathBuf],
+    budget: Duration,
+) -> Result<LoopbackTransport, String> {
+    let (port, bearer) = a2a_endpoint_from(candidates)?;
     Ok(LoopbackTransport {
         port,
         bearer,
@@ -576,9 +650,18 @@ fn build_forwarded_call(
                     )?),
                 );
             }
-            if let Some(run_id) = body.run_id.as_deref() {
-                obj.insert("run_id".to_string(), json!(validate_run_id(state, run_id)?));
-            }
+            // Dashboard starts MUST carry a client-stable id. This is both A2A's
+            // dispatch-exactly-once key and the engine's actor-token lifecycle
+            // key; accepting an anonymous start would make a transport retry
+            // indistinguishable from a new run and necessarily mint again.
+            let run_id = body.run_id.as_deref().ok_or_else(|| {
+                super::super::api_error(
+                    state,
+                    StatusCode::BAD_REQUEST,
+                    "run-start requires a stable `run_id` idempotency key".to_string(),
+                )
+            })?;
+            obj.insert("run_id".to_string(), json!(validate_run_id(state, run_id)?));
             if let Some(autonomous) = body.autonomous {
                 obj.insert("autonomous".to_string(), json!(autonomous));
             }
@@ -607,7 +690,17 @@ fn build_forwarded_call(
 ///
 /// The returned `Value` carries RAW token values and MUST NOT be logged; it is
 /// injected straight into the forwarded body and dropped.
-fn provision_actor_token_bundle(state: &AppState) -> Result<Value, (StatusCode, Json<Value>)> {
+struct ProvisionedActorTokenBundle {
+    wire: Value,
+    /// Hashes of exactly the rows issued or rotated by THIS attempt. Cleanup uses
+    /// hashes so no raw token has to leave the short-lived wire bundle.
+    issued_hashes: Vec<String>,
+}
+
+fn provision_actor_token_bundle(
+    state: &AppState,
+    run_id: &str,
+) -> Result<ProvisionedActorTokenBundle, (StatusCode, Json<Value>)> {
     let now = now_ms();
     let issued_by = ActorId::new("system:bootstrap").expect("issuance principal id is valid");
 
@@ -640,6 +733,7 @@ fn provision_actor_token_bundle(state: &AppState) -> Result<Value, (StatusCode, 
         .with_authoring_store(|store| {
             store.with_unit_of_work(CommandKind::CreateSession, |uow| {
                 let mut tokens = serde_json::Map::new();
+                let mut issued_hashes = Vec::with_capacity(A2A_PIPELINE_ROLES.len());
                 for (role, actor) in &role_actors {
                     let display = ActorDisplayMetadata::new(actor.id.as_str(), None);
                     uow.actors().put_record(ActorRecordInput::active(
@@ -647,15 +741,18 @@ fn provision_actor_token_bundle(state: &AppState) -> Result<Value, (StatusCode, 
                         display,
                         now,
                     ))?;
-                    let issued = uow.actor_tokens().issue(
+                    let issuance_key = format!("a2a-run-start:v1:{run_id}:{role}");
+                    let issued = uow.actor_tokens().issue_for_purpose(
                         actor,
                         &issued_by,
                         now,
                         A2A_RUN_TOKEN_LIFETIME_MS,
+                        &issuance_key,
                     )?;
+                    issued_hashes.push(issued.record.token_hash);
                     tokens.insert((*role).to_string(), Value::String(issued.raw_token));
                 }
-                Ok(tokens)
+                Ok((tokens, issued_hashes))
             })
         })
         .map_err(|_| {
@@ -668,7 +765,160 @@ fn provision_actor_token_bundle(state: &AppState) -> Result<Value, (StatusCode, 
             )
         })?;
 
-    Ok(json!({ "tokens": Value::Object(tokens), "engine_bearer": Value::Null }))
+    Ok(ProvisionedActorTokenBundle {
+        wire: json!({ "tokens": Value::Object(tokens.0), "engine_bearer": Value::Null }),
+        issued_hashes: tokens.1,
+    })
+}
+
+/// Revoke and immediately reclaim exactly the rows created/rotated for a failed
+/// run-start attempt. The caller supplies hashes only; no raw credential is
+/// retained, logged, or reconstructed.
+fn revoke_failed_actor_token_bundle(state: &AppState, token_hashes: &[String]) -> Result<(), ()> {
+    let now = now_ms();
+    state
+        .with_authoring_store(|store| {
+            store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let tokens = uow.actor_tokens();
+                tokens.revoke_hashes(token_hashes, now)?;
+                tokens.prune_reclaimable(now)?;
+                Ok(())
+            })
+        })
+        .map_err(|_| ())
+}
+
+enum BrokeredRoundTrip {
+    /// Discovery or health proved the sibling known-down before any credential
+    /// issuance. The async handler maps this to the dedicated degraded tier.
+    Down(String),
+    /// The sibling call completed (success, business refusal, or transport
+    /// fault). Existing response mapping remains the single wire authority.
+    Answer(Result<String, RagError>),
+    /// A token-store operation failed. Details can include database internals,
+    /// so only this stage-safe classification crosses the blocking boundary.
+    TokenStoreFailure(&'static str),
+}
+
+fn perform_forwarded_call(
+    transport: &LoopbackTransport,
+    method: Method,
+    path: &str,
+    body: Option<&Value>,
+) -> Result<String, RagError> {
+    match method {
+        Method::Get => transport.get(path),
+        Method::Post => {
+            // Serialized only at the final socket boundary and never logged: a
+            // run-start body may carry six raw actor tokens.
+            let serialized = body
+                .map(Value::to_string)
+                .unwrap_or_else(|| "{}".to_string());
+            transport.post_json(path, &serialized)
+        }
+    }
+}
+
+/// Execute the COMPLETE synchronous broker chain on a blocking thread:
+/// discovery-file reads, `/health`, run-id preflight, SQLite token lifecycle,
+/// and the forwarded HTTP call. For run-start, one fixed serialization stripe
+/// covers preflight through dispatch so concurrent retries cannot both mint.
+fn execute_broker_call(
+    state: &AppState,
+    mut call: ForwardedCall,
+    run_start_id: Option<&str>,
+    discovery_candidates: &[PathBuf],
+) -> BrokeredRoundTrip {
+    let _run_guard = run_start_id.map(lock_run_start);
+
+    let transport = match a2a_transport_from(discovery_candidates, call.budget) {
+        Ok(transport) => transport,
+        Err(reason) => return BrokeredRoundTrip::Down(reason),
+    };
+
+    let Some(run_id) = run_start_id else {
+        return BrokeredRoundTrip::Answer(perform_forwarded_call(
+            &transport,
+            call.method,
+            &call.path,
+            call.body.as_ref(),
+        ));
+    };
+
+    // A2A's stable-id contract returns an existing run before consulting actor
+    // tokens. Preflight that authoritative fact first. A found run is replayed by
+    // POSTing the original request WITHOUT a bundle, preserving A2A's native
+    // RunStartResponse shape while proving no fresh credential was minted.
+    let preflight = LoopbackTransport {
+        port: transport.port,
+        bearer: transport.bearer.clone(),
+        timeout: A2A_READ_BUDGET,
+    };
+    match preflight.get(&format!("/v1/runs/{run_id}")) {
+        Ok(_) => {
+            if let Some(body) = call.body.as_mut().and_then(Value::as_object_mut) {
+                body.remove("actor_tokens");
+            }
+            return BrokeredRoundTrip::Answer(perform_forwarded_call(
+                &transport,
+                call.method,
+                &call.path,
+                call.body.as_ref(),
+            ));
+        }
+        Err(RagError::Http { status: 404, .. }) => {}
+        Err(other) => return BrokeredRoundTrip::Answer(Err(other)),
+    }
+
+    // Confirmed absent under the per-run serialization stripe: this is the only
+    // path licensed to create/rotate the six purpose-keyed token rows.
+    let provisioned = match provision_actor_token_bundle(state, run_id) {
+        Ok(bundle) => bundle,
+        Err(_) => return BrokeredRoundTrip::TokenStoreFailure("provision"),
+    };
+    if let Some(body) = call.body.as_mut().and_then(Value::as_object_mut) {
+        body.insert("actor_tokens".to_string(), provisioned.wire);
+    }
+
+    let result = perform_forwarded_call(&transport, call.method, &call.path, call.body.as_ref());
+    match result {
+        Ok(raw) => BrokeredRoundTrip::Answer(Ok(raw)),
+        // The sibling answered with an explicit refusal. No response-loss
+        // ambiguity remains, so the just-issued bundle is unused and reclaimable.
+        Err(error @ RagError::Http { .. }) => {
+            if revoke_failed_actor_token_bundle(state, &provisioned.issued_hashes).is_err() {
+                BrokeredRoundTrip::TokenStoreFailure("clean up refused")
+            } else {
+                BrokeredRoundTrip::Answer(Err(error))
+            }
+        }
+        // A connection/protocol failure may mean the sibling accepted and
+        // dispatched, then its response was lost. Re-read under the SAME run-id
+        // stripe before deciding credential fate. Found means the tokens may be
+        // live: retain them and make one safe idempotent POST without a bundle to
+        // recover the native RunStartResponse. A 404 is still ambiguous because
+        // the original request may not yet have reached its durable reservation;
+        // retry the exact same id/token bundle and retain its bounded rows. The
+        // sibling's pre-dispatch primary-key reservation makes that race safe.
+        // An unavailable confirmation likewise retains the expiring rows.
+        Err(original_error) => match preflight.get(&format!("/v1/runs/{run_id}")) {
+            Ok(_) => {
+                if let Some(body) = call.body.as_mut().and_then(Value::as_object_mut) {
+                    body.remove("actor_tokens");
+                }
+                BrokeredRoundTrip::Answer(perform_forwarded_call(
+                    &transport,
+                    call.method,
+                    &call.path,
+                    call.body.as_ref(),
+                ))
+            }
+            Err(RagError::Http { status: 404, .. }) => BrokeredRoundTrip::Answer(
+                perform_forwarded_call(&transport, call.method, &call.path, call.body.as_ref()),
+            ),
+            Err(_) => BrokeredRoundTrip::Answer(Err(original_error)),
+        },
+    }
 }
 
 /// Map a loopback transport error to the engine response (ADR D1 sibling-down
@@ -754,23 +1004,27 @@ pub async fn ops_a2a(
 
     // Validate + build the forwarded call at the engine boundary (a bad arg is a
     // tiers-carrying 400 that never reaches the sibling).
-    let mut call = build_forwarded_call(&state, &verb, &cell, &body)?;
+    let call = build_forwarded_call(&state, &verb, &cell, &body)?;
+    let run_start_id = (verb == "run-start").then(|| {
+        body.run_id
+            .clone()
+            .expect("validated run-start carries run_id")
+    });
 
-    // run-start provisioning moment (ADR D2): mint per-role actor tokens and
-    // inject the bundle into the forwarded body. Done AFTER arg validation so a
-    // malformed request never triggers token minting.
-    if verb == "run-start" {
-        let bundle = provision_actor_token_bundle(&state)?;
-        if let Some(obj) = call.body.as_mut().and_then(Value::as_object_mut) {
-            obj.insert("actor_tokens".to_string(), bundle);
-        }
-    }
+    // RCR-001: the COMPLETE synchronous chain runs on Tokio's blocking pool —
+    // not only the final HTTP verb, but discovery-file reads, `/health`, status
+    // preflight, and SQLite credential lifecycle as well. The closure owns every
+    // value it needs; the body is never logged or formatted outside the socket
+    // call because run-start may carry raw actor tokens after provisioning.
+    let execution_state = Arc::clone(&state);
+    let candidates = a2a_service_json_candidates();
+    let outcome = super::rag_offload(&state, move || {
+        execute_broker_call(&execution_state, call, run_start_id.as_deref(), &candidates)
+    })
+    .await?;
 
-    // Attach-never-own discovery: build a transport to the resident gateway, or
-    // degrade honestly at 200 when it is known-down.
-    let transport = match a2a_transport(call.budget) {
-        Ok(t) => t,
-        Err(reason) => {
+    let result = match outcome {
+        BrokeredRoundTrip::Down(reason) => {
             // Degrade a DEDICATED `agent` tier, never `semantic`: an a2a outage
             // must not tell the client that search is down. The four canonical
             // tiers stay honest; only the orchestration plane reports unavailable.
@@ -780,24 +1034,15 @@ pub async fn ops_a2a(
                 None,
             ));
         }
+        BrokeredRoundTrip::TokenStoreFailure(stage) => {
+            return Err(super::super::api_error(
+                &state,
+                StatusCode::BAD_GATEWAY,
+                format!("failed to {stage} run-start actor tokens"),
+            ));
+        }
+        BrokeredRoundTrip::Answer(result) => result,
     };
-
-    // Offload the blocking loopback round-trip onto the blocking pool (RCR-001):
-    // the closure OWNS the transport + serialized body, so a slow/stalled a2a
-    // call cannot pin an async worker. The forwarded body is serialized here and
-    // never logged (it may carry actor tokens for run-start).
-    let ForwardedCall {
-        method,
-        path,
-        body: forwarded_body,
-        ..
-    } = call;
-    let forwarded_body = forwarded_body.map(|b| b.to_string());
-    let result = super::rag_offload(&state, move || match method {
-        Method::Get => transport.get(&path),
-        Method::Post => transport.post_json(&path, forwarded_body.as_deref().unwrap_or("{}")),
-    })
-    .await?;
 
     match result {
         Ok(raw) => {
@@ -818,488 +1063,5 @@ pub async fn ops_a2a(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn test_state() -> (tempfile::TempDir, Arc<AppState>) {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
-        let state = crate::app::build_state(dir.path().to_path_buf());
-        (dir, state)
-    }
-
-    #[tokio::test]
-    async fn an_unknown_verb_403s_before_any_discovery() {
-        let (_dir, state) = test_state();
-        let err = ops_a2a(State(state), Path("run-nuke".to_string()), None)
-            .await
-            .unwrap_err();
-        assert_eq!(err.0, StatusCode::FORBIDDEN);
-        assert!(err.1.0["error"].as_str().unwrap().contains("run-nuke"));
-        assert!(
-            err.1.0["tiers"]["semantic"]["available"].is_boolean(),
-            "the 403 carries the tiers block"
-        );
-    }
-
-    #[test]
-    fn run_id_guard_accepts_path_safe_and_rejects_everything_else() {
-        let (_dir, state) = test_state();
-        assert_eq!(
-            validate_run_id(&state, "run_abc-123").unwrap(),
-            "run_abc-123"
-        );
-        for bad in [
-            "",
-            "-flag",
-            "../escape",
-            "run/../../etc",
-            "run id",
-            "run;rm",
-            "a".repeat(MAX_A2A_RUN_ID_CHARS + 1).as_str(),
-        ] {
-            assert!(
-                validate_run_id(&state, bad).is_err(),
-                "`{bad}` must be rejected"
-            );
-        }
-    }
-
-    #[test]
-    fn token_guard_rejects_flag_injection_and_overlength() {
-        let (_dir, state) = test_state();
-        assert!(validate_bounded_token(&state, "team_preset", "vaultspec-authoring", 64).is_ok());
-        assert!(validate_bounded_token(&state, "team_preset", "team.default:v1", 64).is_ok());
-        for bad in ["", "-x", "--force", "has space", "semi;colon"] {
-            assert!(
-                validate_bounded_token(&state, "team_preset", bad, 64).is_err(),
-                "`{bad}` must be rejected"
-            );
-        }
-        assert!(validate_bounded_token(&state, "team_preset", &"a".repeat(65), 64).is_err());
-    }
-
-    #[test]
-    fn scope_fence_accepts_the_same_canonical_token_the_routes_serve() {
-        let (_dir, state) = test_state();
-        let cell = state.active_cell();
-        let served = crate::routes::scope_token(&cell.root);
-        validate_expected_scope(
-            &state,
-            &cell,
-            &A2aVerbBody {
-                expected_scope: Some(served),
-                ..Default::default()
-            },
-            "active-runs",
-        )
-        .expect("the served route token is the generation fence token");
-
-        #[cfg(windows)]
-        assert_eq!(
-            crate::routes::scope_token(std::path::Path::new(
-                r"\\?\Y:\code\vaultspec-dashboard-worktrees\cold"
-            )),
-            "Y:/code/vaultspec-dashboard-worktrees/cold"
-        );
-    }
-
-    #[test]
-    fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
-        let (_dir, state) = test_state();
-        let cell = state.active_cell();
-        let expected_scope = crate::routes::scope_token(&cell.root);
-
-        let service =
-            build_forwarded_call(&state, "service-state", &cell, &A2aVerbBody::default()).unwrap();
-        assert_eq!(service.path, "/v1/service");
-        assert!(service.body.is_none());
-
-        // presets-list carries the engine-controlled workspace_root, percent-encoded.
-        let presets =
-            build_forwarded_call(&state, "presets-list", &cell, &A2aVerbBody::default()).unwrap();
-        assert!(presets.path.starts_with("/v1/presets?workspace_root="));
-        assert!(
-            !presets.path.contains('\\') && !presets.path.contains(' '),
-            "the workspace_root path is percent-encoded: {}",
-            presets.path
-        );
-
-        // active-runs pins state=active and carries the engine-controlled
-        // workspace_root (percent-encoded); it is a bounded read, never a client
-        // field. It requires no run_id.
-        let active = build_forwarded_call(
-            &state,
-            "active-runs",
-            &cell,
-            &A2aVerbBody {
-                expected_scope: Some(expected_scope.clone()),
-                feature_tag: Some("a2a-orchestration-edge".to_string()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert!(
-            active
-                .path
-                .starts_with("/v1/runs?state=active&workspace_root=")
-        );
-        assert!(active.path.contains("&feature_tag=a2a-orchestration-edge"));
-        assert!(active.path.ends_with("&limit=2"));
-        assert!(active.body.is_none());
-        assert_eq!(active.budget, A2A_READ_BUDGET);
-        assert!(
-            !active.path.contains('\\') && !active.path.contains(' '),
-            "the workspace_root path is percent-encoded: {}",
-            active.path
-        );
-        assert_eq!(
-            build_forwarded_call(
-                &state,
-                "active-runs",
-                &cell,
-                &A2aVerbBody {
-                    expected_scope: Some(expected_scope.clone()),
-                    feature_tag: Some("bad feature".to_string()),
-                    ..Default::default()
-                }
-            )
-            .unwrap_err()
-            .0,
-            StatusCode::BAD_REQUEST
-        );
-        assert_eq!(
-            build_forwarded_call(
-                &state,
-                "active-runs",
-                &cell,
-                &A2aVerbBody {
-                    expected_scope: Some("X:/a-different-workspace".to_string()),
-                    ..Default::default()
-                }
-            )
-            .unwrap_err()
-            .0,
-            StatusCode::CONFLICT
-        );
-
-        // run-status requires a run_id and forms the run URL.
-        let status = build_forwarded_call(
-            &state,
-            "run-status",
-            &cell,
-            &A2aVerbBody {
-                run_id: Some("run-7".to_string()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert_eq!(status.path, "/v1/runs/run-7");
-
-        // run-status without a run_id is a 400.
-        assert_eq!(
-            build_forwarded_call(&state, "run-status", &cell, &A2aVerbBody::default())
-                .unwrap_err()
-                .0,
-            StatusCode::BAD_REQUEST
-        );
-    }
-
-    #[test]
-    fn build_run_start_validates_and_omits_actor_tokens() {
-        let (_dir, state) = test_state();
-        let cell = state.active_cell();
-        let expected_scope = crate::routes::scope_token(&cell.root);
-
-        // A valid run-start body: the forwarded payload carries the preset +
-        // message + optional fields but NEVER an actor_tokens field (the handler
-        // injects it after provisioning).
-        let call = build_forwarded_call(
-            &state,
-            "run-start",
-            &cell,
-            &A2aVerbBody {
-                expected_scope: Some(expected_scope.clone()),
-                team_preset: Some("vaultspec-authoring".to_string()),
-                message: Some("Research the edge".to_string()),
-                feature_tag: Some("a2a-orchestration-edge".to_string()),
-                profile_id: Some("team-defaults".to_string()),
-                autonomous: Some(true),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        assert!(matches!(call.method, Method::Post));
-        assert_eq!(call.path, "/v1/runs");
-        let body = call.body.unwrap();
-        assert_eq!(body["team_preset"], "vaultspec-authoring");
-        assert_eq!(body["message"], "Research the edge");
-        assert_eq!(body["feature_tag"], "a2a-orchestration-edge");
-        assert_eq!(body["autonomous"], true);
-        assert_eq!(body["metadata"]["workspace_root"], expected_scope);
-        assert!(body.get("expected_scope").is_none());
-        assert!(
-            body.get("actor_tokens").is_none(),
-            "the pure build step never carries actor tokens"
-        );
-
-        // A missing preset, empty message, and oversized message are each a 400.
-        assert!(
-            build_forwarded_call(
-                &state,
-                "run-start",
-                &cell,
-                &A2aVerbBody {
-                    expected_scope: Some(expected_scope.clone()),
-                    message: Some("x".to_string()),
-                    ..Default::default()
-                }
-            )
-            .is_err()
-        );
-        assert!(
-            build_forwarded_call(
-                &state,
-                "run-start",
-                &cell,
-                &A2aVerbBody {
-                    expected_scope: Some(expected_scope.clone()),
-                    team_preset: Some("p".to_string()),
-                    message: Some("   ".to_string()),
-                    ..Default::default()
-                }
-            )
-            .is_err()
-        );
-        assert!(
-            build_forwarded_call(
-                &state,
-                "run-start",
-                &cell,
-                &A2aVerbBody {
-                    expected_scope: Some(expected_scope),
-                    team_preset: Some("p".to_string()),
-                    message: Some("x".repeat(MAX_A2A_MESSAGE_BYTES + 1)),
-                    ..Default::default()
-                }
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_no_bearer() {
-        let (_dir, state) = test_state();
-        let bundle = provision_actor_token_bundle(&state).unwrap();
-
-        // engine_bearer is absent (null): the worker self-resolves it.
-        assert_eq!(bundle["engine_bearer"], Value::Null);
-
-        let tokens = bundle["tokens"].as_object().unwrap();
-        assert_eq!(
-            tokens.len(),
-            A2A_PIPELINE_ROLES.len(),
-            "one token per canonical pipeline role"
-        );
-        let mut seen = std::collections::HashSet::new();
-        for role in A2A_PIPELINE_ROLES {
-            let token = tokens[*role].as_str().expect("role token is a string");
-            assert!(!token.is_empty(), "role `{role}` has a non-empty token");
-            assert!(
-                seen.insert(token.to_string()),
-                "role `{role}` token must be distinct (roles never share a token)"
-            );
-        }
-    }
-
-    #[test]
-    fn discovery_classifies_absent_stale_and_fresh() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("service.json");
-
-        // Absent: no file.
-        assert!(matches!(
-            discover_a2a_at(std::slice::from_ref(&path)),
-            A2aDiscovery::Down { .. }
-        ));
-
-        // Stale heartbeat (1970): a crashed/stopped service, degraded.
-        std::fs::write(&path, r#"{"port": 8080, "last_heartbeat": 1000}"#).unwrap();
-        assert!(matches!(
-            discover_a2a_at(std::slice::from_ref(&path)),
-            A2aDiscovery::Down { ref reason } if reason.contains("stale")
-        ));
-
-        // Fresh heartbeat: a live service.
-        let now = now_ms();
-        std::fs::write(
-            &path,
-            format!(
-                r#"{{"port": 8080, "last_heartbeat": {now}, "pid": 4242, "service_token": "tok"}}"#
-            ),
-        )
-        .unwrap();
-        match discover_a2a_at(std::slice::from_ref(&path)) {
-            A2aDiscovery::Fresh(info) => {
-                assert_eq!(info.port, 8080);
-                assert_eq!(info.service_token.as_deref(), Some("tok"));
-            }
-            other => panic!("expected Fresh, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn percent_encode_escapes_path_separators_and_drive_colon() {
-        assert_eq!(percent_encode("Y:\\code\\proj"), "Y%3A%5Ccode%5Cproj");
-        assert_eq!(percent_encode("plain-name_1.2~"), "plain-name_1.2~");
-        assert_eq!(percent_encode("a b"), "a%20b");
-    }
-
-    #[test]
-    fn http_business_refusal_forwards_verbatim_with_sibling_status() {
-        // ADR D1: a 4xx the sibling ANSWERS is a business refusal forwarded
-        // verbatim at 200 with its sibling_status — the sibling is up, tiers stay
-        // healthy. This is the a2a analog of the rag write runner's exit-1
-        // status:"failed" forward.
-        let (_dir, state) = test_state();
-        let cell = state.active_cell();
-        let refusal = RagError::Http {
-            status: 422,
-            body: r#"{"detail": "preset ineligible"}"#.to_string(),
-        };
-        let Json(body) = map_transport_error(&state, &cell, refusal).expect("a refusal is a 200");
-        assert_eq!(body["data"]["sibling_status"], 422);
-        assert_eq!(body["data"]["envelope"]["detail"], "preset ineligible");
-        assert!(body["tiers"]["semantic"]["available"].is_boolean());
-    }
-
-    #[test]
-    fn live_loopback_discovers_health_then_round_trips_active_runs() {
-        // A real TcpListener stands in for the resident a2a gateway: a real
-        // service.json, a real ungated /health 200, and a real HTTP round-trip
-        // through the loopback transport. This is a LIVE loopback (the rag-client
-        // socket-test precedent), not a stub of engine code — it exercises the real
-        // discovery predicate, the real attach gate, and the real transport. It
-        // does NOT stand up the Python gateway (that live contract test lives in
-        // the vaultspec-a2a repo's own test_gateway_live.py; see the report).
-        use std::io::{Read, Write};
-        use std::net::TcpListener;
-
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        // The gateway answers two Connection: close requests — the /health probe,
-        // then the verb — each on its own accepted connection.
-        let (request_tx, request_rx) = std::sync::mpsc::channel();
-        let server = std::thread::spawn(move || {
-            let health = r#"{"status": "ok", "checks": {}}"#;
-            let verb = r#"{"api_version":"v1","state":"active","runs":[{"run_id":"run-7","status":"running","feature_tag":"a2a-orchestration-edge"}],"truncated":false}"#;
-            for (index, body) in [health, verb].into_iter().enumerate() {
-                let (mut stream, _) = listener.accept().unwrap();
-                let mut buf = [0u8; 2048];
-                let read = stream.read(&mut buf).unwrap();
-                if index == 1 {
-                    let request = String::from_utf8_lossy(&buf[..read]);
-                    request_tx
-                        .send(request.lines().next().unwrap_or_default().to_string())
-                        .unwrap();
-                }
-                write!(
-                    stream,
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                    body.len(),
-                    body
-                )
-                .unwrap();
-            }
-        });
-
-        // A fresh discovery record pointing at the real listener.
-        let dir = tempfile::tempdir().unwrap();
-        let service_json = dir.path().join("service.json");
-        let now = now_ms();
-        std::fs::write(
-            &service_json,
-            format!(r#"{{"port": {port}, "last_heartbeat": {now}, "pid": 4242}}"#),
-        )
-        .unwrap();
-
-        // Discovery + the ungated /health gate resolve a live endpoint.
-        let (endpoint_port, bearer) = a2a_endpoint_from(std::slice::from_ref(&service_json))
-            .expect("a fresh, healthy gateway resolves an endpoint");
-        assert_eq!(endpoint_port, port);
-        let transport = LoopbackTransport {
-            port: endpoint_port,
-            bearer,
-            timeout: A2A_READ_BUDGET,
-        };
-        // Resolve the production mapping and make the real bounded discovery
-        // round-trip. The sibling envelope is preserved without reshaping.
-        let (_state_dir, state) = test_state();
-        let cell = state.active_cell();
-        let expected_scope = crate::routes::scope_token(&cell.root);
-        let call = build_forwarded_call(
-            &state,
-            "active-runs",
-            &cell,
-            &A2aVerbBody {
-                expected_scope: Some(expected_scope),
-                feature_tag: Some("a2a-orchestration-edge".to_string()),
-                ..Default::default()
-            },
-        )
-        .unwrap();
-        let raw = transport.get(&call.path).expect("verb round-trips");
-        let envelope: Value = serde_json::from_str(&raw).unwrap();
-        assert_eq!(envelope["api_version"], "v1");
-        assert_eq!(envelope["state"], "active");
-        assert_eq!(envelope["runs"][0]["run_id"], "run-7");
-        assert_eq!(envelope["truncated"], false);
-
-        let request_line = request_rx.recv().unwrap();
-        assert!(request_line.starts_with("GET /v1/runs?state=active&workspace_root="));
-        assert!(request_line.contains("&feature_tag=a2a-orchestration-edge"));
-        assert!(request_line.contains("&limit=2 HTTP/1.1"));
-
-        server.join().unwrap();
-    }
-
-    #[test]
-    fn a_stale_gateway_never_probes_health_and_reports_down() {
-        // A stale discovery record is known-down BEFORE any /health probe — the
-        // transport resolve returns the truthful reason the handler degrades on.
-        let dir = tempfile::tempdir().unwrap();
-        let service_json = dir.path().join("service.json");
-        // Heartbeat from 1970 → stale. The port is unbound; a health probe would
-        // hang/refuse, so proving we never reach it also proves the fast gate.
-        std::fs::write(&service_json, r#"{"port": 9, "last_heartbeat": 1000}"#).unwrap();
-        match a2a_endpoint_from(std::slice::from_ref(&service_json)) {
-            Ok(_) => panic!("a stale gateway must be known-down, not a live endpoint"),
-            Err(reason) => assert!(reason.contains("stale"), "reason: {reason}"),
-        }
-    }
-
-    #[test]
-    fn a_timeout_is_504_and_a_crash_is_502() {
-        let (_dir, state) = test_state();
-        let cell = state.active_cell();
-
-        let timeout = RagError::Io(std::io::Error::from(std::io::ErrorKind::TimedOut));
-        assert_eq!(
-            map_transport_error(&state, &cell, timeout).unwrap_err().0,
-            StatusCode::GATEWAY_TIMEOUT
-        );
-
-        let crash = RagError::Io(std::io::Error::from(std::io::ErrorKind::ConnectionRefused));
-        assert_eq!(
-            map_transport_error(&state, &cell, crash).unwrap_err().0,
-            StatusCode::BAD_GATEWAY
-        );
-
-        assert_eq!(
-            map_transport_error(&state, &cell, RagError::Protocol)
-                .unwrap_err()
-                .0,
-            StatusCode::BAD_GATEWAY
-        );
-    }
-}
+#[path = "a2a_tests.rs"]
+mod tests;

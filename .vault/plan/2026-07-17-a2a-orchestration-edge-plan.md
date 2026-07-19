@@ -7,9 +7,11 @@ modified: '2026-07-19'
 tier: L2
 related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
+  - '[[2026-07-14-a2a-orchestration-edge-reference]]'
   - '[[2026-07-14-agentic-feedback-loop-adr]]'
   - '[[2026-07-16-agentic-authoring-ux-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
+  - '[[2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit]]'
 ---
 
 <!-- LINK RULES:
@@ -70,6 +72,18 @@ Add the bounded discovery read to the reviewed edge, then restore only an unambi
 - [x] `P06.S15` - Add the engine-scoped active-run discovery verb with fixed two-result upstream bound, optional bounded feature filter, and real-loopback contract coverage; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
 - [x] `P06.S16` - Recover the team-run viewing binding only from one complete active workspace result, clear cross-scope bindings, and keep run-status plus relay authoritative; `frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/view/agentPanel.ts, frontend/src/app/agent/AgentPanel.tsx`.
 
+### Phase `P07` - Adversarial performance and security hardening
+
+Resolve every open finding from the current adversarial audit across the sibling gateway, engine relay and broker, frontend recovery authority, and normative contract trail.
+
+- [x] `P07.S17` - Secure the sibling gateway with loopback-default binding and constant-time service-token authentication on every /v1 route, with real HTTP negative and positive coverage; `src/vaultspec_a2a/api/, src/vaultspec_a2a/control/config.py`.
+- [x] `P07.S18` - Replace active-run metadata scans with persisted bounded indexed selectors and prove an index-backed, stable large-history query plan; `src/vaultspec_a2a/database/, src/vaultspec_a2a/control/run_discovery_service.py`.
+- [x] `P07.S19` - Enforce pre-allocation HTTP and SSE byte ceilings, byte-budget replay storage, and restartable relay lifecycle with adversarial socket and churn coverage; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
+- [x] `P07.S20` - Move A2A discovery and health off async workers and make actor-token issuance idempotent, failure-revoked, and retention-bounded; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs, engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
+- [x] `P07.S21` - Make frontend relay resume cursor-aware and byte-bounded, latch authoritative reconciliation, and derive terminal controls only from confirmed run status; `frontend/src/stores/server/agent/, frontend/src/stores/server/liveAdapters/, frontend/src/app/agent/`.
+- [ ] `P07.S22` - Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail; `engine/crates/vaultspec-api/src/lib.rs, .vault/reference/, .vault/audit/`.
+- [ ] `P07.S23` - Run a cross-repository adversarial code review, resolve every new critical or high issue, and close the rolling audit with real-behavior evidence; `.vault/audit/, .vault/exec/`.
+
 ## Description
 
 Activate the frozen dashboard-to-a2a edge holistically: the a2a side shipped
@@ -86,6 +100,13 @@ stream is internal-only), and the immutable feedback batch with its
 structured continuation field (feedback-loop ADR D3 and D4, both greenfield
 engine-side; the turn contract denies unknown fields so the addition is a
 typed contract change).
+
+P07 executes the accepted edge ADR's resource-bound and authority invariants
+against the adversarial audit. It closes the sibling authentication boundary,
+makes discovery index-backed, turns relay limits into allocation and aggregate
+byte ceilings, repairs relay ownership and frontend reconciliation authority,
+and makes run-start credential issuance failure-safe. The audit remains the
+rolling issue queue until P07.S23 independently re-reviews every remediation.
 
 Grounding rulings recorded at authoring: the rag ops template returns 200
 with a degraded tier for a known-down sibling and reserves 502 and 504 for
@@ -111,6 +132,13 @@ S03's discovery plumbing, so P03 is best started after S03. P05 runs last
 and gates completion. S02 depends on S01; S10 depends on S09; S11 and S12
 depend on S10.
 
+P07.S17 and P07.S18 may run in parallel in the sibling repository only when
+their edits do not overlap an active product-provisioning writer. P07.S19 and
+P07.S20 may run in parallel in the dashboard engine because they own distinct
+modules. P07.S21 may proceed beside both engine steps but its final integration
+tests depend on the relay contract from P07.S19. P07.S22 follows the code steps;
+P07.S23 is the mandatory final gate.
+
 ## Verification
 
 Mission success is wire-observable, not test-count-observable:
@@ -135,3 +163,15 @@ Mission success is wire-observable, not test-count-observable:
 - The vaultspec-code-reviewer persona signs off PASS across both
   repositories and the audit is persisted with the ADR amendment; the
   dashboard authoring-ux plan's W05.P05 steps are observed unblocked.
+- The sibling defaults to loopback and rejects missing or incorrect service
+  tokens on every `/v1` verb while the engine-discovered token succeeds.
+- Active discovery uses indexed selector columns and an index-backed query plan
+  whose latency and peak allocation stay bounded across a 100,000-row history.
+- Relay headers, chunks, incomplete frames, replay rings, registry admission,
+  and frontend transcripts enforce documented byte ceilings under adversarial
+  input; nonterminal disconnect/reopen and 65-run churn recover without restart.
+- Health discovery never blocks an async worker; failed and replayed starts do
+  not grow live or total token rows without bound.
+- Reconnect uses the last sequence cursor, gap/degraded/terminal frames trigger
+  one sticky authoritative status reconciliation, and user controls derive
+  terminal state only from that authoritative response.

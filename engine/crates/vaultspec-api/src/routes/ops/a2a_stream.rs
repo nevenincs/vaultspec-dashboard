@@ -21,9 +21,8 @@
 //!   sentinel (256 KiB cap, a2a `sse_frames`) is a small frame that flows through
 //!   untouched.
 //! - **Honest degradation.** When the upstream stream is down (a2a absent, or the
-//!   stream connection fails/idles), the relay degrades to BOUNDED `run-status`
-//!   polling and emits synthesized `status` frames marked `degraded:true`, so the
-//!   client keeps a live-ish signal until it reconnects or the run terminates.
+//!   stream connection fails/idles), the relay emits one bounded `relay_degraded`
+//!   signal and retires. The browser alone polls authoritative `run-status`.
 //!
 //! Every upstream connection is bounded: an idle-read timeout, a per-frame byte
 //! cap, and a total relay wall-clock lifetime (`subprocess-calls-carry-cap-and-
@@ -35,7 +34,7 @@ use std::convert::Infallible;
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpStream;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -63,9 +62,38 @@ const RELAY_BROADCAST_CAP: usize = 256;
 /// grows a single frame without bound.
 const MAX_RELAY_FRAME_BYTES: usize = 512 * 1024;
 
+/// Maximum status/header line and aggregate response-head sizes. These are
+/// allocation ceilings: the bounded line reader rejects the peer before growing
+/// its buffer past them.
+const MAX_HTTP_STATUS_LINE_BYTES: usize = 1024;
+const MAX_HTTP_HEADER_LINE_BYTES: usize = 8 * 1024;
+const MAX_HTTP_HEAD_BYTES: usize = 32 * 1024;
+
+/// A chunk declaration is validated before allocating its body. The sibling emits
+/// at most one already-bounded SSE frame per chunk, so the relay frame ceiling is
+/// also the largest useful transport chunk.
+const MAX_HTTP_CHUNK_BYTES: usize = MAX_RELAY_FRAME_BYTES;
+const MAX_HTTP_CHUNK_LINE_BYTES: usize = 128;
+
+/// A single transport read may contain thousands of tiny valid SSE frames. Keep
+/// the decoded output vector bounded too: the final slot is reserved for one drop
+/// sentinel describing all additional completed frames from that push.
+const MAX_SSE_OUTPUTS_PER_PUSH: usize = 256;
+
+/// Replay storage is byte-weighted as well as count-weighted. Four MiB preserves
+/// a generous tail of normal progress frames while preventing one run from
+/// monopolising the process. The retained ceiling allows one replay snapshot to
+/// drain while a fresh four-MiB tail arrives. Across all relays, immutable shared
+/// frames may retain no more than 64 MiB of accounted event/payload bytes.
+const RELAY_REPLAY_BYTE_BUDGET: usize = 4 * 1024 * 1024;
+const PER_RELAY_RETAINED_BYTE_BUDGET: usize = 8 * 1024 * 1024;
+const GLOBAL_RELAY_RETAINED_BYTE_BUDGET: usize = 64 * 1024 * 1024;
+const RELAY_CONTROL_RESERVE_BYTES: usize = 256 * 1024;
+const GLOBAL_CONTROL_RESERVE_BYTES: usize = 8 * 1024 * 1024;
+
 /// Idle-read timeout on the upstream socket: the a2a stream emits a heartbeat well
 /// within this window, so no data for this long means a dead/stalled connection —
-/// the relay degrades to `run-status` polling.
+/// the relay emits degradation and lets the browser retry/reconcile.
 const UPSTREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
 
 /// Total wall-clock lifetime of one relay's upstream connection: a bound on a
@@ -73,43 +101,94 @@ const UPSTREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
 /// outliving this reconnects (a fresh relay), reconciling from `run-status`.
 const RELAY_MAX_LIFETIME: Duration = Duration::from_secs(6 * 3600);
 
-/// Bounded `run-status` poll cadence for the degraded fallback.
-const STATUS_POLL_INTERVAL: Duration = Duration::from_secs(5);
-
-/// The `run-status` read budget for the degraded fallback poll.
-const STATUS_POLL_BUDGET: Duration = Duration::from_secs(10);
-
 /// Ceiling on concurrent resident relays (`every-accumulator-is-bounded`): one
 /// blocking reader thread each, pruned when finished and unsubscribed.
 const MAX_CONCURRENT_RELAYS: usize = 64;
 
 /// A single relayed progress frame: the engine-assigned monotonic `seq`, the
 /// upstream SSE event name, and the upstream JSON `data` VERBATIM.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct RelayFrame {
     seq: u64,
-    event: String,
-    data: Value,
+    event: Arc<str>,
+    data: Arc<str>,
+    accounted_bytes: usize,
+    _charge: FrameCharge,
+}
+
+type SharedRelayFrame = Arc<RelayFrame>;
+
+/// Releases byte reservations only when the last ring/broadcast/replay reference
+/// to an immutable frame disappears.
+#[derive(Debug)]
+struct FrameCharge {
+    bytes: usize,
+    relay_bytes: Arc<AtomicUsize>,
+    global_bytes: Arc<AtomicUsize>,
+}
+
+impl Drop for FrameCharge {
+    fn drop(&mut self) {
+        self.relay_bytes.fetch_sub(self.bytes, Ordering::SeqCst);
+        self.global_bytes.fetch_sub(self.bytes, Ordering::SeqCst);
+    }
+}
+
+#[derive(Default)]
+struct RelayRing {
+    frames: VecDeque<SharedRelayFrame>,
+    bytes: usize,
+    /// Latest sequence that could not be retained or broadcast under the hard
+    /// byte ceilings. Sticky for the relay lifetime so a client resuming beyond
+    /// an older hole still observes any newer discontinuity.
+    latest_missing_seq: Option<u64>,
 }
 
 /// The resident relay for one run: a bounded replay ring, a live broadcast, a
 /// monotonic seq, and a terminal latch. Fed by one upstream reader thread and
 /// read by any number of client SSE connections.
 struct RunRelay {
-    tx: broadcast::Sender<RelayFrame>,
-    ring: Mutex<VecDeque<RelayFrame>>,
+    tx: broadcast::Sender<SharedRelayFrame>,
+    ring: Mutex<RelayRing>,
     seq: AtomicU64,
     terminal: AtomicBool,
+    producer_running: AtomicBool,
+    retained_bytes: Arc<AtomicUsize>,
+    global_retained_bytes: Arc<AtomicUsize>,
+    replay_byte_budget: usize,
+    retained_byte_budget: usize,
+    global_byte_budget: usize,
 }
 
 impl RunRelay {
+    #[cfg(test)]
     fn new() -> Arc<Self> {
+        Self::new_with_budgets(
+            Arc::new(AtomicUsize::new(0)),
+            RELAY_REPLAY_BYTE_BUDGET,
+            PER_RELAY_RETAINED_BYTE_BUDGET,
+            GLOBAL_RELAY_RETAINED_BYTE_BUDGET,
+        )
+    }
+
+    fn new_with_budgets(
+        global_retained_bytes: Arc<AtomicUsize>,
+        replay_byte_budget: usize,
+        retained_byte_budget: usize,
+        global_byte_budget: usize,
+    ) -> Arc<Self> {
         let (tx, _rx) = broadcast::channel(RELAY_BROADCAST_CAP);
         Arc::new(RunRelay {
             tx,
-            ring: Mutex::new(VecDeque::new()),
+            ring: Mutex::new(RelayRing::default()),
             seq: AtomicU64::new(0),
             terminal: AtomicBool::new(false),
+            producer_running: AtomicBool::new(false),
+            retained_bytes: Arc::new(AtomicUsize::new(0)),
+            global_retained_bytes,
+            replay_byte_budget,
+            retained_byte_budget,
+            global_byte_budget,
         })
     }
 
@@ -121,16 +200,68 @@ impl RunRelay {
         if event == "thread_terminal" {
             self.terminal.store(true, Ordering::SeqCst);
         }
-        let frame = RelayFrame { seq, event, data };
-        {
-            // Poison recovery (robustness H2): recover the inner buffer rather than
-            // wedging the relay on a poisoned lock.
-            let mut ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
-            if ring.len() == RELAY_RING_CAP {
-                ring.pop_front();
-            }
-            ring.push_back(frame.clone());
+        let (mut event, mut data) = serialize_relay_data(seq, event, data);
+        let mut accounted_bytes = relay_frame_bytes(&event, &data);
+        if accounted_bytes > MAX_RELAY_FRAME_BYTES {
+            (event, data) = drop_sentinel_data(seq, "relay_frame_exceeds_cap");
+            accounted_bytes = relay_frame_bytes(&event, &data);
         }
+
+        let mut ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
+        while ring.frames.len() >= RELAY_RING_CAP
+            || ring.bytes.saturating_add(accounted_bytes) > self.replay_byte_budget
+        {
+            let Some(evicted) = ring.frames.pop_front() else {
+                break;
+            };
+            ring.bytes = ring.bytes.saturating_sub(evicted.accounted_bytes);
+            drop(evicted);
+        }
+
+        // Normal payloads cannot consume the small control reserve. If pressure
+        // rejects one, the `progress_dropped` sentinel below can still be retained
+        // and broadcast, so byte pressure is observable rather than a silent hole.
+        let relay_control_reserve = RELAY_CONTROL_RESERVE_BYTES.min(self.retained_byte_budget / 8);
+        let global_control_reserve = GLOBAL_CONTROL_RESERVE_BYTES.min(self.global_byte_budget / 8);
+        let mut reservation = reserve_frame_bytes(
+            &self.retained_bytes,
+            self.retained_byte_budget
+                .saturating_sub(relay_control_reserve),
+            &self.global_retained_bytes,
+            self.global_byte_budget
+                .saturating_sub(global_control_reserve),
+            accounted_bytes,
+        );
+        if reservation.is_none() {
+            (event, data) = drop_sentinel_data(seq, "relay_byte_budget_exhausted");
+            accounted_bytes = relay_frame_bytes(&event, &data);
+            reservation = reserve_frame_bytes(
+                &self.retained_bytes,
+                self.retained_byte_budget,
+                &self.global_retained_bytes,
+                self.global_byte_budget,
+                accounted_bytes,
+            );
+        }
+        let Some(charge) = reservation else {
+            // Record the skipped sequence while holding the same ring lock used
+            // by snapshots. A reconnect can therefore never observe a later
+            // retained frame without an explicit gap. Do not exceed either byte
+            // ceiling merely to allocate a control payload under pressure.
+            ring.latest_missing_seq = Some(seq);
+            return seq;
+        };
+
+        let frame = Arc::new(RelayFrame {
+            seq,
+            event: Arc::from(event),
+            data: Arc::from(data),
+            accounted_bytes,
+            _charge: charge,
+        });
+        ring.bytes += accounted_bytes;
+        ring.frames.push_back(frame.clone());
+        drop(ring);
         let _ = self.tx.send(frame);
         seq
     }
@@ -139,108 +270,283 @@ impl RunRelay {
     /// and — when the next needed seq (`since + 1`) has already been evicted — the
     /// oldest still-buffered seq marking the GAP the client must re-keyframe from.
     /// Mirrors `routes::stream::gap_oldest`, saturating on a hostile `since`.
-    fn snapshot_since(&self, since: Option<u64>) -> (Vec<RelayFrame>, Option<u64>) {
+    fn snapshot_since(&self, since: Option<u64>) -> (Vec<SharedRelayFrame>, Option<u64>) {
         let ring = self.ring.lock().unwrap_or_else(|e| e.into_inner());
         let Some(since) = since else {
-            return (ring.iter().cloned().collect(), None);
+            return (
+                ring.frames.iter().cloned().collect(),
+                ring.latest_missing_seq,
+            );
         };
-        let oldest = ring.front().map(|f| f.seq);
+        let oldest = ring.frames.front().map(|f| f.seq);
         if let Some(oldest) = oldest.filter(|&oldest| since.saturating_add(1) < oldest) {
             // The frame the client needs next was evicted: an explicit gap.
             return (Vec::new(), Some(oldest));
         }
-        (
-            ring.iter().filter(|f| f.seq > since).cloned().collect(),
-            None,
-        )
+        let frames: Vec<_> = ring
+            .frames
+            .iter()
+            .filter(|f| f.seq > since)
+            .cloned()
+            .collect();
+        if let Some(missing) = ring.latest_missing_seq.filter(|missing| *missing > since) {
+            return (Vec::new(), Some(missing));
+        }
+        // Validate the actual snapshot as a final invariant check. This also
+        // protects recovery if a future producer path introduces a hole without
+        // updating `latest_missing_seq`.
+        let mut expected = since.saturating_add(1);
+        for frame in &frames {
+            if frame.seq != expected {
+                return (Vec::new(), Some(frame.seq));
+            }
+            expected = expected.saturating_add(1);
+        }
+        (frames, None)
     }
 
     fn is_terminal(&self) -> bool {
         self.terminal.load(Ordering::SeqCst)
     }
+
+    fn is_producer_running(&self) -> bool {
+        self.producer_running.load(Ordering::SeqCst)
+    }
+
+    fn claim_producer(&self) -> bool {
+        !self.is_terminal()
+            && self
+                .producer_running
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+    }
+}
+
+fn relay_frame_bytes(event: &str, data: &str) -> usize {
+    event.len().saturating_add(data.len())
+}
+
+fn serialize_relay_data(seq: u64, event: String, data: Value) -> (String, String) {
+    let annotated = match data {
+        Value::Object(mut map) => {
+            map.insert("seq".to_string(), json!(seq));
+            Value::Object(map)
+        }
+        other => json!({ "seq": seq, "value": other }),
+    };
+    (event, annotated.to_string())
+}
+
+fn drop_sentinel_data(seq: u64, reason: &'static str) -> (String, String) {
+    serialize_relay_data(
+        seq,
+        "progress_dropped".to_string(),
+        json!({
+            "api_version": "v1",
+            "type": "progress_dropped",
+            "reason": reason,
+        }),
+    )
+}
+
+fn try_reserve(counter: &AtomicUsize, limit: usize, bytes: usize) -> bool {
+    let mut current = counter.load(Ordering::SeqCst);
+    loop {
+        let Some(next) = current.checked_add(bytes) else {
+            return false;
+        };
+        if next > limit {
+            return false;
+        }
+        match counter.compare_exchange(current, next, Ordering::SeqCst, Ordering::SeqCst) {
+            Ok(_) => return true,
+            Err(observed) => current = observed,
+        }
+    }
+}
+
+fn reserve_frame_bytes(
+    relay_bytes: &Arc<AtomicUsize>,
+    relay_limit: usize,
+    global_bytes: &Arc<AtomicUsize>,
+    global_limit: usize,
+    bytes: usize,
+) -> Option<FrameCharge> {
+    if !try_reserve(relay_bytes, relay_limit, bytes) {
+        return None;
+    }
+    if !try_reserve(global_bytes, global_limit, bytes) {
+        relay_bytes.fetch_sub(bytes, Ordering::SeqCst);
+        return None;
+    }
+    Some(FrameCharge {
+        bytes,
+        relay_bytes: relay_bytes.clone(),
+        global_bytes: global_bytes.clone(),
+    })
 }
 
 /// The process-global bounded registry of resident relays, keyed by run id. A
 /// `OnceLock` module singleton rather than an `AppState` field so the relay is
 /// self-contained in its own module (no shared-file edit); bounded at
 /// `MAX_CONCURRENT_RELAYS` and pruned of finished, unsubscribed runs.
-fn relays() -> &'static Mutex<std::collections::HashMap<String, Arc<RunRelay>>> {
-    static RELAYS: OnceLock<Mutex<std::collections::HashMap<String, Arc<RunRelay>>>> =
-        OnceLock::new();
-    RELAYS.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+struct RelayRegistry {
+    entries: std::collections::HashMap<String, Arc<RunRelay>>,
+    retained_bytes: Arc<AtomicUsize>,
 }
 
-/// Get the resident relay for `run_id`, starting its upstream reader thread on
-/// first use. Prunes finished relays with no live subscribers before enforcing the
+impl RelayRegistry {
+    fn new() -> Self {
+        Self {
+            entries: std::collections::HashMap::new(),
+            retained_bytes: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Remove every producerless, unsubscribed relay except the run currently
+    /// being reopened. Keeping that target lets a terminal reconnect replay its
+    /// bounded tail; a non-terminal target is restarted below.
+    fn prune_inactive(&mut self, reopening_run_id: &str) {
+        self.entries.retain(|run_id, relay| {
+            run_id == reopening_run_id
+                || relay.tx.receiver_count() > 0
+                || relay.is_producer_running()
+        });
+    }
+
+    fn get_or_insert(&mut self, run_id: &str) -> Option<Arc<RunRelay>> {
+        self.prune_inactive(run_id);
+        if let Some(existing) = self.entries.get(run_id) {
+            return Some(existing.clone());
+        }
+        if self.entries.len() >= MAX_CONCURRENT_RELAYS
+            || self.retained_bytes.load(Ordering::SeqCst) >= GLOBAL_RELAY_RETAINED_BYTE_BUDGET
+        {
+            return None;
+        }
+        let relay = RunRelay::new_with_budgets(
+            self.retained_bytes.clone(),
+            RELAY_REPLAY_BYTE_BUDGET,
+            PER_RELAY_RETAINED_BYTE_BUDGET,
+            GLOBAL_RELAY_RETAINED_BYTE_BUDGET,
+        );
+        self.entries.insert(run_id.to_string(), relay.clone());
+        Some(relay)
+    }
+
+    /// Record one reader's exit and return whether a subscribed non-terminal
+    /// relay needs an immediate replacement producer.
+    fn reader_finished(
+        &mut self,
+        run_id: &str,
+        relay: &Arc<RunRelay>,
+        restart_if_subscribed: bool,
+    ) -> bool {
+        let Some(resident) = self.entries.get(run_id) else {
+            relay.producer_running.store(false, Ordering::SeqCst);
+            return false;
+        };
+        if !Arc::ptr_eq(resident, relay) {
+            relay.producer_running.store(false, Ordering::SeqCst);
+            return false;
+        }
+        relay.producer_running.store(false, Ordering::SeqCst);
+        if relay.tx.receiver_count() == 0 || !restart_if_subscribed {
+            self.entries.remove(run_id);
+            false
+        } else {
+            !relay.is_terminal()
+        }
+    }
+}
+
+fn relays() -> &'static Mutex<RelayRegistry> {
+    static RELAYS: OnceLock<Mutex<RelayRegistry>> = OnceLock::new();
+    RELAYS.get_or_init(|| Mutex::new(RelayRegistry::new()))
+}
+
+/// Get or create the resident relay for `run_id`. The handler subscribes before
+/// starting its reader so a fast degraded exit cannot race ahead of the first
+/// receiver. Prunes finished relays with no live subscribers before enforcing the
 /// concurrency cap; at cap with nothing prunable, returns `None` so the caller
 /// serves an honest `relay_capacity` degraded frame rather than growing threads
 /// without bound.
-fn get_or_start_relay(run_id: &str) -> Option<Arc<RunRelay>> {
-    let mut map = relays().lock().unwrap_or_else(|e| e.into_inner());
-    if let Some(existing) = map.get(run_id) {
-        return Some(existing.clone());
+fn get_or_create_relay(run_id: &str) -> Option<Arc<RunRelay>> {
+    let mut registry = relays().lock().unwrap_or_else(|e| e.into_inner());
+    registry.get_or_insert(run_id)
+}
+
+/// Start at most one producer for a resident relay. A compare-exchange makes
+/// concurrent browser reconnects converge on one reader thread.
+fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>) {
+    if !relay.claim_producer() {
+        return;
     }
-    // Prune terminal relays no client is reading before considering the cap.
-    map.retain(|_, relay| !(relay.is_terminal() && relay.tx.receiver_count() == 0));
-    if map.len() >= MAX_CONCURRENT_RELAYS {
-        return None;
-    }
-    let relay = RunRelay::new();
-    map.insert(run_id.to_string(), relay.clone());
     // The upstream reader runs on a dedicated blocking thread: it parks on a bounded
     // socket read for the life of the run, so it must not sit on a Tokio async
     // worker. The thread owns a clone of the relay and self-exits when the run
-    // terminates, the upstream+fallback both end, or no client is subscribed.
+    // terminates, the upstream ends, or no client is subscribed.
     let run_id_owned = run_id.to_string();
     let relay_for_thread = relay.clone();
     std::thread::spawn(move || {
-        run_relay_thread(&run_id_owned, &relay_for_thread);
-        // On exit, drop the registry entry if it is terminal and unread so the slot
-        // frees for a future run (bounded registry).
-        let mut map = relays().lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(r) = map.get(&run_id_owned)
-            && r.is_terminal()
-            && r.tx.receiver_count() == 0
-        {
-            map.remove(&run_id_owned);
-        }
+        // Always restore lifecycle state, even if an unexpected parser bug panics.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            run_relay_thread(&run_id_owned, &relay_for_thread)
+        }));
+        let restart_if_subscribed = matches!(outcome, Ok(true));
+        finish_relay_reader(&run_id_owned, &relay_for_thread, restart_if_subscribed);
     });
-    Some(relay)
+}
+
+/// Publish producer exit under the registry lock. If a reconnect subscribed in
+/// the narrow stop/cleanup race, immediately start a replacement; otherwise
+/// remove the tombstone regardless of terminal state so churn frees its slot.
+fn finish_relay_reader(run_id: &str, relay: &Arc<RunRelay>, restart_if_subscribed: bool) {
+    let restart = {
+        let mut registry = relays().lock().unwrap_or_else(|e| e.into_inner());
+        registry.reader_finished(run_id, relay, restart_if_subscribed)
+    };
+    if restart {
+        ensure_relay_reader(run_id, relay);
+    }
 }
 
 /// The upstream reader thread body: connect to the resident a2a gateway's
 /// run-stream, pump verbatim frames into the relay until the run terminates, and
-/// on any connection fault degrade to bounded `run-status` polling. Bounded by
-/// `RELAY_MAX_LIFETIME` overall and `UPSTREAM_IDLE_TIMEOUT` per read.
-fn run_relay_thread(run_id: &str, relay: &RunRelay) {
+/// on any connection fault emit one degraded signal. The browser owns authoritative
+/// status polling. Bounded by `RELAY_MAX_LIFETIME` overall and
+/// `UPSTREAM_IDLE_TIMEOUT` per read.
+fn run_relay_thread(run_id: &str, relay: &RunRelay) -> bool {
     let deadline = Instant::now() + RELAY_MAX_LIFETIME;
     let (port, bearer) = match super::a2a::a2a_endpoint() {
         Ok(endpoint) => endpoint,
         Err(reason) => {
-            // a2a is known-down: go straight to the degraded status-poll fallback so
-            // the client still gets a bounded live-ish signal.
+            // The browser owns authoritative degraded polling. Emit one signal and
+            // retire this channel so its retry can establish a fresh relay later.
             relay.push(
                 "relay_degraded".to_string(),
                 json!({ "degraded": true, "reason": reason }),
             );
-            degraded_status_poll(run_id, relay, deadline);
-            return;
+            return false;
         }
     };
 
     match stream_upstream(port, bearer.as_deref(), run_id, relay, deadline) {
         // Terminal reached over the live stream: nothing more to do.
-        Ok(StreamEnd::Terminal) => {}
-        // The stream ended without a terminal (idle/EOF/error) before the run
-        // finished: degrade to bounded run-status polling until terminal/deadline.
+        Ok(StreamEnd::Terminal) => false,
+        // A viewer can subscribe in the narrow gap after the reader observes zero
+        // receivers. Only that exit is restartable without a browser retry.
+        Ok(StreamEnd::NoSubscribers) => true,
+        // Every other stream fault emits one non-authoritative degradation signal
+        // and retires. The browser is the sole `run-status` polling owner.
         Ok(StreamEnd::Interrupted { reason }) | Err(reason) => {
             if !relay.is_terminal() {
                 relay.push(
                     "relay_degraded".to_string(),
                     json!({ "degraded": true, "reason": reason }),
                 );
-                degraded_status_poll(run_id, relay, deadline);
             }
+            false
         }
     }
 }
@@ -248,6 +554,7 @@ fn run_relay_thread(run_id: &str, relay: &RunRelay) {
 /// Why the upstream stream stopped without a terminal frame.
 enum StreamEnd {
     Terminal,
+    NoSubscribers,
     Interrupted { reason: String },
 }
 
@@ -303,18 +610,26 @@ fn stream_upstream(
 }
 
 /// The parsed HTTP response head fields the relay needs.
+#[derive(Debug)]
 struct HttpHead {
     status: u16,
     chunked: bool,
 }
 
 /// Read the HTTP status line + headers up to the blank line, returning the status
-/// code and whether the body is chunked-transfer-encoded. Bounded: the header
-/// block is read line-by-line and the reader's own buffering bounds a pathological
-/// header flood via the idle read timeout.
+/// code and whether the body is chunked-transfer-encoded. Both each line and the
+/// aggregate head are rejected before their owned buffers can exceed fixed caps.
 fn read_http_head<R: BufRead>(reader: &mut R) -> std::io::Result<HttpHead> {
-    let mut status_line = String::new();
-    reader.read_line(&mut status_line)?;
+    let mut total = 0usize;
+    let status_line = read_bounded_line(
+        reader,
+        MAX_HTTP_STATUS_LINE_BYTES,
+        &mut total,
+        MAX_HTTP_HEAD_BYTES,
+    )?
+    .ok_or_else(|| std::io::Error::other("missing HTTP status line"))?;
+    let status_line = std::str::from_utf8(&status_line)
+        .map_err(|_| std::io::Error::other("HTTP status line is not UTF-8"))?;
     let status = status_line
         .split_whitespace()
         .nth(1)
@@ -322,12 +637,18 @@ fn read_http_head<R: BufRead>(reader: &mut R) -> std::io::Result<HttpHead> {
         .ok_or_else(|| std::io::Error::other("malformed HTTP status line"))?;
     let mut chunked = false;
     loop {
-        let mut line = String::new();
-        let n = reader.read_line(&mut line)?;
-        if n == 0 {
-            break;
-        }
-        let trimmed = line.trim_end();
+        let Some(line) = read_bounded_line(
+            reader,
+            MAX_HTTP_HEADER_LINE_BYTES,
+            &mut total,
+            MAX_HTTP_HEAD_BYTES,
+        )?
+        else {
+            return Err(std::io::Error::other("HTTP head ended before blank line"));
+        };
+        let line = std::str::from_utf8(&line)
+            .map_err(|_| std::io::Error::other("HTTP header is not UTF-8"))?;
+        let trimmed = line.trim_end_matches(['\r', '\n']);
         if trimmed.is_empty() {
             break;
         }
@@ -337,6 +658,42 @@ fn read_http_head<R: BufRead>(reader: &mut R) -> std::io::Result<HttpHead> {
         }
     }
     Ok(HttpHead { status, chunked })
+}
+
+/// Read one newline-terminated line without `BufRead::read_line`'s unbounded
+/// growth. The peer is rejected as soon as either the line or aggregate budget
+/// would be crossed; at most `line_limit` bytes are ever owned by this function.
+fn read_bounded_line<R: BufRead>(
+    reader: &mut R,
+    line_limit: usize,
+    total: &mut usize,
+    total_limit: usize,
+) -> std::io::Result<Option<Vec<u8>>> {
+    let mut line = Vec::with_capacity(line_limit.min(256));
+    loop {
+        let available = reader.fill_buf()?;
+        if available.is_empty() {
+            return if line.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(line))
+            };
+        }
+        let take = available
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .map_or(available.len(), |index| index + 1);
+        if line.len().saturating_add(take) > line_limit || total.saturating_add(take) > total_limit
+        {
+            return Err(std::io::Error::other("HTTP line/head exceeds byte ceiling"));
+        }
+        line.extend_from_slice(&available[..take]);
+        reader.consume(take);
+        *total += take;
+        if line.last() == Some(&b'\n') {
+            return Ok(Some(line));
+        }
+    }
 }
 
 /// The control the frame sink returns to the pump loop.
@@ -387,9 +744,7 @@ where
                 PumpControl::Continue => {}
                 PumpControl::Terminal => return Ok(StreamEnd::Terminal),
                 PumpControl::Stop => {
-                    return Ok(StreamEnd::Interrupted {
-                        reason: "no subscribers".to_string(),
-                    });
+                    return Ok(StreamEnd::NoSubscribers);
                 }
             }
         }
@@ -429,22 +784,35 @@ impl BodyDecoder {
         }
         // Chunked: read the hex size line, then exactly that many bytes + trailing
         // CRLF. A zero-size chunk is the clean end.
-        let mut size_line = String::new();
-        reader.read_line(&mut size_line)?;
+        let mut chunk_head_bytes = 0usize;
+        let size_line = read_bounded_line(
+            reader,
+            MAX_HTTP_CHUNK_LINE_BYTES,
+            &mut chunk_head_bytes,
+            MAX_HTTP_CHUNK_LINE_BYTES,
+        )?
+        .ok_or_else(|| std::io::Error::other("missing chunk size"))?;
+        let size_line = std::str::from_utf8(&size_line)
+            .map_err(|_| std::io::Error::other("chunk size is not UTF-8"))?;
         let size =
             usize::from_str_radix(size_line.trim().split(';').next().unwrap_or("").trim(), 16)
                 .map_err(|_| std::io::Error::other("malformed chunk size"))?;
         if size == 0 {
             self.done = true;
-            // Consume the trailing CRLF of the terminating chunk, best-effort.
-            let mut trailer = String::new();
-            let _ = reader.read_line(&mut trailer);
             return Ok(None);
+        }
+        if size > MAX_HTTP_CHUNK_BYTES {
+            return Err(std::io::Error::other(
+                "declared HTTP chunk exceeds byte ceiling",
+            ));
         }
         let mut body = vec![0u8; size];
         reader.read_exact(&mut body)?;
         let mut crlf = [0u8; 2];
         reader.read_exact(&mut crlf)?;
+        if crlf != *b"\r\n" {
+            return Err(std::io::Error::other("chunk body missing trailing CRLF"));
+        }
         Ok(Some(body))
     }
 }
@@ -455,33 +823,92 @@ impl BodyDecoder {
 /// (joined by `\n`). A frame accumulating past `MAX_RELAY_FRAME_BYTES` is dropped
 /// and replaced by an engine drop sentinel so a single frame never grows unbounded.
 struct SseAccumulator {
-    buf: String,
+    buf: Vec<u8>,
+    discarding: bool,
+    line_has_content: bool,
 }
 
 impl SseAccumulator {
     fn new() -> Self {
-        SseAccumulator { buf: String::new() }
+        SseAccumulator {
+            buf: Vec::with_capacity(8 * 1024),
+            discarding: false,
+            line_has_content: false,
+        }
     }
 
     fn push_bytes(&mut self, bytes: &[u8]) -> Vec<(String, Value)> {
-        self.buf.push_str(&String::from_utf8_lossy(bytes));
-        let mut out = Vec::new();
-        // Frames are separated by a blank line; normalize CRLF to LF first so the
-        // separator is uniformly "\n\n".
-        loop {
-            let normalized = self.buf.replace("\r\n", "\n");
-            let Some(idx) = normalized.find("\n\n") else {
-                self.buf = normalized;
-                break;
-            };
-            let raw_frame = normalized[..idx].to_string();
-            self.buf = normalized[idx + 2..].to_string();
-            if let Some(frame) = parse_sse_frame(&raw_frame) {
-                out.push(frame);
+        let mut out = Vec::with_capacity(MAX_SSE_OUTPUTS_PER_PUSH);
+        let payload_slots = MAX_SSE_OUTPUTS_PER_PUSH - 1;
+        let mut output_overflow = false;
+        for &byte in bytes {
+            // A newline on an already-empty line terminates an SSE frame. CR is
+            // ignored only for blank-line detection so CRLF works across chunks.
+            if byte == b'\n' && !self.line_has_content {
+                if self.discarding {
+                    if out.len() < payload_slots {
+                        out.push(engine_drop_sentinel());
+                    } else {
+                        output_overflow = true;
+                    }
+                } else if out.len() >= payload_slots {
+                    // Framing state still advances, but do not decode UTF-8, split
+                    // lines, or allocate JSON for frames that cannot be returned.
+                    output_overflow = true;
+                } else {
+                    while self.buf.last() == Some(&b'\r') {
+                        self.buf.pop();
+                    }
+                    let raw = String::from_utf8_lossy(&self.buf);
+                    if let Some(frame) = parse_sse_frame(&raw) {
+                        out.push(frame);
+                    }
+                }
+                self.buf.clear();
+                self.discarding = false;
+                self.line_has_content = false;
+                continue;
             }
+
+            if !self.discarding {
+                if self.buf.len() >= MAX_RELAY_FRAME_BYTES {
+                    self.buf.clear();
+                    self.discarding = true;
+                } else {
+                    self.buf.push(byte);
+                }
+            }
+            if byte == b'\n' {
+                self.line_has_content = false;
+            } else if byte != b'\r' {
+                self.line_has_content = true;
+            }
+        }
+        if output_overflow {
+            out.push(engine_drop_sentinel_for("relay_push_output_exceeds_cap"));
         }
         out
     }
+
+    #[cfg(test)]
+    fn buffered_bytes(&self) -> usize {
+        self.buf.len()
+    }
+}
+
+fn engine_drop_sentinel() -> (String, Value) {
+    engine_drop_sentinel_for("relay_frame_exceeds_cap")
+}
+
+fn engine_drop_sentinel_for(reason: &'static str) -> (String, Value) {
+    (
+        "progress_dropped".to_string(),
+        json!({
+            "api_version": "v1",
+            "type": "progress_dropped",
+            "reason": reason,
+        }),
+    )
 }
 
 /// Parse one raw SSE frame (its lines, no trailing blank line) into
@@ -492,18 +919,11 @@ impl SseAccumulator {
 /// through unaltered. An oversized frame becomes an engine drop sentinel.
 fn parse_sse_frame(raw: &str) -> Option<(String, Value)> {
     if raw.len() > MAX_RELAY_FRAME_BYTES {
-        return Some((
-            "progress_dropped".to_string(),
-            json!({
-                "api_version": "v1",
-                "type": "progress_dropped",
-                "reason": "relay_frame_exceeds_cap",
-            }),
-        ));
+        return Some(engine_drop_sentinel());
     }
     let mut event: Option<String> = None;
     let mut data_lines: Vec<&str> = Vec::new();
-    for line in raw.split('\n') {
+    for line in raw.split('\n').map(|line| line.trim_end_matches('\r')) {
         if line.is_empty() || line.starts_with(':') {
             continue;
         }
@@ -530,66 +950,6 @@ fn parse_sse_frame(raw: &str) -> Option<(String, Value)> {
         })
         .unwrap_or_else(|| "message".to_string());
     Some((event, data))
-}
-
-/// The bounded degraded fallback: poll `run-status` on a fixed cadence and emit a
-/// synthesized `status` frame (marked `degraded:true`) each poll until the run
-/// reaches a terminal status, the deadline passes, or no client is reading. Frames
-/// stay non-authoritative — the client reconciles truth from `run-status` itself.
-fn degraded_status_poll(run_id: &str, relay: &RunRelay, deadline: Instant) {
-    use rag_client::client::{LoopbackTransport, RagTransport};
-    loop {
-        if Instant::now() >= deadline || relay.is_terminal() {
-            return;
-        }
-        if relay.tx.receiver_count() == 0 && relay.seq.load(Ordering::SeqCst) > 0 {
-            return;
-        }
-        let Ok((port, bearer)) = super::a2a::a2a_endpoint() else {
-            std::thread::sleep(STATUS_POLL_INTERVAL);
-            continue;
-        };
-        let transport = LoopbackTransport {
-            port,
-            bearer,
-            timeout: STATUS_POLL_BUDGET,
-        };
-        match transport.get(&format!("/v1/runs/{run_id}")) {
-            Ok(raw) => {
-                let status_body = serde_json::from_str::<Value>(&raw).unwrap_or(Value::String(raw));
-                let is_terminal = status_body
-                    .get("status")
-                    .and_then(Value::as_str)
-                    .map(status_is_terminal)
-                    .unwrap_or(false);
-                relay.push(
-                    "status".to_string(),
-                    json!({ "degraded": true, "status_snapshot": status_body }),
-                );
-                if is_terminal {
-                    relay.push(
-                        "thread_terminal".to_string(),
-                        json!({ "degraded": true, "reason": "run reached a terminal status" }),
-                    );
-                    return;
-                }
-            }
-            Err(_) => {
-                // A transient poll failure is not fatal — keep polling within bounds.
-            }
-        }
-        std::thread::sleep(STATUS_POLL_INTERVAL);
-    }
-}
-
-/// Whether an a2a run status string is terminal (the run has stopped producing
-/// progress). Mirrors the a2a `TERMINAL_STATUSES` vocabulary conservatively; an
-/// unknown status is treated as non-terminal so the poll keeps a live signal.
-fn status_is_terminal(status: &str) -> bool {
-    matches!(
-        status,
-        "completed" | "failed" | "cancelled" | "canceled" | "error" | "terminated"
-    )
 }
 
 /// Query params for the run-stream relay: `since=` resumes from the ring.
@@ -623,18 +983,10 @@ fn run_id_is_valid(run_id: &str) -> bool {
 /// Upstream fields are left intact; the seq is an additive engine annotation. A
 /// non-object frame (defensive — a2a frames are objects) is wrapped `{seq, value}`.
 fn frame_event(frame: &RelayFrame) -> Event {
-    let annotated = match &frame.data {
-        Value::Object(map) => {
-            let mut map = map.clone();
-            map.insert("seq".to_string(), json!(frame.seq));
-            Value::Object(map)
-        }
-        other => json!({ "seq": frame.seq, "value": other }),
-    };
     Event::default()
-        .event(frame.event.clone())
+        .event(frame.event.as_ref())
         .id(frame.seq.to_string())
-        .data(annotated.to_string())
+        .data(frame.data.as_ref())
 }
 
 /// Map one live broadcast item to an SSE event, turning a broadcast lag into a
@@ -642,7 +994,7 @@ fn frame_event(frame: &RelayFrame) -> Event {
 /// `routes::stream::map_live_item`). A frame at or below the replayed threshold is
 /// dropped as a duplicate.
 fn map_live_frame(
-    item: Result<RelayFrame, BroadcastStreamRecvError>,
+    item: Result<SharedRelayFrame, BroadcastStreamRecvError>,
     dedup_threshold: Option<u64>,
 ) -> Option<Result<Event, Infallible>> {
     match item {
@@ -678,7 +1030,7 @@ pub async fn a2a_run_stream(
         ))
         .keep_alive(KeepAlive::default());
     }
-    let Some(relay) = get_or_start_relay(&run_id) else {
+    let Some(relay) = get_or_create_relay(&run_id) else {
         return Sse::new(one_shot_close(
             "relay_degraded",
             json!({ "degraded": true, "reason": "relay capacity reached; poll run-status" }),
@@ -690,24 +1042,27 @@ pub async fn a2a_run_stream(
     // a frame landing between the two is then present in the live receiver's queue
     // rather than lost; the dedup threshold removes the snapshot/queue overlap.
     let receiver = relay.tx.subscribe();
+    ensure_relay_reader(&run_id, &relay);
     let (frames, gap) = relay.snapshot_since(params.since);
 
-    let mut backlog: Vec<Result<Event, Infallible>> = Vec::new();
-    let mut emitted_up_to = params.since.unwrap_or(0);
-    if let Some(oldest) = gap {
-        backlog.push(Ok(Event::default().event("gap").data(
-            json!({ "requested": params.since, "oldest_buffered": oldest }).to_string(),
-        )));
-    }
-    for frame in &frames {
-        emitted_up_to = emitted_up_to.max(frame.seq);
-        backlog.push(Ok(frame_event(frame)));
-    }
+    let emitted_up_to = frames
+        .last()
+        .map(|frame| frame.seq)
+        .unwrap_or_else(|| params.since.unwrap_or(0));
     let dedup_threshold = params.since.map(|_| emitted_up_to);
 
+    // Replay remains shared immutable data until each frame is polled. Event
+    // serialization is lazy, so opening a snapshot cannot materialize another
+    // multi-megabyte backlog before socket backpressure applies.
+    let gap_stream = tokio_stream::iter(gap.into_iter().map(move |oldest| {
+        Ok(Event::default()
+            .event("gap")
+            .data(json!({ "requested": params.since, "oldest_buffered": oldest }).to_string()))
+    }));
+    let replay = tokio_stream::iter(frames).map(|frame| Ok(frame_event(&frame)));
     let live = BroadcastStream::new(receiver)
         .filter_map(move |item| map_live_frame(item, dedup_threshold));
-    let combined = tokio_stream::iter(backlog).chain(live);
+    let combined = gap_stream.chain(replay).chain(live);
     Sse::new(Box::pin(combined) as EventStream).keep_alive(KeepAlive::default())
 }
 
@@ -720,338 +1075,4 @@ fn one_shot_close(event: &'static str, data: Value) -> EventStream {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::io::Cursor;
-
-    #[test]
-    fn ring_assigns_monotonic_seq_and_evicts_at_cap() {
-        let relay = RunRelay::new();
-        for i in 0..(RELAY_RING_CAP + 10) {
-            let seq = relay.push("progress".to_string(), json!({ "i": i }));
-            assert_eq!(seq, i as u64);
-        }
-        let ring = relay.ring.lock().unwrap();
-        assert_eq!(ring.len(), RELAY_RING_CAP, "ring is bounded at the cap");
-        // The oldest 10 frames were evicted; the front is seq 10.
-        assert_eq!(ring.front().unwrap().seq, 10);
-        assert_eq!(ring.back().unwrap().seq, (RELAY_RING_CAP + 9) as u64);
-    }
-
-    #[test]
-    fn snapshot_since_replays_after_and_gaps_on_eviction() {
-        let relay = RunRelay::new();
-        for i in 0..5 {
-            relay.push("progress".to_string(), json!({ "i": i }));
-        }
-        // Resume after seq 2 → frames 3 and 4, no gap.
-        let (frames, gap) = relay.snapshot_since(Some(2));
-        assert!(gap.is_none());
-        assert_eq!(frames.iter().map(|f| f.seq).collect::<Vec<_>>(), vec![3, 4]);
-
-        // No since → the whole ring, no gap.
-        let (frames, gap) = relay.snapshot_since(None);
-        assert!(gap.is_none());
-        assert_eq!(frames.len(), 5);
-
-        // A hostile since at u64::MAX saturates → no gap, no frames.
-        let (frames, gap) = relay.snapshot_since(Some(u64::MAX));
-        assert!(gap.is_none());
-        assert!(frames.is_empty());
-    }
-
-    #[test]
-    fn snapshot_since_emits_a_gap_when_the_resume_point_was_evicted() {
-        let relay = RunRelay::new();
-        // Overflow the ring so early seqs are evicted.
-        for i in 0..(RELAY_RING_CAP + 50) {
-            relay.push("progress".to_string(), json!({ "i": i }));
-        }
-        // Resume from seq 3, long evicted: an explicit gap at the oldest buffered seq.
-        let (frames, gap) = relay.snapshot_since(Some(3));
-        assert!(frames.is_empty());
-        assert_eq!(gap, Some(50), "gap reports the oldest still-buffered seq");
-    }
-
-    #[test]
-    fn frame_event_annotates_seq_into_the_data_for_client_dedup() {
-        // The seq must ride the DATA (not only the SSE id) so the fetch-stream
-        // client can dedup a reconnect replay; upstream fields stay intact.
-        let frame = RelayFrame {
-            seq: 7,
-            event: "progress".to_string(),
-            data: json!({ "phase": "research", "type": "progress" }),
-        };
-        let rendered = format!("{:?}", frame_event(&frame));
-        assert!(rendered.contains("\\\"seq\\\":7") || rendered.contains("seq"));
-        assert!(rendered.contains("research"), "upstream fields preserved");
-    }
-
-    #[test]
-    fn lagged_live_item_becomes_a_gap_not_a_silent_drop() {
-        let mapped = map_live_frame(Err(BroadcastStreamRecvError::Lagged(9)), None)
-            .expect("lag must yield an item")
-            .expect("infallible");
-        let rendered = format!("{mapped:?}");
-        assert!(rendered.contains("gap"), "lag → gap event: {rendered}");
-        assert!(rendered.contains('9'), "the gap reports the dropped count");
-    }
-
-    #[test]
-    fn dedup_threshold_drops_already_replayed_frames() {
-        // A live frame at/below the replayed threshold is a duplicate, dropped.
-        let dup = RelayFrame {
-            seq: 2,
-            event: "progress".to_string(),
-            data: json!({}),
-        };
-        assert!(map_live_frame(Ok(dup), Some(2)).is_none());
-        // A frame past the threshold passes through.
-        let fresh = RelayFrame {
-            seq: 3,
-            event: "progress".to_string(),
-            data: json!({}),
-        };
-        assert!(map_live_frame(Ok(fresh), Some(2)).is_some());
-    }
-
-    #[test]
-    fn sse_accumulator_extracts_frames_across_chunk_boundaries() {
-        let mut acc = SseAccumulator::new();
-        // A frame split across two byte pushes surfaces only once complete.
-        assert!(
-            acc.push_bytes(b"event: progress\ndata: {\"phase\":")
-                .is_empty()
-        );
-        let out = acc.push_bytes(b"\"research\"}\n\n");
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].0, "progress");
-        assert_eq!(out[0].1["phase"], "research");
-    }
-
-    #[test]
-    fn sse_accumulator_handles_crlf_and_multiple_frames() {
-        let mut acc = SseAccumulator::new();
-        let out = acc
-            .push_bytes(b"event: a\r\ndata: {\"n\":1}\r\n\r\nevent: b\r\ndata: {\"n\":2}\r\n\r\n");
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0].0, "a");
-        assert_eq!(out[0].1["n"], 1);
-        assert_eq!(out[1].0, "b");
-        assert_eq!(out[1].1["n"], 2);
-    }
-
-    #[test]
-    fn upstream_progress_dropped_sentinel_passes_through_unaltered() {
-        // The upstream's oversized-frame sentinel is a small frame; it must relay
-        // VERBATIM (event name + JSON), never re-wrapped or dropped.
-        let mut acc = SseAccumulator::new();
-        let sentinel = r#"{"api_version":"v1","type":"progress_dropped","reason":"frame_exceeds_cap","dropped_type":"agent_message"}"#;
-        let out =
-            acc.push_bytes(format!("event: progress_dropped\ndata: {sentinel}\n\n").as_bytes());
-        assert_eq!(out.len(), 1);
-        assert_eq!(out[0].0, "progress_dropped");
-        assert_eq!(out[0].1["type"], "progress_dropped");
-        assert_eq!(out[0].1["reason"], "frame_exceeds_cap");
-        assert_eq!(out[0].1["dropped_type"], "agent_message");
-    }
-
-    #[test]
-    fn frame_without_event_line_falls_back_to_payload_type() {
-        let mut acc = SseAccumulator::new();
-        let out = acc.push_bytes(b"data: {\"type\":\"heartbeat\",\"uptime\":3}\n\n");
-        assert_eq!(out.len(), 1);
-        assert_eq!(
-            out[0].0, "heartbeat",
-            "event name falls back to payload type"
-        );
-    }
-
-    #[test]
-    fn an_oversized_frame_becomes_an_engine_drop_sentinel() {
-        let huge = "x".repeat(MAX_RELAY_FRAME_BYTES + 1);
-        let raw = format!("event: progress\ndata: {huge}");
-        let (event, data) = parse_sse_frame(&raw).expect("oversized frame yields a sentinel");
-        assert_eq!(event, "progress_dropped");
-        assert_eq!(data["reason"], "relay_frame_exceeds_cap");
-    }
-
-    #[test]
-    fn read_http_head_parses_status_and_chunked() {
-        let raw = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
-                   Transfer-Encoding: chunked\r\n\r\nbody-follows";
-        let mut reader = Cursor::new(raw.as_bytes());
-        let head = read_http_head(&mut reader).unwrap();
-        assert_eq!(head.status, 200);
-        assert!(head.chunked);
-
-        let raw = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n";
-        let mut reader = Cursor::new(raw.as_bytes());
-        let head = read_http_head(&mut reader).unwrap();
-        assert_eq!(head.status, 404);
-        assert!(!head.chunked);
-    }
-
-    #[test]
-    fn chunked_body_decoder_dechunks_and_ends_on_zero_chunk() {
-        // Two well-formed chunks (each `<hex-size>\r\n<bytes>\r\n`) then the
-        // terminating zero chunk. The decoder concatenates the chunk bodies and
-        // stops at the zero chunk.
-        let c1 = "event: a\n";
-        let c2 = "data: 1\n\n";
-        let raw = format!(
-            "{:x}\r\n{c1}\r\n{:x}\r\n{c2}\r\n0\r\n\r\n",
-            c1.len(),
-            c2.len()
-        );
-        let mut reader = Cursor::new(raw.into_bytes());
-        let mut decoder = BodyDecoder::new(true);
-        let mut decoded = Vec::new();
-        while let Some(chunk) = decoder.next_chunk(&mut reader).unwrap() {
-            decoded.extend_from_slice(&chunk);
-        }
-        assert_eq!(String::from_utf8(decoded).unwrap(), "event: a\ndata: 1\n\n");
-    }
-
-    #[test]
-    fn pump_sse_over_a_chunked_body_yields_frames_and_stops_on_terminal() {
-        // A full chunked HTTP body: two progress frames then a terminal frame.
-        let body = "event: progress\ndata: {\"phase\":\"research\"}\n\n\
-                    event: progress\ndata: {\"phase\":\"adr\"}\n\n\
-                    event: thread_terminal\ndata: {\"status\":\"completed\"}\n\n";
-        // One chunk carrying the whole body, then the zero terminator.
-        let chunked = format!("{:x}\r\n{}\r\n0\r\n\r\n", body.len(), body);
-        let mut reader = Cursor::new(chunked.into_bytes());
-        let mut seen: Vec<(String, Value)> = Vec::new();
-        let end = pump_sse(
-            &mut reader,
-            true,
-            Instant::now() + Duration::from_secs(5),
-            |event, data| {
-                let terminal = event == "thread_terminal";
-                seen.push((event, data));
-                if terminal {
-                    PumpControl::Terminal
-                } else {
-                    PumpControl::Continue
-                }
-            },
-        )
-        .unwrap();
-        assert!(matches!(end, StreamEnd::Terminal));
-        assert_eq!(seen.len(), 3);
-        assert_eq!(seen[0].0, "progress");
-        assert_eq!(seen[2].0, "thread_terminal");
-        assert_eq!(seen[2].1["status"], "completed");
-    }
-
-    #[test]
-    fn status_terminality_matches_the_a2a_vocabulary() {
-        for t in [
-            "completed",
-            "failed",
-            "cancelled",
-            "canceled",
-            "error",
-            "terminated",
-        ] {
-            assert!(status_is_terminal(t), "`{t}` is terminal");
-        }
-        for nt in ["running", "starting", "paused", "queued", "unknown"] {
-            assert!(!status_is_terminal(nt), "`{nt}` is not terminal");
-        }
-    }
-
-    #[test]
-    fn run_id_validation_matches_the_pass_through_grammar() {
-        assert!(run_id_is_valid("run_abc-123"));
-        for bad in ["", "-x", "../escape", "run/x", "run id", &"a".repeat(129)] {
-            assert!(!run_id_is_valid(bad), "`{bad}` must be rejected");
-        }
-    }
-
-    #[test]
-    fn live_socket_relay_streams_chunked_sse_into_the_ring_with_replay_and_sentinel() {
-        // A real TcpListener stands in for the a2a gateway's run-stream: a real
-        // chunked `text/event-stream` response over a real socket, read by the real
-        // BufReader pump into a real RunRelay. This is a LIVE loopback of the
-        // streaming path end to end (the rag-client socket-test precedent); it does
-        // NOT stand up the Python gateway (that cross-process live proof is the a2a
-        // repo's own harness + the frontend e2e — see the report). It proves: the
-        // chunked SSE decode, verbatim frame relay INCLUDING the upstream
-        // `progress_dropped` sentinel unaltered, the terminal latch, and since-replay
-        // off the resulting ring.
-        use std::io::{Read, Write};
-        use std::net::{TcpListener, TcpStream};
-
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let server = std::thread::spawn(move || {
-            let (mut sock, _) = listener.accept().unwrap();
-            // Drain the request head.
-            let mut buf = [0u8; 1024];
-            let _ = sock.read(&mut buf);
-            // A chunked SSE body: a progress frame, the upstream oversized-frame
-            // sentinel (must pass through VERBATIM), then the terminal frame.
-            let body = "event: progress\ndata: {\"phase\":\"research\"}\n\n\
-                        event: progress_dropped\ndata: {\"api_version\":\"v1\",\"type\":\"progress_dropped\",\"reason\":\"frame_exceeds_cap\",\"dropped_type\":\"agent_message\"}\n\n\
-                        event: thread_terminal\ndata: {\"status\":\"completed\"}\n\n";
-            let framed = format!(
-                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{}\r\n0\r\n\r\n",
-                body.len(),
-                body
-            );
-            sock.write_all(framed.as_bytes()).unwrap();
-        });
-
-        let relay = RunRelay::new();
-        let stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-        let mut reader = BufReader::new(stream);
-        // Write the GET so the server's read completes, then read the response.
-        reader
-            .get_ref()
-            .try_clone()
-            .unwrap()
-            .write_all(b"GET /v1/runs/run-1/stream HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
-            .unwrap();
-        let head = read_http_head(&mut reader).unwrap();
-        assert_eq!(head.status, 200);
-        assert!(head.chunked);
-        let end = pump_sse(
-            &mut reader,
-            head.chunked,
-            Instant::now() + Duration::from_secs(5),
-            |event, data| {
-                let terminal = event == "thread_terminal";
-                relay.push(event, data);
-                if terminal {
-                    PumpControl::Terminal
-                } else {
-                    PumpControl::Continue
-                }
-            },
-        )
-        .unwrap();
-        assert!(matches!(end, StreamEnd::Terminal));
-        assert!(relay.is_terminal(), "the terminal frame latched the relay");
-
-        // Three frames in the ring at seq 0,1,2.
-        {
-            let ring = relay.ring.lock().unwrap();
-            assert_eq!(ring.len(), 3);
-            assert_eq!(ring[0].event, "progress");
-            // The upstream sentinel relayed VERBATIM — event name + JSON untouched.
-            assert_eq!(ring[1].event, "progress_dropped");
-            assert_eq!(ring[1].data["type"], "progress_dropped");
-            assert_eq!(ring[1].data["dropped_type"], "agent_message");
-            assert_eq!(ring[2].event, "thread_terminal");
-        }
-
-        // since-replay off the resulting ring: resume after seq 0 → frames 1,2.
-        let (frames, gap) = relay.snapshot_since(Some(0));
-        assert!(gap.is_none());
-        assert_eq!(frames.iter().map(|f| f.seq).collect::<Vec<_>>(), vec![1, 2]);
-
-        server.join().unwrap();
-    }
-}
+mod tests;

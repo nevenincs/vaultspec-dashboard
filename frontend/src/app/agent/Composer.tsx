@@ -57,18 +57,18 @@ import {
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { useActiveScope, useEditorLinkingCorpus } from "../../stores/server/queries";
 import {
+  createTeamRunId,
   useCancelTeamRun,
   useCreateFeedbackBatch,
   useCreateSession,
   useResumeInterrupt,
   useRunInterrupts,
-  useRunProgress,
   useSession,
   useStartTeamRun,
   useStartTurn,
   useTeamSelectorState,
 } from "../../stores/server/agent";
-import { framesIncludeTerminal } from "../../stores/server/liveAdapters/a2aRelay";
+import { useTeamRunProgress } from "./TeamRunProgressContext";
 import {
   setAgentCurrentSession,
   setAgentTeamRun,
@@ -590,14 +590,11 @@ export function Composer() {
   const [teamRefused, setTeamRefused] = useState<{ detail?: string } | null>(null);
   const startTeamRun = useStartTeamRun();
   const cancelTeamRun = useCancelTeamRun();
-  const teamProgress = useRunProgress(teamRunId);
+  const teamProgress = useTeamRunProgress();
   const teamRunActive = teamRunId !== null;
-  // Terminal-ness is decided by the relay adapter (never a client status-string
-  // compare) and is STICKY: the relay never closes, so a heartbeat/control frame
-  // after `terminal` must not flip a finished run back to a live posture (Stop
-  // reappearing on a done run). Read any-frame-terminal, not just the last frame.
-  // The served status snapshot stays authoritative for the displayed phase.
-  const teamTerminal = framesIncludeTerminal(teamProgress.frames);
+  // Lifecycle posture is owned exclusively by the authoritative run-status
+  // snapshot. Relay terminal frames only trigger its immediate reconciliation.
+  const teamTerminal = teamProgress.terminal;
   const teamPhase = teamProgress.status?.semantic_phase ?? teamProgress.status?.status;
   const teamMode = selectedTeamPreset !== null;
 
@@ -774,6 +771,7 @@ export function Composer() {
     setTeamRefused(null);
     try {
       const result = await startTeamRun.mutateAsync({
+        run_id: createTeamRunId(),
         team_preset: selectedTeamPreset,
         message: prompt,
         expected_scope: scope,

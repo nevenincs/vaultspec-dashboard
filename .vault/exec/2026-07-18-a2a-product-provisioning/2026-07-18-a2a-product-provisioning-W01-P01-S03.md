@@ -42,4 +42,3 @@ release-set schema (`S04`) and the `vaultspec-product` manifest parser (`S06`) b
 The emitted-capsule per-target digest is carried as a field the release-set manifest
 (`S04`) binds once a target capsule is built; this step pins the source commit, release
 identity, and the base-closure input digests that determinism depends on.
-

@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  EMPTY_RELAY_TRANSCRIPT,
+  RELAY_TRANSCRIPT_BYTE_CAP,
   RELAY_TRANSCRIPT_CAP,
   adaptRelayFrame,
   classifyRelayFrame,
-  framesIncludeTerminal,
   latestRelaySeq,
   relayAgentId,
   relayAgentState,
   relayContent,
   relayErrorMessage,
   relayFrameForcesReconcile,
+  relayFrameRetainedBytes,
   relayFrameIsTerminal,
   relayMessageId,
   relayToolCallId,
@@ -18,7 +20,10 @@ import {
   relayToolStatus,
   relayToolTitle,
   relayTranscriptReducer,
+  relayTranscriptReconciliationGeneration,
+  relayTranscriptRetainedBytes,
   type RelayTranscriptFrame,
+  type RelayTranscriptState,
 } from "./a2aRelay";
 
 describe("classifyRelayFrame", () => {
@@ -124,11 +129,19 @@ describe("adaptRelayFrame", () => {
     expect(frame.seq).toBeUndefined();
     expect(frame.kind).toBe("gap");
   });
+
+  it("rejects non-finite, fractional, negative, and unsafe resume sequences", () => {
+    for (const seq of [Number.NaN, Number.POSITIVE_INFINITY, -1, 1.5, 2 ** 53]) {
+      expect(
+        adaptRelayFrame({ channel: "message_chunk", data: { seq } }).seq,
+      ).toBeUndefined();
+    }
+  });
 });
 
 describe("relayTranscriptReducer", () => {
-  it("dedups by seq and ring-caps the transcript", () => {
-    let acc: RelayTranscriptFrame[] = [];
+  it("admits only monotone seqs and ring-caps the transcript", () => {
+    let acc: RelayTranscriptState = EMPTY_RELAY_TRANSCRIPT;
     // A reconnect replay of seq 0..2, then a duplicate of seq 1.
     for (const seq of [0, 1, 2, 1]) {
       acc = relayTranscriptReducer(acc, {
@@ -138,10 +151,20 @@ describe("relayTranscriptReducer", () => {
         payload: { seq },
       });
     }
-    expect(acc.map((f) => f.seq)).toEqual([0, 1, 2]);
+    expect(acc.frames.map((f) => f.seq)).toEqual([0, 1, 2]);
+
+    // An unseen but older sequence is also rejected: engine seq is monotone, so
+    // admitting it would regress the resume cursor and presentation order.
+    acc = relayTranscriptReducer(acc, {
+      seq: 0.5,
+      kind: "token",
+      event: "token",
+      payload: { seq: 0.5 },
+    });
+    expect(acc.frames.map((f) => f.seq)).toEqual([0, 1, 2]);
 
     // Overflow the cap: only the last RELAY_TRANSCRIPT_CAP frames are retained.
-    acc = [];
+    acc = EMPTY_RELAY_TRANSCRIPT;
     for (let seq = 0; seq < RELAY_TRANSCRIPT_CAP + 20; seq++) {
       acc = relayTranscriptReducer(acc, {
         seq,
@@ -150,17 +173,70 @@ describe("relayTranscriptReducer", () => {
         payload: { seq },
       });
     }
-    expect(acc.length).toBe(RELAY_TRANSCRIPT_CAP);
-    expect(acc[0].seq).toBe(20);
+    expect(acc.frames.length).toBe(RELAY_TRANSCRIPT_CAP);
+    expect(acc.frames[0]!.seq).toBe(20);
   });
 
   it("always appends a seq-less control frame (gap)", () => {
-    const acc = relayTranscriptReducer([], {
+    const acc = relayTranscriptReducer(EMPTY_RELAY_TRANSCRIPT, {
       kind: "gap",
       event: "gap",
       payload: { lagged: 2 },
     });
-    expect(acc.length).toBe(1);
+    expect(acc.frames.length).toBe(1);
+  });
+
+  it("evicts by UTF-8 bytes and rejects a single over-budget frame", () => {
+    let acc: RelayTranscriptState = EMPTY_RELAY_TRANSCRIPT;
+    let seq = 0;
+    const payload = "é".repeat(80_000);
+    while (seq < 40) {
+      acc = relayTranscriptReducer(acc, {
+        seq,
+        kind: "token",
+        event: "message_chunk",
+        payload: { seq, content: payload },
+      });
+      seq += 1;
+    }
+    expect(relayTranscriptRetainedBytes(acc)).toBeLessThanOrEqual(
+      RELAY_TRANSCRIPT_BYTE_CAP,
+    );
+    expect(acc.frames.length).toBeLessThan(40);
+    expect(acc.frames.at(-1)?.seq).toBe(39);
+
+    const before = acc;
+    const oversized: RelayTranscriptFrame = {
+      seq: 40,
+      kind: "token",
+      event: "message_chunk",
+      payload: { seq: 40, content: "x".repeat(RELAY_TRANSCRIPT_BYTE_CAP) },
+    };
+    expect(relayFrameRetainedBytes(oversized)).toBeGreaterThan(
+      RELAY_TRANSCRIPT_BYTE_CAP,
+    );
+    expect(relayTranscriptReducer(acc, oversized)).toBe(before);
+  });
+
+  it("keeps a gap generation after a dense batch evicts the signal", () => {
+    let acc: RelayTranscriptState = EMPTY_RELAY_TRANSCRIPT;
+    acc = relayTranscriptReducer(acc, {
+      seq: 0,
+      kind: "gap",
+      event: "gap",
+      payload: { reason: "budget pressure" },
+    });
+    for (let seq = 1; seq <= RELAY_TRANSCRIPT_CAP + 32; seq += 1) {
+      acc = relayTranscriptReducer(acc, {
+        seq,
+        kind: "token",
+        event: "message_chunk",
+        payload: { seq, content: "x" },
+      });
+    }
+
+    expect(acc.frames.some((frame) => frame.kind === "gap")).toBe(false);
+    expect(relayTranscriptReconciliationGeneration(acc)).toBe(1);
   });
 });
 
@@ -182,32 +258,18 @@ describe("degradation + terminal signals", () => {
       event: "thread_terminal",
       payload: {},
     };
+    const error: RelayTranscriptFrame = {
+      kind: "error",
+      event: "error",
+      payload: {},
+    };
     expect(relayFrameForcesReconcile(gap)).toBe(true);
     expect(relayFrameForcesReconcile(degraded)).toBe(true);
     expect(relayFrameForcesReconcile(token)).toBe(false);
+    expect(relayFrameForcesReconcile(terminal)).toBe(true);
+    expect(relayFrameForcesReconcile(error)).toBe(true);
     expect(relayFrameIsTerminal(terminal)).toBe(true);
     expect(relayFrameIsTerminal(token)).toBe(false);
-  });
-
-  it("framesIncludeTerminal is STICKY — a post-terminal heartbeat stays terminal", () => {
-    const terminal: RelayTranscriptFrame = {
-      seq: 5,
-      kind: "terminal",
-      event: "thread_terminal",
-      payload: {},
-    };
-    const heartbeat: RelayTranscriptFrame = {
-      seq: 6,
-      kind: "heartbeat",
-      event: "heartbeat",
-      payload: {},
-    };
-    // The relay never closes: a heartbeat can arrive AFTER terminal. A last-frame
-    // check would flip the run back to live; the sticky read must not.
-    expect(framesIncludeTerminal([terminal, heartbeat])).toBe(true);
-    expect(relayFrameIsTerminal(heartbeat)).toBe(false); // the last frame alone
-    expect(framesIncludeTerminal([heartbeat])).toBe(false);
-    expect(framesIncludeTerminal([])).toBe(false);
   });
 });
 

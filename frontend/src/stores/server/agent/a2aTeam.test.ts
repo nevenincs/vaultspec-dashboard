@@ -1,15 +1,126 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  advanceRelayResumeCursor,
   adaptActiveRuns,
   adaptPresetsList,
   adaptRunStart,
   adaptRunStatus,
   adaptServiceState,
+  createTeamRunId,
+  isTeamRunTerminalStatus,
+  latestRelayReconciliationSignal,
+  observeRunReconciliation,
   readAgentTierAvailability,
   recoverableActiveRunId,
+  relayStreamNeedsStatusPolling,
+  resolveRunReconciliation,
+  scopedTeamRunStatus,
   type PassThrough,
+  type RunReconciliationState,
 } from "./a2aTeam";
+import { adaptRelayFrame } from "../liveAdapters/a2aRelay";
+
+describe("team run identity + lifecycle authority", () => {
+  it("creates a fresh path-safe UUID identity for each deliberate submission", () => {
+    const first = createTeamRunId();
+    const second = createTeamRunId();
+    expect(first).toMatch(/^run-[0-9a-f]{32}$/);
+    expect(second).toMatch(/^run-[0-9a-f]{32}$/);
+    expect(second).not.toBe(first);
+  });
+
+  it("recognizes only the reviewed authoritative non-active statuses", () => {
+    for (const status of ["archived", "cancelled", "completed", "failed"]) {
+      expect(isTeamRunTerminalStatus(status)).toBe(true);
+    }
+    for (const status of ["running", "cancelling", "terminal", "unknown", undefined]) {
+      expect(isTeamRunTerminalStatus(status)).toBe(false);
+    }
+  });
+
+  it("rejects a terminal snapshot cached for a different run", () => {
+    const previous = adaptRunStatus({
+      envelope: { run_id: "run-a", status: "archived" },
+    });
+    expect(scopedTeamRunStatus("run-b", previous)).toBeUndefined();
+    expect(scopedTeamRunStatus("run-a", previous)).toBe(previous);
+  });
+});
+
+describe("relay resume + reconciliation", () => {
+  it("advances a monotone cursor within one run and resets it across run identity", () => {
+    let cursor = advanceRelayResumeCursor({ runId: null }, "run-a");
+    cursor = advanceRelayResumeCursor(
+      cursor,
+      "run-a",
+      adaptRelayFrame({ channel: "message_chunk", data: { seq: 8 } }),
+    );
+    cursor = advanceRelayResumeCursor(
+      cursor,
+      "run-a",
+      adaptRelayFrame({ channel: "message_chunk", data: { seq: 3 } }),
+    );
+    expect(cursor).toEqual({ runId: "run-a", since: 8 });
+    expect(advanceRelayResumeCursor(cursor, "run-b")).toEqual({
+      runId: "run-b",
+      since: undefined,
+    });
+  });
+
+  it("keeps a gap sticky across normal progress and generation-fences status success", () => {
+    const gap = adaptRelayFrame({ channel: "gap", data: { reason: "evicted" } });
+    const normal = adaptRelayFrame({
+      channel: "message_chunk",
+      data: { seq: 9, content: "continued" },
+    });
+    const terminal = adaptRelayFrame({
+      channel: "thread_terminal",
+      data: { seq: 10, status: "completed" },
+    });
+    const initial: RunReconciliationState = {
+      runId: "run-a",
+      required: false,
+      generation: 0,
+      relayGeneration: 0,
+      relayFailed: false,
+    };
+
+    const signalAfterNormal = latestRelayReconciliationSignal([gap, normal]);
+    expect(signalAfterNormal).toBe(gap);
+    const gapped = observeRunReconciliation(initial, "run-a", 1, false);
+    expect(gapped.required).toBe(true);
+
+    // Ordinary progress after the gap cannot clear it.
+    expect(observeRunReconciliation(gapped, "run-a", 1, false)).toBe(gapped);
+
+    const terminalSignal = latestRelayReconciliationSignal([gap, normal, terminal]);
+    expect(terminalSignal).toBe(terminal);
+    const newer = observeRunReconciliation(gapped, "run-a", 2, false);
+    expect(newer.generation).toBe(gapped.generation + 1);
+    expect(resolveRunReconciliation(newer, "run-a", gapped.generation)).toBe(newer);
+    expect(resolveRunReconciliation(newer, "run-a", newer.generation).required).toBe(
+      false,
+    );
+  });
+
+  it("keeps browser status polling after degraded heartbeats until real activity", () => {
+    const degraded = adaptRelayFrame({
+      channel: "relay_degraded",
+      data: { degraded: true },
+    });
+    const heartbeat = adaptRelayFrame({ channel: "heartbeat", data: { seq: 11 } });
+    const progress = adaptRelayFrame({
+      channel: "message_chunk",
+      data: { seq: 12, content: "recovered" },
+    });
+    expect(relayStreamNeedsStatusPolling([degraded, heartbeat], false)).toBe(true);
+    expect(relayStreamNeedsStatusPolling([degraded, heartbeat, progress], false)).toBe(
+      false,
+    );
+    expect(relayStreamNeedsStatusPolling([], true)).toBe(true);
+  });
+});
 
 describe("adaptActiveRuns", () => {
   const tiers = {

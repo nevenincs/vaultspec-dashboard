@@ -104,4 +104,10 @@ describe("parseSseFrames — per-frame byte ceiling (G5: runaway SSE frame)", ()
     const { frames } = parseSseFrames('event: delta\ndata: {"x":1}\n\n');
     expect(frames).toEqual([{ channel: "delta", data: { x: 1 } }]);
   });
+
+  it("measures the completed-frame ceiling in UTF-8 bytes, not UTF-16 units", () => {
+    const huge = "😀".repeat(Math.floor(MAX_SSE_FRAME_BYTES / 4) + 1);
+    const { frames } = parseSseFrames(`event: delta\ndata: ${huge}\n\n`);
+    expect(frames).toEqual([]);
+  });
 });

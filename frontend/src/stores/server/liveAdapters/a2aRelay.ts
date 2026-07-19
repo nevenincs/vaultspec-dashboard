@@ -19,6 +19,12 @@ import { isRec, type Rec } from "./internal";
  *  capped tail; older truth is recoverable from `run-status` + durable events. */
 export const RELAY_TRANSCRIPT_CAP = 256;
 
+/** Hard retained-byte ceiling for one browser transcript. The engine has its own
+ * replay budget, but the browser must independently bound the parsed object graph
+ * it keeps alive. Two MiB preserves a useful live tail without allowing 256
+ * individually-large frames to multiply into hundreds of MiB. */
+export const RELAY_TRANSCRIPT_BYTE_CAP = 2 * 1024 * 1024;
+
 /** The bounded relay frame kinds the transcript renders. `thought` is the a2a
  *  `thought_chunk` reasoning stream (rendered as the collapsible "Thinking…"
  *  section); `token` is the `message_chunk` final-answer stream; `tool_call` is
@@ -99,7 +105,12 @@ export function classifyRelayFrame(event: string, payload: Rec): RelayFrameKind 
  *  a record; the engine `seq` annotation is lifted for dedup/resume when present. */
 export function adaptRelayFrame(input: RelayFrameInput): RelayTranscriptFrame {
   const payload: Rec = isRec(input.data) ? input.data : { value: input.data };
-  const seq = typeof payload.seq === "number" ? payload.seq : undefined;
+  const seq =
+    typeof payload.seq === "number" &&
+    Number.isSafeInteger(payload.seq) &&
+    payload.seq >= 0
+      ? payload.seq
+      : undefined;
   return {
     seq,
     kind: classifyRelayFrame(input.channel, payload),
@@ -113,40 +124,124 @@ export function adaptRelayFrame(input: RelayFrameInput): RelayTranscriptFrame {
  *  yields no second copy (mirrors the engine `/stream` reducer), then ring-capping
  *  at `RELAY_TRANSCRIPT_CAP`. A frame without a seq (e.g. a `gap` control frame)
  *  always appends. */
+export interface RelayTranscriptState {
+  readonly frames: RelayTranscriptFrame[];
+  readonly retainedBytes: number;
+  readonly latestSeq?: number;
+  readonly reconciliationGeneration: number;
+}
+
+export const EMPTY_RELAY_TRANSCRIPT: RelayTranscriptState = {
+  frames: [],
+  retainedBytes: 0,
+  reconciliationGeneration: 0,
+};
+
 export function relayTranscriptReducer(
-  acc: readonly RelayTranscriptFrame[],
+  acc: RelayTranscriptState,
   frame: RelayTranscriptFrame,
-): RelayTranscriptFrame[] {
-  if (frame.seq !== undefined && acc.some((held) => held.seq === frame.seq)) {
-    return acc as RelayTranscriptFrame[];
+): RelayTranscriptState {
+  // Engine relay sequences are monotone. Rejecting every older/equal sequence is
+  // both stronger and cheaper than linearly searching for an exact duplicate on
+  // every replayed frame.
+  if (
+    frame.seq !== undefined &&
+    acc.latestSeq !== undefined &&
+    frame.seq <= acc.latestSeq
+  ) {
+    return acc;
   }
-  const next = [...acc, frame];
-  return next.length > RELAY_TRANSCRIPT_CAP
-    ? next.slice(next.length - RELAY_TRANSCRIPT_CAP)
-    : next;
+
+  const incomingBytes = relayFrameRetainedBytes(frame);
+  const sequenceHole =
+    frame.seq !== undefined &&
+    acc.latestSeq !== undefined &&
+    frame.seq > acc.latestSeq + 1;
+  const reconciliationGeneration =
+    acc.reconciliationGeneration +
+    (sequenceHole || relayFrameForcesReconcile(frame) ? 1 : 0);
+  // A single frame that cannot fit the whole per-run budget is presentation data
+  // we cannot safely retain. The cursor still advances in the owning query hook,
+  // so it is not replayed indefinitely. Preserve any lifecycle signal in the
+  // reducer metadata even though the presentation object itself is rejected.
+  if (incomingBytes > RELAY_TRANSCRIPT_BYTE_CAP) {
+    if (reconciliationGeneration === acc.reconciliationGeneration) {
+      return acc;
+    }
+    return {
+      ...acc,
+      latestSeq: frame.seq ?? acc.latestSeq,
+      reconciliationGeneration,
+    };
+  }
+
+  let retainedBytes = acc.retainedBytes + incomingBytes;
+  let first = 0;
+  while (
+    first < acc.frames.length &&
+    (acc.frames.length - first + 1 > RELAY_TRANSCRIPT_CAP ||
+      retainedBytes > RELAY_TRANSCRIPT_BYTE_CAP)
+  ) {
+    retainedBytes -= relayFrameRetainedBytes(acc.frames[first]!);
+    first += 1;
+  }
+
+  return {
+    frames: [...acc.frames.slice(first), frame],
+    retainedBytes,
+    latestSeq:
+      frame.seq === undefined
+        ? acc.latestSeq
+        : Math.max(acc.latestSeq ?? frame.seq, frame.seq),
+    reconciliationGeneration,
+  };
 }
 
-/** True when a frame is the honest signal to reconcile from `run-status` rather
- *  than trust the relay: an upstream-down `degraded` frame or an eviction/lag
- *  `gap`. The consumer starts (or keeps) bounded run-status polling on either. */
+const UTF8 = new TextEncoder();
+
+/** Retained UTF-8 size of one adapted frame's JSON representation. The incoming
+ * SSE parser applies its own wire ceiling before JSON parsing; this measurement
+ * governs the longer-lived browser object graph. */
+export function relayFrameRetainedBytes(frame: RelayTranscriptFrame): number {
+  try {
+    return UTF8.encode(JSON.stringify(frame)).byteLength;
+  } catch {
+    // Wire JSON cannot be cyclic. Fail closed for any non-wire caller rather than
+    // allowing an unmeasurable object into the retained transcript.
+    return RELAY_TRANSCRIPT_BYTE_CAP + 1;
+  }
+}
+
+/** Exact retained-byte accounting for tests and diagnostics. */
+export function relayTranscriptRetainedBytes(transcript: RelayTranscriptState): number {
+  return transcript.retainedBytes;
+}
+
+/** Sticky count of relay discontinuity/lifecycle signals observed by the stream
+ * reducer. It survives presentation-ring eviction, so a dense batch cannot hide
+ * a gap before React schedules authoritative reconciliation. */
+export function relayTranscriptReconciliationGeneration(
+  transcript: RelayTranscriptState,
+): number {
+  return transcript.reconciliationGeneration;
+}
+
+/** True when a frame is an honest signal to reconcile from `run-status` rather
+ * than trust the relay: upstream degradation, loss, a run fault, or a
+ * presentation-only terminal signal. */
 export function relayFrameForcesReconcile(frame: RelayTranscriptFrame): boolean {
-  return frame.kind === "degraded" || frame.kind === "gap";
+  return (
+    frame.kind === "degraded" ||
+    frame.kind === "gap" ||
+    frame.kind === "terminal" ||
+    frame.kind === "error"
+  );
 }
 
-/** True when a frame terminates the run (the relay's last meaningful frame). */
+/** True when the relay presents a terminal signal. This is a reconciliation
+ * trigger only; authoritative lifecycle remains the run-status snapshot. */
 export function relayFrameIsTerminal(frame: RelayTranscriptFrame): boolean {
   return frame.kind === "terminal";
-}
-
-/** True when ANY frame in the transcript is terminal — the STICKY terminal read.
- *  The relay never closes (heartbeat/control frames can arrive after `terminal`),
- *  so a last-frame-only check would flip a finished run back to a live posture;
- *  consumers deciding run-is-over (e.g. the composer's Stop/▶ state) must use this,
- *  not `relayFrameIsTerminal(frames.at(-1))`. */
-export function framesIncludeTerminal(
-  frames: readonly RelayTranscriptFrame[],
-): boolean {
-  return frames.some(relayFrameIsTerminal);
 }
 
 /** The largest engine `seq` seen in a transcript, for computing the `since=`

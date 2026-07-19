@@ -12,7 +12,7 @@ use rusqlite::{Connection, OptionalExtension};
 use super::error::StoreError;
 
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-pub(crate) const SCHEMA_VERSION: i64 = 21;
+pub(crate) const SCHEMA_VERSION: i64 = 22;
 pub(crate) const STORE_KIND: &str = "vaultspec_authoring";
 
 pub(crate) const METADATA_SCHEMA: &str = "
@@ -1136,6 +1136,29 @@ SET schema_version = 21
 WHERE singleton = 1;
 ";
 
+// Actor-token issuance carries an optional, non-secret purpose key. The broker
+// uses one stable key per (run_id, role), so a
+// failed/replayed run-start rotates one row instead of appending credentials. The
+// partial unique index leaves ordinary one-shot actor-token issuance unchanged.
+// Expiry/revocation indexes back the opportunistic hard-cap prune; raw tokens remain
+// absent from every column and from record_json.
+const ACTOR_TOKEN_LIFECYCLE_SCHEMA: &str = "
+ALTER TABLE authoring_actor_tokens ADD COLUMN issuance_key TEXT;
+
+CREATE UNIQUE INDEX idx_authoring_actor_tokens_issuance_key
+    ON authoring_actor_tokens (issuance_key)
+    WHERE issuance_key IS NOT NULL;
+CREATE INDEX idx_authoring_actor_tokens_expiry
+    ON authoring_actor_tokens (expires_at_ms, seq);
+CREATE INDEX idx_authoring_actor_tokens_revoked
+    ON authoring_actor_tokens (revoked_at_ms, seq)
+    WHERE revoked_at_ms IS NOT NULL;
+
+UPDATE authoring_store_metadata
+SET schema_version = 22
+WHERE singleton = 1;
+";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Migration {
     pub(crate) version: i64,
@@ -1248,6 +1271,11 @@ pub(crate) const MIGRATIONS: &[Migration] = &[
         version: 21,
         name: "add_queue_state_provenance_and_feedback_batches",
         sql: QUEUE_PROVENANCE_FEEDBACK_SCHEMA,
+    },
+    Migration {
+        version: 22,
+        name: "bound_actor_token_lifecycle",
+        sql: ACTOR_TOKEN_LIFECYCLE_SCHEMA,
     },
 ];
 

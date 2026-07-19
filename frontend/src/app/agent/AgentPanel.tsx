@@ -71,6 +71,7 @@ import { PendingChangesBridge } from "./PendingChangesBridge";
 import { PendingChangesView } from "./PendingChangesView";
 import { Transcript } from "./Transcript";
 import { TeamRunTranscript } from "./TeamRunTranscript";
+import { TeamRunProgressProvider } from "./TeamRunProgressContext";
 
 const AGENT = {
   region: "common:agent.panel.region",
@@ -373,6 +374,8 @@ export function AgentPanel({ className }: { className: string }) {
   useReconcileTeamRunScope();
   const scope = useActiveScope();
   const teamRunId = useAgentTeamRunId();
+  const teamRunScope = useAgentTeamRunScope();
+  const scopedRunId = scopedTeamRunId(teamRunId, teamRunScope, scope);
   const width = useAgentPanelWidth();
   const currentSessionId = useAgentCurrentSessionId();
   const resolveMessage = useLocalizedMessageResolver();
@@ -384,25 +387,27 @@ export function AgentPanel({ className }: { className: string }) {
       role="complementary"
       aria-label={resolveMessage({ key: AGENT.region }).message}
     >
-      {panelView === "transcript" && teamRunId === null && scope !== null ? (
-        <ActiveTeamRunRecovery scope={scope} />
-      ) : null}
-      <ShellResizeHandle side="agent" axis="agent" current={width} />
-      <AgentPanelHeader currentSessionId={currentSessionId} />
-      <AgentViewSwitcher panelView={panelView} />
-      {panelView === "pending" ? (
-        <PendingChangesView />
-      ) : (
-        <>
-          <AgentTranscriptContainer currentSessionId={currentSessionId} />
-          {/* Composer-adjacent, transcript-view only: the cross-run bridge into the
+      <TeamRunProgressProvider runId={scopedRunId}>
+        {panelView === "transcript" && teamRunId === null && scope !== null ? (
+          <ActiveTeamRunRecovery scope={scope} />
+        ) : null}
+        <ShellResizeHandle side="agent" axis="agent" current={width} />
+        <AgentPanelHeader currentSessionId={currentSessionId} />
+        <AgentViewSwitcher panelView={panelView} />
+        {panelView === "pending" ? (
+          <PendingChangesView />
+        ) : (
+          <>
+            <AgentTranscriptContainer currentSessionId={currentSessionId} />
+            {/* Composer-adjacent, transcript-view only: the cross-run bridge into the
               inbox (nothing when the queue is fully represented inline), then the
               autonomy control (nothing until a mode is observable), then the composer. */}
-          <PendingChangesBridge />
-          <AgentAutonomyControl />
-          <AgentComposerSlot />
-        </>
-      )}
+            <PendingChangesBridge />
+            <AgentAutonomyControl />
+            <AgentComposerSlot />
+          </>
+        )}
+      </TeamRunProgressProvider>
     </aside>
   );
 }

@@ -36,6 +36,32 @@ export interface StreamChunk {
  *  a multi-megabyte string (a client memory-exhaustion path). Generous vs any real
  *  frame so it only fires on a runaway. */
 export const MAX_SSE_FRAME_BYTES = 2 * 1024 * 1024;
+/** The undelimited remainder is held between network reads. Keep it under the
+ * same wire-byte ceiling as a completed frame; crossing it means the peer has
+ * supplied a delimiter-free runaway frame and the stream must reconnect. */
+export const MAX_SSE_INCOMPLETE_BYTES = MAX_SSE_FRAME_BYTES;
+const SSE_DECODE_SLICE_BYTES = 64 * 1024;
+
+/** UTF-8 length without allocating a second encoded copy of a potentially large
+ * remainder. Network limits are byte limits, not JavaScript UTF-16 code units. */
+function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (let index = 0; index < value.length; index++) {
+    const code = value.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < value.length) {
+      const low = value.charCodeAt(index + 1);
+      if (low >= 0xdc00 && low <= 0xdfff) {
+        bytes += 4;
+        index += 1;
+      } else {
+        bytes += 3;
+      }
+    } else bytes += 3;
+  }
+  return bytes;
+}
 
 export function parseSseFrames(buffer: string): {
   frames: StreamChunk[];
@@ -47,15 +73,18 @@ export function parseSseFrames(buffer: string): {
   for (const part of parts) {
     let channel = "message";
     let data = "";
+    let dataBytes = 0;
     for (const line of part.split("\n")) {
       if (line.startsWith("event:")) channel = line.slice(6).trim();
       else if (line.startsWith("data:")) {
-        data += line.slice(5).trim();
-        if (data.length > MAX_SSE_FRAME_BYTES) break;
+        const value = line.slice(5).trim();
+        dataBytes += utf8ByteLength(value);
+        if (dataBytes > MAX_SSE_FRAME_BYTES) break;
+        data += value;
       }
     }
     // Drop an empty frame, or a runaway one over the byte ceiling (never parse it).
-    if (data.length === 0 || data.length > MAX_SSE_FRAME_BYTES) continue;
+    if (data.length === 0 || dataBytes > MAX_SSE_FRAME_BYTES) continue;
     try {
       frames.push({ channel, data: JSON.parse(data) });
     } catch {
@@ -71,10 +100,10 @@ function isAbort(cause: unknown): boolean {
 }
 
 /**
- * Consume an SSE Response body as an async iterable of chunks. A clean
- * end-of-stream (`done`) returns normally; a non-ok response or a mid-stream
- * read failure throws `StreamLostError` (ADR D2) so the failure policy can
- * classify it `degraded`/`stream-lost` and the degradation surface can render.
+ * Consume a long-lived SSE Response body as an async iterable of chunks. Any
+ * transport end, including a clean EOF, throws `StreamLostError` (ADR D2) so
+ * the query retry policy reconnects instead of leaving a mounted consumer
+ * permanently detached from a still-running producer.
  * An intentional abort (unmount / scope change) is re-thrown untouched - it is
  * not a lost stream.
  */
@@ -96,12 +125,21 @@ export async function* sseChunks(
         if (isAbort(cause)) throw cause;
         throw new StreamLostError("graph stream dropped");
       }
-      if (chunk.done) return;
-      buffer += decoder.decode(chunk.value, { stream: true });
-      const { frames, rest } = parseSseFrames(buffer);
-      buffer = rest;
-      for (const frame of frames) {
-        yield frame;
+      if (chunk.done) throw new StreamLostError("graph stream ended");
+      // Decode bounded slices so a single hostile transport chunk cannot create a
+      // giant concatenation before completed frames are removed.
+      for (let offset = 0; offset < chunk.value.byteLength; ) {
+        const end = Math.min(chunk.value.byteLength, offset + SSE_DECODE_SLICE_BYTES);
+        buffer += decoder.decode(chunk.value.subarray(offset, end), { stream: true });
+        offset = end;
+        const { frames, rest } = parseSseFrames(buffer);
+        buffer = rest;
+        if (utf8ByteLength(buffer) > MAX_SSE_INCOMPLETE_BYTES) {
+          throw new StreamLostError("graph stream frame exceeds byte ceiling");
+        }
+        for (const frame of frames) {
+          yield frame;
+        }
       }
     }
   } finally {

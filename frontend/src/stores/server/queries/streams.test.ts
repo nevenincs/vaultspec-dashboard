@@ -7,6 +7,7 @@ import { assertBounded, syntheticGraphDeltas } from "../../../testing/adverse";
 import { liveTransport } from "../../../testing/liveClient";
 import { engineClient } from "../engine";
 import {
+  MAX_SSE_INCOMPLETE_BYTES,
   STREAM_RETENTION,
   engineKeys,
   latestBackendSignalSignature,
@@ -139,6 +140,68 @@ describe("sseChunks stream failure handling", () => {
         void _chunk;
       }
     }).rejects.toBeInstanceOf(StreamLostError);
+  });
+
+  it("throws StreamLostError on clean EOF so a mounted query reconnects", async () => {
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(
+            new TextEncoder().encode('event: progress\ndata: {"seq":7}\n\n'),
+          );
+          controller.close();
+        },
+      }),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+    const received: StreamChunk[] = [];
+
+    await expect(async () => {
+      for await (const frame of sseChunks(response)) received.push(frame);
+    }).rejects.toBeInstanceOf(StreamLostError);
+    expect(received).toEqual([{ channel: "progress", data: { seq: 7 } }]);
+  });
+
+  it("aborts a delimiter-free stream once its incomplete remainder crosses the byte ceiling", async () => {
+    const fragment = new Uint8Array(64 * 1024).fill("x".charCodeAt(0));
+    const fragmentCount = Math.floor(MAX_SSE_INCOMPLETE_BYTES / fragment.length) + 1;
+    const runawayBody = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let index = 0; index < fragmentCount; index++) {
+          controller.enqueue(fragment);
+        }
+        controller.close();
+      },
+    });
+    const response = new Response(runawayBody, { status: 200 });
+
+    await expect(async () => {
+      for await (const _chunk of sseChunks(response)) {
+        void _chunk;
+      }
+    }).rejects.toThrow("graph stream frame exceeds byte ceiling");
+  });
+
+  it("drains many completed frames without treating total stream bytes as one frame", async () => {
+    const encoder = new TextEncoder();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let index = 0; index < 512; index++) {
+          controller.enqueue(
+            encoder.encode(`event: graph\ndata: {"seq":${index}}\n\n`),
+          );
+        }
+        controller.close();
+      },
+    });
+    const seen: number[] = [];
+    await expect(async () => {
+      for await (const chunk of sseChunks(new Response(body, { status: 200 }))) {
+        seen.push((chunk.data as { seq: number }).seq);
+      }
+    }).rejects.toBeInstanceOf(StreamLostError);
+    expect(seen).toHaveLength(512);
+    expect(seen.at(-1)).toBe(511);
   });
 });
 
