@@ -121,6 +121,76 @@ beforeAll(async () => {
 });
 
 describe("full authoring happy path (live)", () => {
+  it("propose → submit → request_changes returns the proposal to draft", async () => {
+    // The three-verdict activation, exercised through the REAL client. A render-level
+    // test that mocks the action seam cannot catch the envelope-command mapping: the
+    // request-changes verdict rides the body as `decision:"edit"` but its envelope
+    // `command` is `edit_proposal` — an unmapped `edit` 400s at deserialization
+    // (`unknown variant "edit"`). This drives the live decisions route and asserts
+    // the changeset returns to draft (the reviewer-edit arc).
+    const authorToken = (
+      await client.issueActorToken({
+        actor: { id: `agent:hp-rc-author-${run}`, kind: "agent" },
+      })
+    ).raw_token;
+    const reviewerToken = (
+      await client.issueActorToken({
+        actor: { id: `human:hp-rc-reviewer-${run}`, kind: "human" },
+      })
+    ).raw_token;
+    const changesetId = `changeset_hp_rc_${run}`;
+
+    const sessionId = await createLiveSession(authorToken);
+    const created = await client.createProposal(
+      replaceProposal(sessionId, changesetId),
+      { actorToken: authorToken },
+    );
+    expect(created.kind).toBe("ok");
+    const queued = await client.projectProposal(changesetId);
+
+    const submitted = await client.submitForReview(
+      changesetId,
+      {
+        expected_revision: queued!.proposal.changeset_revision,
+        summary: "ready for review",
+      },
+      { actorToken: authorToken },
+    );
+    expect(submitted.kind).toBe("ok");
+    if (submitted.kind !== "ok") throw new Error("submit did not open the approval");
+    const submitData = submitted.data as {
+      proposal_id?: string;
+      reviewed_revision?: string;
+      approval?: { approval_id?: string };
+    };
+    const proposalId = submitData.proposal_id ?? "";
+    const approvalId = submitData.approval?.approval_id ?? "";
+    const reviewedRevision =
+      submitData.reviewed_revision ?? queued!.proposal.changeset_revision;
+
+    // A distinct human reviewer REQUESTS CHANGES with the required note (the
+    // self-approval ban does not gate request-changes; a distinct reviewer mirrors
+    // the real flow). This is the exact call the ReviewStation "Request changes"
+    // action makes.
+    const requested = await client.reviewDecision(
+      approvalId,
+      {
+        proposal_id: proposalId,
+        approval_id: approvalId,
+        decision: "edit",
+        reviewed_revision: reviewedRevision,
+        comment: "Tighten the rationale and cite the source ADR.",
+      },
+      { actorToken: reviewerToken },
+    );
+    expect(requested.kind).toBe("ok");
+
+    // The EditProposal arc returned the changeset to draft under the reviewer's
+    // identity — the writer's revision cycle.
+    const afterRequest = await client.projectProposal(changesetId);
+    expect(afterRequest?.proposal.status).toBe("draft");
+  });
+
   it("propose → approve → apply → rollback → history through the store", async () => {
     const authorToken = (
       await client.issueActorToken({

@@ -406,18 +406,23 @@ export class AuthoringClient {
     );
   }
 
-  /** `POST /authoring/v1/reviews/{approvalId}/decisions` — record approve/reject.
-   *  The self-approval ban + freshness gate run server-side; a refusal (or a
-   *  stale review) comes back as a `denied` outcome value (a stale review is a
-   *  409 fault the caller surfaces distinctly). */
+  /** `POST /authoring/v1/reviews/{approvalId}/decisions` — record the review verdict
+   *  (approve / reject / request-changes). The self-approval ban + freshness gate run
+   *  server-side; a refusal (or a stale review) comes back as a `denied` outcome value
+   *  (a stale review is a 409 fault the caller surfaces distinctly). */
   async reviewDecision(
     approvalId: string,
     payload: ReviewDecisionPayload,
     opts: CommandOptions,
   ): Promise<AuthoringCommandOutcome> {
+    // The envelope `command` is a wire `CommandKind`. `approve`/`reject` are already
+    // CommandKinds, but the request-changes verdict rides the body as `decision:"edit"`
+    // while its command is `edit_proposal` (CommandKind::EditProposal) — send that, or
+    // the envelope fails to deserialize (`unknown variant "edit"`).
+    const command = payload.decision === "edit" ? "edit_proposal" : payload.decision;
     return this.command(
       `/authoring/v1/reviews/${encodeURIComponent(approvalId)}/decisions`,
-      payload.decision,
+      command,
       payload,
       opts,
     );
