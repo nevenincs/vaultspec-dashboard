@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-18'
+modified: '2026-07-19'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - "[[2026-07-18-a2a-product-provisioning-reference]]"
@@ -154,6 +154,10 @@ orphaned process trees, and non-atomic lifecycle jobs.
   release blockers, not waivable platform exceptions. The desktop dependency
   profile must exclude non-runtime Torch and RAG dependencies before the target
   matrix can pass.
+- Project-owned Rust remains safe by default. The only exception authorized by
+  this decision is the target-gated `vaultspec-windows-authority` crate defined
+  by D9. No product policy, parsing, lifecycle sequencing, network behavior, or
+  mutable business state may move into that exception boundary.
 
 ## Implementation
 
@@ -308,6 +312,35 @@ observe actual files, sockets, processes, receipts, and artifacts; fakes,
 mocks, stubs, patches, monkeypatches, skipped cases, and expected failures do
 not certify this boundary.
 
+**D9: Isolated Windows operating-system authority boundary.** The workspace
+continues to forbid unsafe code in the engine and product crates. Windows file
+authority requires three primitives that the Rust standard library does not
+expose as a complete safe contract: the full 128-bit `FILE_ID_INFO`, deletion
+of the exact retained handle rather than a later pathname, and positive process
+existence/identity classification when ordinary enumeration is inconclusive.
+The target-gated internal crate `vaultspec-windows-authority` is the sole
+project-owned exception. It may wrap only the minimum Win32 calls required for
+those primitives and the handle open/share modes that make them meaningful.
+
+The exception is explicit in that crate's lint configuration. Unsafe calls are
+confined to a private operating-system module immediately beside their safety
+arguments; the rest of the crate denies unsafe code. Its public API exposes
+only owned handles, copied identities, exact-handle operations, and a bounded
+tri-state process observation. It must not expose raw pointers or borrowed raw
+handles, accept unbounded buffers, infer product ownership, or authorize a
+mutation. Product code remains responsible for joining those observations to
+the retained installation lock, claim bytes, owner, generation, and receipt.
+
+The crate pins `windows-sys` exactly and is owned by the product installation
+authority. Every permitted operation requires real Windows tests for full-width
+identity, reparse rejection, share-denial behavior, exact cleanup, live/dead/
+unverifiable process outcomes, and error propagation, plus warning-denied lint
+and an independent source review of each unsafe call. An unverifiable process
+is live for mutation authorization. This exception must be removed when the
+standard library or an audited safe dependency supplies the same semantics; it
+cannot be cited to introduce unsafe code into another crate or for another
+platform or subsystem.
+
 ## Rationale
 
 The related Research and Reference show that neither the dashboard archive nor
@@ -378,6 +411,10 @@ remain unchanged. No related ADR is superseded as a whole.
   Intel macOS. Failure on any required target or applicable channel withholds
   publication. Metadata-only certification cannot replace artifact-level
   certification.
+- Windows installation authority gains one small, target-gated unsafe review
+  surface. In exchange, all consumers remain safe Rust and receive the exact
+  file and process observations needed to fail closed. Any expansion of that
+  surface requires a new accepted ADR amendment and independent unsafe review.
 - The manifest and lifecycle boundary allow future capsule compaction, Bun
   adoption, or server-profile installers without changing `/ops/a2a`, provided
   they preserve the same ownership, compatibility, receipt, rollback, and
