@@ -28,6 +28,7 @@ related:
   - '[[2026-07-17-a2a-orchestration-edge-audit]]'
   - '[[2026-07-17-a2a-orchestration-edge-plan]]'
   - '[[2026-07-19-a2a-orchestration-edge-active-run-recovery-audit]]'
+  - '[[2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit]]'
 ---
 
 # `a2a-orchestration-edge` feature index
@@ -44,6 +45,7 @@ Auto-generated index of all documents tagged with `#a2a-orchestration-edge`.
 
 - `2026-07-17-a2a-orchestration-edge-audit` - `a2a-orchestration-edge` audit: `reconciliation`
 - `2026-07-19-a2a-orchestration-edge-active-run-recovery-audit` - `a2a-orchestration-edge` audit: `active-run reload recovery`
+- `2026-07-19-a2a-orchestration-edge-adversarial-performance-security-audit` - `a2a-orchestration-edge` audit: `adversarial performance, conformance, and security review`
 
 ### exec
 
