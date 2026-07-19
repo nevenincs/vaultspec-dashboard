@@ -27,7 +27,11 @@ import { AgentPanel } from "./AgentPanel";
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 function resetStore(): void {
-  useAgentPanel.setState({ open: false, currentSessionId: null });
+  useAgentPanel.setState({
+    open: false,
+    currentSessionId: null,
+    panelView: "transcript",
+  });
 }
 
 beforeEach(resetStore);
@@ -145,6 +149,42 @@ describe("AgentPanel transcript states", () => {
       timeout: 10_000,
     });
     expect(document.querySelector("[data-agent-transcript-entries]")).not.toBeNull();
+  });
+});
+
+describe("AgentPanel view switcher (review-surface-flow ADR F1)", () => {
+  it("defaults to the conversation view: composer present, no pending inbox", () => {
+    useAgentPanel.setState({ open: true, currentSessionId: null });
+    renderPanel();
+    expect(document.querySelector("[data-agent-view-switcher]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
+    // The switcher shows the conversation segment selected.
+    expect(
+      screen.getByRole("radio", { name: "Conversation" }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
+  it("switches to the pending-changes inbox: queue body shown, composer hidden", () => {
+    useAgentPanel.setState({ open: true, currentSessionId: null });
+    renderPanel();
+    fireEvent.click(screen.getByRole("radio", { name: "Pending changes" }));
+    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
+    // The inbox carries no composer of its own.
+    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
+    // And no transcript container in the pending view.
+    expect(document.querySelector("[data-agent-transcript]")).toBeNull();
+  });
+
+  it("opens directly in the pending view when the store targets it", () => {
+    useAgentPanel.setState({
+      open: true,
+      currentSessionId: null,
+      panelView: "pending",
+    });
+    renderPanel();
+    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
   });
 });
 

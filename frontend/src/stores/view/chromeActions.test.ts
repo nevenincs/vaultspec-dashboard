@@ -13,7 +13,9 @@ import {
   chromeEscapeHatchActions,
   controlPanelActions,
   controlPanelToggleAction,
+  footerChipAction,
   openCommandPaletteAction,
+  reviewInboxAction,
   showKeyboardShortcutsAction,
   toggleFollowModeAction,
   toggleGraphAction,
@@ -24,6 +26,7 @@ import {
   closeControlPanel,
   useControlPanels,
 } from "./controlPanels";
+import { useAgentPanel } from "./agentPanel";
 import { KEYBOARD_SHORTCUTS_TOGGLE_BINDING } from "./keyboardShortcuts";
 import { setFollowMode } from "./selection";
 import { setShellGraphVisible } from "./shellLayout";
@@ -31,6 +34,7 @@ import { setShellGraphVisible } from "./shellLayout";
 afterEach(() => {
   resetKeybindings();
   closeControlPanel();
+  useAgentPanel.setState({ open: false, panelView: "transcript" });
   setFollowMode(true);
   setShellGraphVisible(true);
 });
@@ -79,23 +83,43 @@ describe("state-aware chrome toggles", () => {
     });
   });
 
-  it("projects panel labels from an explicit snapshot and runs the real toggle", () => {
+  it("projects the three modal panel labels and runs the real toggle", () => {
+    // Review is no longer a modal panel (review-surface-flow ADR F1), so it is not
+    // in the modal-panel action set.
     expect(controlPanelActions(null).map((action) => action.label)).toEqual([
       { key: "common:controlPanels.actions.showSearch" },
-      { key: "common:controlPanels.actions.showApprovals" },
       { key: "common:controlPanels.actions.showSystemStatus" },
       { key: "common:controlPanels.actions.showProjectHealth" },
     ]);
 
-    const show = controlPanelToggleAction("approvals", null);
+    const show = controlPanelToggleAction("search-service", null);
     show.run?.();
-    expect(useControlPanels.getState().open).toBe("approvals");
+    expect(useControlPanels.getState().open).toBe("search-service");
 
-    const hide = controlPanelToggleAction("approvals", "approvals");
+    const hide = controlPanelToggleAction("search-service", "search-service");
     expect(hide.label).toEqual({
-      key: "common:controlPanels.actions.hideApprovals",
+      key: "common:controlPanels.actions.hideSearch",
     });
     hide.run?.();
+    expect(useControlPanels.getState().open).toBeNull();
+  });
+
+  it("routes the review chip to the Agent pending view under the preserved id", () => {
+    const review = reviewInboxAction();
+    // The action id is preserved from the retired Approvals modal so keymap/palette
+    // enrollment carries over unchanged (one descriptor, one id).
+    expect(review.id).toBe("panel:approvals");
+    expect(review.label).toEqual({ key: "common:controlPanels.actions.showApprovals" });
+
+    // footerChipAction dispatches the review chip to that descriptor and the panel
+    // chips to their modal toggle.
+    expect(footerChipAction("approvals", null).id).toBe("panel:approvals");
+    expect(footerChipAction("search-service", null).id).toBe("panel:search-service");
+
+    review.run?.();
+    expect(useAgentPanel.getState().open).toBe(true);
+    expect(useAgentPanel.getState().panelView).toBe("pending");
+    // It opens the Agent panel, never a modal control panel.
     expect(useControlPanels.getState().open).toBeNull();
   });
 
@@ -105,12 +129,11 @@ describe("state-aware chrome toggles", () => {
       ...chromeEscapeHatchActions(),
       controlPanelToggleAction("search-service", null),
       controlPanelToggleAction("search-service", "search-service"),
-      controlPanelToggleAction("approvals", null),
-      controlPanelToggleAction("approvals", "approvals"),
       controlPanelToggleAction("backend-health", null),
       controlPanelToggleAction("backend-health", "backend-health"),
       controlPanelToggleAction("vault-health", null),
       controlPanelToggleAction("vault-health", "vault-health"),
+      reviewInboxAction(),
     ];
 
     setShellGraphVisible(false);
@@ -125,7 +148,7 @@ describe("state-aware chrome toggles", () => {
     for (const action of actions) {
       expect(resolveMessageResult(runtime, action.label).usedFallback).toBe(false);
     }
-    expect(actions).toHaveLength(4 + CONTROL_PANEL_IDS.length * 2 + 4);
+    expect(actions).toHaveLength(4 + CONTROL_PANEL_IDS.length * 2 + 1 + 4);
   });
 });
 

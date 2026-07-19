@@ -1,7 +1,9 @@
-// Modal host for the four control panels. Closed panel bodies remain unmounted.
+// Modal host for the three global control panels — Search service, Backend health,
+// Vault health. Review is NOT here: its queue folded into the Agent panel as a
+// "Pending changes" view (review-surface-flow ADR F1), reached from the footer
+// review chip. Closed panel bodies remain unmounted.
 
 import { Dialog } from "../chrome/Dialog";
-import { ReviewStationSection } from "../authoring/ReviewStation";
 import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 import {
   closeControlPanel,
@@ -18,7 +20,6 @@ export function ControlPanels() {
   const searchLabel = useLocalizedMessage(
     CONTROL_PANEL_VOCABULARY["search-service"].label,
   );
-  const approvalsLabel = useLocalizedMessage(CONTROL_PANEL_VOCABULARY.approvals.label);
   const systemStatusLabel = useLocalizedMessage(
     CONTROL_PANEL_VOCABULARY["backend-health"].label,
   );
@@ -35,15 +36,6 @@ export function ControlPanels() {
         footer={<RagDashboardFooter />}
       >
         <RagJobDashboard />
-      </Dialog>
-      <Dialog
-        open={open === "approvals"}
-        onClose={closeControlPanel}
-        title={approvalsLabel}
-      >
-        <div className="px-fg-4 py-fg-3">
-          <ReviewStationSection />
-        </div>
       </Dialog>
       <Dialog
         open={open === "backend-health"}

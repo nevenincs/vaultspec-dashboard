@@ -304,6 +304,11 @@ export const common = {
       recentSessions: "Recent sessions",
       untitledSession: "Untitled session",
       close: "Close agent panel",
+      view: {
+        switcher: "Agent panel view",
+        transcript: "Conversation",
+        pending: "Pending changes",
+      },
     },
     transcript: {
       loading: "Loading the conversation…",
