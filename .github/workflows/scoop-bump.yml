@@ -6,6 +6,12 @@
 # (passed as the `plan` workflow_call input); the hash comes from the
 # published per-asset .sha256. The commit type is changelog-hidden (`chore`)
 # so release-please treats it as noise.
+#
+# Recovery note: if a post-release PR merge clobbers the bump commit (a
+# long-lived branch whose bucket/vaultspec.json predates the bump is merged
+# without rebasing), the bucket silently regresses. Recover by triggering this
+# workflow via workflow_dispatch with the plan JSON from the release run's
+# "plan" artifact (copy the `manifest` output field).
 
 name: scoop-bump
 
@@ -13,6 +19,12 @@ on:
   workflow_call:
     inputs:
       plan:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      plan:
+        description: 'dist manifest JSON from the release run (plan artifact manifest field)'
         required: true
         type: string
 
@@ -23,7 +35,7 @@ jobs:
   bump:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: main
       - name: Bump bucket/vaultspec.json to the released version
@@ -38,6 +50,15 @@ jobs:
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
           HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
           test -n "$VERSION" && test -n "$HASH"
+          # Guard: refuse to bump the manifest to a version older than what is
+          # already committed. This catches the case where a stale branch merge
+          # clobbered a prior bump and this job is re-run for an older release.
+          CURRENT_VERSION=$(jq -r '.version' bucket/vaultspec.json)
+          if [ "$(printf '%s\n' "$CURRENT_VERSION" "$VERSION" | sort -V | tail -1)" = "$CURRENT_VERSION" ] && \
+             [ "$CURRENT_VERSION" != "$VERSION" ]; then
+            echo "bucket is at ${CURRENT_VERSION}, refusing to bump backward to ${VERSION}"
+            exit 1
+          fi
           jq --arg v "$VERSION" --arg u "$URL" --arg h "$HASH" \
             '.version = $v | .url = $u | .hash = $h' \
             bucket/vaultspec.json > bucket/vaultspec.json.tmp
