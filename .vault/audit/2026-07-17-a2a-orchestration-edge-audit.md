@@ -416,6 +416,33 @@ request_changes asserts 200 + return-to-draft, which exercises the envelope a se
 **LESSON (codify-worthy):** a review that only reads code + runs seam-mocked tests can pass a feature that is
 fully broken at the wire envelope. UX features must be DRIVEN in the assembled app before "success" is claimed.
 
+### review | high | UX conformance (Fable arbiter): PARTIALLY-CONFORMANT — request-changes de-modalized (DONE), two structural residues DEFERRED
+
+A dedicated Fable agent judged the review surface against Codex / Antigravity / Claude
+Code / Cursor / Windsurf / Zed / Copilot. Verdict: PARTIALLY-CONFORMANT. The inline
+per-turn transcript card (one shared `ProposalCard`, exact `run_id` bind) IS the
+industry happy path and best-in-class (one component ⇒ transcript and queue mounts can
+never disagree); the standalone queue is legitimately KEPT (it uniquely covers non-agent
+changesets with no `run_id`, proposals scrolled past the transcript window, and the
+cross-run applied-under-policy lane — every industry tool has a cross-run inbox). Three
+non-conformant residues:
+
+- **RESOLVED (`f583d993d4`) — request-changes was a MODAL.** But `request_changes` is a
+  message to the agent (returns to draft; the a2a phase gate resumes the writer against
+  the note), so a route-blocking modal over the composer is a grammar clash. Replaced
+  `RequestChangesDialog` with an inline in-card `RequestChangesComposer` (same required-
+  note contract; one component, identical in both mounts). Live-verified.
+- **DEFERRED (owner decision) — the standalone Review Station is a MODAL host.** Industry
+  cross-run inboxes are never modal; a modal blocks the document AND the transcript that
+  produced the proposal. Fix: de-modalize `ReviewStationSection` into a non-modal docked/
+  routed panel (low cost — only `ControlPanels.tsx` host changes; the section is self-
+  contained). Not done unilaterally — it is a shared control-panel-host change.
+- **DEFERRED (blocked) — `AutonomyControl` is stranded** inside that modal and renders
+  only once a proposal exists. It belongs composer-adjacent (Codex/Cursor/Claude-Code
+  position), but that is BLOCKED by the known wire gap (no scope-level operation-mode
+  read; mode is observable only through a proposal's policy). The filed wire ask is the
+  real precondition.
+
 ### review | high | LIVE-VERIFIED in the running dashboard (post-fix)
 
 Drove the assembled SPA (`:8770`) against the live engine (`:8767`, serving `['approve','reject','edit_proposal']`
