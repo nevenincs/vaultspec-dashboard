@@ -400,3 +400,26 @@ a human `request_changes` on the live decisions route → engine `approval.resol
 frontend tsc + review-station vocabulary/outcome/render + catalog/action-vocabulary green. (Tree
 carries a PRE-EXISTING red from a parallel Composer team-run lane — `common:agent.composer.teamRunRefused`
 / `teamRunDismiss` — unrelated to this feature.)
+
+### review | high | RESOLVED — request_changes submit 400'd end-to-end (envelope command), caught only by LIVE-DRIVING
+
+The static review (APPROVE-WITH-NITS) and every unit/render test PASSED while the feature was in fact
+BROKEN in the assembled app: the reviewer "Request changes" submit returned `400 unknown variant "edit"`.
+`AuthoringClient.reviewDecision` reused `payload.decision` as the envelope `command` (a wire `CommandKind`).
+`approve`/`reject` are valid CommandKinds so they worked, but the request-changes verdict rides the body as
+`decision:"edit"` while its command is `edit_proposal` — so the envelope failed to deserialize before
+reaching the handler. The render test mocked the action seam and the a2a live test hand-mapped
+`edit→edit_proposal`, so both hid the gap. FIXED in `1496f78a17` (map `edit → edit_proposal` in
+`reviewDecision`) + a live-wire regression (`authoring.happyPath.live.test.ts`: propose → submit →
+request_changes asserts 200 + return-to-draft, which exercises the envelope a seam-mock cannot).
+
+**LESSON (codify-worthy):** a review that only reads code + runs seam-mocked tests can pass a feature that is
+fully broken at the wire envelope. UX features must be DRIVEN in the assembled app before "success" is claimed.
+
+### review | high | LIVE-VERIFIED in the running dashboard (post-fix)
+
+Drove the assembled SPA (`:8770`) against the live engine (`:8767`, serving `['approve','reject','edit_proposal']`
+for all 17 `needs_review` proposals): the footer "Review" chip opens the Review panel; 17 "Request changes"
+buttons render from served eligibility; the dialog's submit stays disabled with the required-note hint until a
+comment is typed (then enables + hides the hint); submit → `200` → "Request accepted" → the proposal flips to
+**Draft** and offers "Submit for review" (the reviewer-edit arc). Screenshot evidence captured.
