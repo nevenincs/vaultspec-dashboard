@@ -133,6 +133,14 @@ impl AuthorityFile {
         self.identity
     }
 
+    /// Number of hard-link names currently bound to this exact retained file.
+    ///
+    /// The observation is queried from the retained handle, not a pathname, so
+    /// callers can reject aliased authority without racing a later name lookup.
+    pub fn link_count(&self) -> io::Result<u64> {
+        os::link_count(&self.file)
+    }
+
     /// Borrow the retained standard file for locking or bounded I/O.
     #[must_use]
     pub fn file(&self) -> &File {
@@ -188,4 +196,35 @@ fn open(
         options.create(true);
     }
     options.open(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retained_file_reports_real_hard_link_count() {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "vaultspec-windows-authority-link-count-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir(&directory).unwrap();
+        let file_path = directory.join("authority-file");
+        let alias_path = directory.join("authority-alias");
+        std::fs::write(&file_path, b"authority").unwrap();
+        let authority = AuthorityFile::open_reader(&file_path).unwrap();
+
+        assert_eq!(authority.link_count().unwrap(), 1);
+        std::fs::hard_link(&file_path, &alias_path).unwrap();
+        assert_eq!(authority.link_count().unwrap(), 2);
+        std::fs::remove_file(&alias_path).unwrap();
+        assert_eq!(authority.link_count().unwrap(), 1);
+        drop(authority);
+        std::fs::remove_file(file_path).unwrap();
+        std::fs::remove_dir(directory).unwrap();
+    }
 }

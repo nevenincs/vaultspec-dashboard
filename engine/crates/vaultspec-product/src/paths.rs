@@ -16,7 +16,8 @@
 //!   app-home/               mutable state: sqlite, discovery, credentials,
 //!     credentials/          owner-restricted control + IPC credentials
 //!     snapshots/<gen>/      consistency-group snapshots
-//!     receipt.json          the active complete receipt
+//!     receipt.json          legacy receipt retained during migration
+//!     active-receipts.v1    fixed active-receipt authority journal
 //!   transaction/            copied-updater transaction directories
 //!   staging/                staged candidate generation
 //!   updater/                the copied external updater helper
@@ -44,7 +45,7 @@ impl std::fmt::Display for PathError {
             PathError::InvalidGeneration(g) => {
                 write!(
                     f,
-                    "invalid generation identifier {g:?}: expected [A-Za-z0-9._-] with no separators or .."
+                    "invalid generation identifier {g:?}: expected at most 128 bytes of [A-Za-z0-9._-] with no separators or .."
                 )
             }
         }
@@ -128,6 +129,16 @@ impl ProductPaths {
         self.app_home().join("receipt.json")
     }
 
+    /// The fixed-size active-receipt authority journal (under the app home).
+    ///
+    /// This path is distinct from the legacy `receipt.json`: readers of the
+    /// fixed journal never interpret that retired JSON format as activation
+    /// authority.
+    #[must_use]
+    pub fn active_receipts_journal_path(&self) -> PathBuf {
+        self.app_home().join("active-receipts.v1")
+    }
+
     /// The mutable user-data directory (SQLite stores, workspaces) under the app
     /// home. Preserved across removal unless an explicit typed data removal is
     /// requested (ADR D6).
@@ -193,11 +204,12 @@ impl ProductPaths {
 }
 
 /// Validate a generation identifier before it is interpolated into a path. The
-/// grammar is `[A-Za-z0-9._-]+` with no path separator and no `..` component, so
-/// a malicious or malformed id cannot escape the product root. This is the one
-/// place a caller-influenced token reaches the filesystem.
-fn validate_generation(generation: &str) -> std::result::Result<&str, PathError> {
+/// grammar is 1..=128 bytes of `[A-Za-z0-9._-]` with no path separator and no
+/// `..` component, so a malicious or malformed id cannot escape the product
+/// root. This is the one place a caller-influenced token reaches the filesystem.
+pub(crate) fn validate_generation(generation: &str) -> std::result::Result<&str, PathError> {
     let ok = !generation.is_empty()
+        && generation.len() <= 128
         && generation != ".."
         && generation != "."
         && generation
@@ -230,6 +242,10 @@ mod tests {
                 "{bad:?} must be refused"
             );
         }
+        assert!(matches!(
+            paths.generation_dir(&"g".repeat(129)),
+            Err(PathError::InvalidGeneration(_))
+        ));
     }
 
     #[test]
@@ -250,6 +266,7 @@ mod tests {
             paths.staging_dir(),
             paths.updater_dir(),
             paths.receipt_path(),
+            paths.active_receipts_journal_path(),
             paths.install_lock_path(),
         ] {
             assert!(

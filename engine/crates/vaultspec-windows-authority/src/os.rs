@@ -8,8 +8,8 @@ use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_INVALID_PARAMETER, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_DISPOSITION_INFO, FILE_ID_INFO, FileDispositionInfo, FileIdInfo,
-    GetFileInformationByHandleEx, SYNCHRONIZE, SetFileInformationByHandle,
+    FILE_DISPOSITION_INFO, FILE_ID_INFO, FILE_STANDARD_INFO, FileDispositionInfo, FileIdInfo,
+    FileStandardInfo, GetFileInformationByHandleEx, SYNCHRONIZE, SetFileInformationByHandle,
 };
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
 
@@ -56,6 +56,29 @@ pub(super) fn high_res_id(file: &File) -> io::Result<HighResFileId> {
         volume_serial_number: info.VolumeSerialNumber,
         file_id: u128::from_le_bytes(info.FileId.Identifier),
     })
+}
+
+pub(super) fn link_count(file: &File) -> io::Result<u64> {
+    let mut info = std::mem::MaybeUninit::<FILE_STANDARD_INFO>::zeroed();
+    // SAFETY: `file` owns a valid file handle. `info` is writable, aligned, and
+    // FILE_STANDARD_INFO-sized. Windows initializes the complete value on
+    // success, and no pointer or handle escapes this private boundary.
+    let result = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileStandardInfo,
+            info.as_mut_ptr().cast(),
+            u32::try_from(std::mem::size_of::<FILE_STANDARD_INFO>())
+                .expect("FILE_STANDARD_INFO size fits u32"),
+        )
+    };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the successful Win32 call initialized every
+    // FILE_STANDARD_INFO byte.
+    let info = unsafe { info.assume_init() };
+    Ok(u64::from(info.NumberOfLinks))
 }
 
 pub(super) fn probe_process_existence(pid: u32) -> ProcessExistence {

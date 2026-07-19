@@ -18,6 +18,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S10]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S11]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S146]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S167]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S12]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S13]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S14]]'
@@ -70,15 +71,16 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers
 - `2026-07-18-a2a-product-provisioning-W01-P01-S02` - Declare bounded serialization, digest, file-lock, process, and platform dependencies for product lifecycle authority
 - `2026-07-18-a2a-product-provisioning-W01-P01-S03` - Pin the exact A2A source commit and release identity plus emitted capsule artifact, CPython 3.13, Node 22, and ACP 0.59.0 digests without floating, latest, or runtime resolution
-- `2026-07-18-a2a-product-provisioning-W01-P01-S04` - Define the dashboard-owned complete release-set schema binding the dashboard build to the pinned A2A component manifest, runtime inputs, protocols, state schemas, digests, licenses, and SBOM
+- `2026-07-18-a2a-product-provisioning-W01-P01-S04` - Define the complete release-set member and five-target cohort contracts
 - `2026-07-18-a2a-product-provisioning-W01-P01-S05` - Expose only stable product contract, lifecycle, update, and build-tool modules to dashboard consumers
-- `2026-07-18-a2a-product-provisioning-W01-P01-S06` - Parse and verify the tracked component lock, the A2A-emitted schemas/desktop-capsule-manifest.json contract, and the complete release-set manifest while rejecting unpinned identities, target mismatch, digest drift, and floating latest selectors
+- `2026-07-18-a2a-product-provisioning-W01-P01-S06` - Verify complete release-set bytes through opaque product authority
 - `2026-07-18-a2a-product-provisioning-W01-P01-S07` - Derive product-owned install, generation, app-home, transaction, staging, snapshot, and updater paths without accepting client paths
 - `2026-07-18-a2a-product-provisioning-W01-P01-S08` - Persist atomic complete receipts, channel provenance, bootstrap-created ownership retention, active generation, prior seat identity, consistency generation, and interruption markers
 - `2026-07-18-a2a-product-provisioning-W01-P01-S09` - Let dashboard bootstrap alone create and retain the ownership capability plus attach-control credential, permit the gateway to read attach-control for dashboard control and settlement callbacks, require the gateway to create a separate worker IPC credential used only between gateway and worker, and forbid aliases or secret-bearing discovery
-- `2026-07-18-a2a-product-provisioning-W01-P01-S10` - Enforce installation transaction locking only for installer and copied-updater authority, require lock-first mutation ordering and owner-matching stale-state quarantine, and forbid the gateway from acquiring or waiting on the install lock
+- `2026-07-18-a2a-product-provisioning-W01-P01-S10` - Bind every installation mutation to one retained transaction authority
 - `2026-07-18-a2a-product-provisioning-W01-P01-S11` - Verify manifest rejection, atomic receipt activation, dashboard-only capability creation, gateway read-only access, credential separation, permission restriction, and cross-process lock exclusion with real files, processes, and locks
 - `2026-07-18-a2a-product-provisioning-W01-P01-S146` - Declare the explicit five-target by channel support matrix with payload type, installer authority, updater authority, downgrade path, rollback path, and unsupported reason
+- `2026-07-18-a2a-product-provisioning-W01-P01-S167` - Establish the fixed two-slot receipt journal and three non-selection logical proof replicas with two alternating subrecords each, synchronize and reopen before resolving the higher valid subrecord and two-of-three proof quorum, select the highest receipt sequence only after all logical replicas normalize to retired, reject proof ties overflow ambiguity aliases and unproved damage, validate active proof bound to the journal prior envelope target preimage next sequence and intended envelope, expose a bounded no-follow reader under the verified installation guard, and add no activation writer
 - `2026-07-18-a2a-product-provisioning-W01-P02-S12` - Define typed install, ensure, start, stop, restart, repair, update, rollback, remove, doctor, readiness, and refusal contracts
 - `2026-07-18-a2a-product-provisioning-W01-P02-S13` - Validate secret-free versioned A2A discovery, live process identity, owner handoff reference, freshness, compatibility, and foreign immutability
 - `2026-07-18-a2a-product-provisioning-W01-P02-S14` - Broker bounded authenticated liveness, readiness, drain, shutdown, and lifecycle-entrypoint calls through the capsule contract

@@ -287,3 +287,57 @@ critical, high, medium, or low finding in either S10 production or the API
 integration. S10 closes the transaction authority, not receipt activation:
 S08 and S162/S163 remain required before S11 and complete product activation can
 close.
+
+## `W01.P01.S167` fixed receipt-journal review
+
+Status: RESOLVED. Original review verdict: REVISION REQUIRED.
+
+### windows-hard-link-alias | high | A pre-existing Windows hard-link alias does not fail closed
+
+The Windows retained-handle validation rejects reparse points and identity
+changes, but unlike the Unix branch it never requires a single link. Therefore
+an `active-receipts.v1` file that already has another hard-link name can pass the
+guarded sync, close, no-follow reopen, proof resolution, and settled selection.
+The Windows test proves only that the retained share lease blocks mutation after
+selection; it creates a hard-link alias successfully while the selected result
+is live and does not prove rejection of an alias that predates the read. This
+contradicts D10 and the S167 Step, which require aliases to fail closed. The
+documented S168 parent-directory residual does not amend that explicit S167
+acceptance condition.
+
+## Recommendations for `W01.P01.S167`
+
+- Require and revalidate a Windows retained-file link count of exactly one at
+  every identity/size validation boundary, with a real pre-existing-hard-link
+  rejection test, before accepting S167.
+- If safe S167 code cannot observe the link count, revise the governing
+  architecture and hard-chain ordering explicitly rather than treating an
+  alias-acceptance gap as an implementation note.
+
+### `windows-hard-link-alias` remediation
+
+Remediation status: PASS. The D9 wrapper now queries `FILE_STANDARD_INFO`
+through the exact retained file handle and returns only a copied `u64` link
+count. The private FFI uses an aligned, exactly sized `MaybeUninit` output,
+checks the Win32 result before initialization, and exposes no pointer, raw
+handle, pathname operation, or receipt policy. Its real-filesystem test observes
+the retained handle move from one link to two and back to one.
+
+The receipt reader now requires exactly one Windows link in the same retained-
+handle validation that checks file identity, type, size, and reparse status.
+That validation runs on initial open, after synchronization, on no-follow
+reopen, after the bounded read, and whenever guarded state is borrowed. A real
+pre-existing-hard-link test now fails before selection. The live-alias test also
+proves that a later hard link invalidates the next state access while retained
+share leases deny writes and deletion through every name. A borrowed state
+cannot outlive the read object or its handles, and `ActiveReceipt` remains
+non-cloneable with no owned authority extraction path.
+
+The wrapper unit test passed 1/1, the focused receipt tests passed 22/22, strict
+wrapper all-target Clippy passed, and scoped diff checking was clean. Strict
+product-library Clippy initially reached the reviewed code but remained red on
+the unrelated concurrent `generation.rs` `needless_return` finding; no S167 or
+D9 wrapper warning was reported. Final verification isolated that pre-existing
+lint with `-A clippy::needless-return`: strict S167 product Clippy passed, all 68
+product library tests passed, and both affected crates passed an
+`x86_64-unknown-linux-gnu` compile check.
