@@ -3101,6 +3101,7 @@ dependencies = [
  "fs4",
  "getrandom",
  "nix 0.29.0",
+ "rustix",
  "same-file",
  "serde",
  "serde_json",
@@ -3108,6 +3109,7 @@ dependencies = [
  "sysinfo",
  "tar",
  "tempfile",
+ "vaultspec-windows-authority",
  "windows-acl",
  "zip",
 ]
@@ -3122,6 +3124,13 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "vaultspec-windows-authority"
+version = "0.1.4"
+dependencies = [
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

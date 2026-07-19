@@ -17,10 +17,12 @@ same-file = "1.0.6"
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 
 [target.'cfg(unix)'.dependencies]
-nix = { version = "0.29", default-features = false, features = ["signal"] }
+nix = { version = "0.29", default-features = false, features = ["signal", "user"] }
+rustix = { version = "=1.1.4", features = ["fs"] }
 
 [target.'cfg(windows)'.dependencies]
 command-group = { version = "5.0.1", default-features = false }
+vaultspec-windows-authority = { path = "../vaultspec-windows-authority" }
 windows-acl = "0.3.0"
 
 [dev-dependencies]

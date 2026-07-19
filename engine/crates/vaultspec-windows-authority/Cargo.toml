@@ -1,0 +1,22 @@
+[package]
+name = "vaultspec-windows-authority"
+description = "Auditable safe Windows file-authority wrapper for Vaultspec product locking."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Threading"] }
+
+# This crate is the one ADR-approved operating-system boundary that may contain
+# project-owned unsafe code. Keep the crate default at deny; only the private
+# `os` module lowers the lint for its individually documented Win32 calls.
+[lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+unused_unsafe = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

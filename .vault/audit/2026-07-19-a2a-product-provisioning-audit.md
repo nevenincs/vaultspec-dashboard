@@ -247,3 +247,43 @@ S162 must retain the exact unpublished-generation authority through S08 receipt
 durability under the S10 lock. S64/S65 remain responsible for substantive
 license and software-bill-of-materials completeness, and S166 must validate all
 five actual member documents before publication.
+
+## `W01.P01.S10` installation-authority review
+
+Status: PASS
+
+S10 now joins a crash-released operating-system lock to one fixed, bounded
+owner claim and retains the product root, transaction directory, lock, claim,
+bytes, owner, process, and start-time identities for the whole guard lifetime.
+The gateway is rejected before lock access. Recovery requires the same owner
+and a positively dead or different process instance; zero, inaccessible, or
+otherwise inconclusive evidence remains busy.
+
+The initial formal review withheld the implementation for an implicit escape
+from the workspace unsafe prohibition, path-based Unix authority, binary
+process proof, swallowed cleanup failures, and a no-op subprocess helper. D9
+accepted one narrow Windows-only FFI wrapper. The revision made that exception
+compile-visible, added explicit release and bounded Drop diagnostics, replaced
+the helper with a real assertion, enforced current-owner `0700` Unix state, and
+introduced tri-state process observation. Manual review and re-review found two
+remaining highs: an enumerated zero start time still authorized recovery, and
+Unix operations retained a parent handle without using it descriptor-
+relatively. The final revision routes zero through a real OS probe and anchors
+all Unix create/open/stat/link/unlink operations to the retained handle through
+safe exact `rustix` APIs.
+
+The existing seated lifecycle caller was also a required review revision. It
+now uses fallible release on every exit, accepts stale-discovery removal only on
+success or `NotFound`, holds the guard through startup, and reports a bounded
+degraded result if release is incomplete. A real Windows share-denial test
+proves failed discovery removal prevents startup.
+
+Windows and Linux target checks, strict wrapper Clippy, strict Linux product
+Clippy, four unit tests, fourteen named real lock/process integration tests,
+the API success and failure-path tests, formatting, and diff checks passed. The
+complete
+S11 test binary later passed 23/23. Independent final reviews reported no
+critical, high, medium, or low finding in either S10 production or the API
+integration. S10 closes the transaction authority, not receipt activation:
+S08 and S162/S163 remain required before S11 and complete product activation can
+close.

@@ -360,6 +360,65 @@ fn seated_boot_quarantines_a_stale_owned_record_before_starting() {
     );
 }
 
+#[cfg(windows)]
+#[test]
+fn seated_boot_does_not_start_when_stale_discovery_cannot_be_removed() {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    let (home, plane, paths) = install_home();
+    let (_triple, target) = current_target();
+    write_receipt(&paths, target);
+    CredentialStore::new(paths.credentials_dir())
+        .bootstrap()
+        .unwrap();
+
+    let mut child = std::process::Command::new("cmd")
+        .args(["/C", "exit"])
+        .spawn()
+        .unwrap();
+    let dead_pid = child.id();
+    child.wait().unwrap();
+    write_discovery(
+        &paths,
+        plane.testonly_owner_id(),
+        dead_pid,
+        "127.0.0.1:1",
+        "",
+        now_ms(),
+    );
+
+    let discovery_path = paths.app_home().join("gateway-discovery.json");
+    const FILE_SHARE_READ: u32 = 0x0000_0001;
+    let retained_reader = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ)
+        .open(&discovery_path)
+        .unwrap();
+
+    let outcome = plane.reconcile_seated_boot();
+    assert_eq!(outcome["action"], "recover-stale", "{outcome}");
+    assert_eq!(outcome["started"], false, "{outcome}");
+    let reason = outcome["reason"].as_str().unwrap_or_default();
+    assert!(
+        reason.contains("stale discovery quarantine failed"),
+        "{outcome}"
+    );
+    assert!(
+        !reason.contains(&home.path().to_string_lossy().to_string()),
+        "the failure must not disclose the product path: {outcome}"
+    );
+    assert!(discovery_path.is_file());
+    assert!(
+        plane
+            .terminate_owned_gateway(Duration::from_millis(200))
+            .is_none(),
+        "a failed quarantine must not retain a started gateway: {outcome}"
+    );
+
+    drop(retained_reader);
+    std::fs::remove_file(discovery_path).unwrap();
+}
+
 // --- capsule-gated proofs -----------------------------------------------------
 
 #[test]

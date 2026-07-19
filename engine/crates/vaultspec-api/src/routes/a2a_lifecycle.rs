@@ -60,9 +60,15 @@ const JOB_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 const JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Freshness window for a gateway discovery heartbeat.
 const DISCOVERY_FRESHNESS: Duration = Duration::from_secs(30);
+/// Maximum retained detail for a seated stale-recovery failure.
+const MAX_RECOVERY_REASON_CHARS: usize = 512;
 /// The gateway discovery record the seated controller publishes (W02.P04). The
 /// lifecycle plane READS it to classify the attach verdict; it never writes it.
 const DISCOVERY_FILE: &str = "gateway-discovery.json";
+
+fn bounded_recovery_reason(reason: String) -> String {
+    reason.chars().take(MAX_RECOVERY_REASON_CHARS).collect()
+}
 
 // --- typed wire operation (bounded enum; NO free-form path/arg) ---------------
 
@@ -873,18 +879,56 @@ impl LifecyclePlane {
             pid: discovery.pid,
         };
         if let Err(refusal) = quarantine_owner_matched_stale(&self.owner_id, &stale) {
-            drop(guard);
+            let release = guard.release().err();
+            let reason = match release {
+                Some(error) => format!(
+                    "stale quarantine refused: {refusal}; install lock cleanup incomplete: {error}"
+                ),
+                None => format!("stale quarantine refused: {refusal}"),
+            };
             return json!({
                 "action": "recover-stale",
-                "reason": format!("stale quarantine refused: {refusal}"),
+                "started": false,
+                "reason": bounded_recovery_reason(reason),
             });
         }
         // The stale discovery is owner-matched and proven dead: retract it, then
         // start fresh. The guard holds the install lock across the retract+start.
-        let _ = std::fs::remove_file(self.paths.app_home().join(DISCOVERY_FILE));
+        let discovery_path = self.paths.app_home().join(DISCOVERY_FILE);
+        match std::fs::remove_file(discovery_path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                let release = guard.release().err();
+                let reason = match release {
+                    Some(release_error) => format!(
+                        "stale discovery quarantine failed: {error}; install lock cleanup incomplete: {release_error}"
+                    ),
+                    None => format!("stale discovery quarantine failed: {error}"),
+                };
+                return json!({
+                    "action": "recover-stale",
+                    "started": false,
+                    "reason": bounded_recovery_reason(reason),
+                });
+            }
+        }
         let out = self.start_owned(receipt);
-        drop(guard);
-        out
+        match guard.release() {
+            Ok(()) => out,
+            Err(error) => {
+                let started = out.get("started").and_then(Value::as_bool).unwrap_or(false);
+                json!({
+                    "action": "recover-stale",
+                    "started": started,
+                    "degraded": true,
+                    "reason": bounded_recovery_reason(format!(
+                        "gateway start attempt completed but install lock cleanup is incomplete: {error}"
+                    )),
+                    "start_outcome": out,
+                })
+            }
+        }
     }
 
     /// Start the owned gateway from the active generation's verified capsule and
