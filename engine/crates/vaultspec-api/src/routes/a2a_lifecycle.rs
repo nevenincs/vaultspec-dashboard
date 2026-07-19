@@ -23,8 +23,8 @@
 //! two gates cannot be satisfied decoupled.
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 use axum::Json;
@@ -32,7 +32,6 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::sync::Arc;
 
 use vaultspec_product::credentials::CredentialStore;
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, ImmutableReason, Verdict};
@@ -40,6 +39,7 @@ use vaultspec_product::lifecycle::{AttachMode, LifecycleController};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
+use vaultspec_product::receipt::{Receipt, ReceiptError};
 
 use crate::app::AppState;
 
@@ -342,20 +342,19 @@ fn immutable_reason(reason: &ImmutableReason) -> &'static str {
     }
 }
 
-/// The honest agent-orchestration availability derived from product state under
-/// an app home, WITHOUT reading any credential secret (the tiers-block hot path,
-/// S29): a usable gateway (owned-live or foreign-attachable-live) is available;
-/// every other state degrades with a truthful, non-secret reason. Scope-
-/// independent (a2a is one machine-global resident).
-pub(crate) fn agent_availability_at(
-    paths: &ProductPaths,
-    owner_id: &str,
+/// Derive the honest agent availability from ALREADY-READ product state — a pure
+/// classifier so the read pass happens exactly once (review MEDIUM). A usable
+/// gateway (owned-live or foreign-attachable-live) is available; every other
+/// state degrades with a truthful, non-secret reason. No credential secret is
+/// read here.
+fn availability_from(
+    receipt: &std::result::Result<Option<Receipt>, ReceiptError>,
+    verdict: Option<&Verdict>,
 ) -> (bool, Option<String>) {
-    let Some(discovery) = read_gateway_discovery(paths) else {
-        // No live discovery. Distinguish installed-but-stopped (a valid cold
+    match verdict {
+        // No live discovery: distinguish installed-but-stopped (a valid cold
         // state) from genuinely not installed, and surface a receipt fault.
-        let controller = LifecycleController::new(paths.clone());
-        return match controller.active_receipt() {
+        None => match receipt {
             Ok(Some(_)) => (
                 false,
                 Some("a2a gateway installed but stopped (no live discovery)".to_string()),
@@ -365,57 +364,48 @@ pub(crate) fn agent_availability_at(
                 Some("a2a orchestration is not installed".to_string()),
             ),
             Err(e) => (false, Some(format!("a2a install state unverifiable: {e}"))),
-        };
-    };
-    match discovery.classify(&discovery_ctx(owner_id)) {
-        Verdict::OwnedLive | Verdict::ForeignAttachable => (true, None),
-        Verdict::OwnedStale => (
+        },
+        Some(Verdict::OwnedLive | Verdict::ForeignAttachable) => (true, None),
+        Some(Verdict::OwnedStale) => (
             false,
             Some("owned a2a gateway is stale (recorded process not alive)".to_string()),
         ),
-        Verdict::ForeignImmutable { reason } => (
+        Some(Verdict::ForeignImmutable { reason }) => (
             false,
             Some(format!(
                 "a foreign a2a gateway holds the runtime and stays immutable: {}",
-                immutable_reason(&reason)
+                immutable_reason(reason)
             )),
         ),
     }
 }
 
-/// Resolve the agent-orchestration tier MACHINE-GLOBALLY for the shared tiers
-/// builder (S29): every served response overlays this honest classification onto
-/// the degraded-by-default seed, so absence can never masquerade as availability.
-/// Derives the product paths from the machine app home (the same home the seated
-/// plane roots at); a path-resolution failure degrades honestly, never optimism.
-pub(crate) fn resolve_agent_tier() -> (bool, Option<String>) {
-    match ProductPaths::derive() {
-        Ok(paths) => {
-            let owner_id = paths.root().to_string_lossy().to_string();
-            agent_availability_at(&paths, &owner_id)
-        }
-        Err(e) => (false, Some(format!("a2a product paths unresolved: {e}"))),
+/// The readiness model from an already-read receipt + verdict (mirrors
+/// `LifecycleController::readiness` without re-reading the receipt file). A cold
+/// worker on a live gateway is still ready; an installed-but-stopped generation
+/// is a valid cold state, not a degradation.
+fn readiness_from(receipt: Option<&Receipt>, verdict: Option<&Verdict>) -> Readiness {
+    match receipt {
+        Some(_) if matches!(verdict, Some(Verdict::OwnedLive)) => Readiness::GatewayReady {
+            worker: WorkerState::Cold,
+        },
+        Some(_) => Readiness::InstalledStopped,
+        None => Readiness::Uninstalled,
     }
 }
 
-/// The component-handshake projection for a product state under an app home
-/// (S28): installed release set, owned-or-foreign gateway identity, protocol and
-/// state-schema ranges, and the one authenticated readiness model. No secret is
-/// ever projected (the attach token never appears). Shared by the seated plane
-/// and the machine-global handshake decoration.
-pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value {
-    let controller = LifecycleController::new(paths.clone());
-    let receipt = controller.active_receipt().ok().flatten();
-    let discovery = read_gateway_discovery(paths);
-    let verdict = discovery
-        .as_ref()
-        .map(|d| d.classify(&discovery_ctx(owner_id)));
-    let (available, reason) = agent_availability_at(paths, owner_id);
-    let readiness = controller.readiness(
-        matches!(verdict, Some(Verdict::OwnedLive)),
-        WorkerState::Cold,
-    );
-    let gateway = discovery.as_ref().map(|d| {
+/// Build the component-handshake projection (S28) from ALREADY-READ state: the
+/// installed release set, owned-or-foreign gateway identity, protocol and
+/// state-schema ranges, and the one readiness model. No secret is ever projected.
+fn handshake_value(
+    receipt: Option<&Receipt>,
+    discovery: Option<&GatewayDiscovery>,
+    verdict: Option<&Verdict>,
+    readiness: Readiness,
+    available: bool,
+    reason: Option<String>,
+) -> Value {
+    let gateway = discovery.map(|d| {
         json!({
             "endpoint": d.endpoint,
             "pid": d.pid,
@@ -436,7 +426,7 @@ pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value 
     });
     json!({
         "installed": receipt.is_some(),
-        "release_set": receipt.as_ref().map(|r| json!({
+        "release_set": receipt.map(|r| json!({
             "name": r.a2a_identity.name,
             "version": r.a2a_identity.version,
             "target": r.target.triple(),
@@ -459,21 +449,141 @@ pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value 
     })
 }
 
-/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration
-/// (S28): the same projection the seated plane serves, derived from the machine
-/// app home. A path-resolution failure degrades honestly.
-pub(crate) fn resolve_agent_handshake() -> Value {
-    match ProductPaths::derive() {
-        Ok(paths) => {
-            let owner_id = paths.root().to_string_lossy().to_string();
-            agent_handshake_at(&paths, &owner_id)
-        }
-        Err(e) => json!({
-            "installed": false,
-            "available": false,
-            "reason": format!("a2a product paths unresolved: {e}"),
-        }),
+/// The honest agent-orchestration availability derived from product state under
+/// an app home, WITHOUT reading any credential secret (S29). One receipt + one
+/// discovery read, then the pure classifier. Scope-independent (a2a is one
+/// machine-global resident). Used by the seated plane's own reads.
+pub(crate) fn agent_availability_at(
+    paths: &ProductPaths,
+    owner_id: &str,
+) -> (bool, Option<String>) {
+    let receipt = LifecycleController::new(paths.clone()).active_receipt();
+    let discovery = read_gateway_discovery(paths);
+    let verdict = discovery
+        .as_ref()
+        .map(|d| d.classify(&discovery_ctx(owner_id)));
+    availability_from(&receipt, verdict.as_ref())
+}
+
+/// The component-handshake projection for a product state under an app home
+/// (S28), reading the receipt and discovery ONCE. Used by the seated plane's own
+/// reads (`/status` facts); the per-response hot path goes through the memoized
+/// [`resolve_agent_snapshot`] instead.
+pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value {
+    let receipt = LifecycleController::new(paths.clone()).active_receipt();
+    let discovery = read_gateway_discovery(paths);
+    let verdict = discovery
+        .as_ref()
+        .map(|d| d.classify(&discovery_ctx(owner_id)));
+    let (available, reason) = availability_from(&receipt, verdict.as_ref());
+    let receipt = receipt.ok().flatten();
+    let readiness = readiness_from(receipt.as_ref(), verdict.as_ref());
+    handshake_value(
+        receipt.as_ref(),
+        discovery.as_ref(),
+        verdict.as_ref(),
+        readiness,
+        available,
+        reason,
+    )
+}
+
+/// One machine-global read pass of A2A product state (review MEDIUM): the agent
+/// tier AND the component handshake are BOTH derived from a single receipt +
+/// discovery read. Memoized on a short TTL so the per-response `tiers_value` hot
+/// path — which needs both — does not re-`derive` paths and re-read+parse the
+/// discovery/receipt files on every envelope.
+struct AgentSnapshot {
+    available: bool,
+    reason: Option<String>,
+    handshake: Value,
+}
+
+/// The memo lifetime. Deliberately far shorter than the discovery freshness
+/// window (`DISCOVERY_FRESHNESS`, 30s) so the memo caches the READS, never a
+/// stale verdict: a gateway going down still degrades the tier within this
+/// window on the next resolve.
+const AGENT_SNAPSHOT_TTL: Duration = Duration::from_millis(1000);
+
+fn agent_snapshot_cache() -> &'static RwLock<Option<(Instant, Arc<AgentSnapshot>)>> {
+    static CACHE: OnceLock<RwLock<Option<(Instant, Arc<AgentSnapshot>)>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(None))
+}
+
+/// Resolve the machine-global A2A snapshot, memoized for [`AGENT_SNAPSHOT_TTL`].
+/// A fresh cached snapshot is returned without touching the filesystem; a stale
+/// or absent one triggers exactly one read pass. Honesty is preserved: the memo
+/// holds the real classification for at most the TTL, never an optimistic verdict.
+fn resolve_agent_snapshot() -> Arc<AgentSnapshot> {
+    if let Some((at, snap)) = agent_snapshot_cache()
+        .read()
+        .unwrap_or_else(|e| e.into_inner())
+        .as_ref()
+        && at.elapsed() < AGENT_SNAPSHOT_TTL
+    {
+        return snap.clone();
     }
+    let snap = Arc::new(compute_agent_snapshot());
+    *agent_snapshot_cache()
+        .write()
+        .unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), snap.clone()));
+    snap
+}
+
+/// The single read pass behind the memo: derive the product paths once, read the
+/// receipt once and the discovery once, then build BOTH the agent availability
+/// and the component handshake from them. A path-resolution failure degrades
+/// honestly, never optimism.
+fn compute_agent_snapshot() -> AgentSnapshot {
+    let paths = match ProductPaths::derive() {
+        Ok(paths) => paths,
+        Err(e) => {
+            let reason = format!("a2a product paths unresolved: {e}");
+            return AgentSnapshot {
+                available: false,
+                reason: Some(reason.clone()),
+                handshake: json!({ "installed": false, "available": false, "reason": reason }),
+            };
+        }
+    };
+    let owner_id = paths.root().to_string_lossy().to_string();
+    let receipt = LifecycleController::new(paths.clone()).active_receipt();
+    let discovery = read_gateway_discovery(&paths);
+    let verdict = discovery
+        .as_ref()
+        .map(|d| d.classify(&discovery_ctx(&owner_id)));
+    let (available, reason) = availability_from(&receipt, verdict.as_ref());
+    let receipt = receipt.ok().flatten();
+    let readiness = readiness_from(receipt.as_ref(), verdict.as_ref());
+    let handshake = handshake_value(
+        receipt.as_ref(),
+        discovery.as_ref(),
+        verdict.as_ref(),
+        readiness,
+        available,
+        reason.clone(),
+    );
+    AgentSnapshot {
+        available,
+        reason,
+        handshake,
+    }
+}
+
+/// Resolve the agent-orchestration tier MACHINE-GLOBALLY for the shared tiers
+/// builder (S29): every served response overlays this honest classification onto
+/// the degraded-by-default seed, so absence can never masquerade as availability.
+/// Reads through the memoized snapshot so it shares one filesystem pass with the
+/// handshake decoration on the same response.
+pub(crate) fn resolve_agent_tier() -> (bool, Option<String>) {
+    let snap = resolve_agent_snapshot();
+    (snap.available, snap.reason.clone())
+}
+
+/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration
+/// (S28), sharing the memoized read pass with [`resolve_agent_tier`].
+pub(crate) fn resolve_agent_handshake() -> Value {
+    resolve_agent_snapshot().handshake.clone()
 }
 
 /// The resolved orchestration endpoint for the run edge (S30/S31), or the honest
