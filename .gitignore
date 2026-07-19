@@ -134,6 +134,8 @@ playwright-report/
 # README capture intermediates (curated copies live in docs/assets/)
 **/output/playwright/
 **/output/tech-review-assets/
+# Transient mobile review-capture screenshots (dev/review state, not code)
+**/output/mobile-review/
 
 # >>> vaultspec-managed (do not edit this block) >>>
 .vault/.obsidian/
