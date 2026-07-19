@@ -93,4 +93,7 @@ export const EXPECTED_AGENT_KEYS = [
   "common:agent.chip.label",
   "common:agent.chip.status.active",
   "common:agent.chip.status.cancelRequested",
+  "common:agent.pendingBridge.count_one",
+  "common:agent.pendingBridge.count_other",
+  "common:agent.pendingBridge.more",
 ] as const;

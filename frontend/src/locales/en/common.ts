@@ -395,6 +395,11 @@ export const common = {
         cancelRequested: "Stopping",
       },
     },
+    pendingBridge: {
+      count_one: "{{count, number}} other pending change",
+      count_other: "{{count, number}} other pending changes",
+      more: "More pending changes",
+    },
   },
   palette: {
     commandCount_one: "{{count, number}} command",

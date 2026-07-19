@@ -1032,6 +1032,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       !/^common:finalWave\.work\.progress_(?:one|other)$/u.test(key) &&
       !/^common:finalWave\.pipeline\.statusCount_(?:one|other)$/u.test(key) &&
       !/^common:agent\.composer\.commentBatch_(?:one|other)$/u.test(key) &&
+      !/^common:agent\.pendingBridge\.count_(?:one|other)$/u.test(key) &&
       !/^documents:localizationWave\.plan\.(?:completion|phaseCount|stepCount|waveCount)_(?:one|other)$/u.test(
         key,
       ) &&
@@ -1043,6 +1044,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       ),
   ),
   "common:agent.composer.commentBatch",
+  "common:agent.pendingBridge.count",
   "common:commandPalette.selectionAnnouncement",
   "common:finalWave.pipeline.statusCount",
   "common:finalWave.work.progress",
@@ -1150,6 +1152,7 @@ describe("shipped localization catalog keys", () => {
       "common:commandPalette.selectionAnnouncement",
       "common:searchPalette.counts.results",
       "common:agent.composer.commentBatch",
+      "common:agent.pendingBridge.count",
       "common:palette.commandCount",
       "common:finalWave.pipeline.statusCount",
       "common:finalWave.work.progress",

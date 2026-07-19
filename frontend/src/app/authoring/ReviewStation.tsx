@@ -20,8 +20,6 @@ import {
   useApplyChangeset,
   useCreateRollback,
   useReviewDecision,
-  useReviewStationView,
-  useSetOperationMode,
   useSubmitForReview,
   type ActionEligibility,
   type AppliedUnderPolicyProjection,
@@ -815,29 +813,6 @@ export function AutonomyControl({
           {feedbackMessage}
         </p>
       )}
-    </div>
-  );
-}
-
-export function ReviewStationSection() {
-  const view = useReviewStationView();
-  const actions = useReviewActions();
-  const setMode = useSetOperationMode();
-  // No identity affordance: provenance is ambient (ADR D5). The review actions
-  // mint the actor token transparently on first use, so the queue renders and
-  // every decision is reachable with zero prior editing and no sign-in surface.
-  return (
-    <div className="flex flex-col gap-fg-3 text-body" data-review-station>
-      {/* The autonomy control renders only when the wire carries a served mode:
-          the mode is observable only through a proposal's policy (no scope-level
-          mode read exists), so an empty queue shows no control. */}
-      {view.operationMode !== null && (
-        <AutonomyControl
-          mode={view.operationMode}
-          onSelect={(mode) => setMode.mutateAsync(mode)}
-        />
-      )}
-      <ReviewStationBody view={view} actions={actions} />
     </div>
   );
 }
