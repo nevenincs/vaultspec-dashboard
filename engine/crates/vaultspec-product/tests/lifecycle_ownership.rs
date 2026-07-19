@@ -19,11 +19,16 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
+use vaultspec_product::control::ControlClient;
+use vaultspec_product::credentials::CredentialStore;
+use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, Verdict};
 use vaultspec_product::lifecycle::{LifecycleController, plan_transition};
-use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, ReleaseIdentity, Target};
+use vaultspec_product::manifest::{
+    CapsuleManifest, ComponentLock, RangeBounds, ReleaseIdentity, Target,
+};
 use vaultspec_product::paths::ProductPaths;
-use vaultspec_product::process::{GatewaySpec, spawn_gateway};
-use vaultspec_product::protocol::{LifecycleOp, Readiness, WorkerState};
+use vaultspec_product::process::{GatewaySpec, ResolvedProgram, spawn_gateway};
+use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
 use vaultspec_product::receipt::{Channel, Receipt};
 
 const LOCK_JSON: &str = include_str!("../../../../packaging/a2a-component.lock.json");
@@ -104,6 +109,16 @@ fn sha256_hex(bytes: &[u8]) -> String {
     out
 }
 
+/// The capsule-relative path segments of the bundled interpreter under the
+/// extraction root, per platform.
+fn python_segments() -> &'static [&'static str] {
+    if cfg!(windows) {
+        &["python", "python.exe"]
+    } else {
+        &["python", "bin", "python3"]
+    }
+}
+
 /// Extract the capsule's bundled CPython runtime (the `assets/python-runtime`
 /// gzip tar) into `dest`, returning the path to its real interpreter.
 fn extract_bundled_python(zip_path: &Path, dest: &Path) -> PathBuf {
@@ -111,11 +126,11 @@ fn extract_bundled_python(zip_path: &Path, dest: &Path) -> PathBuf {
     let decoder = flate2::read::GzDecoder::new(&gz_bytes[..]);
     let mut archive = tar::Archive::new(decoder);
     archive.unpack(dest).expect("unpack bundled python runtime");
-    if cfg!(windows) {
-        dest.join("python").join("python.exe")
-    } else {
-        dest.join("python").join("bin").join("python3")
+    let mut p = dest.to_path_buf();
+    for seg in python_segments() {
+        p.push(seg);
     }
+    p
 }
 
 #[test]
@@ -225,7 +240,12 @@ home.joinpath('gateway.ready').write_text('ready')\n\
 end = time.time() + 30\n\
 while time.time() < end:\n    time.sleep(0.1)\n";
 
-    let spec = GatewaySpec::new(&python, vec!["-c".into(), gateway_script.into()])
+    // Resolve the interpreter as a capsule-relative program (no free-form path):
+    // the launch program is proven to live under the generation tree.
+    let program = ResolvedProgram::from_capsule_relative(&gen_dir, python_segments())
+        .expect("capsule-relative interpreter resolves");
+    assert_eq!(program.path(), python);
+    let spec = GatewaySpec::from_resolved(program, vec!["-c".into(), gateway_script.into()])
         .with_env("GW_APPHOME", paths.app_home());
     let mut gateway = spawn_gateway(&spec).expect("launch the real gateway process");
 
@@ -370,4 +390,131 @@ fn wait_for(path: &Path, budget: Duration) -> bool {
         std::thread::sleep(Duration::from_millis(25));
     }
     false
+}
+
+/// Stand up a real loopback HTTP gateway stub that answers `/shutdown` 204 only
+/// when the ownership-capability header is present, else 401. Returns the bound
+/// endpoint. Serves one connection. (Not capsule-gated; runs everywhere.)
+fn spawn_shutdown_stub(ownership_secret: String) -> String {
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("127.0.0.1:{}", listener.local_addr().unwrap().port());
+    std::thread::spawn(move || {
+        if let Ok((mut sock, _)) = listener.accept() {
+            let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+            let mut buf = [0u8; 2048];
+            let n = sock.read(&mut buf).unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]);
+            let has_ownership =
+                req.contains(&format!("X-Ownership-Capability: {ownership_secret}"));
+            let resp = if has_ownership {
+                "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
+            } else {
+                "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n"
+            };
+            let _ = sock.write_all(resp.as_bytes());
+        }
+    });
+    endpoint
+}
+
+/// The combined mutation gate (P02 review fold-in): a mutating control call is
+/// reached ONLY when the discovery verdict is our owned live gateway AND the
+/// caller presents the ownership capability. Proven with real credential files,
+/// a real process identity (our own live pid for the owned verdict), and a real
+/// loopback socket for the control call. Not capsule-gated — always runs.
+#[test]
+fn mutating_control_requires_owned_attach_and_ownership() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(home.path());
+    paths.ensure().unwrap();
+    let ctrl = LifecycleController::new(paths.clone());
+
+    // Real ownership + attach-control credentials and an active receipt.
+    let store = CredentialStore::new(paths.credentials_dir());
+    let creds = store.bootstrap().unwrap();
+    Receipt::bootstrap(
+        Channel::SelfInstall,
+        Target::X86_64PcWindowsMsvc,
+        ReleaseIdentity {
+            name: "vaultspec-a2a".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        "g0",
+        1,
+    )
+    .persist(&paths.receipt_path())
+    .unwrap();
+
+    let ctx = DiscoveryContext {
+        our_owner: "seat-o".to_string(),
+        now_ms: 1_500,
+        freshness_ms: 30_000,
+        supported_protocol: RangeBounds {
+            minimum: "v1".to_string(),
+            maximum: "v1".to_string(),
+        },
+        supported_state_schema: RangeBounds {
+            minimum: "0001".to_string(),
+            maximum: "0009".to_string(),
+        },
+    };
+    let handoff = creds_reference(&store);
+    let owned = discovery_verdict("seat-o", &handoff, &ctx);
+    assert_eq!(owned, Verdict::OwnedLive);
+    let foreign = discovery_verdict("someone-else", &handoff, &ctx);
+    assert_eq!(foreign, Verdict::ForeignAttachable);
+
+    // BOTH gates hold -> the mutation is allowed.
+    assert!(
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), &owned)
+            .is_ok()
+    );
+    // Owned gateway but NO ownership capability -> refused (authority gate).
+    assert_eq!(
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, None, &owned),
+        Err(Refusal::NotOwner)
+    );
+    // Ownership held but a FOREIGN (read-only) gateway -> refused (attach gate).
+    assert_eq!(
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), &foreign),
+        Err(Refusal::ForeignResident)
+    );
+
+    // Past the gate, the real control call carries the ownership capability to
+    // the real gateway socket and settles; without it the gateway rejects it.
+    let endpoint = spawn_shutdown_stub(creds.ownership.secret().to_string());
+    let client = ControlClient::new(&endpoint, creds.attach_control.secret());
+    ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), &owned)
+        .expect("gate passes");
+    client
+        .shutdown(&creds.ownership)
+        .expect("gated shutdown settles over the real socket");
+}
+
+/// Build a discovery verdict for a given owner using this live process's pid, a
+/// present handoff file, and a fresh compatible record. Owner == ctx owner
+/// classifies owned; a different owner with a readable handoff classifies
+/// foreign-attachable.
+fn discovery_verdict(owner: &str, handoff: &Path, ctx: &DiscoveryContext) -> Verdict {
+    let raw = serde_json::json!({
+        "endpoint": "127.0.0.1:1",
+        "pid": std::process::id(),
+        "owner": owner,
+        "install_identity": "install-1",
+        "generation": "g0",
+        "release_set": { "name": "vaultspec-a2a", "version": "0.1.0", "target": "x86_64-pc-windows-msvc" },
+        "protocol": { "minimum": "v1", "maximum": "v1" },
+        "state_schema": { "minimum": "0001", "maximum": "0009" },
+        "handoff_reference": handoff.to_string_lossy(),
+        "heartbeat_ms": 1_000
+    })
+    .to_string();
+    GatewayDiscovery::parse(&raw).unwrap().classify(ctx)
+}
+
+/// The attach-control credential file path (a present, readable handoff).
+fn creds_reference(store: &CredentialStore) -> PathBuf {
+    store.attach_control_reference()
 }

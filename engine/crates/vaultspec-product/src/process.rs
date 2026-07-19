@@ -24,15 +24,85 @@ use std::time::{Duration, Instant};
 
 use crate::manifest::{CapsuleManifest, Result as ManifestResult};
 
-/// A validated gateway launch specification: the resolved program path plus its
-/// arguments and environment. The production path constructs this only from the
-/// manifest ([`GatewaySpec::from_manifest`]); no free-form command reaches the
-/// spawner.
+/// A launch program path proven to have been resolved through capsule-aware
+/// validation — either the manifest's declared gateway entrypoint or an
+/// explicitly validated capsule-relative binary. A [`GatewaySpec`] with a
+/// caller-supplied program can be built ONLY from one of these, so no external
+/// caller can spawn a free-form arbitrary program path (P02 review: "spawn only
+/// the manifest-declared entrypoint"). The free-form constructor is crate-private
+/// and test-only.
 #[derive(Debug, Clone)]
+pub struct ResolvedProgram(PathBuf);
+
+impl ResolvedProgram {
+    /// Resolve a capsule-relative binary by validated path segments under a
+    /// capsule root. Each segment is rejected if empty, `.`/`..`, or bearing a
+    /// path separator, so the result can never escape the capsule — the same
+    /// discipline [`LaunchEntrypoint::resolve_program`] applies. This is the seam
+    /// for launching a bundled runtime the capsule contains (e.g. its own
+    /// interpreter) rather than an installed console script.
+    pub fn from_capsule_relative(capsule_root: &Path, segments: &[&str]) -> ManifestResult<Self> {
+        if segments.is_empty() {
+            return Err(crate::manifest::ManifestError::IdentityMismatch {
+                detail: "capsule-relative program has no path segments".to_string(),
+            });
+        }
+        let mut path = capsule_root.to_path_buf();
+        for seg in segments {
+            let ok = !seg.is_empty()
+                && *seg != "."
+                && *seg != ".."
+                && !seg.contains('/')
+                && !seg.contains('\\');
+            if !ok {
+                return Err(crate::manifest::ManifestError::IdentityMismatch {
+                    detail: format!(
+                        "capsule-relative segment {seg:?} is not a portable path segment"
+                    ),
+                });
+            }
+            path.push(seg);
+        }
+        Ok(Self(path))
+    }
+
+    /// The resolved program path.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Wrap an already-validated path from the manifest entrypoint resolver.
+    pub(crate) fn from_validated(path: PathBuf) -> Self {
+        Self(path)
+    }
+}
+
+/// A validated gateway launch specification: the resolved program path plus its
+/// arguments and environment. Public construction goes only through
+/// [`GatewaySpec::from_manifest`] or [`GatewaySpec::from_resolved`] (which
+/// requires a [`ResolvedProgram`]); no free-form command reaches the spawner from
+/// outside the crate.
+#[derive(Clone)]
 pub struct GatewaySpec {
     program: PathBuf,
     args: Vec<std::ffi::OsString>,
     envs: Vec<(std::ffi::OsString, std::ffi::OsString)>,
+}
+
+impl std::fmt::Debug for GatewaySpec {
+    /// Redact environment VALUES: a gateway env may carry credential-file
+    /// references or other sensitive material, so `{:?}` shows only the env keys
+    /// (P02 review defensive redaction; same class as `Credential`'s Debug).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let env_keys: Vec<&std::ffi::OsString> = self.envs.iter().map(|(k, _)| k).collect();
+        f.debug_struct("GatewaySpec")
+            .field("program", &self.program)
+            .field("args", &self.args)
+            .field("env_keys", &env_keys)
+            .field("env_values", &"<redacted>")
+            .finish()
+    }
 }
 
 impl GatewaySpec {
@@ -40,31 +110,38 @@ impl GatewaySpec {
     /// entrypoint under a capsule root. The `relative_command` segments are
     /// validated (no traversal, no separators) before they join the root, so a
     /// malformed manifest cannot point the launch outside the capsule. This is
-    /// the ONLY production constructor — the dashboard never launches an
-    /// arbitrary command.
+    /// the production constructor — the dashboard never launches an arbitrary
+    /// command.
     pub fn from_manifest(capsule_root: &Path, manifest: &CapsuleManifest) -> ManifestResult<Self> {
         let program = manifest.entrypoints.gateway.resolve_program(capsule_root)?;
-        Ok(Self {
-            program,
-            args: Vec::new(),
-            envs: Vec::new(),
-        })
+        Ok(Self::from_resolved(
+            ResolvedProgram::from_validated(program),
+            Vec::new(),
+        ))
     }
 
-    /// Construct a spec directly from an ALREADY-RESOLVED program and arguments.
-    /// Used by the update path (which resolves the staged generation's gateway
-    /// program) and by tests that spawn a real controllable process — never with a
-    /// client-supplied raw path. `from_manifest` is the sanctioned launch path.
-    ///
-    /// FOLLOW-UP (W01.P02 review SHOULD-FIX 2, tracked to W01.P03): narrow this to
-    /// `pub(crate)` — or gate it behind a marker proving the path came through
-    /// `LaunchEntrypoint::resolve_program` — once W01.P03 wires the first real
-    /// dashboard/CLI consumer. It is not narrowed yet because the S18 integration
-    /// test (a separate crate) legitimately constructs an arbitrary program to
-    /// launch the capsule's own bundled interpreter, and no production caller of
-    /// `new` exists to abuse it before P03 lands one.
+    /// Build a spec from a [`ResolvedProgram`] plus arguments. The program path is
+    /// proven capsule-resolved, so this cannot introduce a free-form program; the
+    /// arguments are execution parameters. Used by the update path (which resolves
+    /// the staged generation's gateway program) and by acceptance tests that
+    /// launch the capsule's own bundled runtime.
     #[must_use]
-    pub fn new(program: impl Into<PathBuf>, args: Vec<std::ffi::OsString>) -> Self {
+    pub fn from_resolved(program: ResolvedProgram, args: Vec<std::ffi::OsString>) -> Self {
+        Self {
+            program: program.0,
+            args,
+            envs: Vec::new(),
+        }
+    }
+
+    /// Crate-private free-form constructor for in-crate unit tests that must spawn
+    /// a controllable non-capsule process (e.g. the test binary itself). NOT
+    /// public: an external caller cannot bypass manifest/capsule resolution.
+    #[cfg(test)]
+    pub(crate) fn from_program_unchecked(
+        program: impl Into<PathBuf>,
+        args: Vec<std::ffi::OsString>,
+    ) -> Self {
         Self {
             program: program.into(),
             args,
@@ -257,7 +334,7 @@ mod tests {
 
     fn sleeper_spec(pidfile: &Path, grandchild_pidfile: Option<&Path>) -> GatewaySpec {
         let exe = std::env::current_exe().unwrap();
-        let mut spec = GatewaySpec::new(
+        let mut spec = GatewaySpec::from_program_unchecked(
             exe,
             ["gateway_sleeper_process", "--nocapture", "--test-threads=1"]
                 .iter()

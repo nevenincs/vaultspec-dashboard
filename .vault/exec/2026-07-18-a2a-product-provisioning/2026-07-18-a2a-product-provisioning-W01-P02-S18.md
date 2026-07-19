@@ -68,6 +68,16 @@ related:
   stop; assert remove preserves data unless typed; assert repair restores an
   immutable file without touching mutable data.
 
+- Fold in the P02-review coverage gap: add `LifecycleController::guard_owned_mutation`
+  composing the two previously-decoupled gates, and an acceptance test proving a
+  mutating control call is reached only when the discovery verdict is our owned
+  live gateway AND the caller presents the ownership capability — with real
+  credential files, a real process identity, and a real loopback control socket.
+- Apply the P02-review revisions in the same crate: redact env values in
+  `GatewaySpec`'s hand-written `Debug`, and narrow the free-form `GatewaySpec`
+  constructor behind a `ResolvedProgram` marker (public `from_resolved` requires a
+  capsule-resolved program; the arbitrary constructor is crate-private, test-only).
+
 ## Outcome
 
 Against the real `x86_64-pc-windows-msvc` capsule the manifest verifies against
@@ -76,7 +86,10 @@ from the capsule's bundled CPython 3.13.5 is stopped and its worker descendant
 cleaned up within the graceful bound (force-killed, no orphan); mutable user data
 survives stop and untyped removal and is cleared only on typed removal; repair
 restores a corrupted immutable file from pristine capsule bytes without touching
-data. All three proofs pass; with no capsule they skip-with-reason.
+data. The combined owned+ownership gate admits a mutation only when both gates
+hold and refuses an owned-without-ownership or a foreign-with-ownership call. All
+proofs pass; with no capsule the capsule-bound ones skip-with-reason while the
+combined-gate proof always runs.
 
 ## Notes
 

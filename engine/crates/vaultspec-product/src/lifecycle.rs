@@ -122,6 +122,35 @@ impl LifecycleController {
         Ok(())
     }
 
+    /// Guard a MUTATING control call before it reaches the gateway. Both gates
+    /// must hold, composed here so no mutation path can satisfy only one (P02
+    /// review: `resolve_attach` and `authorize` were decoupled pure functions
+    /// with nothing composing them):
+    ///
+    /// 1. the discovery verdict must classify the gateway as OUR owned, live
+    ///    gateway (`resolve_attach` == `Owned`) — a foreign-attachable gateway is
+    ///    read-only and can never be mutated (ADR D4);
+    /// 2. the caller must present the receipt-bound ownership capability
+    ///    (`authorize`) — the attach credential alone is insufficient (ADR D5).
+    ///
+    /// A `control.rs` mutation (stop/repair/update/rollback/remove) must pass
+    /// through this before it is issued.
+    pub fn guard_owned_mutation(
+        &self,
+        op: LifecycleOp,
+        ownership: Option<&Credential>,
+        verdict: &crate::discovery::Verdict,
+    ) -> std::result::Result<(), Refusal> {
+        // Attach gate: only our OWNED live gateway is mutable; a read-only
+        // foreign attach (or any non-owned verdict) is refused for a mutation.
+        match resolve_attach(verdict)? {
+            AttachMode::Owned => {}
+            AttachMode::ForeignReadOnly => return Err(Refusal::ForeignResident),
+        }
+        // Authority gate: active receipt + receipt-bound ownership capability.
+        self.authorize(op, ownership)
+    }
+
     /// Load and verify the capsule manifest in one step, so a lifecycle consumer
     /// never holds a capsule that parsed but was not joined to the lock's pins
     /// (P01 review fold-in — uses `CapsuleManifest::parse_and_verify`).
