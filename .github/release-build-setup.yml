@@ -1,7 +1,32 @@
 # Injected into every dist build job (engine/dist-workspace.toml
 # `github-build-setup`): the release binary is built with the embed-spa
-# feature, which compiles frontend/dist into the executable — so the SPA
+# feature, which compiles frontend/dist into the executable - so the SPA
 # production bundle must exist before cargo runs (dashboard-packaging D2).
+- name: Ensure WiX Toolset is on PATH (MSI build, Windows only)
+  if: runner.os == 'Windows'
+  shell: pwsh
+  run: |
+    # WiX v3 is pre-installed on windows-2022 hosted runners and typically on
+    # developer workstations. Ensure candle.exe is reachable before dist runs;
+    # self-hosted runners may have WiX installed but not on PATH.
+    if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+      $candidates = @(
+        'C:\Program Files (x86)\WiX Toolset v3.14\bin',
+        'C:\Program Files (x86)\WiX Toolset v3.11\bin'
+      )
+      $found = $false
+      foreach ($dir in $candidates) {
+        if (Test-Path "$dir\candle.exe") {
+          "$dir" | Out-File -FilePath $Env:GITHUB_PATH -Encoding utf8 -Append
+          Write-Host "WiX found at $dir — added to PATH"
+          $found = $true
+          break
+        }
+      }
+      if (-not $found) {
+        Write-Warning "WiX Toolset not found at known paths — MSI artifact will not be produced"
+      }
+    }
 - name: Install Node
   uses: actions/setup-node@v4
   with:

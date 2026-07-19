@@ -45,13 +45,15 @@ graph context.*
 
 *Review current open plans and search-service state from the running workspace.*
 
+## Project layout
+
 ### Project responsibilities
 
-| Project                                                                           | Responsibility                                                                                                                                            |
-| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [vaultspec-core](https://github.com/nevenincs/vaultspec-core/blob/main/README.md) | Governs the workflow and `.vault/` record. Owns validation, command-line and Model Context Protocol surfaces, and authoritative document materialization. |
-| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag/blob/main/README.md)   | Provides optional retrieval-augmented generation (RAG). Indexes vault documents and source code, then retrieves both by meaning.                          |
-| **vaultspec-dashboard**                                                           | Owns the `vaultspec` binary, visual workspace, application programming interface (API), session state, and governed review experience.                    |
+| Project                                                                           | Responsibility                                                                                                                                                  |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [vaultspec-core](https://github.com/nevenincs/vaultspec-core/blob/main/README.md) | Governs the workflow and `.vault/` record. Owns validation, command-line and Model Context Protocol (MCP) surfaces, and authoritative document materialization. |
+| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag/blob/main/README.md)   | Provides optional retrieval-augmented generation (RAG). Indexes vault documents and source code, then retrieves both by meaning.                                |
+| **vaultspec-dashboard**                                                           | Owns the `vaultspec` binary, visual workspace, application programming interface (API), session state, and governed review experience.                          |
 
 The dashboard delegates governed writes to core and semantic retrieval to RAG. It uses the
 core command-line interface, RAG's local service API for reads, and bounded RAG commands for
@@ -90,6 +92,11 @@ and x64, and Windows on x64.
 The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.
 
+> **Note:** v0.1.3 and v0.1.4 were tagged without binary assets - they are being
+> republished. Until the next release restores them, all script installers, the Windows
+> zip, and direct downloads resolve nothing newer than v0.1.2. Scoop explicitly tracks
+> v0.1.2. See [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases).
+
 **Shell script** (macOS and Linux):
 
 ```sh
@@ -102,9 +109,12 @@ curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-das
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.ps1 | iex"
 ```
 
-**MSI installer** (Windows): download `vaultspec-cli-x86_64-pc-windows-msvc.msi` from the
-[latest release](https://github.com/nevenincs/vaultspec-dashboard/releases/latest) and
-run it. The installer adds `vaultspec` to `PATH` and registers a Start-Menu shortcut.
+**MSI installer** (Windows): the MSI channel is configured and the template has been
+verified locally, but no release has shipped the artifact yet - v0.1.3 and v0.1.4
+predated the config addition, and v0.1.4 produced no assets. The `.msi` will appear
+under [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) from the
+next release onward. Until then, use the PowerShell script or direct zip download for
+Windows installation.
 
 **Scoop** (Windows):
 
@@ -116,19 +126,15 @@ scoop install vaultspec/vaultspec
 The `bucket/` directory in this repository is a self-hosted Scoop bucket. Run
 `scoop update vaultspec` to upgrade after a new release lands.
 
-> **Note:** v0.1.3 and v0.1.4 were tagged without binary assets — they are being
-> republished and assets will be restored in the next release. Until then, Scoop
-> resolves v0.1.2, the last fully published build.
-
 **Direct binary download**: every release publishes platform-specific archives and a
 unified `sha256.sum` checksum file under
 [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases/latest).
 Unpack the archive for your platform and place the binary on your `PATH`.
 
 > **Note on code signing:** the installers, MSI, and binary archives are currently
-> unsigned. macOS Gatekeeper will quarantine the binary on first run — right-click the
+> unsigned. macOS Gatekeeper will quarantine the binary on first run - right-click the
 > binary, choose **Open**, and confirm the override prompt. Windows SmartScreen may show
-> an "Unknown publisher" warning — click **More info** then **Run anyway** to proceed.
+> an "Unknown publisher" warning - click **More info** then **Run anyway** to proceed.
 
 Confirm the installation:
 
