@@ -89,20 +89,44 @@ against this worktree. Its lifecycle fields may be newer than the latest release
 vaultspec-dashboard supports macOS on Apple silicon and Intel, glibc-based Linux on arm64
 and x64, and Windows on x64.
 
-The following route targets the latest published GitHub Release. Development on `main` may
+The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.
 
-On macOS or Linux:
+**Shell script** (macOS and Linux):
 
 ```sh
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.sh | sh
 ```
 
-On Windows PowerShell:
+**PowerShell script** (Windows):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.ps1 | iex"
 ```
+
+**MSI installer** (Windows): download `vaultspec-cli-x86_64-pc-windows-msvc.msi` from the
+[latest release](https://github.com/nevenincs/vaultspec-dashboard/releases/latest) and
+run it. The installer adds `vaultspec` to `PATH` and registers a Start-Menu shortcut.
+
+**Scoop** (Windows):
+
+```console
+scoop bucket add vaultspec https://github.com/nevenincs/vaultspec-dashboard
+scoop install vaultspec/vaultspec
+```
+
+The `bucket/` directory in this repository is a self-hosted Scoop bucket. Run
+`scoop update vaultspec` to upgrade after a new release lands.
+
+**Direct binary download**: every release publishes platform-specific archives and a
+unified `sha256.sum` checksum file under
+[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases/latest).
+Unpack the archive for your platform and place the binary on your `PATH`.
+
+> **Note on code signing:** the installers, MSI, and binary archives are currently
+> unsigned. macOS Gatekeeper will quarantine the binary on first run — right-click the
+> binary, choose **Open**, and confirm the override prompt. Windows SmartScreen may show
+> an "Unknown publisher" warning — click **More info** then **Run anyway** to proceed.
 
 Confirm the installation:
 
