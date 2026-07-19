@@ -21,7 +21,8 @@ import {
   resetAuthoringStreamCursor,
 } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
-import { useAgentPanel } from "../../stores/view/agentPanel";
+import { a2aKeys, type ActiveRunsResult } from "../../stores/server/agent/a2aTeam";
+import { setAgentTeamRun, useAgentPanel } from "../../stores/view/agentPanel";
 import { AgentPanel } from "./AgentPanel";
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -44,11 +45,12 @@ afterEach(() => {
   resetStore();
 });
 
-function renderPanel() {
-  const runtime = createTestLocalizationRuntime();
-  const queryClient = new QueryClient({
+function renderPanel(
+  queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
-  });
+  }),
+) {
+  const runtime = createTestLocalizationRuntime();
   return render(
     <I18nextProvider i18n={runtime}>
       <QueryClientProvider client={queryClient}>
@@ -108,6 +110,48 @@ describe("AgentPanel mount gating", () => {
 });
 
 describe("AgentPanel transcript states", () => {
+  it("never renders an A-bound team run after scope B is active", async () => {
+    const scope = await liveScope();
+    useAgentPanel.setState({
+      open: true,
+      currentSessionId: null,
+      teamRunId: "run-from-a",
+      teamRunPrompt: "A prompt",
+      teamRunScope: `${scope}-other`,
+    });
+    renderPanel();
+    expect(document.querySelector("[data-team-run]")).toBeNull();
+    await waitFor(() => expect(useAgentPanel.getState().teamRunId).toBeNull());
+  });
+
+  it("consumes a recovered discovery snapshot before a dismissed run can rebind", async () => {
+    const scope = await liveScope();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const key = a2aKeys.activeRuns(scope);
+    const discovery: ActiveRunsResult = {
+      state: "active",
+      runs: [{ run_id: "run-recovered", status: "running" }],
+      truncated: false,
+      contractValid: true,
+    };
+    queryClient.setQueryData(key, discovery);
+    useAgentPanel.setState({ open: true, currentSessionId: null });
+    renderPanel(queryClient);
+    await waitFor(() =>
+      expect(useAgentPanel.getState().teamRunId).toBe("run-recovered"),
+    );
+    expect(queryClient.getQueryData(key)).toBeUndefined();
+
+    setAgentTeamRun(null);
+    await waitFor(
+      () => expect(queryClient.getQueryState(key)?.fetchStatus).toBe("idle"),
+      { timeout: 10_000 },
+    );
+    expect(useAgentPanel.getState().teamRunId).toBeNull();
+  });
+
   it("shows the no-session empty state when no session is current", () => {
     useAgentPanel.setState({ open: true, currentSessionId: null });
     renderPanel();

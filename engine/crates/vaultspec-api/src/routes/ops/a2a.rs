@@ -359,12 +359,7 @@ fn validate_expected_scope(
             format!("{verb} requires an `expected_scope` generation fence"),
         )
     })?;
-    let expected = validate_bounded_text(
-        state,
-        "expected_scope",
-        expected,
-        MAX_A2A_SCOPE_CHARS,
-    )?;
+    let expected = validate_bounded_text(state, "expected_scope", expected, MAX_A2A_SCOPE_CHARS)?;
     let actual = cell.root.to_string_lossy();
     if expected != actual {
         return Err(super::super::api_error(

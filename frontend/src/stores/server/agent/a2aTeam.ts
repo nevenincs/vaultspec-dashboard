@@ -235,6 +235,7 @@ export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
   });
   if (
     pass.siblingStatus !== undefined ||
+    !readAgentTierAvailability(pass.tiers).available ||
     !isRec(env) ||
     env.api_version !== "v1" ||
     env.state !== "active" ||
@@ -254,13 +255,20 @@ export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
   const runs: ActiveTeamRun[] = [];
   for (const raw of env.runs) {
     if (!isRec(raw)) return invalid();
-    const run_id = boundedToken(raw.run_id, 128);
+    const run_id =
+      typeof raw.run_id === "string" &&
+      raw.run_id.length > 0 &&
+      raw.run_id.length <= 128 &&
+      /^[A-Za-z0-9_][A-Za-z0-9_-]*$/.test(raw.run_id)
+        ? raw.run_id
+        : undefined;
     const status = boundedToken(raw.status, 64);
     const feature_tag =
       raw.feature_tag === undefined || raw.feature_tag === null
         ? undefined
         : boundedToken(raw.feature_tag, 128);
-    if (!run_id || !status || (raw.feature_tag != null && !feature_tag)) return invalid();
+    if (!run_id || !status || (raw.feature_tag != null && !feature_tag))
+      return invalid();
     runs.push({ run_id, status, feature_tag });
   }
   return {
@@ -278,7 +286,8 @@ export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
 export function recoverableActiveRunId(
   result: ActiveRunsResult | undefined,
 ): string | null {
-  if (!result?.contractValid || result.truncated || result.runs.length !== 1) return null;
+  if (!result?.contractValid || result.truncated || result.runs.length !== 1)
+    return null;
   return result.runs[0]?.run_id ?? null;
 }
 

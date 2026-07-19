@@ -15,6 +15,7 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
@@ -23,6 +24,7 @@ import {
   useSessionList,
 } from "../../stores/server/agent";
 import {
+  a2aKeys,
   recoverableActiveRunId,
   useActiveTeamRuns,
 } from "../../stores/server/agent/a2aTeam";
@@ -36,6 +38,7 @@ import {
   setAgentPanelView,
   setAgentCurrentSession,
   setAgentTeamRun,
+  scopedTeamRunId,
   teamRunScopeAction,
   useAgentCurrentSessionId,
   useAgentPanelOpen,
@@ -206,7 +209,10 @@ function AgentTranscriptContainer({
   // A team run renders independently of a single-agent session (the two planes are
   // distinct); it may be active with no session at all. So the session branching
   // only decides the SESSION body, and the team-run block mounts alongside it.
-  const teamRunId = useAgentTeamRunId();
+  const scope = useActiveScope();
+  const storedTeamRunId = useAgentTeamRunId();
+  const teamRunScope = useAgentTeamRunScope();
+  const teamRunId = scopedTeamRunId(storedTeamRunId, teamRunScope, scope);
 
   let body: ReactNode;
   if (currentSessionId === null) {
@@ -314,13 +320,15 @@ function useRecoverActiveTeamRun(
   open: boolean,
   panelView: "transcript" | "pending",
 ): void {
+  const queryClient = useQueryClient();
   const scope = useActiveScope();
   const teamRunId = useAgentTeamRunId();
   const teamRunPrompt = useAgentTeamRunPrompt();
   const teamRunScope = useAgentTeamRunScope();
   const needRecovery = open && panelView === "transcript" && teamRunId === null;
   const active = useActiveTeamRuns(scope, { enabled: needRecovery });
-  const recoverableRunId = recoverableActiveRunId(active.data);
+  const recoverableRunId =
+    active.isSuccess && !active.isFetching ? recoverableActiveRunId(active.data) : null;
 
   // A local start predating scope-aware bindings is stamped with the current
   // served scope. A genuinely cross-scope binding is cleared before the next
@@ -338,7 +346,8 @@ function useRecoverActiveTeamRun(
   useEffect(() => {
     if (!needRecovery || scope === null || recoverableRunId === null) return;
     setAgentTeamRun({ runId: recoverableRunId, prompt: null, scope });
-  }, [needRecovery, recoverableRunId, scope]);
+    queryClient.removeQueries({ queryKey: a2aKeys.activeRuns(scope), exact: true });
+  }, [needRecovery, queryClient, recoverableRunId, scope]);
 }
 
 /** The bottom composer slot hosts the multiline composer. */

@@ -30,6 +30,18 @@ export function teamRunScopeAction(
   return bindingScope === activeScope ? "keep" : "clear";
 }
 
+/** Return a team-run id only when its binding belongs to the currently served
+ *  scope. Consumers use this during render, before passive cleanup effects. */
+export function scopedTeamRunId(
+  runId: string | null,
+  bindingScope: string | null,
+  activeScope: string | null,
+): string | null {
+  return runId !== null && activeScope !== null && bindingScope === activeScope
+    ? runId
+    : null;
+}
+
 interface AgentPanelState {
   /** Whether the docked panel is open. Collapsed, its only trace is the footer
    *  chip (the panel is gone, not merely hidden). */

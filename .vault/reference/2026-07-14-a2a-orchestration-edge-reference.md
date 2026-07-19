@@ -3,7 +3,7 @@ tags:
   - '#reference'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-07-14'
+modified: '2026-07-19'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
@@ -166,6 +166,13 @@ an optional exact feature tag with the existing 128-character token grammar,
 and requests at most two results. The existing 15-second read timeout and
 loopback response ceiling continue to apply.
 
+Both `run-start` and `active-runs` carry an `expected_scope` echo. The engine
+compares it to the same selected scope cell used for the operation and returns
+409 when a concurrent workspace switch wins; the echo is never forwarded as a
+filesystem authority. Run start always injects that cell's root into sibling
+`metadata.workspace_root`, ensuring dashboard-started rows are discoverable by
+the later workspace filter.
+
 The sibling response is versioned and bounded:
 
 ```json
@@ -184,7 +191,10 @@ only for one result with `truncated: false`. It never guesses among concurrent
 runs and never invents the unavailable original prompt. Once bound, the
 existing `run-status` read supplies authoritative state and the per-run SSE
 relay supplies non-authoritative progress. A scope change clears a binding
-from the prior scope before any new discovery can attach.
+from the prior scope before any new discovery can attach, and render-time scope
+gating prevents even one stale frame from appearing under the new workspace.
+Any malformed or drifted discovery envelope fails closed, and the consumed
+query snapshot is removed so dismissing a terminal run cannot resurrect it.
 
 Sibling bounds are a response limit of 100, stable newest-first ordering, a
 1,000-row scan budget, 100-row pages, and a 16,384-character metadata selector

@@ -12,21 +12,14 @@ import {
 } from "./a2aTeam";
 
 describe("adaptActiveRuns", () => {
-  it("adapts the active-run discovery projection tolerantly and preserves tiers", () => {
+  it("adapts an exact bounded active-run discovery projection", () => {
     const pass: PassThrough = {
       envelope: {
         api_version: "v1",
         state: "active",
         runs: [
           { run_id: "run-a", status: "running", feature_tag: "editor" },
-          // A run without a feature tag is still listed.
           { run_id: "run-b", status: "starting" },
-          // Junk without a run_id is dropped, never thrown on.
-          { status: "running" },
-          // Junk without status is also dropped.
-          { run_id: "missing-status" },
-          // The adapter retains no more than the engine's two-row bound.
-          { run_id: "run-c", status: "running" },
         ],
         truncated: true,
       },
@@ -36,6 +29,7 @@ describe("adaptActiveRuns", () => {
     expect(result.runs.map((r) => r.run_id)).toEqual(["run-a", "run-b"]);
     expect(result.runs[0]!.feature_tag).toBe("editor");
     expect(result.truncated).toBe(true);
+    expect(result.contractValid).toBe(true);
     expect(result.tiers).toBeDefined();
   });
 
@@ -45,12 +39,14 @@ describe("adaptActiveRuns", () => {
       tiers: { agent: { available: false } },
     });
     expect(result.runs).toEqual([]);
-    expect(result.truncated).toBe(false);
+    expect(result.truncated).toBe(true);
+    expect(result.contractValid).toBe(false);
   });
 
   it("selects only one complete unambiguous viewing binding", () => {
     const unique = adaptActiveRuns({
       envelope: {
+        api_version: "v1",
         state: "active",
         runs: [{ run_id: "run-only", status: "running" }],
         truncated: false,
@@ -68,6 +64,45 @@ describe("adaptActiveRuns", () => {
         ],
       }),
     ).toBeNull();
+  });
+
+  it("fails closed on version, state, completeness, refusal, row, or bound drift", () => {
+    const exact = {
+      api_version: "v1",
+      state: "active",
+      runs: [{ run_id: "run-only", status: "running" }],
+      truncated: false,
+    };
+    const drifted: PassThrough[] = [
+      { envelope: { ...exact, api_version: "v2" } },
+      { envelope: { ...exact, state: "completed" } },
+      { envelope: { ...exact, truncated: "true" } },
+      { envelope: { api_version: "v1", state: "active", runs: exact.runs } },
+      { envelope: exact, siblingStatus: 422 },
+      {
+        envelope: {
+          ...exact,
+          runs: [exact.runs[0], { run_id: "missing-status" }],
+        },
+      },
+      {
+        envelope: {
+          ...exact,
+          runs: [
+            exact.runs[0],
+            { run_id: "run-two", status: "running" },
+            { run_id: "run-three", status: "running" },
+          ],
+        },
+      },
+    ];
+    for (const pass of drifted) {
+      const result = adaptActiveRuns(pass);
+      expect(result.contractValid).toBe(false);
+      expect(result.truncated).toBe(true);
+      expect(result.runs).toEqual([]);
+      expect(recoverableActiveRunId(result)).toBeNull();
+    }
   });
 });
 

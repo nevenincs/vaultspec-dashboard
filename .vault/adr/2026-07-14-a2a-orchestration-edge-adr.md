@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-07-17'
+modified: '2026-07-19'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-research]]"
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
@@ -113,6 +113,11 @@ namespace — it is orchestration control only.
 > engine maps it to sibling `GET /v1/runs?state=active`, always injects the
 > active `ScopeCell.root` as `workspace_root`, accepts only the already-bounded
 > optional `feature_tag`, and fixes the upstream result limit at two. The
+> browser echoes `expected_scope` as a generation fence for both `run-start`
+> and `active-runs`; the engine compares it with that same `ScopeCell` and
+> returns 409 on a concurrent scope change, but never forwards the echoed path
+> as authority. At `run-start`, the engine also persists its controlled root in
+> A2A `metadata.workspace_root`, which is the durable selector discovery reads.
 > sibling response remains verbatim and minimal: `run_id`, `status`, optional
 > `feature_tag`, and `truncated`; no prompt, actor, session, or arbitrary path is
 > disclosed. Discovery is non-authoritative under D3: the dashboard may restore
@@ -122,7 +127,10 @@ namespace — it is orchestration control only.
 > deliberately ambiguous and never selected client-side. Actor filtering stays
 > deferred until A2A persists a stable non-secret actor identifier. This changes
 > no D5 ownership: reload may lose or restore only the dashboard binding; the
-> durable run remains A2A-owned throughout.
+> durable run remains A2A-owned throughout. The frontend fails closed on any
+> version, state, completeness, tier, refusal, row-shape, or result-bound drift;
+> consumes a successful discovery snapshot after binding; and gates every
+> transcript/relay render synchronously on binding scope equality.
 
 > **Amendment (2026-07-17, shipped-surface ruling, review-adjudicated):** three
 > interpretations recorded at implementation, each PASS-reviewed:

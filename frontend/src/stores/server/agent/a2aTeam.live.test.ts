@@ -14,7 +14,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { liveTransport } from "../../../testing/liveClient";
+import { liveScope, liveTransport } from "../../../testing/liveClient";
 import { A2aTeamClient, readAgentTierAvailability } from "./a2aTeam";
 
 /** A live a2a-team client bound to the spawned engine (bearer via live transport). */
@@ -65,7 +65,7 @@ describe("a2a team pass-through (live)", () => {
     // The `active-runs` verb is whitelisted on the engine pass-through and scoped
     // engine-side by workspace_root. With no resident a2a (the CI harness), it
     // degrades honestly: a tiers block and an empty list, never an error surface.
-    const result = await a2a.activeRuns();
+    const result = await a2a.activeRuns(await liveScope());
     expect(result.tiers).toBeDefined();
     expect(Array.isArray(result.runs)).toBe(true);
     const availability = readAgentTierAvailability(result.tiers);
