@@ -585,13 +585,18 @@ each with tests:
 
 ## Open questions (for the owner)
 
-- **`--color-diff-modified` Figma sync (the one outstanding item).** The token is
-  live in code (OKLCH tier + `styles.css`, contrast-proven) and recorded here; the
-  Figma variable is NOT yet added because the binding file was not reachable via the
-  MCP headless. EXACT one-step spec: add semantic variable `diff-modified` beside
-  `diff-add`/`diff-remove` in the same collection + modes — light `oklch(0.5 0.13
-  250)`, dark `oklch(0.72 0.13 250)`, high-contrast `oklch(0.8 0.15 250)`. A
-  documented code-first divergence, permitted by the design-system rule pending the
-  sync.
+- **`--color-diff-modified` Figma sync — RESOLVED (2026-07-19).** The binding file
+  (`SlhonORmySdoSMTQgDWw3w`) now carries the token and the epic's new components, via
+  a Fable-coder / Opus-reviewer pair driving the Figma MCP. Landed: primitives
+  `diff/modified-l` #1666aa (`oklch(0.5 0.13 250)`) + `diff/modified-d` #60aaf3
+  (`oklch(0.72 0.13 250)`); semantic `chrome/diff-modified` aliasing them per mode
+  with the high-contrast literal #6cc3ff (`oklch(0.8 0.15 250)`) — mirroring
+  `chrome/diff-add`'s scopes, mode structure, and HC-literal convention exactly
+  (reviewer recomputed all three hexes to the byte). Plus Figma components for
+  `ChangeMarker` (the seven shipped D5 states, fills bound to the diff tones) and
+  `ConflictResolutionPanel` (Kit Button atoms, bound tones, matched to the live e2e
+  evidence). Review caught and removed one speculative "conflicted gutter" marker
+  variant that would have contradicted D12's panel-level conflict design. No code-vs-
+  Figma divergence remains.
 - **Auto-save-then-comment:** D8 disables commenting on a dirty section
   rather than auto-saving first; owner ruled DISABLE-with-reason (2026-07-17).
