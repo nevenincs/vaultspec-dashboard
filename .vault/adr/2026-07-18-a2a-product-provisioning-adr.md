@@ -314,10 +314,12 @@ not certify this boundary.
 
 **D9: Isolated Windows operating-system authority boundary.** The workspace
 continues to forbid unsafe code in the engine and product crates. Windows file
-authority requires three primitives that the Rust standard library does not
+authority requires four primitives that the Rust standard library does not
 expose as a complete safe contract: the full 128-bit `FILE_ID_INFO`, deletion
-of the exact retained handle rather than a later pathname, and positive process
-existence/identity classification when ordinary enumeration is inconclusive.
+of the exact retained handle rather than a later pathname, positive process
+existence/identity classification when ordinary enumeration is inconclusive,
+and write-through installation of the first fully synchronized fixed active-
+receipt journal into its final same-directory name.
 The target-gated internal crate `vaultspec-windows-authority` is the sole
 project-owned exception. It may wrap only the minimum Win32 calls required for
 those primitives and the handle open/share modes that make them meaningful.
@@ -325,21 +327,112 @@ those primitives and the handle open/share modes that make them meaningful.
 The exception is explicit in that crate's lint configuration. Unsafe calls are
 confined to a private operating-system module immediately beside their safety
 arguments; the rest of the crate denies unsafe code. Its public API exposes
-only owned handles, copied identities, exact-handle operations, and a bounded
-tri-state process observation. It must not expose raw pointers or borrowed raw
+only owned handles, copied identities, exact-handle operations, a bounded
+tri-state process observation, and one safe same-directory durable-replace
+operation backed by `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and
+`MOVEFILE_WRITE_THROUGH`. That operation is restricted to installing a fully
+synchronized regular non-reparse file, rejects cross-directory operands and
+reparse or non-regular source and destination entries, and supplies no receipt
+policy or authorization. It must not expose raw pointers or borrowed raw
 handles, accept unbounded buffers, infer product ownership, or authorize a
-mutation. Product code remains responsible for joining those observations to
-the retained installation lock, claim bytes, owner, generation, and receipt.
+mutation. Product code remains responsible for joining the operation to the
+retained installation lock, app-home and journal identities, complete receipt
+bytes, and post-install reread.
 
 The crate pins `windows-sys` exactly and is owned by the product installation
 authority. Every permitted operation requires real Windows tests for full-width
 identity, reparse rejection, share-denial behavior, exact cleanup, live/dead/
-unverifiable process outcomes, and error propagation, plus warning-denied lint
-and an independent source review of each unsafe call. An unverifiable process
-is live for mutation authorization. This exception must be removed when the
-standard library or an audited safe dependency supplies the same semantics; it
-cannot be cited to introduce unsafe code into another crate or for another
-platform or subsystem.
+unverifiable process outcomes, write-through same-directory replacement, and
+error propagation, plus warning-denied lint and an independent source review
+of each unsafe call. The journal operation additionally requires first-install
+crash and real NTFS durability certification; process termination alone cannot
+certify power-loss durability. An unverifiable process is live for mutation
+authorization. This exception must be removed when the standard library or an
+audited safe dependency supplies the same semantics; it cannot be cited to
+introduce unsafe code into another crate or for another platform or subsystem.
+
+**D10: Active receipt authority is a fixed two-slot journal.** The sole active
+selection record is one owner-private, fixed-size `active-receipts.v1` journal
+under the product app home. It contains exactly two fixed-size slots. An empty
+slot is permitted but never participates in selection; only one complete
+settled `ActiveReceipt` envelope can be active. Each envelope has a format magic
+and version, monotonically increasing `u64` sequence, bounded payload length,
+SHA-256 payload digest, canonical complete receipt payload, and zero padding.
+Only the inactive target slot named by valid durable transaction proof may be
+transiently partial or malformed. Candidate, staged, rolling-back, and
+interruption state never appears in either active slot; it lives only in
+separately bounded transaction state. The journal also contains three fixed-
+size logical replicas of a non-selection activation-proof record, each encoded
+as two alternating fixed-size subrecords. Updating or retiring proof is an in-
+place fixed-range operation and creates or removes no pathname.
+
+The active payload has a closed grammar with private construction and binds the
+dashboard version, commit, and digest; release-set identity and member-manifest
+digest; component-lock digest; external exact-five-target cohort digest; target
+and A2A identity; active generation; channel provenance; ownership-retention
+fact; prior seat; consistency generation; schema version; and creation time.
+Only a lifetime-bound verified complete release set under the retained
+installation lock and exact unpublished-generation authority may construct it.
+
+Under that authority, a reader validates the retained journal identity, fixed
+size, both slot envelopes, canonical payload bytes, digest, closed receipt
+grammar, and semantic bounds. With no transaction proof, the valid slot with
+the highest sequence is active. Equal highest sequences with different bytes,
+sequence overflow, an unproved malformed newer slot, aliases, growth, or
+ambiguity fail closed.
+
+Before the first byte of an inactive slot changes, an owner-private active-proof
+record binds the retained journal identity; the prior authoritative slot index,
+sequence, and envelope digest; the target slot; the exact next sequence; the
+target slot's complete pre-write envelope digest or explicit empty marker; and
+the intended complete envelope digest. Each subrecord carries its own magic,
+format, transition sequence, state, length, and digest. Within one logical
+replica, the valid subrecord with the higher transition sequence is selected;
+equal-sequence disagreement invalidates that replica. A proof state exists only
+when at least two of the three logical replicas independently resolve to byte-
+identical valid records. No competing quorum is possible; absence of a quorum
+fails closed.
+
+Before proof bytes participate in recovery or authorization, the installation-
+locked reader synchronizes the journal, closes it, reopens it without following
+aliases, and revalidates its retained identity and fixed size. This settles any
+parseable bytes left in the operating-system cache by a terminated writer
+before they can form a quorum.
+
+A proof transition positionally writes only the older or empty subrecord of one
+logical replica, never its currently selected subrecord, then synchronizes,
+closes, reopens, and validates that replica before advancing to the next. A torn
+subrecord therefore leaves that logical replica's prior selected subrecord
+intact. Target mutation cannot begin until all three logical replicas have been
+normalized to the same active proof. While an active-proof quorum exists,
+ordinary highest-sequence selection is suspended. An exact preimage or empty
+target, or a partial-invalid target, retains only the proved prior slot as
+active. An exact intended complete target must be synchronized, then the same
+journal identity must be closed, reopened, and revalidated for exact bytes and
+semantics before proof retirement begins. Retirement likewise advances one
+logical replica at a time to one identical retired record with the next
+transition sequence; ordinary target selection resumes only after all three
+retired logical replicas synchronize and reread exactly. A crash during either
+proof transition is recovered from the surviving quorum by normalizing the
+minority logical replica under the installation lock. Any third complete valid
+target envelope or any proof, journal, prior, authority, sequence, or digest
+mismatch fails closed.
+
+Steady-state publication overwrites only the older inactive slot, never the
+current active slot: construct the entire bounded envelope in memory, revalidate
+the retained journal identity, fixed size, and active-slot bytes, then
+positionally overwrite exactly the inactive slot range without creating,
+truncating, or resizing the journal. Synchronize the journal and revalidate its
+identity, fixed size, untouched active-slot bytes, and exact target bytes before
+the recovery sequence above may retire proof and authorize the target. First
+installation creates and synchronizes a complete journal under one fixed same-
+directory initialization name, installs that name durably, and rereads it. On
+Unix this includes containing-directory synchronization; on Windows it uses
+only D9's write-through wrapper and remains a release blocker until real local-
+NTFS virtual-machine power-loss certification passes. A process crash before
+first commit authorizes no generation; after a successful synchronized commit
+it exposes the complete receipt. Residue is bounded to the journal plus one
+initialization entry and never becomes active authority.
 
 ## Rationale
 
@@ -413,8 +506,14 @@ remain unchanged. No related ADR is superseded as a whole.
   certification.
 - Windows installation authority gains one small, target-gated unsafe review
   surface. In exchange, all consumers remain safe Rust and receive the exact
-  file and process observations needed to fail closed. Any expansion of that
-  surface requires a new accepted ADR amendment and independent unsafe review.
+  file and process observations plus first-journal write-through installation
+  needed to fail closed. Any expansion of that surface requires a new accepted
+  ADR amendment and independent unsafe review.
+- Active selection consumes a fixed amount of disk and has an explicit prior-
+  slot recovery path. Transaction progress is a separate bounded journal and
+  can never make an unpublished or interrupted candidate active. Native
+  filesystem and virtual-machine power-loss certification become release
+  evidence, not an inference from process-kill tests.
 - The manifest and lifecycle boundary allow future capsule compaction, Bun
   adoption, or server-profile installers without changing `/ops/a2a`, provided
   they preserve the same ownership, compatibility, receipt, rollback, and

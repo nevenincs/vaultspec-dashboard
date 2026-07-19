@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-18'
+modified: '2026-07-19'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-08-distribution-channels-adr]]"
@@ -151,6 +151,60 @@ component identity. The current job registry can exceed its nominal capacity
 when all entries run and separates its conflict check from insertion at
 `engine/crates/vaultspec-api/src/routes/provision.rs:724-741` and `:925-956`.
 
+### Active receipt durability needs a fixed journal
+
+The current `Receipt::persist` implementation writes a process-named temporary
+file, changes its permissions, and renames it over `receipt.json`, but it does
+not synchronize the file or its containing directory. This is atomic against a
+concurrent pathname reader, not separately durable across a crash. It also lets
+staged and rolling-back records occupy the active-selection path.
+
+A fixed two-slot journal is the smallest bounded design that preserves one
+complete prior active receipt while publishing the next. Both slots have fixed
+size; in an accepted steady state each is empty or contains a settled complete
+active-receipt envelope, and an empty slot never selects a generation. Only the
+inactive target covered by durable proof may transiently be partial or malformed.
+Publication overwrites that exact slot range, synchronizes the journal, reopens
+it without following aliases, and validates the exact envelope and closed
+receipt grammar. Candidate and interruption state remains separate from active
+selection.
+
+Three fixed logical proof replicas in the same journal record activation
+progress without creating or deleting another pathname. Each logical replica
+uses two alternating subrecords, so a transition writes only the older
+subrecord and a tear leaves the currently selected proof intact. Recovery first
+synchronizes and reopens the journal, then resolves the higher valid transition
+sequence inside each logical replica. A state requires a two-of-three byte-
+identical valid quorum; transitions normalize all three logical replicas before
+target mutation or ordinary selection proceeds. Equal-sequence disagreement,
+absence of a proof quorum, sequence overflow, unproved damage to a newer slot,
+aliases, or growth fail closed. The active proof identifies the retained
+journal, prior slot and envelope, exact target slot and sequence, target
+preimage or empty marker, and intended envelope digest. While active proof
+remains, an unchanged preimage, empty target, or partial-invalid target
+preserves the proved prior slot; an exact intended target must be synchronized
+and exactly reopened before all proof replicas retire in place and the new slot
+can win. Any third complete valid envelope fails closed. Ordinary highest-
+sequence selection cannot authorize syntactically valid but unsettled bytes.
+
+The local toolchain is Rust `1.96.0` (`ac68faa20`), and the locked relevant
+dependencies are `rustix 1.1.4`, `tempfile 3.27.0`, `fs4 0.13.1`, and
+`same-file 1.0.6`. Safe standard and locked dependency APIs cover file
+synchronization and Unix containing-directory synchronization, but they do not
+provide a documented safe Windows containing-directory durability contract.
+`tempfile::persist` explicitly does not synchronize file contents or the
+containing directory. Rust's Windows rename may use `MoveFileExW` or
+`SetFileInformationByHandle` without a write-through promise.
+
+Microsoft documents `MOVEFILE_WRITE_THROUGH` as waiting for a move to reach
+disk and specifically guarantees flushing a copy-and-delete move. That is the
+available narrow first-install primitive, but documentation alone does not
+certify same-volume NTFS power-loss behavior. The Windows authority wrapper may
+therefore expose only the reviewed same-directory operation, and release
+certification must still exercise real NTFS virtual-machine power cuts. Native
+NTFS, APFS, and ext4 power-loss evidence is distinct from child-process kill
+tests; the latter prove state-machine ordering, not storage durability.
+
 ### Wave 0 defines the proof boundary
 
 Acceptance tests must inspect and execute real release payloads on all five targets.
@@ -177,3 +231,11 @@ cannot certify the product boundary.
   https://gregoryszorc.com/docs/python-build-standalone/main/distributions.html
 - Node.js 22 release artifacts: https://nodejs.org/download/release/latest-v22.x/
 - Bun standalone executables: https://bun.sh/docs/bundler/executables
+- Rust `std::fs::rename` platform behavior:
+  https://doc.rust-lang.org/std/fs/fn.rename.html
+- `tempfile::NamedTempFile::persist` durability caveat:
+  https://docs.rs/tempfile/3.27.0/tempfile/struct.NamedTempFile.html#method.persist
+- Windows `MoveFileExW` and `MOVEFILE_WRITE_THROUGH`:
+  https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw
+- Windows buffered-I/O flushing contract:
+  https://learn.microsoft.com/en-us/windows/win32/fileio/flushing-system-buffered-i-o-data-to-disk
