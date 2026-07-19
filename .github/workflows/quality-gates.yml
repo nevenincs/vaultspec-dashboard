@@ -158,6 +158,32 @@ jobs:
         if: always()
         run: kill "$SERVE_PID" 2>/dev/null || true
 
+  scoop-bucket-guard:
+    name: Scoop bucket version guard
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Reject version decrease in bucket/vaultspec.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_VERSION=$(git show "origin/${{ github.base_ref }}:bucket/vaultspec.json" | jq -r '.version')
+          HEAD_VERSION=$(jq -r '.version' bucket/vaultspec.json)
+          if [ "$BASE_VERSION" = "$HEAD_VERSION" ]; then
+            echo "bucket version unchanged (${HEAD_VERSION}) — OK"
+            exit 0
+          fi
+          HIGHER=$(printf '%s\n' "$BASE_VERSION" "$HEAD_VERSION" | sort -V | tail -1)
+          if [ "$HIGHER" != "$HEAD_VERSION" ]; then
+            echo "ERROR: bucket/vaultspec.json would decrease from ${BASE_VERSION} to ${HEAD_VERSION}" >&2
+            echo "Update the bucket to a version >= ${BASE_VERSION} before merging." >&2
+            exit 1
+          fi
+          echo "bucket version ${BASE_VERSION} -> ${HEAD_VERSION} — forward, OK"
+
   supply-chain:
     name: Supply chain (cargo-deny · uv audit · npm audit)
     runs-on: ubuntu-latest

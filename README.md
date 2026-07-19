@@ -116,6 +116,10 @@ scoop install vaultspec/vaultspec
 The `bucket/` directory in this repository is a self-hosted Scoop bucket. Run
 `scoop update vaultspec` to upgrade after a new release lands.
 
+> **Note:** v0.1.3 and v0.1.4 were tagged without binary assets — they are being
+> republished and assets will be restored in the next release. Until then, Scoop
+> resolves v0.1.2, the last fully published build.
+
 **Direct binary download**: every release publishes platform-specific archives and a
 unified `sha256.sum` checksum file under
 [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases/latest).
