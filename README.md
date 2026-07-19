@@ -1,4 +1,4 @@
-<img src="docs/assets/logo.svg" width="150" alt="vaultspec-dashboard family logo">
+<img src="docs/assets/logo.svg" width="150" alt="vaultspec-dashboard logo">
 
 # vaultspec-dashboard
 
@@ -9,18 +9,28 @@ The human-facing visual workspace for a Vaultspec project.
 [![targets](https://img.shields.io/badge/targets-macOS%20arm64%2Fx64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)
 
-[What it does](#what-it-does) · [First run](#first-run) ·
-[Capabilities](#capabilities) · [Documentation](#documentation) · [Support](#support)
-
-## A visual tour
-
-These captures come from a running Vaultspec workspace and show real repository data.
-Together, they introduce the workspace and its main interactions.
+[What it does](#what-it-does) · [Getting started](#getting-started) ·
+[Capabilities](#capabilities) · [Vaultspec family](#vaultspec-family) ·
+[Documentation](#documentation) · [Status](#status-and-license)
 
 ![Complete Vaultspec workspace showing the project and worktree selector, Vault and Files navigation, populated graph, timeline, and activity](docs/assets/workspace.png)
 
 *The complete workspace keeps repository context, vault content, relationships, history,
 and current activity in one view.*
+
+## What it does
+
+Project knowledge often spans source files, Git history, worktrees, current activity, and
+`.vault/`. This Git-tracked directory stores research, decisions, plans, execution records,
+and audits. File browsers show each item but hide the relationships between them.
+
+vaultspec-dashboard brings this work into one visual workspace. Choose a project and
+worktree, then browse documents or source files beside focused, switchable vault and code
+graphs. Inspect changes, open work, and history without turning the entire project into an
+unreadable graph. Search by file or title, with optional semantic search for meaning-based
+discovery. Author and review Markdown without leaving the workspace.
+
+### Visual tour
 
 ![Markdown decision document open within its vault and repository context beside the populated graph](docs/assets/document-workspace.png)
 
@@ -34,18 +44,6 @@ graph context.*
 ![Activity and status view showing open plans and the running search service](docs/assets/status.png)
 
 *Review current open plans and search-service state from the running workspace.*
-
-## What it does
-
-Project knowledge often spans source files, Git history, worktrees, current activity, and
-`.vault/`. This Git-tracked directory stores research, decisions, plans, execution records,
-and audits. File browsers show each item but hide the relationships between them.
-
-vaultspec-dashboard brings this work into one visual workspace. Choose a project and
-worktree, then browse documents or source files beside focused, switchable vault and code
-graphs. Inspect changes, open work, and history without turning the entire project into an
-unreadable graph. Search by file or title, with optional semantic search for meaning-based
-discovery. Author and review Markdown without leaving the workspace.
 
 ### Project responsibilities
 
@@ -82,7 +80,7 @@ product model.
 *This current-`main` status capture is generated from real `vaultspec --json status` output
 against this worktree. Its lifecycle fields may be newer than the latest release.*
 
-## First run
+## Getting started
 
 ### Prerequisites and installation
 
@@ -184,7 +182,7 @@ vaultspec serve: listening on http://127.0.0.1:8767 (bearer token in service.jso
 
 Open `http://127.0.0.1:8767` in your browser. A successful dashboard shows the current
 worktree selector, **Vault/Files** browser, populated graph, timeline, and activity rail.
-The [complete workspace capture](#a-visual-tour) shows this result.
+The [complete workspace capture](#what-it-does) shows this result.
 
 ### Optional semantic search
 
@@ -261,7 +259,7 @@ back to literal document and code-name matching and may report:
 
 ## Capabilities
 
-See [A visual tour](#a-visual-tour) for the corresponding workspace, document, search, and
+See [Visual tour](#visual-tour) for the corresponding workspace, document, search, and
 status views.
 
 | User goal                         | Mounted view                                                                               | Boundary                                                                                                                                       |
@@ -291,7 +289,7 @@ fails. Each affected view reports its own limitation.
 
 | Term                               | Meaning                                                                                                                                                                                 |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Vaultspec                          | A three-project family: vaultspec-core, vaultspec-rag, and vaultspec-dashboard.                                                                                                         |
+| Vaultspec                          | A four-project family: vaultspec-core, vaultspec-rag, vaultspec-dashboard, and vaultspec-a2a.                                                                                           |
 | vault or `.vault/`                 | A project directory containing structured Markdown research, decisions, plans, execution records, and audits.                                                                           |
 | vault document                     | One structured Markdown artifact stored in a vault.                                                                                                                                     |
 | Vaultspec pipeline                 | An approval-gated flow through Research, Decide, Plan, Execute, and Verify. See the [Vaultspec framework](https://github.com/nevenincs/vaultspec-core/blob/main/docs/framework.md).     |
@@ -301,6 +299,15 @@ fails. Each affected view reports its own limitation.
 | vaultspec-rag                      | The optional retrieval service that indexes vault documents and code.                                                                                                                   |
 | workspace                          | A registered Git project root.                                                                                                                                                          |
 | worktree                           | One checked-out working copy used for the current operation.                                                                                                                            |
+
+## Vaultspec family
+
+| Project                                                       | Role                                                                      | Status |
+| ------------------------------------------------------------- | ------------------------------------------------------------------------- | ------ |
+| [vaultspec-core](https://github.com/nevenincs/vaultspec-core) | The agent harness: the pipeline, the vault, and the CLI that drives them. | Beta   |
+| [vaultspec-rag](https://github.com/nevenincs/vaultspec-rag)   | The semantic search component for vault and code.                         | Beta   |
+| vaultspec-dashboard                                           | The application that runs it all as a UI.                                 | Beta   |
+| [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a)   | Headless agent-to-agent orchestration.                                    | Beta   |
 
 ## Documentation
 
@@ -317,9 +324,9 @@ fails. Each affected view reports its own limitation.
 | Review dashboard changes      | [Dashboard engine release notes](engine/CHANGELOG.md)                                                                                                                                                      |
 | Report an application problem | [Open a dashboard issue](https://github.com/nevenincs/vaultspec-dashboard/issues)                                                                                                                          |
 
-## Support
+## Status and license
 
-vaultspec-dashboard is public, unarchived, and actively developed. See
+**Status:** Beta. vaultspec-dashboard is public, unarchived, and actively developed. See
 [GitHub Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) for current
 releases and the [changelog](engine/CHANGELOG.md) for release details.
 
@@ -337,6 +344,8 @@ Report bugs and request features through
 
 Keep diagnostics focused. Redact credentials, tokens, private paths, and private content
 before submitting a report.
+
+**License:** [MIT](LICENSE).
 
 ## Contributing
 
