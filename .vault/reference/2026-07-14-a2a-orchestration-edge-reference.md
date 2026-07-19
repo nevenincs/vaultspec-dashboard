@@ -155,3 +155,40 @@ record the engine owns.
   restarted A2A resumes or reports the run from `run-status`.
 - The repository contains no UI code, no Google-A2A stub, no engine import,
   and no agent-reachable filesystem write into a vault.
+
+## Active-run reload discovery addendum (2026-07-19)
+
+The shipped sibling contract at `vaultspec-a2a` commit `f84f0788` adds
+`GET /v1/runs?state=active`. The dashboard engine exposes it only through the
+reviewed `active-runs` pass-through verb. The engine supplies the active
+workspace root, never accepts a browser-controlled filesystem path, validates
+an optional exact feature tag with the existing 128-character token grammar,
+and requests at most two results. The existing 15-second read timeout and
+loopback response ceiling continue to apply.
+
+The sibling response is versioned and bounded:
+
+```json
+{
+  "api_version": "v1",
+  "state": "active",
+  "runs": [
+    { "run_id": "run-id", "status": "running", "feature_tag": "optional" }
+  ],
+  "truncated": false
+}
+```
+
+Dashboard recovery keeps only two valid rows and restores a viewing binding
+only for one result with `truncated: false`. It never guesses among concurrent
+runs and never invents the unavailable original prompt. Once bound, the
+existing `run-status` read supplies authoritative state and the per-run SSE
+relay supplies non-authoritative progress. A scope change clears a binding
+from the prior scope before any new discovery can attach.
+
+Sibling bounds are a response limit of 100, stable newest-first ordering, a
+1,000-row scan budget, 100-row pages, and a 16,384-character metadata selector
+projection. The dashboard deliberately narrows the upstream limit to two for
+ambiguity detection. Actor filtering is absent by contract until a stable
+non-secret actor identifier exists; oversized otherwise-valid metadata may be
+safely omitted by the sibling and remains a documented medium follow-up.

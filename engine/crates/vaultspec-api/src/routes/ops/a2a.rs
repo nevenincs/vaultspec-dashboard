@@ -1,5 +1,5 @@
 //! The `/ops/a2a/{verb}` orchestration control pass-through (a2a-orchestration-
-//! edge ADR D1/D2): the engine forwards a FIXED five-verb whitelist to the
+//! edge ADR D1/D2): the engine forwards a FIXED six-verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -44,15 +44,17 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED five-verb whitelist (ADR D1): orchestration control only, no
-/// mutating vault semantics. A verb outside this set is a 403 BEFORE any
-/// discovery or round-trip — the whitelist miss never reaches the sibling.
+/// The FIXED six-verb whitelist (ADR D1 + 2026-07-19 amendment): orchestration
+/// control and one bounded active-run recovery read only, with no mutating vault
+/// semantics. A verb outside this set is a 403 BEFORE any discovery or
+/// round-trip — the whitelist miss never reaches the sibling.
 const A2A_WHITELIST: &[&str] = &[
     "run-start",
     "run-status",
     "run-cancel",
     "presets-list",
     "service-state",
+    "active-runs",
 ];
 
 /// The canonical pipeline roles the engine provisions an actor + token for at
@@ -396,6 +398,40 @@ fn build_forwarded_call(
                 budget: A2A_READ_BUDGET,
             })
         }
+        "active-runs" => {
+            // Reload-recovery of the live team-run binding (a2a-edge D3/D5): which
+            // runs are still non-terminal for THIS workspace, so a reloaded panel
+            // can re-bind its transcript to a run it lost the client-side handle
+            // to. `workspace_root` is the ENGINE-controlled active scope root, never
+            // a client field (mirrors presets-list), and `state` is pinned to
+            // `active` so the verb can only ever list live runs — an identity-only
+            // projection the a2a gateway bounds (`ActiveRunsResponse`, capped).
+            let root = cell.root.to_string_lossy();
+            let mut path = format!(
+                "/v1/runs?state=active&workspace_root={}",
+                percent_encode(&root)
+            );
+            if let Some(feature_tag) = body.feature_tag.as_deref() {
+                let feature_tag = validate_bounded_token(
+                    state,
+                    "feature_tag",
+                    feature_tag,
+                    MAX_A2A_FEATURE_CHARS,
+                )?;
+                path.push_str("&feature_tag=");
+                path.push_str(&percent_encode(&feature_tag));
+            }
+            // Two rows distinguish a unique binding from ambiguity. The sibling
+            // retains its own harder response and scan caps behind this narrower
+            // dashboard-specific bound.
+            path.push_str("&limit=2");
+            Ok(ForwardedCall {
+                method: Method::Get,
+                path,
+                body: None,
+                budget: A2A_READ_BUDGET,
+            })
+        }
         "run-status" => {
             let run_id = body.run_id.as_deref().ok_or_else(|| {
                 super::super::api_error(
@@ -647,7 +683,7 @@ fn map_transport_error(
 }
 
 /// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through
-/// (ADR D1/D2). A verb outside the five-verb whitelist is a 403 before any
+/// (ADR D1/D2). A verb outside the six-verb whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor
@@ -814,6 +850,48 @@ mod tests {
             !presets.path.contains('\\') && !presets.path.contains(' '),
             "the workspace_root path is percent-encoded: {}",
             presets.path
+        );
+
+        // active-runs pins state=active and carries the engine-controlled
+        // workspace_root (percent-encoded); it is a bounded read, never a client
+        // field. It requires no run_id.
+        let active = build_forwarded_call(
+            &state,
+            "active-runs",
+            &cell,
+            &A2aVerbBody {
+                feature_tag: Some("a2a-orchestration-edge".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert!(
+            active
+                .path
+                .starts_with("/v1/runs?state=active&workspace_root=")
+        );
+        assert!(active.path.contains("&feature_tag=a2a-orchestration-edge"));
+        assert!(active.path.ends_with("&limit=2"));
+        assert!(active.body.is_none());
+        assert_eq!(active.budget, A2A_READ_BUDGET);
+        assert!(
+            !active.path.contains('\\') && !active.path.contains(' '),
+            "the workspace_root path is percent-encoded: {}",
+            active.path
+        );
+        assert_eq!(
+            build_forwarded_call(
+                &state,
+                "active-runs",
+                &cell,
+                &A2aVerbBody {
+                    feature_tag: Some("bad feature".to_string()),
+                    ..Default::default()
+                }
+            )
+            .unwrap_err()
+            .0,
+            StatusCode::BAD_REQUEST
         );
 
         // run-status requires a run_id and forms the run URL.
@@ -1000,7 +1078,7 @@ mod tests {
     }
 
     #[test]
-    fn live_loopback_discovers_health_then_round_trips_a_verb() {
+    fn live_loopback_discovers_health_then_round_trips_active_runs() {
         // A real TcpListener stands in for the resident a2a gateway: a real
         // service.json, a real ungated /health 200, and a real HTTP round-trip
         // through the loopback transport. This is a LIVE loopback (the rag-client
@@ -1015,13 +1093,20 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         // The gateway answers two Connection: close requests — the /health probe,
         // then the verb — each on its own accepted connection.
+        let (request_tx, request_rx) = std::sync::mpsc::channel();
         let server = std::thread::spawn(move || {
             let health = r#"{"status": "ok", "checks": {}}"#;
-            let verb = r#"{"api_version": "v1", "service_version": "1.2.3", "status": "ready"}"#;
-            for body in [health, verb] {
+            let verb = r#"{"api_version":"v1","state":"active","runs":[{"run_id":"run-7","status":"running","feature_tag":"a2a-orchestration-edge"}],"truncated":false}"#;
+            for (index, body) in [health, verb].into_iter().enumerate() {
                 let (mut stream, _) = listener.accept().unwrap();
                 let mut buf = [0u8; 2048];
-                let _ = stream.read(&mut buf);
+                let read = stream.read(&mut buf).unwrap();
+                if index == 1 {
+                    let request = String::from_utf8_lossy(&buf[..read]);
+                    request_tx
+                        .send(request.lines().next().unwrap_or_default().to_string())
+                        .unwrap();
+                }
                 write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -1051,11 +1136,31 @@ mod tests {
             bearer,
             timeout: A2A_READ_BUDGET,
         };
-        // A real verb round-trip returns the gateway envelope verbatim.
-        let raw = transport.get("/v1/service").expect("verb round-trips");
+        // Resolve the production mapping and make the real bounded discovery
+        // round-trip. The sibling envelope is preserved without reshaping.
+        let (_state_dir, state) = test_state();
+        let cell = state.active_cell();
+        let call = build_forwarded_call(
+            &state,
+            "active-runs",
+            &cell,
+            &A2aVerbBody {
+                feature_tag: Some("a2a-orchestration-edge".to_string()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let raw = transport.get(&call.path).expect("verb round-trips");
         let envelope: Value = serde_json::from_str(&raw).unwrap();
         assert_eq!(envelope["api_version"], "v1");
-        assert_eq!(envelope["status"], "ready");
+        assert_eq!(envelope["state"], "active");
+        assert_eq!(envelope["runs"][0]["run_id"], "run-7");
+        assert_eq!(envelope["truncated"], false);
+
+        let request_line = request_rx.recv().unwrap();
+        assert!(request_line.starts_with("GET /v1/runs?state=active&workspace_root="));
+        assert!(request_line.contains("&feature_tag=a2a-orchestration-edge"));
+        assert!(request_line.contains("&limit=2 HTTP/1.1"));
 
         server.join().unwrap();
     }

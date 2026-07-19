@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#a2a-orchestration-edge'
 date: '2026-07-17'
-modified: '2026-07-17'
+modified: '2026-07-19'
 tier: L2
 related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
@@ -11,6 +11,16 @@ related:
   - '[[2026-07-16-agentic-authoring-ux-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-research]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 # `a2a-orchestration-edge` plan
 
@@ -41,7 +51,7 @@ Expose the a2a run stream on the versioned gateway surface, then relay it as a b
 
 Build the immutable feedback-batch snapshot and the structured continuation field per feedback-loop ADR D3 and D4, thread the identifier across the edge, and delete the prompt-prose interim.
 
-- [x] `P04.S09` - [SCHEMA NOTE from agent-wire-gaps lead: the feedback_batches table itself lands via agent-wire-gaps P01.S01 as part of ONE additive schema-version bump (queue state + provenance cols + batch table) — build the snapshot backend ON that table and do NOT author a second migration for it. Any shape change ships as a FRESH version bump.] Build the immutable feedback-batch snapshot backend per feedback-loop D3 with stable identifier, digest, ordered comment bodies, anchors, author identity, source revision, session identity, and creation time, plus its creation route; `engine/crates/vaultspec-api/src/authoring/`.
+- [x] `P04.S09` - [SCHEMA NOTE from agent-wire-gaps lead: the feedback_batches table itself lands via agent-wire-gaps P01.S01 as part of ONE additive schema-version bump (queue state + provenance cols + batch table) - build the snapshot backend ON that table and do NOT author a second migration for it. Any shape change ships as a FRESH version bump.] Build the immutable feedback-batch snapshot backend per feedback-loop D3 with stable identifier, digest, ordered comment bodies, anchors, author identity, source revision, session identity, and creation time, plus its creation route; `engine/crates/vaultspec-api/src/authoring/`.
 - [x] `P04.S10` - Add the typed feedback_batch_id field to StartPromptTurnRequest and verify ownership, revision fences, limits, and idempotency when a turn consumes a batch; `engine/crates/vaultspec-api/src/authoring/`.
 - [x] `P04.S11` - Thread feedback_batch_id through a2a run-start and turn dispatch as an opaque identifier whose authoritative context is retrieved via the engine authoring client, in the vaultspec-a2a repository; `src/vaultspec_a2a/`.
 - [x] `P04.S12` - Switch the composer comment batch from serialized prompt prose to the structured feedback_batch_id continuation and delete the prose interim outright; `frontend/src/`.
@@ -52,6 +62,13 @@ Build the immutable feedback-batch snapshot and the structured continuation fiel
 Mandatory cross-repo code review, edge ADR amendment recording the sibling-down ruling and shipped surfaces, and audit persistence.
 
 - [x] `P05.S13` - Run cross-repo code review over every phase, amend the edge ADR with the sibling-down semantics ruling and the shipped-surface record, and persist the audit; `.vault/`.
+
+### Phase `P06` - Active-run reload recovery
+
+Add the bounded discovery read to the reviewed edge, then restore only an unambiguous workspace-scoped viewing binding while keeping run-status authoritative.
+
+- [x] `P06.S15` - Add the engine-scoped active-run discovery verb with fixed two-result upstream bound, optional bounded feature filter, and real-loopback contract coverage; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [ ] `P06.S16` - Recover the team-run viewing binding only from one complete active workspace result, clear cross-scope bindings, and keep run-status plus relay authoritative; `frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/view/agentPanel.ts, frontend/src/app/agent/AgentPanel.tsx`.
 
 ## Description
 

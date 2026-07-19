@@ -108,6 +108,22 @@ return the A2A envelope verbatim inside the shared tiers envelope;
 sibling-down is a 502-with-tier-block. No mutating vault semantics ride this
 namespace — it is orchestration control only.
 
+> **Amendment (2026-07-19, active-run reload discovery):** D1 adds one bounded
+> read verb, `active-runs`, as a reviewed cross-repository contract event. The
+> engine maps it to sibling `GET /v1/runs?state=active`, always injects the
+> active `ScopeCell.root` as `workspace_root`, accepts only the already-bounded
+> optional `feature_tag`, and fixes the upstream result limit at two. The
+> sibling response remains verbatim and minimal: `run_id`, `status`, optional
+> `feature_tag`, and `truncated`; no prompt, actor, session, or arbitrary path is
+> disclosed. Discovery is non-authoritative under D3: the dashboard may restore
+> a viewing binding only when exactly one valid result is returned and
+> `truncated` is false, then it re-reads `run-status` and resumes the existing
+> relay. Zero results leave the binding empty; two results or any truncation are
+> deliberately ambiguous and never selected client-side. Actor filtering stays
+> deferred until A2A persists a stable non-secret actor identifier. This changes
+> no D5 ownership: reload may lose or restore only the dashboard binding; the
+> durable run remains A2A-owned throughout.
+
 > **Amendment (2026-07-17, shipped-surface ruling, review-adjudicated):** three
 > interpretations recorded at implementation, each PASS-reviewed:
 > (1) **Sibling-down semantics.** This decision's raw "502-with-tier-block"
