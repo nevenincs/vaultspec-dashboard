@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#a2a-product-provisioning'
 date: '2026-07-19'
-modified: '2026-07-19'
+modified: '2026-07-20'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
@@ -341,3 +341,55 @@ D9 wrapper warning was reported. Final verification isolated that pre-existing
 lint with `-A clippy::needless-return`: strict S167 product Clippy passed, all 68
 product library tests passed, and both affected crates passed an
 `x86_64-unknown-linux-gnu` compile check.
+
+## `W01.P01.S168` retained directory-authority review
+
+Status: PASS after revision.
+
+### component-grammar | high | The initial safe validator admitted Win32-reserved names
+
+The first implementation rejected empty names, dot components, separators,
+alternate data streams, prefixes, NUL, and overlong UTF-16. It still admitted
+control characters, reserved punctuation, trailing dots or spaces, and DOS
+device basenames before an extension. Those aliases could make the safe
+single-component claim disagree with Win32 namespace behavior.
+
+The revision rejects the full approved set before FFI, including case-insensitive
+`CON`, `PRN`, `AUX`, `NUL`, `COM1` through `COM9`, and `LPT1` through `LPT9`.
+Independent follow-up review also identified Microsoft's compatibility spellings
+with superscript digits: `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³`.
+The final invariant UTF-16 comparison rejects those basenames before extensions
+without locale-sensitive folding. Real tests exercise both safe child methods
+against every class and create, reopen, compare, and remove valid Unicode and
+non-reserved lookalike names.
+
+### native-error-loss | medium | Unmapped NTSTATUS values lost their original identity
+
+The initial conversion replaced an out-of-range native mapping with a generic
+integer error. The revision uses `RtlNtStatusToDosError` for mapped failures and
+retains the exact hexadecimal NTSTATUS in an owned diagnostic when the mapping
+returns `ERROR_MR_MID_NOT_FOUND` or cannot fit a Win32 error. A real conversion
+call verifies the unmapped path without replacing native code.
+
+### write-share-evidence | medium | The first competing-open probe used a non-conflicting access bit
+
+Windows permitted a competing open that requested only `FILE_WRITE_ATTRIBUTES`
+while the authority shared reads. The test now requests
+`GENERIC_WRITE | FILE_WRITE_ATTRIBUTES`, which includes directory mutation
+authority. The competing open fails during retention and succeeds after drop.
+Real rename, delete, and ancestor-substitution operations prove the delete-share
+boundary independently.
+
+The final unsafe review found no raw handle, pointer, native buffer, generic
+flag, arbitrary path, recursive delete, or product policy in the safe API.
+`NtCreateFile` receives only stack-bounded pointers whose referents outlive its
+synchronous call. A successful returned handle transfers exactly once into
+`File`; failure converts the returned NTSTATUS rather than consulting stale
+last-error state. Each safe result validates the retained handle for directory
+type, directory attribute, zero reparse tag, live delete state, and nonzero
+full-width identity. Cleanup consumes immediately after successful disposition;
+failure returns the same owned authority and source error.
+
+All 10 native tests, strict all-target Clippy, Windows and Linux target checks,
+formatting, scoped diff checking, and the forbidden-test-technique scan passed.
+No critical, high, medium, or low finding remains open.

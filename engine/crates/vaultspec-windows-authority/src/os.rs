@@ -1,19 +1,193 @@
 //! Private Win32 FFI for the D9 file/process-authority exception.
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io;
-use std::os::windows::io::AsRawHandle;
+use std::os::windows::fs::OpenOptionsExt;
+use std::os::windows::io::{AsRawHandle, FromRawHandle};
+use std::path::Path;
 
+use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
+use windows_sys::Wdk::Storage::FileSystem::{
+    FILE_CREATE, FILE_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
+    FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+};
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_INVALID_PARAMETER, HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, HANDLE, OBJ_CASE_INSENSITIVE,
+    RtlNtStatusToDosError, UNICODE_STRING, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_DISPOSITION_INFO, FILE_ID_INFO, FILE_STANDARD_INFO, FileDispositionInfo, FileIdInfo,
-    FileStandardInfo, GetFileInformationByHandleEx, SYNCHRONIZE, SetFileInformationByHandle,
+    DELETE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO, FILE_ID_INFO,
+    FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TRAVERSE,
+    FileAttributeTagInfo, FileDispositionInfo, FileIdInfo, FileStandardInfo,
+    GetFileInformationByHandleEx, SYNCHRONIZE, SetFileInformationByHandle,
 };
+use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
 
 use crate::{HighResFileId, ProcessExistence};
+
+const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+const DIRECTORY_ACCESS: u32 = DELETE
+    | FILE_LIST_DIRECTORY
+    | FILE_ADD_SUBDIRECTORY
+    | FILE_TRAVERSE
+    | FILE_READ_ATTRIBUTES
+    | SYNCHRONIZE;
+const DIRECTORY_CREATE_OPTIONS: u32 =
+    FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
+const IO_INFORMATION_FILE_OPENED: usize = 1;
+const IO_INFORMATION_FILE_CREATED: usize = 2;
+
+pub(super) fn open_existing_directory(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options
+        .access_mode(DIRECTORY_ACCESS)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+    options.open(path)
+}
+
+pub(super) fn open_child_directory(parent: &File, name: &[u16], create: bool) -> io::Result<File> {
+    let byte_length = name
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .and_then(|length| u16::try_from(length).ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "directory name is too long"))?;
+    let unicode_name = UNICODE_STRING {
+        Length: byte_length,
+        MaximumLength: byte_length,
+        Buffer: name.as_ptr().cast_mut(),
+    };
+    let object_attributes = OBJECT_ATTRIBUTES {
+        Length: u32::try_from(std::mem::size_of::<OBJECT_ATTRIBUTES>())
+            .expect("OBJECT_ATTRIBUTES size fits u32"),
+        RootDirectory: parent.as_raw_handle(),
+        ObjectName: &raw const unicode_name,
+        Attributes: OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor: std::ptr::null(),
+        SecurityQualityOfService: std::ptr::null(),
+    };
+    let mut raw_handle: HANDLE = std::ptr::null_mut();
+    let mut io_status = IO_STATUS_BLOCK::default();
+    let disposition = if create { FILE_CREATE } else { FILE_OPEN };
+
+    // SAFETY: `parent` keeps a valid owned directory handle alive for this
+    // synchronous call. `name`, `unicode_name`, `object_attributes`,
+    // `raw_handle`, and `io_status` remain live, aligned, and correctly sized
+    // for the call. The UNICODE_STRING length is checked and its buffer is
+    // read-only by contract. Every optional pointer is null. No pointer escapes.
+    let status = unsafe {
+        NtCreateFile(
+            &raw mut raw_handle,
+            DIRECTORY_ACCESS,
+            &raw const object_attributes,
+            &raw mut io_status,
+            std::ptr::null(),
+            FILE_ATTRIBUTE_NORMAL,
+            FILE_SHARE_READ,
+            disposition,
+            DIRECTORY_CREATE_OPTIONS,
+            std::ptr::null(),
+            0,
+        )
+    };
+    if status < 0 {
+        return Err(ntstatus_to_io_error(status));
+    }
+    if raw_handle.is_null() {
+        return Err(io::Error::other(
+            "NtCreateFile succeeded without returning a directory handle",
+        ));
+    }
+
+    // SAFETY: successful NtCreateFile returned one newly owned handle. File
+    // takes that ownership exactly once and closes it on every later path.
+    let file = unsafe { File::from_raw_handle(raw_handle) };
+    let expected_information = if create {
+        IO_INFORMATION_FILE_CREATED
+    } else {
+        IO_INFORMATION_FILE_OPENED
+    };
+    if io_status.Information != expected_information {
+        return Err(io::Error::other(format!(
+            "native directory disposition mismatch: expected {expected_information}, got {}",
+            io_status.Information
+        )));
+    }
+    Ok(file)
+}
+
+pub(super) fn ntstatus_to_io_error(status: i32) -> io::Error {
+    // SAFETY: RtlNtStatusToDosError accepts one scalar NTSTATUS and returns a
+    // copied Win32 error code; it retains no pointer or caller-owned state.
+    let mapped = unsafe { RtlNtStatusToDosError(status) };
+    if mapped == ERROR_MR_MID_NOT_FOUND || i32::try_from(mapped).is_err() {
+        return io::Error::other(format!(
+            "native directory operation failed with unmapped NTSTATUS 0x{:08X}",
+            status as u32
+        ));
+    }
+    io::Error::from_raw_os_error(i32::try_from(mapped).expect("mapped Win32 error fits i32"))
+}
+
+pub(super) fn validated_directory_identity(file: &File) -> io::Result<HighResFileId> {
+    let mut standard = std::mem::MaybeUninit::<FILE_STANDARD_INFO>::zeroed();
+    // SAFETY: `file` owns a valid handle. `standard` is writable, aligned, and
+    // FILE_STANDARD_INFO-sized. Windows initializes it completely on success.
+    let result = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileStandardInfo,
+            standard.as_mut_ptr().cast(),
+            u32::try_from(std::mem::size_of::<FILE_STANDARD_INFO>())
+                .expect("FILE_STANDARD_INFO size fits u32"),
+        )
+    };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the successful Win32 call initialized every standard-info byte.
+    let standard = unsafe { standard.assume_init() };
+    if !standard.Directory || standard.DeletePending {
+        return Err(io::Error::other("authority handle is not a live directory"));
+    }
+
+    let mut tag = std::mem::MaybeUninit::<FILE_ATTRIBUTE_TAG_INFO>::zeroed();
+    // SAFETY: `file` owns a valid handle. `tag` is writable, aligned, and
+    // FILE_ATTRIBUTE_TAG_INFO-sized. Windows initializes it on success.
+    let result = unsafe {
+        GetFileInformationByHandleEx(
+            file.as_raw_handle(),
+            FileAttributeTagInfo,
+            tag.as_mut_ptr().cast(),
+            u32::try_from(std::mem::size_of::<FILE_ATTRIBUTE_TAG_INFO>())
+                .expect("FILE_ATTRIBUTE_TAG_INFO size fits u32"),
+        )
+    };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the successful Win32 call initialized every attribute-tag byte.
+    let tag = unsafe { tag.assume_init() };
+    if tag.FileAttributes & FILE_ATTRIBUTE_DIRECTORY == 0
+        || tag.FileAttributes & FILE_ATTRIBUTE_REPARSE_POINT != 0
+        || tag.ReparseTag != 0
+    {
+        return Err(io::Error::other(
+            "authority directory is a reparse point or has unsafe attributes",
+        ));
+    }
+
+    let identity = high_res_id(file)?;
+    if identity.volume_serial_number == 0 || identity.file_id == 0 {
+        return Err(io::Error::other(
+            "authority directory returned a zero filesystem identity",
+        ));
+    }
+    Ok(identity)
+}
 
 pub(super) fn mark_delete_on_close(file: &File) -> io::Result<()> {
     let disposition = FILE_DISPOSITION_INFO { DeleteFile: true };

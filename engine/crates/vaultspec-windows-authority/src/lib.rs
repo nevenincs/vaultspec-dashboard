@@ -1,17 +1,19 @@
-//! Safe public wrappers around the two Windows handle operations required by
-//! the product installation authority.
+//! Safe public wrappers around the bounded Windows handle operations required
+//! by the product installation authority.
 //!
 //! This crate is deliberately isolated from the engine workspace's
 //! `unsafe_code = "forbid"` lint under ADR D9. The crate-level lint remains
 //! `deny`; only the private [`os`] module lowers it for the minimal Win32 calls,
 //! immediately beside their validity arguments. Consumers receive only owned
-//! files, 128-bit identities, exact-handle operations, and bounded process
-//! observations.
+//! files and directories, 128-bit identities, exact-handle operations, and
+//! bounded process observations.
 
 #![cfg(windows)]
 
+use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io;
+use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::path::Path;
 
@@ -30,6 +32,7 @@ const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
 const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+const MAX_DIRECTORY_COMPONENT_UTF16_UNITS: usize = 255;
 
 /// A high-resolution Windows `FILE_ID_INFO` identity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +60,187 @@ pub enum ProcessExistence {
 #[must_use]
 pub fn probe_process_existence(pid: u32) -> ProcessExistence {
     os::probe_process_existence(pid)
+}
+
+/// An owned non-reparse directory handle bound to a full-width identity.
+///
+/// The handle denies write and delete sharing for its retained lifetime. Child
+/// traversal is available only through one validated name component relative
+/// to this exact handle; no raw handle or arbitrary child path is exposed.
+#[derive(Debug)]
+pub struct AuthorityDirectory {
+    directory: File,
+    identity: HighResFileId,
+}
+
+impl AuthorityDirectory {
+    /// Bootstrap authority from one existing directory pathname.
+    ///
+    /// This is the only pathname-based directory constructor. The final link is
+    /// opened without reparse traversal and the returned handle itself is
+    /// validated before this method succeeds.
+    pub fn open_existing(path: &Path) -> io::Result<Self> {
+        Self::from_file(os::open_existing_directory(path)?)
+    }
+
+    /// Open one existing direct child directory relative to this retained
+    /// authority.
+    pub fn open_child_directory(&self, name: &OsStr) -> io::Result<Self> {
+        let name = validate_directory_component(name)?;
+        Self::from_file(os::open_child_directory(&self.directory, &name, false)?)
+    }
+
+    /// Exclusively create and retain one direct child directory relative to
+    /// this authority.
+    pub fn create_child_directory(&self, name: &OsStr) -> io::Result<Self> {
+        let name = validate_directory_component(name)?;
+        Self::from_file(os::open_child_directory(&self.directory, &name, true)?)
+    }
+
+    /// The copied full-width identity of this exact retained directory.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    /// Delete exactly this retained directory if it is empty.
+    ///
+    /// Success marks the exact handle delete-pending and immediately consumes
+    /// and closes it. Failure preserves the still-owned authority alongside the
+    /// operating-system error so the caller can remove real children and retry.
+    pub fn remove_empty(self) -> Result<(), RemoveEmptyDirectoryError> {
+        if let Err(source) = os::mark_delete_on_close(&self.directory) {
+            return Err(RemoveEmptyDirectoryError {
+                authority: self,
+                source,
+            });
+        }
+        drop(self);
+        Ok(())
+    }
+
+    fn from_file(directory: File) -> io::Result<Self> {
+        let identity = os::validated_directory_identity(&directory)?;
+        Ok(Self {
+            directory,
+            identity,
+        })
+    }
+}
+
+/// A failed terminal empty-directory cleanup that retains exact authority.
+#[derive(Debug)]
+pub struct RemoveEmptyDirectoryError {
+    authority: AuthorityDirectory,
+    source: io::Error,
+}
+
+impl RemoveEmptyDirectoryError {
+    /// Borrow the still-owned directory authority for diagnostics or identity
+    /// comparison.
+    #[must_use]
+    pub fn authority(&self) -> &AuthorityDirectory {
+        &self.authority
+    }
+
+    /// Borrow the operating-system cleanup failure.
+    #[must_use]
+    pub fn error(&self) -> &io::Error {
+        &self.source
+    }
+
+    /// Recover both the retained authority and operating-system failure.
+    #[must_use]
+    pub fn into_parts(self) -> (AuthorityDirectory, io::Error) {
+        (self.authority, self.source)
+    }
+}
+
+impl std::fmt::Display for RemoveEmptyDirectoryError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "exact empty-directory cleanup failed: {}", self.source)
+    }
+}
+
+impl std::error::Error for RemoveEmptyDirectoryError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+fn validate_directory_component(name: &OsStr) -> io::Result<Vec<u16>> {
+    let encoded: Vec<u16> = name.encode_wide().collect();
+    let is_dot = encoded.as_slice() == [u16::from(b'.')];
+    let is_dot_dot = encoded.as_slice() == [u16::from(b'.'), u16::from(b'.')];
+    let contains_reserved = encoded.iter().any(|unit| {
+        matches!(
+            *unit,
+            0x0000
+                ..=0x001f
+                    | 0x0022
+                    | 0x002a
+                    | 0x002f
+                    | 0x003a
+                    | 0x003c
+                    | 0x003e
+                    | 0x003f
+                    | 0x005c
+                    | 0x007c
+        )
+    });
+    let has_forbidden_ending = encoded
+        .last()
+        .is_some_and(|unit| *unit == u16::from(b'.') || *unit == u16::from(b' '));
+    if encoded.is_empty()
+        || encoded.len() > MAX_DIRECTORY_COMPONENT_UTF16_UNITS
+        || is_dot
+        || is_dot_dot
+        || contains_reserved
+        || has_forbidden_ending
+        || is_reserved_dos_basename(&encoded)
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "directory child must be one bounded non-prefix UTF-16 component",
+        ));
+    }
+    Ok(encoded)
+}
+
+fn is_reserved_dos_basename(encoded: &[u16]) -> bool {
+    let extension = encoded
+        .iter()
+        .position(|unit| *unit == u16::from(b'.'))
+        .unwrap_or(encoded.len());
+    let base = &encoded[..extension];
+    let base = &base[..base
+        .iter()
+        .rposition(|unit| *unit != u16::from(b' ') && *unit != u16::from(b'.'))
+        .map_or(0, |index| index + 1)];
+    let mut upper = [0_u16; 4];
+    if base.len() > upper.len() {
+        return false;
+    }
+    for (index, unit) in base.iter().enumerate() {
+        upper[index] = match *unit {
+            unit if (u16::from(b'a')..=u16::from(b'z')).contains(&unit) => {
+                unit - u16::from(b'a' - b'A')
+            }
+            unit => unit,
+        };
+    }
+    matches!(
+        &upper[..base.len()],
+        [0x0043, 0x004f, 0x004e]
+            | [0x0050, 0x0052, 0x004e]
+            | [0x0041, 0x0055, 0x0058]
+            | [0x004e, 0x0055, 0x004c]
+    ) || (base.len() == 4
+        && matches!(
+            &upper[..3],
+            [0x0043, 0x004f, 0x004d] | [0x004c, 0x0050, 0x0054]
+        )
+        && matches!(upper[3], 0x0031..=0x0039 | 0x00b9 | 0x00b2 | 0x00b3))
 }
 
 /// An owned regular-file handle bound to a high-resolution identity.
@@ -201,20 +385,43 @@ fn open(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use std::os::windows::fs::symlink_dir;
+
+    fn create_directory(path: &Path) {
+        std::fs::create_dir(path).unwrap();
+    }
+
+    fn assert_invalid_component(authority: &AuthorityDirectory, name: &OsStr) {
+        assert_eq!(
+            authority.open_child_directory(name).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput,
+            "open unexpectedly accepted {name:?}"
+        );
+        assert_eq!(
+            authority.create_child_directory(name).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput,
+            "create unexpectedly accepted {name:?}"
+        );
+    }
+
+    fn open_directory_for_generic_write(path: &Path) -> io::Result<File> {
+        let mut options = OpenOptions::new();
+        options
+            .access_mode(
+                GENERIC_WRITE | windows_sys::Win32::Storage::FileSystem::FILE_WRITE_ATTRIBUTES,
+            )
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+        options.open(path)
+    }
 
     #[test]
     fn retained_file_reports_real_hard_link_count() {
-        let unique = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let directory = std::env::temp_dir().join(format!(
-            "vaultspec-windows-authority-link-count-{}-{unique}",
-            std::process::id()
-        ));
-        std::fs::create_dir(&directory).unwrap();
-        let file_path = directory.join("authority-file");
-        let alias_path = directory.join("authority-alias");
+        let directory = tempfile::tempdir().unwrap();
+        let file_path = directory.path().join("authority-file");
+        let alias_path = directory.path().join("authority-alias");
         std::fs::write(&file_path, b"authority").unwrap();
         let authority = AuthorityFile::open_reader(&file_path).unwrap();
 
@@ -225,6 +432,260 @@ mod tests {
         assert_eq!(authority.link_count().unwrap(), 1);
         drop(authority);
         std::fs::remove_file(file_path).unwrap();
-        std::fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn retained_directory_identity_is_stable_distinct_and_full_width() {
+        let temp = tempfile::tempdir().unwrap();
+        let first_path = temp.path().join("first");
+        let second_path = temp.path().join("second");
+        create_directory(&first_path);
+        create_directory(&second_path);
+
+        let first = AuthorityDirectory::open_existing(&first_path).unwrap();
+        let first_identity = first.identity();
+        let second = AuthorityDirectory::open_existing(&second_path).unwrap();
+        let second_identity = second.identity();
+        assert_ne!(first_identity, second_identity);
+        assert_ne!(first_identity.volume_serial_number, 0);
+        assert_ne!(first_identity.file_id, 0);
+        drop(first);
+        assert_eq!(
+            AuthorityDirectory::open_existing(&first_path)
+                .unwrap()
+                .identity(),
+            first_identity
+        );
+    }
+
+    #[test]
+    fn file_root_reparse_root_and_reparse_child_are_rejected() {
+        let temp = tempfile::tempdir().unwrap();
+        let file_path = temp.path().join("plain-file");
+        std::fs::write(&file_path, b"not a directory").unwrap();
+        assert!(AuthorityDirectory::open_existing(&file_path).is_err());
+
+        let target = temp.path().join("target");
+        let root_link = temp.path().join("root-link");
+        create_directory(&target);
+        symlink_dir(&target, &root_link).unwrap();
+        assert!(AuthorityDirectory::open_existing(&root_link).is_err());
+
+        let parent_path = temp.path().join("parent");
+        let child_target = temp.path().join("child-target");
+        create_directory(&parent_path);
+        create_directory(&child_target);
+        symlink_dir(&child_target, parent_path.join("linked-child")).unwrap();
+        let parent = AuthorityDirectory::open_existing(&parent_path).unwrap();
+        assert!(
+            parent
+                .open_child_directory(OsStr::new("linked-child"))
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn component_grammar_rejects_every_reserved_shape_and_accepts_unicode() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent_path = temp.path().join("parent");
+        create_directory(&parent_path);
+        let parent = AuthorityDirectory::open_existing(&parent_path).unwrap();
+
+        let mut invalid = vec![
+            OsString::new(),
+            OsString::from("."),
+            OsString::from(".."),
+            OsString::from("/"),
+            OsString::from("\\"),
+            OsString::from("a/b"),
+            OsString::from("a\\b"),
+            OsString::from("a:b"),
+            OsString::from("C:\\absolute"),
+            OsString::from("\\\\server\\share"),
+            OsString::from("\\?\\C:\\absolute"),
+            OsString::from("bad<name"),
+            OsString::from("bad>name"),
+            OsString::from("bad\"name"),
+            OsString::from("bad|name"),
+            OsString::from("bad?name"),
+            OsString::from("bad*name"),
+            OsString::from("trailing."),
+            OsString::from("trailing "),
+            OsString::from("CON"),
+            OsString::from("prn.txt"),
+            OsString::from("Aux"),
+            OsString::from("NUL.bin"),
+            OsString::from("COM1"),
+            OsString::from("com9.log"),
+            OsString::from("COM¹"),
+            OsString::from("cOm².TxT"),
+            OsString::from("LPT1"),
+            OsString::from("lpt9.txt"),
+            OsString::from("LPT³"),
+            OsString::from("lPt¹.log"),
+            OsString::from("x".repeat(MAX_DIRECTORY_COMPONENT_UTF16_UNITS + 1)),
+            OsString::from_wide(&[0]),
+            OsString::from_wide(&[1]),
+            OsString::from_wide(&[0x1f]),
+        ];
+        for name in invalid.drain(..) {
+            assert_invalid_component(&parent, &name);
+        }
+
+        for name in [
+            OsStr::new("資料-🦀"),
+            OsStr::new("COM0"),
+            OsStr::new("COM⁴"),
+            OsStr::new("LPT10"),
+        ] {
+            let created = parent.create_child_directory(name).unwrap();
+            let identity = created.identity();
+            drop(created);
+            let reopened = parent.open_child_directory(name).unwrap();
+            assert_eq!(reopened.identity(), identity);
+            reopened.remove_empty().unwrap();
+        }
+    }
+
+    #[test]
+    fn exclusive_create_and_file_directory_collisions_are_honest() {
+        let temp = tempfile::tempdir().unwrap();
+        let parent_path = temp.path().join("parent");
+        create_directory(&parent_path);
+        create_directory(&parent_path.join("existing-directory"));
+        std::fs::write(parent_path.join("existing-file"), b"file").unwrap();
+        let parent = AuthorityDirectory::open_existing(&parent_path).unwrap();
+
+        let created = parent
+            .create_child_directory(OsStr::new("new-directory"))
+            .unwrap();
+        drop(created);
+        assert_eq!(
+            parent
+                .create_child_directory(OsStr::new("new-directory"))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            parent
+                .create_child_directory(OsStr::new("existing-directory"))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            parent
+                .create_child_directory(OsStr::new("existing-file"))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::AlreadyExists
+        );
+        assert_eq!(
+            parent
+                .open_child_directory(OsStr::new("existing-file"))
+                .unwrap_err()
+                .raw_os_error(),
+            Some(267)
+        );
+    }
+
+    #[test]
+    fn relative_children_disambiguate_parents_and_missing_is_not_found() {
+        let temp = tempfile::tempdir().unwrap();
+        let first_path = temp.path().join("first");
+        let second_path = temp.path().join("second");
+        create_directory(&first_path);
+        create_directory(&second_path);
+        let first = AuthorityDirectory::open_existing(&first_path).unwrap();
+        let second = AuthorityDirectory::open_existing(&second_path).unwrap();
+
+        let first_child = first
+            .create_child_directory(OsStr::new("same-name"))
+            .unwrap();
+        let second_child = second
+            .create_child_directory(OsStr::new("same-name"))
+            .unwrap();
+        assert_ne!(first_child.identity(), second_child.identity());
+        assert_eq!(
+            first
+                .open_child_directory(OsStr::new("missing"))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::NotFound
+        );
+    }
+
+    #[test]
+    fn retained_directory_denies_rename_delete_and_ancestor_substitution_until_drop() {
+        let temp = tempfile::tempdir().unwrap();
+        let ancestor = temp.path().join("ancestor");
+        let root = ancestor.join("root");
+        let moved_ancestor = temp.path().join("moved-ancestor");
+        let moved_root = ancestor.join("moved-root");
+        create_directory(&ancestor);
+        create_directory(&root);
+        let authority = AuthorityDirectory::open_existing(&root).unwrap();
+
+        assert!(open_directory_for_generic_write(&root).is_err());
+        assert!(std::fs::rename(&root, &moved_root).is_err());
+        assert!(std::fs::remove_dir(&root).is_err());
+        assert!(std::fs::rename(&ancestor, &moved_ancestor).is_err());
+
+        drop(authority);
+        drop(open_directory_for_generic_write(&root).unwrap());
+        std::fs::rename(&ancestor, &moved_ancestor).unwrap();
+        std::fs::rename(&moved_ancestor, &ancestor).unwrap();
+        std::fs::rename(&root, &moved_root).unwrap();
+        std::fs::remove_dir(&moved_root).unwrap();
+        std::fs::remove_dir(&ancestor).unwrap();
+    }
+
+    #[test]
+    fn exact_empty_cleanup_consumes_only_the_retained_directory() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        let sentinel = temp.path().join("sentinel");
+        create_directory(&target);
+        create_directory(&sentinel);
+        let sentinel_file = sentinel.join("keep");
+        std::fs::write(&sentinel_file, b"untouched").unwrap();
+
+        AuthorityDirectory::open_existing(&target)
+            .unwrap()
+            .remove_empty()
+            .unwrap();
+        assert!(!target.exists());
+        assert_eq!(std::fs::read(sentinel_file).unwrap(), b"untouched");
+    }
+
+    #[test]
+    fn nonempty_cleanup_returns_retained_authority_and_retries_after_real_removal() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("target");
+        create_directory(&target);
+        let child = target.join("child");
+        std::fs::write(&child, b"real child").unwrap();
+        let authority = AuthorityDirectory::open_existing(&target).unwrap();
+        let identity = authority.identity();
+
+        let failure = authority.remove_empty().unwrap_err();
+        assert_eq!(failure.authority().identity(), identity);
+        assert_eq!(failure.error().raw_os_error(), Some(145));
+        assert!(std::error::Error::source(&failure).is_some());
+        assert!(std::fs::rename(&target, temp.path().join("replacement")).is_err());
+
+        std::fs::remove_file(child).unwrap();
+        let (authority, source) = failure.into_parts();
+        assert_eq!(source.raw_os_error(), Some(145));
+        authority.remove_empty().unwrap();
+        assert!(!target.exists());
+    }
+
+    #[test]
+    fn unmapped_native_status_preserves_the_hex_status() {
+        let error = os::ntstatus_to_io_error(0xDEAD_BEEF_u32 as i32);
+        assert!(error.raw_os_error().is_none());
+        assert!(error.to_string().contains("0xDEADBEEF"));
     }
 }

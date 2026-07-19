@@ -3130,6 +3130,7 @@ dependencies = [
 name = "vaultspec-windows-authority"
 version = "0.1.4"
 dependencies = [
+ "tempfile",
  "windows-sys 0.61.2",
 ]
 

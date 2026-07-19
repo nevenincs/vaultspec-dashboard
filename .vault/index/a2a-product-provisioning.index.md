@@ -4,7 +4,7 @@ tags:
   - '#index'
   - '#a2a-product-provisioning'
 date: '2026-07-19'
-modified: '2026-07-19'
+modified: '2026-07-20'
 related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S02]]'
@@ -19,6 +19,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S11]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S146]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S167]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S168]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S12]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S13]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S14]]'
@@ -81,6 +82,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S11` - Verify manifest rejection, atomic receipt activation, dashboard-only capability creation, gateway read-only access, credential separation, permission restriction, and cross-process lock exclusion with real files, processes, and locks
 - `2026-07-18-a2a-product-provisioning-W01-P01-S146` - Declare the explicit five-target by channel support matrix with payload type, installer authority, updater authority, downgrade path, rollback path, and unsupported reason
 - `2026-07-18-a2a-product-provisioning-W01-P01-S167` - Establish the fixed two-slot receipt journal and three non-selection logical proof replicas with two alternating subrecords each, synchronize and reopen before resolving the higher valid subrecord and two-of-three proof quorum, select the highest receipt sequence only after all logical replicas normalize to retired, reject proof ties overflow ambiguity aliases and unproved damage, validate active proof bound to the journal prior envelope target preimage next sequence and intended envelope, expose a bounded no-follow reader under the verified installation guard, and add no activation writer
+- `2026-07-18-a2a-product-provisioning-W01-P01-S168` - Extend the D9 Windows authority boundary with retained non-reparse directory handles, full-width directory identity, narrowly retained-handle child traversal, and exact retained-directory cleanup required by unpublished generation authority, with real Windows full-width identity reparse rejection substitution share-denial cleanup and error tests plus independent unsafe review
 - `2026-07-18-a2a-product-provisioning-W01-P02-S12` - Define typed install, ensure, start, stop, restart, repair, update, rollback, remove, doctor, readiness, and refusal contracts
 - `2026-07-18-a2a-product-provisioning-W01-P02-S13` - Validate secret-free versioned A2A discovery, live process identity, owner handoff reference, freshness, compatibility, and foreign immutability
 - `2026-07-18-a2a-product-provisioning-W01-P02-S14` - Broker bounded authenticated liveness, readiness, drain, shutdown, and lifecycle-entrypoint calls through the capsule contract
