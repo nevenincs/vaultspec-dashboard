@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-18'
+modified: '2026-07-19'
 tier: L3
 related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
@@ -35,7 +35,7 @@ Define the dashboard-owned release-set, receipt, credential, lock, process, and 
 
 Dispatch to vaultspec-high-executor to establish the tracked component lock, release schema, immutable path authority, complete receipt, credentials, and installation lock.
 
-- [ ] `W01.P01.S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers; `engine/Cargo.toml`.
+- [x] `W01.P01.S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers; `engine/Cargo.toml`.
 - [ ] `W01.P01.S02` - Declare bounded serialization, digest, file-lock, process, and platform dependencies for product lifecycle authority; `engine/crates/vaultspec-product/Cargo.toml`.
 - [ ] `W01.P01.S03` - Pin the exact A2A source commit and release identity plus emitted capsule artifact, CPython 3.13, Node 22, and ACP 0.59.0 digests without floating, latest, or runtime resolution; `packaging/a2a-component.lock.json`.
 - [ ] `W01.P01.S04` - Define the dashboard-owned complete release-set schema binding the dashboard build to the pinned A2A component manifest, runtime inputs, protocols, state schemas, digests, licenses, and SBOM; `schemas/release-set-manifest.json`.

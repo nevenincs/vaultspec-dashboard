@@ -29,6 +29,7 @@ ingest-git = { path = "crates/ingest-git" }
 ingest-struct = { path = "crates/ingest-struct" }
 rag-client = { path = "crates/rag-client" }
 vaultspec-api = { path = "crates/vaultspec-api" }
+vaultspec-product = { path = "crates/vaultspec-product" }
 vaultspec-session = { path = "crates/vaultspec-session" }
 
 [workspace.lints.rust]

@@ -1,0 +1,11 @@
+[package]
+name = "vaultspec-product"
+description = "Shared product-contract boundary for dashboard-owned A2A lifecycle, release-set, and update consumers."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true

@@ -3,13 +3,15 @@ generated: true
 tags:
   - '#index'
   - '#a2a-product-provisioning'
-date: '2026-07-18'
-modified: '2026-07-18'
+date: '2026-07-19'
+modified: '2026-07-19'
 related:
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
   - '[[2026-07-18-a2a-product-provisioning-research]]'
+  - '[[2026-07-19-a2a-product-provisioning-audit]]'
 ---
 
 # `a2a-product-provisioning` feature index
@@ -21,6 +23,14 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 ### adr
 
 - `2026-07-18-a2a-product-provisioning-adr` - `a2a-product-provisioning` adr: `the dashboard-owned A2A companion and composite release set` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-19-a2a-product-provisioning-audit` - `a2a-product-provisioning` audit: `W01 P01 S01 registration review`
+
+### exec
+
+- `2026-07-18-a2a-product-provisioning-W01-P01-S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers
 
 ### plan
 

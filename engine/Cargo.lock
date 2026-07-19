@@ -2948,6 +2948,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "vaultspec-product"
+version = "0.1.4"
+
+[[package]]
 name = "vaultspec-session"
 version = "0.1.4"
 dependencies = [
