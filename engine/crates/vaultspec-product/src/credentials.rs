@@ -18,17 +18,14 @@
 //! discovery are permitted. Loopback is the only desktop bind surface, so a
 //! credential's threat model is local: file-ACL restriction is the control.
 //!
-//! Secret material is drawn from OS entropy without adding a dependency: several
-//! independent `std::hash::RandomState` instances are seeded by the platform RNG
-//! (`getrandom`/`BCryptGenRandom` inside std), and their hashes are folded
-//! through SHA-256 into a 256-bit token. This is unguessable in practice and
-//! introduces no unsafe and no new crate.
+//! Secret material is a 256-bit token from the OS CSPRNG via `getrandom`
+//! (`getrandom`/`getentropy` on Unix, `BCryptGenRandom`/`ProcessPrng` on
+//! Windows) — the same explicit CSPRNG contract the engine's bearer- and
+//! actor-token generators use, hex-encoded to 64 characters, no unsafe.
 
-use std::hash::{BuildHasher, Hasher};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 /// The three credential roles. The role is bound to the file name, so a reader
 /// cannot silently reinterpret one role's secret as another's.
@@ -233,7 +230,7 @@ impl CredentialStore {
 
     fn create(&self, role: CredentialRole) -> std::result::Result<Credential, CredentialError> {
         let path = self.path(role);
-        let secret = random_token();
+        let secret = random_token()?;
         // Restrict BEFORE the secret bytes land where a racing reader could see
         // them at the default umask: write, restrict, then the secret is only
         // ever readable by the owner.
@@ -262,32 +259,28 @@ pub fn restrict_to_owner(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
-/// Draw a 256-bit token from OS entropy, hex-encoded to 64 characters. Each
-/// `RandomState` is seeded by the platform RNG inside std; folding several
-/// independent instances plus the wall clock and pid through SHA-256 yields an
-/// unguessable secret with no added dependency and no unsafe.
-fn random_token() -> String {
+/// Draw a 256-bit secret from the OS CSPRNG, hex-encoded to 64 characters.
+///
+/// The entropy source is `getrandom` — an explicit CSPRNG contract over the
+/// platform's own generator (`getrandom`/`getentropy` on Unix,
+/// `BCryptGenRandom`/`ProcessPrng` on Windows), the same primitive the engine's
+/// bearer- and actor-token generators use. This deliberately does NOT use
+/// `std::hash::RandomState`: std seeds its HashMap keys once per thread and then
+/// returns a deterministically-incremented derivation on each call, so
+/// back-to-back credentials would be simple offsets of one seed — and that
+/// seeding is an undocumented std internal, never a documented security
+/// primitive (a future toolchain could weaken it with no test signal).
+fn random_token() -> std::io::Result<String> {
     use std::fmt::Write as _;
 
-    let mut hasher = Sha256::new();
-    for salt in 0u64..8 {
-        let state = std::hash::RandomState::new();
-        let mut h = state.build_hasher();
-        h.write_u64(salt);
-        hasher.update(h.finish().to_le_bytes());
-    }
-    let nanos = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or_default();
-    hasher.update(nanos.to_le_bytes());
-    hasher.update(std::process::id().to_le_bytes());
-    let digest = hasher.finalize();
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes)
+        .map_err(|e| std::io::Error::other(format!("OS CSPRNG unavailable: {e}")))?;
     let mut out = String::with_capacity(64);
-    for byte in digest {
+    for byte in bytes {
         let _ = write!(out, "{byte:02x}");
     }
-    out
+    Ok(out)
 }
 
 #[cfg(test)]

@@ -3016,6 +3016,7 @@ version = "0.1.4"
 dependencies = [
  "command-group",
  "fs4",
+ "getrandom",
  "nix 0.29.0",
  "serde",
  "serde_json",
