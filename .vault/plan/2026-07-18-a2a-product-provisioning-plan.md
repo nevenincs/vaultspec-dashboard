@@ -66,14 +66,14 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 
 Dispatch to vaultspec-high-executor to implement the opaque capsule entrypoint client, secret-free discovery validation, authenticated readiness, process-tree ownership, and typed lifecycle state machine.
 
-- [ ] `W01.P02.S12` - Define typed install, ensure, start, stop, restart, repair, update, rollback, remove, doctor, readiness, and refusal contracts; `engine/crates/vaultspec-product/src/protocol.rs`.
-- [ ] `W01.P02.S13` - Validate secret-free versioned A2A discovery, live process identity, owner handoff reference, freshness, compatibility, and foreign immutability; `engine/crates/vaultspec-product/src/discovery.rs`.
-- [ ] `W01.P02.S14` - Broker bounded authenticated liveness, readiness, drain, shutdown, and lifecycle-entrypoint calls through the capsule contract; `engine/crates/vaultspec-product/src/control.rs`.
-- [ ] `W01.P02.S15` - Spawn only the manifest-declared gateway entrypoint and contain the owned process tree through bounded graceful and forced cleanup; `engine/crates/vaultspec-product/src/process.rs`.
-- [ ] `W01.P02.S16` - Implement receipt-gated lifecycle transitions while preserving cold installed state, foreign attach, mutable data, and complete release-set authority; `engine/crates/vaultspec-product/src/lifecycle.rs`.
-- [ ] `W01.P02.S17` - Prove owner attach, foreign conflict, stale-owner recovery, credential separation, and lifecycle refusal with real processes, files, and sockets; `engine/crates/vaultspec-product/tests/desktop_gateway.rs`.
+- [x] `W01.P02.S12` - Define typed install, ensure, start, stop, restart, repair, update, rollback, remove, doctor, readiness, and refusal contracts; `engine/crates/vaultspec-product/src/protocol.rs`.
+- [x] `W01.P02.S13` - Validate secret-free versioned A2A discovery, live process identity, owner handoff reference, freshness, compatibility, and foreign immutability; `engine/crates/vaultspec-product/src/discovery.rs`.
+- [x] `W01.P02.S14` - Broker bounded authenticated liveness, readiness, drain, shutdown, and lifecycle-entrypoint calls through the capsule contract; `engine/crates/vaultspec-product/src/control.rs`.
+- [x] `W01.P02.S15` - Spawn only the manifest-declared gateway entrypoint and contain the owned process tree through bounded graceful and forced cleanup; `engine/crates/vaultspec-product/src/process.rs`.
+- [x] `W01.P02.S16` - Implement receipt-gated lifecycle transitions while preserving cold installed state, foreign attach, mutable data, and complete release-set authority; `engine/crates/vaultspec-product/src/lifecycle.rs`.
+- [x] `W01.P02.S17` - Prove owner attach, foreign conflict, stale-owner recovery, credential separation, and lifecycle refusal with real processes, files, and sockets; `engine/crates/vaultspec-product/tests/desktop_gateway.rs`.
 - [ ] `W01.P02.S18` - Prove stop, repair, remove, data preservation, descendant cleanup, and bounded timeout outcomes against the real A2A desktop capsule; `engine/crates/vaultspec-product/tests/lifecycle_ownership.rs`.
-- [ ] `W01.P02.S86` - Keep the manifest-declared standalone MCP entrypoint inspectable but outside every dashboard start, adopt, stop, drain, and cleanup path; `engine/crates/vaultspec-product/src/lifecycle.rs`.
+- [x] `W01.P02.S86` - Keep the manifest-declared standalone MCP entrypoint inspectable but outside every dashboard start, adopt, stop, drain, and cleanup path; `engine/crates/vaultspec-product/src/lifecycle.rs`.
 
 ### Phase `W01.P03` - serve a race-free lifecycle job plane
 

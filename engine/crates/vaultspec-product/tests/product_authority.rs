@@ -45,6 +45,20 @@ fn capsule_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Va
             "api_versions": { "minimum": "v1", "maximum": "v1" },
             "migration_range": { "base": "0001", "head": "0009" }
         },
+        "entrypoints": {
+            "gateway": {
+                "kind": "gateway",
+                "console_script": "vaultspec-a2a-gateway",
+                "reference": "vaultspec_a2a.desktop.gateway:main",
+                "relative_command": ["bin", "vaultspec-a2a-gateway"]
+            },
+            "standalone_mcp": {
+                "kind": "standalone-mcp",
+                "console_script": "vaultspec-a2a-mcp",
+                "reference": "vaultspec_a2a.mcp.standalone:main",
+                "relative_command": ["bin", "vaultspec-a2a-mcp"]
+            }
+        },
         "digest_algorithm": "sha256",
         "assets": [
             { "kind": "python-runtime", "version": "3.13", "license": "PSF-2.0", "digest": python },

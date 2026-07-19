@@ -236,6 +236,38 @@ impl Receipt {
     }
 }
 
+/// Sweep orphaned receipt temp files (`receipt.json.tmp-<pid>`) left by a crash
+/// between the atomic write and the rename. Best-effort and bounded to the
+/// receipt directory: a stranded temp is dead weight, and the resource-bounds
+/// law requires the accumulator be reclaimed rather than allowed to grow. The
+/// active `receipt.json` itself is never a temp and is left untouched. Returns
+/// the number of orphaned temp files removed.
+pub fn sweep_orphan_tmp(receipt_path: &std::path::Path) -> std::io::Result<usize> {
+    let Some(dir) = receipt_path.parent() else {
+        return Ok(0);
+    };
+    let Some(base) = receipt_path.file_name().and_then(|n| n.to_str()) else {
+        return Ok(0);
+    };
+    let tmp_prefix = format!("{base}.tmp-");
+    let mut removed = 0;
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        // A not-yet-created receipt directory has nothing to sweep.
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e),
+    };
+    for entry in entries.flatten() {
+        if let Some(name) = entry.file_name().to_str()
+            && name.starts_with(&tmp_prefix)
+            && std::fs::remove_file(entry.path()).is_ok()
+        {
+            removed += 1;
+        }
+    }
+    Ok(removed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -283,5 +315,29 @@ mod tests {
         let live = Receipt::load(&path).unwrap();
         assert_eq!(live.state, ReceiptState::Active);
         assert!(live.interruption.is_none());
+    }
+
+    #[test]
+    fn sweep_removes_orphan_temps_but_never_the_active_receipt() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("receipt.json");
+        Receipt::bootstrap(
+            Channel::Msi,
+            Target::X86_64PcWindowsMsvc,
+            identity(),
+            "g",
+            1,
+        )
+        .persist(&path)
+        .unwrap();
+        // Two stranded temps from crashed writes of other pids.
+        std::fs::write(dir.path().join("receipt.json.tmp-111"), "x").unwrap();
+        std::fs::write(dir.path().join("receipt.json.tmp-222"), "x").unwrap();
+        assert_eq!(sweep_orphan_tmp(&path).unwrap(), 2);
+        // The active receipt survives and still loads.
+        assert!(path.exists());
+        assert!(Receipt::load(&path).is_ok());
+        // A second sweep is a clean no-op.
+        assert_eq!(sweep_orphan_tmp(&path).unwrap(), 0);
     }
 }

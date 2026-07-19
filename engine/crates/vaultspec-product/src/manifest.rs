@@ -292,9 +292,64 @@ pub struct CapsuleManifest {
     pub identity: ComponentIdentity,
     pub target: Target,
     pub compatibility: ComponentCompatibility,
+    pub entrypoints: ComponentEntrypoints,
     pub digest_algorithm: String,
     pub assets: Vec<ComponentAsset>,
     pub dependency_lock: DependencyLockIdentity,
+}
+
+/// The dashboard-owned gateway launch and the caller-owned standalone MCP launch
+/// declared by the capsule. The dashboard lifecycle owns only the gateway; the
+/// standalone MCP is inspectable but never launched or adopted (ADR D4).
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct ComponentEntrypoints {
+    pub gateway: LaunchEntrypoint,
+    pub standalone_mcp: LaunchEntrypoint,
+}
+
+/// One capsule launch surface: a console-script name, an entry-point object
+/// reference, and the bounded argv path segments relative to the capsule root.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct LaunchEntrypoint {
+    /// The launch-surface discriminator (`gateway` or `standalone-mcp`).
+    pub kind: String,
+    pub console_script: String,
+    pub reference: String,
+    /// Portable, non-rooted capsule path segments forming the launch command.
+    pub relative_command: Vec<String>,
+}
+
+impl LaunchEntrypoint {
+    /// Resolve the launch program path under a capsule root, validating every
+    /// segment so a malformed or malicious manifest cannot escape the capsule.
+    /// Rejects an empty command, `.`/`..` components, and any segment carrying a
+    /// path separator — this is the one place a manifest-supplied path reaches
+    /// the filesystem, and it never trusts it blindly.
+    pub fn resolve_program(&self, capsule_root: &std::path::Path) -> Result<std::path::PathBuf> {
+        if self.relative_command.is_empty() {
+            return Err(ManifestError::IdentityMismatch {
+                detail: format!("{} entrypoint has an empty relative_command", self.kind),
+            });
+        }
+        let mut path = capsule_root.to_path_buf();
+        for segment in &self.relative_command {
+            let ok = !segment.is_empty()
+                && segment != "."
+                && segment != ".."
+                && !segment.contains('/')
+                && !segment.contains('\\');
+            if !ok {
+                return Err(ManifestError::IdentityMismatch {
+                    detail: format!(
+                        "{} entrypoint segment {segment:?} is not a portable capsule path segment",
+                        self.kind
+                    ),
+                });
+            }
+            path.push(segment);
+        }
+        Ok(path)
+    }
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -309,7 +364,7 @@ pub struct ComponentCompatibility {
     pub migration_range: MigrationRange,
 }
 
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct RangeBounds {
     pub minimum: String,
     pub maximum: String,
@@ -349,6 +404,16 @@ impl CapsuleManifest {
         let manifest: CapsuleManifest =
             serde_json::from_str(raw).map_err(|e| ManifestError::Parse(e.to_string()))?;
         manifest.verify_self()?;
+        Ok(manifest)
+    }
+
+    /// Parse AND verify against the component lock in one call. A lifecycle
+    /// consumer must never hold a capsule that parsed but was not joined to the
+    /// lock's pins; this helper closes that gap so `parse` can't be used
+    /// standalone by accident (P01 review deferred-hardening item).
+    pub fn parse_and_verify(raw: &str, lock: &ComponentLock, expected: Target) -> Result<Self> {
+        let manifest = Self::parse(raw)?;
+        manifest.verify_against_lock(lock, expected)?;
         Ok(manifest)
     }
 
@@ -510,6 +575,15 @@ impl ReleaseSetManifest {
         let manifest: ReleaseSetManifest =
             serde_json::from_str(raw).map_err(|e| ManifestError::Parse(e.to_string()))?;
         manifest.verify_self()?;
+        Ok(manifest)
+    }
+
+    /// Parse AND verify against the component lock in one call, so a consumer
+    /// cannot hold a release set that parsed but was never joined to the lock's
+    /// pins (P01 review deferred-hardening item).
+    pub fn parse_and_verify(raw: &str, lock: &ComponentLock) -> Result<Self> {
+        let manifest = Self::parse(raw)?;
+        manifest.verify_against_lock(lock)?;
         Ok(manifest)
     }
 

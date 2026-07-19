@@ -7,8 +7,9 @@
 //! lifecycle, and build-tool modules — never A2A-internal Python detail, which
 //! stays opaque behind the capsule manifest.
 //!
-//! Modules delivered so far (W01.P01):
+//! Modules delivered so far:
 //!
+//! W01.P01 — product authority substrate:
 //! - [`manifest`] — parse and fail-closed verification of the component lock,
 //!   the A2A-emitted capsule manifest, and the dashboard release-set manifest.
 //! - [`paths`] — product-owned install/generation/app-home/transaction/
@@ -17,11 +18,25 @@
 //! - [`credentials`] — the dashboard/gateway/worker credential separation.
 //! - [`locking`] — the installation transaction lock and stale-state quarantine.
 //!
-//! Later steps add the lifecycle protocol, discovery/control/process ownership,
-//! transactional update, and build/certify tools behind this same boundary.
+//! W01.P02 — control only the owned gateway:
+//! - [`protocol`] — the typed lifecycle operation, readiness, and refusal
+//!   contracts.
+//! - [`discovery`] — secret-free versioned discovery validation and the
+//!   attach/ownership classification.
+//! - [`control`] — the bounded, authenticated loopback control broker.
+//! - [`process`] — the owned gateway process tree with bounded cleanup.
+//! - [`lifecycle`] — receipt-gated transitions and the standalone-MCP fence.
+//!
+//! Later steps add transactional update and build/certify tools behind this same
+//! boundary.
 
+pub mod control;
 pub mod credentials;
+pub mod discovery;
+pub mod lifecycle;
 pub mod locking;
 pub mod manifest;
 pub mod paths;
+pub mod process;
+pub mod protocol;
 pub mod receipt;
