@@ -11,16 +11,6 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 # `a2a-product-provisioning` plan
 
 ## Description
@@ -29,7 +19,7 @@ Ship the dashboard and the A2A desktop profile as one pinned, receipt-bound, off
 
 Implement the dashboard-owned half of the accepted A2A product provisioning architecture. The accepted ADR, research report, and reference packet authorize this plan; the accepted A2A desktop-profile ADR and its implementation plan define the producer-side capsule boundary.
 
-The A2A repository owns `schemas/desktop-capsule-manifest.json`, deterministic target capsules, migration and gateway entrypoints, the caller-owned standalone MCP entrypoint, and the downstream `/v1/runs` prepare/commit contract. The dashboard owns the exact A2A commit and artifact-digest lock, the complete release-set manifest, bootstrap ownership capability, attach-control credential, lifecycle job plane, dedicated run-token lease repository, fixed five-verb `/ops/a2a/{verb}` surface, attach-control-authenticated internal terminal-settlement route, external updater, product trees, installers, channel metadata, UI, and release gate. Worker IPC remains gateway-created and confined to gateway-worker traffic. The dashboard consumes the capsule as an opaque versioned artifact and rejects mismatch, floating identity, or runtime dependency resolution.
+The A2A repository owns `schemas/desktop-capsule-manifest.json`, deterministic target capsules, migration and gateway entrypoints, the caller-owned standalone MCP entrypoint, and the downstream `/v1/runs` prepare/commit contract. The dashboard owns the exact A2A commit and artifact-digest lock, the complete release-set manifest, bootstrap ownership capability, attach-control credential, lifecycle job plane, dedicated run-token lease repository, fixed six-member `/ops/a2a/{verb}` whitelist of five control verbs plus bounded active-run discovery, attach-control-authenticated internal terminal-settlement route, external updater, product trees, installers, channel metadata, UI, and release gate. Worker IPC remains gateway-created and confined to gateway-worker traffic. The dashboard consumes the capsule as an opaque versioned artifact and rejects mismatch, floating identity, or runtime dependency resolution.
 
 This is an L3 plan because six ordered subsystem waves and two coordinated repositories require multi-session execution and hard release gates. L4 is not selected because no external project-management artifact was supplied, and the plan does not invent one. Every implementation and certification test uses production code with real files, locks, sockets, processes, databases, capsules, installers, or package managers; fakes, mocks, stubs, patches, skipped cases, and mirrored business logic are outside the acceptance contract.
 
@@ -48,19 +38,21 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 - [x] `W01.P01.S01` - Register the reusable dashboard product-contract crate for API, CLI, updater, and release-tool consumers; `engine/Cargo.toml`.
 - [x] `W01.P01.S02` - Declare bounded serialization, digest, file-lock, process, and platform dependencies for product lifecycle authority; `engine/crates/vaultspec-product/Cargo.toml`.
 - [x] `W01.P01.S03` - Pin the exact A2A source commit and release identity plus emitted capsule artifact, CPython 3.13, Node 22, and ACP 0.59.0 digests without floating, latest, or runtime resolution; `packaging/a2a-component.lock.json`.
-- [x] `W01.P01.S04` - Define the dashboard-owned complete release-set schema binding the dashboard build to the pinned A2A component manifest, runtime inputs, protocols, state schemas, digests, licenses, and SBOM; `schemas/release-set-manifest.json`.
+- [ ] `W01.P01.S04` - Define the dashboard-owned complete release-set schema with required installed-file digests and trusted component-lock capsule-manifest capsule-archive tree-evidence dashboard updater license software-bill-of-materials and exact-five-target cohort identities; `schemas/release-set-manifest.json`.
 - [x] `W01.P01.S05` - Expose only stable product contract, lifecycle, update, and build-tool modules to dashboard consumers; `engine/crates/vaultspec-product/src/lib.rs`.
-- [x] `W01.P01.S06` - Parse and verify the tracked component lock, the A2A-emitted schemas/desktop-capsule-manifest.json contract, and the complete release-set manifest while rejecting unpinned identities, target mismatch, digest drift, and floating latest selectors; `engine/crates/vaultspec-product/src/manifest.rs`.
+- [ ] `W01.P01.S06` - Parse and verify the component lock capsule manifest complete release-set installed-byte evidence and exactly five unique target cohort members while rejecting self-authorizing candidate locks unpinned identities target mismatch digest drift and floating selectors; `engine/crates/vaultspec-product/src/manifest.rs`.
 - [x] `W01.P01.S07` - Derive product-owned install, generation, app-home, transaction, staging, snapshot, and updater paths without accepting client paths; `engine/crates/vaultspec-product/src/paths.rs`.
-- [x] `W01.P01.S08` - Persist atomic complete receipts, channel provenance, bootstrap-created ownership retention, active generation, prior seat identity, consistency generation, and interruption markers; `engine/crates/vaultspec-product/src/receipt.rs`.
+- [ ] `W01.P01.S08` - Persist a separately durable active complete receipt bound to dashboard build release-set component-lock and exact-five-target cohort digests target A2A identity active generation channel prior seat and consistency generation while keeping candidate and interruption state outside active selection; `engine/crates/vaultspec-product/src/receipt.rs`.
 - [x] `W01.P01.S09` - Let dashboard bootstrap alone create and retain the ownership capability plus attach-control credential, permit the gateway to read attach-control for dashboard control and settlement callbacks, require the gateway to create a separate worker IPC credential used only between gateway and worker, and forbid aliases or secret-bearing discovery; `engine/crates/vaultspec-product/src/credentials.rs`.
 - [x] `W01.P01.S10` - Enforce installation transaction locking only for installer and copied-updater authority, require lock-first mutation ordering and owner-matching stale-state quarantine, and forbid the gateway from acquiring or waiting on the install lock; `engine/crates/vaultspec-product/src/locking.rs`.
-- [x] `W01.P01.S11` - Verify manifest rejection, atomic receipt activation, dashboard-only capability creation, gateway read-only access, credential separation, permission restriction, and cross-process lock exclusion with real files, processes, and locks; `engine/crates/vaultspec-product/tests/product_authority.rs`.
+- [ ] `W01.P01.S11` - Verify manifest rejection active-receipt durability and fallback unpublished-generation inertness dashboard-only capability creation credential separation permission restriction and cross-process lock exclusion with real files processes and locks; `engine/crates/vaultspec-product/tests/product_authority.rs`.
 - [ ] `W01.P01.S145` - Run a producer-consumer contract workflow that emits the real A2A desktop capsule manifest and target archive, then validates both with the dashboard production parser; `.github/workflows/a2a-product-contract.yml`.
 - [x] `W01.P01.S146` - Declare the explicit five-target by channel support matrix with payload type, installer authority, updater authority, downgrade path, rollback path, and unsupported reason; `packaging/a2a-support-matrix.json`.
 - [ ] `W01.P01.S147` - Execute phase-zero clean-machine Scoop install, upgrade, real manager-owned downgrade, repair, and uninstall proofs before the Scoop channel remains supported; `.github/workflows/a2a-channel-feasibility.yml`.
 - [ ] `W01.P01.S149` - Execute phase-zero clean-machine WinGet install, upgrade, real manager-owned downgrade, repair, and uninstall proofs before the WinGet channel remains supported; `.github/workflows/a2a-channel-feasibility.yml`.
 - [ ] `W01.P01.S148` - Gate channel implementation and publication on the phase-zero support matrix, marking failed channels unsupported and requiring an ADR revisit instead of metadata-only certification; `packaging/a2a-support-matrix.json`.
+- [ ] `W01.P01.S162` - Create final-name owner-private unpublished generation roots through exclusive no-follow creation retain their cross-platform filesystem identity and discard only the same unactivated identity within a hard bound; `engine/crates/vaultspec-product/src/generation.rs`.
+- [ ] `W01.P01.S163` - Prove directory presence never selects a generation and that collisions substitutions partial writers identity-checked discard and bounded abandoned generations fail closed with real filesystem objects; `engine/crates/vaultspec-product/tests/generation_authority.rs`.
 
 ### Phase `W01.P02` - control only the owned gateway
 
@@ -70,7 +62,7 @@ Dispatch to vaultspec-high-executor to implement the opaque capsule entrypoint c
 - [x] `W01.P02.S13` - Validate secret-free versioned A2A discovery, live process identity, owner handoff reference, freshness, compatibility, and foreign immutability; `engine/crates/vaultspec-product/src/discovery.rs`.
 - [x] `W01.P02.S14` - Broker bounded authenticated liveness, readiness, drain, shutdown, and lifecycle-entrypoint calls through the capsule contract; `engine/crates/vaultspec-product/src/control.rs`.
 - [x] `W01.P02.S15` - Spawn only the manifest-declared gateway entrypoint and contain the owned process tree through bounded graceful and forced cleanup; `engine/crates/vaultspec-product/src/process.rs`.
-- [x] `W01.P02.S16` - Implement receipt-gated lifecycle transitions while preserving cold installed state, foreign attach, mutable data, and complete release-set authority; `engine/crates/vaultspec-product/src/lifecycle.rs`.
+- [ ] `W01.P02.S16` - Implement active-receipt-only lifecycle transitions that reject candidate or rolling-back records bind every start and mutation to the verified complete release set and preserve cold state foreign attach mutable data and standalone-MCP ownership; `engine/crates/vaultspec-product/src/lifecycle.rs`.
 - [x] `W01.P02.S17` - Prove owner attach, foreign conflict, stale-owner recovery, credential separation, and lifecycle refusal with real processes, files, and sockets; `engine/crates/vaultspec-product/tests/desktop_gateway.rs`.
 - [x] `W01.P02.S18` - Prove stop, repair, remove, data preservation, descendant cleanup, and bounded timeout outcomes against the real A2A desktop capsule; `engine/crates/vaultspec-product/tests/lifecycle_ownership.rs`.
 - [x] `W01.P02.S86` - Keep the manifest-declared standalone MCP entrypoint inspectable but outside every dashboard start, adopt, stop, drain, and cleanup path; `engine/crates/vaultspec-product/src/lifecycle.rs`.
@@ -90,35 +82,37 @@ Dispatch to vaultspec-high-executor to mount lifecycle status, run, and job rout
 
 ## Wave `W02` - integrate authenticated gateway ownership and run admission
 
-Consume the A2A desktop discovery, readiness, and lazy-worker contracts, wire the lifecycle plane into the seated dashboard, and preserve the fixed five-verb run edge; this wave depends on A2A desktop runtime identity and process ownership outputs.
+Consume the A2A desktop discovery, readiness, and lazy-worker contracts, wire the lifecycle plane into the seated dashboard, and preserve the fixed six-member run edge of five control verbs plus bounded active-run discovery; this wave depends on A2A desktop runtime identity and process ownership outputs.
 
 ### Phase `W02.P04` - attach lifecycle to the seated product
 
 Dispatch to vaultspec-high-executor after the A2A desktop singleton and control protocol land, then start or attach only receipt-authorized gateways and serve one readiness model.
 
-- [ ] `W02.P04.S27` - Start or authenticate the receipt-owned gateway during seated boot and leave compatible foreign residents immutable; `engine/crates/vaultspec-api/src/boot.rs`.
-- [ ] `W02.P04.S28` - Report installed release set, owned or foreign gateway identity, protocol, state schema, and authenticated readiness in the component handshake; `engine/crates/vaultspec-api/src/handshake.rs`.
-- [ ] `W02.P04.S29` - Seed the agent tier on every response so absence can no longer masquerade as A2A availability; `engine/crates/engine-query/src/envelope.rs`.
+- [x] `W02.P04.S27` - Start or authenticate the receipt-owned gateway during seated boot and leave compatible foreign residents immutable; `engine/crates/vaultspec-api/src/boot.rs`.
+- [x] `W02.P04.S28` - Report installed release set, owned or foreign gateway identity, protocol, state schema, and authenticated readiness in the component handshake; `engine/crates/vaultspec-api/src/handshake.rs`.
+- [x] `W02.P04.S29` - Seed the agent tier on every response so absence can no longer masquerade as A2A availability; `engine/crates/engine-query/src/envelope.rs`.
 - [ ] `W02.P04.S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
 - [ ] `W02.P04.S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
-- [ ] `W02.P04.S32` - Expose product installation, gateway, worker, provider, and admission facts without collapsing cold worker state into degradation; `engine/crates/vaultspec-api/src/routes/stream.rs`.
-- [ ] `W02.P04.S33` - Include the complete A2A product and ownership projection in the one-shot status command; `engine/crates/vaultspec-cli/src/cmd/status.rs`.
-- [ ] `W02.P04.S34` - Prove seated boot, authenticated attach, cold readiness, foreign immutability, stale recovery, and clean gateway shutdown against the real desktop entrypoint; `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`.
-- [ ] `W02.P04.S45` - Reuse the same typed product lifecycle authority for one-shot A2A status and mutation commands; `engine/crates/vaultspec-cli/src/cmd/a2a_lifecycle.rs`.
-- [ ] `W02.P04.S46` - Export the one-shot product lifecycle command module; `engine/crates/vaultspec-cli/src/cmd/mod.rs`.
-- [ ] `W02.P04.S47` - Expose bounded A2A lifecycle status and action subcommands without free-form executable or path operands; `engine/crates/vaultspec-cli/src/main.rs`.
-- [ ] `W02.P04.S48` - Make cold seat launch reconcile only the receipt-owned A2A gateway before opening the dashboard; `engine/crates/vaultspec-cli/src/cmd/launch.rs`.
+- [x] `W02.P04.S32` - Expose product installation, gateway, worker, provider, and admission facts without collapsing cold worker state into degradation; `engine/crates/vaultspec-api/src/routes/stream.rs`.
+- [x] `W02.P04.S33` - Include the complete A2A product and ownership projection in the one-shot status command; `engine/crates/vaultspec-cli/src/cmd/status.rs`.
+- [x] `W02.P04.S34` - Prove seated boot, authenticated attach, cold readiness, foreign immutability, stale recovery, and clean gateway shutdown against the real desktop entrypoint; `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`.
+- [x] `W02.P04.S45` - Reuse the same typed product lifecycle authority for one-shot A2A status and mutation commands; `engine/crates/vaultspec-cli/src/cmd/a2a_lifecycle.rs`.
+- [x] `W02.P04.S46` - Export the one-shot product lifecycle command module; `engine/crates/vaultspec-cli/src/cmd/mod.rs`.
+- [x] `W02.P04.S47` - Expose bounded A2A lifecycle status and action subcommands without free-form executable or path operands; `engine/crates/vaultspec-cli/src/main.rs`.
+- [x] `W02.P04.S48` - Make cold seat launch reconcile only the receipt-owned A2A gateway before opening the dashboard; `engine/crates/vaultspec-cli/src/cmd/launch.rs`.
+- [ ] `W02.P04.S164` - Verify the receipt-selected generation against the receipt-bound release-set and component-lock digests plus every installed file digest before starting and never trust a lock supplied only by the candidate tree; `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
+- [ ] `W02.P04.S165` - Prove unreceipted staged rolling-back substituted incomplete tampered and self-authorized generations remain inert while one active fully verified receipt can start the real desktop entrypoint; `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`.
 
 ### Phase `W02.P05` - admit runs before minting credentials
 
-Dispatch to vaultspec-high-executor to preserve the fixed five-verb dashboard edge while implementing downstream prepare, bounded bundle mint, commit, dedicated durable lease storage, attach-control-authenticated internal terminal settlement, expiry, and restart reconciliation.
+Dispatch to vaultspec-high-executor to preserve the fixed six-member dashboard whitelist of five control verbs plus bounded active-run discovery while implementing downstream prepare, bounded bundle mint, commit, dedicated durable lease storage, attach-control-authenticated internal terminal settlement, expiry, and restart reconciliation.
 
 - [ ] `W02.P05.S35` - Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S36` - Issue and revoke run-scoped token bundles only for the bounded server-validated required-role set returned by prepare, without storing raw secrets or revoking another run for the same actor; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
 - [ ] `W02.P05.S37` - Carry the resolved token-hash lease identity with the authenticated principal while keeping the raw header value one-use and inaccessible to handlers; `engine/crates/vaultspec-api/src/authoring/principal.rs`.
 - [ ] `W02.P05.S38` - Resolve actor token hashes against the dedicated A2A run-token lease repository through principal extraction without adding client-claimable lease or run identity fields; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 - [ ] `W02.P05.S39` - Persist the token bundle in the dedicated repository only after commit returns the authoritative A2A run or thread id and bind it to the non-secret lease and reservation identities; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
-- [ ] `W02.P05.S40` - Preserve the public POST /ops/a2a/run-start member of the fixed five-verb dashboard surface while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [ ] `W02.P05.S40` - Preserve public POST /ops/a2a/run-start as one of five control verbs in the fixed six-member dashboard whitelist while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
 - [ ] `W02.P05.S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle; `engine/crates/vaultspec-api/src/routes/a2a_settlement.rs`.
 - [ ] `W02.P05.S42` - Prove dedicated A2A lease-repository migration, reopen, expiry, idempotent settlement, and restart reconciliation without depending on authoring-session schemas; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S43` - Prove two concurrent runs for one role revoke independently and no raw token enters records, output, logs, receipts, or discovery; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
@@ -142,8 +136,8 @@ Dispatch to vaultspec-high-executor to snapshot every schema-bearing store as on
 
 - [ ] `W03.P06.S49` - Snapshot primary, checkpoint, every manifest-declared schema-bearing store, the complete receipt generation, and prior seat descriptor as one verified consistency group; `engine/crates/vaultspec-product/src/snapshot.rs`.
 - [ ] `W03.P06.S50` - Validate migration ranges and invoke only the staged A2A desktop migration entrypoint after complete quiescence; `engine/crates/vaultspec-product/src/migration.rs`.
-- [ ] `W03.P06.S51` - Implement the self-install authority adapter so the copied updater exclusively replaces complete generation trees, switches the active receipt, and restores the retained prior generation without a package manager; `engine/crates/vaultspec-product/src/channels/self_install.rs`.
-- [ ] `W03.P06.S52` - Require the copied external updater to acquire the install lock, authenticate drain to close admission and resolve active runs plus checkpoints, perform owner-authorized gateway stop, wait for A2A runtime-singleton release, snapshot and verify state, run staged migration, swap the complete generation and receipt, relaunch, and probe acceptance in that order; `engine/crates/vaultspec-product/src/transaction.rs`.
+- [ ] `W03.P06.S51` - Implement the self-install authority adapter so the copied updater creates and verifies final-name unpublished complete generations activates only by atomic complete receipt selection and retains the prior generation without a POSIX tree rename; `engine/crates/vaultspec-product/src/channels/self_install.rs`.
+- [ ] `W03.P06.S52` - Require the copied external updater to acquire the install lock drain and stop the owned runtime snapshot and verify state run staged migration verify the final-name unpublished generation atomically select it only by the separately durable active receipt relaunch and probe acceptance in that order; `engine/crates/vaultspec-product/src/transaction.rs`.
 - [ ] `W03.P06.S53` - Resolve interruption at every declared transaction boundary and recover staged, draining, snapshotted, activated, migrating, accepted, and rolling-back states deterministically from durable markers and complete receipts; `engine/crates/vaultspec-product/src/recovery.rs`.
 - [ ] `W03.P06.S54` - Prove consistency snapshots restore real SQLite primary and checkpoint stores together and reject incomplete or unverified groups; `engine/crates/vaultspec-product/tests/snapshot_group.rs`.
 - [ ] `W03.P06.S55` - Prove candidate failure restores files, all schema-bearing state, checkpoints, complete receipt generation, and prior seat while successful activation cannot leave a split release set; `engine/crates/vaultspec-product/tests/update_transaction.rs`.
@@ -172,7 +166,7 @@ Bind pinned A2A, CPython, Node, and ACP inputs to each dashboard build, replace 
 
 Dispatch to vaultspec-high-executor to compose each dashboard build with the pinned A2A capsule and runtime inputs, generate digests, licenses, SBOM, manifests, and target-specific updater payloads.
 
-- [ ] `W04.P08.S64` - Build and verify complete product trees from the tracked component lock, A2A manifest, dashboard binary, updater, licenses, and SBOM; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
+- [ ] `W04.P08.S64` - Build and verify complete product trees inside dashboard-owned final-name unpublished generations from the tracked component lock A2A evidence dashboard binary updater licenses and software bill of materials; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
 - [ ] `W04.P08.S65` - Reject unpinned or floating inputs, A2A commit or artifact mismatch, target mismatch, missing payloads, digest drift, incomplete licenses, and release-set skew with real composed trees; `engine/crates/vaultspec-product/tests/product_build.rs`.
 - [ ] `W04.P08.S66` - Acquire only build-time artifacts by exact pinned identity and stage the SPA without creating any runtime network dependency; `.github/release-build-setup.yml`.
 - [ ] `W04.P08.S67` - Compose and retain the Apple Silicon macOS dashboard, updater, and A2A capsule as one verified release-set artifact; `.github/workflows/release.yml`.
@@ -182,6 +176,7 @@ Dispatch to vaultspec-high-executor to compose each dashboard build with the pin
 - [ ] `W04.P08.S71` - Compose and retain the x86-64 Windows dashboard, updater, and A2A capsule as one verified release-set artifact; `.github/workflows/release.yml`.
 - [ ] `W04.P08.S72` - Validate the component lock, release schema, product builder, and payload inventory before release jobs may run; `.github/workflows/quality-gates.yml`.
 - [ ] `W04.P08.S87` - Carry and verify the independently invokable standalone MCP entrypoint in every capsule without assigning it dashboard lifecycle ownership; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
+- [ ] `W04.P08.S166` - Aggregate exactly one verified artifact for each of the five unique target triples enforce common A2A commit component-lock release-schema protocol and state identity verify every target archive manifest tree software-bill-of-materials and license evidence and emit the cohort digest that gates publication; `.github/workflows/release.yml`.
 
 ### Phase `W04.P09` - replace binary-only installer surfaces
 
@@ -320,7 +315,7 @@ The plan is complete only when every Step is closed and all of the following che
 
 - Lifecycle API tests prove one atomic check-and-reserve hard cap, component-scoped single-flight across different operations, bounded retention, authenticated ownership, foreign immutability, dashboard-only capability creation, distinct credentials, and real process-tree cleanup.
 
-- Run-admission tests prove that public `POST /ops/a2a/run-start` remains one of exactly five dashboard verbs while downstream `/v1/runs` prepare and commit variants return bounded roles, minting follows prepare, commit binds the dedicated lease repository to authoritative A2A run or thread identity, the internal callback accepts the dashboard-created attach-control credential and rejects worker IPC, settlement follows durable terminal persistence, INPUT_REQUIRED retains the lease, and expiry or restart reconciliation revokes exactly one hashed bundle.
+- Run-admission tests prove that public `POST /ops/a2a/run-start` remains one of five control verbs in the fixed six-member dashboard whitelist while downstream `/v1/runs` prepare and commit variants return bounded roles, minting follows prepare, commit binds the dedicated lease repository to authoritative A2A run or thread identity, the internal callback accepts the dashboard-created attach-control credential and rejects worker IPC, settlement follows durable terminal persistence, INPUT_REQUIRED retains the lease, and expiry or restart reconciliation revokes exactly one hashed bundle.
 
 - External-updater tests use a copied protected helper and real executables to prove the invariant: updater acquires install lock, authenticated drain closes admission and resolves active runs plus checkpoints, owner authorization stops the gateway, A2A runtime-singleton release completes, then snapshot, staged migration, and complete-generation swap proceed. The gateway never acquires or waits on the install lock, and receipt restoration, relaunch, rollback, Windows replacement, and every durable interruption boundary recover deterministically.
 
