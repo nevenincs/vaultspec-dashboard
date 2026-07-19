@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Spawn only the manifest-declared gateway entrypoint and contain the owned process tree through bounded graceful and forced cleanup
 
 ## Scope

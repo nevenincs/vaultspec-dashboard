@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Enforce installation transaction locking only for installer and copied-updater authority, require lock-first mutation ordering and owner-matching stale-state quarantine, and forbid the gateway from acquiring or waiting on the install lock
 
 ## Scope

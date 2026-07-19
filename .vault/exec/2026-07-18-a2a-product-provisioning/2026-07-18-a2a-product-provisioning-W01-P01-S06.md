@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Parse and verify the tracked component lock, the A2A-emitted schemas/desktop-capsule-manifest.json contract, and the complete release-set manifest while rejecting unpinned identities, target mismatch, digest drift, and floating latest selectors
 
 ## Scope

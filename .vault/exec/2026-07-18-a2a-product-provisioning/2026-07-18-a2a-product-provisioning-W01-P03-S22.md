@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Serve typed lifecycle status, run, and job endpoints with one atomic check-and-reserve admission critical section, capped output, TTL retention, deadlines, and component-scoped single-flight
 
 ## Scope

@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Reserve the lifecycle prefix from SPA fallback routing so route mistakes fail visibly
 
 ## Scope

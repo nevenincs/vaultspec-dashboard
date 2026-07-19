@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Expose only stable product contract, lifecycle, update, and build-tool modules to dashboard consumers
 
 ## Scope

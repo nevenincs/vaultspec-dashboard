@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Derive product-owned install, generation, app-home, transaction, staging, snapshot, and updater paths without accepting client paths
 
 ## Scope

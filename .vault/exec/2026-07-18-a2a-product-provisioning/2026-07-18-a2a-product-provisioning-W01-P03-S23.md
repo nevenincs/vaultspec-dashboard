@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Mount and inventory the bearer-gated lifecycle routes separately from the fixed ops A2A namespace
 
 ## Scope

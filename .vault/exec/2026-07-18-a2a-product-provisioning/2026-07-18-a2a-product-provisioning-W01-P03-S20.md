@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Own the lifecycle registry and controller inside AppState so tests and seated instances cannot share global mutation state
 
 ## Scope

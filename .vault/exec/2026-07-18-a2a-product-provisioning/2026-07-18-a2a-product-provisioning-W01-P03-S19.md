@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Depend on the product-contract crate and required bounded runtime features from the resident API
 
 ## Scope
