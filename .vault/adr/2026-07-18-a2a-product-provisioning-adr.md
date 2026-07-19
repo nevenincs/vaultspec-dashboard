@@ -314,12 +314,13 @@ not certify this boundary.
 
 **D9: Isolated Windows operating-system authority boundary.** The workspace
 continues to forbid unsafe code in the engine and product crates. Windows file
-authority requires four primitives that the Rust standard library does not
+authority requires five primitives that the Rust standard library does not
 expose as a complete safe contract: the full 128-bit `FILE_ID_INFO`, deletion
-of the exact retained handle rather than a later pathname, positive process
-existence/identity classification when ordinary enumeration is inconclusive,
-and write-through installation of the first fully synchronized fixed active-
-receipt journal into its final same-directory name.
+of the exact retained handle rather than a later pathname, the hard-link count
+of an exact retained authority file, positive process existence/identity
+classification when ordinary enumeration is inconclusive, and write-through
+installation of the first fully synchronized fixed active-receipt journal into
+its final same-directory name.
 The target-gated internal crate `vaultspec-windows-authority` is the sole
 project-owned exception. It may wrap only the minimum Win32 calls required for
 those primitives and the handle open/share modes that make them meaningful.
@@ -327,9 +328,9 @@ those primitives and the handle open/share modes that make them meaningful.
 The exception is explicit in that crate's lint configuration. Unsafe calls are
 confined to a private operating-system module immediately beside their safety
 arguments; the rest of the crate denies unsafe code. Its public API exposes
-only owned handles, copied identities, exact-handle operations, a bounded
-tri-state process observation, and one safe same-directory durable-replace
-operation backed by `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and
+only owned handles, copied identities and link counts, exact-handle operations,
+a bounded tri-state process observation, and one safe same-directory durable-
+replace operation backed by `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and
 `MOVEFILE_WRITE_THROUGH`. That operation is restricted to installing a fully
 synchronized regular non-reparse file, rejects cross-directory operands and
 reparse or non-regular source and destination entries, and supplies no receipt
@@ -341,10 +342,11 @@ bytes, and post-install reread.
 
 The crate pins `windows-sys` exactly and is owned by the product installation
 authority. Every permitted operation requires real Windows tests for full-width
-identity, reparse rejection, share-denial behavior, exact cleanup, live/dead/
-unverifiable process outcomes, write-through same-directory replacement, and
-error propagation, plus warning-denied lint and an independent source review
-of each unsafe call. The journal operation additionally requires first-install
+identity, retained-handle link counts and pre-existing hard-link rejection,
+reparse rejection, share-denial behavior, exact cleanup, live/dead/unverifiable
+process outcomes, write-through same-directory replacement, and error
+propagation, plus warning-denied lint and an independent source review of each
+unsafe call. The journal operation additionally requires first-install
 crash and real NTFS durability certification; process termination alone cannot
 certify power-loss durability. An unverifiable process is live for mutation
 authorization. This exception must be removed when the standard library or an

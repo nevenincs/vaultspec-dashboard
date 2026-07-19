@@ -196,6 +196,16 @@ provide a documented safe Windows containing-directory durability contract.
 containing directory. Rust's Windows rename may use `MoveFileExW` or
 `SetFileInformationByHandle` without a write-through promise.
 
+Safe stable Rust also does not expose the Windows hard-link count needed to
+reject a pre-aliased authority file. The D9 wrapper already queries the exact
+retained handle through `GetFileInformationByHandleEx` for full-width
+`FILE_ID_INFO`; the same bounded Win32 call with `FileStandardInfo` returns
+`FILE_STANDARD_INFO.NumberOfLinks`. A narrow safe `link_count` observation is
+therefore the minimum honest way to enforce D10's alias rejection. It adds no
+generic native query surface and requires real NTFS tests that observe one
+link, add a hard link, observe two, and reject a journal whose alias predates
+the guarded read.
+
 Microsoft documents `MOVEFILE_WRITE_THROUGH` as waiting for a move to reach
 disk and specifically guarantees flushing a copy-and-delete move. That is the
 available narrow first-install primitive, but documentation alone does not
