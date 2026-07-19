@@ -213,3 +213,37 @@ This closes S04 only. S06 must enforce trusted-byte and cross-field joins; S08
 must bind member and cohort digests into a separately durable active receipt;
 S166 must build all five unique target members and emit the descriptor. No
 release or target certification is authorized by this schema step.
+
+## `W01.P01.S06` complete release-set verifier review
+
+S06 now separates raw candidate input from an opaque product authority and
+constructs a non-cloneable verified release value only after the member,
+component lock, external five-target cohort, installed generation, capsule,
+runtime, entrypoint, artifact, inventory, and installed-tree facts join.
+External callers cannot manufacture the expected target or digest anchors from
+candidate bytes.
+
+The first formal review withheld the implementation for five material reasons:
+semantic capsule and tree files were reopened without rebinding them to the
+initial scan, raw public expected digests permitted self-authorization, stable
+entrypoint programs were not proved present, capsule `2.0` accepted migration
+heads other than `0008`, and reread/fanout bounds were incomplete. The revision
+binds every semantic reread to its first size/digest/mode observation, compares
+complete initial and final generation snapshots including full Windows
+`FILE_ID_INFO` root identity, makes authority inputs opaque, proves both
+entrypoints with executable tree evidence, fixes migration compatibility, and
+bounds growth and directory discovery.
+
+Independent known vectors pin the cohort JCS and A2A tree preimages without
+calling mirrored test logic. Real-filesystem cases cover missing and extra
+files, same-size drift, growth, aliases, missing gateway and standalone MCP
+entrypoints, non-executable evidence, artifact drift, cohort skew, and
+candidate-lock substitution. Focused tests passed 10/0, the product library
+passed 48/0, test compilation passed, and formatting/diff checks were clean.
+Two independent final reviews found no critical, high, or medium finding.
+
+This closes S06 as a complete verified snapshot, not as receipt activation.
+S162 must retain the exact unpublished-generation authority through S08 receipt
+durability under the S10 lock. S64/S65 remain responsible for substantive
+license and software-bill-of-materials completeness, and S166 must validate all
+five actual member documents before publication.
