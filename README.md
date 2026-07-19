@@ -9,9 +9,10 @@ The human-facing visual workspace for a Vaultspec project.
 [![targets](https://img.shields.io/badge/targets-macOS%20arm64%2Fx64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)
 
-[What it does](#what-it-does) · [Getting started](#getting-started) ·
-[Capabilities](#capabilities) · [Vaultspec family](#vaultspec-family) ·
-[Documentation](#documentation) · [Status](#status-and-license)
+[What it does](#what-it-does) · [Project layout](#project-layout) ·
+[Getting started](#getting-started) · [Capabilities](#capabilities) ·
+[Vaultspec family](#vaultspec-family) · [Documentation](#documentation) ·
+[Status](#status-and-license)
 
 ![Complete Vaultspec workspace showing the project and worktree selector, Vault and Files navigation, populated graph, timeline, and activity](docs/assets/workspace.png)
 
