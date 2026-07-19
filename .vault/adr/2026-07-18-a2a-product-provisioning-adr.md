@@ -360,14 +360,16 @@ introduce unsafe code into another crate or for another platform or subsystem.
 Directory child traversal is the only permitted native relative-open surface.
 It validates one bounded name component before FFI and uses the retained parent
 as `OBJECT_ATTRIBUTES.RootDirectory` with fixed directory-only, synchronous,
-open-reparse-point options and exact open-versus-create disposition. The safe
-API exposes neither `NtCreateFile`, arbitrary paths, access/share/create flags,
-nor native structures. Every returned child is already retained and validated
-for directory type, non-reparse state, non-delete-pending state, and full-width
-identity before product code can observe it. Exact cleanup marks only that
-retained empty directory for deletion. It is a terminal consuming transition:
-success closes the marked authority, while failure returns the still-owned
-authority together with the operating-system error.
+open-reparse-point options, read-only sharing, and exact open-versus-create
+disposition. The safe API exposes neither `NtCreateFile`, arbitrary paths,
+access/share/create flags, nor native structures. Every returned child is
+already retained and validated for directory type, non-reparse state, non-
+delete-pending state, and full-width identity before product code can observe
+it. Retention denies write and delete access so another handle cannot rename,
+remove, or convert the authority into a reparse point. Exact cleanup marks only
+that retained empty directory for deletion. It is a terminal consuming
+transition: success closes the marked authority, while failure returns the
+still-owned authority together with the operating-system error.
 
 **D10: Active receipt authority is a fixed two-slot journal.** The sole active
 selection record is one owner-private, fixed-size `active-receipts.v1` journal

@@ -217,8 +217,9 @@ exclusively creates one validated child component and atomically returns the
 owned child handle. The wrapper must fix directory-only, synchronous,
 open-reparse-point options and exact `FILE_OPEN` or `FILE_CREATE` dispositions;
 query type, reparse state, delete-pending state, and full `FILE_ID_INFO` from the
-returned handle; deny delete sharing while retained; and clean up only through
-that exact handle. Successful cleanup is a terminal consuming transition that
+returned handle; allow only read sharing so write and delete access remain
+denied while retained; and clean up only through that exact handle. Successful
+cleanup is a terminal consuming transition that
 marks the empty directory and closes its authority; failure returns the still-
 owned authority with the operating-system error. Its safe surface accepts no
 arbitrary `Path`, raw handle, generic access flags, or native buffer, and real
