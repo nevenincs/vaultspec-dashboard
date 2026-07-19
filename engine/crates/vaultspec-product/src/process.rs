@@ -51,9 +51,18 @@ impl GatewaySpec {
         })
     }
 
-    /// Construct a spec directly from a resolved program and arguments. Used by
-    /// the update path (which resolves the staged generation's gateway program)
-    /// and by tests that spawn a real controllable process.
+    /// Construct a spec directly from an ALREADY-RESOLVED program and arguments.
+    /// Used by the update path (which resolves the staged generation's gateway
+    /// program) and by tests that spawn a real controllable process — never with a
+    /// client-supplied raw path. `from_manifest` is the sanctioned launch path.
+    ///
+    /// FOLLOW-UP (W01.P02 review SHOULD-FIX 2, tracked to W01.P03): narrow this to
+    /// `pub(crate)` — or gate it behind a marker proving the path came through
+    /// `LaunchEntrypoint::resolve_program` — once W01.P03 wires the first real
+    /// dashboard/CLI consumer. It is not narrowed yet because the S18 integration
+    /// test (a separate crate) legitimately constructs an arbitrary program to
+    /// launch the capsule's own bundled interpreter, and no production caller of
+    /// `new` exists to abuse it before P03 lands one.
     #[must_use]
     pub fn new(program: impl Into<PathBuf>, args: Vec<std::ffi::OsString>) -> Self {
         Self {

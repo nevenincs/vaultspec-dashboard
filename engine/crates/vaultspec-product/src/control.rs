@@ -75,13 +75,29 @@ struct ControlResponse {
 }
 
 /// The authenticated, bounded control client for one owned gateway endpoint.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ControlClient {
     endpoint: String,
     attach_token: String,
     connect_timeout: Duration,
     io_timeout: Duration,
     max_response_bytes: usize,
+}
+
+// Hand-written so the live attach-control bearer never reaches a `{:?}` surface
+// (a panic message, an error log, a tracing span) — mirrors `Credential`'s
+// redacting Debug. A derived Debug would print `attach_token` in plaintext,
+// contradicting the crate's no-secret-in-any-Debug law.
+impl std::fmt::Debug for ControlClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ControlClient")
+            .field("endpoint", &self.endpoint)
+            .field("attach_token", &"<redacted>")
+            .field("connect_timeout", &self.connect_timeout)
+            .field("io_timeout", &self.io_timeout)
+            .field("max_response_bytes", &self.max_response_bytes)
+            .finish()
+    }
 }
 
 impl ControlClient {

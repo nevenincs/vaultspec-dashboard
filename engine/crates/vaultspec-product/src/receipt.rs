@@ -258,10 +258,27 @@ pub fn sweep_orphan_tmp(receipt_path: &std::path::Path) -> std::io::Result<usize
         Err(e) => return Err(e),
     };
     for entry in entries.flatten() {
-        if let Some(name) = entry.file_name().to_str()
-            && name.starts_with(&tmp_prefix)
-            && std::fs::remove_file(entry.path()).is_ok()
-        {
+        let file_name = entry.file_name();
+        let Some(name) = file_name.to_str() else {
+            continue;
+        };
+        let Some(pid_str) = name.strip_prefix(&tmp_prefix) else {
+            continue;
+        };
+        // Reclaim a stranded temp ONLY when its writer pid is provably DEAD — the
+        // same proof-of-death discipline as `locking::quarantine_owner_matched_stale`
+        // and `discovery::classify`. A live writer (e.g. the external updater
+        // mid-transaction during the activation handoff window) must keep its
+        // in-flight temp; deleting it would corrupt its pending atomic rename. A
+        // suffix that is not a plain pid is a foreign/unrecognized name — left
+        // untouched rather than guessed at.
+        let Ok(pid) = pid_str.parse::<u32>() else {
+            continue;
+        };
+        if crate::locking::process_is_alive(pid) {
+            continue;
+        }
+        if std::fs::remove_file(entry.path()).is_ok() {
             removed += 1;
         }
     }
@@ -330,14 +347,24 @@ mod tests {
         )
         .persist(&path)
         .unwrap();
-        // Two stranded temps from crashed writes of other pids.
-        std::fs::write(dir.path().join("receipt.json.tmp-111"), "x").unwrap();
-        std::fs::write(dir.path().join("receipt.json.tmp-222"), "x").unwrap();
-        assert_eq!(sweep_orphan_tmp(&path).unwrap(), 2);
+        // A temp from a provably-DEAD writer (a pid that is never a live process)
+        // is reclaimed; a temp from a LIVE writer (this very process) is PRESERVED
+        // so an in-flight atomic write is never corrupted out from under it.
+        let dead_pid = u32::MAX - 7;
+        let live_pid = std::process::id();
+        let dead_tmp = dir.path().join(format!("receipt.json.tmp-{dead_pid}"));
+        let live_tmp = dir.path().join(format!("receipt.json.tmp-{live_pid}"));
+        std::fs::write(&dead_tmp, "x").unwrap();
+        std::fs::write(&live_tmp, "x").unwrap();
+        // Only the dead-pid temp is swept.
+        assert_eq!(sweep_orphan_tmp(&path).unwrap(), 1);
+        assert!(!dead_tmp.exists(), "the dead-writer temp is reclaimed");
+        assert!(live_tmp.exists(), "the live-writer temp is preserved");
         // The active receipt survives and still loads.
         assert!(path.exists());
         assert!(Receipt::load(&path).is_ok());
-        // A second sweep is a clean no-op.
+        // A second sweep still preserves the live temp (nothing left to reclaim).
         assert_eq!(sweep_orphan_tmp(&path).unwrap(), 0);
+        assert!(live_tmp.exists());
     }
 }
