@@ -128,6 +128,14 @@ impl ProductPaths {
         self.app_home().join("receipt.json")
     }
 
+    /// The mutable user-data directory (SQLite stores, workspaces) under the app
+    /// home. Preserved across removal unless an explicit typed data removal is
+    /// requested (ADR D6).
+    #[must_use]
+    pub fn data_dir(&self) -> PathBuf {
+        self.app_home().join("data")
+    }
+
     /// The consistency-group snapshots base directory (under the app home).
     #[must_use]
     pub fn snapshots_dir(&self) -> PathBuf {
@@ -172,6 +180,7 @@ impl ProductPaths {
             self.generations_dir(),
             self.app_home(),
             self.credentials_dir(),
+            self.data_dir(),
             self.snapshots_dir(),
             self.transaction_dir(),
             self.staging_dir(),

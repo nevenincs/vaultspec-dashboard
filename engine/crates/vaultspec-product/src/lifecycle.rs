@@ -145,6 +145,78 @@ impl LifecycleController {
             .map_err(|e| LifecycleError::Manifest(e.to_string()))?;
         spawn_gateway(&spec).map_err(LifecycleError::Io)
     }
+
+    /// Remove owned generations, the receipt, and the credentials. Mutable user
+    /// data under the app home is PRESERVED unless `typed_data_removal` is an
+    /// explicit request to delete it (ADR D6: "removes installed generations
+    /// while preserving or deleting data only through an explicit typed choice").
+    /// Owned processes must already be stopped by the caller.
+    pub fn remove(&self, typed_data_removal: bool) -> std::io::Result<()> {
+        remove_dir_all_if_exists(&self.paths.generations_dir())?;
+        remove_file_if_exists(&self.paths.receipt_path())?;
+        remove_dir_all_if_exists(&self.paths.credentials_dir())?;
+        if typed_data_removal {
+            remove_dir_all_if_exists(&self.paths.data_dir())?;
+        }
+        Ok(())
+    }
+
+    /// Repair (replace) an immutable file within a generation tree from pristine
+    /// bytes. The relative path is validated component-by-component so repair can
+    /// only ever write UNDER the generation directory — never over mutable
+    /// app-home data (ADR D6: "Repair never overwrites mutable state").
+    pub fn repair_immutable(
+        &self,
+        generation: &str,
+        relative: &std::path::Path,
+        pristine: &[u8],
+    ) -> std::result::Result<(), LifecycleError> {
+        let gen_dir = self
+            .paths
+            .generation_dir(generation)
+            .map_err(|e| LifecycleError::Manifest(e.to_string()))?;
+        let target = safe_join_under(&gen_dir, relative)
+            .ok_or_else(|| LifecycleError::Manifest("repair path escapes the generation".into()))?;
+        if let Some(parent) = target.parent() {
+            std::fs::create_dir_all(parent).map_err(LifecycleError::Io)?;
+        }
+        std::fs::write(&target, pristine).map_err(LifecycleError::Io)
+    }
+}
+
+/// Join a relative path under a base, rejecting any component that would escape
+/// (`..`, an absolute prefix, or a root/prefix component). Returns `None` on any
+/// escaping component so a repair target can never leave the generation tree.
+fn safe_join_under(
+    base: &std::path::Path,
+    relative: &std::path::Path,
+) -> Option<std::path::PathBuf> {
+    use std::path::Component;
+    let mut out = base.to_path_buf();
+    for comp in relative.components() {
+        match comp {
+            Component::Normal(seg) => out.push(seg),
+            Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    Some(out)
+}
+
+fn remove_dir_all_if_exists(path: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_dir_all(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
+}
+
+fn remove_file_if_exists(path: &std::path::Path) -> std::io::Result<()> {
+    match std::fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e),
+    }
 }
 
 /// Plan the readiness transition for an operation from the current state. Pure
@@ -454,6 +526,52 @@ mod tests {
             owned_gateway_entrypoint(&manifest).console_script,
             standalone_mcp_entrypoint(&manifest).console_script
         );
+    }
+
+    #[test]
+    fn remove_preserves_data_unless_typed_and_repair_stays_in_generation() {
+        let (_d, ctrl) = controller();
+        // Lay down an installed generation, a receipt, and mutable user data.
+        let gen_file = ctrl
+            .paths
+            .generation_dir("g0")
+            .unwrap()
+            .join("immutable.bin");
+        std::fs::create_dir_all(gen_file.parent().unwrap()).unwrap();
+        std::fs::write(&gen_file, b"original").unwrap();
+        std::fs::write(ctrl.paths.data_dir().join("user.db"), b"precious").unwrap();
+        Receipt::bootstrap(
+            Channel::SelfInstall,
+            Target::X86_64PcWindowsMsvc,
+            identity(),
+            "g0",
+            1,
+        )
+        .persist(&ctrl.paths.receipt_path())
+        .unwrap();
+
+        // Repair replaces an immutable file; mutable data is untouched.
+        std::fs::write(&gen_file, b"corrupt").unwrap();
+        ctrl.repair_immutable("g0", std::path::Path::new("immutable.bin"), b"original")
+            .unwrap();
+        assert_eq!(std::fs::read(&gen_file).unwrap(), b"original");
+        // A traversal repair path is refused.
+        assert!(
+            ctrl.repair_immutable("g0", std::path::Path::new("../../escape"), b"x")
+                .is_err()
+        );
+
+        // Remove without typed data removal keeps the mutable data.
+        ctrl.remove(false).unwrap();
+        assert!(!ctrl.paths.generation_dir("g0").unwrap().exists());
+        assert!(!ctrl.paths.receipt_path().exists());
+        assert_eq!(
+            std::fs::read(ctrl.paths.data_dir().join("user.db")).unwrap(),
+            b"precious"
+        );
+        // Typed data removal clears the data too.
+        ctrl.remove(true).unwrap();
+        assert!(!ctrl.paths.data_dir().join("user.db").exists());
     }
 
     fn sample_manifest() -> CapsuleManifest {

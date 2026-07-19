@@ -22,7 +22,14 @@ nix = { version = "0.29", default-features = false, features = ["signal"] }
 command-group = { version = "5.0.1", default-features = false }
 
 [dev-dependencies]
+# The S18 capsule-ownership acceptance test extracts a REAL built A2A desktop
+# capsule (a DEFLATE zip) and its bundled CPython runtime (a gzip tar) to launch
+# a real process tree from the capsule's own interpreter. Dev-only; the shipped
+# crate depends on none of these.
+flate2 = "1.0"
+tar = "0.4"
 tempfile = "3.27.0"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
 
 [lints]
 workspace = true
