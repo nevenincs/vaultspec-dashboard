@@ -61,3 +61,23 @@ a gap beyond the ring's retention already triggers the honest `gap`/degraded-pol
 fallback this step implements. Full review verdict recorded in the W05 section of
 `2026-07-16-agentic-authoring-ux-audit.md`. This record was authored during a
 persistence pass alongside the review, not the review itself.
+
+RENDER FOLLOW-ON (2026-07-19, post-S23-closure): S22 landed the store lane only
+(its scoped `frontend/src/stores/server/liveAdapters`), leaving the docked
+transcript rendering the served-status fallback with the a2a relay flagged "does
+not exist yet" — because a2a-side D3 emission was still UNVERIFIED at closure. That
+emission came online 2026-07-18 (a2a rebuilt its `:8000` discovery gateway with the
+`/v1/runs/{run_id}/stream` verb and fixed its graph-ingest health; re-verified live:
+a mock team run reaches a clean terminal emitting real `agent_status`/`team_status`
+frames with the contracted envelope). The render lane was then added as follow-on,
+NOT reopening S22/S23: `app/agent/teamRun.ts` (pure `assembleTeamRun` reducer) +
+`app/agent/TeamRunTranscript.tsx` (continuous-scroll collapsible Thinking…/tool
+sections, mounted beside the single-agent transcript) + a `thought`/`error` kind and
+diff-content fix in the relay adapter. Fable architecture review APPROVED with
+revisions (all landed): the relay `streamedQuery` key was excluded from the
+data-activity indicator (it was pinning the shell loader for the whole run), the
+composer terminal read made sticky, stale annex-seam comments corrected. Full gate
+green; reducer/adapter unit tests added. Tracked in the a2a-total-completion campaign
+memory. Open cross-team ask (verified still-persisting 2026-07-19): a served
+active-run discovery read (no run-listing verb on the a2a `/v1` surface, none on the
+`/ops/a2a` whitelist) for reload-recovery of the live viewing binding.

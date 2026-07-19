@@ -91,6 +91,29 @@ describe("assembleTeamRun", () => {
     }
   });
 
+  it("labels a first-seen tool_call_update (dropped start) content as result, not args", () => {
+    // The `tool_call_start` was evicted/dropped; the first frame we see is a
+    // completed update. Its content is a RESULT — labeling it `args` would lie.
+    const view = assembleTeamRun([
+      wire("tool_call_update", {
+        seq: 5,
+        type: "tool_call_update",
+        agent_id: "coder",
+        tool_call_id: "tc9",
+        status: "completed",
+        content: [{ content_type: "text", text: "42 rows" }],
+      }),
+    ]);
+    expect(view.entries).toHaveLength(1);
+    const entry = view.entries[0]!;
+    expect(entry.kind).toBe("tool");
+    if (entry.kind === "tool") {
+      expect(entry.args).toBeNull();
+      expect(entry.result).toBe("42 rows");
+      expect(entry.status).toBe("completed");
+    }
+  });
+
   it("groups a message_chunk stream into one final-text entry", () => {
     const view = assembleTeamRun([
       wire("message_chunk", {
@@ -199,5 +222,73 @@ describe("assembleTeamRun", () => {
       );
     }
     expect(assembleTeamRun(frames).entries.length).toBe(TEAM_RUN_ENTRY_CAP);
+  });
+});
+
+// GOLDEN FIXTURE — verbatim frame payloads CAPTURED LIVE from a real
+// `mock-autonomous` run over the a2a gateway's `/v1/runs/{id}/stream` (2026-07-18),
+// so the reducer is proven against actual wire bytes, not hand-authored shapes.
+// The `agents[]` roster carries `role`/`display_name`/`description` the reducer
+// must ignore, reading only `agent_id`/`state` — this fixture locks that.
+const REAL_AGENT_STATUS_WORKING = {
+  api_version: "v1",
+  thread_id: "d262e49f084f4dedbae85596b1927e26",
+  agent_id: "mock-coder-success",
+  timestamp: 1784403.13,
+  state: "working",
+  node_name: "mock-coder-success",
+  detail: null,
+  type: "agent_status",
+  event_type: "agent_status",
+  seq: 13,
+} as const;
+const REAL_TEAM_STATUS = {
+  api_version: "v1",
+  thread_id: "d262e49f084f4dedbae85596b1927e26",
+  agent_id: "",
+  agents: [
+    { agent_id: "mock-planner", node_name: "mock-planner", state: "idle", role: "" },
+    {
+      agent_id: "mock-coder-success",
+      node_name: "mock-coder-success",
+      state: "working",
+      role: "coder",
+      display_name: "Mock Coder Success",
+      description: "Mock coder agent that simulates a successful task completion.",
+    },
+  ],
+  active_thread_ids: [],
+  type: "team_status",
+  event_type: "team_status",
+  seq: 14,
+} as const;
+const REAL_THREAD_TERMINAL = {
+  api_version: "v1",
+  event_type: "thread_terminal",
+  thread_id: "d262e49f084f4dedbae85596b1927e26",
+  status: "completed",
+  type: "thread_terminal",
+  seq: 18,
+} as const;
+
+describe("assembleTeamRun (live-captured golden frames)", () => {
+  it("derives the working agent from a real agent_status/team_status pair", () => {
+    const view = assembleTeamRun([
+      adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
+      adaptRelayFrame({ channel: "team_status", data: REAL_TEAM_STATUS }),
+    ]);
+    expect(view.terminal).toBe(false);
+    expect(view.activeAgents).toContain("mock-coder-success");
+    // The roster's `role`/`display_name` fields are ignored — only agent_id/state.
+    expect(view.entries).toEqual([]);
+  });
+
+  it("collapses to terminal on the real thread_terminal frame", () => {
+    const view = assembleTeamRun([
+      adaptRelayFrame({ channel: "agent_status", data: REAL_AGENT_STATUS_WORKING }),
+      adaptRelayFrame({ channel: "thread_terminal", data: REAL_THREAD_TERMINAL }),
+    ]);
+    expect(view.terminal).toBe(true);
+    expect(view.activeAgents).toEqual([]);
   });
 });

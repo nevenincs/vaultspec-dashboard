@@ -4,6 +4,7 @@ import {
   RELAY_TRANSCRIPT_CAP,
   adaptRelayFrame,
   classifyRelayFrame,
+  framesIncludeTerminal,
   latestRelaySeq,
   relayAgentId,
   relayAgentState,
@@ -85,16 +86,22 @@ describe("relay payload accessors", () => {
     expect(relayContent(frame({ content: 42 }))).toBe("");
   });
 
-  it("flattens a tool-call content list into bounded text", () => {
+  it("flattens all three a2a ToolCallContent variants (text/diff/terminal)", () => {
+    // Verified against the a2a wire schema (api/schemas/events.py): a `diff` block
+    // carries `path`/`new_text` (NOT `text`) — a coding team's edit output — so a
+    // text-only reader would silently drop it.
     const text = relayToolContentText(
       frame({
         content: [
           { content_type: "text", text: '{"path":"a.ts"}' },
-          { content_type: "text", text: "second" },
+          { content_type: "diff", path: "a.ts", old_text: "x", new_text: "y" },
+          { content_type: "terminal", terminal_id: "t1" },
         ],
       }),
     );
-    expect(text).toBe('{"path":"a.ts"}\nsecond');
+    // text block, then the diff's path + post-edit text; the terminal ref (no inline
+    // text) contributes nothing.
+    expect(text).toBe('{"path":"a.ts"}\na.ts\ny');
     expect(relayToolContentText(frame({ content: "not-a-list" }))).toBe("");
   });
 });
@@ -180,6 +187,27 @@ describe("degradation + terminal signals", () => {
     expect(relayFrameForcesReconcile(token)).toBe(false);
     expect(relayFrameIsTerminal(terminal)).toBe(true);
     expect(relayFrameIsTerminal(token)).toBe(false);
+  });
+
+  it("framesIncludeTerminal is STICKY — a post-terminal heartbeat stays terminal", () => {
+    const terminal: RelayTranscriptFrame = {
+      seq: 5,
+      kind: "terminal",
+      event: "thread_terminal",
+      payload: {},
+    };
+    const heartbeat: RelayTranscriptFrame = {
+      seq: 6,
+      kind: "heartbeat",
+      event: "heartbeat",
+      payload: {},
+    };
+    // The relay never closes: a heartbeat can arrive AFTER terminal. A last-frame
+    // check would flip the run back to live; the sticky read must not.
+    expect(framesIncludeTerminal([terminal, heartbeat])).toBe(true);
+    expect(relayFrameIsTerminal(heartbeat)).toBe(false); // the last frame alone
+    expect(framesIncludeTerminal([heartbeat])).toBe(false);
+    expect(framesIncludeTerminal([])).toBe(false);
   });
 });
 

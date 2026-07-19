@@ -41,9 +41,16 @@ export interface DataActivityView {
 }
 
 /** A TanStack key belonging to a multiplexed SSE stream subscription —
- *  perpetually "fetching" by construction, so excluded from the count. */
+ *  perpetually "fetching" by construction, so excluded from the count. The
+ *  a2a run-progress relay (`["a2a","run-relay",runId]`, `useRunRelay`) is the
+ *  same shape: a `streamedQuery` that holds `fetching` for the whole team run, so
+ *  it must NOT pin the shell-wide activity indicator (data-loading-activity: stream
+ *  keys excluded). This is the maintenance point when a new stream-shaped query
+ *  family lands. */
 export function isStreamQueryKey(queryKey: readonly unknown[]): boolean {
-  return queryKey[0] === "engine" && queryKey[1] === "stream";
+  if (queryKey[0] === "engine" && queryKey[1] === "stream") return true;
+  if (queryKey[0] === "a2a" && queryKey[1] === "run-relay") return true;
+  return false;
 }
 
 /**

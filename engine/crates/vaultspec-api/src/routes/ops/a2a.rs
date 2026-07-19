@@ -103,6 +103,7 @@ const MAX_A2A_PROFILE_CHARS: usize = 64;
 const MAX_A2A_FEATURE_CHARS: usize = 128;
 const MAX_A2A_TITLE_CHARS: usize = 200;
 const MAX_A2A_RUN_ID_CHARS: usize = 128;
+const MAX_A2A_SCOPE_CHARS: usize = 4096;
 
 /// The typed request body for `POST /ops/a2a/{verb}`. Every field is optional at
 /// the type level and validated/bounded per verb before anything reaches the
@@ -110,6 +111,11 @@ const MAX_A2A_RUN_ID_CHARS: usize = 128;
 /// them, a client can never supply an identity (ADR D2).
 #[derive(serde::Deserialize, Default)]
 pub struct A2aVerbBody {
+    /// Client-observed active scope used only as a generation fence for
+    /// run-start and active-runs. The engine compares it with the SAME ScopeCell
+    /// whose root it injects, then drops it; it is never forwarded as authority.
+    #[serde(default)]
+    pub expected_scope: Option<String>,
     /// The stable run/idempotency id. REQUIRED for run-status and run-cancel
     /// (it is the URL path segment); OPTIONAL for run-start (dispatch-exactly-
     /// once when present). Restricted to a path-safe token so it can never carry
@@ -336,6 +342,40 @@ fn validate_bounded_token(
     Ok(value.to_string())
 }
 
+/// Fence a scope-sensitive operation against a concurrent workspace switch.
+/// The browser may echo the served scope, but it can never choose the forwarded
+/// root: equality is checked against the selected cell and only `cell.root` is
+/// injected downstream.
+fn validate_expected_scope(
+    state: &AppState,
+    cell: &ScopeCell,
+    body: &A2aVerbBody,
+    verb: &str,
+) -> Result<(), (StatusCode, Json<Value>)> {
+    let expected = body.expected_scope.as_deref().ok_or_else(|| {
+        super::super::api_error(
+            state,
+            StatusCode::BAD_REQUEST,
+            format!("{verb} requires an `expected_scope` generation fence"),
+        )
+    })?;
+    let expected = validate_bounded_text(
+        state,
+        "expected_scope",
+        expected,
+        MAX_A2A_SCOPE_CHARS,
+    )?;
+    let actual = cell.root.to_string_lossy();
+    if expected != actual {
+        return Err(super::super::api_error(
+            state,
+            StatusCode::CONFLICT,
+            format!("active scope changed before {verb}; retry against the served scope"),
+        ));
+    }
+    Ok(())
+}
+
 /// The forwarded HTTP call an engine verb resolves to: the method, the sibling
 /// path, an optional JSON body, and the wall-clock budget.
 #[derive(Debug)]
@@ -406,6 +446,7 @@ fn build_forwarded_call(
             // a client field (mirrors presets-list), and `state` is pinned to
             // `active` so the verb can only ever list live runs — an identity-only
             // projection the a2a gateway bounds (`ActiveRunsResponse`, capped).
+            validate_expected_scope(state, cell, body, "active-runs")?;
             let root = cell.root.to_string_lossy();
             let mut path = format!(
                 "/v1/runs?state=active&workspace_root={}",
@@ -465,6 +506,7 @@ fn build_forwarded_call(
             })
         }
         "run-start" => {
+            validate_expected_scope(state, cell, body, "run-start")?;
             let team_preset = body.team_preset.as_deref().ok_or_else(|| {
                 super::super::api_error(
                     state,
@@ -494,6 +536,12 @@ fn build_forwarded_call(
             let mut forwarded = json!({
                 "team_preset": team_preset,
                 "message": message,
+                // Workspace provenance is engine-owned and durable in a2a run
+                // metadata. It is the selector the bounded active-runs read
+                // matches after reload; no browser-supplied metadata is accepted.
+                "metadata": {
+                    "workspace_root": cell.root.to_string_lossy(),
+                },
             });
             let obj = forwarded.as_object_mut().expect("object literal");
             if let Some(feature_tag) = body.feature_tag.as_deref() {
@@ -836,6 +884,7 @@ mod tests {
     fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
         let (_dir, state) = test_state();
         let cell = state.active_cell();
+        let expected_scope = cell.root.to_string_lossy().into_owned();
 
         let service =
             build_forwarded_call(&state, "service-state", &cell, &A2aVerbBody::default()).unwrap();
@@ -860,6 +909,7 @@ mod tests {
             "active-runs",
             &cell,
             &A2aVerbBody {
+                expected_scope: Some(expected_scope.clone()),
                 feature_tag: Some("a2a-orchestration-edge".to_string()),
                 ..Default::default()
             },
@@ -885,6 +935,7 @@ mod tests {
                 "active-runs",
                 &cell,
                 &A2aVerbBody {
+                    expected_scope: Some(expected_scope.clone()),
                     feature_tag: Some("bad feature".to_string()),
                     ..Default::default()
                 }
@@ -892,6 +943,20 @@ mod tests {
             .unwrap_err()
             .0,
             StatusCode::BAD_REQUEST
+        );
+        assert_eq!(
+            build_forwarded_call(
+                &state,
+                "active-runs",
+                &cell,
+                &A2aVerbBody {
+                    expected_scope: Some("X:/a-different-workspace".to_string()),
+                    ..Default::default()
+                }
+            )
+            .unwrap_err()
+            .0,
+            StatusCode::CONFLICT
         );
 
         // run-status requires a run_id and forms the run URL.
@@ -920,6 +985,7 @@ mod tests {
     fn build_run_start_validates_and_omits_actor_tokens() {
         let (_dir, state) = test_state();
         let cell = state.active_cell();
+        let expected_scope = cell.root.to_string_lossy().into_owned();
 
         // A valid run-start body: the forwarded payload carries the preset +
         // message + optional fields but NEVER an actor_tokens field (the handler
@@ -929,6 +995,7 @@ mod tests {
             "run-start",
             &cell,
             &A2aVerbBody {
+                expected_scope: Some(expected_scope.clone()),
                 team_preset: Some("vaultspec-authoring".to_string()),
                 message: Some("Research the edge".to_string()),
                 feature_tag: Some("a2a-orchestration-edge".to_string()),
@@ -945,6 +1012,8 @@ mod tests {
         assert_eq!(body["message"], "Research the edge");
         assert_eq!(body["feature_tag"], "a2a-orchestration-edge");
         assert_eq!(body["autonomous"], true);
+        assert_eq!(body["metadata"]["workspace_root"], expected_scope);
+        assert!(body.get("expected_scope").is_none());
         assert!(
             body.get("actor_tokens").is_none(),
             "the pure build step never carries actor tokens"
@@ -957,6 +1026,7 @@ mod tests {
                 "run-start",
                 &cell,
                 &A2aVerbBody {
+                    expected_scope: Some(expected_scope.clone()),
                     message: Some("x".to_string()),
                     ..Default::default()
                 }
@@ -969,6 +1039,7 @@ mod tests {
                 "run-start",
                 &cell,
                 &A2aVerbBody {
+                    expected_scope: Some(expected_scope.clone()),
                     team_preset: Some("p".to_string()),
                     message: Some("   ".to_string()),
                     ..Default::default()
@@ -982,6 +1053,7 @@ mod tests {
                 "run-start",
                 &cell,
                 &A2aVerbBody {
+                    expected_scope: Some(expected_scope),
                     team_preset: Some("p".to_string()),
                     message: Some("x".repeat(MAX_A2A_MESSAGE_BYTES + 1)),
                     ..Default::default()
@@ -1140,11 +1212,13 @@ mod tests {
         // round-trip. The sibling envelope is preserved without reshaping.
         let (_state_dir, state) = test_state();
         let cell = state.active_cell();
+        let expected_scope = cell.root.to_string_lossy().into_owned();
         let call = build_forwarded_call(
             &state,
             "active-runs",
             &cell,
             &A2aVerbBody {
+                expected_scope: Some(expected_scope),
                 feature_tag: Some("a2a-orchestration-edge".to_string()),
                 ..Default::default()
             },

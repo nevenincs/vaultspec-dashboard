@@ -6,10 +6,14 @@
 // `interrupt_id` / `result`) and the permission-decision OUTCOME
 // (`granted`/`denied`). This store retains those command-time wire values so the
 // transcript can render them between snapshot refreshes; every field mirrors a
-// SERVED token or value, never a client-derived status. When the a2a relay ships
-// its token/tool-call channel (a2a ADR D3), its consumer records through these
-// same seams; truth stays recoverable from durable events — the annex is
-// presentation state, honestly lost on reload.
+// SERVED token or value, never a client-derived status. This annex is the
+// SINGLE-AGENT command-time lane ONLY. The a2a TEAM relay does NOT route through
+// these seams: its frames live in the TanStack streamedQuery cache
+// (`stores/server/agent/a2aTeam.ts` `useRunProgress`) and are folded for render by
+// the pure `app/agent/teamRun.ts` `assembleTeamRun` reducer — a separate lane,
+// because team frames are multi-agent (per-agent reasoning/tool/message) while
+// this annex holds one thinking segment per run. Truth stays recoverable from
+// durable events; the annex is presentation state, honestly lost on reload.
 //
 // Every accumulator is bounded at creation (resource-bounds): the tool-call list
 // and thinking list carry hard caps with oldest-first eviction, and thinking
@@ -57,10 +61,11 @@ export interface AgentToolCallRecord {
   recordedAtMs: number;
 }
 
-/** One run's relayed reasoning segment. NOTHING on the current wire carries
+/** One SINGLE-AGENT run's reasoning segment. No single-agent wire surface carries
  *  reasoning content (the engine maps LangGraph references only), so today no
- *  producer records these and the thinking block renders for no turn — the type
- *  and seam exist for the a2a relay channel (a2a ADR D3). */
+ *  producer records these and the single-agent thinking block renders for no turn.
+ *  (TEAM-run reasoning is a SEPARATE lane — `thought_chunk` relay frames folded by
+ *  `app/agent/teamRun.ts`, not recorded here.) */
 export interface AgentThinkingSegment {
   runId: string;
   text: string;

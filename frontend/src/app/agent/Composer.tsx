@@ -68,12 +68,13 @@ import {
   useStartTurn,
   useTeamSelectorState,
 } from "../../stores/server/agent";
-import { relayFrameIsTerminal } from "../../stores/server/liveAdapters/a2aRelay";
+import { framesIncludeTerminal } from "../../stores/server/liveAdapters/a2aRelay";
 import {
   setAgentCurrentSession,
   setAgentTeamRun,
   useAgentCurrentSessionId,
   useAgentTeamRunId,
+  useAgentTeamRunScope,
 } from "../../stores/view/agentPanel";
 import { agentStopRunAction } from "../../stores/view/agentActions";
 import {
@@ -581,19 +582,22 @@ export function Composer() {
   const [selectedTeamPreset, setSelectedTeamPreset] = useState<string | null>(null);
   // Lifted to the shared panel store so the Transcript renders this run's live
   // relayed activity; the Composer still owns start/cancel/clear.
-  const teamRunId = useAgentTeamRunId();
+  const storedTeamRunId = useAgentTeamRunId();
+  const teamRunScope = useAgentTeamRunScope();
+  // Scope-gate synchronously: an A binding is never streamed or rendered while
+  // the dashboard has already selected B, even before the cleanup effect runs.
+  const teamRunId = teamRunScope === scope ? storedTeamRunId : null;
   const [teamRefused, setTeamRefused] = useState<{ detail?: string } | null>(null);
   const startTeamRun = useStartTeamRun();
   const cancelTeamRun = useCancelTeamRun();
   const teamProgress = useRunProgress(teamRunId);
   const teamRunActive = teamRunId !== null;
   // Terminal-ness is decided by the relay adapter (never a client status-string
-  // compare): the LAST frame's classified kind. The served status snapshot stays
-  // authoritative for the displayed phase.
-  const teamTerminal = (() => {
-    const frame = teamProgress.frames.at(-1);
-    return frame ? relayFrameIsTerminal(frame) : false;
-  })();
+  // compare) and is STICKY: the relay never closes, so a heartbeat/control frame
+  // after `terminal` must not flip a finished run back to a live posture (Stop
+  // reappearing on a done run). Read any-frame-terminal, not just the last frame.
+  // The served status snapshot stays authoritative for the displayed phase.
+  const teamTerminal = framesIncludeTerminal(teamProgress.frames);
   const teamPhase = teamProgress.status?.semantic_phase ?? teamProgress.status?.status;
   const teamMode = selectedTeamPreset !== null;
 
@@ -763,7 +767,7 @@ export function Composer() {
    *  sibling's forwarded 4xx) surfaces honestly inline rather than as a fake start. */
   const startTeam = async () => {
     const prompt = buildAgentPrompt(text, mentions);
-    if (prompt.length === 0 || selectedTeamPreset === null) return;
+    if (prompt.length === 0 || selectedTeamPreset === null || scope === null) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSendFailed(false);
@@ -772,10 +776,11 @@ export function Composer() {
       const result = await startTeamRun.mutateAsync({
         team_preset: selectedTeamPreset,
         message: prompt,
+        expected_scope: scope,
         title: sessionTitleFromPrompt(prompt),
       });
       if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
-        setAgentTeamRun({ runId: result.run_id, prompt });
+        setAgentTeamRun({ runId: result.run_id, prompt, scope });
         setText("");
         useAgentComposer.getState().clearMentions();
       } else {

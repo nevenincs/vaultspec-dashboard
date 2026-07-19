@@ -121,6 +121,7 @@ export interface PassThrough {
 export interface TeamRunStartPayload {
   team_preset: string;
   message: string;
+  expected_scope: string;
   feature_tag?: string;
   profile_id?: string;
   title?: string;
@@ -219,30 +220,54 @@ export interface ActiveRunsResult {
   readonly state: "active";
   readonly runs: ActiveTeamRun[];
   readonly truncated: boolean;
+  readonly contractValid: boolean;
   readonly tiers?: TiersBlock;
 }
 
 export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
   const env = pass.envelope;
-  const rawList = isRec(env) && Array.isArray(env.runs) ? env.runs : [];
-  const runs = rawList
-    .map((raw): ActiveTeamRun | null => {
-      if (!isRec(raw)) return null;
-      const run_id = asStr(raw.run_id);
-      const status = asStr(raw.status);
-      if (!run_id || !status) return null;
-      return {
-        run_id,
-        status,
-        feature_tag: asStr(raw.feature_tag),
-      };
-    })
-    .filter((r): r is ActiveTeamRun => r !== null)
-    .slice(0, 2);
+  const invalid = (): ActiveRunsResult => ({
+    state: "active",
+    runs: [],
+    truncated: true,
+    contractValid: false,
+    tiers: pass.tiers,
+  });
+  if (
+    pass.siblingStatus !== undefined ||
+    !isRec(env) ||
+    env.api_version !== "v1" ||
+    env.state !== "active" ||
+    typeof env.truncated !== "boolean" ||
+    !Array.isArray(env.runs) ||
+    env.runs.length > 2
+  ) {
+    return invalid();
+  }
+
+  const boundedToken = (value: unknown, max: number): string | undefined => {
+    if (typeof value !== "string" || value.length === 0 || value.length > max) {
+      return undefined;
+    }
+    return /^[A-Za-z0-9_][A-Za-z0-9_.:-]*$/.test(value) ? value : undefined;
+  };
+  const runs: ActiveTeamRun[] = [];
+  for (const raw of env.runs) {
+    if (!isRec(raw)) return invalid();
+    const run_id = boundedToken(raw.run_id, 128);
+    const status = boundedToken(raw.status, 64);
+    const feature_tag =
+      raw.feature_tag === undefined || raw.feature_tag === null
+        ? undefined
+        : boundedToken(raw.feature_tag, 128);
+    if (!run_id || !status || (raw.feature_tag != null && !feature_tag)) return invalid();
+    runs.push({ run_id, status, feature_tag });
+  }
   return {
     state: "active",
     runs,
-    truncated: isRec(env) ? asBool(env.truncated) : false,
+    truncated: env.truncated,
+    contractValid: true,
     tiers: pass.tiers,
   };
 }
@@ -253,7 +278,7 @@ export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
 export function recoverableActiveRunId(
   result: ActiveRunsResult | undefined,
 ): string | null {
-  if (!result || result.truncated || result.runs.length !== 1) return null;
+  if (!result?.contractValid || result.truncated || result.runs.length !== 1) return null;
   return result.runs[0]?.run_id ?? null;
 }
 
@@ -377,17 +402,21 @@ export class A2aTeamClient {
     );
   }
 
-  /** Discover the workspace's live (non-terminal) team runs for reload-recovery.
-   *  Sends no body — the engine scopes by its OWN active workspace_root and pins
-   *  `state=active` (a client can neither widen the scope nor list terminal runs). */
+  /** Discover the workspace's live team runs for reload recovery. The echoed
+   *  expected scope is a generation fence only; the engine still injects its own
+   *  active workspace root and rejects a concurrent scope change. */
   async activeRuns(
+    expectedScope: string,
     featureTag?: string,
     signal?: AbortSignal,
   ): Promise<ActiveRunsResult> {
     return adaptActiveRuns(
       await this.passThrough(
         "active-runs",
-        featureTag ? { feature_tag: featureTag } : {},
+        {
+          expected_scope: expectedScope,
+          ...(featureTag ? { feature_tag: featureTag } : {}),
+        },
         signal,
       ),
     );
@@ -511,7 +540,8 @@ export function useActiveTeamRuns(
 ): UseQueryResult<ActiveRunsResult, Error> {
   return useQuery({
     queryKey: a2aKeys.activeRuns(scope ?? "", options.featureTag),
-    queryFn: ({ signal }) => a2aTeamClient.activeRuns(options.featureTag, signal),
+    queryFn: ({ signal }) =>
+      a2aTeamClient.activeRuns(scope ?? "", options.featureTag, signal),
     enabled: scope !== null && (options.enabled ?? true),
     staleTime: 10_000,
     gcTime: 30_000,

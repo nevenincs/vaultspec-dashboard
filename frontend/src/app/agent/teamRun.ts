@@ -197,6 +197,12 @@ export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRu
           if (contentText) existing.result = contentText;
           existing.lastSeq = order;
         } else {
+          // Distinguish a first-seen START from a first-seen UPDATE (its `start`
+          // was dropped/evicted): a `tool_call_start` carries `pending` status and
+          // its content is the ARGS; an update carries running/completed/failed and
+          // its content is the RESULT. Labeling a dropped-start update's result as
+          // args would be a quiet lie, so branch on the status.
+          const isStart = status === "" || status === "pending";
           groups.set(key, {
             kind: "tool",
             key,
@@ -204,8 +210,8 @@ export function assembleTeamRun(frames: readonly RelayTranscriptFrame[]): TeamRu
             toolCallId,
             title: title || "tool",
             status,
-            args: contentText,
-            result: null,
+            args: isStart ? contentText : null,
+            result: isStart ? null : contentText,
             lastSeq: order,
           });
         }

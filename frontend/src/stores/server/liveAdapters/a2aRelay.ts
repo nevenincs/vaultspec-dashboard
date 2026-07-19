@@ -138,6 +138,17 @@ export function relayFrameIsTerminal(frame: RelayTranscriptFrame): boolean {
   return frame.kind === "terminal";
 }
 
+/** True when ANY frame in the transcript is terminal — the STICKY terminal read.
+ *  The relay never closes (heartbeat/control frames can arrive after `terminal`),
+ *  so a last-frame-only check would flip a finished run back to a live posture;
+ *  consumers deciding run-is-over (e.g. the composer's Stop/▶ state) must use this,
+ *  not `relayFrameIsTerminal(frames.at(-1))`. */
+export function framesIncludeTerminal(
+  frames: readonly RelayTranscriptFrame[],
+): boolean {
+  return frames.some(relayFrameIsTerminal);
+}
+
 /** The largest engine `seq` seen in a transcript, for computing the `since=`
  *  resume point on a reconnect. `undefined` when no frame carried a seq. */
 export function latestRelaySeq(
@@ -196,13 +207,29 @@ export function relayToolStatus(frame: RelayTranscriptFrame): string {
   return asStr(frame.payload.status);
 }
 
-/** Flatten a tool-call frame's `content` list (`[{content_type,text}]`) into one
- *  bounded text blob — the args on start, the result text on update. */
+/** Flatten a tool-call frame's `content` list into one bounded text blob — the
+ *  args on start, the result on update. The a2a `ToolCallContent` union (verified
+ *  against `api/schemas/events.py`) has THREE variants, so reading only `.text`
+ *  would silently drop a file-EDIT block — exactly what a coding team emits:
+ *   - `text`     → `{content_type:"text", text}`               → the text
+ *   - `diff`     → `{content_type:"diff", path, new_text, …}`  → path + post-edit
+ *   - `terminal` → `{content_type:"terminal", terminal_id}`    → no inline text
+ *     (the output streams separately), so it contributes nothing here. */
 export function relayToolContentText(frame: RelayTranscriptFrame): string {
   const content = frame.payload.content;
   if (!Array.isArray(content)) return "";
   return content
-    .map((part) => (isRec(part) ? asStr(part.text) : ""))
+    .map((part) => {
+      if (!isRec(part)) return "";
+      if (part.content_type === "diff") {
+        const path = asStr(part.path);
+        const next = asStr(part.new_text);
+        return [path, next].filter((s) => s.length > 0).join("\n");
+      }
+      // `text` (and any unknown future variant) reads its `text` field; `terminal`
+      // has none and falls through to the empty string.
+      return asStr(part.text);
+    })
     .filter((t) => t.length > 0)
     .join("\n");
 }

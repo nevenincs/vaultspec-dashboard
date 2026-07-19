@@ -87,10 +87,15 @@ describe("drain-progress slice", () => {
 });
 
 describe("stream-key exclusion", () => {
-  it("matches only the engine stream key family", () => {
+  it("matches the stream-shaped query families, not other reads", () => {
     expect(
       isStreamQueryKey(["engine", "stream", "backends,git", "live", "active"]),
     ).toBe(true);
+    // The a2a run-progress relay is a streamedQuery that holds `fetching` for the
+    // whole team run — it must NOT pin the shell-wide activity indicator.
+    expect(isStreamQueryKey(["a2a", "run-relay", "run-123"])).toBe(true);
+    // A non-stream a2a read (run-status poll) still counts as activity.
+    expect(isStreamQueryKey(["a2a", "run-status", "run-123"])).toBe(false);
     expect(isStreamQueryKey(["engine", "graph", "wt-1"])).toBe(false);
     expect(isStreamQueryKey(["stream"])).toBe(false);
     expect(isStreamQueryKey([])).toBe(false);
