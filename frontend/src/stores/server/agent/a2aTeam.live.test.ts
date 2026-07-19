@@ -60,4 +60,22 @@ describe("a2a team pass-through (live)", () => {
     const availability = readAgentTierAvailability(state.tiers);
     expect(typeof availability.available).toBe("boolean");
   });
+
+  it("round-trips active-runs (reload-recovery discovery) with a tiers block", async () => {
+    // The `active-runs` verb is whitelisted on the engine pass-through and scoped
+    // engine-side by workspace_root. With no resident a2a (the CI harness), it
+    // degrades honestly: a tiers block and an empty list, never an error surface.
+    const result = await a2a.activeRuns();
+    expect(result.tiers).toBeDefined();
+    expect(Array.isArray(result.runs)).toBe(true);
+    const availability = readAgentTierAvailability(result.tiers);
+    if (!availability.available) {
+      expect(result.runs).toEqual([]);
+    } else {
+      for (const run of result.runs) {
+        expect(typeof run.run_id).toBe("string");
+        expect(run.run_id.length).toBeGreaterThan(0);
+      }
+    }
+  });
 });

@@ -68,7 +68,7 @@ Mandatory cross-repo code review, edge ADR amendment recording the sibling-down 
 Add the bounded discovery read to the reviewed edge, then restore only an unambiguous workspace-scoped viewing binding while keeping run-status authoritative.
 
 - [x] `P06.S15` - Add the engine-scoped active-run discovery verb with fixed two-result upstream bound, optional bounded feature filter, and real-loopback contract coverage; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
-- [ ] `P06.S16` - Recover the team-run viewing binding only from one complete active workspace result, clear cross-scope bindings, and keep run-status plus relay authoritative; `frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/view/agentPanel.ts, frontend/src/app/agent/AgentPanel.tsx`.
+- [x] `P06.S16` - Recover the team-run viewing binding only from one complete active workspace result, clear cross-scope bindings, and keep run-status plus relay authoritative; `frontend/src/stores/server/agent/a2aTeam.ts, frontend/src/stores/view/agentPanel.ts, frontend/src/app/agent/AgentPanel.tsx`.
 
 ## Description
 

@@ -203,6 +203,60 @@ export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
   };
 }
 
+/** One live (non-terminal) team run for the active workspace, from the a2a
+ *  `active-runs` discovery projection (`ActiveRunsResponse.runs[]`). Identity-only
+ *  by contract — no prompt/transcript, just enough to REBIND a viewing panel that
+ *  lost its client-side run handle on reload. */
+export interface ActiveTeamRun {
+  readonly run_id: string;
+  readonly status: string;
+  readonly feature_tag?: string;
+}
+
+/** The adapted active-run discovery result: the bounded list plus the sibling's
+ *  `truncated` flag (the a2a projection is capped) and the tiers block. */
+export interface ActiveRunsResult {
+  readonly state: "active";
+  readonly runs: ActiveTeamRun[];
+  readonly truncated: boolean;
+  readonly tiers?: TiersBlock;
+}
+
+export function adaptActiveRuns(pass: PassThrough): ActiveRunsResult {
+  const env = pass.envelope;
+  const rawList = isRec(env) && Array.isArray(env.runs) ? env.runs : [];
+  const runs = rawList
+    .map((raw): ActiveTeamRun | null => {
+      if (!isRec(raw)) return null;
+      const run_id = asStr(raw.run_id);
+      const status = asStr(raw.status);
+      if (!run_id || !status) return null;
+      return {
+        run_id,
+        status,
+        feature_tag: asStr(raw.feature_tag),
+      };
+    })
+    .filter((r): r is ActiveTeamRun => r !== null)
+    .slice(0, 2);
+  return {
+    state: "active",
+    runs,
+    truncated: isRec(env) ? asBool(env.truncated) : false,
+    tiers: pass.tiers,
+  };
+}
+
+/** Select the only safe reload binding. Discovery is non-authoritative and may
+ *  be scan-truncated, so a caller may rebind only one complete result; zero,
+ *  multiple, or any truncation stays deliberately ambiguous. */
+export function recoverableActiveRunId(
+  result: ActiveRunsResult | undefined,
+): string | null {
+  if (!result || result.truncated || result.runs.length !== 1) return null;
+  return result.runs[0]?.run_id ?? null;
+}
+
 export function adaptServiceState(pass: PassThrough): A2aServiceState {
   const env: Rec = isRec(pass.envelope) ? pass.envelope : {};
   return {
@@ -323,6 +377,22 @@ export class A2aTeamClient {
     );
   }
 
+  /** Discover the workspace's live (non-terminal) team runs for reload-recovery.
+   *  Sends no body — the engine scopes by its OWN active workspace_root and pins
+   *  `state=active` (a client can neither widen the scope nor list terminal runs). */
+  async activeRuns(
+    featureTag?: string,
+    signal?: AbortSignal,
+  ): Promise<ActiveRunsResult> {
+    return adaptActiveRuns(
+      await this.passThrough(
+        "active-runs",
+        featureTag ? { feature_tag: featureTag } : {},
+        signal,
+      ),
+    );
+  }
+
   async cancelRun(runId: string): Promise<TeamRunStartResult> {
     // Cancel reuses the run-start result shape (ok / refusal / tiers); its
     // envelope is the a2a RunCancelResponse.
@@ -356,6 +426,8 @@ export const a2aKeys = {
   serviceState: () => [...a2aKeys.all, "service-state"] as const,
   runStatus: (runId: string) => [...a2aKeys.all, "run-status", runId] as const,
   runRelay: (runId: string) => [...a2aKeys.all, "run-relay", runId] as const,
+  activeRuns: (scope: string, featureTag?: string) =>
+    [...a2aKeys.all, "active-runs", scope, featureTag ?? ""] as const,
 };
 
 /** Bounded run-status poll cadence for the degraded fallback (D3): when the relay
@@ -425,6 +497,24 @@ export function useA2aServiceState(): UseQueryResult<A2aServiceState, Error> {
     queryFn: ({ signal }) => a2aTeamClient.serviceState(signal),
     staleTime: 10_000,
     gcTime: 60_000,
+    retry: false,
+  });
+}
+
+/** The workspace's live team runs, for reload-recovery of a lost viewing binding
+ *  (a2a-edge D5). `enabled` gates the read to when recovery is actually needed (no
+ *  run bound) so an already-bound panel never polls it. Bounded staleTime/gcTime;
+ *  a2a-down degrades to an empty list through the tiers, never an error surface. */
+export function useActiveTeamRuns(
+  scope: string | null,
+  options: { enabled?: boolean; featureTag?: string } = {},
+): UseQueryResult<ActiveRunsResult, Error> {
+  return useQuery({
+    queryKey: a2aKeys.activeRuns(scope ?? "", options.featureTag),
+    queryFn: ({ signal }) => a2aTeamClient.activeRuns(options.featureTag, signal),
+    enabled: scope !== null && (options.enabled ?? true),
+    staleTime: 10_000,
+    gcTime: 30_000,
     retry: false,
   });
 }

@@ -12,7 +12,7 @@
 // nothing itself and reads no raw `tiers`. Run/session STATE is read from the
 // session snapshot (there is no run-status route on this plane).
 //
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 
@@ -23,6 +23,11 @@ import {
   useSessionList,
 } from "../../stores/server/agent";
 import {
+  recoverableActiveRunId,
+  useActiveTeamRuns,
+} from "../../stores/server/agent/a2aTeam";
+import { useActiveScope } from "../../stores/server/queries";
+import {
   useReviewStationView,
   useSetOperationMode,
 } from "../../stores/server/authoring";
@@ -30,10 +35,14 @@ import {
   closeAgentPanel,
   setAgentPanelView,
   setAgentCurrentSession,
+  setAgentTeamRun,
+  teamRunScopeAction,
   useAgentCurrentSessionId,
   useAgentPanelOpen,
   useAgentPanelView,
   useAgentTeamRunId,
+  useAgentTeamRunPrompt,
+  useAgentTeamRunScope,
 } from "../../stores/view/agentPanel";
 import { useAgentPanelWidth } from "../../stores/view/shellLayout";
 import {
@@ -294,6 +303,44 @@ export function AgentAutonomyControl() {
   );
 }
 
+/** Reload-recovery of the team-run viewing binding (a2a-orchestration-edge D5):
+ *  when the panel is open with NO run bound, discover the workspace's live runs
+ *  (`GET /ops/a2a active-runs`) and re-bind the single unambiguous one, so a
+ *  reloaded panel resumes its live transcript instead of losing it. Deliberately
+ *  conservative — multiple or truncated results stay unrecovered, and the rebound
+ *  run carries no prompt because discovery is identity-only. The query is mounted
+ *  only for the visible transcript while recovery is needed. */
+function useRecoverActiveTeamRun(
+  open: boolean,
+  panelView: "transcript" | "pending",
+): void {
+  const scope = useActiveScope();
+  const teamRunId = useAgentTeamRunId();
+  const teamRunPrompt = useAgentTeamRunPrompt();
+  const teamRunScope = useAgentTeamRunScope();
+  const needRecovery = open && panelView === "transcript" && teamRunId === null;
+  const active = useActiveTeamRuns(scope, { enabled: needRecovery });
+  const recoverableRunId = recoverableActiveRunId(active.data);
+
+  // A local start predating scope-aware bindings is stamped with the current
+  // served scope. A genuinely cross-scope binding is cleared before the next
+  // workspace's discovery can attach, so its relay is never rendered under B.
+  useEffect(() => {
+    if (teamRunId === null || scope === null) return;
+    const action = teamRunScopeAction(teamRunId, teamRunScope, scope);
+    if (action === "stamp") {
+      setAgentTeamRun({ runId: teamRunId, prompt: teamRunPrompt, scope });
+    } else if (action === "clear") {
+      setAgentTeamRun(null);
+    }
+  }, [scope, teamRunId, teamRunPrompt, teamRunScope]);
+
+  useEffect(() => {
+    if (!needRecovery || scope === null || recoverableRunId === null) return;
+    setAgentTeamRun({ runId: recoverableRunId, prompt: null, scope });
+  }, [needRecovery, recoverableRunId, scope]);
+}
+
 /** The bottom composer slot hosts the multiline composer. */
 function AgentComposerSlot() {
   return (
@@ -314,9 +361,10 @@ function AgentComposerSlot() {
 export function AgentPanel({ className }: { className: string }) {
   useAgentLifecycleSubscription();
   const open = useAgentPanelOpen();
+  const panelView = useAgentPanelView();
+  useRecoverActiveTeamRun(open, panelView);
   const width = useAgentPanelWidth();
   const currentSessionId = useAgentCurrentSessionId();
-  const panelView = useAgentPanelView();
   const resolveMessage = useLocalizedMessageResolver();
   if (!open) return null;
   return (

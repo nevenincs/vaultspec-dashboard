@@ -9,6 +9,8 @@ import {
   closeAgentPanel,
   openAgentPanel,
   setAgentCurrentSession,
+  setAgentTeamRun,
+  teamRunScopeAction,
   toggleAgentPanel,
   useAgentPanel,
 } from "./agentPanel";
@@ -17,6 +19,9 @@ function reset(): void {
   useAgentPanel.setState({
     open: false,
     currentSessionId: null,
+    teamRunId: null,
+    teamRunPrompt: null,
+    teamRunScope: null,
   });
 }
 
@@ -37,6 +42,25 @@ describe("agent panel open lifecycle", () => {
     expect(useAgentPanel.getState().open).toBe(true);
     toggleAgentPanel();
     expect(useAgentPanel.getState().open).toBe(false);
+  });
+});
+
+describe("team-run viewing binding", () => {
+  it("stores nullable recovered prompts with their owning scope", () => {
+    setAgentTeamRun({ runId: "run-a", prompt: null, scope: "Y:/workspace-a" });
+    expect(useAgentPanel.getState()).toMatchObject({
+      teamRunId: "run-a",
+      teamRunPrompt: null,
+      teamRunScope: "Y:/workspace-a",
+    });
+  });
+
+  it("clears a cross-scope binding and never guesses while scope is unresolved", () => {
+    expect(teamRunScopeAction("run-a", "Y:/workspace-a", "Y:/workspace-b")).toBe(
+      "clear",
+    );
+    expect(teamRunScopeAction("run-a", null, "Y:/workspace-a")).toBe("stamp");
+    expect(teamRunScopeAction("run-a", "Y:/workspace-a", null)).toBe("keep");
   });
 });
 

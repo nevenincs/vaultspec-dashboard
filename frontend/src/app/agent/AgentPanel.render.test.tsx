@@ -31,6 +31,9 @@ function resetStore(): void {
     open: false,
     currentSessionId: null,
     panelView: "transcript",
+    teamRunId: null,
+    teamRunPrompt: null,
+    teamRunScope: null,
   });
 }
 

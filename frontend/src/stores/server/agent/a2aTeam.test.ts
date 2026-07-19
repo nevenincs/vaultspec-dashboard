@@ -1,13 +1,75 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adaptActiveRuns,
   adaptPresetsList,
   adaptRunStart,
   adaptRunStatus,
   adaptServiceState,
   readAgentTierAvailability,
+  recoverableActiveRunId,
   type PassThrough,
 } from "./a2aTeam";
+
+describe("adaptActiveRuns", () => {
+  it("adapts the active-run discovery projection tolerantly and preserves tiers", () => {
+    const pass: PassThrough = {
+      envelope: {
+        api_version: "v1",
+        state: "active",
+        runs: [
+          { run_id: "run-a", status: "running", feature_tag: "editor" },
+          // A run without a feature tag is still listed.
+          { run_id: "run-b", status: "starting" },
+          // Junk without a run_id is dropped, never thrown on.
+          { status: "running" },
+          // Junk without status is also dropped.
+          { run_id: "missing-status" },
+          // The adapter retains no more than the engine's two-row bound.
+          { run_id: "run-c", status: "running" },
+        ],
+        truncated: true,
+      },
+      tiers: { agent: { available: true } },
+    };
+    const result = adaptActiveRuns(pass);
+    expect(result.runs.map((r) => r.run_id)).toEqual(["run-a", "run-b"]);
+    expect(result.runs[0]!.feature_tag).toBe("editor");
+    expect(result.truncated).toBe(true);
+    expect(result.tiers).toBeDefined();
+  });
+
+  it("returns an empty list when a2a is down (null envelope)", () => {
+    const result = adaptActiveRuns({
+      envelope: null,
+      tiers: { agent: { available: false } },
+    });
+    expect(result.runs).toEqual([]);
+    expect(result.truncated).toBe(false);
+  });
+
+  it("selects only one complete unambiguous viewing binding", () => {
+    const unique = adaptActiveRuns({
+      envelope: {
+        state: "active",
+        runs: [{ run_id: "run-only", status: "running" }],
+        truncated: false,
+      },
+    });
+    expect(recoverableActiveRunId(unique)).toBe("run-only");
+    expect(recoverableActiveRunId({ ...unique, truncated: true })).toBeNull();
+    expect(recoverableActiveRunId({ ...unique, runs: [] })).toBeNull();
+    expect(
+      recoverableActiveRunId({
+        ...unique,
+        runs: [
+          { run_id: "run-a", status: "running" },
+          { run_id: "run-b", status: "starting" },
+        ],
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("adaptPresetsList", () => {
   it("adapts the sibling preset list tolerantly and preserves tiers", () => {

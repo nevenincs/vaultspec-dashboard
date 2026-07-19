@@ -17,6 +17,18 @@ import { create } from "zustand";
  *  the folded-in cross-run "Pending changes" inbox. Local chrome — the transcript
  *  is the default; the inbox has no composer of its own. */
 export type AgentPanelView = "transcript" | "pending";
+export type TeamRunScopeAction = "keep" | "stamp" | "clear";
+
+/** Decide the synchronous local action when the served active scope changes. */
+export function teamRunScopeAction(
+  runId: string | null,
+  bindingScope: string | null,
+  activeScope: string | null,
+): TeamRunScopeAction {
+  if (runId === null || activeScope === null) return "keep";
+  if (bindingScope === null) return "stamp";
+  return bindingScope === activeScope ? "keep" : "clear";
+}
 
 interface AgentPanelState {
   /** Whether the docked panel is open. Collapsed, its only trace is the footer
@@ -33,20 +45,15 @@ interface AgentPanelState {
    *  relayed activity while the Composer owns start/cancel. `prompt` is the message
    *  that started it — the transcript's user-turn text for the team run.
    *
-   *  Loss-on-reload is DELIBERATE and honest for now: this is the live viewing
-   *  BINDING, not the run — the run stays durable in a2a and every document it
-   *  produces lands as a ledgered proposal regardless of reload (a2a-edge ADR D5).
-   *  Recovering the binding after reload CANNOT be done client-side today without
-   *  inventing state: the `/ops/a2a/*` D1 whitelist has no active-run/run-listing
-   *  discovery verb and no served session→run reverse read (persisting the id
-   *  client-side would violate "displayed state is backend-served"). Recovery is
-   *  GATED on a served active-run read (a reviewed D1-whitelist contract event) —
-   *  a cross-team ask filed against a2a. NOTE: a PARTIAL our-side recovery is now
-   *  possible for a run that already produced a proposal — `ProposalProjection`
-   *  carries `run_id`/`session_id` provenance (agent-wire-gaps D4) — but a run that
-   *  is mid-flight before its first proposal still needs the active-run read. */
+   *  This is still only a viewing BINDING, not durable run ownership: on reload the
+   *  engine's bounded `active-runs` read may restore one unambiguous workspace run,
+   *  while the run itself remains durable in a2a (edge ADR D5). The original prompt
+   *  is intentionally absent after recovery because discovery does not disclose it. */
   teamRunId: string | null;
   teamRunPrompt: string | null;
+  /** Scope that owns the current viewing binding. A scope change clears it before
+   *  discovery for the next workspace so no run renders under the wrong root. */
+  teamRunScope: string | null;
   /** Open the panel, optionally targeting a view (e.g. the footer Review chip opens
    *  it directly in the pending inbox). Omitting the view leaves the current view. */
   openPanel: (view?: AgentPanelView) => void;
@@ -54,7 +61,9 @@ interface AgentPanelState {
   togglePanel: () => void;
   setPanelView: (view: AgentPanelView) => void;
   setCurrentSession: (sessionId: string | null) => void;
-  setTeamRun: (run: { runId: string; prompt: string } | null) => void;
+  setTeamRun: (
+    run: { runId: string; prompt: string | null; scope?: string | null } | null,
+  ) => void;
 }
 
 export const useAgentPanel = create<AgentPanelState>((set) => ({
@@ -63,6 +72,7 @@ export const useAgentPanel = create<AgentPanelState>((set) => ({
   currentSessionId: null,
   teamRunId: null,
   teamRunPrompt: null,
+  teamRunScope: null,
   openPanel: (view) =>
     set((state) => {
       const nextView = view ?? state.panelView;
@@ -82,9 +92,12 @@ export const useAgentPanel = create<AgentPanelState>((set) => ({
     set((state) => {
       const nextId = run?.runId ?? null;
       const nextPrompt = run?.prompt ?? null;
-      return state.teamRunId === nextId && state.teamRunPrompt === nextPrompt
+      const nextScope = run?.scope ?? null;
+      return state.teamRunId === nextId &&
+        state.teamRunPrompt === nextPrompt &&
+        state.teamRunScope === nextScope
         ? state
-        : { teamRunId: nextId, teamRunPrompt: nextPrompt };
+        : { teamRunId: nextId, teamRunPrompt: nextPrompt, teamRunScope: nextScope };
     }),
 }));
 
@@ -110,6 +123,10 @@ export function useAgentTeamRunPrompt(): string | null {
   return useAgentPanel((state) => state.teamRunPrompt);
 }
 
+export function useAgentTeamRunScope(): string | null {
+  return useAgentPanel((state) => state.teamRunScope);
+}
+
 // --- imperative seams (for a chip/action outside a component subscription) -------
 
 export function openAgentPanel(options?: { view?: AgentPanelView }): void {
@@ -133,6 +150,8 @@ export function setAgentCurrentSession(sessionId: string | null): void {
 }
 
 /** Bind (or clear, with `null`) the active a2a team run the panel renders. */
-export function setAgentTeamRun(run: { runId: string; prompt: string } | null): void {
+export function setAgentTeamRun(
+  run: { runId: string; prompt: string | null; scope?: string | null } | null,
+): void {
   useAgentPanel.getState().setTeamRun(run);
 }
