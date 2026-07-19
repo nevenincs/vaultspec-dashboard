@@ -18,7 +18,7 @@ related:
 
 ## Record
 
-The P04a janitor phase's gate step, held open with [[2026-07-17-agent-wire-gaps-plan]]
+The P04a janitor phase's gate step, held open with `2026-07-17-agent-wire-gaps-plan`
 P01.S13 on the same shared-tree condition. Closed 2026-07-18 by the same
 settled-tree run: `just dev lint all` at `c169ad5a98` — **exit 0** — after the
 gate repairs recorded in the S13 record (`e2fe6aa32b` module-size split +
