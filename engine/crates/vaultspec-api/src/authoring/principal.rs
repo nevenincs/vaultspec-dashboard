@@ -19,6 +19,7 @@
 use super::actor_tokens::ActorTokenRepository;
 use super::api::CommandEnvelope;
 use super::model::{ActorRef, CommandKind, IdempotencyKey};
+use crate::a2a_run_leases::LeaseRepo;
 
 /// The dedicated header carrying the per-principal actor token. Distinct from the
 /// machine `Authorization: Bearer` (which the transport `bearer_gate` keeps
@@ -37,25 +38,41 @@ pub enum PrincipalDenial {
 
 /// A witness that an actor identity was resolved from the server-held seam (a
 /// valid, live per-principal token). There is NO public constructor — the only
-/// way to obtain one is [`resolve_principal`] — so a resolved actor can never be
-/// fabricated by a handler or smuggled in a request body.
+/// way to obtain one is [`resolve_principal`] or [`resolve_lease_principal`] — so
+/// a resolved actor can never be fabricated by a handler or smuggled in a request
+/// body.
+///
+/// When the token was an A2A run token, the principal also carries the non-secret
+/// run-lease identity it belongs to (a2a-product-provisioning W02.P05.S37); it is
+/// server-resolved from the lease store, never a client claim, and is `None` for
+/// an authoring-session principal.
 #[derive(Debug, Clone)]
-pub struct AuthenticatedPrincipal(ActorRef);
+pub struct AuthenticatedPrincipal {
+    actor: ActorRef,
+    lease_id: Option<String>,
+}
 
 impl AuthenticatedPrincipal {
     pub fn actor(&self) -> &ActorRef {
-        &self.0
+        &self.actor
     }
 
     pub fn into_actor(self) -> ActorRef {
-        self.0
+        self.actor
+    }
+
+    /// The non-secret A2A run-lease identity this principal's token belongs to,
+    /// when it resolved from an A2A run-token lease. `None` for authoring-session
+    /// principals. Read-only — a handler can observe it but can never set it.
+    pub fn lease_id(&self) -> Option<&str> {
+        self.lease_id.as_deref()
     }
 }
 
-/// Resolve a presented actor token to an [`AuthenticatedPrincipal`] — the ONLY
-/// path to one. `None` presented token → `MissingToken`; unknown / expired /
-/// revoked → `UnknownPrincipal`. The resolved id/kind/delegated_by come from the
-/// registered token record, never a request.
+/// Resolve a presented actor token to an [`AuthenticatedPrincipal`] over the
+/// AUTHORING token store — one path to a witness. `None` presented token →
+/// `MissingToken`; unknown / expired / revoked → `UnknownPrincipal`. The resolved
+/// id/kind/delegated_by come from the registered token record, never a request.
 pub fn resolve_principal(
     tokens: &ActorTokenRepository<'_, '_>,
     presented_token: Option<&str>,
@@ -66,7 +83,35 @@ pub fn resolve_principal(
         .resolve(token, now_ms)
         .map_err(|_| PrincipalDenial::UnknownPrincipal)?
     {
-        Some(actor) => Ok(AuthenticatedPrincipal(actor)),
+        Some(actor) => Ok(AuthenticatedPrincipal {
+            actor,
+            lease_id: None,
+        }),
+        None => Err(PrincipalDenial::UnknownPrincipal),
+    }
+}
+
+/// Resolve a presented A2A run token against the DEDICATED run-lease repository
+/// (a2a-product-provisioning W02.P05.S38) — the other path to a witness. The
+/// actor identity AND the non-secret lease identity both come from the
+/// server-held lease store (never a client claim), so the compile-time actor
+/// fence still holds. Unknown / expired / revoked / a store read fault →
+/// `UnknownPrincipal`, so the extraction seam can fall back to the authoring
+/// store fail-closed.
+pub fn resolve_lease_principal(
+    leases: &LeaseRepo,
+    presented_token: Option<&str>,
+    now_ms: i64,
+) -> Result<AuthenticatedPrincipal, PrincipalDenial> {
+    let token = presented_token.ok_or(PrincipalDenial::MissingToken)?;
+    match leases
+        .resolve_token(token, now_ms)
+        .map_err(|_| PrincipalDenial::UnknownPrincipal)?
+    {
+        Some(resolved) => Ok(AuthenticatedPrincipal {
+            actor: resolved.actor,
+            lease_id: Some(resolved.lease_id),
+        }),
         None => Err(PrincipalDenial::UnknownPrincipal),
     }
 }
@@ -201,6 +246,45 @@ mod tests {
                 Ok(())
             })
             .unwrap();
+    }
+
+    #[test]
+    fn an_a2a_run_token_resolves_to_a_lease_principal_carrying_the_lease_id() {
+        use crate::a2a_run_leases::{LeaseRepo, LeaseReservation, LeaseToken};
+        use crate::authoring::actor_tokens::hash_actor_token;
+
+        let dir = tempfile::tempdir().unwrap();
+        let leases = LeaseRepo::open(&dir.path().join(".vault")).unwrap();
+        let raw = "raw-a2a-run-token";
+        leases
+            .reserve(
+                &LeaseReservation {
+                    lease_id: "lease-42".to_string(),
+                    reservation_id: "req-42".to_string(),
+                    bundle_id: "bundle-42".to_string(),
+                    tokens: vec![LeaseToken {
+                        role: "researcher".to_string(),
+                        token_hash: hash_actor_token(raw),
+                        actor: agent(),
+                    }],
+                    expiry_ms: 10_000,
+                },
+                1_000,
+            )
+            .unwrap();
+
+        // The a2a run token resolves to a witness carrying the SERVER-RESOLVED
+        // actor + the non-secret lease identity.
+        let principal = resolve_lease_principal(&leases, Some(raw), 2_000).unwrap();
+        assert_eq!(principal.actor(), &agent());
+        assert_eq!(principal.lease_id(), Some("lease-42"));
+
+        // An authoring-session principal carries no lease id.
+        // (unknown a2a token → UnknownPrincipal, so the seam falls back.)
+        assert_eq!(
+            resolve_lease_principal(&leases, Some("nope"), 2_000).unwrap_err(),
+            PrincipalDenial::UnknownPrincipal
+        );
     }
 
     #[test]

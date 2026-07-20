@@ -33,7 +33,7 @@ use super::api::CommandEnvelope;
 use super::model::{ActionEligibility, ChangesetId, CommandKind, SessionId};
 use super::principal::{
     AUTHORING_ACTOR_TOKEN_HEADER, AuthenticatedPrincipal, PrincipalDenial, ResolvedCommand,
-    resolve_principal,
+    resolve_lease_principal, resolve_principal,
 };
 use super::projections::ProjectionError;
 use super::store::StoreError;
@@ -137,17 +137,31 @@ pub async fn resolve_principal_layer(
         // open — an anonymous read never opens the authoring store.
         None => PrincipalResolution::Denied(PrincipalDenial::MissingToken),
         Some(token) => {
-            // Identity is a READ; the house pattern rides a mutating-command unit
-            // of work (the deferred transaction takes no write lock and commits
-            // empty). A store-open/read failure degrades to `Unavailable`.
-            match state.with_authoring_store(|store| {
-                store.with_unit_of_work(CommandKind::CreateSession, |uow| {
-                    Ok(resolve_principal(&uow.actor_tokens(), Some(token), now))
-                })
-            }) {
-                Ok(Ok(principal)) => PrincipalResolution::Resolved(principal),
-                Ok(Err(denial)) => PrincipalResolution::Denied(denial),
-                Err(_store_err) => PrincipalResolution::Unavailable,
+            // A2A run tokens resolve against the DEDICATED run-lease repository
+            // first (a2a-product-provisioning W02.P05.S38): a cheap indexed hash
+            // lookup that opens NO authoring store and carries the resolved lease
+            // identity with the principal. A miss there falls back to the
+            // authoring token store for authoring-session principals. The lease id
+            // is server-resolved — no request field can claim it.
+            match resolve_lease_principal(&state.a2a_run_leases, Some(token), now) {
+                Ok(principal) => PrincipalResolution::Resolved(principal),
+                // Not an a2a run token (or a lease-store fault): try the authoring
+                // store. Identity is a READ; the house pattern rides a
+                // mutating-command unit of work (the deferred transaction takes no
+                // write lock and commits empty). A store-open/read failure
+                // degrades to `Unavailable`.
+                Err(PrincipalDenial::UnknownPrincipal) => {
+                    match state.with_authoring_store(|store| {
+                        store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                            Ok(resolve_principal(&uow.actor_tokens(), Some(token), now))
+                        })
+                    }) {
+                        Ok(Ok(principal)) => PrincipalResolution::Resolved(principal),
+                        Ok(Err(denial)) => PrincipalResolution::Denied(denial),
+                        Err(_store_err) => PrincipalResolution::Unavailable,
+                    }
+                }
+                Err(denial) => PrincipalResolution::Denied(denial),
             }
         }
     };
