@@ -2,8 +2,8 @@
 //!
 //! Drives the real `POST /internal/a2a/run-terminal` route through the production
 //! router against the production lease repository and the product credential
-//! store. Proves attach-control callback authentication, worker-IPC + tokenless
-//! rejection, durable-terminal-status gating, idempotency, exact hashed-bundle
+//! store. Proves attach-control callback authentication, unrelated-token and
+//! tokenless rejection, durable-terminal-status gating, idempotency, exact hashed-bundle
 //! revocation, and callback lease-id verification. No mocks — a real AppState, a
 //! real router, real bootstrapped credentials, and a real SQLite lease repo.
 //!
@@ -13,30 +13,41 @@
 //! primitives from a live gateway re-query lands with S160/S161.
 
 use super::*;
+#[cfg(unix)]
 use axum::body::Body;
+#[cfg(unix)]
 use axum::http::{Request, StatusCode};
+#[cfg(unix)]
 use tower::ServiceExt;
 
+#[cfg(unix)]
 use crate::a2a_run_leases::{LeaseRepo, LeaseReservation, LeaseState, LeaseToken};
+#[cfg(unix)]
 use crate::authoring::actor_tokens::hash_actor_token;
+#[cfg(unix)]
 use crate::authoring::model::{ActorId, ActorKind, ActorRef};
-use vaultspec_product::credentials::CredentialStore;
+#[cfg(windows)]
+use vaultspec_product::credentials::CredentialError;
+use vaultspec_product::credentials::DashboardCredentialStore;
+use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::paths::ProductPaths;
 
 /// A seated state with an ISOLATED product home so we can bootstrap the
-/// attach-control + worker-IPC credentials the settlement auth verifies against,
-/// plus the returned secrets. `vault_root` is the on-disk root the seated
+/// attach-control credential the settlement auth verifies against, plus one
+/// distinct spec-valid token. `vault_root` is the on-disk root the seated
 /// `LeaseRepo` opened under, so a test can REOPEN the same durable repo to prove
 /// restart survival.
+#[cfg(unix)]
 struct Fixture {
     _dir: tempfile::TempDir,
     _home: tempfile::TempDir,
     vault_root: std::path::PathBuf,
     state: Arc<AppState>,
     attach_control: String,
-    worker_ipc: String,
+    non_attach_token: String,
 }
 
+#[cfg(unix)]
 fn fixture() -> Fixture {
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
@@ -50,21 +61,33 @@ fn fixture() -> Fixture {
     // LifecyclePlane roots at, so `verify_attach_control` reads what we minted.
     let paths = ProductPaths::under_app_home(home.path());
     paths.ensure().unwrap();
-    let store = CredentialStore::new(paths.credentials_dir());
-    let creds = store.bootstrap().unwrap();
-    let worker = store.create_worker_ipc().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "settlement-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let creds = store.begin_bootstrap(&guard).unwrap();
+    let attach_control = creds.attach_control().secret().to_string();
+    let mut non_attach_token = attach_control.clone().into_bytes();
+    non_attach_token[0] = if non_attach_token[0] == b'a' {
+        b'b'
+    } else {
+        b'a'
+    };
     Fixture {
         vault_root: dir.path().join(".vault"),
         _dir: dir,
         _home: home,
         state,
-        attach_control: creds.attach_control.secret().to_string(),
-        worker_ipc: worker.secret().to_string(),
+        attach_control,
+        non_attach_token: String::from_utf8(non_attach_token).unwrap(),
     }
 }
 
 /// Reserve+commit a single-role lease with an explicit bounded expiry; return the
 /// raw role token. Mirrors `seed_lease` but lets an expiry-leg control the window.
+#[cfg(unix)]
 fn seed_lease_expiring(
     state: &AppState,
     lease: &str,
@@ -99,6 +122,7 @@ fn seed_lease_expiring(
     raw
 }
 
+#[cfg(unix)]
 fn agent(role: &str) -> ActorRef {
     ActorRef {
         id: ActorId::new(format!("agent:{role}")).unwrap(),
@@ -108,6 +132,7 @@ fn agent(role: &str) -> ActorRef {
 }
 
 /// Seed a committed, active lease with one role token; return the raw token.
+#[cfg(unix)]
 fn seed_lease(state: &AppState, lease: &str, run: &str, gateway_lease: &str) -> String {
     let raw = format!("raw-{lease}");
     state
@@ -136,6 +161,7 @@ fn seed_lease(state: &AppState, lease: &str, run: &str, gateway_lease: &str) -> 
 }
 
 /// POST the settlement callback with an optional attach-control bearer.
+#[cfg(unix)]
 async fn post_terminal(router: Router, body: Value, bearer: Option<&str>) -> (StatusCode, Value) {
     let mut builder = Request::post("/internal/a2a/run-terminal")
         .header("host", "127.0.0.1")
@@ -157,10 +183,12 @@ async fn post_terminal(router: Router, body: Value, bearer: Option<&str>) -> (St
     )
 }
 
+#[cfg(unix)]
 fn terminal_body(run: &str, lease: &str, status: &str) -> Value {
     json!({ "run_id": run, "lease_id": lease, "terminal_status": status })
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn settlement_authenticates_attach_control_only_and_settles_idempotently() {
     let fx = fixture();
@@ -188,7 +216,7 @@ async fn settlement_authenticates_attach_control_only_and_settles_idempotently()
     let (status, _) = post_terminal(
         router.clone(),
         terminal_body("run-1", "gw-1", "completed"),
-        Some(&fx.worker_ipc),
+        Some(&fx.non_attach_token),
     )
     .await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
@@ -248,6 +276,7 @@ async fn settlement_authenticates_attach_control_only_and_settles_idempotently()
     assert_eq!(body["data"]["settled"], false);
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_mismatched_callback_lease_id_settles_nothing() {
     let fx = fixture();
@@ -274,6 +303,7 @@ async fn a_mismatched_callback_lease_id_settles_nothing() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn non_terminal_callbacks_retain_the_running_lease() {
     let fx = fixture();
@@ -305,6 +335,7 @@ async fn non_terminal_callbacks_retain_the_running_lease() {
     }
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn an_expired_lease_stops_resolving_and_the_sweep_revokes_it() {
     let fx = fixture();
@@ -348,6 +379,7 @@ async fn an_expired_lease_stops_resolving_and_the_sweep_revokes_it() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn a_settled_terminal_is_durable_across_a_repo_reopen() {
     let fx = fixture();
@@ -379,6 +411,7 @@ async fn a_settled_terminal_is_durable_across_a_repo_reopen() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test]
 async fn reserved_leases_revoke_on_restart_while_committed_leases_survive() {
     let fx = fixture();
@@ -430,4 +463,135 @@ async fn reserved_leases_revoke_on_restart_while_committed_leases_survive() {
             .is_some(),
         "a durably committed lease survives restart reconciliation"
     );
+}
+
+/// Windows cannot mint or disclose dashboard credentials until the proposed
+/// protected-DACL authority exists. Each settlement scenario must therefore stop
+/// at the real bootstrap boundary, before it creates a lease or invokes the
+/// callback. This fixture proves that shared ordering without manufacturing a
+/// credential that production itself refuses to create.
+#[cfg(windows)]
+struct WindowsAuthorityGateFixture {
+    _dir: tempfile::TempDir,
+    _home: tempfile::TempDir,
+    paths: ProductPaths,
+    vault_root: std::path::PathBuf,
+    state: Arc<AppState>,
+}
+
+#[cfg(windows)]
+fn windows_authority_gate_fixture(scenario: &str) -> WindowsAuthorityGateFixture {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
+    let home = tempfile::tempdir().unwrap();
+    let state = app::build_state_with_product_home(
+        dir.path().to_path_buf(),
+        "test-bearer".to_string(),
+        home.path().to_path_buf(),
+    );
+    let paths = ProductPaths::under_app_home(home.path());
+    paths.ensure().unwrap();
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, scenario)
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+
+    match store.begin_bootstrap(&guard) {
+        Err(CredentialError::PlatformAuthorityUnavailable(message)) => assert_eq!(
+            message,
+            "AuthorityFile creation lacks WRITE_DAC and windows-acl cannot prove SE_DACL_PROTECTED"
+        ),
+        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
+        Ok(_) => panic!("Windows settlement credentials must remain typed unavailable"),
+    }
+    drop(guard);
+
+    for name in [
+        "bootstrap-credentials.v1",
+        "ownership.cap",
+        "attach.cred",
+        "worker-ipc.cred",
+    ] {
+        assert!(
+            !paths.credentials_dir().join(name).exists(),
+            "the Windows authority gate must precede credential effect `{name}`"
+        );
+    }
+
+    WindowsAuthorityGateFixture {
+        vault_root: dir.path().join(".vault"),
+        _dir: dir,
+        _home: home,
+        paths,
+        state,
+    }
+}
+
+#[cfg(windows)]
+fn assert_no_lease_effect(fixture: &WindowsAuthorityGateFixture, lease_ids: &[&str]) {
+    assert!(
+        fixture
+            .state
+            .a2a_run_leases
+            .unresolved_leases()
+            .unwrap()
+            .is_empty()
+    );
+    for lease_id in lease_ids {
+        assert_eq!(
+            fixture.state.a2a_run_leases.lease_state(lease_id).unwrap(),
+            None,
+            "bootstrap authority refusal must precede lease effect `{lease_id}`"
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn settlement_authentication_stops_at_the_windows_bootstrap_authority_gate() {
+    let fixture = windows_authority_gate_fixture("settlement-auth-windows-authority-gate");
+    assert_no_lease_effect(&fixture, &["L1"]);
+    assert!(!fixture.paths.receipt_path().exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn mismatched_callback_stops_at_the_windows_bootstrap_authority_gate() {
+    let fixture = windows_authority_gate_fixture("settlement-mismatch-windows-authority-gate");
+    assert_no_lease_effect(&fixture, &["L2"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn non_terminal_callback_stops_at_the_windows_bootstrap_authority_gate() {
+    let fixture = windows_authority_gate_fixture("settlement-retention-windows-authority-gate");
+    assert_no_lease_effect(&fixture, &["L3"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn lease_expiry_scenario_stops_at_the_windows_bootstrap_authority_gate() {
+    let fixture = windows_authority_gate_fixture("settlement-expiry-windows-authority-gate");
+    assert_no_lease_effect(&fixture, &["L4"]);
+}
+
+#[cfg(windows)]
+#[test]
+fn durable_settlement_scenario_stops_at_the_windows_bootstrap_authority_gate() {
+    let fixture = windows_authority_gate_fixture("settlement-durable-windows-authority-gate");
+    assert_no_lease_effect(&fixture, &["L5"]);
+    let reopened = crate::a2a_run_leases::LeaseRepo::open(&fixture.vault_root).unwrap();
+    assert_eq!(reopened.lease_state("L5").unwrap(), None);
+}
+
+#[cfg(windows)]
+#[test]
+fn restart_reconciliation_scenario_stops_at_the_windows_bootstrap_authority_gate() {
+    let fixture = windows_authority_gate_fixture("settlement-restart-windows-authority-gate");
+    assert_no_lease_effect(&fixture, &["L6-res", "L6-act"]);
+    let reopened = crate::a2a_run_leases::LeaseRepo::open(&fixture.vault_root).unwrap();
+    assert_eq!(reopened.revoke_all_reserved(app::now_ms()).unwrap(), 0);
+    assert_eq!(reopened.lease_state("L6-res").unwrap(), None);
+    assert_eq!(reopened.lease_state("L6-act").unwrap(), None);
 }

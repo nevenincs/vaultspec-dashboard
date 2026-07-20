@@ -88,6 +88,7 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/a2a/lifecycle/status",
     "/a2a/lifecycle/run",
     "/a2a/lifecycle/jobs/{id}",
+    "/internal/a2a/run-terminal",
     "/provision/status",
     "/provision/run",
     "/provision/jobs/{id}",
@@ -95,6 +96,12 @@ pub const CONTRACT_ROUTES: &[&str] = &[
     "/settings",
     "/settings/schema",
 ];
+
+/// Contract routes authenticated by the dashboard attach-control credential
+/// rather than the browser/machine bearer. Keeping this class explicit prevents
+/// an internal callback from disappearing from `CONTRACT_ROUTES` while also
+/// preventing it from being accidentally folded into the wrong bearer boundary.
+pub const ATTACH_CONTROL_ROUTES: &[&str] = &["/internal/a2a/run-terminal"];
 
 async fn health() -> Json<Value> {
     // Liveness ping; enveloped like everything else (L1) with a static

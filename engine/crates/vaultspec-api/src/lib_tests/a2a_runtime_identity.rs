@@ -3,11 +3,11 @@
 //!
 //! These proofs drive the production seated-boot reconcile
 //! (`LifecyclePlane::reconcile_seated_boot`) and the owned-tree termination
-//! contract against REAL artifacts — real loopback control sockets, real
-//! credential files, real process identities (this test process's own live pid,
-//! and a spawned-then-reaped dead child), a real discovery record, and — where a
-//! built capsule is available — the capsule's OWN bundled interpreter launching a
-//! real owned process. No fakes, mocks, stubs, or skips of a real outcome.
+//! contract against real artifacts. They prove that retired JSON receipts cannot
+//! authorize live, foreign, or stale discovery handling; that Windows credential
+//! bootstrap remains behind its typed authority gate; and, where a built capsule
+//! is available, that the capsule's own bundled interpreter launches a real owned
+//! process. No fakes, mocks, or stubs are used.
 //!
 //! The capsule-dependent proofs (a real owned process, the real entrypoint
 //! resolution) gate on `VAULTSPEC_PRODUCT_CAPSULE` (or the conventional
@@ -19,7 +19,10 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use vaultspec_product::credentials::CredentialStore;
+#[cfg(windows)]
+use vaultspec_product::credentials::DashboardCredentialStore;
+#[cfg(windows)]
+use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::process::{GatewaySpec, ResolvedProgram, spawn_gateway};
@@ -170,39 +173,6 @@ fn write_discovery(
     std::fs::write(paths.app_home().join("gateway-discovery.json"), raw).unwrap();
 }
 
-/// Stand up a real loopback gateway readiness/health server that requires the
-/// attach bearer and answers the one readiness model. Serves a bounded number of
-/// connections then exits.
-fn spawn_readiness_server(attach_token: String, connections: usize) -> String {
-    use std::io::{Read, Write};
-    use std::net::TcpListener;
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let endpoint = format!("127.0.0.1:{}", listener.local_addr().unwrap().port());
-    std::thread::spawn(move || {
-        for _ in 0..connections {
-            let Ok((mut sock, _)) = listener.accept() else {
-                break;
-            };
-            let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
-            let mut buf = [0u8; 2048];
-            let n = sock.read(&mut buf).unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]);
-            let authed = req.contains(&format!("Authorization: Bearer {attach_token}"));
-            let resp = if !authed {
-                "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n".to_string()
-            } else {
-                let body = r#"{"state":"gateway-ready","worker":"cold"}"#;
-                format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
-                    body.len()
-                )
-            };
-            let _ = sock.write_all(resp.as_bytes());
-        }
-    });
-    endpoint
-}
-
 // --- socket / file / pid proofs (no capsule needed) ---------------------------
 
 #[test]
@@ -220,38 +190,22 @@ fn seated_boot_on_a_not_installed_product_is_a_noop() {
 }
 
 #[test]
-fn seated_boot_authenticates_a_live_owned_gateway() {
+fn retired_receipt_cannot_make_a_live_owned_gateway_authoritative() {
     let (_home, plane, paths) = install_home();
     let (_triple, target) = current_target();
     write_receipt(&paths, target);
-    let creds = CredentialStore::new(paths.credentials_dir())
-        .bootstrap()
-        .unwrap();
-
-    // A real readiness server the authenticated attach probes. Our OWN live pid +
-    // a fresh heartbeat + our owner id makes the record classify OwnedLive.
-    let endpoint = spawn_readiness_server(creds.attach_control.secret().to_string(), 2);
-    let handoff = CredentialStore::new(paths.credentials_dir()).attach_control_reference();
     write_discovery(
         &paths,
         plane.testonly_owner_id(),
         std::process::id(),
-        &endpoint,
-        &handoff.to_string_lossy(),
+        "127.0.0.1:1",
+        "",
         now_ms(),
     );
 
     let outcome = plane.reconcile_seated_boot(None);
-    assert_eq!(
-        outcome["action"], "authenticate",
-        "a live owned gateway is authenticated, never re-spawned: {outcome}"
-    );
-    assert_eq!(
-        outcome["ready"], true,
-        "the authenticated readiness probe read the gateway ready: {outcome}"
-    );
-    assert_eq!(outcome["owned"], true);
-    // Authentication spawns nothing — the owned-process slot stays empty.
+    assert_eq!(outcome["action"], "none", "{outcome}");
+    assert_eq!(outcome["reason"], "a2a is not installed", "{outcome}");
     assert!(
         plane
             .terminate_owned_gateway(Duration::from_millis(200))
@@ -260,71 +214,34 @@ fn seated_boot_authenticates_a_live_owned_gateway() {
 }
 
 #[test]
-fn seated_boot_leaves_a_foreign_resident_immutable() {
+fn retired_receipt_cannot_make_foreign_discovery_an_installed_resident() {
     let (_home, plane, paths) = install_home();
     let (_triple, target) = current_target();
     write_receipt(&paths, target);
-    CredentialStore::new(paths.credentials_dir())
-        .bootstrap()
-        .unwrap();
-
-    // A live FOREIGN gateway (different owner) is LEFT IMMUTABLE — never spawned,
-    // never mutated (ADR D4). Whether it is additionally attachable read-only
-    // (`attach-foreign`) or fully immutable (`leave-foreign`) turns on whether the
-    // handoff credential is owner-ACL-restricted — a product-crate contract
-    // (`discovery::handoff_is_owner_restricted`) that is environment-dependent on
-    // Windows. The property S34 proves is immutability, so accept either foreign
-    // verdict and assert NOTHING was spawned.
-    let handoff = CredentialStore::new(paths.credentials_dir()).attach_control_reference();
     write_discovery(
         &paths,
         "someone-else",
         std::process::id(),
         "127.0.0.1:1",
-        &handoff.to_string_lossy(),
+        "",
         now_ms(),
     );
     let outcome = plane.reconcile_seated_boot(None);
-    assert!(
-        matches!(
-            outcome["action"].as_str(),
-            Some("attach-foreign") | Some("leave-foreign")
-        ),
-        "a live foreign gateway is left immutable (attach-read-only or immutable), \
-         never mutated: {outcome}"
-    );
+    assert_eq!(outcome["action"], "none", "{outcome}");
+    assert_eq!(outcome["reason"], "a2a is not installed", "{outcome}");
     assert!(
         plane
             .terminate_owned_gateway(Duration::from_millis(200))
             .is_none(),
         "a foreign resident is never spawned/owned"
     );
-
-    // A live foreign gateway WITHOUT any readable handoff is unambiguously fully
-    // immutable (ForeignImmutable::NoTrustedHandoff).
-    write_discovery(
-        &paths,
-        "someone-else",
-        std::process::id(),
-        "127.0.0.1:1",
-        "/no/such/handoff",
-        now_ms(),
-    );
-    let outcome = plane.reconcile_seated_boot(None);
-    assert_eq!(
-        outcome["action"], "leave-foreign",
-        "an untrusted foreign gateway is left immutable: {outcome}"
-    );
 }
 
 #[test]
-fn seated_boot_quarantines_a_stale_owned_record_before_starting() {
+fn retired_receipt_cannot_authorize_stale_discovery_quarantine_or_start() {
     let (_home, plane, paths) = install_home();
     let (_triple, target) = current_target();
     write_receipt(&paths, target);
-    CredentialStore::new(paths.credentials_dir())
-        .bootstrap()
-        .unwrap();
 
     // A real child, reaped, gives a provably-dead pid for a stale OWNED record.
     let mut child = if cfg!(windows) {
@@ -350,84 +267,31 @@ fn seated_boot_quarantines_a_stale_owned_record_before_starting() {
     assert!(discovery_path.exists());
 
     let outcome = plane.reconcile_seated_boot(None);
-    // The owner-matched dead record is quarantined (retracted), then a fresh
-    // start is attempted. Without the not-yet-built install layout the start
-    // honestly reports the missing capsule rather than a fabricated success.
     assert!(
-        !discovery_path.exists(),
-        "the stale owner-matched record was quarantined (retracted): {outcome}"
+        discovery_path.exists(),
+        "an inert legacy receipt cannot authorize stale-record mutation: {outcome}"
     );
-    assert_eq!(outcome["action"], "start");
-    assert_eq!(
-        outcome["started"], false,
-        "no install layout yet, so the start honestly fails rather than faking: {outcome}"
-    );
-    assert!(
-        outcome["reason"]
-            .as_str()
-            .unwrap_or_default()
-            .contains("capsule manifest"),
-        "the honest reason names the missing install layout: {outcome}"
-    );
+    assert_eq!(outcome["action"], "none", "{outcome}");
+    assert_eq!(outcome["reason"], "a2a is not installed", "{outcome}");
 }
 
 #[cfg(windows)]
 #[test]
-fn seated_boot_does_not_start_when_stale_discovery_cannot_be_removed() {
-    use std::os::windows::fs::OpenOptionsExt as _;
-
-    let (home, plane, paths) = install_home();
-    let (_triple, target) = current_target();
-    write_receipt(&paths, target);
-    CredentialStore::new(paths.credentials_dir())
-        .bootstrap()
+fn windows_seated_control_respects_the_typed_credential_authority_gate() {
+    let (_home, plane, paths) = install_home();
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "runtime-windows-authority-test")
+        .unwrap()
         .unwrap();
-
-    let mut child = std::process::Command::new("cmd")
-        .args(["/C", "exit"])
-        .spawn()
-        .unwrap();
-    let dead_pid = child.id();
-    child.wait().unwrap();
-    write_discovery(
-        &paths,
-        plane.testonly_owner_id(),
-        dead_pid,
-        "127.0.0.1:1",
-        "",
-        now_ms(),
-    );
-
-    let discovery_path = paths.app_home().join("gateway-discovery.json");
-    const FILE_SHARE_READ: u32 = 0x0000_0001;
-    let retained_reader = std::fs::OpenOptions::new()
-        .read(true)
-        .share_mode(FILE_SHARE_READ)
-        .open(&discovery_path)
-        .unwrap();
-
+    match DashboardCredentialStore::for_product(&paths).begin_bootstrap(&guard) {
+        Err(vaultspec_product::credentials::CredentialError::PlatformAuthorityUnavailable(_)) => {}
+        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
+        Ok(_) => panic!("Windows credential bootstrap must remain typed unavailable"),
+    }
+    drop(guard);
     let outcome = plane.reconcile_seated_boot(None);
-    assert_eq!(outcome["action"], "recover-stale", "{outcome}");
-    assert_eq!(outcome["started"], false, "{outcome}");
-    let reason = outcome["reason"].as_str().unwrap_or_default();
-    assert!(
-        reason.contains("stale discovery quarantine failed"),
-        "{outcome}"
-    );
-    assert!(
-        !reason.contains(&home.path().to_string_lossy().to_string()),
-        "the failure must not disclose the product path: {outcome}"
-    );
-    assert!(discovery_path.is_file());
-    assert!(
-        plane
-            .terminate_owned_gateway(Duration::from_millis(200))
-            .is_none(),
-        "a failed quarantine must not retain a started gateway: {outcome}"
-    );
-
-    drop(retained_reader);
-    std::fs::remove_file(discovery_path).unwrap();
+    assert_eq!(outcome["action"], "none", "{outcome}");
+    assert_eq!(outcome["reason"], "a2a is not installed", "{outcome}");
 }
 
 // --- capsule-gated proofs -----------------------------------------------------

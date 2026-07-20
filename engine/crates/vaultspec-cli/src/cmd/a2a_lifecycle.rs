@@ -20,12 +20,16 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 use vaultspec_product::control::ControlClient;
-use vaultspec_product::credentials::CredentialStore;
+use vaultspec_product::credentials::{CredentialError, DashboardCredentialStore};
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, Verdict};
 use vaultspec_product::lifecycle::LifecycleController;
+use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, WorkerState};
+use vaultspec_product::provisioning::{
+    ActiveReleaseState, ProvisioningErrorKind, observe_active_release,
+};
 
 /// The published gateway discovery filename under the product app home.
 const DISCOVERY_FILE: &str = "gateway-discovery.json";
@@ -86,31 +90,90 @@ fn ctx(owner: &str) -> DiscoveryContext {
     }
 }
 
+fn ownership_error(error: &CredentialError) -> &'static str {
+    match error {
+        CredentialError::PlatformAuthorityUnavailable(_) => {
+            "platform ownership authority is unavailable"
+        }
+        CredentialError::Missing(_) | CredentialError::Invalid { .. } => {
+            "ownership capability is absent or invalid"
+        }
+        CredentialError::Io(_)
+        | CredentialError::AlreadyExists(_)
+        | CredentialError::RecoveryRequired(_)
+        | CredentialError::BootstrapAuthorityInUse => "ownership authority is unverifiable",
+    }
+}
+
+fn observation_error(kind: ProvisioningErrorKind) -> String {
+    match kind {
+        ProvisioningErrorKind::RecoveryRequired => {
+            "fixed active-receipt recovery is required".to_owned()
+        }
+        ProvisioningErrorKind::AdapterUnavailable
+        | ProvisioningErrorKind::FirstInstallAdapterUnavailable
+        | ProvisioningErrorKind::Indeterminate => {
+            "fixed active-receipt authority is unverifiable".to_owned()
+        }
+    }
+}
+
+fn guarded_release_state(
+    paths: &ProductPaths,
+    guard: &vaultspec_product::locking::InstallLockGuard,
+) -> Result<ActiveReleaseState, String> {
+    observe_active_release(paths, guard)
+        .and_then(|observation| observation.state())
+        .map_err(|error| observation_error(error.kind()))
+}
+
 /// The status + ownership projection: installed release set, the one readiness
 /// model, ownership retention, and the owned-or-foreign gateway identity.
-fn projection(paths: &ProductPaths, owner: &str, controller: &LifecycleController) -> Value {
+fn projection(
+    paths: &ProductPaths,
+    owner: &str,
+    controller: &LifecycleController,
+) -> Result<Value, String> {
     let _ = controller.initialize();
-    let receipt = controller.active_receipt().ok().flatten();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, owner)
+        .map_err(|_| "installation authority unavailable".to_owned())?
+        .map_err(|_| "installation authority busy".to_owned())?;
+    let release = guarded_release_state(paths, &guard)?;
+    let settled = match &release {
+        ActiveReleaseState::Settled(release) => Some(release),
+        ActiveReleaseState::Absent => None,
+        ActiveReleaseState::RecoveryRequired(_) => {
+            return Err("fixed active-receipt recovery is required".to_owned());
+        }
+    };
     let discovery = read_discovery(paths);
     let verdict = discovery.as_ref().map(|d| d.classify(&ctx(owner)));
-    let readiness = controller.readiness(
-        matches!(verdict, Some(Verdict::OwnedLive)),
-        WorkerState::Cold,
-    );
-    json!({
-        "installed": receipt.is_some(),
-        "release_set": receipt.as_ref().map(|r| json!({
-            "name": r.a2a_identity.name,
-            "version": r.a2a_identity.version,
-            "target": r.target.triple(),
-            "active_generation": r.active_generation,
+    let readiness = controller
+        .guarded_readiness(
+            &guard,
+            matches!(verdict, Some(Verdict::OwnedLive)),
+            WorkerState::Cold,
+        )
+        .map_err(|_| "fixed active-receipt authority is unverifiable".to_owned())?;
+    Ok(json!({
+        "installed": settled.is_some(),
+        "installed_known": true,
+        "install_state": if settled.is_some() { "settled" } else { "absent" },
+        "recovery_required": false,
+        "degraded": false,
+        "release_set": settled.map(|r| json!({
+            "name": r.a2a_identity().name,
+            "version": r.a2a_identity().version,
+            "target": r.target().triple(),
+            "active_generation": r.active_generation(),
         })),
         "readiness": readiness,
         "ownership": {
             "owner": owner,
-            "retained": receipt
-                .as_ref()
-                .map(|r| r.bootstrap_created_ownership)
+            "retained": settled
+                .map(|r| r.bootstrap_created_ownership())
                 .unwrap_or(false),
         },
         "gateway": discovery.as_ref().map(|d| json!({
@@ -125,7 +188,7 @@ fn projection(paths: &ProductPaths, owner: &str, controller: &LifecycleControlle
                 None => "unknown",
             },
         })),
-    })
+    }))
 }
 
 /// The A2A product + ownership projection for the one-shot `status` backends
@@ -134,7 +197,24 @@ fn projection(paths: &ProductPaths, owner: &str, controller: &LifecycleControlle
 pub fn facts() -> Value {
     match run(Action::Status) {
         Ok(v) => v,
-        Err(reason) => json!({ "installed": false, "reason": reason }),
+        Err(reason) => {
+            let install_state = if reason.contains("busy") {
+                "busy"
+            } else if reason.contains("recovery") {
+                "recovery-required"
+            } else {
+                "unverifiable"
+            };
+            json!({
+                "installed": null,
+                "installed_known": false,
+                "install_state": install_state,
+                "recovery_required": install_state == "recovery-required",
+                "degraded": true,
+                "readiness": null,
+                "reason": reason,
+            })
+        }
     }
 }
 
@@ -143,9 +223,9 @@ pub fn run(action: Action) -> Result<Value, String> {
     let (paths, owner) = resolve()?;
     let controller = LifecycleController::new(paths.clone());
     match action {
-        Action::Status => Ok(projection(&paths, &owner, &controller)),
+        Action::Status => projection(&paths, &owner, &controller),
         Action::Doctor => {
-            let mut out = projection(&paths, &owner, &controller);
+            let mut out = projection(&paths, &owner, &controller)?;
             if let Some(obj) = out.as_object_mut() {
                 obj.insert("doctor".into(), json!({ "read_only": true }));
             }
@@ -165,33 +245,40 @@ fn stop(
     owner: &str,
     controller: &LifecycleController,
 ) -> Result<Value, String> {
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, owner)
+        .map_err(|_| "installation authority unavailable".to_owned())?
+        .map_err(|_| "installation authority busy".to_owned())?;
+    match guarded_release_state(paths, &guard)? {
+        ActiveReleaseState::Absent => return Err("a2a is not installed".to_owned()),
+        ActiveReleaseState::RecoveryRequired(_) => {
+            return Err("fixed active-receipt recovery is required".to_owned());
+        }
+        ActiveReleaseState::Settled(_) => {}
+    }
     let Some(discovery) = read_discovery(paths) else {
-        // No live discovery: nothing to stop. Distinguish cold-installed from
-        // not-installed honestly.
-        return match controller.active_receipt() {
-            Ok(Some(_)) => Ok(
-                json!({ "stopped": false, "reason": "gateway already stopped (installed, cold)" }),
-            ),
-            Ok(None) => Ok(json!({ "stopped": false, "reason": "a2a is not installed" })),
-            Err(e) => Err(format!("a2a receipt unverifiable: {e}")),
-        };
+        return Ok(
+            json!({ "stopped": false, "reason": "gateway already stopped (installed, cold)" }),
+        );
     };
     let verdict = discovery.classify(&ctx(owner));
-    let store = CredentialStore::new(paths.credentials_dir());
-    let ownership = store.read_ownership().ok();
+    let store = DashboardCredentialStore::for_product(paths);
+    let ownership = store
+        .verify_ownership(&guard)
+        .map_err(|error| ownership_error(&error).to_owned())?;
     // Compose BOTH ownership gates through the shared product authority before any
     // control effect (same seam the seated plane uses).
     controller
-        .guard_owned_mutation(LifecycleOp::Stop, ownership.as_ref(), Some(&verdict))
+        .guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&verdict))
         .map_err(|refusal| refusal.to_string())?;
-    let ownership = ownership.ok_or_else(|| "missing ownership capability".to_string())?;
     let attach = store
         .read_attach_control()
         .map_err(|e| format!("attach-control credential unreadable: {e}"))?;
     let client = ControlClient::new(discovery.endpoint.clone(), attach.secret())
         .with_timeouts(CONTROL_TIMEOUT, CONTROL_TIMEOUT);
     client
-        .shutdown(&ownership)
+        .shutdown(ownership.credential())
         .map_err(|e| format!("gateway shutdown failed: {e}"))?;
     Ok(json!({
         "stopped": true,
@@ -209,10 +296,24 @@ fn remove(
     controller: &LifecycleController,
 ) -> Result<Value, String> {
     let verdict = read_discovery(paths).map(|d| d.classify(&ctx(owner)));
-    let store = CredentialStore::new(paths.credentials_dir());
-    let ownership = store.read_ownership().ok();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, owner)
+        .map_err(|error| format!("install lock error: {error}"))?
+        .map_err(|busy| format!("install lock busy: {busy:?}"))?;
+    match guarded_release_state(paths, &guard)? {
+        ActiveReleaseState::Absent => return Err("a2a is not installed".to_owned()),
+        ActiveReleaseState::RecoveryRequired(_) => {
+            return Err("fixed active-receipt recovery is required".to_owned());
+        }
+        ActiveReleaseState::Settled(_) => {}
+    }
+    let store = DashboardCredentialStore::for_product(paths);
+    let ownership = store
+        .verify_ownership(&guard)
+        .map_err(|error| ownership_error(&error).to_owned())?;
     controller
-        .guard_owned_mutation(LifecycleOp::Remove, ownership.as_ref(), verdict.as_ref())
+        .guard_owned_mutation(LifecycleOp::Remove, Some(&ownership), verdict.as_ref())
         .map_err(|refusal| refusal.to_string())?;
     controller
         .remove(false)

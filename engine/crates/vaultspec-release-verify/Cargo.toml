@@ -1,0 +1,15 @@
+[package]
+name = "vaultspec-release-verify"
+description = "Bounded offline verifier for vaultspec distribution release bundles."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+tokio = { version = "1.49.0", features = ["macros", "rt"] }
+vaultspec-distribution-authority = { workspace = true }
+
+[lints]
+workspace = true

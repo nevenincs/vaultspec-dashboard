@@ -253,27 +253,30 @@ fn every_router_route_is_in_the_contract_inventory() {
         assert!(
             CONTRACT_ROUTES.contains(&path),
             "router route `{path}` is registered in build_router but missing from \
-                 CONTRACT_ROUTES — add it, or it escapes the bearer-gate guard",
+                 CONTRACT_ROUTES — add it, or it escapes authentication inventory",
         );
     }
 }
 
 #[tokio::test]
-async fn every_contract_route_requires_a_bearer() {
+async fn every_machine_bearer_contract_route_requires_a_bearer() {
     // Anti-drift guard (adversarial sweep): the bearer-gate allowlist
     // (`spa::API_PREFIXES`) is hand-maintained PARALLEL to the router, and it
     // had DRIFTED — `/file-tree`, `/pipeline`, `/dashboard-state`, `/history`,
     // `/prs`, `/issues` were registered but absent from the allowlist, so they
     // shipped served bearer-LESS. Bind the gate to the canonical route
-    // inventory: EVERY `CONTRACT_ROUTES` path (except the by-design ungated
-    // `/health` liveness ping) MUST reject a tokenless request with 401. A new
+    // inventory: EVERY machine-bearer `CONTRACT_ROUTES` path (except the
+    // by-design ungated `/health` liveness ping and the explicitly classified
+    // attach-control callbacks) MUST reject a tokenless request with 401. A new
     // route whose prefix is missing from API_PREFIXES fails here instead of
     // silently shipping ungated. The gate runs as middleware BEFORE method
-    // routing, so a tokenless GET is rejected even on POST-only routes.
+    // routing, so a tokenless GET is rejected even on POST-only routes. The
+    // excluded attach-control class has its own direct authentication proof
+    // below; it is not removed from the canonical route inventory.
     let (_dir, state) = fixture_state();
     let router = build_router(state);
     for route in CONTRACT_ROUTES {
-        if *route == "/health" {
+        if *route == "/health" || ATTACH_CONTROL_ROUTES.contains(route) {
             continue;
         }
         let path = route.replace("{id}", "x").replace("{verb}", "status");
@@ -283,5 +286,39 @@ async fn every_contract_route_requires_a_bearer() {
             StatusCode::UNAUTHORIZED,
             "route `{route}` is served without a bearer — add its prefix to spa::API_PREFIXES",
         );
+    }
+}
+
+#[tokio::test]
+async fn every_attach_control_contract_route_rejects_other_bearers() {
+    for route in ATTACH_CONTROL_ROUTES {
+        assert!(
+            CONTRACT_ROUTES.contains(route),
+            "attach-control route `{route}` is missing from CONTRACT_ROUTES"
+        );
+    }
+
+    let (_dir, state) = fixture_state();
+    let machine_bearer = state.bearer.clone();
+    let router = build_router(state);
+    for route in ATTACH_CONTROL_ROUTES {
+        for bearer in [None, Some(machine_bearer.as_str())] {
+            let mut request = Request::post(*route)
+                .header("host", "127.0.0.1")
+                .header("content-type", "application/json");
+            if let Some(bearer) = bearer {
+                request = request.header("authorization", format!("Bearer {bearer}"));
+            }
+            let response = router
+                .clone()
+                .oneshot(request.body(Body::from("{}")).unwrap())
+                .await
+                .unwrap();
+            assert_eq!(
+                response.status(),
+                StatusCode::UNAUTHORIZED,
+                "attach-control route `{route}` accepted a missing or machine bearer"
+            );
+        }
     }
 }

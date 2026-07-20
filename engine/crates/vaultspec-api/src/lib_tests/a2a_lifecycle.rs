@@ -2,16 +2,16 @@
 //!
 //! Proves the served lifecycle plane against PRODUCTION routes and a REAL
 //! registry + real `vaultspec-product` controller rooted at an isolated product
-//! home: typed refusal, the uninstalled bootstrap projection, an admitted job
-//! that runs to completion, the combined owned+ownership mutation gate (a
-//! mutation is refused unless BOTH gates hold), atomic component single-flight,
-//! and the hard at-capacity ceiling. No mocks — the AppState, router, registry,
-//! and controller are all real; only the product home is a per-test tempdir.
+//! home: typed pre-admission refusal, honest absent/busy/recovery projections,
+//! an admitted read-only job that runs to completion, retired-receipt
+//! non-authority, atomic component single-flight, and the hard at-capacity
+//! ceiling. No mocks — the AppState, router, registry, and controller are all
+//! real; only the product home is a per-test tempdir.
 
 use super::*;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use vaultspec_product::credentials::CredentialStore;
+use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::manifest::{ReleaseIdentity, Target};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::receipt::{Channel, Receipt};
@@ -28,6 +28,9 @@ fn lifecycle_state() -> (tempfile::TempDir, tempfile::TempDir, Arc<AppState>) {
     )
     .unwrap();
     let product = tempfile::tempdir().unwrap();
+    ProductPaths::under_app_home(product.path())
+        .ensure()
+        .unwrap();
     let state = app::build_state_with_product_home(
         ws.path().to_path_buf(),
         app::mint_bearer(),
@@ -36,16 +39,15 @@ fn lifecycle_state() -> (tempfile::TempDir, tempfile::TempDir, Arc<AppState>) {
     (ws, product, state)
 }
 
-/// Install a real active receipt, ownership + attach-control credentials, and a
-/// fresh OWNED gateway discovery record under the product home, so the combined
-/// mutation gate classifies our own live gateway and authorizes. `owner_override`
-/// forces a foreign owner to exercise the attach-gate refusal.
-fn install_owned_gateway(product_home: &std::path::Path, owner_override: Option<&str>) {
+/// Write the retired JSON receipt plus a fresh discovery record. This fixture is
+/// intentionally non-authorizing: only the fixed active-receipt journal may
+/// satisfy lifecycle admission.
+fn write_legacy_receipt_and_discovery(
+    product_home: &std::path::Path,
+    owner_override: Option<&str>,
+) {
     let paths = ProductPaths::under_app_home(product_home);
     paths.ensure().unwrap();
-    CredentialStore::new(paths.credentials_dir())
-        .bootstrap()
-        .unwrap();
     Receipt::bootstrap(
         Channel::SelfInstall,
         Target::X86_64PcWindowsMsvc,
@@ -65,7 +67,6 @@ fn install_owned_gateway(product_home: &std::path::Path, owner_override: Option<
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64;
-    let handoff = CredentialStore::new(paths.credentials_dir()).attach_control_reference();
     let discovery = json!({
         "endpoint": "127.0.0.1:8791",
         "pid": std::process::id(),
@@ -75,7 +76,7 @@ fn install_owned_gateway(product_home: &std::path::Path, owner_override: Option<
         "release_set": { "name": "vaultspec-a2a", "version": "0.1.0", "target": "x86_64-pc-windows-msvc" },
         "protocol": { "minimum": "v1", "maximum": "v1" },
         "state_schema": { "minimum": "0001", "maximum": "0009" },
-        "handoff_reference": handoff.to_string_lossy(),
+        "handoff_reference": paths.credentials_dir().join("attach.cred").to_string_lossy(),
         "heartbeat_ms": now_ms
     });
     std::fs::write(
@@ -85,16 +86,11 @@ fn install_owned_gateway(product_home: &std::path::Path, owner_override: Option<
     .unwrap();
 }
 
-/// Install a real active receipt, ownership credentials, a generation to remove,
-/// and mutable user data under the product home — but publish NO gateway
-/// discovery record. This is the ADR's "installed-but-stopped" cold state: a
-/// cleanly stopped gateway has no `gateway-discovery.json`.
-fn install_stopped(product_home: &std::path::Path) -> ProductPaths {
+/// Write only the retired JSON receipt, a generation, and mutable data. It must
+/// remain inert even though it resembles the pre-journal installed state.
+fn write_legacy_stopped_state(product_home: &std::path::Path) -> ProductPaths {
     let paths = ProductPaths::under_app_home(product_home);
     paths.ensure().unwrap();
-    CredentialStore::new(paths.credentials_dir())
-        .bootstrap()
-        .unwrap();
     let generation = paths.generation_dir("g0").unwrap();
     std::fs::create_dir_all(&generation).unwrap();
     std::fs::write(generation.join("immutable.bin"), b"immutable").unwrap();
@@ -115,13 +111,9 @@ fn install_stopped(product_home: &std::path::Path) -> ProductPaths {
 }
 
 #[tokio::test]
-async fn remove_on_a_stopped_install_is_admitted_and_deletes() {
-    // The P03 review HIGH: a cleanly STOPPED install (no discovery record) must
-    // still admit a receipt-bound mutation on local receipt + ownership authority
-    // alone (ADR D4/D6 cold state) — not be blocked as ForeignResident. `remove`
-    // is fully effectful today, so this proves real deletion.
+async fn retired_json_receipt_cannot_authorize_remove_or_reserve_a_job() {
     let (_ws, product, state) = lifecycle_state();
-    let paths = install_stopped(product.path());
+    let paths = write_legacy_stopped_state(product.path());
     assert!(paths.receipt_path().exists());
 
     let (status, body) = post_json_with_token(
@@ -133,34 +125,15 @@ async fn remove_on_a_stopped_install_is_admitted_and_deletes() {
     .await;
     assert_eq!(
         status,
-        StatusCode::OK,
-        "remove on a stopped install must be ADMITTED, not refused: {body}"
+        StatusCode::CONFLICT,
+        "legacy state must be refused before lifecycle admission: {body}"
     );
-    let job_id = body["data"]["job"]["id"].as_str().unwrap().to_string();
-
-    let mut terminal = Value::Null;
-    for _ in 0..40 {
-        let (_s, polled) = get_with_token(
-            build_router(state.clone()),
-            &format!("/a2a/lifecycle/jobs/{job_id}"),
-            Some(&state.bearer),
-        )
-        .await;
-        if polled["data"]["job"]["state"] != "running" {
-            terminal = polled;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    assert_eq!(terminal["data"]["job"]["state"], "succeeded");
-    assert_eq!(terminal["data"]["job"]["outcome"]["removed"], true);
-    // Real deletion: the receipt and generation are gone.
-    assert!(!paths.receipt_path().exists(), "remove deleted the receipt");
+    assert_eq!(body["error_kind"], "not_installed");
+    assert!(paths.receipt_path().exists(), "legacy receipt is untouched");
     assert!(
-        !paths.generation_dir("g0").unwrap().exists(),
-        "remove deleted the generation"
+        paths.generation_dir("g0").unwrap().exists(),
+        "preflight refusal must precede generation deletion"
     );
-    // Mutable user data is preserved (untyped removal).
     assert_eq!(
         std::fs::read(paths.data_dir().join("user.db")).unwrap(),
         b"precious"
@@ -193,7 +166,81 @@ async fn status_serves_the_uninstalled_bootstrap_state() {
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["data"]["installed"], false);
+    assert_eq!(body["data"]["installed_known"], true);
+    assert_eq!(body["data"]["install_state"], "absent");
+    assert_eq!(body["data"]["degraded"], false);
     assert_eq!(body["data"]["readiness"]["state"], "uninstalled");
+}
+
+#[tokio::test]
+async fn status_reports_busy_authority_as_unknown_and_degraded() {
+    let (_ws, product, state) = lifecycle_state();
+    let paths = ProductPaths::under_app_home(product.path());
+    paths.ensure().unwrap();
+    let _guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "busy-status-test")
+        .unwrap()
+        .unwrap();
+
+    let (status, body) = get_with_token(
+        build_router(state.clone()),
+        "/a2a/lifecycle/status",
+        Some(&state.bearer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["data"]["installed"].is_null());
+    assert_eq!(body["data"]["installed_known"], false);
+    assert_eq!(body["data"]["install_state"], "busy");
+    assert_eq!(body["data"]["degraded"], true);
+    assert!(body["data"]["readiness"].is_null());
+}
+
+#[tokio::test]
+async fn status_reports_an_untrusted_malformed_journal_as_unverifiable() {
+    let (_ws, product, state) = lifecycle_state();
+    let paths = ProductPaths::under_app_home(product.path());
+    paths.ensure().unwrap();
+    std::fs::write(paths.active_receipts_journal_path(), b"invalid-journal").unwrap();
+
+    let (status, body) = get_with_token(
+        build_router(state.clone()),
+        "/a2a/lifecycle/status",
+        Some(&state.bearer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["data"]["installed"].is_null());
+    assert_eq!(body["data"]["installed_known"], false);
+    assert_eq!(body["data"]["install_state"], "unverifiable");
+    assert_eq!(body["data"]["recovery_required"], false);
+    assert_eq!(body["data"]["degraded"], true);
+    assert!(body["data"]["readiness"].is_null());
+}
+
+#[tokio::test]
+async fn an_untrusted_malformed_journal_refuses_mutation_before_admission() {
+    let (_ws, product, state) = lifecycle_state();
+    let paths = ProductPaths::under_app_home(product.path());
+    paths.ensure().unwrap();
+    std::fs::write(paths.active_receipts_journal_path(), b"invalid-journal").unwrap();
+
+    let (status, body) = post_json_with_token(
+        build_router(state.clone()),
+        "/a2a/lifecycle/run",
+        json!({ "op": "remove" }),
+        Some(&state.bearer),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    assert_eq!(body["error_kind"], "unverifiable");
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("unverifiable"),
+        "untrusted bytes remain explicitly unverifiable: {body}"
+    );
 }
 
 #[tokio::test]
@@ -233,10 +280,9 @@ async fn doctor_run_admits_and_completes() {
 }
 
 #[tokio::test]
-async fn active_receipt_mutation_passes_the_combined_gate() {
+async fn retired_json_receipt_and_discovery_cannot_bypass_fixed_receipt_preflight() {
     let (_ws, product, state) = lifecycle_state();
-    // A real receipt + ownership + OUR OWNED live gateway: both gates hold.
-    install_owned_gateway(product.path(), None);
+    write_legacy_receipt_and_discovery(product.path(), None);
     let (status, body) = post_json_with_token(
         build_router(state.clone()),
         "/a2a/lifecycle/run",
@@ -244,18 +290,14 @@ async fn active_receipt_mutation_passes_the_combined_gate() {
         Some(&state.bearer),
     )
     .await;
-    // The mutation is ADMITTED (a job is created), not refused — proving the
-    // combined owned+ownership gate passed.
-    assert_eq!(status, StatusCode::OK, "body: {body}");
-    assert!(body["data"]["job"]["id"].is_string());
+    assert_eq!(status, StatusCode::CONFLICT, "body: {body}");
+    assert_eq!(body["error_kind"], "not_installed");
 }
 
 #[tokio::test]
-async fn foreign_gateway_mutation_is_refused_by_the_attach_gate() {
+async fn foreign_discovery_cannot_override_absent_fixed_receipt_authority() {
     let (_ws, product, state) = lifecycle_state();
-    // Same receipt + ownership, but a FOREIGN discovery owner: the attach gate
-    // must refuse even though the authority gate could pass.
-    install_owned_gateway(product.path(), Some("someone-else"));
+    write_legacy_receipt_and_discovery(product.path(), Some("someone-else"));
     let (status, body) = post_json_with_token(
         build_router(state.clone()),
         "/a2a/lifecycle/run",
@@ -264,33 +306,35 @@ async fn foreign_gateway_mutation_is_refused_by_the_attach_gate() {
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
-    assert_eq!(body["error_kind"], "foreign_resident");
+    assert_eq!(body["error_kind"], "not_installed");
 }
 
 #[tokio::test]
 async fn component_single_flight_refuses_concurrent_cross_operation() {
-    let (_ws, product, state) = lifecycle_state();
-    install_owned_gateway(product.path(), None);
-    // Occupy the component's single-flight slot with a running mutation.
+    let (_ws, _product, state) = lifecycle_state();
+    // Occupy the component's single-flight slot directly; doctor is read-only,
+    // so route admission can be exercised without fabricating install authority.
     let _held = state.a2a_lifecycle.testonly_occupy("stop");
 
-    // A DIFFERENT concurrent mutation is refused — the component is busy.
+    // A different concurrent operation is refused by the real registry.
     let (status, body) = post_json_with_token(
         build_router(state.clone()),
         "/a2a/lifecycle/run",
-        json!({ "op": "update" }),
+        json!({ "op": "doctor" }),
         Some(&state.bearer),
     )
     .await;
     assert_eq!(status, StatusCode::CONFLICT);
     assert_eq!(body["error_kind"], "at_capacity");
 
-    // An IDENTICAL concurrent mutation de-duplicates onto the running job.
+    // An identical concurrent operation de-duplicates onto the running job.
+    let (_ws2, _product2, state2) = lifecycle_state();
+    let _held2 = state2.a2a_lifecycle.testonly_occupy("doctor");
     let (status, body) = post_json_with_token(
-        build_router(state.clone()),
+        build_router(state2.clone()),
         "/a2a/lifecycle/run",
-        json!({ "op": "stop" }),
-        Some(&state.bearer),
+        json!({ "op": "doctor" }),
+        Some(&state2.bearer),
     )
     .await;
     assert_eq!(status, StatusCode::OK);

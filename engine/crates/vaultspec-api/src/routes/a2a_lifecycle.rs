@@ -17,7 +17,7 @@
 //! while the component is busy. Completed records are TTL-pruned and capped.
 //!
 //! Every mutating operation composes BOTH ownership gates through the single
-//! [`LifecyclePlane::guard_mutation`] seam before any control-plane mutation
+//! [`LifecyclePlane::with_mutation_authority`] seam before any control-plane mutation
 //! (P02 review SHOULD-FIX 3): the discovery verdict must classify our OWNED live
 //! gateway AND the caller must hold the receipt-bound ownership capability. The
 //! two gates cannot be satisfied decoupled.
@@ -33,13 +33,17 @@ use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use vaultspec_product::credentials::CredentialStore;
+use vaultspec_product::credentials::{
+    CredentialError, DashboardCredentialStore, ForeignHandoffReader,
+};
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, ImmutableReason, Verdict};
 use vaultspec_product::lifecycle::{AttachMode, LifecycleController};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
-use vaultspec_product::receipt::{Receipt, ReceiptError};
+use vaultspec_product::provisioning::{
+    ActiveReleaseState, ProvisionedRelease, ProvisioningErrorKind, observe_active_release,
+};
 
 use crate::app::AppState;
 
@@ -54,21 +58,11 @@ const MAX_CONCURRENT: usize = 1;
 const MAX_RETAINED: usize = 32;
 /// A completed lifecycle job is reclaimable after this window.
 const JOB_TTL: Duration = Duration::from_secs(2 * 60 * 60);
-/// Wall-clock ceiling for a single lifecycle operation. Generous (a drain +
-/// snapshot + migration can be slow) but finite so a wedged op cannot pin a
-/// worker forever; a breach kills the op and marks the job failed.
-const JOB_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Freshness window for a gateway discovery heartbeat.
 const DISCOVERY_FRESHNESS: Duration = Duration::from_secs(30);
-/// Maximum retained detail for a seated stale-recovery failure.
-const MAX_RECOVERY_REASON_CHARS: usize = 512;
 /// The gateway discovery record the seated controller publishes (W02.P04). The
 /// lifecycle plane READS it to classify the attach verdict; it never writes it.
 const DISCOVERY_FILE: &str = "gateway-discovery.json";
-
-fn bounded_recovery_reason(reason: String) -> String {
-    reason.chars().take(MAX_RECOVERY_REASON_CHARS).collect()
-}
 
 // --- typed wire operation (bounded enum; NO free-form path/arg) ---------------
 
@@ -354,35 +348,44 @@ fn immutable_reason(reason: &ImmutableReason) -> &'static str {
 /// state degrades with a truthful, non-secret reason. No credential secret is
 /// read here.
 fn availability_from(
-    receipt: &std::result::Result<Option<Receipt>, ReceiptError>,
+    release: &ReleaseObservation,
     verdict: Option<&Verdict>,
 ) -> (bool, Option<String>) {
-    match verdict {
-        // No live discovery: distinguish installed-but-stopped (a valid cold
-        // state) from genuinely not installed, and surface a receipt fault.
-        None => match receipt {
-            Ok(Some(_)) => (
+    match release {
+        ReleaseObservation::Absent => (
+            false,
+            Some("a2a orchestration is not installed".to_string()),
+        ),
+        ReleaseObservation::RecoveryRequired => (
+            false,
+            Some("a2a fixed receipt requires recovery".to_string()),
+        ),
+        ReleaseObservation::Busy => (
+            false,
+            Some("a2a installation authority is busy".to_string()),
+        ),
+        ReleaseObservation::Unverifiable => (
+            false,
+            Some("a2a fixed receipt authority is unverifiable".to_string()),
+        ),
+        ReleaseObservation::Settled(_) => match verdict {
+            None => (
                 false,
                 Some("a2a gateway installed but stopped (no live discovery)".to_string()),
             ),
-            Ok(None) => (
+            Some(Verdict::OwnedLive | Verdict::ForeignAttachable) => (true, None),
+            Some(Verdict::OwnedStale) => (
                 false,
-                Some("a2a orchestration is not installed".to_string()),
+                Some("owned a2a gateway is stale (recorded process not alive)".to_string()),
             ),
-            Err(e) => (false, Some(format!("a2a install state unverifiable: {e}"))),
+            Some(Verdict::ForeignImmutable { reason }) => (
+                false,
+                Some(format!(
+                    "a foreign a2a gateway holds the runtime and stays immutable: {}",
+                    immutable_reason(reason)
+                )),
+            ),
         },
-        Some(Verdict::OwnedLive | Verdict::ForeignAttachable) => (true, None),
-        Some(Verdict::OwnedStale) => (
-            false,
-            Some("owned a2a gateway is stale (recorded process not alive)".to_string()),
-        ),
-        Some(Verdict::ForeignImmutable { reason }) => (
-            false,
-            Some(format!(
-                "a foreign a2a gateway holds the runtime and stays immutable: {}",
-                immutable_reason(reason)
-            )),
-        ),
     }
 }
 
@@ -390,13 +393,18 @@ fn availability_from(
 /// `LifecycleController::readiness` without re-reading the receipt file). A cold
 /// worker on a live gateway is still ready; an installed-but-stopped generation
 /// is a valid cold state, not a degradation.
-fn readiness_from(receipt: Option<&Receipt>, verdict: Option<&Verdict>) -> Readiness {
-    match receipt {
-        Some(_) if matches!(verdict, Some(Verdict::OwnedLive)) => Readiness::GatewayReady {
-            worker: WorkerState::Cold,
-        },
-        Some(_) => Readiness::InstalledStopped,
-        None => Readiness::Uninstalled,
+fn readiness_from(release: &ReleaseObservation, verdict: Option<&Verdict>) -> Option<Readiness> {
+    match release {
+        ReleaseObservation::Settled(_) if matches!(verdict, Some(Verdict::OwnedLive)) => {
+            Some(Readiness::GatewayReady {
+                worker: WorkerState::Cold,
+            })
+        }
+        ReleaseObservation::Settled(_) => Some(Readiness::InstalledStopped),
+        ReleaseObservation::Absent => Some(Readiness::Uninstalled),
+        ReleaseObservation::RecoveryRequired
+        | ReleaseObservation::Busy
+        | ReleaseObservation::Unverifiable => None,
     }
 }
 
@@ -404,10 +412,10 @@ fn readiness_from(receipt: Option<&Receipt>, verdict: Option<&Verdict>) -> Readi
 /// installed release set, owned-or-foreign gateway identity, protocol and
 /// state-schema ranges, and the one readiness model. No secret is ever projected.
 fn handshake_value(
-    receipt: Option<&Receipt>,
+    release: &ReleaseObservation,
     discovery: Option<&GatewayDiscovery>,
     verdict: Option<&Verdict>,
-    readiness: Readiness,
+    readiness: Option<Readiness>,
     available: bool,
     reason: Option<String>,
 ) -> Value {
@@ -430,13 +438,18 @@ fn handshake_value(
             },
         })
     });
+    let settled = release.settled();
     json!({
-        "installed": receipt.is_some(),
-        "release_set": receipt.map(|r| json!({
-            "name": r.a2a_identity.name,
-            "version": r.a2a_identity.version,
-            "target": r.target.triple(),
-            "active_generation": r.active_generation,
+        "installed": release.installed(),
+        "installed_known": matches!(release, ReleaseObservation::Absent | ReleaseObservation::Settled(_)),
+        "install_state": release.label(),
+        "recovery_required": matches!(release, ReleaseObservation::RecoveryRequired),
+        "degraded": matches!(release, ReleaseObservation::RecoveryRequired | ReleaseObservation::Busy | ReleaseObservation::Unverifiable),
+        "release_set": settled.map(|r| json!({
+            "name": r.a2a_identity().name,
+            "version": r.a2a_identity().version,
+            "target": r.target().triple(),
+            "active_generation": r.active_generation(),
         })),
         "readiness": readiness,
         "supported": {
@@ -455,6 +468,76 @@ fn handshake_value(
     })
 }
 
+#[derive(Debug)]
+enum ReleaseObservation {
+    Absent,
+    Settled(ProvisionedRelease),
+    RecoveryRequired,
+    Busy,
+    Unverifiable,
+}
+
+impl ReleaseObservation {
+    fn settled(&self) -> Option<&ProvisionedRelease> {
+        match self {
+            Self::Settled(release) => Some(release),
+            Self::Absent | Self::RecoveryRequired | Self::Busy | Self::Unverifiable => None,
+        }
+    }
+
+    const fn installed(&self) -> Option<bool> {
+        match self {
+            Self::Absent => Some(false),
+            Self::Settled(_) => Some(true),
+            Self::RecoveryRequired | Self::Busy | Self::Unverifiable => None,
+        }
+    }
+
+    const fn label(&self) -> &'static str {
+        match self {
+            Self::Absent => "absent",
+            Self::Settled(_) => "settled",
+            Self::RecoveryRequired => "recovery-required",
+            Self::Busy => "busy",
+            Self::Unverifiable => "unverifiable",
+        }
+    }
+}
+
+fn observe_product_release(paths: &ProductPaths, owner_id: &str) -> ReleaseObservation {
+    use vaultspec_product::locking::{Actor, InstallLock};
+    let guard =
+        match InstallLock::new(paths.install_lock_path()).acquire(Actor::Installer, owner_id) {
+            Ok(Ok(guard)) => guard,
+            Ok(Err(_)) => return ReleaseObservation::Busy,
+            Err(_) => return ReleaseObservation::Unverifiable,
+        };
+    match observe_active_release(paths, &guard).and_then(|observation| observation.state()) {
+        Ok(ActiveReleaseState::Absent) => ReleaseObservation::Absent,
+        Ok(ActiveReleaseState::Settled(release)) => ReleaseObservation::Settled(release),
+        Ok(ActiveReleaseState::RecoveryRequired(_)) => ReleaseObservation::RecoveryRequired,
+        Err(error) if error.kind() == ProvisioningErrorKind::RecoveryRequired => {
+            ReleaseObservation::RecoveryRequired
+        }
+        Err(_) => ReleaseObservation::Unverifiable,
+    }
+}
+
+fn ownership_refusal(error: CredentialError) -> Refusal {
+    match error {
+        CredentialError::Missing(_) | CredentialError::Invalid { .. } => Refusal::NotOwner,
+        CredentialError::PlatformAuthorityUnavailable(_) => Refusal::Unverifiable {
+            detail: "platform ownership authority is unavailable".to_owned(),
+        },
+        CredentialError::Io(_)
+        | CredentialError::AlreadyExists(_)
+        | CredentialError::RecoveryRequired(_)
+        | CredentialError::BootstrapAuthorityInUse => Refusal::Unverifiable {
+            detail: "ownership authority is unverifiable".to_owned(),
+        },
+    }
+}
+
 /// The honest agent-orchestration availability derived from product state under
 /// an app home, WITHOUT reading any credential secret (S29). One receipt + one
 /// discovery read, then the pure classifier. Scope-independent (a2a is one
@@ -463,12 +546,12 @@ pub(crate) fn agent_availability_at(
     paths: &ProductPaths,
     owner_id: &str,
 ) -> (bool, Option<String>) {
-    let receipt = LifecycleController::new(paths.clone()).active_receipt();
+    let release = observe_product_release(paths, owner_id);
     let discovery = read_gateway_discovery(paths);
     let verdict = discovery
         .as_ref()
         .map(|d| d.classify(&discovery_ctx(owner_id)));
-    availability_from(&receipt, verdict.as_ref())
+    availability_from(&release, verdict.as_ref())
 }
 
 /// The component-handshake projection for a product state under an app home
@@ -476,16 +559,15 @@ pub(crate) fn agent_availability_at(
 /// reads (`/status` facts); the per-response hot path goes through the memoized
 /// [`resolve_agent_snapshot`] instead.
 pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value {
-    let receipt = LifecycleController::new(paths.clone()).active_receipt();
+    let release = observe_product_release(paths, owner_id);
     let discovery = read_gateway_discovery(paths);
     let verdict = discovery
         .as_ref()
         .map(|d| d.classify(&discovery_ctx(owner_id)));
-    let (available, reason) = availability_from(&receipt, verdict.as_ref());
-    let receipt = receipt.ok().flatten();
-    let readiness = readiness_from(receipt.as_ref(), verdict.as_ref());
+    let (available, reason) = availability_from(&release, verdict.as_ref());
+    let readiness = readiness_from(&release, verdict.as_ref());
     handshake_value(
-        receipt.as_ref(),
+        &release,
         discovery.as_ref(),
         verdict.as_ref(),
         readiness,
@@ -552,21 +634,28 @@ fn compute_agent_snapshot() -> AgentSnapshot {
             return AgentSnapshot {
                 available: false,
                 reason: Some(reason.clone()),
-                handshake: json!({ "installed": false, "available": false, "reason": reason }),
+                handshake: json!({
+                    "installed": null,
+                    "installed_known": false,
+                    "install_state": "unverifiable",
+                    "readiness": null,
+                    "degraded": true,
+                    "available": false,
+                    "reason": reason,
+                }),
             };
         }
     };
     let owner_id = paths.root().to_string_lossy().to_string();
-    let receipt = LifecycleController::new(paths.clone()).active_receipt();
+    let release = observe_product_release(&paths, &owner_id);
     let discovery = read_gateway_discovery(&paths);
     let verdict = discovery
         .as_ref()
         .map(|d| d.classify(&discovery_ctx(&owner_id)));
-    let (available, reason) = availability_from(&receipt, verdict.as_ref());
-    let receipt = receipt.ok().flatten();
-    let readiness = readiness_from(receipt.as_ref(), verdict.as_ref());
+    let (available, reason) = availability_from(&release, verdict.as_ref());
+    let readiness = readiness_from(&release, verdict.as_ref());
     let handshake = handshake_value(
-        receipt.as_ref(),
+        &release,
         discovery.as_ref(),
         verdict.as_ref(),
         readiness,
@@ -692,9 +781,11 @@ impl LifecyclePlane {
 
     /// The one readiness model, derived from the installed receipt and the live
     /// gateway discovery (if any). A cold worker on a live gateway is still ready.
-    fn readiness_now(&self) -> Readiness {
-        let live = matches!(self.current_verdict(), Some(Verdict::OwnedLive));
-        self.controller.readiness(live, WorkerState::Cold)
+    fn readiness_now(&self) -> (ReleaseObservation, Option<Readiness>) {
+        let verdict = self.current_verdict();
+        let release = observe_product_release(&self.paths, &self.owner_id);
+        let readiness = readiness_from(&release, verdict.as_ref());
+        (release, readiness)
     }
 
     /// Read and classify the current gateway discovery record, if the seated
@@ -726,7 +817,7 @@ impl LifecyclePlane {
             Verdict::OwnedLive => {
                 // Our own dashboard control (attach-control) token authenticates
                 // the forwarded calls to the gateway we own.
-                match CredentialStore::new(self.paths.credentials_dir()).read_attach_control() {
+                match DashboardCredentialStore::for_product(&self.paths).read_attach_control() {
                     Ok(cred) => ResolvedGateway::Available(ResolvedEndpoint {
                         endpoint: discovery.endpoint.clone(),
                         attach_token: cred.secret().to_string(),
@@ -742,10 +833,11 @@ impl LifecyclePlane {
                 // A compatible foreign gateway with a trusted handoff: read the
                 // foreign owner's owner-ACL attach credential from the non-secret
                 // handoff reference. Attachment is READ-ONLY (ADR D4).
-                match std::fs::read_to_string(&discovery.handoff_reference) {
-                    Ok(secret) => ResolvedGateway::Available(ResolvedEndpoint {
+                match ForeignHandoffReader::read(std::path::Path::new(&discovery.handoff_reference))
+                {
+                    Ok(credential) => ResolvedGateway::Available(ResolvedEndpoint {
                         endpoint: discovery.endpoint.clone(),
-                        attach_token: secret.trim().to_string(),
+                        attach_token: credential.secret().to_string(),
                         mode: AttachMode::ForeignReadOnly,
                         generation: discovery.generation.clone(),
                     }),
@@ -790,19 +882,30 @@ impl LifecyclePlane {
     /// settlement.
     pub(crate) fn reconcile_seated_boot(&self, settlement_url: Option<&str>) -> Value {
         let _ = self.controller.initialize();
-        let receipt = match self.controller.active_receipt() {
-            Ok(Some(r)) => r,
-            Ok(None) => {
+        let release = match observe_product_release(&self.paths, &self.owner_id) {
+            ReleaseObservation::Settled(release) => release,
+            ReleaseObservation::Absent => {
                 return json!({ "action": "none", "reason": "a2a is not installed" });
             }
-            Err(e) => {
-                return json!({ "action": "error", "reason": format!("receipt unverifiable: {e}") });
+            ReleaseObservation::RecoveryRequired => {
+                return json!({ "action": "error", "reason": "fixed active-receipt recovery is required" });
+            }
+            ReleaseObservation::Busy => {
+                return json!({ "action": "degraded", "reason": "installation authority is busy", "installed": null, "readiness": null });
+            }
+            ReleaseObservation::Unverifiable => {
+                return json!({ "action": "error", "reason": "fixed active-receipt authority is unverifiable" });
             }
         };
         let verdict = self.current_verdict();
         match verdict {
-            Some(Verdict::OwnedLive) => self.authenticate_owned(&receipt),
-            Some(Verdict::OwnedStale) => self.recover_stale_then_start(&receipt, settlement_url),
+            Some(Verdict::OwnedLive) => self.authenticate_owned(),
+            Some(Verdict::OwnedStale) | None => json!({
+                "action": "refused",
+                "reason": "gateway start and stale recovery require sealed receipt-selected generation authority",
+                "active_generation": release.active_generation(),
+                "settlement_configured": settlement_url.is_some(),
+            }),
             Some(Verdict::ForeignAttachable) => json!({
                 "action": "attach-foreign",
                 "reason": "a compatible foreign gateway satisfies run demand read-only; left immutable",
@@ -811,7 +914,6 @@ impl LifecyclePlane {
                 "action": "leave-foreign",
                 "reason": format!("foreign gateway left immutable: {}", immutable_reason(&reason)),
             }),
-            None => self.start_owned(&receipt, settlement_url),
         }
     }
 
@@ -819,7 +921,7 @@ impl LifecyclePlane {
     /// token and probe readiness over the real loopback endpoint. A resolution
     /// whose endpoint carries no parseable loopback port is refused before a
     /// socket is opened.
-    fn authenticate_owned(&self, _receipt: &vaultspec_product::receipt::Receipt) -> Value {
+    fn authenticate_owned(&self) -> Value {
         match self.resolve_gateway() {
             ResolvedGateway::Available(ep) => {
                 if ep.port().is_none() {
@@ -864,178 +966,10 @@ impl LifecyclePlane {
     /// secret; a missing/unreadable credential or any mismatch is `false`
     /// (fail-closed), so a worker-IPC or unrelated credential is rejected.
     pub(crate) fn verify_attach_control(&self, presented: &str) -> bool {
-        let store = CredentialStore::new(self.paths.credentials_dir());
+        let store = DashboardCredentialStore::for_product(&self.paths);
         match store.read_attach_control() {
             Ok(cred) => cred.verify(presented),
             Err(_) => false,
-        }
-    }
-
-    /// Recover a stale owned discovery record under the install lock (prove the
-    /// recorded process dead, quarantine the owner-matched stale state), then
-    /// start the owned gateway.
-    fn recover_stale_then_start(
-        &self,
-        receipt: &vaultspec_product::receipt::Receipt,
-        settlement_url: Option<&str>,
-    ) -> Value {
-        use vaultspec_product::locking::{
-            Actor, InstallLock, StaleState, quarantine_owner_matched_stale,
-        };
-        let Some(discovery) = read_gateway_discovery(&self.paths) else {
-            return self.start_owned(receipt, settlement_url);
-        };
-        let lock = InstallLock::new(self.paths.install_lock_path());
-        let guard = match lock.acquire(Actor::Installer, &self.owner_id) {
-            Ok(Ok(guard)) => guard,
-            Ok(Err(busy)) => {
-                return json!({
-                    "action": "recover-stale",
-                    "reason": format!("install lock busy: {busy:?}"),
-                });
-            }
-            Err(e) => {
-                return json!({
-                    "action": "recover-stale",
-                    "reason": format!("install lock error: {e}"),
-                });
-            }
-        };
-        let stale = StaleState {
-            owner: self.owner_id.clone(),
-            pid: discovery.pid,
-        };
-        if let Err(refusal) = quarantine_owner_matched_stale(&self.owner_id, &stale) {
-            let release = guard.release().err();
-            let reason = match release {
-                Some(error) => format!(
-                    "stale quarantine refused: {refusal}; install lock cleanup incomplete: {error}"
-                ),
-                None => format!("stale quarantine refused: {refusal}"),
-            };
-            return json!({
-                "action": "recover-stale",
-                "started": false,
-                "reason": bounded_recovery_reason(reason),
-            });
-        }
-        // The stale discovery is owner-matched and proven dead: retract it, then
-        // start fresh. The guard holds the install lock across the retract+start.
-        let discovery_path = self.paths.app_home().join(DISCOVERY_FILE);
-        match std::fs::remove_file(discovery_path) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => {
-                let release = guard.release().err();
-                let reason = match release {
-                    Some(release_error) => format!(
-                        "stale discovery quarantine failed: {error}; install lock cleanup incomplete: {release_error}"
-                    ),
-                    None => format!("stale discovery quarantine failed: {error}"),
-                };
-                return json!({
-                    "action": "recover-stale",
-                    "started": false,
-                    "reason": bounded_recovery_reason(reason),
-                });
-            }
-        }
-        let out = self.start_owned(receipt, settlement_url);
-        match guard.release() {
-            Ok(()) => out,
-            Err(error) => {
-                let started = out.get("started").and_then(Value::as_bool).unwrap_or(false);
-                json!({
-                    "action": "recover-stale",
-                    "started": started,
-                    "degraded": true,
-                    "reason": bounded_recovery_reason(format!(
-                        "gateway start attempt completed but install lock cleanup is incomplete: {error}"
-                    )),
-                    "start_outcome": out,
-                })
-            }
-        }
-    }
-
-    /// Start the owned gateway from the active generation's verified capsule and
-    /// retain the process for its lifetime. Reads the capsule manifest and the
-    /// pinned component lock the install laid down under the active generation;
-    /// an absent capsule is an honest "cannot start", never a fabricated success.
-    fn start_owned(
-        &self,
-        receipt: &vaultspec_product::receipt::Receipt,
-        settlement_url: Option<&str>,
-    ) -> Value {
-        let capsule_root = match self.paths.generation_dir(&receipt.active_generation) {
-            Ok(dir) => dir,
-            Err(e) => {
-                return json!({
-                    "action": "start",
-                    "started": false,
-                    "reason": format!("generation path invalid: {e}"),
-                });
-            }
-        };
-        let manifest_path = capsule_root.join("component-manifest.json");
-        let lock_path = capsule_root.join("component.lock");
-        let (raw_manifest, raw_lock) = match (
-            std::fs::read_to_string(&manifest_path),
-            std::fs::read_to_string(&lock_path),
-        ) {
-            (Ok(m), Ok(l)) => (m, l),
-            _ => {
-                return json!({
-                    "action": "start",
-                    "started": false,
-                    "reason": "installed generation is missing its capsule manifest or component lock",
-                });
-            }
-        };
-        let lock = match vaultspec_product::manifest::ComponentLock::parse(&raw_lock) {
-            Ok(l) => l,
-            Err(e) => {
-                return json!({
-                    "action": "start",
-                    "started": false,
-                    "reason": format!("component lock unreadable: {e}"),
-                });
-            }
-        };
-        let manifest = match LifecycleController::load_verified_capsule(
-            &raw_manifest,
-            &lock,
-            receipt.target,
-        ) {
-            Ok(m) => m,
-            Err(e) => {
-                return json!({
-                    "action": "start",
-                    "started": false,
-                    "reason": format!("capsule verification failed: {e}"),
-                });
-            }
-        };
-        let env = vaultspec_product::lifecycle::gateway_spawn_env(&self.paths, settlement_url);
-        match self
-            .controller
-            .spawn_owned_gateway_with_env(&capsule_root, &manifest, &env)
-        {
-            Ok(process) => {
-                let pid = process.pid();
-                *self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner()) = Some(process);
-                json!({
-                    "action": "start",
-                    "started": true,
-                    "pid": pid,
-                    "generation": receipt.active_generation,
-                })
-            }
-            Err(e) => json!({
-                "action": "start",
-                "started": false,
-                "reason": format!("gateway spawn failed: {e}"),
-            }),
         }
     }
 
@@ -1088,16 +1022,55 @@ impl LifecyclePlane {
     /// refusal. Absent discovery is passed as `None` and the receipt + ownership
     /// authority governs; only a genuinely uninstalled component (no receipt) is
     /// refused `NotInstalled`.
-    fn guard_mutation(&self, op: LifecycleOp) -> Result<(), Refusal> {
+    fn with_mutation_authority<T>(
+        &self,
+        op: LifecycleOp,
+        effect: impl FnOnce() -> T,
+    ) -> Result<T, Refusal> {
         let verdict = self.current_verdict();
-        // Absent discovery AND no active receipt = genuinely not installed.
-        if verdict.is_none() && matches!(self.controller.active_receipt(), Ok(None)) {
-            return Err(Refusal::NotInstalled);
+        use vaultspec_product::locking::{Actor, InstallLock};
+        let lock = InstallLock::new(self.paths.install_lock_path());
+        let guard = lock
+            .acquire(Actor::Installer, &self.owner_id)
+            .map_err(|_| Refusal::Unverifiable {
+                detail: "installation authority is unavailable".to_owned(),
+            })?
+            .map_err(|_| Refusal::Unverifiable {
+                detail: "installation authority is busy".to_owned(),
+            })?;
+        if op == LifecycleOp::Install {
+            return self.controller.authorize(op, None).map(|()| effect());
         }
-        let store = CredentialStore::new(self.paths.credentials_dir());
-        let ownership = store.read_ownership().ok();
+        let release = observe_active_release(&self.paths, &guard)
+            .and_then(|observation| observation.state())
+            .map_err(|error| Refusal::Unverifiable {
+                detail: if error.kind() == ProvisioningErrorKind::RecoveryRequired {
+                    "fixed active-receipt recovery is required".to_owned()
+                } else {
+                    "fixed active-receipt authority is unverifiable".to_owned()
+                },
+            })?;
+        match release {
+            ActiveReleaseState::Absent => return Err(Refusal::NotInstalled),
+            ActiveReleaseState::RecoveryRequired(_) => {
+                return Err(Refusal::Unverifiable {
+                    detail: "fixed active-receipt recovery is required".to_owned(),
+                });
+            }
+            ActiveReleaseState::Settled(_) => {}
+        }
+        if !op.requires_ownership() {
+            return self.controller.authorize(op, None).map(|()| effect());
+        }
+        let store = DashboardCredentialStore::for_product(&self.paths);
+        let ownership = store.verify_ownership(&guard).map_err(ownership_refusal)?;
         self.controller
-            .guard_owned_mutation(op, ownership.as_ref(), verdict.as_ref())
+            .guard_owned_mutation(op, Some(&ownership), verdict.as_ref())?;
+        Ok(effect())
+    }
+
+    fn preflight_mutation(&self, op: LifecycleOp) -> Result<(), Refusal> {
+        self.with_mutation_authority(op, || ())
     }
 
     /// The served status projection: installed release-set, readiness, ownership,
@@ -1105,19 +1078,23 @@ impl LifecyclePlane {
     fn status_projection(&self) -> Value {
         // Best-effort orphaned-temp sweep on read (resource-bounds); never fatal.
         let _ = self.controller.initialize();
-        let receipt = self.controller.active_receipt().ok().flatten();
-        let readiness = self.readiness_now();
+        let release = observe_product_release(&self.paths, &self.owner_id);
+        let settled = release.settled();
+        let readiness = readiness_from(&release, self.current_verdict().as_ref());
         json!({
-            "installed": receipt.is_some(),
+            "installed": release.installed(),
+            "installed_known": matches!(&release, ReleaseObservation::Absent | ReleaseObservation::Settled(_)),
+            "install_state": release.label(),
+            "recovery_required": matches!(&release, ReleaseObservation::RecoveryRequired),
+            "degraded": matches!(&release, ReleaseObservation::RecoveryRequired | ReleaseObservation::Busy | ReleaseObservation::Unverifiable),
             "readiness": readiness,
             "ownership": {
                 "owner": self.owner_id,
-                "retained": receipt
-                    .as_ref()
-                    .map(|r| r.bootstrap_created_ownership)
+                "retained": settled
+                    .map(ProvisionedRelease::bootstrap_created_ownership)
                     .unwrap_or(false),
             },
-            "active_generation": receipt.as_ref().map(|r| r.active_generation.clone()),
+            "active_generation": settled.map(ProvisionedRelease::active_generation),
         })
     }
 
@@ -1128,25 +1105,45 @@ impl LifecyclePlane {
     /// authoritative state rather than a fabricated success.
     fn apply(&self, op: LifecycleOp) -> (JobState, Value) {
         match op {
-            LifecycleOp::Doctor => (
-                JobState::Succeeded,
-                json!({ "readiness": self.readiness_now() }),
-            ),
-            LifecycleOp::Remove => match self.controller.remove(false) {
-                Ok(()) => (
-                    JobState::Succeeded,
-                    json!({ "removed": true, "data_preserved": true }),
-                ),
-                Err(e) => (JobState::Failed, json!({ "error": e.to_string() })),
-            },
-            other => (
-                JobState::Failed,
+            LifecycleOp::Doctor => (JobState::Succeeded, {
+                let (release, readiness) = self.readiness_now();
                 json!({
-                    "error": "the seated gateway controller applies this operation",
-                    "op": op_label(other),
-                    "pending": "W02.P04",
-                }),
-            ),
+                    "readiness": readiness,
+                    "install_state": release.label(),
+                    "installed": release.installed(),
+                    "degraded": matches!(release, ReleaseObservation::RecoveryRequired | ReleaseObservation::Busy | ReleaseObservation::Unverifiable),
+                })
+            }),
+            LifecycleOp::Remove => {
+                match self.with_mutation_authority(op, || self.controller.remove(false)) {
+                    Ok(Ok(())) => (
+                        JobState::Succeeded,
+                        json!({ "removed": true, "data_preserved": true }),
+                    ),
+                    Ok(Err(e)) => (JobState::Failed, json!({ "error": e.to_string() })),
+                    Err(refusal) => (JobState::Failed, json!({ "error": refusal.to_string() })),
+                }
+            }
+            other => {
+                let outcome = || {
+                    (
+                        JobState::Failed,
+                        json!({
+                            "error": "the seated gateway controller applies this operation",
+                            "op": op_label(other),
+                            "pending": "W02.P04",
+                        }),
+                    )
+                };
+                if other.is_read_only() {
+                    outcome()
+                } else {
+                    self.with_mutation_authority(other, outcome)
+                        .unwrap_or_else(|refusal| {
+                            (JobState::Failed, json!({ "error": refusal.to_string() }))
+                        })
+                }
+            }
         }
     }
 }
@@ -1173,16 +1170,16 @@ pub(crate) async fn a2a_lifecycle_run(
 ) -> ApiResult {
     let op: LifecycleOp = req.op.into();
 
-    // Combined ownership gate for a receipt-bound mutation, BEFORE admission or
-    // any control-plane effect. Both gates must hold (P02 review SHOULD-FIX 3).
-    if op.requires_ownership() {
+    if !op.is_read_only() {
         let plane = state.a2a_lifecycle.clone();
-        let guard = tokio::task::spawn_blocking(move || plane.guard_mutation(op))
+        let preflight = tokio::task::spawn_blocking(move || plane.preflight_mutation(op))
             .await
-            .unwrap_or(Err(Refusal::Unverifiable {
-                detail: "gate task failed".to_string(),
-            }));
-        if let Err(refusal) = guard {
+            .unwrap_or_else(|_| {
+                Err(Refusal::Unverifiable {
+                    detail: "lifecycle authority preflight failed".to_owned(),
+                })
+            });
+        if let Err(refusal) = preflight {
             return Err(refusal_response(&state, &refusal));
         }
     }
@@ -1206,24 +1203,22 @@ pub(crate) async fn a2a_lifecycle_run(
         }
         Admission::Reserved(id) => {
             let wire = state.a2a_lifecycle.lock().wire(&id).unwrap_or(Value::Null);
-            // Run the operation in the background under a wall-clock deadline; the
-            // request returns immediately with the job id (job-shaped).
+            // Run the operation in the background. Mutating operations acquire
+            // and retain their exact installation and ownership authorities in
+            // the same blocking frame as the effect; an async timeout cannot
+            // falsely claim cancellation of a still-running filesystem mutation.
             let plane = state.a2a_lifecycle.clone();
             let bg_id = id.clone();
             tokio::spawn(async move {
                 let apply_plane = plane.clone();
-                let result = tokio::task::spawn_blocking(move || apply_plane.apply(op));
-                let (job_state, outcome) = match tokio::time::timeout(JOB_TIMEOUT, result).await {
-                    Ok(Ok(pair)) => pair,
-                    Ok(Err(_join)) => (
-                        JobState::Failed,
-                        json!({ "error": "lifecycle operation task failed" }),
-                    ),
-                    Err(_) => (
-                        JobState::Failed,
-                        json!({ "error": "lifecycle operation exceeded its deadline" }),
-                    ),
-                };
+                let (job_state, outcome) =
+                    match tokio::task::spawn_blocking(move || apply_plane.apply(op)).await {
+                        Ok(pair) => pair,
+                        Err(_join) => (
+                            JobState::Failed,
+                            json!({ "error": "lifecycle operation task failed" }),
+                        ),
+                    };
                 plane.lock().set_outcome(&bg_id, job_state, outcome);
             });
             Ok(crate::routes::envelope(
@@ -1235,19 +1230,25 @@ pub(crate) async fn a2a_lifecycle_run(
     }
 }
 
-/// Map a typed lifecycle refusal to an HTTP error carrying the refusal kind.
 fn refusal_response(state: &AppState, refusal: &Refusal) -> (StatusCode, Json<Value>) {
-    let (status, kind) = match refusal {
+    let (status, kind) = refusal_status_kind(refusal);
+    crate::routes::api_error_kind(state, status, kind, refusal.to_string())
+}
+
+fn refusal_status_kind(refusal: &Refusal) -> (StatusCode, &'static str) {
+    match refusal {
         Refusal::NotInstalled => (StatusCode::CONFLICT, "not_installed"),
         Refusal::NoActiveReceipt => (StatusCode::CONFLICT, "no_active_receipt"),
         Refusal::NotOwner => (StatusCode::FORBIDDEN, "not_owner"),
         Refusal::ForeignResident => (StatusCode::CONFLICT, "foreign_resident"),
         Refusal::Incompatible { .. } => (StatusCode::CONFLICT, "incompatible"),
+        Refusal::Unverifiable { detail } if detail.contains("recovery is required") => {
+            (StatusCode::CONFLICT, "recovery_required")
+        }
         Refusal::Unverifiable { .. } => (StatusCode::CONFLICT, "unverifiable"),
         Refusal::AtCapacity => (StatusCode::CONFLICT, "at_capacity"),
         Refusal::StaleUnproven => (StatusCode::CONFLICT, "stale_unproven"),
-    };
-    crate::routes::api_error_kind(state, status, kind, refusal.to_string())
+    }
 }
 
 // --- GET /a2a/lifecycle/jobs/{id} ---------------------------------------------
@@ -1319,6 +1320,44 @@ impl LifecyclePlane {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discovery_never_overrides_non_settled_release_authority() {
+        for release in [
+            ReleaseObservation::Absent,
+            ReleaseObservation::RecoveryRequired,
+            ReleaseObservation::Busy,
+            ReleaseObservation::Unverifiable,
+        ] {
+            let (available, reason) = availability_from(&release, Some(&Verdict::OwnedLive));
+            assert!(!available, "non-settled state {}", release.label());
+            assert!(reason.is_some(), "non-settled state {}", release.label());
+        }
+    }
+
+    #[test]
+    fn recovery_required_has_unknown_degraded_wire_and_typed_refusal_kind() {
+        let release = ReleaseObservation::RecoveryRequired;
+        let readiness = readiness_from(&release, Some(&Verdict::OwnedLive));
+        let (available, reason) = availability_from(&release, Some(&Verdict::OwnedLive));
+        let wire = handshake_value(&release, None, None, readiness, available, reason);
+
+        assert!(wire["installed"].is_null());
+        assert_eq!(wire["installed_known"], false);
+        assert_eq!(wire["install_state"], "recovery-required");
+        assert_eq!(wire["recovery_required"], true);
+        assert_eq!(wire["degraded"], true);
+        assert!(wire["readiness"].is_null());
+        assert_eq!(wire["available"], false);
+
+        let refusal = Refusal::Unverifiable {
+            detail: "fixed active-receipt recovery is required".to_owned(),
+        };
+        assert_eq!(
+            refusal_status_kind(&refusal),
+            (StatusCode::CONFLICT, "recovery_required")
+        );
+    }
 
     #[test]
     fn reserve_is_atomic_component_single_flight_with_hard_ceiling() {
