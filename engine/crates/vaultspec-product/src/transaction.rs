@@ -404,6 +404,18 @@ fn descriptor_path(paths: &ProductPaths) -> PathBuf {
     paths.transaction_dir().join(DESCRIPTOR_NAME)
 }
 
+/// Persist a descriptor directly at a chosen phase, for recovery tests that must
+/// reproduce an interruption at every declared boundary (including the downstream
+/// `Activated`/`Accepted` phases this module hands off).
+#[cfg(test)]
+pub(crate) fn persist_descriptor_for_test(
+    paths: &ProductPaths,
+    plan: &UpdatePlan,
+    phase: InterruptionMarker,
+) -> Result<(), TransactionError> {
+    write_descriptor(paths, &UpdateDescriptor::from_plan(plan, phase))
+}
+
 fn write_descriptor(
     paths: &ProductPaths,
     descriptor: &UpdateDescriptor,
@@ -424,7 +436,7 @@ fn write_descriptor(
     Ok(())
 }
 
-fn clear_descriptor(paths: &ProductPaths) -> Result<(), TransactionError> {
+pub(crate) fn clear_descriptor(paths: &ProductPaths) -> Result<(), TransactionError> {
     match std::fs::remove_file(descriptor_path(paths)) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
