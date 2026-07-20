@@ -320,7 +320,10 @@ async fn an_expired_lease_stops_resolving_and_the_sweep_revokes_it() {
             .unwrap()
             .is_some()
     );
-    assert_eq!(fx.state.a2a_run_leases.unresolved_leases().unwrap().len(), 1);
+    assert_eq!(
+        fx.state.a2a_run_leases.unresolved_leases().unwrap().len(),
+        1
+    );
 
     // Past expiry the token refuses BEFORE the sweep, and the bounded sweep then
     // revokes the row so no bundle outlives its window.
@@ -333,7 +336,10 @@ async fn an_expired_lease_stops_resolving_and_the_sweep_revokes_it() {
         "an expired token never authenticates, even before the sweep"
     );
     assert_eq!(
-        fx.state.a2a_run_leases.expire_elapsed(base + 2_000).unwrap(),
+        fx.state
+            .a2a_run_leases
+            .expire_elapsed(base + 2_000)
+            .unwrap(),
         1
     );
     assert_eq!(
