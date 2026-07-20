@@ -48,6 +48,8 @@ and generation-authority decisions without superseding them.
   commits authority only when the fixed receipt settles.
 - Receipt facts are derived from retained authority, not caller-selected flags, paths,
   generation names, or copied identities.
+- Install channel and manager ownership come from a sealed adapter capability, not a
+  caller-selected `Channel` enum; those facts control later mutation authority.
 - The Rust product owns dashboard bootstrap credentials only. The packaged Python gateway
   reads those credentials and creates worker IPC per gateway boot.
 - Credential creation, reads, cleanup, subprocesses, diagnostics, and recovery state are
@@ -84,6 +86,8 @@ and generation-authority decisions without superseding them.
 - `ProvisioningTransaction` is non-cloneable and non-serializable. Its constructor derives
   product paths and requires the retained installation guard; no client path operand is
   accepted.
+- `InstallProvenanceAuthority` is non-cloneable and constructed only by product-owned
+  self-install or package-manager adapters. Raw public channel construction is unavailable.
 - A prepared activation uniquely owns or borrows the distribution, generation,
   credential, transaction, and receipt authorities needed to finish or retry. No success
   path releases one early.
@@ -105,10 +109,13 @@ and generation-authority decisions without superseding them.
 
 **D1: A sealed transaction is the sole activation path.** A
 `ProvisioningTransaction` binds product-derived paths, the retained installation guard,
-the owner-private bootstrap/update descriptor, and fixed-journal state. Preparing a
-release consumes or uniquely borrows one opaque `VerifiedDistributionRelease` and one
-exact `UnpublishedGeneration`. The transaction constructs private manifest verification
-inputs, performs complete release verification, and retains the verified result.
+the owner-private bootstrap/update descriptor, fixed-journal state, and one sealed
+`InstallProvenanceAuthority` from the active channel adapter. Preparing a release consumes
+or uniquely borrows one opaque `VerifiedDistributionRelease` and one exact
+`UnpublishedGeneration`. The transaction constructs private manifest verification inputs,
+performs complete release verification, and retains the verified result. Receipt channel
+and manager-ownership facts derive from the adapter capability; callers cannot label a
+self-install as MSI, Scoop, WinGet, or another manager-owned channel.
 
 Commit consumes the prepared release through the fixed S172 publisher. Success returns
 an owned non-authorizing summary. Failure classifies refusal, recovery-required, or
@@ -169,8 +176,9 @@ the other S172 authorities.
 
 **D7: Bootstrap is a durable recoverable transaction.** Under the installation lock,
 publish and synchronize one owner-private descriptor before creating credentials. It
-binds the verified distribution identity, intended receipt, credential-role token
-digests, and exact observed file identities but contains no secret value.
+binds the verified distribution identity, sealed install provenance, intended receipt,
+credential-role token digests, and exact observed file identities but contains no secret
+value.
 
 Create, harden, synchronize, and reread both dashboard credential files; verify the
 complete generation; publish the active receipt last; then retire the descriptor and
