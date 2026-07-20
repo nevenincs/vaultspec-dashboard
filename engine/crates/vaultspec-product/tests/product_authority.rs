@@ -353,7 +353,7 @@ fn credential_files_are_separate_and_owner_restricted() {
     // Three distinct files back the three credential roles — no aliasing.
     let files = [
         cred_dir.join("ownership.cap"),
-        cred_dir.join("attach-control.cred"),
+        cred_dir.join("attach.cred"),
         cred_dir.join("worker-ipc.cred"),
     ];
     for f in &files {

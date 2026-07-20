@@ -120,7 +120,7 @@ fn owner_attaches_to_a_live_owned_gateway_over_a_real_socket() {
     // this live process's own pid make the discovery record classify as owned and
     // live, and the authenticated readiness probe succeeds over the real socket.
     let dir = tempfile::tempdir().unwrap();
-    let handoff = dir.path().join("attach-control.cred");
+    let handoff = dir.path().join("attach.cred");
     std::fs::write(&handoff, "handoff-present").unwrap();
     restrict_test_handoff(&handoff);
     let endpoint = spawn_gateway_stub("attach-secret", 1);
@@ -208,7 +208,7 @@ fn gateway_credential_separation_holds_on_real_files() {
     assert_ne!(worker.secret(), boot.attach_control.secret());
     assert_ne!(worker.secret(), boot.ownership.secret());
 
-    for f in ["ownership.cap", "attach-control.cred", "worker-ipc.cred"] {
+    for f in ["ownership.cap", "attach.cred", "worker-ipc.cred"] {
         assert!(
             cred_dir.join(f).exists(),
             "{f} must be a distinct real file"

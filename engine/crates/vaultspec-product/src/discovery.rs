@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn foreign_live_with_trusted_handoff_is_attachable_readonly() {
         let dir = tempfile::tempdir().unwrap();
-        let handoff = dir.path().join("attach-control.cred");
+        let handoff = dir.path().join("attach.cred");
         std::fs::write(&handoff, "not-read-here").unwrap();
         restrict_test_handoff(&handoff);
         let mut v = record();

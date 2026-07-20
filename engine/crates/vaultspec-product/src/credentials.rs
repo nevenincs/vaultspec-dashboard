@@ -44,7 +44,7 @@ impl CredentialRole {
     fn file_name(self) -> &'static str {
         match self {
             CredentialRole::Ownership => "ownership.cap",
-            CredentialRole::AttachControl => "attach-control.cred",
+            CredentialRole::AttachControl => "attach.cred",
             CredentialRole::WorkerIpc => "worker-ipc.cred",
         }
     }
