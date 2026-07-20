@@ -437,7 +437,7 @@ async fn agent_run_loop_suspends_grants_resumes_and_redrives_effectively_once() 
         "POST",
         &format!("/authoring/v1/interrupts/{}/resume", pct(&interrupt_id)),
         &bearer,
-        Some(&reviewer),
+        Some(&agent),
         Some(json!({
             "api_version": "v1",
             "command": "resume_run",
