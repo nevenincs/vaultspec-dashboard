@@ -190,10 +190,7 @@ export function relayTranscriptReducer(
 
   return {
     frames: [...acc.frames.slice(first), frame],
-    retainedFrameBytes: [
-      ...acc.retainedFrameBytes.slice(first),
-      incomingBytes,
-    ],
+    retainedFrameBytes: [...acc.retainedFrameBytes.slice(first), incomingBytes],
     retainedBytes,
     latestSeq:
       frame.seq === undefined

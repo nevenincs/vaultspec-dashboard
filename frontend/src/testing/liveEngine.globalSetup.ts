@@ -147,7 +147,7 @@ async function cleanupOwnedResources(): Promise<void> {
               Authorization: `Bearer ${activeToken}`,
               "content-type": "application/json",
             },
-            body: "{}",
+            body: JSON.stringify({}),
             signal: AbortSignal.timeout(5_000),
           });
           await response.arrayBuffer();
@@ -202,6 +202,7 @@ export default async function setup(): Promise<() => Promise<void>> {
       throw new AggregateError(
         [setupError, cleanupError],
         "live-engine setup and cleanup both failed",
+        { cause: cleanupError },
       );
     }
     throw setupError;
