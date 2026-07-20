@@ -107,6 +107,34 @@ impl AuthorityDirectory {
         Self::from_file(os::open_child_directory(&self.directory, &name, true)?)
     }
 
+    /// Open one existing direct child directory in MATERIALIZATION mode
+    /// (write-shared, delete-denied) relative to this exact retained
+    /// authority. See [`MaterializationDirectory`].
+    pub fn open_materialization_child(&self, name: &OsStr) -> io::Result<MaterializationDirectory> {
+        let name = validate_child_component(name)?;
+        self.validate_retained()?;
+        MaterializationDirectory::from_file(os::open_child_directory_write_shared(
+            &self.directory,
+            &name,
+            false,
+        )?)
+    }
+
+    /// Exclusively create one direct child directory in MATERIALIZATION mode
+    /// relative to this exact retained authority.
+    pub fn create_materialization_child(
+        &self,
+        name: &OsStr,
+    ) -> io::Result<MaterializationDirectory> {
+        let name = validate_child_component(name)?;
+        self.validate_retained()?;
+        MaterializationDirectory::from_file(os::open_child_directory_write_shared(
+            &self.directory,
+            &name,
+            true,
+        )?)
+    }
+
     /// The copied full-width identity of this exact retained directory.
     #[must_use]
     pub fn identity(&self) -> HighResFileId {
@@ -150,6 +178,100 @@ impl AuthorityDirectory {
         if directory_identity_at_path(path)? != self.identity {
             return Err(io::Error::other(
                 "named directory path does not identify the retained directory",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// A retained non-reparse directory lease for archive materialization
+/// (archive-materialization D4: the narrow retained-parent-relative
+/// regular-file surface).
+///
+/// Unlike [`AuthorityDirectory`], this lease ADMITS write sharing so the
+/// kernel's internal rename-target open (a relative no-replace install) does
+/// not collide with the retained handle; delete sharing stays denied, so the
+/// directory itself cannot be renamed or removed while retained. The
+/// weakened write lease is defense-in-depth only — release integrity is
+/// proven by the complete double semantic scan AFTER materialization, never
+/// by this lease.
+#[derive(Debug)]
+pub struct MaterializationDirectory {
+    directory: File,
+    identity: HighResFileId,
+}
+
+impl MaterializationDirectory {
+    /// Open one existing direct child directory in materialization mode.
+    pub fn open_child_directory(&self, name: &OsStr) -> io::Result<Self> {
+        let name = validate_child_component(name)?;
+        self.validate_retained()?;
+        Self::from_file(os::open_child_directory_write_shared(
+            &self.directory,
+            &name,
+            false,
+        )?)
+    }
+
+    /// Exclusively create one direct child directory in materialization mode.
+    pub fn create_child_directory(&self, name: &OsStr) -> io::Result<Self> {
+        let name = validate_child_component(name)?;
+        self.validate_retained()?;
+        Self::from_file(os::open_child_directory_write_shared(
+            &self.directory,
+            &name,
+            true,
+        )?)
+    }
+
+    /// Exclusively create one direct child regular file relative to this
+    /// exact retained lease (archive-materialization D4/D5).
+    ///
+    /// Create-new only — an existing name fails instead of replacing. Zero
+    /// share access on the file while retained. The returned handle is
+    /// validated as a live non-reparse regular file before this succeeds.
+    pub fn create_child_regular_file(&self, name: &OsStr) -> io::Result<AuthorityFile> {
+        let name = validate_child_component(name)?;
+        self.validate_retained()?;
+        AuthorityFile::from_file(os::create_child_regular_file(&self.directory, &name)?)
+    }
+
+    /// Install a retained child regular file at a sibling final name relative
+    /// to this exact retained lease, refusing replacement.
+    ///
+    /// The rename is handle-based (kernel `FileRenameInformation` with this
+    /// retained directory as the root), so neither the source nor the parent
+    /// can be substituted by a pathname race. Durability is the caller's
+    /// synchronize step on the file handle.
+    pub fn install_child_file_no_replace(
+        &self,
+        file: &AuthorityFile,
+        destination: &OsStr,
+    ) -> io::Result<()> {
+        let destination = validate_child_component(destination)?;
+        self.validate_retained()?;
+        file.validated_state()?;
+        os::rename_child_no_replace(&file.file, &self.directory, &destination)
+    }
+
+    /// The copied full-width identity of this exact retained lease.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    fn from_file(directory: File) -> io::Result<Self> {
+        let identity = os::validated_directory_identity(&directory)?;
+        Ok(Self {
+            directory,
+            identity,
+        })
+    }
+
+    fn validate_retained(&self) -> io::Result<()> {
+        if os::validated_directory_identity(&self.directory)? != self.identity {
+            return Err(io::Error::other(
+                "retained materialization directory identity changed unexpectedly",
             ));
         }
         Ok(())

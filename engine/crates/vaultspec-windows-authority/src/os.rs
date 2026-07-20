@@ -9,8 +9,9 @@ use std::path::Path;
 
 use windows_sys::Wdk::Foundation::OBJECT_ATTRIBUTES;
 use windows_sys::Wdk::Storage::FileSystem::{
-    FILE_CREATE, FILE_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
-    FILE_SYNCHRONOUS_IO_NONALERT, NtCreateFile,
+    FILE_CREATE, FILE_DIRECTORY_FILE, FILE_NON_DIRECTORY_FILE, FILE_OPEN, FILE_OPEN_REPARSE_POINT,
+    FILE_RENAME_INFORMATION, FILE_SYNCHRONOUS_IO_NONALERT, FileRenameInformation, NtCreateFile,
+    NtSetInformationFile,
 };
 use windows_sys::Win32::Foundation::{
     CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, HANDLE, OBJ_CASE_INSENSITIVE,
@@ -18,11 +19,11 @@ use windows_sys::Win32::Foundation::{
 };
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
-    FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO, FILE_ID_INFO,
-    FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TRAVERSE,
-    FileAttributeTagInfo, FileDispositionInfo, FileIdInfo, FileStandardInfo,
-    GetFileInformationByHandleEx, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-    SYNCHRONIZE, SetFileInformationByHandle,
+    FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO,
+    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES,
+    FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TRAVERSE, FileAttributeTagInfo, FileDispositionInfo,
+    FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx, MOVEFILE_REPLACE_EXISTING,
+    MOVEFILE_WRITE_THROUGH, MoveFileExW, SYNCHRONIZE, SetFileInformationByHandle,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
@@ -60,6 +61,32 @@ pub(super) fn open_existing_directory(path: &Path) -> io::Result<File> {
 }
 
 pub(super) fn open_child_directory(parent: &File, name: &[u16], create: bool) -> io::Result<File> {
+    open_child_directory_with(parent, name, create, FILE_SHARE_READ)
+}
+
+/// Materialization-mode child directory: write sharing is admitted so kernel
+/// rename-target opens (relative no-replace installs) do not collide with the
+/// retained lease; delete sharing stays denied, so the directory itself cannot
+/// be renamed or removed while retained.
+pub(super) fn open_child_directory_write_shared(
+    parent: &File,
+    name: &[u16],
+    create: bool,
+) -> io::Result<File> {
+    open_child_directory_with(
+        parent,
+        name,
+        create,
+        FILE_SHARE_READ | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE,
+    )
+}
+
+fn open_child_directory_with(
+    parent: &File,
+    name: &[u16],
+    create: bool,
+    share: u32,
+) -> io::Result<File> {
     let byte_length = name
         .len()
         .checked_mul(std::mem::size_of::<u16>())
@@ -87,7 +114,9 @@ pub(super) fn open_child_directory(parent: &File, name: &[u16], create: bool) ->
     // synchronous call. `name`, `unicode_name`, `object_attributes`,
     // `raw_handle`, and `io_status` remain live, aligned, and correctly sized
     // for the call. The UNICODE_STRING length is checked and its buffer is
-    // read-only by contract. Every optional pointer is null. No pointer escapes.
+    // read-only by contract. `share` is one of the two fixed share modes the
+    // thin wrappers above pass. Every optional pointer is null. No pointer
+    // escapes.
     let status = unsafe {
         NtCreateFile(
             &raw mut raw_handle,
@@ -96,7 +125,7 @@ pub(super) fn open_child_directory(parent: &File, name: &[u16], create: bool) ->
             &raw mut io_status,
             std::ptr::null(),
             FILE_ATTRIBUTE_NORMAL,
-            FILE_SHARE_READ,
+            share,
             disposition,
             DIRECTORY_CREATE_OPTIONS,
             std::ptr::null(),
@@ -127,6 +156,147 @@ pub(super) fn open_child_directory(parent: &File, name: &[u16], create: bool) ->
         )));
     }
     Ok(file)
+}
+
+/// Access for a materializer child file: read/write for the counted decode and
+/// same-handle revalidation, DELETE solely so a failed post-create validation
+/// can retire the exact handle via delete-on-close (never a pathname delete).
+const CHILD_FILE_ACCESS: u32 = DELETE | FILE_GENERIC_READ | FILE_GENERIC_WRITE | SYNCHRONIZE;
+const CHILD_FILE_CREATE_OPTIONS: u32 =
+    FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
+
+/// Exclusively create one direct child regular file relative to the retained
+/// parent directory handle (archive-materialization D4). `FILE_CREATE` cannot
+/// open an existing object, so a name collision fails instead of replacing.
+pub(super) fn create_child_regular_file(parent: &File, name: &[u16]) -> io::Result<File> {
+    let byte_length = name
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .and_then(|length| u16::try_from(length).ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "file name is too long"))?;
+    let unicode_name = UNICODE_STRING {
+        Length: byte_length,
+        MaximumLength: byte_length,
+        Buffer: name.as_ptr().cast_mut(),
+    };
+    let object_attributes = OBJECT_ATTRIBUTES {
+        Length: u32::try_from(std::mem::size_of::<OBJECT_ATTRIBUTES>())
+            .expect("OBJECT_ATTRIBUTES size fits u32"),
+        RootDirectory: parent.as_raw_handle(),
+        ObjectName: &raw const unicode_name,
+        Attributes: OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor: std::ptr::null(),
+        SecurityQualityOfService: std::ptr::null(),
+    };
+    let mut raw_handle: HANDLE = std::ptr::null_mut();
+    let mut io_status = IO_STATUS_BLOCK::default();
+
+    // SAFETY: `parent` keeps a valid owned directory handle alive for this
+    // synchronous call, and `RootDirectory`-relative resolution never consults
+    // the process working directory or any absolute pathname. `name`,
+    // `unicode_name`, `object_attributes`, `raw_handle`, and `io_status`
+    // remain live, aligned, and correctly sized for the call. The
+    // UNICODE_STRING length is checked and its buffer is read-only by
+    // contract. FILE_CREATE cannot open an existing object,
+    // FILE_NON_DIRECTORY_FILE cannot yield a directory, and
+    // FILE_OPEN_REPARSE_POINT prevents reparse-target traversal at the leaf;
+    // the caller still re-verifies the attribute tag on the returned handle.
+    // Share access is zero, so no second handle can reach the entry while it
+    // is retained. Every optional pointer is null. No pointer escapes.
+    let status = unsafe {
+        NtCreateFile(
+            &raw mut raw_handle,
+            CHILD_FILE_ACCESS,
+            &raw const object_attributes,
+            &raw mut io_status,
+            std::ptr::null(),
+            FILE_ATTRIBUTE_NORMAL,
+            0,
+            FILE_CREATE,
+            CHILD_FILE_CREATE_OPTIONS,
+            std::ptr::null(),
+            0,
+        )
+    };
+    if status < 0 {
+        return Err(ntstatus_to_io_error(status));
+    }
+    if raw_handle.is_null() {
+        return Err(io::Error::other(
+            "NtCreateFile succeeded without returning a file handle",
+        ));
+    }
+
+    // SAFETY: successful NtCreateFile returned one newly owned handle. File
+    // takes that ownership exactly once and closes it on every later path.
+    let file = unsafe { File::from_raw_handle(raw_handle) };
+    if io_status.Information != IO_INFORMATION_FILE_CREATED {
+        return Err(io::Error::other(format!(
+            "native file disposition mismatch: expected {IO_INFORMATION_FILE_CREATED}, got {}",
+            io_status.Information
+        )));
+    }
+    Ok(file)
+}
+
+/// Rename the exact retained regular file to a sibling name relative to the
+/// retained parent directory handle, refusing replacement. Handle-based only:
+/// the kernel `FileRenameInformation` class honors `RootDirectory`, so no
+/// pathname is consulted and neither operand can be substituted between
+/// validation and the rename. (The Win32 `SetFileInformationByHandle` wrapper
+/// rejects a non-null `RootDirectory`, so this goes through
+/// `NtSetInformationFile` like the crate's relative opens go through
+/// `NtCreateFile`.)
+pub(super) fn rename_child_no_replace(file: &File, parent: &File, name: &[u16]) -> io::Result<()> {
+    let name_bytes = name
+        .len()
+        .checked_mul(std::mem::size_of::<u16>())
+        .and_then(|length| u32::try_from(length).ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "file name is too long"))?;
+    let header = std::mem::size_of::<FILE_RENAME_INFORMATION>();
+    let total = header
+        .checked_add(name_bytes as usize)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "rename buffer overflow"))?;
+    let total_u32 = u32::try_from(total)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "rename buffer exceeds u32"))?;
+    // A u64 backing store guarantees FILE_RENAME_INFORMATION's pointer
+    // alignment; the trailing FileName[1] header slack keeps the name copy in
+    // bounds.
+    let mut buffer = vec![0u64; total.div_ceil(std::mem::size_of::<u64>())];
+    let info = buffer.as_mut_ptr().cast::<FILE_RENAME_INFORMATION>();
+
+    // SAFETY: `buffer` is zero-initialized, 8-byte aligned, and at least
+    // `header + name_bytes` long, so every field write and the name copy stay
+    // in bounds. The zeroed anonymous union means ReplaceIfExists is FALSE —
+    // the no-replace law. `parent` keeps a valid owned directory handle alive
+    // across the following call; only its raw value is written here.
+    unsafe {
+        (*info).RootDirectory = parent.as_raw_handle();
+        (*info).FileNameLength = name_bytes;
+        std::ptr::copy_nonoverlapping(name.as_ptr(), (*info).FileName.as_mut_ptr(), name.len());
+    }
+
+    let mut io_status = IO_STATUS_BLOCK::default();
+    // SAFETY: `file` owns a valid handle opened with DELETE access (a rename
+    // mutates the name entry), and `parent` remains a valid owned directory
+    // handle for this synchronous call. `RootDirectory`-relative resolution
+    // never consults the working directory or an absolute pathname; the name
+    // is one validated leaf component. The info buffer and `io_status` are
+    // live, aligned, and exactly the declared byte length; the kernel copies
+    // the buffer and retains no pointer. No handle or pointer escapes.
+    let status = unsafe {
+        NtSetInformationFile(
+            file.as_raw_handle(),
+            &raw mut io_status,
+            info.cast(),
+            total_u32,
+            FileRenameInformation,
+        )
+    };
+    if status < 0 {
+        return Err(ntstatus_to_io_error(status));
+    }
+    Ok(())
 }
 
 pub(super) fn ntstatus_to_io_error(status: i32) -> io::Error {

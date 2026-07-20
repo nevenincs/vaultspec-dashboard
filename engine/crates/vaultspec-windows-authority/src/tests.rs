@@ -767,3 +767,110 @@ fn unmapped_native_status_preserves_the_hex_status() {
     assert!(error.raw_os_error().is_none());
     assert!(error.to_string().contains("0xDEADBEEF"));
 }
+
+#[test]
+fn child_regular_file_is_create_new_writable_and_never_replaces() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = AuthorityDirectory::open_existing(temp.path()).unwrap();
+    let parent = root
+        .create_materialization_child(OsStr::new("workdir"))
+        .unwrap();
+
+    let mut created = parent
+        .create_child_regular_file(OsStr::new("entry.tmp"))
+        .unwrap();
+    use std::io::{Read as _, Seek as _, Write as _};
+    created.file_mut().write_all(b"decoded bytes").unwrap();
+    created.file_mut().sync_all().unwrap();
+    created.file_mut().rewind().unwrap();
+    let mut reread = Vec::new();
+    created.file_mut().read_to_end(&mut reread).unwrap();
+    assert_eq!(reread, b"decoded bytes");
+    assert_eq!(created.link_count().unwrap(), 1);
+    assert_ne!(created.identity().file_id, 0);
+
+    // Create-new: the same name is a collision, never a replacement. The
+    // retained zero-share handle also denies a second open of the entry.
+    let collision = parent
+        .create_child_regular_file(OsStr::new("entry.tmp"))
+        .unwrap_err();
+    assert_ne!(collision.kind(), io::ErrorKind::InvalidInput);
+    drop(created);
+
+    // A directory occupying the name is a collision too.
+    let occupied = parent
+        .create_child_directory(OsStr::new("occupied"))
+        .unwrap();
+    let error = parent
+        .create_child_regular_file(OsStr::new("occupied"))
+        .unwrap_err();
+    assert_ne!(error.kind(), io::ErrorKind::InvalidInput);
+    drop(occupied);
+
+    // Component grammar holds for files exactly as for directories.
+    for bad in ["..", "a/b", "a\\b", "CON", "trailing.", "trailing "] {
+        assert_eq!(
+            parent
+                .create_child_regular_file(OsStr::new(bad))
+                .unwrap_err()
+                .kind(),
+            io::ErrorKind::InvalidInput,
+            "create unexpectedly accepted {bad:?}"
+        );
+    }
+}
+
+#[test]
+fn install_child_file_no_replace_renames_by_handle_and_refuses_an_occupant() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = AuthorityDirectory::open_existing(temp.path()).unwrap();
+    let parent = root
+        .create_materialization_child(OsStr::new("workdir"))
+        .unwrap();
+    let workdir = temp.path().join("workdir");
+
+    let mut staged = parent
+        .create_child_regular_file(OsStr::new(".entry.vsmz-tmp"))
+        .unwrap();
+    use std::io::Write as _;
+    staged.file_mut().write_all(b"payload").unwrap();
+    staged.file_mut().sync_all().unwrap();
+    let staged_identity = staged.identity();
+
+    parent
+        .install_child_file_no_replace(&staged, OsStr::new("entry.bin"))
+        .unwrap();
+    // The exact retained object now answers at the final name; the temp name
+    // is gone; the handle survived its own rename.
+    assert_eq!(
+        AuthorityFile::identity_at_path(&workdir.join("entry.bin")).unwrap(),
+        staged_identity
+    );
+    assert!(
+        AuthorityFile::identity_at_path(&workdir.join(".entry.vsmz-tmp")).is_err(),
+        "the temporary name must not survive the install"
+    );
+    assert_eq!(staged.link_count().unwrap(), 1);
+    drop(staged);
+    assert_eq!(
+        std::fs::read(workdir.join("entry.bin")).unwrap(),
+        b"payload"
+    );
+
+    // No-replace: a second install onto the occupied final name fails and the
+    // occupant is untouched.
+    let second = parent
+        .create_child_regular_file(OsStr::new(".second.vsmz-tmp"))
+        .unwrap();
+    let error = parent
+        .install_child_file_no_replace(&second, OsStr::new("entry.bin"))
+        .unwrap_err();
+    assert_ne!(error.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(
+        std::fs::read(workdir.join("entry.bin")).unwrap(),
+        b"payload"
+    );
+    second.mark_delete_on_close().unwrap();
+    drop(second);
+    assert!(!workdir.join(".second.vsmz-tmp").exists());
+}
