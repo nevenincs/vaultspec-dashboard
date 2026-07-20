@@ -1,18 +1,34 @@
 //! Fail-closed verification of the product release-set boundary.
 //!
-//! Parsing is deliberately not activation authority.  A caller receives a
-//! [`VerifiedReleaseSet`] only after the member bytes, independently trusted
+//! Parsing is deliberately not activation authority. A caller receives a
+//! [`VerifiedReleaseSet`] only after the independently trusted member digest,
 //! component lock, external five-member cohort, A2A capsule contract, complete
-//! installed-file inventory, and real generation bytes have all joined.
+//! installed-file inventory, and bytes beneath one retained unpublished
+//! generation have all joined. The verified value keeps that exact generation
+//! borrowed and rechecks its final filesystem snapshot before activation.
+//!
+//! The bounded no-follow double scan is the accepted cooperative installer
+//! boundary from S06. On Windows the retained lease prevents generation-root
+//! substitution; on Unix the retained descriptor and named identity checks
+//! detect persistent substitution while the installation guard serializes
+//! cooperating product writers. Child reads remain pathname-sensitive and do
+//! not claim immunity from a hostile same-account process that ignores the
+//! product lock.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs::{File, Metadata, OpenOptions};
+use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
+
+#[cfg(unix)]
+use std::fs::OpenOptions;
 
 use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
+
+use crate::generation::{GenerationError, UnpublishedGeneration};
+use crate::receipt::{Channel, PriorSeatIdentity};
 
 const RELEASE_SCHEMA_VERSION: &str = "2.0";
 const CAPSULE_CONTRACT_VERSION: &str = "2.0";
@@ -128,6 +144,7 @@ pub enum ManifestError {
         expected: u64,
         found: u64,
     },
+    GenerationAuthority(GenerationError),
 }
 
 impl std::fmt::Display for ManifestError {
@@ -193,11 +210,27 @@ impl std::fmt::Display for ManifestError {
                     "size mismatch for {path}: expected {expected}, found {found}"
                 )
             }
+            Self::GenerationAuthority(error) => {
+                write!(f, "unpublished generation authority rejected: {error}")
+            }
         }
     }
 }
 
-impl std::error::Error for ManifestError {}
+impl std::error::Error for ManifestError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::GenerationAuthority(error) => Some(error),
+            _ => None,
+        }
+    }
+}
+
+impl From<GenerationError> for ManifestError {
+    fn from(error: GenerationError) -> Self {
+        Self::GenerationAuthority(error)
+    }
+}
 
 /// Result type for manifest verification.
 pub type Result<T> = std::result::Result<T, ManifestError>;
@@ -1480,50 +1513,184 @@ pub struct TrustedReleaseAuthority {
     trusted_capsule_root: String,
 }
 
-/// Opaque candidate inputs for one unpublished generation.
+/// Opaque call-scoped input not carried inside the candidate generation.
 ///
-/// The fields stay private so external candidate callers cannot combine raw
-/// bytes with self-selected trust anchors. The later trusted lifecycle/update
-/// integration may add a crate-private constructor only when it can require
-/// independently verified receipt and retained S162 generation provenance.
+/// The external cohort bytes remain untrusted until joined to the digest in
+/// [`TrustedReleaseAuthority`]. No candidate path, generation identifier, or
+/// member-manifest bytes are accepted here.
+#[doc(hidden)]
 pub struct ReleaseVerificationInput<'a> {
-    authority: &'a TrustedReleaseAuthority,
-    generation_root: &'a Path,
-    generation_id: &'a str,
-    member_manifest_bytes: &'a [u8],
-    cohort_descriptor_bytes: &'a [u8],
+    pub(crate) authority: &'a TrustedReleaseAuthority,
+    pub(crate) cohort_descriptor_bytes: &'a [u8],
 }
 
-/// Fully checked release identities, but not standalone activation authority.
+/// Internally supplied transaction facts retained for receipt publication.
 ///
-/// Receipt activation additionally requires a live S162 unpublished-generation
-/// authority and the global installation transaction lock. This value is not
-/// `Clone`, serializable, or publicly constructible from raw candidate fields.
-#[derive(Debug)]
-pub struct VerifiedReleaseSet {
-    target: Target,
-    release_set_id: String,
-    generation_id: String,
-    member_manifest_digest: String,
-    component_lock_digest: String,
-    cohort_digest: String,
+/// These facts are not derived from candidate bytes. Their closed grammar is
+/// validated while the exact unpublished generation and installation guard are
+/// borrowed, then S172 must consume the retained values rather than rebuilding
+/// them at the publication boundary.
+#[doc(hidden)]
+pub struct ReceiptActivationContext {
+    pub(crate) channel: Channel,
+    pub(crate) bootstrap_created_ownership: bool,
+    pub(crate) prior_seat: Option<PriorSeatIdentity>,
+    pub(crate) consistency_generation: u64,
+    pub(crate) created_ms: i64,
+}
+
+impl ReceiptActivationContext {
+    fn validate(&self) -> Result<()> {
+        if self.created_ms <= 0 {
+            return invalid("receipt.created_ms", "must be positive");
+        }
+        if let Some(prior) = &self.prior_seat {
+            crate::paths::validate_generation(&prior.generation).map_err(|error| {
+                ManifestError::InvalidField {
+                    field: "receipt.prior_seat.generation".to_string(),
+                    detail: error.to_string(),
+                }
+            })?;
+            require_exact_version(
+                "receipt.prior_seat.dashboard_version",
+                &prior.dashboard_version,
+            )?;
+            if prior.pid == Some(0) {
+                return invalid("receipt.prior_seat.pid", "must be non-zero when present");
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Complete immutable and transaction-supplied facts for the S172 receipt.
+///
+/// The active generation is borrowed from the exact retained token; it is
+/// never accepted as a copied caller field.
+pub struct VerifiedReceiptFacts<'generation> {
     dashboard_version: String,
     dashboard_commit: String,
+    dashboard_digest: String,
+    release_set_identity: String,
+    release_set_member_digest: String,
+    component_lock_digest: String,
+    external_five_member_cohort_digest: String,
+    target: Target,
     a2a_identity: ReleaseIdentity,
+    active_generation: &'generation str,
+    channel: Channel,
+    bootstrap_created_ownership: bool,
+    prior_seat: Option<PriorSeatIdentity>,
+    consistency_generation: u64,
+    created_ms: i64,
+}
+
+impl VerifiedReceiptFacts<'_> {
+    #[must_use]
+    pub fn dashboard_version(&self) -> &str {
+        &self.dashboard_version
+    }
+
+    #[must_use]
+    pub fn dashboard_commit(&self) -> &str {
+        &self.dashboard_commit
+    }
+
+    #[must_use]
+    pub fn dashboard_digest(&self) -> &str {
+        &self.dashboard_digest
+    }
+
+    #[must_use]
+    pub fn release_set_identity(&self) -> &str {
+        &self.release_set_identity
+    }
+
+    #[must_use]
+    pub fn release_set_member_digest(&self) -> &str {
+        &self.release_set_member_digest
+    }
+
+    #[must_use]
+    pub fn component_lock_digest(&self) -> &str {
+        &self.component_lock_digest
+    }
+
+    #[must_use]
+    pub fn external_five_member_cohort_digest(&self) -> &str {
+        &self.external_five_member_cohort_digest
+    }
+
+    #[must_use]
+    pub const fn target(&self) -> Target {
+        self.target
+    }
+
+    #[must_use]
+    pub fn a2a_identity(&self) -> &ReleaseIdentity {
+        &self.a2a_identity
+    }
+
+    #[must_use]
+    pub fn active_generation(&self) -> &str {
+        self.active_generation
+    }
+
+    #[must_use]
+    pub const fn channel(&self) -> Channel {
+        self.channel
+    }
+
+    #[must_use]
+    pub const fn bootstrap_created_ownership(&self) -> bool {
+        self.bootstrap_created_ownership
+    }
+
+    #[must_use]
+    pub fn prior_seat(&self) -> Option<&PriorSeatIdentity> {
+        self.prior_seat.as_ref()
+    }
+
+    #[must_use]
+    pub const fn consistency_generation(&self) -> u64 {
+        self.consistency_generation
+    }
+
+    #[must_use]
+    pub const fn created_ms(&self) -> i64 {
+        self.created_ms
+    }
+}
+
+/// A complete release verification bound to one retained unpublished generation.
+///
+/// This value is non-`Clone`, non-serializable, and has no public raw
+/// construction path. It retains the exact generation borrow, final complete
+/// snapshot, immutable release facts, and validated transaction facts until
+/// activation completes.
+pub struct VerifiedReleaseSet<'generation, 'product, 'lock> {
+    generation: &'generation UnpublishedGeneration<'product, 'lock>,
+    receipt_facts: VerifiedReceiptFacts<'generation>,
+    member_manifest_path: String,
+    final_snapshot: GenerationSnapshot,
     capsule_root: String,
     capsule_manifest: CapsuleManifest,
 }
 
-impl VerifiedReleaseSet {
-    /// Verify every trust and byte join and return receipt-construction inputs.
-    /// The caller must retain S162 authority and the global lock through commit.
-    pub fn verify(input: ReleaseVerificationInput<'_>) -> Result<Self> {
+impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lock> {
+    /// Verify every trust, byte, authority, and receipt-fact join.
+    ///
+    /// The member manifest is found only by its externally trusted digest in a
+    /// complete first scan. Candidate-declared path data participates only
+    /// after those exact bytes have been located and bounded-reread.
+    pub fn verify(
+        generation: &'generation UnpublishedGeneration<'product, 'lock>,
+        input: ReleaseVerificationInput<'_>,
+        receipt_context: ReceiptActivationContext,
+    ) -> Result<Self> {
         let authority = input.authority;
-        require_input_bound(
-            "release member manifest",
-            input.member_manifest_bytes.len(),
-            MAX_MEMBER_MANIFEST_BYTES as u64,
-        )?;
+        generation.validate_retained()?;
+        receipt_context.validate()?;
         require_input_bound(
             "component lock",
             authority.trusted_component_lock_bytes.len(),
@@ -1534,7 +1701,6 @@ impl VerifiedReleaseSet {
             input.cohort_descriptor_bytes.len(),
             MAX_COHORT_BYTES as u64,
         )?;
-        require_identity("generation_id", input.generation_id)?;
         require_digest(
             "expected_member_manifest_digest",
             &authority.expected_member_manifest_digest,
@@ -1551,13 +1717,24 @@ impl VerifiedReleaseSet {
         )?;
         validate_portable_path("trusted_capsule_root", &authority.trusted_capsule_root)?;
 
-        let member_digest = sha256_hex(input.member_manifest_bytes);
-        expect_digest(
-            "member_manifest_bytes",
+        generation.validate_retained()?;
+        let (initial_snapshot, member_manifest_path) = scan_generation_locating_member(
+            generation.path(),
             &authority.expected_member_manifest_digest,
-            &member_digest,
         )?;
-        let manifest = parse_release(input.member_manifest_bytes)?;
+        let located_member_bytes = read_installed_bounded(
+            generation.path(),
+            &member_manifest_path,
+            MAX_MEMBER_MANIFEST_BYTES as u64,
+            observed_file(&initial_snapshot.files, &member_manifest_path)?,
+        )?;
+        let member_digest = sha256_hex(&located_member_bytes);
+        let manifest = parse_release(&located_member_bytes)?;
+        expect_literal(
+            "release_manifest.path",
+            &member_manifest_path,
+            &manifest.release_manifest.path,
+        )?;
         if manifest.target != authority.expected_target {
             return Err(ManifestError::TargetMismatch {
                 expected: authority.expected_target,
@@ -1609,18 +1786,16 @@ impl VerifiedReleaseSet {
             &member.member_manifest_digest,
         )?;
 
-        let initial_snapshot =
-            scan_generation(input.generation_root, &manifest.release_manifest.path)?;
         let observed = &initial_snapshot.files;
         verify_release_manifest_bytes(
-            input.generation_root,
+            generation.path(),
             &manifest.release_manifest.path,
-            input.member_manifest_bytes,
+            &located_member_bytes,
             observed,
         )?;
         verify_complete_inventory(&manifest, observed)?;
         verify_installed_exact_bytes(
-            input.generation_root,
+            generation.path(),
             &authority.trusted_component_lock_path,
             &authority.trusted_component_lock_bytes,
             observed_file(observed, &authority.trusted_component_lock_path)?,
@@ -1628,7 +1803,7 @@ impl VerifiedReleaseSet {
 
         verify_artifact_joins(&manifest, observed)?;
         let capsule_bytes = read_installed_bounded(
-            input.generation_root,
+            generation.path(),
             &manifest.a2a_component.capsule_manifest.path,
             MAX_CAPSULE_MANIFEST_BYTES,
             observed_file(observed, &manifest.a2a_component.capsule_manifest.path)?,
@@ -1656,75 +1831,120 @@ impl VerifiedReleaseSet {
             &manifest.state_schema.migration_range.maximum,
         )?;
         verify_tree_evidence(
-            input.generation_root,
+            generation.path(),
             &authority.trusted_capsule_root,
             &manifest,
             &capsule,
             observed,
         )?;
 
-        let final_snapshot =
-            scan_generation(input.generation_root, &manifest.release_manifest.path)?;
+        let final_snapshot = scan_generation(
+            generation.path(),
+            Some(manifest.release_manifest.path.as_str()),
+        )?;
+        generation.validate_retained()?;
         require_unchanged_snapshot(&initial_snapshot, &final_snapshot)?;
 
+        let ReceiptActivationContext {
+            channel,
+            bootstrap_created_ownership,
+            prior_seat,
+            consistency_generation,
+            created_ms,
+        } = receipt_context;
         Ok(Self {
-            target: manifest.target,
-            release_set_id: manifest.cohort.id,
-            generation_id: input.generation_id.to_string(),
-            member_manifest_digest: member_digest,
-            component_lock_digest,
-            cohort_digest,
-            dashboard_version: manifest.dashboard.version,
-            dashboard_commit: manifest.dashboard.commit,
-            a2a_identity: manifest.a2a_component.release_identity,
+            generation,
+            receipt_facts: VerifiedReceiptFacts {
+                dashboard_version: manifest.dashboard.version,
+                dashboard_commit: manifest.dashboard.commit,
+                dashboard_digest: manifest.dashboard.digest,
+                release_set_identity: manifest.cohort.id,
+                release_set_member_digest: member_digest,
+                component_lock_digest,
+                external_five_member_cohort_digest: cohort_digest,
+                target: manifest.target,
+                a2a_identity: manifest.a2a_component.release_identity,
+                active_generation: generation.generation(),
+                channel,
+                bootstrap_created_ownership,
+                prior_seat,
+                consistency_generation,
+                created_ms,
+            },
+            member_manifest_path,
+            final_snapshot,
             capsule_root: authority.trusted_capsule_root.clone(),
             capsule_manifest: capsule,
         })
     }
 
+    /// Revalidate the exact retained authority and complete final snapshot at
+    /// the activation boundary.
+    pub fn revalidate_for_activation(&self) -> Result<()> {
+        self.generation.validate_retained()?;
+        let current = scan_generation(
+            self.generation.path(),
+            Some(self.member_manifest_path.as_str()),
+        )?;
+        self.generation.validate_retained()?;
+        require_unchanged_snapshot(&self.final_snapshot, &current)
+    }
+
+    /// Immutable receipt facts retained under the exact generation borrow.
+    #[must_use]
+    pub fn receipt_facts(&self) -> &VerifiedReceiptFacts<'generation> {
+        &self.receipt_facts
+    }
+
     #[must_use]
     pub const fn target(&self) -> Target {
-        self.target
+        self.receipt_facts.target
     }
 
     #[must_use]
     pub fn release_set_id(&self) -> &str {
-        &self.release_set_id
+        &self.receipt_facts.release_set_identity
     }
 
+    /// Diagnostic identifier borrowed from the exact retained token.
     #[must_use]
     pub fn generation_id(&self) -> &str {
-        &self.generation_id
+        self.generation.generation()
     }
 
     #[must_use]
     pub fn member_manifest_digest(&self) -> &str {
-        &self.member_manifest_digest
+        &self.receipt_facts.release_set_member_digest
     }
 
     #[must_use]
     pub fn component_lock_digest(&self) -> &str {
-        &self.component_lock_digest
+        &self.receipt_facts.component_lock_digest
     }
 
     #[must_use]
     pub fn cohort_digest(&self) -> &str {
-        &self.cohort_digest
+        &self.receipt_facts.external_five_member_cohort_digest
     }
 
     #[must_use]
     pub fn dashboard_version(&self) -> &str {
-        &self.dashboard_version
+        &self.receipt_facts.dashboard_version
     }
 
     #[must_use]
     pub fn dashboard_commit(&self) -> &str {
-        &self.dashboard_commit
+        &self.receipt_facts.dashboard_commit
+    }
+
+    #[must_use]
+    pub fn dashboard_digest(&self) -> &str {
+        &self.receipt_facts.dashboard_digest
     }
 
     #[must_use]
     pub fn a2a_identity(&self) -> &ReleaseIdentity {
-        &self.a2a_identity
+        &self.receipt_facts.a2a_identity
     }
 
     #[must_use]
@@ -1738,21 +1958,31 @@ impl VerifiedReleaseSet {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 struct ObservedFile {
+    identity: FilesystemIdentity,
+    link_count: u64,
     size: u64,
     digest: String,
     normalized_mode: Option<&'static str>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 struct GenerationSnapshot {
     canonical_root: PathBuf,
     root_identity: RootIdentity,
+    directories: BTreeMap<String, ObservedDirectory>,
     files: BTreeMap<String, ObservedFile>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
+struct ObservedDirectory {
+    identity: FilesystemIdentity,
+    owner: Option<u32>,
+    mode: Option<u32>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum RootIdentity {
     #[cfg(unix)]
     Unix { device: u64, inode: u64 },
@@ -1763,7 +1993,39 @@ enum RootIdentity {
     },
 }
 
-fn scan_generation(root: &Path, excluded_manifest: &str) -> Result<GenerationSnapshot> {
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum FilesystemIdentity {
+    #[cfg(unix)]
+    Unix { device: u64, inode: u64 },
+    #[cfg(windows)]
+    Windows {
+        volume_serial_number: u64,
+        file_id: u128,
+    },
+}
+
+fn scan_generation(root: &Path, excluded_manifest: Option<&str>) -> Result<GenerationSnapshot> {
+    scan_generation_inner(root, excluded_manifest, None).map(|(snapshot, _)| snapshot)
+}
+
+fn scan_generation_locating_member(
+    root: &Path,
+    expected_digest: &str,
+) -> Result<(GenerationSnapshot, String)> {
+    let (snapshot, located) = scan_generation_inner(root, None, Some(expected_digest))?;
+    let located = located.ok_or_else(|| {
+        ManifestError::MissingFile(
+            "release member whose digest matches the trusted release metadata".to_string(),
+        )
+    })?;
+    Ok((snapshot, located))
+}
+
+fn scan_generation_inner(
+    root: &Path,
+    excluded_manifest: Option<&str>,
+    expected_unique_digest: Option<&str>,
+) -> Result<(GenerationSnapshot, Option<String>)> {
     let root_metadata = safe_symlink_metadata(root)?;
     if !root_metadata.is_dir() || metadata_is_link_like(&root_metadata) {
         return Err(ManifestError::UnsafeFileType {
@@ -1771,17 +2033,42 @@ fn scan_generation(root: &Path, excluded_manifest: &str) -> Result<GenerationSna
             detail: "generation root must be a non-link directory".to_string(),
         });
     }
+    require_windows_restricted_acl(root)?;
     let initial_root_identity = root_identity(root, &root_metadata)?;
     let canonical_root = std::fs::canonicalize(root).map_err(|error| io_error(root, error))?;
-    let mut pending = vec![(root.to_path_buf(), 0_usize)];
+    let mut pending = vec![(root.to_path_buf(), 0_usize, None::<String>)];
     let mut discovered_directories = 1_usize;
+    let mut directories = BTreeMap::new();
     let mut files = BTreeMap::new();
     let mut semantic = BTreeSet::new();
+    let mut identities = BTreeSet::new();
     let mut total_bytes = 0_u64;
     let mut payload_files = 0_usize;
-    while let Some((directory, depth)) = pending.pop() {
+    let initial_file_limit =
+        MAX_INSTALLED_FILES
+            .checked_add(1)
+            .ok_or_else(|| ManifestError::InvalidField {
+                field: "generation tree".to_string(),
+                detail: "installed-file count bound overflow".to_string(),
+            })?;
+    let file_limit = if excluded_manifest.is_none() {
+        initial_file_limit
+    } else {
+        MAX_INSTALLED_FILES
+    };
+    let mut located_digest_match = None;
+    while let Some((directory, depth, portable_directory)) = pending.pop() {
         if depth > 32 {
             return invalid("generation tree", "directory depth exceeds 32 segments");
+        }
+        require_windows_restricted_acl(&directory)?;
+        if let Some(portable) = portable_directory.as_deref() {
+            let current = observe_directory(&directory)?;
+            if directories.get(portable) != Some(&current) {
+                return Err(ManifestError::GenerationChanged {
+                    detail: format!("installed directory {portable} changed before enumeration"),
+                });
+            }
         }
         let entries = std::fs::read_dir(&directory).map_err(|error| io_error(&directory, error))?;
         for entry in entries {
@@ -1794,23 +2081,6 @@ fn scan_generation(root: &Path, excluded_manifest: &str) -> Result<GenerationSna
                     detail: "symlink or reparse-point traversal is forbidden".to_string(),
                 });
             }
-            if metadata.is_dir() {
-                if depth >= 32 {
-                    return invalid("generation tree", "directory depth exceeds 32 segments");
-                }
-                if discovered_directories >= MAX_DIRECTORIES {
-                    return invalid("generation tree", "too many directories");
-                }
-                discovered_directories += 1;
-                pending.push((path, depth + 1));
-                continue;
-            }
-            if !metadata.is_file() {
-                return Err(ManifestError::UnsafeFileType {
-                    path,
-                    detail: "only regular files and directories are supported".to_string(),
-                });
-            }
             let relative = path
                 .strip_prefix(root)
                 .map_err(|_| ManifestError::UnsafeFileType {
@@ -1818,9 +2088,9 @@ fn scan_generation(root: &Path, excluded_manifest: &str) -> Result<GenerationSna
                     detail: "path escaped the generation root".to_string(),
                 })?;
             let portable = relative_path_string(relative)?;
-            validate_portable_path("installed file", &portable)?;
+            validate_portable_path("installed object", &portable)?;
             if !semantic.insert(semantic_path_key(&portable)) {
-                return invalid("installed file", "case-folded semantic path collision");
+                return invalid("installed object", "case-folded semantic path collision");
             }
             let canonical_parent = std::fs::canonicalize(path.parent().unwrap_or(root))
                 .map_err(|error| io_error(&path, error))?;
@@ -1830,6 +2100,26 @@ fn scan_generation(root: &Path, excluded_manifest: &str) -> Result<GenerationSna
                     detail: "canonical parent escaped the generation root".to_string(),
                 });
             }
+            if metadata.is_dir() {
+                if depth >= 32 {
+                    return invalid("generation tree", "directory depth exceeds 32 segments");
+                }
+                if discovered_directories >= MAX_DIRECTORIES {
+                    return invalid("generation tree", "too many directories");
+                }
+                discovered_directories += 1;
+                let observed = observe_directory(&path)?;
+                directories.insert(portable.clone(), observed);
+                pending.push((path, depth + 1, Some(portable)));
+                continue;
+            }
+            if !metadata.is_file() {
+                return Err(ManifestError::UnsafeFileType {
+                    path,
+                    detail: "only regular files and directories are supported".to_string(),
+                });
+            }
+            require_windows_restricted_acl(&path)?;
             total_bytes = total_bytes.checked_add(metadata.len()).ok_or_else(|| {
                 ManifestError::InvalidField {
                     field: "generation tree".to_string(),
@@ -1839,38 +2129,107 @@ fn scan_generation(root: &Path, excluded_manifest: &str) -> Result<GenerationSna
             if total_bytes > MAX_EXPANDED_BYTES {
                 return invalid("generation tree", "expanded bytes exceed 8 GiB");
             }
-            if portable != excluded_manifest {
+            if excluded_manifest != Some(portable.as_str()) {
                 payload_files += 1;
-                if payload_files > MAX_INSTALLED_FILES {
+                if payload_files > file_limit {
                     return invalid(
                         "generation tree",
-                        "more than 100000 installed payload files",
+                        if excluded_manifest.is_none() {
+                            "more than 100001 regular files before member-manifest discovery"
+                        } else {
+                            "more than 100000 installed payload files"
+                        },
                     );
                 }
             }
-            let (size, digest, normalized_mode) = hash_regular_file(&path, metadata.len())?;
-            files.insert(
-                portable,
-                ObservedFile {
-                    size,
-                    digest,
-                    normalized_mode,
-                },
-            );
+            let observed = hash_regular_file(&path, metadata.len())?;
+            if !identities.insert(observed.identity) {
+                return Err(ManifestError::UnsafeFileType {
+                    path,
+                    detail: "two installed paths resolve to the same regular-file identity"
+                        .to_string(),
+                });
+            }
+            if expected_unique_digest == Some(observed.digest.as_str())
+                && located_digest_match.replace(portable.clone()).is_some()
+            {
+                return invalid(
+                    "release member manifest",
+                    "more than one installed file matches the trusted member digest",
+                );
+            }
+            files.insert(portable, observed);
+        }
+        require_windows_restricted_acl(&directory)?;
+        if let Some(portable) = portable_directory.as_deref() {
+            let current = observe_directory(&directory)?;
+            if directories.get(portable) != Some(&current) {
+                return Err(ManifestError::GenerationChanged {
+                    detail: format!("installed directory {portable} changed during enumeration"),
+                });
+            }
         }
     }
     let final_root_metadata = safe_symlink_metadata(root)?;
+    if !final_root_metadata.is_dir() || metadata_is_link_like(&final_root_metadata) {
+        return Err(ManifestError::GenerationChanged {
+            detail: "generation root type changed during scan".to_string(),
+        });
+    }
     let final_root_identity = root_identity(root, &final_root_metadata)?;
     if initial_root_identity != final_root_identity {
         return Err(ManifestError::GenerationChanged {
             detail: "generation root identity changed during scan".to_string(),
         });
     }
-    Ok(GenerationSnapshot {
-        canonical_root,
-        root_identity: initial_root_identity,
-        files,
-    })
+    require_windows_restricted_acl(root)?;
+    Ok((
+        GenerationSnapshot {
+            canonical_root,
+            root_identity: initial_root_identity,
+            directories,
+            files,
+        },
+        located_digest_match,
+    ))
+}
+
+fn observe_directory(path: &Path) -> Result<ObservedDirectory> {
+    require_windows_restricted_acl(path)?;
+    let metadata = safe_symlink_metadata(path)?;
+    if !metadata.is_dir() || metadata_is_link_like(&metadata) {
+        return Err(ManifestError::UnsafeFileType {
+            path: path.to_path_buf(),
+            detail: "installed directory is not a non-link directory".to_string(),
+        });
+    }
+    #[cfg(unix)]
+    let observation = {
+        use std::os::unix::fs::MetadataExt;
+        ObservedDirectory {
+            identity: FilesystemIdentity::Unix {
+                device: metadata.dev(),
+                inode: metadata.ino(),
+            },
+            owner: Some(metadata.uid()),
+            mode: Some(metadata.mode() & 0o777),
+        }
+    };
+    #[cfg(windows)]
+    let observation = {
+        let identity = vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
+            .map_err(|error| io_error(path, error))?;
+        ObservedDirectory {
+            identity: FilesystemIdentity::Windows {
+                volume_serial_number: identity.volume_serial_number,
+                file_id: identity.file_id,
+            },
+            owner: None,
+            mode: None,
+        }
+    };
+    require_windows_restricted_acl(path)?;
+    Ok(observation)
 }
 
 fn require_unchanged_snapshot(
@@ -1881,7 +2240,7 @@ fn require_unchanged_snapshot(
         Ok(())
     } else {
         Err(ManifestError::GenerationChanged {
-            detail: "root identity, canonical root, or installed-file observation changed across verification"
+            detail: "root identity, canonical root, directory inventory, or installed-file observation changed across verification"
                 .to_string(),
         })
     }
@@ -1922,6 +2281,56 @@ fn metadata_is_link_like(metadata: &Metadata) -> bool {
     metadata.file_type().is_symlink()
 }
 
+#[cfg(not(windows))]
+fn require_windows_restricted_acl(_path: &Path) -> Result<()> {
+    Ok(())
+}
+
+#[cfg(windows)]
+fn require_windows_restricted_acl(path: &Path) -> Result<()> {
+    use windows_acl::acl::{ACL, AceType};
+    use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
+
+    static CURRENT_USER_SID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    let restricted = (|| {
+        let path = path.to_str()?;
+        let user_sid = CURRENT_USER_SID
+            .get_or_init(|| {
+                let user = current_user()?;
+                let sid = name_to_sid(&user, None).ok()?;
+                sid_to_string(sid.as_ptr().cast_mut().cast()).ok()
+            })
+            .as_deref()?;
+        let acl = ACL::from_file_path(path, false).ok()?;
+        let entries = acl.all().ok()?;
+        let allowed = [user_sid, "S-1-5-18", "S-1-5-32-544"];
+        let mut user_allowed = false;
+        for entry in entries {
+            match entry.entry_type {
+                AceType::AccessAllow => {
+                    if !allowed.contains(&entry.string_sid.as_str()) {
+                        return None;
+                    }
+                    user_allowed |= entry.string_sid == user_sid;
+                }
+                AceType::AccessDeny => {}
+                _ => return None,
+            }
+        }
+        user_allowed.then_some(())
+    })()
+    .is_some();
+    if restricted {
+        Ok(())
+    } else {
+        Err(ManifestError::UnsafeFileType {
+            path: path.to_path_buf(),
+            detail: "Windows installed object DACL grants or delegates authority outside the current user, LocalSystem, and Administrators"
+                .to_string(),
+        })
+    }
+}
+
 #[cfg(unix)]
 fn normalized_file_mode(metadata: &Metadata) -> Option<&'static str> {
     use std::os::unix::fs::PermissionsExt;
@@ -1937,38 +2346,119 @@ fn normalized_file_mode(_metadata: &Metadata) -> Option<&'static str> {
     None
 }
 
-fn open_regular_nofollow(path: &Path) -> Result<File> {
-    let mut options = OpenOptions::new();
-    options.read(true);
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct OpenedFileState {
+    identity: FilesystemIdentity,
+    link_count: u64,
+    size: u64,
+    normalized_mode: Option<&'static str>,
+}
+
+struct OpenedRegular {
+    #[cfg(unix)]
+    file: File,
+    #[cfg(windows)]
+    authority: vaultspec_windows_authority::AuthorityFile,
+}
+
+impl OpenedRegular {
+    fn file(&self) -> &File {
+        #[cfg(unix)]
+        {
+            &self.file
+        }
+        #[cfg(windows)]
+        {
+            self.authority.file()
+        }
+    }
+
+    fn state(&self, path: &Path) -> Result<OpenedFileState> {
+        let metadata = self
+            .file()
+            .metadata()
+            .map_err(|error| io_error(path, error))?;
+        if !metadata.is_file() || metadata_is_link_like(&metadata) {
+            return Err(ManifestError::UnsafeFileType {
+                path: path.to_path_buf(),
+                detail: "opened object is not a non-link regular file".to_string(),
+            });
+        }
+        #[cfg(unix)]
+        let (identity, link_count) = {
+            use std::os::unix::fs::MetadataExt;
+            (
+                FilesystemIdentity::Unix {
+                    device: metadata.dev(),
+                    inode: metadata.ino(),
+                },
+                metadata.nlink(),
+            )
+        };
+        #[cfg(windows)]
+        let (identity, link_count) = {
+            let identity = self.authority.identity();
+            (
+                FilesystemIdentity::Windows {
+                    volume_serial_number: identity.volume_serial_number,
+                    file_id: identity.file_id,
+                },
+                self.authority
+                    .link_count()
+                    .map_err(|error| io_error(path, error))?,
+            )
+        };
+        if link_count != 1 {
+            return Err(ManifestError::UnsafeFileType {
+                path: path.to_path_buf(),
+                detail: format!(
+                    "installed regular file must have exactly one hard-link name, found {link_count}"
+                ),
+            });
+        }
+        Ok(OpenedFileState {
+            identity,
+            link_count,
+            size: metadata.len(),
+            normalized_mode: normalized_file_mode(&metadata),
+        })
+    }
+}
+
+fn open_regular_nofollow(path: &Path) -> Result<OpenedRegular> {
     #[cfg(unix)]
     {
+        let mut options = OpenOptions::new();
+        options.read(true);
         use std::os::unix::fs::OpenOptionsExt;
         options.custom_flags(nix::libc::O_NOFOLLOW);
+        let file = options.open(path).map_err(|error| io_error(path, error))?;
+        let opened = OpenedRegular { file };
+        let _ = opened.state(path)?;
+        Ok(opened)
     }
     #[cfg(windows)]
     {
-        use std::os::windows::fs::OpenOptionsExt;
-        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-        options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        let authority = vaultspec_windows_authority::AuthorityFile::open_reader(path)
+            .map_err(|error| io_error(path, error))?;
+        let opened = OpenedRegular { authority };
+        let _ = opened.state(path)?;
+        Ok(opened)
     }
-    let file = options.open(path).map_err(|error| io_error(path, error))?;
-    let metadata = file.metadata().map_err(|error| io_error(path, error))?;
-    if !metadata.is_file() || metadata_is_link_like(&metadata) {
-        return Err(ManifestError::UnsafeFileType {
-            path: path.to_path_buf(),
-            detail: "opened object is not a non-link regular file".to_string(),
-        });
-    }
-    Ok(file)
 }
 
-fn hash_regular_file(
-    path: &Path,
-    expected_size: u64,
-) -> Result<(u64, String, Option<&'static str>)> {
-    let file = open_regular_nofollow(path)?;
-    let opened_metadata = file.metadata().map_err(|error| io_error(path, error))?;
-    let normalized_mode = normalized_file_mode(&opened_metadata);
+fn hash_regular_file(path: &Path, expected_size: u64) -> Result<ObservedFile> {
+    require_windows_restricted_acl(path)?;
+    let opened = open_regular_nofollow(path)?;
+    let initial_state = opened.state(path)?;
+    if initial_state.size != expected_size {
+        return Err(ManifestError::GenerationChanged {
+            detail: format!(
+                "{} size changed between no-follow metadata and same-handle open",
+                path.display()
+            ),
+        });
+    }
     let read_limit = expected_size
         .checked_add(1)
         .ok_or_else(|| ManifestError::InputTooLarge {
@@ -1976,7 +2466,7 @@ fn hash_regular_file(
             limit: expected_size,
             found: u64::MAX,
         })?;
-    let mut reader = file.take(read_limit);
+    let mut reader = opened.file().take(read_limit);
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; READ_CHUNK];
     let mut total = 0_u64;
@@ -2010,7 +2500,23 @@ fn hash_regular_file(
             found: total,
         });
     }
-    Ok((total, format!("{:x}", hasher.finalize()), normalized_mode))
+    let final_state = opened.state(path)?;
+    require_windows_restricted_acl(path)?;
+    if initial_state != final_state {
+        return Err(ManifestError::GenerationChanged {
+            detail: format!(
+                "{} same-handle identity, link count, size, or mode changed during hashing",
+                path.display()
+            ),
+        });
+    }
+    Ok(ObservedFile {
+        identity: final_state.identity,
+        link_count: final_state.link_count,
+        size: total,
+        digest: format!("{:x}", hasher.finalize()),
+        normalized_mode: final_state.normalized_mode,
+    })
 }
 
 fn relative_path_string(path: &Path) -> Result<String> {
@@ -2206,6 +2712,7 @@ fn read_installed_bounded(
     initial: &ObservedFile,
 ) -> Result<Vec<u8>> {
     let path = root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
+    require_windows_restricted_acl(&path)?;
     let metadata = safe_symlink_metadata(&path)?;
     if metadata.len() > limit {
         return Err(ManifestError::InputTooLarge {
@@ -2214,8 +2721,22 @@ fn read_installed_bounded(
             found: metadata.len(),
         });
     }
-    let file = open_regular_nofollow(&path)?;
-    let opened_metadata = file.metadata().map_err(|error| io_error(&path, error))?;
+    let opened = open_regular_nofollow(&path)?;
+    let initial_state = opened.state(&path)?;
+    if initial_state.size != metadata.len() {
+        return Err(ManifestError::GenerationChanged {
+            detail: format!(
+                "{relative} size changed between no-follow metadata and same-handle open"
+            ),
+        });
+    }
+    if initial_state.size > limit {
+        return Err(ManifestError::InputTooLarge {
+            field: relative.to_string(),
+            limit,
+            found: initial_state.size,
+        });
+    }
     let read_limit = limit
         .checked_add(1)
         .ok_or_else(|| ManifestError::InputTooLarge {
@@ -2223,15 +2744,17 @@ fn read_installed_bounded(
             limit,
             found: u64::MAX,
         })?;
-    let capacity = usize::try_from(opened_metadata.len().min(limit)).map_err(|_| {
+    let capacity = usize::try_from(initial_state.size.min(limit)).map_err(|_| {
         ManifestError::InputTooLarge {
             field: relative.to_string(),
             limit,
-            found: opened_metadata.len(),
+            found: initial_state.size,
         }
     })?;
     let mut bytes = Vec::with_capacity(capacity);
-    file.take(read_limit)
+    opened
+        .file()
+        .take(read_limit)
         .read_to_end(&mut bytes)
         .map_err(|error| io_error(&path, error))?;
     if bytes.len() as u64 > limit {
@@ -2241,10 +2764,21 @@ fn read_installed_bounded(
             found: bytes.len() as u64,
         });
     }
+    let final_state = opened.state(&path)?;
+    require_windows_restricted_acl(&path)?;
+    if initial_state != final_state {
+        return Err(ManifestError::GenerationChanged {
+            detail: format!(
+                "{relative} same-handle identity, link count, size, or mode changed during bounded reread"
+            ),
+        });
+    }
     let reread = ObservedFile {
+        identity: final_state.identity,
+        link_count: final_state.link_count,
         size: bytes.len() as u64,
         digest: sha256_hex(&bytes),
-        normalized_mode: normalized_file_mode(&opened_metadata),
+        normalized_mode: final_state.normalized_mode,
     };
     if &reread != initial {
         return Err(ManifestError::GenerationChanged {
@@ -2878,17 +3412,24 @@ fn sha256_hex(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::generation::{DiscardOutcome, LockedProduct};
+    use crate::locking::{Actor, InstallLock, InstallLockGuard};
+    use crate::paths::ProductPaths;
 
     const LOCK_BYTES: &[u8] = include_bytes!("../../../../packaging/a2a-component.lock.json");
     const TARGET: Target = Target::X86_64PcWindowsMsvc;
 
     struct Fixture {
-        root: tempfile::TempDir,
+        paths: ProductPaths,
+        guard: InstallLockGuard,
+        payloads: Vec<(String, Vec<u8>)>,
+        entrypoint_mode: String,
         member: Vec<u8>,
         descriptor: Vec<u8>,
         member_digest: String,
         cohort_digest: String,
         lock_digest: String,
+        _temp: tempfile::TempDir,
     }
 
     impl Fixture {
@@ -2897,7 +3438,20 @@ mod tests {
         }
 
         fn with_entrypoint_mode(entrypoint_mode: &str) -> Self {
-            let root = tempfile::tempdir().expect("real temporary generation");
+            let temp = tempfile::tempdir().expect("real temporary product home");
+            let paths = ProductPaths::under_app_home(temp.path());
+            paths.ensure().unwrap();
+            for path in [
+                paths.root().to_path_buf(),
+                paths.generations_dir(),
+                paths.app_home(),
+            ] {
+                restrict_test_directory(&path);
+            }
+            let guard = InstallLock::new(paths.install_lock_path())
+                .acquire(Actor::Installer, "manifest-verification")
+                .unwrap()
+                .unwrap();
             let lock = ComponentLock::parse(std::str::from_utf8(LOCK_BYTES).unwrap()).unwrap();
             let dashboard = b"dashboard-binary".to_vec();
             let updater = b"external-updater".to_vec();
@@ -3005,37 +3559,28 @@ mod tests {
             });
             let mut tree = serde_json::to_vec(&tree_value).unwrap();
             tree.push(b'\n');
-            let payloads: Vec<(&str, Vec<u8>)> = vec![
-                (COMPONENT_LOCK_PATH, LOCK_BYTES.to_vec()),
-                ("bin/dashboard.exe", dashboard),
-                ("bin/updater.exe", updater),
-                ("a2a/component-manifest.json", capsule),
-                ("a2a/capsule.zip", archive),
-                ("a2a/capsule/bin/vaultspec-a2a", gateway_file),
-                ("a2a/capsule/bin/vaultspec-a2a-mcp", standalone_file),
-                ("a2a/capsule/runtime/tool", tree_file),
-                ("a2a/tree.json", tree),
-                ("licenses/a2a.txt", license),
-                ("sbom.cdx.json", sbom),
+            let payloads: Vec<(String, Vec<u8>)> = vec![
+                (COMPONENT_LOCK_PATH.to_string(), LOCK_BYTES.to_vec()),
+                ("bin/dashboard.exe".to_string(), dashboard),
+                ("bin/updater.exe".to_string(), updater),
+                ("a2a/component-manifest.json".to_string(), capsule),
+                ("a2a/capsule.zip".to_string(), archive),
+                ("a2a/capsule/bin/vaultspec-a2a".to_string(), gateway_file),
+                (
+                    "a2a/capsule/bin/vaultspec-a2a-mcp".to_string(),
+                    standalone_file,
+                ),
+                ("a2a/capsule/runtime/tool".to_string(), tree_file),
+                ("a2a/tree.json".to_string(), tree),
+                ("licenses/a2a.txt".to_string(), license),
+                ("sbom.cdx.json".to_string(), sbom),
             ];
             let mut digests = serde_json::Map::new();
             let mut sizes = BTreeMap::new();
             for (path, bytes) in &payloads {
-                write_file(root.path(), path, bytes);
-                digests.insert(
-                    (*path).to_string(),
-                    serde_json::Value::String(sha256_hex(bytes)),
-                );
-                sizes.insert((*path).to_string(), bytes.len() as u64);
+                digests.insert(path.clone(), serde_json::Value::String(sha256_hex(bytes)));
+                sizes.insert(path.clone(), bytes.len() as u64);
             }
-            set_mode(
-                &root.path().join("a2a/capsule/bin/vaultspec-a2a"),
-                entrypoint_mode,
-            );
-            set_mode(
-                &root.path().join("a2a/capsule/bin/vaultspec-a2a-mcp"),
-                entrypoint_mode,
-            );
             let lock_digest = sha256_hex(LOCK_BYTES);
             let release = serde_json::json!({
                 "schema_version": "2.0",
@@ -3065,54 +3610,216 @@ mod tests {
                 "file_digests": serde_json::Value::Object(digests)
             });
             let member = serde_json::to_vec(&release).unwrap();
-            write_file(root.path(), "release.json", &member);
             let member_digest = sha256_hex(&member);
             let descriptor = cohort_bytes(&member_digest);
             let cohort_digest = cohort_descriptor_digest(&descriptor).unwrap();
             Self {
-                root,
+                paths,
+                guard,
+                payloads,
+                entrypoint_mode: entrypoint_mode.to_string(),
                 member,
                 descriptor,
                 member_digest,
                 cohort_digest,
                 lock_digest,
+                _temp: temp,
             }
         }
 
-        fn verify(&self) -> Result<VerifiedReleaseSet> {
+        fn populate(&self, root: &Path) {
+            for (path, bytes) in &self.payloads {
+                write_file(root, path, bytes);
+            }
+            write_file(root, "release.json", &self.member);
+            set_mode(
+                &root.join("a2a/capsule/bin/vaultspec-a2a"),
+                &self.entrypoint_mode,
+            );
+            set_mode(
+                &root.join("a2a/capsule/bin/vaultspec-a2a-mcp"),
+                &self.entrypoint_mode,
+            );
+        }
+
+        fn with_generation<R>(
+            &self,
+            action: impl FnOnce(&UnpublishedGeneration<'_, '_>) -> R,
+        ) -> R {
+            let mut product = LockedProduct::bind(self.paths.clone(), &self.guard).unwrap();
+            let generation = product.create_unpublished("generation-1").unwrap();
+            self.populate(generation.path());
+            action(&generation)
+        }
+
+        fn with_owned_generation<R>(
+            &self,
+            action: impl FnOnce(UnpublishedGeneration<'_, '_>) -> R,
+        ) -> R {
+            let mut product = LockedProduct::bind(self.paths.clone(), &self.guard).unwrap();
+            let generation = product.create_unpublished("generation-1").unwrap();
+            self.populate(generation.path());
+            action(generation)
+        }
+
+        fn verify<'generation, 'product, 'lock>(
+            &self,
+            generation: &'generation UnpublishedGeneration<'product, 'lock>,
+        ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>> {
+            self.verify_with(
+                generation,
+                self.member_digest.clone(),
+                valid_receipt_context(),
+            )
+        }
+
+        fn verify_with<'generation, 'product, 'lock>(
+            &self,
+            generation: &'generation UnpublishedGeneration<'product, 'lock>,
+            expected_member_manifest_digest: String,
+            receipt_context: ReceiptActivationContext,
+        ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>> {
             let authority = TrustedReleaseAuthority {
                 expected_target: TARGET,
-                expected_member_manifest_digest: self.member_digest.clone(),
+                expected_member_manifest_digest,
                 expected_cohort_digest: self.cohort_digest.clone(),
                 trusted_component_lock_bytes: LOCK_BYTES.to_vec(),
                 trusted_component_lock_path: COMPONENT_LOCK_PATH.to_string(),
                 expected_component_lock_digest: self.lock_digest.clone(),
                 trusted_capsule_root: "a2a/capsule".to_string(),
             };
-            VerifiedReleaseSet::verify(ReleaseVerificationInput {
-                authority: &authority,
-                generation_root: self.root.path(),
-                generation_id: "generation-1",
-                member_manifest_bytes: &self.member,
-                cohort_descriptor_bytes: &self.descriptor,
-            })
+            VerifiedReleaseSet::verify(
+                generation,
+                ReleaseVerificationInput {
+                    authority: &authority,
+                    cohort_descriptor_bytes: &self.descriptor,
+                },
+                receipt_context,
+            )
+        }
+
+        fn verify_result(&self) -> Result<()> {
+            self.with_generation(|generation| self.verify(generation).map(|_| ()))
+        }
+
+        fn payload(&self, path: &str) -> &[u8] {
+            self.payloads
+                .iter()
+                .find_map(|(candidate, bytes)| (candidate == path).then_some(bytes.as_slice()))
+                .unwrap()
         }
 
         fn mutate_member(&mut self, mutate: impl FnOnce(&mut serde_json::Value)) {
             let mut value: serde_json::Value = serde_json::from_slice(&self.member).unwrap();
             mutate(&mut value);
             self.member = serde_json::to_vec(&value).unwrap();
-            write_file(self.root.path(), "release.json", &self.member);
             self.member_digest = sha256_hex(&self.member);
             self.descriptor = cohort_bytes(&self.member_digest);
             self.cohort_digest = cohort_descriptor_digest(&self.descriptor).unwrap();
         }
     }
 
+    fn valid_receipt_context() -> ReceiptActivationContext {
+        ReceiptActivationContext {
+            channel: Channel::SelfInstall,
+            bootstrap_created_ownership: true,
+            prior_seat: Some(PriorSeatIdentity {
+                generation: "generation-prior".to_string(),
+                dashboard_version: "0.1.3".to_string(),
+                pid: Some(42),
+            }),
+            consistency_generation: 7,
+            created_ms: 1_721_344_500_000,
+        }
+    }
+
+    fn restrict_test_directory(path: &Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            let whoami = std::process::Command::new("whoami.exe").output().unwrap();
+            assert!(whoami.status.success());
+            let user = String::from_utf8(whoami.stdout).unwrap();
+            let user_grant = format!("{}:(OI)(CI)F", user.trim());
+            let output = std::process::Command::new("icacls.exe")
+                .arg(path)
+                .args(["/remove:g", "*S-1-5-32-545"])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "icacls peer removal failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let output = std::process::Command::new("icacls.exe")
+                .arg(path)
+                .args([
+                    "/inheritance:r",
+                    "/grant:r",
+                    &user_grant,
+                    "/grant",
+                    "*S-1-5-18:(OI)(CI)F",
+                    "/grant",
+                    "*S-1-5-32-544:(OI)(CI)F",
+                ])
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "icacls restriction failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+    }
+
+    #[cfg(windows)]
+    fn permit_test_peer(path: &Path) {
+        let output = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .args(["/grant", "*S-1-5-32-545:RX"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "icacls peer grant failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(windows)]
+    fn remove_test_peer(path: &Path) {
+        let output = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .args(["/remove:g", "*S-1-5-32-545"])
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "icacls peer removal failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     fn write_file(root: &Path, relative: &str, bytes: &[u8]) {
         let path = root.join(relative.replace('/', std::path::MAIN_SEPARATOR_STR));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, bytes).unwrap();
+    }
+
+    fn clear_generation_contents(root: &Path) {
+        for entry in std::fs::read_dir(root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                clear_generation_contents(&path);
+                std::fs::remove_dir(path).unwrap();
+            } else {
+                std::fs::remove_file(path).unwrap();
+            }
+        }
     }
 
     #[cfg(unix)]
@@ -3151,89 +3858,129 @@ mod tests {
     #[test]
     fn complete_real_generation_constructs_verified_authority() {
         let fixture = Fixture::new();
-        let verified = fixture.verify().expect("complete generation verifies");
-        assert_eq!(verified.target(), TARGET);
-        assert_eq!(verified.release_set_id(), "release-2026.07.19");
-        assert_eq!(verified.generation_id(), "generation-1");
-        assert_eq!(verified.member_manifest_digest(), fixture.member_digest);
-        assert_eq!(verified.component_lock_digest(), fixture.lock_digest);
-        assert_eq!(verified.cohort_digest(), fixture.cohort_digest);
-        assert_eq!(verified.capsule_manifest().contract_version, "2.0");
+        fixture.with_generation(|generation| {
+            let verified = fixture
+                .verify(generation)
+                .expect("complete generation verifies");
+            assert_eq!(verified.target(), TARGET);
+            assert_eq!(verified.release_set_id(), "release-2026.07.19");
+            assert_eq!(verified.generation_id(), generation.generation());
+            assert_eq!(verified.member_manifest_digest(), fixture.member_digest);
+            assert_eq!(verified.component_lock_digest(), fixture.lock_digest);
+            assert_eq!(verified.cohort_digest(), fixture.cohort_digest);
+            assert_eq!(verified.dashboard_version(), "0.1.4");
+            assert_eq!(verified.dashboard_commit(), "a".repeat(40));
+            assert_eq!(
+                verified.dashboard_digest(),
+                sha256_hex(fixture.payload("bin/dashboard.exe"))
+            );
+            assert_eq!(verified.capsule_manifest().contract_version, "2.0");
+            let facts = verified.receipt_facts();
+            assert_eq!(facts.dashboard_version(), "0.1.4");
+            assert_eq!(facts.dashboard_commit(), "a".repeat(40));
+            assert_eq!(facts.dashboard_digest(), verified.dashboard_digest());
+            assert_eq!(facts.release_set_identity(), "release-2026.07.19");
+            assert_eq!(facts.release_set_member_digest(), fixture.member_digest);
+            assert_eq!(facts.component_lock_digest(), fixture.lock_digest);
+            assert_eq!(
+                facts.external_five_member_cohort_digest(),
+                fixture.cohort_digest
+            );
+            assert_eq!(facts.target(), TARGET);
+            assert_eq!(facts.a2a_identity(), verified.a2a_identity());
+            assert_eq!(facts.active_generation(), generation.generation());
+            assert_eq!(facts.channel(), Channel::SelfInstall);
+            assert!(facts.bootstrap_created_ownership());
+            assert_eq!(facts.prior_seat().unwrap().generation, "generation-prior");
+            assert_eq!(facts.consistency_generation(), 7);
+            assert_eq!(facts.created_ms(), 1_721_344_500_000);
+        });
     }
 
     #[test]
     fn missing_extra_and_same_size_wrong_bytes_are_rejected() {
         let fixture = Fixture::new();
-        std::fs::remove_file(fixture.root.path().join("bin/dashboard.exe")).unwrap();
-        assert!(matches!(
-            fixture.verify(),
-            Err(ManifestError::MissingFile(_)) | Err(ManifestError::Io { .. })
-        ));
+        fixture.with_generation(|generation| {
+            std::fs::remove_file(generation.path().join("bin/dashboard.exe")).unwrap();
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::MissingFile(_)) | Err(ManifestError::Io { .. })
+            ));
+        });
 
         let fixture = Fixture::new();
-        write_file(fixture.root.path(), "undeclared.bin", b"extra");
-        assert!(matches!(fixture.verify(), Err(ManifestError::ExtraFile(_))));
+        fixture.with_generation(|generation| {
+            write_file(generation.path(), "undeclared.bin", b"extra");
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::ExtraFile(_))
+            ));
+        });
 
         let mut fixture = Fixture::new();
         let unrecorded_tree_file = b"declared release file but absent A2A tree evidence";
-        write_file(
-            fixture.root.path(),
-            "a2a/capsule/unrecorded",
-            unrecorded_tree_file,
-        );
         fixture.mutate_member(|member| {
             member["file_digests"]["a2a/capsule/unrecorded"] =
                 serde_json::json!(sha256_hex(unrecorded_tree_file));
         });
-        assert!(matches!(fixture.verify(), Err(ManifestError::ExtraFile(_))));
+        fixture.with_generation(|generation| {
+            write_file(
+                generation.path(),
+                "a2a/capsule/unrecorded",
+                unrecorded_tree_file,
+            );
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::ExtraFile(_))
+            ));
+        });
 
         let fixture = Fixture::new();
-        write_file(
-            fixture.root.path(),
-            "bin/dashboard.exe",
-            b"xxxxxxxxxxxxxxxx",
-        );
-        assert!(matches!(
-            fixture.verify(),
-            Err(ManifestError::DigestDrift { .. })
-        ));
+        fixture.with_generation(|generation| {
+            write_file(generation.path(), "bin/dashboard.exe", b"xxxxxxxxxxxxxxxx");
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::DigestDrift { .. })
+            ));
+        });
     }
 
     #[test]
     fn symlink_payload_is_rejected_before_hashing() {
         let fixture = Fixture::new();
-        let link = fixture.root.path().join("bin/dashboard.exe");
-        std::fs::remove_file(&link).unwrap();
-        let target = fixture.root.path().join("bin/updater.exe");
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&target, &link).unwrap();
-        #[cfg(windows)]
-        std::os::windows::fs::symlink_file(&target, &link).unwrap();
-        assert!(matches!(
-            fixture.verify(),
-            Err(ManifestError::UnsafeFileType { .. })
-        ));
+        fixture.with_generation(|generation| {
+            let link = generation.path().join("bin/dashboard.exe");
+            std::fs::remove_file(&link).unwrap();
+            let target = generation.path().join("bin/updater.exe");
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_file(&target, &link).unwrap();
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::UnsafeFileType { .. })
+            ));
+        });
     }
 
     #[test]
     fn both_entrypoints_require_real_tree_evidence_and_executable_mode() {
         let fixture = Fixture::new();
-        std::fs::remove_file(fixture.root.path().join("a2a/capsule/bin/vaultspec-a2a")).unwrap();
-        assert!(fixture.verify().is_err());
+        fixture.with_generation(|generation| {
+            std::fs::remove_file(generation.path().join("a2a/capsule/bin/vaultspec-a2a")).unwrap();
+            assert!(fixture.verify(generation).is_err());
+        });
 
         let fixture = Fixture::new();
-        std::fs::remove_file(
-            fixture
-                .root
-                .path()
-                .join("a2a/capsule/bin/vaultspec-a2a-mcp"),
-        )
-        .unwrap();
-        assert!(fixture.verify().is_err());
+        fixture.with_generation(|generation| {
+            std::fs::remove_file(generation.path().join("a2a/capsule/bin/vaultspec-a2a-mcp"))
+                .unwrap();
+            assert!(fixture.verify(generation).is_err());
+        });
 
         let fixture = Fixture::with_entrypoint_mode("0644");
         assert!(matches!(
-            fixture.verify(),
+            fixture.verify_result(),
             Err(ManifestError::IdentityMismatch { .. })
         ));
     }
@@ -3241,44 +3988,333 @@ mod tests {
     #[test]
     fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
         let fixture = Fixture::new();
-        let initial = scan_generation(fixture.root.path(), "release.json").unwrap();
-        let relative = "a2a/component-manifest.json";
-        let path = fixture.root.path().join(relative);
-        let original = std::fs::read(&path).unwrap();
-        let replacement = vec![b'x'; original.len()];
-        std::fs::write(&path, replacement).unwrap();
-        assert!(matches!(
-            read_installed_bounded(
-                fixture.root.path(),
-                relative,
-                MAX_CAPSULE_MANIFEST_BYTES,
-                observed_file(&initial.files, relative).unwrap(),
-            ),
-            Err(ManifestError::GenerationChanged { .. })
-        ));
-        let final_snapshot = scan_generation(fixture.root.path(), "release.json").unwrap();
-        assert!(matches!(
-            require_unchanged_snapshot(&initial, &final_snapshot),
-            Err(ManifestError::GenerationChanged { .. })
-        ));
+        fixture.with_generation(|generation| {
+            let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
+            let relative = "a2a/component-manifest.json";
+            let path = generation.path().join(relative);
+            let original = std::fs::read(&path).unwrap();
+            let replacement = vec![b'x'; original.len()];
+            std::fs::write(&path, replacement).unwrap();
+            assert!(matches!(
+                read_installed_bounded(
+                    generation.path(),
+                    relative,
+                    MAX_CAPSULE_MANIFEST_BYTES,
+                    observed_file(&initial.files, relative).unwrap(),
+                ),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+            let final_snapshot = scan_generation(generation.path(), Some("release.json")).unwrap();
+            assert!(matches!(
+                require_unchanged_snapshot(&initial, &final_snapshot),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+        });
 
         let fixture = Fixture::new();
-        let initial = scan_generation(fixture.root.path(), "release.json").unwrap();
-        let relative = "a2a/component-manifest.json";
-        let initial_file = observed_file(&initial.files, relative).unwrap();
-        let path = fixture.root.path().join(relative);
-        let mut append = std::fs::OpenOptions::new().append(true).open(path).unwrap();
-        use std::io::Write;
-        append.write_all(b"growth").unwrap();
+        fixture.with_generation(|generation| {
+            let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
+            let relative = "a2a/component-manifest.json";
+            let initial_file = observed_file(&initial.files, relative).unwrap();
+            let path = generation.path().join(relative);
+            let mut append = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+            use std::io::Write;
+            append.write_all(b"growth").unwrap();
+            assert!(matches!(
+                read_installed_bounded(
+                    generation.path(),
+                    relative,
+                    initial_file.size,
+                    initial_file,
+                ),
+                Err(ManifestError::InputTooLarge { .. })
+            ));
+        });
+    }
+
+    #[test]
+    fn trusted_digest_uniquely_locates_member_and_rejects_declared_path_mismatch() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            assert!(matches!(
+                fixture.verify_with(generation, "f".repeat(64), valid_receipt_context()),
+                Err(ManifestError::MissingFile(_))
+            ));
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            write_file(generation.path(), "release-copy.json", &fixture.member);
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::InvalidField { field, .. })
+                    if field == "release member manifest"
+            ));
+        });
+
+        let mut fixture = Fixture::new();
+        fixture.mutate_member(|member| {
+            member["release_manifest"]["path"] = serde_json::json!("different.json");
+        });
         assert!(matches!(
-            read_installed_bounded(
-                fixture.root.path(),
-                relative,
-                initial_file.size,
-                initial_file,
-            ),
-            Err(ManifestError::InputTooLarge { .. })
+            fixture.verify_result(),
+            Err(ManifestError::IdentityMismatch { .. })
         ));
+    }
+
+    #[test]
+    fn invalid_receipt_context_is_rejected_before_release_authority() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let mut nonpositive_time = valid_receipt_context();
+            nonpositive_time.created_ms = 0;
+            assert!(matches!(
+                fixture.verify_with(
+                    generation,
+                    fixture.member_digest.clone(),
+                    nonpositive_time
+                ),
+                Err(ManifestError::InvalidField { field, .. }) if field == "receipt.created_ms"
+            ));
+
+            let mut zero_pid = valid_receipt_context();
+            zero_pid.prior_seat.as_mut().unwrap().pid = Some(0);
+            assert!(matches!(
+                fixture.verify_with(generation, fixture.member_digest.clone(), zero_pid),
+                Err(ManifestError::InvalidField { field, .. }) if field == "receipt.prior_seat.pid"
+            ));
+
+            let mut bad_generation = valid_receipt_context();
+            bad_generation.prior_seat.as_mut().unwrap().generation = "not valid".to_string();
+            assert!(matches!(
+                fixture.verify_with(
+                    generation,
+                    fixture.member_digest.clone(),
+                    bad_generation
+                ),
+                Err(ManifestError::InvalidField { field, .. })
+                    if field == "receipt.prior_seat.generation"
+            ));
+
+            let mut bad_version = valid_receipt_context();
+            bad_version.prior_seat.as_mut().unwrap().dashboard_version = "latest".to_string();
+            assert!(matches!(
+                fixture.verify_with(generation, fixture.member_digest.clone(), bad_version),
+                Err(ManifestError::FloatingSelector { field, .. })
+                    if field == "receipt.prior_seat.dashboard_version"
+            ));
+        });
+    }
+
+    #[test]
+    fn hard_link_aliases_are_rejected_from_same_handle_observations() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let dashboard = generation.path().join("bin/dashboard.exe");
+            let external_alias = fixture.paths.root().join("external-dashboard-alias");
+            match std::fs::hard_link(&dashboard, &external_alias) {
+                Ok(()) => assert!(matches!(
+                    fixture.verify(generation),
+                    Err(ManifestError::UnsafeFileType { .. })
+                )),
+                #[cfg(windows)]
+                Err(error) => assert!(matches!(error.raw_os_error(), Some(5 | 32))),
+                #[cfg(unix)]
+                Err(error) => panic!("real external hard link failed: {error}"),
+            }
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let dashboard = generation.path().join("bin/dashboard.exe");
+            let in_tree_alias = generation.path().join("bin/dashboard-alias.exe");
+            match std::fs::hard_link(dashboard, in_tree_alias) {
+                Ok(()) => assert!(matches!(
+                    fixture.verify(generation),
+                    Err(ManifestError::UnsafeFileType { .. })
+                )),
+                #[cfg(windows)]
+                Err(error) => assert!(matches!(error.raw_os_error(), Some(5 | 32))),
+                #[cfg(unix)]
+                Err(error) => panic!("real in-tree hard link failed: {error}"),
+            }
+        });
+    }
+
+    #[test]
+    fn activation_revalidation_rejects_payload_manifest_and_same_byte_identity_drift() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let verified = fixture.verify(generation).unwrap();
+            write_file(generation.path(), "bin/dashboard.exe", b"xxxxxxxxxxxxxxxx");
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let verified = fixture.verify(generation).unwrap();
+            let release = generation.path().join("release.json");
+            let mut bytes = std::fs::read(&release).unwrap();
+            bytes.push(b'\n');
+            std::fs::write(release, bytes).unwrap();
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let verified = fixture.verify(generation).unwrap();
+            let path = generation.path().join("bin/dashboard.exe");
+            let old = generation.path().join("bin/dashboard.old");
+            let bytes = std::fs::read(&path).unwrap();
+            std::fs::rename(&path, &old).unwrap();
+            std::fs::write(&path, &bytes).unwrap();
+            set_mode(&path, "0644");
+            std::fs::remove_file(old).unwrap();
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+        });
+    }
+
+    #[test]
+    fn retained_generation_substitution_is_detected_or_denied_by_platform_authority() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let verified = fixture.verify(generation).unwrap();
+            assert_eq!(verified.generation_id(), generation.generation());
+            let path = generation.path().to_path_buf();
+            let moved = fixture.paths.generations_dir().join("generation-1-moved");
+            #[cfg(unix)]
+            {
+                std::fs::rename(&path, &moved).unwrap();
+                std::fs::create_dir(&path).unwrap();
+                restrict_test_directory(&path);
+                assert!(matches!(
+                    verified.revalidate_for_activation(),
+                    Err(ManifestError::GenerationAuthority(_))
+                ));
+            }
+            #[cfg(windows)]
+            {
+                assert!(std::fs::rename(&path, &moved).is_err());
+                clear_generation_contents(&path);
+                assert!(std::fs::remove_dir(&path).is_err());
+            }
+        });
+    }
+
+    #[test]
+    fn permission_and_child_acl_drift_fail_closed() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let verified = fixture.verify(generation).unwrap();
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(generation.path(), std::fs::Permissions::from_mode(0o770))
+                    .unwrap();
+                assert!(matches!(
+                    verified.revalidate_for_activation(),
+                    Err(ManifestError::GenerationAuthority(_))
+                ));
+                restrict_test_directory(generation.path());
+            }
+            #[cfg(windows)]
+            {
+                let payload = generation.path().join("bin/dashboard.exe");
+                permit_test_peer(&payload);
+                assert!(matches!(
+                    verified.revalidate_for_activation(),
+                    Err(ManifestError::UnsafeFileType { .. })
+                ));
+                remove_test_peer(&payload);
+            }
+        });
+    }
+
+    #[test]
+    fn empty_directory_inventory_is_identity_bound_and_semantically_closed() {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let empty = generation.path().join("empty-state");
+            std::fs::create_dir(&empty).unwrap();
+            let verified = fixture.verify(generation).unwrap();
+            std::fs::remove_dir(&empty).unwrap();
+            std::fs::create_dir(&empty).unwrap();
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let verified = fixture.verify(generation).unwrap();
+            std::fs::create_dir(generation.path().join("new-empty-state")).unwrap();
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            std::fs::create_dir(generation.path().join("unsafe name")).unwrap();
+            assert!(matches!(
+                fixture.verify(generation),
+                Err(ManifestError::InvalidField { .. })
+            ));
+        });
+
+        #[cfg(unix)]
+        {
+            let fixture = Fixture::new();
+            fixture.with_generation(|generation| {
+                std::fs::create_dir(generation.path().join("CaseEmpty")).unwrap();
+                std::fs::create_dir(generation.path().join("caseempty")).unwrap();
+                assert!(matches!(
+                    fixture.verify(generation),
+                    Err(ManifestError::InvalidField { .. })
+                ));
+            });
+        }
+
+        #[cfg(windows)]
+        {
+            let fixture = Fixture::new();
+            fixture.with_generation(|generation| {
+                let empty = generation.path().join("empty-peer-state");
+                std::fs::create_dir(&empty).unwrap();
+                permit_test_peer(&empty);
+                assert!(matches!(
+                    fixture.verify(generation),
+                    Err(ManifestError::UnsafeFileType { .. })
+                ));
+                remove_test_peer(&empty);
+            });
+        }
+    }
+
+    #[test]
+    fn verified_borrow_release_allows_real_exact_empty_discard() {
+        let fixture = Fixture::new();
+        fixture.with_owned_generation(|generation| {
+            let verified = fixture.verify(&generation).unwrap();
+            assert_eq!(verified.generation_id(), generation.generation());
+            drop(verified);
+            clear_generation_contents(generation.path());
+            assert!(matches!(
+                generation.discard(),
+                DiscardOutcome::Removed { generation } if generation == "generation-1"
+            ));
+        });
     }
 
     #[test]
@@ -3328,14 +4364,14 @@ mod tests {
             serde_json::from_slice(&fixture.descriptor).unwrap();
         descriptor["members"].as_array_mut().unwrap().swap(0, 1);
         fixture.descriptor = serde_json::to_vec(&descriptor).unwrap();
-        assert!(fixture.verify().is_err());
+        assert!(fixture.verify_result().is_err());
 
         let mut fixture = Fixture::new();
         let mut descriptor: serde_json::Value =
             serde_json::from_slice(&fixture.descriptor).unwrap();
         descriptor["members"][1]["target"] = descriptor["members"][0]["target"].clone();
         fixture.descriptor = serde_json::to_vec(&descriptor).unwrap();
-        assert!(fixture.verify().is_err());
+        assert!(fixture.verify_result().is_err());
 
         let mut fixture = Fixture::new();
         let mut descriptor: serde_json::Value =
@@ -3344,7 +4380,7 @@ mod tests {
         fixture.descriptor = serde_json::to_vec(&descriptor).unwrap();
         fixture.cohort_digest = cohort_descriptor_digest(&fixture.descriptor).unwrap();
         assert!(matches!(
-            fixture.verify(),
+            fixture.verify_result(),
             Err(ManifestError::DigestDrift { .. })
         ));
     }
@@ -3356,7 +4392,7 @@ mod tests {
             member["a2a_component"]["component_lock"]["digest"] = serde_json::json!("0".repeat(64));
         });
         assert!(matches!(
-            fixture.verify(),
+            fixture.verify_result(),
             Err(ManifestError::DigestDrift { .. })
         ));
 
@@ -3365,7 +4401,7 @@ mod tests {
             member["dashboard"]["path"] = serde_json::json!("bin/../dashboard.exe");
         });
         assert!(matches!(
-            fixture.verify(),
+            fixture.verify_result(),
             Err(ManifestError::InvalidField { .. })
         ));
     }
@@ -3383,7 +4419,10 @@ mod tests {
             fixture.mutate_member(|member| {
                 *member.pointer_mut(pointer).unwrap() = serde_json::json!("0".repeat(64));
             });
-            assert!(fixture.verify().is_err(), "{pointer} drift must reject");
+            assert!(
+                fixture.verify_result().is_err(),
+                "{pointer} drift must reject"
+            );
         }
     }
 
@@ -3391,24 +4430,22 @@ mod tests {
     fn closed_versions_assets_and_positive_artifact_sizes_fail_closed() {
         let mut fixture = Fixture::new();
         fixture.mutate_member(|member| member["schema_version"] = serde_json::json!("1.0"));
-        assert!(fixture.verify().is_err());
+        assert!(fixture.verify_result().is_err());
 
         let mut fixture = Fixture::new();
         fixture.mutate_member(|member| member["dashboard"]["size"] = serde_json::json!(0));
-        assert!(fixture.verify().is_err());
+        assert!(fixture.verify_result().is_err());
 
         let fixture = Fixture::new();
-        let capsule_path = fixture.root.path().join("a2a/component-manifest.json");
         let mut capsule: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&capsule_path).unwrap()).unwrap();
+            serde_json::from_slice(fixture.payload("a2a/component-manifest.json")).unwrap();
         let duplicate = capsule["assets"][0].clone();
         capsule["assets"].as_array_mut().unwrap().push(duplicate);
         assert!(CapsuleManifest::parse(&serde_json::to_string(&capsule).unwrap()).is_err());
 
         let fixture = Fixture::new();
-        let capsule_path = fixture.root.path().join("a2a/component-manifest.json");
         let mut capsule: serde_json::Value =
-            serde_json::from_slice(&std::fs::read(&capsule_path).unwrap()).unwrap();
+            serde_json::from_slice(fixture.payload("a2a/component-manifest.json")).unwrap();
         capsule["compatibility"]["migration_range"]["head"] = serde_json::json!("0009");
         capsule["consistency_group"]["stores"][0]["schema_version"] = serde_json::json!("0009");
         assert!(CapsuleManifest::parse(&serde_json::to_string(&capsule).unwrap()).is_err());
