@@ -385,6 +385,29 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         ) {
             eprintln!("vaultspec serve: a2a gateway reconcile: {outcome}");
         }
+
+        // Durable A2A lease reconciliation at seated boot (a2a-product-
+        // provisioning W02.P05.S161). Revoke every run-scoped token bundle whose
+        // bounded lifetime elapsed while this dashboard was down, and prune
+        // terminal rows, so no lease outlives its window across a restart. This
+        // is deliberately GATEWAY-INDEPENDENT: it touches only the local lease
+        // store, so a temporarily unavailable compatible gateway cannot delay
+        // it and it never blocks readiness (the bounded op is local SQLite).
+        // Gateway-authoritative run-status reconciliation of still-unresolved
+        // leases (S160) stays on the per-request path, which degrades honestly
+        // when the sibling is down rather than stalling this seated boot.
+        let leases = state.a2a_run_leases.clone();
+        let expired = tokio::task::spawn_blocking(move || {
+            let now = app::now_ms();
+            let expired = leases.expire_elapsed(now).unwrap_or(0);
+            let _ = leases.maintain(now);
+            expired
+        })
+        .await
+        .unwrap_or(0);
+        if expired > 0 {
+            eprintln!("vaultspec serve: a2a lease reconcile revoked {expired} elapsed lease(s)");
+        }
     }
 
     // The index is done and the wire is about to serve: flip discovery to
