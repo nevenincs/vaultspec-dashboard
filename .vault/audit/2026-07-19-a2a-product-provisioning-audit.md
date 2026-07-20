@@ -573,3 +573,62 @@ immutability is still proven and the read-only-attach behavior is covered by the
 - The earlier per-response filesystem-read MEDIUM is resolved by the
   one-second-TTL agent-snapshot memo landed at `bc6461c9a6`; the type-alias here
   is a trivial, correct refactor of that cache type.
+
+## `W02 P05` settlement-route review
+
+Status: APPROVED
+
+Reviewed the attach-control terminal-settlement route (S41/S152/S153/S154):
+`1de7af945e` (code) + `fd1a687ecc` (rustfmt-only fix to a2a_run_leases.rs) +
+`31fd789bbf` (exec records). The cross-carried S40/S160 methods in
+a2a_run_leases.rs (another lane's in-flight commit_reserved_run/maintain/v3) were
+out of scope. No critical/high/medium findings.
+
+- Auth fail-closed by construction: the handler takes `AttachControlAuth`
+  (`FromRequestParts`) first, so it runs before the JSON body is read and the
+  handler body is unreachable unless auth passes; failure is 401.
+- Constant-time credential verify: `Credential::verify` iterates the full fixed
+  64-hex secret length, XOR-accumulates, folds the length compare, no early
+  return - no length/prefix timing oracle.
+- Right credentials rejected: only the attach-control file is read; machine
+  bearer, worker-IPC, and missing/malformed headers all 401 (all four classes
+  asserted, attach-control accepted).
+- Routing: /internal is out of `API_PREFIXES` (bearer_gate passes it through, as
+  the gateway holds no machine bearer and self-authenticates) and out of the
+  six-verb whitelist; S154 chains `INTERNAL_PREFIXES` into the SPA-fallback guard
+  so a misrouted callback returns 404 JSON+tiers, never a silent SPA 2xx (the
+  dangerous "gateway believes it settled" path is closed).
+- settle_terminal: terminal-gated (non-terminal → 422 before any DB touch,
+  INPUT_REQUIRED retained), idempotent (repeat → AlreadyTerminal), settles by
+  run_id AND verifies the callback lease_id against the stored gateway_lease_id
+  (mismatch or None-bound → LeaseMismatch, settles nothing), revokes exactly the
+  persisted hashed bundle (cross-run isolation proven), no raw token read/stored/
+  logged.
+- Wire/bounds: success + error envelopes carry tiers; a 1 MiB DefaultBodyLimit
+  bounds the callback body; the v2 migration is additive/ledgered.
+- Tests drive the production router + real AppState + real bootstrapped
+  CredentialStore + real SQLite repo, no mocks, resolving the token before/after
+  to prove revocation substantively.
+
+### settlement-error-observability | low | A swallowed DB error is reported as "no lease" with no signal
+
+The `spawn_blocking` settlement result collapses both a task panic and a
+rusqlite error into `Unknown` → a 200 `{settled:false, "no lease for run"}` that
+logs nothing, conflating "operation failed" with "no lease exists". A transient
+DB failure would leave the hashed bundle live until its bounded expiry with no
+operator signal. Crash-safety still holds (bounded expiry + reconciliation +
+the 200-always design), so it is non-blocking, but a `tracing::warn!` on the
+error/panic arm is a worthwhile follow-up. Assigned as a quick fix.
+
+### attach-cred-read-per-callback | low | verify_attach_control reads the credential file per callback
+
+`verify_attach_control` does a filesystem read of the attach-control credential
+on each callback. Low-frequency (one per terminal run), so acceptable; noted only
+if that path ever becomes hot. Informational.
+
+### Verification
+
+- Auth matrix, routing, settle_terminal correctness, wire/bounds, and test
+  integrity all confirmed by source inspection against the committed diff; gate
+  was green at commit time (build + `a2a_terminal_settlement`/`a2a_settlement`
+  4/0 + clippy `--lib -D warnings` + fmt).
