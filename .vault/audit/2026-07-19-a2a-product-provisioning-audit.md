@@ -756,3 +756,77 @@ resolve + final guarded reread - and is recorded here so the decision is on file
 - Correctness reviewed by source inspection against the receipt/generation/
   directory-authority ADRs (single-link receipt authority, tear-safe activation,
   retained directory mutation); the full product gate was green at commit.
+
+## `W03 P06` make-mutable-state-transactional review
+
+Status: APPROVED (after one revision cycle)
+
+Reviewed the transactional external-update phase (S49-S56 + S156-S158): snapshot,
+migration, four sealed channel authorities, the ordered durable transaction state
+machine, deterministic crash recovery, and real-SQLite crash proofs. Commits
+`65c93863c8`, `f8e96a235a`, `2b930c906b`, `a66a10ed17`, `d6afc4bea0`, `1f98d49e61`,
+`8751de5b12`; revision `41ba93ce74`. Full product gate green (145 lib + integration,
+clippy --all-targets -D warnings, fmt).
+
+- Tear-safety / no split release is SOUND: the fixed active-receipt journal is the
+  sole commit oracle - recovery decides commit from the receipt, never the phase
+  marker; the durable descriptor is persisted before each effect and the guard
+  reproven every step; a crash at Activated with receipt-not-committed rolls back
+  and re-selects prior, a crash after receipt-commit before the Accepted marker
+  rolls forward; self-install activation is receipt-selection-only, so restoring the
+  snapshotted journal fully reverts it. No pre-commit window leaves a mixed set;
+  rollback/recovery are idempotent (whole-group reverify first).
+- Test integrity confirmed CLEAN by independent grep + inspection: NO doubles - the
+  S52/S53 units and S54-56 integration drive real SQLite primary+checkpoint
+  (asserted row-by-row after restore), a real spawned+killed owned-runtime child, a
+  real nonexistent-program migration spawn-failure driving auto-rollback, a real
+  crash-by-drop then reacquire+reopen, and a real settled receipt via
+  publish_active_receipt. Nothing passes while the real behavior is broken.
+- Sealed InstallProvenanceAuthority (provisioning-authority D1): pub(crate) with
+  private fields + private mint, constructible only by the four channel-adapter
+  submodules; the S51 edit CLOSED a prior freely-constructible hole.
+- Channel adapters: closed &'static str op set, PinnedArtifact is identity+SHA-256
+  never a path, every op gated on a real-file-proven ProvenManager, no file-writing
+  API; live execution cleanly deferred to W04 as inert evidence.
+- Bounds/safety: migration invocation output-cap AND wall-timeout bounded with a
+  Windows job-object / Unix killpg tree-kill; snapshot members + descriptor byte-
+  bounded; no unsafe, no raw secrets. Materialize+receipt-commit correctly left as a
+  typed seam (ReadyToActivate) without implementing the unaccepted archive-
+  materialization ADR.
+
+### snapshot-lifecycle | high (RESOLVED in 41ba93ce74) | snapshots never reclaimed + hard-fail re-capture
+
+The original capture used create-new-private-dir (AlreadyExists on any pre-existing
+snapshot generation) and nothing ever removed a snapshot, so a retry after
+rollback/crash wedged the update flow forever and successful updates accumulated
+unboundedly (~2 GiB/store/update - a resource-bounds violation). Fail-closed (never
+a split release), so not critical. Fixed: `reclaim_consistency_snapshot` (no-follow
+root check, idempotent) wired after clear_descriptor in rollback + all three
+recovery paths; capture reclaims an incomplete manifest-less residue but fails
+closed refusing to overwrite a complete snapshot; a fail-then-retry-at-same-
+generation proof + reclaim/residue/idempotency tests added. Re-check confirmed
+resolved.
+
+### migration-tree-kill-windows | medium (RESOLVED) | migration timeout leaked descendants on Windows
+
+The bounded migration runner killed only the direct child on Windows, leaking
+alembic/python descendants on a timeout/output-breach. Fixed: a MigrationChild job-
+object wrapper (command_group GroupChild, the same contract GatewayProcess uses);
+Unix keeps killpg. Piped capture preserved.
+
+### rollback-reclaim-io-failure | low (W04 contract note) | reclaim-after-clear leaves a complete snapshot if dir-removal I/O fails
+
+rollback_in_place reclaims AFTER clear_descriptor (the correct ordering - reclaim-
+before-clear would break recovery's roll-back which needs the snapshot until the
+descriptor clears). If the remove_dir_all itself returns Err, the descriptor is
+already gone so recovery won't re-reclaim, leaving a complete snapshot that would
+refuse a same-generation retry. Near-zero failure surface (owned private dir, no
+open handles, same-user guard); resolvable by a fresh generation. Record in the W04
+activation contract; not a P06 blocker.
+
+### Verification
+
+- Correctness + test integrity reviewed against the sealed-provisioning ADRs and the
+  receipt/generation authority; the full product gate was green at both the initial
+  commit set and the revision. All three findings re-checked as resolved with no
+  regression.
