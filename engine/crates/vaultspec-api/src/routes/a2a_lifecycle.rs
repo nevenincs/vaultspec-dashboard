@@ -852,6 +852,20 @@ impl LifecyclePlane {
         }
     }
 
+    /// Verify a presented credential against the dashboard-created ATTACH-CONTROL
+    /// credential (a2a-product-provisioning W02.P05.S41/S153). The gateway
+    /// authenticates its terminal-settlement callback with exactly this credential
+    /// — never the worker-IPC secret. Constant-time compare against the stored
+    /// secret; a missing/unreadable credential or any mismatch is `false`
+    /// (fail-closed), so a worker-IPC or unrelated credential is rejected.
+    pub(crate) fn verify_attach_control(&self, presented: &str) -> bool {
+        let store = CredentialStore::new(self.paths.credentials_dir());
+        match store.read_attach_control() {
+            Ok(cred) => cred.verify(presented),
+            Err(_) => false,
+        }
+    }
+
     /// Recover a stale owned discovery record under the install lock (prove the
     /// recorded process dead, quarantine the owner-matched stale state), then
     /// start the owned gateway.

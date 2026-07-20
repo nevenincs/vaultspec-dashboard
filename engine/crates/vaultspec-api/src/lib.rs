@@ -264,6 +264,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/a2a/lifecycle/jobs/{id}",
             get(routes::a2a_lifecycle::a2a_lifecycle_job),
         )
+        // The authenticated A2A terminal-settlement callback (a2a-product-
+        // provisioning W02.P05.S41/S153): the RECEIVING end of the gateway's
+        // fire-and-forget terminal-settlement emission. A DISTINCT internal
+        // namespace — NOT a sixth `/ops/a2a` public verb, and NOT machine-bearer-
+        // gated: `/internal` is deliberately ABSENT from `spa::API_PREFIXES`, so
+        // the machine gate passes it through and the handler authenticates the
+        // dashboard-created ATTACH-CONTROL credential itself (rejecting the machine
+        // bearer, the worker-IPC secret, and unrelated credentials). Its prefix is
+        // reserved from the SPA fallback so a misrouted callback fails loud (S154).
+        .route(
+            "/internal/a2a/run-terminal",
+            post(routes::a2a_settlement::a2a_run_terminal),
+        )
         // The framework acquisition + provisioning plane (project-provisioning
         // ADR): a served status projection over a registry-resolved target, and
         // job-shaped install/upgrade/migrate/acquire that BROKERS the owning

@@ -213,12 +213,22 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/settings",
 ];
 
+/// Prefixes reserved from the SPA fallback but NOT on the machine-`bearer_gate`
+/// boundary (a2a-product-provisioning W02.P05.S154). The A2A terminal-settlement
+/// callback (`/internal/a2a/run-terminal`) is authenticated by the attach-control
+/// credential in its own handler, so it must NOT be an `API_PREFIXES` machine-
+/// gated path (the gateway holds no machine bearer) — yet a MISROUTED
+/// `/internal/*` callback must fail loud as a 404, never be served the SPA shell.
+/// This list is checked only by the fallback, never by `bearer_gate`.
+pub(crate) const INTERNAL_PREFIXES: &[&str] = &["/internal"];
+
 /// The SPA fallback handler: serve the asset when it exists, otherwise
 /// `index.html` (deep links resolve client-side, contract R2).
 pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Response {
     let path = uri.path();
     if API_PREFIXES
         .iter()
+        .chain(INTERNAL_PREFIXES.iter())
         .any(|p| path == *p || path.starts_with(&format!("{p}/")))
     {
         return (

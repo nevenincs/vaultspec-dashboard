@@ -118,6 +118,7 @@ fn percent_encode(s: &str) -> String {
 
 mod a2a_lifecycle;
 mod a2a_runtime_identity;
+mod a2a_terminal_settlement;
 mod auth_and_query;
 mod browser_and_contract;
 mod provision_and_recovery;

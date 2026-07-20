@@ -32,7 +32,8 @@ use crate::authoring::model::{ActorId, ActorRef};
 const DB_FILENAME: &str = "a2a-run-leases.sqlite3";
 const DATA_DIR: &str = "a2a-run-leases";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 3;
+const TERMINAL_RETENTION_MS: i64 = 30 * 24 * 3_600 * 1_000;
 
 /// The lifecycle state of a run-token lease. `Reserved` is pre-commit (the
 /// gateway has not yet returned an authoritative run id); `Active` binds the
@@ -58,10 +59,11 @@ impl LeaseState {
     }
 
     /// Whether a lease in this state may still resolve a presented token. Only a
-    /// `Reserved` (dispatch in flight) or `Active` lease resolves; a terminal
-    /// lease never does.
+    /// Only a durably committed `Active` lease resolves. Pre-commit hashes are
+    /// deliberately inert, so a crash or ambiguous response cannot authorize an
+    /// actor before the local run/lease binding is durable.
     fn is_resolvable(self) -> bool {
-        matches!(self, LeaseState::Reserved | LeaseState::Active)
+        matches!(self, LeaseState::Active)
     }
 }
 
@@ -85,6 +87,8 @@ pub struct LeaseReservation {
     pub reservation_id: String,
     /// The token-bundle identity.
     pub bundle_id: String,
+    /// Dashboard-stable run id known before commit, used for crash repair.
+    pub run_id: Option<String>,
     /// The per-role token hashes + actor identities.
     pub tokens: Vec<LeaseToken>,
     /// Bounded lifetime: the lease is revoked-by-expiry after this instant.
@@ -120,8 +124,11 @@ pub enum SettleOutcome {
     Settled { revoked: usize },
     /// The lease was already terminal (settled or revoked); a no-op.
     AlreadyTerminal,
-    /// No lease matched the identity.
+    /// No lease matched the run identity.
     Unknown,
+    /// A lease matched the run id but the callback's gateway lease id did not
+    /// match the one bound at commit; nothing was settled.
+    LeaseMismatch,
 }
 
 /// Why a lease-repository operation failed.
@@ -168,11 +175,40 @@ struct Migration {
     sql: &'static str,
 }
 
-const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "bootstrap",
-    sql: BOOTSTRAP_SCHEMA,
-}];
+const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "bootstrap",
+        sql: BOOTSTRAP_SCHEMA,
+    },
+    Migration {
+        version: 2,
+        name: "gateway_lease_id",
+        sql: GATEWAY_LEASE_ID_SCHEMA,
+    },
+    Migration {
+        version: 3,
+        name: "unresolved_run_identity",
+        sql: UNRESOLVED_RUN_ID_SCHEMA,
+    },
+];
+
+const UNRESOLVED_RUN_ID_SCHEMA: &str = "
+CREATE UNIQUE INDEX idx_a2a_run_leases_unresolved_run
+    ON a2a_run_leases (run_id)
+    WHERE run_id IS NOT NULL AND state IN ('reserved','active');
+";
+
+/// v2 (W02.P05.S39/S41): the gateway MINTS the non-secret run-scoped `lease_id`
+/// and returns it at commit; the terminal-settlement callback keys by it. Stored
+/// here at commit so settlement can verify the callback's lease id against the
+/// bound one (defense-in-depth atop the attach-control auth). Appended as a
+/// ledgered migration — the v1 schema shipped, so v1 is never rewritten.
+const GATEWAY_LEASE_ID_SCHEMA: &str = "
+ALTER TABLE a2a_run_leases ADD COLUMN gateway_lease_id TEXT;
+CREATE INDEX idx_a2a_run_leases_gateway_lease
+    ON a2a_run_leases (gateway_lease_id) WHERE gateway_lease_id IS NOT NULL;
+";
 
 const BOOTSTRAP_SCHEMA: &str = "
 CREATE TABLE a2a_run_lease_migrations (
@@ -262,15 +298,17 @@ impl LeaseRepo {
     pub fn reserve(&self, reservation: &LeaseReservation, now_ms: i64) -> Result<()> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
+        maintain_transaction(&tx, now_ms)?;
         tx.execute(
             "INSERT INTO a2a_run_leases
                 (lease_id, reservation_id, bundle_id, run_id, thread_id, state,
                  expiry_ms, created_at_ms, updated_at_ms)
-             VALUES (?1, ?2, ?3, NULL, NULL, 'reserved', ?4, ?5, ?5)",
+             VALUES (?1, ?2, ?3, ?4, NULL, 'reserved', ?5, ?6, ?6)",
             (
                 &reservation.lease_id,
                 &reservation.reservation_id,
                 &reservation.bundle_id,
+                &reservation.run_id,
                 reservation.expiry_ms,
                 now_ms,
             ),
@@ -293,23 +331,84 @@ impl LeaseRepo {
         Ok(())
     }
 
-    /// Commit the lease: bind the authoritative A2A run + thread id and move to
-    /// `Active`. Only a `Reserved` lease commits; a repeat is a no-op.
+    /// Commit the lease: bind the authoritative A2A run + thread id AND the
+    /// gateway-minted non-secret lease id (the identity the terminal callback
+    /// keys by), then move to `Active`. Only a `Reserved` lease commits; a repeat
+    /// is a no-op (S39).
     pub fn commit(
         &self,
         lease_id: &str,
         run_id: &str,
         thread_id: Option<&str>,
+        gateway_lease_id: &str,
         now_ms: i64,
     ) -> Result<bool> {
         let conn = self.lock();
         let changed = conn.execute(
             "UPDATE a2a_run_leases
-                SET run_id = ?2, thread_id = ?3, state = 'active', updated_at_ms = ?4
+                SET run_id = ?2, thread_id = ?3, gateway_lease_id = ?4,
+                    state = 'active', updated_at_ms = ?5
               WHERE lease_id = ?1 AND state = 'reserved'",
-            (lease_id, run_id, thread_id, now_ms),
+            (lease_id, run_id, thread_id, gateway_lease_id, now_ms),
         )?;
         Ok(changed > 0)
+    }
+
+    /// Repair the one pre-commit local row for a remotely durable run after a
+    /// dashboard restart or lost local commit write. The stable run id was
+    /// recorded at reserve time; the gateway's status supplies the non-secret
+    /// lease id. A repeat on an already-active row is a no-op.
+    pub fn commit_reserved_run(
+        &self,
+        run_id: &str,
+        gateway_lease_id: &str,
+        now_ms: i64,
+    ) -> Result<bool> {
+        let conn = self.lock();
+        let changed = conn.execute(
+            "UPDATE a2a_run_leases
+                SET gateway_lease_id = ?2, state = 'active', updated_at_ms = ?3
+              WHERE run_id = ?1 AND state = 'reserved'",
+            (run_id, gateway_lease_id, now_ms),
+        )?;
+        Ok(changed > 0)
+    }
+
+    /// Fail closed on process restart: a reserved row never completed its local
+    /// binding transaction, and reserved token hashes are intentionally inert.
+    pub fn revoke_all_reserved(&self, now_ms: i64) -> Result<usize> {
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        let reserved: Vec<String> = {
+            let mut stmt = tx.prepare(
+                "SELECT lease_id FROM a2a_run_leases WHERE state = 'reserved'",
+            )?;
+            stmt.query_map([], |r| r.get::<_, String>(0))?
+                .collect::<std::result::Result<Vec<_>, _>>()?
+        };
+        for lease_id in &reserved {
+            tx.execute(
+                "DELETE FROM a2a_run_lease_tokens WHERE lease_id = ?1",
+                [lease_id],
+            )?;
+            tx.execute(
+                "UPDATE a2a_run_leases SET state = 'revoked', updated_at_ms = ?2
+                  WHERE lease_id = ?1",
+                (lease_id, now_ms),
+            )?;
+        }
+        maintain_transaction(&tx, now_ms)?;
+        tx.commit()?;
+        Ok(reserved.len())
+    }
+
+    /// Run bounded expiry and terminal-row retention maintenance explicitly.
+    pub fn maintain(&self, now_ms: i64) -> Result<()> {
+        let mut conn = self.lock();
+        let tx = conn.transaction()?;
+        maintain_transaction(&tx, now_ms)?;
+        tx.commit()?;
+        Ok(())
     }
 
     /// Resolve a presented RAW token to its actor + lease identity, if the lease
@@ -375,22 +474,42 @@ impl LeaseRepo {
         Ok(changed > 0)
     }
 
-    /// Idempotently settle a lease terminal by its authoritative run id (S41):
-    /// mark `Settled` and revoke exactly its hashed bundle. A repeat on an
-    /// already-terminal lease is `AlreadyTerminal`; an unknown run is `Unknown`.
-    pub fn settle_terminal_by_run(&self, run_id: &str, now_ms: i64) -> Result<SettleOutcome> {
+    /// Idempotently settle a lease terminal from an attach-control-authenticated
+    /// callback (S41): look up by the authoritative run id, VERIFY the callback's
+    /// gateway lease id matches the one bound at commit (defense-in-depth atop the
+    /// attach-control auth), then mark `Settled` and revoke exactly its hashed
+    /// bundle. A repeat on an already-terminal lease is `AlreadyTerminal`; an
+    /// unknown run is `Unknown`; a lease-id mismatch is `LeaseMismatch` (settle
+    /// nothing).
+    pub fn settle_terminal(
+        &self,
+        run_id: &str,
+        gateway_lease_id: &str,
+        now_ms: i64,
+    ) -> Result<SettleOutcome> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
-        let existing: Option<(String, String)> = tx
+        let existing: Option<(String, String, Option<String>)> = tx
             .query_row(
-                "SELECT lease_id, state FROM a2a_run_leases WHERE run_id = ?1",
+                "SELECT lease_id, state, gateway_lease_id FROM a2a_run_leases WHERE run_id = ?1",
                 [run_id],
-                |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                |r| {
+                    Ok((
+                        r.get::<_, String>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                    ))
+                },
             )
             .optional()?;
-        let Some((lease_id, state)) = existing else {
+        let Some((lease_id, state, bound_gateway_lease)) = existing else {
             return Ok(SettleOutcome::Unknown);
         };
+        // The callback's lease id must match the one bound at commit. A mismatch
+        // (or a run committed without a bound lease id) settles nothing.
+        if bound_gateway_lease.as_deref() != Some(gateway_lease_id) {
+            return Ok(SettleOutcome::LeaseMismatch);
+        }
         if !matches!(
             LeaseState::from_str(&state),
             Some(LeaseState::Reserved | LeaseState::Active)
@@ -465,6 +584,29 @@ impl LeaseRepo {
             .optional()?;
         Ok(state.and_then(|s| LeaseState::from_str(&s)))
     }
+}
+
+fn maintain_transaction(tx: &rusqlite::Transaction<'_>, now_ms: i64) -> Result<()> {
+    tx.execute(
+        "DELETE FROM a2a_run_lease_tokens
+          WHERE lease_id IN (
+              SELECT lease_id FROM a2a_run_leases
+               WHERE state IN ('reserved','active') AND expiry_ms < ?1
+          )",
+        [now_ms],
+    )?;
+    tx.execute(
+        "UPDATE a2a_run_leases SET state = 'revoked', updated_at_ms = ?1
+          WHERE state IN ('reserved','active') AND expiry_ms < ?1",
+        [now_ms],
+    )?;
+    let cutoff = now_ms.saturating_sub(TERMINAL_RETENTION_MS);
+    tx.execute(
+        "DELETE FROM a2a_run_leases
+          WHERE state IN ('settled','revoked') AND updated_at_ms < ?1",
+        [cutoff],
+    )?;
+    Ok(())
 }
 
 fn row_to_lease(r: &rusqlite::Row<'_>) -> rusqlite::Result<LeaseRow> {
@@ -558,6 +700,7 @@ mod tests {
                 lease_id: lease.to_string(),
                 reservation_id: reservation_id.to_string(),
                 bundle_id: format!("bundle-{lease}"),
+                run_id: Some(format!("run-{lease}")),
                 tokens,
                 expiry_ms,
             },
@@ -574,13 +717,12 @@ mod tests {
             let (res, raws) =
                 reservation("lease-1", "run-req-1", &["researcher", "planner"], 10_000);
             repo.reserve(&res, 1_000).unwrap();
-            // A reserved lease already resolves its tokens (dispatch in flight).
-            let resolved = repo.resolve_token(&raws[0], 1_500).unwrap().unwrap();
-            assert_eq!(resolved.actor.id.as_str(), "agent:researcher");
-            assert_eq!(resolved.lease_id, "lease-1");
-            // Commit binds the authoritative run id.
+            // A reserved lease is inert until the authoritative run binding is
+            // durable, closing the crash/response-loss authorization window.
+            assert!(repo.resolve_token(&raws[0], 1_500).unwrap().is_none());
+            // Commit binds the authoritative run id + the gateway lease id.
             assert!(
-                repo.commit("lease-1", "run-abc", Some("thread-xyz"), 2_000)
+                repo.commit("lease-1", "run-abc", Some("thread-xyz"), "gw-abc", 2_000)
                     .unwrap()
             );
             assert_eq!(
@@ -588,12 +730,18 @@ mod tests {
                 Some(LeaseState::Active)
             );
         }
-        // Reopen (durability): the migrated schema + rows survive a fresh handle.
+        // Reopen (durability): the migrated (v2) schema + rows survive a fresh handle.
         let repo = LeaseRepo::open_at(&path).unwrap();
         let (_res, raws) = reservation("lease-1", "run-req-1", &["researcher", "planner"], 10_000);
         assert!(repo.resolve_token(&raws[1], 3_000).unwrap().is_some());
+        // A callback lease-id mismatch settles nothing.
+        assert_eq!(
+            repo.settle_terminal("run-abc", "gw-WRONG", 3_500).unwrap(),
+            SettleOutcome::LeaseMismatch
+        );
+        assert!(repo.resolve_token(&raws[0], 3_600).unwrap().is_some());
         // Idempotent terminal settlement revokes the exact bundle; a repeat is a no-op.
-        let out = repo.settle_terminal_by_run("run-abc", 4_000).unwrap();
+        let out = repo.settle_terminal("run-abc", "gw-abc", 4_000).unwrap();
         assert_eq!(out, SettleOutcome::Settled { revoked: 2 });
         assert_eq!(
             repo.lease_state("lease-1").unwrap(),
@@ -604,7 +752,7 @@ mod tests {
             "settled tokens no longer resolve"
         );
         assert_eq!(
-            repo.settle_terminal_by_run("run-abc", 5_000).unwrap(),
+            repo.settle_terminal("run-abc", "gw-abc", 5_000).unwrap(),
             SettleOutcome::AlreadyTerminal
         );
     }
@@ -617,10 +765,12 @@ mod tests {
         let (res_b, raws_b) = reservation("lease-b", "req-b", &["researcher"], 10_000);
         repo.reserve(&res_a, 1_000).unwrap();
         repo.reserve(&res_b, 1_000).unwrap();
-        repo.commit("lease-a", "run-a", None, 1_100).unwrap();
-        repo.commit("lease-b", "run-b", None, 1_100).unwrap();
+        repo.commit("lease-a", "run-a", None, "gw-a", 1_100)
+            .unwrap();
+        repo.commit("lease-b", "run-b", None, "gw-b", 1_100)
+            .unwrap();
         // Settle run A: its bundle is revoked; run B (same role actor) is untouched.
-        repo.settle_terminal_by_run("run-a", 2_000).unwrap();
+        repo.settle_terminal("run-a", "gw-a", 2_000).unwrap();
         assert!(repo.resolve_token(&raws_a[0], 2_100).unwrap().is_none());
         assert!(
             repo.resolve_token(&raws_b[0], 2_100).unwrap().is_some(),
@@ -634,7 +784,8 @@ mod tests {
         let repo = LeaseRepo::open(dir.path()).unwrap();
         let (res, raws) = reservation("lease-exp", "req-exp", &["executor"], 5_000);
         repo.reserve(&res, 1_000).unwrap();
-        repo.commit("lease-exp", "run-exp", None, 1_100).unwrap();
+        repo.commit("lease-exp", "run-exp", None, "gw-exp", 1_100)
+            .unwrap();
         // Before expiry it resolves; the reconciliation walk lists it.
         assert!(repo.resolve_token(&raws[0], 4_000).unwrap().is_some());
         assert_eq!(repo.unresolved_leases().unwrap().len(), 1);
