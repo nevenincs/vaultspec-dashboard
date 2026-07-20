@@ -11,6 +11,15 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
 ---
 
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 <!-- RETIRED: S08, S162 -->
 
@@ -57,7 +66,7 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 - [x] `W01.P01.S169` - Bind a non-clone retained LockedProduct authority to the verified installation guard, retain product generation-parent receipt-parent and unpublished-generation filesystem identities, reject the active generation, exclusively create its final owner-private no-follow name, derive the exact maximum-eight nonactive count through the active reader, and return removed or retained poisoned authority from identity-safe bounded discard; `engine/crates/vaultspec-product/src/generation.rs`.
 - [x] `W01.P01.S170` - Verify a release set only through a borrow of the retained unpublished-generation authority, make the verified release set lifetime-bound to that exact generation, and retain its final filesystem snapshot plus complete receipt facts through activation; `engine/crates/vaultspec-product/src/manifest.rs`.
 - [x] `W01.P01.S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review; `engine/crates/vaultspec-windows-authority`.
-- [ ] `W01.P01.S172` - Construct an opaque active receipt only from the lifetime-bound verified release set, durably publish it by exact positional overwrite and synchronization of only the inactive fixed journal slot or by the D9-authorized first-install path, transition only the older proof subrecord then synchronize close reopen and validate one logical replica at a time, normalize all three to active before the first target byte, recover torn proof writes from quorum, preserve the prior for an unchanged empty or partial-invalid target, fail on any third complete envelope, and resume selection only after the intended target and all retired logical replicas exactly revalidate; `engine/crates/vaultspec-product/src/receipt.rs`.
+- [ ] `W01.P01.S172` - Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain the exact verified journal and Windows installation authorities on every non-success, durably publish by exact positional overwrite and synchronization of only the inactive fixed journal slot or by the D9-authorized first-install path, transition only the older proof subrecord then synchronize close reopen and validate one logical replica at a time, normalize all three to active before the first target byte, recover torn proof writes from quorum, preserve the prior for an unchanged empty or partial-invalid target, fail on any third complete envelope, and resume selection only after the intended target and all retired logical replicas exactly revalidate; `engine/crates/vaultspec-product/src/generation.rs, engine/crates/vaultspec-product/src/manifest.rs, engine/crates/vaultspec-product/src/receipt.rs`.
 - [ ] `W01.P01.S163` - Prove directory presence never selects a generation and that collisions substitutions partial writers identity-checked discard and bounded abandoned generations fail closed with real filesystem objects; `engine/crates/vaultspec-product/tests/generation_authority.rs`.
 - [ ] `W01.P01.S11` - Verify manifest rejection active-receipt durability and fallback unpublished-generation inertness dashboard-only capability creation credential separation permission restriction and cross-process lock exclusion with real files processes and locks; `engine/crates/vaultspec-product/tests/product_authority.rs`.
 
@@ -115,11 +124,11 @@ Dispatch to vaultspec-high-executor after the A2A desktop singleton and control 
 Dispatch to vaultspec-high-executor to preserve the fixed six-member dashboard whitelist of five control verbs plus bounded active-run discovery while implementing downstream prepare, bounded bundle mint, commit, dedicated durable lease storage, attach-control-authenticated internal terminal settlement, expiry, and restart reconciliation.
 
 - [x] `W02.P05.S35` - Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
-- [ ] `W02.P05.S36` - Issue and revoke run-scoped token bundles only for the bounded server-validated required-role set returned by prepare, without storing raw secrets or revoking another run for the same actor; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
+- [x] `W02.P05.S36` - Issue and revoke run-scoped token bundles only for the bounded server-validated required-role set returned by prepare, without storing raw secrets or revoking another run for the same actor; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
 - [x] `W02.P05.S37` - Carry the resolved token-hash lease identity with the authenticated principal while keeping the raw header value one-use and inaccessible to handlers; `engine/crates/vaultspec-api/src/authoring/principal.rs`.
 - [x] `W02.P05.S38` - Resolve actor token hashes against the dedicated A2A run-token lease repository through principal extraction without adding client-claimable lease or run identity fields; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
-- [ ] `W02.P05.S39` - Persist the token bundle in the dedicated repository only after commit returns the authoritative A2A run or thread id and bind it to the non-secret lease and reservation identities; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
-- [ ] `W02.P05.S40` - Preserve public POST /ops/a2a/run-start as one of five control verbs in the fixed six-member dashboard whitelist while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [x] `W02.P05.S39` - Persist the token bundle in the dedicated repository only after commit returns the authoritative A2A run or thread id and bind it to the non-secret lease and reservation identities; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
+- [x] `W02.P05.S40` - Preserve public POST /ops/a2a/run-start as one of five control verbs in the fixed six-member dashboard whitelist while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
 - [x] `W02.P05.S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle; `engine/crates/vaultspec-api/src/routes/a2a_settlement.rs`.
 - [ ] `W02.P05.S42` - Prove dedicated A2A lease-repository migration, reopen, expiry, idempotent settlement, and restart reconciliation without depending on authoring-session schemas; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S43` - Prove two concurrent runs for one role revoke independently and no raw token enters records, output, logs, receipts, or discovery; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
@@ -129,8 +138,8 @@ Dispatch to vaultspec-high-executor to preserve the fixed six-member dashboard w
 - [x] `W02.P05.S152` - Export the authenticated A2A terminal-settlement route module outside the public ops orchestration namespace; `engine/crates/vaultspec-api/src/routes/mod.rs`.
 - [x] `W02.P05.S153` - Mount POST /internal/a2a/run-terminal with the dashboard-created attach-control credential, reject worker IPC and unrelated credentials, and avoid adding a sixth public /ops/a2a verb; `engine/crates/vaultspec-api/src/lib.rs`.
 - [x] `W02.P05.S154` - Reserve the internal A2A settlement prefix from SPA fallback routing so callback mistakes fail visibly; `engine/crates/vaultspec-api/src/routes/spa.rs`.
-- [ ] `W02.P05.S160` - Implement bounded unresolved-lease reconciliation against authenticated authoritative A2A run status, retaining INPUT_REQUIRED, idempotently settling terminal runs, and revoking elapsed leases by expiry; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
-- [ ] `W02.P05.S161` - Run durable A2A lease reconciliation during seated boot and bounded maintenance without delaying dashboard readiness on a temporarily unavailable compatible gateway; `engine/crates/vaultspec-api/src/boot.rs`.
+- [x] `W02.P05.S160` - Implement bounded unresolved-lease reconciliation against authenticated authoritative A2A run status, retaining INPUT_REQUIRED, idempotently settling terminal runs, and revoking elapsed leases by expiry; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
+- [x] `W02.P05.S161` - Run durable A2A lease reconciliation during seated boot and bounded maintenance without delaying dashboard readiness on a temporarily unavailable compatible gateway; `engine/crates/vaultspec-api/src/boot.rs`.
 - [ ] `W02.P05.S155` - Prove attach-control callback authentication, worker IPC rejection, durable-terminal ordering, idempotency, exact hashed-bundle revocation, INPUT_REQUIRED retention, expiry, and restart reconciliation against the production repository and router; `engine/crates/vaultspec-api/src/lib_tests/a2a_terminal_settlement.rs`.
 
 ## Wave `W03` - deliver transactional external update and recovery

@@ -23,6 +23,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S169]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S170]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S171]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S172]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S12]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S13]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S14]]'
@@ -51,6 +52,20 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W02-P04-S46]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P04-S47]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P04-S48]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S150]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S151]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S152]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S153]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S154]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S160]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S161]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S35]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S36]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S37]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S38]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S39]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S40]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S41]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -117,8 +132,23 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S169` - Bind a non-clone retained LockedProduct authority to the verified installation guard, retain product generation-parent receipt-parent and unpublished-generation filesystem identities, reject the active generation, exclusively create its final owner-private no-follow name, derive the exact maximum-eight nonactive count through the active reader, and return removed or retained poisoned authority from identity-safe bounded discard
 - `2026-07-18-a2a-product-provisioning-W01-P01-S170` - Verify a release set only through a borrow of the retained unpublished-generation authority, make the verified release set lifetime-bound to that exact generation, and retain its final filesystem snapshot plus complete receipt facts through activation
 - `2026-07-18-a2a-product-provisioning-W01-P01-S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review
+- `2026-07-18-a2a-product-provisioning-W01-P01-S172` - Construct an opaque active receipt only from the lifetime-bound verified release set, durably publish it by exact positional overwrite and synchronization of only the inactive fixed journal slot or by the D9-authorized first-install path, transition only the older proof subrecord then synchronize close reopen and validate one logical replica at a time, normalize all three to active before the first target byte, recover torn proof writes from quorum, preserve the prior for an unchanged empty or partial-invalid target, fail on any third complete envelope, and resume selection only after the intended target and all retired logical replicas exactly revalidate
 - `2026-07-18-a2a-product-provisioning-W02-P04-S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution
 - `2026-07-18-a2a-product-provisioning-W02-P04-S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery
+- `2026-07-18-a2a-product-provisioning-W02-P05-S150` - Export the crate-private dedicated A2A run-token lease repository module without coupling it to authoring-session storage
+- `2026-07-18-a2a-product-provisioning-W02-P05-S151` - Construct and retain the dedicated A2A run-token lease repository in AppState for seated routes and restart reconciliation
+- `2026-07-18-a2a-product-provisioning-W02-P05-S152` - Export the authenticated A2A terminal-settlement route module outside the public ops orchestration namespace
+- `2026-07-18-a2a-product-provisioning-W02-P05-S153` - Mount POST /internal/a2a/run-terminal with the dashboard-created attach-control credential, reject worker IPC and unrelated credentials, and avoid adding a sixth public /ops/a2a verb
+- `2026-07-18-a2a-product-provisioning-W02-P05-S154` - Reserve the internal A2A settlement prefix from SPA fallback routing so callback mistakes fail visibly
+- `2026-07-18-a2a-product-provisioning-W02-P05-S160` - Implement bounded unresolved-lease reconciliation against authenticated authoritative A2A run status, retaining INPUT_REQUIRED, idempotently settling terminal runs, and revoking elapsed leases by expiry
+- `2026-07-18-a2a-product-provisioning-W02-P05-S161` - Run durable A2A lease reconciliation during seated boot and bounded maintenance without delaying dashboard readiness on a temporarily unavailable compatible gateway
+- `2026-07-18-a2a-product-provisioning-W02-P05-S35` - Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state
+- `2026-07-18-a2a-product-provisioning-W02-P05-S36` - Issue and revoke run-scoped token bundles only for the bounded server-validated required-role set returned by prepare, without storing raw secrets or revoking another run for the same actor
+- `2026-07-18-a2a-product-provisioning-W02-P05-S37` - Carry the resolved token-hash lease identity with the authenticated principal while keeping the raw header value one-use and inaccessible to handlers
+- `2026-07-18-a2a-product-provisioning-W02-P05-S38` - Resolve actor token hashes against the dedicated A2A run-token lease repository through principal extraction without adding client-claimable lease or run identity fields
+- `2026-07-18-a2a-product-provisioning-W02-P05-S39` - Persist the token bundle in the dedicated repository only after commit returns the authoritative A2A run or thread id and bind it to the non-secret lease and reservation identities
+- `2026-07-18-a2a-product-provisioning-W02-P05-S40` - Preserve public POST /ops/a2a/run-start as one of five control verbs in the fixed six-member dashboard whitelist while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure
+- `2026-07-18-a2a-product-provisioning-W02-P05-S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle
 
 ### plan
 
