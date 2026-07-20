@@ -268,8 +268,13 @@ fn seated_boot_leaves_a_foreign_resident_immutable() {
         .bootstrap()
         .unwrap();
 
-    // A live FOREIGN gateway (different owner) WITH a readable trusted handoff is
-    // attachable read-only — left immutable, never displaced.
+    // A live FOREIGN gateway (different owner) is LEFT IMMUTABLE — never spawned,
+    // never mutated (ADR D4). Whether it is additionally attachable read-only
+    // (`attach-foreign`) or fully immutable (`leave-foreign`) turns on whether the
+    // handoff credential is owner-ACL-restricted — a product-crate contract
+    // (`discovery::handoff_is_owner_restricted`) that is environment-dependent on
+    // Windows. The property S34 proves is immutability, so accept either foreign
+    // verdict and assert NOTHING was spawned.
     let handoff = paths.credentials_dir().join("attach-control.cred");
     write_discovery(
         &paths,
@@ -280,17 +285,23 @@ fn seated_boot_leaves_a_foreign_resident_immutable() {
         now_ms(),
     );
     let outcome = plane.reconcile_seated_boot();
-    assert_eq!(
-        outcome["action"], "attach-foreign",
-        "a compatible foreign gateway is attached read-only, never mutated: {outcome}"
+    assert!(
+        matches!(
+            outcome["action"].as_str(),
+            Some("attach-foreign") | Some("leave-foreign")
+        ),
+        "a live foreign gateway is left immutable (attach-read-only or immutable), \
+         never mutated: {outcome}"
     );
     assert!(
         plane
             .terminate_owned_gateway(Duration::from_millis(200))
-            .is_none()
+            .is_none(),
+        "a foreign resident is never spawned/owned"
     );
 
-    // A live foreign gateway WITHOUT a trusted handoff is fully immutable.
+    // A live foreign gateway WITHOUT any readable handoff is unambiguously fully
+    // immutable (ForeignImmutable::NoTrustedHandoff).
     write_discovery(
         &paths,
         "someone-else",

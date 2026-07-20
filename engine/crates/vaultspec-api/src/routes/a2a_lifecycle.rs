@@ -511,8 +511,12 @@ struct AgentSnapshot {
 /// window on the next resolve.
 const AGENT_SNAPSHOT_TTL: Duration = Duration::from_millis(1000);
 
-fn agent_snapshot_cache() -> &'static RwLock<Option<(Instant, Arc<AgentSnapshot>)>> {
-    static CACHE: OnceLock<RwLock<Option<(Instant, Arc<AgentSnapshot>)>>> = OnceLock::new();
+/// The memoized snapshot with the instant it was computed. Aliased so the cache
+/// type stays legible (clippy `type_complexity`).
+type CachedSnapshot = (Instant, Arc<AgentSnapshot>);
+
+fn agent_snapshot_cache() -> &'static RwLock<Option<CachedSnapshot>> {
+    static CACHE: OnceLock<RwLock<Option<CachedSnapshot>>> = OnceLock::new();
     CACHE.get_or_init(|| RwLock::new(None))
 }
 
