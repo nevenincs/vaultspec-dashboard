@@ -457,3 +457,119 @@ Verification:
   reported no `generation.rs` finding.
 - Formatting, scoped diff, forbidden-shape, dependency-cleanup, and
   no-unsafe-expansion checks passed.
+
+## `W01.P01.S170` lifetime-bound release-verification review
+
+Status: PASS.
+
+S170 now verifies a release set only through a borrow of the exact retained
+`UnpublishedGeneration<'product, 'lock>`. `ReleaseVerificationInput` no longer
+accepts a candidate generation path, identifier, or member-manifest bytes. The
+verified value is non-`Clone`, non-serializable, and lifetime-bound to the
+retained generation, its unique mutable product loan, and the verified
+installation guard.
+
+The first bounded full scan locates exactly one member manifest by its
+independently trusted digest. Only then does the verifier parse the located
+bytes and require the declared manifest path to identify that same file. The
+component-lock, external exact-five-target cohort, complete file inventory,
+capsule, tree evidence, and installed bytes retain their existing independent
+joins.
+
+The stored final snapshot binds the canonical root and root identity, every
+directory identity, and every file identity, link count of exactly one, size,
+digest, and normalized executable mode. Empty directories and the member
+manifest participate. `revalidate_for_activation` validates retained generation
+authority before and after a fresh complete scan, then compares that scan with
+the stored final snapshot.
+
+Opaque, read-only `VerifiedReceiptFacts` retains every non-constant D10 payload
+fact for S172 while keeping fields and construction private. The active
+generation is borrowed from the exact retained token. Prior-seat grammar and
+creation time receive explicit validation. Those facts are frozen with the
+type-closed channel, ownership boolean, and consistency counter. S170 does not
+construct or publish an active journal. Fixed schema, envelope sequence, proof
+quorum, first-journal installation, durable publication, and recovery remain
+S171/S172 work.
+
+The scan remains explicitly bounded and final-component no-follow. Windows
+checks restricted DACLs and same-handle full-width identity plus link count for
+each file. Its retained generation lease prevents root substitution. Unix
+retains descriptor and named-identity checks under the cooperative
+same-euid/install-lock model. Child reads remain pathname-sensitive and make no
+claim against a hostile same-account process that ignores the product lock.
+
+Final independent review reported PASS C0/H0/M0/L0 on diff
+`3b73aae1a5acb19b7b5847a87b20c231039fea51`.
+
+Verification:
+
+- Focused native manifest tests passed 18/18; all native product library tests
+  passed 87/87.
+- Native strict product Clippy, native product check, formatting, and scoped
+  diff checking passed.
+- The locked Linux `--lib --tests` target check passed and compiled the Linux
+  tests without executing them on Windows.
+- Strict Linux-target test Clippy stopped only at the pre-existing,
+  out-of-scope `receipt.rs:685` `clippy::let_unit_value` finding. The run passed
+  with only that lint exempted and reported no `manifest.rs` finding.
+
+## `W02 P04` S30/S31 dual-resolve delta review
+
+Status: APPROVED
+
+Reviewed the S30/S31 delta that landed after the seated-lifecycle APPROVED
+verdict: `59d140d2ed` (dual-resolve the `/ops/a2a` run edge), `e3d1b450d7`
+(clippy type-alias plus the S34 foreign-handoff test to the hardened contract),
+and the docs-only `6b61a7fb0b`. Files: `routes/ops/a2a.rs`, `a2a_stream.rs`,
+`routes/a2a_lifecycle.rs`, `lib_tests/a2a_runtime_identity.rs`. No critical or
+high findings.
+
+- Fail-closed, no unauthenticated downgrade: `a2a_endpoint_dual` returns the
+  product endpoint only on an available, parseable-port resolution, which
+  `resolve_gateway` yields solely for owned-live or foreign-attachable; stale,
+  incompatible, untrusted, or absent discovery falls through to the prior
+  service-file plus owner-restricted handoff, itself authenticated. No path
+  downgrades to an unauthenticated attach.
+- No new token leak: the available branch moves the attach token straight into
+  the loopback transport bearer (loopback Authorization only), identical to the
+  prior handoff bearer; an unparseable port drops the token unused; the relay
+  reader reads the credential once per thread, not per frame.
+- Regression clean: with the product absent (current reality) both surfaces are
+  byte-for-byte the prior behavior; run-start idempotency (the striped
+  `A2A_RUN_START_LOCKS`, acquired before transport resolution) is untouched; the
+  relay claim-producer and ring/gap/degrade single-reader-per-run are preserved.
+- The S34 test change is a legitimate spec-property assertion, not a weakening:
+  it still asserts the ADR-D4 property (a foreign resident is left immutable,
+  nothing spawned) and would still fail on a real regression (a spawn-over-foreign
+  or treat-foreign-as-owned verdict, or anything spawned); the sub-verdict shifted
+  only because the product crate hardened the handoff trust to a real owner-ACL
+  check a tempdir cannot satisfy on Windows.
+
+### live-edge basis
+
+The live UP-path end-to-end (presets to run-start to run-status to active-runs to
+relay) was accepted on the behavior-preservation basis: the resident gateway was
+down mid-session and the product install is absent, so the product-preferred path
+is never taken in current reality and both surfaces fall through to the exact
+prior authenticated path, which cannot regress the edge verified live earlier in
+the session. The `live_loopback` real-socket test proves the fallback path
+end-to-end, and a real product-gateway UP-path cannot exist until the install
+layout is built in a later phase.
+
+### s34-readonly-attach-coverage | low | Foreign read-only-attach sub-path no longer directly exercised on Windows
+
+The S34 proof no longer directly exercises the foreign-attachable read-only-attach
+sub-path on Windows, because it is environment-gated by the real owner-ACL check;
+immutability is still proven and the read-only-attach behavior is covered by the
+`resolve_gateway` unit behavior. Informational, non-blocking.
+
+### Verification
+
+- Gate green at review time: api library 872 passed, touched-scope 61/0
+  (including `live_loopback_discovers_health_then_round_trips_active_runs` and the
+  fixed foreign-immutability proof), clippy `-p vaultspec-api --lib -D warnings`
+  clean (the earlier out-of-scope generation lint cleared by the product refactor).
+- The earlier per-response filesystem-read MEDIUM is resolved by the
+  one-second-TTL agent-snapshot memo landed at `bc6461c9a6`; the type-alias here
+  is a trivial, correct refactor of that cache type.
