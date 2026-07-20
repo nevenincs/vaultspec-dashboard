@@ -686,3 +686,64 @@ writer during the move-compatible transition window. S172 must exactly reread
 the installed bytes before publication. S173 remains required for real
 virtual-machine power-cut certification; the S171 process tests do not claim
 power-loss proof.
+
+## `W01 P01` S171/S172 tear-safe receipt-publication review
+
+Status: APPROVED
+
+Reviewed the completed S171/S172 tear-safe receipt-publication feature landed at
+`c6d15b778b` (receipt.rs + generation.rs + manifest.rs). No critical or high
+findings; the tear-safe publication path is correctness-sound. Full product gate
+green at commit (95 lib + integration tests pass, clippy `--all-targets -D
+warnings` clean, fmt clean).
+
+- Tear-safety (the core property) is sound: the active receipt name
+  (`active-receipts.v1`) is only ever created by an atomic rename of a fully
+  durable, byte-verified journal built under a distinct init name
+  (`active-receipts.v1.init`). `prepare_initial_journal` builds the init image
+  create_new → set_len → sync_all → owner-restrict → write → sync_all → validate
+  → drop → reopen-and-reread-equals-expected before any activation. Installation
+  delegates the atomic MoveFileExW WRITE_THROUGH same-directory rename to the
+  fenced windows-authority crate under exclusive directory authority (swapped to
+  an in-call sentinel during the call, transitioned to a known state on every
+  return path, never dropped). Post-install defense-in-depth rereads (strict
+  installed-handle, reopen-active bytes-equal + validate + resolve-matches-wire,
+  and a final guarded reread) mean every non-Installed outcome fail-closes to
+  RecoveryRequired/Indeterminate and RETAINS the install/directory authority. A
+  crash before the rename leaves recoverable init residue, never a torn active
+  receipt.
+- The `try_from_wire` → `into_active` rename is complete (zero lingering refs);
+  `into_active` is a strict fail-closed validating constructor; the two-slot
+  `active-receipts.v1` monotonic-sequence semantics and proof-quorum are
+  unchanged.
+- The `ActiveReceiptPublishAttemptError.journal_error` boxing is genuinely
+  behavior-preserving: the retry path unboxes to destructure then re-boxes in
+  both arms, preserving the exact retained authority (the live JournalHandle or
+  Io); reads use `.as_deref()`. No error-path semantics changed.
+- No unsafe blocks in the three files (FFI is fenced in windows-authority); no
+  raw secrets; install-diagnostics accumulator capped at
+  `MAX_RETAINED_INSTALL_DIAGNOSTICS` = 3.
+
+### windows-authority-primitive | low | The tear-safety guarantee rests on an out-of-commit primitive
+
+The end-to-end tear-safety ultimately depends on
+`vaultspec_windows_authority::DirectoryAuthority::install_synchronized_file`
+implementing the MoveFileExW REPLACE_EXISTING|WRITE_THROUGH same-directory rename
+correctly. The caller here uses it correctly and fail-closes on every
+non-Installed outcome, but the primitive itself is outside this commit and should
+carry its own review in the windows-authority crate.
+
+### reconcile-tolerated-on-exact-bytes | low | Reconcile-flagged install accepted on exact-bytes fresh install
+
+The Reconcile branch accepts a reconcile-flagged install as success when the
+installed bytes equal the expected image AND there was no pre-move destination
+snapshot (a fresh install whose authority path merely hiccuped on lease
+reacquisition), attaching a diagnostic. This is sound - it is a genuinely
+completed install, still gated by the downstream exact-bytes reread + validate +
+resolve + final guarded reread - and is recorded here so the decision is on file.
+
+### Verification
+
+- Correctness reviewed by source inspection against the receipt/generation/
+  directory-authority ADRs (single-link receipt authority, tear-safe activation,
+  retained directory mutation); the full product gate was green at commit.
