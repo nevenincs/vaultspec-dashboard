@@ -369,6 +369,21 @@ impl<'guard> UpdateTransaction<'guard> {
         ReadyToActivate { transaction: self }
     }
 
+    /// Finalize the accepted update after relaunch and probe: `Activated` →
+    /// `Accepted`, then retire the durable descriptor and reclaim the
+    /// consistency snapshot — the committed release no longer needs its
+    /// rollback material. Terminal: consumes the transaction. An interruption
+    /// at any boundary here resolves as roll-forward under recovery, because
+    /// the fixed receipt already selects the candidate.
+    pub fn mark_accepted(mut self) -> Result<(), TransactionError> {
+        self.expect_phase(InterruptionMarker::Activated)?;
+        self.advance(InterruptionMarker::Accepted)?;
+        clear_descriptor(&self.paths)?;
+        reclaim_consistency_snapshot(&self.paths, self.guard, self.plan.consistency_generation)
+            .map_err(TransactionError::Snapshot)?;
+        Ok(())
+    }
+
     /// Roll the transaction back: record `RollingBack`, restore the consistency
     /// snapshot if one was captured, and clear the descriptor on success. Safe to
     /// call from any pre-commit phase and idempotent under recovery.

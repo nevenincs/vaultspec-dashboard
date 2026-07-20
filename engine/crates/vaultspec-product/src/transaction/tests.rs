@@ -317,3 +317,35 @@ fn transaction_sleeper_process() {
     }
     std::thread::sleep(Duration::from_secs(30));
 }
+
+#[test]
+fn mark_accepted_is_the_clean_terminal_and_retires_the_descriptor() {
+    let fixture = Fixture::new();
+    let mut txn = UpdateTransaction::begin(fixture.paths.clone(), &fixture.guard, plan()).unwrap();
+    txn.force_phase_for_test(InterruptionMarker::Activated)
+        .unwrap();
+    txn.mark_accepted().unwrap();
+    // The durable descriptor retired with acceptance: nothing left to recover.
+    assert!(
+        read_descriptor(&fixture.paths, &fixture.guard)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn mark_accepted_refuses_every_pre_activation_phase() {
+    let fixture = Fixture::new();
+    let txn = UpdateTransaction::begin(fixture.paths.clone(), &fixture.guard, plan()).unwrap();
+    // Still `Staged`: acceptance without a committed activation is refused and
+    // the durable descriptor is preserved for the real drive.
+    assert!(matches!(
+        txn.mark_accepted(),
+        Err(TransactionError::WrongPhase { .. })
+    ));
+    assert!(
+        read_descriptor(&fixture.paths, &fixture.guard)
+            .unwrap()
+            .is_some()
+    );
+}
