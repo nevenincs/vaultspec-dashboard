@@ -124,11 +124,35 @@ pub(crate) async fn a2a_run_terminal(
     // retry-storm on (unknown/already-settled/mismatch all resolve, never 5xx).
     let leases = state.a2a_run_leases.clone();
     let (run_id, lease_id) = (body.run_id.clone(), body.lease_id.clone());
-    let outcome =
-        tokio::task::spawn_blocking(move || leases.settle_terminal(&run_id, &lease_id, now_ms()))
-            .await
-            .unwrap_or(Ok(SettleOutcome::Unknown))
-            .unwrap_or(SettleOutcome::Unknown);
+    let settled = tokio::task::spawn_blocking({
+        let (run_id, lease_id) = (run_id.clone(), lease_id.clone());
+        move || leases.settle_terminal(&run_id, &lease_id, now_ms())
+    })
+    .await;
+    // A store failure or a task panic is NOT the legitimate "no lease" case: the
+    // hashed bundle may still be LIVE and no retry is coming. Collapsing both into
+    // a silent `Unknown` 200 leaves the credential live until expiry with no
+    // operator signal — so distinguish them and emit a warning, while keeping the
+    // 200-always contract and the expiry/reconciliation sweep as the backstop.
+    let outcome = match settled {
+        Ok(Ok(outcome)) => outcome,
+        Ok(Err(error)) => {
+            eprintln!(
+                "vaultspec serve: a2a terminal settlement failed to persist \
+                 (run={run_id} lease={lease_id}): {error}; the hashed bundle \
+                 relies on the expiry backstop"
+            );
+            SettleOutcome::Unknown
+        }
+        Err(join_error) => {
+            eprintln!(
+                "vaultspec serve: a2a terminal settlement task did not complete \
+                 (run={run_id} lease={lease_id}): {join_error}; the hashed bundle \
+                 relies on the expiry backstop"
+            );
+            SettleOutcome::Unknown
+        }
+    };
 
     let data = match outcome {
         SettleOutcome::Settled { revoked } => {

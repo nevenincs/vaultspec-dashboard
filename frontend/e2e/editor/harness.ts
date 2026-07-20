@@ -37,9 +37,11 @@ import {
   gitBlob,
   spawnEngine,
 } from "../authoring/engine";
+import { resolveExecutable } from "../../src/testing/processControl";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const SPA_DIST = join(REPO_ROOT, "frontend", "dist");
+const VAULTSPEC_CORE_BIN = resolveExecutable("vaultspec-core");
 
 /** The editor-under-test document: enough heading sections for the D12 section
  *  three-way to have disjoint AND overlapping arms to exercise. */
@@ -127,9 +129,8 @@ export function createEditorFixture(): EditorFixture {
   // vitest live harness runs): the authoring apply path materializes through a
   // `vaultspec-core` subprocess, which requires the workspace scaffolding — an
   // unprovisioned vault records the receipt but cannot write the document.
-  const install = spawnSync("vaultspec-core", ["install", "--target", root], {
+  const install = spawnSync(VAULTSPEC_CORE_BIN, ["install", "--target", root], {
     stdio: "pipe",
-    shell: true,
   });
   if (install.status !== 0) {
     throw new Error(

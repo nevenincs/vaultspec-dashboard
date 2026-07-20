@@ -262,6 +262,7 @@ mod tests {
                     lease_id: "lease-42".to_string(),
                     reservation_id: "req-42".to_string(),
                     bundle_id: "bundle-42".to_string(),
+                    run_id: Some("run-42".to_string()),
                     tokens: vec![LeaseToken {
                         role: "researcher".to_string(),
                         token_hash: hash_actor_token(raw),
@@ -271,6 +272,9 @@ mod tests {
                 },
                 1_000,
             )
+            .unwrap();
+        leases
+            .commit("lease-42", "run-42", None, "gateway-lease-42", 1_500)
             .unwrap();
 
         // The a2a run token resolves to a witness carrying the SERVER-RESOLVED

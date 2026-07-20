@@ -406,3 +406,117 @@ Verdict: request changes. The bounded discovery projection itself conforms,
 but the current relay resource model, recovery authority handoff, async health
 probe, and sibling control-plane authentication are not ready to be treated as
 closed.
+
+## Remediation and adversarial re-review — 2026-07-19
+
+The findings above are preserved as the original review snapshot. The rolling
+queue below records the implementation and independent re-review that followed.
+
+| Finding | Severity / type | Remediation and evidence | Disposition |
+|---|---|---|---|
+| Relay framing allocation | High / memory-safety availability | HTTP head, chunk, incomplete SSE, dense-output, and browser remainder ceilings now reject before proportional allocation; adversarial parser suites pass. | Resolved |
+| Relay registry lifecycle | High / lifecycle availability | Producer ownership/generation and unsubscribe cleanup permit restart and keep the 64-relay registry reclaimable under churn. | Resolved |
+| Relay memory budget | High / memory | Shared immutable frames plus 4 MiB replay, 8 MiB per-relay, and 64 MiB global byte budgets replace count-only retention. | Resolved |
+| Async worker blocking health | High / performance | Discovery, health, status preflight, token persistence, and forwarding execute off Tokio workers. | Resolved |
+| Active discovery query plan | Medium / database performance | Persisted selectors and covering indexes serve one `limit + 1` projection. A 100,000-row corpus with every row active and 99,990 nonmatching selectors uses both intended indexes without scans or temporary sorts and stays within latency/allocation bounds. | Resolved |
+| PostgreSQL run-id filter | High / production portability | The exact production statement uses SQLAlchemy `regexp_match`, compiling to SQLite `REGEXP` and PostgreSQL `~`; full-statement dialect proof passes with no `GLOB`. | Resolved |
+| Run-id conformance | Medium / contract and log safety | One `^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$` grammar covers bodies and paths; invalid legacy rows are filtered before `LIMIT`. Boundary/live tests pass. | Resolved |
+| Relay resume churn | Medium / bandwidth and work | A hook-local monotone cursor reconnects with `since=<last admitted seq>` and resets on run identity change. | Resolved |
+| Relay reservation sequence hole | High / conformance | Failed normal/control reservations record `latest_missing_seq` under the ring lock; snapshots verify contiguity and terminal state latches before reservation. Constrained-budget Rust coverage passes. | Resolved |
+| Clean EOF detach / terminal churn | Medium / lifecycle performance | Clean EOF before terminal raises retryable transport loss; EOF after an observed terminal completes. Mounted real-HTTP query coverage proves nonterminal reconnect and exactly one terminal request. | Resolved |
+| Duplicate degraded polling / hook ownership | Medium / performance | One mounted `TeamRunProgressProvider` owns relay, reconciliation, and degraded polling for composer and transcript. One owner does not imply only one bounded HTTP request. | Resolved |
+| Gap reconciliation eviction | Medium / correctness | `RelayTranscriptState` carries reconciliation generation as first-class query data outside the 256-frame presentation ring. A real streamed query sends a gap plus 300 frames in one pull and still reconciles after eviction. | Resolved |
+| Frontend transcript hot path | Low / CPU | Per-frame byte charges are retained once and evicted by a parallel bounded charge array; immutable relay query data disables redundant TanStack structural-sharing walks. Focused re-review found no regression. | Resolved |
+| Relay terminal authority | Medium / conformance | Relay terminal frames trigger reconciliation only; same-run authoritative status alone enables terminal controls and includes `archived`. | Resolved |
+| Gateway boundary authentication | High / pragmatic security | Loopback is the default, one constant-time dependency protects every `/v1` class, absent credentials fail closed, and `/health` alone is public. Production-process auth and non-loopback probes pass. | Resolved |
+| Secret-bearing discovery and Windows ACL | High / credential confidentiality | `service.json` contains only an adjacent handoff reference. POSIX owner bits and native protected Windows DACLs are written and read without repair; real Windows tests replace a preexisting Everyone ACE and reject widened files. Rust operational/product readers enforce the same trust predicate. | Resolved |
+| Gateway/worker credential reuse | Medium / privilege separation | Equal configured values are rejected. Production HTTP proves gateway credentials fail on `/internal/health`, worker credentials fail on every `/v1` class, and each succeeds only on its own boundary. | Resolved |
+| Run-start token lifecycle | Medium / credential lifecycle | Stable-id stripes, purpose-keyed rotation, pruning, redacted `Debug`, and a 4,096-row ceiling bound issuance and prevent raw-token diagnostics. Explicit refusal revokes immediately. | Resolved |
+| Pre-dispatch reservation and ambiguous `404` | High / exactly-once safety | The sibling commits `SUBMITTED` before worker dispatch. Transport loss followed by `404` remains ambiguous and permits one exact same-id, same-token, same-payload retry; explicit refusal remains definitive. Real gateway concurrency and real engine socket tests pass independently. | Resolved |
+| Rust ACL publisher path | Low / dependency-execution security | The dashboard product crate is validation-only and no longer exposes a production ACL mutation helper or launches ambient `icacls.exe`. Windows ACL mutation remains test-local; the sibling's native protected-DACL writer is the sole production publisher. | Resolved |
+| Cross-repository lost-ack integration | Medium / verification integrity | Source ordering and both repository boundary tests are sound, but no single test boots the production dashboard broker, production sibling, and production worker together while dropping the acknowledgement. | Queued follow-up |
+| Test-runner shell warning | Low / harness security | Focused Vitest runs pass but still emit Node `DEP0190` from the existing live-engine harness using `shell: true`. This is outside the A2A production path. | Queued follow-up |
+| Repository-wide module-size gate | Medium / maintainability, outside A2A scope | The final repository-wide scan reports the concurrently changed `engine/crates/vaultspec-product/src/manifest.rs` at 2,939 lines. None of the A2A files in this pass breach the gate; ownership remains with the product-provisioning workstream. | Queued external follow-up |
+
+Final adversarial verdict: pass for implementation and contract conformance; no
+critical or high finding remains. The cross-repository lost-ack scenario and
+the existing test-harness shell warning, and the unrelated product manifest
+decomposition remain explicit verification/harness queue items rather than
+hidden closure claims.
+
+## Follow-up closure and staged-admission re-review — 2026-07-20
+
+The retained follow-ups above were implemented and reviewed again against the
+current product-provisioning authority. The review caught and corrected one
+high contract drift before closure: diagnostic preset discovery was briefly
+used as the role authority for a legacy one-shot start. The final path now uses
+the accepted D7 sequence: authenticated `prepare`, mint only its bounded exact
+worker set into the dedicated hash-only run-lease repository, then `commit` the
+reservation. A lost commit acknowledgement retries the identical commit once;
+the sibling recovers the already-durable run and its persisted non-secret lease
+identity before consulting the consumed reservation.
+
+| Finding | Severity / type | Final evidence | Disposition |
+|---|---|---|---|
+| Cross-repository lost-ack integration | Medium / verification integrity | A retained service test boots the production dashboard engine, authenticated production gateway, gateway-owned worker, real Codex provider lane, real SQLite stores, and a capped transparent relay. The relay drops only the first `stage=commit` acknowledgement. Evidence is one prepare, two identical commit attempts, one durable run, one active engine lease with exactly `vaultspec-coder`, and one unconditional worker dispatch acceptance after a bounded quiet window. | Resolved |
+| Prepare/commit authority drift | High / contract and credential lifecycle | The dashboard no longer reads token identities from `/v1/presets` or uses unstaged direct start. It prepares before minting, validates the returned A2A agent-id grammar and 64-role ceiling, stores hashes only, commits the local lease with the gateway lease identity, revokes explicit refusals, and retains ambiguous commits only for one exact retry. The sibling binds commit token keys exactly to the prepared role set and makes a lost-ack replay idempotent from durable run metadata. Dashboard route tests pass 17/17; sibling admission tests pass 2/2; the production cross-repository proof passes 1/1. | Resolved |
+| Frontend test-process teardown | High / harness resource safety | Global setup owns cleanup from first allocation, cleans setup failures, bounds its diagnostic tail to 1 MiB, times out authenticated shutdown and `taskkill`, verifies signal or exit completion, and owns a POSIX process group. The authoring E2E final stop uses the same authenticated graceful path and absolute bounded force fallback; intentional restart remains a hard restart. | Resolved |
+| Frontend stream-test socket teardown | Medium / harness lifecycle | Real Node HTTP transport removes abort listeners, treats aborted/premature response close as stream failure, and both tests guarantee query cancellation, React cleanup, forced connection closure, and a bounded server-close wait even when settling assertions fail. Typecheck and the mounted real-HTTP suite pass 2/2 without `DEP0190` or `ECONNRESET`. | Resolved |
+| Test-runner shell warning | Low / harness security | Live-engine and editor launches resolve absolute executables and do not use `shell: true`; Windows force termination resolves the absolute System32 executable with a deadline. | Resolved |
+| Repository-wide frontend live-suite isolation | Medium / harness reliability | The focused affected suite is green, but an attempted repository-wide Vitest run exceeded 180 seconds while unrelated tests repeatedly targeted an absent `localhost:3000` service and emitted their existing abort/socket diagnostics. | Queued harness follow-up |
+| Cross-repository proof in CI | Medium / verification operations | The retained proof is executable and green locally through `VAULTSPEC_ENGINE_SERVE_CMD`, but the sibling repository workflow does not build/provision the separate dashboard binary. Cross-repository CI ownership is not available inside either repository alone. | Queued coordination follow-up |
+| Repository-wide module-size gate | Medium / maintainability, outside A2A scope | All changed A2A/harness modules remain below 1,500 lines (`a2a.rs` about 1,150; schema store 1,477 remains the next A2A decomposition constraint). The scanner failures are concurrent product-authority modules: `generation.rs` 1,711, `locking.rs` 1,955, `manifest.rs` 4,453, and `receipt.rs` 2,604. | Queued external product follow-up |
+
+Final follow-up verdict: pass for the implemented A2A edge, staged admission,
+lost-ack recovery, and affected harnesses. No critical or high finding remains.
+The three medium queue items above require broader harness, CI-coordination, or
+foreign product-module ownership and are not relabeled as closed.
+
+## Revision-required staged-admission closure — 2026-07-20
+
+The final contract review invalidated the preceding pass verdict before merge.
+It found that prepared token hashes authenticated role identities that had not
+been registered in the authoring actor repository, that prepare reported but did
+not enforce execution readiness, and that commit replay was neither exact nor
+linearizable while the first commit was still in flight. It also found weak
+commit-response validation, no authenticated reservation release after local
+failure, and no safe disposition for pre-commit lease rows after an ambiguous
+failure. Those findings were classified high and the pass remained open until
+the implementation and certification below completed.
+
+| Finding | Severity / type | Final remediation and evidence | Disposition |
+|---|---|---|---|
+| Prepare reports rather than gates readiness | High / contract and credential lifecycle | The gateway now live-probes its demand-started worker and admits only the exact `ready` / `eligible` / `ready` tuple. The dashboard independently requires those three values before it accepts the prepared role set. A refusal returns no reservation to the dashboard and therefore reaches no actor or token creation. | Resolved |
+| Prepared role actors are not registered | High / authorization correctness | Dashboard provisioning writes every prepare-returned `agent:<role>` actor active through one production authoring unit of work after the hash bundle is durably reserved. A failed registration revokes that bundle before a raw value leaves the process. Focused Rust coverage requires `ensure_active` for every role, proves reserved hashes are inert, and proves the token resolves only after strict commit binding. The cross-repository service proof uses the captured real minted token to create a real authoring session through the production route. | Resolved |
+| Commit response is under-validated | High / strict-v1 conformance | Local activation now requires `api_version: v1`, `stage: committed`, a bounded path-safe lease id, a bounded status, and exact equality between the returned run id and the requested stable id. Malformed version, stage, run, lease, and missing-status cases remain reserved and never activate. | Resolved |
+| Commit replay races reservation consumption | High / exactly-once correctness | A bounded, self-cleaning per-run single-flight map spans replay lookup, reservation consumption, durable creation, and response. The strengthened relay severs the dashboard connection immediately after forwarding the first commit, while that upstream request is still running; the immediate retry waits for the durable winner. The proof observes one run and one dispatch. | Resolved |
+| Replay accepts a different reservation or payload | High / idempotency and security | Prepare stores a canonical digest of all prepared request fields and commit compares it plus the exact role-key set before consumption. Durable run metadata stores the original reservation id and a SHA-256 digest of the complete commit, including the high-entropy token values without storing any raw token. Replay requires both identities and the digest in constant time; an altered-message replay receives 409 while the exact replay receives the original committed lease. A mismatched replay releases any newly prepared reservation. | Resolved |
+| Local failure cannot release downstream capacity | High / bounded availability | The existing authenticated `POST /v1/runs` surface gained a `release` stage rather than a new public verb. Dashboard provisioning, explicit refusal, and exhausted ambiguous-retry paths invoke bounded idempotent release and revoke the local bundle. Release shares the commit single-flight stripe, so it cannot race an accepted in-flight commit. | Resolved |
+| Reserved leases remain authorizing or accumulate indefinitely | High / credential lifecycle and memory | `Reserved` is no longer resolvable; only a durably bound `Active` lease authenticates. Stable run identity is stored at reserve time, status discloses only the non-secret gateway lease id for crash repair, startup and every reservation run expiry/retention maintenance, and terminal rows older than 30 days are pruned. Final ambiguous failures revoke locally rather than retaining usable authority. | Resolved |
+| Frontend setup and authoring harness failure teardown | Medium / test infrastructure | Git/install subprocesses and readiness fetches now have hard deadlines; diagnostic logs stay at 1 MiB; startup failures force and await the owned process tree; cleanup state resets in an outer `finally`; scratch deletion occurs only after process exit is confirmed. TypeScript typecheck and the mounted real-HTTP transcript tests pass. | Resolved |
+| Cross-repository proof process and log bounds | Medium / test infrastructure | The dashboard starts in its own POSIX session and cleanup signals the entire group; Windows retains the production tree-kill helper. Worker-log parsing reads fixed 64 KiB chunks and retains only a 64 KiB diagnostic tail. The capped TCP relay still enforces 4 MiB request/response limits. | Resolved |
+| Cross-repository proof in CI | Medium / verification operations | The retained service proof is green locally but needs a coordinated workflow able to build and provision the separate dashboard repository and a real authenticated provider. Neither repository alone owns that release-set workflow. | Queued coordination follow-up |
+| Repository-wide module-size gate | Medium / maintainability, outside A2A scope | The current gate still fails only concurrent product-provisioning modules: `generation.rs` 1,711, `locking.rs` 1,955, `manifest.rs` 4,453, and `receipt.rs` 2,604. The staged A2A broker is 1,255 lines and the lease repository is 810, both below the 1,500-line threshold. | Queued external product follow-up |
+
+Current certification evidence:
+
+- The production cross-repository service scenario passes 1/1 in 26.83 s. It
+  starts the production dashboard engine, authenticated production gateway,
+  gateway-owned worker, real Codex lane, real SQLite stores, and the in-flight
+  acknowledgement-loss relay; it proves exact replay, altered-replay refusal,
+  one durable run, one dispatch, one active local lease, and a real authoring
+  mutation by the minted role actor.
+- The real armed-gateway admission suite passes 2/2, the affected frontend
+  mounted HTTP suite passes 2/2, TypeScript typecheck passes, Ruff lint and
+  formatting pass, and the production dashboard CLI build passes.
+- The focused Rust route suite passed 17/17 before the final five-case strict
+  response test was added. The production crate and binary compile with the
+  final implementation; a subsequent test-profile rebuild is temporarily
+  blocked by an unrelated concurrent `vaultspec-windows-authority` edit
+  (`u16::is_ascii_alphabetic` in `src/os.rs`). That foreign compile error is not
+  relabeled as staged-admission evidence.
+
+The implementation awaits the final three-lane adversarial re-review before the
+rolling pass verdict is promoted again. The two medium external queues above do
+not change the shipped A2A module boundary or runtime behavior, but remain
+explicit rather than being hidden by the focused green checks.

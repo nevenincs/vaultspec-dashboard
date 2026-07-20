@@ -116,6 +116,8 @@ export async function* sseChunks(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let bufferedWireBytes = 0;
+  let delimiterSearchFrom = 0;
   try {
     for (;;) {
       let chunk: ReadableStreamReadResult<Uint8Array>;
@@ -131,12 +133,22 @@ export async function* sseChunks(
       for (let offset = 0; offset < chunk.value.byteLength; ) {
         const end = Math.min(chunk.value.byteLength, offset + SSE_DECODE_SLICE_BYTES);
         buffer += decoder.decode(chunk.value.subarray(offset, end), { stream: true });
+        bufferedWireBytes += end - offset;
         offset = end;
-        const { frames, rest } = parseSseFrames(buffer);
-        buffer = rest;
-        if (utf8ByteLength(buffer) > MAX_SSE_INCOMPLETE_BYTES) {
+        if (bufferedWireBytes > MAX_SSE_INCOMPLETE_BYTES) {
           throw new StreamLostError("graph stream frame exceeds byte ceiling");
         }
+        // Do not split/re-scan a delimiter-free multi-slice frame on every
+        // 64-KiB append. Resume the delimiter search at the prior tail; the
+        // one-character overlap catches a delimiter split across slices.
+        if (buffer.indexOf("\n\n", delimiterSearchFrom) < 0) {
+          delimiterSearchFrom = Math.max(0, buffer.length - 1);
+          continue;
+        }
+        const { frames, rest } = parseSseFrames(buffer);
+        buffer = rest;
+        bufferedWireBytes = utf8ByteLength(rest);
+        delimiterSearchFrom = 0;
         for (const frame of frames) {
           yield frame;
         }

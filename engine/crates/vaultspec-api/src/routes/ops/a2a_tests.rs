@@ -1,7 +1,41 @@
 use super::*;
 
+const TEST_REQUIRED_ROLES: &[&str] = &[
+    "vaultspec-researcher",
+    "vaultspec-synthesist",
+    "vaultspec-adr-author",
+    "vaultspec-doc-reviewer",
+];
+
+const TEST_PREPARE_RESPONSE: &str = r#"{"api_version":"v1","stage":"prepared","reservation_id":"resv-test-1","lease_id":"lease-gateway-test","required_roles":["vaultspec-researcher","vaultspec-synthesist","vaultspec-adr-author","vaultspec-doc-reviewer"],"expires_at":"2026-07-20T12:00:00Z","worker_state":"ready","provider_eligibility":"eligible","run_admission":"ready","reasons":[]}"#;
+
+fn restrict_test_handoff(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        let whoami = std::process::Command::new("whoami.exe").output().unwrap();
+        let user = String::from_utf8(whoami.stdout).unwrap();
+        let grant = format!("{}:F", user.trim());
+        let status = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .args([
+                "/inheritance:r",
+                "/grant:r",
+                &grant,
+                "*S-1-5-18:F",
+                "*S-1-5-32-544:F",
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+}
+
 struct ObservedRequest {
-    request_line: String,
     body: String,
 }
 
@@ -11,7 +45,6 @@ fn read_request(stream: &std::net::TcpStream) -> ObservedRequest {
     let mut reader = BufReader::new(stream.try_clone().unwrap());
     let mut request_line = String::new();
     reader.read_line(&mut request_line).unwrap();
-    let request_line = request_line.trim_end().to_string();
     let mut content_length = 0usize;
     loop {
         let mut line = String::new();
@@ -30,7 +63,6 @@ fn read_request(stream: &std::net::TcpStream) -> ObservedRequest {
     let mut body = vec![0u8; content_length];
     reader.read_exact(&mut body).unwrap();
     ObservedRequest {
-        request_line,
         body: String::from_utf8(body).unwrap(),
     }
 }
@@ -56,7 +88,7 @@ fn write_response(stream: &mut std::net::TcpStream, status: u16, body: &str) {
 fn write_service_record(path: &std::path::Path, port: u16) {
     let handoff = path.with_file_name("service.token");
     std::fs::write(&handoff, "tok").unwrap();
-    vaultspec_product::discovery::restrict_handoff_to_current_user(&handoff).unwrap();
+    restrict_test_handoff(&handoff);
     std::fs::write(
         path,
         format!(
@@ -77,7 +109,7 @@ fn run_start_call(state: &AppState, run_id: &str) -> ForwardedCall {
         &A2aVerbBody {
             expected_scope: Some(crate::routes::scope_token(&cell.root)),
             run_id: Some(run_id.to_string()),
-            team_preset: Some("vaultspec-authoring".to_string()),
+            team_preset: Some("vaultspec-adr-research".to_string()),
             message: Some("Research the bounded broker".to_string()),
             feature_tag: Some("a2a-orchestration-edge".to_string()),
             ..Default::default()
@@ -86,14 +118,8 @@ fn run_start_call(state: &AppState, run_id: &str) -> ForwardedCall {
     .unwrap()
 }
 
-fn actor_token_count(state: &AppState) -> usize {
-    state
-        .with_authoring_store(|store| {
-            store.with_read_unit_of_work(CommandKind::ReadContext, |uow| {
-                uow.actor_tokens().count_total()
-            })
-        })
-        .unwrap()
+fn unresolved_lease_count(state: &AppState) -> usize {
+    state.a2a_run_leases.unresolved_leases().unwrap().len()
 }
 
 fn test_state() -> (tempfile::TempDir, Arc<AppState>) {
@@ -386,7 +412,15 @@ fn build_run_start_validates_and_omits_actor_tokens() {
 #[test]
 fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_no_bearer() {
     let (_dir, state) = test_state();
-    let bundle = provision_actor_token_bundle(&state, "run-bundle-1").unwrap();
+    let prepared = PreparedRun {
+        reservation_id: "resv-bundle-1".to_string(),
+        gateway_lease_id: "lease-gateway-provision".to_string(),
+        required_roles: TEST_REQUIRED_ROLES
+            .iter()
+            .map(|role| (*role).to_string())
+            .collect(),
+    };
+    let bundle = provision_actor_token_bundle(&state, &prepared, "run-provision-test").unwrap();
 
     // engine_bearer is absent (null): the worker self-resolves it.
     assert_eq!(bundle.wire["engine_bearer"], Value::Null);
@@ -394,18 +428,91 @@ fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_no_bearer() {
     let tokens = bundle.wire["tokens"].as_object().unwrap();
     assert_eq!(
         tokens.len(),
-        A2A_PIPELINE_ROLES.len(),
-        "one token per canonical pipeline role"
+        TEST_REQUIRED_ROLES.len(),
+        "one token per authenticated preset-required role"
     );
     let mut seen = std::collections::HashSet::new();
-    for role in A2A_PIPELINE_ROLES {
+    for role in TEST_REQUIRED_ROLES {
         let token = tokens[*role].as_str().expect("role token is a string");
         assert!(!token.is_empty(), "role `{role}` has a non-empty token");
         assert!(
             seen.insert(token.to_string()),
             "role `{role}` token must be distinct (roles never share a token)"
         );
+        assert!(
+            state
+                .a2a_run_leases
+                .resolve_token(token, now_ms())
+                .unwrap()
+                .is_some(),
+            "the exact gateway lease is locally bound before dispatch"
+        );
+        let actor = ActorRef {
+            id: ActorId::new(format!("agent:{role}")).unwrap(),
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        state
+            .with_authoring_store(|store| {
+                store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                    uow.actors().ensure_active(&actor).map(|_| ())
+                })
+            })
+            .expect("every prepared role is registered active");
     }
+    commit_local_lease(
+        &state,
+        &bundle.lease_id,
+        &prepared.reservation_id,
+        &prepared.gateway_lease_id,
+        "run-provision-test",
+        r#"{"api_version":"v1","stage":"committed","run_id":"run-provision-test","status":"running","lease_id":"lease-gateway-provision"}"#,
+    )
+    .unwrap();
+    assert!(
+        state
+            .a2a_run_leases
+            .resolve_token(tokens[TEST_REQUIRED_ROLES[0]].as_str().unwrap(), now_ms())
+            .unwrap()
+            .is_some(),
+        "the token resolves only after the strict commit response is bound"
+    );
+    assert_eq!(unresolved_lease_count(&state), 1);
+}
+
+#[test]
+fn malformed_or_mismatched_commit_response_never_activates_the_local_lease() {
+    let (_dir, state) = test_state();
+    let prepared = PreparedRun {
+        reservation_id: "resv-strict-commit".to_string(),
+        gateway_lease_id: "lease-ok".to_string(),
+        required_roles: vec!["vaultspec-researcher".to_string()],
+    };
+    let bundle = provision_actor_token_bundle(&state, &prepared, "run-strict").unwrap();
+    for raw in [
+        r#"{"api_version":"v2","stage":"committed","run_id":"run-strict","status":"running","lease_id":"lease-ok"}"#,
+        r#"{"api_version":"v1","stage":"prepared","run_id":"run-strict","status":"running","lease_id":"lease-ok"}"#,
+        r#"{"api_version":"v1","stage":"committed","run_id":"run-other","status":"running","lease_id":"lease-ok"}"#,
+        r#"{"api_version":"v1","stage":"committed","run_id":"run-strict","status":"running","lease_id":"../bad"}"#,
+        r#"{"api_version":"v1","stage":"committed","run_id":"run-strict","lease_id":"lease-ok"}"#,
+    ] {
+        assert!(
+            commit_local_lease(
+                &state,
+                &bundle.lease_id,
+                &prepared.reservation_id,
+                &prepared.gateway_lease_id,
+                "run-strict",
+                raw,
+            )
+            .is_err(),
+            "malformed response must fail closed: {raw}"
+        );
+    }
+    assert_eq!(
+        state.a2a_run_leases.lease_state(&bundle.lease_id).unwrap(),
+        Some(crate::a2a_run_leases::LeaseState::Active)
+    );
 }
 
 #[test]
@@ -430,7 +537,7 @@ fn discovery_classifies_absent_stale_and_fresh() {
     let now = now_ms();
     let handoff = path.with_file_name("service.token");
     std::fs::write(&handoff, "tok").unwrap();
-    vaultspec_product::discovery::restrict_handoff_to_current_user(&handoff).unwrap();
+    restrict_test_handoff(&handoff);
     std::fs::write(
         &path,
         format!(
@@ -584,24 +691,21 @@ fn accepted_run_start_replay_preflights_existing_and_does_not_mint_again() {
         let responses = [
             (200, r#"{"status":"ok"}"#),
             (404, r#"{"detail":"not found"}"#),
+            (201, TEST_PREPARE_RESPONSE),
             (
                 201,
-                r#"{"api_version":"v1","run_id":"run-idem-1","status":"running"}"#,
+                r#"{"api_version":"v1","stage":"committed","run_id":"run-idem-1","status":"running","lease_id":"lease-gateway-test"}"#,
             ),
             (200, r#"{"status":"ok"}"#),
             (
                 200,
                 r#"{"api_version":"v1","run_id":"run-idem-1","status":"running"}"#,
             ),
-            (
-                201,
-                r#"{"api_version":"v1","run_id":"run-idem-1","status":"running"}"#,
-            ),
         ];
         for (index, (status, body)) in responses.into_iter().enumerate() {
             let (mut stream, _) = listener.accept().unwrap();
             let request = read_request(&stream);
-            if index == 2 || index == 5 {
+            if index == 2 || index == 3 {
                 requests_tx.send(request).unwrap();
             }
             write_response(&mut stream, status, body);
@@ -620,7 +724,7 @@ fn accepted_run_start_replay_preflights_existing_and_does_not_mint_again() {
         std::slice::from_ref(&service_json),
     );
     assert!(matches!(first, BrokeredRoundTrip::Answer(Ok(_))));
-    assert_eq!(actor_token_count(&state), A2A_PIPELINE_ROLES.len());
+    assert_eq!(unresolved_lease_count(&state), 1);
 
     let replay = execute_broker_call(
         &state,
@@ -630,28 +734,21 @@ fn accepted_run_start_replay_preflights_existing_and_does_not_mint_again() {
     );
     assert!(matches!(replay, BrokeredRoundTrip::Answer(Ok(_))));
     assert_eq!(
-        actor_token_count(&state),
-        A2A_PIPELINE_ROLES.len(),
+        unresolved_lease_count(&state),
+        1,
         "an accepted idempotent replay must not append or rotate tokens"
     );
 
-    let first_post = requests_rx.recv().unwrap();
-    let replay_post = requests_rx.recv().unwrap();
-    assert_eq!(first_post.request_line, "POST /v1/runs HTTP/1.1");
-    assert_eq!(replay_post.request_line, "POST /v1/runs HTTP/1.1");
-    let first_body: Value = serde_json::from_str(&first_post.body).unwrap();
-    let replay_body: Value = serde_json::from_str(&replay_post.body).unwrap();
-    assert_eq!(first_body["run_id"], "run-idem-1");
+    let prepare: Value = serde_json::from_str(&requests_rx.recv().unwrap().body).unwrap();
+    let commit: Value = serde_json::from_str(&requests_rx.recv().unwrap().body).unwrap();
+    assert_eq!(prepare["stage"], "prepare");
+    assert!(prepare.get("actor_tokens").is_none());
+    assert_eq!(commit["stage"], "commit");
+    assert_eq!(commit["reservation_id"], "resv-test-1");
+    assert_eq!(commit["run_id"], "run-idem-1");
     assert_eq!(
-        first_body["actor_tokens"]["tokens"]
-            .as_object()
-            .unwrap()
-            .len(),
-        A2A_PIPELINE_ROLES.len()
-    );
-    assert!(
-        replay_body.get("actor_tokens").is_none(),
-        "the A2A existing-run short path needs no recoverable raw token"
+        commit["actor_tokens"]["tokens"].as_object().unwrap().len(),
+        TEST_REQUIRED_ROLES.len()
     );
     server.join().unwrap();
 }
@@ -660,14 +757,20 @@ fn accepted_run_start_replay_preflights_existing_and_does_not_mint_again() {
 fn refusals_revoke_but_ambiguous_transport_failures_retain_and_retry_tokens() {
     use std::net::TcpListener;
 
-    // First real gateway: health + absent preflight + explicit business refusal.
+    // First real gateway: prepare admits, then commit explicitly refuses. The
+    // locally reserved lease is revoked rather than left resolvable.
     let refused_listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let refused_port = refused_listener.local_addr().unwrap().port();
     let refused_server = std::thread::spawn(move || {
         for (status, body) in [
             (200, r#"{"status":"ok"}"#),
             (404, r#"{"detail":"not found"}"#),
+            (201, TEST_PREPARE_RESPONSE),
             (422, r#"{"detail":"preset ineligible"}"#),
+            (
+                201,
+                r#"{"api_version":"v1","stage":"released","reservation_id":"resv-test-1","released":true}"#,
+            ),
         ] {
             let (mut stream, _) = refused_listener.accept().unwrap();
             let _request = read_request(&stream);
@@ -688,23 +791,23 @@ fn refusals_revoke_but_ambiguous_transport_failures_retain_and_retry_tokens() {
         refused,
         BrokeredRoundTrip::Answer(Err(RagError::Http { status: 422, .. }))
     ));
-    assert_eq!(actor_token_count(&state), 0);
+    assert_eq!(unresolved_lease_count(&state), 0);
     refused_server.join().unwrap();
 
-    // Second real gateway: health + absent preflight, then it accepts the POST
-    // connection and closes without an HTTP response. A confirmation 404 is
-    // still ambiguous, so the exact same id/token request is retried.
+    // Second real gateway: prepare admits, then it accepts commit and closes
+    // without an HTTP response. The exact same reservation/id/token commit is
+    // retried once and returns the authoritative committed lease.
     let failed_listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let failed_port = failed_listener.local_addr().unwrap().port();
     let failed_server = std::thread::spawn(move || {
         for (index, (status, body)) in [
             (200, r#"{"status":"ok"}"#),
             (404, r#"{"detail":"not found"}"#),
+            (201, TEST_PREPARE_RESPONSE),
             (200, ""),
-            (404, r#"{"detail":"still not found"}"#),
             (
                 201,
-                r#"{"api_version":"v1","run_id":"run-failed-1","status":"submitted"}"#,
+                r#"{"api_version":"v1","stage":"committed","run_id":"run-failed-1","status":"submitted","lease_id":"lease-gateway-test"}"#,
             ),
         ]
         .into_iter()
@@ -712,7 +815,7 @@ fn refusals_revoke_but_ambiguous_transport_failures_retain_and_retry_tokens() {
         {
             let (mut stream, _) = failed_listener.accept().unwrap();
             let _request = read_request(&stream);
-            if index != 2 {
+            if index != 3 {
                 write_response(&mut stream, status, body);
             }
         }
@@ -727,7 +830,7 @@ fn refusals_revoke_but_ambiguous_transport_failures_retain_and_retry_tokens() {
         std::slice::from_ref(&failed_json),
     );
     assert!(matches!(failed, BrokeredRoundTrip::Answer(Ok(_))));
-    assert_eq!(actor_token_count(&state), A2A_PIPELINE_ROLES.len());
+    assert_eq!(unresolved_lease_count(&state), 1);
     failed_server.join().unwrap();
 }
 
@@ -739,20 +842,16 @@ fn accepted_start_with_a_lost_response_retains_tokens_and_recovers_idempotently(
     let port = listener.local_addr().unwrap().port();
     let (post_tx, post_rx) = std::sync::mpsc::channel();
     let server = std::thread::spawn(move || {
-        // health, initial absent preflight, accepted POST whose response is
-        // dropped, confirmation GET that finds the durable run, and the safe
-        // idempotent POST used to recover a RunStartResponse.
+        // health, absent preflight, admitted prepare, accepted commit whose
+        // response is dropped, then the exact idempotent commit replay.
         for (index, (status, body)) in [
             (200, r#"{"status":"ok"}"#),
             (404, r#"{"detail":"not found"}"#),
+            (201, TEST_PREPARE_RESPONSE),
             (201, ""),
             (
-                200,
-                r#"{"api_version":"v1","run_id":"run-lost-ack","status":"running"}"#,
-            ),
-            (
                 201,
-                r#"{"api_version":"v1","run_id":"run-lost-ack","status":"running"}"#,
+                r#"{"api_version":"v1","stage":"committed","run_id":"run-lost-ack","status":"running","lease_id":"lease-gateway-test"}"#,
             ),
         ]
         .into_iter()
@@ -760,10 +859,10 @@ fn accepted_start_with_a_lost_response_retains_tokens_and_recovers_idempotently(
         {
             let (mut stream, _) = listener.accept().unwrap();
             let request = read_request(&stream);
-            if index == 2 || index == 4 {
+            if index == 3 || index == 4 {
                 post_tx.send(request).unwrap();
             }
-            if index != 2 {
+            if index != 3 {
                 write_response(&mut stream, status, body);
             }
         }
@@ -779,15 +878,14 @@ fn accepted_start_with_a_lost_response_retains_tokens_and_recovers_idempotently(
         std::slice::from_ref(&service_json),
     );
     assert!(matches!(outcome, BrokeredRoundTrip::Answer(Ok(_))));
-    assert_eq!(actor_token_count(&state), A2A_PIPELINE_ROLES.len());
+    assert_eq!(unresolved_lease_count(&state), 1);
 
     let accepted_body: Value = serde_json::from_str(&post_rx.recv().unwrap().body).unwrap();
     let recovery_body: Value = serde_json::from_str(&post_rx.recv().unwrap().body).unwrap();
     assert!(accepted_body.get("actor_tokens").is_some());
-    assert!(
-        recovery_body.get("actor_tokens").is_none(),
-        "the response-recovery replay must not mint or resend credentials"
-    );
+    assert_eq!(accepted_body, recovery_body);
+    assert_eq!(recovery_body["stage"], "commit");
+    assert_eq!(recovery_body["reservation_id"], "resv-test-1");
     server.join().unwrap();
 }
 

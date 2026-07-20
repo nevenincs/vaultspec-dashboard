@@ -20,6 +20,32 @@ use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, Refusal};
 use vaultspec_product::receipt::{Channel, Receipt};
 
+fn restrict_test_handoff(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        let whoami = std::process::Command::new("whoami.exe").output().unwrap();
+        let user = String::from_utf8(whoami.stdout).unwrap();
+        let grant = format!("{}:F", user.trim());
+        let status = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .args([
+                "/inheritance:r",
+                "/grant:r",
+                &grant,
+                "*S-1-5-18:F",
+                "*S-1-5-32-544:F",
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
+}
+
 /// Stand up a real loopback HTTP gateway stub that answers `/health` and
 /// `/readiness`, requiring the attach bearer. Returns the bound endpoint. The
 /// server serves a bounded number of connections then exits.
@@ -96,7 +122,7 @@ fn owner_attaches_to_a_live_owned_gateway_over_a_real_socket() {
     let dir = tempfile::tempdir().unwrap();
     let handoff = dir.path().join("attach-control.cred");
     std::fs::write(&handoff, "handoff-present").unwrap();
-    vaultspec_product::discovery::restrict_handoff_to_current_user(&handoff).unwrap();
+    restrict_test_handoff(&handoff);
     let endpoint = spawn_gateway_stub("attach-secret", 1);
 
     let raw = discovery_json(

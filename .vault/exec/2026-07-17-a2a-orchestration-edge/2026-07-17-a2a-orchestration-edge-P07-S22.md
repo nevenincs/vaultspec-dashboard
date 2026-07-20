@@ -9,41 +9,6 @@ related:
   - "[[2026-07-17-a2a-orchestration-edge-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace a2a-orchestration-edge with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S22 and 2026-07-17-a2a-orchestration-edge-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail and ## Scope
-
-- `engine/crates/vaultspec-api/src/lib.rs`
-- `.vault/reference/`
-- `.vault/audit/` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail
 
 ## Scope
@@ -59,10 +24,11 @@ related:
 - Correct live engine comments, prospective product-plan wording, sibling package and CLI descriptions, and live acceptance descriptions.
 - Remove execution-step provenance from source comments while preserving the invariant it described.
 - Preserve completed historical execution narratives and unrelated product-provisioning architecture.
+- Reconcile the current sibling desktop plan/ADR and live discovery, config, and auth descriptions without rewriting historical snapshots.
 
 ## Outcome
 
-Current normative and live descriptive surfaces now use one six-member whitelist vocabulary and state the implemented authority and resource boundaries. Final audit dispositions and document checks are recorded by S23 after adversarial review.
+Current normative and live descriptive surfaces now use one six-member whitelist vocabulary and record durable pre-dispatch reservation, ambiguous exact retry, portable run-id filtering, secret-free owner-restricted handoff, credential separation, relay-loss/EOF recovery, one frontend coordinator, and first-class reconciliation generation. Historical snapshots and unrelated product work remain unchanged. Final audit dispositions are recorded by S23.
 
 ## Notes
 

@@ -92,7 +92,7 @@ pub fn hash_actor_token(raw_token: &str) -> String {
 
 /// A cryptographically-random 32-byte token, hex-encoded (mirrors the engine's
 /// bearer-token generation: OS CSPRNG via getrandom, hex shape).
-fn generate_raw_token() -> String {
+pub(crate) fn generate_raw_token() -> String {
     let mut bytes = [0u8; 32];
     getrandom::fill(&mut bytes).expect("OS CSPRNG unavailable for actor token");
     let mut hex = String::with_capacity(64);
@@ -633,6 +633,113 @@ mod tests {
                 .unwrap(),
             Some(b)
         );
+    }
+
+    /// Concatenate EVERY column of EVERY actor-token row from the real on-disk
+    /// store, so a test can prove no raw secret ever landed in persistence — not
+    /// in a dedicated column, not smuggled into `record_json`.
+    fn dump_actor_token_rows(db_path: &std::path::Path) -> String {
+        use rusqlite::types::ValueRef;
+        let conn = rusqlite::Connection::open(db_path).unwrap();
+        let mut stmt = conn.prepare("SELECT * FROM authoring_actor_tokens").unwrap();
+        let column_count = stmt.column_count();
+        let mut dumped = String::new();
+        let mut rows = stmt.query([]).unwrap();
+        while let Some(row) = rows.next().unwrap() {
+            for index in 0..column_count {
+                match row.get_ref(index).unwrap() {
+                    ValueRef::Text(bytes) => dumped.push_str(&String::from_utf8_lossy(bytes)),
+                    ValueRef::Blob(bytes) => dumped.push_str(&String::from_utf8_lossy(bytes)),
+                    ValueRef::Integer(value) => dumped.push_str(&value.to_string()),
+                    ValueRef::Real(value) => dumped.push_str(&value.to_string()),
+                    ValueRef::Null => {}
+                }
+                dumped.push('\n');
+            }
+        }
+        dumped
+    }
+
+    /// S43: two concurrent A2A runs for ONE role actor each mint their own bundle
+    /// (distinct run-scoped purpose keys). The secrets are independently random,
+    /// revoking one run's exact hashed bundle leaves the concurrent same-role run
+    /// authenticating, and no raw secret ever reaches a record, the debug output,
+    /// or persistence — the raw exists only in the once-returned value.
+    #[test]
+    fn concurrent_same_role_runs_revoke_independently_and_never_persist_a_raw_secret() {
+        let (dir, mut store) = temp_store();
+        let researcher = actor("agent:researcher", ActorKind::Agent);
+
+        // Two concurrent runs, one role — each keyed by its own run-scoped purpose.
+        let (run_a, run_b) = store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let tokens = uow.actor_tokens();
+                let run_a = tokens.issue_for_purpose(
+                    &researcher,
+                    &admin(),
+                    100,
+                    3_600_000,
+                    "a2a-run-start:v1:run-A:researcher",
+                )?;
+                let run_b = tokens.issue_for_purpose(
+                    &researcher,
+                    &admin(),
+                    100,
+                    3_600_000,
+                    "a2a-run-start:v1:run-B:researcher",
+                )?;
+                Ok((run_a, run_b))
+            })
+            .unwrap();
+
+        // The same role actor, but independently random secrets + distinct hashes.
+        assert_eq!(run_a.record.actor, run_b.record.actor);
+        assert_ne!(run_a.raw_token, run_b.raw_token);
+        assert_ne!(run_a.record.token_hash, run_b.record.token_hash);
+
+        // Revoke EXACTLY run A's hashed bundle (the broker's terminal/failed-attempt
+        // cleanup seam). Run B — the concurrent same-role run — keeps resolving.
+        store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let tokens = uow.actor_tokens();
+                assert_eq!(
+                    tokens.revoke_hashes(&[run_a.record.token_hash.clone()], 200)?,
+                    1
+                );
+                assert_eq!(
+                    tokens.resolve(&run_a.raw_token, 300)?,
+                    None,
+                    "run A's bundle is revoked"
+                );
+                assert_eq!(
+                    tokens.resolve(&run_b.raw_token, 300)?,
+                    Some(researcher.clone()),
+                    "the concurrent same-role run is untouched"
+                );
+                Ok(())
+            })
+            .unwrap();
+
+        // No raw secret in the stored RECORD or the debug OUTPUT.
+        let record_json = serde_json::to_string(&run_b.record).unwrap();
+        assert!(
+            !record_json.contains(&run_b.raw_token),
+            "the persisted record carries the hash, never the raw"
+        );
+        assert!(record_json.contains(&run_b.record.token_hash));
+        let debug = format!("{run_b:?}");
+        assert!(debug.contains("<redacted>"));
+        assert!(!debug.contains(&run_a.raw_token) && !debug.contains(&run_b.raw_token));
+
+        // No raw secret in PERSISTENCE: scan every column of every row in the real
+        // on-disk store. Neither raw appears; the hashes do (proves the scan hit
+        // the right rows, so the absence of the raws is meaningful).
+        let dumped = dump_actor_token_rows(store.path());
+        assert!(!dumped.contains(&run_a.raw_token));
+        assert!(!dumped.contains(&run_b.raw_token));
+        assert!(dumped.contains(&run_a.record.token_hash));
+        assert!(dumped.contains(&run_b.record.token_hash));
+        drop(dir);
     }
 
     #[test]

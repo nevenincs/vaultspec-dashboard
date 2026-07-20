@@ -11,15 +11,6 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
 
 <!-- RETIRED: S08, S162 -->
 
@@ -107,8 +98,8 @@ Dispatch to vaultspec-high-executor after the A2A desktop singleton and control 
 - [x] `W02.P04.S27` - Start or authenticate the receipt-owned gateway during seated boot and leave compatible foreign residents immutable; `engine/crates/vaultspec-api/src/boot.rs`.
 - [x] `W02.P04.S28` - Report installed release set, owned or foreign gateway identity, protocol, state schema, and authenticated readiness in the component handshake; `engine/crates/vaultspec-api/src/handshake.rs`.
 - [x] `W02.P04.S29` - Seed the agent tier on every response so absence can no longer masquerade as A2A availability; `engine/crates/engine-query/src/envelope.rs`.
-- [ ] `W02.P04.S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
-- [ ] `W02.P04.S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
+- [x] `W02.P04.S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [x] `W02.P04.S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
 - [x] `W02.P04.S32` - Expose product installation, gateway, worker, provider, and admission facts without collapsing cold worker state into degradation; `engine/crates/vaultspec-api/src/routes/stream.rs`.
 - [x] `W02.P04.S33` - Include the complete A2A product and ownership projection in the one-shot status command; `engine/crates/vaultspec-cli/src/cmd/status.rs`.
 - [x] `W02.P04.S34` - Prove seated boot, authenticated attach, cold readiness, foreign immutability, stale recovery, and clean gateway shutdown against the real desktop entrypoint; `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`.
@@ -123,21 +114,21 @@ Dispatch to vaultspec-high-executor after the A2A desktop singleton and control 
 
 Dispatch to vaultspec-high-executor to preserve the fixed six-member dashboard whitelist of five control verbs plus bounded active-run discovery while implementing downstream prepare, bounded bundle mint, commit, dedicated durable lease storage, attach-control-authenticated internal terminal settlement, expiry, and restart reconciliation.
 
-- [ ] `W02.P05.S35` - Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
+- [x] `W02.P05.S35` - Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S36` - Issue and revoke run-scoped token bundles only for the bounded server-validated required-role set returned by prepare, without storing raw secrets or revoking another run for the same actor; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
-- [ ] `W02.P05.S37` - Carry the resolved token-hash lease identity with the authenticated principal while keeping the raw header value one-use and inaccessible to handlers; `engine/crates/vaultspec-api/src/authoring/principal.rs`.
-- [ ] `W02.P05.S38` - Resolve actor token hashes against the dedicated A2A run-token lease repository through principal extraction without adding client-claimable lease or run identity fields; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
+- [x] `W02.P05.S37` - Carry the resolved token-hash lease identity with the authenticated principal while keeping the raw header value one-use and inaccessible to handlers; `engine/crates/vaultspec-api/src/authoring/principal.rs`.
+- [x] `W02.P05.S38` - Resolve actor token hashes against the dedicated A2A run-token lease repository through principal extraction without adding client-claimable lease or run identity fields; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 - [ ] `W02.P05.S39` - Persist the token bundle in the dedicated repository only after commit returns the authoritative A2A run or thread id and bind it to the non-secret lease and reservation identities; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S40` - Preserve public POST /ops/a2a/run-start as one of five control verbs in the fixed six-member dashboard whitelist while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
-- [ ] `W02.P05.S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle; `engine/crates/vaultspec-api/src/routes/a2a_settlement.rs`.
+- [x] `W02.P05.S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle; `engine/crates/vaultspec-api/src/routes/a2a_settlement.rs`.
 - [ ] `W02.P05.S42` - Prove dedicated A2A lease-repository migration, reopen, expiry, idempotent settlement, and restart reconciliation without depending on authoring-session schemas; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S43` - Prove two concurrent runs for one role revoke independently and no raw token enters records, output, logs, receipts, or discovery; `engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
 - [ ] `W02.P05.S44` - Prove dashboard run-start remains one of five public verbs, downstream prepare refusal mints nothing, invalid roles fail closed, commit failure cancels and revokes, attach-control-authenticated terminal callbacks settle once after durable A2A state, INPUT_REQUIRED retains the lease, and restart or expiry reconciliation revokes the exact bundle; `engine/crates/vaultspec-api/src/lib_tests/a2a_run_admission.rs`.
-- [ ] `W02.P05.S150` - Export the crate-private dedicated A2A run-token lease repository module without coupling it to authoring-session storage; `engine/crates/vaultspec-api/src/lib.rs`.
-- [ ] `W02.P05.S151` - Construct and retain the dedicated A2A run-token lease repository in AppState for seated routes and restart reconciliation; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `W02.P05.S152` - Export the authenticated A2A terminal-settlement route module outside the public ops orchestration namespace; `engine/crates/vaultspec-api/src/routes/mod.rs`.
-- [ ] `W02.P05.S153` - Mount POST /internal/a2a/run-terminal with the dashboard-created attach-control credential, reject worker IPC and unrelated credentials, and avoid adding a sixth public /ops/a2a verb; `engine/crates/vaultspec-api/src/lib.rs`.
-- [ ] `W02.P05.S154` - Reserve the internal A2A settlement prefix from SPA fallback routing so callback mistakes fail visibly; `engine/crates/vaultspec-api/src/routes/spa.rs`.
+- [x] `W02.P05.S150` - Export the crate-private dedicated A2A run-token lease repository module without coupling it to authoring-session storage; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `W02.P05.S151` - Construct and retain the dedicated A2A run-token lease repository in AppState for seated routes and restart reconciliation; `engine/crates/vaultspec-api/src/app.rs`.
+- [x] `W02.P05.S152` - Export the authenticated A2A terminal-settlement route module outside the public ops orchestration namespace; `engine/crates/vaultspec-api/src/routes/mod.rs`.
+- [x] `W02.P05.S153` - Mount POST /internal/a2a/run-terminal with the dashboard-created attach-control credential, reject worker IPC and unrelated credentials, and avoid adding a sixth public /ops/a2a verb; `engine/crates/vaultspec-api/src/lib.rs`.
+- [x] `W02.P05.S154` - Reserve the internal A2A settlement prefix from SPA fallback routing so callback mistakes fail visibly; `engine/crates/vaultspec-api/src/routes/spa.rs`.
 - [ ] `W02.P05.S160` - Implement bounded unresolved-lease reconciliation against authenticated authoritative A2A run status, retaining INPUT_REQUIRED, idempotently settling terminal runs, and revoking elapsed leases by expiry; `engine/crates/vaultspec-api/src/a2a_run_leases.rs`.
 - [ ] `W02.P05.S161` - Run durable A2A lease reconciliation during seated boot and bounded maintenance without delaying dashboard readiness on a temporarily unavailable compatible gateway; `engine/crates/vaultspec-api/src/boot.rs`.
 - [ ] `W02.P05.S155` - Prove attach-control callback authentication, worker IPC rejection, durable-terminal ordering, idempotency, exact hashed-bundle revocation, INPUT_REQUIRED retention, expiry, and restart reconciliation against the production repository and router; `engine/crates/vaultspec-api/src/lib_tests/a2a_terminal_settlement.rs`.

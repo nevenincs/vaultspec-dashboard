@@ -1353,6 +1353,13 @@ fn build_state_full(root: PathBuf, bearer: String, product_app_home: PathBuf) ->
         vaultspec_session::UserState::open(&workspace_root.join(".vault"))
             .unwrap_or_else(|e| panic!("user-state store unavailable: {e}")),
     ));
+    let a2a_run_leases = Arc::new(
+        crate::a2a_run_leases::LeaseRepo::open(&root.join(".vault"))
+            .unwrap_or_else(|e| panic!("a2a run-lease store unavailable: {e}")),
+    );
+    a2a_run_leases
+        .maintain(now_ms())
+        .unwrap_or_else(|e| panic!("a2a run-lease startup maintenance failed: {e}"));
     let state = Arc::new(AppState {
         workspace_root,
         registry: RwLock::new(ScopeRegistry::new()),
@@ -1372,10 +1379,7 @@ fn build_state_full(root: PathBuf, bearer: String, product_app_home: PathBuf) ->
         // this is a workspace-level durable store opened once; a failure to open
         // it is a genuine environment fault, surfaced loud rather than silently
         // dropping run-admission durability.
-        a2a_run_leases: Arc::new(
-            crate::a2a_run_leases::LeaseRepo::open(&root.join(".vault"))
-                .unwrap_or_else(|e| panic!("a2a run-lease store unavailable: {e}")),
-        ),
+        a2a_run_leases,
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned

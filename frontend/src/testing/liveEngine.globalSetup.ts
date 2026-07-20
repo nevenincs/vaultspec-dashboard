@@ -21,10 +21,17 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { awaitEngineQuiescent } from "./awaitEngineQuiescent";
+import {
+  forceTerminateProcessTree,
+  resolveExecutable,
+  waitForChildExit,
+} from "./processControl";
 
 const FIXTURE_DIR = resolve(import.meta.dirname, "fixtures/live-vault");
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
+const MAX_SERVE_LOG_BYTES = 1024 * 1024;
+const SETUP_COMMAND_TIMEOUT_MS = 60_000;
 
 /** Resolve the service binary the suite runs against.
  *
@@ -70,6 +77,7 @@ function resolveEngineBin(): { path: string; source: string } {
 }
 
 const { path: ENGINE_BIN, source: ENGINE_BIN_SOURCE } = resolveEngineBin();
+const VAULTSPEC_CORE_BIN = resolveExecutable("vaultspec-core");
 
 // Fixed commit identity + dates: the fixture's git history is the engine's
 // temporal source, so reproducible dates make asof/diff windows deterministic.
@@ -100,10 +108,11 @@ function git(scratch: string, args: string[]): void {
   const r = spawnSync("git", args, {
     cwd: scratch,
     env: { ...process.env, ...GIT_ENV },
+    timeout: SETUP_COMMAND_TIMEOUT_MS,
   });
-  if (r.status !== 0) {
+  if (r.error || r.status !== 0) {
     throw new Error(
-      `git ${args.join(" ")} failed: ${r.stderr?.toString() ?? r.status}`,
+      `git ${args.join(" ")} failed: ${r.error?.message ?? r.stderr?.toString() ?? r.status}`,
     );
   }
 }
@@ -111,24 +120,108 @@ function git(scratch: string, args: string[]): void {
 let engine: ChildProcess | undefined;
 let scratch: string | undefined;
 let degradedScratch: string | undefined;
+let activeBaseUrl: string | undefined;
+let activeToken = "";
 
-export default async function setup(): Promise<() => void> {
+function appendServeLog(current: string, chunk: Buffer): string {
+  const combined = current + chunk.toString();
+  return combined.length <= MAX_SERVE_LOG_BYTES
+    ? combined
+    : combined.slice(-MAX_SERVE_LOG_BYTES);
+}
+
+async function cleanupOwnedResources(): Promise<void> {
+  const ownedEngine = engine;
+  const failures: Error[] = [];
+  try {
+    if (
+      ownedEngine?.pid &&
+      ownedEngine.exitCode === null &&
+      ownedEngine.signalCode === null
+    ) {
+      if (activeBaseUrl && activeToken) {
+        try {
+          const response = await fetch(`${activeBaseUrl}/shutdown`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${activeToken}`,
+              "content-type": "application/json",
+            },
+            body: "{}",
+            signal: AbortSignal.timeout(5_000),
+          });
+          await response.arrayBuffer();
+          if (!response.ok) throw new Error(`shutdown returned ${response.status}`);
+        } catch {
+          // The bounded exit wait and trusted force-kill fallback below own cleanup.
+        }
+      }
+      if (!(await waitForChildExit(ownedEngine, 10_000))) {
+        try {
+          forceTerminateProcessTree(ownedEngine);
+        } catch (error) {
+          failures.push(error as Error);
+        }
+        if (!(await waitForChildExit(ownedEngine, 5_000))) {
+          failures.push(new Error(`engine process ${ownedEngine.pid} did not exit`));
+        }
+      }
+    }
+  } finally {
+    const exited =
+      !ownedEngine || ownedEngine.exitCode !== null || ownedEngine.signalCode !== null;
+    if (exited) {
+      try {
+        if (degradedScratch) rmSync(degradedScratch, { recursive: true, force: true });
+        if (scratch) rmSync(scratch, { recursive: true, force: true });
+      } catch (error) {
+        failures.push(error as Error);
+      }
+    }
+    engine = undefined;
+    scratch = undefined;
+    degradedScratch = undefined;
+    activeBaseUrl = undefined;
+    activeToken = "";
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1)
+    throw new AggregateError(failures, "live-engine cleanup failed");
+}
+
+export default async function setup(): Promise<() => Promise<void>> {
   // Reuse an explicitly provided service to avoid port and cache contention.
-  if (process.env["ENGINE_BASE_URL"]) return () => {};
+  if (process.env["ENGINE_BASE_URL"]) return async () => {};
 
+  try {
+    return await setupOwnedEngine();
+  } catch (setupError) {
+    try {
+      await cleanupOwnedResources();
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [setupError, cleanupError],
+        "live-engine setup and cleanup both failed",
+      );
+    }
+    throw setupError;
+  }
+}
+
+async function setupOwnedEngine(): Promise<() => Promise<void>> {
   // 1. Scratch copy of the fixture corpus (owns its own engine-data cache).
   scratch = mkdtempSync(join(tmpdir(), "vaultspec-livetest-"));
   cpSync(join(FIXTURE_DIR, ".vault"), join(scratch, ".vault"), { recursive: true });
   cpSync(join(FIXTURE_DIR, "src"), join(scratch, "src"), { recursive: true });
 
   // 2. Initialize the fixture as a workspace with machine-local scaffolding.
-  const install = spawnSync("vaultspec-core", ["install", "--target", scratch], {
+  const install = spawnSync(VAULTSPEC_CORE_BIN, ["install", "--target", scratch], {
     stdio: "pipe",
-    shell: true,
+    timeout: SETUP_COMMAND_TIMEOUT_MS,
   });
-  if (install.status !== 0) {
+  if (install.error || install.status !== 0) {
     throw new Error(
-      `vaultspec-core install failed (${install.status}): ${install.stderr?.toString() ?? ""}`,
+      `vaultspec-core install failed (${install.status}): ${install.error?.message ?? install.stderr?.toString() ?? ""}`,
     );
   }
 
@@ -155,6 +248,7 @@ export default async function setup(): Promise<() => void> {
   // 3. Spawn the real engine on a free loopback port, scoped to the scratch dir.
   const port = await freePort();
   const baseUrl = `http://127.0.0.1:${port}`;
+  activeBaseUrl = baseUrl;
   // Report the exact binary and source used by the run.
   console.info(
     `[live-engine] binary: ${ENGINE_BIN} (source: ${ENGINE_BIN_SOURCE}) → ${baseUrl}`,
@@ -162,10 +256,17 @@ export default async function setup(): Promise<() => void> {
   engine = spawn(ENGINE_BIN, ["serve", "--port", String(port), "--no-seat"], {
     cwd: scratch,
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
   let serveLog = "";
-  engine.stdout?.on("data", (d: Buffer) => (serveLog += d.toString()));
-  engine.stderr?.on("data", (d: Buffer) => (serveLog += d.toString()));
+  engine.stdout?.on(
+    "data",
+    (chunk: Buffer) => (serveLog = appendServeLog(serveLog, chunk)),
+  );
+  engine.stderr?.on(
+    "data",
+    (chunk: Buffer) => (serveLog = appendServeLog(serveLog, chunk)),
+  );
 
   // 4. Read the rotated service token + poll /status until the engine answers.
   const tokenPath = join(scratch, ".vault", "data", "engine-data", "service.json");
@@ -173,7 +274,7 @@ export default async function setup(): Promise<() => void> {
   let token = "";
   let ready = false;
   while (Date.now() < deadline) {
-    if (engine.exitCode !== null) {
+    if (engine.exitCode !== null || engine.signalCode !== null) {
       throw new Error(
         `engine exited (${engine.exitCode}) during startup:\n${serveLog}`,
       );
@@ -191,6 +292,7 @@ export default async function setup(): Promise<() => void> {
       try {
         const res = await fetch(`${baseUrl}/status`, {
           headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(2_000),
         });
         if (res.ok) {
           ready = true;
@@ -203,6 +305,7 @@ export default async function setup(): Promise<() => void> {
     await new Promise((r) => setTimeout(r, 200));
   }
   if (!ready) throw new Error(`engine did not come up within 30s:\n${serveLog}`);
+  activeToken = token;
 
   // Wait for initial ingestion to settle before publishing the service endpoint.
   try {
@@ -217,15 +320,5 @@ export default async function setup(): Promise<() => void> {
   process.env["ENGINE_BASE_URL"] = baseUrl;
   process.env["ENGINE_TOKEN"] = token;
 
-  return () => {
-    if (engine?.pid) {
-      if (process.platform === "win32") {
-        spawnSync("taskkill", ["/pid", String(engine.pid), "/T", "/F"]);
-      } else {
-        engine.kill("SIGKILL");
-      }
-    }
-    if (degradedScratch) rmSync(degradedScratch, { recursive: true, force: true });
-    if (scratch) rmSync(scratch, { recursive: true, force: true });
-  };
+  return cleanupOwnedResources;
 }

@@ -22,11 +22,13 @@ related:
 - Authenticate every current and future `/v1` route through one router dependency using constant-time token comparison.
 - Fail closed when the service token is absent outside the explicit in-process test bypass.
 - Keep the public health probe unauthenticated and constrain CLI discovery credentials to configured or matching-loopback records.
+- Keep `service.json` secret-free, publish the bearer only through an adjacent owner-restricted handoff, and reject unsafe paths, links, POSIX modes, or Windows ACLs.
+- Generate or configure a `/v1` bearer distinct from worker IPC and reject a configuration that reuses one value for both.
 - Exercise correct, missing, and incorrect credentials across all seven route classes with real HTTP traffic.
 
 ## Outcome
 
-The sibling gateway now binds to `127.0.0.1` by default and protects its complete `/v1` control surface with a single fail-closed service-token boundary. Focused authentication, gateway, API, application, and CLI suites passed 24, 18, 243, 18, and 2 tests respectively; Ruff, ty, and diff validation were clean.
+The sibling gateway now binds to `127.0.0.1` by default and protects its complete `/v1` control surface with a single fail-closed service-token boundary. Discovery contains no bearer; its adjacent token is published and validated with owner-only POSIX permissions or a private Windows DACL. Gateway and worker credentials are separate authority domains. The production-process auth/non-loopback proof and focused lifecycle/config suites pass.
 
 ## Notes
 

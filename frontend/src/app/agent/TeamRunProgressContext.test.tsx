@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { createServer } from "node:http";
+import { createServer, request as requestHttp, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -15,6 +15,101 @@ afterEach(() => {
   cleanup();
   a2aTeamClient.useTransport(liveTransport);
 });
+
+/** Real Node HTTP transport with a streaming Fetch response.
+ *
+ * happy-dom's fetch client reports cleanly closed long-lived sockets as
+ * ECONNRESET during teardown. This adapter still uses a genuine TCP request and
+ * streamed response, but owns the Node socket lifecycle explicitly. */
+function realHttpTransport(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const target = input instanceof URL ? input : new URL(String(input));
+  return new Promise<Response>((resolve, reject) => {
+    let abortRequest: (() => void) | undefined;
+    const removeAbortListener = () => {
+      if (init?.signal && abortRequest) {
+        init.signal.removeEventListener("abort", abortRequest);
+      }
+    };
+    const request = requestHttp(
+      target,
+      {
+        method: init?.method,
+        headers: init?.headers as import("node:http").OutgoingHttpHeaders,
+      },
+      (response) => {
+        let bodySettled = false;
+        const body = new ReadableStream<Uint8Array>({
+          start(controller) {
+            const settle = (error?: Error) => {
+              if (bodySettled) return;
+              bodySettled = true;
+              removeAbortListener();
+              if (error) controller.error(error);
+              else controller.close();
+            };
+            response.on("data", (chunk: Buffer) => controller.enqueue(chunk));
+            response.once("end", () => settle());
+            response.once("error", settle);
+            response.once("aborted", () => settle(new Error("response aborted")));
+            response.once("close", () => {
+              if (!response.complete) settle(new Error("response closed early"));
+            });
+          },
+          cancel() {
+            removeAbortListener();
+            response.destroy();
+          },
+        });
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(response.headers)) {
+          if (Array.isArray(value)) {
+            for (const item of value) headers.append(name, item);
+          } else if (value !== undefined) {
+            headers.set(name, value);
+          }
+        }
+        resolve(
+          new Response(body, {
+            headers,
+            status: response.statusCode ?? 500,
+            statusText: response.statusMessage,
+          }),
+        );
+      },
+    );
+    request.once("error", (error) => {
+      removeAbortListener();
+      reject(error);
+    });
+    if (init?.signal) {
+      abortRequest = () => request.destroy(new DOMException("Aborted", "AbortError"));
+      if (init.signal.aborted) abortRequest();
+      else init.signal.addEventListener("abort", abortRequest, { once: true });
+    }
+    if (init?.body) request.write(init.body);
+    request.end();
+  });
+}
+
+async function closeServer(server: Server): Promise<void> {
+  const closed = new Promise<void>((resolve, reject) => {
+    server.close((error) => (error ? reject(error) : resolve()));
+  });
+  server.closeAllConnections();
+  await Promise.race([
+    closed,
+    new Promise<never>((_, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error("test HTTP server did not close within 2s")),
+        2_000,
+      );
+      timer.unref();
+    }),
+  ]);
+}
 
 function ProgressConsumer({
   label,
@@ -38,10 +133,14 @@ describe("TeamRunProgressProvider", () => {
     let statusRequests = 0;
     let observedDegraded = false;
     let streamResponse: import("node:http").ServerResponse | undefined;
+    let queryClient: QueryClient | undefined;
     const server = createServer((request, response) => {
       if (request.url?.includes("/ops/a2a/runs/run-shared/stream")) {
         streamResponse = response;
-        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.writeHead(200, {
+          connection: "close",
+          "content-type": "text/event-stream",
+        });
         response.write(
           [
             'event: gap\ndata: {"reason":"budget pressure"}\n\n',
@@ -57,19 +156,22 @@ describe("TeamRunProgressProvider", () => {
       if (request.url?.endsWith("/ops/a2a/run-status")) {
         statusRequests += 1;
         setTimeout(() => {
-          response.writeHead(200, { "content-type": "application/json" });
-          response.end(
-            JSON.stringify({
-              data: {
-                envelope: {
-                  api_version: "v1",
-                  run_id: "run-shared",
-                  status: "running",
-                  semantic_phase: "running",
-                },
+          const body = JSON.stringify({
+            data: {
+              envelope: {
+                api_version: "v1",
+                run_id: "run-shared",
+                status: "running",
+                semantic_phase: "running",
               },
-            }),
-          );
+            },
+          });
+          response.writeHead(200, {
+            connection: "close",
+            "content-length": Buffer.byteLength(body),
+            "content-type": "application/json",
+          });
+          response.end(body);
         }, 100);
         return;
       }
@@ -83,9 +185,9 @@ describe("TeamRunProgressProvider", () => {
     try {
       const { port } = server.address() as AddressInfo;
       a2aTeamClient.useTransport((input, init) =>
-        fetch(new URL(String(input), `http://127.0.0.1:${port}`), init),
+        realHttpTransport(new URL(String(input), `http://127.0.0.1:${port}`), init),
       );
-      const queryClient = new QueryClient({
+      queryClient = new QueryClient({
         defaultOptions: { queries: { retry: false } },
       });
       render(
@@ -114,18 +216,30 @@ describe("TeamRunProgressProvider", () => {
       await new Promise((resolve) => setTimeout(resolve, 250));
       expect(statusRequests).toBeLessThanOrEqual(2);
     } finally {
-      cleanup();
-      streamResponse?.end();
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      try {
+        streamResponse?.end(
+          'event: thread_terminal\ndata: {"seq":301,"status":"completed"}\n\n',
+        );
+        if (queryClient) {
+          const activeQueryClient = queryClient;
+          await waitFor(() => expect(activeQueryClient.isFetching()).toBe(0), {
+            timeout: 2_000,
+          });
+        }
+      } finally {
+        cleanup();
+        await queryClient?.cancelQueries();
+        queryClient?.clear();
+        await closeServer(server);
+      }
     }
   });
 
   it("retries non-terminal EOF but completes after terminal EOF", async () => {
     let nonTerminalRequests = 0;
     let terminalRequests = 0;
+    let heldNonTerminal: import("node:http").ServerResponse | undefined;
+    let queryClient: QueryClient | undefined;
     const server = createServer((request, response) => {
       response.writeHead(200, { "content-type": "text/event-stream" });
       if (request.url?.includes("run-terminal")) {
@@ -136,7 +250,9 @@ describe("TeamRunProgressProvider", () => {
         return;
       }
       nonTerminalRequests += 1;
-      response.end('event: message_chunk\ndata: {"seq":1,"content":"x"}\n\n');
+      response.write('event: message_chunk\ndata: {"seq":1,"content":"x"}\n\n');
+      if (nonTerminalRequests === 1) response.end();
+      else heldNonTerminal = response;
     });
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
@@ -146,9 +262,9 @@ describe("TeamRunProgressProvider", () => {
     try {
       const { port } = server.address() as AddressInfo;
       a2aTeamClient.useTransport((input, init) =>
-        fetch(new URL(String(input), `http://127.0.0.1:${port}`), init),
+        realHttpTransport(new URL(String(input), `http://127.0.0.1:${port}`), init),
       );
-      const queryClient = new QueryClient();
+      queryClient = new QueryClient();
       render(
         <QueryClientProvider client={queryClient}>
           <RelayConsumer runId="run-non-terminal" />
@@ -162,11 +278,22 @@ describe("TeamRunProgressProvider", () => {
       await new Promise((resolve) => setTimeout(resolve, 500));
       expect(terminalRequests).toBe(1);
     } finally {
-      cleanup();
-      server.closeAllConnections();
-      await new Promise<void>((resolve, reject) => {
-        server.close((error) => (error ? reject(error) : resolve()));
-      });
+      try {
+        heldNonTerminal?.end(
+          'event: thread_terminal\ndata: {"seq":2,"status":"completed"}\n\n',
+        );
+        if (queryClient) {
+          const activeQueryClient = queryClient;
+          await waitFor(() => expect(activeQueryClient.isFetching()).toBe(0), {
+            timeout: 2_000,
+          });
+        }
+      } finally {
+        cleanup();
+        await queryClient?.cancelQueries();
+        queryClient?.clear();
+        await closeServer(server);
+      }
     }
   });
 });

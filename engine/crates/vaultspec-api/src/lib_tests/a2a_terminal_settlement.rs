@@ -7,15 +7,17 @@
 //! revocation, and callback lease-id verification. No mocks — a real AppState, a
 //! real router, real bootstrapped credentials, and a real SQLite lease repo.
 //!
-//! The reconciliation legs of S155 (INPUT_REQUIRED retention, expiry, restart
-//! reconciliation) land with S160/S161.
+//! The retention (INPUT_REQUIRED), expiry, and restart-reconciliation legs of
+//! S155 are proved here against the seated production lease repository through
+//! the committed repo API. The BOOT-time reconciliation WIRING that drives those
+//! primitives from a live gateway re-query lands with S160/S161.
 
 use super::*;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use tower::ServiceExt;
 
-use crate::a2a_run_leases::{LeaseReservation, LeaseToken};
+use crate::a2a_run_leases::{LeaseRepo, LeaseReservation, LeaseState, LeaseToken};
 use crate::authoring::actor_tokens::hash_actor_token;
 use crate::authoring::model::{ActorId, ActorKind, ActorRef};
 use vaultspec_product::credentials::CredentialStore;
@@ -23,10 +25,13 @@ use vaultspec_product::paths::ProductPaths;
 
 /// A seated state with an ISOLATED product home so we can bootstrap the
 /// attach-control + worker-IPC credentials the settlement auth verifies against,
-/// plus the returned secrets.
+/// plus the returned secrets. `vault_root` is the on-disk root the seated
+/// `LeaseRepo` opened under, so a test can REOPEN the same durable repo to prove
+/// restart survival.
 struct Fixture {
     _dir: tempfile::TempDir,
     _home: tempfile::TempDir,
+    vault_root: std::path::PathBuf,
     state: Arc<AppState>,
     attach_control: String,
     worker_ipc: String,
@@ -49,12 +54,49 @@ fn fixture() -> Fixture {
     let creds = store.bootstrap().unwrap();
     let worker = store.create_worker_ipc().unwrap();
     Fixture {
+        vault_root: dir.path().join(".vault"),
         _dir: dir,
         _home: home,
         state,
         attach_control: creds.attach_control.secret().to_string(),
         worker_ipc: worker.secret().to_string(),
     }
+}
+
+/// Reserve+commit a single-role lease with an explicit bounded expiry; return the
+/// raw role token. Mirrors `seed_lease` but lets an expiry-leg control the window.
+fn seed_lease_expiring(
+    state: &AppState,
+    lease: &str,
+    run: &str,
+    gateway_lease: &str,
+    reserve_at: i64,
+    expiry_ms: i64,
+) -> String {
+    let raw = format!("raw-{lease}");
+    state
+        .a2a_run_leases
+        .reserve(
+            &LeaseReservation {
+                lease_id: lease.to_string(),
+                reservation_id: format!("res-{lease}"),
+                bundle_id: format!("bundle-{lease}"),
+                run_id: Some(run.to_string()),
+                tokens: vec![LeaseToken {
+                    role: "researcher".to_string(),
+                    token_hash: hash_actor_token(&raw),
+                    actor: agent("researcher"),
+                }],
+                expiry_ms,
+            },
+            reserve_at,
+        )
+        .unwrap();
+    state
+        .a2a_run_leases
+        .commit(lease, run, None, gateway_lease, reserve_at)
+        .unwrap();
+    raw
 }
 
 fn agent(role: &str) -> ActorRef {
@@ -229,5 +271,157 @@ async fn a_mismatched_callback_lease_id_settles_nothing() {
             .unwrap()
             .is_some(),
         "a lease-id mismatch never revokes the bundle"
+    );
+}
+
+#[tokio::test]
+async fn non_terminal_callbacks_retain_the_running_lease() {
+    let fx = fixture();
+    let raw = seed_lease(&fx.state, "L3", "run-3", "gw-3");
+    let router = build_router(fx.state.clone());
+
+    // Every non-durable-terminal status (INPUT_REQUIRED is the resume case) is
+    // rejected as 422 AND retains the worker's lease so the run can continue.
+    for status in ["input_required", "working", "submitted", "auth_required"] {
+        let (code, _) = post_terminal(
+            router.clone(),
+            terminal_body("run-3", "gw-3", status),
+            Some(&fx.attach_control),
+        )
+        .await;
+        assert_eq!(
+            code,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "`{status}` is not a durable terminal"
+        );
+        assert!(
+            fx.state
+                .a2a_run_leases
+                .resolve_token(&raw, app::now_ms())
+                .unwrap()
+                .is_some(),
+            "`{status}` retains the running lease"
+        );
+    }
+}
+
+#[tokio::test]
+async fn an_expired_lease_stops_resolving_and_the_sweep_revokes_it() {
+    let fx = fixture();
+    let base = app::now_ms();
+    // A bounded lease whose window closes shortly after commit.
+    let raw = seed_lease_expiring(&fx.state, "L4", "run-4", "gw-4", base, base + 1_000);
+
+    // Within the window it authenticates and lists as unresolved.
+    assert!(
+        fx.state
+            .a2a_run_leases
+            .resolve_token(&raw, base + 500)
+            .unwrap()
+            .is_some()
+    );
+    assert_eq!(fx.state.a2a_run_leases.unresolved_leases().unwrap().len(), 1);
+
+    // Past expiry the token refuses BEFORE the sweep, and the bounded sweep then
+    // revokes the row so no bundle outlives its window.
+    assert!(
+        fx.state
+            .a2a_run_leases
+            .resolve_token(&raw, base + 2_000)
+            .unwrap()
+            .is_none(),
+        "an expired token never authenticates, even before the sweep"
+    );
+    assert_eq!(
+        fx.state.a2a_run_leases.expire_elapsed(base + 2_000).unwrap(),
+        1
+    );
+    assert_eq!(
+        fx.state.a2a_run_leases.lease_state("L4").unwrap(),
+        Some(LeaseState::Revoked)
+    );
+}
+
+#[tokio::test]
+async fn a_settled_terminal_is_durable_across_a_repo_reopen() {
+    let fx = fixture();
+    let raw = seed_lease(&fx.state, "L5", "run-5", "gw-5");
+    let router = build_router(fx.state.clone());
+
+    let (code, body) = post_terminal(
+        router,
+        terminal_body("run-5", "gw-5", "completed"),
+        Some(&fx.attach_control),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(body["data"]["settled"], true);
+
+    // Reopen the SAME durable repo (a process restart): the settled state and the
+    // revoked bundle survive — a settled terminal never resurrects.
+    let reopened = LeaseRepo::open(&fx.vault_root).unwrap();
+    assert_eq!(
+        reopened.lease_state("L5").unwrap(),
+        Some(LeaseState::Settled)
+    );
+    assert!(
+        reopened
+            .resolve_token(&raw, app::now_ms())
+            .unwrap()
+            .is_none(),
+        "the settled bundle stays revoked after restart"
+    );
+}
+
+#[tokio::test]
+async fn reserved_leases_revoke_on_restart_while_committed_leases_survive() {
+    let fx = fixture();
+    let base = app::now_ms();
+
+    // A reserved-but-never-committed bundle models a crash between reserve and
+    // commit. Its hashes are already inert (pre-commit is not resolvable).
+    let reserved_raw = "raw-reserved".to_string();
+    fx.state
+        .a2a_run_leases
+        .reserve(
+            &LeaseReservation {
+                lease_id: "L6-res".to_string(),
+                reservation_id: "res-L6".to_string(),
+                bundle_id: "bundle-L6".to_string(),
+                run_id: Some("run-6-res".to_string()),
+                tokens: vec![LeaseToken {
+                    role: "planner".to_string(),
+                    token_hash: hash_actor_token(&reserved_raw),
+                    actor: agent("planner"),
+                }],
+                expiry_ms: base + 3_600_000,
+            },
+            base,
+        )
+        .unwrap();
+    // A committed active bundle must survive the same restart.
+    let active_raw = seed_lease(&fx.state, "L6-act", "run-6-act", "gw-6");
+
+    // Restart reconciliation: reserved rows fail closed (never completed their
+    // local binding), committed rows are untouched.
+    let reopened = LeaseRepo::open(&fx.vault_root).unwrap();
+    assert_eq!(reopened.revoke_all_reserved(app::now_ms()).unwrap(), 1);
+    assert_eq!(
+        reopened.lease_state("L6-res").unwrap(),
+        Some(LeaseState::Revoked)
+    );
+    assert!(
+        reopened
+            .resolve_token(&reserved_raw, app::now_ms())
+            .unwrap()
+            .is_none()
+    );
+    // The committed active lease still authenticates after the restart sweep.
+    assert!(
+        reopened
+            .resolve_token(&active_raw, app::now_ms())
+            .unwrap()
+            .is_some(),
+        "a durably committed lease survives restart reconciliation"
     );
 }

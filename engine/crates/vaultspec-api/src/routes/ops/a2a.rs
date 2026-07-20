@@ -16,11 +16,11 @@
 //!   (a 4xx/5xx with a body) forwards VERBATIM at 200 with its `sibling_status`,
 //!   exactly as the rag write runner forwards a `status:"failed"` envelope.
 //!
-//! - **Actors and tokens are engine-provisioned at run-start** (ADR D2): the
-//!   brokered `run-start` verb registers one agent actor per pipeline role and
-//!   mints a per-role actor token through the EXISTING actor-token surface, then
-//!   injects the bundle into the forwarded payload. Token values ride only the
-//!   loopback body and appear in NO log line at any level.
+//! - **Actors and tokens are engine-provisioned after admission** (product ADR
+//!   D7): `run-start` first prepares an authenticated bounded reservation, mints
+//!   only its returned worker identities into the dedicated run-lease store,
+//!   then commits that reservation. Token values ride only the loopback body and
+//!   appear in NO log line.
 //!
 //! Every forwarded call carries BOTH an output byte ceiling (the loopback
 //! transport's `MAX_RAG_BODY` OOM guard) and a wall-clock timeout
@@ -39,7 +39,9 @@ use axum::http::StatusCode;
 use rag_client::client::{LoopbackTransport, RagError, RagTransport};
 use serde_json::{Value, json};
 
+use crate::a2a_run_leases::{LeaseReservation, LeaseToken};
 use crate::app::{AppState, ScopeCell, now_ms};
+use crate::authoring::actor_tokens::{generate_raw_token, hash_actor_token};
 use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
 use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
@@ -58,18 +60,10 @@ const A2A_WHITELIST: &[&str] = &[
     "active-runs",
 ];
 
-/// The canonical pipeline roles the engine provisions an actor + token for at
-/// run-start (ADR D2). The supervisor is a DISTINCT actor so the self-approval
-/// ban binds per role. Kept as a fixed set: identity authority stays with the
-/// engine, never re-derived from a client-named role list.
-const A2A_PIPELINE_ROLES: &[&str] = &[
-    "researcher",
-    "analyst",
-    "planner",
-    "executor",
-    "reviewer",
-    "supervisor",
-];
+/// The sibling caps a prepared/preset role set at 64. The dashboard applies the
+/// same ceiling before minting so an authenticated but drifted response cannot
+/// create unbounded actors or credentials.
+const MAX_A2A_REQUIRED_ROLES: usize = 64;
 
 /// Heartbeat staleness threshold for the a2a discovery file: the resident
 /// gateway refreshes every 15s and a consumer treats a heartbeat older than
@@ -407,12 +401,7 @@ fn validate_bounded_token(
     value: &str,
     max: usize,
 ) -> Result<String, (StatusCode, Json<Value>)> {
-    let ok = !value.is_empty()
-        && value.chars().count() <= max
-        && !value.starts_with('-')
-        && value
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'));
+    let ok = bounded_token_is_valid(value, max);
     if !ok {
         return Err(super::super::api_error(
             state,
@@ -424,6 +413,15 @@ fn validate_bounded_token(
         ));
     }
     Ok(value.to_string())
+}
+
+fn bounded_token_is_valid(value: &str, max: usize) -> bool {
+    !value.is_empty()
+        && value.chars().count() <= max
+        && !value.starts_with('-')
+        && value
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-' | b'.' | b':'))
 }
 
 /// Fence a scope-sensitive operation against a concurrent workspace switch.
@@ -690,38 +688,98 @@ fn build_forwarded_call(
     }
 }
 
-/// Provision one agent actor + a per-role actor token for every canonical
-/// pipeline role (ADR D2) through the EXISTING actor-token surface, and build the
-/// `ActorTokenBundle` the run-start payload carries. Register-or-require each
-/// actor active so its later authoring commands resolve a live principal
-/// (mirrors the `issue_actor_token` handler), then mint its token. The
-/// `engine_bearer` is left absent: the worker resolves the machine bearer from
-/// the engine discovery file, so no bearer secret flows through this path.
-///
-/// The returned `Value` carries RAW token values and MUST NOT be logged; it is
-/// injected straight into the forwarded body and dropped.
+/// The admitted sibling reservation and its bounded required-role set.
+struct PreparedRun {
+    reservation_id: String,
+    gateway_lease_id: String,
+    required_roles: Vec<String>,
+}
+
+/// Build the prepare-stage body from engine-owned fields and ask the
+/// authenticated sibling to reserve capacity before any credential exists.
+fn prepare_run(
+    transport: &LoopbackTransport,
+    call: &ForwardedCall,
+) -> Result<PreparedRun, RagError> {
+    let original = call.body.as_ref().ok_or(RagError::Protocol)?;
+    let mut prepare = original.clone();
+    let prepare_obj = prepare.as_object_mut().ok_or(RagError::Protocol)?;
+    prepare_obj.insert("stage".to_string(), json!("prepare"));
+    prepare_obj.remove("message");
+    prepare_obj.remove("actor_tokens");
+    prepare_obj.remove("reservation_id");
+    let raw = transport.post_json("/v1/runs", &prepare.to_string())?;
+    let response: Value = serde_json::from_str(&raw).map_err(|_| RagError::Protocol)?;
+    if response.get("api_version").and_then(Value::as_str) != Some("v1")
+        || response.get("stage").and_then(Value::as_str) != Some("prepared")
+        || response.get("worker_state").and_then(Value::as_str) != Some("ready")
+        || response.get("provider_eligibility").and_then(Value::as_str) != Some("eligible")
+        || response.get("run_admission").and_then(Value::as_str) != Some("ready")
+    {
+        return Err(RagError::Protocol);
+    }
+    let reservation_id = response
+        .get("reservation_id")
+        .and_then(Value::as_str)
+        .filter(|value| bounded_token_is_valid(value, MAX_A2A_RUN_ID_CHARS))
+        .ok_or(RagError::Protocol)?
+        .to_string();
+    let gateway_lease_id = response
+        .get("lease_id")
+        .and_then(Value::as_str)
+        .filter(|value| bounded_token_is_valid(value, MAX_A2A_RUN_ID_CHARS))
+        .ok_or(RagError::Protocol)?
+        .to_string();
+    let roles = response
+        .get("required_roles")
+        .and_then(Value::as_array)
+        .ok_or(RagError::Protocol)?;
+    if roles.is_empty() || roles.len() > MAX_A2A_REQUIRED_ROLES {
+        return Err(RagError::Protocol);
+    }
+    let mut unique = std::collections::HashSet::with_capacity(roles.len());
+    let mut required_roles = Vec::with_capacity(roles.len());
+    for role in roles {
+        let role = role.as_str().ok_or(RagError::Protocol)?;
+        let valid_agent_id = role.len() <= 63
+            && role
+                .bytes()
+                .next()
+                .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+            && role
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-');
+        if !valid_agent_id || !unique.insert(role.to_string()) {
+            return Err(RagError::Protocol);
+        }
+        required_roles.push(role.to_string());
+    }
+    Ok(PreparedRun {
+        reservation_id,
+        gateway_lease_id,
+        required_roles,
+    })
+}
+
+/// Mint one run-scoped raw token per prepare-returned role and durably reserve
+/// only its hash in the dedicated lease repository before commit.
 struct ProvisionedActorTokenBundle {
     wire: Value,
-    /// Hashes of exactly the rows issued or rotated by THIS attempt. Cleanup uses
-    /// hashes so no raw token has to leave the short-lived wire bundle.
-    issued_hashes: Vec<String>,
+    lease_id: String,
 }
 
 fn provision_actor_token_bundle(
     state: &AppState,
+    prepared: &PreparedRun,
     run_id: &str,
 ) -> Result<ProvisionedActorTokenBundle, (StatusCode, Json<Value>)> {
     let now = now_ms();
-    let issued_by = ActorId::new("system:bootstrap").expect("issuance principal id is valid");
-
-    // Build the per-role actor refs BEFORE the store transaction so an id
-    // construction fault maps to a typed error rather than colliding with the
-    // store's error type inside the unit-of-work closure. The ids are
-    // constant-derived and valid, but a failure is surfaced honestly, never
-    // panicked.
-    let mut role_actors: Vec<(&'static str, ActorRef)> =
-        Vec::with_capacity(A2A_PIPELINE_ROLES.len());
-    for role in A2A_PIPELINE_ROLES {
+    let lease_id = format!("engine-lease-{}", generate_raw_token());
+    let bundle_id = format!("engine-bundle-{}", generate_raw_token());
+    let mut wire_tokens = serde_json::Map::new();
+    let mut lease_tokens = Vec::with_capacity(prepared.required_roles.len());
+    let mut actors = Vec::with_capacity(prepared.required_roles.len());
+    for role in &prepared.required_roles {
         let id = ActorId::new(format!("agent:{role}")).map_err(|e| {
             super::super::api_error(
                 state,
@@ -729,45 +787,34 @@ fn provision_actor_token_bundle(
                 format!("invalid pipeline role id: {e}"),
             )
         })?;
-        role_actors.push((
-            role,
-            ActorRef {
-                id,
-                kind: ActorKind::Agent,
-                delegated_by: None,
-            },
-        ));
+        let actor = ActorRef {
+            id,
+            kind: ActorKind::Agent,
+            delegated_by: None,
+        };
+        let raw_token = generate_raw_token();
+        actors.push((role.clone(), actor.clone()));
+        lease_tokens.push(LeaseToken {
+            role: role.clone(),
+            token_hash: hash_actor_token(&raw_token),
+            actor,
+        });
+        wire_tokens.insert(role.clone(), Value::String(raw_token));
     }
-
-    let tokens = state
-        .with_authoring_store(|store| {
-            store.with_unit_of_work(CommandKind::CreateSession, |uow| {
-                let mut tokens = serde_json::Map::new();
-                let mut issued_hashes = Vec::with_capacity(A2A_PIPELINE_ROLES.len());
-                for (role, actor) in &role_actors {
-                    let display = ActorDisplayMetadata::new(actor.id.as_str(), None);
-                    uow.actors().put_record(ActorRecordInput::active(
-                        actor.clone(),
-                        display,
-                        now,
-                    ))?;
-                    let issuance_key = format!("a2a-run-start:v1:{run_id}:{role}");
-                    let issued = uow.actor_tokens().issue_for_purpose(
-                        actor,
-                        &issued_by,
-                        now,
-                        A2A_RUN_TOKEN_LIFETIME_MS,
-                        &issuance_key,
-                    )?;
-                    issued_hashes.push(issued.record.token_hash);
-                    tokens.insert((*role).to_string(), Value::String(issued.raw_token));
-                }
-                Ok((tokens, issued_hashes))
-            })
-        })
+    state
+        .a2a_run_leases
+        .reserve(
+            &LeaseReservation {
+                lease_id: lease_id.clone(),
+                reservation_id: prepared.reservation_id.clone(),
+                bundle_id,
+                run_id: Some(run_id.to_string()),
+                tokens: lease_tokens,
+                expiry_ms: now + A2A_RUN_TOKEN_LIFETIME_MS,
+            },
+            now,
+        )
         .map_err(|_| {
-            // The error is a store fault, not a token value — safe to surface. The
-            // message is deliberately generic and NEVER embeds a token.
             super::super::api_error(
                 state,
                 StatusCode::BAD_GATEWAY,
@@ -775,27 +822,223 @@ fn provision_actor_token_bundle(
             )
         })?;
 
-    Ok(ProvisionedActorTokenBundle {
-        wire: json!({ "tokens": Value::Object(tokens.0), "engine_bearer": Value::Null }),
-        issued_hashes: tokens.1,
-    })
-}
-
-/// Revoke and immediately reclaim exactly the rows created/rotated for a failed
-/// run-start attempt. The caller supplies hashes only; no raw credential is
-/// retained, logged, or reconstructed.
-fn revoke_failed_actor_token_bundle(state: &AppState, token_hashes: &[String]) -> Result<(), ()> {
-    let now = now_ms();
-    state
+    // The authoring authorization floor requires a durable active actor record,
+    // not merely a resolvable token hash. Register every prepare-authorized role
+    // in one authoring transaction. If registration fails, revoke the just-
+    // reserved hash bundle before any raw token can leave this process.
+    if state
         .with_authoring_store(|store| {
             store.with_unit_of_work(CommandKind::CreateSession, |uow| {
-                let tokens = uow.actor_tokens();
-                tokens.revoke_hashes(token_hashes, now)?;
-                tokens.prune_reclaimable(now)?;
+                for (role, actor) in &actors {
+                    if uow.actors().record(actor)?.is_some() {
+                        // An existing stale actor is an explicit authorization
+                        // boundary. Never reactivate it as a provisioning side
+                        // effect; only already-active identities may be reused.
+                        uow.actors().ensure_active(actor)?;
+                    } else {
+                        uow.actors().put_record(ActorRecordInput::active(
+                            actor.clone(),
+                            ActorDisplayMetadata::new(role, Some("A2A run role".to_string())),
+                            now,
+                        ))?;
+                    }
+                }
                 Ok(())
             })
         })
+        .is_err()
+    {
+        let _ = state.a2a_run_leases.revoke_lease(&lease_id, now_ms());
+        return Err(super::super::api_error(
+            state,
+            StatusCode::BAD_GATEWAY,
+            "failed to register run-start actors".to_string(),
+        ));
+    }
+
+    // Bind and activate the exact gateway lease BEFORE the commit can dispatch.
+    // Raw tokens have not left this stack yet, so this closes the terminal-
+    // callback race without exposing a usable credential for an absent run.
+    match state.a2a_run_leases.commit(
+        &lease_id,
+        run_id,
+        None,
+        &prepared.gateway_lease_id,
+        now_ms(),
+    ) {
+        Ok(true) => {}
+        _ => {
+            let _ = state.a2a_run_leases.revoke_lease(&lease_id, now_ms());
+            return Err(super::super::api_error(
+                state,
+                StatusCode::BAD_GATEWAY,
+                "failed to bind run-start actor tokens".to_string(),
+            ));
+        }
+    }
+
+    Ok(ProvisionedActorTokenBundle {
+        wire: json!({ "tokens": Value::Object(wire_tokens), "engine_bearer": Value::Null }),
+        lease_id,
+    })
+}
+
+fn revoke_failed_actor_token_bundle(state: &AppState, lease_id: &str) -> Result<(), ()> {
+    state
+        .a2a_run_leases
+        .revoke_lease(lease_id, now_ms())
+        .map(|_| ())
         .map_err(|_| ())
+}
+
+fn release_prepared_run(
+    transport: &LoopbackTransport,
+    call: &ForwardedCall,
+    reservation_id: &str,
+) -> Result<(), RagError> {
+    let mut body = call.body.clone().ok_or(RagError::Protocol)?;
+    let obj = body.as_object_mut().ok_or(RagError::Protocol)?;
+    obj.insert("stage".to_string(), json!("release"));
+    obj.insert("reservation_id".to_string(), json!(reservation_id));
+    obj.remove("message");
+    obj.remove("actor_tokens");
+    let raw = transport.post_json("/v1/runs", &body.to_string())?;
+    let response: Value = serde_json::from_str(&raw).map_err(|_| RagError::Protocol)?;
+    if response.get("api_version").and_then(Value::as_str) != Some("v1")
+        || response.get("stage").and_then(Value::as_str) != Some("released")
+        || response.get("reservation_id").and_then(Value::as_str) != Some(reservation_id)
+        || !response.get("released").is_some_and(Value::is_boolean)
+    {
+        return Err(RagError::Protocol);
+    }
+    Ok(())
+}
+
+fn release_prepared_run_with_retry(
+    transport: &LoopbackTransport,
+    call: &ForwardedCall,
+    reservation_id: &str,
+) -> Result<(), RagError> {
+    release_prepared_run(transport, call, reservation_id)
+        .or_else(|_| release_prepared_run(transport, call, reservation_id))
+}
+
+fn reconcile_local_lease_from_status(
+    state: &AppState,
+    expected_run_id: &str,
+    raw: &str,
+) -> Result<(), ()> {
+    let response: Value = serde_json::from_str(raw).map_err(|_| ())?;
+    if response.get("api_version").and_then(Value::as_str) != Some("v1")
+        || response.get("run_id").and_then(Value::as_str) != Some(expected_run_id)
+    {
+        return Err(());
+    }
+    let Some(gateway_lease_id) = response.get("lease_id").and_then(Value::as_str) else {
+        return Ok(());
+    };
+    let Some(reservation_id) = response.get("reservation_id").and_then(Value::as_str) else {
+        return Err(());
+    };
+    if !bounded_token_is_valid(gateway_lease_id, MAX_A2A_RUN_ID_CHARS) {
+        return Err(());
+    }
+    state
+        .a2a_run_leases
+        .commit_reserved_run(
+            expected_run_id,
+            reservation_id,
+            gateway_lease_id,
+            now_ms(),
+        )
+        .map(|_| ())
+        .map_err(|_| ())
+}
+
+fn commit_local_lease(
+    state: &AppState,
+    local_lease_id: &str,
+    expected_reservation_id: &str,
+    expected_gateway_lease_id: &str,
+    expected_run_id: &str,
+    raw: &str,
+) -> Result<(), ()> {
+    let response: Value = serde_json::from_str(raw).map_err(|_| ())?;
+    if response.get("api_version").and_then(Value::as_str) != Some("v1")
+        || response.get("stage").and_then(Value::as_str) != Some("committed")
+    {
+        return Err(());
+    }
+    let run_id = response.get("run_id").and_then(Value::as_str).ok_or(())?;
+    let gateway_lease_id = response.get("lease_id").and_then(Value::as_str).ok_or(())?;
+    let status = response.get("status").and_then(Value::as_str).ok_or(())?;
+    if run_id != expected_run_id
+        || !bounded_token_is_valid(run_id, MAX_A2A_RUN_ID_CHARS)
+        || !bounded_token_is_valid(gateway_lease_id, MAX_A2A_RUN_ID_CHARS)
+        || gateway_lease_id != expected_gateway_lease_id
+        || status.is_empty()
+        || status.len() > 64
+    {
+        return Err(());
+    }
+    let committed = state
+        .a2a_run_leases
+        .binding_matches(
+            local_lease_id,
+            run_id,
+            expected_reservation_id,
+            gateway_lease_id,
+        )
+        .map_err(|_| ())?;
+    committed.then_some(()).ok_or(())
+}
+
+fn confirm_local_lease_from_status(
+    state: &AppState,
+    local_lease_id: &str,
+    prepared: &PreparedRun,
+    expected_run_id: &str,
+    raw: &str,
+) -> Result<(), ()> {
+    let response: Value = serde_json::from_str(raw).map_err(|_| ())?;
+    if response.get("api_version").and_then(Value::as_str) != Some("v1")
+        || response.get("run_id").and_then(Value::as_str) != Some(expected_run_id)
+        || response.get("reservation_id").and_then(Value::as_str)
+            != Some(prepared.reservation_id.as_str())
+        || response.get("lease_id").and_then(Value::as_str)
+            != Some(prepared.gateway_lease_id.as_str())
+    {
+        return Err(());
+    }
+    state
+        .a2a_run_leases
+        .binding_matches(
+            local_lease_id,
+            expected_run_id,
+            &prepared.reservation_id,
+            &prepared.gateway_lease_id,
+        )
+        .map_err(|_| ())?
+        .then_some(())
+        .ok_or(())
+}
+
+fn authoritative_committed_status(
+    transport: &LoopbackTransport,
+    state: &AppState,
+    local_lease_id: &str,
+    prepared: &PreparedRun,
+    run_id: &str,
+) -> Result<Option<String>, RagError> {
+    match transport.get(&format!("/v1/runs/{run_id}")) {
+        Ok(raw) => {
+            confirm_local_lease_from_status(state, local_lease_id, prepared, run_id, &raw)
+                .map_err(|_| RagError::Protocol)?;
+            Ok(Some(raw))
+        }
+        Err(RagError::Http { status: 404, .. }) => Ok(None),
+        Err(error) => Err(error),
+    }
 }
 
 enum BrokeredRoundTrip {
@@ -862,78 +1105,150 @@ fn execute_broker_call(
     };
 
     // A2A's stable-id contract returns an existing run before consulting actor
-    // tokens. Preflight that authoritative fact first. A found run is replayed by
-    // POSTing the original request WITHOUT a bundle, preserving A2A's native
-    // RunStartResponse shape while proving no fresh credential was minted.
+    // tokens. A found run is already authoritative; return its bounded status
+    // snapshot without preparing capacity or minting again.
     let preflight = LoopbackTransport {
         port: transport.port,
         bearer: transport.bearer.clone(),
         timeout: A2A_READ_BUDGET,
     };
     match preflight.get(&format!("/v1/runs/{run_id}")) {
-        Ok(_) => {
-            if let Some(body) = call.body.as_mut().and_then(Value::as_object_mut) {
-                body.remove("actor_tokens");
+        Ok(raw) => {
+            if reconcile_local_lease_from_status(state, run_id, &raw).is_err() {
+                return BrokeredRoundTrip::TokenStoreFailure("reconcile existing run");
             }
-            return BrokeredRoundTrip::Answer(perform_forwarded_call(
-                &transport,
-                call.method,
-                &call.path,
-                call.body.as_ref(),
-            ));
+            return BrokeredRoundTrip::Answer(Ok(raw));
         }
         Err(RagError::Http { status: 404, .. }) => {}
         Err(other) => return BrokeredRoundTrip::Answer(Err(other)),
     }
 
-    // Confirmed absent under the per-run serialization stripe: this is the only
-    // path licensed to create/rotate the six purpose-keyed token rows.
-    let provisioned = match provision_actor_token_bundle(state, run_id) {
-        Ok(bundle) => bundle,
-        Err(_) => return BrokeredRoundTrip::TokenStoreFailure("provision"),
+    // Confirmed absent under the per-run serialization stripe: reserve bounded
+    // downstream admission first. The authenticated prepare response is the
+    // only authority for which worker identities receive run credentials.
+    let prepared = match prepare_run(&preflight, &call) {
+        Ok(prepared) => prepared,
+        Err(error) => return BrokeredRoundTrip::Answer(Err(error)),
     };
+    let provisioned = match provision_actor_token_bundle(state, &prepared, run_id) {
+        Ok(bundle) => bundle,
+        Err(_) => {
+            let _ = release_prepared_run_with_retry(&transport, &call, &prepared.reservation_id);
+            return BrokeredRoundTrip::TokenStoreFailure("provision");
+        }
+    };
+    let local_lease_id = provisioned.lease_id.clone();
     if let Some(body) = call.body.as_mut().and_then(Value::as_object_mut) {
+        body.insert("stage".to_string(), json!("commit"));
+        body.insert("reservation_id".to_string(), json!(prepared.reservation_id));
         body.insert("actor_tokens".to_string(), provisioned.wire);
     }
 
     let result = perform_forwarded_call(&transport, call.method, &call.path, call.body.as_ref());
     match result {
-        Ok(raw) => BrokeredRoundTrip::Answer(Ok(raw)),
+        Ok(raw) => {
+            if commit_local_lease(
+                state,
+                &local_lease_id,
+                &prepared.reservation_id,
+                &prepared.gateway_lease_id,
+                run_id,
+                &raw,
+            )
+            .is_ok()
+            {
+                return BrokeredRoundTrip::Answer(Ok(raw));
+            }
+            match authoritative_committed_status(
+                &preflight,
+                state,
+                &local_lease_id,
+                &prepared,
+                run_id,
+            ) {
+                Ok(Some(status)) => BrokeredRoundTrip::Answer(Ok(status)),
+                Ok(None) => {
+                    let _ = release_prepared_run_with_retry(
+                        &transport,
+                        &call,
+                        &prepared.reservation_id,
+                    );
+                    let _ = revoke_failed_actor_token_bundle(state, &local_lease_id);
+                    BrokeredRoundTrip::TokenStoreFailure("verify commit")
+                }
+                // The remote outcome is still unknown. Preserve the bound,
+                // expiring lease so a remotely durable run keeps working and a
+                // later run-status read can reconcile it.
+                Err(_) => BrokeredRoundTrip::TokenStoreFailure("verify commit"),
+            }
+        }
         // The sibling answered with an explicit refusal. No response-loss
         // ambiguity remains, so the just-issued bundle is unused and reclaimable.
         Err(error @ RagError::Http { .. }) => {
-            if revoke_failed_actor_token_bundle(state, &provisioned.issued_hashes).is_err() {
+            let released =
+                release_prepared_run_with_retry(&transport, &call, &prepared.reservation_id);
+            if revoke_failed_actor_token_bundle(state, &local_lease_id).is_err()
+                || released.is_err()
+            {
                 BrokeredRoundTrip::TokenStoreFailure("clean up refused")
             } else {
                 BrokeredRoundTrip::Answer(Err(error))
             }
         }
-        // A connection/protocol failure may mean the sibling accepted and
-        // dispatched, then its response was lost. Re-read under the SAME run-id
-        // stripe before deciding credential fate. Found means the tokens may be
-        // live: retain them and make one safe idempotent POST without a bundle to
-        // recover the native RunStartResponse. A 404 is still ambiguous because
-        // the original request may not yet have reached its durable reservation;
-        // retry the exact same id/token bundle and retain its bounded rows. The
-        // sibling's pre-dispatch primary-key reservation makes that race safe.
-        // An unavailable confirmation likewise retains the expiring rows.
-        Err(original_error) => match preflight.get(&format!("/v1/runs/{run_id}")) {
-            Ok(_) => {
-                if let Some(body) = call.body.as_mut().and_then(Value::as_object_mut) {
-                    body.remove("actor_tokens");
-                }
-                BrokeredRoundTrip::Answer(perform_forwarded_call(
-                    &transport,
-                    call.method,
-                    &call.path,
-                    call.body.as_ref(),
-                ))
+        // A connection/protocol failure may mean commit was accepted and only
+        // its acknowledgement was lost. Retry the EXACT same reservation,
+        // run-id, and bundle once. The sibling's commit replay first reads the
+        // durable run and returns its persisted gateway lease id, while a commit
+        // that never arrived consumes the still-active reservation now.
+        Err(original_error) => {
+            let retry =
+                perform_forwarded_call(&transport, call.method, &call.path, call.body.as_ref());
+            if let Ok(raw) = &retry
+                && commit_local_lease(
+                    state,
+                    &local_lease_id,
+                    &prepared.reservation_id,
+                    &prepared.gateway_lease_id,
+                    run_id,
+                    raw,
+                )
+                .is_ok()
+            {
+                return BrokeredRoundTrip::Answer(Ok(raw.clone()));
             }
-            Err(RagError::Http { status: 404, .. }) => BrokeredRoundTrip::Answer(
-                perform_forwarded_call(&transport, call.method, &call.path, call.body.as_ref()),
-            ),
-            Err(_) => BrokeredRoundTrip::Answer(Err(original_error)),
-        },
+
+            match authoritative_committed_status(
+                &preflight,
+                state,
+                &local_lease_id,
+                &prepared,
+                run_id,
+            ) {
+                Ok(Some(status)) => BrokeredRoundTrip::Answer(Ok(status)),
+                Ok(None) => {
+                    let _ = release_prepared_run_with_retry(
+                        &transport,
+                        &call,
+                        &prepared.reservation_id,
+                    );
+                    let _ = revoke_failed_actor_token_bundle(state, &local_lease_id);
+                    match retry {
+                        Err(error @ RagError::Http { .. }) => {
+                            BrokeredRoundTrip::Answer(Err(error))
+                        }
+                        Ok(_) => BrokeredRoundTrip::TokenStoreFailure("recover commit"),
+                        Err(_) => BrokeredRoundTrip::Answer(Err(original_error)),
+                    }
+                }
+                // Both commit attempts and the authoritative read are
+                // inconclusive. Keep the exact bound lease until expiry/retry;
+                // revoking here would strand a run whose ACK alone was lost.
+                Err(_) => match retry {
+                    Ok(_) => BrokeredRoundTrip::TokenStoreFailure("recover commit"),
+                    Err(_) => BrokeredRoundTrip::Answer(Err(original_error)),
+                }
+            }
+        }
     }
 }
 

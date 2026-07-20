@@ -22,11 +22,12 @@ related:
 - Backfill the projection through a bounded migration and add covering newest-first indexes.
 - Replace metadata and filesystem scans with one narrow indexed query capped at `limit + 1`.
 - Exclude malformed lifecycle and run identifiers before they can consume the bounded result window.
+- Apply `^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$` through one production body/path contract and a SQLAlchemy predicate that compiles to SQLite `REGEXP` and PostgreSQL `~`.
 - Prove the production statement remains index-backed and memory-bounded over 100,000 durable history rows.
 
 ## Outcome
 
-Active-run discovery now scales with the requested result bound rather than total thread history. The migration suite passed 17 tests, the production live contract passed 2 tests, and the 100,000-row proof used the workspace-feature covering index without a table scan or temporary sort while remaining below the declared latency and five-megabyte allocation ceilings.
+Active-run discovery now scales with the requested result bound rather than total thread history. The exact full statement compiles for SQLite and PostgreSQL without dialect-specific `GLOB`. The 100,000-row proof marks every row active, places 99,990 behind nonmatching selectors, uses both covering indexes without a table scan or temporary sort, and remains below the declared latency and five-megabyte allocation ceilings.
 
 ## Notes
 

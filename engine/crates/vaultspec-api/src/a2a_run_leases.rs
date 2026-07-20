@@ -361,17 +361,42 @@ impl LeaseRepo {
     pub fn commit_reserved_run(
         &self,
         run_id: &str,
+        reservation_id: &str,
         gateway_lease_id: &str,
         now_ms: i64,
     ) -> Result<bool> {
         let conn = self.lock();
         let changed = conn.execute(
             "UPDATE a2a_run_leases
-                SET gateway_lease_id = ?2, state = 'active', updated_at_ms = ?3
-              WHERE run_id = ?1 AND state = 'reserved'",
-            (run_id, gateway_lease_id, now_ms),
+                SET gateway_lease_id = ?3, state = 'active', updated_at_ms = ?4
+              WHERE run_id = ?1 AND reservation_id = ?2 AND state = 'reserved'",
+            (run_id, reservation_id, gateway_lease_id, now_ms),
         )?;
         Ok(changed > 0)
+    }
+
+    /// Verify an exact local-to-gateway binding after commit or authoritative
+    /// status recovery. A terminal callback may settle the lease before the
+    /// commit response arrives, so `Settled` is also a valid exact match.
+    pub fn binding_matches(
+        &self,
+        lease_id: &str,
+        run_id: &str,
+        reservation_id: &str,
+        gateway_lease_id: &str,
+    ) -> Result<bool> {
+        let conn = self.lock();
+        let found = conn
+            .query_row(
+                "SELECT 1 FROM a2a_run_leases
+                  WHERE lease_id = ?1 AND run_id = ?2 AND reservation_id = ?3
+                    AND gateway_lease_id = ?4 AND state IN ('active','settled')",
+                (lease_id, run_id, reservation_id, gateway_lease_id),
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some();
+        Ok(found)
     }
 
     /// Fail closed on process restart: a reserved row never completed its local

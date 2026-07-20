@@ -30,8 +30,15 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
+import {
+  forceTerminateProcessTree,
+  waitForChildExit,
+} from "../../src/testing/processControl";
+
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
 const BIN_NAME = process.platform === "win32" ? "vaultspec.exe" : "vaultspec";
+const COMMAND_TIMEOUT_MS = 60_000;
+const MAX_ENGINE_LOG_BYTES = 1024 * 1024;
 
 const GIT_DATE = "2026-01-06T12:00:00";
 const GIT_ENV = {
@@ -120,19 +127,26 @@ function freePort(): Promise<number> {
 }
 
 export function git(dir: string, args: string[]): void {
-  const r = spawnSync("git", args, { cwd: dir, env: { ...process.env, ...GIT_ENV } });
-  if (r.status !== 0) {
+  const r = spawnSync("git", args, {
+    cwd: dir,
+    env: { ...process.env, ...GIT_ENV },
+    timeout: COMMAND_TIMEOUT_MS,
+  });
+  if (r.error || r.status !== 0) {
     throw new Error(
-      `git ${args.join(" ")} failed: ${r.stderr?.toString() ?? r.status}`,
+      `git ${args.join(" ")} failed: ${r.error?.message ?? r.stderr?.toString() ?? r.status}`,
     );
   }
 }
 
 export function gitBlob(dir: string, rel: string): string {
-  const r = spawnSync("git", ["hash-object", rel], { cwd: dir });
-  if (r.status !== 0) {
+  const r = spawnSync("git", ["hash-object", rel], {
+    cwd: dir,
+    timeout: COMMAND_TIMEOUT_MS,
+  });
+  if (r.error || r.status !== 0) {
     throw new Error(
-      `git hash-object ${rel} failed: ${r.stderr?.toString() ?? r.status}`,
+      `git hash-object ${rel} failed: ${r.error?.message ?? r.stderr?.toString() ?? r.status}`,
     );
   }
   return `blob:${r.stdout.toString().trim()}`;
@@ -182,62 +196,74 @@ export async function spawnEngine(root: string): Promise<EngineHandle> {
   const proc = spawn(bin, ["serve", "--port", String(port), "--no-seat"], {
     cwd: root,
     stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
   });
   let log = "";
-  proc.stdout?.on("data", (d: Buffer) => (log += d.toString()));
-  proc.stderr?.on("data", (d: Buffer) => (log += d.toString()));
+  const appendLog = (d: Buffer): void => {
+    log = (log + d.toString()).slice(-MAX_ENGINE_LOG_BYTES);
+  };
+  proc.stdout?.on("data", appendLog);
+  proc.stderr?.on("data", appendLog);
 
   const tokenPath = join(root, ".vault", "data", "engine-data", "service.json");
   const deadline = Date.now() + 30_000;
   let token = "";
   let ready = false;
-  while (Date.now() < deadline) {
-    if (proc.exitCode !== null) {
-      throw new Error(`engine exited (${proc.exitCode}) during startup:\n${log}`);
-    }
-    // Re-read every tick (never cache-once): on a restart the tokenPath already
-    // holds the PREVIOUS process's stale token until this process's own boot
-    // overwrites it, so caching the first successful parse risks locking onto a
-    // dead credential and polling `/status` with it until the deadline.
-    try {
-      token = (
-        JSON.parse(readFileSync(tokenPath, "utf8")) as { service_token?: string }
-      ).service_token!;
-    } catch {
-      /* not written yet */
-    }
-    if (token) {
-      try {
-        const res = await fetch(`${baseUrl}/status`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) {
-          ready = true;
-          break;
-        }
-      } catch {
-        /* not listening yet */
+  try {
+    while (Date.now() < deadline) {
+      if (proc.exitCode !== null || proc.signalCode !== null) {
+        throw new Error(`engine exited (${proc.exitCode}) during startup:\n${log}`);
       }
+      // Re-read every tick (never cache-once): on a restart the tokenPath already
+      // holds the PREVIOUS process's stale token until this process's own boot
+      // overwrites it, so caching the first successful parse risks locking onto a
+      // dead credential and polling `/status` with it until the deadline.
+      try {
+        token = (
+          JSON.parse(readFileSync(tokenPath, "utf8")) as {
+            service_token?: string;
+          }
+        ).service_token!;
+      } catch {
+        /* not written yet */
+      }
+      if (token) {
+        try {
+          const res = await fetch(`${baseUrl}/status`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(2_000),
+          });
+          if (res.ok) {
+            ready = true;
+            break;
+          }
+        } catch {
+          /* not listening yet */
+        }
+      }
+      await new Promise((r) => setTimeout(r, 150));
     }
-    await new Promise((r) => setTimeout(r, 150));
+    if (!ready) throw new Error(`engine did not come up within 30s:\n${log}`);
+    return { proc, port, baseUrl, token };
+  } catch (startupError) {
+    try {
+      await killProcess(proc);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [startupError, cleanupError],
+        "authoring engine startup and cleanup both failed",
+      );
+    }
+    throw startupError;
   }
-  if (!ready) throw new Error(`engine did not come up within 30s:\n${log}`);
-  return { proc, port, baseUrl, token };
 }
 
-function killProcess(proc: ChildProcess): Promise<void> {
-  return new Promise((resolve) => {
-    if (proc.exitCode !== null || proc.pid === undefined) {
-      resolve();
-      return;
-    }
-    proc.once("exit", () => resolve());
-    if (process.platform === "win32") {
-      spawnSync("taskkill", ["/pid", String(proc.pid), "/T", "/F"]);
-    } else {
-      proc.kill("SIGKILL");
-    }
-  });
+async function killProcess(proc: ChildProcess): Promise<void> {
+  if (proc.exitCode !== null || proc.signalCode !== null || !proc.pid) return;
+  forceTerminateProcessTree(proc);
+  if (!(await waitForChildExit(proc, 5_000))) {
+    throw new Error(`engine process ${proc.pid} did not exit after force stop`);
+  }
 }
 
 /** S208 — kill the running engine and respawn it against the SAME scratch
@@ -252,7 +278,24 @@ export async function restartEngine(
 }
 
 export async function stopEngine(handle: EngineHandle): Promise<void> {
-  await killProcess(handle.proc);
+  if (handle.proc.exitCode !== null || handle.proc.signalCode !== null) return;
+  try {
+    const response = await fetch(`${handle.baseUrl}/shutdown`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${handle.token}`,
+        "content-type": "application/json",
+      },
+      body: "{}",
+      signal: AbortSignal.timeout(5_000),
+    });
+    await response.arrayBuffer();
+  } catch {
+    // The bounded exit wait and force fallback below own final cleanup.
+  }
+  if (!(await waitForChildExit(handle.proc, 10_000))) {
+    await killProcess(handle.proc);
+  }
 }
 
 export function removeFixtureWorktree(root: string): void {

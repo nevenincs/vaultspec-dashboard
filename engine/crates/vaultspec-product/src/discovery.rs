@@ -287,54 +287,6 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
     false
 }
 
-/// Apply the local owner-only handoff policy to an existing regular file.
-///
-/// This is also the canonical setup seam for components that publish product
-/// handoffs: readers and writers therefore share one platform policy.
-pub fn restrict_handoff_to_current_user(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
-    }
-
-    #[cfg(windows)]
-    {
-        use std::io::{Error, ErrorKind};
-        use std::process::Command;
-        use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
-
-        let user = current_user().ok_or_else(|| {
-            Error::new(
-                ErrorKind::PermissionDenied,
-                "current Windows user is unknown",
-            )
-        })?;
-        let raw_sid =
-            name_to_sid(&user, None).map_err(|code| Error::from_raw_os_error(code as i32))?;
-        let sid = sid_to_string(raw_sid.as_ptr().cast_mut().cast())
-            .map_err(|code| Error::from_raw_os_error(code as i32))?;
-        let status = Command::new("icacls.exe")
-            .arg(path)
-            .args([
-                "/inheritance:r",
-                "/grant:r",
-                &format!("*{sid}:F"),
-                "*S-1-5-18:F",
-                "*S-1-5-32-544:F",
-            ])
-            .status()?;
-        if !status.success() {
-            return Err(Error::new(
-                ErrorKind::PermissionDenied,
-                "failed to apply owner-only Windows handoff ACL",
-            ));
-        }
-    }
-
-    Ok(())
-}
-
 /// Whether two inclusive string-bounded ranges overlap. Ranges are compared
 /// lexically on their bounds; the desktop gateway API (`v1`) and Alembic
 /// revision ids compare correctly under lexical ordering for the overlap test
@@ -346,6 +298,32 @@ fn ranges_overlap(a: &RangeBounds, b: &RangeBounds) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn restrict_test_handoff(path: &Path) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            let whoami = std::process::Command::new("whoami.exe").output().unwrap();
+            let user = String::from_utf8(whoami.stdout).unwrap();
+            let grant = format!("{}:F", user.trim());
+            let status = std::process::Command::new("icacls.exe")
+                .arg(path)
+                .args([
+                    "/inheritance:r",
+                    "/grant:r",
+                    &grant,
+                    "*S-1-5-18:F",
+                    "*S-1-5-32-544:F",
+                ])
+                .status()
+                .unwrap();
+            assert!(status.success());
+        }
+    }
 
     fn record() -> serde_json::Value {
         serde_json::json!({
@@ -421,7 +399,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let handoff = dir.path().join("attach-control.cred");
         std::fs::write(&handoff, "not-read-here").unwrap();
-        restrict_handoff_to_current_user(&handoff).unwrap();
+        restrict_test_handoff(&handoff);
         let mut v = record();
         v["owner"] = serde_json::json!("seat-b");
         v["handoff_reference"] = serde_json::json!(handoff.to_string_lossy());

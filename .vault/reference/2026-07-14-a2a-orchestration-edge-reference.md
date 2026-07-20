@@ -104,8 +104,11 @@ shapes:
 - `run-start` — caller-generated, path-safe UUID run id + preset id +
   prompt/message + target feature tag + the actor token bundle. The client
   retains the exact payload for one bounded transport retry; a new deliberate
-  submission uses a new id. Returns the run/thread id and echoes the Vaultspec
-  session id once created.
+  submission uses a new id. The sibling durably reserves `SUBMITTED` before
+  worker dispatch. After ambiguous transport loss, a `404` status read is not
+  proof of absence: the engine performs at most one retry with the exact same
+  id, payload, and token bundle. Explicit refusal revokes immediately. Returns
+  the run/thread id and echoes the Vaultspec session id once created.
 - `run-status` — authoritative snapshot of the run (topology position,
   per-role state, produced proposal ids). This is the recovery read; design
   it so a client that saw nothing else can render the run.
@@ -115,6 +118,11 @@ shapes:
 - `active-runs` — bounded identity-only discovery by canonical workspace and
   optional exact feature tag. It exists only to recover a viewer binding;
   `run-status` remains authoritative.
+
+Every sibling request body and run path uses one identifier grammar:
+`^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$`. The dashboard's UUID form is a valid
+producer within that shared contract; discovery omits invalid legacy rows
+without rewriting them.
 
 Progress streaming: your orchestration events (node transitions, agent turns,
 bounded token frames) are relayed by the engine as a non-authoritative SSE
@@ -135,6 +143,12 @@ configured service token on every `/v1` route; an absent or empty token fails
 closed outside the explicit in-process test mode. One resident service per
 machine; the engine starts you only when genuinely absent and attaches
 otherwise.
+
+`service.json` is secret-free. It carries a `handoff_reference` to the adjacent
+owner-restricted `service.token`, published with POSIX owner bits or a private
+Windows DACL and rejected by readers when permissions, identity, or adjacency
+drift. The `/v1` bearer and worker IPC credential are distinct authority
+domains; configuration that reuses one value for both is invalid.
 
 ### What stays yours (ADR D5)
 
@@ -231,9 +245,17 @@ allocation. Its run relay retains at most 4 MiB of replay data per run, 8 MiB
 across all live references for one relay, and 64 MiB globally. The browser caps
 an incomplete SSE frame and the viewing transcript at 2 MiB each.
 
-Reconnects send the last admitted sequence as `since`. A sequence gap creates a
-generation-fenced reconciliation obligation that remains sticky until a
-successful authoritative `run-status` read for that generation. Only
+Reconnects send the last admitted sequence as `since`. The relay records its
+latest missing sequence and a snapshot clears loss only when contiguity is
+restored or authoritative terminal recovery makes continuation unnecessary.
+Clean EOF before terminal is reconnectable transport loss; EOF after a terminal
+frame completes the browser stream. A sequence gap creates a generation-fenced
+reconciliation obligation that remains sticky until a successful authoritative
+`run-status` read for that generation. The generation is first-class query data,
+independent of the bounded 256-frame presentation array and therefore survives
+TanStack structural sharing and eviction. One frontend coordinator owns relay,
+reconciliation, and degraded polling; this does not promise only one HTTP
+request. Only
 authoritative `TeamRunStatus` enables Cancel or Dismiss and declares terminal
 state; `archived` is terminal. Loss of the browser binding or relay does not
 alter the durable sibling run.

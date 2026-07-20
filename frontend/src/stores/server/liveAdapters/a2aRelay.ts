@@ -126,6 +126,7 @@ export function adaptRelayFrame(input: RelayFrameInput): RelayTranscriptFrame {
  *  always appends. */
 export interface RelayTranscriptState {
   readonly frames: RelayTranscriptFrame[];
+  readonly retainedFrameBytes: number[];
   readonly retainedBytes: number;
   readonly latestSeq?: number;
   readonly reconciliationGeneration: number;
@@ -133,6 +134,7 @@ export interface RelayTranscriptState {
 
 export const EMPTY_RELAY_TRANSCRIPT: RelayTranscriptState = {
   frames: [],
+  retainedFrameBytes: [],
   retainedBytes: 0,
   reconciliationGeneration: 0,
 };
@@ -182,12 +184,16 @@ export function relayTranscriptReducer(
     (acc.frames.length - first + 1 > RELAY_TRANSCRIPT_CAP ||
       retainedBytes > RELAY_TRANSCRIPT_BYTE_CAP)
   ) {
-    retainedBytes -= relayFrameRetainedBytes(acc.frames[first]!);
+    retainedBytes -= acc.retainedFrameBytes[first]!;
     first += 1;
   }
 
   return {
     frames: [...acc.frames.slice(first), frame],
+    retainedFrameBytes: [
+      ...acc.retainedFrameBytes.slice(first),
+      incomingBytes,
+    ],
     retainedBytes,
     latestSeq:
       frame.seq === undefined

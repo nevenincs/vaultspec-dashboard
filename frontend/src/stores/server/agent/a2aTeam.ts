@@ -762,6 +762,9 @@ export function useRunRelay(
     // Bounded (bounded-by-default): the retained transcript array is reclaimed
     // promptly once the run panel unmounts.
     gcTime: 30_000,
+    // The reducer already returns immutable bounded state. Avoid a redundant
+    // deep structural-sharing walk across up to 256 frames on every SSE append.
+    structuralSharing: false,
     retry: true,
     retryDelay: (attempt) =>
       attempt === 0 ? 250 : Math.min(30_000, 1_000 * 2 ** attempt),

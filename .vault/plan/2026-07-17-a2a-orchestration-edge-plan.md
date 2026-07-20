@@ -76,18 +76,19 @@ Add the bounded discovery read to the reviewed edge, then restore only an unambi
 
 Resolve every open finding from the current adversarial audit across the sibling gateway, engine relay and broker, frontend recovery authority, and normative contract trail.
 
-- [x] `P07.S17` - Secure the sibling gateway with loopback-default binding and constant-time service-token authentication on every /v1 route, with real HTTP negative and positive coverage; `src/vaultspec_a2a/api/, src/vaultspec_a2a/control/config.py`.
-- [x] `P07.S18` - Replace active-run metadata scans with persisted bounded indexed selectors and prove an index-backed, stable large-history query plan; `src/vaultspec_a2a/database/, src/vaultspec_a2a/control/run_discovery_service.py`.
-- [x] `P07.S19` - Enforce pre-allocation HTTP and SSE byte ceilings, byte-budget replay storage, and restartable relay lifecycle with adversarial socket and churn coverage; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
-- [x] `P07.S20` - Move A2A discovery and health off async workers and make actor-token issuance idempotent, failure-revoked, and retention-bounded; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs, engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
-- [x] `P07.S21` - Make frontend relay resume cursor-aware and byte-bounded, latch authoritative reconciliation, and derive terminal controls only from confirmed run status; `frontend/src/stores/server/agent/, frontend/src/stores/server/liveAdapters/, frontend/src/app/agent/`.
-- [ ] `P07.S22` - Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail; `engine/crates/vaultspec-api/src/lib.rs, .vault/reference/, .vault/audit/`.
-- [ ] `P07.S23` - Run a cross-repository adversarial code review, resolve every new critical or high issue, and close the rolling audit with real-behavior evidence; `.vault/audit/, .vault/exec/`.
+- [x] `P07.S17` - Secure the loopback sibling gateway, publish a secret-free owner-restricted handoff, and enforce distinct `/v1` and worker IPC credentials with real production-process auth coverage; `src/vaultspec_a2a/api/, src/vaultspec_a2a/control/config.py, src/vaultspec_a2a/lifecycle/discovery.py`.
+- [x] `P07.S18` - Replace metadata scans with persisted indexed selectors, apply one body/path run-id grammar, filter invalid legacy rows portably on SQLite and PostgreSQL, and prove a bounded 100,000-active-row query plan; `src/vaultspec_a2a/database/, src/vaultspec_a2a/control/run_discovery_service.py`.
+- [x] `P07.S19` - Enforce pre-allocation HTTP/SSE ceilings and byte-budget replay, retain missing-sequence/contiguity evidence, and make clean EOF reconnectable until a terminal frame; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs, frontend/src/stores/server/queries/streams.ts`.
+- [x] `P07.S20` - Offload the synchronous broker chain, reserve `SUBMITTED` before dispatch, perform one exact retry after ambiguous loss, and keep actor-token issuance redacted, distinct, and retention-bounded; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs, engine/crates/vaultspec-api/src/authoring/actor_tokens.rs`.
+- [x] `P07.S21` - Use one frontend recovery coordinator, bound transcript state, preserve reconciliation generation outside the evictable frame array, and derive terminal controls only from authoritative status; `frontend/src/stores/server/agent/, frontend/src/stores/server/liveAdapters/, frontend/src/app/agent/`.
+- [x] `P07.S22` - Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail; `engine/crates/vaultspec-api/src/lib.rs, .vault/reference/, .vault/audit/`.
+- [x] `P07.S23` - Run a cross-repository adversarial code review, resolve every new critical or high issue, and close the rolling audit with real-behavior evidence; `.vault/audit/, .vault/exec/`.
 
 ## Description
 
 Activate the frozen dashboard-to-a2a edge holistically: the a2a side shipped
-its half (five-verb gateway, versioned bounded SSE frames, token intake,
+its half (six-member whitelist: five control verbs plus bounded discovery,
+versioned bounded SSE frames, token intake,
 discovery contract, per its own conformance program), the frontend
 consumption seams are built and waiting, and this plan builds everything
 still missing between them. Four work fronts, in handover priority order:
