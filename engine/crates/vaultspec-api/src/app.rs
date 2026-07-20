@@ -1070,6 +1070,12 @@ pub struct AppState {
     /// `AppState` — never a process-global static — so seated instances and tests
     /// each get their own registry and cannot share lifecycle mutation state.
     pub a2a_lifecycle: Arc<crate::routes::a2a_lifecycle::LifecyclePlane>,
+    /// The dedicated, durable A2A run-token lease repository (a2a-product-
+    /// provisioning W02.P05.S35/S151): the hash-only lease lifecycle store for
+    /// admit-before-mint run-start, attach-control terminal settlement, and boot
+    /// reconciliation. Its OWN SQLite file under the workspace vault data dir —
+    /// deliberately decoupled from the authoring-session store.
+    pub a2a_run_leases: Arc<crate::a2a_run_leases::LeaseRepo>,
 }
 
 impl AppState {
@@ -1361,6 +1367,15 @@ fn build_state_full(root: PathBuf, bearer: String, product_app_home: PathBuf) ->
         a2a_lifecycle: Arc::new(crate::routes::a2a_lifecycle::LifecyclePlane::new(
             &product_app_home,
         )),
+        // The dedicated A2A run-lease store, opened under the workspace vault data
+        // dir (its own file, isolated from the authoring store). Like `user_state`
+        // this is a workspace-level durable store opened once; a failure to open
+        // it is a genuine environment fault, surfaced loud rather than silently
+        // dropping run-admission durability.
+        a2a_run_leases: Arc::new(
+            crate::a2a_run_leases::LeaseRepo::open(&root.join(".vault"))
+                .unwrap_or_else(|e| panic!("a2a run-lease store unavailable: {e}")),
+        ),
     });
     // Eagerly build the launch scope's cell so `/status`, the tiers fallback,
     // and the active-cell resolve are always satisfiable. The cell is pinned

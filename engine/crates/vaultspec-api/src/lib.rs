@@ -7,6 +7,7 @@
 //! SSE stream. `/health` is ungated; everything else is bearer-gated.
 //! No WebSocket in v1 (D7.1).
 
+mod a2a_run_leases;
 pub mod app;
 mod authoring;
 pub mod boot;
