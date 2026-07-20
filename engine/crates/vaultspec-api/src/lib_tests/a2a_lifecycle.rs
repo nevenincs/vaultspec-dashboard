@@ -65,7 +65,7 @@ fn install_owned_gateway(product_home: &std::path::Path, owner_override: Option<
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64;
-    let handoff = paths.credentials_dir().join("attach-control.cred");
+    let handoff = CredentialStore::new(paths.credentials_dir()).attach_control_reference();
     let discovery = json!({
         "endpoint": "127.0.0.1:8791",
         "pid": std::process::id(),

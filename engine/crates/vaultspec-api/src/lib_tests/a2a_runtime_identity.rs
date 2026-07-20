@@ -231,7 +231,7 @@ fn seated_boot_authenticates_a_live_owned_gateway() {
     // A real readiness server the authenticated attach probes. Our OWN live pid +
     // a fresh heartbeat + our owner id makes the record classify OwnedLive.
     let endpoint = spawn_readiness_server(creds.attach_control.secret().to_string(), 2);
-    let handoff = paths.credentials_dir().join("attach-control.cred");
+    let handoff = CredentialStore::new(paths.credentials_dir()).attach_control_reference();
     write_discovery(
         &paths,
         plane.testonly_owner_id(),
@@ -275,7 +275,7 @@ fn seated_boot_leaves_a_foreign_resident_immutable() {
     // (`discovery::handoff_is_owner_restricted`) that is environment-dependent on
     // Windows. The property S34 proves is immutability, so accept either foreign
     // verdict and assert NOTHING was spawned.
-    let handoff = paths.credentials_dir().join("attach-control.cred");
+    let handoff = CredentialStore::new(paths.credentials_dir()).attach_control_reference();
     write_discovery(
         &paths,
         "someone-else",
