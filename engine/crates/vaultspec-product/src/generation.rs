@@ -13,9 +13,9 @@
 //! serialized by the installation guard; descriptor-relative operations do not
 //! claim protection against a malicious non-cooperating process with that same
 //! account authority. Because POSIX has no atomic directory-create-and-open
-//! primitive, failure between `mkdirat` and retained authority establishment is
-//! finalized only by parent-relative, no-follow snapshot-checked cleanup under
-//! that cooperative same-euid model. Unprovable cleanup remains indeterminate.
+//! primitive, failure between `mkdirat` and retained authority establishment
+//! leaves one bounded inert residue. Copied metadata and later pathname
+//! observations authorize no cleanup; the outcome remains indeterminate.
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
@@ -271,29 +271,17 @@ impl<'lock> LockedProduct<'lock> {
         path: PathBuf,
         created: UnixUnretainedCreation,
     ) -> CreateUnpublishedError<'product, 'lock> {
-        let cleanup = match created.created_name {
-            Some(created_name) => self
-                .generations
-                .remove_created_name_if_snapshot(OsStr::new(generation), created_name),
-            None => Err(creation_stage(
-                "post-mkdir cleanup",
-                "the created name's identity was not established; exact cleanup was refused",
-            )),
-        };
-        match cleanup {
-            Ok(()) => CreateUnpublishedError::Refused(created.creation),
-            Err(cleanup) => {
-                CreateUnpublishedError::Indeterminate(Box::new(IndeterminateGenerationCreation {
-                    _product: self,
-                    generation: generation.to_string(),
-                    path,
-                    error: GenerationError::IndeterminateCreation {
-                        creation: created.creation.to_string(),
-                        cleanup: cleanup.to_string(),
-                    },
-                }))
-            }
-        }
+        CreateUnpublishedError::Indeterminate(Box::new(IndeterminateGenerationCreation {
+            _product: self,
+            generation: generation.to_string(),
+            path,
+            error: GenerationError::IndeterminateCreation {
+                creation: created.creation.to_string(),
+                cleanup:
+                    "cleanup refused because exact retained child authority was never established"
+                        .to_string(),
+            },
+        }))
     }
 
     fn validate_relationships(&self) -> Result<(), GenerationError> {
@@ -869,7 +857,7 @@ impl IndeterminateGenerationCreation<'_, '_> {
         &self.path
     }
 
-    /// The combined creation and identity-safe cleanup diagnostics.
+    /// The creation failure and the reason cleanup was not authorized.
     #[must_use]
     pub fn error(&self) -> &GenerationError {
         &self.error
@@ -882,15 +870,14 @@ impl IndeterminateGenerationCreation<'_, '_> {
 /// removed, are [`Self::Refused`]. After an exact child authority exists,
 /// failed cleanup returns [`Self::Retained`] with that authority and the unique
 /// mutable product loan. On Unix, failure before exact child authority exists
-/// permits only parent-relative snapshot-checked cleanup under the cooperative
-/// same-euid/install-lock model. If that cannot prove removal,
+/// permits no cleanup through copied metadata or a later pathname observation.
 /// [`Self::Indeterminate`] preserves product and parent authority without
 /// claiming authority over the possibly remaining final name.
 #[derive(Debug)]
 pub enum CreateUnpublishedError<'product, 'lock> {
     /// Creation was refused with no final-name residue known to remain.
     Refused(GenerationError),
-    /// Post-create validation and exact cleanup both failed closed.
+    /// Post-create validation failed while exact child authority remains live.
     Retained(Box<PoisonedGeneration<'product, 'lock>>),
     /// Unix creation may have left a final name without exact child authority.
     Indeterminate(Box<IndeterminateGenerationCreation<'product, 'lock>>),
@@ -949,7 +936,6 @@ struct UnixCreatedName {
 #[cfg(unix)]
 #[derive(Debug)]
 struct UnixUnretainedCreation {
-    created_name: Option<UnixCreatedName>,
     creation: GenerationError,
 }
 
@@ -1008,7 +994,6 @@ impl DirectoryAuthority {
             Ok(created_name) => created_name,
             Err(error) => {
                 return Ok(UnixChildCreation::Unretained(UnixUnretainedCreation {
-                    created_name: None,
                     creation: error,
                 }));
             }
@@ -1018,7 +1003,6 @@ impl DirectoryAuthority {
             || created_name.mode != 0o700
         {
             return Ok(UnixChildCreation::Unretained(UnixUnretainedCreation {
-                created_name: None,
                 creation: creation_stage(
                     "post-mkdir no-follow snapshot establishment",
                     format!(
@@ -1031,19 +1015,16 @@ impl DirectoryAuthority {
             Ok(authority) => match authority.current_snapshot() {
                 Ok(opened) if opened == created_name => Ok(UnixChildCreation::Retained(authority)),
                 Ok(_) => Ok(UnixChildCreation::Unretained(UnixUnretainedCreation {
-                    created_name: Some(created_name),
                     creation: creation_stage(
                         "post-mkdir no-follow open/fstat",
                         "opened directory snapshot differs from the captured created name",
                     ),
                 })),
                 Err(error) => Ok(UnixChildCreation::Unretained(UnixUnretainedCreation {
-                    created_name: Some(created_name),
                     creation: creation_stage("post-mkdir retained-fd fstat", error),
                 })),
             },
             Err(error) => Ok(UnixChildCreation::Unretained(UnixUnretainedCreation {
-                created_name: Some(created_name),
                 creation: creation_stage("post-mkdir no-follow open", error),
             })),
         }
@@ -1064,42 +1045,6 @@ impl DirectoryAuthority {
             owner: stat.st_uid,
             mode: stat.st_mode & 0o777,
         })
-    }
-
-    fn remove_created_name_if_snapshot(
-        &self,
-        name: &OsStr,
-        created_name: UnixCreatedName,
-    ) -> Result<(), GenerationError> {
-        let current =
-            rustix::fs::statat(&self.directory, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
-                .map_err(|error| {
-                    creation_stage("post-mkdir cleanup no-follow metadata check", error)
-                })?;
-        let current_name = UnixCreatedName {
-            identity: DirectoryIdentity {
-                device: current.st_dev as u64,
-                inode: current.st_ino as u64,
-            },
-            is_directory: rustix::fs::FileType::from_raw_mode(current.st_mode)
-                == rustix::fs::FileType::Directory,
-            owner: current.st_uid,
-            mode: current.st_mode & 0o777,
-        };
-        if current_name != created_name {
-            return Err(creation_stage(
-                "post-mkdir cleanup snapshot comparison",
-                "the parent-relative final name no longer matches the captured directory snapshot",
-            ));
-        }
-        rustix::fs::unlinkat(&self.directory, name, rustix::fs::AtFlags::REMOVEDIR).map_err(
-            |error| {
-                creation_stage(
-                    "post-mkdir cleanup parent-relative snapshot-checked empty unlink",
-                    error,
-                )
-            },
-        )
     }
 
     fn from_directory(directory: rustix::fd::OwnedFd) -> std::io::Result<Self> {
@@ -1406,12 +1351,12 @@ pub enum GenerationError {
         /// Failed exact cleanup diagnostic.
         cleanup: String,
     },
-    /// Exact child authority was never established and final-name cleanup could
-    /// not be proven complete.
+    /// Exact child authority was never established, so final-name cleanup was
+    /// not authorized.
     IndeterminateCreation {
         /// Failure while establishing exact child authority.
         creation: String,
-        /// Failure or refusal during identity-safe cleanup.
+        /// Reason cleanup was not authorized.
         cleanup: String,
     },
     /// Filesystem operation failed.

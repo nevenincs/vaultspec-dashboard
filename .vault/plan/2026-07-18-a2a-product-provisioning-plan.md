@@ -9,6 +9,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-research]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
+  - '[[2026-07-20-a2a-generation-authority-adr]]'
 ---
 
 <!-- LINK RULES:
@@ -67,7 +68,7 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 - [x] `W01.P01.S170` - Verify a release set only through a borrow of the retained unpublished-generation authority, make the verified release set lifetime-bound to that exact generation, and retain its final filesystem snapshot plus complete receipt facts through activation; `engine/crates/vaultspec-product/src/manifest.rs`.
 - [x] `W01.P01.S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review; `engine/crates/vaultspec-windows-authority`.
 - [x] `W01.P01.S172` - Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain the exact verified journal and Windows installation authorities on every non-success, durably publish by exact positional overwrite and synchronization of only the inactive fixed journal slot or by the D9-authorized first-install path, transition only the older proof subrecord then synchronize close reopen and validate one logical replica at a time, normalize all three to active before the first target byte, recover torn proof writes from quorum, preserve the prior for an unchanged empty or partial-invalid target, fail on any third complete envelope, and resume selection only after the intended target and all retired logical replicas exactly revalidate; `engine/crates/vaultspec-product/src/generation.rs, engine/crates/vaultspec-product/src/manifest.rs, engine/crates/vaultspec-product/src/receipt.rs`.
-- [ ] `W01.P01.S163` - Prove directory presence never selects a generation and that collisions substitutions partial writers identity-checked discard and bounded abandoned generations fail closed with real filesystem objects; `engine/crates/vaultspec-product/tests/generation_authority.rs`.
+- [x] `W01.P01.S163` - Prove exact retained generation-root authority and semantic nested release equality, reject namespace-only empty directories, preserve unretained post-create residue without pathname deletion, and prove collisions substitutions partial writers exact discard and bounded abandoned generations fail closed with real filesystem objects; `engine/crates/vaultspec-product/src/generation.rs, engine/crates/vaultspec-product/src/generation/tests.rs, engine/crates/vaultspec-product/src/manifest/verification.rs, engine/crates/vaultspec-product/src/manifest/tests.rs, engine/crates/vaultspec-product/tests/generation_authority.rs`.
 - [ ] `W01.P01.S11` - Verify manifest rejection active-receipt durability and fallback unpublished-generation inertness dashboard-only capability creation credential separation permission restriction and cross-process lock exclusion with real files processes and locks; `engine/crates/vaultspec-product/tests/product_authority.rs`.
 
 ### Phase `W01.P02` - control only the owned gateway

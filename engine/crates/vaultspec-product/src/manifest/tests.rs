@@ -663,6 +663,30 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
             Err(ManifestError::InputTooLarge { .. })
         ));
     });
+
+    let fixture = Fixture::new();
+    fixture.with_generation(|generation| {
+        let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
+        let relative = "a2a/component-manifest.json";
+        let initial_file = observed_file(&initial.files, relative).unwrap();
+        let path = generation.path().join(relative);
+        let old = generation.path().join("a2a/component-manifest.old");
+        let bytes = std::fs::read(&path).unwrap();
+        std::fs::rename(&path, &old).unwrap();
+        std::fs::write(&path, &bytes).unwrap();
+        set_mode(&path, "0644");
+        std::fs::remove_file(old).unwrap();
+        assert_eq!(
+            read_installed_bounded(
+                generation.path(),
+                relative,
+                MAX_CAPSULE_MANIFEST_BYTES,
+                initial_file,
+            )
+            .unwrap(),
+            bytes
+        );
+    });
 }
 
 #[test]
@@ -775,7 +799,7 @@ fn hard_link_aliases_are_rejected_from_same_handle_observations() {
 }
 
 #[test]
-fn activation_revalidation_rejects_payload_manifest_and_same_byte_identity_drift() {
+fn activation_revalidation_rejects_semantic_drift_and_accepts_same_content_replacement() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let generation_path = generation.path().to_path_buf();
@@ -810,10 +834,7 @@ fn activation_revalidation_rejects_payload_manifest_and_same_byte_identity_drift
         std::fs::write(&path, &bytes).unwrap();
         set_mode(&path, "0644");
         std::fs::remove_file(old).unwrap();
-        assert!(matches!(
-            verified.revalidate_for_activation(),
-            Err(ManifestError::GenerationChanged { .. })
-        ));
+        verified.revalidate_for_activation().unwrap();
     });
 }
 
@@ -863,40 +884,90 @@ fn permission_and_child_acl_drift_fail_closed() {
         }
         #[cfg(windows)]
         {
-            let payload = generation_path.join("bin/dashboard.exe");
+            let payload_directory = generation_path.join("a2a");
+            permit_test_peer(&payload_directory);
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::UnsafeFileType { .. })
+            ));
+            remove_test_peer(&payload_directory);
+        }
+    });
+
+    #[cfg(windows)]
+    {
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let payload = generation.path().join("bin/dashboard.exe");
+            let verified = fixture.verify(generation).unwrap();
             permit_test_peer(&payload);
             assert!(matches!(
                 verified.revalidate_for_activation(),
                 Err(ManifestError::UnsafeFileType { .. })
             ));
             remove_test_peer(&payload);
-        }
-    });
+        });
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let directory = generation.path().join("a2a");
+            let original = std::fs::metadata(&directory).unwrap().permissions().mode() & 0o777;
+            let changed = if original == 0o700 { 0o750 } else { 0o700 };
+            let verified = fixture.verify(generation).unwrap();
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(changed)).unwrap();
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+            std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(original))
+                .unwrap();
+        });
+
+        let fixture = Fixture::new();
+        fixture.with_generation(|generation| {
+            let file = generation.path().join("bin/dashboard.exe");
+            let verified = fixture.verify(generation).unwrap();
+            set_mode(&file, "0755");
+            assert!(matches!(
+                verified.revalidate_for_activation(),
+                Err(ManifestError::GenerationChanged { .. })
+            ));
+            set_mode(&file, "0644");
+        });
+    }
 }
 
 #[test]
-fn empty_directory_inventory_is_identity_bound_and_semantically_closed() {
+fn empty_directory_subtrees_are_refused_as_namespace_only_state() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let empty = generation.path().join("empty-state");
         std::fs::create_dir(&empty).unwrap();
-        let verified = fixture.verify(generation).unwrap();
-        std::fs::remove_dir(&empty).unwrap();
-        std::fs::create_dir(&empty).unwrap();
         assert!(matches!(
-            verified.revalidate_for_activation(),
-            Err(ManifestError::GenerationChanged { .. })
+            fixture.verify(generation),
+            Err(ManifestError::InvalidField { field, detail })
+                if field == "generation tree"
+                    && detail.contains("has no regular-file descendant")
         ));
     });
 
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
-        let new_empty = generation.path().join("new-empty-state");
-        let verified = fixture.verify(generation).unwrap();
-        std::fs::create_dir(new_empty).unwrap();
+        let parent = generation.path().join("nested-state");
+        let empty_leaf = parent.join("empty-leaf");
+        std::fs::create_dir(&parent).unwrap();
+        std::fs::create_dir(&empty_leaf).unwrap();
+        write_file(generation.path(), "nested-state/content.bin", b"content");
         assert!(matches!(
-            verified.revalidate_for_activation(),
-            Err(ManifestError::GenerationChanged { .. })
+            fixture.verify(generation),
+            Err(ManifestError::InvalidField { field, detail })
+                if field == "generation tree"
+                    && detail.contains("empty-leaf")
         ));
     });
 

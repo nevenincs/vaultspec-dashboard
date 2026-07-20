@@ -18,6 +18,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S10]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S11]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S146]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S163]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S167]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S168]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S169]]'
@@ -132,6 +133,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W02-P04-S46` - Export the one-shot product lifecycle command module
 - `2026-07-18-a2a-product-provisioning-W02-P04-S47` - Expose bounded A2A lifecycle status and action subcommands without free-form executable or path operands
 - `2026-07-18-a2a-product-provisioning-W02-P04-S48` - Make cold seat launch reconcile only the receipt-owned A2A gateway before opening the dashboard
+- `2026-07-18-a2a-product-provisioning-W01-P01-S163` - S163 exact-root and semantic-descendant authority proof
 - `2026-07-18-a2a-product-provisioning-W01-P01-S169` - Bind a non-clone retained LockedProduct authority to the verified installation guard, retain product generation-parent receipt-parent and unpublished-generation filesystem identities, reject the active generation, exclusively create its final owner-private no-follow name, derive the exact maximum-eight nonactive count through the active reader, and return removed or retained poisoned authority from identity-safe bounded discard
 - `2026-07-18-a2a-product-provisioning-W01-P01-S170` - Verify a release set only through a borrow of the retained unpublished-generation authority, make the verified release set lifetime-bound to that exact generation, and retain its final filesystem snapshot plus complete receipt facts through activation
 - `2026-07-18-a2a-product-provisioning-W01-P01-S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review

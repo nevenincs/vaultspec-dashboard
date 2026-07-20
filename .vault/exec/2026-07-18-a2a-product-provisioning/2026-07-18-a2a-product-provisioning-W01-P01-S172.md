@@ -8,6 +8,7 @@ step_id: 'S172'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
+
 # Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain exact authority on every non-success, and durably publish through the fixed tear-safe journal
 
 ## Scope
@@ -88,13 +89,14 @@ S173 remains the mandatory real local-NTFS virtual-machine power-cut gate.
 Process termination, Windows share-denial tests, cross-compilation, and the real
 Ubuntu run do not certify physical namespace durability.
 
-The real Ubuntu run also reproduced a pre-existing S170/S163 limitation:
+The real Ubuntu run also exposed a pre-existing S170/S163 design question:
 immediate remove and recreate of an empty directory can reuse both inode and
 nanosecond timestamps. A proposed `ctime` check was rejected because it did not
-detect the event. S163 must close this with bounded retained directory authority
-or an equivalent non-reusable identity primitive and real filesystem evidence;
-the limitation was not introduced by S172 and does not affect its journal
-publication state machine.
+detect the event. The accepted S163 generation-authority ADR resolves this by
+rejecting namespace-only empty directories, retaining exact authority only for
+the generation root, and comparing descendants by closed semantic observation.
+Copied identities are scan-local evidence, not cross-scan capabilities. This
+clarification does not change S172's journal publication state machine.
 
 Source history is split across consolidation commit `c6d15b778b`, which landed
 the three-file S172 implementation, and hardening commit `e64290b1be`, which
@@ -109,12 +111,12 @@ Verification completed:
   Windows; no test was ignored.
 - `cargo clippy -p vaultspec-product --lib --tests --locked -- -D warnings`:
   passed without lint allowances.
-- `cargo check -p vaultspec-product --target x86_64-unknown-linux-gnu --lib
-  --tests --locked`: passed under the repository-pinned Rust 1.96 toolchain.
-- A real Ubuntu 24.04 container executed all 96 library tests: every S172
-  publication test and the signed-PID sweep regression passed; the run ended at
-  95 passed and one carried S163 empty-directory identity failure that also
-  reproduces unchanged at the pre-S172 `HEAD` baseline.
+- `cargo check -p vaultspec-product --target x86_64-unknown-linux-gnu --lib --tests --locked`: passed under the repository-pinned Rust 1.96 toolchain.
+- Ubuntu executed 96 library tests: 95 passed and one pre-existing S163
+  empty-directory identity test failed. Every S172 publication test and the
+  signed-process-identifier sweep regression passed. The S163 failure reproduced
+  unchanged at the pre-S172 `HEAD` baseline and is resolved by the later S163
+  semantic-topology contract.
 - Package-scoped formatting, scoped diff checking, forbidden-test-technique
   scanning, exact source fingerprinting, manual architecture review, and an
   independent formal review all passed.

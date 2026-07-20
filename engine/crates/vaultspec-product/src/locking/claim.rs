@@ -350,7 +350,7 @@ fn create_prepared_file(
 }
 
 #[cfg(unix)]
-fn open_unix_authority_file(
+pub(super) fn open_unix_authority_file(
     parent: &ParentAuthority,
     path: &Path,
     flags: rustix::fs::OFlags,

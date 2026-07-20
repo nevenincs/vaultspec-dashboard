@@ -1,50 +1,12 @@
 use super::*;
 
-#[derive(PartialEq, Eq)]
-pub(super) struct ObservedFile {
-    identity: FilesystemIdentity,
-    link_count: u64,
-    pub(super) size: u64,
-    digest: String,
-    normalized_mode: Option<&'static str>,
-}
+#[path = "verification/snapshot.rs"]
+mod snapshot;
 
-#[derive(PartialEq, Eq)]
-pub(super) struct GenerationSnapshot {
-    canonical_root: PathBuf,
-    root_identity: RootIdentity,
-    directories: BTreeMap<String, ObservedDirectory>,
-    pub(super) files: BTreeMap<String, ObservedFile>,
-}
-
-#[derive(PartialEq, Eq)]
-struct ObservedDirectory {
-    identity: FilesystemIdentity,
-    owner: Option<u32>,
-    mode: Option<u32>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum RootIdentity {
-    #[cfg(unix)]
-    Unix { device: u64, inode: u64 },
-    #[cfg(windows)]
-    Windows {
-        volume_serial_number: u64,
-        file_id: u128,
-    },
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum FilesystemIdentity {
-    #[cfg(unix)]
-    Unix { device: u64, inode: u64 },
-    #[cfg(windows)]
-    Windows {
-        volume_serial_number: u64,
-        file_id: u128,
-    },
-}
+use snapshot::{
+    FilesystemIdentity, ObservedDirectory, RootIdentity, record_file_parent_directories,
+};
+pub(super) use snapshot::{GenerationSnapshot, ObservedFile};
 
 pub(super) fn scan_generation(
     root: &Path,
@@ -87,6 +49,7 @@ fn scan_generation_inner(
     let mut files = BTreeMap::new();
     let mut semantic = BTreeSet::new();
     let mut identities = BTreeSet::new();
+    let mut file_parent_directories = BTreeSet::new();
     let mut total_bytes = 0_u64;
     let mut payload_files = 0_usize;
     let initial_file_limit =
@@ -203,6 +166,7 @@ fn scan_generation_inner(
                     "more than one installed file matches the trusted member digest",
                 );
             }
+            record_file_parent_directories(&portable, &mut file_parent_directories);
             files.insert(portable, observed);
         }
         require_windows_restricted_acl(&directory)?;
@@ -228,6 +192,15 @@ fn scan_generation_inner(
         });
     }
     require_windows_restricted_acl(root)?;
+    if let Some(empty) = directories
+        .keys()
+        .find(|directory| !file_parent_directories.contains(*directory))
+    {
+        return invalid(
+            "generation tree",
+            &format!("non-root directory {empty} has no regular-file descendant"),
+        );
+    }
     Ok((
         GenerationSnapshot {
             canonical_root,
@@ -394,6 +367,7 @@ fn normalized_file_mode(_metadata: &Metadata) -> Option<&'static str> {
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct OpenedFileState {
     identity: FilesystemIdentity,
+    owner: Option<u32>,
     link_count: u64,
     size: u64,
     normalized_mode: Option<&'static str>,
@@ -430,24 +404,26 @@ impl OpenedRegular {
             });
         }
         #[cfg(unix)]
-        let (identity, link_count) = {
+        let (identity, owner, link_count) = {
             use std::os::unix::fs::MetadataExt;
             (
                 FilesystemIdentity::Unix {
                     device: metadata.dev(),
                     inode: metadata.ino(),
                 },
+                Some(metadata.uid()),
                 metadata.nlink(),
             )
         };
         #[cfg(windows)]
-        let (identity, link_count) = {
+        let (identity, owner, link_count) = {
             let identity = self.authority.identity();
             (
                 FilesystemIdentity::Windows {
                     volume_serial_number: identity.volume_serial_number,
                     file_id: identity.file_id,
                 },
+                None,
                 self.authority
                     .link_count()
                     .map_err(|error| io_error(path, error))?,
@@ -463,6 +439,7 @@ impl OpenedRegular {
         }
         Ok(OpenedFileState {
             identity,
+            owner,
             link_count,
             size: metadata.len(),
             normalized_mode: normalized_file_mode(&metadata),
@@ -557,6 +534,7 @@ fn hash_regular_file(path: &Path, expected_size: u64) -> Result<ObservedFile> {
     }
     Ok(ObservedFile {
         identity: final_state.identity,
+        owner: final_state.owner,
         link_count: final_state.link_count,
         size: total,
         digest: format!("{:x}", hasher.finalize()),
@@ -820,14 +798,15 @@ pub(super) fn read_installed_bounded(
     }
     let reread = ObservedFile {
         identity: final_state.identity,
+        owner: final_state.owner,
         link_count: final_state.link_count,
         size: bytes.len() as u64,
         digest: sha256_hex(&bytes),
         normalized_mode: final_state.normalized_mode,
     };
-    if &reread != initial {
+    if !initial.semantically_matches(&reread) {
         return Err(ManifestError::GenerationChanged {
-            detail: format!("{relative} identity changed between scan and bounded reread"),
+            detail: format!("{relative} semantic observation changed during bounded reread"),
         });
     }
     Ok(bytes)

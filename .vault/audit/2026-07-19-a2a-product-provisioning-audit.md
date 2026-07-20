@@ -207,7 +207,7 @@ Independent final review found no critical, high, or medium finding. JSON,
 Draft 2020-12 meta-schema, representative member and descriptor, adversarial
 ordering/digest/version/path/migration/size cases, and diff checks passed. The
 reviewed schema SHA-256 is
-``2215407E43A7639C8BA800BE963D8200760833967A1720A47D20E1B03BCA5233``.
+`2215407E43A7639C8BA800BE963D8200760833967A1720A47D20E1B03BCA5233`.
 
 This closes S04 only. S06 must enforce trusted-byte and cross-field joins; S08
 must bind member and cohort digests into a separately durable active receipt;
@@ -421,26 +421,28 @@ exercise the production finalizer.
 
 The second formal review returned NOT PASS C0/H0/M1. Unix `mkdirat` could
 succeed before `open_child` or `fstat` failed, bypassing the token/finalizer and
-falsely returning `Refused` with a final-name residue. The repair captures a
-parent-relative no-follow snapshot of device, inode, directory type, owner, and
-permission bits; accepts the retained descriptor only when its full snapshot
-matches; and otherwise performs only full-snapshot-checked parent cleanup.
+falsely returning `Refused` with a final-name residue. The interim repair used a
+parent-relative no-follow snapshot before pathname cleanup.
 
-Successful cleanup returns `Refused`. Missing or unacceptable initial state,
-name loss, substitution, type/owner/mode drift, nonempty residue, or unlink
-failure returns boxed `IndeterminateGenerationCreation`, retaining
-`&mut LockedProduct`, product and parent authority, name, path, and combined
-diagnostics without a retry, recovery, publication, or activation conversion.
-Real Unix empty, nonempty, substituted-name, and permission-drift regressions
-exercise this production created-state finalizer.
+S163 and the accepted generation-authority ADR supersede that interim cleanup
+interpretation. The created snapshot may validate a subsequently retained child
+authority, but copied metadata and a later pathname observation authorize no
+deletion. Any failure to establish the exact child authority now returns boxed
+`IndeterminateGenerationCreation`, retaining `&mut LockedProduct`, product and
+parent authority, name, path, and diagnostics while leaving any bounded inert
+residue untouched. Real Unix empty, child-process partial-writer,
+substituted-name, and permission-drift regressions exercise the production
+created-state finalizer.
 
-Unix cleanup is parent-relative and full-snapshot checked within the
-cooperative same-euid/install-lock model. The POSIX `statat` to `unlinkat`
-sequence retains a hostile-peer TOCTOU boundary and is not handle-exact. Windows
-continues to use the S168 retained-handle relative child and consuming exact
-empty-directory primitive. No raw handle, cloneable authority, recursive
-deletion, caller-selected active generation, lint allowance, or unsafe surface
-was introduced.
+Windows continues to use the S168 retained-handle relative child and consuming
+exact empty-directory primitive. Unix and Windows therefore share the same
+mutation rule: copied metadata or a later pathname observation alone never
+authorizes cleanup. Unix combines exact retained child authority with named
+identity revalidation under the cooperative same-effective-user and installation-
+lock model; its `statat` then `unlinkat` sequence is not atomic against a hostile
+same-user swap. Windows uses the consuming retained-handle primitive. No raw
+handle, cloneable authority, recursive deletion, caller-selected active generation,
+lint allowance, or unsafe surface was introduced.
 
 Final independent re-review reported PASS C0/H0/M0/L0. The separate Unix
 architecture audit also reported PASS C0/H0/M0/L0.
@@ -476,12 +478,20 @@ component-lock, external exact-five-target cohort, complete file inventory,
 capsule, tree evidence, and installed bytes retain their existing independent
 joins.
 
-The stored final snapshot binds the canonical root and root identity, every
-directory identity, and every file identity, link count of exactly one, size,
-digest, and normalized executable mode. Empty directories and the member
-manifest participate. `revalidate_for_activation` validates retained generation
-authority before and after a fresh complete scan, then compares that scan with
-the stored final snapshot.
+At the original S170 review boundary, the stored final snapshot bound the
+canonical root and root identity, every directory identity, and every file
+identity, single-link state, size, digest, and normalized executable mode. Empty
+directories and the member manifest participated. `revalidate_for_activation`
+validated retained generation authority before and after a fresh complete scan,
+then compared that scan with the stored final snapshot.
+
+S163 later refined that cross-scan interpretation under the accepted
+generation-authority decision. Exact authority remains on the root. Descendants
+now compare by normalized path, owner or access policy, single-link state, size,
+digest, and normalized release mode. Child identities remain scan-local, and
+namespace-only empty directories are invalid. The original S170 review hash and
+evidence below apply to the pre-refinement implementation; the S163 audit records
+the later implementation and review.
 
 Opaque, read-only `VerifiedReceiptFacts` retains every non-constant D10 payload
 fact for S172 while keeping fields and construction private. The active
@@ -694,8 +704,7 @@ Status: APPROVED
 Reviewed the completed S171/S172 tear-safe receipt-publication feature landed at
 `c6d15b778b` (receipt.rs + generation.rs + manifest.rs). No critical or high
 findings; the tear-safe publication path is correctness-sound. Full product gate
-green at commit (95 lib + integration tests pass, clippy `--all-targets -D
-warnings` clean, fmt clean).
+green at commit (95 lib + integration tests pass, clippy `--all-targets -D warnings` clean, fmt clean).
 
 - Tear-safety (the core property) is sound: the active receipt name
   (`active-receipts.v1`) is only ever created by an atomic rename of a fully

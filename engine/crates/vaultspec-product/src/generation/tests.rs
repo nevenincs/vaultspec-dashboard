@@ -1,4 +1,28 @@
 use super::*;
+
+#[cfg(unix)]
+fn run_bounded_test_child(command: &mut std::process::Command) -> std::process::ExitStatus {
+    use std::process::Stdio;
+    use std::time::{Duration, Instant};
+
+    let mut child = command
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            return status;
+        }
+        if Instant::now() >= deadline {
+            child.kill().unwrap();
+            let status = child.wait().unwrap();
+            panic!("test child exceeded 10-second bound: {status}");
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+}
 use crate::locking::{Actor, InstallLock};
 
 fn restrict_test_directory(path: &Path) {
@@ -180,55 +204,75 @@ fn failed_creation_cleanup_refuses_after_removing_exact_empty_name() {
 
 #[cfg(unix)]
 #[test]
-fn unix_unretained_creation_removes_snapshot_matching_empty_residue_before_refusal() {
+fn unix_unretained_creation_preserves_empty_residue_without_deletion_authority() {
     let fixture = Fixture::new("generation-unretained-empty");
     let mut product = fixture.product();
     let generation = "release-a";
     let path = fixture.paths.generation_dir(generation).unwrap();
     create_test_generation(&path);
-    let created_name = product
-        .generations
-        .inspect_created_name(OsStr::new(generation))
-        .unwrap();
     let open_error = product
         .generations
         .open_child(OsStr::new("absent-authority-probe"))
         .unwrap_err();
     let created = UnixUnretainedCreation {
-        created_name: Some(created_name),
         creation: creation_stage("post-mkdir no-follow open/fstat", open_error),
     };
 
+    let CreateUnpublishedError::Indeterminate(indeterminate) =
+        product.finalize_unretained_creation(generation, path.clone(), created)
+    else {
+        panic!("unretained empty residue was not preserved as indeterminate");
+    };
     assert!(matches!(
-        product.finalize_unretained_creation(generation, path.clone(), created),
-        CreateUnpublishedError::Refused(GenerationError::CreationStage {
-            stage: "post-mkdir no-follow open/fstat",
-            ..
-        })
+        indeterminate.error(),
+        GenerationError::IndeterminateCreation { creation, cleanup }
+            if creation.contains("open/fstat")
+                && cleanup.contains("exact retained child authority was never established")
     ));
-    assert!(!path.exists());
+    assert!(path.is_dir());
+    drop(indeterminate);
+    std::fs::remove_dir(path).unwrap();
 }
 
 #[cfg(unix)]
 #[test]
-fn unix_unretained_creation_keeps_nonempty_residue_indeterminate() {
+fn unix_partial_writer_residue_survives_without_deletion_authority() {
+    const CHILD_PATH_ENV: &str = "VAULTSPEC_S163_PARTIAL_WRITER_PATH";
+    if let Some(path) = std::env::var_os(CHILD_PATH_ENV) {
+        use std::io::Write;
+
+        let mut payload = std::fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(PathBuf::from(path).join("payload.partial"))
+            .unwrap();
+        payload.write_all(b"partial writer bytes").unwrap();
+        payload.sync_all().unwrap();
+        return;
+    }
+
     let fixture = Fixture::new("generation-unretained-nonempty");
     let mut product = fixture.product();
     let generation = "release-a";
     let path = fixture.paths.generation_dir(generation).unwrap();
     create_test_generation(&path);
-    let created_name = product
-        .generations
-        .inspect_created_name(OsStr::new(generation))
-        .unwrap();
-    let sentinel = path.join("sentinel");
-    std::fs::write(&sentinel, b"indeterminate bytes survive").unwrap();
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--exact",
+            "generation::tests::unix_partial_writer_residue_survives_without_deletion_authority",
+            "--nocapture",
+        ])
+        .env(CHILD_PATH_ENV, &path);
+    let status = run_bounded_test_child(&mut command);
+    assert!(status.success(), "partial writer child failed: {status}");
+    let partial = path.join("payload.partial");
+    assert_eq!(std::fs::read(&partial).unwrap(), b"partial writer bytes");
     let open_error = product
         .generations
         .open_child(OsStr::new("absent-authority-probe"))
         .unwrap_err();
     let created = UnixUnretainedCreation {
-        created_name: Some(created_name),
         creation: creation_stage("post-mkdir no-follow open/fstat", open_error),
     };
 
@@ -242,40 +286,31 @@ fn unix_unretained_creation_keeps_nonempty_residue_indeterminate() {
     assert!(matches!(
         indeterminate.error(),
         GenerationError::IndeterminateCreation { creation, cleanup }
-            if creation.contains("open/fstat") && cleanup.contains("snapshot-checked empty unlink")
+            if creation.contains("open/fstat")
+                && cleanup.contains("exact retained child authority was never established")
     ));
-    assert_eq!(
-        std::fs::read(&sentinel).unwrap(),
-        b"indeterminate bytes survive"
-    );
+    assert_eq!(std::fs::read(&partial).unwrap(), b"partial writer bytes");
     drop(indeterminate);
-    std::fs::remove_file(sentinel).unwrap();
+    std::fs::remove_file(partial).unwrap();
     std::fs::remove_dir(path).unwrap();
 }
 
 #[cfg(unix)]
 #[test]
-fn unix_unretained_creation_never_unlinks_substituted_residue() {
+fn unix_unretained_creation_preserves_empty_substituted_residue() {
     let fixture = Fixture::new("generation-unretained-substituted");
     let mut product = fixture.product();
     let generation = "release-a";
     let path = fixture.paths.generation_dir(generation).unwrap();
     let moved = fixture.paths.generations_dir().join("release-a-moved");
     create_test_generation(&path);
-    let created_name = product
-        .generations
-        .inspect_created_name(OsStr::new(generation))
-        .unwrap();
     std::fs::rename(&path, &moved).unwrap();
     create_test_generation(&path);
-    let sentinel = path.join("sentinel");
-    std::fs::write(&sentinel, b"substituted bytes survive").unwrap();
     let open_error = product
         .generations
         .open_child(OsStr::new("absent-authority-probe"))
         .unwrap_err();
     let created = UnixUnretainedCreation {
-        created_name: Some(created_name),
         creation: creation_stage("post-mkdir no-follow open/fstat", open_error),
     };
 
@@ -287,15 +322,11 @@ fn unix_unretained_creation_never_unlinks_substituted_residue() {
     assert!(matches!(
         indeterminate.error(),
         GenerationError::IndeterminateCreation { cleanup, .. }
-            if cleanup.contains("snapshot comparison")
+            if cleanup.contains("exact retained child authority was never established")
     ));
-    assert_eq!(
-        std::fs::read(&sentinel).unwrap(),
-        b"substituted bytes survive"
-    );
+    assert!(path.is_dir());
     assert!(moved.is_dir());
     drop(indeterminate);
-    std::fs::remove_file(sentinel).unwrap();
     std::fs::remove_dir(path).unwrap();
     std::fs::remove_dir(moved).unwrap();
 }
@@ -310,17 +341,12 @@ fn unix_unretained_creation_never_unlinks_permission_drifted_residue() {
     let generation = "release-a";
     let path = fixture.paths.generation_dir(generation).unwrap();
     create_test_generation(&path);
-    let created_name = product
-        .generations
-        .inspect_created_name(OsStr::new(generation))
-        .unwrap();
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o770)).unwrap();
     let open_error = product
         .generations
         .open_child(OsStr::new("absent-authority-probe"))
         .unwrap_err();
     let created = UnixUnretainedCreation {
-        created_name: Some(created_name),
         creation: creation_stage("post-mkdir no-follow open/fstat", open_error),
     };
 
@@ -332,7 +358,7 @@ fn unix_unretained_creation_never_unlinks_permission_drifted_residue() {
     assert!(matches!(
         indeterminate.error(),
         GenerationError::IndeterminateCreation { cleanup, .. }
-            if cleanup.contains("snapshot comparison")
+            if cleanup.contains("exact retained child authority was never established")
     ));
     assert!(path.is_dir());
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();

@@ -28,9 +28,10 @@ related:
 - Preserve the existing joins to trusted component-lock bytes, the external
   exact-five-target cohort, the complete installed inventory, the capsule
   manifest, and installed-tree evidence.
-- Retain the final canonical root and root identity, every directory identity,
-  and every file identity, link count, size, digest, and normalized executable
-  mode. Include empty directories and the member manifest in that snapshot.
+- At S170 completion, retain the final canonical root and root identity, every
+  directory identity, and every file identity, link count, size, digest, and
+  normalized executable mode. Include empty directories and the member manifest.
+  S163 later refines the cross-scan interpretation described under Notes.
 - Keep `VerifiedReleaseSet<'generation, 'product, 'lock>` non-`Clone`,
   non-serializable, and lifetime-bound to the retained unpublished generation.
 - Retain the complete non-constant D10 receipt facts in opaque, read-only
@@ -43,7 +44,8 @@ related:
 - Add real filesystem regressions for digest-first discovery, declared-path
   mismatch, invalid receipt context, aliases, substitution, permission and
   access-control list (ACL) drift, empty-directory drift, and borrow release
-  before exact discard.
+  before exact discard. S163 later adds semantic-replacement and empty-directory
+  refusal evidence.
 
 ## Outcome
 
@@ -53,10 +55,11 @@ and it carries the exact filesystem and receipt facts required by S172.
 
 The first scan discovers the member manifest only through independently trusted
 digest authority. Candidate-declared path data becomes relevant only after that
-discovery and must identify the same file. The stored final snapshot covers the
-root, directory inventory, and every regular file, including the member
-manifest. Activation-boundary revalidation compares a fresh complete scan with
-that stored snapshot while retaining the generation and installation guard.
+discovery and must identify the same file. At S170 completion, the stored final
+snapshot covered the root, directory inventory, and every regular file,
+including the member manifest. Activation-boundary revalidation compared a
+fresh complete scan with that stored snapshot while retaining the generation
+and installation guard.
 
 Final independent review passed with C0/H0/M0/L0 on diff
 `3b73aae1a5acb19b7b5847a87b20c231039fea51`.
@@ -81,24 +84,27 @@ installation guard serializes cooperating writers. Child reads remain
 pathname-sensitive on both platforms and do not claim protection from a hostile
 same-account process that ignores the product lock.
 
-S170 adds no journal writer or activation transition. Fixed schema and envelope
-sequence, proof quorum, first-journal installation, durable publication, and
-recovery remain S171/S172 responsibilities. S172 must construct and publish from
-the retained verified value and invoke activation-boundary revalidation rather
-than rebuilding receipt context.
+S163 later reconciles this snapshot contract through the accepted
+generation-authority decision. Exact cross-scan authority remains on the root.
+Descendants compare by a closed semantic inventory, copied child identities are
+scan-local evidence, and namespace-only empty directories are refused. The
+original S170 review hash and verification counts below cover the pre-refinement
+implementation; S163 carries the later implementation and review evidence.
+
+S170 adds no journal writer or activation transition. S171 and S172 own fixed
+schema, proof quorum, first-journal installation, durable publication, and
+recovery. The completed S172 path constructs and publishes from the retained
+verified value and invokes activation-boundary revalidation without rebuilding
+receipt context.
 
 Verification completed:
 
-- `cargo test --manifest-path engine/Cargo.toml -p vaultspec-product
-  manifest::tests --lib --locked`: all 18 focused tests passed.
-- `cargo test --manifest-path engine/Cargo.toml -p vaultspec-product --lib
-  --locked`: all 87 native library tests passed.
-- Native strict `cargo clippy --manifest-path engine/Cargo.toml -p
-  vaultspec-product --lib --tests -- -D warnings`: passed without a lint
+- `cargo test --manifest-path engine/Cargo.toml -p vaultspec-product manifest::tests --lib --locked`: all 18 focused tests passed.
+- `cargo test --manifest-path engine/Cargo.toml -p vaultspec-product --lib --locked`: all 87 native library tests passed.
+- Native strict `cargo clippy --manifest-path engine/Cargo.toml -p vaultspec-product --lib --tests -- -D warnings`: passed without a lint
   allowance.
 - Native `cargo check -p vaultspec-product --lib --locked`: passed.
-- `cargo check --target x86_64-unknown-linux-gnu -p vaultspec-product --lib
-  --tests --locked`: passed and compiled the Linux tests without executing
+- `cargo check --target x86_64-unknown-linux-gnu -p vaultspec-product --lib --tests --locked`: passed and compiled the Linux tests without executing
   them on Windows.
 - Strict Linux-target test Clippy stopped only at the pre-existing,
   out-of-scope `receipt.rs:685` `clippy::let_unit_value` finding. A rerun with
@@ -106,8 +112,3 @@ Verification completed:
   `manifest.rs` finding.
 - `cargo fmt --manifest-path engine/Cargo.toml --all -- --check` and scoped
   `git diff --check` passed.
-
-Unrelated dirty-worktree files remained outside this Step. Governance closure
-includes this S170 Step Record, the product audit append, the generated product
-index entry, and the separate CLI-owned S170 checkbox update in the product
-plan.

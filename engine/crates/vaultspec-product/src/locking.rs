@@ -814,6 +814,8 @@ fn unix_authority_stat(parent: &ParentAuthority, path: &Path) -> std::io::Result
 
 #[path = "locking/claim.rs"]
 mod claim;
+#[cfg(unix)]
+use claim::open_unix_authority_file;
 use claim::{acquire_claim, bounded_drop_diagnostic, open_claim_authority, open_snapshot_reader};
 
 fn acquire_os_lock(
