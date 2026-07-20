@@ -46,3 +46,4 @@ pub mod protocol;
 pub mod provisioning;
 pub mod receipt;
 pub mod snapshot;
+pub mod transaction;
