@@ -380,9 +380,8 @@ impl LeaseRepo {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
         let reserved: Vec<String> = {
-            let mut stmt = tx.prepare(
-                "SELECT lease_id FROM a2a_run_leases WHERE state = 'reserved'",
-            )?;
+            let mut stmt =
+                tx.prepare("SELECT lease_id FROM a2a_run_leases WHERE state = 'reserved'")?;
             stmt.query_map([], |r| r.get::<_, String>(0))?
                 .collect::<std::result::Result<Vec<_>, _>>()?
         };
