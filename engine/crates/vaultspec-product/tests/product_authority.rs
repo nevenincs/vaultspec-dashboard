@@ -16,7 +16,13 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use vaultspec_product::credentials::{CredentialError, CredentialRole, CredentialStore};
+#[cfg(unix)]
+use vaultspec_product::credentials::CredentialRole;
+use vaultspec_product::credentials::{
+    CredentialError, DashboardCredentialStore, ForeignHandoffReader,
+};
+#[cfg(unix)]
+use vaultspec_product::lifecycle::LifecycleController;
 use vaultspec_product::locking::{
     Actor, InstallLock, LockAuthorityError, LockBusy, LockError, LockIdentityStrength,
     ProcessInstanceLiveness, process_instance_liveness,
@@ -25,6 +31,8 @@ use vaultspec_product::manifest::{
     CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target,
 };
 use vaultspec_product::paths::ProductPaths;
+#[cfg(unix)]
+use vaultspec_product::protocol::{LifecycleOp, Refusal};
 use vaultspec_product::receipt::{
     Channel, InterruptionMarker, RECEIPT_SCHEMA_VERSION, Receipt, ReceiptState,
 };
@@ -297,68 +305,329 @@ fn atomic_receipt_activation_leaves_no_torn_or_staged_state() {
     assert_eq!(active.schema_version, RECEIPT_SCHEMA_VERSION);
 }
 
+#[cfg(unix)]
 #[test]
 fn only_dashboard_bootstrap_creates_the_ownership_capability() {
     let dir = tempfile::tempdir().unwrap();
-    let store = CredentialStore::new(dir.path().join("credentials"));
-    let creds = store.bootstrap().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "dashboard-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let creds = store.begin_bootstrap(&guard).unwrap();
     // The two dashboard-owned credentials exist and are distinct.
-    assert_ne!(creds.ownership.secret(), creds.attach_control.secret());
-    // Bootstrap retains: a second create refuses rather than minting a new
-    // ownership capability that would strand the running gateway.
+    assert_ne!(creds.ownership().secret(), creds.attach_control().secret());
+    let ownership_secret = creds.ownership().secret().to_owned();
+    let attach_secret = creds.attach_control().secret().to_owned();
+    // One live guard cannot manufacture a second simultaneous Pending authority.
     assert!(matches!(
-        store.bootstrap(),
-        Err(CredentialError::AlreadyExists(CredentialRole::Ownership))
-            | Err(CredentialError::AlreadyExists(
-                CredentialRole::AttachControl
-            ))
+        store.begin_bootstrap(&guard),
+        Err(CredentialError::BootstrapAuthorityInUse)
+    ));
+    drop(creds);
+    // Once the first authority is released, recovery retains the exact durable
+    // pair rather than minting replacements.
+    let recovered = store.begin_bootstrap(&guard).unwrap();
+    assert_eq!(recovered.ownership().secret(), ownership_secret);
+    assert_eq!(recovered.attach_control().secret(), attach_secret);
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_rejects_an_intermediate_app_home_symlink_without_mutating_its_target() {
+    use std::os::unix::fs::{PermissionsExt as _, symlink};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let external = dir.path().join("external-app-home");
+    std::fs::create_dir(&external).unwrap();
+    std::fs::set_permissions(&external, std::fs::Permissions::from_mode(0o755)).unwrap();
+    std::fs::rename(paths.app_home(), paths.root().join("app-home-retained")).unwrap();
+    symlink(&external, paths.app_home()).unwrap();
+
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "intermediate-symlink-test")
+        .unwrap()
+        .unwrap();
+    let result = DashboardCredentialStore::for_product(&paths).begin_bootstrap(&guard);
+
+    assert!(
+        result.is_err(),
+        "an app-home symlink must never be traversed"
+    );
+    assert!(
+        !external.join("credentials").exists(),
+        "bootstrap must not create credentials beneath the symlink target"
+    );
+    assert_eq!(
+        std::fs::metadata(&external).unwrap().permissions().mode() & 0o777,
+        0o755,
+        "bootstrap must not chmod the symlink target"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn bootstrap_rejects_product_root_replacement_without_mutating_the_replacement() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "root-replacement-test")
+        .unwrap()
+        .unwrap();
+
+    std::fs::rename(paths.root(), dir.path().join("a2a-displaced")).unwrap();
+    std::fs::create_dir(paths.root()).unwrap();
+    std::fs::create_dir(paths.app_home()).unwrap();
+    let result = DashboardCredentialStore::for_product(&paths).begin_bootstrap(&guard);
+
+    assert!(
+        result.is_err(),
+        "a retained guard must reject replacement of its product root"
+    );
+    assert!(
+        !paths.credentials_dir().exists(),
+        "bootstrap must not create credentials in the replacement root"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn unguarded_credential_reads_refuse_nonprivate_directory_without_repairing_it() {
+    use std::os::unix::fs::PermissionsExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "read-mode-refusal-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let pending = store.begin_bootstrap(&guard).unwrap();
+    let attach_secret = pending.attach_control().secret().to_owned();
+    let ownership_secret = pending.ownership().secret().to_owned();
+    drop(pending);
+    drop(guard);
+
+    assert!(store.read_attach_control().unwrap().verify(&attach_secret));
+    assert!(store.read_ownership().unwrap().verify(&ownership_secret));
+
+    std::fs::set_permissions(
+        paths.credentials_dir(),
+        std::fs::Permissions::from_mode(0o755),
+    )
+    .unwrap();
+
+    assert!(
+        store.read_attach_control().is_err(),
+        "attach-control read must refuse a nonprivate credentials directory"
+    );
+    assert_eq!(
+        std::fs::metadata(paths.credentials_dir())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755,
+        "attach-control read must not repair directory permissions"
+    );
+    assert!(
+        store.read_ownership().is_err(),
+        "ownership read must refuse a nonprivate credentials directory"
+    );
+    assert_eq!(
+        std::fs::metadata(paths.credentials_dir())
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777,
+        0o755,
+        "ownership read must not repair directory permissions"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn verified_ownership_rejects_named_file_replacement() {
+    use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
+
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "ownership-replacement-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let pending = store.begin_bootstrap(&guard).unwrap();
+    let ownership = store.verify_ownership(&guard).unwrap();
+    let ownership_path = paths.credentials_dir().join("ownership.cap");
+    std::fs::rename(
+        &ownership_path,
+        paths.credentials_dir().join("ownership.replaced"),
+    )
+    .unwrap();
+    let mut replacement = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(&ownership_path)
+        .unwrap();
+    std::io::Write::write_all(&mut replacement, pending.ownership().secret().as_bytes()).unwrap();
+    replacement.sync_all().unwrap();
+    std::fs::set_permissions(&ownership_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+
+    let controller = LifecycleController::new(paths);
+    assert_eq!(
+        controller.guard_owned_mutation(LifecycleOp::Remove, Some(&ownership), None),
+        Err(Refusal::NotOwner)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn prepared_bootstrap_interruption_is_durable_and_classified() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "prepared-interruption-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let prepared = store.prepare_bootstrap(&guard).unwrap();
+    drop(prepared);
+
+    assert!(matches!(
+        store.begin_bootstrap(&guard),
+        Err(CredentialError::RecoveryRequired(
+            vaultspec_product::bootstrap::BootstrapRecoveryState::PreparedEmpty
+        ))
+    ));
+    assert!(!paths.credentials_dir().join("ownership.cap").exists());
+    assert!(!paths.credentials_dir().join("attach.cred").exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_bootstrap_refuses_before_writing_secret_bytes_when_authority_is_unprovable() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "windows-authority-gate-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+
+    assert!(matches!(
+        store.begin_bootstrap(&guard),
+        Err(CredentialError::PlatformAuthorityUnavailable(_))
+    ));
+    for name in [
+        "bootstrap-credentials.v1",
+        "ownership.cap",
+        "attach.cred",
+        "worker-ipc.cred",
+    ] {
+        assert!(
+            !paths.credentials_dir().join(name).exists(),
+            "Windows authority gate must precede creation of {name}"
+        );
+    }
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_credential_readers_refuse_without_disclosing_unprovable_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    std::fs::write(paths.credentials_dir().join("attach.cred"), "a".repeat(64)).unwrap();
+    std::fs::write(
+        paths.credentials_dir().join("ownership.cap"),
+        "b".repeat(64),
+    )
+    .unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "windows-read-gate-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+
+    assert!(matches!(
+        store.read_attach_control(),
+        Err(CredentialError::PlatformAuthorityUnavailable(_))
+    ));
+    assert!(matches!(
+        store.verify_ownership(&guard),
+        Err(CredentialError::PlatformAuthorityUnavailable(_))
+    ));
+    assert!(matches!(
+        ForeignHandoffReader::read(&store.attach_control_reference()),
+        Err(CredentialError::PlatformAuthorityUnavailable(_))
     ));
 }
 
+#[cfg(unix)]
 #[test]
 fn gateway_reads_attach_control_and_creates_only_worker_ipc() {
     let dir = tempfile::tempdir().unwrap();
-    let cred_dir = dir.path().join("credentials");
-    let dashboard = CredentialStore::new(&cred_dir);
-    let boot = dashboard.bootstrap().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "handoff-test")
+        .unwrap()
+        .unwrap();
+    let dashboard = DashboardCredentialStore::for_product(&paths);
+    let boot = dashboard.begin_bootstrap(&guard).unwrap();
 
     // The gateway opens the same store and READS attach-control to authenticate
     // dashboard control and settlement callbacks.
-    let gateway = CredentialStore::new(&cred_dir);
-    let attach = gateway.read_attach_control().unwrap();
-    assert!(boot.attach_control.verify(attach.secret()));
+    let attach = ForeignHandoffReader::read(&dashboard.attach_control_reference()).unwrap();
+    assert!(boot.attach_control().verify(attach.secret()));
     assert_eq!(attach.role(), CredentialRole::AttachControl);
 
-    // The gateway CREATES the separate worker-IPC credential; its secret is
-    // distinct from both dashboard-owned credentials (credential separation).
-    let worker = gateway.create_worker_ipc().unwrap();
-    assert_eq!(worker.role(), CredentialRole::WorkerIpc);
-    assert_ne!(worker.secret(), boot.ownership.secret());
-    assert_ne!(worker.secret(), boot.attach_control.secret());
+    // Worker IPC is Python-gateway authority and cannot be minted by Rust.
+    assert!(!paths.credentials_dir().join("worker-ipc.cred").exists());
 
     // The non-secret discovery reference is a file path, never the secret value.
-    let reference = gateway.attach_control_reference();
+    let reference = dashboard.attach_control_reference();
     let reference_text = reference.to_string_lossy();
-    assert!(!reference_text.contains(boot.attach_control.secret()));
+    assert!(!reference_text.contains(boot.attach_control().secret()));
 }
 
+#[cfg(unix)]
 #[test]
 fn credential_files_are_separate_and_owner_restricted() {
     let dir = tempfile::tempdir().unwrap();
-    let cred_dir = dir.path().join("credentials");
-    let store = CredentialStore::new(&cred_dir);
-    store.bootstrap().unwrap();
-    store.create_worker_ipc().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "permission-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let _pending = store.begin_bootstrap(&guard).unwrap();
+    let cred_dir = paths.credentials_dir();
 
-    // Three distinct files back the three credential roles — no aliasing.
-    let files = [
-        cred_dir.join("ownership.cap"),
-        cred_dir.join("attach.cred"),
-        cred_dir.join("worker-ipc.cred"),
-    ];
+    // Two distinct files back the Rust-owned roles; worker IPC remains absent.
+    let files = [cred_dir.join("ownership.cap"), cred_dir.join("attach.cred")];
     for f in &files {
         assert!(f.exists(), "credential file {f:?} must exist");
     }
+    assert!(!cred_dir.join("worker-ipc.cred").exists());
 
     // Permission restriction: on Unix each credential file is chmod 0600 (owner
     // read/write only), the file-ACL control for loopback-local secrets.

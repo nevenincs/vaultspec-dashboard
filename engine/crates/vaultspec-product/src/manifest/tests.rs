@@ -270,10 +270,12 @@ impl Fixture {
             expected_target: TARGET,
             expected_member_manifest_digest,
             expected_cohort_digest: self.cohort_digest.clone(),
+            receipt_external_cohort_digest: self.cohort_digest.clone(),
             trusted_component_lock_bytes: LOCK_BYTES.to_vec(),
             trusted_component_lock_path: COMPONENT_LOCK_PATH.to_string(),
             expected_component_lock_digest: self.lock_digest.clone(),
             trusted_capsule_root: "a2a/capsule".to_string(),
+            _adapter: InstallProvenanceAuthority(()),
         };
         VerifiedReleaseSet::verify(
             generation,

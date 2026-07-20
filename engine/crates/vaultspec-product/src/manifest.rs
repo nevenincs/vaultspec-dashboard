@@ -32,6 +32,10 @@ use crate::receipt::{Channel, PriorSeatIdentity};
 
 const RELEASE_SCHEMA_VERSION: &str = "2.0";
 const CAPSULE_CONTRACT_VERSION: &str = "2.0";
+#[allow(
+    dead_code,
+    reason = "used only by the sealed verifier, which has no production adapter authority yet"
+)]
 const COHORT_SCHEMA_VERSION: &str = "1.0";
 const DIGEST_ALGORITHM: &str = "sha256";
 const COMPONENT_LOCK_VERSION: &str = "1.0";
@@ -41,6 +45,10 @@ const MAX_MEMBER_MANIFEST_BYTES: usize = 512 * 1024 * 1024;
 const MAX_COMPONENT_LOCK_BYTES: usize = 1024 * 1024;
 const MAX_CAPSULE_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_COHORT_BYTES: usize = 64 * 1024;
+#[allow(
+    dead_code,
+    reason = "used only by the sealed verifier, which has no production adapter authority yet"
+)]
 const MAX_TREE_EVIDENCE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_INSTALLED_FILES: usize = 100_000;
 const MAX_TREE_FILES: usize = 80_000;
@@ -1333,15 +1341,28 @@ fn verify_release_lock_joins(manifest: &RawReleaseSetManifest, lock: &ComponentL
 /// never manufacture their own expected digests, target, component lock, or
 /// installed capsule root. W01.P02.S16/W02.P04.S164 will obtain this value only
 /// from receipt-selected, product-owned provenance under the installation lock.
-pub struct TrustedReleaseAuthority {
+#[allow(
+    dead_code,
+    reason = "compile-time sealed substrate awaits a production adapter authority"
+)]
+struct TrustedReleaseAuthority {
     expected_target: Target,
     expected_member_manifest_digest: String,
     expected_cohort_digest: String,
+    receipt_external_cohort_digest: String,
     trusted_component_lock_bytes: Vec<u8>,
     trusted_component_lock_path: String,
     expected_component_lock_digest: String,
     trusted_capsule_root: String,
+    _adapter: InstallProvenanceAuthority,
 }
+
+/// Unforgeable outside this module until a production adapter validator exists.
+#[allow(
+    dead_code,
+    reason = "no production adapter validator exists to construct this token yet"
+)]
+struct InstallProvenanceAuthority(());
 
 /// Opaque call-scoped input not carried inside the candidate generation.
 ///
@@ -1349,9 +1370,13 @@ pub struct TrustedReleaseAuthority {
 /// [`TrustedReleaseAuthority`]. No candidate path, generation identifier, or
 /// member-manifest bytes are accepted here.
 #[doc(hidden)]
-pub struct ReleaseVerificationInput<'a> {
-    pub(crate) authority: &'a TrustedReleaseAuthority,
-    pub(crate) cohort_descriptor_bytes: &'a [u8],
+#[allow(
+    dead_code,
+    reason = "compile-time sealed substrate awaits a production adapter authority"
+)]
+struct ReleaseVerificationInput<'a> {
+    authority: &'a TrustedReleaseAuthority,
+    cohort_descriptor_bytes: &'a [u8],
 }
 
 /// Internally supplied transaction facts retained for receipt publication.
@@ -1361,19 +1386,27 @@ pub struct ReleaseVerificationInput<'a> {
 /// borrowed, then S172 must consume the retained values rather than rebuilding
 /// them at the publication boundary.
 #[doc(hidden)]
-pub struct ReceiptActivationContext {
-    pub(crate) channel: Channel,
-    pub(crate) bootstrap_created_ownership: bool,
-    pub(crate) prior_seat: Option<PriorSeatIdentity>,
-    pub(crate) consistency_generation: u64,
-    pub(crate) created_ms: i64,
+#[allow(
+    dead_code,
+    reason = "compile-time sealed substrate awaits a production adapter authority"
+)]
+struct ReceiptActivationContext {
+    channel: Channel,
+    bootstrap_created_ownership: bool,
+    prior_seat: Option<PriorSeatIdentity>,
+    consistency_generation: u64,
+    created_ms: i64,
 }
 
 /// Complete immutable and transaction-supplied facts for the S172 receipt.
 ///
 /// The active generation text is copied only from the exact retained token
 /// during verification; it is never accepted as a caller field.
-pub struct VerifiedReceiptFacts {
+#[allow(
+    dead_code,
+    reason = "compile-time sealed substrate awaits a production adapter authority"
+)]
+pub(crate) struct VerifiedReceiptFacts {
     dashboard_version: String,
     dashboard_commit: String,
     dashboard_digest: String,
@@ -1397,13 +1430,25 @@ pub struct VerifiedReceiptFacts {
 /// construction path. It retains the exact generation borrow, final complete
 /// snapshot, immutable release facts, and validated transaction facts until
 /// activation completes.
-pub struct VerifiedReleaseSet<'generation, 'product, 'lock> {
+#[allow(
+    dead_code,
+    reason = "compile-time sealed substrate awaits a production adapter authority"
+)]
+pub(crate) struct VerifiedReleaseSet<'generation, 'product, 'lock> {
     generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
     receipt_facts: VerifiedReceiptFacts,
     member_manifest_path: String,
     final_snapshot: GenerationSnapshot,
     capsule_root: String,
     capsule_manifest: CapsuleManifest,
+}
+
+impl std::fmt::Debug for VerifiedReleaseSet<'_, '_, '_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("VerifiedReleaseSet")
+            .finish_non_exhaustive()
+    }
 }
 
 mod authority;

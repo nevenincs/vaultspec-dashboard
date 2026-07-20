@@ -1,57 +1,52 @@
-//! The credential model (a2a-product-provisioning W01.P01.S09).
+//! Retained dashboard credential authority (W01.P01.S175).
 //!
-//! ADR D5/D4 separate three credentials by owner and purpose, and the boundary
-//! is a security contract, not a convenience:
-//!
-//! - **ownership capability** — created and retained by dashboard bootstrap
-//!   alone. It authenticates receipt-bound lifecycle mutation (stop, migrate,
-//!   repair, update, rollback, remove). It is *never referenced by discovery*;
-//!   the attach credential alone cannot invoke ownership-gated operations.
-//! - **attach-control credential** — created by dashboard bootstrap. The gateway
-//!   may *read* it to authenticate dashboard control and settlement callbacks.
-//!   Discovery may publish a non-secret *file reference* to it, never its value.
-//! - **worker-IPC credential** — created by the *gateway*, not the dashboard,
-//!   and confined to gateway↔worker traffic. The dashboard never mints it.
-//!
-//! Every credential is a distinct owner-restricted file with its own secret; no
-//! aliasing (one secret masquerading as two roles) and no secret-bearing
-//! discovery are permitted. Loopback is the only desktop bind surface, so a
-//! credential's threat model is local: file-ACL restriction is the control.
-//!
-//! Secret material is a 256-bit token from the OS CSPRNG via `getrandom`
-//! (`getrandom`/`getentropy` on Unix, `BCryptGenRandom`/`ProcessPrng` on
-//! Windows) — the same explicit CSPRNG contract the engine's bearer- and
-//! actor-token generators use, hex-encoded to 64 characters, no unsafe.
+//! Rust owns only the dashboard-created ownership and attach-control roles. The
+//! packaged Python gateway owns worker-IPC creation. Dashboard minting paths are
+//! derived from [`ProductPaths`]; an arbitrary path is accepted only by the
+//! creation-free [`ForeignHandoffReader`].
 
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-/// The three credential roles. The role is bound to the file name, so a reader
-/// cannot silently reinterpret one role's secret as another's.
+use crate::{
+    locking::{InstallLockGuard, PendingCredentialsClaim},
+    paths::ProductPaths,
+};
+
+#[cfg(unix)]
+#[path = "credentials/unix.rs"]
+pub(crate) mod platform;
+#[cfg(windows)]
+#[path = "credentials/windows.rs"]
+pub(crate) mod platform;
+
+pub(crate) use platform::{FileIdentity, RetainedCredentialDirectory, RetainedCredentialFile};
+
+/// Exact token length: 256 random bits encoded as lowercase hexadecimal.
+pub const TOKEN_BYTES: usize = 64;
+
+/// Dashboard-owned credential roles. Worker IPC is deliberately absent: the
+/// Python gateway creates and rotates it within the gateway-worker boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum CredentialRole {
-    /// Receipt-bound lifecycle authority; dashboard-created and retained.
+    /// Receipt-bound lifecycle mutation authority.
     Ownership,
-    /// Dashboard control + settlement-callback authentication; gateway-readable.
+    /// Dashboard control and settlement-callback authentication.
     AttachControl,
-    /// Gateway↔worker interprocess authentication; gateway-created.
-    WorkerIpc,
 }
 
 impl CredentialRole {
-    fn file_name(self) -> &'static str {
+    pub(crate) const fn file_name(self) -> &'static str {
         match self {
-            CredentialRole::Ownership => "ownership.cap",
-            CredentialRole::AttachControl => "attach.cred",
-            CredentialRole::WorkerIpc => "worker-ipc.cred",
+            Self::Ownership => "ownership.cap",
+            Self::AttachControl => "attach.cred",
         }
     }
 }
 
-/// A loaded credential: its role and secret. The secret never enters discovery,
-/// receipts, logs, lifecycle job output, or frontend state.
+/// A validated credential. Debug output always redacts the secret.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Credential {
     role: CredentialRole,
@@ -59,81 +54,95 @@ pub struct Credential {
 }
 
 impl Credential {
-    /// The credential's role.
+    pub(crate) fn from_validated(role: CredentialRole, secret: String) -> Self {
+        Self { role, secret }
+    }
+
+    /// The credential role bound to the validated file name.
     #[must_use]
-    pub fn role(&self) -> CredentialRole {
+    pub const fn role(&self) -> CredentialRole {
         self.role
     }
 
-    /// The raw secret. Callers must keep it off every non-secret surface; the
-    /// `Debug` impl deliberately redacts it so it cannot leak through logging.
+    /// The secret. Callers must keep it off logs, discovery, and receipts.
     #[must_use]
     pub fn secret(&self) -> &str {
         &self.secret
     }
 
-    /// Constant-time-ish equality against a presented secret. Compares the full
-    /// length every call to avoid an early-return length/prefix oracle.
+    /// Compare every stored byte without an early length or prefix return.
     #[must_use]
     pub fn verify(&self, presented: &str) -> bool {
-        let a = self.secret.as_bytes();
-        let b = presented.as_bytes();
-        let mut diff = a.len() ^ b.len();
-        for (i, &byte) in a.iter().enumerate() {
-            diff |= usize::from(byte ^ *b.get(i).unwrap_or(&0));
+        let expected = self.secret.as_bytes();
+        let presented = presented.as_bytes();
+        let mut difference = expected.len() ^ presented.len();
+        for (index, byte) in expected.iter().copied().enumerate() {
+            difference |= usize::from(byte ^ presented.get(index).copied().unwrap_or(0));
         }
-        diff == 0
+        difference == 0
     }
 }
 
 impl std::fmt::Debug for Credential {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Credential")
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("Credential")
             .field("role", &self.role)
             .field("secret", &"<redacted>")
             .finish()
     }
 }
 
-/// The two credentials dashboard bootstrap creates and retains.
-#[derive(Debug, Clone)]
-pub struct BootstrapCredentials {
-    /// The ownership capability — receipt-bound lifecycle authority.
-    pub ownership: Credential,
-    /// The attach-control credential — gateway-readable control authentication.
-    pub attach_control: Credential,
-}
-
-/// Why a credential operation failed.
+/// Credential authority failure.
 #[derive(Debug)]
 pub enum CredentialError {
-    /// An I/O error creating, reading, or restricting a credential file.
+    /// An operating-system operation failed.
     Io(std::io::Error),
-    /// The requested credential file does not exist.
+    /// A required role is absent.
     Missing(CredentialRole),
-    /// Bootstrap was asked to create a credential that already exists; the
-    /// dashboard creates and *retains* — it never silently overwrites.
+    /// Bootstrap refuses to replace an existing role.
     AlreadyExists(CredentialRole),
-    /// The dashboard was asked to create a worker-IPC credential, which only the
-    /// gateway may create (or the gateway was asked to create a dashboard-owned
-    /// credential).
-    RoleForbidden(CredentialRole),
+    /// A file or token does not satisfy the closed authority contract.
+    Invalid {
+        role: CredentialRole,
+        reason: &'static str,
+    },
+    /// The safe platform APIs cannot establish the required authority.
+    PlatformAuthorityUnavailable(&'static str),
+    /// Durable bootstrap residue requires explicit receipt-aware recovery.
+    RecoveryRequired(crate::bootstrap::BootstrapRecoveryState),
+    /// This held installation guard already owns a live pending bootstrap.
+    BootstrapAuthorityInUse,
 }
 
 impl std::fmt::Display for CredentialError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CredentialError::Io(e) => write!(f, "credential io error: {e}"),
-            CredentialError::Missing(r) => write!(f, "credential {r:?} is absent"),
-            CredentialError::AlreadyExists(r) => {
+            Self::Io(error) => write!(formatter, "credential I/O error: {error}"),
+            Self::Missing(role) => write!(formatter, "credential {role:?} is absent"),
+            Self::AlreadyExists(role) => write!(
+                formatter,
+                "credential {role:?} already exists; bootstrap never overwrites"
+            ),
+            Self::Invalid { role, reason } => {
+                write!(formatter, "credential {role:?} is invalid: {reason}")
+            }
+            Self::PlatformAuthorityUnavailable(reason) => {
                 write!(
-                    f,
-                    "credential {r:?} already exists; bootstrap retains, never overwrites"
+                    formatter,
+                    "safe credential authority is unavailable: {reason}"
                 )
             }
-            CredentialError::RoleForbidden(r) => {
-                write!(f, "credential {r:?} may not be created by this component")
+            Self::RecoveryRequired(state) => {
+                write!(
+                    formatter,
+                    "credential bootstrap recovery is required: {state:?}"
+                )
             }
+            Self::BootstrapAuthorityInUse => write!(
+                formatter,
+                "this installation guard already owns a pending credential bootstrap"
+            ),
         }
     }
 }
@@ -141,146 +150,435 @@ impl std::fmt::Display for CredentialError {
 impl std::error::Error for CredentialError {}
 
 impl From<std::io::Error> for CredentialError {
-    fn from(e: std::io::Error) -> Self {
-        CredentialError::Io(e)
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error)
     }
 }
 
-/// The owner-restricted credential store rooted at the credentials directory.
-/// Which methods a component may call encodes the ownership boundary: only the
-/// dashboard calls [`Self::bootstrap`], only the gateway calls
-/// [`Self::create_worker_ipc`], and both may read attach-control.
+/// Product-derived dashboard credential store. It exposes no arbitrary-path
+/// constructor and no worker-IPC creator.
 #[derive(Debug, Clone)]
-pub struct CredentialStore {
-    dir: PathBuf,
+pub struct DashboardCredentialStore {
+    pub(crate) paths: ProductPaths,
 }
 
-impl CredentialStore {
-    /// Open the store at a credentials directory (typically
-    /// `ProductPaths::credentials_dir`).
+impl DashboardCredentialStore {
+    /// Bind dashboard credential authority to product-derived paths.
     #[must_use]
-    pub fn new(dir: impl Into<PathBuf>) -> Self {
-        Self { dir: dir.into() }
-    }
-
-    fn path(&self, role: CredentialRole) -> PathBuf {
-        self.dir.join(role.file_name())
-    }
-
-    /// **Dashboard only.** Create and retain the ownership capability and the
-    /// attach-control credential in one bootstrap. Refuses if either already
-    /// exists — the dashboard retains its bootstrap credentials rather than
-    /// overwriting them (a re-bootstrap that clobbered ownership would strand
-    /// the running gateway's authenticated control).
-    pub fn bootstrap(&self) -> std::result::Result<BootstrapCredentials, CredentialError> {
-        std::fs::create_dir_all(&self.dir)?;
-        for role in [CredentialRole::Ownership, CredentialRole::AttachControl] {
-            if self.path(role).exists() {
-                return Err(CredentialError::AlreadyExists(role));
-            }
+    pub fn for_product(paths: &ProductPaths) -> Self {
+        Self {
+            paths: paths.clone(),
         }
-        let ownership = self.create(CredentialRole::Ownership)?;
-        let attach_control = self.create(CredentialRole::AttachControl)?;
-        Ok(BootstrapCredentials {
-            ownership,
-            attach_control,
+    }
+
+    pub(crate) fn directory(&self) -> PathBuf {
+        self.paths.credentials_dir()
+    }
+
+    pub(crate) fn path(&self, role: CredentialRole) -> PathBuf {
+        self.directory().join(role.file_name())
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn open_directory_for_guard(
+        &self,
+        guard: &InstallLockGuard,
+    ) -> Result<RetainedCredentialDirectory, CredentialError> {
+        directory_for_product(&self.paths, Some(guard), false)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn prepare_directory_for_guard(
+        &self,
+        guard: &InstallLockGuard,
+    ) -> Result<RetainedCredentialDirectory, CredentialError> {
+        directory_for_product(&self.paths, Some(guard), true)
+    }
+
+    /// Begin first-install credential creation under the retained installation
+    /// guard and durable bootstrap descriptor.
+    pub fn begin_bootstrap<'guard>(
+        &self,
+        guard: &'guard InstallLockGuard,
+    ) -> Result<PendingDashboardCredentials<'guard>, CredentialError> {
+        guard.verify_for_product(&self.paths).map_err(|_| {
+            CredentialError::PlatformAuthorityUnavailable(
+                "installation guard does not bind these product paths",
+            )
+        })?;
+        let claim = guard
+            .claim_pending_credentials()
+            .map_err(|_| CredentialError::BootstrapAuthorityInUse)?;
+        crate::bootstrap::begin(self, guard, claim)
+    }
+
+    /// Durably prepare bootstrap without creating either credential. Dropping
+    /// the returned value preserves inert descriptor state for recovery.
+    pub fn prepare_bootstrap<'guard>(
+        &self,
+        guard: &'guard InstallLockGuard,
+    ) -> Result<crate::bootstrap::PreparedDashboardBootstrap<'guard>, CredentialError> {
+        guard.verify_for_product(&self.paths).map_err(|_| {
+            CredentialError::PlatformAuthorityUnavailable(
+                "installation guard does not bind these product paths",
+            )
+        })?;
+        let claim = guard
+            .claim_pending_credentials()
+            .map_err(|_| CredentialError::BootstrapAuthorityInUse)?;
+        crate::bootstrap::prepare(self, guard, claim)
+    }
+
+    /// Read the product-owned attach-control credential through retained,
+    /// bounded platform validation.
+    pub fn read_attach_control(&self) -> Result<Credential, CredentialError> {
+        let directory = directory_for_product(&self.paths, None, false)?;
+        read_role_in(&directory, CredentialRole::AttachControl).map(|(_, credential)| credential)
+    }
+
+    /// Read ownership for non-mutating diagnostics. Mutations use
+    /// [`Self::verify_ownership`] so authority remains bound to the install lock.
+    pub fn read_ownership(&self) -> Result<Credential, CredentialError> {
+        let directory = directory_for_product(&self.paths, None, false)?;
+        read_role_in(&directory, CredentialRole::Ownership).map(|(_, credential)| credential)
+    }
+
+    /// Retain and validate ownership under the exact installation guard.
+    pub fn verify_ownership<'guard>(
+        &self,
+        guard: &'guard InstallLockGuard,
+    ) -> Result<VerifiedOwnershipCredential<'guard>, CredentialError> {
+        guard.verify_for_product(&self.paths).map_err(|_| {
+            CredentialError::PlatformAuthorityUnavailable(
+                "installation guard does not bind these product paths",
+            )
+        })?;
+        let directory = directory_for_product(&self.paths, Some(guard), false)?;
+        let (file, credential) = read_role_in(&directory, CredentialRole::Ownership)?;
+        Ok(VerifiedOwnershipCredential {
+            credential,
+            file,
+            path: self.path(CredentialRole::Ownership),
+            directory,
+            _guard: guard,
         })
     }
 
-    /// **Gateway only.** Create the worker-IPC credential used solely between
-    /// the gateway and its worker. The dashboard never mints this; the gateway
-    /// owns it because it owns worker lifetime.
-    pub fn create_worker_ipc(&self) -> std::result::Result<Credential, CredentialError> {
-        std::fs::create_dir_all(&self.dir)?;
-        if self.path(CredentialRole::WorkerIpc).exists() {
-            return Err(CredentialError::AlreadyExists(CredentialRole::WorkerIpc));
-        }
-        self.create(CredentialRole::WorkerIpc)
-    }
-
-    /// Read the attach-control credential. Both the dashboard and the gateway
-    /// legitimately read this to authenticate control and settlement callbacks.
-    pub fn read_attach_control(&self) -> std::result::Result<Credential, CredentialError> {
-        self.read(CredentialRole::AttachControl)
-    }
-
-    /// Read the ownership capability — receipt-bound lifecycle authority. Only
-    /// the retaining dashboard holds this; it is never referenced by discovery.
-    pub fn read_ownership(&self) -> std::result::Result<Credential, CredentialError> {
-        self.read(CredentialRole::Ownership)
-    }
-
-    /// The non-secret discovery reference to the attach-control credential: its
-    /// file path, never its value. A foreign dashboard without owner-ACL access
-    /// to this file may discover the gateway but cannot read the secret, so it
-    /// must refuse attachment (ADR D5).
+    /// Non-secret discovery reference to the attach-control file.
     #[must_use]
     pub fn attach_control_reference(&self) -> PathBuf {
         self.path(CredentialRole::AttachControl)
     }
+}
 
-    fn read(&self, role: CredentialRole) -> std::result::Result<Credential, CredentialError> {
-        let path = self.path(role);
-        if !path.exists() {
-            return Err(CredentialError::Missing(role));
+/// First-install proof retaining both exact credential files and the guard that
+/// authorized their creation. It is intentionally non-cloneable.
+#[derive(Debug)]
+pub struct PendingDashboardCredentials<'guard> {
+    #[allow(
+        dead_code,
+        reason = "retaining the coherent credentials directory is itself the authority invariant"
+    )]
+    pub(crate) directory: RetainedCredentialDirectory,
+    pub(crate) ownership_file: RetainedCredentialFile,
+    pub(crate) attach_file: RetainedCredentialFile,
+    ownership: Credential,
+    attach_control: Credential,
+    #[allow(
+        dead_code,
+        reason = "retained until sealed first-install commit can retire the descriptor"
+    )]
+    pub(crate) descriptor: Option<crate::bootstrap::BootstrapDescriptorAuthority>,
+    pub(crate) _claim: PendingCredentialsClaim<'guard>,
+    pub(crate) _guard: &'guard InstallLockGuard,
+}
+
+impl<'guard> PendingDashboardCredentials<'guard> {
+    #[allow(
+        clippy::too_many_arguments,
+        reason = "the private constructor must receive every distinct retained authority explicitly"
+    )]
+    pub(crate) fn new(
+        guard: &'guard InstallLockGuard,
+        directory: RetainedCredentialDirectory,
+        ownership_file: RetainedCredentialFile,
+        attach_file: RetainedCredentialFile,
+        ownership: Credential,
+        attach_control: Credential,
+        descriptor: crate::bootstrap::BootstrapDescriptorAuthority,
+        claim: PendingCredentialsClaim<'guard>,
+    ) -> Self {
+        Self {
+            directory,
+            ownership_file,
+            attach_file,
+            ownership,
+            attach_control,
+            descriptor: Some(descriptor),
+            _claim: claim,
+            _guard: guard,
         }
-        let secret = std::fs::read_to_string(&path)?.trim().to_string();
-        Ok(Credential { role, secret })
     }
 
-    fn create(&self, role: CredentialRole) -> std::result::Result<Credential, CredentialError> {
-        let path = self.path(role);
-        let secret = random_token()?;
-        // Restrict BEFORE the secret bytes land where a racing reader could see
-        // them at the default umask: write, restrict, then the secret is only
-        // ever readable by the owner.
-        std::fs::write(&path, &secret)?;
-        restrict_to_owner(&path)?;
-        Ok(Credential { role, secret })
+    /// Retained ownership credential.
+    #[must_use]
+    pub fn ownership(&self) -> &Credential {
+        &self.ownership
+    }
+
+    /// Retained attach-control credential.
+    #[must_use]
+    pub fn attach_control(&self) -> &Credential {
+        &self.attach_control
+    }
+
+    /// Exact observed identities persisted by the bootstrap descriptor.
+    #[must_use]
+    pub fn identities(&self) -> (&FileIdentity, &FileIdentity) {
+        (self.ownership_file.identity(), self.attach_file.identity())
+    }
+
+    #[allow(
+        dead_code,
+        reason = "sealed first-install publication remains typed unavailable"
+    )]
+    #[allow(
+        clippy::result_large_err,
+        reason = "failure returns every exact non-cloneable authority needed for retry"
+    )]
+    pub(crate) fn retire_descriptor(
+        mut self,
+    ) -> Result<(), PendingDescriptorRetirementError<'guard>> {
+        let Some(descriptor) = self.descriptor.take() else {
+            return Err(PendingDescriptorRetirementError {
+                pending: self,
+                phase: platform::RetirementPhase::ParentSyncPending,
+                source: std::io::Error::other("pending credentials lost descriptor authority"),
+            });
+        };
+        match descriptor.retire() {
+            Ok(()) => Ok(()),
+            Err(failure) => {
+                self.descriptor = Some(failure.authority);
+                Err(PendingDescriptorRetirementError {
+                    pending: self,
+                    phase: failure.phase,
+                    source: failure.source,
+                })
+            }
+        }
     }
 }
 
-/// Restrict a file to its owner. On Unix, chmod `0o600` (owner read/write only).
-/// On Windows the credentials tree lives under the user's own app home and
-/// inherits that profile's NTFS ACL, which already excludes other users; no
-/// std-only API tightens it further without unsafe, and the workspace forbids
-/// unsafe, so the profile ACL is the control there (the same posture the seat
-/// discovery writer takes).
-pub fn restrict_to_owner(path: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+#[derive(Debug)]
+#[allow(
+    dead_code,
+    reason = "sealed first-install publication remains typed unavailable"
+)]
+pub(crate) struct PendingDescriptorRetirementError<'guard> {
+    pub(crate) pending: PendingDashboardCredentials<'guard>,
+    pub(crate) phase: platform::RetirementPhase,
+    pub(crate) source: std::io::Error,
+}
+
+/// Existing receipt-bound ownership retained under the installation guard.
+#[derive(Debug)]
+pub struct VerifiedOwnershipCredential<'guard> {
+    credential: Credential,
+    #[allow(dead_code)]
+    file: RetainedCredentialFile,
+    path: PathBuf,
+    directory: RetainedCredentialDirectory,
+    _guard: &'guard InstallLockGuard,
+}
+
+impl VerifiedOwnershipCredential<'_> {
+    /// The validated ownership credential used by the control protocol.
+    #[must_use]
+    pub fn credential(&self) -> &Credential {
+        &self.credential
     }
-    #[cfg(not(unix))]
+
+    pub(crate) const fn guard(&self) -> &InstallLockGuard {
+        self._guard
+    }
+
+    pub(crate) fn verifies_for_product(&self, paths: &ProductPaths) -> bool {
+        if self._guard.verify_for_product(paths).is_err()
+            || self.path
+                != paths
+                    .credentials_dir()
+                    .join(CredentialRole::Ownership.file_name())
+        {
+            return false;
+        }
+        platform::revalidate_named(
+            &self.directory,
+            std::ffi::OsStr::new(CredentialRole::Ownership.file_name()),
+            &self.file,
+            self.credential.secret().as_bytes(),
+        )
+        .is_ok()
+    }
+}
+
+/// Creation-free reader for a compatible foreign gateway's handoff reference.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ForeignHandoffReader;
+
+impl ForeignHandoffReader {
+    /// Retain, validate, and bounded-read one foreign attach-control file. This
+    /// operation cannot create, replace, repair, or remove the referenced path.
+    pub fn read(path: &Path) -> Result<Credential, CredentialError> {
+        read_role(path, CredentialRole::AttachControl).map(|(_, credential)| credential)
+    }
+}
+
+pub(crate) fn create_role(
+    directory: &RetainedCredentialDirectory,
+    role: CredentialRole,
+    secret: &str,
+) -> Result<(RetainedCredentialFile, Credential), CredentialError> {
+    validate_token(secret).map_err(|reason| CredentialError::Invalid { role, reason })?;
+    let file = platform::create_in(directory, role.file_name(), secret.as_bytes())?;
+    Ok((
+        file,
+        Credential {
+            role,
+            secret: secret.to_owned(),
+        },
+    ))
+}
+
+pub(crate) fn read_role(
+    path: &Path,
+    role: CredentialRole,
+) -> Result<(RetainedCredentialFile, Credential), CredentialError> {
+    let (file, bytes) = match platform::open_and_read(path) {
+        Ok(value) => value,
+        #[cfg(windows)]
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(CredentialError::PlatformAuthorityUnavailable(
+                "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(CredentialError::Missing(role));
+        }
+        Err(error) => return Err(CredentialError::Io(error)),
+    };
+    let secret = std::str::from_utf8(&bytes)
+        .map_err(|_| CredentialError::Invalid {
+            role,
+            reason: "token is not UTF-8",
+        })?
+        .to_owned();
+    validate_token(&secret).map_err(|reason| CredentialError::Invalid { role, reason })?;
+    Ok((file, Credential { role, secret }))
+}
+
+fn directory_for_product(
+    paths: &ProductPaths,
+    guard: Option<&InstallLockGuard>,
+    create: bool,
+) -> Result<RetainedCredentialDirectory, CredentialError> {
+    #[cfg(windows)]
     {
-        let _ = path;
+        let _ = (paths, guard, create);
+        Err(CredentialError::PlatformAuthorityUnavailable(
+            "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
+        ))
+    }
+    #[cfg(unix)]
+    let root = match guard {
+        Some(guard) => guard.retained_product_root(paths).map_err(|_| {
+            CredentialError::PlatformAuthorityUnavailable(
+                "installation guard cannot retain the exact product root",
+            )
+        })?,
+        None => platform::retain_product_root(paths.root())?,
+    };
+    #[cfg(unix)]
+    let result = if create {
+        platform::prepare_directory_authority(root, paths.root())
+    } else {
+        platform::open_directory_authority(root, paths.root())
+    };
+    #[cfg(unix)]
+    match result {
+        Ok(directory) => Ok(directory),
+        #[cfg(windows)]
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(CredentialError::PlatformAuthorityUnavailable(
+                "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
+            ))
+        }
+        Err(error) => Err(CredentialError::Io(error)),
+    }
+}
+
+pub(crate) fn read_role_in(
+    directory: &RetainedCredentialDirectory,
+    role: CredentialRole,
+) -> Result<(RetainedCredentialFile, Credential), CredentialError> {
+    let (file, bytes) = match platform::open_private_in(
+        directory,
+        std::ffi::OsStr::new(role.file_name()),
+        TOKEN_BYTES,
+    ) {
+        Ok(value) => value,
+        #[cfg(windows)]
+        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            return Err(CredentialError::PlatformAuthorityUnavailable(
+                "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
+            ));
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Err(CredentialError::Missing(role));
+        }
+        Err(error) => return Err(CredentialError::Io(error)),
+    };
+    let secret = std::str::from_utf8(&bytes)
+        .map_err(|_| CredentialError::Invalid {
+            role,
+            reason: "token is not UTF-8",
+        })?
+        .to_owned();
+    validate_token(&secret).map_err(|reason| CredentialError::Invalid { role, reason })?;
+    Ok((file, Credential::from_validated(role, secret)))
+}
+
+pub(crate) fn validate_token(token: &str) -> Result<(), &'static str> {
+    if token.len() != TOKEN_BYTES {
+        return Err("token must contain exactly 64 bytes");
+    }
+    if !token
+        .bytes()
+        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err("token must use lowercase hexadecimal only");
     }
     Ok(())
 }
 
-/// Draw a 256-bit secret from the OS CSPRNG, hex-encoded to 64 characters.
-///
-/// The entropy source is `getrandom` — an explicit CSPRNG contract over the
-/// platform's own generator (`getrandom`/`getentropy` on Unix,
-/// `BCryptGenRandom`/`ProcessPrng` on Windows), the same primitive the engine's
-/// bearer- and actor-token generators use. This deliberately does NOT use
-/// `std::hash::RandomState`: std seeds its HashMap keys once per thread and then
-/// returns a deterministically-incremented derivation on each call, so
-/// back-to-back credentials would be simple offsets of one seed — and that
-/// seeding is an undocumented std internal, never a documented security
-/// primitive (a future toolchain could weaken it with no test signal).
-fn random_token() -> std::io::Result<String> {
+#[cfg(unix)]
+pub(crate) fn random_token() -> std::io::Result<String> {
     use std::fmt::Write as _;
 
-    let mut bytes = [0u8; 32];
+    let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes)
-        .map_err(|e| std::io::Error::other(format!("OS CSPRNG unavailable: {e}")))?;
-    let mut out = String::with_capacity(64);
+        .map_err(|error| std::io::Error::other(format!("OS CSPRNG unavailable: {error}")))?;
+    let mut token = String::with_capacity(TOKEN_BYTES);
     for byte in bytes {
-        let _ = write!(out, "{byte:02x}");
+        let _ = write!(token, "{byte:02x}");
     }
-    Ok(out)
+    Ok(token)
+}
+
+/// Compatibility helper for existing non-credential owner-private files. New
+/// credential creation never uses write-then-restrict.
+pub(crate) fn restrict_to_owner(path: &Path) -> std::io::Result<()> {
+    platform::restrict_existing(path)
 }
 
 #[cfg(test)]
@@ -288,42 +586,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn bootstrap_creates_two_distinct_secrets_and_retains_them() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = CredentialStore::new(dir.path().join("credentials"));
-        let creds = store.bootstrap().unwrap();
-        assert_ne!(
-            creds.ownership.secret(),
-            creds.attach_control.secret(),
-            "no aliasing: each role has its own secret"
-        );
-        assert_eq!(creds.ownership.secret().len(), 64);
-        // Retention: a second bootstrap refuses rather than overwriting.
-        assert!(matches!(
-            store.bootstrap(),
-            Err(CredentialError::AlreadyExists(_))
-        ));
+    fn token_grammar_is_exact() {
+        assert!(validate_token(&"a".repeat(TOKEN_BYTES)).is_ok());
+        for invalid in [
+            "a".repeat(TOKEN_BYTES - 1),
+            "a".repeat(TOKEN_BYTES + 1),
+            format!("{}A", "a".repeat(TOKEN_BYTES - 1)),
+            format!("{}\n", "a".repeat(TOKEN_BYTES - 1)),
+        ] {
+            assert!(validate_token(&invalid).is_err(), "accepted {invalid:?}");
+        }
     }
 
     #[test]
-    fn worker_ipc_is_separate_and_gateway_created() {
-        let dir = tempfile::tempdir().unwrap();
-        let store = CredentialStore::new(dir.path().join("credentials"));
-        let creds = store.bootstrap().unwrap();
-        let worker = store.create_worker_ipc().unwrap();
-        assert_ne!(worker.secret(), creds.attach_control.secret());
-        assert_ne!(worker.secret(), creds.ownership.secret());
-        assert_eq!(worker.role(), CredentialRole::WorkerIpc);
-    }
-
-    #[test]
-    fn debug_redacts_the_secret() {
-        let c = Credential {
+    fn debug_redacts_secret() {
+        let credential = Credential {
             role: CredentialRole::Ownership,
-            secret: "supersecrettoken".to_string(),
+            secret: "super-secret".to_owned(),
         };
-        let shown = format!("{c:?}");
-        assert!(!shown.contains("supersecrettoken"));
-        assert!(shown.contains("redacted"));
+        let debug = format!("{credential:?}");
+        assert!(!debug.contains("super-secret"));
+        assert!(debug.contains("redacted"));
     }
 }

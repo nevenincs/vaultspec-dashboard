@@ -23,6 +23,7 @@ rustix = { version = "=1.1.4", features = ["fs"] }
 command-group = { version = "5.0.1", default-features = false }
 vaultspec-windows-authority = { path = "../vaultspec-windows-authority" }
 windows-acl = "0.3.0"
+winapi = "0.3.9"
 
 [dev-dependencies]
 # The S18 capsule-ownership acceptance test extracts a REAL built A2A desktop

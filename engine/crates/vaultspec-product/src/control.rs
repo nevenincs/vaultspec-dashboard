@@ -361,6 +361,7 @@ mod tests {
         handle.join().unwrap();
     }
 
+    #[cfg(unix)]
     #[test]
     fn shutdown_carries_the_ownership_capability() {
         let (captured_tx, captured_rx) = mpsc::channel();
@@ -372,20 +373,55 @@ mod tests {
         });
         // A bootstrap ownership credential to present.
         let dir = tempfile::tempdir().unwrap();
-        let store = crate::credentials::CredentialStore::new(dir.path().join("c"));
-        let creds = store.bootstrap().unwrap();
+        let paths = crate::paths::ProductPaths::under_app_home(dir.path());
+        paths.ensure().unwrap();
+        let lock = crate::locking::InstallLock::new(paths.install_lock_path());
+        let guard = lock
+            .acquire(crate::locking::Actor::Installer, "control-test")
+            .unwrap()
+            .unwrap();
+        let store = crate::credentials::DashboardCredentialStore::for_product(&paths);
+        let creds = store.begin_bootstrap(&guard).unwrap();
         let client = ControlClient::new(endpoint, "attach");
-        client.shutdown(&creds.ownership).unwrap();
+        client.shutdown(creds.ownership()).unwrap();
         handle.join().unwrap();
         let req = captured_rx.recv().unwrap();
         assert!(req.starts_with("POST /shutdown "));
         assert!(
             req.contains(&format!(
                 "X-Ownership-Capability: {}",
-                creds.ownership.secret()
+                creds.ownership().secret()
             )),
             "shutdown must present the ownership capability, not just attach"
         );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn shutdown_control_stops_at_the_typed_windows_ownership_authority_gate() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = crate::paths::ProductPaths::under_app_home(dir.path());
+        paths.ensure().unwrap();
+        let guard = crate::locking::InstallLock::new(paths.install_lock_path())
+            .acquire(
+                crate::locking::Actor::Installer,
+                "control-windows-gate-test",
+            )
+            .unwrap()
+            .unwrap();
+        let result = crate::credentials::DashboardCredentialStore::for_product(&paths)
+            .begin_bootstrap(&guard);
+
+        assert!(matches!(
+            result,
+            Err(crate::credentials::CredentialError::PlatformAuthorityUnavailable(_))
+        ));
+        for name in ["bootstrap-credentials.v1", "ownership.cap", "attach.cred"] {
+            assert!(
+                !paths.credentials_dir().join(name).exists(),
+                "typed Windows gate must precede credential or control authority creation: {name}"
+            );
+        }
     }
 
     #[test]

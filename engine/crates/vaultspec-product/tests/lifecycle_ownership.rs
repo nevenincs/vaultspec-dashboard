@@ -19,13 +19,19 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
 use vaultspec_product::control::ControlClient;
-use vaultspec_product::credentials::CredentialStore;
-use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, Verdict};
+#[cfg(windows)]
+use vaultspec_product::credentials::CredentialError;
+use vaultspec_product::credentials::DashboardCredentialStore;
+use vaultspec_product::discovery::Verdict;
+#[cfg(unix)]
+use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery};
 use vaultspec_product::lifecycle::{LifecycleController, plan_transition};
-use vaultspec_product::manifest::{
-    CapsuleManifest, ComponentLock, RangeBounds, ReleaseIdentity, Target,
-};
+use vaultspec_product::locking::{Actor, InstallLock};
+#[cfg(unix)]
+use vaultspec_product::manifest::RangeBounds;
+use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, ReleaseIdentity, Target};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::process::{GatewaySpec, ResolvedProgram, spawn_gateway};
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
@@ -395,6 +401,7 @@ fn wait_for(path: &Path, budget: Duration) -> bool {
 /// Stand up a real loopback HTTP gateway stub that answers `/shutdown` 204 only
 /// when the ownership-capability header is present, else 401. Returns the bound
 /// endpoint. Serves one connection. (Not capsule-gated; runs everywhere.)
+#[cfg(unix)]
 fn spawn_shutdown_stub(ownership_secret: String) -> String {
     use std::io::{Read, Write};
     use std::net::TcpListener;
@@ -424,6 +431,7 @@ fn spawn_shutdown_stub(ownership_secret: String) -> String {
 /// caller presents the ownership capability. Proven with real credential files,
 /// a real process identity (our own live pid for the owned verdict), and a real
 /// loopback socket for the control call. Not capsule-gated — always runs.
+#[cfg(unix)]
 #[test]
 fn mutating_control_requires_owned_attach_and_ownership() {
     let home = tempfile::tempdir().unwrap();
@@ -432,8 +440,14 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     let ctrl = LifecycleController::new(paths.clone());
 
     // Real ownership + attach-control credentials and an active receipt.
-    let store = CredentialStore::new(paths.credentials_dir());
-    let creds = store.bootstrap().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "ownership-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let creds = store.begin_bootstrap(&guard).unwrap();
+    let ownership = store.verify_ownership(&guard).unwrap();
     Receipt::bootstrap(
         Channel::SelfInstall,
         Target::X86_64PcWindowsMsvc,
@@ -472,13 +486,13 @@ fn mutating_control_requires_owned_attach_and_ownership() {
 
     // BOTH gates hold (live owned gateway) -> the mutation is allowed.
     assert!(
-        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), Some(&owned))
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&owned))
             .is_ok()
     );
     // (a) NO discovery (cleanly stopped install) + ownership -> PERMIT: the
     // local receipt + ownership authority alone governs a cold-state mutation.
     assert!(
-        ctrl.guard_owned_mutation(LifecycleOp::Remove, Some(&creds.ownership), None)
+        ctrl.guard_owned_mutation(LifecycleOp::Remove, Some(&ownership), None)
             .is_ok()
     );
     // NO discovery but NO ownership capability -> refused (authority still required).
@@ -493,25 +507,53 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     );
     // Ownership held but a FOREIGN (read-only) gateway -> refused (attach gate).
     assert_eq!(
-        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), Some(&foreign)),
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&foreign)),
         Err(Refusal::ForeignResident)
     );
 
     // Past the gate, the real control call carries the ownership capability to
     // the real gateway socket and settles; without it the gateway rejects it.
-    let endpoint = spawn_shutdown_stub(creds.ownership.secret().to_string());
-    let client = ControlClient::new(&endpoint, creds.attach_control.secret());
-    ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&creds.ownership), Some(&owned))
+    let endpoint = spawn_shutdown_stub(creds.ownership().secret().to_string());
+    let client = ControlClient::new(&endpoint, creds.attach_control().secret());
+    ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&owned))
         .expect("gate passes");
     client
-        .shutdown(&creds.ownership)
+        .shutdown(creds.ownership())
         .expect("gated shutdown settles over the real socket");
+}
+
+#[cfg(windows)]
+#[test]
+fn mutating_control_stops_at_the_windows_ownership_authority_gate() {
+    let home = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(home.path());
+    paths.ensure().unwrap();
+    let ctrl = LifecycleController::new(paths.clone());
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "control-windows-ownership-gate")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+
+    match store.begin_bootstrap(&guard) {
+        Err(CredentialError::PlatformAuthorityUnavailable(_)) => {}
+        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
+        Ok(_) => panic!("Windows ownership bootstrap must remain typed unavailable"),
+    }
+    assert_eq!(
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, None, Some(&Verdict::OwnedLive)),
+        Err(Refusal::NotOwner)
+    );
+    assert!(!paths.credentials_dir().join("ownership.cap").exists());
+    assert!(!paths.credentials_dir().join("attach.cred").exists());
+    assert!(!paths.receipt_path().exists());
 }
 
 /// Build a discovery verdict for a given owner using this live process's pid, a
 /// present handoff file, and a fresh compatible record. Owner == ctx owner
 /// classifies owned; a different owner with a readable handoff classifies
 /// foreign-attachable.
+#[cfg(unix)]
 fn discovery_verdict(owner: &str, handoff: &Path, ctx: &DiscoveryContext) -> Verdict {
     let raw = serde_json::json!({
         "endpoint": "127.0.0.1:1",
@@ -529,17 +571,13 @@ fn discovery_verdict(owner: &str, handoff: &Path, ctx: &DiscoveryContext) -> Ver
     GatewayDiscovery::parse(&raw).unwrap().classify(ctx)
 }
 
-/// The attach-control credential file path, established as a genuinely *trusted*
-/// (owner-restricted) handoff. Bootstrap writes the file, but on Windows
-/// `CredentialStore`'s `restrict_to_owner` is a no-op that relies on the
-/// credentials directory inheriting a clean owner-only ACL from the user's app
-/// home. A shared CI/sandbox `%TEMP%` instead injects extra inherited ACEs (e.g.
-/// a sandbox group), which `handoff_is_owner_restricted` correctly rejects — so
-/// this test establishes the owner-only ACL explicitly, exactly as the S17
-/// desktop-gateway acceptance does, to prove the real `has_trusted_handoff`
-/// property deterministically rather than depending on the parent directory's
-/// inherited ACL.
-fn creds_reference(store: &CredentialStore) -> PathBuf {
+/// The attach-control credential file path, established as a genuinely trusted
+/// owner-restricted handoff. Unix bootstrap creates the file with exact retained
+/// mode authority. Windows bootstrap remains fail-closed until the D9 boundary
+/// can both establish and prove a protected exact ACL, so Windows cannot reach
+/// this fixture setup while that architecture gate is active.
+#[cfg(unix)]
+fn creds_reference(store: &DashboardCredentialStore) -> PathBuf {
     let path = store.attach_control_reference();
     restrict_handoff_to_owner(&path);
     path
@@ -549,6 +587,7 @@ fn creds_reference(store: &CredentialStore) -> PathBuf {
 /// Administrators group), stripping inheritance — the owner-only ACL the
 /// production credential store yields under a clean app home, and the shape
 /// `handoff_is_owner_restricted` accepts.
+#[cfg(unix)]
 fn restrict_handoff_to_owner(path: &Path) {
     #[cfg(unix)]
     {

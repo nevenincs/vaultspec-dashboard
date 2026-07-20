@@ -598,6 +598,20 @@ fn two_retired_genesis_replicas_require_recovery_without_prior_authority() {
     };
     assert_eq!(recovery.kind(), ActiveReceiptRecoveryKind::ProofRetirement);
     assert!(recovery.prior().is_none());
+    drop(initial_read);
+
+    let observation = crate::provisioning::observe_active_release(&fixture.paths, &fixture.guard)
+        .expect("bounded provisioning observation");
+    let crate::provisioning::ActiveReleaseState::RecoveryRequired(recovery) =
+        observation.state().expect("bounded recovery state")
+    else {
+        panic!("provisioning observation must preserve recovery classification");
+    };
+    assert_eq!(
+        recovery.kind(),
+        crate::provisioning::ActiveReleaseRecoveryKind::ProofRetirement
+    );
+    assert!(recovery.prior().is_none());
 }
 
 #[test]

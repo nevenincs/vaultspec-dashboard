@@ -19,21 +19,24 @@
 //! up ONLY the gateway ([`owned_gateway_entrypoint`]). No path in this module
 //! ever resolves or spawns the standalone MCP.
 
-use crate::credentials::{Credential, CredentialStore};
+#[cfg(all(test, unix))]
+use crate::credentials::DashboardCredentialStore;
+use crate::credentials::VerifiedOwnershipCredential;
 use crate::manifest::{
     CapsuleManifest, ComponentLock, LaunchEntrypoint, Result as ManifestResult, Target,
 };
 use crate::paths::ProductPaths;
 use crate::process::{GatewayProcess, GatewaySpec, spawn_gateway};
 use crate::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
-use crate::receipt::{Receipt, sweep_orphan_tmp};
+use crate::provisioning::{ActiveReleaseState, observe_active_release};
 
 /// The a2a gateway's app-home env var (`vaultspec_a2a.control.config` field
 /// `desktop_app_home`, alias `VAULTSPEC_DESKTOP_APP_HOME`). The gateway derives
 /// its state layout from this — notably `credentials_dir = <app_home>/credentials`
 /// (`vaultspec_a2a.desktop.profile.derive_state_paths`), which is exactly
 /// [`ProductPaths::app_home`]`/credentials`, where the dashboard's
-/// [`CredentialStore`] wrote `attach.cred`/`ownership.cap`/`worker-ipc.cred`.
+/// [`DashboardCredentialStore`] wrote `attach.cred` and `ownership.cap`.
+/// The Python gateway creates `worker-ipc.cred` for its worker boundary.
 const A2A_APP_HOME_ENV: &str = "VAULTSPEC_DESKTOP_APP_HOME";
 
 /// The a2a gateway's settlement-callback env var
@@ -89,73 +92,81 @@ impl LifecycleController {
         Self { paths }
     }
 
-    /// Initialize lifecycle state at boot: sweep any orphaned receipt temp files
-    /// a crash left between write and rename (resource-bounds fold-in). Returns
-    /// the number of orphaned temps reclaimed.
+    /// Fixed-journal initialization performs no legacy pathname cleanup.
     pub fn initialize(&self) -> std::io::Result<usize> {
-        sweep_orphan_tmp(&self.paths.receipt_path())
+        Ok(0)
     }
 
-    /// The active receipt, if a generation is installed. A malformed receipt is a
-    /// hard error, not a silent "uninstalled".
-    pub fn active_receipt(
+    /// Observe only the fixed active-receipt journal under its retained lock.
+    pub fn active_release(
         &self,
-    ) -> std::result::Result<Option<Receipt>, crate::receipt::ReceiptError> {
-        let path = self.paths.receipt_path();
-        if !path.exists() {
-            return Ok(None);
-        }
-        Receipt::load(&path).map(Some)
+        guard: &crate::locking::InstallLockGuard,
+    ) -> std::result::Result<ActiveReleaseState, Refusal> {
+        observe_active_release(&self.paths, guard)
+            .and_then(|observation| observation.state())
+            .map_err(|_| Refusal::Unverifiable {
+                detail: "fixed active-receipt authority is unverifiable".to_owned(),
+            })
     }
 
-    /// Derive the one readiness model from the installed receipt and whether the
-    /// owned gateway is live (and its worker warmth). A cold worker on a live
-    /// gateway is still `GatewayReady`, and an installed-but-stopped generation is
-    /// a valid cold state — never a degradation.
-    #[must_use]
-    pub fn readiness(&self, gateway_live: bool, worker: WorkerState) -> Readiness {
-        match self.active_receipt() {
-            Ok(Some(_)) if gateway_live => Readiness::GatewayReady { worker },
-            Ok(Some(_)) => Readiness::InstalledStopped,
-            _ => Readiness::Uninstalled,
+    /// Derive readiness from a guarded fixed-journal observation.
+    pub fn guarded_readiness(
+        &self,
+        guard: &crate::locking::InstallLockGuard,
+        gateway_live: bool,
+        worker: WorkerState,
+    ) -> std::result::Result<Readiness, Refusal> {
+        match self.active_release(guard)? {
+            ActiveReleaseState::Settled(_) if gateway_live => {
+                Ok(Readiness::GatewayReady { worker })
+            }
+            ActiveReleaseState::Settled(_) => Ok(Readiness::InstalledStopped),
+            ActiveReleaseState::Absent => Ok(Readiness::Uninstalled),
+            ActiveReleaseState::RecoveryRequired(_) => Err(Refusal::Unverifiable {
+                detail: "fixed active-receipt recovery is required".to_owned(),
+            }),
         }
     }
 
     /// Authorize a lifecycle operation. Receipt-bound mutations require the active
     /// receipt, receipt-bound ownership (the install must have created and
     /// retained the ownership capability), and a presented ownership credential
-    /// that verifies against the stored one. `Install` bootstraps rather than
-    /// requiring an existing capability; `Doctor` and the attach verbs are not
-    /// receipt-bound mutations.
+    /// that verifies against the stored one. `Install` is refused here because
+    /// activation is available only through the sealed provisioning boundary;
+    /// `Doctor` and the attach verbs are not receipt-bound mutations.
     pub fn authorize(
         &self,
         op: LifecycleOp,
-        presented_ownership: Option<&Credential>,
+        presented_ownership: Option<&VerifiedOwnershipCredential<'_>>,
     ) -> std::result::Result<(), Refusal> {
-        let receipt = self.active_receipt().map_err(|e| Refusal::Unverifiable {
-            detail: e.to_string(),
-        })?;
-
         if op == LifecycleOp::Install {
+            return Err(Refusal::Unverifiable {
+                detail: "install requires sealed provisioning authority".to_owned(),
+            });
+        }
+        if op == LifecycleOp::Doctor {
             return Ok(());
         }
-        let Some(receipt) = receipt else {
-            return Err(Refusal::NotInstalled);
-        };
-
-        if op.requires_ownership() {
-            // A foreign-adopted install never created ownership, so it can be
-            // read but never mutated by us.
-            if !receipt.bootstrap_created_ownership {
+        if !op.requires_ownership() {
+            return Err(Refusal::Unverifiable {
+                detail: "lifecycle start requires a sealed active-release operation".to_owned(),
+            });
+        }
+        let presented = presented_ownership.ok_or(Refusal::NotOwner)?;
+        if !presented.verifies_for_product(&self.paths) {
+            return Err(Refusal::NotOwner);
+        }
+        match self.active_release(presented.guard())? {
+            ActiveReleaseState::Absent => return Err(Refusal::NotInstalled),
+            ActiveReleaseState::RecoveryRequired(_) => {
+                return Err(Refusal::Unverifiable {
+                    detail: "fixed active-receipt recovery is required".to_owned(),
+                });
+            }
+            ActiveReleaseState::Settled(release) if !release.bootstrap_created_ownership() => {
                 return Err(Refusal::NotOwner);
             }
-            let presented = presented_ownership.ok_or(Refusal::NotOwner)?;
-            let stored = CredentialStore::new(self.paths.credentials_dir())
-                .read_ownership()
-                .map_err(|_| Refusal::NotOwner)?;
-            if !stored.verify(presented.secret()) {
-                return Err(Refusal::NotOwner);
-            }
+            ActiveReleaseState::Settled(_) => {}
         }
         Ok(())
     }
@@ -197,7 +208,7 @@ impl LifecycleController {
     pub fn guard_owned_mutation(
         &self,
         op: LifecycleOp,
-        ownership: Option<&Credential>,
+        ownership: Option<&VerifiedOwnershipCredential<'_>>,
         verdict: Option<&crate::discovery::Verdict>,
     ) -> std::result::Result<(), Refusal> {
         use crate::discovery::{ImmutableReason, Verdict};
@@ -272,14 +283,10 @@ impl LifecycleController {
     /// explicit request to delete it (ADR D6: "removes installed generations
     /// while preserving or deleting data only through an explicit typed choice").
     /// Owned processes must already be stopped by the caller.
-    pub fn remove(&self, typed_data_removal: bool) -> std::io::Result<()> {
-        remove_dir_all_if_exists(&self.paths.generations_dir())?;
-        remove_file_if_exists(&self.paths.receipt_path())?;
-        remove_dir_all_if_exists(&self.paths.credentials_dir())?;
-        if typed_data_removal {
-            remove_dir_all_if_exists(&self.paths.data_dir())?;
-        }
-        Ok(())
+    pub fn remove(&self, _typed_data_removal: bool) -> std::result::Result<(), LifecycleError> {
+        Err(LifecycleError::Refused(Refusal::Unverifiable {
+            detail: "removal requires a sealed retained product mutation authority".to_owned(),
+        }))
     }
 
     /// Repair (replace) an immutable file within a generation tree from pristine
@@ -292,51 +299,10 @@ impl LifecycleController {
         relative: &std::path::Path,
         pristine: &[u8],
     ) -> std::result::Result<(), LifecycleError> {
-        let gen_dir = self
-            .paths
-            .generation_dir(generation)
-            .map_err(|e| LifecycleError::Manifest(e.to_string()))?;
-        let target = safe_join_under(&gen_dir, relative)
-            .ok_or_else(|| LifecycleError::Manifest("repair path escapes the generation".into()))?;
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent).map_err(LifecycleError::Io)?;
-        }
-        std::fs::write(&target, pristine).map_err(LifecycleError::Io)
-    }
-}
-
-/// Join a relative path under a base, rejecting any component that would escape
-/// (`..`, an absolute prefix, or a root/prefix component). Returns `None` on any
-/// escaping component so a repair target can never leave the generation tree.
-fn safe_join_under(
-    base: &std::path::Path,
-    relative: &std::path::Path,
-) -> Option<std::path::PathBuf> {
-    use std::path::Component;
-    let mut out = base.to_path_buf();
-    for comp in relative.components() {
-        match comp {
-            Component::Normal(seg) => out.push(seg),
-            Component::CurDir => {}
-            _ => return None,
-        }
-    }
-    Some(out)
-}
-
-fn remove_dir_all_if_exists(path: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::remove_dir_all(path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
-    }
-}
-
-fn remove_file_if_exists(path: &std::path::Path) -> std::io::Result<()> {
-    match std::fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
+        let _ = (generation, relative, pristine);
+        Err(LifecycleError::Refused(Refusal::Unverifiable {
+            detail: "repair requires sealed release and retained generation authority".to_owned(),
+        }))
     }
 }
 
@@ -484,6 +450,7 @@ mod tests {
         MigrationRange, RangeBounds,
     };
     use crate::receipt::Channel;
+    use crate::receipt::Receipt;
 
     fn identity() -> crate::manifest::ReleaseIdentity {
         crate::manifest::ReleaseIdentity {
@@ -500,33 +467,53 @@ mod tests {
     }
 
     #[test]
-    fn uninstalled_refuses_every_mutation_but_install() {
+    fn uninstalled_refuses_every_legacy_mutation_including_install() {
         let (_d, ctrl) = controller();
+        let lock = crate::locking::InstallLock::new(ctrl.paths.install_lock_path());
+        let guard = lock
+            .acquire(crate::locking::Actor::Installer, "uninstalled-test")
+            .unwrap()
+            .unwrap();
         assert_eq!(
-            ctrl.readiness(false, WorkerState::Cold),
-            Readiness::Uninstalled
+            ctrl.guarded_readiness(&guard, false, WorkerState::Cold),
+            Ok(Readiness::Uninstalled)
         );
         for op in [
-            LifecycleOp::Start,
             LifecycleOp::Stop,
             LifecycleOp::Repair,
             LifecycleOp::Update,
             LifecycleOp::Rollback,
             LifecycleOp::Remove,
-            LifecycleOp::Ensure,
         ] {
-            assert_eq!(ctrl.authorize(op, None), Err(Refusal::NotInstalled));
+            assert_eq!(ctrl.authorize(op, None), Err(Refusal::NotOwner));
         }
-        assert!(ctrl.authorize(LifecycleOp::Install, None).is_ok());
+        for op in [LifecycleOp::Start, LifecycleOp::Ensure] {
+            assert!(matches!(
+                ctrl.authorize(op, None),
+                Err(Refusal::Unverifiable { .. })
+            ));
+        }
+        assert!(matches!(
+            ctrl.authorize(LifecycleOp::Install, None),
+            Err(Refusal::Unverifiable { detail })
+                if detail == "install requires sealed provisioning authority"
+        ));
     }
 
+    #[cfg(unix)]
     #[test]
-    fn receipt_bound_mutation_requires_the_ownership_capability() {
+    fn legacy_receipt_cannot_authorize_a_mutation() {
         let (_d, ctrl) = controller();
         // Bootstrap a real ownership capability and write an active receipt that
         // retains it.
-        let store = CredentialStore::new(ctrl.paths.credentials_dir());
-        let creds = store.bootstrap().unwrap();
+        let lock = crate::locking::InstallLock::new(ctrl.paths.install_lock_path());
+        let guard = lock
+            .acquire(crate::locking::Actor::Installer, "lifecycle-test")
+            .unwrap()
+            .unwrap();
+        let store = DashboardCredentialStore::for_product(&ctrl.paths);
+        let creds = store.begin_bootstrap(&guard).unwrap();
+        let ownership = store.verify_ownership(&guard).unwrap();
         Receipt::bootstrap(
             Channel::SelfInstall,
             Target::X86_64PcWindowsMsvc,
@@ -542,25 +529,29 @@ mod tests {
             ctrl.authorize(LifecycleOp::Stop, None),
             Err(Refusal::NotOwner)
         );
-        // The correct ownership capability authorizes the mutation.
-        assert!(
-            ctrl.authorize(LifecycleOp::Stop, Some(&creds.ownership))
-                .is_ok()
-        );
-        // The attach-control credential is NOT the ownership capability.
+        // Even the correct ownership capability cannot turn retired JSON into
+        // active authority; only the fixed journal selects an installation.
         assert_eq!(
-            ctrl.authorize(LifecycleOp::Stop, Some(&creds.attach_control)),
-            Err(Refusal::NotOwner)
+            ctrl.authorize(LifecycleOp::Stop, Some(&ownership)),
+            Err(Refusal::NotInstalled)
         );
+        assert_ne!(creds.ownership().secret(), creds.attach_control().secret());
         // A non-ownership op needs no capability.
         assert!(ctrl.authorize(LifecycleOp::Doctor, None).is_ok());
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_foreign_adopted_install_cannot_be_mutated() {
         let (_d, ctrl) = controller();
-        let store = CredentialStore::new(ctrl.paths.credentials_dir());
-        let creds = store.bootstrap().unwrap();
+        let lock = crate::locking::InstallLock::new(ctrl.paths.install_lock_path());
+        let guard = lock
+            .acquire(crate::locking::Actor::Installer, "foreign-test")
+            .unwrap()
+            .unwrap();
+        let store = DashboardCredentialStore::for_product(&ctrl.paths);
+        let _pending = store.begin_bootstrap(&guard).unwrap();
+        let ownership = store.verify_ownership(&guard).unwrap();
         // A receipt that did NOT create ownership (foreign-adopted).
         let mut receipt = Receipt::bootstrap(
             Channel::Scoop,
@@ -572,8 +563,8 @@ mod tests {
         receipt.bootstrap_created_ownership = false;
         receipt.persist(&ctrl.paths.receipt_path()).unwrap();
         assert_eq!(
-            ctrl.authorize(LifecycleOp::Update, Some(&creds.ownership)),
-            Err(Refusal::NotOwner)
+            ctrl.authorize(LifecycleOp::Update, Some(&ownership)),
+            Err(Refusal::NotInstalled)
         );
     }
 
@@ -650,7 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn remove_preserves_data_unless_typed_and_repair_stays_in_generation() {
+    fn unsealed_remove_and_repair_refuse_without_mutation() {
         let (_d, ctrl) = controller();
         // Lay down an installed generation, a receipt, and mutable user data.
         let gen_file = ctrl
@@ -671,28 +662,36 @@ mod tests {
         .persist(&ctrl.paths.receipt_path())
         .unwrap();
 
-        // Repair replaces an immutable file; mutable data is untouched.
+        // The old path-based repair surface cannot mutate even a well-formed
+        // relative target.
         std::fs::write(&gen_file, b"corrupt").unwrap();
-        ctrl.repair_immutable("g0", std::path::Path::new("immutable.bin"), b"original")
-            .unwrap();
-        assert_eq!(std::fs::read(&gen_file).unwrap(), b"original");
+        assert!(matches!(
+            ctrl.repair_immutable("g0", std::path::Path::new("immutable.bin"), b"original"),
+            Err(LifecycleError::Refused(Refusal::Unverifiable { .. }))
+        ));
+        assert_eq!(std::fs::read(&gen_file).unwrap(), b"corrupt");
         // A traversal repair path is refused.
         assert!(
             ctrl.repair_immutable("g0", std::path::Path::new("../../escape"), b"x")
                 .is_err()
         );
 
-        // Remove without typed data removal keeps the mutable data.
-        ctrl.remove(false).unwrap();
-        assert!(!ctrl.paths.generation_dir("g0").unwrap().exists());
-        assert!(!ctrl.paths.receipt_path().exists());
+        // Both old removal variants refuse without deleting any state.
+        assert!(matches!(
+            ctrl.remove(false),
+            Err(LifecycleError::Refused(Refusal::Unverifiable { .. }))
+        ));
+        assert!(ctrl.paths.generation_dir("g0").unwrap().exists());
+        assert!(ctrl.paths.receipt_path().exists());
         assert_eq!(
             std::fs::read(ctrl.paths.data_dir().join("user.db")).unwrap(),
             b"precious"
         );
-        // Typed data removal clears the data too.
-        ctrl.remove(true).unwrap();
-        assert!(!ctrl.paths.data_dir().join("user.db").exists());
+        assert!(matches!(
+            ctrl.remove(true),
+            Err(LifecycleError::Refused(Refusal::Unverifiable { .. }))
+        ));
+        assert!(ctrl.paths.data_dir().join("user.db").exists());
     }
 
     #[test]

@@ -30,6 +30,7 @@
 //! Later steps add transactional update and build/certify tools behind this same
 //! boundary.
 
+pub mod bootstrap;
 pub mod control;
 pub mod credentials;
 pub mod discovery;
@@ -40,4 +41,5 @@ pub mod manifest;
 pub mod paths;
 pub mod process;
 pub mod protocol;
+pub mod provisioning;
 pub mod receipt;

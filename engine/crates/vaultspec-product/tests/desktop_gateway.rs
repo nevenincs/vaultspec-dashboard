@@ -11,13 +11,20 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 use vaultspec_product::control::ControlClient;
-use vaultspec_product::credentials::{CredentialRole, CredentialStore};
+#[cfg(windows)]
+use vaultspec_product::credentials::CredentialError;
+use vaultspec_product::credentials::DashboardCredentialStore;
+#[cfg(unix)]
+use vaultspec_product::credentials::ForeignHandoffReader;
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, ImmutableReason, Verdict};
 use vaultspec_product::lifecycle::{AttachMode, LifecycleController, resolve_attach};
-use vaultspec_product::locking::{StaleState, quarantine_owner_matched_stale};
-use vaultspec_product::manifest::{RangeBounds, ReleaseIdentity, Target};
+use vaultspec_product::locking::{Actor, InstallLock, StaleState, quarantine_owner_matched_stale};
+use vaultspec_product::manifest::RangeBounds;
+#[cfg(unix)]
+use vaultspec_product::manifest::{ReleaseIdentity, Target};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, Refusal};
+#[cfg(unix)]
 use vaultspec_product::receipt::{Channel, Receipt};
 
 fn restrict_test_handoff(path: &std::path::Path) {
@@ -190,32 +197,65 @@ fn stale_owned_gateway_is_recovered_only_after_proving_death() {
     assert!(quarantine_owner_matched_stale("someone-else", &stale).is_err());
 }
 
+#[cfg(unix)]
 #[test]
 fn gateway_credential_separation_holds_on_real_files() {
-    // The dashboard bootstraps ownership + attach-control; the gateway reads
-    // attach-control and mints a SEPARATE worker-IPC credential. Three distinct
-    // owner-restricted files back three distinct secrets.
+    // Rust bootstraps only ownership + attach-control. The Python gateway owns
+    // worker IPC, so no Rust-created worker file may appear.
     let dir = tempfile::tempdir().unwrap();
-    let cred_dir = dir.path().join("credentials");
-    let dashboard = CredentialStore::new(&cred_dir);
-    let boot = dashboard.bootstrap().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "desktop-test")
+        .unwrap()
+        .unwrap();
+    let dashboard = DashboardCredentialStore::for_product(&paths);
+    let boot = dashboard.begin_bootstrap(&guard).unwrap();
+    let attach = ForeignHandoffReader::read(&dashboard.attach_control_reference()).unwrap();
+    assert!(boot.attach_control().verify(attach.secret()));
+    assert_ne!(boot.ownership().secret(), boot.attach_control().secret());
 
-    let gateway = CredentialStore::new(&cred_dir);
-    let attach = gateway.read_attach_control().unwrap();
-    assert!(boot.attach_control.verify(attach.secret()));
-    let worker = gateway.create_worker_ipc().unwrap();
-    assert_eq!(worker.role(), CredentialRole::WorkerIpc);
-    assert_ne!(worker.secret(), boot.attach_control.secret());
-    assert_ne!(worker.secret(), boot.ownership.secret());
-
-    for f in ["ownership.cap", "attach.cred", "worker-ipc.cred"] {
+    for f in ["ownership.cap", "attach.cred"] {
         assert!(
-            cred_dir.join(f).exists(),
+            paths.credentials_dir().join(f).exists(),
             "{f} must be a distinct real file"
+        );
+    }
+    assert!(!paths.credentials_dir().join("worker-ipc.cred").exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn gateway_credential_separation_stops_at_the_windows_authority_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "desktop-windows-credential-gate")
+        .unwrap()
+        .unwrap();
+    let dashboard = DashboardCredentialStore::for_product(&paths);
+
+    match dashboard.begin_bootstrap(&guard) {
+        Err(CredentialError::PlatformAuthorityUnavailable(_)) => {}
+        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
+        Ok(_) => panic!("Windows credential bootstrap must remain typed unavailable"),
+    }
+    for name in [
+        "bootstrap-credentials.v1",
+        "ownership.cap",
+        "attach.cred",
+        "worker-ipc.cred",
+    ] {
+        assert!(
+            !paths.credentials_dir().join(name).exists(),
+            "Windows gate must precede gateway credential creation: {name}"
         );
     }
 }
 
+#[cfg(unix)]
 #[test]
 fn lifecycle_refuses_a_mutation_without_the_ownership_capability() {
     // A real product home with a real receipt: a receipt-bound mutation is
@@ -225,8 +265,14 @@ fn lifecycle_refuses_a_mutation_without_the_ownership_capability() {
     paths.ensure().unwrap();
     let ctrl = LifecycleController::new(paths.clone());
 
-    let store = CredentialStore::new(paths.credentials_dir());
-    let creds = store.bootstrap().unwrap();
+    let lock = InstallLock::new(paths.install_lock_path());
+    let guard = lock
+        .acquire(Actor::Installer, "lifecycle-test")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+    let creds = store.begin_bootstrap(&guard).unwrap();
+    let ownership = store.verify_ownership(&guard).unwrap();
     Receipt::bootstrap(
         Channel::SelfInstall,
         Target::X86_64PcWindowsMsvc,
@@ -244,12 +290,35 @@ fn lifecycle_refuses_a_mutation_without_the_ownership_capability() {
         ctrl.authorize(LifecycleOp::Stop, None),
         Err(Refusal::NotOwner)
     );
+    assert_ne!(
+        creds.attach_control().secret(),
+        ownership.credential().secret()
+    );
+    assert!(ctrl.authorize(LifecycleOp::Stop, Some(&ownership)).is_ok());
+}
+
+#[cfg(windows)]
+#[test]
+fn lifecycle_mutation_stops_at_the_windows_ownership_authority_gate() {
+    let dir = tempfile::tempdir().unwrap();
+    let paths = ProductPaths::under_app_home(dir.path());
+    paths.ensure().unwrap();
+    let ctrl = LifecycleController::new(paths.clone());
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "lifecycle-windows-ownership-gate")
+        .unwrap()
+        .unwrap();
+    let store = DashboardCredentialStore::for_product(&paths);
+
+    match store.begin_bootstrap(&guard) {
+        Err(CredentialError::PlatformAuthorityUnavailable(_)) => {}
+        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
+        Ok(_) => panic!("Windows ownership bootstrap must remain typed unavailable"),
+    }
     assert_eq!(
-        ctrl.authorize(LifecycleOp::Stop, Some(&creds.attach_control)),
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, None, Some(&Verdict::OwnedLive)),
         Err(Refusal::NotOwner)
     );
-    assert!(
-        ctrl.authorize(LifecycleOp::Stop, Some(&creds.ownership))
-            .is_ok()
-    );
+    assert!(!paths.credentials_dir().join("ownership.cap").exists());
+    assert!(!paths.receipt_path().exists());
 }

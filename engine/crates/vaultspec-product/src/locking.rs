@@ -19,6 +19,7 @@ use std::fs::File;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use fs4::fs_std::FileExt;
 use serde::{Deserialize, Serialize};
@@ -171,6 +172,7 @@ pub struct InstallLockGuard {
     claim_identity: FilesystemIdentity,
     claim_record: ClaimRecord,
     claim_bytes: Vec<u8>,
+    pending_credentials_claimed: AtomicBool,
 }
 
 impl InstallLockGuard {
@@ -228,6 +230,52 @@ impl InstallLockGuard {
         Ok(())
     }
 
+    #[cfg(unix)]
+    pub(crate) fn retained_product_root(
+        &self,
+        paths: &ProductPaths,
+    ) -> Result<File, LockAuthorityError> {
+        use std::os::unix::fs::MetadataExt as _;
+
+        self.verify_for_product(paths)?;
+        let descriptor = rustix::fs::openat(
+            &self.parent.directory,
+            "..",
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::DIRECTORY
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(std::io::Error::from)?;
+        let root = File::from(descriptor);
+        let held = root.metadata()?;
+        let named = paths.root().symlink_metadata()?;
+        let transaction =
+            rustix::fs::statat(&root, "transaction", rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+                .map_err(std::io::Error::from)?;
+        if !held.is_dir()
+            || !named.is_dir()
+            || named.file_type().is_symlink()
+            || held.dev() != named.dev()
+            || held.ino() != named.ino()
+            || transaction.st_dev as u64 != self.parent.identity.unix_device()?
+            || transaction.st_ino as u64 != self.parent.identity.unix_inode()?
+        {
+            return Err(LockAuthorityError::AuthorityMismatch);
+        }
+        Ok(root)
+    }
+
+    pub(crate) fn claim_pending_credentials(
+        &self,
+    ) -> Result<PendingCredentialsClaim<'_>, LockAuthorityError> {
+        self.pending_credentials_claimed
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .map_err(|_| LockAuthorityError::AuthorityMismatch)?;
+        Ok(PendingCredentialsClaim { guard: self })
+    }
+
     /// Explicitly retract the exact claim authorities and unlock the operating-
     /// system lock. Lifecycle code should prefer this fallible close at a
     /// transaction boundary so cleanup failure is visible to the caller.
@@ -275,6 +323,23 @@ impl InstallLockGuard {
         }
         drop(lock_file);
         failure.finish()
+    }
+}
+
+/// Process-local uniqueness proof for one pending credential transaction under
+/// an exact installation guard. A new guard after process death may recover the
+/// durable descriptor; one live guard cannot issue two simultaneous pending
+/// authorities.
+#[derive(Debug)]
+pub(crate) struct PendingCredentialsClaim<'guard> {
+    guard: &'guard InstallLockGuard,
+}
+
+impl Drop for PendingCredentialsClaim<'_> {
+    fn drop(&mut self) {
+        self.guard
+            .pending_credentials_claimed
+            .store(false, Ordering::Release);
     }
 }
 
@@ -438,6 +503,7 @@ impl InstallLock {
             claim_identity: claim.snapshot.identity,
             claim_record: claim.snapshot.record.clone(),
             claim_bytes: claim.snapshot.bytes.clone(),
+            pending_credentials_claimed: AtomicBool::new(false),
         }))
     }
 }
@@ -466,6 +532,20 @@ impl FilesystemIdentity {
             Self::Unix { .. } => LockIdentityStrength::UnixInode,
             #[cfg(windows)]
             Self::WindowsHighRes { .. } => LockIdentityStrength::WindowsHighRes128,
+        }
+    }
+
+    #[cfg(unix)]
+    fn unix_device(self) -> Result<u64, LockAuthorityError> {
+        match self {
+            Self::Unix { device, .. } => Ok(device),
+        }
+    }
+
+    #[cfg(unix)]
+    fn unix_inode(self) -> Result<u64, LockAuthorityError> {
+        match self {
+            Self::Unix { inode, .. } => Ok(inode),
         }
     }
 }

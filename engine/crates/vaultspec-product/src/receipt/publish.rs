@@ -55,6 +55,14 @@ impl<'generation, 'product, 'lock> ActiveReceiptPublishError<'generation, 'produ
         self.failure.kind
     }
 
+    pub(crate) fn activation_authority(
+        &self,
+    ) -> Option<(&ProductPaths, &crate::locking::InstallLockGuard)> {
+        self.verified
+            .as_ref()
+            .map(|verified| (verified.activation_paths(), verified.activation_guard()))
+    }
+
     #[must_use]
     pub(crate) fn retains_journal_authority(&self) -> bool {
         matches!(
@@ -84,7 +92,9 @@ impl<'generation, 'product, 'lock> ActiveReceiptPublishError<'generation, 'produ
     /// Resume publication with the same verified release set. Windows first
     /// retries exact app-home authority recovery when S171 left transition
     /// authority; Unix resumes directly from the durable journal cutpoint.
-    pub(crate) fn retry(mut self: Box<Self>) -> Result<(), Box<Self>> {
+    pub(crate) fn retry(
+        mut self: Box<Self>,
+    ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>, Box<Self>> {
         let Some(verified) = self.verified.take() else {
             self.failure.message = "verified release-set authority is missing".to_string();
             return Err(self);
@@ -190,7 +200,7 @@ impl<'generation, 'product, 'lock> ActiveReceiptPublishError<'generation, 'produ
         let mut retained_install_diagnostics =
             std::mem::take(&mut self.failure.install_diagnostics);
         match publish_active_receipt(verified) {
-            Ok(()) => Ok(()),
+            Ok(verified) => Ok(verified),
             Err(mut error) => {
                 if error.failure.journal_error.is_none() {
                     error.failure.journal_error = retained_journal_error.take();
@@ -1083,9 +1093,12 @@ fn publish_active_receipt_attempt(
 /// or receipt payload is accepted.
 pub(crate) fn publish_active_receipt<'generation, 'product, 'lock>(
     mut verified: VerifiedReleaseSet<'generation, 'product, 'lock>,
-) -> Result<(), Box<ActiveReceiptPublishError<'generation, 'product, 'lock>>> {
+) -> Result<
+    VerifiedReleaseSet<'generation, 'product, 'lock>,
+    Box<ActiveReceiptPublishError<'generation, 'product, 'lock>>,
+> {
     match publish_active_receipt_attempt(&mut verified) {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(verified),
         Err(failure) => Err(Box::new(ActiveReceiptPublishError {
             verified: Some(verified),
             failure,

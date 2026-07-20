@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "compile-time sealed verification substrate awaits a production adapter authority"
+)]
+
 use super::*;
 
 #[path = "verification/snapshot.rs"]

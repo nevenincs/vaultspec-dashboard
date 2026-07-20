@@ -1,3 +1,8 @@
+#![allow(
+    dead_code,
+    reason = "compile-time sealed verification substrate awaits a production adapter authority"
+)]
+
 use super::*;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -194,7 +199,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
     /// The member manifest is found only by its externally trusted digest in a
     /// complete first scan. Candidate-declared path data participates only
     /// after those exact bytes have been located and bounded-reread.
-    pub fn verify(
+    pub(super) fn verify(
         generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
         input: ReleaseVerificationInput<'_>,
         receipt_context: ReceiptActivationContext,
@@ -217,6 +222,10 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             &authority.expected_member_manifest_digest,
         )?;
         require_digest("expected_cohort_digest", &authority.expected_cohort_digest)?;
+        require_digest(
+            "receipt_external_cohort_digest",
+            &authority.receipt_external_cohort_digest,
+        )?;
         require_digest(
             "expected_component_lock_digest",
             &authority.expected_component_lock_digest,
@@ -373,7 +382,9 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
                 release_set_identity: manifest.cohort.id,
                 release_set_member_digest: member_digest,
                 component_lock_digest,
-                external_five_member_cohort_digest: cohort_digest,
+                external_five_member_cohort_digest: authority
+                    .receipt_external_cohort_digest
+                    .clone(),
                 target: manifest.target,
                 a2a_identity: manifest.a2a_component.release_identity,
                 active_generation,
