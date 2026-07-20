@@ -195,6 +195,17 @@ separately reviewable.
 
 ## Implications
 
+- The copied updater stops the discovered owned gateway by proof, never by force.
+  Composing the base decision's D4 (a foreign or unowned resident is immutable) and D5
+  (shutdown is a receipt-bound ownership operation), the updater drives an authenticated
+  drain and an ownership-authorized shutdown, then requires the recorded process dead AND
+  the endpoint silent within bounded deadlines. On a deadline breach it returns a typed
+  stop-timeout and the update transaction rolls back with the prior release intact and
+  still running. There is no force-kill of a non-child process: a pid is not a handle,
+  and killing a recycled pid would be strictly worse than a rolled-back update.
+  Symmetrically, quiescence is never asserted from absence alone: the cold path requires
+  the discovery record absent and refuses typed whenever one exists.
+
 - Composite release production must replace the legacy target archive split with the
   canonical ZIP profile.
 - Product code gains a sealed materializer and retained generation writer; archive crates

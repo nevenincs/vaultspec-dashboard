@@ -307,6 +307,27 @@ impl<'guard> UpdateTransaction<'guard> {
         Ok((Quiescence::asserted_after_stop(), evidence))
     }
 
+    /// Assert quiescence over a provably COLD installed gateway (the
+    /// proceed-cold arm of the discovered-drive: installed-but-cleanly-stopped
+    /// is a valid state with nothing to drain), advancing to `Draining` and
+    /// minting the same [`Quiescence`] witness the drain path mints.
+    ///
+    /// Fail-closed TOCTOU guard: the discovery record is re-read under the
+    /// verified guard and must be ABSENT. Any present record — live,
+    /// starting, stale, or foreign — is a typed refusal and rolls the
+    /// transaction back; a discoverable gateway goes through
+    /// [`Self::drain_and_stop_discovered`] or the quarantine flow, never the
+    /// cold path. The mint stays inside the transaction, exactly as for the
+    /// proven drain.
+    pub fn assert_cold_stopped(&mut self) -> Result<Quiescence, TransactionError> {
+        self.expect_phase(InterruptionMarker::Staged)?;
+        self.guard.verify_for_product(&self.paths)?;
+        crate::gateway_drain::require_discovery_absent(&self.paths)
+            .map_err(|error| self.fail(TransactionError::Gateway(error)))?;
+        self.advance(InterruptionMarker::Draining)?;
+        Ok(Quiescence::asserted_after_stop())
+    }
+
     /// Capture and verify the consistency-group snapshot (S49), advancing to
     /// `Snapshotted`. The captured snapshot is retained for rollback.
     pub fn snapshot(&mut self, group: &ConsistencyGroupSpec) -> Result<(), TransactionError> {

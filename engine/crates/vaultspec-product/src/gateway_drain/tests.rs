@@ -394,3 +394,41 @@ fn the_transaction_mints_quiescence_only_after_a_proven_discovered_stop() {
     drop(txn);
     handle.join().expect("server thread");
 }
+
+#[test]
+fn a_record_free_product_mints_cold_quiescence_inside_the_transaction() {
+    use crate::receipt::{Channel, InterruptionMarker};
+    use crate::transaction::{UpdatePlan, UpdateTransaction};
+
+    let fixture = Fixture::new();
+    let plan = UpdatePlan::new(3, "cand-cold", None, Channel::SelfInstall, "head-cold")
+        .expect("valid update plan");
+    let mut txn =
+        UpdateTransaction::begin(fixture.paths.clone(), &fixture.guard, plan).expect("begin");
+    let quiescence = txn.assert_cold_stopped().expect("provably cold product");
+    assert_eq!(txn.phase(), InterruptionMarker::Draining);
+    // The witness is the same type the migration path requires.
+    let _: crate::migration::Quiescence = quiescence;
+}
+
+#[test]
+fn a_discoverable_gateway_refuses_the_cold_path_typed() {
+    use crate::receipt::Channel;
+    use crate::transaction::{TransactionError, UpdatePlan, UpdateTransaction};
+
+    let fixture = Fixture::new();
+    // ANY present record refuses — even a stale foreign one: a discoverable
+    // gateway is drained or quarantined, never assumed stopped.
+    fixture.write_discovery(&discovery_record("someone-else", "127.0.0.1:1", 1, 1));
+    let plan = UpdatePlan::new(3, "cand-cold", None, Channel::SelfInstall, "head-cold")
+        .expect("valid update plan");
+    let mut txn =
+        UpdateTransaction::begin(fixture.paths.clone(), &fixture.guard, plan).expect("begin");
+    let error = txn
+        .assert_cold_stopped()
+        .expect_err("present record refuses");
+    assert!(matches!(
+        error,
+        TransactionError::Gateway(GatewayDrainError::GatewayDiscoverable)
+    ));
+}

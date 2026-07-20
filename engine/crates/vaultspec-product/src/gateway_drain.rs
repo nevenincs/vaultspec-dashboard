@@ -250,6 +250,19 @@ fn drive_drain_stop(
     })
 }
 
+/// The cold-path predicate (proceed-cold decision over the DiscoveryAbsent
+/// edge): the desktop gateway publishes discovery whenever it runs, so a
+/// PRESENT record — live, starting, stale, or foreign — refuses the cold
+/// quiescence mint typed; the caller adjudicates through the drain or
+/// quarantine flows instead. Only a provably record-free product is cold.
+pub(crate) fn require_discovery_absent(paths: &ProductPaths) -> Result<(), GatewayDrainError> {
+    match read_bounded_discovery(&paths.app_home().join(DISCOVERY_FILE)) {
+        Err(GatewayDrainError::DiscoveryAbsent) => Ok(()),
+        Ok(_) => Err(GatewayDrainError::GatewayDiscoverable),
+        Err(error) => Err(error),
+    }
+}
+
 /// Bounded no-follow read of the product discovery record.
 fn read_bounded_discovery(path: &Path) -> Result<String, GatewayDrainError> {
     let mut options = std::fs::OpenOptions::new();
@@ -296,8 +309,12 @@ pub enum GatewayDrainError {
     /// The held guard is not the canonical product installation authority.
     LockAuthority(LockAuthorityError),
     /// No discovery record exists; there is no provable gateway to drain, and
-    /// quiescence is never asserted from absence.
+    /// the drain path never asserts quiescence from absence (the cold path is
+    /// `UpdateTransaction::assert_cold_stopped`).
     DiscoveryAbsent,
+    /// A discovery record exists, so the cold path refuses: a discoverable
+    /// gateway must be drained or quarantined, never assumed stopped.
+    GatewayDiscoverable,
     /// The discovery record could not be read within bounds.
     DiscoveryUnreadable(String),
     /// The discovery record was malformed or secret-bearing.
@@ -335,6 +352,10 @@ impl std::fmt::Display for GatewayDrainError {
         match self {
             Self::LockAuthority(error) => write!(f, "installation authority rejected: {error}"),
             Self::DiscoveryAbsent => write!(f, "no gateway discovery record exists"),
+            Self::GatewayDiscoverable => write!(
+                f,
+                "a gateway discovery record exists; drain or quarantine it instead of the cold path"
+            ),
             Self::DiscoveryUnreadable(detail) => {
                 write!(f, "gateway discovery is unreadable: {detail}")
             }
