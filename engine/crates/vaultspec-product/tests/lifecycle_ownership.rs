@@ -463,19 +463,12 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     let handoff = creds_reference(&store);
     let owned = discovery_verdict("seat-o", &handoff, &ctx);
     assert_eq!(owned, Verdict::OwnedLive);
-    // A different-owner gateway is a FOREIGN verdict — attachable-read-only when
-    // the handoff is a genuinely owner-restricted file, immutable otherwise. The
-    // exact variant is platform/ACL-dependent (a test tempfile may not satisfy
-    // the owner-restriction check); either way it is foreign, and the mutation
-    // gate below refuses it. The security property under test is that refusal.
+    // A different-owner gateway that is live, fresh, compatible, and offers a
+    // genuinely owner-restricted handoff (established by `creds_reference`)
+    // classifies attachable-read-only — never mutable. The mutation gate below
+    // then refuses it despite the readable handoff.
     let foreign = discovery_verdict("someone-else", &handoff, &ctx);
-    assert!(
-        matches!(
-            foreign,
-            Verdict::ForeignAttachable | Verdict::ForeignImmutable { .. }
-        ),
-        "a different owner must classify foreign, got {foreign:?}"
-    );
+    assert_eq!(foreign, Verdict::ForeignAttachable);
 
     // BOTH gates hold (live owned gateway) -> the mutation is allowed.
     assert!(
