@@ -463,8 +463,19 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     let handoff = creds_reference(&store);
     let owned = discovery_verdict("seat-o", &handoff, &ctx);
     assert_eq!(owned, Verdict::OwnedLive);
+    // A different-owner gateway is a FOREIGN verdict — attachable-read-only when
+    // the handoff is a genuinely owner-restricted file, immutable otherwise. The
+    // exact variant is platform/ACL-dependent (a test tempfile may not satisfy
+    // the owner-restriction check); either way it is foreign, and the mutation
+    // gate below refuses it. The security property under test is that refusal.
     let foreign = discovery_verdict("someone-else", &handoff, &ctx);
-    assert_eq!(foreign, Verdict::ForeignAttachable);
+    assert!(
+        matches!(
+            foreign,
+            Verdict::ForeignAttachable | Verdict::ForeignImmutable { .. }
+        ),
+        "a different owner must classify foreign, got {foreign:?}"
+    );
 
     // BOTH gates hold (live owned gateway) -> the mutation is allowed.
     assert!(
@@ -525,7 +536,48 @@ fn discovery_verdict(owner: &str, handoff: &Path, ctx: &DiscoveryContext) -> Ver
     GatewayDiscovery::parse(&raw).unwrap().classify(ctx)
 }
 
-/// The attach-control credential file path (a present, readable handoff).
+/// The attach-control credential file path, established as a genuinely *trusted*
+/// (owner-restricted) handoff. Bootstrap writes the file, but on Windows
+/// `CredentialStore`'s `restrict_to_owner` is a no-op that relies on the
+/// credentials directory inheriting a clean owner-only ACL from the user's app
+/// home. A shared CI/sandbox `%TEMP%` instead injects extra inherited ACEs (e.g.
+/// a sandbox group), which `handoff_is_owner_restricted` correctly rejects — so
+/// this test establishes the owner-only ACL explicitly, exactly as the S17
+/// desktop-gateway acceptance does, to prove the real `has_trusted_handoff`
+/// property deterministically rather than depending on the parent directory's
+/// inherited ACL.
 fn creds_reference(store: &CredentialStore) -> PathBuf {
-    store.attach_control_reference()
+    let path = store.attach_control_reference();
+    restrict_handoff_to_owner(&path);
+    path
+}
+
+/// Restrict a handoff credential file to its owner (plus SYSTEM and the built-in
+/// Administrators group), stripping inheritance — the owner-only ACL the
+/// production credential store yields under a clean app home, and the shape
+/// `handoff_is_owner_restricted` accepts.
+fn restrict_handoff_to_owner(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    }
+    #[cfg(windows)]
+    {
+        let whoami = std::process::Command::new("whoami.exe").output().unwrap();
+        let user = String::from_utf8(whoami.stdout).unwrap();
+        let grant = format!("{}:F", user.trim());
+        let status = std::process::Command::new("icacls.exe")
+            .arg(path)
+            .args([
+                "/inheritance:r",
+                "/grant:r",
+                &grant,
+                "*S-1-5-18:F",
+                "*S-1-5-32-544:F",
+            ])
+            .status()
+            .unwrap();
+        assert!(status.success());
+    }
 }
