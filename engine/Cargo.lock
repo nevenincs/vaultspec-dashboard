@@ -3773,6 +3773,9 @@ dependencies = [
 name = "vaultspec-updater"
 version = "0.1.4"
 dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
  "vaultspec-product",
 ]
 

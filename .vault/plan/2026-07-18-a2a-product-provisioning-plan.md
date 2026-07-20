@@ -173,7 +173,7 @@ Dispatch to vaultspec-high-executor to snapshot every schema-bearing store as on
 Dispatch to vaultspec-high-executor to build the copied updater executable, owner-restricted descriptor handoff, dashboard exit sequence, relaunch, and Windows-safe replacement behavior.
 
 - [x] `W03.P07.S57` - Declare the target-specific external updater executable as a separate workspace package; `engine/crates/vaultspec-updater/Cargo.toml`.
-- [ ] `W03.P07.S58` - Expose a testable updater runner that consumes one owner-restricted descriptor and delegates all authority checks to vaultspec-product; `engine/crates/vaultspec-updater/src/lib.rs`.
+- [x] `W03.P07.S58` - Expose a testable updater runner that consumes one owner-restricted descriptor and delegates all authority checks to vaultspec-product; `engine/crates/vaultspec-updater/src/lib.rs`.
 - [ ] `W03.P07.S59` - Parse the one-time owner-restricted descriptor outside the active release, acquire the installation lock before any drain or mutation, execute or recover the ordered transaction without delegating lock ownership to the gateway, redact secrets, and return bounded diagnostics; `engine/crates/vaultspec-updater/src/main.rs`.
 - [ ] `W03.P07.S60` - Replace the Cargo Dist axoupdater-only flow with copy-out, owner-restricted descriptor handoff, helper launch, seat exit, and updater-observed relaunch; `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`.
 - [ ] `W03.P07.S61` - Align update command help and refusal outcomes with complete self-install and package-manager transaction authority; `engine/crates/vaultspec-cli/src/main.rs`.
