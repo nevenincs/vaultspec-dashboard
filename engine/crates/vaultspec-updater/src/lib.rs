@@ -22,10 +22,15 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use vaultspec_product::discovery::handoff_is_owner_restricted;
-use vaultspec_product::locking::{Actor, InstallLock};
+use vaultspec_product::gateway_drain::{
+    DrainContext, DrainDeadlines, GatewayDrainError, OwnedGatewayLease,
+};
+use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard};
+use vaultspec_product::migration::{MigrationPlan, StagedMigration};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::recovery::{RecoveryError, RecoveryOutcome, recover};
-use vaultspec_product::transaction::TransactionError;
+use vaultspec_product::snapshot::ConsistencyGroupSpec;
+use vaultspec_product::transaction::{TransactionError, UpdatePlan, UpdateTransaction};
 
 /// The maximum owner-restricted descriptor size the updater will read.
 const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
@@ -142,6 +147,91 @@ pub fn run(descriptor_path: &Path) -> Result<UpdaterRun, UpdaterError> {
     })
 }
 
+/// The typed inputs the fresh-update EXECUTE drive consumes. Assembled from the
+/// descriptor's execute-intent (which joins the descriptor with S60 once the
+/// windows-private-file DACL authority lands) or supplied directly.
+pub struct ExecuteInputs {
+    /// The transaction plan facts (consistency generation, candidate/prior
+    /// generation, channel, target head).
+    pub plan: UpdatePlan,
+    /// Classification context for the discovered gateway.
+    pub drain_context: DrainContext,
+    /// Bounds on the drain-and-stop drive.
+    pub deadlines: DrainDeadlines,
+    /// The consistency group to snapshot.
+    pub group: ConsistencyGroupSpec,
+    /// The staged migration to run under quiescence.
+    pub staged_migration: StagedMigration,
+    /// The validated migration plan.
+    pub migration_plan: MigrationPlan,
+}
+
+/// How far the fresh-update EXECUTE drive reached.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ExecuteOutcome {
+    /// The drive drained the discovered gateway, snapshotted, and migrated, and
+    /// reached the activation boundary. The materialize + receipt-commit SWAP is
+    /// the materializer seam; until it lands the drive rolls back cleanly rather
+    /// than leave a mid-flight transaction or fake an activation.
+    ReadyToActivatePendingSwap,
+    /// Discovery was absent — installed-but-cleanly-stopped, a valid cold state
+    /// (per the accepted `guard_owned_mutation` D4 contract). Proceeding requires
+    /// the cold `Quiescence` mint (`assert_cold_stopped`), which is pending in the
+    /// materializer lane, so the drive rolled back rather than fake-mint a witness.
+    ColdPathPendingMint,
+}
+
+/// Drive one fresh update against the discovered gateway.
+///
+/// Order (the recorded drive contract): begin the transaction, acquire the sealed
+/// [`OwnedGatewayLease`] over the DISCOVERED gateway (only `OwnedLive` proceeds;
+/// a foreign/stale/incompatible gateway is a typed rollback; absent discovery is
+/// the valid cold state), drain-and-stop it (receiving the `Quiescence` witness —
+/// never minting it), snapshot, migrate, and reach the activation boundary. The
+/// materialize + receipt-commit swap is the materializer seam.
+pub fn execute_update(
+    paths: &ProductPaths,
+    guard: &InstallLockGuard,
+    inputs: ExecuteInputs,
+) -> Result<ExecuteOutcome, UpdaterError> {
+    let mut txn = UpdateTransaction::begin(paths.clone(), guard, inputs.plan)?;
+
+    let lease = match OwnedGatewayLease::acquire(paths, guard, &inputs.drain_context) {
+        Ok(lease) => lease,
+        Err(GatewayDrainError::DiscoveryAbsent) => {
+            // Installed-but-cleanly-stopped is a valid cold state, but the cold
+            // Quiescence mint (`assert_cold_stopped`) is pending the materializer
+            // lane; roll back rather than fake-mint a witness. Full cold-path
+            // safety additionally requires the SEAT stopped (so nothing launches a
+            // new gateway after the cold snapshot) — S60's seat-exit precondition.
+            let _ = txn.rollback();
+            return Ok(ExecuteOutcome::ColdPathPendingMint);
+        }
+        Err(error) => {
+            // A foreign gateway is never drained (ADR D4); a stale one is the
+            // quarantine flow; an incompatible one is refused. All roll back with
+            // the prior release intact and still running.
+            let _ = txn.rollback();
+            return Err(UpdaterError::Drain(error));
+        }
+    };
+
+    // The witness is minted INSIDE the transaction that performed the proven stop.
+    let (quiescence, _evidence) = txn.drain_and_stop_discovered(lease, inputs.deadlines)?;
+    txn.snapshot(&inputs.group)?;
+    txn.migrate(
+        &inputs.staged_migration,
+        &inputs.migration_plan,
+        &quiescence,
+    )?;
+
+    let ready = txn.ready_to_activate();
+    // The materialize + receipt-commit SWAP is the materializer seam. Until it
+    // lands, roll back cleanly (prior-or-complete, no partial active generation).
+    ready.rollback()?;
+    Ok(ExecuteOutcome::ReadyToActivatePendingSwap)
+}
+
 /// Read and validate the owner-restricted descriptor.
 pub fn read_descriptor(descriptor_path: &Path) -> Result<UpdaterDescriptor, UpdaterError> {
     if !handoff_is_owner_restricted(descriptor_path) {
@@ -228,6 +318,9 @@ pub enum UpdaterError {
     Descriptor(&'static str),
     /// Another installer or updater already holds the installation lock.
     Busy,
+    /// The discovered gateway could not be drained and stopped (foreign, stale,
+    /// incompatible, or the stop was unproven within the deadline).
+    Drain(GatewayDrainError),
     /// The ordered update transaction failed.
     Transaction(TransactionError),
     /// Interruption recovery failed.
@@ -244,6 +337,7 @@ impl std::fmt::Display for UpdaterError {
                 f,
                 "the installation lock is held by another installer or updater"
             ),
+            Self::Drain(error) => write!(f, "gateway drain failed: {error}"),
             Self::Transaction(error) => write!(f, "update transaction failed: {error}"),
             Self::Recovery(error) => write!(f, "interruption recovery failed: {error}"),
             Self::Io(detail) => write!(f, "updater io error: {detail}"),
@@ -254,6 +348,7 @@ impl std::fmt::Display for UpdaterError {
 impl std::error::Error for UpdaterError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
+            Self::Drain(error) => Some(error),
             Self::Transaction(error) => Some(error),
             Self::Recovery(error) => Some(error),
             Self::Descriptor(_) | Self::Busy | Self::Io(_) => None,
@@ -264,6 +359,12 @@ impl std::error::Error for UpdaterError {
 impl From<TransactionError> for UpdaterError {
     fn from(error: TransactionError) -> Self {
         Self::Transaction(error)
+    }
+}
+
+impl From<GatewayDrainError> for UpdaterError {
+    fn from(error: GatewayDrainError) -> Self {
+        Self::Drain(error)
     }
 }
 

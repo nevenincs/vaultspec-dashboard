@@ -73,9 +73,10 @@ fn exit_code(error: &UpdaterError) -> i32 {
     match error {
         UpdaterError::Busy => EXIT_BUSY,
         UpdaterError::Descriptor(_) => EXIT_DESCRIPTOR,
-        UpdaterError::Transaction(_) | UpdaterError::Recovery(_) | UpdaterError::Io(_) => {
-            EXIT_FAILED
-        }
+        UpdaterError::Drain(_)
+        | UpdaterError::Transaction(_)
+        | UpdaterError::Recovery(_)
+        | UpdaterError::Io(_) => EXIT_FAILED,
     }
 }
 
