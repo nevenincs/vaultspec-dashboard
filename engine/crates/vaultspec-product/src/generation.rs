@@ -41,7 +41,129 @@ pub struct LockedProduct<'lock> {
     guard: &'lock InstallLockGuard,
     root: DirectoryAuthority,
     generations: DirectoryAuthority,
+    #[cfg(unix)]
     app_home: DirectoryAuthority,
+    #[cfg(windows)]
+    app_home: AppHomeAuthority,
+}
+
+/// Windows app-home authority is never discarded while a locked product is
+/// live. The private `InCall` state exists only while one synchronous S171
+/// installation call owns the exact directory handle; every return path
+/// replaces it with either exclusive or transition authority.
+#[cfg(windows)]
+#[derive(Debug)]
+enum AppHomeAuthority {
+    Exclusive(DirectoryAuthority),
+    Transition(vaultspec_windows_authority::InstallDirectoryAuthority),
+    InCall,
+}
+
+/// Retained S171 failure evidence. File authorities remain live until receipt
+/// publication either reconciles under restored exclusivity or explicitly
+/// retries recovery from an indeterminate directory transition.
+#[cfg(windows)]
+#[derive(Debug)]
+pub(crate) struct AppHomeInstallFailure {
+    pub(crate) stage: vaultspec_windows_authority::InstallSynchronizedFileStage,
+    pub(crate) outcome: vaultspec_windows_authority::InstallSynchronizedFileOutcome,
+    pub(crate) source_authority: Option<vaultspec_windows_authority::AuthorityFile>,
+    pub(crate) pre_move_destination_snapshot:
+        Option<vaultspec_windows_authority::InstallFileSnapshot>,
+    pub(crate) pre_move_destination_authority: Option<vaultspec_windows_authority::AuthorityFile>,
+    pub(crate) reacquired_pre_move_destination_authority:
+        Option<vaultspec_windows_authority::AuthorityFile>,
+    pub(crate) installed_destination_authority: Option<vaultspec_windows_authority::AuthorityFile>,
+    pub(crate) destination_reacquisition_error: Option<std::io::Error>,
+    pub(crate) native_move_error: Option<std::io::Error>,
+    pub(crate) error: std::io::Error,
+    pub(crate) directory_recovery_error: Option<std::io::Error>,
+}
+
+/// Copied/owned S171 diagnostics retained after exact file leases are released
+/// so common journal reconciliation can reopen the destination.
+#[cfg(windows)]
+#[derive(Debug)]
+pub(crate) struct AppHomeInstallDiagnostic {
+    pub(crate) stage: vaultspec_windows_authority::InstallSynchronizedFileStage,
+    pub(crate) outcome: vaultspec_windows_authority::InstallSynchronizedFileOutcome,
+    pub(crate) pre_move_destination_snapshot:
+        Option<vaultspec_windows_authority::InstallFileSnapshot>,
+    pub(crate) source_authority_was_retained: bool,
+    pub(crate) pre_move_destination_authority_was_retained: bool,
+    pub(crate) reacquired_pre_move_destination_authority_was_retained: bool,
+    pub(crate) installed_destination_authority_was_retained: bool,
+    pub(crate) destination_reacquisition_error: Option<std::io::Error>,
+    pub(crate) native_move_error: Option<std::io::Error>,
+    pub(crate) error: std::io::Error,
+    pub(crate) directory_recovery_error: Option<std::io::Error>,
+}
+
+#[cfg(windows)]
+impl AppHomeInstallDiagnostic {
+    pub(crate) fn summary(&self) -> String {
+        format!(
+            "S171 {:?}/{:?}, destination_snapshot={}, source={}, old={}, reacquired_old={}, installed={}, destination_reacquisition_error={}, native_move_error={}, directory_recovery_error={}, error={}",
+            self.stage,
+            self.outcome,
+            self.pre_move_destination_snapshot.is_some(),
+            self.source_authority_was_retained,
+            self.pre_move_destination_authority_was_retained,
+            self.reacquired_pre_move_destination_authority_was_retained,
+            self.installed_destination_authority_was_retained,
+            self.destination_reacquisition_error.is_some(),
+            self.native_move_error.is_some(),
+            self.directory_recovery_error.is_some(),
+            self.error,
+        )
+    }
+}
+
+#[cfg(windows)]
+impl AppHomeInstallFailure {
+    pub(crate) fn evidence_summary(&self) -> String {
+        format!(
+            "source={}, old={}, reacquired_old={}, installed={}, destination_reacquisition_error={}, native_move_error={}, directory_recovery_error={}",
+            self.source_authority.is_some(),
+            self.pre_move_destination_authority.is_some(),
+            self.reacquired_pre_move_destination_authority.is_some(),
+            self.installed_destination_authority.is_some(),
+            self.destination_reacquisition_error.is_some(),
+            self.native_move_error.is_some(),
+            self.directory_recovery_error.is_some(),
+        )
+    }
+
+    pub(crate) fn release_file_leases(self) -> AppHomeInstallDiagnostic {
+        AppHomeInstallDiagnostic {
+            stage: self.stage,
+            outcome: self.outcome,
+            pre_move_destination_snapshot: self.pre_move_destination_snapshot,
+            source_authority_was_retained: self.source_authority.is_some(),
+            pre_move_destination_authority_was_retained: self
+                .pre_move_destination_authority
+                .is_some(),
+            reacquired_pre_move_destination_authority_was_retained: self
+                .reacquired_pre_move_destination_authority
+                .is_some(),
+            installed_destination_authority_was_retained: self
+                .installed_destination_authority
+                .is_some(),
+            destination_reacquisition_error: self.destination_reacquisition_error,
+            native_move_error: self.native_move_error,
+            error: self.error,
+            directory_recovery_error: self.directory_recovery_error,
+        }
+    }
+}
+
+/// Result of moving the exact retained app-home authority through S171.
+#[cfg(windows)]
+#[derive(Debug)]
+pub(crate) enum AppHomeInstallOutcome {
+    Installed(vaultspec_windows_authority::AuthorityFile),
+    Reconcile(AppHomeInstallFailure),
+    Indeterminate(AppHomeInstallFailure),
 }
 
 impl<'lock> LockedProduct<'lock> {
@@ -62,6 +184,8 @@ impl<'lock> LockedProduct<'lock> {
         let app_home = root
             .open_child(OsStr::new("app-home"))
             .map_err(|error| bind_io("app-home relative open", error))?;
+        #[cfg(windows)]
+        let app_home = AppHomeAuthority::Exclusive(app_home);
         let product = Self {
             paths,
             guard,
@@ -176,7 +300,17 @@ impl<'lock> LockedProduct<'lock> {
         self.root.validate_parent(self.paths.root())?;
         self.generations
             .validate_parent(&self.paths.generations_dir())?;
+        #[cfg(unix)]
         self.app_home.validate_parent(&self.paths.app_home())?;
+        #[cfg(windows)]
+        match &self.app_home {
+            AppHomeAuthority::Exclusive(authority) => {
+                authority.validate_parent(&self.paths.app_home())?;
+            }
+            AppHomeAuthority::Transition(_) | AppHomeAuthority::InCall => {
+                return Err(GenerationError::AppHomeAuthorityTransition);
+            }
+        }
 
         #[cfg(unix)]
         {
@@ -377,6 +511,200 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
     #[must_use]
     pub(crate) fn install_guard(&self) -> &InstallLockGuard {
         self.product.guard
+    }
+
+    /// Synchronize the exact retained app-home directory after a Unix
+    /// same-directory journal installation.
+    #[cfg(unix)]
+    pub(crate) fn synchronize_app_home(&self) -> Result<(), GenerationError> {
+        self.validate_retained()?;
+        rustix::fs::fsync(&self.product.app_home.directory)?;
+        self.validate_retained()
+    }
+
+    /// Create one fixed owner-private initialization file relative to the exact
+    /// retained Unix app-home directory.
+    #[cfg(unix)]
+    pub(crate) fn create_activation_init_file(
+        &self,
+        name: &OsStr,
+    ) -> Result<std::fs::File, GenerationError> {
+        self.validate_retained()?;
+        let file = rustix::fs::openat(
+            &self.product.app_home.directory,
+            name,
+            rustix::fs::OFlags::CREATE
+                | rustix::fs::OFlags::EXCL
+                | rustix::fs::OFlags::RDWR
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+        )?;
+        self.validate_retained()?;
+        Ok(std::fs::File::from(file))
+    }
+
+    /// Rename one fixed initialization entry to the active journal name inside
+    /// the exact retained Unix app-home directory.
+    #[cfg(unix)]
+    pub(crate) fn install_activation_init_file(
+        &self,
+        source_name: &OsStr,
+        destination_name: &OsStr,
+    ) -> Result<(), GenerationError> {
+        self.validate_retained()?;
+        match rustix::fs::statat(
+            &self.product.app_home.directory,
+            destination_name,
+            rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+        ) {
+            Err(error) if error == rustix::io::Errno::NOENT => {}
+            Ok(_) => {
+                return Err(GenerationError::UnsafeFilesystemObject(
+                    self.product.paths.app_home().join(destination_name),
+                ));
+            }
+            Err(error) => return Err(GenerationError::Io(error.into())),
+        }
+        rustix::fs::renameat(
+            &self.product.app_home.directory,
+            source_name,
+            &self.product.app_home.directory,
+            destination_name,
+        )?;
+        rustix::fs::fsync(&self.product.app_home.directory)?;
+        self.validate_retained()
+    }
+
+    /// Move the exact retained Windows app-home authority through the S171
+    /// synchronized-file installation primitive.
+    ///
+    /// Every return path restores either full exclusive authority or the exact
+    /// transition authority needed for a later typed recovery attempt.
+    #[cfg(windows)]
+    pub(crate) fn install_synchronized_app_home_file(
+        &mut self,
+        source_name: &OsStr,
+        destination_name: &OsStr,
+    ) -> AppHomeInstallOutcome {
+        let directory_path = self.product.paths.app_home();
+        let authority = std::mem::replace(&mut self.product.app_home, AppHomeAuthority::InCall);
+        let AppHomeAuthority::Exclusive(authority) = authority else {
+            self.product.app_home = authority;
+            return AppHomeInstallOutcome::Indeterminate(AppHomeInstallFailure {
+                stage: vaultspec_windows_authority::InstallSynchronizedFileStage::RetainedDirectoryValidation,
+                outcome: vaultspec_windows_authority::InstallSynchronizedFileOutcome::BeforeMove,
+                source_authority: None,
+                pre_move_destination_snapshot: None,
+                pre_move_destination_authority: None,
+                reacquired_pre_move_destination_authority: None,
+                installed_destination_authority: None,
+                destination_reacquisition_error: None,
+                native_move_error: None,
+                error: std::io::Error::other(
+                    "app-home does not retain exclusive installation authority",
+                ),
+                directory_recovery_error: None,
+            });
+        };
+        let DirectoryAuthority {
+            directory,
+            identity: expected_identity,
+        } = authority;
+        debug_assert_eq!(directory.identity(), expected_identity);
+        match directory.install_synchronized_file(&directory_path, source_name, destination_name) {
+            Ok((directory, installed)) => {
+                self.product.app_home =
+                    AppHomeAuthority::Exclusive(DirectoryAuthority::from_retained(directory));
+                AppHomeInstallOutcome::Installed(installed)
+            }
+            Err(failure) => {
+                let parts = failure.into_parts();
+                let vaultspec_windows_authority::InstallSynchronizedFileErrorParts {
+                    stage,
+                    outcome,
+                    directory_authority,
+                    source_authority,
+                    pre_move_destination_snapshot,
+                    pre_move_destination_authority,
+                    reacquired_pre_move_destination_authority,
+                    installed_destination_authority,
+                    destination_reacquisition_error,
+                    native_move_error,
+                    error,
+                } = parts;
+                let recovered = match directory_authority.into_exclusive() {
+                    Ok(directory) => Ok(directory),
+                    Err(transition) => transition.recover(&directory_path),
+                };
+                match recovered {
+                    Ok(directory) => {
+                        self.product.app_home = AppHomeAuthority::Exclusive(
+                            DirectoryAuthority::from_retained(directory),
+                        );
+                        AppHomeInstallOutcome::Reconcile(AppHomeInstallFailure {
+                            stage,
+                            outcome,
+                            source_authority,
+                            pre_move_destination_snapshot,
+                            pre_move_destination_authority,
+                            reacquired_pre_move_destination_authority,
+                            installed_destination_authority,
+                            destination_reacquisition_error,
+                            native_move_error,
+                            error,
+                            directory_recovery_error: None,
+                        })
+                    }
+                    Err(recovery) => {
+                        let (transition, directory_recovery_error) = recovery.into_parts();
+                        self.product.app_home = AppHomeAuthority::Transition(transition);
+                        AppHomeInstallOutcome::Indeterminate(AppHomeInstallFailure {
+                            stage,
+                            outcome,
+                            source_authority,
+                            pre_move_destination_snapshot,
+                            pre_move_destination_authority,
+                            reacquired_pre_move_destination_authority,
+                            installed_destination_authority,
+                            destination_reacquisition_error,
+                            native_move_error,
+                            error,
+                            directory_recovery_error: Some(directory_recovery_error),
+                        })
+                    }
+                }
+            }
+        }
+    }
+
+    /// Retry recovery of an exact Windows app-home transition authority.
+    #[cfg(windows)]
+    pub(crate) fn recover_app_home_authority(&mut self) -> Result<(), GenerationError> {
+        let directory_path = self.product.paths.app_home();
+        let authority = std::mem::replace(&mut self.product.app_home, AppHomeAuthority::InCall);
+        match authority {
+            AppHomeAuthority::Exclusive(authority) => {
+                self.product.app_home = AppHomeAuthority::Exclusive(authority);
+                self.validate_retained()
+            }
+            AppHomeAuthority::Transition(transition) => match transition.recover(&directory_path) {
+                Ok(directory) => {
+                    self.product.app_home =
+                        AppHomeAuthority::Exclusive(DirectoryAuthority::from_retained(directory));
+                    self.validate_retained()
+                }
+                Err(recovery) => {
+                    let (transition, error) = recovery.into_parts();
+                    self.product.app_home = AppHomeAuthority::Transition(transition);
+                    Err(GenerationError::Io(error))
+                }
+            },
+            AppHomeAuthority::InCall => {
+                self.product.app_home = AppHomeAuthority::InCall;
+                Err(GenerationError::AppHomeAuthorityTransition)
+            }
+        }
     }
 
     fn creation_failed(
@@ -925,6 +1253,14 @@ impl DirectoryAuthority {
         })
     }
 
+    fn from_retained(directory: vaultspec_windows_authority::AuthorityDirectory) -> Self {
+        let identity = directory.identity();
+        Self {
+            directory,
+            identity,
+        }
+    }
+
     fn identity(&self) -> DirectoryIdentity {
         self.identity
     }
@@ -1047,6 +1383,9 @@ pub enum GenerationError {
     UnsafeFilesystemObject(PathBuf),
     /// A retained product parent relationship changed identity.
     ParentIdentityChanged,
+    /// The Windows app-home directory retains only move-compatible transition
+    /// authority and must recover exclusivity before general product use.
+    AppHomeAuthorityTransition,
     /// The generation name no longer resolves to the retained identity.
     IdentityChanged(String),
     /// The settled active receipt selects the requested generation.
@@ -1109,6 +1448,10 @@ impl std::fmt::Display for GenerationError {
             Self::ParentIdentityChanged => {
                 write!(f, "retained product directory relationship changed")
             }
+            Self::AppHomeAuthorityTransition => write!(
+                f,
+                "app-home directory authority is in a fail-closed installation transition"
+            ),
             Self::IdentityChanged(generation) => {
                 write!(f, "generation {generation:?} filesystem identity changed")
             }

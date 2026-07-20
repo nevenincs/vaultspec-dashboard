@@ -1565,9 +1565,9 @@ impl ReceiptActivationContext {
 
 /// Complete immutable and transaction-supplied facts for the S172 receipt.
 ///
-/// The active generation is borrowed from the exact retained token; it is
-/// never accepted as a copied caller field.
-pub struct VerifiedReceiptFacts<'generation> {
+/// The active generation text is copied only from the exact retained token
+/// during verification; it is never accepted as a caller field.
+pub struct VerifiedReceiptFacts {
     dashboard_version: String,
     dashboard_commit: String,
     dashboard_digest: String,
@@ -1577,7 +1577,7 @@ pub struct VerifiedReceiptFacts<'generation> {
     external_five_member_cohort_digest: String,
     target: Target,
     a2a_identity: ReleaseIdentity,
-    active_generation: &'generation str,
+    active_generation: String,
     channel: Channel,
     bootstrap_created_ownership: bool,
     prior_seat: Option<PriorSeatIdentity>,
@@ -1585,7 +1585,7 @@ pub struct VerifiedReceiptFacts<'generation> {
     created_ms: i64,
 }
 
-impl VerifiedReceiptFacts<'_> {
+impl VerifiedReceiptFacts {
     #[must_use]
     pub fn dashboard_version(&self) -> &str {
         &self.dashboard_version
@@ -1633,7 +1633,7 @@ impl VerifiedReceiptFacts<'_> {
 
     #[must_use]
     pub fn active_generation(&self) -> &str {
-        self.active_generation
+        &self.active_generation
     }
 
     #[must_use]
@@ -1669,8 +1669,8 @@ impl VerifiedReceiptFacts<'_> {
 /// snapshot, immutable release facts, and validated transaction facts until
 /// activation completes.
 pub struct VerifiedReleaseSet<'generation, 'product, 'lock> {
-    generation: &'generation UnpublishedGeneration<'product, 'lock>,
-    receipt_facts: VerifiedReceiptFacts<'generation>,
+    generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
+    receipt_facts: VerifiedReceiptFacts,
     member_manifest_path: String,
     final_snapshot: GenerationSnapshot,
     capsule_root: String,
@@ -1684,7 +1684,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
     /// complete first scan. Candidate-declared path data participates only
     /// after those exact bytes have been located and bounded-reread.
     pub fn verify(
-        generation: &'generation UnpublishedGeneration<'product, 'lock>,
+        generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
         input: ReleaseVerificationInput<'_>,
         receipt_context: ReceiptActivationContext,
     ) -> Result<Self> {
@@ -1852,6 +1852,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             consistency_generation,
             created_ms,
         } = receipt_context;
+        let active_generation = generation.generation().to_string();
         Ok(Self {
             generation,
             receipt_facts: VerifiedReceiptFacts {
@@ -1864,7 +1865,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
                 external_five_member_cohort_digest: cohort_digest,
                 target: manifest.target,
                 a2a_identity: manifest.a2a_component.release_identity,
-                active_generation: generation.generation(),
+                active_generation,
                 channel,
                 bootstrap_created_ownership,
                 prior_seat,
@@ -1892,8 +1893,76 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
 
     /// Immutable receipt facts retained under the exact generation borrow.
     #[must_use]
-    pub fn receipt_facts(&self) -> &VerifiedReceiptFacts<'generation> {
+    pub fn receipt_facts(&self) -> &VerifiedReceiptFacts {
         &self.receipt_facts
+    }
+
+    /// Product paths derived from the exact retained generation token.
+    ///
+    /// This sealed seam exists only for fixed-journal publication. Receipt
+    /// code cannot substitute a separately supplied product root.
+    #[must_use]
+    pub(crate) fn activation_paths(&self) -> &crate::paths::ProductPaths {
+        self.generation.product_paths()
+    }
+
+    /// Installation guard joined to the exact retained generation token.
+    ///
+    /// This sealed seam exists only for fixed-journal publication. Receipt
+    /// code cannot substitute a separately supplied lock authority.
+    #[must_use]
+    pub(crate) fn activation_guard(&self) -> &crate::locking::InstallLockGuard {
+        self.generation.install_guard()
+    }
+
+    /// Synchronize the exact retained Unix app-home directory after a
+    /// same-directory first-journal rename.
+    #[cfg(unix)]
+    pub(crate) fn synchronize_activation_app_home(&self) -> Result<()> {
+        self.generation
+            .synchronize_app_home()
+            .map_err(ManifestError::from)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn create_activation_init_file(
+        &self,
+        name: &std::ffi::OsStr,
+    ) -> Result<std::fs::File> {
+        self.generation
+            .create_activation_init_file(name)
+            .map_err(ManifestError::from)
+    }
+
+    #[cfg(unix)]
+    pub(crate) fn install_activation_init_file(
+        &self,
+        source_name: &std::ffi::OsStr,
+        destination_name: &std::ffi::OsStr,
+    ) -> Result<()> {
+        self.generation
+            .install_activation_init_file(source_name, destination_name)
+            .map_err(ManifestError::from)
+    }
+
+    /// Move the exact retained Windows app-home authority through S171.
+    #[cfg(windows)]
+    pub(crate) fn install_synchronized_activation_file(
+        &mut self,
+        source_name: &std::ffi::OsStr,
+        destination_name: &std::ffi::OsStr,
+    ) -> crate::generation::AppHomeInstallOutcome {
+        self.generation
+            .install_synchronized_app_home_file(source_name, destination_name)
+    }
+
+    /// Retry recovery of the exact app-home transition authority retained by
+    /// this verified set after an indeterminate S171 outcome.
+    #[cfg(windows)]
+    pub(crate) fn recover_activation_app_home(&mut self) -> Result<()> {
+        self.generation
+            .recover_app_home_authority()
+            .map_err(ManifestError::from)
     }
 
     #[must_use]
@@ -3410,7 +3479,7 @@ fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::generation::{DiscardOutcome, LockedProduct};
     use crate::locking::{Actor, InstallLock, InstallLockGuard};
@@ -3419,9 +3488,9 @@ mod tests {
     const LOCK_BYTES: &[u8] = include_bytes!("../../../../packaging/a2a-component.lock.json");
     const TARGET: Target = Target::X86_64PcWindowsMsvc;
 
-    struct Fixture {
-        paths: ProductPaths,
-        guard: InstallLockGuard,
+    pub(crate) struct Fixture {
+        pub(crate) paths: ProductPaths,
+        pub(crate) guard: InstallLockGuard,
         payloads: Vec<(String, Vec<u8>)>,
         entrypoint_mode: String,
         member: Vec<u8>,
@@ -3433,7 +3502,7 @@ mod tests {
     }
 
     impl Fixture {
-        fn new() -> Self {
+        pub(crate) fn new() -> Self {
             Self::with_entrypoint_mode("0755")
         }
 
@@ -3627,7 +3696,7 @@ mod tests {
             }
         }
 
-        fn populate(&self, root: &Path) {
+        pub(crate) fn populate(&self, root: &Path) {
             for (path, bytes) in &self.payloads {
                 write_file(root, path, bytes);
             }
@@ -3644,12 +3713,12 @@ mod tests {
 
         fn with_generation<R>(
             &self,
-            action: impl FnOnce(&UnpublishedGeneration<'_, '_>) -> R,
+            action: impl FnOnce(&mut UnpublishedGeneration<'_, '_>) -> R,
         ) -> R {
             let mut product = LockedProduct::bind(self.paths.clone(), &self.guard).unwrap();
-            let generation = product.create_unpublished("generation-1").unwrap();
+            let mut generation = product.create_unpublished("generation-1").unwrap();
             self.populate(generation.path());
-            action(&generation)
+            action(&mut generation)
         }
 
         fn with_owned_generation<R>(
@@ -3662,9 +3731,9 @@ mod tests {
             action(generation)
         }
 
-        fn verify<'generation, 'product, 'lock>(
+        pub(crate) fn verify<'generation, 'product, 'lock>(
             &self,
-            generation: &'generation UnpublishedGeneration<'product, 'lock>,
+            generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
         ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>> {
             self.verify_with(
                 generation,
@@ -3675,7 +3744,7 @@ mod tests {
 
         fn verify_with<'generation, 'product, 'lock>(
             &self,
-            generation: &'generation UnpublishedGeneration<'product, 'lock>,
+            generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
             expected_member_manifest_digest: String,
             receipt_context: ReceiptActivationContext,
         ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>> {
@@ -3864,7 +3933,7 @@ mod tests {
                 .expect("complete generation verifies");
             assert_eq!(verified.target(), TARGET);
             assert_eq!(verified.release_set_id(), "release-2026.07.19");
-            assert_eq!(verified.generation_id(), generation.generation());
+            assert_eq!(verified.generation_id(), "generation-1");
             assert_eq!(verified.member_manifest_digest(), fixture.member_digest);
             assert_eq!(verified.component_lock_digest(), fixture.lock_digest);
             assert_eq!(verified.cohort_digest(), fixture.cohort_digest);
@@ -3888,13 +3957,65 @@ mod tests {
             );
             assert_eq!(facts.target(), TARGET);
             assert_eq!(facts.a2a_identity(), verified.a2a_identity());
-            assert_eq!(facts.active_generation(), generation.generation());
+            assert_eq!(facts.active_generation(), "generation-1");
             assert_eq!(facts.channel(), Channel::SelfInstall);
             assert!(facts.bootstrap_created_ownership());
             assert_eq!(facts.prior_seat().unwrap().generation, "generation-prior");
             assert_eq!(facts.consistency_generation(), 7);
             assert_eq!(facts.created_ms(), 1_721_344_500_000);
         });
+    }
+
+    #[test]
+    fn verified_release_publishes_first_and_steady_receipts() {
+        let fixture = Fixture::new();
+        let mut product = LockedProduct::bind(fixture.paths.clone(), &fixture.guard).unwrap();
+
+        let mut first = product.create_unpublished("generation-1").unwrap();
+        fixture.populate(first.path());
+        let verified = fixture.verify(&mut first).unwrap();
+        crate::receipt::publish_active_receipt(verified).unwrap();
+        let first_read =
+            crate::receipt::read_active_receipt_journal(&fixture.paths, &fixture.guard).unwrap();
+        let crate::receipt::ActiveReceiptReadState::Settled(first_receipt) =
+            first_read.state().unwrap()
+        else {
+            panic!("first publication did not settle");
+        };
+        assert_eq!(first_receipt.sequence(), 1);
+        assert_eq!(first_receipt.active_generation(), "generation-1");
+        drop(first_read);
+        drop(first);
+
+        let mut second = product.create_unpublished("generation-2").unwrap();
+        fixture.populate(second.path());
+        let verified = fixture.verify(&mut second).unwrap();
+        crate::receipt::publish_active_receipt(verified).unwrap();
+        let second_read =
+            crate::receipt::read_active_receipt_journal(&fixture.paths, &fixture.guard).unwrap();
+        let crate::receipt::ActiveReceiptReadState::Settled(second_receipt) =
+            second_read.state().unwrap()
+        else {
+            panic!("steady publication did not settle");
+        };
+        assert_eq!(second_receipt.sequence(), 2);
+        assert_eq!(second_receipt.active_generation(), "generation-2");
+        drop(second_read);
+        drop(second);
+
+        let mut third = product.create_unpublished("generation-3").unwrap();
+        fixture.populate(third.path());
+        let verified = fixture.verify(&mut third).unwrap();
+        crate::receipt::publish_active_receipt(verified).unwrap();
+        let third_read =
+            crate::receipt::read_active_receipt_journal(&fixture.paths, &fixture.guard).unwrap();
+        let crate::receipt::ActiveReceiptReadState::Settled(third_receipt) =
+            third_read.state().unwrap()
+        else {
+            panic!("complete-preimage publication did not settle");
+        };
+        assert_eq!(third_receipt.sequence(), 3);
+        assert_eq!(third_receipt.active_generation(), "generation-3");
     }
 
     #[test]
@@ -4145,8 +4266,9 @@ mod tests {
     fn activation_revalidation_rejects_payload_manifest_and_same_byte_identity_drift() {
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
+            let generation_path = generation.path().to_path_buf();
             let verified = fixture.verify(generation).unwrap();
-            write_file(generation.path(), "bin/dashboard.exe", b"xxxxxxxxxxxxxxxx");
+            write_file(&generation_path, "bin/dashboard.exe", b"xxxxxxxxxxxxxxxx");
             assert!(matches!(
                 verified.revalidate_for_activation(),
                 Err(ManifestError::GenerationChanged { .. })
@@ -4155,8 +4277,8 @@ mod tests {
 
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
-            let verified = fixture.verify(generation).unwrap();
             let release = generation.path().join("release.json");
+            let verified = fixture.verify(generation).unwrap();
             let mut bytes = std::fs::read(&release).unwrap();
             bytes.push(b'\n');
             std::fs::write(release, bytes).unwrap();
@@ -4168,9 +4290,9 @@ mod tests {
 
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
-            let verified = fixture.verify(generation).unwrap();
             let path = generation.path().join("bin/dashboard.exe");
             let old = generation.path().join("bin/dashboard.old");
+            let verified = fixture.verify(generation).unwrap();
             let bytes = std::fs::read(&path).unwrap();
             std::fs::rename(&path, &old).unwrap();
             std::fs::write(&path, &bytes).unwrap();
@@ -4187,9 +4309,9 @@ mod tests {
     fn retained_generation_substitution_is_detected_or_denied_by_platform_authority() {
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
-            let verified = fixture.verify(generation).unwrap();
-            assert_eq!(verified.generation_id(), generation.generation());
             let path = generation.path().to_path_buf();
+            let verified = fixture.verify(generation).unwrap();
+            assert_eq!(verified.generation_id(), "generation-1");
             let moved = fixture.paths.generations_dir().join("generation-1-moved");
             #[cfg(unix)]
             {
@@ -4214,21 +4336,22 @@ mod tests {
     fn permission_and_child_acl_drift_fail_closed() {
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
+            let generation_path = generation.path().to_path_buf();
             let verified = fixture.verify(generation).unwrap();
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(generation.path(), std::fs::Permissions::from_mode(0o770))
+                std::fs::set_permissions(&generation_path, std::fs::Permissions::from_mode(0o770))
                     .unwrap();
                 assert!(matches!(
                     verified.revalidate_for_activation(),
                     Err(ManifestError::GenerationAuthority(_))
                 ));
-                restrict_test_directory(generation.path());
+                restrict_test_directory(&generation_path);
             }
             #[cfg(windows)]
             {
-                let payload = generation.path().join("bin/dashboard.exe");
+                let payload = generation_path.join("bin/dashboard.exe");
                 permit_test_peer(&payload);
                 assert!(matches!(
                     verified.revalidate_for_activation(),
@@ -4256,8 +4379,9 @@ mod tests {
 
         let fixture = Fixture::new();
         fixture.with_generation(|generation| {
+            let new_empty = generation.path().join("new-empty-state");
             let verified = fixture.verify(generation).unwrap();
-            std::fs::create_dir(generation.path().join("new-empty-state")).unwrap();
+            std::fs::create_dir(new_empty).unwrap();
             assert!(matches!(
                 verified.revalidate_for_activation(),
                 Err(ManifestError::GenerationChanged { .. })
@@ -4305,9 +4429,9 @@ mod tests {
     #[test]
     fn verified_borrow_release_allows_real_exact_empty_discard() {
         let fixture = Fixture::new();
-        fixture.with_owned_generation(|generation| {
-            let verified = fixture.verify(&generation).unwrap();
-            assert_eq!(verified.generation_id(), generation.generation());
+        fixture.with_owned_generation(|mut generation| {
+            let verified = fixture.verify(&mut generation).unwrap();
+            assert_eq!(verified.generation_id(), "generation-1");
             drop(verified);
             clear_generation_contents(generation.path());
             assert!(matches!(
