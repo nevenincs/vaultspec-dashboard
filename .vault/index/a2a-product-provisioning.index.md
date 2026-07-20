@@ -57,6 +57,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S152]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S153]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S154]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S155]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S160]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S161]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S35]]'
@@ -66,6 +67,8 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S39]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S40]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S41]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S42]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S43]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -140,6 +143,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W02-P05-S152` - Export the authenticated A2A terminal-settlement route module outside the public ops orchestration namespace
 - `2026-07-18-a2a-product-provisioning-W02-P05-S153` - Mount POST /internal/a2a/run-terminal with the dashboard-created attach-control credential, reject worker IPC and unrelated credentials, and avoid adding a sixth public /ops/a2a verb
 - `2026-07-18-a2a-product-provisioning-W02-P05-S154` - Reserve the internal A2A settlement prefix from SPA fallback routing so callback mistakes fail visibly
+- `2026-07-18-a2a-product-provisioning-W02-P05-S155` - Prove attach-control callback authentication, worker IPC rejection, durable-terminal ordering, idempotency, exact hashed-bundle revocation, INPUT_REQUIRED retention, expiry, and restart reconciliation against the production repository and router
 - `2026-07-18-a2a-product-provisioning-W02-P05-S160` - Implement bounded unresolved-lease reconciliation against authenticated authoritative A2A run status, retaining INPUT_REQUIRED, idempotently settling terminal runs, and revoking elapsed leases by expiry
 - `2026-07-18-a2a-product-provisioning-W02-P05-S161` - Run durable A2A lease reconciliation during seated boot and bounded maintenance without delaying dashboard readiness on a temporarily unavailable compatible gateway
 - `2026-07-18-a2a-product-provisioning-W02-P05-S35` - Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state
@@ -149,6 +153,8 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W02-P05-S39` - Persist the token bundle in the dedicated repository only after commit returns the authoritative A2A run or thread id and bind it to the non-secret lease and reservation identities
 - `2026-07-18-a2a-product-provisioning-W02-P05-S40` - Preserve public POST /ops/a2a/run-start as one of five control verbs in the fixed six-member dashboard whitelist while performing downstream POST /v1/runs prepare and commit variants, minting only bounded prepare-returned roles, and cancelling the reservation plus revoking on failure
 - `2026-07-18-a2a-product-provisioning-W02-P05-S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle
+- `2026-07-18-a2a-product-provisioning-W02-P05-S42` - Prove dedicated A2A lease-repository migration, reopen, expiry, idempotent settlement, and restart reconciliation without depending on authoring-session schemas
+- `2026-07-18-a2a-product-provisioning-W02-P05-S43` - Prove two concurrent runs for one role revoke independently and no raw token enters records, output, logs, receipts, or discovery
 
 ### plan
 
