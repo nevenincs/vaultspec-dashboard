@@ -22,6 +22,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S168]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S169]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S170]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S171]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S12]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S13]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S14]]'
@@ -115,6 +116,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W02-P04-S48` - Make cold seat launch reconcile only the receipt-owned A2A gateway before opening the dashboard
 - `2026-07-18-a2a-product-provisioning-W01-P01-S169` - Bind a non-clone retained LockedProduct authority to the verified installation guard, retain product generation-parent receipt-parent and unpublished-generation filesystem identities, reject the active generation, exclusively create its final owner-private no-follow name, derive the exact maximum-eight nonactive count through the active reader, and return removed or retained poisoned authority from identity-safe bounded discard
 - `2026-07-18-a2a-product-provisioning-W01-P01-S170` - Verify a release set only through a borrow of the retained unpublished-generation authority, make the verified release set lifetime-bound to that exact generation, and retain its final filesystem snapshot plus complete receipt facts through activation
+- `2026-07-18-a2a-product-provisioning-W01-P01-S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review
 - `2026-07-18-a2a-product-provisioning-W02-P04-S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution
 - `2026-07-18-a2a-product-provisioning-W02-P04-S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery
 

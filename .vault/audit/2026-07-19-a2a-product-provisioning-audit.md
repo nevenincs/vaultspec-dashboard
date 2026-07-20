@@ -639,7 +639,8 @@ Status: APPROVED
 
 Reviewed the complete Windows-authority delta against the pre-S171 baseline
 `2331f89237`, including the earlier draft swept into external consolidation
-commit `78b860947f` and the final reviewed follow-up. Frozen source hashes were
+commit `78b860947f` and the final reviewed correction swept into external
+consolidation commit `10c271d639`. Frozen source hashes were
 `141C40FADFB6E82146FAE4D89A6CF228E3223EF2E22FB746188F56C9E69C39D3`
 for `lib.rs` and
 `5E5AB239E0DC1E9E717ADE46E82139FDE01EC94ABC4D997ABB3011297E79CF39`
