@@ -164,9 +164,9 @@ Dispatch to vaultspec-high-executor to snapshot every schema-bearing store as on
 - [ ] `W03.P06.S54` - Prove consistency snapshots restore real SQLite primary and checkpoint stores together and reject incomplete or unverified groups; `engine/crates/vaultspec-product/tests/snapshot_group.rs`.
 - [ ] `W03.P06.S55` - Prove candidate failure restores files, all schema-bearing state, checkpoints, complete receipt generation, and prior seat while successful activation cannot leave a split release set; `engine/crates/vaultspec-product/tests/update_transaction.rs`.
 - [ ] `W03.P06.S56` - Prove crash recovery from every durable transaction phase by reopening real transaction directories and receipts; `engine/crates/vaultspec-product/tests/interruption_recovery.rs`.
-- [ ] `W03.P06.S156` - Implement the Scoop authority adapter by invoking only phase-zero-proven Scoop manager commands for pinned complete archives and never writing Scoop-owned apps, shims, cache, or bucket state; `engine/crates/vaultspec-product/src/channels/scoop.rs`.
-- [ ] `W03.P06.S157` - Implement the WinGet authority adapter by invoking only phase-zero-proven WinGet package and version commands for the complete MSI and never writing WinGet or Windows Installer-owned files; `engine/crates/vaultspec-product/src/channels/winget.rs`.
-- [ ] `W03.P06.S158` - Implement the MSI authority adapter by delegating install, upgrade, downgrade, rollback, repair, and removal to Windows Installer with candidate and retained prior product packages and never rewriting installer-owned files; `engine/crates/vaultspec-product/src/channels/msi.rs`.
+- [x] `W03.P06.S156` - Implement the Scoop authority adapter by invoking only phase-zero-proven Scoop manager commands for pinned complete archives and never writing Scoop-owned apps, shims, cache, or bucket state; `engine/crates/vaultspec-product/src/channels/scoop.rs`.
+- [x] `W03.P06.S157` - Implement the WinGet authority adapter by invoking only phase-zero-proven WinGet package and version commands for the complete MSI and never writing WinGet or Windows Installer-owned files; `engine/crates/vaultspec-product/src/channels/winget.rs`.
+- [x] `W03.P06.S158` - Implement the MSI authority adapter by delegating install, upgrade, downgrade, rollback, repair, and removal to Windows Installer with candidate and retained prior product packages and never rewriting installer-owned files; `engine/crates/vaultspec-product/src/channels/msi.rs`.
 
 ### Phase `W03.P07` - run replacement outside the active release
 

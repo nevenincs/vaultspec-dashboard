@@ -14,9 +14,197 @@
 //! provenance for a channel it does not own. `manifest` may hold the sealed type
 //! but cannot construct one.
 
+use std::path::{Path, PathBuf};
+
 use crate::receipt::Channel;
 
+pub mod msi;
+pub mod scoop;
 pub mod self_install;
+pub mod winget;
+
+const MAX_ARTIFACT_IDENTITY_BYTES: usize = 256;
+
+/// A pinned, complete release artifact a manager operation targets.
+///
+/// Identified by a bounded identity and its lowercase SHA-256 digest, never a
+/// path — a manager operation may only ever target a pinned complete artifact,
+/// so a candidate cannot point a manager at an arbitrary file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PinnedArtifact {
+    identity: String,
+    digest: String,
+}
+
+impl PinnedArtifact {
+    /// Validate a pinned artifact from its bounded identity and lowercase
+    /// SHA-256 digest.
+    pub fn new(
+        identity: impl Into<String>,
+        digest: impl Into<String>,
+    ) -> Result<Self, ChannelError> {
+        let identity = identity.into();
+        let digest = digest.into();
+        if identity.is_empty()
+            || identity.len() > MAX_ARTIFACT_IDENTITY_BYTES
+            || identity.bytes().any(|b| b == 0 || b.is_ascii_control())
+        {
+            return Err(ChannelError::InvalidArtifact {
+                detail: "pinned artifact identity must be non-empty, bounded, control-free text",
+            });
+        }
+        if digest.len() != 64
+            || !digest
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(ChannelError::InvalidArtifact {
+                detail: "pinned artifact digest must be a lowercase SHA-256 digest",
+            });
+        }
+        Ok(Self { identity, digest })
+    }
+
+    /// The pinned artifact identity.
+    #[must_use]
+    pub fn identity(&self) -> &str {
+        &self.identity
+    }
+
+    /// The pinned artifact lowercase SHA-256 digest.
+    #[must_use]
+    pub fn digest(&self) -> &str {
+        &self.digest
+    }
+}
+
+/// A package manager proven present by a phase-zero preflight.
+///
+/// A manager operation can be authorized only against one of these, so the
+/// product never invokes a manager it did not first prove. Construction requires
+/// that the resolved program is a real regular file — a minimal phase-zero proof.
+#[derive(Debug, Clone)]
+pub struct ProvenManager {
+    program: PathBuf,
+}
+
+impl ProvenManager {
+    /// Prove a manager present at a resolved program path. Returns `None` when the
+    /// path is absent or is not a regular file.
+    #[must_use]
+    pub fn prove(program: impl Into<PathBuf>) -> Option<Self> {
+        let program = program.into();
+        let metadata = std::fs::symlink_metadata(&program).ok()?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return None;
+        }
+        Some(Self { program })
+    }
+
+    /// The proven manager program path.
+    #[must_use]
+    pub fn program(&self) -> &Path {
+        &self.program
+    }
+}
+
+/// A validated, ready-to-delegate manager operation.
+///
+/// It names the channel, the proven manager program, the closed operation label,
+/// and the pinned artifact. It carries NO authority to write manager-owned files;
+/// delegation to the manager itself happens in the external updater. It is the
+/// evidence that a manager operation was authorized against a proven manager and
+/// a pinned artifact, never a free-form command.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AuthorizedManagerOperation {
+    channel: Channel,
+    program: PathBuf,
+    operation: &'static str,
+    artifact: PinnedArtifact,
+}
+
+impl AuthorizedManagerOperation {
+    fn new(
+        channel: Channel,
+        proven: &ProvenManager,
+        operation: &'static str,
+        artifact: &PinnedArtifact,
+    ) -> Self {
+        Self {
+            channel,
+            program: proven.program().to_path_buf(),
+            operation,
+            artifact: artifact.clone(),
+        }
+    }
+
+    /// The installer channel that owns this operation.
+    #[must_use]
+    pub fn channel(&self) -> Channel {
+        self.channel
+    }
+
+    /// The proven manager program the operation delegates to.
+    #[must_use]
+    pub fn program(&self) -> &Path {
+        &self.program
+    }
+
+    /// The closed operation label (never a free-form command string).
+    #[must_use]
+    pub fn operation(&self) -> &'static str {
+        self.operation
+    }
+
+    /// The pinned complete artifact the operation targets.
+    #[must_use]
+    pub fn artifact(&self) -> &PinnedArtifact {
+        &self.artifact
+    }
+}
+
+/// Why a channel operation could not be authorized.
+#[derive(Debug)]
+pub enum ChannelError {
+    /// A pinned artifact violated the identity or digest grammar.
+    InvalidArtifact {
+        /// The specific violation.
+        detail: &'static str,
+    },
+}
+
+impl std::fmt::Display for ChannelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidArtifact { detail } => write!(f, "invalid pinned artifact: {detail}"),
+        }
+    }
+}
+
+impl std::error::Error for ChannelError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pinned_artifact_validates_identity_and_digest() {
+        assert!(PinnedArtifact::new("pkg@1.0", "a".repeat(64)).is_ok());
+        // Bad digests and empty/oversized identities are refused.
+        assert!(PinnedArtifact::new("pkg@1.0", "a".repeat(63)).is_err());
+        assert!(PinnedArtifact::new("pkg@1.0", "A".repeat(64)).is_err());
+        assert!(PinnedArtifact::new("pkg@1.0", "z".repeat(64)).is_err());
+        assert!(PinnedArtifact::new("", "a".repeat(64)).is_err());
+        assert!(PinnedArtifact::new("a\u{1}b", "a".repeat(64)).is_err());
+    }
+
+    #[test]
+    fn proving_a_present_file_succeeds_and_an_absent_path_fails() {
+        let proven = ProvenManager::prove(std::env::current_exe().unwrap());
+        assert!(proven.is_some());
+        assert!(ProvenManager::prove("/definitely/not/a/real/manager").is_none());
+    }
+}
 
 /// Sealed proof of which installer authority owns a generation's activation.
 ///
