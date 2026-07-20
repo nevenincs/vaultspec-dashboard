@@ -39,3 +39,16 @@ Frontend subprocess, fetch, setup-failure, POSIX process-group, socket, and log
 bounds are closed. The rolling audit retains only medium cross-repository CI
 coordination and decomposition of four unrelated product-provisioning modules;
 the reviewed A2A modules remain below the 1,500-line gate.
+
+The last closure pass makes the non-secret gateway lease part of prepare and
+durably binds it in the dashboard before commit can dispatch. Ambiguous HTTP or
+transport outcomes are resolved through exact authoritative status; unavailable
+status retains the bounded binding, while confirmed absence releases and
+revokes it. This also makes terminal settlement safe when it wins the commit
+response race. Provisioning refuses stale actors rather than reviving them.
+
+The complete certification is green: dashboard route 19/19, lease 4/4,
+terminal settlement 6/6, real gateway admission/restart 6/6, production
+cross-repository lost-ack 1/1, mounted frontend 2/2, plus TypeScript, Ruff,
+production Rust check, and CLI build. Cross-repository CI coordination and five
+foreign product-module decompositions remain explicit medium external queues.

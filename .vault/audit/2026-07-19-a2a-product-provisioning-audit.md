@@ -632,3 +632,56 @@ if that path ever becomes hot. Informational.
   integrity all confirmed by source inspection against the committed diff; gate
   was green at commit time (build + `a2a_terminal_settlement`/`a2a_settlement`
   4/0 + clippy `--lib -D warnings` + fmt).
+
+## `W01 P01 S171` Windows first-journal installation review
+
+Status: APPROVED
+
+Reviewed the complete Windows-authority delta against the pre-S171 baseline
+`2331f89237`, including the earlier draft swept into external consolidation
+commit `78b860947f` and the final reviewed follow-up. Frozen source hashes were
+`141C40FADFB6E82146FAE4D89A6CF228E3223EF2E22FB746188F56C9E69C39D3`
+for `lib.rs` and
+`5E5AB239E0DC1E9E717ADE46E82139FDE01EC94ABC4D997ABB3011297E79CF39`
+for `os.rs`.
+
+Formal result: PASS C0/H0/M0/L0.
+
+- The only native replace wrapper is private and calls `MoveFileExW` with
+  exactly `MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH`; pointer
+  lifetimes, UTF-16 bounds, NUL termination, and immediate error capture are
+  correct.
+- The source is existing-only, synchronized under strict sharing, and joined
+  repeatedly by full identity, size, one-link, type, reparse, and delete state.
+- Bounded components, canonicalized same-directory paths, retained and named
+  parent identity, and source/destination names are revalidated immediately at
+  the native boundary.
+- The consuming parent transition preserves continuous exact authority while
+  permitting the native child mutation, then recovers and revalidates the full
+  exclusive parent before interpreting the outcome.
+- Windows does not permit an existing destination handle to remain open during
+  replacement. The code closes it only at the final boundary, preserves its
+  validated snapshot, and on native failure returns an authority only after an
+  exact named reacquisition match. It never claims namespace stasis from a
+  failed native return.
+- Successful installation returns the recovered exclusive parent and a strict
+  read-only installed authority that denies write and delete sharing for S172's
+  exact reread.
+- Typed before-move, failed-move, success-unverified, parent-recovery, native
+  error, snapshot, and reacquisition evidence remain recoverable without
+  exposing raw handles or another unsafe operation.
+
+Verification:
+
+- Native tests passed 21/21 on the confirmed NTFS `C:` volume; doctests passed.
+- All-target check, strict library/test Clippy with warnings denied, formatting,
+  and scoped diff checking passed independently.
+- No fake, mock, stub, patch, monkeypatch, skip, or xfail shortcut was present.
+- Source hashes remained frozen across executor, architecture-owner, and
+  independent-review runs.
+
+The wrapper explicitly does not claim protection from a hostile same-user
+writer during the move-compatible transition window. S172 must exactly reread
+the installed bytes before publication. S173 remains required for real
+virtual-machine power-cut certification; the S171 process tests do not claim
+power-loss proof.

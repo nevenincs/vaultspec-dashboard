@@ -520,3 +520,49 @@ The implementation awaits the final three-lane adversarial re-review before the
 rolling pass verdict is promoted again. The two medium external queues above do
 not change the shipped A2A module boundary or runtime behavior, but remain
 explicit rather than being hidden by the focused green checks.
+
+## Lease-before-dispatch and restart closure — 2026-07-20
+
+The final revision repaired the two remaining high-severity durability races.
+The gateway now mints the non-secret run lease during `prepare`; after actor
+registration, the dashboard binds that exact reservation, stable run id, and
+gateway lease in its local hash-only repository before any raw token leaves the
+commit stack. Commit can therefore dispatch only after terminal settlement has
+an exact local binding. A terminal callback that wins the response race settles
+the already-bound lease, and strict response confirmation accepts the exact
+binding in either active or settled state.
+
+| Finding | Severity / type | Final remediation and evidence | Disposition |
+|---|---|---|---|
+| Remote commit can outlive local activation | High / durability and credential lifecycle | Local binding is complete before the commit request. HTTP and transport ambiguity both query authoritative run status; an exact run/reservation/lease match is retained, a confirmed absent run is released and revoked, and an unavailable status read leaves the bounded lease intact for later reconciliation instead of stranding a durable run. | Resolved |
+| Terminal callback can precede local binding | High / concurrency and authorization | The prepare-minted lease is locally active before commit can dispatch. Terminal settlement already accepts the exact active binding and is idempotent; response confirmation also accepts an exact already-settled binding. Focused terminal tests pass 6/6. | Resolved |
+| Stale actor provisioning bypass | Medium / authorization | Provisioning creates a missing `agent:<role>`, reuses only an actor that `ensure_active` confirms, and refuses rather than reactivating an existing stale record. A production-store regression proves the refused bundle leaves no unresolved lease. | Resolved |
+| Replay mismatch releases unrelated authority | Medium / isolation | Existing-run replay mismatches return conflict without releasing the presented reservation. Only the authenticated caller's explicit release path or readiness refusal can release an active reservation. | Resolved |
+| Fresh checkpoints fail ordinary restart validation | High / restart compatibility | First ingest materializes every SDD state channel. The compatibility reader now recognizes LangGraph's real `__start__`-only staging checkpoint as pre-TeamState rather than legacy drift. Real serialized migration tests pass 3/3 and an armed gateway restart recovers the same run, reservation, and lease without spawning or redispatching. | Resolved |
+| Lost-ack log scanner can miss a queued duplicate | Medium / verification integrity and memory | The proof drains fixed 64 KiB chunks to EOF before starting or resetting its quiet window, caps an unterminated record at 1 MiB, retains only a 64 KiB diagnostic tail, and has a 20-second hard ceiling. | Resolved |
+| POSIX teardown observes only the root process | Medium / harness lifecycle | The retained process-group id is probed after root exit; TERM and then KILL apply to the group, and cleanup returns only when the group no longer exists. Desktop gateway tests also start their own session; Windows keeps the production tree-kill path. | Resolved |
+| Cross-repository proof in CI | Medium / verification operations | The retained proof is green locally against a freshly built dashboard binary, but neither repository alone owns a release-set workflow with both repositories and a real provider credential. | Queued coordination follow-up |
+| Repository-wide module-size gate | Medium / maintainability, outside A2A scope | The gate fails on five concurrent product-authority files: `generation.rs` 1,711, `locking.rs` 1,955, `manifest.rs` 4,453, `receipt.rs` 2,604, and `vaultspec-windows-authority/src/lib.rs` 2,615. Reviewed dashboard A2A modules remain below the threshold (`a2a.rs` 1,410; lease repository 835; setup 324; process control 73; mounted frontend proof 299). | Queued external product follow-up |
+
+Current certification evidence:
+
+- The freshly rebuilt production dashboard plus production gateway/worker
+  lost-ack scenario passes 1/1 in 15.90 seconds. It proves identical commit
+  request digests, one durable run, one dispatch, one exact active lease, an
+  altered-replay conflict, and a real authoring mutation by the minted actor.
+- The real armed-gateway suite passes 6/6, including process restart, exact
+  replay, release/commit races, expiry, live readiness refusal, and a real
+  pre-durability database failure. SDD input tests pass 3/3 and serialized
+  migration tests pass 3/3.
+- Dashboard A2A route tests pass 19/19, lease-repository tests 4/4, terminal
+  settlement tests 6/6, the mounted frontend suite 2/2, TypeScript typecheck,
+  Ruff lint/format, production Rust check, and production CLI build all pass.
+- The security pass found no new secret sink or browser injection surface:
+  `/v1` authentication remains router-level, commit bodies are never logged or
+  persisted raw, replay identity uses non-secret bounded identifiers and a
+  digest, frontend transport stays fixed-origin, and harness subprocesses use
+  absolute executables and argument arrays.
+
+The implementation is ready for the final three-lane adversarial verdict. The
+two remaining medium items are cross-repository CI coordination and foreign
+product-module decomposition; neither is hidden as A2A runtime closure.

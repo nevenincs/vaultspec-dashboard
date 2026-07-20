@@ -938,19 +938,16 @@ fn reconcile_local_lease_from_status(
         return Ok(());
     };
     let Some(reservation_id) = response.get("reservation_id").and_then(Value::as_str) else {
-        return Err(());
+        // Legacy committed runs persisted only the non-secret lease id. They
+        // remain viewable, but cannot drive exact reserved-row repair.
+        return Ok(());
     };
     if !bounded_token_is_valid(gateway_lease_id, MAX_A2A_RUN_ID_CHARS) {
         return Err(());
     }
     state
         .a2a_run_leases
-        .commit_reserved_run(
-            expected_run_id,
-            reservation_id,
-            gateway_lease_id,
-            now_ms(),
-        )
+        .commit_reserved_run(expected_run_id, reservation_id, gateway_lease_id, now_ms())
         .map(|_| ())
         .map_err(|_| ())
 }
@@ -1182,17 +1179,34 @@ fn execute_broker_call(
                 Err(_) => BrokeredRoundTrip::TokenStoreFailure("verify commit"),
             }
         }
-        // The sibling answered with an explicit refusal. No response-loss
-        // ambiguity remains, so the just-issued bundle is unused and reclaimable.
+        // Even an HTTP refusal can follow a durable remote write (for example a
+        // post-commit 5xx). Confirm absence authoritatively before reclaiming.
         Err(error @ RagError::Http { .. }) => {
-            let released =
-                release_prepared_run_with_retry(&transport, &call, &prepared.reservation_id);
-            if revoke_failed_actor_token_bundle(state, &local_lease_id).is_err()
-                || released.is_err()
-            {
-                BrokeredRoundTrip::TokenStoreFailure("clean up refused")
-            } else {
-                BrokeredRoundTrip::Answer(Err(error))
+            match authoritative_committed_status(
+                &preflight,
+                state,
+                &local_lease_id,
+                &prepared,
+                run_id,
+            ) {
+                Ok(Some(status)) => BrokeredRoundTrip::Answer(Ok(status)),
+                Ok(None) => {
+                    let released = release_prepared_run_with_retry(
+                        &transport,
+                        &call,
+                        &prepared.reservation_id,
+                    );
+                    if revoke_failed_actor_token_bundle(state, &local_lease_id).is_err()
+                        || released.is_err()
+                    {
+                        BrokeredRoundTrip::TokenStoreFailure("clean up refused")
+                    } else {
+                        BrokeredRoundTrip::Answer(Err(error))
+                    }
+                }
+                // Outcome unknown: keep the exact bounded lease for later
+                // run-status reconciliation instead of stranding a live run.
+                Err(_) => BrokeredRoundTrip::Answer(Err(error)),
             }
         }
         // A connection/protocol failure may mean commit was accepted and only
@@ -1233,9 +1247,7 @@ fn execute_broker_call(
                     );
                     let _ = revoke_failed_actor_token_bundle(state, &local_lease_id);
                     match retry {
-                        Err(error @ RagError::Http { .. }) => {
-                            BrokeredRoundTrip::Answer(Err(error))
-                        }
+                        Err(error @ RagError::Http { .. }) => BrokeredRoundTrip::Answer(Err(error)),
                         Ok(_) => BrokeredRoundTrip::TokenStoreFailure("recover commit"),
                         Err(_) => BrokeredRoundTrip::Answer(Err(original_error)),
                     }
@@ -1246,7 +1258,7 @@ fn execute_broker_call(
                 Err(_) => match retry {
                     Ok(_) => BrokeredRoundTrip::TokenStoreFailure("recover commit"),
                     Err(_) => BrokeredRoundTrip::Answer(Err(original_error)),
-                }
+                },
             }
         }
     }

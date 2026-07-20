@@ -112,22 +112,26 @@ impl AuthorityDirectory {
     /// is required only because `MoveFileExW` is path-based and must resolve to
     /// this retained directory before and after the operation. Source and
     /// destination are bounded single components, so a cross-directory move
-    /// cannot be expressed.
+    /// cannot be expressed. The exclusive parent authority is consumed so a
+    /// move-compatible exact transition can overlap the native call; success
+    /// returns the recovered exclusive parent with the strict installed file.
     ///
     /// The wrapper detects observed path substitution through exact pre/post
     /// identity checks, but it cannot exclude a hostile same-user namespace
-    /// race or a same-size write through a pre-existing handle. Product code
+    /// race or a same-size write through a hostile same-user handle acquired
+    /// during the move-compatible transition window. Product code
     /// must close and exactly reread the installed bytes under its retained
     /// authorities. `MOVEFILE_WRITE_THROUGH` also remains subject to real local
     /// NTFS power-loss certification; process termination is not that proof.
     pub fn install_synchronized_file(
-        &self,
+        self,
         directory_path: &Path,
         source_name: &OsStr,
         destination_name: &OsStr,
-    ) -> Result<AuthorityFile, InstallSynchronizedFileError> {
+    ) -> Result<(AuthorityDirectory, AuthorityFile), Box<InstallSynchronizedFileError>> {
         if !directory_path.is_absolute() {
             return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::InputValidation,
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -135,21 +139,29 @@ impl AuthorityDirectory {
                 ),
             ));
         }
-        let source_component = validate_child_component(source_name).map_err(|error| {
-            InstallSynchronizedFileError::refused(
-                InstallSynchronizedFileStage::InputValidation,
-                error,
-            )
-        })?;
-        let destination_component =
-            validate_child_component(destination_name).map_err(|error| {
-                InstallSynchronizedFileError::refused(
+        let source_component = match validate_child_component(source_name) {
+            Ok(component) => component,
+            Err(error) => {
+                return Err(InstallSynchronizedFileError::refused(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::InputValidation,
                     error,
-                )
-            })?;
+                ));
+            }
+        };
+        let destination_component = match validate_child_component(destination_name) {
+            Ok(component) => component,
+            Err(error) => {
+                return Err(InstallSynchronizedFileError::refused(
+                    InstallDirectoryAuthority::from_exclusive(self),
+                    InstallSynchronizedFileStage::InputValidation,
+                    error,
+                ));
+            }
+        };
         if source_component == destination_component {
             return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::InputValidation,
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -157,38 +169,45 @@ impl AuthorityDirectory {
                 ),
             ));
         }
-        self.validate_retained().map_err(|error| {
-            InstallSynchronizedFileError::refused(
+        if let Err(error) = self.validate_retained() {
+            return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::RetainedDirectoryValidation,
                 error,
-            )
-        })?;
-        self.validate_named_path(directory_path).map_err(|error| {
-            InstallSynchronizedFileError::refused(
+            ));
+        }
+        if let Err(error) = self.validate_named_path(directory_path) {
+            return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::NamedDirectoryValidation,
                 error,
-            )
-        })?;
+            ));
+        }
 
-        let canonical_directory = std::fs::canonicalize(directory_path).map_err(|error| {
-            InstallSynchronizedFileError::refused(
-                InstallSynchronizedFileStage::DirectoryPathCanonicalization,
-                error,
-            )
-        })?;
-        self.validate_named_path(&canonical_directory)
-            .map_err(|error| {
-                InstallSynchronizedFileError::refused(
+        let canonical_directory = match std::fs::canonicalize(directory_path) {
+            Ok(path) => path,
+            Err(error) => {
+                return Err(InstallSynchronizedFileError::refused(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::DirectoryPathCanonicalization,
                     error,
-                )
-            })?;
+                ));
+            }
+        };
+        if let Err(error) = self.validate_named_path(&canonical_directory) {
+            return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
+                InstallSynchronizedFileStage::DirectoryPathCanonicalization,
+                error,
+            ));
+        }
         let source_path = canonical_directory.join(source_name);
         let destination_path = canonical_directory.join(destination_name);
         if source_path.parent() != Some(canonical_directory.as_path())
             || destination_path.parent() != Some(canonical_directory.as_path())
         {
             return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::InputValidation,
                 io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -196,52 +215,64 @@ impl AuthorityDirectory {
                 ),
             ));
         }
-        os::validate_move_path(&source_path).map_err(|error| {
-            InstallSynchronizedFileError::refused(
+        if let Err(error) = os::validate_move_path(&source_path) {
+            return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::InputValidation,
                 error,
-            )
-        })?;
-        os::validate_move_path(&destination_path).map_err(|error| {
-            InstallSynchronizedFileError::refused(
+            ));
+        }
+        if let Err(error) = os::validate_move_path(&destination_path) {
+            return Err(InstallSynchronizedFileError::refused(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::InputValidation,
                 error,
-            )
-        })?;
+            ));
+        }
 
-        let source = AuthorityFile::open_install_source(&source_path).map_err(|error| {
-            InstallSynchronizedFileError::refused(InstallSynchronizedFileStage::SourceOpen, error)
-        })?;
-        let initial = match install_file_state(&source) {
+        let synchronizer = match AuthorityFile::open_install_source(&source_path) {
+            Ok(authority) => authority,
+            Err(error) => {
+                return Err(InstallSynchronizedFileError::refused(
+                    InstallDirectoryAuthority::from_exclusive(self),
+                    InstallSynchronizedFileStage::SourceOpen,
+                    error,
+                ));
+            }
+        };
+        let initial = match install_file_state(&synchronizer) {
             Ok(state) => state,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::SourceInitialValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
-                    source,
+                    synchronizer,
                     None,
                     None,
                     error,
                 ));
             }
         };
-        if let Err(error) = source.file.sync_all() {
+        if let Err(error) = synchronizer.file.sync_all() {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::SourceSynchronization,
                 InstallSynchronizedFileOutcome::BeforeMove,
-                source,
+                synchronizer,
                 None,
                 None,
                 error,
             ));
         }
-        let synchronized = match install_file_state(&source) {
+        let synchronized = match install_file_state(&synchronizer) {
             Ok(state) => state,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::SourcePostSynchronizeValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
-                    source,
+                    synchronizer,
                     None,
                     None,
                     error,
@@ -250,64 +281,69 @@ impl AuthorityDirectory {
         };
         if synchronized != initial {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::SourcePostSynchronizeValidation,
                 InstallSynchronizedFileOutcome::BeforeMove,
-                source,
+                synchronizer,
                 None,
                 None,
                 io::Error::other("source state changed while it was synchronized"),
             ));
         }
 
-        let named_source = match AuthorityFile::open_reader(&source_path) {
+        let source = match AuthorityFile::open_reader(&source_path) {
             Ok(authority) => authority,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::SourceNameValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
-                    source,
+                    synchronizer,
                     None,
                     None,
                     error,
                 ));
             }
         };
-        let named_source_state = match install_file_state(&named_source) {
+        let transition_source_state = match install_file_state(&source) {
             Ok(state) => state,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::SourceNameValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
-                    source,
+                    synchronizer,
                     None,
                     None,
                     error,
                 ));
             }
         };
-        if named_source_state != initial {
+        if transition_source_state != initial {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::SourceNameValidation,
                 InstallSynchronizedFileOutcome::BeforeMove,
-                source,
+                synchronizer,
                 None,
                 None,
                 io::Error::other("source name no longer identifies the synchronized file"),
             ));
         }
-        drop(named_source);
+        drop(synchronizer);
 
         let (destination_before, destination_before_state) =
             match AuthorityFile::open_install_destination(&destination_path) {
-                Ok(authority) => {
-                    let state = match install_file_state(&authority) {
+                Ok(inspector) => {
+                    let state = match install_file_state(&inspector) {
                         Ok(state) => state,
                         Err(error) => {
                             return Err(InstallSynchronizedFileError::retained(
+                                InstallDirectoryAuthority::from_exclusive(self),
                                 InstallSynchronizedFileStage::DestinationInspection,
                                 InstallSynchronizedFileOutcome::BeforeMove,
                                 source,
-                                Some(authority),
+                                Some(inspector),
                                 None,
                                 error,
                             ));
@@ -315,10 +351,11 @@ impl AuthorityDirectory {
                     };
                     if state.identity == initial.identity {
                         return Err(InstallSynchronizedFileError::retained(
+                            InstallDirectoryAuthority::from_exclusive(self),
                             InstallSynchronizedFileStage::DestinationInspection,
                             InstallSynchronizedFileOutcome::BeforeMove,
                             source,
-                            Some(authority),
+                            Some(inspector),
                             None,
                             io::Error::new(
                                 io::ErrorKind::InvalidInput,
@@ -326,11 +363,12 @@ impl AuthorityDirectory {
                             ),
                         ));
                     }
-                    (Some(authority), Some(state))
+                    (Some(inspector), Some(state))
                 }
                 Err(error) if error.kind() == io::ErrorKind::NotFound => (None, None),
                 Err(error) => {
                     return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
                         InstallSynchronizedFileStage::DestinationInspection,
                         InstallSynchronizedFileOutcome::BeforeMove,
                         source,
@@ -340,11 +378,13 @@ impl AuthorityDirectory {
                     ));
                 }
             };
+        let destination_snapshot = destination_before_state.map(InstallFileSnapshot::from);
 
         let source_pre_move = match install_file_state(&source) {
             Ok(state) => state,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::OperandPreMoveValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
                     source,
@@ -356,6 +396,7 @@ impl AuthorityDirectory {
         };
         if source_pre_move != initial {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::OperandPreMoveValidation,
                 InstallSynchronizedFileOutcome::BeforeMove,
                 source,
@@ -371,6 +412,7 @@ impl AuthorityDirectory {
                 Ok(state) => state,
                 Err(error) => {
                     return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
                         InstallSynchronizedFileStage::OperandPreMoveValidation,
                         InstallSynchronizedFileOutcome::BeforeMove,
                         source,
@@ -382,6 +424,7 @@ impl AuthorityDirectory {
             };
             if observed != expected {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::OperandPreMoveValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
                     source,
@@ -395,6 +438,7 @@ impl AuthorityDirectory {
             Ok(authority) => authority,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::OperandPreMoveValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
                     source,
@@ -408,6 +452,7 @@ impl AuthorityDirectory {
             Ok(state) => state,
             Err(error) => {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::OperandPreMoveValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
                     source,
@@ -419,6 +464,7 @@ impl AuthorityDirectory {
         };
         if named_source_pre_move_state != initial {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::OperandPreMoveValidation,
                 InstallSynchronizedFileOutcome::BeforeMove,
                 source,
@@ -433,6 +479,7 @@ impl AuthorityDirectory {
                 Ok(authority) => authority,
                 Err(error) => {
                     return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
                         InstallSynchronizedFileStage::OperandPreMoveValidation,
                         InstallSynchronizedFileOutcome::BeforeMove,
                         source,
@@ -446,6 +493,7 @@ impl AuthorityDirectory {
                 Ok(state) => state,
                 Err(error) => {
                     return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
                         InstallSynchronizedFileStage::OperandPreMoveValidation,
                         InstallSynchronizedFileOutcome::BeforeMove,
                         source,
@@ -457,6 +505,7 @@ impl AuthorityDirectory {
             };
             if named_destination_state != expected {
                 return Err(InstallSynchronizedFileError::retained(
+                    InstallDirectoryAuthority::from_exclusive(self),
                     InstallSynchronizedFileStage::OperandPreMoveValidation,
                     InstallSynchronizedFileOutcome::BeforeMove,
                     source,
@@ -470,6 +519,7 @@ impl AuthorityDirectory {
                 Err(error) if error.kind() == io::ErrorKind::NotFound => {}
                 Ok(_) => {
                     return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
                         InstallSynchronizedFileStage::OperandPreMoveValidation,
                         InstallSynchronizedFileOutcome::BeforeMove,
                         source,
@@ -480,6 +530,7 @@ impl AuthorityDirectory {
                 }
                 Err(error) => {
                     return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
                         InstallSynchronizedFileStage::OperandPreMoveValidation,
                         InstallSynchronizedFileOutcome::BeforeMove,
                         source,
@@ -492,6 +543,7 @@ impl AuthorityDirectory {
         }
         if let Err(error) = self.validate_retained() {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::RetainedDirectoryPreMoveValidation,
                 InstallSynchronizedFileOutcome::BeforeMove,
                 source,
@@ -505,6 +557,7 @@ impl AuthorityDirectory {
             .and_then(|()| self.validate_named_path(&canonical_directory))
         {
             return Err(InstallSynchronizedFileError::retained(
+                InstallDirectoryAuthority::from_exclusive(self),
                 InstallSynchronizedFileStage::NamedDirectoryPreMoveValidation,
                 InstallSynchronizedFileOutcome::BeforeMove,
                 source,
@@ -513,13 +566,96 @@ impl AuthorityDirectory {
                 error,
             ));
         }
-        if let Err(error) = os::move_file_replace_write_through(&source_path, &destination_path) {
+        let directory_transition =
+            match InstallDirectoryAuthority::open_transition(&canonical_directory, self.identity) {
+                Ok(authority) => authority,
+                Err(error) => {
+                    return Err(InstallSynchronizedFileError::retained(
+                        InstallDirectoryAuthority::from_exclusive(self),
+                        InstallSynchronizedFileStage::NamedDirectoryPreMoveValidation,
+                        InstallSynchronizedFileOutcome::BeforeMove,
+                        source,
+                        destination_before,
+                        None,
+                        error,
+                    ));
+                }
+            };
+        drop(self);
+        if let Err(error) = directory_transition.validate_retained() {
             return Err(InstallSynchronizedFileError::retained(
-                InstallSynchronizedFileStage::Move,
-                InstallSynchronizedFileOutcome::MoveReturnedFailure,
+                directory_transition,
+                InstallSynchronizedFileStage::RetainedDirectoryPreMoveValidation,
+                InstallSynchronizedFileOutcome::BeforeMove,
                 source,
                 destination_before,
                 None,
+                error,
+            ));
+        }
+        if let Err(error) = directory_transition
+            .validate_named_path(directory_path)
+            .and_then(|()| directory_transition.validate_named_path(&canonical_directory))
+        {
+            return Err(InstallSynchronizedFileError::retained(
+                directory_transition,
+                InstallSynchronizedFileStage::NamedDirectoryPreMoveValidation,
+                InstallSynchronizedFileOutcome::BeforeMove,
+                source,
+                destination_before,
+                None,
+                error,
+            ));
+        }
+        if let Err(error) = validate_install_operands_and_names(
+            &source,
+            initial,
+            destination_before.as_ref(),
+            destination_before_state,
+            &source_path,
+            &destination_path,
+        ) {
+            return Err(InstallSynchronizedFileError::retained(
+                directory_transition,
+                InstallSynchronizedFileStage::OperandPreMoveValidation,
+                InstallSynchronizedFileOutcome::BeforeMove,
+                source,
+                destination_before,
+                None,
+                error,
+            ));
+        }
+        drop(destination_before);
+
+        let move_result = os::move_file_replace_write_through(&source_path, &destination_path);
+        let move_outcome = if move_result.is_ok() {
+            InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified
+        } else {
+            InstallSynchronizedFileOutcome::MoveReturnedFailure
+        };
+        let directory = match directory_transition.recover(&canonical_directory) {
+            Ok(authority) => authority,
+            Err(recovery) => {
+                let (directory_authority, recovery_error) = recovery.into_parts();
+                return Err(InstallSynchronizedFileError::recovery(
+                    directory_authority,
+                    move_outcome,
+                    source,
+                    destination_snapshot,
+                    move_result.err(),
+                    recovery_error,
+                ));
+            }
+        };
+        if let Err(error) = move_result {
+            let (reacquired_destination, destination_reacquisition_error) =
+                reacquire_pre_move_destination(&destination_path, destination_snapshot);
+            return Err(InstallSynchronizedFileError::move_failure(
+                InstallDirectoryAuthority::from_exclusive(directory),
+                source,
+                destination_snapshot,
+                reacquired_destination,
+                destination_reacquisition_error,
                 error,
             ));
         }
@@ -527,23 +663,23 @@ impl AuthorityDirectory {
         let moved = match install_file_state(&source) {
             Ok(state) => state,
             Err(error) => {
-                return Err(InstallSynchronizedFileError::retained(
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
                     InstallSynchronizedFileStage::SourcePostMoveValidation,
                     InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                     source,
-                    destination_before,
-                    None,
+                    RetainedInstalledDestination::none(destination_snapshot),
                     error,
                 ));
             }
         };
         if moved != initial {
-            return Err(InstallSynchronizedFileError::retained(
+            return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                InstallDirectoryAuthority::from_exclusive(directory),
                 InstallSynchronizedFileStage::SourcePostMoveValidation,
                 InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                 source,
-                destination_before,
-                None,
+                RetainedInstalledDestination::none(destination_snapshot),
                 io::Error::other("source state changed across write-through installation"),
             ));
         }
@@ -551,12 +687,12 @@ impl AuthorityDirectory {
         let destination = match AuthorityFile::open_reader(&destination_path) {
             Ok(authority) => authority,
             Err(error) => {
-                return Err(InstallSynchronizedFileError::retained(
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
                     InstallSynchronizedFileStage::DestinationPostMoveOpen,
                     InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                     source,
-                    destination_before,
-                    None,
+                    RetainedInstalledDestination::none(destination_snapshot),
                     error,
                 ));
             }
@@ -564,77 +700,116 @@ impl AuthorityDirectory {
         let destination_state = match install_file_state(&destination) {
             Ok(state) => state,
             Err(error) => {
-                return Err(InstallSynchronizedFileError::retained(
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
                     InstallSynchronizedFileStage::DestinationPostMoveValidation,
                     InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                     source,
-                    destination_before,
-                    Some(destination),
+                    RetainedInstalledDestination::exact(destination_snapshot, destination),
                     error,
                 ));
             }
         };
         if destination_state != initial {
-            return Err(InstallSynchronizedFileError::retained(
+            return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                InstallDirectoryAuthority::from_exclusive(directory),
                 InstallSynchronizedFileStage::DestinationPostMoveValidation,
                 InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                 source,
-                destination_before,
-                Some(destination),
+                RetainedInstalledDestination::exact(destination_snapshot, destination),
                 io::Error::other("destination does not identify the synchronized source file"),
             ));
         }
+        let installed = match AuthorityFile::open_install_destination(&destination_path) {
+            Ok(authority) => authority,
+            Err(error) => {
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
+                    InstallSynchronizedFileStage::DestinationPostMoveOpen,
+                    InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
+                    source,
+                    RetainedInstalledDestination::exact(destination_snapshot, destination),
+                    error,
+                ));
+            }
+        };
+        let installed_state = match install_file_state(&installed) {
+            Ok(state) => state,
+            Err(error) => {
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
+                    InstallSynchronizedFileStage::DestinationPostMoveValidation,
+                    InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
+                    source,
+                    RetainedInstalledDestination::exact(destination_snapshot, installed),
+                    error,
+                ));
+            }
+        };
+        if installed_state != initial {
+            return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                InstallDirectoryAuthority::from_exclusive(directory),
+                InstallSynchronizedFileStage::DestinationPostMoveValidation,
+                InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
+                source,
+                RetainedInstalledDestination::exact(destination_snapshot, installed),
+                io::Error::other(
+                    "strict installed authority does not match the synchronized source",
+                ),
+            ));
+        }
+        drop(destination);
+        let destination = installed;
 
         match open_path_entry(&source_path) {
             Err(error) if error.kind() == io::ErrorKind::NotFound => {}
             Ok(_) => {
-                return Err(InstallSynchronizedFileError::retained(
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
                     InstallSynchronizedFileStage::SourceAbsenceValidation,
                     InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                     source,
-                    destination_before,
-                    Some(destination),
+                    RetainedInstalledDestination::exact(destination_snapshot, destination),
                     io::Error::other("source name still exists after installation"),
                 ));
             }
             Err(error) => {
-                return Err(InstallSynchronizedFileError::retained(
+                return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                    InstallDirectoryAuthority::from_exclusive(directory),
                     InstallSynchronizedFileStage::SourceAbsenceValidation,
                     InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                     source,
-                    destination_before,
-                    Some(destination),
+                    RetainedInstalledDestination::exact(destination_snapshot, destination),
                     error,
                 ));
             }
         }
-        if let Err(error) = self.validate_retained() {
-            return Err(InstallSynchronizedFileError::retained(
+        if let Err(error) = directory.validate_retained() {
+            return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                InstallDirectoryAuthority::from_exclusive(directory),
                 InstallSynchronizedFileStage::RetainedDirectoryPostMoveValidation,
                 InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                 source,
-                destination_before,
-                Some(destination),
+                RetainedInstalledDestination::exact(destination_snapshot, destination),
                 error,
             ));
         }
-        if let Err(error) = self
+        if let Err(error) = directory
             .validate_named_path(directory_path)
-            .and_then(|()| self.validate_named_path(&canonical_directory))
+            .and_then(|()| directory.validate_named_path(&canonical_directory))
         {
-            return Err(InstallSynchronizedFileError::retained(
+            return Err(InstallSynchronizedFileError::retained_with_snapshot(
+                InstallDirectoryAuthority::from_exclusive(directory),
                 InstallSynchronizedFileStage::NamedDirectoryPostMoveValidation,
                 InstallSynchronizedFileOutcome::MoveReturnedSuccessUnverified,
                 source,
-                destination_before,
-                Some(destination),
+                RetainedInstalledDestination::exact(destination_snapshot, destination),
                 error,
             ));
         }
 
         drop(source);
-        drop(destination_before);
-        Ok(destination)
+        Ok((directory, destination))
     }
 
     /// The copied full-width identity of this exact retained directory.
@@ -756,6 +931,9 @@ pub enum InstallSynchronizedFileStage {
     RetainedDirectoryPreMoveValidation,
     /// The named directory failed its immediate pre-move validation.
     NamedDirectoryPreMoveValidation,
+    /// The full exclusive directory authority could not be recovered after
+    /// the native move attempt.
+    DirectoryAuthorityRecovery,
     /// `MoveFileExW` returned failure.
     Move,
     /// The retained source changed or became unsafe after a reported move.
@@ -786,45 +964,422 @@ pub enum InstallSynchronizedFileOutcome {
     MoveReturnedSuccessUnverified,
 }
 
-/// A synchronized-install failure with every acquired exact authority retained.
+/// Copied validated regular-file state captured before a synchronized install.
+///
+/// This is evidence, not an authority handle and not proof that the old name
+/// remained unchanged after the native move attempt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InstallFileSnapshot(os::RegularFileState);
+
+impl InstallFileSnapshot {
+    /// The copied full-width file identity.
+    #[must_use]
+    pub fn identity(self) -> HighResFileId {
+        self.0.identity
+    }
+
+    /// The copied end-of-file length in bytes.
+    #[must_use]
+    pub fn size(self) -> u64 {
+        self.0.size
+    }
+
+    /// The copied hard-link count.
+    #[must_use]
+    pub fn link_count(self) -> u64 {
+        self.0.link_count
+    }
+}
+
+impl From<os::RegularFileState> for InstallFileSnapshot {
+    fn from(state: os::RegularFileState) -> Self {
+        Self(state)
+    }
+}
+
+#[derive(Debug)]
+enum InstallDirectoryAuthorityState {
+    Exclusive(AuthorityDirectory),
+    Transition {
+        directory: File,
+        identity: HighResFileId,
+    },
+}
+
+/// Exact parent-directory authority retained across a synchronized install.
+///
+/// The representation is intentionally opaque. During the native move it may
+/// be a read-only transition authority that permits same-directory namespace
+/// mutation; callers must recover the exclusive authority before authorizing
+/// another operation.
+#[derive(Debug)]
+pub struct InstallDirectoryAuthority(InstallDirectoryAuthorityState);
+
+impl InstallDirectoryAuthority {
+    fn from_exclusive(authority: AuthorityDirectory) -> Self {
+        Self(InstallDirectoryAuthorityState::Exclusive(authority))
+    }
+
+    fn open_transition(path: &Path, expected: HighResFileId) -> io::Result<Self> {
+        let directory = open_path_entry(path)?;
+        let identity = os::validated_directory_identity(&directory)?;
+        if identity != expected {
+            return Err(io::Error::other(
+                "transition path does not identify the retained directory",
+            ));
+        }
+        Ok(Self(InstallDirectoryAuthorityState::Transition {
+            directory,
+            identity,
+        }))
+    }
+
+    fn validate_retained(&self) -> io::Result<()> {
+        match &self.0 {
+            InstallDirectoryAuthorityState::Exclusive(authority) => authority.validate_retained(),
+            InstallDirectoryAuthorityState::Transition {
+                directory,
+                identity,
+            } => {
+                if os::validated_directory_identity(directory)? != *identity {
+                    return Err(io::Error::other(
+                        "retained transition directory identity changed unexpectedly",
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn validate_named_path(&self, path: &Path) -> io::Result<()> {
+        if directory_identity_at_path(path)? != self.identity() {
+            return Err(io::Error::other(
+                "named directory path does not identify the install directory authority",
+            ));
+        }
+        Ok(())
+    }
+
+    /// The copied full-width identity of this exact directory authority.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        match &self.0 {
+            InstallDirectoryAuthorityState::Exclusive(authority) => authority.identity(),
+            InstallDirectoryAuthorityState::Transition { identity, .. } => *identity,
+        }
+    }
+
+    /// Borrow the full exclusive authority when it is currently available.
+    #[must_use]
+    pub fn exclusive(&self) -> Option<&AuthorityDirectory> {
+        match &self.0 {
+            InstallDirectoryAuthorityState::Exclusive(authority) => Some(authority),
+            InstallDirectoryAuthorityState::Transition { .. } => None,
+        }
+    }
+
+    /// Recover the owned exclusive authority without a pathname lookup when it
+    /// is already available.
+    pub fn into_exclusive(self) -> Result<AuthorityDirectory, Self> {
+        match self.0 {
+            InstallDirectoryAuthorityState::Exclusive(authority) => Ok(authority),
+            state @ InstallDirectoryAuthorityState::Transition { .. } => Err(Self(state)),
+        }
+    }
+
+    /// Recover full exclusive authority through a path that must identify this
+    /// exact retained directory while the transition handle remains live.
+    pub fn recover(
+        self,
+        path: &Path,
+    ) -> Result<AuthorityDirectory, RecoverInstallDirectoryAuthorityError> {
+        match self.0 {
+            InstallDirectoryAuthorityState::Exclusive(authority) => {
+                if let Err(source) = authority
+                    .validate_retained()
+                    .and_then(|()| authority.validate_named_path(path))
+                {
+                    return Err(RecoverInstallDirectoryAuthorityError {
+                        authority: Self::from_exclusive(authority),
+                        source,
+                    });
+                }
+                Ok(authority)
+            }
+            InstallDirectoryAuthorityState::Transition {
+                directory,
+                identity,
+            } => {
+                let transition = Self(InstallDirectoryAuthorityState::Transition {
+                    directory,
+                    identity,
+                });
+                if let Err(source) = transition.validate_retained() {
+                    return Err(RecoverInstallDirectoryAuthorityError {
+                        authority: transition,
+                        source,
+                    });
+                }
+                let authority = match AuthorityDirectory::open_existing(path) {
+                    Ok(authority) => authority,
+                    Err(source) => {
+                        return Err(RecoverInstallDirectoryAuthorityError {
+                            authority: transition,
+                            source,
+                        });
+                    }
+                };
+                if let Err(source) = transition.validate_retained() {
+                    return Err(RecoverInstallDirectoryAuthorityError {
+                        authority: transition,
+                        source,
+                    });
+                }
+                if authority.identity() != identity {
+                    return Err(RecoverInstallDirectoryAuthorityError {
+                        authority: transition,
+                        source: io::Error::other(
+                            "recovered path does not identify the transition directory",
+                        ),
+                    });
+                }
+                drop(transition);
+                Ok(authority)
+            }
+        }
+    }
+}
+
+/// Failure to recover full exclusive authority after a synchronized install.
+#[derive(Debug)]
+pub struct RecoverInstallDirectoryAuthorityError {
+    authority: InstallDirectoryAuthority,
+    source: io::Error,
+}
+
+impl RecoverInstallDirectoryAuthorityError {
+    /// Borrow the exact authority that remains available for recovery.
+    #[must_use]
+    pub fn authority(&self) -> &InstallDirectoryAuthority {
+        &self.authority
+    }
+
+    /// Borrow the operating-system or identity-validation failure.
+    #[must_use]
+    pub fn error(&self) -> &io::Error {
+        &self.source
+    }
+
+    /// Recover the transition authority and the recovery failure.
+    #[must_use]
+    pub fn into_parts(self) -> (InstallDirectoryAuthority, io::Error) {
+        (self.authority, self.source)
+    }
+}
+
+impl std::fmt::Display for RecoverInstallDirectoryAuthorityError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "exclusive install-directory recovery failed: {}",
+            self.source
+        )
+    }
+}
+
+impl std::error::Error for RecoverInstallDirectoryAuthorityError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
+}
+
+/// A synchronized-install failure retaining every authority that can safely
+/// remain open, plus copied and reacquisition evidence for an old destination
+/// that Windows requires the wrapper to close before replacement.
 #[derive(Debug)]
 pub struct InstallSynchronizedFileError {
     stage: InstallSynchronizedFileStage,
     outcome: InstallSynchronizedFileOutcome,
+    directory_authority: InstallDirectoryAuthority,
     source_authority: Option<AuthorityFile>,
+    pre_move_destination_snapshot: Option<InstallFileSnapshot>,
     pre_move_destination_authority: Option<AuthorityFile>,
+    reacquired_pre_move_destination_authority: Option<AuthorityFile>,
     installed_destination_authority: Option<AuthorityFile>,
+    destination_reacquisition_error: Option<io::Error>,
+    native_move_error: Option<io::Error>,
     source: io::Error,
 }
 
-impl InstallSynchronizedFileError {
-    fn refused(stage: InstallSynchronizedFileStage, source: io::Error) -> Self {
+#[derive(Debug)]
+struct RetainedInstalledDestination {
+    pre_move_snapshot: Option<InstallFileSnapshot>,
+    installed_authority: Option<AuthorityFile>,
+}
+
+impl RetainedInstalledDestination {
+    fn none(pre_move_snapshot: Option<InstallFileSnapshot>) -> Self {
         Self {
-            stage,
-            outcome: InstallSynchronizedFileOutcome::BeforeMove,
-            source_authority: None,
-            pre_move_destination_authority: None,
-            installed_destination_authority: None,
-            source,
+            pre_move_snapshot,
+            installed_authority: None,
         }
     }
 
+    fn exact(
+        pre_move_snapshot: Option<InstallFileSnapshot>,
+        installed_authority: AuthorityFile,
+    ) -> Self {
+        Self {
+            pre_move_snapshot,
+            installed_authority: Some(installed_authority),
+        }
+    }
+}
+
+/// Owned components of a synchronized-install failure.
+#[derive(Debug)]
+pub struct InstallSynchronizedFileErrorParts {
+    /// Exact stage at which installation stopped.
+    pub stage: InstallSynchronizedFileStage,
+    /// Native namespace outcome observed before the failure.
+    pub outcome: InstallSynchronizedFileOutcome,
+    /// Exact retained parent-directory authority.
+    pub directory_authority: InstallDirectoryAuthority,
+    /// Exact synchronized source authority, when acquired.
+    pub source_authority: Option<AuthorityFile>,
+    /// Copied old-destination state, when one existed.
+    pub pre_move_destination_snapshot: Option<InstallFileSnapshot>,
+    /// Exact old-destination authority retained when failure occurred before
+    /// the native move.
+    pub pre_move_destination_authority: Option<AuthorityFile>,
+    /// Exact old destination reacquired after a failed native move.
+    pub reacquired_pre_move_destination_authority: Option<AuthorityFile>,
+    /// Exact installed destination observed after native success.
+    pub installed_destination_authority: Option<AuthorityFile>,
+    /// Failure to reacquire or re-prove the old destination.
+    pub destination_reacquisition_error: Option<io::Error>,
+    /// Native move failure retained when parent recovery superseded it.
+    pub native_move_error: Option<io::Error>,
+    /// Primary validation, recovery, or native-operation failure.
+    pub error: io::Error,
+}
+
+impl InstallSynchronizedFileError {
+    fn refused(
+        directory_authority: InstallDirectoryAuthority,
+        stage: InstallSynchronizedFileStage,
+        source: io::Error,
+    ) -> Box<Self> {
+        Box::new(Self {
+            stage,
+            outcome: InstallSynchronizedFileOutcome::BeforeMove,
+            directory_authority,
+            source_authority: None,
+            pre_move_destination_snapshot: None,
+            pre_move_destination_authority: None,
+            reacquired_pre_move_destination_authority: None,
+            installed_destination_authority: None,
+            destination_reacquisition_error: None,
+            native_move_error: None,
+            source,
+        })
+    }
+
     fn retained(
+        directory_authority: InstallDirectoryAuthority,
         stage: InstallSynchronizedFileStage,
         outcome: InstallSynchronizedFileOutcome,
         source_authority: AuthorityFile,
         pre_move_destination_authority: Option<AuthorityFile>,
         installed_destination_authority: Option<AuthorityFile>,
         source: io::Error,
-    ) -> Self {
-        Self {
+    ) -> Box<Self> {
+        let pre_move_destination_snapshot = pre_move_destination_authority
+            .as_ref()
+            .and_then(|authority| install_file_state(authority).ok())
+            .map(InstallFileSnapshot::from);
+        Box::new(Self {
             stage,
             outcome,
+            directory_authority,
             source_authority: Some(source_authority),
+            pre_move_destination_snapshot,
             pre_move_destination_authority,
+            reacquired_pre_move_destination_authority: None,
             installed_destination_authority,
+            destination_reacquisition_error: None,
+            native_move_error: None,
             source,
-        }
+        })
+    }
+
+    fn retained_with_snapshot(
+        directory_authority: InstallDirectoryAuthority,
+        stage: InstallSynchronizedFileStage,
+        outcome: InstallSynchronizedFileOutcome,
+        source_authority: AuthorityFile,
+        destination: RetainedInstalledDestination,
+        source: io::Error,
+    ) -> Box<Self> {
+        Box::new(Self {
+            stage,
+            outcome,
+            directory_authority,
+            source_authority: Some(source_authority),
+            pre_move_destination_snapshot: destination.pre_move_snapshot,
+            pre_move_destination_authority: None,
+            reacquired_pre_move_destination_authority: None,
+            installed_destination_authority: destination.installed_authority,
+            destination_reacquisition_error: None,
+            native_move_error: None,
+            source,
+        })
+    }
+
+    fn recovery(
+        directory_authority: InstallDirectoryAuthority,
+        outcome: InstallSynchronizedFileOutcome,
+        source_authority: AuthorityFile,
+        pre_move_destination_snapshot: Option<InstallFileSnapshot>,
+        native_move_error: Option<io::Error>,
+        source: io::Error,
+    ) -> Box<Self> {
+        Box::new(Self {
+            stage: InstallSynchronizedFileStage::DirectoryAuthorityRecovery,
+            outcome,
+            directory_authority,
+            source_authority: Some(source_authority),
+            pre_move_destination_snapshot,
+            pre_move_destination_authority: None,
+            reacquired_pre_move_destination_authority: None,
+            installed_destination_authority: None,
+            destination_reacquisition_error: None,
+            native_move_error,
+            source,
+        })
+    }
+
+    fn move_failure(
+        directory_authority: InstallDirectoryAuthority,
+        source_authority: AuthorityFile,
+        pre_move_destination_snapshot: Option<InstallFileSnapshot>,
+        reacquired_pre_move_destination_authority: Option<AuthorityFile>,
+        destination_reacquisition_error: Option<io::Error>,
+        source: io::Error,
+    ) -> Box<Self> {
+        Box::new(Self {
+            stage: InstallSynchronizedFileStage::Move,
+            outcome: InstallSynchronizedFileOutcome::MoveReturnedFailure,
+            directory_authority,
+            source_authority: Some(source_authority),
+            pre_move_destination_snapshot,
+            pre_move_destination_authority: None,
+            reacquired_pre_move_destination_authority,
+            installed_destination_authority: None,
+            destination_reacquisition_error,
+            native_move_error: None,
+            source,
+        })
     }
 
     /// Exact validation or native-operation stage that failed.
@@ -839,22 +1394,57 @@ impl InstallSynchronizedFileError {
         self.outcome
     }
 
+    /// Borrow the exact parent-directory authority retained by this outcome.
+    #[must_use]
+    pub fn directory_authority(&self) -> &InstallDirectoryAuthority {
+        &self.directory_authority
+    }
+
     /// Borrow the exact synchronized source authority when it was acquired.
     #[must_use]
     pub fn source_authority(&self) -> Option<&AuthorityFile> {
         self.source_authority.as_ref()
     }
 
-    /// Borrow the exact destination observed before the move, when one existed.
+    /// Copied validated destination state observed before the move, when one
+    /// existed. This evidence does not establish namespace stasis.
+    #[must_use]
+    pub fn pre_move_destination_snapshot(&self) -> Option<InstallFileSnapshot> {
+        self.pre_move_destination_snapshot
+    }
+
+    /// Borrow the exact destination when failure occurred before the move and
+    /// its strict inspection handle could remain open.
     #[must_use]
     pub fn pre_move_destination_authority(&self) -> Option<&AuthorityFile> {
         self.pre_move_destination_authority.as_ref()
+    }
+
+    /// Borrow the old destination only when it was reacquired by name after a
+    /// failed native move and exactly matched the pre-move snapshot.
+    #[must_use]
+    pub fn reacquired_pre_move_destination_authority(&self) -> Option<&AuthorityFile> {
+        self.reacquired_pre_move_destination_authority.as_ref()
     }
 
     /// Borrow the exact installed destination observed after a reported move.
     #[must_use]
     pub fn installed_destination_authority(&self) -> Option<&AuthorityFile> {
         self.installed_destination_authority.as_ref()
+    }
+
+    /// Borrow the native move error when directory recovery superseded it as
+    /// the primary failure.
+    #[must_use]
+    pub fn native_move_error(&self) -> Option<&io::Error> {
+        self.native_move_error.as_ref()
+    }
+
+    /// Borrow the failure to reacquire or re-prove the old destination after a
+    /// failed native move. Its presence means namespace stasis is unverified.
+    #[must_use]
+    pub fn destination_reacquisition_error(&self) -> Option<&io::Error> {
+        self.destination_reacquisition_error.as_ref()
     }
 
     /// Borrow the underlying validation or operating-system failure.
@@ -865,24 +1455,21 @@ impl InstallSynchronizedFileError {
 
     /// Recover the complete typed outcome, retained authorities, and failure.
     #[must_use]
-    pub fn into_parts(
-        self,
-    ) -> (
-        InstallSynchronizedFileStage,
-        InstallSynchronizedFileOutcome,
-        Option<AuthorityFile>,
-        Option<AuthorityFile>,
-        Option<AuthorityFile>,
-        io::Error,
-    ) {
-        (
-            self.stage,
-            self.outcome,
-            self.source_authority,
-            self.pre_move_destination_authority,
-            self.installed_destination_authority,
-            self.source,
-        )
+    pub fn into_parts(self: Box<Self>) -> InstallSynchronizedFileErrorParts {
+        InstallSynchronizedFileErrorParts {
+            stage: self.stage,
+            outcome: self.outcome,
+            directory_authority: self.directory_authority,
+            source_authority: self.source_authority,
+            pre_move_destination_snapshot: self.pre_move_destination_snapshot,
+            pre_move_destination_authority: self.pre_move_destination_authority,
+            reacquired_pre_move_destination_authority: self
+                .reacquired_pre_move_destination_authority,
+            installed_destination_authority: self.installed_destination_authority,
+            destination_reacquisition_error: self.destination_reacquisition_error,
+            native_move_error: self.native_move_error,
+            error: self.source,
+        }
     }
 }
 
@@ -986,6 +1573,94 @@ fn install_file_state(authority: &AuthorityFile) -> io::Result<os::RegularFileSt
         )));
     }
     Ok(state)
+}
+
+fn validate_install_operands_and_names(
+    source: &AuthorityFile,
+    expected_source: os::RegularFileState,
+    destination: Option<&AuthorityFile>,
+    expected_destination: Option<os::RegularFileState>,
+    source_path: &Path,
+    destination_path: &Path,
+) -> io::Result<()> {
+    if install_file_state(source)? != expected_source {
+        return Err(io::Error::other(
+            "source state changed before write-through installation",
+        ));
+    }
+    let named_source = AuthorityFile::open_reader(source_path)?;
+    if install_file_state(&named_source)? != expected_source {
+        return Err(io::Error::other(
+            "source name changed before write-through installation",
+        ));
+    }
+
+    match (destination, expected_destination) {
+        (Some(destination), Some(expected)) => {
+            if install_file_state(destination)? != expected {
+                return Err(io::Error::other(
+                    "destination state changed before write-through installation",
+                ));
+            }
+            let named_destination = AuthorityFile::open_reader(destination_path)?;
+            if install_file_state(&named_destination)? != expected {
+                return Err(io::Error::other(
+                    "destination name changed before write-through installation",
+                ));
+            }
+        }
+        (None, None) => match open_path_entry(destination_path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "destination appeared before write-through installation",
+                ));
+            }
+            Err(error) => return Err(error),
+        },
+        _ => {
+            return Err(io::Error::other(
+                "destination authority and expected state disagree",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn reacquire_pre_move_destination(
+    destination_path: &Path,
+    snapshot: Option<InstallFileSnapshot>,
+) -> (Option<AuthorityFile>, Option<io::Error>) {
+    match snapshot {
+        Some(expected) => {
+            let authority = match AuthorityFile::open_install_destination(destination_path) {
+                Ok(authority) => authority,
+                Err(error) => return (None, Some(error)),
+            };
+            match install_file_state(&authority) {
+                Ok(state) if InstallFileSnapshot::from(state) == expected => {
+                    (Some(authority), None)
+                }
+                Ok(_) => (
+                    None,
+                    Some(io::Error::other(
+                        "destination reacquisition did not match the pre-move snapshot",
+                    )),
+                ),
+                Err(error) => (None, Some(error)),
+            }
+        }
+        None => match open_path_entry(destination_path) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => (None, None),
+            Ok(_) => (
+                None,
+                Some(io::Error::other(
+                    "previously absent destination appeared after failed move",
+                )),
+            ),
+            Err(error) => (None, Some(error)),
+        },
+    }
 }
 
 fn directory_identity_at_path(path: &Path) -> io::Result<HighResFileId> {
@@ -1127,13 +1802,13 @@ impl AuthorityFile {
             OpenDisposition::Existing,
             GENERIC_READ | GENERIC_WRITE,
             false,
-            true,
+            false,
         )?;
         Self::from_file(file)
     }
 
     fn open_install_destination(path: &Path) -> io::Result<Self> {
-        let file = open(path, OpenDisposition::Existing, GENERIC_READ, false, true)?;
+        let file = open(path, OpenDisposition::Existing, GENERIC_READ, false, false)?;
         Self::from_file(file)
     }
 
@@ -1201,6 +1876,16 @@ mod tests {
             io::ErrorKind::InvalidInput,
             "create unexpectedly accepted {name:?}"
         );
+    }
+
+    fn recover_exclusive_install_directory(
+        error: Box<InstallSynchronizedFileError>,
+    ) -> AuthorityDirectory {
+        error
+            .into_parts()
+            .directory_authority
+            .into_exclusive()
+            .expect("failure before or after recovery must retain exclusive parent authority")
     }
 
     fn open_directory_for_generic_write(path: &Path) -> io::Result<File> {
@@ -1480,6 +2165,49 @@ mod tests {
     }
 
     #[test]
+    fn synchronized_source_handoff_excludes_writers_and_delete_until_transition() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_path = temp.path().join("journal.init");
+        let moved_path = temp.path().join("journal.moved");
+        std::fs::write(&source_path, b"complete fixed journal image").unwrap();
+
+        let synchronizer = AuthorityFile::open_install_source(&source_path).unwrap();
+        let synchronized_state = install_file_state(&synchronizer).unwrap();
+        let mut writer_options = OpenOptions::new();
+        writer_options
+            .write(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        assert_eq!(
+            writer_options
+                .open(&source_path)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(32)
+        );
+        assert_eq!(
+            std::fs::rename(&source_path, &moved_path)
+                .unwrap_err()
+                .raw_os_error(),
+            Some(32)
+        );
+
+        let transition = AuthorityFile::open_reader(&source_path).unwrap();
+        assert_eq!(install_file_state(&transition).unwrap(), synchronized_state);
+        drop(synchronizer);
+
+        let writer = writer_options.open(&source_path).unwrap();
+        std::fs::rename(&source_path, &moved_path).unwrap();
+        assert_eq!(install_file_state(&transition).unwrap(), synchronized_state);
+        drop(writer);
+        drop(transition);
+        assert_eq!(
+            std::fs::read(moved_path).unwrap(),
+            b"complete fixed journal image"
+        );
+    }
+
+    #[test]
     fn synchronized_install_moves_exact_existing_source_to_absent_destination() {
         let temp = tempfile::tempdir().unwrap();
         let source_path = temp.path().join("journal.init");
@@ -1490,8 +2218,9 @@ mod tests {
         let source_state = install_file_state(&source).unwrap();
         drop(source);
         let directory = AuthorityDirectory::open_existing(temp.path()).unwrap();
+        let directory_identity = directory.identity();
 
-        let installed = directory
+        let (directory, installed) = directory
             .install_synchronized_file(
                 temp.path(),
                 OsStr::new("journal.init"),
@@ -1499,12 +2228,25 @@ mod tests {
             )
             .unwrap();
 
+        assert_eq!(directory.identity(), directory_identity);
         assert_eq!(install_file_state(&installed).unwrap(), source_state);
         assert_eq!(installed.identity(), source_state.identity);
         assert_eq!(installed.link_count().unwrap(), 1);
         assert_eq!(source_state.size, bytes.len() as u64);
         assert!(!source_path.try_exists().unwrap());
         assert_eq!(std::fs::read(destination_path).unwrap(), bytes);
+        let mut writer_options = OpenOptions::new();
+        writer_options
+            .write(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
+        assert_eq!(
+            writer_options
+                .open(temp.path().join("active-receipts.v1"))
+                .unwrap_err()
+                .raw_os_error(),
+            Some(32)
+        );
     }
 
     #[test]
@@ -1521,8 +2263,9 @@ mod tests {
         let old_identity = old_destination.identity();
         drop(old_destination);
         let directory = AuthorityDirectory::open_existing(temp.path()).unwrap();
+        let directory_identity = directory.identity();
 
-        let installed = directory
+        let (directory, installed) = directory
             .install_synchronized_file(
                 temp.path(),
                 OsStr::new("journal.init"),
@@ -1530,6 +2273,7 @@ mod tests {
             )
             .unwrap();
 
+        assert_eq!(directory.identity(), directory_identity);
         assert_eq!(install_file_state(&installed).unwrap(), source_state);
         assert_ne!(installed.identity(), old_identity);
         assert!(!source_path.try_exists().unwrap());
@@ -1567,7 +2311,7 @@ mod tests {
         let first = tempfile::tempdir().unwrap();
         let second = tempfile::tempdir().unwrap();
         std::fs::write(first.path().join("source"), b"source").unwrap();
-        let directory = AuthorityDirectory::open_existing(first.path()).unwrap();
+        let mut directory = AuthorityDirectory::open_existing(first.path()).unwrap();
 
         for (path, source, destination, expected_stage) in [
             (
@@ -1600,6 +2344,7 @@ mod tests {
                 .unwrap_err();
             assert_eq!(error.stage(), expected_stage);
             assert_eq!(error.outcome(), InstallSynchronizedFileOutcome::BeforeMove);
+            directory = recover_exclusive_install_directory(error);
         }
         assert_eq!(
             std::fs::read(first.path().join("source")).unwrap(),
@@ -1635,6 +2380,7 @@ mod tests {
             source_directory_error.stage(),
             InstallSynchronizedFileStage::SourceOpen
         );
+        let directory = recover_exclusive_install_directory(source_directory_error);
         let destination_directory_error = directory
             .install_synchronized_file(
                 temp.path(),
@@ -1646,6 +2392,7 @@ mod tests {
             destination_directory_error.stage(),
             InstallSynchronizedFileStage::DestinationInspection
         );
+        let directory = recover_exclusive_install_directory(destination_directory_error);
         let source_reparse_error = directory
             .install_synchronized_file(
                 temp.path(),
@@ -1657,6 +2404,7 @@ mod tests {
             source_reparse_error.stage(),
             InstallSynchronizedFileStage::SourceOpen
         );
+        let directory = recover_exclusive_install_directory(source_reparse_error);
         let destination_reparse_error = directory
             .install_synchronized_file(
                 temp.path(),
@@ -1668,6 +2416,7 @@ mod tests {
             destination_reparse_error.stage(),
             InstallSynchronizedFileStage::DestinationInspection
         );
+        drop(destination_reparse_error);
     }
 
     #[test]
@@ -1700,7 +2449,7 @@ mod tests {
                 .unwrap(),
             2
         );
-        drop(source_error);
+        let directory = recover_exclusive_install_directory(source_error);
 
         let destination_error = directory
             .install_synchronized_file(
@@ -1760,12 +2509,15 @@ mod tests {
         let source = AuthorityFile::open_reader(&source_path).unwrap();
         let source_identity = source.identity();
         drop(source);
+        let old_destination = AuthorityFile::open_reader(&destination_path).unwrap();
+        let old_destination_state = install_file_state(&old_destination).unwrap();
+        drop(old_destination);
         let mut blocker_options = OpenOptions::new();
         blocker_options
             .read(true)
             .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
             .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-        let blocker = blocker_options.open(&destination_path).unwrap();
+        let blocker = blocker_options.open(&source_path).unwrap();
         let directory = AuthorityDirectory::open_existing(temp.path()).unwrap();
 
         let failure = directory
@@ -1782,16 +2534,42 @@ mod tests {
             failure.source_authority().unwrap().identity(),
             source_identity
         );
-        assert!(failure.pre_move_destination_authority().is_some());
+        let snapshot = failure.pre_move_destination_snapshot().unwrap();
+        assert_eq!(snapshot.identity(), old_destination_state.identity);
+        assert_eq!(snapshot.size(), old_destination_state.size);
+        assert_eq!(snapshot.link_count(), old_destination_state.link_count);
+        assert!(failure.pre_move_destination_authority().is_none());
+        assert!(
+            failure
+                .reacquired_pre_move_destination_authority()
+                .is_some()
+        );
+        assert!(failure.destination_reacquisition_error().is_none());
         assert!(failure.installed_destination_authority().is_none());
-        let (stage, outcome, source, pre_move_destination, installed, error) = failure.into_parts();
-        assert_eq!(stage, InstallSynchronizedFileStage::Move);
-        assert_eq!(outcome, InstallSynchronizedFileOutcome::MoveReturnedFailure);
-        assert_eq!(source.unwrap().identity(), source_identity);
-        assert!(pre_move_destination.is_some());
-        assert!(installed.is_none());
-        assert_eq!(error.raw_os_error(), Some(32));
-        drop(pre_move_destination);
+        let parts = failure.into_parts();
+        assert_eq!(parts.stage, InstallSynchronizedFileStage::Move);
+        assert_eq!(
+            parts.outcome,
+            InstallSynchronizedFileOutcome::MoveReturnedFailure
+        );
+        assert!(parts.directory_authority.exclusive().is_some());
+        assert_eq!(parts.source_authority.unwrap().identity(), source_identity);
+        assert_eq!(parts.pre_move_destination_snapshot, Some(snapshot));
+        assert!(parts.pre_move_destination_authority.is_none());
+        assert_eq!(
+            parts
+                .reacquired_pre_move_destination_authority
+                .as_ref()
+                .unwrap()
+                .identity(),
+            snapshot.identity()
+        );
+        assert!(parts.installed_destination_authority.is_none());
+        assert!(parts.destination_reacquisition_error.is_none());
+        assert!(parts.native_move_error.is_none());
+        assert_eq!(parts.error.raw_os_error(), Some(32));
+        drop(parts.directory_authority);
+        drop(parts.reacquired_pre_move_destination_authority);
         drop(blocker);
         assert_eq!(std::fs::read(source_path).unwrap(), b"source bytes");
         assert_eq!(
@@ -1811,9 +2589,10 @@ mod tests {
         assert!(parent.as_os_str().encode_wide().count() > 260);
         std::fs::write(parent.join("source"), b"long path source").unwrap();
         let directory = AuthorityDirectory::open_existing(&parent).unwrap();
+        let directory_identity = directory.identity();
         let dotted_parent = parent.join(".");
 
-        let installed = directory
+        let (directory, installed) = directory
             .install_synchronized_file(
                 &dotted_parent,
                 OsStr::new("source"),
@@ -1821,6 +2600,7 @@ mod tests {
             )
             .unwrap();
 
+        assert_eq!(directory.identity(), directory_identity);
         assert_eq!(installed.link_count().unwrap(), 1);
         assert!(!parent.join("source").try_exists().unwrap());
         assert_eq!(

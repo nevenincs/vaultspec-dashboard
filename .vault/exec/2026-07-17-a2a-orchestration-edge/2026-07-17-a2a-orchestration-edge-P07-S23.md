@@ -63,3 +63,16 @@ the concurrent Windows-authority compile error recorded in the rolling audit.
 The queue retains only cross-repository CI coordination and decomposition of the
 four concurrently changed product modules that still fail the repository-wide
 1,500-line gate. Both remain medium and external to the A2A implementation.
+
+The final revision moved gateway-lease minting to prepare and binds the exact
+local lease before commit can dispatch. This removes both the remote-success /
+local-failure credential window and the terminal-callback-before-binding race.
+Authoritative status now decides ambiguous cleanup; unknown outcomes retain the
+bounded exact lease, and stale actors are never reactivated by provisioning.
+
+Final evidence is 19/19 dashboard route tests, 4/4 lease tests, 6/6 terminal
+settlement tests, 6/6 real gateway admission/restart tests, 1/1 freshly rebuilt
+cross-repository lost-ack proof, 2/2 mounted frontend tests, TypeScript, Ruff,
+Rust production check, and CLI build. The module queue now contains five foreign
+product-authority modules after the concurrent Windows-authority file also grew
+past 1,500 lines.

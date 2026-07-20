@@ -475,13 +475,13 @@ fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_no_bearer() {
             .resolve_token(tokens[TEST_REQUIRED_ROLES[0]].as_str().unwrap(), now_ms())
             .unwrap()
             .is_some(),
-        "the token resolves only after the strict commit response is bound"
+        "the pre-dispatch binding remains resolvable after strict confirmation"
     );
     assert_eq!(unresolved_lease_count(&state), 1);
 }
 
 #[test]
-fn malformed_or_mismatched_commit_response_never_activates_the_local_lease() {
+fn malformed_or_mismatched_commit_response_never_changes_the_prebound_lease() {
     let (_dir, state) = test_state();
     let prepared = PreparedRun {
         reservation_id: "resv-strict-commit".to_string(),
@@ -513,6 +513,39 @@ fn malformed_or_mismatched_commit_response_never_activates_the_local_lease() {
         state.a2a_run_leases.lease_state(&bundle.lease_id).unwrap(),
         Some(crate::a2a_run_leases::LeaseState::Active)
     );
+}
+
+#[test]
+fn provisioning_refuses_to_reactivate_a_stale_actor() {
+    let (_dir, state) = test_state();
+    let role = "vaultspec-researcher";
+    let actor = ActorRef {
+        id: ActorId::new(format!("agent:{role}")).unwrap(),
+        kind: ActorKind::Agent,
+        delegated_by: None,
+    };
+    state
+        .with_authoring_store(|store| {
+            store.with_unit_of_work(CommandKind::CreateSession, |uow| {
+                uow.actors().put_record(ActorRecordInput {
+                    actor,
+                    display: ActorDisplayMetadata::new(role, None),
+                    status: crate::authoring::actors::ActorStatus::Stale,
+                    created_at_ms: 1,
+                    updated_at_ms: 1,
+                })?;
+                Ok(())
+            })
+        })
+        .unwrap();
+    let prepared = PreparedRun {
+        reservation_id: "resv-stale-actor".to_string(),
+        gateway_lease_id: "lease-stale-actor".to_string(),
+        required_roles: vec![role.to_string()],
+    };
+
+    assert!(provision_actor_token_bundle(&state, &prepared, "run-stale-actor").is_err());
+    assert_eq!(unresolved_lease_count(&state), 0);
 }
 
 #[test]
@@ -767,6 +800,7 @@ fn refusals_revoke_but_ambiguous_transport_failures_retain_and_retry_tokens() {
             (404, r#"{"detail":"not found"}"#),
             (201, TEST_PREPARE_RESPONSE),
             (422, r#"{"detail":"preset ineligible"}"#),
+            (404, r#"{"detail":"not found"}"#),
             (
                 201,
                 r#"{"api_version":"v1","stage":"released","reservation_id":"resv-test-1","released":true}"#,
