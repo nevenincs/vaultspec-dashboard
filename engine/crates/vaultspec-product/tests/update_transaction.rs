@@ -19,7 +19,8 @@ use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::process::{GatewaySpec, ResolvedProgram, spawn_gateway};
 use vaultspec_product::receipt::{Channel, PriorSeatIdentity};
 use vaultspec_product::snapshot::{
-    ConsistencyGroupSpec, SchemaBearingStore, open_consistency_snapshot,
+    ConsistencyGroupSpec, SchemaBearingStore, capture_consistency_snapshot,
+    open_consistency_snapshot,
 };
 use vaultspec_product::transaction::{
     TransactionError, UpdatePlan, UpdateTransaction, read_descriptor,
@@ -214,7 +215,17 @@ fn candidate_failure_restores_the_whole_consistency_group() {
             .is_none()
     );
 
-    // The retained prior seat was captured as part of the consistency group.
-    let snapshot = open_consistency_snapshot(&harness.paths, &harness.guard, 11).unwrap();
-    assert_eq!(snapshot.prior_seat(), Some(&prior_seat));
+    // The rollback reclaimed its snapshot (no accumulation, retry-safe).
+    assert!(open_consistency_snapshot(&harness.paths, &harness.guard, 11).is_err());
+
+    // The retained prior seat is captured as part of the consistency group (the
+    // rollback relaunch that re-selects it is the downstream sealed activation).
+    let group_snapshot = capture_consistency_snapshot(
+        &harness.paths,
+        &harness.guard,
+        12,
+        &group(prior_seat.clone()),
+    )
+    .unwrap();
+    assert_eq!(group_snapshot.prior_seat(), Some(&prior_seat));
 }

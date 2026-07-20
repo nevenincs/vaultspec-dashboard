@@ -234,6 +234,62 @@ fn capture_refuses_an_existing_generation() {
 }
 
 #[test]
+fn recapture_at_the_same_generation_succeeds_after_reclaim() {
+    let fixture = Fixture::new();
+    fixture.write_live(&["data", "primary.db"], b"v1");
+    let spec = ConsistencyGroupSpec::new([primary(&fixture)], None).unwrap();
+    capture_consistency_snapshot(&fixture.paths, &fixture.guard, 4, &spec).unwrap();
+
+    // A completed snapshot is never silently overwritten.
+    assert!(matches!(
+        capture_consistency_snapshot(&fixture.paths, &fixture.guard, 4, &spec),
+        Err(SnapshotError::AlreadyExists { .. })
+    ));
+
+    // After reclaim, a retry at the same generation captures cleanly.
+    reclaim_consistency_snapshot(&fixture.paths, &fixture.guard, 4).unwrap();
+    capture_consistency_snapshot(&fixture.paths, &fixture.guard, 4, &spec).unwrap();
+    assert!(open_consistency_snapshot(&fixture.paths, &fixture.guard, 4).is_ok());
+}
+
+#[test]
+fn capture_reclaims_an_incomplete_residue() {
+    let fixture = Fixture::new();
+    fixture.write_live(&["data", "primary.db"], b"v1");
+    let spec = ConsistencyGroupSpec::new([primary(&fixture)], None).unwrap();
+    capture_consistency_snapshot(&fixture.paths, &fixture.guard, 6, &spec).unwrap();
+
+    // Simulate a crashed capture: the manifest never landed.
+    std::fs::remove_file(
+        fixture
+            .paths
+            .snapshot_dir("6")
+            .unwrap()
+            .join(SNAPSHOT_MANIFEST_NAME),
+    )
+    .unwrap();
+
+    // A retry reclaims the manifest-less residue and captures cleanly.
+    capture_consistency_snapshot(&fixture.paths, &fixture.guard, 6, &spec).unwrap();
+    assert!(open_consistency_snapshot(&fixture.paths, &fixture.guard, 6).is_ok());
+}
+
+#[test]
+fn reclaim_removes_a_complete_snapshot_and_is_idempotent() {
+    let fixture = Fixture::new();
+    fixture.write_live(&["data", "primary.db"], b"v1");
+    let spec = ConsistencyGroupSpec::new([primary(&fixture)], None).unwrap();
+    capture_consistency_snapshot(&fixture.paths, &fixture.guard, 8, &spec).unwrap();
+    assert!(fixture.paths.snapshot_dir("8").unwrap().exists());
+
+    reclaim_consistency_snapshot(&fixture.paths, &fixture.guard, 8).unwrap();
+    assert!(!fixture.paths.snapshot_dir("8").unwrap().exists());
+    assert!(open_consistency_snapshot(&fixture.paths, &fixture.guard, 8).is_err());
+    // Idempotent: reclaiming an absent snapshot is a no-op success.
+    reclaim_consistency_snapshot(&fixture.paths, &fixture.guard, 8).unwrap();
+}
+
+#[test]
 fn a_foreign_guard_cannot_capture_or_open() {
     let fixture = Fixture::new();
     let other = Fixture::new();

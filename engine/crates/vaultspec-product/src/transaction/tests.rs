@@ -211,6 +211,35 @@ fn rollback_restores_the_consistency_group_and_clears_the_descriptor() {
 }
 
 #[test]
+fn rollback_reclaims_the_snapshot_and_a_retry_at_the_same_generation_succeeds() {
+    let fixture = Fixture::new();
+    fixture.write_live("primary.db", b"primary-v1");
+    fixture.write_live("checkpoint.db", b"checkpoint-v1");
+
+    // First attempt: snapshot then roll back.
+    let mut txn = UpdateTransaction::begin(fixture.paths.clone(), &fixture.guard, plan()).unwrap();
+    let gateway = spawn_gateway(&exiting_gateway()).unwrap();
+    let (_q, _t) = txn.drain_and_stop(gateway, Duration::from_secs(2)).unwrap();
+    txn.snapshot(&group()).unwrap();
+    txn.rollback().unwrap();
+
+    // The snapshot at this consistency generation is reclaimed (no accumulation,
+    // no wedge).
+    assert!(open_consistency_snapshot(&fixture.paths, &fixture.guard, 7).is_err());
+
+    // A retry at the SAME consistency generation captures cleanly.
+    let mut retry =
+        UpdateTransaction::begin(fixture.paths.clone(), &fixture.guard, plan()).unwrap();
+    let gateway = spawn_gateway(&exiting_gateway()).unwrap();
+    let (_q, _t) = retry
+        .drain_and_stop(gateway, Duration::from_secs(2))
+        .unwrap();
+    retry.snapshot(&group()).unwrap();
+    assert_eq!(retry.phase(), InterruptionMarker::Snapshotted);
+    retry.rollback().unwrap();
+}
+
+#[test]
 fn a_migration_failure_auto_rolls_back_the_group() {
     let fixture = Fixture::new();
     fixture.write_live("primary.db", b"primary-v1");

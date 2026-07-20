@@ -65,3 +65,5 @@ Delivered `src/snapshot.rs` (+ `snapshot/tests.rs`). Snapshots take a byte-level
 ## Notes
 
 The archive→generation materializer and the same-process helper chain remain out of scope for this step (they sit behind the still-proposed archive-materialization ADR). No scaffolds or skipped work in this module. The real-SQLite integration proof lands separately in `tests/snapshot_group.rs` (S54); this step's unit tests exercise the capture/restore machinery over opaque byte members, which is the module's true contract.
+
+Review revision (P06 review HIGH): added snapshot lifecycle reclamation. Capture now reclaims a manifest-less (incomplete) residue and fails closed on a complete one; `reclaim_consistency_snapshot` removes a finished snapshot and is called after every rollback, recovery, and (downstream) acceptance path — closing the retry-wedge (a rolled-back/crashed attempt no longer blocks a re-capture at the same consistency generation) and the unbounded-accumulation defect (resource-bounds prune). New tests prove reclaim-then-recapture, incomplete-residue reclaim, and complete-snapshot refusal.

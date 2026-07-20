@@ -261,7 +261,7 @@ impl ConsistencySnapshot {
     ) -> Result<(), SnapshotError> {
         guard.verify_for_product(paths)?;
         let generation_dir = self.generation_dir(paths)?;
-        self.verify_against(paths, &generation_dir)?;
+        self.verify_against(&generation_dir)?;
 
         for store in &self.manifest.stores {
             let spec = store.to_store()?;
@@ -310,11 +310,7 @@ impl ConsistencySnapshot {
     }
 
     /// Reprove every recorded member against its captured size and digest.
-    fn verify_against(
-        &self,
-        _paths: &ProductPaths,
-        generation_dir: &Path,
-    ) -> Result<(), SnapshotError> {
+    fn verify_against(&self, generation_dir: &Path) -> Result<(), SnapshotError> {
         for store in &self.manifest.stores {
             let store_dir = self.store_dir(generation_dir, &store.id);
             verify_member(&store_dir.join(STORE_PRIMARY_NAME), &store.primary)?;
@@ -352,6 +348,7 @@ pub fn capture_consistency_snapshot(
 ) -> Result<ConsistencySnapshot, SnapshotError> {
     guard.verify_for_product(paths)?;
     let generation_dir = paths.snapshot_dir(&consistency_generation.to_string())?;
+    prepare_capture_dir(&generation_dir)?;
     create_new_private_dir(&generation_dir)?;
     let stores_dir = generation_dir.join(STORES_SUBDIR);
     create_new_private_dir(&stores_dir)?;
@@ -436,8 +433,70 @@ pub fn open_consistency_snapshot(
         consistency_generation,
         manifest,
     };
-    snapshot.verify_against(paths, &generation_dir)?;
+    snapshot.verify_against(&generation_dir)?;
     Ok(snapshot)
+}
+
+/// Reclaim the snapshot captured at `consistency_generation`, removing its whole
+/// tree. Idempotent (absent is success). Called once a transaction has finished
+/// with the snapshot — after a rollback restores from it, after recovery
+/// resolves, and after a successful activation commits — so snapshots do not
+/// accumulate unbounded and a later attempt at the same generation is not wedged.
+pub fn reclaim_consistency_snapshot(
+    paths: &ProductPaths,
+    guard: &InstallLockGuard,
+    consistency_generation: u64,
+) -> Result<(), SnapshotError> {
+    guard.verify_for_product(paths)?;
+    let generation_dir = paths.snapshot_dir(&consistency_generation.to_string())?;
+    remove_snapshot_dir(&generation_dir)
+}
+
+/// Prepare the generation directory for a fresh capture. A pre-existing directory
+/// with a committed manifest is a COMPLETE snapshot and is never overwritten
+/// (fail closed); a directory WITHOUT a manifest is an incomplete residue from a
+/// crashed capture and is reclaimed so the retry can proceed.
+fn prepare_capture_dir(generation_dir: &Path) -> Result<(), SnapshotError> {
+    match std::fs::symlink_metadata(generation_dir) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(SnapshotError::io("snapshot residue stat", error)),
+        Ok(metadata) => {
+            if !metadata.is_dir() || metadata.file_type().is_symlink() || is_reparse(&metadata) {
+                return Err(SnapshotError::UnsafeMember {
+                    path: generation_dir.to_path_buf(),
+                });
+            }
+            if manifest_present(generation_dir) {
+                Err(SnapshotError::AlreadyExists {
+                    path: generation_dir.to_path_buf(),
+                })
+            } else {
+                remove_snapshot_dir(generation_dir)
+            }
+        }
+    }
+}
+
+fn manifest_present(generation_dir: &Path) -> bool {
+    generation_dir.join(SNAPSHOT_MANIFEST_NAME).is_file()
+}
+
+/// Remove a snapshot generation directory and its contents, refusing to follow a
+/// link or reparse point at its root. Idempotent.
+fn remove_snapshot_dir(generation_dir: &Path) -> Result<(), SnapshotError> {
+    match std::fs::symlink_metadata(generation_dir) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(SnapshotError::io("snapshot reclaim stat", error)),
+        Ok(metadata) => {
+            if !metadata.is_dir() || metadata.file_type().is_symlink() || is_reparse(&metadata) {
+                return Err(SnapshotError::UnsafeMember {
+                    path: generation_dir.to_path_buf(),
+                });
+            }
+        }
+    }
+    std::fs::remove_dir_all(generation_dir)
+        .map_err(|error| SnapshotError::io("snapshot reclaim", error))
 }
 
 impl StoreRecord {

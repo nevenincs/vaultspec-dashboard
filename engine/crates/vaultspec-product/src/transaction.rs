@@ -39,7 +39,7 @@ use crate::process::{GatewayProcess, Termination};
 use crate::receipt::{Channel, InterruptionMarker};
 use crate::snapshot::{
     ConsistencyGroupSpec, ConsistencySnapshot, SnapshotError, capture_consistency_snapshot,
-    open_consistency_snapshot,
+    open_consistency_snapshot, reclaim_consistency_snapshot,
 };
 
 const DESCRIPTOR_NAME: &str = "update.v1";
@@ -322,6 +322,10 @@ impl<'guard> UpdateTransaction<'guard> {
                 .map_err(TransactionError::Snapshot)?;
         }
         clear_descriptor(&self.paths)?;
+        // Reclaim the snapshot now that the rollback has restored from it, so it
+        // neither accumulates nor wedges a retry at the same generation.
+        reclaim_consistency_snapshot(&self.paths, self.guard, self.plan.consistency_generation)
+            .map_err(TransactionError::Snapshot)?;
         Ok(())
     }
 

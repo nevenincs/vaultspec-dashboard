@@ -284,11 +284,9 @@ fn run_bounded_command(
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    let mut child = spawn_group(command).map_err(MigrationError::Spawn)?;
-    let pid = child.id();
+    let mut child = MigrationChild::spawn(command).map_err(MigrationError::Spawn)?;
     let mut stdout = child
-        .stdout
-        .take()
+        .take_stdout()
         .ok_or_else(|| MigrationError::Spawn(std::io::Error::other("no captured stdout")))?;
 
     // Drain stdout on a worker thread so the child never blocks on a full pipe,
@@ -327,21 +325,21 @@ fn run_bounded_command(
             Ok(Some(status)) => break Some(status),
             Ok(None) => {}
             Err(error) => {
-                kill_group(&mut child, pid);
+                child.kill_tree();
                 let _ = reader.join();
                 return Err(MigrationError::Spawn(error));
             }
         }
         if overflow.load(std::sync::atomic::Ordering::Acquire) {
             breach = Some(MigrationError::OutputTooLarge { cap });
-            kill_group(&mut child, pid);
+            child.kill_tree();
             break None;
         }
         if Instant::now() >= deadline {
             breach = Some(MigrationError::Timeout {
                 wall_timeout: limits.wall_timeout,
             });
-            kill_group(&mut child, pid);
+            child.kill_tree();
             break None;
         }
         std::thread::sleep(Duration::from_millis(20));
@@ -381,34 +379,76 @@ pub enum MigrationOutcome {
     },
 }
 
-fn spawn_group(command: &mut Command) -> std::io::Result<std::process::Child> {
+/// A spawned migration child whose whole process tree can be force-killed on a
+/// bound breach. On Unix the child leads its own process group (`killpg`); on
+/// Windows it is contained in a job object via `command_group`, so terminating it
+/// reaps every descendant (the same tree-kill contract `process::GatewayProcess`
+/// uses) — a bare `Child::kill` would leak the migration's alembic/python
+/// descendants on a timeout or output breach.
+enum MigrationChild {
     #[cfg(unix)]
-    {
-        use std::os::unix::process::CommandExt as _;
-        command.process_group(0);
-        command.spawn()
-    }
+    Unix {
+        child: std::process::Child,
+        pid: u32,
+    },
     #[cfg(windows)]
-    {
-        command.spawn()
-    }
+    Windows(command_group::GroupChild),
 }
 
-fn kill_group(child: &mut std::process::Child, pid: u32) {
-    #[cfg(unix)]
-    {
-        use nix::sys::signal::{Signal, killpg};
-        use nix::unistd::Pid;
-        if let Ok(raw) = i32::try_from(pid) {
-            let _ = killpg(Pid::from_raw(raw), Signal::SIGKILL);
+impl MigrationChild {
+    fn spawn(command: &mut Command) -> std::io::Result<Self> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::process::CommandExt as _;
+            command.process_group(0);
+            let child = command.spawn()?;
+            let pid = child.id();
+            Ok(Self::Unix { child, pid })
+        }
+        #[cfg(windows)]
+        {
+            use command_group::CommandGroup as _;
+            Ok(Self::Windows(command.group_spawn()?))
         }
     }
-    #[cfg(windows)]
-    {
-        let _ = pid;
-        let _ = child.kill();
+
+    fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
+        match self {
+            #[cfg(unix)]
+            Self::Unix { child, .. } => child.stdout.take(),
+            #[cfg(windows)]
+            Self::Windows(child) => child.inner().stdout.take(),
+        }
     }
-    let _ = child.wait();
+
+    fn try_wait(&mut self) -> std::io::Result<Option<std::process::ExitStatus>> {
+        match self {
+            #[cfg(unix)]
+            Self::Unix { child, .. } => child.try_wait(),
+            #[cfg(windows)]
+            Self::Windows(child) => child.try_wait(),
+        }
+    }
+
+    /// Force-kill the whole tree and reap it.
+    fn kill_tree(&mut self) {
+        match self {
+            #[cfg(unix)]
+            Self::Unix { child, pid } => {
+                use nix::sys::signal::{Signal, killpg};
+                use nix::unistd::Pid;
+                if let Ok(raw) = i32::try_from(*pid) {
+                    let _ = killpg(Pid::from_raw(raw), Signal::SIGKILL);
+                }
+                let _ = child.wait();
+            }
+            #[cfg(windows)]
+            Self::Windows(child) => {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
 }
 
 /// Why a migration could not be planned or invoked.

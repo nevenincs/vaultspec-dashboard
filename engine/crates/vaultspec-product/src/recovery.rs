@@ -27,7 +27,7 @@ use crate::locking::{InstallLockGuard, LockAuthorityError};
 use crate::paths::ProductPaths;
 use crate::provisioning::{ActiveReleaseState, observe_active_release};
 use crate::receipt::InterruptionMarker;
-use crate::snapshot::{SnapshotError, open_consistency_snapshot};
+use crate::snapshot::{SnapshotError, open_consistency_snapshot, reclaim_consistency_snapshot};
 use crate::transaction::{TransactionError, clear_descriptor, read_descriptor};
 
 /// The deterministic action recovery takes for one interrupted transaction.
@@ -86,20 +86,23 @@ pub fn recover(
     };
 
     let candidate_committed = candidate_is_live(paths, guard, descriptor.candidate_generation())?;
+    let generation = descriptor.consistency_generation();
     match plan_recovery(descriptor.phase(), candidate_committed) {
         RecoveryAction::RollForward => {
             clear_descriptor(paths)?;
+            reclaim_consistency_snapshot(paths, guard, generation)?;
             Ok(RecoveryOutcome::RolledForward)
         }
         RecoveryAction::RollBack => {
-            let snapshot =
-                open_consistency_snapshot(paths, guard, descriptor.consistency_generation())?;
+            let snapshot = open_consistency_snapshot(paths, guard, generation)?;
             snapshot.restore(paths, guard)?;
             clear_descriptor(paths)?;
+            reclaim_consistency_snapshot(paths, guard, generation)?;
             Ok(RecoveryOutcome::RolledBack)
         }
         RecoveryAction::Abort => {
             clear_descriptor(paths)?;
+            reclaim_consistency_snapshot(paths, guard, generation)?;
             Ok(RecoveryOutcome::Aborted)
         }
     }
