@@ -5,8 +5,13 @@
 //! has no caller-supplied root-of-trust seam.  Until release engineering embeds
 //! the separately approved root metadata, it returns a typed refusal.
 
+mod materialization;
+mod product_scope;
 mod publication;
 
+use materialization::StagedArchive;
+pub use materialization::{MaterializationSource, VerifiedArchiveReader};
+use product_scope::{ProcessVerificationLease, ProductRootScope};
 pub use publication::{
     CapsuleMetadata, CompatibilityRange, ComponentLock, FileReference, PublicationError,
     PublicationRequest, ReleaseCohort, ReleaseMember, ReleaseMetadata, RoleSigningKeys,
@@ -22,9 +27,9 @@ use sha2::{Digest as _, Sha256};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom, Write as _};
+use std::io::{Read, Write as _};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+
 use std::time::Duration;
 use thiserror::Error;
 use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _, AsyncWriteExt as _};
@@ -148,119 +153,6 @@ impl VerificationRequest {
     }
 }
 
-#[derive(Debug)]
-struct ProductRootScope {
-    authority: cap_std::fs::Dir,
-    #[cfg(unix)]
-    directory: File,
-    #[cfg(unix)]
-    device: u64,
-    #[cfg(unix)]
-    inode: u64,
-    #[cfg(windows)]
-    identity: vaultspec_windows_authority::HighResFileId,
-}
-
-impl ProductRootScope {
-    #[cfg(unix)]
-    fn process_key(&self) -> ProductRootKey {
-        ProductRootKey::Unix {
-            device: self.device,
-            inode: self.inode,
-        }
-    }
-
-    #[cfg(windows)]
-    fn process_key(&self) -> ProductRootKey {
-        ProductRootKey::Windows {
-            volume_serial_number: self.identity.volume_serial_number,
-            file_id: self.identity.file_id,
-        }
-    }
-
-    fn ensure_named(&self, path: &Path) -> Result<(), VerificationError> {
-        if self.matches(path) {
-            Ok(())
-        } else {
-            Err(VerificationError::ProductRootMismatch)
-        }
-    }
-
-    #[cfg(unix)]
-    fn retain(path: &Path) -> Result<Self, VerificationError> {
-        use std::os::unix::fs::MetadataExt as _;
-
-        let named = path
-            .symlink_metadata()
-            .map_err(|_| VerificationError::ProductRootMismatch)?;
-        let directory = File::open(path).map_err(|_| VerificationError::ProductRootMismatch)?;
-        let retained = directory
-            .metadata()
-            .map_err(|_| VerificationError::ProductRootMismatch)?;
-        if !named.is_dir()
-            || named.file_type().is_symlink()
-            || named.dev() != retained.dev()
-            || named.ino() != retained.ino()
-            || named.uid() != nix::unistd::Uid::effective().as_raw()
-        {
-            return Err(VerificationError::ProductRootMismatch);
-        }
-        let authority = cap_std::fs::Dir::from_std_file(
-            directory
-                .try_clone()
-                .map_err(|_| VerificationError::ProductRootMismatch)?,
-        );
-        Ok(Self {
-            authority,
-            directory,
-            device: retained.dev(),
-            inode: retained.ino(),
-        })
-    }
-
-    #[cfg(windows)]
-    fn retain(path: &Path) -> Result<Self, VerificationError> {
-        let identity = vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
-            .map_err(|_| VerificationError::ProductRootMismatch)?;
-        let authority = cap_std::fs::Dir::open_ambient_dir(path, cap_std::ambient_authority())
-            .map_err(|_| VerificationError::ProductRootMismatch)?;
-        if vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
-            .map_err(|_| VerificationError::ProductRootMismatch)?
-            != identity
-        {
-            return Err(VerificationError::ProductRootMismatch);
-        }
-        Ok(Self {
-            authority,
-            identity,
-        })
-    }
-
-    #[cfg(unix)]
-    fn matches(&self, path: &Path) -> bool {
-        use std::os::unix::fs::MetadataExt as _;
-
-        let Ok(retained) = self.directory.metadata() else {
-            return false;
-        };
-        let Ok(named) = path.symlink_metadata() else {
-            return false;
-        };
-        named.is_dir()
-            && !named.file_type().is_symlink()
-            && retained.dev() == self.device
-            && retained.ino() == self.inode
-            && named.dev() == self.device
-            && named.ino() == self.inode
-    }
-
-    #[cfg(windows)]
-    fn matches(&self, path: &Path) -> bool {
-        vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
-            .is_ok_and(|identity| identity == self.identity)
-    }
-}
-
 /// Safe status returned after consuming verified authority.
 #[derive(Debug, Eq, PartialEq)]
 pub struct VerifiedReleaseStatus {
@@ -282,59 +174,10 @@ pub struct VerifiedDistributionRelease {
     _verification_lock: VerificationLock,
 }
 
-struct StagedArchive {
-    file: File,
-    expected_length: u64,
-    expected_digest: Vec<u8>,
-}
-
 #[derive(Debug)]
 struct VerificationLock {
     _process: ProcessVerificationLease,
     _file: File,
-}
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
-enum ProductRootKey {
-    #[cfg(unix)]
-    Unix { device: u64, inode: u64 },
-    #[cfg(windows)]
-    Windows {
-        volume_serial_number: u64,
-        file_id: u128,
-    },
-}
-
-const MAX_ACTIVE_PRODUCT_ROOTS: usize = 16;
-static ACTIVE_PRODUCT_ROOTS: Mutex<Vec<ProductRootKey>> = Mutex::new(Vec::new());
-
-#[derive(Debug)]
-struct ProcessVerificationLease {
-    key: ProductRootKey,
-}
-
-impl ProcessVerificationLease {
-    fn acquire(key: ProductRootKey) -> Result<Self, VerificationError> {
-        let mut active = ACTIVE_PRODUCT_ROOTS
-            .lock()
-            .map_err(|_| VerificationError::DatastoreUnavailable)?;
-        if active.contains(&key) || active.len() == MAX_ACTIVE_PRODUCT_ROOTS {
-            return Err(VerificationError::VerificationInProgress);
-        }
-        active.push(key);
-        Ok(Self { key })
-    }
-}
-
-impl Drop for ProcessVerificationLease {
-    fn drop(&mut self) {
-        let mut active = ACTIVE_PRODUCT_ROOTS
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(position) = active.iter().position(|key| *key == self.key) {
-            active.swap_remove(position);
-        }
-    }
 }
 
 struct AttemptDatastore {
@@ -345,29 +188,6 @@ struct AttemptDatastore {
 impl AttemptDatastore {
     fn path(&self) -> &Path {
         self._temporary.path()
-    }
-}
-
-impl StagedArchive {
-    fn file_mut(&mut self) -> &mut File {
-        &mut self.file
-    }
-}
-
-/// Read/seek-only view of the retained authenticated archive.
-pub struct VerifiedArchiveReader<'a> {
-    file: &'a mut File,
-}
-
-impl Read for VerifiedArchiveReader<'_> {
-    fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        self.file.read(buffer)
-    }
-}
-
-impl Seek for VerifiedArchiveReader<'_> {
-    fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
-        self.file.seek(position)
     }
 }
 
@@ -408,20 +228,6 @@ impl VerifiedDistributionRelease {
             .iter()
             .find(|member| member.target == self.target)
             .expect("verified cohort contains every closed target")
-    }
-
-    /// Borrow the exact archive bytes consumed and authenticated by tough.
-    ///
-    /// The retained file is rewound before each borrow.  No caller-supplied
-    /// path or digest is used to reconnect verification to provisioning.
-    pub async fn selected_archive(
-        &mut self,
-    ) -> Result<VerifiedArchiveReader<'_>, VerificationError> {
-        self.selected_archive.revalidate().await?;
-        let file = self.selected_archive.file_mut();
-        file.rewind()
-            .map_err(|_| VerificationError::StagingUnavailable)?;
-        Ok(VerifiedArchiveReader { file })
     }
 
     /// Prove this authority was verified against the same retained product root.
@@ -483,28 +289,6 @@ impl From<tough::error::Error> for VerificationError {
 enum InitialDatastore {
     Empty,
     Complete { root_bytes: Vec<u8> },
-}
-
-impl StagedArchive {
-    async fn revalidate(&mut self) -> Result<(), VerificationError> {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt as _;
-            let metadata = self
-                .file
-                .metadata()
-                .map_err(|_| VerificationError::StagingUnavailable)?;
-            if metadata.nlink() != 0 || !metadata.is_file() {
-                return Err(VerificationError::StagingUnavailable);
-            }
-        }
-        let clone = self
-            .file_mut()
-            .try_clone()
-            .map_err(|_| VerificationError::StagingUnavailable)?;
-        let mut clone = tokio::fs::File::from_std(clone);
-        validate_staged_bytes_async(&mut clone, self.expected_length, &self.expected_digest).await
-    }
 }
 
 /// Verify a release exclusively from the embedded production root authority.

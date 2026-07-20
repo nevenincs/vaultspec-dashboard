@@ -13,6 +13,7 @@ use tough::schema::{Role as _, RoleKeys, RoleType, Root, Signature, Signed};
 use tough::sign::Sign as _;
 
 assert_not_impl_any!(VerifiedDistributionRelease: Clone, serde::Serialize);
+assert_not_impl_any!(MaterializationSource<'static>: Clone, serde::Serialize);
 
 struct SigningMaterial {
     root_path: PathBuf,
@@ -85,6 +86,80 @@ async fn real_tuf_repository_yields_possession_bound_selected_archive() {
             .iter()
             .any(|name| name == "latest_known_time.json")
     );
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn materialization_source_is_sealed_and_fact_consistent() {
+    let temp = TempDir::new().expect("temporary test root");
+    let material = signing_material(temp.path()).await;
+    let bundle = publish_bundle(
+        temp.path(),
+        &material,
+        1,
+        "release-1",
+        DistributionTarget::Aarch64AppleDarwin,
+    )
+    .await;
+    let product = temp.path().join("product-materialize");
+    std::fs::create_dir(&product).expect("product root");
+
+    let request = VerificationRequest::for_product_root(
+        &bundle,
+        &product,
+        DistributionTarget::Aarch64AppleDarwin,
+    )
+    .expect("bounded request");
+    let mut verified = verify_with_root(&material.root_bytes, request)
+        .await
+        .expect("real TUF verification");
+
+    let expected_archive = archive_bytes(DistributionTarget::Aarch64AppleDarwin);
+    let expected_member = digest_hex(
+        format!(
+            "manifest-{}",
+            DistributionTarget::Aarch64AppleDarwin.archive_name()
+        )
+        .as_bytes(),
+    );
+
+    {
+        let mut source = verified
+            .materialization_source()
+            .await
+            .expect("sealed materialization source");
+        assert_eq!(source.target(), DistributionTarget::Aarch64AppleDarwin);
+        assert_eq!(source.release_identity(), "release-1");
+        assert_eq!(source.capsule_root(), "capsule");
+        assert_eq!(source.archive_length(), expected_archive.len() as u64);
+        assert_eq!(source.archive_sha256_hex(), digest_hex(&expected_archive));
+        assert_eq!(source.member_manifest_sha256(), expected_member);
+        assert_eq!(source.component_lock(), b"dashboard=0.1.4\na2a=0.1.0\n");
+        assert!(!source.canonical_cohort().is_empty());
+        let debug = format!("{source:?}");
+        assert!(debug.contains("release-1") && !debug.contains("dashboard=0.1.4"));
+
+        // Two sequential bounded passes both start rewound and read the exact
+        // authenticated bytes.
+        for _ in 0..2 {
+            let mut bytes = Vec::new();
+            source
+                .archive()
+                .expect("rewound reader")
+                .read_to_end(&mut bytes)
+                .expect("read retained archive");
+            assert_eq!(bytes, expected_archive);
+        }
+    }
+
+    // The release authority remains usable after the borrow ends.
+    let mut again = Vec::new();
+    verified
+        .selected_archive()
+        .await
+        .expect("retained selected archive")
+        .read_to_end(&mut again)
+        .expect("read retained archive again");
+    assert_eq!(again, expected_archive);
 }
 
 #[tokio::test(flavor = "current_thread")]
