@@ -275,7 +275,7 @@ impl Fixture {
             trusted_component_lock_path: COMPONENT_LOCK_PATH.to_string(),
             expected_component_lock_digest: self.lock_digest.clone(),
             trusted_capsule_root: "a2a/capsule".to_string(),
-            _adapter: InstallProvenanceAuthority(()),
+            _adapter: crate::channels::self_install::SelfInstallAuthority::new().provenance(),
         };
         VerifiedReleaseSet::verify(
             generation,

@@ -27,6 +27,7 @@ use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::channels::InstallProvenanceAuthority;
 use crate::generation::{GenerationError, UnpublishedGeneration};
 use crate::receipt::{Channel, PriorSeatIdentity};
 
@@ -1356,13 +1357,6 @@ struct TrustedReleaseAuthority {
     trusted_capsule_root: String,
     _adapter: InstallProvenanceAuthority,
 }
-
-/// Unforgeable outside this module until a production adapter validator exists.
-#[allow(
-    dead_code,
-    reason = "no production adapter validator exists to construct this token yet"
-)]
-struct InstallProvenanceAuthority(());
 
 /// Opaque call-scoped input not carried inside the candidate generation.
 ///
