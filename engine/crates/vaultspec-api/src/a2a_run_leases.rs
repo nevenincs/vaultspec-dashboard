@@ -32,8 +32,10 @@ use crate::authoring::model::{ActorId, ActorRef};
 const DB_FILENAME: &str = "a2a-run-leases.sqlite3";
 const DATA_DIR: &str = "a2a-run-leases";
 const BUSY_TIMEOUT: Duration = Duration::from_secs(10);
-const SCHEMA_VERSION: i64 = 3;
+const SCHEMA_VERSION: i64 = 4;
 const TERMINAL_RETENTION_MS: i64 = 30 * 24 * 3_600 * 1_000;
+const MAX_TERMINAL_ROWS: i64 = 4_096;
+const RETENTION_DELETE_BATCH: i64 = 256;
 
 /// The lifecycle state of a run-token lease. `Reserved` is pre-commit (the
 /// gateway has not yet returned an authoritative run id); `Active` binds the
@@ -191,7 +193,18 @@ const MIGRATIONS: &[Migration] = &[
         name: "unresolved_run_identity",
         sql: UNRESOLVED_RUN_ID_SCHEMA,
     },
+    Migration {
+        version: 4,
+        name: "terminal_retention_index",
+        sql: TERMINAL_RETENTION_INDEX_SCHEMA,
+    },
 ];
+
+const TERMINAL_RETENTION_INDEX_SCHEMA: &str = "
+CREATE INDEX idx_a2a_run_leases_terminal_retention
+    ON a2a_run_leases (updated_at_ms, lease_id)
+    WHERE state IN ('settled','revoked');
+";
 
 const UNRESOLVED_RUN_ID_SCHEMA: &str = "
 CREATE UNIQUE INDEX idx_a2a_run_leases_unresolved_run
@@ -494,6 +507,7 @@ impl LeaseRepo {
               WHERE lease_id = ?1 AND state IN ('reserved','active')",
             (lease_id, now_ms),
         )?;
+        maintain_transaction(&tx, now_ms)?;
         tx.commit()?;
         Ok(changed > 0)
     }
@@ -548,6 +562,7 @@ impl LeaseRepo {
             "UPDATE a2a_run_leases SET state = 'settled', updated_at_ms = ?2 WHERE lease_id = ?1",
             (&lease_id, now_ms),
         )?;
+        maintain_transaction(&tx, now_ms)?;
         tx.commit()?;
         Ok(SettleOutcome::Settled { revoked })
     }
@@ -627,8 +642,23 @@ fn maintain_transaction(tx: &rusqlite::Transaction<'_>, now_ms: i64) -> Result<(
     let cutoff = now_ms.saturating_sub(TERMINAL_RETENTION_MS);
     tx.execute(
         "DELETE FROM a2a_run_leases
-          WHERE state IN ('settled','revoked') AND updated_at_ms < ?1",
-        [cutoff],
+          WHERE lease_id IN (
+              SELECT lease_id FROM a2a_run_leases
+               WHERE state IN ('settled','revoked') AND updated_at_ms < ?1
+               ORDER BY updated_at_ms ASC, lease_id ASC
+               LIMIT ?2
+          )",
+        (cutoff, RETENTION_DELETE_BATCH),
+    )?;
+    tx.execute(
+        "DELETE FROM a2a_run_leases
+          WHERE lease_id IN (
+              SELECT lease_id FROM a2a_run_leases
+               WHERE state IN ('settled','revoked')
+               ORDER BY updated_at_ms DESC, lease_id DESC
+               LIMIT ?1 OFFSET ?2
+          )",
+        (RETENTION_DELETE_BATCH, MAX_TERMINAL_ROWS),
     )?;
     Ok(())
 }
@@ -831,5 +861,66 @@ mod tests {
         repo.reserve(&res, 1_000).unwrap();
         // now_ms past expiry: resolution refuses even though the sweep has not run.
         assert!(repo.resolve_token(&raws[0], 3_001).unwrap().is_none());
+    }
+
+    #[test]
+    fn terminal_retention_is_indexed_bounded_and_batch_limited() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = LeaseRepo::open(dir.path()).unwrap();
+        {
+            let mut conn = repo.lock();
+            let tx = conn.transaction().unwrap();
+            for index in 0..(MAX_TERMINAL_ROWS + RETENTION_DELETE_BATCH + 1) {
+                tx.execute(
+                    "INSERT INTO a2a_run_leases
+                        (lease_id, reservation_id, bundle_id, run_id, thread_id,
+                         state, expiry_ms, created_at_ms, updated_at_ms)
+                     VALUES (?1, ?2, ?3, NULL, NULL, 'settled', 0, ?4, ?4)",
+                    (
+                        format!("terminal-{index:05}"),
+                        format!("reservation-{index:05}"),
+                        format!("bundle-{index:05}"),
+                        index,
+                    ),
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+        }
+
+        repo.maintain(TERMINAL_RETENTION_MS).unwrap();
+        let conn = repo.lock();
+        let terminal_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM a2a_run_leases
+                  WHERE state IN ('settled','revoked')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let retention_index: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master
+                  WHERE type = 'index'
+                    AND name = 'idx_a2a_run_leases_terminal_retention'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(terminal_count, MAX_TERMINAL_ROWS + 1);
+        assert_eq!(retention_index, 1);
+        drop(conn);
+
+        repo.maintain(TERMINAL_RETENTION_MS).unwrap();
+        let terminal_count: i64 = repo
+            .lock()
+            .query_row(
+                "SELECT COUNT(*) FROM a2a_run_leases
+                  WHERE state IN ('settled','revoked')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(terminal_count, MAX_TERMINAL_ROWS);
     }
 }

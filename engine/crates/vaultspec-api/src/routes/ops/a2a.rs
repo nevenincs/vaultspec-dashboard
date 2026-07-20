@@ -157,7 +157,7 @@ pub struct A2aVerbBody {
 /// The a2a discovery record shape (`~/.vaultspec-a2a/service.json`): the R8
 /// `ServiceInfo` contract the resident gateway publishes. Discovery itself is
 /// secret-free; `handoff_reference` names the sibling bearer file.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 struct A2aServiceInfo {
     port: u16,
     #[serde(default)]
@@ -169,6 +169,22 @@ struct A2aServiceInfo {
     handoff_reference: Option<String>,
     #[serde(skip)]
     service_token: Option<String>,
+}
+
+impl std::fmt::Debug for A2aServiceInfo {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("A2aServiceInfo")
+            .field("port", &self.port)
+            .field("pid", &self.pid)
+            .field("last_heartbeat", &self.last_heartbeat)
+            .field("handoff_reference", &self.handoff_reference)
+            .field(
+                "service_token",
+                &self.service_token.as_ref().map(|_| "<redacted>"),
+            )
+            .finish()
+    }
 }
 
 /// The typed outcome of scanning the a2a discovery candidates, mirroring rag's
