@@ -36,6 +36,10 @@ impl std::fmt::Display for GenerationError {
                 f,
                 "app-home directory authority is in a fail-closed installation transition"
             ),
+            Self::RootAuthorityMaterializing => write!(
+                f,
+                "generation root authority is leased to the archive materializer"
+            ),
             Self::IdentityChanged(generation) => {
                 write!(f, "generation {generation:?} filesystem identity changed")
             }

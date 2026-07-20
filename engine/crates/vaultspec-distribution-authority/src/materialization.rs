@@ -78,6 +78,7 @@ pub struct MaterializationSource<'release> {
     archive_sha256: &'release [u8],
     target: DistributionTarget,
     member_manifest_sha256: &'release str,
+    members: &'release [crate::ReleaseMember],
     component_lock: &'release [u8],
     canonical_cohort: &'release [u8],
     release_identity: &'release str,
@@ -120,6 +121,14 @@ impl MaterializationSource<'_> {
     #[must_use]
     pub fn member_manifest_sha256(&self) -> &str {
         self.member_manifest_sha256
+    }
+
+    /// The five verified cohort members in canonical order. The product uses
+    /// these to synthesize its canonical five-member cohort descriptor; no
+    /// caller-supplied member digest ever participates.
+    #[must_use]
+    pub fn members(&self) -> &[crate::ReleaseMember] {
+        self.members
     }
 
     /// The verified decoded component-lock bytes.
@@ -208,6 +217,7 @@ impl VerifiedDistributionRelease {
             archive_sha256: expected_digest.as_slice(),
             target: *target,
             member_manifest_sha256: &member.member_manifest_sha256,
+            members: cohort.members.as_slice(),
             component_lock: component_lock.as_slice(),
             canonical_cohort: canonical_cohort.as_slice(),
             release_identity: &cohort.release_identity,

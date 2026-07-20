@@ -229,6 +229,36 @@ impl Fixture {
         );
     }
 
+    /// Crate-visible fixture facts for the materializer tests, which build a
+    /// real archive of this same release tree.
+    pub(crate) fn payload_files(&self) -> &[(String, Vec<u8>)] {
+        &self.payloads
+    }
+
+    pub(crate) fn member_bytes(&self) -> &[u8] {
+        &self.member
+    }
+
+    pub(crate) fn member_digest_hex(&self) -> &str {
+        &self.member_digest
+    }
+
+    pub(crate) fn descriptor_bytes(&self) -> &[u8] {
+        &self.descriptor
+    }
+
+    pub(crate) fn entrypoint_mode_text(&self) -> &str {
+        &self.entrypoint_mode
+    }
+
+    pub(crate) fn lock_bytes(&self) -> &'static [u8] {
+        LOCK_BYTES
+    }
+
+    pub(crate) fn target_triple(&self) -> &'static str {
+        TARGET.triple()
+    }
+
     fn with_generation<R>(
         &self,
         action: impl FnOnce(&mut UnpublishedGeneration<'_, '_>) -> R,

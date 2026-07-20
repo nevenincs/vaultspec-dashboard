@@ -1372,7 +1372,7 @@ pub(super) fn require_migration(field: &str, value: &str) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn validate_portable_path(field: &str, path: &str) -> Result<()> {
+pub(crate) fn validate_portable_path(field: &str, path: &str) -> Result<()> {
     if path.is_empty() || path.len() > 4096 || path.contains('\\') || path.contains(':') {
         return invalid(field, "path must be a bounded relative slash path");
     }
@@ -1386,7 +1386,7 @@ pub(super) fn validate_portable_path(field: &str, path: &str) -> Result<()> {
     Ok(())
 }
 
-pub(super) fn validate_portable_segment(
+pub(crate) fn validate_portable_segment(
     field: &str,
     segment: &str,
     ascii_release_path: bool,
@@ -1439,10 +1439,10 @@ fn is_windows_reserved(segment: &str) -> bool {
         )
 }
 
-pub(super) fn semantic_path_key(path: &str) -> String {
+pub(crate) fn semantic_path_key(path: &str) -> String {
     path.to_ascii_lowercase()
 }
 
-pub(super) fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }

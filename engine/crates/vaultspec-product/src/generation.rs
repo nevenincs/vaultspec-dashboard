@@ -251,6 +251,8 @@ impl<'lock> LockedProduct<'lock> {
             Err(error) => return Err(GenerationError::Io(error).into()),
         };
         let identity = authority.identity();
+        #[cfg(windows)]
+        let authority = RootAuthority::Exclusive(authority);
         let unpublished = UnpublishedGeneration {
             product: self,
             generation: generation.to_string(),
@@ -415,6 +417,16 @@ impl<'lock> LockedProduct<'lock> {
     }
 }
 
+#[cfg(unix)]
+fn wrap_root(authority: DirectoryAuthority) -> RootAuthority {
+    authority
+}
+
+#[cfg(windows)]
+fn wrap_root(authority: DirectoryAuthority) -> RootAuthority {
+    RootAuthority::Exclusive(authority)
+}
+
 fn bind_io(stage: &'static str, error: std::io::Error) -> GenerationError {
     GenerationError::Io(std::io::Error::new(
         error.kind(),
@@ -440,7 +452,26 @@ pub struct UnpublishedGeneration<'product, 'lock> {
     generation: String,
     path: PathBuf,
     identity: DirectoryIdentity,
-    authority: DirectoryAuthority,
+    authority: RootAuthority,
+}
+
+/// Unix root authority stays the plain retained descriptor: the write-shared
+/// Windows materialization window has no Unix analogue because descriptor-
+/// relative writes coexist with the retained root descriptor.
+#[cfg(unix)]
+type RootAuthority = DirectoryAuthority;
+
+/// Windows generation-root authority. During the crate-private archive
+/// materialization window the exclusive deny-write lease is released and the
+/// writer holds the write-shared, delete-denied materialization lease on the
+/// SAME verified identity (archive-materialization D4); every general product
+/// operation on the token fails typed until `end_materialization` restores and
+/// revalidates exclusivity.
+#[cfg(windows)]
+#[derive(Debug)]
+enum RootAuthority {
+    Exclusive(DirectoryAuthority),
+    Materializing,
 }
 
 impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
@@ -482,11 +513,29 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
                 return Err(GenerationError::IdentityChanged(self.generation.clone()));
             }
         }
-        self.authority.validate_created(
+        #[cfg(unix)]
+        return self.authority.validate_created(
             &self.product.generations,
             OsStr::new(&self.generation),
             &self.path,
-        )
+        );
+        #[cfg(windows)]
+        match &self.authority {
+            RootAuthority::Exclusive(authority) => authority.validate_created(
+                &self.product.generations,
+                OsStr::new(&self.generation),
+                &self.path,
+            ),
+            // During the materialization window the writer's lease pins the
+            // identity; named-path DACL policy is still rechecked here.
+            RootAuthority::Materializing => {
+                if windows_directory_dacl_is_restricted(&self.path) {
+                    Ok(())
+                } else {
+                    Err(GenerationError::UnsafeFilesystemObject(self.path.clone()))
+                }
+            }
+        }
     }
 
     /// Product-derived paths joined to this exact retained generation.
@@ -706,6 +755,22 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
             identity,
             authority,
         } = self;
+        #[cfg(windows)]
+        let authority = match authority {
+            RootAuthority::Exclusive(authority) => authority,
+            RootAuthority::Materializing => {
+                return CreateUnpublishedError::Retained(Box::new(PoisonedGeneration {
+                    unpublished: UnpublishedGeneration {
+                        product,
+                        generation,
+                        path,
+                        identity,
+                        authority: RootAuthority::Materializing,
+                    },
+                    error: GenerationError::RootAuthorityMaterializing,
+                }));
+            }
+        };
         match authority.remove_empty(&product.generations, OsStr::new(&generation)) {
             Ok(()) => CreateUnpublishedError::Refused(validation),
             Err(failure) => {
@@ -716,7 +781,7 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
                         generation,
                         path,
                         identity,
-                        authority,
+                        authority: wrap_root(authority),
                     },
                     error: GenerationError::CreationValidation {
                         validation: validation.to_string(),
@@ -762,6 +827,22 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
             identity,
             authority,
         } = self;
+        #[cfg(windows)]
+        let authority = match authority {
+            RootAuthority::Exclusive(authority) => authority,
+            RootAuthority::Materializing => {
+                return DiscardOutcome::Retained(Box::new(PoisonedGeneration {
+                    unpublished: UnpublishedGeneration {
+                        product,
+                        generation,
+                        path,
+                        identity,
+                        authority: RootAuthority::Materializing,
+                    },
+                    error: GenerationError::RootAuthorityMaterializing,
+                }));
+            }
+        };
         match authority.remove_empty(&product.generations, OsStr::new(&generation)) {
             Ok(()) => DiscardOutcome::Removed { generation },
             Err(failure) => {
@@ -772,7 +853,7 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
                         generation,
                         path,
                         identity,
-                        authority,
+                        authority: wrap_root(authority),
                     },
                     error,
                 }))
@@ -1333,6 +1414,10 @@ pub enum GenerationError {
     /// The Windows app-home directory retains only move-compatible transition
     /// authority and must recover exclusivity before general product use.
     AppHomeAuthorityTransition,
+    /// The generation root released its exclusive lease to the archive
+    /// materializer; general product operations resume only after
+    /// `end_materialization` restores and revalidates exclusivity.
+    RootAuthorityMaterializing,
     /// The generation name no longer resolves to the retained identity.
     IdentityChanged(String),
     /// The settled active receipt selects the requested generation.
@@ -1362,6 +1447,9 @@ pub enum GenerationError {
     /// Filesystem operation failed.
     Io(std::io::Error),
 }
+
+#[path = "generation/materialization.rs"]
+mod materialization;
 
 mod errors;
 

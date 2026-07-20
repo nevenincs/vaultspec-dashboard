@@ -243,6 +243,31 @@ impl<'guard> UpdateTransaction<'guard> {
         self.phase
     }
 
+    /// The retained validated plan (crate-internal: the materializer derives
+    /// the candidate name and consistency generation from it, never from a
+    /// caller).
+    pub(crate) fn plan(&self) -> &UpdatePlan {
+        &self.plan
+    }
+
+    /// The product paths this transaction binds (crate-internal).
+    pub(crate) fn paths(&self) -> &ProductPaths {
+        &self.paths
+    }
+
+    /// The held installation guard, at its own lifetime so the materializer
+    /// can use it alongside a mutable product loan (crate-internal).
+    pub(crate) fn guard(&self) -> &'guard InstallLockGuard {
+        self.guard
+    }
+
+    /// Advance `Migrating` → `Activated` after the fixed receipt committed
+    /// (crate-internal: only the sealed activation calls this).
+    pub(crate) fn advance_activated(&mut self) -> Result<(), TransactionError> {
+        self.expect_phase(InterruptionMarker::Migrating)?;
+        self.advance(InterruptionMarker::Activated)
+    }
+
     /// Drain and stop the owned runtime, advancing to `Draining` and yielding
     /// proven [`Quiescence`]. The gateway is terminated within the bounded
     /// graceful window; the descriptor advances only after the tree is stopped.
@@ -431,6 +456,21 @@ fn descriptor_path(paths: &ProductPaths) -> PathBuf {
     paths.transaction_dir().join(DESCRIPTOR_NAME)
 }
 
+impl UpdateTransaction<'_> {
+    /// Drive the in-memory and durable phase directly, for tests that must
+    /// arrange the activation boundary without re-running the real drain,
+    /// snapshot, and migration effects (those have their own proofs).
+    #[cfg(test)]
+    pub(crate) fn force_phase_for_test(
+        &mut self,
+        phase: InterruptionMarker,
+    ) -> Result<(), TransactionError> {
+        self.persist(phase)?;
+        self.phase = phase;
+        Ok(())
+    }
+}
+
 /// Persist a descriptor directly at a chosen phase, for recovery tests that must
 /// reproduce an interruption at every declared boundary (including the downstream
 /// `Activated`/`Accepted` phases this module hands off).
@@ -472,7 +512,10 @@ pub(crate) fn clear_descriptor(paths: &ProductPaths) -> Result<(), TransactionEr
     sync_dir(&paths.transaction_dir())
 }
 
-fn read_bounded_nofollow(path: &Path, cap: u64) -> Result<Option<Vec<u8>>, TransactionError> {
+pub(crate) fn read_bounded_nofollow(
+    path: &Path,
+    cap: u64,
+) -> Result<Option<Vec<u8>>, TransactionError> {
     let mut options = std::fs::OpenOptions::new();
     options.read(true);
     #[cfg(unix)]
@@ -506,7 +549,7 @@ fn read_bounded_nofollow(path: &Path, cap: u64) -> Result<Option<Vec<u8>>, Trans
     Ok(Some(bytes))
 }
 
-fn write_new_nofollow(path: &Path, bytes: &[u8]) -> Result<(), TransactionError> {
+pub(crate) fn write_new_nofollow(path: &Path, bytes: &[u8]) -> Result<(), TransactionError> {
     // Overwrite any stale temp from a prior interrupted write.
     match std::fs::remove_file(path) {
         Ok(()) => {}
@@ -531,7 +574,7 @@ fn write_new_nofollow(path: &Path, bytes: &[u8]) -> Result<(), TransactionError>
     Ok(())
 }
 
-fn sync_dir(path: &Path) -> Result<(), TransactionError> {
+pub(crate) fn sync_dir(path: &Path) -> Result<(), TransactionError> {
     #[cfg(unix)]
     {
         let dir = std::fs::File::open(path)

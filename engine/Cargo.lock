@@ -3743,6 +3743,7 @@ dependencies = [
  "sysinfo",
  "tar",
  "tempfile",
+ "vaultspec-distribution-authority",
  "vaultspec-windows-authority",
  "winapi",
  "windows-acl",

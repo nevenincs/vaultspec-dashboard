@@ -325,7 +325,7 @@ fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
         "direct-write evidence must not leak raw document body: {serialized}"
     );
     assert!(
-        !serialized.contains(temp_dir_name.as_ref()),
+        !serialized.contains(&*temp_dir_name),
         "direct-write evidence must not leak absolute host paths: {serialized}"
     );
 
@@ -590,7 +590,7 @@ fn stale_expected_blob_hash_conflicts_and_does_not_apply() {
     let serialized = serde_json::to_string(&outcome).unwrap();
     let temp_dir_name = fx.root.file_name().unwrap().to_string_lossy();
     assert!(!serialized.contains("materialized body"));
-    assert!(!serialized.contains(temp_dir_name.as_ref()));
+    assert!(!serialized.contains(&*temp_dir_name));
 }
 
 /// Plan-step tick (authoring-surface ADR D1) round-trip against the REAL

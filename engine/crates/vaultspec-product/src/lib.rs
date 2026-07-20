@@ -40,6 +40,7 @@ pub mod generation;
 pub mod lifecycle;
 pub mod locking;
 pub mod manifest;
+pub mod materializer;
 pub mod migration;
 pub mod paths;
 pub mod process;

@@ -1445,6 +1445,10 @@ impl std::fmt::Debug for VerifiedReleaseSet<'_, '_, '_> {
     }
 }
 
+#[path = "manifest/update_seam.rs"]
+mod update_seam;
+pub(crate) use update_seam::{UpdateReleaseFacts, preflight_inventory, verify_update_release};
+
 mod authority;
 #[cfg(test)]
 use authority::cohort_descriptor_digest;
@@ -1456,13 +1460,18 @@ use verification::{
     read_installed_bounded, require_bounded_text, require_commit, require_digest,
     require_exact_version, require_gateway_range, require_identity, require_input_bound,
     require_migration, require_numeric_version, require_target_roster, require_unchanged_snapshot,
-    scan_generation, scan_generation_locating_member, semantic_path_key, sha256_hex,
-    validate_portable_path, validate_portable_segment, verify_artifact_joins,
+    scan_generation, scan_generation_locating_member, verify_artifact_joins,
     verify_complete_inventory, verify_installed_exact_bytes, verify_release_manifest_bytes,
     verify_tree_evidence, version_prefix,
 };
+// The archive materializer applies the same portable-path grammar and casefold
+// key to archive entry names that the generation verifier applies to installed
+// objects, so the two boundaries can never disagree.
 #[cfg(test)]
 use verification::{ValidatedTreeRecord, tree_digest};
+pub(crate) use verification::{
+    semantic_path_key, sha256_hex, validate_portable_path, validate_portable_segment,
+};
 
 #[cfg(test)]
 #[path = "manifest/tests.rs"]
