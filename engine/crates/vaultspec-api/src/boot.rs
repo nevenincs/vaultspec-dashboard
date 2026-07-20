@@ -370,9 +370,15 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     // failure degrades the agent tier honestly rather than aborting the seat.
     if seat_guard.is_some() && !bootstrap {
         let plane = state.a2a_lifecycle.clone();
-        let outcome = tokio::task::spawn_blocking(move || plane.reconcile_seated_boot())
-            .await
-            .unwrap_or(serde_json::Value::Null);
+        // Publish THIS seated dashboard's terminal-settlement callback URL to any
+        // gateway this boot starts, so a run's terminal state settles back here
+        // (a2a-product-provisioning W02.P05.S41/S153). Loopback + the bound seat
+        // port; fail-soft on the gateway side if it is somehow unusable.
+        let settlement_url = format!("http://127.0.0.1:{port}/internal/a2a/run-terminal");
+        let outcome =
+            tokio::task::spawn_blocking(move || plane.reconcile_seated_boot(Some(&settlement_url)))
+                .await
+                .unwrap_or(serde_json::Value::Null);
         if !matches!(
             outcome.get("action").and_then(|a| a.as_str()),
             Some("none") | None

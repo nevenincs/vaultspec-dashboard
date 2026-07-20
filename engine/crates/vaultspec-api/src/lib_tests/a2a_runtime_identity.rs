@@ -209,7 +209,7 @@ fn spawn_readiness_server(attach_token: String, connections: usize) -> String {
 fn seated_boot_on_a_not_installed_product_is_a_noop() {
     let (_home, plane, _paths) = install_home();
     // No receipt written: nothing is installed, so the reconcile owns nothing.
-    let outcome = plane.reconcile_seated_boot();
+    let outcome = plane.reconcile_seated_boot(None);
     assert_eq!(outcome["action"], "none");
     // Nothing was started, so there is no owned process to terminate.
     assert!(
@@ -241,7 +241,7 @@ fn seated_boot_authenticates_a_live_owned_gateway() {
         now_ms(),
     );
 
-    let outcome = plane.reconcile_seated_boot();
+    let outcome = plane.reconcile_seated_boot(None);
     assert_eq!(
         outcome["action"], "authenticate",
         "a live owned gateway is authenticated, never re-spawned: {outcome}"
@@ -284,7 +284,7 @@ fn seated_boot_leaves_a_foreign_resident_immutable() {
         &handoff.to_string_lossy(),
         now_ms(),
     );
-    let outcome = plane.reconcile_seated_boot();
+    let outcome = plane.reconcile_seated_boot(None);
     assert!(
         matches!(
             outcome["action"].as_str(),
@@ -310,7 +310,7 @@ fn seated_boot_leaves_a_foreign_resident_immutable() {
         "/no/such/handoff",
         now_ms(),
     );
-    let outcome = plane.reconcile_seated_boot();
+    let outcome = plane.reconcile_seated_boot(None);
     assert_eq!(
         outcome["action"], "leave-foreign",
         "an untrusted foreign gateway is left immutable: {outcome}"
@@ -349,7 +349,7 @@ fn seated_boot_quarantines_a_stale_owned_record_before_starting() {
     let discovery_path = paths.app_home().join("gateway-discovery.json");
     assert!(discovery_path.exists());
 
-    let outcome = plane.reconcile_seated_boot();
+    let outcome = plane.reconcile_seated_boot(None);
     // The owner-matched dead record is quarantined (retracted), then a fresh
     // start is attempted. Without the not-yet-built install layout the start
     // honestly reports the missing capsule rather than a fabricated success.
@@ -406,7 +406,7 @@ fn seated_boot_does_not_start_when_stale_discovery_cannot_be_removed() {
         .open(&discovery_path)
         .unwrap();
 
-    let outcome = plane.reconcile_seated_boot();
+    let outcome = plane.reconcile_seated_boot(None);
     assert_eq!(outcome["action"], "recover-stale", "{outcome}");
     assert_eq!(outcome["started"], false, "{outcome}");
     let reason = outcome["reason"].as_str().unwrap_or_default();

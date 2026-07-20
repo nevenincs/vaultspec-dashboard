@@ -783,7 +783,12 @@ impl LifecyclePlane {
     /// Returns a non-secret projection of what was reconciled (for the boot log).
     /// Best-effort: a start failure degrades the agent tier honestly rather than
     /// aborting the seat.
-    pub(crate) fn reconcile_seated_boot(&self) -> Value {
+    /// `settlement_url` is the dashboard's own `/internal/a2a/run-terminal`
+    /// callback URL, published to a gateway this boot starts so its terminal
+    /// settlement calls back the seated dashboard. `None` (an unseated boot, or a
+    /// boot that cannot publish it) is fail-soft: the gateway simply skips
+    /// settlement.
+    pub(crate) fn reconcile_seated_boot(&self, settlement_url: Option<&str>) -> Value {
         let _ = self.controller.initialize();
         let receipt = match self.controller.active_receipt() {
             Ok(Some(r)) => r,
@@ -797,7 +802,7 @@ impl LifecyclePlane {
         let verdict = self.current_verdict();
         match verdict {
             Some(Verdict::OwnedLive) => self.authenticate_owned(&receipt),
-            Some(Verdict::OwnedStale) => self.recover_stale_then_start(&receipt),
+            Some(Verdict::OwnedStale) => self.recover_stale_then_start(&receipt, settlement_url),
             Some(Verdict::ForeignAttachable) => json!({
                 "action": "attach-foreign",
                 "reason": "a compatible foreign gateway satisfies run demand read-only; left immutable",
@@ -806,7 +811,7 @@ impl LifecyclePlane {
                 "action": "leave-foreign",
                 "reason": format!("foreign gateway left immutable: {}", immutable_reason(&reason)),
             }),
-            None => self.start_owned(&receipt),
+            None => self.start_owned(&receipt, settlement_url),
         }
     }
 
@@ -869,12 +874,16 @@ impl LifecyclePlane {
     /// Recover a stale owned discovery record under the install lock (prove the
     /// recorded process dead, quarantine the owner-matched stale state), then
     /// start the owned gateway.
-    fn recover_stale_then_start(&self, receipt: &vaultspec_product::receipt::Receipt) -> Value {
+    fn recover_stale_then_start(
+        &self,
+        receipt: &vaultspec_product::receipt::Receipt,
+        settlement_url: Option<&str>,
+    ) -> Value {
         use vaultspec_product::locking::{
             Actor, InstallLock, StaleState, quarantine_owner_matched_stale,
         };
         let Some(discovery) = read_gateway_discovery(&self.paths) else {
-            return self.start_owned(receipt);
+            return self.start_owned(receipt, settlement_url);
         };
         let lock = InstallLock::new(self.paths.install_lock_path());
         let guard = match lock.acquire(Actor::Installer, &self.owner_id) {
@@ -931,7 +940,7 @@ impl LifecyclePlane {
                 });
             }
         }
-        let out = self.start_owned(receipt);
+        let out = self.start_owned(receipt, settlement_url);
         match guard.release() {
             Ok(()) => out,
             Err(error) => {
@@ -953,7 +962,11 @@ impl LifecyclePlane {
     /// retain the process for its lifetime. Reads the capsule manifest and the
     /// pinned component lock the install laid down under the active generation;
     /// an absent capsule is an honest "cannot start", never a fabricated success.
-    fn start_owned(&self, receipt: &vaultspec_product::receipt::Receipt) -> Value {
+    fn start_owned(
+        &self,
+        receipt: &vaultspec_product::receipt::Receipt,
+        settlement_url: Option<&str>,
+    ) -> Value {
         let capsule_root = match self.paths.generation_dir(&receipt.active_generation) {
             Ok(dir) => dir,
             Err(e) => {
@@ -1003,9 +1016,10 @@ impl LifecyclePlane {
                 });
             }
         };
+        let env = vaultspec_product::lifecycle::gateway_spawn_env(&self.paths, settlement_url);
         match self
             .controller
-            .spawn_owned_gateway(&capsule_root, &manifest)
+            .spawn_owned_gateway_with_env(&capsule_root, &manifest, &env)
         {
             Ok(process) => {
                 let pid = process.pid();

@@ -28,6 +28,44 @@ use crate::process::{GatewayProcess, GatewaySpec, spawn_gateway};
 use crate::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
 use crate::receipt::{Receipt, sweep_orphan_tmp};
 
+/// The a2a gateway's app-home env var (`vaultspec_a2a.control.config` field
+/// `desktop_app_home`, alias `VAULTSPEC_DESKTOP_APP_HOME`). The gateway derives
+/// its state layout from this — notably `credentials_dir = <app_home>/credentials`
+/// (`vaultspec_a2a.desktop.profile.derive_state_paths`), which is exactly
+/// [`ProductPaths::app_home`]`/credentials`, where the dashboard's
+/// [`CredentialStore`] wrote `attach.cred`/`ownership.cap`/`worker-ipc.cred`.
+const A2A_APP_HOME_ENV: &str = "VAULTSPEC_DESKTOP_APP_HOME";
+
+/// The a2a gateway's settlement-callback env var
+/// (`vaultspec_a2a.desktop.settlement.SETTLEMENT_URL_ENV`). The gateway reads it
+/// fail-soft: a blank or non-HTTP value disables settlement rather than failing,
+/// so an unpublished URL is simply omitted here.
+const A2A_SETTLEMENT_URL_ENV: &str = "VAULTSPEC_DESKTOP_SETTLEMENT_URL";
+
+/// Assemble the environment a spawned owned gateway needs to (a) authenticate
+/// against the shared credentials directory and (b) call the dashboard's
+/// settlement route.
+///
+/// `VAULTSPEC_DESKTOP_APP_HOME` is always set to the product app home so the
+/// gateway resolves the same `credentials/` directory the dashboard bootstrapped.
+/// `VAULTSPEC_DESKTOP_SETTLEMENT_URL` is set ONLY when a non-empty settlement URL
+/// is supplied — when it is `None`/blank the gateway skips settlement fail-soft
+/// (never a hard failure), so an unpublished route degrades gracefully.
+#[must_use]
+pub fn gateway_spawn_env(
+    paths: &ProductPaths,
+    settlement_url: Option<&str>,
+) -> Vec<(String, String)> {
+    let mut env = vec![(
+        A2A_APP_HOME_ENV.to_string(),
+        paths.app_home().to_string_lossy().to_string(),
+    )];
+    if let Some(url) = settlement_url.map(str::trim).filter(|u| !u.is_empty()) {
+        env.push((A2A_SETTLEMENT_URL_ENV.to_string(), url.to_string()));
+    }
+    env
+}
+
 /// How a discovered gateway may be used to satisfy run demand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AttachMode {
@@ -207,8 +245,25 @@ impl LifecycleController {
         capsule_root: &std::path::Path,
         manifest: &CapsuleManifest,
     ) -> std::result::Result<GatewayProcess, LifecycleError> {
-        let spec = GatewaySpec::from_manifest(capsule_root, manifest)
+        self.spawn_owned_gateway_with_env(capsule_root, manifest, &[])
+    }
+
+    /// Spawn the OWNED gateway with an explicit environment. The seated boot
+    /// reconciler uses this to hand the gateway the environment it needs to
+    /// authenticate against the shared credentials directory and call the
+    /// dashboard's settlement route (see [`gateway_spawn_env`]). The launch
+    /// program is still resolved from the capsule's gateway entrypoint only.
+    pub fn spawn_owned_gateway_with_env(
+        &self,
+        capsule_root: &std::path::Path,
+        manifest: &CapsuleManifest,
+        env: &[(String, String)],
+    ) -> std::result::Result<GatewayProcess, LifecycleError> {
+        let mut spec = GatewaySpec::from_manifest(capsule_root, manifest)
             .map_err(|e| LifecycleError::Manifest(e.to_string()))?;
+        for (key, value) in env {
+            spec = spec.with_env(key, value);
+        }
         spawn_gateway(&spec).map_err(LifecycleError::Io)
     }
 
@@ -638,6 +693,26 @@ mod tests {
         // Typed data removal clears the data too.
         ctrl.remove(true).unwrap();
         assert!(!ctrl.paths.data_dir().join("user.db").exists());
+    }
+
+    #[test]
+    fn gateway_spawn_env_sets_app_home_and_optional_settlement() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = ProductPaths::under_app_home(dir.path());
+        // No settlement URL: only the app-home env (credentials resolution) — the
+        // gateway skips settlement fail-soft.
+        let env = gateway_spawn_env(&paths, None);
+        assert_eq!(env.len(), 1);
+        assert_eq!(env[0].0, "VAULTSPEC_DESKTOP_APP_HOME");
+        assert_eq!(env[0].1, paths.app_home().to_string_lossy());
+        // A blank/whitespace URL is treated as unpublished — still omitted.
+        assert_eq!(gateway_spawn_env(&paths, Some("   ")).len(), 1);
+        // A real URL: both envs present.
+        let url = "http://127.0.0.1:8767/internal/a2a/run-terminal";
+        let env = gateway_spawn_env(&paths, Some(url));
+        assert_eq!(env.len(), 2);
+        assert_eq!(env[1].0, "VAULTSPEC_DESKTOP_SETTLEMENT_URL");
+        assert_eq!(env[1].1, url);
     }
 
     fn sample_manifest() -> CapsuleManifest {
