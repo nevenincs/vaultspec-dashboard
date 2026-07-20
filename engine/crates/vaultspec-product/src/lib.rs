@@ -35,6 +35,7 @@ pub mod channels;
 pub mod control;
 pub mod credentials;
 pub mod discovery;
+pub mod gateway_drain;
 pub mod generation;
 pub mod lifecycle;
 pub mod locking;

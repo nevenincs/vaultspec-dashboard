@@ -259,6 +259,29 @@ impl<'guard> UpdateTransaction<'guard> {
         Ok((Quiescence::asserted_after_stop(), termination))
     }
 
+    /// Drain and stop the DISCOVERED owned gateway (the copied-updater path,
+    /// S62), advancing to `Draining` and yielding proven [`Quiescence`].
+    ///
+    /// The copied updater holds no child handle — the exiting dashboard
+    /// spawned the gateway — so the drive goes through the sealed
+    /// [`crate::gateway_drain::OwnedGatewayLease`]: authenticated drain,
+    /// ownership-authorized shutdown, and a PROVEN exit (pid dead AND endpoint
+    /// silent) within the bounded deadlines. Quiescence is minted here, by the
+    /// transaction that performed the drain, and nowhere else. A drive failure
+    /// rolls the transaction back with the prior release intact.
+    pub fn drain_and_stop_discovered(
+        &mut self,
+        lease: crate::gateway_drain::OwnedGatewayLease<'_>,
+        deadlines: crate::gateway_drain::DrainDeadlines,
+    ) -> Result<(Quiescence, crate::gateway_drain::StopEvidence), TransactionError> {
+        self.expect_phase(InterruptionMarker::Staged)?;
+        let evidence = lease
+            .drain_and_stop(deadlines)
+            .map_err(|error| self.fail(TransactionError::Gateway(error)))?;
+        self.advance(InterruptionMarker::Draining)?;
+        Ok((Quiescence::asserted_after_stop(), evidence))
+    }
+
     /// Capture and verify the consistency-group snapshot (S49), advancing to
     /// `Snapshotted`. The captured snapshot is retained for rollback.
     pub fn snapshot(&mut self, group: &ConsistencyGroupSpec) -> Result<(), TransactionError> {
@@ -539,6 +562,8 @@ pub enum TransactionError {
     InvalidDescriptor(String),
     /// Draining/stopping the owned runtime failed.
     Stop(std::io::Error),
+    /// Draining/stopping the DISCOVERED gateway failed (the updater path).
+    Gateway(crate::gateway_drain::GatewayDrainError),
     /// A consistency-snapshot operation failed.
     Snapshot(SnapshotError),
     /// The staged migration failed.
@@ -580,6 +605,9 @@ impl std::fmt::Display for TransactionError {
                 write!(f, "invalid transaction descriptor: {detail}")
             }
             Self::Stop(error) => write!(f, "draining the owned runtime failed: {error}"),
+            Self::Gateway(error) => {
+                write!(f, "draining the discovered gateway failed: {error}")
+            }
             Self::Snapshot(error) => write!(f, "consistency snapshot failed: {error}"),
             Self::Migration(error) => write!(f, "staged migration failed: {error}"),
             Self::LockAuthority(error) => write!(f, "installation authority rejected: {error}"),
@@ -592,6 +620,7 @@ impl std::error::Error for TransactionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Stop(error) | Self::Io { source: error, .. } => Some(error),
+            Self::Gateway(error) => Some(error),
             Self::Snapshot(error) => Some(error),
             Self::Migration(error) => Some(error),
             Self::LockAuthority(error) => Some(error),
