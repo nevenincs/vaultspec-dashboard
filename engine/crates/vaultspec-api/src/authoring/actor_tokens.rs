@@ -641,7 +641,9 @@ mod tests {
     fn dump_actor_token_rows(db_path: &std::path::Path) -> String {
         use rusqlite::types::ValueRef;
         let conn = rusqlite::Connection::open(db_path).unwrap();
-        let mut stmt = conn.prepare("SELECT * FROM authoring_actor_tokens").unwrap();
+        let mut stmt = conn
+            .prepare("SELECT * FROM authoring_actor_tokens")
+            .unwrap();
         let column_count = stmt.column_count();
         let mut dumped = String::new();
         let mut rows = stmt.query([]).unwrap();
@@ -703,7 +705,7 @@ mod tests {
             .with_unit_of_work(CommandKind::CreateSession, |uow| {
                 let tokens = uow.actor_tokens();
                 assert_eq!(
-                    tokens.revoke_hashes(&[run_a.record.token_hash.clone()], 200)?,
+                    tokens.revoke_hashes(std::slice::from_ref(&run_a.record.token_hash), 200)?,
                     1
                 );
                 assert_eq!(
@@ -775,5 +777,100 @@ mod tests {
             })
             .unwrap();
         assert_eq!(rows, MAX_ACTOR_TOKEN_ROWS);
+    }
+
+    #[test]
+    fn concurrent_same_role_runs_mint_distinct_secrets_revoke_independently_and_persist_no_raw_token()
+     {
+        let (dir, mut store) = temp_store();
+        let agent = actor("agent:writer", ActorKind::Agent);
+
+        // Two concurrent A2A runs for the SAME role actor, distinguished only by
+        // their per-run purpose keys (S43).
+        let (run_a, run_b) = store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let tokens = uow.actor_tokens();
+                let run_a = tokens.issue_for_purpose(
+                    &agent,
+                    &admin(),
+                    100,
+                    3_600_000,
+                    "a2a-run-start:v1:run-a:writer",
+                )?;
+                let run_b = tokens.issue_for_purpose(
+                    &agent,
+                    &admin(),
+                    100,
+                    3_600_000,
+                    "a2a-run-start:v1:run-b:writer",
+                )?;
+                Ok((run_a, run_b))
+            })
+            .unwrap();
+
+        // Distinct random secrets: the purpose key is lifecycle metadata, never a
+        // deterministic seed, so two runs for one role never share a token.
+        assert_ne!(run_a.raw_token, run_b.raw_token);
+        assert_ne!(run_a.record.token_hash, run_b.record.token_hash);
+
+        // Revoking exactly run A's bundle hash leaves the concurrent run B
+        // resolving — the two same-role runs revoke independently.
+        store
+            .with_unit_of_work(CommandKind::CreateSession, |uow| {
+                let tokens = uow.actor_tokens();
+                assert_eq!(
+                    tokens.revoke_hashes(std::slice::from_ref(&run_a.record.token_hash), 200)?,
+                    1
+                );
+                assert_eq!(
+                    tokens.resolve(&run_a.raw_token, 300)?,
+                    None,
+                    "the revoked run's token no longer authenticates"
+                );
+                assert_eq!(
+                    tokens.resolve(&run_b.raw_token, 300)?,
+                    Some(agent.clone()),
+                    "the concurrent same-role run is untouched"
+                );
+                Ok(())
+            })
+            .unwrap();
+
+        // No raw token reaches records or output: Debug redacts it.
+        for issued in [&run_a, &run_b] {
+            let rendered = format!("{issued:?}");
+            assert!(
+                !rendered.contains(&issued.raw_token),
+                "Debug must never print the raw token"
+            );
+        }
+
+        // No raw token reaches persistence: drop the store to flush/checkpoint,
+        // then scan every on-disk file under the store root. The token HASH is
+        // what persists; the raw secret appears nowhere on disk.
+        drop(store);
+        fn read_all_bytes(root: &std::path::Path, out: &mut Vec<u8>) {
+            for entry in std::fs::read_dir(root).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    read_all_bytes(&path, out);
+                } else if path.is_file() {
+                    out.extend(std::fs::read(&path).unwrap());
+                }
+            }
+        }
+        let mut persisted = Vec::new();
+        read_all_bytes(dir.path(), &mut persisted);
+        let contains = |needle: &[u8]| persisted.windows(needle.len()).any(|w| w == needle);
+        for issued in [&run_a, &run_b] {
+            assert!(
+                !contains(issued.raw_token.as_bytes()),
+                "a raw run token must never touch the on-disk store"
+            );
+            assert!(
+                contains(issued.record.token_hash.as_bytes()),
+                "the token hash is what the store persists"
+            );
+        }
     }
 }
