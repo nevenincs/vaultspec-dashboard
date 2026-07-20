@@ -3773,6 +3773,7 @@ dependencies = [
 name = "vaultspec-updater"
 version = "0.1.4"
 dependencies = [
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
