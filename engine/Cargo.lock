@@ -3770,6 +3770,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "vaultspec-updater"
+version = "0.1.4"
+dependencies = [
+ "vaultspec-product",
+]
+
+[[package]]
 name = "vaultspec-windows-authority"
 version = "0.1.4"
 dependencies = [
