@@ -2362,6 +2362,7 @@ fn prepare_initial_journal(
                         format!("initialization sizing/sync failed: {error}"),
                     )
                 })?;
+            #[cfg(windows)]
             crate::credentials::restrict_to_owner(&init_path).map_err(|error| {
                 publish_attempt_error(
                     ActiveReceiptPublishFailureKind::RecoveryRequired,
@@ -2973,7 +2974,11 @@ pub fn sweep_orphan_tmp(receipt_path: &std::path::Path) -> std::io::Result<usize
         let Ok(pid) = pid_str.parse::<u32>() else {
             continue;
         };
-        if crate::locking::process_is_alive(pid) {
+        #[cfg(unix)]
+        let writer_is_alive = pid <= i32::MAX as u32 && crate::locking::process_is_alive(pid);
+        #[cfg(not(unix))]
+        let writer_is_alive = crate::locking::process_is_alive(pid);
+        if writer_is_alive {
             continue;
         }
         if std::fs::remove_file(entry.path()).is_ok() {
