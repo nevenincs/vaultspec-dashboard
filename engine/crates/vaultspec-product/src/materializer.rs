@@ -280,7 +280,10 @@ fn run<R: Read + Seek>(
         match state {
             ActiveReceiptReadState::Settled(receipt) => PriorFacts {
                 channel: receipt.channel(),
-                bootstrap_created_ownership: receipt.bootstrap_created_ownership(),
+                // Built HERE, where the settled receipt is still borrowed, so
+                // the carried fact provably originates in it.
+                bootstrap_created_ownership:
+                    crate::manifest::BootstrapOwnership::carried_from_prior(receipt),
                 active_generation: receipt.active_generation().to_string(),
                 dashboard_version: receipt.dashboard_version().to_string(),
             },
@@ -378,11 +381,9 @@ fn run<R: Read + Seek>(
             capsule_root: feed.capsule_root.clone(),
             provenance: crate::channels::self_install::SelfInstallAuthority::new().provenance(),
             channel: Channel::SelfInstall,
-            // The update path CARRIES the prior settled receipt's fact; it has no
-            // way to mint one, so an update can never claim bootstrap creation.
-            bootstrap_created_ownership: crate::manifest::BootstrapOwnership::carried_from_prior(
-                prior.bootstrap_created_ownership,
-            ),
+            // Carried from the prior settled receipt, read out of the receipt
+            // itself above; an update has no way to mint this fact.
+            bootstrap_created_ownership: prior.bootstrap_created_ownership,
             prior_seat: Some(PriorSeatIdentity {
                 generation: prior.active_generation.clone(),
                 dashboard_version: prior.dashboard_version.clone(),
@@ -416,7 +417,7 @@ fn run<R: Read + Seek>(
 
 struct PriorFacts {
     channel: Channel,
-    bootstrap_created_ownership: bool,
+    bootstrap_created_ownership: crate::manifest::BootstrapOwnership,
     active_generation: String,
     dashboard_version: String,
 }

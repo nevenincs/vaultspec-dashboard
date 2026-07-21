@@ -42,9 +42,12 @@ pub(crate) struct ReceiptActivationContext {
 ///     [`PendingDashboardCredentials`] proof was supplied AND its retained files
 ///     revalidated at this moment. The proof cannot be forged, cloned, or
 ///     serialized, so possessing one IS the evidence.
-///   * [`BootstrapOwnership::carried_from_prior`] — UPDATE. Repeats what the
-///     prior settled receipt already recorded. It transports a fact; it can
-///     never mint one, so an update can never claim bootstrap creation.
+///   * [`BootstrapOwnership::carried_from_prior`] — UPDATE. Reads the fact
+///     out of a prior SETTLED RECEIPT. It takes the receipt, not a boolean,
+///     so the value provably originates in one; it transports a fact and can
+///     never mint one, and an update therefore cannot claim bootstrap
+///     creation. The bool at the deserialization boundary is unavoidable but
+///     is not caller-reachable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BootstrapOwnership(bool);
 
@@ -74,8 +77,11 @@ impl BootstrapOwnership {
     }
 
     /// Carry the prior settled receipt's fact through an update.
-    pub(crate) const fn carried_from_prior(prior: bool) -> Self {
-        Self(prior)
+    ///
+    /// Takes the RECEIPT rather than its boolean so no caller can pass a
+    /// literal: the value provably came from a settled receipt.
+    pub(crate) fn carried_from_prior(prior: &crate::receipt::ActiveReceipt) -> Self {
+        Self(prior.bootstrap_created_ownership())
     }
 
     pub(crate) const fn get(self) -> bool {

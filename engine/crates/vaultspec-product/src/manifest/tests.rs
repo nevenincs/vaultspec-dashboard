@@ -318,6 +318,29 @@ impl Fixture {
         }
     }
 
+    /// The ownership fact, derived the way the real paths derive it.
+    ///
+    /// A settled receipt means this is an UPDATE, so the fact is CARRIED out of
+    /// that receipt. With no receipt it is a FIRST INSTALL, so the fact is
+    /// PROVEN from a real credential proof. Neither branch can state the fact
+    /// directly - that is the constraint under test, not a detail of the
+    /// fixture. The pending authority is dropped once proven: the fact is `Copy`
+    /// and detaches, and releasing the claim keeps the fixture reusable.
+    fn bootstrap_fact(&self) -> BootstrapOwnership {
+        if let Ok(read) = crate::receipt::read_active_receipt_journal(&self.paths, &self.guard)
+            && let Ok(crate::receipt::ActiveReceiptReadState::Settled(receipt)) = read.state()
+        {
+            return BootstrapOwnership::carried_from_prior(receipt);
+        }
+        let store = crate::credentials::DashboardCredentialStore::for_product(&self.paths);
+        let pending = store
+            .begin_bootstrap(&self.guard)
+            .expect("fixture first-install credential proof");
+        let fact = BootstrapOwnership::proven(&pending).expect("a live proof revalidates");
+        drop(pending);
+        fact
+    }
+
     pub(crate) fn verify<'generation, 'product, 'lock>(
         &self,
         generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
@@ -325,7 +348,7 @@ impl Fixture {
         self.verify_with(
             generation,
             self.member_digest.clone(),
-            valid_receipt_context(),
+            valid_receipt_context(self),
         )
     }
 
@@ -377,10 +400,18 @@ impl Fixture {
     }
 }
 
-fn valid_receipt_context() -> ReceiptActivationContext {
+/// A valid activation context for field-validation fixtures.
+///
+/// The ownership fact is derived from a REAL first-install credential proof
+/// rather than a literal - the constructors take a proof or a settled receipt,
+/// by design, so a test cannot mint the fact and then claim to be exercising the
+/// constraint. The pending authority is dropped immediately: the fact is `Copy`
+/// and detaches, and releasing the claim keeps the fixture reusable.
+fn valid_receipt_context(fixture: &Fixture) -> ReceiptActivationContext {
+    let bootstrap_created_ownership = fixture.bootstrap_fact();
     ReceiptActivationContext {
         channel: Channel::SelfInstall,
-        bootstrap_created_ownership: BootstrapOwnership::carried_from_prior(true),
+        bootstrap_created_ownership,
         prior_seat: Some(PriorSeatIdentity {
             generation: "generation-prior".to_string(),
             dashboard_version: "0.1.3".to_string(),
@@ -765,7 +796,7 @@ fn trusted_digest_uniquely_locates_member_and_rejects_declared_path_mismatch() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         assert!(matches!(
-            fixture.verify_with(generation, "f".repeat(64), valid_receipt_context()),
+            fixture.verify_with(generation, "f".repeat(64), valid_receipt_context(&fixture)),
             Err(ManifestError::MissingFile(_))
         ));
     });
@@ -794,7 +825,7 @@ fn trusted_digest_uniquely_locates_member_and_rejects_declared_path_mismatch() {
 fn invalid_receipt_context_is_rejected_before_release_authority() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
-        let mut nonpositive_time = valid_receipt_context();
+        let mut nonpositive_time = valid_receipt_context(&fixture);
         nonpositive_time.created_ms = 0;
         assert!(matches!(
             fixture.verify_with(
@@ -805,14 +836,14 @@ fn invalid_receipt_context_is_rejected_before_release_authority() {
             Err(ManifestError::InvalidField { field, .. }) if field == "receipt.created_ms"
         ));
 
-        let mut zero_pid = valid_receipt_context();
+        let mut zero_pid = valid_receipt_context(&fixture);
         zero_pid.prior_seat.as_mut().unwrap().pid = Some(0);
         assert!(matches!(
             fixture.verify_with(generation, fixture.member_digest.clone(), zero_pid),
             Err(ManifestError::InvalidField { field, .. }) if field == "receipt.prior_seat.pid"
         ));
 
-        let mut bad_generation = valid_receipt_context();
+        let mut bad_generation = valid_receipt_context(&fixture);
         bad_generation.prior_seat.as_mut().unwrap().generation = "not valid".to_string();
         assert!(matches!(
             fixture.verify_with(
@@ -824,7 +855,7 @@ fn invalid_receipt_context_is_rejected_before_release_authority() {
                 if field == "receipt.prior_seat.generation"
         ));
 
-        let mut bad_version = valid_receipt_context();
+        let mut bad_version = valid_receipt_context(&fixture);
         bad_version.prior_seat.as_mut().unwrap().dashboard_version = "latest".to_string();
         assert!(matches!(
             fixture.verify_with(generation, fixture.member_digest.clone(), bad_version),

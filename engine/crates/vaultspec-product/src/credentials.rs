@@ -337,6 +337,11 @@ impl<'guard> PendingDashboardCredentials<'guard> {
         Ok(())
     }
 
+    /// The credentials directory this proof retains, for scope assertions.
+    pub(crate) fn credentials_directory(&self) -> &Path {
+        self.directory.path()
+    }
+
     /// Retained ownership credential.
     #[must_use]
     pub fn ownership(&self) -> &Credential {

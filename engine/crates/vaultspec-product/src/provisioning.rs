@@ -305,6 +305,21 @@ impl<'guard> ProvisioningTransaction<'guard> {
             }
         };
 
+        // Tie the proof to THIS transaction's scope before deriving any fact from
+        // it. Borrowing (rather than consuming) the proof leaves it usable for
+        // more than one receipt, so nothing in the seam's signature guarantees
+        // the credentials belong to the product this receipt describes. Assert
+        // it: a proof from another scope must never be able to assert
+        // first-install ownership into this one.
+        if pending.credentials_directory() != self.paths.credentials_dir() {
+            return Err(Box::new(FirstInstallFailure::retaining(
+                pending,
+                ProvisioningErrorKind::Indeterminate,
+                "the first-install proof belongs to a different product scope",
+                String::new(),
+            )));
+        }
+
         let target = match crate::materializer::triple_to_target(&target_triple) {
             Ok(target) => target,
             Err(detail) => {
