@@ -92,3 +92,41 @@ while held, release, and parent reacquisition. `cargo tree` confirms pinned
 - The Linux cross-target check was attempted but could not run because the installed Rust target lacks the required `x86_64-linux-gnu-gcc` cross C compiler for `aws-lc-sys`; native Windows checks, tests, and clippy passed.
 - `engine/Cargo.lock` was updated by Cargo resolution rather than by hand. The shared worktree contains concurrent product changes, so lockfile review and staging must remain scoped to the coordinated integration commit.
 - The formal code-review workflow was performed read-only against the accepted ADR, plan, resource bounds, dependency features, unsafe/TODO scan, and diff checks. No separate audit scaffold was created because this delegated step owns only the two crates, workspace registration, lockfile resolution, and this S174 record.
+
+## Closure (2026-07-21)
+
+S174 is complete. The remaining substrate delta — a full adversarial fail-closed
+matrix over real re-signed TUF repositories (expired-timestamp/freeze,
+missing-snapshot-role, mixed-version splice, non-canonical cohort, metadata-level
+unexpected target, non-selected cohort/archive digest mismatch, tampered selected
+archive) plus a real-process proof that the `vaultspec-release-verify` helper exits
+2 with a single `REFUSED` stderr token and empty stdout for valid and malformed
+input alike — landed in commit `86eb948ac1`. Full gate green: `fmt --check` clean,
+`clippy --all-targets` zero warnings, 24 distribution-authority + 1 release-verify
+unit + 2 release-verify fixed-refusal integration tests pass (25 with the
+dev-only `unsealed-verify` feature). An independent Sonnet code review verified
+every adversarial refusal is real, non-tautological, and asserts its specific
+typed `VerificationError` variant (verdict: PASS, no critical or high findings).
+
+The two blockers recorded in Notes above are resolved:
+
+- **Windows datastore authority.** The `WindowsDatastoreAuthorityNotProvisioned`
+  typed gate is removed from the crate. The Windows datastore ACL path is now
+  backed by the completed windows-private-file-authority lane (the D9-approved
+  retained-handle DACL snapshot/mutation amendment) and S177's directory-metadata
+  durability, both of which landed after this record's original blocker note. The
+  datastore persistence and rollback-refusal tests pass on real NTFS.
+
+- **Hard wall-clock guarantee.** The authoritative hard bound is the helper
+  subprocess lifetime, killed on breach by its spawner, per distribution-trust
+  ADR D3's fixed subprocess-lifetime constant — not the crate's cooperative
+  in-process `tokio::time::timeout`. Process death, unlike an in-process timeout,
+  also closes the detached-mutation corruption concern this record raised (a
+  timed-out synchronous filesystem call cannot continue mutating rollback state
+  once the process is gone). The real-process `fixed_refusal.rs` test proves
+  kill-on-breach at the process boundary.
+
+Honest gates that remain OUTSIDE S174 by design: the embedded production root
+stays empty until the D6 key ceremony (a release prerequisite, tracked at S166 /
+distribution-trust D6), and the helper's success arm is grown by S176 when the
+sealed provisioning consumer is linked into the same process.
