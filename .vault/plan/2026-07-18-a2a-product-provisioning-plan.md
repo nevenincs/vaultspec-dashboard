@@ -246,17 +246,17 @@ Dispatch to vaultspec-standard-executor to define tolerant wire types, dispatche
 
 Dispatch to vaultspec-standard-executor to mount the A2A service control panel, guarded destructive actions, progress, diagnostics, and unified command-palette action without direct wire access from the app layer.
 
-- [ ] `W05.P12.S96` - Render install, start, stop, restart, repair, update, rollback, remove, doctor, progress, ownership, and remediation from the lifecycle store projection; `frontend/src/app/panels/A2aLifecyclePanel.tsx`.
-- [ ] `W05.P12.S97` - Prove cold, owned, foreign, updating, rollback, degraded, and destructive-confirmation presentations using the production panel component; `frontend/src/app/panels/A2aLifecyclePanel.render.test.tsx`.
-- [ ] `W05.P12.S98` - Register the agent-service panel as a single modal identity while leaving the existing footer-chip set unchanged; `frontend/src/stores/view/controlPanels.ts`.
-- [ ] `W05.P12.S99` - Define localized agent-service labels, toggle actions, and unavailable title in the canonical control-panel vocabulary; `frontend/src/stores/view/controlPanelVocabulary.ts`.
-- [ ] `W05.P12.S100` - Register one unified agent-service action id and icon for panel, palette, and keymap composition; `frontend/src/stores/view/chromeActions.ts`.
-- [ ] `W05.P12.S101` - Mount the A2A lifecycle panel only while its modal is open so closed panels perform no service reads; `frontend/src/app/panels/ControlPanels.tsx`.
-- [ ] `W05.P12.S102` - Prove lifecycle queries mount only with the agent-service dialog and localization changes preserve panel identity; `frontend/src/app/panels/ControlPanels.guard.test.tsx`.
-- [ ] `W05.P12.S103` - Add the complete localized lifecycle vocabulary, confirmations, progress, ownership, remediation, and data-preservation copy; `frontend/src/locales/en/common.ts`.
-- [ ] `W05.P12.S104` - Prove the command provider exposes exactly one localized agent-service toggle through the shared action registry; `frontend/src/stores/view/commandProviders/controlPanelsCommandProvider.test.ts`.
-- [ ] `W05.P12.S105` - Extend action coverage to require the agent-service lifecycle panel action on every eligible surface; `frontend/src/stores/view/actionCoverage.guard.test.ts`.
-- [ ] `W05.P12.S106` - Update the control-panel inventory assertion while preserving the three intentional footer chips; `frontend/src/app/right/rail.test.ts`.
+- [x] `W05.P12.S96` - Render install, start, stop, restart, repair, update, rollback, remove, doctor, progress, ownership, and remediation from the lifecycle store projection; `frontend/src/app/panels/A2aLifecyclePanel.tsx`.
+- [x] `W05.P12.S97` - Prove cold, owned, foreign, updating, rollback, degraded, and destructive-confirmation presentations using the production panel component; `frontend/src/app/panels/A2aLifecyclePanel.render.test.tsx`.
+- [x] `W05.P12.S98` - Register the agent-service panel as a single modal identity while leaving the existing footer-chip set unchanged; `frontend/src/stores/view/controlPanels.ts`.
+- [x] `W05.P12.S99` - Define localized agent-service labels, toggle actions, and unavailable title in the canonical control-panel vocabulary; `frontend/src/stores/view/controlPanelVocabulary.ts`.
+- [x] `W05.P12.S100` - Register one unified agent-service action id and icon for panel, palette, and keymap composition; `frontend/src/stores/view/chromeActions.ts`.
+- [x] `W05.P12.S101` - Mount the A2A lifecycle panel only while its modal is open so closed panels perform no service reads; `frontend/src/app/panels/ControlPanels.tsx`.
+- [x] `W05.P12.S102` - Prove lifecycle queries mount only with the agent-service dialog and localization changes preserve panel identity; `frontend/src/app/panels/ControlPanels.guard.test.tsx`.
+- [x] `W05.P12.S103` - Add the complete localized lifecycle vocabulary, confirmations, progress, ownership, remediation, and data-preservation copy; `frontend/src/locales/en/common.ts`.
+- [x] `W05.P12.S104` - Prove the command provider exposes exactly one localized agent-service toggle through the shared action registry; `frontend/src/stores/view/commandProviders/controlPanelsCommandProvider.test.ts`.
+- [x] `W05.P12.S105` - Extend action coverage to require the agent-service lifecycle panel action on every eligible surface; `frontend/src/stores/view/actionCoverage.guard.test.ts`.
+- [x] `W05.P12.S106` - Update the control-panel inventory assertion while preserving the three intentional footer chips; `frontend/src/app/right/rail.test.ts`.
 
 ## Wave `W06` - certify every artifact and review the product boundary
 

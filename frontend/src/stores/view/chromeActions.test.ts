@@ -83,13 +83,15 @@ describe("state-aware chrome toggles", () => {
     });
   });
 
-  it("projects the three modal panel labels and runs the real toggle", () => {
+  it("projects the four modal panel labels and runs the real toggle", () => {
     // Review is no longer a modal panel (review-surface-flow ADR F1), so it is not
-    // in the modal-panel action set.
+    // in the modal-panel action set. The agent-service panel (a2a-product-provisioning
+    // W05.P12) is the fourth modal identity, appended in cluster order.
     expect(controlPanelActions(null).map((action) => action.label)).toEqual([
       { key: "common:controlPanels.actions.showSearch" },
       { key: "common:controlPanels.actions.showSystemStatus" },
       { key: "common:controlPanels.actions.showProjectHealth" },
+      { key: "common:controlPanels.actions.showAgentService" },
     ]);
 
     const show = controlPanelToggleAction("search-service", null);
@@ -133,6 +135,8 @@ describe("state-aware chrome toggles", () => {
       controlPanelToggleAction("backend-health", "backend-health"),
       controlPanelToggleAction("vault-health", null),
       controlPanelToggleAction("vault-health", "vault-health"),
+      controlPanelToggleAction("agent-service", null),
+      controlPanelToggleAction("agent-service", "agent-service"),
       reviewInboxAction(),
     ];
 

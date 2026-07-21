@@ -9,6 +9,7 @@
 
 import {
   Activity,
+  Bot,
   ClipboardCheck,
   Command,
   Crosshair,
@@ -156,12 +157,14 @@ export const CONTROL_PANEL_ACTION_IDS: Record<ControlPanelId, string> = {
   "search-service": "panel:search-service",
   "backend-health": "panel:backend-health",
   "vault-health": "panel:vault-health",
+  "agent-service": "panel:agent-service",
 };
 
 const CONTROL_PANEL_ACTION_ICONS: Record<ControlPanelId, ActionIcon> = {
   "search-service": Search,
   "backend-health": Activity,
   "vault-health": ShieldCheck,
+  "agent-service": Bot,
 };
 
 /** The review chip's stable action id (review-surface-flow ADR F1). PRESERVED from

@@ -16,13 +16,20 @@
 
 import { create } from "zustand";
 
-export type ControlPanelId = "search-service" | "backend-health" | "vault-health";
+export type ControlPanelId =
+  | "search-service"
+  | "backend-health"
+  | "vault-health"
+  | "agent-service";
 
-/** Every modal panel id, in cluster order. */
+/** Every modal panel id, in cluster order. The agent-service panel
+ *  (a2a-product-provisioning W05.P12) is a MODAL identity only — it is deliberately
+ *  NOT a footer chip, so the footer cluster is left unchanged. */
 export const CONTROL_PANEL_IDS: readonly ControlPanelId[] = [
   "search-service",
   "backend-health",
   "vault-health",
+  "agent-service",
 ];
 
 /** The rail-footer status chips (activity-rail-realignment ADR D2). A standalone

@@ -12,6 +12,7 @@ import {
 import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
 import { BackendHealthPanel } from "./BackendHealthPanel";
 import { VaultHealthPanel } from "./VaultHealthPanel";
+import { A2aLifecyclePanel } from "./A2aLifecyclePanel";
 import { RagJobDashboard } from "./RagJobDashboard";
 import { RagDashboardFooter } from "./RagDashboardFooter";
 
@@ -25,6 +26,9 @@ export function ControlPanels() {
   );
   const projectHealthLabel = useLocalizedMessage(
     CONTROL_PANEL_VOCABULARY["vault-health"].label,
+  );
+  const agentServiceLabel = useLocalizedMessage(
+    CONTROL_PANEL_VOCABULARY["agent-service"].label,
   );
   return (
     <>
@@ -50,6 +54,13 @@ export function ControlPanels() {
         title={projectHealthLabel}
       >
         <VaultHealthPanel />
+      </Dialog>
+      <Dialog
+        open={open === "agent-service"}
+        onClose={closeControlPanel}
+        title={agentServiceLabel}
+      >
+        <A2aLifecyclePanel />
       </Dialog>
     </>
   );

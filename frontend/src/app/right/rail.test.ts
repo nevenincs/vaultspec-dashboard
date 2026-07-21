@@ -105,19 +105,22 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
     expect(normalizeStatusSectionId("recent-commits")).toBe("recent-commits");
   });
 
-  it("registers three modal panels and pins three footer chips (review is not modal)", () => {
+  it("registers four modal panels and pins three footer chips (review is not modal)", () => {
     // Review is no longer a modal control panel (review-surface-flow ADR F1): its
     // queue folded into the Agent panel as a pending-changes view, so `approvals`
-    // is a footer-chip id only. The modal set is the three global consoles.
+    // is a footer-chip id only. The modal set is the three global consoles plus the
+    // agent-service lifecycle panel (a2a-product-provisioning W05.P12), a modal
+    // identity that is deliberately NOT a footer chip.
     expect(CONTROL_PANEL_IDS).toEqual([
       "search-service",
       "backend-health",
       "vault-health",
+      "agent-service",
     ]);
-    // The footer cluster keeps its three chips: Search service and Vault health open
-    // their modal panels; the Review chip opens the Agent pending view. Backend
-    // health is NOT a footer chip (its engine-status read unclearly, pulled from the
-    // rail — user UX decision); it surfaces only through the palette.
+    // The footer cluster keeps its three chips UNCHANGED: Search service and Vault
+    // health open their modal panels; the Review chip opens the Agent pending view.
+    // Backend health and the agent-service panel are NOT footer chips — they surface
+    // only through the palette.
     expect(FOOTER_CHIP_IDS).toEqual(["search-service", "approvals", "vault-health"]);
   });
 });

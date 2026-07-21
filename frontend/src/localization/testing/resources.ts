@@ -160,6 +160,7 @@ export const ltrTestResources = {
         projectHealth: "Santé du projet",
         systemStatus: "État du système",
         approvals: "Révision",
+        agentService: "Agents",
       },
       actions: {
         showSearch: "Afficher la recherche",
@@ -830,6 +831,7 @@ export const rtlTestResources = {
         projectHealth: "سلامة المشروع",
         systemStatus: "حالة النظام",
         approvals: "المراجعة",
+        agentService: "الوكلاء",
       },
       actions: {
         showSearch: "إظهار البحث",

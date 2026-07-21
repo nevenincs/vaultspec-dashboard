@@ -5,7 +5,8 @@ type ControlPanelLabelKey =
   | "common:controlPanels.labels.search"
   | "common:controlPanels.labels.approvals"
   | "common:controlPanels.labels.systemStatus"
-  | "common:controlPanels.labels.projectHealth";
+  | "common:controlPanels.labels.projectHealth"
+  | "common:controlPanels.labels.agentService";
 
 type ControlPanelActionKey =
   | "common:controlPanels.actions.showSearch"
@@ -15,13 +16,16 @@ type ControlPanelActionKey =
   | "common:controlPanels.actions.showSystemStatus"
   | "common:controlPanels.actions.hideSystemStatus"
   | "common:controlPanels.actions.showProjectHealth"
-  | "common:controlPanels.actions.hideProjectHealth";
+  | "common:controlPanels.actions.hideProjectHealth"
+  | "common:controlPanels.actions.showAgentService"
+  | "common:controlPanels.actions.hideAgentService";
 
 type ControlPanelUnavailableTitleKey =
   | "common:controlPanels.unavailableTitles.search"
   | "common:controlPanels.unavailableTitles.approvals"
   | "common:controlPanels.unavailableTitles.systemStatus"
-  | "common:controlPanels.unavailableTitles.projectHealth";
+  | "common:controlPanels.unavailableTitles.projectHealth"
+  | "common:controlPanels.unavailableTitles.agentService";
 
 interface ControlPanelVocabularyEntry<
   Id extends ControlSurfaceId,
@@ -65,6 +69,13 @@ export type ControlPanelVocabulary =
       "common:controlPanels.actions.showProjectHealth",
       "common:controlPanels.actions.hideProjectHealth",
       "common:controlPanels.unavailableTitles.projectHealth"
+    >
+  | ControlPanelVocabularyEntry<
+      "agent-service",
+      "common:controlPanels.labels.agentService",
+      "common:controlPanels.actions.showAgentService",
+      "common:controlPanels.actions.hideAgentService",
+      "common:controlPanels.unavailableTitles.agentService"
     >;
 
 type ControlPanelVocabularyMap = Readonly<{
@@ -106,13 +117,21 @@ export const CONTROL_PANEL_VOCABULARY = Object.freeze({
       "common:controlPanels.unavailableTitles.projectHealth",
     ),
   }),
+  "agent-service": Object.freeze({
+    id: "agent-service",
+    label: descriptor("common:controlPanels.labels.agentService"),
+    showLabel: descriptor("common:controlPanels.actions.showAgentService"),
+    hideLabel: descriptor("common:controlPanels.actions.hideAgentService"),
+    unavailableTitle: descriptor("common:controlPanels.unavailableTitles.agentService"),
+  }),
 } as const satisfies ControlPanelVocabularyMap);
 
 export function controlPanelVocabulary(value: unknown): ControlPanelVocabulary | null {
   return value === "search-service" ||
     value === "approvals" ||
     value === "backend-health" ||
-    value === "vault-health"
+    value === "vault-health" ||
+    value === "agent-service"
     ? CONTROL_PANEL_VOCABULARY[value]
     : null;
 }

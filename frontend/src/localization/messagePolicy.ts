@@ -9,6 +9,7 @@ import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMainten
 import { THREE_LAB_MESSAGE_POLICY } from "./messagePolicy.threeLab";
 import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
 import { AGENT_MESSAGE_POLICY } from "./messagePolicy.agent";
+import { AGENT_SERVICE_MESSAGE_POLICY } from "./messagePolicy.agentService";
 
 export type MessageRole =
   | "action"
@@ -50,6 +51,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   ...HOVER_MESSAGE_POLICY,
   ...SEARCH_MAINTENANCE_MESSAGE_POLICY,
   ...AGENT_MESSAGE_POLICY,
+  ...AGENT_SERVICE_MESSAGE_POLICY,
   "common:accessibility.actionsForItem": { role: "accessibility" },
   "common:accessibility.actionsMenu": { role: "accessibility" },
   "common:accessibility.back": { role: "accessibility" },
@@ -1017,6 +1019,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Edit",
   "Enable",
   "End",
+  "Ensure",
   "Expand",
   "Find",
   "Filter",
@@ -1024,6 +1027,7 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Fit",
   "Focus",
   "Hide",
+  "Install",
   "Link",
   "Load",
   "Keep",
@@ -1047,6 +1051,8 @@ export const IMPERATIVE_ACTION_VERBS = [
   "Resume",
   "Retry",
   "Restart",
+  "Revert",
+  "Run",
   "Save",
   "Search",
   "Select",
@@ -1074,6 +1080,7 @@ export const DESTRUCTIVE_ACTION_VERBS = [
   "Remove",
   "Reject",
   "Replace",
+  "Revert",
 ] as const;
 
 export const RECOVERY_VERBS = [

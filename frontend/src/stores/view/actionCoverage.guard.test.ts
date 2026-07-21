@@ -186,6 +186,10 @@ describe("action coverage grid guard", () => {
     for (const id of Object.values(CONTROL_PANEL_ACTION_IDS)) {
       expect(paletteIds.has(id)).toBe(true);
     }
+    // The agent-service lifecycle panel (a2a-product-provisioning W05.P12) is the
+    // fourth modal toggle; require it explicitly on the palette plane under its
+    // shared id, so a regression that drops it fails here.
+    expect(paletteIds.has(CONTROL_PANEL_ACTION_IDS["agent-service"])).toBe(true);
     // The review inbox re-uses the retired Approvals action id (review-surface-flow
     // ADR F1): it is palette-enrolled under REVIEW_INBOX_ACTION_ID even though it now
     // opens the Agent pending view rather than a modal panel, so it left

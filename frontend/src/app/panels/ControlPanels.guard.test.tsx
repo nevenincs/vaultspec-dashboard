@@ -115,6 +115,12 @@ describe("ControlPanels", () => {
       ltrTestResources.common.controlPanels.labels.projectHealth,
       rtlTestResources.common.controlPanels.labels.projectHealth,
     ],
+    [
+      "agent-service",
+      en.common.controlPanels.labels.agentService,
+      ltrTestResources.common.controlPanels.labels.agentService,
+      rtlTestResources.common.controlPanels.labels.agentService,
+    ],
   ] as const)(
     "localizes the %s dialog in place",
     async (id: ControlPanelId, source, ltr, rtl) => {
@@ -136,6 +142,32 @@ describe("ControlPanels", () => {
       expect(useControlPanels.getState().open).toBeNull();
     },
   );
+
+  it("does not read agent lifecycle state while every panel is closed", () => {
+    const { container, client } = renderPanels();
+    expect(container.querySelector("[data-a2a-lifecycle-panel]")).toBeNull();
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .some((query) => query.queryKey.includes("a2a-lifecycle")),
+    ).toBe(false);
+  });
+
+  it("mounts the agent lifecycle panel and its status read only while its dialog is open", () => {
+    openControlPanel("agent-service");
+    const { container, client } = renderPanels();
+    // The panel body mounts under the open dialog.
+    expect(container.querySelector("[data-a2a-lifecycle-panel]")).toBeTruthy();
+    // Its machine-global lifecycle status read is registered (mount-gated), so a
+    // closed panel performs no service read (data-loading-activity).
+    expect(
+      client
+        .getQueryCache()
+        .getAll()
+        .some((query) => query.queryKey.includes("a2a-lifecycle")),
+    ).toBe(true);
+  });
 
   it("no longer hosts an approvals modal (review folded into the Agent panel)", () => {
     // The retired approvals id is not a modal ControlPanelId: opening it is a no-op

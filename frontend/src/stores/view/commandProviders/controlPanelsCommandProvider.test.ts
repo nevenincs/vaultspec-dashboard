@@ -18,29 +18,52 @@ afterEach(() => {
 });
 
 describe("controlPanelsCommandProvider", () => {
-  it("surfaces the three modal panels plus the review inbox, under the app family", () => {
-    // The three modal panels' labels track the open-panel snapshot; the review
+  it("surfaces the four modal panels plus the review inbox, under the app family", () => {
+    // The four modal panels' labels track the open-panel snapshot; the review
     // inbox (review-surface-flow ADR F1) opens the Agent pending view, so its
-    // label is snapshot-independent and it sits last.
+    // label is snapshot-independent and it sits last. The agent-service panel
+    // (a2a-product-provisioning W05.P12) is the fourth modal, in cluster order.
     const closed = commands(null);
     expect(closed.map((command) => command.label)).toEqual([
       { key: "common:controlPanels.actions.showSearch" },
       { key: "common:controlPanels.actions.showSystemStatus" },
       { key: "common:controlPanels.actions.showProjectHealth" },
+      { key: "common:controlPanels.actions.showAgentService" },
       { key: "common:controlPanels.actions.showApprovals" },
     ]);
     expect(closed.map((command) => command.id)).toEqual([
       "panel:search-service",
       "panel:backend-health",
       "panel:vault-health",
+      "panel:agent-service",
       "panel:approvals",
     ]);
+
+    // Exactly ONE agent-service toggle is exposed, under the shared action id.
+    const agentServiceCommands = closed.filter(
+      (command) => command.id === "panel:agent-service",
+    );
+    expect(agentServiceCommands).toHaveLength(1);
+    expect(agentServiceCommands[0]?.label).toEqual({
+      key: "common:controlPanels.actions.showAgentService",
+    });
+
+    // Its label flips to the hide form when the agent-service panel is open, and it
+    // remains exactly one command.
+    const agentOpen = commands("agent-service").filter(
+      (command) => command.id === "panel:agent-service",
+    );
+    expect(agentOpen).toHaveLength(1);
+    expect(agentOpen[0]?.label).toEqual({
+      key: "common:controlPanels.actions.hideAgentService",
+    });
 
     const searchOpen = commands("search-service");
     expect(searchOpen.map((command) => command.label)).toEqual([
       { key: "common:controlPanels.actions.hideSearch" },
       { key: "common:controlPanels.actions.showSystemStatus" },
       { key: "common:controlPanels.actions.showProjectHealth" },
+      { key: "common:controlPanels.actions.showAgentService" },
       // The review inbox never flips to a hide label — it is an open, not a toggle.
       { key: "common:controlPanels.actions.showApprovals" },
     ]);

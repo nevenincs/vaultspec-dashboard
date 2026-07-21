@@ -254,6 +254,7 @@ export const common = {
       projectHealth: "Project health",
       systemStatus: "System status",
       approvals: "Review",
+      agentService: "Agents",
     },
     actions: {
       showSearch: "Show search",
@@ -264,12 +265,15 @@ export const common = {
       hideSystemStatus: "Hide system status",
       showApprovals: "Show review",
       hideApprovals: "Hide review",
+      showAgentService: "Show agents",
+      hideAgentService: "Hide agents",
     },
     unavailableTitles: {
       search: "Search unavailable",
       projectHealth: "Project health unavailable",
       systemStatus: "System status unavailable",
       approvals: "Review unavailable",
+      agentService: "Agents unavailable",
     },
     accessibility: {
       group: "Project status",
@@ -280,6 +284,73 @@ export const common = {
       needsAttention: "Needs attention",
       unavailable: "Unavailable",
       checking: "Checking",
+    },
+  },
+  agentService: {
+    description:
+      "Install, run, and maintain the local agents that power multi-agent authoring.",
+    statusLabel: "Agent status",
+    sections: {
+      status: "Status",
+      orchestration: "Orchestration",
+      actions: "Actions",
+      diagnostics: "Diagnostics",
+    },
+    installState: {
+      absent: "Not installed",
+      settled: "Installed",
+      recoveryRequired: "Recovery required",
+      busy: "Busy",
+      unverifiable: "Unverifiable",
+      unknown: "Checking",
+    },
+    readiness: {
+      uninstalled: "Not installed",
+      stopped: "Stopped",
+      running: "Running",
+      workerIdle: "Running, idle",
+    },
+    ownership: {
+      owned: "Managed by this app",
+      unowned: "Managed elsewhere",
+    },
+    orchestration: {
+      available: "Agent orchestration is available.",
+      unavailable: "Agent orchestration is unavailable.",
+    },
+    ops: {
+      install: "Install",
+      ensure: "Ensure running",
+      start: "Start",
+      stop: "Stop",
+      restart: "Restart",
+      repair: "Repair",
+      update: "Update",
+      rollback: "Revert",
+      remove: "Remove",
+      doctor: "Run diagnostics",
+    },
+    activeGeneration: "Active version {{generation}}",
+    progress: "Working…",
+    runFailed: "The last action could not be started. Try again.",
+    dataPreserved: "Your documents and data are preserved.",
+    outcome: {
+      succeeded: "Action completed.",
+      failed: "The action failed. Try again.",
+    },
+    confirm: {
+      remove: {
+        title: "Remove the agents?",
+        body: "This uninstalls the local agents. Your documents and data are preserved.",
+        confirmLabel: "Remove",
+        cancelLabel: "Cancel",
+      },
+      rollback: {
+        title: "Revert to the previous version?",
+        body: "This restores the previously installed agents. Your documents and data are preserved.",
+        confirmLabel: "Revert",
+        cancelLabel: "Cancel",
+      },
     },
   },
   agent: {
