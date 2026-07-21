@@ -18,6 +18,7 @@
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant, SystemTime};
 
 use serde::{Deserialize, Serialize};
 
@@ -25,12 +26,15 @@ use vaultspec_distribution_authority::{
     DistributionTarget, MaterializationSource, VerificationError, VerificationRequest,
     verify_distribution,
 };
-use vaultspec_product::discovery::handoff_is_owner_restricted;
+use vaultspec_product::discovery::{
+    DiscoveryContext, GatewayDiscovery, Verdict, handoff_is_owner_restricted,
+};
 use vaultspec_product::gateway_drain::{
     DrainContext, DrainDeadlines, GatewayDrainError, OwnedGatewayLease,
 };
 use vaultspec_product::generation::LockedProduct;
 use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard};
+use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::materializer::{ActivationLimits, activate_update};
 use vaultspec_product::migration::{MigrationPlan, StagedMigration};
 use vaultspec_product::paths::ProductPaths;
@@ -347,6 +351,107 @@ pub fn activate_and_accept<'guard>(
         }
         Err(_relaunch_error) => Ok(ActivationOutcome::CommittedRelaunchPending),
     }
+}
+
+/// Static configuration for the post-commit relaunch health probe. `now_ms` is
+/// re-read at each poll, so only a genuinely fresh re-publish satisfies it.
+#[derive(Debug, Clone)]
+pub struct ProbeConfig {
+    /// Our receipt owner identity (the relaunched seat must publish as US).
+    pub our_owner: String,
+    /// How recent the re-published heartbeat must be to count as fresh.
+    pub freshness_ms: i64,
+    /// The gateway API version range our installed release set supports.
+    pub supported_protocol: RangeBounds,
+    /// The state-schema range our installed release set supports.
+    pub supported_state_schema: RangeBounds,
+    /// Wall-clock bound on how long to wait for the seat to come back healthy.
+    pub deadline: Duration,
+    /// Poll interval while waiting.
+    pub poll: Duration,
+}
+
+/// Relaunch the prior seat and confirm it came back healthy.
+///
+/// Spawns the STABLE front-door launcher (`<launcher> serve`, fully detached) in
+/// the relaunch workspace, then waits for the relaunched seat to RE-PUBLISH a
+/// fresh, owned, live, compatible discovery record ([`Verdict::OwnedLive`]) within
+/// the deadline — the exact inverse of the drain's require-absent. This runs
+/// POST-commit: a failure returns a bounded [`RelaunchError`] the caller maps to
+/// [`ActivationOutcome::CommittedRelaunchPending`], NEVER a rollback.
+pub fn relaunch_and_probe(
+    launcher: &Path,
+    workspace: &Path,
+    discovery_path: &Path,
+    config: &ProbeConfig,
+) -> Result<(), RelaunchError> {
+    spawn_detached_front_door(launcher, workspace)
+        .map_err(|error| RelaunchError::new(format!("front-door spawn failed: {error}")))?;
+    probe_seat_republished(discovery_path, config)
+}
+
+/// Spawn `<launcher> serve` fully detached — no console, no inherited stdio — so
+/// the relaunched seat outlives this short-lived updater. The launcher is the
+/// STABLE front door (it resolves the receipt-selected generation), never a
+/// generation-specific binary.
+fn spawn_detached_front_door(launcher: &Path, workspace: &Path) -> std::io::Result<u32> {
+    let mut cmd = std::process::Command::new(launcher);
+    cmd.arg("serve")
+        .current_dir(workspace)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // DETACHED_PROCESS (0x8) + CREATE_NO_WINDOW (0x0800_0000): the child owns
+        // no console and outlives the launcher — mirrors the front-door spawn.
+        cmd.creation_flags(0x0800_0008);
+    }
+    Ok(cmd.spawn()?.id())
+}
+
+/// Poll the discovery record until the relaunched seat is [`Verdict::OwnedLive`]
+/// within the deadline. Freshness, live-pid, ownership, and compatibility are
+/// re-evaluated at the CURRENT time each poll, so a stale leftover record from
+/// before the update never satisfies it — only a genuine fresh re-publish does.
+pub fn probe_seat_republished(
+    discovery_path: &Path,
+    config: &ProbeConfig,
+) -> Result<(), RelaunchError> {
+    let begun = Instant::now();
+    loop {
+        if let Ok(raw) = std::fs::read_to_string(discovery_path)
+            && let Ok(discovery) = GatewayDiscovery::parse(&raw)
+        {
+            let context = DiscoveryContext {
+                our_owner: config.our_owner.clone(),
+                now_ms: now_ms(),
+                freshness_ms: config.freshness_ms,
+                supported_protocol: config.supported_protocol.clone(),
+                supported_state_schema: config.supported_state_schema.clone(),
+            };
+            if matches!(discovery.classify(&context), Verdict::OwnedLive) {
+                return Ok(());
+            }
+        }
+        if begun.elapsed() >= config.deadline {
+            return Err(RelaunchError::new(
+                "the relaunched seat did not re-publish a fresh owned discovery record within the deadline",
+            ));
+        }
+        std::thread::sleep(config.poll);
+    }
+}
+
+/// The current wall-clock time in epoch milliseconds, saturating on the
+/// pre-epoch impossibility.
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .ok()
+        .and_then(|elapsed| i64::try_from(elapsed.as_millis()).ok())
+        .unwrap_or(i64::MAX)
 }
 
 /// Drive one complete fresh update end-to-end under a held installation lock.
