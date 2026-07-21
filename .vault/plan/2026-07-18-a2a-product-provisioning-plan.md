@@ -14,16 +14,6 @@ related:
   - '[[2026-07-20-a2a-provisioning-authority-adr]]'
 ---
 
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the
-       related: field above.
-     - The related: field carries the AUTHORISING documents
-       (ADR, research, reference, prior plan) for every Step in
-       this plan. Steps inherit this chain; per-row reference
-       footers do not exist.
-     - NEVER use [[wiki-links]] or markdown links in the
-       document body. -->
-
 <!-- RETIRED: S08, S162 -->
 
 # `a2a-product-provisioning` plan
@@ -176,7 +166,7 @@ Dispatch to vaultspec-high-executor to build the copied updater executable, owne
 - [x] `W03.P07.S57` - Declare the target-specific external updater executable as a separate workspace package; `engine/crates/vaultspec-updater/Cargo.toml`.
 - [x] `W03.P07.S58` - Expose a testable updater runner that consumes one owner-restricted descriptor and delegates all authority checks to vaultspec-product; `engine/crates/vaultspec-updater/src/lib.rs`.
 - [x] `W03.P07.S59` - Parse the one-time owner-restricted descriptor outside the active release, acquire the installation lock before any drain or mutation, execute or recover the ordered transaction without delegating lock ownership to the gateway, redact secrets, and return bounded diagnostics; `engine/crates/vaultspec-updater/src/main.rs`.
-- [ ] `W03.P07.S60` - Replace the Cargo Dist axoupdater-only flow with copy-out, owner-restricted descriptor handoff, helper launch, seat exit, and updater-observed relaunch; `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`.
+- [x] `W03.P07.S60` - Replace the Cargo Dist axoupdater-only flow with copy-out, owner-restricted descriptor handoff, helper launch, seat exit, and updater-observed relaunch; `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`.
 - [ ] `W03.P07.S61` - Align update command help and refusal outcomes with complete self-install and package-manager transaction authority; `engine/crates/vaultspec-cli/src/main.rs`.
 - [ ] `W03.P07.S62` - Verify with real executables that only the copied updater acquires the install lock, authenticated drain closes admission and resolves active runs plus checkpoints before owner-authorized gateway stop, runtime-singleton release precedes snapshot migration and swap, the gateway never acquires or waits on the install lock, descriptor replay fails, secrets remain redacted, and prior-seat recovery relaunches; `engine/crates/vaultspec-updater/tests/updater_process.rs`.
 - [ ] `W03.P07.S63` - Prove Windows can replace both the dashboard and installed updater only after the seated processes exit; `engine/crates/vaultspec-updater/tests/windows_replacement.rs`.
@@ -189,8 +179,8 @@ Bind pinned A2A, CPython, Node, and ACP inputs to each dashboard build, replace 
 
 Dispatch to vaultspec-high-executor to compose each dashboard build with the pinned A2A capsule and runtime inputs, generate digests, licenses, SBOM, manifests, and target-specific updater payloads.
 
-- [ ] `W04.P08.S64` - Build and verify complete product trees inside dashboard-owned final-name unpublished generations from the tracked component lock A2A evidence dashboard binary updater licenses and software bill of materials; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
-- [ ] `W04.P08.S65` - Reject unpinned or floating inputs, A2A commit or artifact mismatch, target mismatch, missing payloads, digest drift, incomplete licenses, and release-set skew with real composed trees; `engine/crates/vaultspec-product/tests/product_build.rs`.
+- [x] `W04.P08.S64` - Build and verify complete product trees inside dashboard-owned final-name unpublished generations from the tracked component lock A2A evidence dashboard binary updater licenses and software bill of materials; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
+- [x] `W04.P08.S65` - Reject unpinned or floating inputs, A2A commit or artifact mismatch, target mismatch, missing payloads, digest drift, incomplete licenses, and release-set skew with real composed trees; `engine/crates/vaultspec-product/tests/product_build.rs`.
 - [ ] `W04.P08.S66` - Acquire only build-time artifacts by exact pinned identity and stage the SPA without creating any runtime network dependency; `.github/release-build-setup.yml`.
 - [ ] `W04.P08.S67` - Compose and retain the Apple Silicon macOS dashboard, updater, and A2A capsule as one verified release-set artifact; `.github/workflows/release.yml`.
 - [ ] `W04.P08.S68` - Compose and retain the Intel macOS dashboard, updater, and A2A capsule as one verified release-set artifact; `.github/workflows/release.yml`.
@@ -198,7 +188,7 @@ Dispatch to vaultspec-high-executor to compose each dashboard build with the pin
 - [ ] `W04.P08.S70` - Compose and retain the x86-64 Linux dashboard, updater, and A2A capsule as one verified release-set artifact; `.github/workflows/release.yml`.
 - [ ] `W04.P08.S71` - Compose and retain the x86-64 Windows dashboard, updater, and A2A capsule as one verified release-set artifact; `.github/workflows/release.yml`.
 - [ ] `W04.P08.S72` - Validate the component lock, release schema, product builder, and payload inventory before release jobs may run; `.github/workflows/quality-gates.yml`.
-- [ ] `W04.P08.S87` - Carry and verify the independently invokable standalone MCP entrypoint in every capsule without assigning it dashboard lifecycle ownership; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
+- [x] `W04.P08.S87` - Carry and verify the independently invokable standalone MCP entrypoint in every capsule without assigning it dashboard lifecycle ownership; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
 - [ ] `W04.P08.S166` - Aggregate exactly one verified artifact for each of the five unique target triples enforce common A2A commit component-lock release-schema protocol and state identity verify every target archive manifest tree software-bill-of-materials and license evidence and emit the cohort digest that gates publication; `.github/workflows/release.yml`.
 
 ### Phase `W04.P09` - replace binary-only installer surfaces
