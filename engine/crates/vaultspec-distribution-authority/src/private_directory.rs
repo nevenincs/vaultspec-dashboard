@@ -118,13 +118,14 @@ fn harden_and_prove(
     )
     .map_err(win_error)
     .map_err(PrivateDirectoryError::Filesystem)?;
-    add_three_principals(&mut acl, &current)?;
+    add_three_principals(&mut acl, &current, DIRECTORY_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &hardening
             .dacl_snapshot()
             .map_err(PrivateDirectoryError::Filesystem)?,
         &current,
+        DIRECTORY_EXPLICIT_FLAGS,
     )?;
     hardening
         .revalidate()
@@ -270,7 +271,8 @@ fn open_child_exact(parent: &Dir, name: &str) -> Result<std::fs::File, PrivateDi
 // installs and what the shared validator requires cannot drift apart.
 #[cfg(windows)]
 use vaultspec_windows_authority::private_policy::{
-    ADMINISTRATORS_SID, DIRECTORY_EXPLICIT_FLAGS, FILE_ALL_ACCESS, LOCAL_SYSTEM_SID,
+    ADMINISTRATORS_SID, DIRECTORY_EXPLICIT_FLAGS, FILE_ALL_ACCESS, FILE_EXPLICIT_FLAGS,
+    LOCAL_SYSTEM_SID,
 };
 
 /// Install the exact three allow entries (`windows-acl` mutation, D2).
@@ -278,6 +280,7 @@ use vaultspec_windows_authority::private_policy::{
 fn add_three_principals(
     acl: &mut windows_acl::acl::ACL,
     current: &str,
+    required_flags: u8,
 ) -> Result<(), PrivateDirectoryError> {
     use windows_acl::acl::AceType;
 
@@ -288,7 +291,7 @@ fn add_three_principals(
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
             AceType::AccessAllow,
-            DIRECTORY_EXPLICIT_FLAGS,
+            required_flags,
             FILE_ALL_ACCESS,
         )
         .map_err(win_error)
@@ -305,6 +308,7 @@ fn remove_nonconforming(
     acl: &mut windows_acl::acl::ACL,
     snapshot: &vaultspec_windows_authority::DaclSnapshot,
     current: &str,
+    required_flags: u8,
 ) -> Result<(), PrivateDirectoryError> {
     use vaultspec_windows_authority::DaclAceKind;
     use windows_acl::acl::AceType;
@@ -315,7 +319,7 @@ fn remove_nonconforming(
             sid == current || sid == LOCAL_SYSTEM_SID || sid == ADMINISTRATORS_SID;
         let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
             && known_principal
-            && entry.flags() == DIRECTORY_EXPLICIT_FLAGS
+            && entry.flags() == required_flags
             && entry.mask() == FILE_ALL_ACCESS
             && !entry.inherited();
         if !conforming {
@@ -356,4 +360,128 @@ pub(crate) fn current_user_sid() -> Result<String, PrivateDirectoryError> {
 #[cfg(windows)]
 fn win_error(code: u32) -> std::io::Error {
     std::io::Error::from_raw_os_error(code as i32)
+}
+
+/// Create ONE named direct child file of a capability-held parent, establish its
+/// private protection on that exact creation handle BEFORE any byte is written,
+/// then write, synchronize, and re-prove it.
+///
+/// The trust datastore's files are authority-bearing — `root.json` is the anchor
+/// a LATER verification run reads to decide a trust outcome — so each is proven
+/// on its own retained handle rather than relying on the parent directory's
+/// inheritance. An inherited descriptor is not `SE_DACL_PROTECTED` and carries
+/// `INHERITED_ACE` entries, so a later reader could only credit it by
+/// re-observing the parent too, joining two objects' descriptor states observed
+/// at two different times. There is deliberately no validator for that weaker
+/// shape.
+#[cfg(windows)]
+pub(crate) fn write_private_datastore_file(
+    parent: &Dir,
+    name: &str,
+    bytes: &[u8],
+) -> Result<(), PrivateDirectoryError> {
+    use std::io::{Read as _, Seek as _, Write as _};
+    use std::os::windows::io::AsRawHandle as _;
+
+    use vaultspec_windows_authority::PrivateFileCreation;
+    use windows_acl::acl::ACL;
+
+    let root = capability_root(parent)?;
+    let mut created = PrivateFileCreation::create_child(&root, std::ffi::OsStr::new(name))
+        .map_err(PrivateDirectoryError::Filesystem)?;
+
+    // Harden the EMPTY file through its own retained WRITE_DAC handle, closing
+    // the window in which authority-bearing bytes could exist unprotected.
+    let current = current_user_sid()?;
+    let mut acl = ACL::from_file_handle(
+        created.file().as_raw_handle() as *mut winapi::ctypes::c_void,
+        false,
+    )
+    .map_err(win_error)
+    .map_err(PrivateDirectoryError::Filesystem)?;
+    add_three_principals(&mut acl, &current, FILE_EXPLICIT_FLAGS)?;
+    remove_nonconforming(
+        &mut acl,
+        &created
+            .dacl_snapshot()
+            .map_err(PrivateDirectoryError::Filesystem)?,
+        &current,
+        FILE_EXPLICIT_FLAGS,
+    )?;
+    prove_created_file(&created, &current)?;
+
+    let file = created.file_mut();
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    file.rewind().map_err(PrivateDirectoryError::Filesystem)?;
+    let mut reread = Vec::with_capacity(bytes.len());
+    file.read_to_end(&mut reread)
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    if reread != bytes {
+        return Err(PrivateDirectoryError::policy(
+            "datastore file same-handle reread differs from the written bytes",
+        ));
+    }
+    prove_created_file(&created, &current)
+}
+
+/// Exact identity, one link, and — from ONE snapshot — the protected
+/// three-principal file DACL.
+#[cfg(windows)]
+fn prove_created_file(
+    created: &vaultspec_windows_authority::PrivateFileCreation,
+    current: &str,
+) -> Result<(), PrivateDirectoryError> {
+    use vaultspec_windows_authority::private_policy;
+
+    created
+        .revalidate()
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    if created
+        .link_count()
+        .map_err(PrivateDirectoryError::Filesystem)?
+        != 1
+    {
+        return Err(PrivateDirectoryError::policy(
+            "datastore file has more than one link",
+        ));
+    }
+    let snapshot = created
+        .dacl_snapshot()
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    private_policy::validate_private_file(&snapshot, current)
+        .map_err(|violation| PrivateDirectoryError::policy(violation.to_string()))
+}
+
+/// Create ONE named direct child file of a capability-held parent owner-private,
+/// then write, synchronize, and prove it.
+#[cfg(unix)]
+pub(crate) fn write_private_datastore_file(
+    parent: &Dir,
+    name: &str,
+    bytes: &[u8],
+) -> Result<(), PrivateDirectoryError> {
+    use cap_std::fs::OpenOptionsExt as _;
+    use std::io::Write as _;
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    let mut options = cap_std::fs::OpenOptions::new();
+    options.read(true).write(true).create_new(true).mode(0o600);
+    let mut file = parent
+        .open_with(name, &options)
+        .map_err(PrivateDirectoryError::Filesystem)?
+        .into_std();
+    let metadata = file.metadata().map_err(PrivateDirectoryError::Filesystem)?;
+    if metadata.uid() != nix::unistd::Uid::effective().as_raw()
+        || metadata.nlink() != 1
+        || metadata.permissions().mode() & 0o777 != 0o600
+    {
+        return Err(PrivateDirectoryError::policy(
+            "datastore file is not an effective-user 0600 single-link regular file",
+        ));
+    }
+    file.write_all(bytes)
+        .and_then(|()| file.sync_all())
+        .map_err(PrivateDirectoryError::Filesystem)
 }

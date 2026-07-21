@@ -1363,3 +1363,91 @@ fn capability_parent_hardens_a_child_it_could_not_harden_itself() {
         );
     }
 }
+
+/// Datastore FILES are proven on their own exact creation handle, not by the
+/// parent directory's inheritance (private-file class addendum: root.json is a
+/// trust anchor a LATER run reads, so its private state must be provable without
+/// re-observing the parent).
+///
+/// Uses the both-sides standard: the capability parent's DACL read SUCCEEDS
+/// while its DACL write is DENIED, so the child's protected state below can only
+/// have come from the child's own handle.
+#[cfg(windows)]
+#[test]
+fn datastore_files_are_hardened_on_their_own_creation_handle() {
+    use std::os::windows::io::AsRawHandle as _;
+    use vaultspec_windows_authority::{ReadOnlyAuthorityFile, private_policy};
+
+    let temp = TempDir::new().expect("temporary capability root");
+    let root_path = temp.path().join("product");
+    std::fs::create_dir(&root_path).expect("product root");
+    let capability =
+        Dir::open_ambient_dir(&root_path, cap_std::ambient_authority()).expect("capability root");
+    capability
+        .create_dir(LIVE_DATASTORE)
+        .expect("datastore directory");
+    super::private_directory::ensure_owner_private_child_directory(&capability, LIVE_DATASTORE)
+        .expect("harden the datastore directory");
+    let datastore = capability
+        .open_dir(LIVE_DATASTORE)
+        .expect("open hardened datastore");
+
+    // Both sides of the parent's boundary: DACL read succeeds, DACL write denied.
+    let borrowed = datastore
+        .try_clone()
+        .expect("clone capability")
+        .into_std_file();
+    let mut parent_acl = windows_acl::acl::ACL::from_file_handle(
+        borrowed.as_raw_handle() as *mut winapi::ctypes::c_void,
+        false,
+    )
+    .expect("capability carries READ_CONTROL, so the DACL read succeeds");
+    let system =
+        windows_acl::helper::string_to_sid(private_policy::LOCAL_SYSTEM_SID).expect("system SID");
+    assert!(
+        parent_acl
+            .add_entry(
+                system.as_ptr().cast_mut().cast(),
+                windows_acl::acl::AceType::AccessAllow,
+                private_policy::FILE_EXPLICIT_FLAGS,
+                private_policy::FILE_ALL_ACCESS,
+            )
+            .is_err(),
+        "the capability must lack WRITE_DAC, or this proof is vacuous"
+    );
+
+    let anchor = br#"{"signed":{"_type":"root"}}"#;
+    super::private_directory::write_private_datastore_file(&datastore, "root.json", anchor)
+        .expect("write the hardened trust anchor");
+
+    // Reopened independently, the file proves its OWN protected three-principal
+    // state — no parent re-observation, and the bytes survived intact.
+    let reader = ReadOnlyAuthorityFile::open_child_readonly(
+        &datastore
+            .try_clone()
+            .expect("clone datastore")
+            .into_std_file(),
+        std::ffi::OsStr::new("root.json"),
+    )
+    .expect("reopen the trust anchor read-only");
+    assert_eq!(reader.read_bounded(256).expect("bounded read"), anchor);
+    let snapshot = reader.dacl_snapshot().expect("file DACL snapshot");
+    assert!(snapshot.protected(), "trust anchor must be protected");
+    assert!(
+        snapshot.entries().iter().all(|entry| !entry.inherited()),
+        "an inherited entry would mean the file leaned on its parent"
+    );
+    let current = match super::private_directory::current_user_sid() {
+        Ok(sid) => sid,
+        Err(error) => panic!("current user SID unavailable: {error:?}"),
+    };
+    private_policy::validate_private_file(&snapshot, &current)
+        .expect("trust anchor satisfies the exact three-principal file policy");
+
+    // Create-new: a second write to the same name must refuse, never replace.
+    assert!(
+        super::private_directory::write_private_datastore_file(&datastore, "root.json", anchor)
+            .is_err(),
+        "an existing trust anchor must never be silently replaced"
+    );
+}

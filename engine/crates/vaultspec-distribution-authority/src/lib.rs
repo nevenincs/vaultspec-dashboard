@@ -14,6 +14,7 @@ use materialization::StagedArchive;
 pub use materialization::{MaterializationSource, VerifiedArchiveReader};
 use private_directory::{
     ensure_owner_private_child_directory, prove_owner_private_child_directory,
+    write_private_datastore_file,
 };
 use product_scope::{ProcessVerificationLease, ProductRootScope};
 pub use publication::{
@@ -31,7 +32,7 @@ use sha2::{Digest as _, Sha256};
 use std::collections::BTreeMap;
 use std::fmt;
 use std::fs::File;
-use std::io::{Read, Write as _};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 use std::time::Duration;
@@ -1022,10 +1023,7 @@ fn prepare_attempt_datastore(
             .map_err(|_| VerificationError::InvalidDatastoreState)?;
         for (name, maximum) in DATASTORE_FILES {
             let bytes = bounded_cap_read(&live, name, maximum)?;
-            let mut file = create_cap_file(&directory, name, 0o600)?;
-            file.write_all(&bytes)
-                .map_err(|_| VerificationError::InvalidDatastoreState)?;
-            file.sync_all()
+            write_private_datastore_file(&directory, name, &bytes)
                 .map_err(|_| VerificationError::InvalidDatastoreState)?;
         }
         sync_cap_directory(&directory)?;
@@ -1050,10 +1048,12 @@ fn publish_cap_datastore(root: &Dir, attempt: &Dir) -> Result<(), VerificationEr
     let next = ensure_cap_directory(root, NEXT_DATASTORE)?;
     for (name, maximum) in DATASTORE_FILES {
         let bytes = bounded_cap_read(attempt, name, maximum)?;
-        let mut file = create_cap_file(&next, name, 0o600)?;
-        file.write_all(&bytes)
-            .map_err(|_| VerificationError::InvalidDatastoreState)?;
-        file.sync_all()
+        // The PERSISTED trust store: each file is hardened on its own exact
+        // creation handle before any byte is written, never left to the parent
+        // directory's inheritance, because a later verification run reads
+        // root.json as a trust anchor and must be able to prove its private
+        // state without re-observing the parent.
+        write_private_datastore_file(&next, name, &bytes)
             .map_err(|_| VerificationError::InvalidDatastoreState)?;
     }
     #[cfg(test)]
@@ -1093,38 +1093,6 @@ fn publish_cap_datastore(root: &Dir, attempt: &Dir) -> Result<(), VerificationEr
         return Err(VerificationError::InvalidDatastoreState);
     }
     Ok(())
-}
-
-fn create_cap_file(
-    directory: &Dir,
-    name: &str,
-    _unix_mode: u32,
-) -> Result<File, VerificationError> {
-    let mut options = CapOpenOptions::new();
-    options.read(true).write(true).create_new(true);
-    #[cfg(unix)]
-    {
-        use cap_std::fs::OpenOptionsExt as _;
-        options.mode(_unix_mode);
-    }
-    let file = directory
-        .open_with(name, &options)
-        .map_err(|_| VerificationError::InvalidDatastoreState)?
-        .into_std();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        let metadata = file
-            .metadata()
-            .map_err(|_| VerificationError::InvalidDatastoreState)?;
-        if metadata.uid() != nix::unistd::Uid::effective().as_raw()
-            || metadata.nlink() != 1
-            || metadata.permissions().mode() & 0o777 != _unix_mode
-        {
-            return Err(VerificationError::InvalidDatastoreState);
-        }
-    }
-    Ok(file)
 }
 
 const DATASTORE_FILES: [(&str, u64); 5] = [
