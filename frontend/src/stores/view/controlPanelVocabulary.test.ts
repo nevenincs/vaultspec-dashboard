@@ -14,7 +14,17 @@ import {
 
 describe("control panel vocabulary", () => {
   it("is exhaustive, frozen, and exact for every stable panel id", () => {
-    expect(Object.keys(CONTROL_PANEL_VOCABULARY)).toEqual(CONTROL_PANEL_IDS);
+    // The vocabulary covers every control SURFACE: the modal panels
+    // (`CONTROL_PANEL_IDS`) plus the footer-only review chip (`approvals`, a
+    // FooterChipId that opens the Agent pending view, review-surface-flow ADR F1).
+    // The agent-service panel (a2a-product-provisioning W05.P12) is the fourth modal.
+    expect(Object.keys(CONTROL_PANEL_VOCABULARY)).toEqual([
+      "search-service",
+      "approvals",
+      "backend-health",
+      "vault-health",
+      "agent-service",
+    ]);
     expect(Object.isFrozen(CONTROL_PANEL_VOCABULARY)).toBe(true);
 
     for (const id of CONTROL_PANEL_IDS) {
@@ -83,12 +93,6 @@ describe("control panel vocabulary", () => {
         unavailable: "Search unavailable",
       },
       {
-        label: "Review",
-        show: "Show review",
-        hide: "Hide review",
-        unavailable: "Review unavailable",
-      },
-      {
         label: "System status",
         show: "Show system status",
         hide: "Hide system status",
@@ -99,6 +103,12 @@ describe("control panel vocabulary", () => {
         show: "Show project health",
         hide: "Hide project health",
         unavailable: "Project health unavailable",
+      },
+      {
+        label: "Agents",
+        show: "Show agents",
+        hide: "Hide agents",
+        unavailable: "Agents unavailable",
       },
     ]);
   });
