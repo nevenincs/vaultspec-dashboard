@@ -48,6 +48,9 @@ pub enum ProductBuildError {
     /// The composed tree contains a non-regular entry (symlink, device, socket);
     /// an installed product tree is regular files only.
     NonRegularEntry { path: String },
+    /// The member's `file_digests` does not describe exactly the scanned tree
+    /// (a missing, extra, drifted, or self-listed manifest-path entry).
+    FileDigestsMismatch { detail: String },
 }
 
 impl std::fmt::Display for ProductBuildError {
@@ -67,6 +70,9 @@ impl std::fmt::Display for ProductBuildError {
             }
             Self::NonRegularEntry { path } => {
                 write!(f, "composed tree contains a non-regular entry: {path}")
+            }
+            Self::FileDigestsMismatch { detail } => {
+                write!(f, "file_digests does not match the composed tree: {detail}")
             }
         }
     }
@@ -217,6 +223,68 @@ pub struct ComposedMember {
     /// Every immutable installed regular file except `release_manifest_path`, by
     /// path → digest (the verifier rejects the manifest's own path here).
     pub file_digests: BTreeMap<String, String>,
+}
+
+/// Build the `file_digests` map from a scanned composed tree, EXCLUDING the release
+/// manifest's own path — the schema's sole exclusion, since its bytes cannot digest
+/// themselves (they are bound by external cohort/receipt authority instead).
+#[must_use]
+pub fn file_digests_from_scan(
+    scanned: &[ComposedArtifact],
+    release_manifest_path: &str,
+) -> BTreeMap<String, String> {
+    scanned
+        .iter()
+        .filter(|artifact| artifact.path != release_manifest_path)
+        .map(|artifact| (artifact.path.clone(), artifact.digest.clone()))
+        .collect()
+}
+
+/// Verify a composed member's `file_digests` describes EXACTLY the scanned tree
+/// minus `release_manifest_path`: every installed file present with the observed
+/// digest, no missing entry, no extra entry, and the manifest's own path never
+/// self-listed. This is the build-time proof that the emitted manifest faithfully
+/// describes the placed tree — the same complete-inventory law the S06 verifier
+/// enforces at install, checked here before shipping.
+pub fn verify_member_covers_tree(
+    member: &ComposedMember,
+    scanned: &[ComposedArtifact],
+) -> Result<(), ProductBuildError> {
+    if member
+        .file_digests
+        .contains_key(&member.release_manifest_path)
+    {
+        return Err(ProductBuildError::FileDigestsMismatch {
+            detail: format!(
+                "the release manifest path {} must not appear in file_digests",
+                member.release_manifest_path
+            ),
+        });
+    }
+    let expected = file_digests_from_scan(scanned, &member.release_manifest_path);
+    for (path, digest) in &expected {
+        match member.file_digests.get(path) {
+            Some(declared) if declared == digest => {}
+            Some(_) => {
+                return Err(ProductBuildError::FileDigestsMismatch {
+                    detail: format!("file_digests digest for {path} differs from the placed file"),
+                });
+            }
+            None => {
+                return Err(ProductBuildError::FileDigestsMismatch {
+                    detail: format!("file_digests is missing the installed file {path}"),
+                });
+            }
+        }
+    }
+    for path in member.file_digests.keys() {
+        if !expected.contains_key(path) {
+            return Err(ProductBuildError::FileDigestsMismatch {
+                detail: format!("file_digests lists {path}, which is not in the composed tree"),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// Emit a schema-2.0 release-set member manifest from the composed facts, deriving

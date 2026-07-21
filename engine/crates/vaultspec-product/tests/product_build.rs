@@ -14,7 +14,7 @@ use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
 use vaultspec_product::product_build::{
     A2aComponentEvidence, ComposedArtifact, ComposedMember, DashboardArtifact, EvidenceArtifact,
     LicenseArtifact, ProductBuildError, SbomArtifact, TreeEvidenceArtifact, emit_member_manifest,
-    scan_composed_tree,
+    file_digests_from_scan, scan_composed_tree, verify_member_covers_tree,
 };
 
 const LOCK_JSON: &str = include_str!("../../../../packaging/a2a-component.lock.json");
@@ -237,4 +237,87 @@ fn scan_composed_tree_digests_every_regular_file_sorted() {
             .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
         "digests are lowercase hex"
     );
+}
+
+fn artifact(path: &str, digest: &str) -> ComposedArtifact {
+    ComposedArtifact {
+        path: path.to_string(),
+        size: 3,
+        digest: digest.to_string(),
+    }
+}
+
+#[test]
+fn a_member_covering_exactly_the_tree_passes() {
+    let scanned = vec![
+        artifact("bin/dashboard.exe", &"a".repeat(64)),
+        artifact("bin/updater.exe", &"b".repeat(64)),
+        artifact("release.json", &"c".repeat(64)),
+    ];
+    let mut member = composed_member();
+    member.file_digests = file_digests_from_scan(&scanned, &member.release_manifest_path);
+    // The manifest's own path is excluded from file_digests.
+    assert!(!member.file_digests.contains_key("release.json"));
+    verify_member_covers_tree(&member, &scanned).expect("an exact cover must pass");
+}
+
+#[test]
+fn a_missing_file_digest_is_rejected() {
+    let scanned = vec![
+        artifact("bin/dashboard.exe", &"a".repeat(64)),
+        artifact("bin/updater.exe", &"b".repeat(64)),
+    ];
+    let mut member = composed_member();
+    // Only the dashboard is declared; the updater on disk is uncovered.
+    member.file_digests = BTreeMap::from([("bin/dashboard.exe".to_string(), "a".repeat(64))]);
+    let refused = verify_member_covers_tree(&member, &scanned);
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}
+
+#[test]
+fn an_extra_file_digest_is_rejected() {
+    let scanned = vec![artifact("bin/dashboard.exe", &"a".repeat(64))];
+    let mut member = composed_member();
+    member.file_digests = BTreeMap::from([
+        ("bin/dashboard.exe".to_string(), "a".repeat(64)),
+        ("bin/ghost.exe".to_string(), "b".repeat(64)),
+    ]);
+    let refused = verify_member_covers_tree(&member, &scanned);
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}
+
+#[test]
+fn a_drifted_file_digest_is_rejected() {
+    let scanned = vec![artifact("bin/dashboard.exe", &"a".repeat(64))];
+    let mut member = composed_member();
+    member.file_digests = BTreeMap::from([("bin/dashboard.exe".to_string(), "z".repeat(64))]);
+    let refused = verify_member_covers_tree(&member, &scanned);
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}
+
+#[test]
+fn a_self_listed_manifest_path_is_rejected() {
+    let scanned = vec![
+        artifact("bin/dashboard.exe", &"a".repeat(64)),
+        artifact("release.json", &"c".repeat(64)),
+    ];
+    let mut member = composed_member();
+    member.file_digests = BTreeMap::from([
+        ("bin/dashboard.exe".to_string(), "a".repeat(64)),
+        ("release.json".to_string(), "c".repeat(64)),
+    ]);
+    let refused = verify_member_covers_tree(&member, &scanned);
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
 }
