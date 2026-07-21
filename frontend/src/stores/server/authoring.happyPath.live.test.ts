@@ -189,6 +189,46 @@ describe("full authoring happy path (live)", () => {
     // identity — the writer's revision cycle.
     const afterRequest = await client.projectProposal(changesetId);
     expect(afterRequest?.proposal.status).toBe("draft");
+
+    // Teardown: drive this proposal to a TERMINAL (rejected) state so it does not
+    // persist as a LIVE draft on the shared target document. The apply test below
+    // edits the SAME document; a lingering live proposal over the intersecting base
+    // line range would deny its apply ("only one can apply against the shared
+    // base"). Re-submit (the author's natural revision re-send) then reject as the
+    // distinct reviewer — the same clean-terminal discipline authoring.live's reject
+    // flow uses to keep its document pristine for sibling suites. Best-effort: the
+    // cleanup never asserts, so a teardown hiccup cannot mask the arc under test.
+    const resubmitted = await client.submitForReview(
+      changesetId,
+      {
+        expected_revision: afterRequest!.proposal.changeset_revision,
+        summary: "resubmit for teardown",
+      },
+      { actorToken: authorToken },
+    );
+    if (resubmitted.kind === "ok") {
+      const resubmitData = resubmitted.data as {
+        proposal_id?: string;
+        reviewed_revision?: string;
+        approval?: { approval_id?: string };
+      };
+      const teardownApprovalId = resubmitData.approval?.approval_id ?? "";
+      const teardownReviewedRevision =
+        resubmitData.reviewed_revision ?? afterRequest!.proposal.changeset_revision;
+      if (teardownApprovalId !== "") {
+        await client.reviewDecision(
+          teardownApprovalId,
+          {
+            proposal_id: resubmitData.proposal_id ?? proposalId,
+            approval_id: teardownApprovalId,
+            decision: "reject",
+            reviewed_revision: teardownReviewedRevision,
+            comment: "teardown — release the shared document",
+          },
+          { actorToken: reviewerToken },
+        );
+      }
+    }
   });
 
   it("propose → approve → apply → rollback → history through the store", async () => {
