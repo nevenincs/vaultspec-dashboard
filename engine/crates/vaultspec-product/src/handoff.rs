@@ -16,11 +16,16 @@
 //! that is not actually owner-restricted would let any local account substitute a
 //! hostile update intent. Unix establishes the restriction race-free at create
 //! time (mode 0600, `O_EXCL`). Windows requires the exact three-principal
-//! protected DACL, which is the windows-private-file authority (ADR D6): until its
-//! real-NTFS D7 evidence retires the gate, the Windows write is a TYPED refusal —
-//! never a silent non-restricted write. This module imports NO DACL primitive; it
-//! mirrors the credential store's `windows_authority_unavailable` fail-closed
-//! shape.
+//! protected DACL, established through the reviewed windows-private-file authority
+//! (windows-private-file-authority D1/D5, D6 un-gated): the descriptor file is
+//! created EMPTY via [`PrivateFileCreation`] (which carries `WRITE_DAC`), hardened
+//! to the exact three-principal protected list through its retained handle BEFORE
+//! any descriptor byte is written, and only then written, synchronized,
+//! same-handle reread, and re-proven. The owner-restriction PROOF on both
+//! platforms routes through one shared authority — Unix `handoff_is_owner_restricted`,
+//! Windows `private_policy::validate_private_file` over one DACL snapshot — so a
+//! harden that produced any non-conforming DACL fails closed and the residue is
+//! removed; a non-owner-restricted one-time descriptor is never left behind.
 
 use std::path::{Path, PathBuf};
 
@@ -154,11 +159,6 @@ pub enum HandoffError {
     /// The descriptor was written but is not owner-restricted; it has been
     /// removed rather than left as an unrestricted one-time handoff.
     NotOwnerRestricted,
-    /// The owner-restricted protected-DACL descriptor write requires the
-    /// windows-private-file authority (ADR D6), which is not yet provisioned.
-    /// The whole Windows update path stays typed-gated until its NTFS D7 evidence
-    /// retires the gate — the same fail-closed posture as the credential store.
-    WindowsAuthorityUnavailable,
 }
 
 impl std::fmt::Display for HandoffError {
@@ -175,11 +175,6 @@ impl std::fmt::Display for HandoffError {
                     "the written descriptor was not owner-restricted and was removed"
                 )
             }
-            Self::WindowsAuthorityUnavailable => write!(
-                f,
-                "the owner-restricted descriptor write is unavailable until the \
-                 windows-private-file authority is provisioned"
-            ),
         }
     }
 }
@@ -256,12 +251,177 @@ fn write_owner_restricted(path: &Path, bytes: &[u8]) -> Result<(), HandoffError>
 }
 
 #[cfg(windows)]
-fn write_owner_restricted(_path: &Path, _bytes: &[u8]) -> Result<(), HandoffError> {
-    // Fail closed: writing a NON-owner-restricted one-time descriptor would let
-    // any local account substitute a hostile update intent. The exact
-    // three-principal protected DACL is the windows-private-file authority (D6),
-    // provisioned by the other lane; this stub imports none of it.
-    Err(HandoffError::WindowsAuthorityUnavailable)
+fn write_owner_restricted(path: &Path, bytes: &[u8]) -> Result<(), HandoffError> {
+    windows_owner_restricted::create_hardened_descriptor(path, bytes)
+}
+
+/// The Windows owner-restricted descriptor write, composing the reviewed
+/// windows-private-file authority (windows-private-file-authority D1/D5) with the
+/// safe `windows-acl` handle-mutation layer — the same create → harden → write →
+/// re-prove shape the credential store uses (`credentials::windows`), but for the
+/// secret-free handoff descriptor. It adds no unsafe and no native call; the
+/// owner-restriction PROOF is the shared `private_policy` validator over one DACL
+/// snapshot, so a harden that produced any non-conforming DACL fails closed here.
+///
+/// NOTE (dedup follow-on): the three-principal harden below mirrors
+/// `credentials::windows::create_hardened_file`. The ideal end-state is one shared
+/// owner-restricted private-file writer (a safe helper in `vaultspec-windows-authority`,
+/// or a `pub(crate)` reuse of the credential helper) so the protected-DACL
+/// INSTALLATION has a single source. That refactor touches the other lane's
+/// credential/authority files and is deferred until the windows-private-file
+/// surface settles; the shared `private_policy` validator already gives both
+/// copies one PROOF, so a divergence fails closed rather than passing silently.
+#[cfg(windows)]
+mod windows_owner_restricted {
+    use std::os::windows::io::AsRawHandle as _;
+    use std::path::Path;
+
+    use vaultspec_windows_authority::{DaclAceKind, PrivateFileCreation, private_policy};
+    use windows_acl::acl::{ACL, AceType};
+
+    use super::{HandoffError, io, redact};
+
+    const SYSTEM_SID: &str = "S-1-5-18";
+    const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
+    const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
+    // A regular file carries no inheritance flags (a directory would be 0x03).
+    const FILE_ACE_FLAGS: u8 = 0x00;
+
+    pub(super) fn create_hardened_descriptor(
+        path: &Path,
+        bytes: &[u8],
+    ) -> Result<(), HandoffError> {
+        // Create-new: if the name already exists this fails BEFORE we own any
+        // residue, so an existing descriptor is never touched. Only a file we
+        // exclusively created reaches the cleanup arm below.
+        let mut created = PrivateFileCreation::create(path).map_err(|error| io(&error))?;
+        match harden_and_write(&mut created, bytes) {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                // Delete the EXACT file we created through its retained handle —
+                // no pathname lookup, so this can never remove a different file
+                // that raced onto the name. Dropping `created` closes the handle
+                // and applies the deletion.
+                let _ = created.mark_delete_on_close();
+                drop(created);
+                Err(error)
+            }
+        }
+    }
+
+    fn harden_and_write(
+        created: &mut PrivateFileCreation,
+        bytes: &[u8],
+    ) -> Result<(), HandoffError> {
+        let current = current_user_sid().map_err(|error| io(&error))?;
+
+        // Harden the EMPTY file to the exact three-principal protected DACL
+        // through its retained WRITE_DAC handle, BEFORE any descriptor byte is
+        // written — closing the pre-permission window.
+        harden(created, &current).map_err(|error| io(&error))?;
+
+        // The owner-restriction PROOF: one snapshot, protected + exact
+        // three-principal list. A non-conforming DACL fails closed here.
+        prove_owner_restricted(created, &current)?;
+
+        // Only now, with the restriction proven, write + synchronize + same-handle
+        // reread the descriptor bytes, then re-prove the protected list.
+        write_sync_reread(created.file_mut(), bytes)?;
+        if created.link_count().map_err(|error| io(&error))? != 1 {
+            return Err(HandoffError::NotOwnerRestricted);
+        }
+        created.revalidate().map_err(|error| io(&error))?;
+        prove_owner_restricted(created, &current)
+    }
+
+    fn prove_owner_restricted(
+        created: &PrivateFileCreation,
+        current: &str,
+    ) -> Result<(), HandoffError> {
+        let snapshot = created.dacl_snapshot().map_err(|error| io(&error))?;
+        private_policy::validate_private_file(&snapshot, current)
+            .map_err(|_| HandoffError::NotOwnerRestricted)
+    }
+
+    /// Install exactly the three conforming allow entries and remove every other
+    /// entry, driven by the single DACL snapshot (safe `windows-acl` mutation).
+    fn harden(created: &PrivateFileCreation, current: &str) -> std::io::Result<()> {
+        let mut acl = ACL::from_file_handle(
+            created.file().as_raw_handle() as *mut winapi::ctypes::c_void,
+            false,
+        )
+        .map_err(win_error)?;
+        for sid_text in [current, SYSTEM_SID, ADMINISTRATORS_SID] {
+            let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
+            acl.add_entry(
+                sid.as_ptr().cast_mut().cast(),
+                AceType::AccessAllow,
+                FILE_ACE_FLAGS,
+                FILE_ALL_ACCESS,
+            )
+            .map_err(win_error)?;
+        }
+        for entry in created.dacl_snapshot()?.entries() {
+            let sid = entry.sid();
+            let known = sid == current || sid == SYSTEM_SID || sid == ADMINISTRATORS_SID;
+            let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
+                && known
+                && entry.flags() == FILE_ACE_FLAGS
+                && entry.mask() == FILE_ALL_ACCESS
+                && !entry.inherited();
+            if !conforming {
+                let sid = windows_acl::helper::string_to_sid(entry.sid()).map_err(win_error)?;
+                let ace_type = match entry.entry_type() {
+                    DaclAceKind::AccessAllowed => AceType::AccessAllow,
+                    DaclAceKind::AccessDenied => AceType::AccessDeny,
+                };
+                acl.remove_entry(
+                    sid.as_ptr().cast_mut().cast(),
+                    Some(ace_type),
+                    Some(entry.flags()),
+                )
+                .map_err(win_error)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn write_sync_reread(file: &mut std::fs::File, bytes: &[u8]) -> Result<(), HandoffError> {
+        use std::io::{Read as _, Seek as _, Write as _};
+        file.rewind().map_err(|error| io(&error))?;
+        file.set_len(0).map_err(|error| io(&error))?;
+        file.write_all(bytes).map_err(|error| io(&error))?;
+        file.sync_all().map_err(|error| io(&error))?;
+        file.rewind().map_err(|error| io(&error))?;
+        let mut back = vec![0_u8; bytes.len().saturating_add(1)];
+        let mut used = 0;
+        while used < back.len() {
+            let read = file.read(&mut back[used..]).map_err(|error| io(&error))?;
+            if read == 0 {
+                break;
+            }
+            used += read;
+        }
+        if &back[..used] != bytes {
+            return Err(HandoffError::Io(redact(
+                "handoff descriptor same-handle reread differs",
+            )));
+        }
+        Ok(())
+    }
+
+    // Exposed to the parent module for the owner-restriction proof in tests, which
+    // validates the reopened DACL against this exact principal.
+    pub(super) fn current_user_sid() -> std::io::Result<String> {
+        let name = windows_acl::helper::current_user()
+            .ok_or_else(|| std::io::Error::other("current Windows user is unavailable"))?;
+        let sid = windows_acl::helper::name_to_sid(&name, None).map_err(win_error)?;
+        windows_acl::helper::sid_to_string(sid.as_ptr().cast_mut().cast()).map_err(win_error)
+    }
+
+    fn win_error(code: u32) -> std::io::Error {
+        std::io::Error::from_raw_os_error(code as i32)
+    }
 }
 
 #[cfg(test)]
@@ -309,29 +469,74 @@ mod tests {
         }
     }
 
-    /// On Windows the owner-restricted write is TYPED-GATED (ADR D6) until the
-    /// windows-private-file authority lands: it must refuse, never write an
-    /// unrestricted one-time descriptor, and must leave no file behind.
+    /// On Windows the owner-restricted write now establishes the exact
+    /// three-principal protected DACL through the reviewed windows-private-file
+    /// authority (D6 un-gated). This runs on a real NTFS temp directory: it
+    /// writes, then PROVES the descriptor is owner-restricted with the same
+    /// `private_policy` validator the production read path uses, and round-trips
+    /// the descriptor bytes.
     #[cfg(windows)]
     #[test]
-    fn the_windows_write_is_typed_gated_and_writes_nothing() {
+    fn the_windows_write_establishes_an_owner_restricted_descriptor() {
+        use vaultspec_windows_authority::{ReadOnlyAuthorityFile, private_policy};
+
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("handoff.json");
+        let descriptor = descriptor();
+
+        write_handoff_descriptor(&path, &descriptor).expect("owner-restricted write");
+        assert!(path.exists(), "the descriptor must be written");
+
+        // Prove owner-restriction from a fresh read-only reopen: one DACL
+        // snapshot, validated by the shared authority against the current user.
+        let sid = windows_owner_restricted::current_user_sid().expect("current user sid");
+        let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).expect("reopen readonly");
+        let snapshot = reader.dacl_snapshot().expect("dacl snapshot");
+        assert!(
+            snapshot.protected(),
+            "the descriptor DACL must be protected"
+        );
+        private_policy::validate_private_file(&snapshot, &sid)
+            .expect("the descriptor must carry the exact three-principal protected DACL");
+
+        // The descriptor round-trips through the owner-restricted file.
+        let bytes = reader.read_bounded(4096).expect("read back");
+        let parsed: UpdaterDescriptor = serde_json::from_slice(&bytes).expect("parse");
+        assert_eq!(parsed, descriptor);
+    }
+
+    /// A create-new write refuses to clobber an existing descriptor and —
+    /// critically — does NOT delete the pre-existing file when it fails. The
+    /// residue cleanup is scoped through the retained handle to a file THIS call
+    /// created, so a name that already exists is refused and left untouched.
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_write_refuses_and_preserves_an_existing_descriptor() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("handoff.json");
 
-        let refused = write_handoff_descriptor(&path, &descriptor());
-        assert!(matches!(
-            refused,
-            Err(HandoffError::WindowsAuthorityUnavailable)
-        ));
+        write_handoff_descriptor(&path, &descriptor()).expect("first write");
+        let before = std::fs::read(&path).expect("read first");
+
+        let second = write_handoff_descriptor(&path, &descriptor());
         assert!(
-            !path.exists(),
-            "a gated Windows write must not leave a non-owner-restricted descriptor"
+            matches!(second, Err(HandoffError::Io(_))),
+            "create-new must refuse an existing name"
+        );
+        assert!(
+            path.exists(),
+            "a refused re-write must not delete the existing descriptor"
+        );
+        assert_eq!(
+            std::fs::read(&path).expect("read after"),
+            before,
+            "the existing descriptor is left untouched"
         );
     }
 
     // NOTE: the Unix owner-restricted write (create-new mode 0600 + verify +
-    // round-trip) is the primary functional path, but it cannot be verified on
-    // the Windows host this lands from. Per the no-unverified-#[cfg(unix)]-test
+    // round-trip) is the primary functional path there, but it cannot be verified
+    // on the Windows host this lands from. Per the no-unverified-#[cfg(unix)]-test
     // rule, its live proof is a TRACKED GAP (with the OwnedLive success drive,
     // task #61), never an unverified test asserted from Windows.
 }
