@@ -12,6 +12,29 @@ use tempfile::TempDir;
 use tough::schema::{Role as _, RoleKeys, RoleType, Root, Signature, Signed};
 use tough::sign::Sign as _;
 
+// DATASTORE SCOPE — the eight `#[cfg(unix)]` markers below, and their discharge.
+//
+// These tests assert datastore-traversing behavior that is only reachable where
+// the lane is provisioned. On Windows `sync_cap_directory` refuses in EVERY
+// build, so there is no success behavior to test there — only a typed refusal,
+// which `windows_datastore_lane_refuses_until_durability_is_provisioned`
+// asserts positively. This WITHDRAWS a coverage claim; it never asserts a false
+// one, which is what separates it from the `cfg(test)` success arm removed in
+// 7a7b02d534.
+//
+// The scope is admissible only on these four conditions:
+//   1. DISCHARGED BY: plan step W01.P01.S177 (Windows directory-metadata
+//      durability). A scope with no named discharge is not admissible.
+//   2. The set is CLOSED at eight. No new test may be scoped this way for this
+//      reason without its own decision — growing it is a decision, not
+//      maintenance.
+//   3. When S177 lands these attributes come OFF and all eight must pass on
+//      real NTFS. A test that cannot then be un-scoped is a FINDING, not a
+//      maintenance task.
+//   4. The interim Windows refusal test is DELETED at that point, not left
+//      asserting a refusal that no longer exists — otherwise it silently
+//      becomes a false test in the other direction.
+
 assert_not_impl_any!(VerifiedDistributionRelease: Clone, serde::Serialize);
 assert_not_impl_any!(MaterializationSource<'static>: Clone, serde::Serialize);
 
@@ -28,8 +51,7 @@ struct SigningMaterial {
     timestamp: Ed25519KeyPair,
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn real_tuf_repository_yields_possession_bound_selected_archive() {
@@ -91,8 +113,7 @@ async fn real_tuf_repository_yields_possession_bound_selected_archive() {
     );
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn materialization_source_is_sealed_and_fact_consistent() {
@@ -168,8 +189,7 @@ async fn materialization_source_is_sealed_and_fact_consistent() {
     assert_eq!(again, expected_archive);
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn persistent_datastore_rejects_metadata_rollback() {
@@ -288,8 +308,7 @@ async fn publication_refuses_archive_substituted_after_cohort_assembly() {
     assert!(!source.join(COHORT_TARGET_NAME).exists());
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn persisted_root_rotates_sequentially_and_revoked_root_keys_are_refused() {
@@ -428,8 +447,7 @@ async fn persisted_root_rotates_sequentially_and_revoked_root_keys_are_refused()
     ));
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn partial_live_datastore_fails_closed_and_partial_next_is_recovered() {
@@ -509,8 +527,7 @@ async fn malformed_complete_datastore_fails_closed() {
     ));
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn retained_authority_excludes_a_concurrent_verification() {
@@ -689,8 +706,7 @@ $stream.Dispose()
     drop(reacquired);
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn latest_known_time_regression_is_refused() {
@@ -735,8 +751,7 @@ async fn latest_known_time_regression_is_refused() {
     ));
 }
 
-// Datastore-traversing behavior: reachable only where the datastore lane is
-// provisioned. Windows asserts its real (refusing) behavior separately below.
+// Unix-scoped pending W01.P01.S177 — see the DATASTORE SCOPE note above.
 #[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn retained_archive_revalidation_detects_same_handle_mutation() {
@@ -1225,9 +1240,12 @@ fn copy_directory(source: &Path, destination: &Path, include: impl Fn(&str) -> b
 /// lane refuses. That refusal is the REAL behavior and is asserted positively
 /// here rather than left as absent coverage: the verification reaches the
 /// datastore sequence over a genuine TUF repository and fails closed with the
-/// exact typed error, mutating no trust state. When the tracked durability
-/// follow-on (plan step W01.P01.S177) lands, the Unix-scoped matrix above
-/// becomes cross-platform and this test retires with the refusal it pins.
+/// exact typed error, mutating no trust state.
+///
+/// DELETE THIS TEST when W01.P01.S177 lands (DATASTORE SCOPE condition 4). It
+/// pins a refusal; once the refusal is gone this test would assert something
+/// false in the other direction, so it retires WITH the refusal rather than
+/// being adapted to survive it.
 #[cfg(windows)]
 #[tokio::test(flavor = "current_thread")]
 async fn windows_datastore_lane_refuses_until_durability_is_provisioned() {
