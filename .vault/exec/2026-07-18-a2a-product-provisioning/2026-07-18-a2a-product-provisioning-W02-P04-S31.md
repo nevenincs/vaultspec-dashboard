@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery
 
 ## Scope

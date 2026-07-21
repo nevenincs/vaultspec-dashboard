@@ -11,8 +11,6 @@ related:
   - "[[2026-06-29-agentic-review-station-state-adr]]"
 ---
 
-
-
 # `review-surface-flow` adr: `one review flow: de-modalized pending-changes inbox in the agent panel` | (**status:** `accepted`)
 
 ## Problem Statement

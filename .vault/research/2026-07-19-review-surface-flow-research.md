@@ -7,8 +7,6 @@ modified: '2026-07-19'
 related: []
 ---
 
-
-
 # `review-surface-flow` research: `review-surface conformance against industry agentic products and Figma`
 
 Investigated whether the product's two-surface review model — the inline per-turn

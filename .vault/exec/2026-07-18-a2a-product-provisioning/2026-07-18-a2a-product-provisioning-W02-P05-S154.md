@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Reserve the internal A2A settlement prefix from SPA fallback routing so callback mistakes fail visibly
 
 ## Scope

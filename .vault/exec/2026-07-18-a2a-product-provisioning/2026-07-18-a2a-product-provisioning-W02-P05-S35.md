@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Create a dedicated durable A2A run-token lease repository containing only token hashes, bundle identity, reservation identity, post-commit A2A run and thread identity, non-secret lease identity, expiry, and settlement state
 
 ## Scope

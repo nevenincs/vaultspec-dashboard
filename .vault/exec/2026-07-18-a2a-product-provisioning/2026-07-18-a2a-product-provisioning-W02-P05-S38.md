@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Resolve actor token hashes against the dedicated A2A run-token lease repository through principal extraction without adding client-claimable lease or run identity fields
 
 ## Scope

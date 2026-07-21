@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Export the authenticated A2A terminal-settlement route module outside the public ops orchestration namespace
 
 ## Scope

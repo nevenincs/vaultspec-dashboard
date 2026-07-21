@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Construct and retain the dedicated A2A run-token lease repository in AppState for seated routes and restart reconciliation
 
 ## Scope

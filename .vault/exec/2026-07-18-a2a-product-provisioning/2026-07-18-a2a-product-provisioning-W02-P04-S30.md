@@ -9,9 +9,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-
-
-
 # Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution
 
 ## Scope
