@@ -426,3 +426,67 @@ fn compose_product_tree_places_scans_emits_and_covers() {
         );
     }
 }
+
+#[test]
+fn compose_fails_on_a_missing_source_payload() {
+    use vaultspec_product::product_build::{BuildSources, compose_product_tree};
+
+    let lock = lock();
+    let capsule = capsule(&lock);
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+
+    // Every source exists EXCEPT the updater binary — a missing payload must fail
+    // the compose with a bounded I/O error, never emit a partial tree.
+    let sources = BuildSources {
+        target: TARGET,
+        cohort_id: "release-2026.07.19".to_string(),
+        cohort_targets: vec![
+            Target::Aarch64AppleDarwin,
+            Target::X86_64AppleDarwin,
+            Target::Aarch64UnknownLinuxGnu,
+            Target::X86_64UnknownLinuxGnu,
+            Target::X86_64PcWindowsMsvc,
+        ],
+        release_manifest_path: "release.json".to_string(),
+        dashboard_version: "0.1.4".to_string(),
+        dashboard_commit: "a".repeat(40),
+        dashboard: source(
+            write_source(src.path(), "dashboard.exe", b"dashboard"),
+            "bin/dashboard.exe",
+        ),
+        updater_version: "0.1.4".to_string(),
+        updater: source(src.path().join("does-not-exist.exe"), "bin/updater.exe"),
+        capsule_archive: source(
+            write_source(src.path(), "capsule.zip", b"zip"),
+            "a2a/capsule.zip",
+        ),
+        capsule_manifest: source(
+            write_source(src.path(), "cm.json", b"{}"),
+            "a2a/component-manifest.json",
+        ),
+        tree_evidence_doc: source(
+            write_source(src.path(), "tree.json", b"{}"),
+            "a2a/tree.json",
+        ),
+        tree_digest: "2".repeat(64),
+        tree_file_count: 3,
+        component_lock: source(
+            write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
+            "packaging/a2a-component.lock.json",
+        ),
+        licenses: Vec::new(),
+        sbom: source(
+            write_source(src.path(), "sbom.json", b"{}"),
+            "sbom.cdx.json",
+        ),
+        sbom_format: "cyclonedx".to_string(),
+    };
+
+    let refused = compose_product_tree(&generation_root, &sources, &lock, &capsule);
+    assert!(
+        matches!(refused, Err(ProductBuildError::Io(_))),
+        "a missing source payload must fail the compose with a bounded I/O error, got {refused:?}"
+    );
+}
