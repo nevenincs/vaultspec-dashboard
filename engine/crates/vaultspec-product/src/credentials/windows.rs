@@ -12,6 +12,9 @@ use std::os::windows::io::AsRawHandle as _;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use vaultspec_windows_authority::{
+    AuthorityFile, DaclAceKind, DaclSnapshot, HardeningDirectory, private_policy,
+};
 use windows_acl::acl::{ACL, AceType};
 
 use super::TOKEN_BYTES;
@@ -159,9 +162,9 @@ pub fn create(
     std::fs::create_dir_all(directory_path)?;
     harden_directory(directory_path)?;
     let path = directory_path.join(name);
-    let mut authority = vaultspec_windows_authority::AuthorityFile::create_prepared(&path)?;
-    harden_handle(authority.file())?;
-    validate_acl(authority.file(), false)?;
+    let mut authority = AuthorityFile::create_prepared(&path)?;
+    harden_handle(&authority)?;
+    validate_file_acl(&authority)?;
     if authority.link_count()? != 1 {
         return Err(std::io::Error::other(
             "credential file has more than one link",
@@ -175,7 +178,7 @@ pub fn create(
             "credential same-handle reread differs from written bytes",
         ));
     }
-    validate_acl(authority.file(), false)?;
+    validate_file_acl(&authority)?;
     let id = authority.identity();
     Ok(RetainedCredentialFile {
         file: authority,
@@ -280,32 +283,53 @@ pub fn restrict_existing(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+const DIRECTORY_ACE_FLAGS: u8 = 0x03;
+const FILE_ACE_FLAGS: u8 = 0x00;
+
 fn harden_directory(path: &Path) -> std::io::Result<()> {
-    let authority = vaultspec_windows_authority::AuthorityDirectory::open_existing(path)?;
-    let before = authority.identity();
-    let acl_path = path
-        .to_str()
-        .ok_or_else(|| std::io::Error::other("Windows ACL path is not Unicode"))?;
-    let mut acl = ACL::from_file_path(acl_path, false).map_err(win_error)?;
-    prune_acl(&mut acl, true)?;
-    if vaultspec_windows_authority::AuthorityFile::identity_at_path(path)? != before {
-        return Err(std::io::Error::other(
-            "credentials directory identity changed while securing ACL",
-        ));
-    }
-    validate_acl_path(path, true)
-}
-
-fn harden_handle(file: &std::fs::File) -> std::io::Result<()> {
-    let mut acl = ACL::from_file_handle(file.as_raw_handle() as *mut winapi::ctypes::c_void, false)
-        .map_err(win_error)?;
-    prune_acl(&mut acl, false)
-}
-
-fn prune_acl(acl: &mut ACL, directory: bool) -> std::io::Result<()> {
+    // The hardening authority carries WRITE_DAC + READ_CONTROL and denies
+    // delete/rename sharing, so the DACL is mutated AND snapshotted through one
+    // exact retained handle whose identity cannot change mid-hardening.
+    let hardening = HardeningDirectory::open_existing(path)?;
     let current = current_user_sid()?;
-    let required_flags = if directory { 0x03 } else { 0x00 };
-    for sid_text in [current.as_str(), SYSTEM_SID, ADMINISTRATORS_SID] {
+    let mut acl = ACL::from_file_handle(
+        hardening.directory().as_raw_handle() as *mut winapi::ctypes::c_void,
+        false,
+    )
+    .map_err(win_error)?;
+    add_three_principals(&mut acl, &current, DIRECTORY_ACE_FLAGS)?;
+    remove_nonconforming(
+        &mut acl,
+        &hardening.dacl_snapshot()?,
+        &current,
+        DIRECTORY_ACE_FLAGS,
+    )?;
+    hardening.revalidate()?;
+    // Final proof reads ONE snapshot: protected bit + exact three-principal list
+    // together, so no consumer joins two descriptor states.
+    private_policy::validate_private_directory(&hardening.dacl_snapshot()?, &current)
+        .map_err(policy_error)
+}
+
+fn harden_handle(authority: &AuthorityFile) -> std::io::Result<()> {
+    let current = current_user_sid()?;
+    let mut acl = ACL::from_file_handle(
+        authority.file().as_raw_handle() as *mut winapi::ctypes::c_void,
+        false,
+    )
+    .map_err(win_error)?;
+    add_three_principals(&mut acl, &current, FILE_ACE_FLAGS)?;
+    remove_nonconforming(
+        &mut acl,
+        &authority.dacl_snapshot()?,
+        &current,
+        FILE_ACE_FLAGS,
+    )
+}
+
+/// Install the exact three allow entries (windows-acl mutation).
+fn add_three_principals(acl: &mut ACL, current: &str, required_flags: u8) -> std::io::Result<()> {
+    for sid_text in [current, SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
@@ -315,21 +339,36 @@ fn prune_acl(acl: &mut ACL, directory: bool) -> std::io::Result<()> {
         )
         .map_err(win_error)?;
     }
-    for entry in acl.all().map_err(win_error)? {
-        let allowed = matches!(entry.string_sid.as_str(), SYSTEM_SID | ADMINISTRATORS_SID)
-            || entry.string_sid == current;
-        let acceptable = allowed
-            && entry.entry_type == AceType::AccessAllow
-            && entry.flags == required_flags
-            && entry.mask == FILE_ALL_ACCESS;
-        if !acceptable {
-            let Some(sid) = entry.sid else {
-                return Err(std::io::Error::other("ACL entry has no SID"));
+    Ok(())
+}
+
+/// Remove every entry that is not one of the three conforming allow entries,
+/// driven by the single DACL snapshot (windows-acl retained only for the
+/// `remove_entry` mutation).
+fn remove_nonconforming(
+    acl: &mut ACL,
+    snapshot: &DaclSnapshot,
+    current: &str,
+    required_flags: u8,
+) -> std::io::Result<()> {
+    for entry in snapshot.entries() {
+        let sid = entry.sid();
+        let known_principal = sid == current || sid == SYSTEM_SID || sid == ADMINISTRATORS_SID;
+        let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
+            && known_principal
+            && entry.flags() == required_flags
+            && entry.mask() == FILE_ALL_ACCESS
+            && !entry.inherited();
+        if !conforming {
+            let sid = windows_acl::helper::string_to_sid(entry.sid()).map_err(win_error)?;
+            let ace_type = match entry.entry_type() {
+                DaclAceKind::AccessAllowed => AceType::AccessAllow,
+                DaclAceKind::AccessDenied => AceType::AccessDeny,
             };
             acl.remove_entry(
                 sid.as_ptr().cast_mut().cast(),
-                Some(entry.entry_type),
-                Some(entry.flags),
+                Some(ace_type),
+                Some(entry.flags()),
             )
             .map_err(win_error)?;
         }
@@ -337,42 +376,16 @@ fn prune_acl(acl: &mut ACL, directory: bool) -> std::io::Result<()> {
     Ok(())
 }
 
-fn validate_acl(file: &std::fs::File, directory: bool) -> std::io::Result<()> {
-    let acl = ACL::from_file_handle(file.as_raw_handle() as *mut winapi::ctypes::c_void, false)
-        .map_err(win_error)?;
-    validate_entries(acl.all().map_err(win_error)?, directory)
-}
-
-fn validate_acl_path(path: &Path, directory: bool) -> std::io::Result<()> {
-    let path = path
-        .to_str()
-        .ok_or_else(|| std::io::Error::other("Windows ACL path is not Unicode"))?;
-    let acl = ACL::from_file_path(path, false).map_err(win_error)?;
-    validate_entries(acl.all().map_err(win_error)?, directory)
-}
-
-fn validate_entries(
-    entries: Vec<windows_acl::acl::ACLEntry>,
-    directory: bool,
-) -> std::io::Result<()> {
+/// Validate the exact protected three-principal DACL of a credential FILE from
+/// one snapshot (windows-private-file-authority D4).
+fn validate_file_acl(authority: &AuthorityFile) -> std::io::Result<()> {
     let current = current_user_sid()?;
-    let required = [current.as_str(), SYSTEM_SID, ADMINISTRATORS_SID];
-    let required_flags = if directory { 0x03 } else { 0x00 };
-    if entries.len() != required.len()
-        || required.iter().any(|sid| {
-            !entries.iter().any(|entry| {
-                entry.string_sid == *sid
-                    && entry.entry_type == AceType::AccessAllow
-                    && entry.flags == required_flags
-                    && entry.mask == FILE_ALL_ACCESS
-            })
-        })
-    {
-        return Err(std::io::Error::other(
-            "credential ACL is not the protected owner, SYSTEM, Administrators list",
-        ));
-    }
-    Ok(())
+    private_policy::validate_private_file(&authority.dacl_snapshot()?, &current)
+        .map_err(policy_error)
+}
+
+fn policy_error(violation: private_policy::PrivatePolicyViolation) -> std::io::Error {
+    std::io::Error::other(violation.to_string())
 }
 
 fn current_user_sid() -> std::io::Result<String> {

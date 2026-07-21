@@ -245,12 +245,9 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
 
     #[cfg(windows)]
     {
-        use windows_acl::acl::{ACL, AceType};
+        use vaultspec_windows_authority::{AuthorityFile, DaclAceKind};
         use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
 
-        let Some(path) = path.to_str() else {
-            return false;
-        };
         let Some(user) = current_user() else {
             return false;
         };
@@ -260,24 +257,26 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
         let Ok(user_sid) = sid_to_string(user_sid.as_ptr().cast_mut().cast()) else {
             return false;
         };
-        let Ok(acl) = ACL::from_file_path(path, false) else {
+        // Read the DACL through an exact retained regular-file read handle (the
+        // handoff was confirmed a regular non-symlink above) and apply the looser
+        // no-outside-principal predicate over the single snapshot.
+        let Ok(reader) = AuthorityFile::open_reader(path) else {
             return false;
         };
-        let Ok(entries) = acl.all() else {
+        let Ok(snapshot) = reader.dacl_snapshot() else {
             return false;
         };
         let allowed = [user_sid.as_str(), "S-1-5-18", "S-1-5-32-544"];
         let mut user_allowed = false;
-        for entry in entries {
-            match entry.entry_type {
-                AceType::AccessAllow => {
-                    if !allowed.contains(&entry.string_sid.as_str()) {
+        for entry in snapshot.entries() {
+            match entry.entry_type() {
+                DaclAceKind::AccessAllowed => {
+                    if !allowed.contains(&entry.sid()) {
                         return false;
                     }
-                    user_allowed |= entry.string_sid == user_sid;
+                    user_allowed |= entry.sid() == user_sid.as_str();
                 }
-                AceType::AccessDeny => {}
-                _ => return false,
+                DaclAceKind::AccessDenied => {}
             }
         }
         return user_allowed;

@@ -500,7 +500,7 @@ fn windows_authority_gate_fixture(scenario: &str) -> WindowsAuthorityGateFixture
     match store.begin_bootstrap(&guard) {
         Err(CredentialError::PlatformAuthorityUnavailable(message)) => assert_eq!(
             message,
-            "AuthorityFile creation lacks WRITE_DAC and windows-acl cannot prove SE_DACL_PROTECTED"
+            "Windows protected private-file authority awaits independent D9 review and real-NTFS acceptance"
         ),
         Err(error) => panic!("unexpected Windows credential refusal: {error}"),
         Ok(_) => panic!("Windows settlement credentials must remain typed unavailable"),

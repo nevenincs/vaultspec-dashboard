@@ -246,7 +246,7 @@ pub(crate) fn prepare<'guard>(
 #[cfg(windows)]
 fn windows_authority_unavailable() -> CredentialError {
     CredentialError::PlatformAuthorityUnavailable(
-        "AuthorityFile creation lacks WRITE_DAC and windows-acl cannot prove SE_DACL_PROTECTED",
+        "Windows protected private-file authority awaits independent D9 review and real-NTFS acceptance",
     )
 }
 

@@ -4,10 +4,13 @@ use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::os::windows::ffi::OsStringExt;
 use std::os::windows::fs::{symlink_dir, symlink_file};
 use std::os::windows::io::AsRawHandle;
-use windows_acl::acl::ACL;
-use windows_acl::helper::{current_user, name_to_sid, string_to_sid};
+use windows_acl::acl::{ACL, AceType};
+use windows_acl::helper::{current_user, name_to_sid, sid_to_string, string_to_sid};
 
 const BUILTIN_USERS_SID: &str = "S-1-5-32-545";
+const SYSTEM_SID: &str = "S-1-5-18";
+const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
+const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
 
 fn create_directory(path: &Path) {
     std::fs::create_dir(path).unwrap();
@@ -55,6 +58,56 @@ fn current_user_sid() -> Vec<u8> {
     name_to_sid(&name, None).expect("the Windows test account must resolve to a SID")
 }
 
+fn current_user_sid_string() -> String {
+    let sid = current_user_sid();
+    sid_to_string(sid.as_ptr().cast_mut().cast())
+        .expect("the Windows test account SID must render as a string")
+}
+
+/// Harden `file` to the EXACT protected three-principal DACL (current user,
+/// LocalSystem, built-in Administrators) with the purpose-correct flags, driven
+/// by the crate's own snapshot for removals — the production `windows-acl`
+/// mutation path the product consumer uses.
+fn harden_three_principal(file: &File, directory: bool, user_sid: &str) {
+    let flags: u8 = if directory { 0x03 } else { 0x00 };
+    let mut acl = acl_for(file);
+    for sid_text in [user_sid, SYSTEM_SID, ADMINISTRATORS_SID] {
+        let sid = string_to_sid(sid_text).expect("principal SID must resolve");
+        acl.add_entry(
+            sid.as_ptr().cast_mut().cast(),
+            AceType::AccessAllow,
+            flags,
+            FILE_ALL_ACCESS,
+        )
+        .expect("the retained hardening handle must add an explicit principal ACE");
+    }
+    let snapshot =
+        os::private_dacl_snapshot(file).expect("post-add snapshot must observe the DACL");
+    for entry in snapshot.entries() {
+        let known = entry.sid() == user_sid
+            || entry.sid() == SYSTEM_SID
+            || entry.sid() == ADMINISTRATORS_SID;
+        let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
+            && known
+            && entry.flags() == flags
+            && entry.mask() == FILE_ALL_ACCESS
+            && !entry.inherited();
+        if !conforming {
+            let sid = string_to_sid(entry.sid()).expect("enumerated SID must round-trip");
+            let ace_type = match entry.entry_type() {
+                DaclAceKind::AccessAllowed => AceType::AccessAllow,
+                DaclAceKind::AccessDenied => AceType::AccessDeny,
+            };
+            acl.remove_entry(
+                sid.as_ptr().cast_mut().cast(),
+                Some(ace_type),
+                Some(entry.flags()),
+            )
+            .expect("the retained authority handle must remove a non-conforming ACE");
+        }
+    }
+}
+
 fn add_inheritable_extra_principal(file: &File) {
     let sid = string_to_sid(BUILTIN_USERS_SID).expect("built-in Users SID must resolve");
     let mut acl = acl_for(file);
@@ -98,22 +151,20 @@ fn harden_without_inherited_entries(file: &File, directory: bool) {
 }
 
 fn assert_inherited_extra_principal(file: &File) {
-    let entries = acl_for(file)
-        .all()
-        .expect("the retained authority handle must enumerate its DACL");
-    assert!(entries.iter().any(|entry| {
-        entry.string_sid == BUILTIN_USERS_SID
-            && u32::from(entry.flags) & windows_sys::Win32::Security::INHERITED_ACE != 0
-    }));
+    let snapshot = os::private_dacl_snapshot(file)
+        .expect("the retained authority handle must snapshot its DACL");
+    assert!(
+        snapshot
+            .entries()
+            .iter()
+            .any(|entry| entry.sid() == BUILTIN_USERS_SID && entry.inherited())
+    );
 }
 
 fn assert_no_inherited_entries(file: &File) {
-    let entries = acl_for(file)
-        .all()
-        .expect("the retained authority handle must enumerate its DACL");
-    assert!(entries.iter().all(|entry| {
-        u32::from(entry.flags) & windows_sys::Win32::Security::INHERITED_ACE == 0
-    }));
+    let snapshot = os::private_dacl_snapshot(file)
+        .expect("the retained authority handle must snapshot its DACL");
+    assert!(snapshot.entries().iter().all(|entry| !entry.inherited()));
 }
 
 fn assert_sharing_violation(error: &io::Error) {
@@ -967,7 +1018,7 @@ fn install_child_file_no_replace_renames_by_handle_and_refuses_an_occupant() {
 // removal, identity, I/O, reopen, recovery, and exact retirement.
 
 #[test]
-fn is_dacl_protected_reports_false_for_an_inherited_unprotected_file() {
+fn dacl_snapshot_reports_unprotected_for_an_inherited_file() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("ordinary");
     std::fs::write(&path, b"payload").unwrap();
@@ -975,17 +1026,17 @@ fn is_dacl_protected_reports_false_for_an_inherited_unprotected_file() {
     // A tempdir file inherits its parent's DACL: present but not protected, so
     // the whole GetSecurityInfo -> GetSecurityDescriptorControl -> free path
     // runs and reports false.
-    assert!(!reader.is_dacl_protected().unwrap());
+    assert!(!reader.dacl_snapshot().unwrap().protected());
     reader.revalidate().unwrap();
 }
 
 #[test]
-fn is_dacl_protected_observes_a_directory_handle() {
+fn dacl_snapshot_observes_a_directory_handle() {
     let dir = tempfile::tempdir().unwrap();
     let hardening = HardeningDirectory::open_existing(dir.path()).unwrap();
     // SE_FILE_OBJECT covers directories; an inherited tempdir DACL is present
     // and unprotected, so this observes without error and reports false.
-    assert!(!hardening.is_dacl_protected().unwrap());
+    assert!(!hardening.dacl_snapshot().unwrap().protected());
     hardening.revalidate().unwrap();
 }
 
@@ -994,13 +1045,13 @@ fn private_file_authority_hardens_writes_recovers_and_retires_on_real_ntfs() {
     let dir = tempfile::tempdir().unwrap();
     let parent = HardeningDirectory::open_existing(dir.path()).unwrap();
     add_inheritable_extra_principal(parent.directory());
-    assert!(parent.is_dacl_protected().unwrap());
+    assert!(parent.dacl_snapshot().unwrap().protected());
 
     let path = dir.path().join("private");
     let mut creation = PrivateFileCreation::create(&path).unwrap();
     let identity = creation.identity();
     assert_eq!(creation.link_count().unwrap(), 1);
-    assert!(!creation.is_dacl_protected().unwrap());
+    assert!(!creation.dacl_snapshot().unwrap().protected());
     assert_inherited_extra_principal(creation.file());
 
     let refused = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap_err();
@@ -1011,7 +1062,7 @@ fn private_file_authority_hardens_writes_recovers_and_retires_on_real_ntfs() {
     );
 
     harden_without_inherited_entries(creation.file(), false);
-    assert!(creation.is_dacl_protected().unwrap());
+    assert!(creation.dacl_snapshot().unwrap().protected());
     assert_no_inherited_entries(creation.file());
     creation.revalidate().unwrap();
 
@@ -1021,7 +1072,7 @@ fn private_file_authority_hardens_writes_recovers_and_retires_on_real_ntfs() {
     let mut same_handle = Vec::new();
     creation.file_mut().read_to_end(&mut same_handle).unwrap();
     assert_eq!(same_handle, b"first descriptor");
-    assert!(creation.is_dacl_protected().unwrap());
+    assert!(creation.dacl_snapshot().unwrap().protected());
     creation.revalidate().unwrap();
     drop(creation);
 
@@ -1039,7 +1090,7 @@ fn private_file_authority_hardens_writes_recovers_and_retires_on_real_ntfs() {
             .kind(),
         io::ErrorKind::InvalidInput
     );
-    assert!(reader.is_dacl_protected().unwrap());
+    assert!(reader.dacl_snapshot().unwrap().protected());
     reader.revalidate().unwrap();
     let refused = PrivateFileRecovery::open(&path).unwrap_err();
     assert_sharing_violation(&refused);
@@ -1057,7 +1108,7 @@ fn private_file_authority_hardens_writes_recovers_and_retires_on_real_ntfs() {
         .unwrap();
     recovery.file().sync_all().unwrap();
     recovery.revalidate().unwrap();
-    assert!(recovery.is_dacl_protected().unwrap());
+    assert!(recovery.dacl_snapshot().unwrap().protected());
     drop(recovery);
 
     let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
@@ -1082,32 +1133,202 @@ fn directory_hardening_removes_inheritance_and_survives_reopen_on_real_ntfs() {
     std::fs::create_dir(&child_path).unwrap();
     let child = HardeningDirectory::open_existing(&child_path).unwrap();
     let identity = child.identity();
-    assert!(!child.is_dacl_protected().unwrap());
+    assert!(!child.dacl_snapshot().unwrap().protected());
     assert_inherited_extra_principal(child.directory());
 
     harden_without_inherited_entries(child.directory(), true);
-    assert!(child.is_dacl_protected().unwrap());
+    assert!(child.dacl_snapshot().unwrap().protected());
     assert_no_inherited_entries(child.directory());
     child.revalidate().unwrap();
     drop(child);
 
     let reopened = HardeningDirectory::open_existing(&child_path).unwrap();
     assert_eq!(reopened.identity(), identity);
-    assert!(reopened.is_dacl_protected().unwrap());
+    assert!(reopened.dacl_snapshot().unwrap().protected());
     assert_no_inherited_entries(reopened.directory());
     reopened.revalidate().unwrap();
 }
 
 #[test]
-fn dacl_is_protected_has_no_leak_under_iteration() {
+fn dacl_snapshot_has_no_leak_under_iteration() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("loop");
     std::fs::write(&path, b"loop").unwrap();
     let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
-    // Each call allocates one security descriptor and frees it through the
-    // LocalSecurityDescriptor Drop guard; the repetition documents no-leak
-    // intent under iteration.
+    // Each call allocates one security descriptor plus one wide string per SID
+    // and frees them through the LocalSecurityDescriptor / LocalWideString Drop
+    // guards; the repetition documents no-leak intent under iteration.
     for _ in 0..512 {
-        reader.is_dacl_protected().unwrap();
+        reader.dacl_snapshot().unwrap();
     }
 }
+
+// windows-private-file-authority D3/D4 single-snapshot policy exercises. The
+// safe `private_policy` layer decides every D4 fact from ONE snapshot; these
+// prove acceptance of a genuinely hardened protected three-principal DACL and
+// fail-closed rejection of inherited, empty, foreign, and oversized DACLs on
+// real NTFS with the production ACL dependency.
+
+#[test]
+fn private_policy_validates_a_hardened_private_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent = HardeningDirectory::open_existing(dir.path()).unwrap();
+    add_inheritable_extra_principal(parent.directory());
+    let path = dir.path().join("private");
+    let creation = PrivateFileCreation::create(&path).unwrap();
+    let user = current_user_sid_string();
+
+    // Before hardening the empty file inherited the parent DACL: unprotected,
+    // with inherited entries, so the file policy rejects it.
+    let before = creation.dacl_snapshot().unwrap();
+    assert!(!before.protected());
+    assert!(before.entries().iter().any(|entry| entry.inherited()));
+    assert!(crate::private_policy::validate_private_file(&before, &user).is_err());
+
+    // After hardening ONE snapshot proves protected + exactly the three explicit
+    // allow entries with the file flags; the policy accepts it.
+    harden_three_principal(creation.file(), false, &user);
+    let after = creation.dacl_snapshot().unwrap();
+    assert!(after.protected());
+    assert_eq!(after.entries().len(), 3);
+    assert!(after.entries().iter().all(|entry| {
+        entry.entry_type() == DaclAceKind::AccessAllowed
+            && entry.mask() == FILE_ALL_ACCESS
+            && entry.flags() == 0x00
+            && !entry.inherited()
+    }));
+    crate::private_policy::validate_private_file(&after, &user).unwrap();
+    // The file's non-inheriting flags must fail the DIRECTORY policy.
+    assert!(crate::private_policy::validate_private_directory(&after, &user).is_err());
+}
+
+#[test]
+fn private_policy_validates_a_hardened_private_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent = HardeningDirectory::open_existing(dir.path()).unwrap();
+    add_inheritable_extra_principal(parent.directory());
+    let child_path = dir.path().join("credentials");
+    std::fs::create_dir(&child_path).unwrap();
+    let child = HardeningDirectory::open_existing(&child_path).unwrap();
+    let user = current_user_sid_string();
+
+    assert!(
+        crate::private_policy::validate_private_directory(&child.dacl_snapshot().unwrap(), &user)
+            .is_err()
+    );
+
+    harden_three_principal(child.directory(), true, &user);
+    let after = child.dacl_snapshot().unwrap();
+    assert!(after.protected());
+    assert_eq!(after.entries().len(), 3);
+    assert!(after.entries().iter().all(|entry| {
+        entry.entry_type() == DaclAceKind::AccessAllowed
+            && entry.mask() == FILE_ALL_ACCESS
+            && entry.flags() == 0x03
+            && !entry.inherited()
+    }));
+    crate::private_policy::validate_private_directory(&after, &user).unwrap();
+    // The directory's inheritance flags must fail the FILE policy.
+    assert!(crate::private_policy::validate_private_file(&after, &user).is_err());
+}
+
+#[test]
+fn foreign_allow_entry_fails_private_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent = HardeningDirectory::open_existing(dir.path()).unwrap();
+    add_inheritable_extra_principal(parent.directory());
+    let path = dir.path().join("private");
+    let creation = PrivateFileCreation::create(&path).unwrap();
+    let user = current_user_sid_string();
+    harden_three_principal(creation.file(), false, &user);
+    crate::private_policy::validate_private_file(&creation.dacl_snapshot().unwrap(), &user)
+        .unwrap();
+
+    // A fourth, foreign explicit allow entry breaks the exact three-principal
+    // list even though every entry is still protected and non-inherited.
+    {
+        let mut acl = acl_for(creation.file());
+        let sid = string_to_sid(BUILTIN_USERS_SID).expect("built-in Users SID must resolve");
+        acl.allow(sid.as_ptr().cast_mut().cast(), false, FILE_ALL_ACCESS)
+            .expect("the retained handle must add a foreign allow ACE");
+    }
+    let snapshot = creation.dacl_snapshot().unwrap();
+    assert_eq!(snapshot.entries().len(), 4);
+    assert!(snapshot.protected());
+    assert!(crate::private_policy::validate_private_file(&snapshot, &user).is_err());
+}
+
+#[test]
+fn empty_dacl_fails_private_policy_validation() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty-dacl");
+    std::fs::write(&path, b"payload").unwrap();
+    let recovery = PrivateFileRecovery::open(&path).unwrap();
+    let user = current_user_sid_string();
+    // Harden first so the DACL becomes SE_DACL_PROTECTED with exactly the three
+    // EXPLICIT entries; inherited ACEs cannot be stripped from an unprotected
+    // DACL, but explicit ones can. Removing the three then leaves a present,
+    // protected, EMPTY DACL that the retained handle still observes.
+    harden_three_principal(recovery.file(), false, &user);
+    {
+        let mut acl = acl_for(recovery.file());
+        for sid_text in [user.as_str(), SYSTEM_SID, ADMINISTRATORS_SID] {
+            let sid = string_to_sid(sid_text).expect("principal SID must resolve");
+            acl.remove_entry(
+                sid.as_ptr().cast_mut().cast(),
+                Some(AceType::AccessAllow),
+                Some(0x00),
+            )
+            .expect("the retained handle must remove each explicit ACE");
+        }
+    }
+
+    let snapshot = recovery
+        .dacl_snapshot()
+        .expect("a present but empty DACL still snapshots");
+    assert!(
+        snapshot.entries().is_empty(),
+        "an emptied DACL exposes no entries"
+    );
+    assert!(
+        crate::private_policy::validate_private_file(&snapshot, &user).is_err(),
+        "an empty DACL is not the three-principal private list"
+    );
+}
+
+#[test]
+fn oversized_dacl_fails_snapshot_typed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("oversized");
+    std::fs::write(&path, b"payload").unwrap();
+    let recovery = PrivateFileRecovery::open(&path).unwrap();
+    let mut acl = acl_for(recovery.file());
+    // Nineteen syntactically valid, distinct built-in RIDs push the entry count
+    // past the fixed 16-entry cap regardless of the inherited starting entries.
+    for rid in 544..=562 {
+        let sid = string_to_sid(&format!("S-1-5-32-{rid}"))
+            .expect("a well-formed built-in SID must resolve");
+        acl.allow(sid.as_ptr().cast_mut().cast(), false, FILE_ALL_ACCESS)
+            .expect("the retained handle must add a distinct allow ACE");
+    }
+
+    let error = recovery
+        .dacl_snapshot()
+        .expect_err("an oversized DACL must fail closed inside the primitive");
+    assert!(
+        error
+            .to_string()
+            .contains("exceeds the fixed private entry cap"),
+        "unexpected oversized-DACL error: {error}"
+    );
+}
+
+// NULL-DACL coverage note (windows-private-file-authority D3/D7). A present-but-
+// NULL DACL (SE_DACL_PRESENT with a null ACL pointer, which grants everyone) is
+// rejected inside `private_dacl_snapshot`. Constructing one requires calling
+// SetSecurityInfo with a null DACL, which is native `unsafe` FFI: the crate lint
+// forbids unsafe outside the private `os` module, and `windows-acl` exposes no
+// NULL-DACL setter, so no HONEST safe-Rust test can build one here. The
+// fail-closed contract for malformed/degenerate DACLs is instead proven by the
+// present-but-empty and oversized cases above plus source review of the
+// null-pointer branch; nothing is silently skipped.
