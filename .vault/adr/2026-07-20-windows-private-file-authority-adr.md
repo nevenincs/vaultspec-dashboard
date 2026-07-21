@@ -345,6 +345,30 @@ tests must themselves prove that boundary on real NTFS — the flush succeeding 
 carrying the append-data right and failing without it — so committed evidence replaces the
 relayed report.
 
+Shape correction recorded 2026-07-21: the sanctioned reopen is a FALLBACK, not the uniform
+path. A handle already carrying the append right flushes directly, and the reopen is
+entered only on the access-denied signal that means the mask lacks that right. This is
+required for correctness rather than chosen as an optimization — the crate's own directory
+handles deny write sharing, so a second open requesting append access against them returns
+a sharing violation — and it has the effect of confining the reopen to the foreign
+capability handles it was designed for. A flush that fails for any other reason
+propagates; it is never retried into a misleading success.
+
+Layer C transition recorded 2026-07-21: the Windows credential-RETIREMENT parent-durability
+refusal, which an earlier review ruled legitimately surviving because no durability
+mechanism existed, retires on the mechanism above. Its filesystem question is discharged by
+the durability conclusion, which is lane-independent. Its CONSEQUENCE analysis is NOT.
+That conclusion was accepted for the datastore because every durability shortfall there
+degrades fail-closed; retirement inverts the direction, since a retirement whose
+parent-index change is lost leaves a credential the operator believes destroyed still
+present, which is fail-OPEN. Reporting success after the flush is nevertheless parity with
+the Unix arm, which has always reported success after its directory `fsync` on the same
+chain, so the inversion changes the EVIDENCE required rather than the decision. Retirement
+accordingly needs its own acceptance beyond the primitive's: a Windows path driven to
+SUCCESS proving the credential is gone and its parent committed, idempotent re-retirement
+of an already-retired credential, and REMOVAL rather than retention of the pending-sync
+refusal once unreachable — an unreachable typed error misdescribes what the API can do.
+
 Addendum recorded 2026-07-21 (architect ruling, private-file class boundary and
 single-sourced policy constants). First, the boundary between per-file hardening and
 directory-inherited protection. A Windows file whose private state must be PROVABLE
