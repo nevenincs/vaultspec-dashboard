@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#a2a-product-provisioning'
-date: '2026-07-20'
-modified: '2026-07-20'
+date: '2026-07-21'
+modified: '2026-07-21'
 related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S02]]'
@@ -17,6 +17,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S09]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S10]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S11]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S145]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S146]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S163]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S167]]'
@@ -25,6 +26,9 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S170]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S171]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S172]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S174]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S175]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S176]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S12]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S13]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S14]]'
@@ -70,6 +74,67 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S41]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S42]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S43]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S156]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S157]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S158]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S49]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S50]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S51]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S52]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S53]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S54]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S55]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P06-S56]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S57]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S58]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S59]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S60]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S61]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S62]]'
+  - '[[2026-07-18-a2a-product-provisioning-W03-P07-S63]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S166]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S64]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S65]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S66]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S67]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S68]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S69]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S70]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S71]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S72]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S87]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S73]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S74]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S75]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S77]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S78]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S79]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S159]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S80]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S81]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S82]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S83]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S84]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P10-S85]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S88]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S89]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S90]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S91]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S92]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S93]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S94]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P11-S95]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S100]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S101]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S102]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S103]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S104]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S105]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S106]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S96]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S97]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S98]]'
+  - '[[2026-07-18-a2a-product-provisioning-W05-P12-S99]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -138,6 +203,9 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S170` - Verify a release set only through a borrow of the retained unpublished-generation authority, make the verified release set lifetime-bound to that exact generation, and retain its final filesystem snapshot plus complete receipt facts through activation
 - `2026-07-18-a2a-product-provisioning-W01-P01-S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review
 - `2026-07-18-a2a-product-provisioning-W01-P01-S172` - Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain exact authority on every non-success, and durably publish through the fixed tear-safe journal
+- `2026-07-18-a2a-product-provisioning-W01-P01-S174` - Implement the isolated TUF 1.0 distribution-authority crate and bounded helper that verify an exactly six-target offline repository from embedded-root authority through pinned tough 0.24.0 filesystem transport, persist rollback freeze root-continuity and latest-known-time state, and expose only opaque non-cloneable verified release authority to linked Rust consumers
+- `2026-07-18-a2a-product-provisioning-W01-P01-S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix while refusing unavailable Windows authority, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery
+- `2026-07-18-a2a-product-provisioning-W01-P01-S176` - Implement sealed provisioning and active-release facades that consume TUF-verified distribution exact installation-lock and unpublished-generation authority plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery
 - `2026-07-18-a2a-product-provisioning-W02-P04-S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution
 - `2026-07-18-a2a-product-provisioning-W02-P04-S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery
 - `2026-07-18-a2a-product-provisioning-W02-P05-S150` - Export the crate-private dedicated A2A run-token lease repository module without coupling it to authoring-session storage
@@ -157,6 +225,68 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W02-P05-S41` - Accept POST /internal/a2a/run-terminal only from the gateway settlement component authenticated by the dashboard-created attach-control credential, confirm authoritative A2A status is durably terminal, idempotently record its run or thread plus non-secret lease identity, and then revoke exactly the persisted hashed bundle
 - `2026-07-18-a2a-product-provisioning-W02-P05-S42` - Prove dedicated A2A lease-repository migration, reopen, expiry, idempotent settlement, and restart reconciliation without depending on authoring-session schemas
 - `2026-07-18-a2a-product-provisioning-W02-P05-S43` - Prove two concurrent runs for one role revoke independently and no raw token enters records, output, logs, receipts, or discovery
+- `2026-07-18-a2a-product-provisioning-W03-P06-S156` - Implement the Scoop authority adapter by invoking only phase-zero-proven Scoop manager commands for pinned complete archives and never writing Scoop-owned apps, shims, cache, or bucket state
+- `2026-07-18-a2a-product-provisioning-W03-P06-S157` - Implement the WinGet authority adapter by invoking only phase-zero-proven WinGet package and version commands for the complete MSI and never writing WinGet or Windows Installer-owned files
+- `2026-07-18-a2a-product-provisioning-W03-P06-S158` - Implement the MSI authority adapter by delegating install, upgrade, downgrade, rollback, repair, and removal to Windows Installer with candidate and retained prior product packages and never rewriting installer-owned files
+- `2026-07-18-a2a-product-provisioning-W03-P06-S49` - Snapshot primary, checkpoint, every manifest-declared schema-bearing store, the complete receipt generation, and prior seat descriptor as one verified consistency group
+- `2026-07-18-a2a-product-provisioning-W03-P06-S50` - Validate migration ranges and invoke only the staged A2A desktop migration entrypoint after complete quiescence
+- `2026-07-18-a2a-product-provisioning-W03-P06-S51` - Implement the self-install authority adapter so the copied updater creates and verifies final-name unpublished complete generations activates only by atomic complete receipt selection and retains the prior generation without a POSIX tree rename
+- `2026-07-18-a2a-product-provisioning-W03-P06-S52` - Require the copied external updater to acquire the install lock drain and stop the owned runtime snapshot and verify state run staged migration verify the final-name unpublished generation atomically select it only by the separately durable active receipt relaunch and probe acceptance in that order
+- `2026-07-18-a2a-product-provisioning-W03-P06-S53` - Resolve interruption at every declared transaction boundary and recover staged, draining, snapshotted, activated, migrating, accepted, and rolling-back states deterministically from durable markers and complete receipts
+- `2026-07-18-a2a-product-provisioning-W03-P06-S54` - Prove consistency snapshots restore real SQLite primary and checkpoint stores together and reject incomplete or unverified groups
+- `2026-07-18-a2a-product-provisioning-W03-P06-S55` - Prove candidate failure restores files, all schema-bearing state, checkpoints, complete receipt generation, and prior seat while successful activation cannot leave a split release set
+- `2026-07-18-a2a-product-provisioning-W03-P06-S56` - Prove crash recovery from every durable transaction phase by reopening real transaction directories and receipts
+- `2026-07-18-a2a-product-provisioning-W03-P07-S57` - Declare the target-specific external updater executable as a separate workspace package
+- `2026-07-18-a2a-product-provisioning-W03-P07-S58` - Expose a testable updater runner that consumes one owner-restricted descriptor and delegates all authority checks to vaultspec-product
+- `2026-07-18-a2a-product-provisioning-W03-P07-S59` - Parse the one-time owner-restricted descriptor outside the active release, acquire the installation lock before any drain or mutation, execute or recover the ordered transaction without delegating lock ownership to the gateway, redact secrets, and return bounded diagnostics
+- `2026-07-18-a2a-product-provisioning-W01-P01-S145` - Run a producer-consumer contract workflow that emits the real A2A desktop capsule manifest and target archive, then validates both with the dashboard production parser
+- `2026-07-18-a2a-product-provisioning-W03-P07-S60` - Replace the Cargo Dist axoupdater-only flow with copy-out, owner-restricted descriptor handoff, helper launch, seat exit, and updater-observed relaunch
+- `2026-07-18-a2a-product-provisioning-W03-P07-S61` - Align update command help and refusal outcomes with complete self-install and package-manager transaction authority
+- `2026-07-18-a2a-product-provisioning-W03-P07-S62` - Verify with real executables that only the copied updater acquires the install lock, authenticated drain closes admission and resolves active runs plus checkpoints before owner-authorized gateway stop, runtime-singleton release precedes snapshot migration and swap, the gateway never acquires or waits on the install lock, descriptor replay fails, secrets remain redacted, and prior-seat recovery relaunches
+- `2026-07-18-a2a-product-provisioning-W03-P07-S63` - Prove Windows can replace both the dashboard and installed updater only after the seated processes exit
+- `2026-07-18-a2a-product-provisioning-W04-P08-S166` - Aggregate exactly one verified artifact for each of the five unique target triples enforce common A2A commit component-lock release-schema protocol and state identity verify every target archive manifest tree software-bill-of-materials and license evidence and emit the cohort digest that gates publication
+- `2026-07-18-a2a-product-provisioning-W04-P08-S64` - Build and verify complete product trees inside dashboard-owned final-name unpublished generations from the tracked component lock A2A evidence dashboard binary updater licenses and software bill of materials
+- `2026-07-18-a2a-product-provisioning-W04-P08-S65` - Reject unpinned or floating inputs, A2A commit or artifact mismatch, target mismatch, missing payloads, digest drift, incomplete licenses, and release-set skew with real composed trees
+- `2026-07-18-a2a-product-provisioning-W04-P08-S66` - Acquire only build-time artifacts by exact pinned identity and stage the SPA without creating any runtime network dependency
+- `2026-07-18-a2a-product-provisioning-W04-P08-S67` - Compose and retain the Apple Silicon macOS dashboard, updater, and A2A capsule as one verified release-set artifact
+- `2026-07-18-a2a-product-provisioning-W04-P08-S68` - Compose and retain the Intel macOS dashboard, updater, and A2A capsule as one verified release-set artifact
+- `2026-07-18-a2a-product-provisioning-W04-P08-S69` - Compose and retain the Arm64 Linux dashboard, updater, and A2A capsule as one verified release-set artifact
+- `2026-07-18-a2a-product-provisioning-W04-P08-S70` - Compose and retain the x86-64 Linux dashboard, updater, and A2A capsule as one verified release-set artifact
+- `2026-07-18-a2a-product-provisioning-W04-P08-S71` - Compose and retain the x86-64 Windows dashboard, updater, and A2A capsule as one verified release-set artifact
+- `2026-07-18-a2a-product-provisioning-W04-P08-S72` - Validate the component lock, release schema, product builder, and payload inventory before release jobs may run
+- `2026-07-18-a2a-product-provisioning-W04-P08-S87` - Carry and verify the independently invokable standalone MCP entrypoint in every capsule without assigning it dashboard lifecycle ownership
+- `2026-07-18-a2a-product-provisioning-W04-P09-S73` - Retain Cargo Dist for target planning, checksums, and release hosting while disabling its binary-only shell, PowerShell, MSI, and updater outputs
+- `2026-07-18-a2a-product-provisioning-W04-P09-S74` - Install, verify, receipt, update, and remove the complete macOS and Linux product tree from the product-owned shell installer
+- `2026-07-18-a2a-product-provisioning-W04-P09-S75` - Install, verify, receipt, update, and remove the complete Windows product tree from the product-owned PowerShell installer
+- `2026-07-18-a2a-product-provisioning-W04-P09-S77` - Build the product-owned MSI and installer scripts, publish only complete artifacts, and fail on any stale binary-only installer or updater
+- `2026-07-18-a2a-product-provisioning-W04-P09-S78` - Withdraw crates.io publication and bare Cargo installation metadata until a Cargo channel can preserve the composite release contract
+- `2026-07-18-a2a-product-provisioning-W04-P09-S79` - Document only supported composite install and update channels, offline ownership, data preservation, and explicit cargo-install and cargo-binstall exclusion by invoking the mandatory vaultspec-documentation skill and pipeline
+- `2026-07-18-a2a-product-provisioning-W04-P10-S159` - Publish WinGet metadata only when its phase-zero matrix and complete MSI downgrade proof pass, otherwise mark WinGet unsupported and require an ADR revisit
+- `2026-07-18-a2a-product-provisioning-W04-P10-S80` - Install the complete Windows ZIP, record Scoop provenance, and expose only the dashboard command without dropping companion files
+- `2026-07-18-a2a-product-provisioning-W04-P10-S81` - Bump Scoop to the complete product archive and verify its digest and reversible downgrade adapter before committing the manifest
+- `2026-07-18-a2a-product-provisioning-W04-P10-S82` - Declare the composite product identity and publisher for the WinGet package
+- `2026-07-18-a2a-product-provisioning-W04-P10-S83` - Point WinGet only to the complete MSI with product scope, upgrade behavior, digest, and manager-owned rollback authority
+- `2026-07-18-a2a-product-provisioning-W04-P10-S84` - Provide the WinGet locale metadata and supported composite install description
+- `2026-07-18-a2a-product-provisioning-W04-P10-S85` - Publish Scoop metadata only when its phase-zero matrix and complete real-artifact downgrade proof pass, otherwise mark Scoop unsupported and require an ADR revisit
+- `2026-07-18-a2a-product-provisioning-W05-P11-S88` - Define lifecycle status, job, operation, receipt, ownership, readiness, progress, and typed refusal wire shapes
+- `2026-07-18-a2a-product-provisioning-W05-P11-S89` - Add bearer-gated lifecycle status, run, and job methods without exposing a browser-to-A2A transport
+- `2026-07-18-a2a-product-provisioning-W05-P11-S90` - Add stable lifecycle status and job query identities to the shared engine key registry
+- `2026-07-18-a2a-product-provisioning-W05-P11-S91` - Validate every lifecycle dispatch as a closed typed operation with bounded data-removal intent before it reaches the engine client
+- `2026-07-18-a2a-product-provisioning-W05-P11-S92` - Project backend-served install, ownership, gateway, worker, provider, admission, job, update, rollback, repair, and doctor state with bounded polling
+- `2026-07-18-a2a-product-provisioning-W05-P11-S93` - Prove malformed operations, client path fields, free-form arguments, and implicit data deletion cannot pass the lifecycle dispatcher
+- `2026-07-18-a2a-product-provisioning-W05-P11-S94` - Prove status interpretation, cold readiness, foreign immutability, job settlement, query invalidation, and bounded polling from production store functions
+- `2026-07-18-a2a-product-provisioning-W05-P11-S95` - Prove the frontend lifecycle client drives the spawned engine and real A2A desktop capsule without a direct sibling request
+- `2026-07-18-a2a-product-provisioning-W05-P12-S100` - Register one unified agent-service action id and icon for panel, palette, and keymap composition
+- `2026-07-18-a2a-product-provisioning-W05-P12-S101` - Mount the A2A lifecycle panel only while its modal is open so closed panels perform no service reads
+- `2026-07-18-a2a-product-provisioning-W05-P12-S102` - Prove lifecycle queries mount only with the agent-service dialog and localization changes preserve panel identity
+- `2026-07-18-a2a-product-provisioning-W05-P12-S103` - Add the complete localized lifecycle vocabulary, confirmations, progress, ownership, remediation, and data-preservation copy
+- `2026-07-18-a2a-product-provisioning-W05-P12-S104` - Prove the command provider exposes exactly one localized agent-service toggle through the shared action registry
+- `2026-07-18-a2a-product-provisioning-W05-P12-S105` - Extend action coverage to require the agent-service lifecycle panel action on every eligible surface
+- `2026-07-18-a2a-product-provisioning-W05-P12-S106` - Update the control-panel inventory assertion while preserving the three intentional footer chips
+- `2026-07-18-a2a-product-provisioning-W05-P12-S96` - Render install, start, stop, restart, repair, update, rollback, remove, doctor, progress, ownership, and remediation from the lifecycle store projection
+- `2026-07-18-a2a-product-provisioning-W05-P12-S97` - Prove cold, owned, foreign, updating, rollback, degraded, and destructive-confirmation presentations using the production panel component
+- `2026-07-18-a2a-product-provisioning-W05-P12-S98` - Register the agent-service panel as a single modal identity while leaving the existing footer-chip set unchanged
+- `2026-07-18-a2a-product-provisioning-W05-P12-S99` - Define localized agent-service labels, toggle actions, and unavailable title in the canonical control-panel vocabulary
 
 ### plan
 
