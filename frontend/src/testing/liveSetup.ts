@@ -10,7 +10,7 @@ import { afterEach } from "vitest";
 
 import { engineClient } from "../stores/server/engine";
 import { authoringClient } from "../stores/server/authoring";
-import { agentClient } from "../stores/server/agent";
+import { agentClient, a2aTeamClient } from "../stores/server/agent";
 import { liveTransport } from "./liveClient";
 
 engineClient.useTransport(liveTransport);
@@ -20,6 +20,14 @@ authoringClient.useTransport(liveTransport);
 // Bind the agent-conversation client so panel and chip tests read sessions and
 // runs from the real engine.
 agentClient.useTransport(liveTransport);
+// Bind the a2a team client — the FOURTH singleton wire client. Without this its
+// `/ops/a2a/*` queries and the run-relay SSE fall to the default bearer transport,
+// which resolves the relative `/api` path against happy-dom's `localhost:3000`
+// origin; the resulting ECONNREFUSED retry loop outlives its owning test and bleeds
+// a port-3000 failure into whatever sibling test is running (AgentPanel mounts
+// `useActiveTeamRuns`/`useRunRelay`). Routing it at the same seam as the others
+// keeps every wire client on the spawned engine — no mock, no default origin.
+a2aTeamClient.useTransport(liveTransport);
 
 // #28 parallel-isolation: happy-dom aborts a file's still-pending fetches when it
 // tears down that file's window at file-end (the `DetachedWindowAPI.abort ->
