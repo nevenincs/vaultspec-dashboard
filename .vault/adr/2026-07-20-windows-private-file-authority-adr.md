@@ -306,6 +306,45 @@ claim cannot exceed on a volume whose write cache does not honour a flush. Order
 fixed: contents become durable before the name that publishes them — a file before its
 containing directory, and a directory's contents before any rename that makes it visible.)
 
+Durability conclusion accepted 2026-07-21, reasoning in
+`2026-07-21-windows-private-file-authority-ntfs-directory-durability-research`. The
+bounded claim: on Windows 8 or later, over storage that honours `FLUSH_CACHE` — WHQL-
+required of direct-attached drives since Windows 8, documented for SMB 3.0, CSVFS, and
+ReFS — flushing a written file's handle and then its containing directory's handle commits
+that file's content and its directory entry, and the same two-step ordering is the
+defensible pattern for a rename that publishes a name. Two elements are INFERENCE rather
+than documented fact and must stay labelled so wherever they are repeated: that a
+directory-handle flush commits that directory's own index content, and that flushing child
+then parent is SUFFICIENT rather than merely necessary. Neither gap blocks retirement,
+for a reason the research did not reach: every way those inferences could be wrong — an
+uncommitted index entry, a drive acknowledging a flush it did not perform — costs the
+datastore recent writes and leaves it at an earlier legitimate state or missing a member,
+and a missing or partial member is already refused by the existing classification as
+`InvalidDatastoreState`. NTFS `$LogFile` journaling supplies the no-torn-state property
+unconditionally, and that is the property this trust store actually depends on; durability
+of any single transaction is a liveness concern here, not an authentication one. The
+residual exposure — a datastore reverting to an older legitimate state — is bounded by TUF
+metadata expiry and is NOT Windows-specific: the Unix arm's directory `sync_all` rests on
+the same unproven-by-experiment flush-and-honest-hardware chain and has never been
+crash-harnessed either. Holding the Windows arm to a standard the shipped Unix arm does
+not meet would not make the product safer, only keep one platform unusable, so parity is
+the standard applied. No crash or power-loss experiment is therefore required for
+retirement, and none may be claimed. Detecting and refusing "unsuitable" storage is
+REFUSED as a runtime requirement: no interface distinguishes a device that honours a flush
+from one that lies about it, because a device dishonest about `FLUSH_CACHE` is dishonest
+about the queries that would interrogate it, so such a check would ship false assurance —
+the same defect D4 already forbids when it rejects an equivalent-looking unprotected DACL.
+The honest detector is the one already in place, positioned where it observes reality
+instead of predicting hardware: a datastore that lost writes classifies as partial or
+absent and fails closed. Which storage classes the deployment targets occupy is a
+supported-environment documentation question, not a gate; any future storage-class refusal
+is a decision with its own threat model, never an inline addition here. One proof
+obligation carries over: because the flush access-right precondition currently rests on
+relayed probe transcripts that were never independently reproduced, the S177 acceptance
+tests must themselves prove that boundary on real NTFS — the flush succeeding on a handle
+carrying the append-data right and failing without it — so committed evidence replaces the
+relayed report.
+
 Addendum recorded 2026-07-21 (architect ruling, private-file class boundary and
 single-sourced policy constants). First, the boundary between per-file hardening and
 directory-inherited protection. A Windows file whose private state must be PROVABLE
