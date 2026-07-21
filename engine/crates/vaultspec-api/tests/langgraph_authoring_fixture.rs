@@ -29,6 +29,8 @@
 //! to a `failed` receipt and the after-the-fact lane still lists the changeset from its
 //! recorded system-policy approval marker. Core is NEVER faked.
 
+mod common;
+
 use std::path::Path;
 use std::sync::Arc;
 
@@ -81,35 +83,6 @@ fn git_blob(root: &Path, rel: &str) -> String {
     String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
-/// Best-effort scaffold a real `.vaultspec` workspace so an autonomous auto-apply's
-/// core `set-body` WRITE operates for real. Offline; returns whether one installed.
-fn scaffold_vaultspec_workspace(root: &Path) -> bool {
-    let attempts: [&[&str]; 2] = [
-        &[
-            "uv",
-            "run",
-            "--no-sync",
-            "vaultspec-core",
-            "install",
-            "--target",
-            ".",
-        ],
-        &["vaultspec-core", "install", "--target", "."],
-    ];
-    for args in attempts {
-        let installed = std::process::Command::new(args[0])
-            .args(&args[1..])
-            .current_dir(root)
-            .output()
-            .map(|out| out.status.success())
-            .unwrap_or(false);
-        if installed && root.join(".vaultspec").is_dir() {
-            return true;
-        }
-    }
-    root.join(".vaultspec").is_dir()
-}
-
 /// A real git worktree with a `.vault` corpus + the target plan doc, plus a real
 /// `.vaultspec` workspace when a core is available. Returns the state, the doc's
 /// `blob:<sha1>` base revision, and whether the workspace was installed.
@@ -120,7 +93,7 @@ fn worktree_state() -> (tempfile::TempDir, Arc<AppState>, String, bool) {
     let doc = root.join(DOC_PATH);
     std::fs::create_dir_all(doc.parent().unwrap()).unwrap();
     std::fs::write(&doc, BASE_BODY).unwrap();
-    let core_ready = scaffold_vaultspec_workspace(root);
+    let core_ready = common::try_scaffold_vaultspec_workspace(root);
     git(root, &["add", "."]);
     git(root, &["commit", "-m", "fixture"]);
     let base_revision = format!("blob:{}", git_blob(root, DOC_PATH));

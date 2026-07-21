@@ -47,5 +47,13 @@ pub(crate) mod tools;
 pub(crate) mod transitions;
 pub(crate) mod validation;
 
+/// The ONE `vaultspec-core install` scaffold, shared with the `tests/`
+/// integration binaries that reach the same file through `mod common;`. The
+/// live-core fixtures below (`apply`, `direct_write`, `http`, `proposal`) all
+/// consume it; a second copy is drift waiting to happen.
+#[cfg(test)]
+#[path = "../../tests/common/mod.rs"]
+pub(crate) mod core_workspace;
+
 pub(crate) const FEATURE_TAG: &str = "agentic-spec-authoring-backend";
 pub(crate) const ROUTE_FAMILY: &str = "/authoring";

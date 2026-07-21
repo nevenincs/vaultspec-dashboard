@@ -48,24 +48,7 @@ fn git(root: &Path, args: &[&str]) {
 }
 
 fn scaffold_vaultspec_workspace(root: &Path) {
-    let output = Command::new("uv")
-        .current_dir(root)
-        .args([
-            "run",
-            "--no-sync",
-            "vaultspec-core",
-            "install",
-            "--target",
-            ".",
-        ])
-        .output()
-        .expect("vaultspec-core install command runs");
-    assert!(
-        output.status.success() && root.join(".vaultspec").is_dir(),
-        "real vaultspec-core install must succeed for direct-write tests: {}{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
+    crate::authoring::core_workspace::scaffold_vaultspec_workspace(root, "direct-write tests");
 }
 
 fn setup() -> Fx {
