@@ -126,35 +126,82 @@ makes the child's directory entry durable. The pieces are scattered:
   this ADR cares about (power loss between file-record commit and index-entry
   commit, or between an index-entry write-ahead-log record and its checkpoint).
 
-Empirical evidence available (relayed from Opus-S11's probes per the task brief;
-a request for the exact probe transcript, commands, and OS/filesystem build was
-sent via SendMessage and had not returned a reply by the time this document was
-authored, so it is reported here as relayed, not independently reproduced):
+Empirical evidence (relayed from Opus-S11's own probes, run on this machine and
+reported with an explicit statement of their limits, which this document honors
+rather than overstates): Windows 11 Pro, OS version 10.0.26200.0. Probes ran under
+%TEMP%, which resolves to volume C:, NTFS version 3.1, 512 bytes per sector
+(per fsutil fsinfo ntfsinfo). A single local fixed disk; no network or
+removable volume was tested, and the probes did NOT run on this repository's own
+NTFS volume (Y:), though both are NTFS. Rust's std::fs::File::sync_all() and
+sync_data() map to FlushFileBuffers on Windows; every "flush" below is that call.
+There was NO crash or power-loss simulation of any kind: every probe result is
+"the call returned Ok" or "the call returned an error", nothing about whether
+bytes reached stable media.
 
-- FlushFileBuffers on a directory handle SUCCEEDS when the handle carries
-  FILE_ADD_SUBDIRECTORY (0x0004), confirmed by Microsoft Learn's own
-  access-rights table, which states FILE_ADD_SUBDIRECTORY (4) and
-  FILE_APPEND_DATA (4) are the same bit reinterpreted per object kind: for a
-  directory object, the right to create a subdirectory is FILE_ADD_SUBDIRECTORY.
-  Source: "File Access Rights Constants (WinNT.h)", Microsoft Learn,
-  learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants.
-  The crate's own DIRECTORY_ACCESS mask in vaultspec-windows-authority/src/os.rs
-  already includes FILE_ADD_SUBDIRECTORY, which is why its directory handles can
-  flush successfully.
-- The same call on a plain read-only backup-semantics handle (lacking that bit)
-  fails with ERROR_ACCESS_DENIED (5), consistent with NtFlushBuffersFileEx's
-  documented STATUS_ACCESS_DENIED condition cited in Finding 1.
-- A cap-std Dir handle opened without FILE_ADD_SUBDIRECTORY also fails the same
-  way, and was closed by reopening the retained handle to itself with flush
-  rights.
+- Probe 1 (SUCCEEDS): a directory handle opened via std::fs::OpenOptions with
+  access_mode(DELETE | FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY |
+  FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE), share_mode(FILE_SHARE_READ),
+  custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS), the
+  crate's own DIRECTORY_ACCESS mask in vaultspec-windows-authority/src/os.rs.
+  Sequence: create a temp directory, create a child directory, write a small
+  file into it, open the directory handle as above, call sync_all(). Both
+  sync_all() and sync_data() returned Ok(()).
+- Probe 2 (REFUSED): the same directory opened only as
+  OpenOptions::new().read(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS), no
+  FILE_ADD_SUBDIRECTORY. sync_all() returned Err(os error 5, ERROR_ACCESS_DENIED).
+- Probe 3 (REFUSED): a cap-std Dir handle
+  (cap_std::fs::Dir::open_ambient_dir, then try_clone().into_std_file()) also
+  lacks FILE_ADD_SUBDIRECTORY by default and returned the identical
+  ERROR_ACCESS_DENIED (5), for both a child Dir and the parent capability Dir.
+- Probe 4 (SUCCEEDS): starting from the non-flushable handle shape of probe 2,
+  a fresh handle to the SAME directory object was opened via NtCreateFile with
+  RootDirectory set to that handle, an EMPTY ObjectName, and
+  DesiredAccess = FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE
+  (CreateDisposition = FILE_OPEN, CreateOptions = FILE_DIRECTORY_FILE |
+  FILE_SYNCHRONOUS_IO_NONALERT). The resulting handle's sync_all() returned
+  Ok(()). An empty ObjectName with a RootDirectory reopens the same object under
+  different access rights.
+
+The mechanism these four probes establish is precise and is itself documented
+Win32/NT behavior, not something inferred solely from the probes:
+FlushFileBuffers's public reference page states the handle "must have the
+GENERIC_WRITE access right", but the kernel-level primitive it rides on,
+NtFlushBuffersFileEx (Finding 1), documents STATUS_ACCESS_DENIED specifically as
+"the file does[ not] ha[ve] ... write or append access", a materially weaker,
+disjunctive condition than the full GENERIC_WRITE the public page names. On a
+FILE object, FILE_WRITE_DATA and FILE_APPEND_DATA are distinct bits; on a
+DIRECTORY object, FILE_ADD_SUBDIRECTORY and FILE_APPEND_DATA are the SAME bit
+(0x0004), confirmed directly against Microsoft's own access-rights table (cited
+above: "File Access Rights Constants (WinNT.h)", Microsoft Learn,
+learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants).
+Probe 1's mask carries that bit; probes 2 and 3's masks do not; probe 4
+re-acquires it via NtCreateFile's root-directory reopen idiom. So the
+documented-and-probed statement is precise: "Windows refuses to flush an
+arbitrary directory handle" is false as stated; the correct statement is "a
+Windows directory handle can be flushed only if it was opened with
+FILE_ADD_SUBDIRECTORY (equivalently, append/add-subdirectory access), and any
+handle lacking it can be upgraded by reopening the same object via
+NtCreateFile's RootDirectory/empty-ObjectName idiom rather than by re-walking the
+path."
 
 These probe results establish the access-rights precondition for the flush call
-to succeed at all on a directory handle. They do NOT, by themselves, establish
+to succeed at all on a directory handle, and, per Opus-S11's own framing,
+establish nothing beyond that: not that anything reached stable media, not any
+ordering guarantee between a child's bytes and its parent's directory entry, not
+anything about $LogFile journaling, and not anything about drives that
+acknowledge a flush early or ignore FUA. They do NOT, by themselves, establish
 that a successful flush-the-parent call is what makes a child's newly created
-directory entry crash-durable, that is the inference above, drawn from
-Finding 1's scoping argument plus the cross-platform crash-consistency pattern.
-This is the one point in the brief that documentation is genuinely silent on; it
-is recorded here as INFERRED, not documented.
+directory entry crash-durable; that is the inference in the paragraphs above
+this section, drawn from Finding 1's scoping argument plus the cross-platform
+crash-consistency pattern, not from these probes. This remains the one point
+genuinely unresolved by documentation OR by these probes; it is recorded here as
+INFERRED, not documented and not empirically probed.
+
+Probe 4's mechanism is landing as a reviewed reopen_self_flushable primitive in
+vaultspec-windows-authority's private os module; the scaffolding used to obtain
+this result was deliberately not committed (an unreviewed unsafe primitive must
+not sit uncommitted at a reviewed trust boundary). Cite the landed, reviewed
+primitive once it exists rather than this probe transcript.
 
 Conclusion for Finding 2: the crate's practice of flushing the child, then
 separately flushing the parent, is the technically defensible pattern given (a)
@@ -353,18 +400,24 @@ NTFS-specific guarantee.
   NTFS; it rests on analogy to POSIX crash-consistency literature plus the
   scoping argument above. An authoritative NTFS-specific statement of this exact
   sufficiency claim was not found.
-- This research did not independently re-run or verify the empirical probe
-  transcripts referenced in the task brief (FlushFileBuffers success/failure by
-  access mask, cap-std Dir handle behavior). A request for the exact commands,
-  OS build, and file-system version tested was sent to the teammate holding
-  those results (Opus-S11) via SendMessage and had not been answered at the
-  time this document was authored; the probe results are reported here as
-  relayed in the task brief, attributed to that teammate, not independently
-  reproduced.
+- Opus-S11's four probes were relayed with full detail (exact API calls,
+  masks, and results) and are reported here as relayed, not independently
+  re-executed by this author. Per their own framing, the probes establish only
+  API-reachability (whether a flush call is accepted or refused given a
+  handle's access mask) on the specific machine tested; they establish nothing
+  about whether any write reached stable media, no bus-level or forced-unit-
+  access observation was performed, and no crash or power-loss simulation of
+  any kind was run.
+- The probes ran on volume C: (the OS temp directory), NTFS version 3.1, not on
+  this repository's own volume (Y:), both are NTFS, but this was not verified
+  to be the identical NTFS on-disk version, sector size, or driver stack the
+  project's actual deployment targets will use.
 - No actual crash/power-loss experiment (e.g. a QEMU power-cut harness or
   equivalent) was performed or reviewed in this pass; all durability reasoning
   here is inference from documented API semantics and journaling architecture,
   not from an observed crash-and-recover cycle exercising this exact code path.
+- No filesystem other than NTFS, and no network or removable volume, was
+  tested by the probes; behavior on those is unresolved by this research.
 - The behavior of virtualized disks (Hyper-V VHDX, cloud block storage),
   network filesystems outside the FlushFileBuffers-enumerated
   SMB 3.0/CSVFS/ReFS list, and non-WHQL-certified or legacy storage remains
