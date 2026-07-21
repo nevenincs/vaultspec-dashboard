@@ -30,6 +30,7 @@ import {
   type WorkspacesState,
 } from "../engine";
 import { queryClient as defaultQueryClient } from "../queryClient";
+import { errorRecoveryRefetchInterval } from "../queryCadence";
 import { normalizeStoreScope } from "../scopeIdentity";
 import {
   useQuery,
@@ -56,7 +57,7 @@ export function useWorkspaceMap() {
   const query = useQuery({
     queryKey: engineKeys.map(),
     queryFn: () => engineClient.map(),
-    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
+    refetchInterval: errorRecoveryRefetchInterval,
   });
   return withManualRetry(query);
 }
@@ -484,7 +485,7 @@ export function useWorkspaces() {
   return useQuery({
     queryKey: engineKeys.workspaces(),
     queryFn: () => engineClient.workspaces(),
-    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
+    refetchInterval: errorRecoveryRefetchInterval,
   });
 }
 

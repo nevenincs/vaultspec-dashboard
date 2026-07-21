@@ -23,6 +23,12 @@ import {
   type ProvisionStatus,
 } from "./engine";
 import { dispatchProvisionRun } from "./provisionActions";
+import {
+  JOB_POLL_GC_MS,
+  OPERATOR_STATUS_GC_MS,
+  OPERATOR_STATUS_STALE_MS,
+  runningJobRefetchInterval,
+} from "./queryCadence";
 import { engineKeys } from "./queries";
 
 /** The confirm token a `force` install must carry (engine-enforced). Exposed so a
@@ -44,8 +50,8 @@ export function useProvisionStatus(
       engineClient.provisionStatus({ workspace, worktree }, signal),
     // Provisioning state changes only when the operator acts; a short stale window
     // keeps the panel fresh across job completions without polling churn.
-    staleTime: 5_000,
-    gcTime: 5 * 60_000,
+    staleTime: OPERATOR_STATUS_STALE_MS,
+    gcTime: OPERATOR_STATUS_GC_MS,
   });
 }
 
@@ -92,8 +98,8 @@ export function useProvisionJob(
       return job;
     },
     // Trigger-then-poll: refetch while running, stop once terminal (ADR D4).
-    refetchInterval: (query) => (query.state.data?.state === "running" ? 1_500 : false),
-    gcTime: 5 * 60_000,
+    refetchInterval: runningJobRefetchInterval,
+    gcTime: JOB_POLL_GC_MS,
   });
 }
 

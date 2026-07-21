@@ -9,6 +9,7 @@ import {
   type SalienceLens,
 } from "../engine";
 import { queryClient as defaultQueryClient } from "../queryClient";
+import { errorRecoveryRefetchInterval } from "../queryCadence";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
@@ -430,7 +431,7 @@ export function useEngineStatus() {
   return useQuery({
     queryKey: engineKeys.status(),
     queryFn: () => engineClient.status(),
-    refetchInterval: (query) => (query.state.status === "error" ? 8_000 : false),
+    refetchInterval: errorRecoveryRefetchInterval,
   });
 }
 

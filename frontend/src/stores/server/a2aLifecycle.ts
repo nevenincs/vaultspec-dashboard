@@ -28,6 +28,12 @@ import {
 } from "./engine";
 import { readAgentTierAvailability, type AgentAvailability } from "./agent/a2aTeam";
 import { dispatchA2aLifecycleRun } from "./a2aLifecycleActions";
+import {
+  JOB_POLL_GC_MS,
+  OPERATOR_STATUS_GC_MS,
+  OPERATOR_STATUS_STALE_MS,
+  runningJobRefetchInterval,
+} from "./queryCadence";
 import { engineKeys } from "./queries";
 
 /** The lifecycle ops that DESTROY or roll back durable state and so require an
@@ -46,8 +52,8 @@ export function useA2aLifecycleStatus() {
     queryFn: ({ signal }) => engineClient.a2aLifecycleStatus(signal),
     // Lifecycle state changes only when the operator acts (or a job settles); a
     // short stale window keeps the panel fresh across completions without churn.
-    staleTime: 5_000,
-    gcTime: 5 * 60_000,
+    staleTime: OPERATOR_STATUS_STALE_MS,
+    gcTime: OPERATOR_STATUS_GC_MS,
   });
 }
 
@@ -90,8 +96,8 @@ export function useA2aLifecycleJob(id: string | null) {
       return job;
     },
     // Trigger-then-poll: refetch while running, stop once terminal (ADR D3).
-    refetchInterval: (query) => (query.state.data?.state === "running" ? 1_500 : false),
-    gcTime: 5 * 60_000,
+    refetchInterval: runningJobRefetchInterval,
+    gcTime: JOB_POLL_GC_MS,
   });
 }
 
