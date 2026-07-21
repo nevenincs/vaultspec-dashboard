@@ -103,7 +103,15 @@ and safety argument, and real NTFS evidence on every supported Windows target.
 **D1: Split private-file authority by purpose.** The Windows authority crate provides
 distinct safe values for empty-file creation, mutable bootstrap recovery, read-only
 verification, and directory hardening. Each requests only its required read, write,
-security-control, DACL-write, or exact-deletion rights.
+security-control, DACL-write, or exact-deletion rights. (Amended 2026-07-21: one
+additional value, read-only DIRECTORY observation, completes the purpose split for
+tree-wide verification of objects the verifier may not own. It carries only
+`READ_CONTROL`, attribute-read, and synchronize rights with permissive sharing — no
+`WRITE_DAC`, no delete, no child operations, no handle borrow — refuses non-directory
+and reparse targets at open, and exposes only its identity, revalidation, and the D3
+snapshot. It exists so read-only verification never opens the mutation-capable,
+exclusive hardening authority. No new unsafe primitive: it reuses the existing open
+and D3 snapshot paths.)
 
 **D2: Keep safe mutation in the audited dependency.** Product and distribution code use
 the pinned `windows-acl` handle API to remove unexpected entries and install the fixed
