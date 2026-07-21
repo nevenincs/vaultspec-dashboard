@@ -76,3 +76,21 @@ The EXECUTE drive is wired (`execute_update`): begin → `OwnedGatewayLease::acq
 2. SWAP — when Fable lands `materialization_source().await` + `materializer::activate_update` (commit 3): replace the clean-rollback-at-ready with the real materialize + receipt-commit; add tokio (single-async) + distribution-authority deps to the updater then.
 3. S60/S61 — when the windows-private-file DACL authority lands: build the cross-platform owner-restricted descriptor WRITE + the copy-out/handoff/seat-exit/relaunch cutover (axoupdater retired ONLY when the swap actually works) + the cli help/refusal alignment. The descriptor execute-intent CONTENT/schema may extend now; the WRITE waits on the DACL.
 4. END-TO-END OwnedLive SUCCESS PROOF (REQUIRED before S62 ticks / P07 closes) — the interim coverage is component proofs (Fable's transaction-level `the_transaction_mints_quiescence_only_after_a_proven_discovered_stop` + S52/S55/S56). The terminal proof must be written when the path is BOTH (i) COMPLETE (activate_update/swap landed so there is a real end-to-end) AND (ii) AUTHOR-VERIFIABLE (the DACL authority makes the live drive Windows-runnable, OR a CI/unix verification the author can confirm green) — never an unverified `#[cfg(unix)]` test. Tracked as task #61.
+
+## Landed since: cold branch + activate_and_accept
+
+The cold-drive branch (`630c2d80f8`) and the injected-seam `activate_and_accept` (`79e220c3d4`) are DONE. `execute_update` converges both drain and cold paths on a never-faked `Quiescence` (cold via `assert_cold_stopped`) and returns the `ReadyToActivate` token. `activate_and_accept(ready, paths, guard, &mut source, ActivationParams, relaunch, relaunch_probe)` binds `LockedProduct`, calls `activate_update`, and — post-commit, NEVER rolling back — runs the INJECTED `relaunch_probe` then `mark_accepted` (Ok) or returns `CommittedRelaunchPending` (Err). Windows-gated → compiling; runtime is task #61.
+
+## Main fresh-update flow lands WITH S60 (not seam-independent)
+
+The `run()` fresh-update path (verify → source → execute_update → activate_and_accept) is inseparable from S60: it needs the descriptor execute-intent WRITE (DACL-gated), the concrete `relaunch_probe` closure (S60 front-door), and `verify_distribution` (Windows-gated). Build it when the windows-private-file DACL authority lands (dacl-authority-exec lane) and S60 is built. Add tokio(rt) then (the single async touch).
+
+### Authoritative GAP-2 verify spec (Fable, confirmed) — use verbatim, do not re-derive
+- The updater re-verifies IN-PROCESS (it IS the bounded helper, distribution-trust D3); `VerifiedDistributionRelease` is non-Clone/non-Serialize so nothing verified crosses the process boundary.
+- `VerificationRequest::for_product_root(bundle_directory, product_root, target)`: `bundle_directory` = the NEW STAGED bundle dir (`metadata/` + `targets/`) = the verify TARGET; `product_root` = the CURRENT product root (NOT the bundle, NOT a temp) — it anchors the persistent rollback datastore + verification lock and enforces TUF version + latest-known-time monotonicity (D4 downgrade protection: a bundle older than what this root accepted fails closed); `target` = `DistributionTarget::parse(<own compiled triple>)` (closed enum, never a descriptor string).
+- The staged-bundle PATH comes from the descriptor execute-intent and carries ZERO trust weight (a wrong/stale/malicious path just fails TUF vs the embedded root + product-root-anchored datastore); layout is bounds-checked inside verify.
+- Two TYPED refusals (not errors to engineer around): `ProductionRootNotProvisioned` (empty embedded root; retires at the key ceremony) + `WindowsDatastoreAuthorityNotProvisioned` (retires on the windows-private-file NTFS D7 evidence). verify holds the product-root verification lock for the release lifetime (one per root; the single-updater flow satisfies it).
+
+### Relaunch_probe closure grounding (for S60) — ground, do not invent
+- Launcher: the STABLE front-door that resolves the receipt-selected generation (never a generation-specific binary), grounded against `cmd/lifecycle.rs` `spawn_detached_serve`/`wait_for_seat` + the single-app-runtime front-door.
+- Probe: seat-healthy = the relaunched seat RE-PUBLISHES `gateway-discovery.json` (present + fresh) within a bounded deadline — the inverse of the drain's require-absent.
