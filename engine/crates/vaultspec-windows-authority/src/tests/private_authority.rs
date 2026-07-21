@@ -652,3 +652,60 @@ fn directory_metadata_flush_succeeds_through_a_non_flushable_handle() {
         "a non-directory handle must be refused"
     );
 }
+
+/// The ACCESS-RIGHTS BOUNDARY for flushing a directory (W01.P01.S177 acceptance).
+///
+/// This is a testable CODE fact about a precondition, NOT a durability inference:
+/// `FlushFileBuffers` requires append-data access, and on a directory
+/// `FILE_ADD_SUBDIRECTORY` IS `FILE_APPEND_DATA` (0x0004). The claim is proven in
+/// BOTH directions over otherwise identical handles, so it cannot pass vacuously
+/// — the two opens differ in exactly that one bit, and nothing else.
+///
+/// It is deliberately separate from the flush-through-reopen test above: this one
+/// pins WHY the reopen is needed at all. If a future change granted the append
+/// right to every directory open, or removed it from `DIRECTORY_ACCESS`, this
+/// test states which of those happened.
+#[test]
+fn directory_flush_requires_the_append_data_right() {
+    use std::os::windows::fs::OpenOptionsExt as _;
+    use windows_sys::Win32::Storage::FileSystem::{
+        FILE_ADD_SUBDIRECTORY, FILE_APPEND_DATA, FILE_READ_ATTRIBUTES, SYNCHRONIZE,
+    };
+
+    // The bit aliasing the whole mechanism rests on, asserted rather than assumed.
+    assert_eq!(
+        FILE_ADD_SUBDIRECTORY, FILE_APPEND_DATA,
+        "on a directory the add-subdirectory right IS the append-data right"
+    );
+    assert_eq!(FILE_ADD_SUBDIRECTORY, 0x0000_0004);
+
+    let dir = tempfile::tempdir().unwrap();
+    let child = dir.path().join("datastore");
+    create_directory(&child);
+
+    // Two opens of the SAME directory differing in exactly one access bit.
+    let without_append = std::fs::OpenOptions::new()
+        .access_mode(FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(&child)
+        .expect("open without append access");
+    let with_append = std::fs::OpenOptions::new()
+        .access_mode(FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS)
+        .open(&child)
+        .expect("open with append access");
+
+    // FAILS without the right...
+    assert_eq!(
+        without_append.sync_all().unwrap_err().raw_os_error(),
+        Some(5),
+        "flushing a directory handle lacking append-data access must be denied"
+    );
+    // ...and SUCCEEDS with it. Both arms asserted: a one-armed guard would pass
+    // vacuously in exactly the environment where the premise had drifted.
+    with_append
+        .sync_all()
+        .expect("flushing a directory handle carrying append-data access must succeed");
+}

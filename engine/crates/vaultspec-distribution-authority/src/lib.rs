@@ -279,8 +279,6 @@ pub enum VerificationError {
     ProductRootMismatch,
     #[error("verified archive staging is unavailable")]
     StagingUnavailable,
-    #[error("Windows rollback-authority ACL verification is not provisioned")]
-    WindowsDatastoreAuthorityNotProvisioned,
     #[error("another distribution verification owns the product rollback authority")]
     VerificationInProgress,
 }
@@ -303,7 +301,6 @@ pub async fn verify_distribution(
     if EMBEDDED_PRODUCTION_ROOT.is_empty() {
         return Err(VerificationError::ProductionRootNotProvisioned);
     }
-    production_platform_gate()?;
     verify_with_root(EMBEDDED_PRODUCTION_ROOT, request).await
 }
 
@@ -322,16 +319,6 @@ pub async fn verify_distribution_with_unsealed_root(
     request: VerificationRequest,
 ) -> Result<VerifiedDistributionRelease, VerificationError> {
     verify_with_root(root_bytes, request).await
-}
-
-#[cfg(windows)]
-fn production_platform_gate() -> Result<(), VerificationError> {
-    Err(VerificationError::WindowsDatastoreAuthorityNotProvisioned)
-}
-
-#[cfg(not(windows))]
-fn production_platform_gate() -> Result<(), VerificationError> {
-    Ok(())
 }
 
 async fn verify_with_root(
