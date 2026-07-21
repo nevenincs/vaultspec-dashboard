@@ -1466,3 +1466,40 @@ fn parent_relative_hardening_opens_a_child_through_a_rights_poor_parent() {
     assert!(HardeningDirectory::open_child_existing(&parent, &regular).is_err());
     assert!(ReadOnlyAuthorityDirectory::open_child_observation(&parent, &regular).is_err());
 }
+
+/// Pin every access right and file flag this crate composes into its masks.
+///
+/// The crate single-sources these from `windows-sys` so a value is spelled once
+/// (windows-private-file-authority, file-constructor addendum). Several safety
+/// arguments here rest on a right being ABSENT from a mask — the read-only
+/// values carry no `WRITE_DAC` and no `DELETE` — so a silent value change under
+/// a dependency bump would invalidate those arguments without touching a line of
+/// this crate's source. These are stable documented Win32 values; pinning them
+/// makes the single-sourcing self-verifying.
+#[test]
+fn access_right_and_file_flag_values_are_pinned() {
+    use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, SYNCHRONIZE, WRITE_DAC,
+    };
+
+    assert_eq!(DELETE, 0x0001_0000);
+    assert_eq!(READ_CONTROL, 0x0002_0000);
+    assert_eq!(WRITE_DAC, 0x0004_0000);
+    assert_eq!(SYNCHRONIZE, 0x0010_0000);
+    assert_eq!(FILE_READ_ATTRIBUTES, 0x0000_0080);
+    assert_eq!(GENERIC_READ, 0x8000_0000);
+    assert_eq!(GENERIC_WRITE, 0x4000_0000);
+    assert_eq!(FILE_FLAG_OPEN_REPARSE_POINT, 0x0020_0000);
+    assert_eq!(FILE_FLAG_BACKUP_SEMANTICS, 0x0200_0000);
+    assert_eq!(FILE_SHARE_READ, 0x0000_0001);
+    assert_eq!(FILE_SHARE_WRITE, 0x0000_0002);
+    assert_eq!(FILE_SHARE_DELETE, 0x0000_0004);
+
+    // The read-only observation rights must not have acquired mutation authority.
+    let observation = READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
+    assert_eq!(observation & WRITE_DAC, 0);
+    assert_eq!(observation & DELETE, 0);
+    assert_eq!(observation & GENERIC_WRITE, 0);
+}

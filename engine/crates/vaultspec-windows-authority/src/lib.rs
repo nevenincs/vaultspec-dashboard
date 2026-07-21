@@ -17,8 +17,10 @@ use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::{FileExt, OpenOptionsExt};
 use std::path::Path;
 
+use windows_sys::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
 use windows_sys::Win32::Storage::FileSystem::{
-    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE,
+    DELETE, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_READ_ATTRIBUTES,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, READ_CONTROL, SYNCHRONIZE, WRITE_DAC,
 };
 
 mod install;
@@ -38,15 +40,14 @@ pub use private_file::{
 };
 pub use snapshot::{DaclAceKind, DaclEntry, DaclSnapshot};
 
-const DELETE_ACCESS: u32 = 0x0001_0000;
-const GENERIC_READ: u32 = 0x8000_0000;
-const GENERIC_WRITE: u32 = 0x4000_0000;
-const READ_CONTROL: u32 = 0x0002_0000;
-const WRITE_DAC: u32 = 0x0004_0000;
-const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
-const SYNCHRONIZE: u32 = 0x0010_0000;
-const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+// Access rights and file flags come from the system bindings, never hand-typed.
+// A mask value is declared exactly once in this crate: several safety arguments
+// here rest on a right being ABSENT from a mask (the read-only values carry no
+// WRITE_DAC and no DELETE), and such an argument is only as sound as the
+// guarantee that every spelling of that mask denotes the same value. A local
+// literal beside an import of the same name from `windows-sys` would break that
+// guarantee silently.
+const DELETE_ACCESS: u32 = DELETE;
 const MAX_DIRECTORY_COMPONENT_UTF16_UNITS: usize = 255;
 const MAX_PRIVATE_FILE_READ_BYTES: usize = 1024 * 1024;
 
