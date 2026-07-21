@@ -239,8 +239,9 @@ accepted generation-authority distinction, copied observation is admissible only
 retained capability is unavailable; here it is available, so it governs. The same
 discipline binds the datastore FILES: each is created or reopened relative to its
 retained parent with the rights its own hardening requires, hardened on that exact
-handle, and validated unchanged by D4 — inherited-only, unprotected child descriptors are
-not a second, weaker private class and no such validator is authorized. Two boundaries
+handle, and validated unchanged by D4; no validator for inherited-only, unprotected child
+descriptors is authorized, here or anywhere (the class boundary that decides which files
+this binds is stated in the private-file class addendum below). Two boundaries
 this grants nothing on. It grants no traversal and no general pathname-to-handle bridge:
 a relative constructor opens exactly one named direct child and nothing beneath it. It
 does not advance gate retirement — the datastore lane carries a further Windows refusal
@@ -251,6 +252,49 @@ evidence exists, since retiring it earlier converts an honest up-front refusal i
 mid-operation failure over already-mutated state. Consistent with D7 and the
 artifact-level proof rule, a `cfg(test)`-only Windows success arm standing in for a
 production refusal is not acceptance evidence and must be removed rather than relied on.
+
+Addendum recorded 2026-07-21 (architect ruling, private-file class boundary and
+single-sourced policy constants). First, the boundary between per-file hardening and
+directory-inherited protection. A Windows file whose private state must be PROVABLE
+INDEPENDENTLY OF ITS PARENT AT A LATER TIME is hardened on its own exact retained handle
+under D5 and validated under D4 — no exception. That is every authority-bearing file:
+credentials, bootstrap descriptors, and the distribution TRUST-DATASTORE metadata, whose
+`root.json` is the anchor a later verification run reads to decide a trust outcome. The
+reason is not stylistic: an inherited descriptor is not `SE_DACL_PROTECTED` and carries
+`INHERITED_ACE` entries, so a later reader could only credit it by ALSO re-observing the
+parent — joining two objects' descriptor states observed at two different times, exactly
+the race the amended D3 exists to eliminate. Directory-INHERITED protection is sufficient,
+and is the faithful Windows analog of the Unix arm's `0600`-inside-`0700` contract, only
+for files meeting every one of four conditions: they are transient scratch created and
+destroyed inside ONE operation; they live inside a directory whose protected exact DACL
+was proven at creation and remains continuously held for the file's whole lifetime; they
+carry no secret and no trust anchor; and they are never revalidated as independent
+authority. The publication-staging tree qualifies on all four — its contents are TUF
+metadata and target archives destined to be PUBLISHED, its signing keys are read from
+caller paths outside staging and never written into it, and the private directory there is
+defense-in-depth against tampering during the operation rather than a confidentiality
+boundary. It is also the forced answer: those files are written by the pinned `tough`
+library through paths of its own choosing, so no per-file handle exists to harden without
+forking that dependency, whereas inheritance protects them correctly with no interposition
+at all. The bright line a reviewer applies: wanting to VALIDATE a file's private state is
+itself proof that the file belongs to the hardened class, because the inherited class has
+no validator and may never acquire one. Second, the duplicated Windows hardening
+composition. D2 is UNCHANGED: `windows-acl` mutation stays in the product and distribution
+consumers and does not move into the authority crate, whose value is a small independently
+reviewed unsafe boundary that a security-descriptor-mutating dependency would enlarge for
+every consumer. Two composition copies are accepted; the datastore half adds no third,
+because it extends the same distribution-side module. What may NOT be duplicated is the
+fixed policy itself: the three principal identifiers, the exact access mask, and the file
+and directory ACE flag values are single-sourced as public constants of the authority
+crate's `private_policy` module, and no consumer may declare its own literal for any of
+them. That makes drift impossible rather than merely discouraged — a consumer that
+installs anything other than what the shared validator requires fails its own validation
+immediately, in production and in the NTFS acceptance evidence. A reviewer verifies
+lock-step by two checks: no principal, mask, or flag literal is declared outside
+`private_policy`, and every hardening path terminates in a shared `validate_private_*`
+call. The pinned `windows-acl` 0.3.0 API's `winapi` pointer type is a bounded consequence
+of that pin, not a second native-authority surface; it carries no unsafe code into either
+consumer and retires with any future replacement of that dependency.
 
 Boundary note recorded at acceptance: this decision governs the private-file
 DACL/protected-state authority (credentials, bootstrap descriptors, distribution rollback
