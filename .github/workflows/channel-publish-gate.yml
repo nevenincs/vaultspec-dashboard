@@ -15,19 +15,20 @@
 # THE PROOF-OF-RECORD is packaging/a2a-support-matrix.json (W01.P01.S146). A
 # channel is publishable ONLY when its matrix `support_status` is `supported`.
 # The phase-zero clean-machine install/upgrade/downgrade/repair/uninstall proof
-# (W01.P01.S147 scoop / S149 winget) is what flips a channel from
-# `feasibility_gated` to `supported` (W01.P01.S148); until that proof passes the
-# matrix stays `feasibility_gated` and this gate refuses to publish. That is the
-# ADR D2 rule: a channel without a proven reversible adapter is NOT a supported
-# update channel, and a failed phase-zero proof reopens the ADR rather than
-# certifying on metadata alone.
+# `.github/workflows/a2a-channel-feasibility.yml` (W01.P01.S147 scoop / S149
+# winget) is what WRITES that status (W01.P01.S148): a genuine clean-machine pass
+# flips a channel `feasibility_gated`→`supported`; a real reversibility failure
+# flips it `→unsupported` with an ADR-revisit reason; inputs-pending leaves it
+# `feasibility_gated`. Until the proof passes on real runners the matrix stays
+# `feasibility_gated` and this gate refuses to publish. That is the ADR D2 rule:
+# a channel without a proven reversible adapter is NOT a supported update channel,
+# and a failed phase-zero proof reopens the ADR rather than certifying on metadata.
 #
-# W01 GAP FLAGGED: the phase-zero proof workflow
-# `.github/workflows/a2a-channel-feasibility.yml` (W01.P01.S147/S149) does NOT
-# yet exist in the tree. This gate asserts its presence as a second fail-closed
-# condition, so the matrix cannot be flipped to `supported` while the proof
-# machinery is absent. Both conditions must hold to publish; today both channels
-# fail closed (matrix = feasibility_gated AND the proof workflow is absent).
+# The gate asserts the proof workflow's PRESENCE as a second fail-closed
+# condition, so the matrix can never read `supported` while the proof machinery
+# is missing from the tree. Both conditions must hold to publish. Today both
+# channels fail closed (matrix = feasibility_gated; the proof runs release-time
+# and no real pass has been recorded).
 
 name: channel-publish-gate
 

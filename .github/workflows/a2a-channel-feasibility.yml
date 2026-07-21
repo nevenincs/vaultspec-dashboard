@@ -1,0 +1,254 @@
+# The phase-zero channel feasibility proof (a2a-product-provisioning
+# W01.P01.S147 Scoop / S149 WinGet + the S148 matrix write-back).
+#
+# This is the clean-machine REVERSIBILITY PROOF the whole channel story gates on
+# (ADR D2): a package-manager channel is a supported update channel ONLY if a
+# real manager can install → upgrade → manager-owned downgrade → repair →
+# uninstall the COMPLETE product artifact and leave the machine clean. A channel
+# without that proof is NOT supported, and a failed proof reopens the ADR rather
+# than certifying on metadata alone.
+#
+# VERIFICATION REALITY — authored now; clean-machine-verified at release. The
+# real proof needs (a) clean-machine runners, (b) the RELEASED complete archive /
+# MSI for `version`, and (c) the pinned A2A capsule (#1, cross-repo). None faked:
+# a preflight refuses to run the reversibility sequence against a not-yet-published
+# artifact (the bucket/manifest still carry placeholder digests), so today every
+# channel resolves `blocked` — visibly not-green, matrix left `feasibility_gated`.
+#
+# OUTCOME → MATRIX (S148). The `record` job writes each channel's result into
+# packaging/a2a-support-matrix.json, three-stated and fail-closed:
+#   - `supported`   : genuine clean-machine pass → flip feasibility_gated→supported.
+#   - `unsupported` : a real reversibility step FAILED → flip →unsupported + set an
+#                     ADR-revisit reason (never silently downgrade certification).
+#   - `blocked`     : inputs pending (artifact/capsule/MSI/prior-version) → leave
+#                     the matrix untouched at feasibility_gated; the job still fails.
+# The channel-publish-gate then publishes only channels the matrix marks
+# `supported`, so publication requires this proof to have passed on real runners.
+
+name: a2a-channel-feasibility
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Released version to prove (without the leading v).'
+        required: true
+        type: string
+      channels:
+        description: 'Space-separated channels to prove (scoop winget).'
+        required: false
+        type: string
+        default: 'scoop winget'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Released version to prove (without the leading v).'
+        required: true
+        type: string
+      channels:
+        description: 'Space-separated channels to prove (scoop winget).'
+        required: false
+        type: string
+        default: 'scoop winget'
+
+permissions:
+  contents: write
+
+jobs:
+  scoop:
+    name: Phase-zero Scoop proof
+    if: contains(inputs.channels, 'scoop')
+    runs-on: windows-latest
+    outputs:
+      result: ${{ steps.proof.outputs.result }}
+      reason: ${{ steps.proof.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install → upgrade → downgrade → repair → uninstall (real Scoop)
+        id: proof
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Emit($result, $reason) {
+            "result=$result" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+          # PREFLIGHT (fail-closed): the complete Windows ZIP for this version must
+          # be really published, not a placeholder. The committed bucket manifest
+          # carries an all-zero placeholder digest until scoop-bump reconciles it at
+          # release; if the digest is still placeholder, the reversibility sequence
+          # has nothing real to prove against → `blocked`, matrix untouched.
+          $manifest = Get-Content bucket/vaultspec.json -Raw | ConvertFrom-Json
+          if ($manifest.hash -match '^0+$') {
+            Write-Host "scoop preflight: bucket digest is placeholder — complete archive for $env:VERSION not yet published (capsule #1 pending)"
+            Emit 'blocked' 'complete Windows archive not yet published (placeholder digest; capsule #1 pending)'
+            exit 1
+          }
+          $asset = "vaultspec-$($env:VERSION)-x86_64-pc-windows-msvc.zip"
+          $url = "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v$($env:VERSION)/$asset"
+          try { Invoke-WebRequest -Method Head -Uri "$url.sha256" -UseBasicParsing | Out-Null }
+          catch {
+            Write-Host "scoop preflight: $url.sha256 is not fetchable — release not published"
+            Emit 'blocked' "release asset $asset not published for $($env:VERSION)"
+            exit 1
+          }
+
+          # CLEAN-MACHINE REVERSIBILITY SEQUENCE (real Scoop, no adapter mock). Any
+          # failure here is a genuine reversibility failure → `unsupported`.
+          try {
+            if (-not (Get-Command scoop -ErrorAction SilentlyContinue)) {
+              Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
+            }
+            scoop bucket add vaultspec "$PWD" ; if ($LASTEXITCODE) { throw "bucket add failed" }
+            # install
+            scoop install "vaultspec@$($env:VERSION)" ; if ($LASTEXITCODE) { throw "install failed" }
+            # verify the COMPLETE tree, not just the shim (product receipt + release manifest)
+            $root = "$env:USERPROFILE\scoop\apps\vaultspec\current"
+            & "$root\bin\vaultspec.exe" --version ; if ($LASTEXITCODE) { throw "installed binary not runnable" }
+            & "$root\bin\vaultspec.exe" verify-release "$root" ; if ($LASTEXITCODE) { throw "verify-release failed on installed tree" }
+            # upgrade (manager-owned)
+            scoop update vaultspec ; if ($LASTEXITCODE) { throw "upgrade failed" }
+            # real manager-owned downgrade to the prior published version
+            $prior = $env:PRIOR_VERSION
+            if ($prior) {
+              scoop install "vaultspec@$prior" ; if ($LASTEXITCODE) { throw "downgrade to $prior failed" }
+            } else {
+              throw "no prior published version to prove a real manager-owned downgrade"
+            }
+            # repair
+            scoop reset vaultspec ; if ($LASTEXITCODE) { throw "repair (reset) failed" }
+            # uninstall + prove clean
+            scoop uninstall vaultspec ; if ($LASTEXITCODE) { throw "uninstall failed" }
+            if (Get-Command vaultspec -ErrorAction SilentlyContinue) { throw "shim survived uninstall" }
+            Emit 'supported' 'clean-machine install/upgrade/downgrade/repair/uninstall proven'
+          } catch {
+            Write-Host "scoop reversibility FAILED: $_"
+            # A missing prior version is an inputs-pending block, not a reversibility
+            # defect; everything else is a genuine failure.
+            if ("$_" -match 'no prior published version') {
+              Emit 'blocked' 'no prior published version yet to prove manager-owned downgrade'
+            } else {
+              Emit 'unsupported' "reversibility failure: $_"
+            }
+            exit 1
+          }
+
+  winget:
+    name: Phase-zero WinGet proof
+    if: contains(inputs.channels, 'winget')
+    runs-on: windows-latest
+    outputs:
+      result: ${{ steps.proof.outputs.result }}
+      reason: ${{ steps.proof.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install → upgrade → downgrade → repair → uninstall (real WinGet)
+        id: proof
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Emit($result, $reason) {
+            "result=$result" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            "reason=$reason" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+          # PREFLIGHT (fail-closed, authored-pending-MSI): WinGet installs the
+          # complete product MSI (S83), which requires the WiX MSI (S76, DEFERRED —
+          # WiX not on the build box). The installer manifest still carries a
+          # placeholder InstallerSha256 until the MSI publishes → `blocked`.
+          $installer = Get-Content packaging/winget/vaultspec.vaultspec.installer.yaml -Raw
+          if ($installer -match 'InstallerSha256:\s*"?0{64}') {
+            Write-Host "winget preflight: installer digest is placeholder — complete MSI (S76) not yet built/published"
+            Emit 'blocked' 'complete product MSI (S76) not yet built (WiX deferred) — winget authored-pending-MSI'
+            exit 1
+          }
+
+          # CLEAN-MACHINE REVERSIBILITY SEQUENCE (real WinGet, manager-owned). Runs
+          # only once the MSI is a real published artifact.
+          try {
+            winget install --manifest packaging/winget --accept-package-agreements --accept-source-agreements --scope user ; if ($LASTEXITCODE) { throw "install failed" }
+            winget list vaultspec.vaultspec ; if ($LASTEXITCODE) { throw "install not registered" }
+            winget upgrade vaultspec.vaultspec --accept-package-agreements ; if ($LASTEXITCODE) { throw "upgrade failed" }
+            $prior = $env:PRIOR_VERSION
+            if ($prior) {
+              winget install vaultspec.vaultspec --version $prior --allow-downgrade --accept-package-agreements ; if ($LASTEXITCODE) { throw "downgrade to $prior failed" }
+            } else {
+              throw "no prior published version to prove a real manager-owned downgrade"
+            }
+            winget repair vaultspec.vaultspec ; if ($LASTEXITCODE) { throw "repair failed" }
+            winget uninstall vaultspec.vaultspec ; if ($LASTEXITCODE) { throw "uninstall failed" }
+            if (winget list vaultspec.vaultspec 2>$null | Select-String 'vaultspec.vaultspec') { throw "package survived uninstall" }
+            Emit 'supported' 'clean-machine install/upgrade/downgrade/repair/uninstall proven'
+          } catch {
+            Write-Host "winget reversibility FAILED: $_"
+            if ("$_" -match 'no prior published version') {
+              Emit 'blocked' 'no prior published version yet to prove manager-owned downgrade'
+            } else {
+              Emit 'unsupported' "reversibility failure: $_"
+            }
+            exit 1
+          }
+
+  record:
+    name: Record channel outcomes into the support matrix (S148)
+    needs: [scoop, winget]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+      - name: Write proof outcomes into a2a-support-matrix.json
+        shell: bash
+        env:
+          SCOOP_RESULT: ${{ needs.scoop.result == 'skipped' && 'skipped' || needs.scoop.outputs.result }}
+          SCOOP_REASON: ${{ needs.scoop.outputs.reason }}
+          WINGET_RESULT: ${{ needs.winget.result == 'skipped' && 'skipped' || needs.winget.outputs.result }}
+          WINGET_REASON: ${{ needs.winget.outputs.reason }}
+        run: |
+          set -euo pipefail
+          MATRIX=packaging/a2a-support-matrix.json
+          TGT=x86_64-pc-windows-msvc
+
+          apply() {
+            local channel="$1" result="$2" reason="$3"
+            case "$result" in
+              supported)
+                # Genuine clean-machine pass → flip to supported.
+                jq --arg t "$TGT" --arg c "$channel" \
+                  '.targets[$t][$c].support_status = "supported" | .targets[$t][$c].unsupported_reason = null' \
+                  "$MATRIX" > "$MATRIX.tmp" && mv "$MATRIX.tmp" "$MATRIX"
+                echo "record: $channel → supported"
+                ;;
+              unsupported)
+                # A real reversibility FAILURE → unsupported + ADR-revisit reason.
+                jq --arg t "$TGT" --arg c "$channel" --arg r "phase-zero reversibility proof failed — ADR D2 revisit required: $reason" \
+                  '.targets[$t][$c].support_status = "unsupported" | .targets[$t][$c].unsupported_reason = $r' \
+                  "$MATRIX" > "$MATRIX.tmp" && mv "$MATRIX.tmp" "$MATRIX"
+                echo "record: $channel → unsupported (ADR revisit): $reason"
+                ;;
+              *)
+                # blocked / skipped / empty → inputs pending; leave the matrix at
+                # feasibility_gated, change nothing.
+                echo "record: $channel → $result (matrix left feasibility_gated): ${reason:-inputs pending}"
+                ;;
+            esac
+          }
+
+          apply scoop "${SCOOP_RESULT:-blocked}" "${SCOOP_REASON:-}"
+          apply winget "${WINGET_RESULT:-blocked}" "${WINGET_REASON:-}"
+
+          if git diff --quiet -- "$MATRIX"; then
+            echo "record: no matrix change (channels remain feasibility_gated)"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$MATRIX"
+          git commit -m "chore(channels): record phase-zero feasibility outcomes into the support matrix"
+          git push origin main

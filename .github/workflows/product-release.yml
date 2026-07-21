@@ -222,3 +222,33 @@ jobs:
         with:
           name: cohort-descriptor
           path: cohort-descriptor.json
+
+  # W01.P01.S147/S149: resolve the release version, then run the phase-zero
+  # channel feasibility proof over the published complete archive/MSI. The proof
+  # writes its outcome into the support matrix (S148), which the channel-publish
+  # gate reads before any Scoop/WinGet publication. Runs at release, after the
+  # tree is built + self-verified; fails closed (matrix untouched) until the
+  # release assets + capsule (#1) + MSI (S76) make a real proof possible.
+  resolve-version:
+    name: Resolve release version
+    runs-on: ubuntu-latest
+    outputs:
+      value: ${{ steps.v.outputs.value }}
+    steps:
+      - id: v
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+  channel-feasibility:
+    name: Phase-zero channel feasibility (S147/S149)
+    needs: [resolve-version, self-verify]
+    uses: ./.github/workflows/a2a-channel-feasibility.yml
+    with:
+      version: ${{ needs.resolve-version.outputs.value }}
+      channels: 'scoop winget'
