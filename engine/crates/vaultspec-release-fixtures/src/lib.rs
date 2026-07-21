@@ -209,11 +209,32 @@ pub fn digest_hex(bytes: &[u8]) -> String {
 }
 
 pub fn cohort_for(source: &Path, identity: &str) -> ReleaseCohort {
+    cohort_with_archive(source, identity, None)
+}
+
+/// Build a cohort whose SELECTED target carries a caller-supplied REAL archive.
+///
+/// The placeholder archives satisfy TUF, which only binds length and digest, but
+/// they are not a capsule that materializes into a release tree. A caller that
+/// owns a real archive - the product crate builds one from the same release tree
+/// it verifies against - passes it here, so the published repository carries the
+/// bytes that will actually be materialized rather than a stand-in.
+///
+/// The other four members keep placeholders: a cohort needs five members to be
+/// well formed, but only the selected target is ever extracted.
+pub fn cohort_with_archive(
+    source: &Path,
+    identity: &str,
+    real: Option<(DistributionTarget, Vec<u8>)>,
+) -> ReleaseCohort {
     let members = TARGETS
         .iter()
         .map(|target| {
             let name = target.archive_name();
-            let bytes = archive_bytes(*target);
+            let bytes = match &real {
+                Some((selected, archive)) if selected == target => archive.clone(),
+                _ => archive_bytes(*target),
+            };
             std::fs::write(source.join(name), &bytes).expect("archive source");
             ReleaseMember {
                 target: *target,
@@ -291,13 +312,39 @@ pub async fn publish_bundle_with_root(
     identity: &str,
     selected: DistributionTarget,
 ) -> PathBuf {
+    publish_bundle_with_root_archive(
+        test_root,
+        material,
+        root_history,
+        version,
+        identity,
+        selected,
+        None,
+    )
+    .await
+}
+
+/// [`publish_bundle_with_root`] carrying a real archive for the selected target.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "each operand is a distinct fixture input"
+)]
+pub async fn publish_bundle_with_root_archive(
+    test_root: &Path,
+    material: &SigningMaterial,
+    root_history: &[PathBuf],
+    version: u64,
+    identity: &str,
+    selected: DistributionTarget,
+    real_archive: Option<(DistributionTarget, Vec<u8>)>,
+) -> PathBuf {
     let latest_root_bytes = std::fs::read(root_history.last().expect("nonempty root history"))
         .expect("read latest supplied root");
     let latest_root: Signed<Root> =
         serde_json::from_slice(&latest_root_bytes).expect("parse latest supplied root");
     let source = test_root.join(format!("source-{identity}"));
     std::fs::create_dir(&source).expect("source targets");
-    let cohort = cohort_for(&source, identity);
+    let cohort = cohort_with_archive(&source, identity, real_archive);
     let output = test_root.join(format!("repository-{identity}"));
     let mut request = publication_request(output.clone(), material, source, cohort, version);
     request.root_history = root_history.to_vec();
@@ -319,6 +366,27 @@ pub async fn publish_bundle_with_root(
         name.ends_with(COHORT_TARGET_NAME) || name.ends_with(selected.archive_name())
     });
     bundle
+}
+
+/// Publish a bundle whose selected target carries a real capsule archive.
+pub async fn publish_bundle_with_archive(
+    test_root: &Path,
+    material: &SigningMaterial,
+    version: u64,
+    identity: &str,
+    selected: DistributionTarget,
+    archive: Vec<u8>,
+) -> PathBuf {
+    publish_bundle_with_root_archive(
+        test_root,
+        material,
+        std::slice::from_ref(&material.root_path),
+        version,
+        identity,
+        selected,
+        Some((selected, archive)),
+    )
+    .await
 }
 
 pub async fn publish_bundle(
