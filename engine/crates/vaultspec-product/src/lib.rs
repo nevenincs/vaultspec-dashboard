@@ -45,6 +45,7 @@ pub mod materializer;
 pub mod migration;
 pub mod paths;
 pub mod process;
+pub mod product_build;
 pub mod protocol;
 pub mod provisioning;
 pub mod receipt;
