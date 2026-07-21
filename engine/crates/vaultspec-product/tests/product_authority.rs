@@ -517,37 +517,42 @@ fn prepared_bootstrap_interruption_is_durable_and_classified() {
 
 #[cfg(windows)]
 #[test]
-fn windows_bootstrap_refuses_before_writing_secret_bytes_when_authority_is_unprovable() {
+fn windows_bootstrap_creates_protected_secret_files_after_the_d6_ungating() {
+    // Every credential file is created empty, hardened to the protected
+    // three-principal DACL through its retained WRITE_DAC handle, and only then
+    // written — so the descriptor and both bootstrap credentials exist afterward.
     let dir = tempfile::tempdir().unwrap();
     let paths = ProductPaths::under_app_home(dir.path());
     paths.ensure().unwrap();
     let lock = InstallLock::new(paths.install_lock_path());
     let guard = lock
-        .acquire(Actor::Installer, "windows-authority-gate-test")
+        .acquire(Actor::Installer, "windows-authority-bootstrap-test")
         .unwrap()
         .unwrap();
     let store = DashboardCredentialStore::for_product(&paths);
 
-    assert!(matches!(
-        store.begin_bootstrap(&guard),
-        Err(CredentialError::PlatformAuthorityUnavailable(_))
-    ));
-    for name in [
-        "bootstrap-credentials.v1",
-        "ownership.cap",
-        "attach.cred",
-        "worker-ipc.cred",
-    ] {
+    store
+        .begin_bootstrap(&guard)
+        .expect("Windows bootstrap must succeed after the D6 un-gating");
+    for name in ["bootstrap-credentials.v1", "ownership.cap", "attach.cred"] {
         assert!(
-            !paths.credentials_dir().join(name).exists(),
-            "Windows authority gate must precede creation of {name}"
+            paths.credentials_dir().join(name).exists(),
+            "bootstrap must create the protected credential authority: {name}"
         );
     }
+    assert!(
+        !paths.credentials_dir().join("worker-ipc.cred").exists(),
+        "the gateway worker credential is a separate later step"
+    );
 }
 
 #[cfg(windows)]
 #[test]
-fn windows_credential_readers_refuse_without_disclosing_unprovable_files() {
+fn windows_credential_readers_refuse_unprotected_planted_files() {
+    // Plain files planted in the credentials directory carry an ordinary
+    // inherited (UNPROTECTED) DACL, not the exact protected three-principal
+    // list. After the D6 un-gating every reader still refuses them fail-closed —
+    // the one-snapshot protected-DACL proof fails — disclosing no secret.
     let dir = tempfile::tempdir().unwrap();
     let paths = ProductPaths::under_app_home(dir.path());
     paths.ensure().unwrap();
@@ -559,23 +564,23 @@ fn windows_credential_readers_refuse_without_disclosing_unprovable_files() {
     .unwrap();
     let lock = InstallLock::new(paths.install_lock_path());
     let guard = lock
-        .acquire(Actor::Installer, "windows-read-gate-test")
+        .acquire(Actor::Installer, "windows-read-refusal-test")
         .unwrap()
         .unwrap();
     let store = DashboardCredentialStore::for_product(&paths);
 
-    assert!(matches!(
-        store.read_attach_control(),
-        Err(CredentialError::PlatformAuthorityUnavailable(_))
-    ));
-    assert!(matches!(
-        store.verify_ownership(&guard),
-        Err(CredentialError::PlatformAuthorityUnavailable(_))
-    ));
-    assert!(matches!(
-        ForeignHandoffReader::read(&store.attach_control_reference()),
-        Err(CredentialError::PlatformAuthorityUnavailable(_))
-    ));
+    assert!(
+        store.read_attach_control().is_err(),
+        "an unprotected planted attach-control file must be refused"
+    );
+    assert!(
+        store.verify_ownership(&guard).is_err(),
+        "an unprotected planted ownership file must be refused"
+    );
+    assert!(
+        ForeignHandoffReader::read(&store.attach_control_reference()).is_err(),
+        "the handoff reader must refuse an unprotected attach-control file"
+    );
 }
 
 #[cfg(unix)]

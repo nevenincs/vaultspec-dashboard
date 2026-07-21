@@ -524,28 +524,29 @@ fn mutating_control_requires_owned_attach_and_ownership() {
 
 #[cfg(windows)]
 #[test]
-fn mutating_control_stops_at_the_windows_ownership_authority_gate() {
+fn mutating_control_requires_ownership_after_windows_bootstrap() {
+    // Bootstrap now succeeds on Windows, minting the protected ownership and
+    // attach-control credentials; a receipt-bound mutation without the ownership
+    // capability is still refused (NotOwner), and bootstrap writes no receipt.
     let home = tempfile::tempdir().unwrap();
     let paths = ProductPaths::under_app_home(home.path());
     paths.ensure().unwrap();
     let ctrl = LifecycleController::new(paths.clone());
     let guard = InstallLock::new(paths.install_lock_path())
-        .acquire(Actor::Installer, "control-windows-ownership-gate")
+        .acquire(Actor::Installer, "control-windows-ownership-bootstrap")
         .unwrap()
         .unwrap();
     let store = DashboardCredentialStore::for_product(&paths);
 
-    match store.begin_bootstrap(&guard) {
-        Err(CredentialError::PlatformAuthorityUnavailable(_)) => {}
-        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
-        Ok(_) => panic!("Windows ownership bootstrap must remain typed unavailable"),
-    }
+    store
+        .begin_bootstrap(&guard)
+        .expect("Windows ownership bootstrap must succeed after the D6 un-gating");
+    assert!(paths.credentials_dir().join("ownership.cap").exists());
+    assert!(paths.credentials_dir().join("attach.cred").exists());
     assert_eq!(
         ctrl.guard_owned_mutation(LifecycleOp::Stop, None, Some(&Verdict::OwnedLive)),
         Err(Refusal::NotOwner)
     );
-    assert!(!paths.credentials_dir().join("ownership.cap").exists());
-    assert!(!paths.credentials_dir().join("attach.cred").exists());
     assert!(!paths.receipt_path().exists());
 }
 

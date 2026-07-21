@@ -227,32 +227,35 @@ fn gateway_credential_separation_holds_on_real_files() {
 
 #[cfg(windows)]
 #[test]
-fn gateway_credential_separation_stops_at_the_windows_authority_gate() {
+fn gateway_credential_bootstrap_creates_the_protected_files_on_windows() {
+    // Post windows-private-file D6 un-gating, credential bootstrap succeeds on
+    // Windows: the descriptor and the ownership/attach-control credentials are
+    // created (each hardened to the protected three-principal DACL before bytes).
+    // The gateway worker-ipc credential is a distinct later step, not part of
+    // bootstrap, so it remains absent here.
     let dir = tempfile::tempdir().unwrap();
     let paths = ProductPaths::under_app_home(dir.path());
     paths.ensure().unwrap();
     let guard = InstallLock::new(paths.install_lock_path())
-        .acquire(Actor::Installer, "desktop-windows-credential-gate")
+        .acquire(Actor::Installer, "desktop-windows-credential-bootstrap")
         .unwrap()
         .unwrap();
     let dashboard = DashboardCredentialStore::for_product(&paths);
 
-    match dashboard.begin_bootstrap(&guard) {
-        Err(CredentialError::PlatformAuthorityUnavailable(_)) => {}
-        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
-        Ok(_) => panic!("Windows credential bootstrap must remain typed unavailable"),
-    }
-    for name in [
-        "bootstrap-credentials.v1",
-        "ownership.cap",
-        "attach.cred",
-        "worker-ipc.cred",
-    ] {
+    dashboard
+        .begin_bootstrap(&guard)
+        .expect("Windows credential bootstrap must succeed after the D6 un-gating");
+    for name in ["bootstrap-credentials.v1", "ownership.cap", "attach.cred"] {
         assert!(
-            !paths.credentials_dir().join(name).exists(),
-            "Windows gate must precede gateway credential creation: {name}"
+            paths.credentials_dir().join(name).exists(),
+            "bootstrap must create the protected credential authority: {name}"
         );
     }
+    assert!(
+        !paths.credentials_dir().join("worker-ipc.cred").exists(),
+        "the gateway worker credential is a separate later step, not bootstrap"
+    );
+    drop(guard);
 }
 
 #[cfg(unix)]
@@ -299,26 +302,27 @@ fn lifecycle_refuses_a_mutation_without_the_ownership_capability() {
 
 #[cfg(windows)]
 #[test]
-fn lifecycle_mutation_stops_at_the_windows_ownership_authority_gate() {
+fn lifecycle_mutation_requires_ownership_after_windows_bootstrap() {
+    // Bootstrap now succeeds on Windows, creating the protected ownership
+    // credential; a receipt-bound mutation without the ownership capability is
+    // still refused (NotOwner), and no receipt is written by bootstrap alone.
     let dir = tempfile::tempdir().unwrap();
     let paths = ProductPaths::under_app_home(dir.path());
     paths.ensure().unwrap();
     let ctrl = LifecycleController::new(paths.clone());
     let guard = InstallLock::new(paths.install_lock_path())
-        .acquire(Actor::Installer, "lifecycle-windows-ownership-gate")
+        .acquire(Actor::Installer, "lifecycle-windows-ownership-bootstrap")
         .unwrap()
         .unwrap();
     let store = DashboardCredentialStore::for_product(&paths);
 
-    match store.begin_bootstrap(&guard) {
-        Err(CredentialError::PlatformAuthorityUnavailable(_)) => {}
-        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
-        Ok(_) => panic!("Windows ownership bootstrap must remain typed unavailable"),
-    }
+    store
+        .begin_bootstrap(&guard)
+        .expect("Windows ownership bootstrap must succeed after the D6 un-gating");
+    assert!(paths.credentials_dir().join("ownership.cap").exists());
     assert_eq!(
         ctrl.guard_owned_mutation(LifecycleOp::Stop, None, Some(&Verdict::OwnedLive)),
         Err(Refusal::NotOwner)
     );
-    assert!(!paths.credentials_dir().join("ownership.cap").exists());
     assert!(!paths.receipt_path().exists());
 }
