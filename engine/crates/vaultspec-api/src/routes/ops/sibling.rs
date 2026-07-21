@@ -11,9 +11,9 @@ use std::time::Duration;
 use axum::Json;
 use axum::http::StatusCode;
 use serde_json::{Value, json};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::app::{AppState, ScopeCell};
+use crate::bounded_child::{BoundedLimits, CapPolicy, run_bounded};
 
 use super::{ApiResult, RagControlBody, SIBLING_STDOUT_CAP, SIBLING_TIMEOUT};
 
@@ -163,94 +163,38 @@ async fn run_sibling_bounded_in_dir(
     timeout: Duration,
     cap: u64,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
-    // tokio::process so the spawn + bounded-read + timeout never blocks the
-    // async worker (robustness H1): a hung sibling no longer pins a runtime
-    // thread, and stdout is read through a ceiling rather than buffered whole.
+    // The shared bounded runner owns the spawn/drain/kill lifecycle (tokio, so a
+    // hung sibling never pins a runtime thread — robustness H1) and drains BOTH
+    // streams, so a chatty sibling cannot wedge on a full stderr pipe.
     // The sibling runs in the caller-resolved worktree. Most ops routes pass the
     // active cell; scoped routes such as `/search` pass their validated scope
     // cell so the subprocess cwd matches the cache key/request body.
-    let mut child = tokio::process::Command::new(&program[0])
+    let mut command = tokio::process::Command::new(&program[0]);
+    command
         .args(&program[1..])
         .args(args)
         .arg("--json")
-        .current_dir(cwd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            super::super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("spawning {}: {e}", program[0]),
-            )
-        })?;
+        .current_dir(cwd);
+    let limits = BoundedLimits { cap, timeout };
+    // A runaway sibling is a refusal, not a truncated envelope parsed as if it
+    // were complete.
+    let run = run_bounded(command, None, limits, CapPolicy::Refuse)
+        .await
+        .map_err(|fault| super::super::bounded_fault_error(state, &program[0], limits, fault))?;
 
-    // Read stdout under the byte ceiling AND a wall-clock timeout. On either
-    // bound the child is killed so it cannot linger as a zombie.
-    let stdout = child.stdout.take().expect("piped stdout");
-    let collect = async {
-        let mut buf = Vec::new();
-        // `AsyncReadExt::take` consumes the reader and bounds the read at the
-        // cap; the child's exit status is awaited separately below.
-        let read = stdout.take(cap).read_to_end(&mut buf).await;
-        (read, buf)
-    };
-
-    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
-        Ok(result) => result,
-        Err(_) => {
-            // Timed out: kill the child (no zombie) and degrade truthfully.
-            let _ = child.kill().await;
-            return Err(super::super::api_error(
-                state,
-                StatusCode::GATEWAY_TIMEOUT,
-                format!("{} timed out after {}s", program[0], timeout.as_secs()),
-            ));
-        }
-    };
-    read_result.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("reading {} output: {e}", program[0]),
-        )
-    })?;
-
-    // Output exceeded the cap: a runaway sibling. Kill it and degrade rather
-    // than parse a truncated envelope as if it were complete.
-    if buf.len() as u64 >= cap {
-        let _ = child.kill().await;
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!(
-                "{} produced over {} bytes of output (capped)",
-                program[0], cap
-            ),
-        ));
-    }
-
-    // Await the exit status (M4): a crashed sibling is a 502 degraded
+    // Inspect the exit status (M4): a crashed sibling is a 502 degraded
     // envelope, NOT a healthy-looking 200 wrapping a crash. Mirrors
     // `ingest-core::runner::run_json`, which already inspects status.
-    let status = child.wait().await.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("awaiting {} exit: {e}", program[0]),
-        )
-    })?;
-    let raw = String::from_utf8_lossy(&buf);
-    if !status.success() {
+    let raw = run.stdout_lossy();
+    if !run.success {
         return Err(super::super::api_error(
             state,
             StatusCode::BAD_GATEWAY,
-            format!("{} exited {:?}", program[0], status.code()),
+            format!("{} exited {:?}", program[0], run.code),
         ));
     }
     // Envelopes pass VERBATIM; non-JSON output is wrapped, never reshaped.
-    Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({"raw": raw, "exit": status.code()})))
+    Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({"raw": raw, "exit": run.code})))
 }
 
 /// The bounded sibling runner for a WRITE verb (W02): like
@@ -284,7 +228,8 @@ pub(super) async fn run_sibling_write_bounded(
     cap: u64,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let cwd = cell.root.clone();
-    let mut child = tokio::process::Command::new(&program[0])
+    let mut command = tokio::process::Command::new(&program[0]);
+    command
         .args(&program[1..])
         .args(args)
         .arg("--json")
@@ -294,81 +239,17 @@ pub(super) async fn run_sibling_write_bounded(
         // host locale (cp1252 on Windows) — otherwise non-ASCII body bytes
         // (em-dash, curly quotes, accents, CJK, emoji) are mojibake'd on write.
         .env("PYTHONUTF8", "1")
-        .env("PYTHONIOENCODING", "utf-8")
-        .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            super::super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("spawning {}: {e}", program[0]),
-            )
-        })?;
-
-    // Write the new body to the child's stdin and CLOSE it (drop the handle) so
-    // the sibling's `--body-stdin` read terminates at EOF. A `None` body (a
-    // frontmatter-only save) writes nothing and still closes stdin. A broken
-    // pipe here (the sibling exited before reading) is not fatal on its own — the
-    // exit-status / envelope inspection below decides the outcome.
-    {
-        let mut stdin = child.stdin.take().expect("piped stdin");
-        if let Some(text) = body {
-            let _ = stdin.write_all(text.as_bytes()).await;
-        }
-        // Explicit drop closes the pipe (EOF for the child); also flush first so
-        // the bytes are not lost on some platforms.
-        let _ = stdin.flush().await;
-        drop(stdin);
-    }
-
-    let stdout = child.stdout.take().expect("piped stdout");
-    let collect = async {
-        let mut buf = Vec::new();
-        let read = stdout.take(cap).read_to_end(&mut buf).await;
-        (read, buf)
-    };
-
-    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
-        Ok(result) => result,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(super::super::api_error(
-                state,
-                StatusCode::GATEWAY_TIMEOUT,
-                format!("{} timed out after {}s", program[0], timeout.as_secs()),
-            ));
-        }
-    };
-    read_result.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("reading {} output: {e}", program[0]),
-        )
-    })?;
-
-    if buf.len() as u64 >= cap {
-        let _ = child.kill().await;
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!(
-                "{} produced over {} bytes of output (capped)",
-                program[0], cap
-            ),
-        ));
-    }
-
-    let status = child.wait().await.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("awaiting {} exit: {e}", program[0]),
-        )
-    })?;
-    let raw = String::from_utf8_lossy(&buf);
+        .env("PYTHONIOENCODING", "utf-8");
+    let limits = BoundedLimits { cap, timeout };
+    // The shared runner pipes stdin for a `Some` body, writes it, and CLOSES the
+    // handle so the sibling's `--body-stdin` read terminates at EOF; the write
+    // runs concurrently with both output drains, so neither a large body nor a
+    // chatty stderr can deadlock. A `None` body (a frontmatter-only save) nulls
+    // stdin, which the sibling reads as an immediate EOF.
+    let run = run_bounded(command, body, limits, CapPolicy::Refuse)
+        .await
+        .map_err(|fault| super::super::bounded_fault_error(state, &program[0], limits, fault))?;
+    let raw = run.stdout_lossy();
 
     // KEY DIFFERENCE from the read runner: a `status`-bearing envelope is a VALID
     // business response — `status:"updated"`/`"unchanged"` (exit 0) OR
@@ -384,14 +265,13 @@ pub(super) async fn run_sibling_write_bounded(
     // No parseable `status` envelope on stdout: this is a genuine fault, not a
     // business refusal. A non-zero exit (a real crash) and an empty/garbage
     // stdout both degrade to a 502 — never a forged success.
-    if !status.success() {
+    if !run.success {
         return Err(super::super::api_error(
             state,
             StatusCode::BAD_GATEWAY,
             format!(
                 "{} exited {:?} with no parseable envelope",
-                program[0],
-                status.code()
+                program[0], run.code
             ),
         ));
     }
@@ -430,7 +310,8 @@ pub(super) async fn run_storage_sibling_bounded(
     cap: u64,
 ) -> Result<Value, (StatusCode, Json<Value>)> {
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let mut child = tokio::process::Command::new(&program[0])
+    let mut command = tokio::process::Command::new(&program[0]);
+    command
         .args(&program[1..])
         .args(&arg_refs)
         .arg("--json")
@@ -438,63 +319,13 @@ pub(super) async fn run_storage_sibling_bounded(
         // Force the sibling's Python into UTF-8 so a path/prefix with non-ASCII
         // bytes round-trips, matching the write runner.
         .env("PYTHONUTF8", "1")
-        .env("PYTHONIOENCODING", "utf-8")
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            super::super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("spawning {}: {e}", program[0]),
-            )
-        })?;
-
-    let stdout = child.stdout.take().expect("piped stdout");
-    let collect = async {
-        let mut buf = Vec::new();
-        let read = stdout.take(cap).read_to_end(&mut buf).await;
-        (read, buf)
-    };
-    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
-        Ok(result) => result,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(super::super::api_error(
-                state,
-                StatusCode::GATEWAY_TIMEOUT,
-                format!("{} timed out after {}s", program[0], timeout.as_secs()),
-            ));
-        }
-    };
-    read_result.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("reading {} output: {e}", program[0]),
-        )
-    })?;
-    if buf.len() as u64 >= cap {
-        let _ = child.kill().await;
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!(
-                "{} produced over {} bytes of output (capped)",
-                program[0], cap
-            ),
-        ));
-    }
-    let status = child.wait().await.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("awaiting {} exit: {e}", program[0]),
-        )
-    })?;
-    let raw = String::from_utf8_lossy(&buf);
-    storage_outcome(&raw, status.success()).map_err(|reason| {
+        .env("PYTHONIOENCODING", "utf-8");
+    let limits = BoundedLimits { cap, timeout };
+    let run = run_bounded(command, None, limits, CapPolicy::Refuse)
+        .await
+        .map_err(|fault| super::super::bounded_fault_error(state, &program[0], limits, fault))?;
+    let raw = run.stdout_lossy();
+    storage_outcome(&raw, run.success).map_err(|reason| {
         super::super::api_error(
             state,
             StatusCode::BAD_GATEWAY,
@@ -692,82 +523,23 @@ pub(super) async fn run_rag_lifecycle_capture(
     program: &[String],
     args: &[&str],
 ) -> Result<LifecycleRun, (StatusCode, Json<Value>)> {
-    let mut child = tokio::process::Command::new(&program[0])
-        .args(&program[1..])
-        .args(args)
-        .current_dir(cwd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            super::super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("spawning {}: {e}", program[0]),
-            )
-        })?;
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
-    // Read BOTH streams concurrently and bounded: the lifecycle handler scans the
-    // human text (rag prints the needs-install hint and error text to stderr), and
-    // an undrained stderr pipe would otherwise let a chatty child block on its write
-    // until the timeout kills it.
-    let collect = async {
-        let mut obuf = Vec::new();
-        let mut ebuf = Vec::new();
-        let mut otake = stdout.take(SIBLING_STDOUT_CAP);
-        let mut etake = stderr.take(SIBLING_STDOUT_CAP);
-        let (oread, eread) =
-            tokio::join!(otake.read_to_end(&mut obuf), etake.read_to_end(&mut ebuf),);
-        (oread, eread, obuf, ebuf)
+    let mut command = tokio::process::Command::new(&program[0]);
+    command.args(&program[1..]).args(args).current_dir(cwd);
+    let limits = BoundedLimits {
+        cap: SIBLING_STDOUT_CAP,
+        timeout: SIBLING_TIMEOUT,
     };
-    let (oread, eread, obuf, ebuf) = match tokio::time::timeout(SIBLING_TIMEOUT, collect).await {
-        Ok(result) => result,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(super::super::api_error(
-                state,
-                StatusCode::GATEWAY_TIMEOUT,
-                format!(
-                    "{} timed out after {}s",
-                    program[0],
-                    SIBLING_TIMEOUT.as_secs()
-                ),
-            ));
-        }
-    };
-    for read in [oread, eread] {
-        read.map_err(|e| {
-            super::super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("reading {} output: {e}", program[0]),
-            )
-        })?;
-    }
-    if obuf.len() as u64 >= SIBLING_STDOUT_CAP || ebuf.len() as u64 >= SIBLING_STDOUT_CAP {
-        let _ = child.kill().await;
-        return Err(super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!(
-                "{} produced over {} bytes of output (capped)",
-                program[0], SIBLING_STDOUT_CAP
-            ),
-        ));
-    }
-    let status = child.wait().await.map_err(|e| {
-        super::super::api_error(
-            state,
-            StatusCode::BAD_GATEWAY,
-            format!("awaiting {} exit: {e}", program[0]),
-        )
-    })?;
+    // The shared runner reads BOTH streams concurrently and bounded, which this
+    // handler needs twice over: it scans the human text (rag prints the
+    // needs-install hint and its error text to stderr), and an undrained stderr
+    // pipe would let a chatty child block on its own write until the timeout.
+    let run = run_bounded(command, None, limits, CapPolicy::Refuse)
+        .await
+        .map_err(|fault| super::super::bounded_fault_error(state, &program[0], limits, fault))?;
     Ok(LifecycleRun {
-        code: status.code(),
-        stdout: String::from_utf8_lossy(&obuf).trim().to_string(),
-        stderr: String::from_utf8_lossy(&ebuf).trim().to_string(),
+        code: run.code,
+        stdout: run.stdout_lossy().trim().to_string(),
+        stderr: run.stderr_lossy().trim().to_string(),
     })
 }
 

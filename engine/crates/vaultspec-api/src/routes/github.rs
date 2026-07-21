@@ -32,9 +32,9 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::io::AsyncReadExt;
 
 use crate::app::AppState;
+use crate::bounded_child::{BoundedFault, BoundedLimits, CapPolicy, run_bounded};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -164,52 +164,48 @@ pub async fn issues(
 /// timeout, unparseable output) — never the raw stderr (which can carry tokens or
 /// machine paths). The full error is logged for operator diagnostics.
 async fn run_gh(dir: &FsPath, args: &[&str]) -> Result<Value, String> {
-    let mut child = tokio::process::Command::new("gh")
-        .args(args)
-        .current_dir(dir)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            eprintln!("vaultspec serve: spawning gh failed: {e}");
-            "the gh CLI is not available".to_string()
+    let mut command = tokio::process::Command::new("gh");
+    command.args(args).current_dir(dir);
+    let limits = BoundedLimits {
+        cap: GH_STDOUT_CAP,
+        timeout: GH_TIMEOUT,
+    };
+    // The shared runner drains BOTH streams: `gh` is chatty on stderr (auth
+    // advice, rate-limit notices), and an undrained stderr pipe would block it
+    // mid-write until this call's wall clock expired.
+    let run = run_bounded(command, None, limits, CapPolicy::Refuse)
+        .await
+        .map_err(|fault| match fault {
+            BoundedFault::Spawn(error) => {
+                eprintln!("vaultspec serve: spawning gh failed: {error}");
+                "the gh CLI is not available".to_string()
+            }
+            BoundedFault::Read(error) => {
+                eprintln!("vaultspec serve: reading gh output failed: {error}");
+                "reading gh output failed".to_string()
+            }
+            BoundedFault::Timeout => format!("gh timed out after {}s", GH_TIMEOUT.as_secs()),
+            BoundedFault::OverCap => {
+                eprintln!("vaultspec serve: gh produced over {GH_STDOUT_CAP} bytes; args={args:?}");
+                "gh produced more output than the read bound".to_string()
+            }
+            BoundedFault::Wait(error) => {
+                eprintln!("vaultspec serve: awaiting gh exit failed: {error}");
+                "gh did not exit cleanly".to_string()
+            }
         })?;
-
-    let stdout = child.stdout.take().expect("piped stdout");
-    let collect = async {
-        let mut buf = Vec::new();
-        let read = stdout.take(GH_STDOUT_CAP).read_to_end(&mut buf).await;
-        (read, buf)
-    };
-
-    let (read_result, buf) = match tokio::time::timeout(GH_TIMEOUT, collect).await {
-        Ok(result) => result,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(format!("gh timed out after {}s", GH_TIMEOUT.as_secs()));
-        }
-    };
-    read_result.map_err(|e| {
-        eprintln!("vaultspec serve: reading gh output failed: {e}");
-        "reading gh output failed".to_string()
-    })?;
-
-    let status = child.wait().await.map_err(|e| {
-        eprintln!("vaultspec serve: awaiting gh exit failed: {e}");
-        "gh did not exit cleanly".to_string()
-    })?;
-    if !status.success() {
+    if !run.success {
         // Non-zero gh exit: no remote, not authenticated, rate-limited, offline.
         // Log the detail; return a generic, leak-free reason for the rail.
         eprintln!(
-            "vaultspec serve: gh exited with {status}; args={args:?} (likely no remote, \
-             not authenticated, or offline)"
+            "vaultspec serve: gh exited with {:?}; args={args:?} (likely no remote, \
+             not authenticated, or offline)",
+            run.code
         );
         return Err("GitHub is unavailable (no remote, not signed in, or offline)".to_string());
     }
 
-    serde_json::from_slice(&buf).map_err(|e| {
+    serde_json::from_slice(&run.stdout).map_err(|e| {
         eprintln!("vaultspec serve: parsing gh json failed: {e}");
         "could not parse gh output".to_string()
     })

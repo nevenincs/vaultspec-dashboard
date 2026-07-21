@@ -158,6 +158,46 @@ pub(crate) fn api_error(
     )
 }
 
+/// Map a bounded-subprocess fault to the degraded envelope, preserving the
+/// status code and wording every hand-copied runner used before they shared one
+/// lifecycle: a breached wall clock is a 504, every other fault a 502. A
+/// non-zero CHILD exit is not a fault here — that is a completed run each route
+/// interprets against its own envelope contract.
+pub(crate) fn bounded_fault_error(
+    state: &AppState,
+    program: &str,
+    limits: crate::bounded_child::BoundedLimits,
+    fault: crate::bounded_child::BoundedFault,
+) -> (StatusCode, Json<Value>) {
+    use crate::bounded_child::BoundedFault;
+    let (status, detail) = match fault {
+        BoundedFault::Spawn(error) => (
+            StatusCode::BAD_GATEWAY,
+            format!("spawning {program}: {error}"),
+        ),
+        BoundedFault::Read(error) => (
+            StatusCode::BAD_GATEWAY,
+            format!("reading {program} output: {error}"),
+        ),
+        BoundedFault::Timeout => (
+            StatusCode::GATEWAY_TIMEOUT,
+            format!("{program} timed out after {}s", limits.timeout.as_secs()),
+        ),
+        BoundedFault::OverCap => (
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "{program} produced over {} bytes of output (capped)",
+                limits.cap
+            ),
+        ),
+        BoundedFault::Wait(error) => (
+            StatusCode::BAD_GATEWAY,
+            format!("awaiting {program} exit: {error}"),
+        ),
+    };
+    api_error(state, status, detail)
+}
+
 /// An error carrying a machine-readable `error_kind` beside the message and the
 /// tiers block (dashboard-settings: typed settings-validation errors). The kind
 /// lets the client distinguish "your write was invalid" — and WHY — from "a

@@ -535,6 +535,22 @@ impl CoreAdapter {
             let _ = tx.send(res);
         });
 
+        // Drain stderr CONCURRENTLY on its own capped worker. The core is chatty
+        // on stderr (progress, warnings, tracebacks), and a child that fills the
+        // OS stderr pipe buffer blocks on its own write — so it would never
+        // finish stdout, and this whole invocation would wedge until the deadline
+        // killed it and reported a spurious Timeout. Reading stderr only after
+        // the exit (as this call site used to) is exactly the read that can never
+        // happen. The bytes are consumed only on the [`CoreFailed`] path; the
+        // draining is unconditional because the hazard is.
+        let stderr_pipe = child.stderr.take().expect("piped stderr");
+        let (err_tx, err_rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = stderr_pipe.take(cap).read_to_end(&mut buf);
+            let _ = err_tx.send(buf);
+        });
+
         let stdout = match rx.recv_timeout(self.timeout) {
             Ok(Ok(buf)) => buf,
             Ok(Err(io_err)) => {
@@ -603,7 +619,7 @@ impl CoreAdapter {
 
         // No parseable `status` envelope: a genuine fault, never a forged success.
         if !status.success() {
-            let stderr = read_capped_stderr(&mut child, cap);
+            let stderr = capped_stderr(&err_rx);
             return Err(CoreAdapterError::CoreFailed {
                 code: status.code(),
                 stderr,
@@ -634,17 +650,19 @@ fn terminate(child: &mut Child) {
     ingest_core::runner::terminate(child);
 }
 
-/// Drain the child's stderr under a byte cap for the redacted [`CoreFailed`]
-/// detail. Read after the child has exited, so the pipe cannot block it.
-fn read_capped_stderr(child: &mut Child, cap: u64) -> String {
-    child
-        .stderr
-        .take()
-        .map(|e| {
-            let mut buf = Vec::new();
-            let _ = e.take(cap).read_to_end(&mut buf);
-            String::from_utf8_lossy(&buf).into_owned()
-        })
+/// How long the [`CoreFailed`] path waits for the concurrent stderr drain to
+/// finish once the child has exited. It normally lands immediately (the pipe is
+/// at EOF); the bound exists because a surviving Windows GRANDCHILD can still
+/// hold the write end, and a diagnostic detail must never delay the typed error.
+const STDERR_SETTLE: Duration = Duration::from_secs(2);
+
+/// Collect the concurrently-drained, byte-capped stderr for the redacted
+/// [`CoreAdapterError::CoreFailed`] detail. An empty string when the drain has
+/// not settled within [`STDERR_SETTLE`] — a missing diagnostic, never a hang.
+fn capped_stderr(err_rx: &mpsc::Receiver<Vec<u8>>) -> String {
+    err_rx
+        .recv_timeout(STDERR_SETTLE)
+        .map(|buf| String::from_utf8_lossy(&buf).into_owned())
         .unwrap_or_default()
 }
 
@@ -1157,6 +1175,36 @@ mod tests {
         assert!(
             matches!(err, CoreAdapterError::OutputTooLarge { .. }),
             "runaway stdout → OutputTooLarge, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn invoke_completes_a_child_that_overflows_the_stderr_pipe() {
+        // A real core is chatty on stderr. This child writes far more than any OS
+        // pipe buffer (64 KiB) to stderr BEFORE its stdout envelope, so it blocks
+        // mid-write unless stderr is drained concurrently — and then never writes
+        // the envelope at all. Draining stderr only after the exit (as this call
+        // site once did) turns that into a spurious Timeout.
+        let bytes = 512 * 1024_usize;
+        let adapter = shell_adapter(
+            &format!(
+                "head -c {bytes} /dev/zero | tr '\\0' 'e' >&2; printf '%s' '{{\"status\":\"updated\"}}'"
+            ),
+            &format!(
+                "[Console]::Error.Write('e' * {bytes}); [Console]::Out.Write('{{\"status\":\"updated\"}}')"
+            ),
+        )
+        .with_timeout(Duration::from_secs(20));
+        let cwd = std::env::current_dir().unwrap();
+        let start = std::time::Instant::now();
+        let envelope = adapter
+            .invoke(&cwd, &shell_invocation(None))
+            .expect("a chatty child must complete, not wedge until the deadline");
+        assert_eq!(envelope.status, "updated");
+        assert!(
+            start.elapsed() < Duration::from_secs(15),
+            "the run must not have ridden its wall clock; took {:?}",
+            start.elapsed()
         );
     }
 

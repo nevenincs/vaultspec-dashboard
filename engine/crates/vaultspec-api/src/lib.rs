@@ -11,6 +11,7 @@ mod a2a_run_leases;
 pub mod app;
 mod authoring;
 pub mod boot;
+mod bounded_child;
 pub mod discovery;
 mod graph_delta;
 pub mod handshake;

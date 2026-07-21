@@ -19,10 +19,10 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde_json::{Value, json};
-use tokio::io::AsyncReadExt;
 
 use super::ops::{SIBLING_STDOUT_CAP, SIBLING_TIMEOUT};
 use crate::app::{AppState, ScopeCell};
+use crate::bounded_child::{BoundedLimits, CapPolicy, run_bounded};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
@@ -226,72 +226,28 @@ async fn run_git_bounded(
     cap: u64,
 ) -> Result<(String, bool), (StatusCode, Json<Value>)> {
     let cwd = cell.root.clone();
-    let mut child = tokio::process::Command::new(&program[0])
-        .args(&program[1..])
-        .args(args)
-        .current_dir(&cwd)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| {
-            super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("spawning {}: {e}", program[0]),
-            )
-        })?;
-
-    let stdout = child.stdout.take().expect("piped stdout");
-    let collect = async {
-        let mut buf = Vec::new();
-        let read = stdout.take(cap).read_to_end(&mut buf).await;
-        (read, buf)
-    };
-    let (read_result, buf) = match tokio::time::timeout(timeout, collect).await {
-        Ok(result) => result,
-        Err(_) => {
-            let _ = child.kill().await;
-            return Err(super::api_error(
-                state,
-                StatusCode::GATEWAY_TIMEOUT,
-                format!("{} timed out after {}s", program[0], timeout.as_secs()),
-            ));
-        }
-    };
-    read_result.map_err(|e| {
-        super::api_error(
+    let mut command = tokio::process::Command::new(&program[0]);
+    command.args(&program[1..]).args(args).current_dir(&cwd);
+    let limits = BoundedLimits { cap, timeout };
+    // Cap reached: the shared runner stops the child and hands back the BOUNDED
+    // PARTIAL rather than failing the whole read with a 502. The caller marks the
+    // response truncated so the client degrades honestly (shows what it got + a
+    // truncation notice) instead of rendering a healthy-looking transport error.
+    // Both streams are drained, so a git that is chatty on stderr (progress,
+    // advice, warnings) can never wedge on a full pipe.
+    let run = run_bounded(command, None, limits, CapPolicy::KeepPartial)
+        .await
+        .map_err(|fault| super::bounded_fault_error(state, &program[0], limits, fault))?;
+    // A read that stayed under the cap still has its exit status checked — a
+    // genuine git fault is a degraded error, not a silent empty result.
+    if !run.truncated && !run.success {
+        return Err(super::api_error(
             state,
             StatusCode::BAD_GATEWAY,
-            format!("reading {} output: {e}", program[0]),
-        )
-    })?;
-    // Cap reached: stop the child and return the BOUNDED PARTIAL rather than
-    // failing the whole read with a 502. The caller marks the response truncated
-    // so the client degrades honestly (shows what it got + a truncation notice)
-    // instead of rendering a healthy-looking transport error. A read that stayed
-    // under the cap still has its exit status checked — a genuine git fault is a
-    // degraded error, not a silent empty result.
-    let truncated = buf.len() as u64 >= cap;
-    if truncated {
-        let _ = child.kill().await;
-    } else {
-        let status = child.wait().await.map_err(|e| {
-            super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("awaiting {} exit: {e}", program[0]),
-            )
-        })?;
-        if !status.success() {
-            return Err(super::api_error(
-                state,
-                StatusCode::BAD_GATEWAY,
-                format!("{} exited {:?}", program[0], status.code()),
-            ));
-        }
+            format!("{} exited {:?}", program[0], run.code),
+        ));
     }
-    Ok((String::from_utf8_lossy(&buf).to_string(), truncated))
+    Ok((run.stdout_lossy().to_string(), run.truncated))
 }
 
 /// The optional request body for `/ops/git/{verb}`: the `diff`/`histdiff`
