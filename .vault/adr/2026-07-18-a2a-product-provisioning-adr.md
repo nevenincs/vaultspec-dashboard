@@ -200,8 +200,8 @@ contract to the complete product MSI.
 
 This composite archive shape and installer-verification delegation are later
 refined by the canonical ZIP profile in
-[[2026-07-20-a2a-archive-materialization-adr]] and the isolated TUF helper in
-[[2026-07-20-a2a-distribution-trust-adr]]; neither refinement supersedes this
+`2026-07-20-a2a-archive-materialization-adr` and the isolated TUF helper in
+`2026-07-20-a2a-distribution-trust-adr`; neither refinement supersedes this
 decision.
 
 **D3: One lifecycle plane, separate from run control.** A dedicated lifecycle
