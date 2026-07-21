@@ -559,7 +559,8 @@
     font-weight: 500;
     letter-spacing: 0.0375rem;
   }
-  .reader-title {
+  .reader-title,
+  .vs-markdown h1 {
     font-family: var(--font-serif);
     font-size: 2.125rem; /* 34 */
     line-height: 1.12;
@@ -585,25 +586,29 @@
     line-height: 1.56;
     font-weight: 400;
   }
-  .reader-body {
+  .reader-body,
+  .vs-markdown p {
     font-family: var(--font-sans);
     font-size: 0.96875rem; /* 15.5 */
     line-height: 1.56;
     font-weight: 400;
   }
-  .reader-h2 {
+  .reader-h2,
+  .vs-markdown h2 {
     font-family: var(--font-serif);
     font-size: 1.5rem; /* 24 */
     line-height: 1.18;
     font-weight: 600;
   }
-  .reader-h3 {
+  .reader-h3,
+  .vs-markdown h3 {
     font-family: var(--font-serif);
     font-size: 1.0625rem; /* 17 */
     line-height: 1.28;
     font-weight: 600;
   }
-  .reader-quote {
+  .reader-quote,
+  .vs-markdown blockquote {
     font-family: var(--font-serif);
     font-size: 1.0625rem; /* 17 */
     line-height: 1.5;
@@ -623,29 +628,18 @@
     margin-bottom: 0;
   }
   .vs-markdown h1 {
-    /* Reader/Title */
-    font-family: var(--font-serif);
-    font-size: 2.125rem;
-    line-height: 1.12;
-    font-weight: 600;
-    letter-spacing: -0.01875rem;
+    /* Reader/Title (shared with .reader-title above) */
     margin-block: 0 var(--spacing-fg-4);
   }
   .vs-markdown h2 {
-    /* Reader/H2 — airy editorial lead-in: generous space ABOVE a section heading
-       (more padding after the preceding paragraph) for an article-like rhythm. */
-    font-family: var(--font-serif);
-    font-size: 1.5rem;
-    line-height: 1.18;
-    font-weight: 600;
+    /* Reader/H2 (shared with .reader-h2 above) — airy editorial lead-in: generous
+       space ABOVE a section heading (more padding after the preceding paragraph)
+       for an article-like rhythm. */
     margin-block: 3.25rem var(--spacing-fg-2);
   }
   .vs-markdown h3 {
-    /* Reader/H3 — airy lead-in when it follows a paragraph or block. */
-    font-family: var(--font-serif);
-    font-size: 1.0625rem;
-    line-height: 1.28;
-    font-weight: 600;
+    /* Reader/H3 (shared with .reader-h3 above) — airy lead-in when it follows a
+       paragraph or block. */
     margin-block: 2.25rem var(--spacing-fg-1);
   }
   /* A subsection heading directly under its parent heading stays TIGHT (no airy
@@ -664,10 +658,7 @@
     margin-block: 1.75rem var(--spacing-fg-1);
   }
   .vs-markdown p {
-    /* Reader/Body */
-    font-family: var(--font-sans);
-    font-size: 0.96875rem;
-    line-height: 1.56;
+    /* Reader/Body (shared with .reader-body above) */
     margin-block: var(--spacing-fg-4);
   }
   /* The lead paragraph (the first body paragraph) reads at the Reader/Lead step. */
@@ -740,12 +731,8 @@
     text-decoration-color: var(--color-ink-faint);
   }
   .vs-markdown blockquote {
-    /* Reader/Quote — serif italic, leading accent bar (board 265:888: 3px accent
-       bar, rounded, 16px gap to the text). */
-    font-family: var(--font-serif);
-    font-size: 1.0625rem;
-    line-height: 1.5;
-    font-style: italic;
+    /* Reader/Quote (shared with .reader-quote above) — serif italic, leading
+       accent bar (board 265:888: 3px accent bar, rounded, 16px gap to the text). */
     color: var(--color-ink-muted);
     border-inline-start: 0.1875rem solid var(--color-accent);
     border-radius: 0.125rem;
