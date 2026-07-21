@@ -401,7 +401,7 @@ fn bounded_descriptor_read_refuses_a_planted_reparse_point() {
     // point must never read as "no descriptor".
     let outcome = read_bounded_nofollow(&link, MAX_DESCRIPTOR_BYTES);
     assert!(
-        matches!(outcome, Err(_)),
+        outcome.is_err(),
         "planted symlink must be refused, got {outcome:?}"
     );
 
@@ -415,7 +415,7 @@ fn bounded_descriptor_read_refuses_a_planted_reparse_point() {
         plant_directory_junction(&dir_target, &junction);
         let outcome = read_bounded_nofollow(&junction, MAX_DESCRIPTOR_BYTES);
         assert!(
-            matches!(outcome, Err(_)),
+            outcome.is_err(),
             "planted junction must be refused, got {outcome:?}"
         );
     }
