@@ -1,0 +1,143 @@
+# Producer-consumer A2A capsule contract check (plan W01.P01.S145): builds
+# the real A2A desktop capsule (target archive + detached manifest) from the
+# producer repository at the dashboard's pinned commit, then validates that
+# manifest with the dashboard's own production parser
+# (`vaultspec-product::manifest::CapsuleManifest::parse_and_verify`, driven
+# through the bounded `a2a_contract_check` executable). No fixture or
+# synthetic manifest is used here; the checker's fixture-driven proofs
+# already run on every push/PR inside `engine-ci.yml`'s `cargo test
+# --workspace` (see `engine/crates/vaultspec-product/tests/a2a_contract_check.rs`).
+#
+# NOT a push/PR gate. `packaging/a2a-component.lock.json` currently pins an
+# A2A producer commit that emits capsule contract `1.0`, while the dashboard
+# parser requires exact contract `2.0` (S145 exec record,
+# `.vault/exec/2026-07-18-a2a-product-provisioning/2026-07-18-a2a-product-provisioning-W01-P01-S145.md`).
+# Every dispatch of this workflow is therefore EXPECTED TO FAIL until that
+# cross-repository version selection is resolved and the lock re-pinned.
+# Promote this to a required `push`/`pull_request` gate only once the pinned
+# commit emits contract `2.0` and a real run turns green.
+name: a2a-product-contract
+
+on:
+  workflow_dispatch:
+    inputs:
+      producer_ref:
+        description: >-
+          Candidate vaultspec-a2a commit/ref to check instead of the pinned
+          lock commit (pre-repin validation only; leave empty to check the
+          committed lock as-is).
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a2a-product-contract-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  contract:
+    name: Build + validate capsule (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            runner: macos-14
+          - target: x86_64-apple-darwin
+            runner: macos-15-intel
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: x86_64-pc-windows-msvc
+            runner: windows-2022
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - name: Checkout dashboard
+        uses: actions/checkout@v4
+        with:
+          path: dashboard
+
+      - name: Resolve producer commit
+        id: producer
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.producer_ref }}" ]; then
+            echo "ref=${{ inputs.producer_ref }}" >> "$GITHUB_OUTPUT"
+          else
+            pinned=$(jq -r '.a2a_source.commit' dashboard/packaging/a2a-component.lock.json)
+            echo "ref=$pinned" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout A2A producer
+        uses: actions/checkout@v4
+        with:
+          repository: nevenincs/vaultspec-a2a
+          ref: ${{ steps.producer.outputs.ref }}
+          path: producer
+          persist-credentials: false
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install Python
+        working-directory: producer
+        run: uv python install 3.13
+
+      - name: Install producer's locked build environment
+        working-directory: producer
+        run: uv sync --locked --no-default-groups --group tooling
+
+      - name: Restore producer download cache
+        uses: actions/cache@v4
+        with:
+          path: producer/.capsule-cache
+          key: a2a-product-contract-capsule-inputs-${{ matrix.target }}-${{ hashFiles('producer/scripts/desktop_capsule_inputs.toml') }}
+          restore-keys: |
+            a2a-product-contract-capsule-inputs-${{ matrix.target }}-
+
+      - name: Emit real capsule manifest + target archive
+        shell: bash
+        working-directory: producer
+        run: |
+          uv run --no-sync --frozen python scripts/build_desktop_capsule.py build \
+            --target ${{ matrix.target }} \
+            --out-dir dist/capsules \
+            --cache-dir .capsule-cache
+
+      - name: Read pinned dashboard Rust toolchain
+        id: toolchain
+        shell: bash
+        working-directory: dashboard/engine
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: dashboard/engine
+
+      - name: Validate the real manifest with the dashboard production parser
+        shell: bash
+        working-directory: dashboard/engine
+        run: |
+          cargo run --quiet -p vaultspec-product --bin a2a_contract_check -- \
+            ../packaging/a2a-component.lock.json \
+            ../../producer/dist/capsules/${{ matrix.target }}.manifest.json \
+            ${{ matrix.target }}
+
+      - name: Upload checked manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2a-product-contract-${{ matrix.target }}
+          path: producer/dist/capsules/${{ matrix.target }}.manifest.json
+          if-no-files-found: error
+          retention-days: 7
