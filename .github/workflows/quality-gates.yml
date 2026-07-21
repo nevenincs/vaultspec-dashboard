@@ -208,3 +208,34 @@ jobs:
       - run: npm --prefix frontend ci
       - name: npm audit
         run: npm --prefix frontend audit
+
+  release-inputs-gate:
+    # The release-inputs gate (a2a-product-provisioning W04.P08.S72): validate the
+    # component lock, the release-set-manifest schema, and the product builder +
+    # its manifest verifiers BEFORE any release job may run. The vaultspec-product
+    # suite composes + self-verifies real product trees against the committed lock
+    # and exercises the lock/capsule/release-manifest verifiers, so a drift between
+    # the pins, the schema, and the builder fails here rather than at release.
+    name: Release inputs (lock · schema · product builder)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
+      - name: Component lock + release-set-manifest schema are well-formed
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -c "import json; json.load(open('packaging/a2a-component.lock.json'))"
+          python3 -c "import json; json.load(open('schemas/release-set-manifest.json'))"
+      - name: Product builder, manifest verifiers, and lock/capsule/release pins
+        run: cargo test -p vaultspec-product
+        working-directory: engine
