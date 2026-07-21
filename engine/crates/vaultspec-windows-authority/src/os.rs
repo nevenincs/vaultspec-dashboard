@@ -64,6 +64,8 @@ const DIRECTORY_HARDENING_ACCESS: u32 =
 const DIRECTORY_OBSERVATION_ACCESS: u32 = READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
 const DIRECTORY_CREATE_OPTIONS: u32 =
     FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
+/// `ERROR_ACCESS_DENIED` — a directory handle without append access.
+const ERROR_ACCESS_DENIED_CODE: i32 = 5;
 const IO_INFORMATION_FILE_OPENED: usize = 1;
 const IO_INFORMATION_FILE_CREATED: usize = 2;
 const MAX_MOVE_PATH_UTF16_UNITS: usize = 32_766;
@@ -82,6 +84,117 @@ pub(super) fn open_existing_directory(path: &Path) -> io::Result<File> {
         .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     options.open(path)
+}
+
+/// Flush-only access for the directory-metadata sync (W01.P01.S177).
+///
+/// `FlushFileBuffers` requires the handle to carry `FILE_WRITE_DATA` or
+/// `FILE_APPEND_DATA`. On a DIRECTORY, `FILE_ADD_SUBDIRECTORY` IS
+/// `FILE_APPEND_DATA` — the same access bit — which is why a directory handle
+/// carrying it can be flushed and a read-only one cannot. This mask carries that
+/// bit and nothing beyond what the flush needs: no `DELETE`, no `WRITE_DAC`, no
+/// `READ_CONTROL`, no list, no traverse.
+const DIRECTORY_FLUSH_ACCESS: u32 = FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
+
+/// Reopen the SAME directory object through a retained handle and flush its
+/// metadata, then close the reopened handle (W01.P01.S177).
+///
+/// Capability-held directories (`cap-std`) are opened without
+/// `FILE_ADD_SUBDIRECTORY`, so they cannot be flushed through themselves. This
+/// reopens the object with an EMPTY relative name — `RootDirectory` is the
+/// retained handle and no pathname is resolved — so there is no name to
+/// substitute and no intermediate component to traverse; the object reached is
+/// the object held, by construction. The identity of the reopened handle is
+/// nevertheless PROVEN against the original, converting reliance on documented
+/// kernel behavior into an assertion in code.
+///
+/// The reopened handle is opened, flushed, and dropped inside this call. It is
+/// never retained, never returned, and never stored: a long-lived handle here
+/// would deny sharing to a concurrent hardening open, which is the collision the
+/// credentials and materializer lanes each already had to solve.
+pub(super) fn flush_directory_metadata(directory: &File) -> io::Result<()> {
+    // A handle that already carries the append bit flushes directly. This is not
+    // an optimization: the crate's OWN directory handles deny write SHARING, so
+    // a second open requesting append access against them fails with a sharing
+    // violation. Reopening is therefore the fallback for handles that cannot
+    // flush themselves, never the universal path. The fallback is entered only
+    // on ERROR_ACCESS_DENIED — precisely the "mask lacks append access" signal —
+    // so a genuine flush failure propagates instead of being retried into a
+    // misleading success.
+    match directory.sync_all() {
+        Ok(()) => return Ok(()),
+        Err(error) if error.raw_os_error() == Some(ERROR_ACCESS_DENIED_CODE) => {}
+        Err(error) => return Err(error),
+    }
+
+    let expected = validated_directory_identity(directory)?;
+    let unicode_name = UNICODE_STRING {
+        Length: 0,
+        MaximumLength: 0,
+        Buffer: std::ptr::null_mut(),
+    };
+    let object_attributes = OBJECT_ATTRIBUTES {
+        Length: u32::try_from(std::mem::size_of::<OBJECT_ATTRIBUTES>())
+            .expect("OBJECT_ATTRIBUTES size fits u32"),
+        RootDirectory: directory.as_raw_handle(),
+        ObjectName: &raw const unicode_name,
+        Attributes: OBJ_CASE_INSENSITIVE,
+        SecurityDescriptor: std::ptr::null(),
+        SecurityQualityOfService: std::ptr::null(),
+    };
+    let mut raw_handle: HANDLE = std::ptr::null_mut();
+    let mut io_status = IO_STATUS_BLOCK::default();
+
+    // SAFETY: `directory` keeps a valid owned directory handle alive for this
+    // synchronous call. The ObjectName is EMPTY with `RootDirectory` set, which
+    // reopens that exact object — no pathname is parsed and no component is
+    // resolved. `unicode_name`, `object_attributes`, `raw_handle`, and
+    // `io_status` remain live, aligned, and correctly sized for the call; a null
+    // Buffer is valid for a zero-length UNICODE_STRING. The access mask is the
+    // fixed flush-only product constant, never caller-selected. FILE_OPEN cannot
+    // create, FILE_DIRECTORY_FILE cannot yield a non-directory, and the returned
+    // disposition is asserted below. Every optional pointer is null. No pointer
+    // escapes.
+    let status = unsafe {
+        NtCreateFile(
+            &raw mut raw_handle,
+            DIRECTORY_FLUSH_ACCESS,
+            &raw const object_attributes,
+            &raw mut io_status,
+            std::ptr::null(),
+            FILE_ATTRIBUTE_NORMAL,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            FILE_OPEN,
+            FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+            std::ptr::null(),
+            0,
+        )
+    };
+    if status < 0 {
+        return Err(ntstatus_to_io_error(status));
+    }
+    if raw_handle.is_null() {
+        return Err(io::Error::other(
+            "NtCreateFile succeeded without returning a directory handle",
+        ));
+    }
+
+    // SAFETY: successful NtCreateFile returned one newly owned handle. File
+    // takes that ownership exactly once and closes it on every later path,
+    // including the early returns below.
+    let reopened = unsafe { File::from_raw_handle(raw_handle) };
+    if io_status.Information != IO_INFORMATION_FILE_OPENED {
+        return Err(io::Error::other(format!(
+            "native directory disposition mismatch: expected {IO_INFORMATION_FILE_OPENED}, got {}",
+            io_status.Information
+        )));
+    }
+    if validated_directory_identity(&reopened)? != expected {
+        return Err(io::Error::other(
+            "reopened directory identity differs from the retained handle",
+        ));
+    }
+    reopened.sync_all()
 }
 
 /// Directory-hardening variant of [`open_existing_directory`]: opens the final

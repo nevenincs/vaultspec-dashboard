@@ -603,3 +603,52 @@ fn read_only_child_file_mask_excludes_every_mutation_right() {
     let hardening = materializer | WRITE_DAC;
     assert_eq!(hardening & !materializer, WRITE_DAC);
 }
+
+/// Real-NTFS acceptance for the directory-metadata flush (W01.P01.S177).
+///
+/// Both sides of the boundary, so the result cannot be misread: a directory
+/// handle WITHOUT append access is refused by `FlushFileBuffers`, and
+/// `sync_directory_metadata` succeeds through that very same handle by reopening
+/// the object with flush-only rights. That is the whole mechanism — the missing
+/// right is `FILE_ADD_SUBDIRECTORY`, which on a directory IS `FILE_APPEND_DATA`.
+#[test]
+fn directory_metadata_flush_succeeds_through_a_non_flushable_handle() {
+    use std::os::windows::fs::OpenOptionsExt as _;
+
+    let dir = tempfile::tempdir().unwrap();
+    let child = dir.path().join("datastore");
+    create_directory(&child);
+    std::fs::write(child.join("root.json"), b"trust anchor").unwrap();
+
+    // A handle opened the way capability libraries open directories: readable,
+    // but carrying no append access.
+    let capability_like = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(0x0200_0000)
+        .open(&child)
+        .unwrap();
+    assert_eq!(
+        capability_like.sync_all().unwrap_err().raw_os_error(),
+        Some(5),
+        "a directory handle without append access must be refused by FlushFileBuffers"
+    );
+
+    // The same handle, flushed through the reopen.
+    crate::sync_directory_metadata(&capability_like)
+        .expect("flush must succeed by reopening the retained object");
+
+    // The crate's own directory handle already carries the bit, so it flushes
+    // directly too — and the operation is repeatable.
+    let retained = os::open_existing_directory(&child).unwrap();
+    retained
+        .sync_all()
+        .expect("DIRECTORY_ACCESS carries the append bit");
+    crate::sync_directory_metadata(&retained).expect("flush is idempotent");
+
+    // It refuses a FILE handle: the reopen requests FILE_DIRECTORY_FILE.
+    let file = std::fs::File::open(child.join("root.json")).unwrap();
+    assert!(
+        crate::sync_directory_metadata(&file).is_err(),
+        "a non-directory handle must be refused"
+    );
+}

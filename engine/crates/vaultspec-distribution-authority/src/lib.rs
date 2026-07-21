@@ -976,15 +976,20 @@ fn sync_cap_directory(directory: &Dir) -> Result<(), VerificationError> {
         .map_err(|_| VerificationError::DatastoreUnavailable)
 }
 
-/// Windows directory-metadata durability is NOT provisioned. This refusal is
-/// deliberately uniform across test and production builds: a `cfg(test)` success
-/// arm here would let the Windows acceptance evidence pass over the exact
-/// durability step production refuses, which is a cfg-only expected-failure
-/// standing in for proof (D7/D8). Retiring it belongs to the tracked
-/// parent-directory durability follow-on (plan step W01.P01.S177), never inline.
+/// Durably flush directory metadata on Windows (W01.P01.S177).
+///
+/// The capability handle cannot be flushed through itself — capability libraries
+/// open directories without the append access `FlushFileBuffers` requires — so
+/// the authority crate reopens the same object through this exact handle with
+/// flush-only rights and flushes that. No pathname is resolved.
 #[cfg(windows)]
-fn sync_cap_directory(_directory: &Dir) -> Result<(), VerificationError> {
-    Err(VerificationError::WindowsDatastoreAuthorityNotProvisioned)
+fn sync_cap_directory(directory: &Dir) -> Result<(), VerificationError> {
+    let retained = directory
+        .try_clone()
+        .map_err(|_| VerificationError::DatastoreUnavailable)?
+        .into_std_file();
+    vaultspec_windows_authority::sync_directory_metadata(&retained)
+        .map_err(|_| VerificationError::DatastoreUnavailable)
 }
 
 fn prepare_attempt_datastore(

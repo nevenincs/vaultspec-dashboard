@@ -79,6 +79,27 @@ pub enum ProcessExistence {
     Unverifiable,
 }
 
+/// Durably flush one directory's metadata through a handle the caller already
+/// retains (W01.P01.S177) — the Windows counterpart of `fsync` on a directory
+/// descriptor.
+///
+/// `FlushFileBuffers` requires append access, and a directory handle opened
+/// read-only (as capability libraries open them) does not carry it. Rather than
+/// widening the rights of a long-lived handle — which would deny sharing to a
+/// concurrent hardening open — this reopens the SAME object through the supplied
+/// handle with flush-only rights, flushes, and closes it within the call.
+///
+/// The reopen resolves no pathname: the object reached is the object held. No
+/// handle is exposed; this is a `sync`-shaped operation.
+///
+/// Callers must flush a file's CONTENTS before flushing the directory that
+/// publishes its NAME. A name that became durable ahead of its bytes could
+/// survive a crash pointing at a truncated or empty file, which presents as
+/// corruption rather than the absent-file case recovery handles cleanly.
+pub fn sync_directory_metadata(directory: &File) -> io::Result<()> {
+    os::flush_directory_metadata(directory)
+}
+
 /// Positively probe whether a Windows process exists without exposing a raw
 /// handle. Access failures remain [`ProcessExistence::Unverifiable`].
 #[must_use]
