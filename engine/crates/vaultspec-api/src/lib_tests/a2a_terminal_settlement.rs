@@ -443,4 +443,3 @@ async fn reserved_leases_revoke_on_restart_while_committed_leases_survive() {
         "a durably committed lease survives restart reconciliation"
     );
 }
-

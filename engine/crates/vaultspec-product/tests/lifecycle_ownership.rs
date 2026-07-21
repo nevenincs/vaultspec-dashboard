@@ -21,8 +21,6 @@ use std::time::{Duration, Instant};
 use sha2::{Digest, Sha256};
 #[cfg(unix)]
 use vaultspec_product::control::ControlClient;
-#[cfg(windows)]
-use vaultspec_product::credentials::CredentialError;
 use vaultspec_product::credentials::DashboardCredentialStore;
 use vaultspec_product::discovery::Verdict;
 #[cfg(unix)]

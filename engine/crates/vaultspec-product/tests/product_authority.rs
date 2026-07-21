@@ -17,10 +17,10 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
+use vaultspec_product::credentials::CredentialError;
+#[cfg(unix)]
 use vaultspec_product::credentials::CredentialRole;
-use vaultspec_product::credentials::{
-    CredentialError, DashboardCredentialStore, ForeignHandoffReader,
-};
+use vaultspec_product::credentials::{DashboardCredentialStore, ForeignHandoffReader};
 #[cfg(unix)]
 use vaultspec_product::lifecycle::LifecycleController;
 use vaultspec_product::locking::{

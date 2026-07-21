@@ -11,8 +11,6 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 use vaultspec_product::control::ControlClient;
-#[cfg(windows)]
-use vaultspec_product::credentials::CredentialError;
 use vaultspec_product::credentials::DashboardCredentialStore;
 #[cfg(unix)]
 use vaultspec_product::credentials::ForeignHandoffReader;
