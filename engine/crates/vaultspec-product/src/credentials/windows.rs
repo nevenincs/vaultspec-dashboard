@@ -18,6 +18,7 @@
 //! surface with the safe `windows-acl` handle mutation layer.
 
 use std::io::Read as _;
+use std::os::windows::fs::OpenOptionsExt as _;
 use std::os::windows::io::AsRawHandle as _;
 use std::path::Path;
 
@@ -38,6 +39,11 @@ use vaultspec_windows_authority::private_policy::{
 use windows_acl::acl::{ACL, AceType};
 
 use super::TOKEN_BYTES;
+
+/// Required to open a DIRECTORY handle at all on Windows.
+const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+/// Opens the final link without traversing a reparse point.
+const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileIdentity {
@@ -115,10 +121,12 @@ enum RetirementState {
     Named {
         file: RetainedCredentialFile,
         path: std::path::PathBuf,
+        directory: std::path::PathBuf,
     },
-    DeletePending {
-        file: RetainedCredentialFile,
-    },
+    /// The name is already gone — delete-on-close was armed and the exact handle
+    /// closed — but the parent index change is not yet committed. Retrying from
+    /// here flushes the parent only; mirrors the Unix arm's identical state.
+    ParentSyncPending { directory: std::path::PathBuf },
 }
 
 #[derive(Debug)]
@@ -141,20 +149,36 @@ impl RetainedRetirementAuthority {
             ));
         }
         Ok(Self {
-            state: RetirementState::Named { file, path },
+            state: RetirementState::Named {
+                file,
+                path,
+                directory: directory_path.to_owned(),
+            },
         })
     }
 
     pub fn named_file_mut(&mut self) -> Option<&mut RetainedCredentialFile> {
         match &mut self.state {
             RetirementState::Named { file, .. } => Some(file),
-            RetirementState::DeletePending { .. } => None,
+            RetirementState::ParentSyncPending { .. } => None,
         }
     }
 
+    /// Retire the credential and commit the removal.
+    ///
+    /// Delete-on-close is armed on the EXACT retained handle — never a pathname
+    /// delete, so a file that raced onto the name can never be removed instead —
+    /// the handle is then closed to apply it, and the parent directory is flushed
+    /// so the removal survives a crash. Retirement is a ROLLBACK path, so a
+    /// failed flush must never report success: it returns the retained
+    /// [`RetirementState::ParentSyncPending`] authority for a bounded retry.
     pub fn retry(self) -> Result<(), RetirementFailure> {
         match self.state {
-            RetirementState::Named { file, path } => {
+            RetirementState::Named {
+                file,
+                path,
+                directory,
+            } => {
                 let expected = file.identity;
                 let named = AuthorityFile::identity_at_path(&path).map(identity_of);
                 if let Err(source) = named.and_then(|identity| {
@@ -168,38 +192,52 @@ impl RetainedRetirementAuthority {
                 }) {
                     return Err(RetirementFailure {
                         authority: Self {
-                            state: RetirementState::Named { file, path },
+                            state: RetirementState::Named {
+                                file,
+                                path,
+                                directory,
+                            },
                         },
                         phase: RetirementPhase::Named,
                         source,
                     });
                 }
-                // Delete-on-close is armed on the exact retained handle. Durably
-                // flushing the parent directory after the name is gone is a
-                // SEPARATE Windows durability concern outside this DACL
-                // amendment; it remains a typed, rollback-scoped gap (a reviewed
-                // parent-directory durability guarantee is a tracked follow-on).
-                Err(RetirementFailure {
+                // Closing the exact retained handle applies the armed deletion,
+                // so the name is gone only after this drop — and the parent index
+                // must be committed AFTER that, never before.
+                drop(file);
+                sync_parent_directory(&directory).map_err(|source| RetirementFailure {
                     authority: Self {
-                        state: RetirementState::DeletePending { file },
+                        state: RetirementState::ParentSyncPending { directory },
                     },
                     phase: RetirementPhase::ParentSyncPending,
-                    source: std::io::Error::other(
-                        "Windows credential retirement requires a reviewed parent-directory durability guarantee",
-                    ),
+                    source,
                 })
             }
-            RetirementState::DeletePending { file } => Err(RetirementFailure {
-                authority: Self {
-                    state: RetirementState::DeletePending { file },
-                },
-                phase: RetirementPhase::ParentSyncPending,
-                source: std::io::Error::other(
-                    "Windows credential retirement requires a reviewed parent-directory durability guarantee",
-                ),
-            }),
+            RetirementState::ParentSyncPending { directory } => sync_parent_directory(&directory)
+                .map_err(|source| RetirementFailure {
+                    authority: Self {
+                        state: RetirementState::ParentSyncPending { directory },
+                    },
+                    phase: RetirementPhase::ParentSyncPending,
+                    source,
+                }),
         }
     }
+}
+
+/// Commit a parent directory's index change, the Windows counterpart of the Unix
+/// arm's `fsync` on a directory descriptor.
+///
+/// The authority crate reopens this object with flush-only rights when the
+/// supplied handle lacks the append-data access `FlushFileBuffers` requires, so
+/// an ordinary read handle is sufficient here and no mutation right is taken.
+fn sync_parent_directory(directory: &Path) -> std::io::Result<()> {
+    let handle = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(directory)?;
+    vaultspec_windows_authority::sync_directory_metadata(&handle)
 }
 
 impl RetainedCredentialFile {
@@ -318,9 +356,6 @@ pub fn retain_product_root(path: &Path) -> std::io::Result<std::fs::File> {
     // The directory authorities re-derive the credentials tree by relative child
     // traversal under the installation guard; this handle only proves the root
     // is an openable directory (backup semantics are required to open one).
-    use std::os::windows::fs::OpenOptionsExt as _;
-    const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
-    const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
     std::fs::OpenOptions::new()
         .read(true)
         .custom_flags(FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT)
@@ -627,4 +662,99 @@ fn bounded_read(file: &mut std::fs::File, maximum: usize) -> std::io::Result<Vec
 
 fn win_error(code: u32) -> std::io::Error {
     std::io::Error::from_raw_os_error(code as i32)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::credentials::DashboardCredentialStore;
+    use crate::locking::{Actor, InstallLock};
+    use crate::paths::ProductPaths;
+
+    const DESCRIPTOR: &str = "bootstrap-credentials.v1";
+
+    fn bootstrapped() -> (tempfile::TempDir, ProductPaths) {
+        let dir = tempfile::tempdir().expect("temporary app home");
+        let paths = ProductPaths::under_app_home(dir.path());
+        paths.ensure().expect("product paths");
+        (dir, paths)
+    }
+
+    /// Retirement completes on Windows: the credential is GONE and the parent
+    /// index change is committed (W01.P01.S177 consumer).
+    ///
+    /// This asserts SUCCESS, not the absence of an error. Retirement is the
+    /// rollback path, and its failure direction is FAIL-OPEN — a retirement whose
+    /// parent-index change is lost leaves a credential the operator believes
+    /// destroyed still present after a crash — so the evidence has to show the
+    /// removal actually completed, not merely that nothing returned Err.
+    #[test]
+    fn credential_retirement_completes_and_commits_the_parent() {
+        let (_dir, paths) = bootstrapped();
+        let guard = InstallLock::new(paths.install_lock_path())
+            .acquire(Actor::Installer, "windows-credential-retirement")
+            .expect("lock acquisition")
+            .expect("uncontended lock");
+        let store = DashboardCredentialStore::for_product(&paths);
+        let pending = store
+            .begin_bootstrap(&guard)
+            .expect("Windows credential bootstrap succeeds");
+
+        let descriptor = paths.credentials_dir().join(DESCRIPTOR);
+        assert!(descriptor.exists(), "bootstrap must create the descriptor");
+
+        pending
+            .retire_descriptor()
+            .unwrap_or_else(|failure| panic!("retirement must complete: {:?}", failure.source));
+
+        assert!(
+            !descriptor.exists(),
+            "the retired credential must be gone from the directory"
+        );
+        // The credentials the descriptor governed are untouched by its retirement.
+        for name in ["ownership.cap", "attach.cred"] {
+            assert!(
+                paths.credentials_dir().join(name).exists(),
+                "retiring the descriptor must not remove {name}"
+            );
+        }
+        drop(guard);
+    }
+
+    /// Committing the parent index is IDEMPOTENT, and a second retirement of an
+    /// already-retired credential refuses honestly rather than reporting success.
+    ///
+    /// This idempotency class has already produced two defects in this lane (a
+    /// pre-created unprotected directory, then the re-hardening case), so it is
+    /// the predictable next one.
+    #[test]
+    fn parent_commit_is_idempotent_and_a_retired_name_cannot_be_retired_again() {
+        let (_dir, paths) = bootstrapped();
+        let guard = InstallLock::new(paths.install_lock_path())
+            .acquire(Actor::Installer, "windows-credential-retirement-idempotent")
+            .expect("lock acquisition")
+            .expect("uncontended lock");
+        let store = DashboardCredentialStore::for_product(&paths);
+        let pending = store
+            .begin_bootstrap(&guard)
+            .expect("Windows credential bootstrap succeeds");
+        pending.retire_descriptor().expect("first retirement");
+
+        let credentials = paths.credentials_dir();
+        // Flushing the parent again is a no-op that must still succeed: the
+        // ParentSyncPending retry path replays exactly this call.
+        super::sync_parent_directory(&credentials).expect("parent commit is idempotent");
+        super::sync_parent_directory(&credentials).expect("and remains so when repeated");
+
+        // The retired name is gone, so building a retirement authority over it
+        // fails closed instead of pretending to retire a file that is not there.
+        let retired = credentials.join(DESCRIPTOR);
+        assert_eq!(
+            super::AuthorityFile::identity_at_path(&retired)
+                .unwrap_err()
+                .kind(),
+            std::io::ErrorKind::NotFound,
+            "a retired credential must not still be addressable"
+        );
+        drop(guard);
+    }
 }
