@@ -61,14 +61,20 @@ fn probe_succeeds_when_the_seat_republishes_owned_live() {
     let temp = tempfile::tempdir().unwrap();
     let discovery = temp.path().join("gateway-discovery.json");
     let owner = "probe-owner";
-    // Ours, our own LIVE pid, fresh heartbeat: the classifier returns OwnedLive.
+    let watermark = now_ms();
+    // Ours, our own LIVE pid, fresh heartbeat published at/after the watermark:
+    // the classifier returns OwnedLive and the watermark check passes.
     write(
         &discovery,
         &discovery_json(owner, std::process::id(), now_ms()),
     );
 
-    probe_seat_republished(&discovery, &config(owner, Duration::from_secs(2)))
-        .expect("a fresh owned-live re-publish must satisfy the probe");
+    probe_seat_republished(
+        &discovery,
+        &config(owner, Duration::from_secs(2)),
+        watermark,
+    )
+    .expect("a fresh owned-live post-watermark re-publish must satisfy the probe");
 }
 
 #[test]
@@ -79,6 +85,7 @@ fn probe_times_out_when_no_record_appears() {
     let refused = probe_seat_republished(
         &discovery,
         &config("probe-owner", Duration::from_millis(150)),
+        now_ms(),
     );
     assert!(
         refused.is_err(),
@@ -95,7 +102,11 @@ fn probe_rejects_a_stale_leftover_record() {
     // of a seat that stopped before the update. It must NOT satisfy the probe.
     write(&discovery, &discovery_json(owner, std::process::id(), 1));
 
-    let refused = probe_seat_republished(&discovery, &config(owner, Duration::from_millis(150)));
+    let refused = probe_seat_republished(
+        &discovery,
+        &config(owner, Duration::from_millis(150)),
+        now_ms(),
+    );
     assert!(
         refused.is_err(),
         "a stale leftover discovery record must never count as a healthy re-publish"
@@ -106,6 +117,7 @@ fn probe_rejects_a_stale_leftover_record() {
 fn probe_rejects_a_foreign_owner() {
     let temp = tempfile::tempdir().unwrap();
     let discovery = temp.path().join("gateway-discovery.json");
+    let watermark = now_ms();
     // Fresh + live, but published by a DIFFERENT owner: not our relaunched seat.
     write(
         &discovery,
@@ -115,6 +127,7 @@ fn probe_rejects_a_foreign_owner() {
     let refused = probe_seat_republished(
         &discovery,
         &config("probe-owner", Duration::from_millis(150)),
+        watermark,
     );
     assert!(
         refused.is_err(),
@@ -123,28 +136,81 @@ fn probe_rejects_a_foreign_owner() {
 }
 
 #[test]
-fn relaunch_and_probe_spawns_the_launcher_then_probes() {
+fn probe_rejects_a_record_published_before_the_watermark() {
+    let temp = tempfile::tempdir().unwrap();
+    let discovery = temp.path().join("gateway-discovery.json");
+    let owner = "probe-owner";
+    let watermark = now_ms();
+    // Owned + live + still within the freshness window, but its heartbeat PREDATES
+    // the relaunch watermark — the pid-recycling false-positive Fable flagged. The
+    // watermark rejects it: only a post-relaunch publish proves the new seat.
+    write(
+        &discovery,
+        &discovery_json(owner, std::process::id(), watermark - 1),
+    );
+
+    let refused = probe_seat_republished(
+        &discovery,
+        &config(owner, Duration::from_millis(150)),
+        watermark,
+    );
+    assert!(
+        refused.is_err(),
+        "a record published before the relaunch watermark must never satisfy the probe"
+    );
+}
+
+#[test]
+fn probe_refuses_an_oversized_discovery_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let discovery = temp.path().join("gateway-discovery.json");
+    let owner = "probe-owner";
+    // A record padded beyond the 64 KiB bound — otherwise owned+live+fresh — must
+    // be refused by the bounded read, never allocated or parsed, so the probe
+    // treats it as absent and times out (resource-bounds law).
+    let mut giant = discovery_json(owner, std::process::id(), now_ms());
+    giant.push_str(&" ".repeat(70 * 1024));
+    write(&discovery, &giant);
+
+    let refused = probe_seat_republished(
+        &discovery,
+        &config(owner, Duration::from_millis(150)),
+        now_ms() - 1_000,
+    );
+    assert!(
+        refused.is_err(),
+        "an oversized discovery file must be refused by the bounded read"
+    );
+}
+
+#[test]
+fn relaunch_and_probe_gates_on_a_post_relaunch_record() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = temp.path();
     let discovery = temp.path().join("gateway-discovery.json");
     let owner = "probe-owner";
-    // Pre-publish an owned-live record so the probe half resolves immediately once
-    // the (harmless) launcher spawn succeeds. This proves spawn + probe compose
-    // and the detached spawn does not error; the live serve republish is the S60
-    // integration concern.
+    // A record published BEFORE the relaunch (owned + live, and still inside the
+    // 60 s freshness window — a heartbeat from 5 s ago, the pid-recycle scenario)
+    // must NOT satisfy the flow: relaunch_and_probe captures its watermark before
+    // spawning, and the harmless launcher publishes nothing after, so the probe
+    // times out. This proves the spawn composes with the probe AND the end-to-end
+    // watermark rejection of a stale-but-fresh pre-relaunch record.
     write(
         &discovery,
-        &discovery_json(owner, std::process::id(), now_ms()),
+        &discovery_json(owner, std::process::id(), now_ms() - 5_000),
     );
     let launcher = harmless_launcher();
 
-    relaunch_and_probe(
+    let refused = relaunch_and_probe(
         &launcher,
         workspace,
         &discovery,
-        &config(owner, Duration::from_secs(2)),
-    )
-    .expect("spawn of a resolvable launcher plus a fresh owned-live record satisfies the flow");
+        &config(owner, Duration::from_millis(200)),
+    );
+    assert!(
+        refused.is_err(),
+        "a pre-relaunch record must not satisfy the watermark-gated relaunch+probe flow"
+    );
 }
 
 /// A launcher that exists and spawns cleanly (it ignores the `serve` operand and

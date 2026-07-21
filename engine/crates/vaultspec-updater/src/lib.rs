@@ -62,6 +62,10 @@ const COMPILED_TARGET: &str = env!("UPDATER_TARGET");
 
 /// The maximum owner-restricted descriptor size the updater will read.
 const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
+/// The byte bound on a discovery record read during the relaunch probe — the same
+/// cap the drain enforces (`gateway_drain::MAX_DISCOVERY_BYTES`); a hostile or
+/// runaway file is refused rather than allocated per poll.
+const MAX_DISCOVERY_BYTES: u64 = 64 * 1024;
 const DESCRIPTOR_VERSION: u8 = 1;
 const MAX_OWNER_BYTES: usize = 1024;
 
@@ -440,9 +444,14 @@ pub fn relaunch_and_probe(
     discovery_path: &Path,
     config: &ProbeConfig,
 ) -> Result<(), RelaunchError> {
+    // Capture the relaunch watermark BEFORE spawning: only a discovery record
+    // published at or after this instant can prove the NEW seat is up, so a stale
+    // pre-update record — even one whose pid was recycled by an unrelated live
+    // process — can never masquerade as our healthy re-publish.
+    let watermark_ms = now_ms();
     spawn_detached_front_door(launcher, workspace)
         .map_err(|error| RelaunchError::new(format!("front-door spawn failed: {error}")))?;
-    probe_seat_republished(discovery_path, config)
+    probe_seat_republished(discovery_path, config, watermark_ms)
 }
 
 /// Spawn `<launcher> serve` fully detached — no console, no inherited stdio — so
@@ -467,16 +476,26 @@ fn spawn_detached_front_door(launcher: &Path, workspace: &Path) -> std::io::Resu
 }
 
 /// Poll the discovery record until the relaunched seat is [`Verdict::OwnedLive`]
-/// within the deadline. Freshness, live-pid, ownership, and compatibility are
-/// re-evaluated at the CURRENT time each poll, so a stale leftover record from
-/// before the update never satisfies it — only a genuine fresh re-publish does.
+/// AND its heartbeat is at or after `watermark_ms` (the instant the relaunch
+/// began), within the deadline.
+///
+/// The discovery read is bounded to [`MAX_DISCOVERY_BYTES`] per poll (a hostile or
+/// runaway file is refused, never allocated). Freshness, live-pid, ownership, and
+/// compatibility are re-evaluated at the CURRENT time each poll, and the watermark
+/// requires the record to have been published AFTER the relaunch — so a stale
+/// leftover record from before the update, even one whose pid was recycled by an
+/// unrelated live process within the freshness window, never satisfies it. Only a
+/// genuine post-relaunch re-publish does.
 pub fn probe_seat_republished(
     discovery_path: &Path,
     config: &ProbeConfig,
+    watermark_ms: i64,
 ) -> Result<(), RelaunchError> {
     let begun = Instant::now();
     loop {
-        if let Ok(raw) = std::fs::read_to_string(discovery_path)
+        if let Some(raw) = read_bounded_nofollow(discovery_path, MAX_DISCOVERY_BYTES)
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok())
             && let Ok(discovery) = GatewayDiscovery::parse(&raw)
         {
             let context = DiscoveryContext {
@@ -486,7 +505,9 @@ pub fn probe_seat_republished(
                 supported_protocol: config.supported_protocol.clone(),
                 supported_state_schema: config.supported_state_schema.clone(),
             };
-            if matches!(discovery.classify(&context), Verdict::OwnedLive) {
+            if discovery.heartbeat_ms >= watermark_ms
+                && matches!(discovery.classify(&context), Verdict::OwnedLive)
+            {
                 return Ok(());
             }
         }
