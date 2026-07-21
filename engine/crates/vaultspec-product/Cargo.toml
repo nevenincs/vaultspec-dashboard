@@ -50,6 +50,10 @@ vaultspec-distribution-authority = { path = "../vaultspec-distribution-authority
 # crate depends on none of these.
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 static_assertions = "1.1.0"
+# Dev-only scaffolding that builds a REAL signed TUF repository from already-public
+# distribution-authority API. No production target depends on it, so it cannot
+# reach a shipped binary by construction.
+vaultspec-release-fixtures = { path = "../vaultspec-release-fixtures" }
 tar = "0.4"
 tempfile = "3.27.0"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }

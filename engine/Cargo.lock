@@ -3742,10 +3742,12 @@ dependencies = [
  "serde_jcs",
  "serde_json",
  "sha2",
+ "static_assertions",
  "sysinfo",
  "tar",
  "tempfile",
  "vaultspec-distribution-authority",
+ "vaultspec-release-fixtures",
  "vaultspec-windows-authority",
  "winapi",
  "windows-acl",
@@ -3753,9 +3755,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "vaultspec-release-fixtures"
+version = "0.1.4"
+dependencies = [
+ "aws-lc-rs",
+ "base64",
+ "jiff",
+ "serde_json",
+ "sha2",
+ "tough",
+ "vaultspec-distribution-authority",
+]
+
+[[package]]
 name = "vaultspec-release-verify"
 version = "0.1.4"
 dependencies = [
+ "tempfile",
  "tokio",
  "vaultspec-distribution-authority",
 ]
