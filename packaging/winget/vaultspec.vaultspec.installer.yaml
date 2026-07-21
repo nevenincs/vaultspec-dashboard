@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+# The WinGet installer manifest (a2a-product-provisioning W04.P10.S83): points ONLY
+# at the complete product MSI (the whole offline tree + product receipt + clean
+# uninstall), with per-user product scope, manager-owned upgrade, and the
+# manager-owned rollback WinGet provides. The InstallerSha256 + ProductCode are
+# release-time facts (the MSI must exist) — placeholders here, reconciled when the
+# complete-MSI release publishes (gated on the product-release CI + the cross-repo
+# capsule source). NEVER points at the binary-only archive.
+PackageIdentifier: vaultspec.vaultspec
+PackageVersion: 0.1.2
+InstallerType: wix
+Scope: user
+InstallModes:
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.2/vaultspec-0.1.2-x86_64-pc-windows-msvc.msi
+    InstallerSha256: "0000000000000000000000000000000000000000000000000000000000000000"
+    ProductCode: "{51ED63D0-D794-406A-8F96-ED09840177B1}"
+ManifestType: installer
+ManifestVersion: 1.6.0

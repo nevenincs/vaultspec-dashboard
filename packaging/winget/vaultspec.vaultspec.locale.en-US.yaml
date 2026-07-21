@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+# The WinGet en-US locale manifest (a2a-product-provisioning W04.P10.S84).
+PackageIdentifier: vaultspec.vaultspec
+PackageVersion: 0.1.2
+PackageLocale: en-US
+Publisher: vaultspec
+PublisherUrl: https://github.com/nevenincs/vaultspec-dashboard
+PackageName: vaultspec
+PackageUrl: https://github.com/nevenincs/vaultspec-dashboard
+License: MIT
+LicenseUrl: https://github.com/nevenincs/vaultspec-dashboard/blob/main/LICENSE
+ShortDescription: The complete vaultspec dashboard product — dashboard, copied updater, pinned A2A capsule, manifests, licenses, and SBOM as one offline-complete tree.
+Description: >-
+  vaultspec installs the whole offline product tree via the complete MSI and
+  verifies it against its release manifest with the shipped bounded authority. Only
+  the composite install/update/removal channels are supported; a bare cargo install
+  is not.
+Moniker: vaultspec
+Tags:
+  - dashboard
+  - vaultspec
+  - developer-tools
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.1.6.0.schema.json
+# The WinGet version manifest (a2a-product-provisioning W04.P10.S82): the composite
+# product identity + publisher. Authored here; PUBLISHED cross-repo to
+# microsoft/winget-pkgs (a manifest PR) when the complete MSI release ships.
+PackageIdentifier: vaultspec.vaultspec
+PackageVersion: 0.1.2
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0
