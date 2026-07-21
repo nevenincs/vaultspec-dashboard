@@ -238,6 +238,97 @@ export interface ProvisionJob {
   } | null;
 }
 
+// --- A2A component lifecycle plane (a2a-product-provisioning W05.P11) ----------
+//
+// The stores-layer view of the served `/a2a/lifecycle/*` surface (engine
+// `routes/a2a_lifecycle.rs`). Tolerant shapes: an additive wire field is absorbed,
+// never a break (engine-read-and-infer). Degradation of the agent ORCHESTRATION
+// tier is read from the `tiers.agent` block (`readAgentTierAvailability`), NEVER
+// re-derived here; these types carry the INSTALL / readiness lifecycle truth the
+// controller serves, distinct from the orchestration-availability the tier reports.
+
+/** The closed set of lifecycle intents the wire accepts (engine `LifecycleOpArg`,
+ *  kebab-case). The run body carries ONLY one of these — never a path, never a
+ *  free-form argument. */
+export type A2aLifecycleOp =
+  | "install"
+  | "ensure"
+  | "start"
+  | "stop"
+  | "restart"
+  | "repair"
+  | "update"
+  | "rollback"
+  | "remove"
+  | "doctor";
+
+/** The single served readiness model (engine `Readiness`, tagged on `state`). A
+ *  cold worker on a live gateway is still service-ready (`gateway-ready`), NOT a
+ *  degradation — an installed-but-stopped generation is a valid cold state. */
+export type A2aReadiness =
+  | { state: "uninstalled" }
+  | { state: "installed-stopped" }
+  | { state: "gateway-ready"; worker: "cold" | "ready" };
+
+/** The `install_state` label the controller reports (engine `ReleaseObservation`).
+ *  `recovery-required` / `busy` / `unverifiable` are the degraded, install-level
+ *  states — orthogonal to the orchestration tier. */
+export type A2aInstallState =
+  | "absent"
+  | "settled"
+  | "recovery-required"
+  | "busy"
+  | "unverifiable";
+
+/** `GET /a2a/lifecycle/status` projection over the machine-global product state.
+ *  Backend-served truth the panel renders without inventing semantics. `tiers`
+ *  rides the envelope (`unwrapEnvelope` flattens it on) so the store reads the
+ *  agent orchestration tier from the SAME response. */
+export interface A2aLifecycleStatus {
+  installed: boolean | null;
+  installed_known: boolean;
+  install_state: A2aInstallState;
+  recovery_required: boolean;
+  degraded: boolean;
+  readiness: A2aReadiness | null;
+  ownership: { owner: string; retained: boolean };
+  active_generation: string | null;
+  tiers?: TiersBlock;
+}
+
+/** The bounded `POST /a2a/lifecycle/run` body: a single semantic operation — no
+ *  path, no free-form argument (engine `RunRequest`). The dispatcher validates
+ *  this closed shape before it reaches the wire. */
+export interface A2aLifecycleRunBody {
+  op: A2aLifecycleOp;
+}
+
+/** The typed refusal kind an errored lifecycle run carries in its error envelope
+ *  (engine `refusal_status_kind` plus the atomic at-capacity path), so the client
+ *  branches on the CAUSE and renders its own localized remediation rather than
+ *  parsing a human message. */
+export type A2aLifecycleRefusalKind =
+  | "at_capacity"
+  | "not_installed"
+  | "no_active_receipt"
+  | "not_owner"
+  | "foreign_resident"
+  | "incompatible"
+  | "recovery_required"
+  | "unverifiable"
+  | "stale_unproven";
+
+/** A tracked lifecycle job as `POST /a2a/lifecycle/run` and `GET
+ *  /a2a/lifecycle/jobs/{id}` report it (engine `Job::to_wire`). `outcome` is the
+ *  operation's own result payload (`null` while running); its shape varies by op,
+ *  so it stays an open record the panel narrows by op. */
+export interface A2aLifecycleJob {
+  id: string;
+  op: A2aLifecycleOp;
+  state: "running" | "succeeded" | "failed";
+  outcome: Record<string, unknown> | null;
+}
+
 // The structured shapes below are the `DiffView` component's prop contract — what
 // the client parses git's verbatim `diff` output INTO so the view renders without
 // re-parsing unified-diff text on every paint. A hunk-per-entry document with

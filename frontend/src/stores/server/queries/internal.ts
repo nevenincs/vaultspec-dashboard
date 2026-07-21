@@ -227,6 +227,13 @@ export const engineKeys = {
       worktree ?? "root",
     ] as const,
   provisionJob: (id: string) => [...engineKeys.all, "provision", "job", id] as const,
+  // The A2A component lifecycle plane (a2a-product-provisioning W05.P11). The
+  // status projection is machine-global (a2a is one resident per machine), so a
+  // single stable key; a job folds its id. A settled job invalidates the status
+  // so the panel re-reads the reconciled projection.
+  a2aLifecycleStatus: () => [...engineKeys.all, "a2a-lifecycle", "status"] as const,
+  a2aLifecycleJob: (id: string) =>
+    [...engineKeys.all, "a2a-lifecycle", "job", id] as const,
   settings: () => [...engineKeys.all, "settings"] as const,
   // The settings schema registry (dashboard-settings): engine-owned and stable
   // for a workspace, so a single key. Read rarely, cached long; the dialog reads

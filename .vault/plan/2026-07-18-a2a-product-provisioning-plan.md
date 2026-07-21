@@ -233,14 +233,14 @@ Add a stores-owned A2A product lifecycle client and a localized control panel ov
 
 Dispatch to vaultspec-standard-executor to define tolerant wire types, dispatcher validation, bounded polling, query invalidation, and lifecycle projections in the frontend stores layer.
 
-- [ ] `W05.P11.S88` - Define lifecycle status, job, operation, receipt, ownership, readiness, progress, and typed refusal wire shapes; `frontend/src/stores/server/engine/statusTypes.ts`.
-- [ ] `W05.P11.S89` - Add bearer-gated lifecycle status, run, and job methods without exposing a browser-to-A2A transport; `frontend/src/stores/server/engine/client.ts`.
-- [ ] `W05.P11.S90` - Add stable lifecycle status and job query identities to the shared engine key registry; `frontend/src/stores/server/queries/internal.ts`.
-- [ ] `W05.P11.S91` - Validate every lifecycle dispatch as a closed typed operation with bounded data-removal intent before it reaches the engine client; `frontend/src/stores/server/a2aLifecycleActions.ts`.
-- [ ] `W05.P11.S92` - Project backend-served install, ownership, gateway, worker, provider, admission, job, update, rollback, repair, and doctor state with bounded polling; `frontend/src/stores/server/a2aLifecycle.ts`.
-- [ ] `W05.P11.S93` - Prove malformed operations, client path fields, free-form arguments, and implicit data deletion cannot pass the lifecycle dispatcher; `frontend/src/stores/server/a2aLifecycleActions.test.ts`.
-- [ ] `W05.P11.S94` - Prove status interpretation, cold readiness, foreign immutability, job settlement, query invalidation, and bounded polling from production store functions; `frontend/src/stores/server/a2aLifecycle.test.ts`.
-- [ ] `W05.P11.S95` - Prove the frontend lifecycle client drives the spawned engine and real A2A desktop capsule without a direct sibling request; `frontend/src/stores/server/a2aLifecycle.live.test.ts`.
+- [x] `W05.P11.S88` - Define lifecycle status, job, operation, receipt, ownership, readiness, progress, and typed refusal wire shapes; `frontend/src/stores/server/engine/statusTypes.ts`.
+- [x] `W05.P11.S89` - Add bearer-gated lifecycle status, run, and job methods without exposing a browser-to-A2A transport; `frontend/src/stores/server/engine/client.ts`.
+- [x] `W05.P11.S90` - Add stable lifecycle status and job query identities to the shared engine key registry; `frontend/src/stores/server/queries/internal.ts`.
+- [x] `W05.P11.S91` - Validate every lifecycle dispatch as a closed typed operation with bounded data-removal intent before it reaches the engine client; `frontend/src/stores/server/a2aLifecycleActions.ts`.
+- [x] `W05.P11.S92` - Project backend-served install, ownership, gateway, worker, provider, admission, job, update, rollback, repair, and doctor state with bounded polling; `frontend/src/stores/server/a2aLifecycle.ts`.
+- [x] `W05.P11.S93` - Prove malformed operations, client path fields, free-form arguments, and implicit data deletion cannot pass the lifecycle dispatcher; `frontend/src/stores/server/a2aLifecycleActions.test.ts`.
+- [x] `W05.P11.S94` - Prove status interpretation, cold readiness, foreign immutability, job settlement, query invalidation, and bounded polling from production store functions; `frontend/src/stores/server/a2aLifecycle.test.ts`.
+- [x] `W05.P11.S95` - Prove the frontend lifecycle client drives the spawned engine and real A2A desktop capsule without a direct sibling request; `frontend/src/stores/server/a2aLifecycle.live.test.ts`.
 
 ### Phase `W05.P12` - add localized lifecycle controls
 
