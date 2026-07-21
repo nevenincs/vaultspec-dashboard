@@ -46,10 +46,25 @@ jobs:
           set -euo pipefail
           TAG=$(printf '%s' "$PLAN" | jq -r '.announcement_tag')
           VERSION="${TAG#v}"
-          ASSET="vaultspec-cli-x86_64-pc-windows-msvc.zip"
+          # W04.P10.S81: bump to the COMPLETE product archive (the whole offline
+          # tree), never the binary-only vaultspec-cli archive.
+          ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"
           HASH=$(curl --proto '=https' --tlsv1.2 -sSfL "${URL}.sha256" | cut -d' ' -f1)
           test -n "$VERSION" && test -n "$HASH"
+          # Verify the published digest: download the archive and confirm its own
+          # SHA-256 matches the sibling .sha256, so a corrupt or mismatched asset
+          # never lands in the manifest.
+          curl --proto '=https' --tlsv1.2 -sSfL "$URL" -o /tmp/complete.zip
+          ACTUAL=$(sha256sum /tmp/complete.zip | cut -d' ' -f1)
+          if [ "$ACTUAL" != "$HASH" ]; then
+            echo "complete archive digest mismatch: sidecar ${HASH}, actual ${ACTUAL}"
+            exit 1
+          fi
+          # Reversible downgrade: the url is version-parameterised and every bump is
+          # its own commit, so `scoop install vaultspec@<older>` re-fetches that
+          # version's complete archive from the retained release + git history — a
+          # downgrade is always to a real, previously-published complete tree.
           # Guard: refuse to bump the manifest to a version older than what is
           # already committed. This catches the case where a stale branch merge
           # clobbered a prior bump and this job is re-run for an older release.
