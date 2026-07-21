@@ -126,44 +126,68 @@ makes the child's directory entry durable. The pieces are scattered:
   this ADR cares about (power loss between file-record commit and index-entry
   commit, or between an index-entry write-ahead-log record and its checkpoint).
 
-Empirical evidence (relayed from Opus-S11's own probes, run on this machine and
-reported with an explicit statement of their limits, which this document honors
-rather than overstates): Windows 11 Pro, OS version 10.0.26200.0. Probes ran under
-%TEMP%, which resolves to volume C:, NTFS version 3.1, 512 bytes per sector
-(per fsutil fsinfo ntfsinfo). A single local fixed disk; no network or
-removable volume was tested, and the probes did NOT run on this repository's own
-NTFS volume (Y:), though both are NTFS. Rust's std::fs::File::sync_all() and
-sync_data() map to FlushFileBuffers on Windows; every "flush" below is that call.
-There was NO crash or power-loss simulation of any kind: every probe result is
-"the call returned Ok" or "the call returned an error", nothing about whether
-bytes reached stable media.
+Evidence for this section is now a COMMITTED, reviewed acceptance test rather
+than a relayed transcript, which is the stronger form of the same fact:
+`directory_flush_requires_the_append_data_right` and
+`directory_metadata_flush_succeeds_through_a_non_flushable_handle` in
+`engine/crates/vaultspec-windows-authority/src/tests/private_authority.rs`
+(landed in commit d8c5f6f01f, "feat(distribution): retire the Windows platform
+gate; pin the flush access-rights boundary"). The first test opens the SAME
+directory TWICE, differing in exactly one access bit, and asserts BOTH
+directions: `sync_all` (FlushFileBuffers) is denied with `ERROR_ACCESS_DENIED`
+(raw_os_error 5) on the handle without `FILE_ADD_SUBDIRECTORY`, and succeeds on
+the otherwise-identical handle carrying it; it also asserts the bit aliasing
+itself, `FILE_ADD_SUBDIRECTORY == FILE_APPEND_DATA == 0x0000_0004`, against the
+`windows-sys` bindings directly rather than assuming it from documentation. Both
+arms are asserted deliberately, per the test's own doc comment, because a
+one-armed guard would pass vacuously in exactly the environment where the
+premise had drifted. The companion test covers the reopen path: a
+capability-shaped handle (matching how `cap-std` opens a directory) is refused
+by `FlushFileBuffers`, and `sync_directory_metadata` then succeeds through that
+very same handle by reopening the object with flush-only rights. This is,
+correctly, a testable CODE fact about an access-rights precondition, not a
+durability inference, and this document treats it as such: it is cited below
+for what it establishes and no further.
 
-- Probe 1 (SUCCEEDS): a directory handle opened via std::fs::OpenOptions with
-  access_mode(DELETE | FILE_LIST_DIRECTORY | FILE_ADD_SUBDIRECTORY |
-  FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE), share_mode(FILE_SHARE_READ),
-  custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS), the
-  crate's own DIRECTORY_ACCESS mask in vaultspec-windows-authority/src/os.rs.
-  Sequence: create a temp directory, create a child directory, write a small
-  file into it, open the directory handle as above, call sync_all(). Both
-  sync_all() and sync_data() returned Ok(()).
-- Probe 2 (REFUSED): the same directory opened only as
-  OpenOptions::new().read(true).custom_flags(FILE_FLAG_BACKUP_SEMANTICS), no
-  FILE_ADD_SUBDIRECTORY. sync_all() returned Err(os error 5, ERROR_ACCESS_DENIED).
-- Probe 3 (REFUSED): a cap-std Dir handle
-  (cap_std::fs::Dir::open_ambient_dir, then try_clone().into_std_file()) also
-  lacks FILE_ADD_SUBDIRECTORY by default and returned the identical
-  ERROR_ACCESS_DENIED (5), for both a child Dir and the parent capability Dir.
-- Probe 4 (SUCCEEDS): starting from the non-flushable handle shape of probe 2,
-  a fresh handle to the SAME directory object was opened via NtCreateFile with
-  RootDirectory set to that handle, an EMPTY ObjectName, and
-  DesiredAccess = FILE_ADD_SUBDIRECTORY | FILE_READ_ATTRIBUTES | SYNCHRONIZE
-  (CreateDisposition = FILE_OPEN, CreateOptions = FILE_DIRECTORY_FILE |
-  FILE_SYNCHRONOUS_IO_NONALERT). The resulting handle's sync_all() returned
-  Ok(()). An empty ObjectName with a RootDirectory reopens the same object under
-  different access rights.
+The test environment it was authored and run against: a physical desktop (ASUS
+motherboard; not a virtual machine, no network/iSCSI/SMB storage path involved),
+Windows 11 Pro, OS version 10.0.26200.0, three direct-attached fixed consumer
+SSDs (a SATA SSD, an NVMe SSD reported by WMI under its SCSI-quirked
+InterfaceType, and a second SATA SSD). The tests ran under the OS temp directory
+on volume C:, NTFS version 3.1, 512 bytes per sector (`fsutil fsinfo ntfsinfo`);
+this repository's own volume (Y:) is also NTFS but was not the volume the tests
+ran against. Rust's `std::fs::File::sync_all()`/`sync_data()` map to
+`FlushFileBuffers` on Windows; every "flush" below is that call. Consumer
+direct-attached SSDs are precisely the storage class Finding 4 describes as
+WHQL-required to honor `FLUSH_CACHE` since Windows 8 but NOT independently
+verified here: no drive firmware was inspected, no bus-level observation was
+made, and no crash or power-loss simulation of any kind was run. Every test
+result is "the call returned Ok" or "the call returned error 5" — evidence about
+which API calls are permitted on this access-rights boundary, nothing about
+whether any write reached stable media on these specific drives.
 
-The mechanism these four probes establish is precise and is itself documented
-Win32/NT behavior, not something inferred solely from the probes:
+- Arm 1 (REFUSED): a directory handle opened with
+  access_mode(FILE_READ_ATTRIBUTES | SYNCHRONIZE), share_mode(FILE_SHARE_READ |
+  FILE_SHARE_WRITE), custom_flags(FILE_FLAG_BACKUP_SEMANTICS), i.e. lacking
+  FILE_ADD_SUBDIRECTORY. sync_all() returns Err with raw_os_error() ==
+  Some(5) (ERROR_ACCESS_DENIED).
+- Arm 2 (SUCCEEDS): the SAME directory opened identically except with
+  FILE_ADD_SUBDIRECTORY added to the access mask. sync_all() returns Ok(()).
+  The two opens differ in exactly that one bit.
+- The bit-aliasing assertion: FILE_ADD_SUBDIRECTORY == FILE_APPEND_DATA ==
+  0x0000_0004, asserted directly against the windows-sys constants rather
+  than assumed from documentation.
+- The companion reopen test: a capability-shaped handle (read-only,
+  FILE_FLAG_BACKUP_SEMANTICS, matching how cap-std opens a directory) is
+  refused by sync_all() with the identical raw_os_error() == Some(5), and
+  crate::sync_directory_metadata then SUCCEEDS through that very same handle
+  by reopening the object with flush-only rights; the crate's own
+  DIRECTORY_ACCESS-masked handle (which already carries the bit) flushes
+  directly and repeatably; and a plain FILE handle is refused by
+  sync_directory_metadata, since its reopen requests FILE_DIRECTORY_FILE.
+
+The mechanism this test pins is precise and is itself documented Win32/NT
+behavior, not something inferred solely from the test:
 FlushFileBuffers's public reference page states the handle "must have the
 GENERIC_WRITE access right", but the kernel-level primitive it rides on,
 NtFlushBuffersFileEx (Finding 1), documents STATUS_ACCESS_DENIED specifically as
@@ -174,34 +198,33 @@ DIRECTORY object, FILE_ADD_SUBDIRECTORY and FILE_APPEND_DATA are the SAME bit
 (0x0004), confirmed directly against Microsoft's own access-rights table (cited
 above: "File Access Rights Constants (WinNT.h)", Microsoft Learn,
 learn.microsoft.com/en-us/windows/win32/fileio/file-access-rights-constants).
-Probe 1's mask carries that bit; probes 2 and 3's masks do not; probe 4
-re-acquires it via NtCreateFile's root-directory reopen idiom. So the
-documented-and-probed statement is precise: "Windows refuses to flush an
-arbitrary directory handle" is false as stated; the correct statement is "a
-Windows directory handle can be flushed only if it was opened with
-FILE_ADD_SUBDIRECTORY (equivalently, append/add-subdirectory access), and any
-handle lacking it can be upgraded by reopening the same object via
-NtCreateFile's RootDirectory/empty-ObjectName idiom rather than by re-walking the
+Arm 1's mask lacks that bit; arm 2's carries it; the reopen test re-acquires it
+on an otherwise non-flushable handle via a root-directory/empty-name reopen
+idiom internal to sync_directory_metadata. So the documented-and-tested
+statement is precise: "Windows refuses to flush an arbitrary directory handle"
+is false as stated; the correct statement is "a Windows directory handle can be
+flushed only if it was opened with FILE_ADD_SUBDIRECTORY (equivalently,
+append/add-subdirectory access), and any handle lacking it can be upgraded by
+reopening the same object with flush-only rights rather than by re-walking the
 path."
 
-These probe results establish the access-rights precondition for the flush call
-to succeed at all on a directory handle, and, per Opus-S11's own framing,
-establish nothing beyond that: not that anything reached stable media, not any
-ordering guarantee between a child's bytes and its parent's directory entry, not
-anything about $LogFile journaling, and not anything about drives that
-acknowledge a flush early or ignore FUA. They do NOT, by themselves, establish
-that a successful flush-the-parent call is what makes a child's newly created
-directory entry crash-durable; that is the inference in the paragraphs above
-this section, drawn from Finding 1's scoping argument plus the cross-platform
-crash-consistency pattern, not from these probes. This remains the one point
-genuinely unresolved by documentation OR by these probes; it is recorded here as
-INFERRED, not documented and not empirically probed.
-
-Probe 4's mechanism is landing as a reviewed reopen_self_flushable primitive in
-vaultspec-windows-authority's private os module; the scaffolding used to obtain
-this result was deliberately not committed (an unreviewed unsafe primitive must
-not sit uncommitted at a reviewed trust boundary). Cite the landed, reviewed
-primitive once it exists rather than this probe transcript.
+This committed test establishes the access-rights precondition for the flush
+call to succeed at all on a directory handle, and establishes nothing beyond
+that: not that anything reached stable media, not any ordering guarantee
+between a child's bytes and its parent's directory entry, not anything about
+$LogFile journaling, and not anything about drives that acknowledge a flush
+early or ignore FUA. It does NOT, by itself, establish that a successful
+flush-the-parent call is what makes a child's newly created directory entry
+crash-durable; that is the inference in the paragraphs above this section,
+drawn from Finding 1's scoping argument plus the cross-platform
+crash-consistency pattern, not from this test. This remains the one point
+genuinely unresolved by documentation OR by this test; it is recorded here as
+INFERRED, not documented and not empirically tested. The project's own review
+record for this test keeps the sufficiency claim labelled as an inference
+wherever it appears in code comments: the flush-child-then-parent ordering is
+documented as a RULE callers must observe and the failure mode it prevents,
+never as an assertion that durability is thereby guaranteed, and no crash
+experiment is claimed to have been run or required.
 
 Conclusion for Finding 2: the crate's practice of flushing the child, then
 separately flushing the parent, is the technically defensible pattern given (a)
@@ -400,18 +423,26 @@ NTFS-specific guarantee.
   NTFS; it rests on analogy to POSIX crash-consistency literature plus the
   scoping argument above. An authoritative NTFS-specific statement of this exact
   sufficiency claim was not found.
-- Opus-S11's four probes were relayed with full detail (exact API calls,
-  masks, and results) and are reported here as relayed, not independently
-  re-executed by this author. Per their own framing, the probes establish only
-  API-reachability (whether a flush call is accepted or refused given a
-  handle's access mask) on the specific machine tested; they establish nothing
-  about whether any write reached stable media, no bus-level or forced-unit-
-  access observation was performed, and no crash or power-loss simulation of
-  any kind was run.
-- The probes ran on volume C: (the OS temp directory), NTFS version 3.1, not on
-  this repository's own volume (Y:), both are NTFS, but this was not verified
-  to be the identical NTFS on-disk version, sector size, or driver stack the
-  project's actual deployment targets will use.
+- The access-rights precondition is no longer a relayed report: it is pinned
+  by the committed, reviewed test
+  directory_flush_requires_the_append_data_right (and its companion) in
+  engine/crates/vaultspec-windows-authority/src/tests/private_authority.rs,
+  read and confirmed against source in this pass. What that test still does
+  NOT establish, by its own design and by the reviewer's explicit ruling
+  recorded in its code comments: whether any write reached stable media, any
+  ordering guarantee between a child's bytes and its parent's directory entry,
+  anything about drive firmware honesty, and no crash or power-loss
+  simulation of any kind.
+- The test (and the earlier probes it formalizes) ran on a physical desktop
+  with three direct-attached consumer SSDs, on volume C: (the OS temp
+  directory), NTFS version 3.1, not on this repository's own volume (Y:);
+  both are NTFS, but this was not verified to be the identical NTFS on-disk
+  version, sector size, or driver stack the project's actual deployment
+  targets will use. Consumer direct-attached SSDs are exactly the storage
+  class Finding 4 describes as WHQL-required to honor FLUSH_CACHE since
+  Windows 8, but no drive firmware was inspected and no bus-level
+  verification of actual flush honesty was performed on any of the three
+  drives.
 - No actual crash/power-loss experiment (e.g. a QEMU power-cut harness or
   equivalent) was performed or reviewed in this pass; all durability reasoning
   here is inference from documented API semantics and journaling architecture,
