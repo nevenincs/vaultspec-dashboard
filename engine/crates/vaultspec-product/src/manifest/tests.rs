@@ -280,6 +280,44 @@ impl Fixture {
         action(generation)
     }
 
+    /// Verified-release facts shaped for the sealed first-install drive.
+    ///
+    /// Real fixture values, not a stand-in: the same member digest, component
+    /// lock, and capsule root this fixture verifies against. Only the transport
+    /// differs - the public path copies these out of the opaque distribution
+    /// capability, which crate tests cannot construct.
+    pub(crate) fn first_install_feed(&self) -> crate::provisioning::FirstInstallFeed {
+        // Derived from this fixture's OWN cohort descriptor, so the feed cannot
+        // drift from what the fixture actually verifies against.
+        let descriptor: serde_json::Value =
+            serde_json::from_slice(&self.descriptor).expect("fixture cohort descriptor");
+        let members = descriptor["members"]
+            .as_array()
+            .expect("cohort members")
+            .iter()
+            .map(|member| {
+                (
+                    member["target"]
+                        .as_str()
+                        .expect("member target")
+                        .to_string(),
+                    member["member_manifest_digest"]
+                        .as_str()
+                        .expect("member digest")
+                        .to_string(),
+                )
+            })
+            .collect();
+        crate::provisioning::FirstInstallFeed {
+            release_identity: descriptor["id"].as_str().expect("cohort id").to_string(),
+            target_triple: TARGET.triple().to_string(),
+            member_manifest_sha256: self.member_digest.clone(),
+            members,
+            component_lock: LOCK_BYTES.to_vec(),
+            capsule_root: "a2a/capsule".to_string(),
+        }
+    }
+
     pub(crate) fn verify<'generation, 'product, 'lock>(
         &self,
         generation: &'generation mut UnpublishedGeneration<'product, 'lock>,

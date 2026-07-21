@@ -421,7 +421,7 @@ struct PriorFacts {
     dashboard_version: String,
 }
 
-fn triple_to_target(triple: &str) -> Result<Target, MaterializeError> {
+pub(crate) fn triple_to_target(triple: &str) -> Result<Target, MaterializeError> {
     match triple {
         "aarch64-apple-darwin" => Ok(Target::Aarch64AppleDarwin),
         "x86_64-apple-darwin" => Ok(Target::X86_64AppleDarwin),
@@ -438,7 +438,7 @@ fn triple_to_target(triple: &str) -> Result<Target, MaterializeError> {
 /// verified distribution members. The strings are closed ASCII grammars, so
 /// fixed-order emission without escapes is exactly the canonical form the
 /// verifier's cohort parser re-proves.
-fn synthesize_cohort_descriptor(
+pub(crate) fn synthesize_cohort_descriptor(
     release_identity: &str,
     members: &[(String, String)],
 ) -> Result<Vec<u8>, MaterializeError> {

@@ -1424,7 +1424,7 @@ impl std::fmt::Debug for VerifiedReleaseSet<'_, '_, '_> {
 }
 
 #[path = "manifest/update_seam.rs"]
-mod update_seam;
+pub(crate) mod update_seam;
 pub(crate) use update_seam::{UpdateReleaseFacts, preflight_inventory, verify_update_release};
 
 mod authority;
