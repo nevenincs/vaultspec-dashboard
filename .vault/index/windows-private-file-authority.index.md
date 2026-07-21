@@ -9,6 +9,7 @@ related:
   - '[[2026-07-20-windows-private-file-authority-adr]]'
   - '[[2026-07-20-windows-private-file-authority-research]]'
   - '[[2026-07-21-windows-private-file-authority-audit]]'
+  - '[[2026-07-21-windows-private-file-authority-ntfs-directory-durability-research]]'
   - '[[2026-07-21-windows-private-file-authority-ungating-audit]]'
 ---
 
@@ -30,3 +31,4 @@ Auto-generated index of all documents tagged with `#windows-private-file-authori
 ### research
 
 - `2026-07-20-windows-private-file-authority-research` - `windows-private-file-authority` research: `protected exact-handle authority for Windows private files`
+- `2026-07-21-windows-private-file-authority-ntfs-directory-durability-research` - `windows-private-file-authority` research: `ntfs directory durability`

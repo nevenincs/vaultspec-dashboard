@@ -6,8 +6,8 @@ date: '2026-07-20'
 modified: '2026-07-21'
 related:
   - "[[2026-07-20-windows-private-file-authority-research]]"
+  - '[[2026-07-21-windows-private-file-authority-ntfs-directory-durability-research]]'
 ---
-
 # `windows-private-file-authority` adr: `protected exact-handle authority for Windows private files` | (**status:** `accepted`)
 
 ## Problem Statement
