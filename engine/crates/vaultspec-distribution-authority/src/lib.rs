@@ -990,12 +990,13 @@ fn sync_cap_directory(directory: &Dir) -> Result<(), VerificationError> {
         .map_err(|_| VerificationError::DatastoreUnavailable)
 }
 
-#[cfg(all(windows, test))]
-fn sync_cap_directory(_directory: &Dir) -> Result<(), VerificationError> {
-    Ok(())
-}
-
-#[cfg(all(windows, not(test)))]
+/// Windows directory-metadata durability is NOT provisioned. This refusal is
+/// deliberately uniform across test and production builds: a `cfg(test)` success
+/// arm here would let the Windows acceptance evidence pass over the exact
+/// durability step production refuses, which is a cfg-only expected-failure
+/// standing in for proof (D7/D8). Retiring it belongs to the tracked
+/// parent-directory durability follow-on (plan step W01.P01.S177), never inline.
+#[cfg(windows)]
 fn sync_cap_directory(_directory: &Dir) -> Result<(), VerificationError> {
     Err(VerificationError::WindowsDatastoreAuthorityNotProvisioned)
 }

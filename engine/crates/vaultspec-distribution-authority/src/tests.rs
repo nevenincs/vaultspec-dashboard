@@ -28,6 +28,9 @@ struct SigningMaterial {
     timestamp: Ed25519KeyPair,
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn real_tuf_repository_yields_possession_bound_selected_archive() {
     let temp = TempDir::new().expect("temporary test root");
@@ -88,6 +91,9 @@ async fn real_tuf_repository_yields_possession_bound_selected_archive() {
     );
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn materialization_source_is_sealed_and_fact_consistent() {
     let temp = TempDir::new().expect("temporary test root");
@@ -162,6 +168,9 @@ async fn materialization_source_is_sealed_and_fact_consistent() {
     assert_eq!(again, expected_archive);
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn persistent_datastore_rejects_metadata_rollback() {
     let temp = TempDir::new().expect("temporary test root");
@@ -279,6 +288,9 @@ async fn publication_refuses_archive_substituted_after_cohort_assembly() {
     assert!(!source.join(COHORT_TARGET_NAME).exists());
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn persisted_root_rotates_sequentially_and_revoked_root_keys_are_refused() {
     let temp = TempDir::new().expect("temporary test root");
@@ -416,6 +428,9 @@ async fn persisted_root_rotates_sequentially_and_revoked_root_keys_are_refused()
     ));
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn partial_live_datastore_fails_closed_and_partial_next_is_recovered() {
     let temp = TempDir::new().expect("temporary test root");
@@ -494,6 +509,9 @@ async fn malformed_complete_datastore_fails_closed() {
     ));
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn retained_authority_excludes_a_concurrent_verification() {
     let temp = TempDir::new().expect("temporary test root");
@@ -671,6 +689,9 @@ $stream.Dispose()
     drop(reacquired);
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn latest_known_time_regression_is_refused() {
     let temp = TempDir::new().expect("temporary test root");
@@ -714,6 +735,9 @@ async fn latest_known_time_regression_is_refused() {
     ));
 }
 
+// Datastore-traversing behavior: reachable only where the datastore lane is
+// provisioned. Windows asserts its real (refusing) behavior separately below.
+#[cfg(unix)]
 #[tokio::test(flavor = "current_thread")]
 async fn retained_archive_revalidation_detects_same_handle_mutation() {
     let temp = TempDir::new().expect("temporary test root");
@@ -1193,4 +1217,50 @@ fn copy_directory(source: &Path, destination: &Path, include: impl Fn(&str) -> b
             std::fs::copy(entry.path(), destination.join(name)).expect("copy repository file");
         }
     }
+}
+
+/// The Windows counterpart of the Unix-scoped datastore matrix above.
+///
+/// Windows directory-metadata durability is not provisioned, so the datastore
+/// lane refuses. That refusal is the REAL behavior and is asserted positively
+/// here rather than left as absent coverage: the verification reaches the
+/// datastore sequence over a genuine TUF repository and fails closed with the
+/// exact typed error, mutating no trust state. When the tracked durability
+/// follow-on (plan step W01.P01.S177) lands, the Unix-scoped matrix above
+/// becomes cross-platform and this test retires with the refusal it pins.
+#[cfg(windows)]
+#[tokio::test(flavor = "current_thread")]
+async fn windows_datastore_lane_refuses_until_durability_is_provisioned() {
+    let temp = TempDir::new().expect("temporary test root");
+    let material = signing_material(temp.path()).await;
+    let bundle = publish_bundle(
+        temp.path(),
+        &material,
+        1,
+        "windows-datastore-refusal",
+        DistributionTarget::X86_64PcWindowsMsvc,
+    )
+    .await;
+    let product = temp.path().join("product");
+    std::fs::create_dir(&product).expect("product root");
+
+    let request = VerificationRequest::for_product_root(
+        &bundle,
+        &product,
+        DistributionTarget::X86_64PcWindowsMsvc,
+    )
+    .expect("bounded request");
+    assert!(
+        matches!(
+            verify_with_root(&material.root_bytes, request).await,
+            Err(VerificationError::WindowsDatastoreAuthorityNotProvisioned)
+        ),
+        "the Windows datastore lane must fail closed on the durability refusal"
+    );
+
+    // The refusal leaves no live trust datastore behind: nothing was committed.
+    assert!(
+        !product.join(LIVE_DATASTORE).join("root.json").exists(),
+        "a refused verification must not leave committed trust state"
+    );
 }
