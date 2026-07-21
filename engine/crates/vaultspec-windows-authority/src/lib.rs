@@ -33,6 +33,8 @@ use install::install_file_state;
 const DELETE_ACCESS: u32 = 0x0001_0000;
 const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
+const READ_CONTROL: u32 = 0x0002_0000;
+const WRITE_DAC: u32 = 0x0004_0000;
 const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 const MAX_DIRECTORY_COMPONENT_UTF16_UNITS: usize = 255;
@@ -1041,6 +1043,43 @@ impl AuthorityFile {
         Self::from_file(file)
     }
 
+    /// Create a new empty private file with complete creation authority
+    /// (windows-private-file-authority D1/D5): generic read, generic write,
+    /// `READ_CONTROL`, `WRITE_DAC`, and exact-handle delete. `WRITE_DAC` lets
+    /// the safe `windows-acl` layer install the protected three-principal DACL
+    /// through this exact retained handle; `READ_CONTROL` lets both that layer
+    /// and [`Self::is_dacl_protected`] read the resulting descriptor. Write and
+    /// delete sharing are denied, so the empty file cannot be mutated, renamed,
+    /// or replaced before its DACL and bytes are established through this
+    /// handle.
+    pub fn create_private(path: &Path) -> io::Result<Self> {
+        let file = open(
+            path,
+            OpenDisposition::CreateNew,
+            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC | DELETE_ACCESS,
+            false,
+            false,
+        )?;
+        Self::from_file(file)
+    }
+
+    /// Reopen an existing private file with complete recovery authority
+    /// (windows-private-file-authority D1/D5): the same read, write,
+    /// `READ_CONTROL`, `WRITE_DAC`, and delete rights as creation. Interrupted
+    /// bootstrap recovery rewrites the descriptor and later retires this exact
+    /// handle, so — unlike a read-only reader — recovery authority must carry
+    /// data-write and delete access from the moment it is opened.
+    pub fn open_private_recovery(path: &Path) -> io::Result<Self> {
+        let file = open(
+            path,
+            OpenDisposition::Existing,
+            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC | DELETE_ACCESS,
+            false,
+            false,
+        )?;
+        Self::from_file(file)
+    }
+
     /// Open or create the OS lock file. Delete sharing is denied so the path
     /// remains bound to this exact handle for the guard lifetime.
     pub fn open_lock(path: &Path) -> io::Result<Self> {
@@ -1091,6 +1130,14 @@ impl AuthorityFile {
         os::link_count(&self.file)
     }
 
+    /// Report whether this exact retained file's DACL carries
+    /// `SE_DACL_PROTECTED` (windows-private-file-authority D3/D4). A matching
+    /// three-principal entry list without this bit is not a private file; the
+    /// safe layer requires both the exact list and this observation.
+    pub fn is_dacl_protected(&self) -> io::Result<bool> {
+        os::dacl_is_protected(&self.file)
+    }
+
     /// Borrow the retained standard file for locking or bounded I/O.
     #[must_use]
     pub fn file(&self) -> &File {
@@ -1138,6 +1185,130 @@ impl AuthorityFile {
             ));
         }
         Ok(state)
+    }
+}
+
+/// A retained regular-file handle for READ-ONLY private-file verification
+/// (windows-private-file-authority D1).
+///
+/// It carries generic read and `READ_CONTROL` only — never data-write,
+/// `WRITE_DAC`, or delete — so it can observe identity, link count, protected
+/// state, and bounded bytes but can never rewrite, re-DACL, rename, or delete
+/// the file. It exposes no conversion to [`AuthorityFile`]: read-only authority
+/// cannot silently become creation or recovery authority.
+#[derive(Debug)]
+pub struct ReadOnlyAuthorityFile {
+    file: File,
+    identity: HighResFileId,
+}
+
+impl ReadOnlyAuthorityFile {
+    /// Open an existing regular non-reparse file for read-only verification.
+    /// Write and delete sharing remain enabled so an existing delete-capable
+    /// authority handle may stay open across the observation.
+    pub fn open_private_readonly(path: &Path) -> io::Result<Self> {
+        let file = open(
+            path,
+            OpenDisposition::Existing,
+            GENERIC_READ | READ_CONTROL,
+            true,
+            true,
+        )?;
+        let identity = os::validated_regular_file_state(&file)?.identity;
+        Ok(Self { file, identity })
+    }
+
+    /// The retained handle identity.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    /// Number of hard-link names currently bound to this exact retained file.
+    pub fn link_count(&self) -> io::Result<u64> {
+        os::link_count(&self.file)
+    }
+
+    /// Report whether this exact retained file's DACL carries
+    /// `SE_DACL_PROTECTED` (windows-private-file-authority D3/D4).
+    pub fn is_dacl_protected(&self) -> io::Result<bool> {
+        os::dacl_is_protected(&self.file)
+    }
+
+    /// Borrow the retained standard file for bounded read-only I/O. `File`
+    /// implements [`std::io::Read`]/[`std::io::Seek`] through a shared reference,
+    /// so callers read without any mutable, write-capable, or deleting borrow.
+    #[must_use]
+    pub fn file(&self) -> &File {
+        &self.file
+    }
+
+    /// Re-observe the retained regular-file state, rejecting an identity change.
+    pub fn revalidate(&self) -> io::Result<()> {
+        if os::validated_regular_file_state(&self.file)?.identity != self.identity {
+            return Err(io::Error::other(
+                "retained read-only file identity changed unexpectedly",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// A retained non-reparse directory handle for private-directory HARDENING
+/// (windows-private-file-authority D1).
+///
+/// Beyond the traversal, delete-share denial, and identity binding of
+/// [`AuthorityDirectory`], it additionally carries `READ_CONTROL` and
+/// `WRITE_DAC` so the safe `windows-acl` layer can install and observe the
+/// protected three-principal DACL through this exact retained handle. It
+/// exposes no child creation or removal: hardening authority only re-DACLs and
+/// verifies the directory it retains.
+#[derive(Debug)]
+pub struct HardeningDirectory {
+    directory: File,
+    identity: HighResFileId,
+}
+
+impl HardeningDirectory {
+    /// Open one existing directory pathname for hardening. The final link is
+    /// opened without reparse traversal and the handle is validated as a live
+    /// non-reparse directory before this succeeds.
+    pub fn open_existing(path: &Path) -> io::Result<Self> {
+        let directory = os::open_existing_directory_for_hardening(path)?;
+        let identity = os::validated_directory_identity(&directory)?;
+        Ok(Self {
+            directory,
+            identity,
+        })
+    }
+
+    /// The copied full-width identity of this exact retained directory.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    /// Borrow the retained directory handle for the safe `windows-acl` layer's
+    /// handle-based DACL mutation and enumeration.
+    #[must_use]
+    pub fn directory(&self) -> &File {
+        &self.directory
+    }
+
+    /// Report whether this exact retained directory's DACL carries
+    /// `SE_DACL_PROTECTED` (windows-private-file-authority D3/D4).
+    pub fn is_dacl_protected(&self) -> io::Result<bool> {
+        os::dacl_is_protected(&self.directory)
+    }
+
+    /// Re-observe the retained directory state, rejecting an identity change.
+    pub fn revalidate(&self) -> io::Result<()> {
+        if os::validated_directory_identity(&self.directory)? != self.identity {
+            return Err(io::Error::other(
+                "retained hardening directory identity changed unexpectedly",
+            ));
+        }
+        Ok(())
     }
 }
 

@@ -14,8 +14,14 @@ use windows_sys::Wdk::Storage::FileSystem::{
     NtSetInformationFile,
 };
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, HANDLE, OBJ_CASE_INSENSITIVE,
-    RtlNtStatusToDosError, UNICODE_STRING, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, ERROR_SUCCESS, HANDLE, HLOCAL,
+    LocalFree, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, UNICODE_STRING, WAIT_OBJECT_0,
+    WAIT_TIMEOUT,
+};
+use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
+use windows_sys::Win32::Security::{
+    DACL_SECURITY_INFORMATION, GetSecurityDescriptorControl, PSECURITY_DESCRIPTOR, SE_DACL_PRESENT,
+    SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
@@ -23,7 +29,8 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES,
     FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TRAVERSE, FileAttributeTagInfo, FileDispositionInfo,
     FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx, MOVEFILE_REPLACE_EXISTING,
-    MOVEFILE_WRITE_THROUGH, MoveFileExW, SYNCHRONIZE, SetFileInformationByHandle,
+    MOVEFILE_WRITE_THROUGH, MoveFileExW, READ_CONTROL, SYNCHRONIZE, SetFileInformationByHandle,
+    WRITE_DAC,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
@@ -38,6 +45,11 @@ const DIRECTORY_ACCESS: u32 = DELETE
     | FILE_TRAVERSE
     | FILE_READ_ATTRIBUTES
     | SYNCHRONIZE;
+/// Directory-hardening access (windows-private-file-authority D1): the retained
+/// traversal and identity rights plus READ_CONTROL and WRITE_DAC, so the safe
+/// `windows-acl` layer can install and observe the protected three-principal
+/// DACL through this exact retained handle.
+const DIRECTORY_HARDENING_ACCESS: u32 = DIRECTORY_ACCESS | READ_CONTROL | WRITE_DAC;
 const DIRECTORY_CREATE_OPTIONS: u32 =
     FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
 const IO_INFORMATION_FILE_OPENED: usize = 1;
@@ -55,6 +67,18 @@ pub(super) fn open_existing_directory(path: &Path) -> io::Result<File> {
     let mut options = OpenOptions::new();
     options
         .access_mode(DIRECTORY_ACCESS)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+    options.open(path)
+}
+
+/// Directory-hardening variant of [`open_existing_directory`]: opens the final
+/// link no-follow with the additional READ_CONTROL and WRITE_DAC rights the
+/// safe layer needs to re-DACL and observe the retained directory.
+pub(super) fn open_existing_directory_for_hardening(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options
+        .access_mode(DIRECTORY_HARDENING_ACCESS)
         .share_mode(FILE_SHARE_READ)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     options.open(path)
@@ -432,6 +456,88 @@ pub(super) fn validated_regular_file_state(file: &File) -> io::Result<RegularFil
         link_count: u64::from(standard.NumberOfLinks),
         size,
     })
+}
+
+/// Report whether the DACL on the OWNED handle carries `SE_DACL_PROTECTED`
+/// (windows-private-file-authority D3). This is the one native
+/// security-descriptor primitive the amendment adds.
+///
+/// The fence is total: the function returns a single `bool`. `GetSecurityInfo`
+/// allocates a self-relative security descriptor, `GetSecurityDescriptorControl`
+/// copies its scalar control word out, and the descriptor is freed inside this
+/// call. No security descriptor, raw pointer, SID, ACL, or control word ever
+/// escapes. An absent DACL fails closed: a null DACL grants everyone full
+/// access and cannot be meaningfully protected. `windows-acl` supplies the
+/// bounded entry enumeration the safe layer joins with this observation.
+pub(super) fn dacl_is_protected(file: &File) -> io::Result<bool> {
+    let mut security_descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
+    // SAFETY: `file` owns a valid handle opened with READ_CONTROL for this
+    // synchronous call. Only the security-descriptor out-parameter is
+    // requested; the owner, group, DACL, and SACL out-pointers are null, so
+    // Windows returns nothing but the self-relative descriptor it allocates.
+    // `security_descriptor` is a live, aligned out-pointer. GetSecurityInfo
+    // copies the handle's security into a fresh allocation and retains no
+    // borrowed pointer.
+    let status = unsafe {
+        GetSecurityInfo(
+            file.as_raw_handle(),
+            SE_FILE_OBJECT,
+            DACL_SECURITY_INFORMATION,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            &raw mut security_descriptor,
+        )
+    };
+    if status != ERROR_SUCCESS {
+        return Err(i32::try_from(status)
+            .map(io::Error::from_raw_os_error)
+            .unwrap_or_else(|_| {
+                io::Error::other("GetSecurityInfo returned an unmapped Win32 error")
+            }));
+    }
+    if security_descriptor.is_null() {
+        return Err(io::Error::other(
+            "GetSecurityInfo succeeded without returning a security descriptor",
+        ));
+    }
+    // The returned descriptor is one LocalAlloc'd allocation; the guard frees it
+    // on every later return or panic path. It is constructed only after the
+    // success and non-null checks, so it never holds a null or garbage pointer.
+    let descriptor = LocalSecurityDescriptor(security_descriptor);
+    let mut control: SECURITY_DESCRIPTOR_CONTROL = 0;
+    let mut revision: u32 = 0;
+    // SAFETY: `descriptor.0` is the live self-relative security descriptor
+    // GetSecurityInfo just allocated. `control` and `revision` are live,
+    // aligned out-parameters. GetSecurityDescriptorControl copies two scalar
+    // values out and retains no pointer.
+    let result =
+        unsafe { GetSecurityDescriptorControl(descriptor.0, &raw mut control, &raw mut revision) };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if control & SE_DACL_PRESENT == 0 {
+        return Err(io::Error::other(
+            "authority object has no present DACL to protect",
+        ));
+    }
+    Ok(control & SE_DACL_PROTECTED != 0)
+}
+
+/// Owns a security descriptor `GetSecurityInfo` allocated with LocalAlloc and
+/// frees it exactly once on drop. Keeps the native allocation from escaping the
+/// [`dacl_is_protected`] fence on any path.
+struct LocalSecurityDescriptor(PSECURITY_DESCRIPTOR);
+
+impl Drop for LocalSecurityDescriptor {
+    fn drop(&mut self) {
+        // SAFETY: this type is constructed only from a non-null security
+        // descriptor GetSecurityInfo allocated with LocalAlloc, and frees that
+        // allocation exactly once. LocalFree accepts the pointer as an HLOCAL
+        // and returns null on success; the returned handle is ignored.
+        let _ = unsafe { LocalFree(self.0 as HLOCAL) };
+    }
 }
 
 pub(super) fn move_file_replace_write_through(source: &Path, destination: &Path) -> io::Result<()> {
