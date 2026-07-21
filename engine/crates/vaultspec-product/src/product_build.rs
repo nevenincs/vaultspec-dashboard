@@ -15,7 +15,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::manifest::{
     CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target, sha256_hex,
@@ -323,14 +323,16 @@ pub fn verify_member_covers_tree(
 }
 
 /// One pre-built source artifact and its fixed app-tree-relative destination.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct SourceArtifact {
     pub source: std::path::PathBuf,
     pub dest_relative: String,
 }
 
 /// A third-party license source with its destination and SPDX identity.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LicenseSource {
     pub source: std::path::PathBuf,
     pub dest_relative: String,
@@ -347,7 +349,8 @@ pub struct LicenseSource {
 /// from the A2A-produced evidence, never recomputed — A2A owns that digest's
 /// canonical preimage; the composer places the evidence document and binds its
 /// declared facts.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct BuildSources {
     pub target: Target,
     pub cohort_id: String,
