@@ -432,3 +432,68 @@ fn a_discoverable_gateway_refuses_the_cold_path_typed() {
         TransactionError::Gateway(GatewayDrainError::GatewayDiscoverable)
     ));
 }
+
+/// Create a file symlink on either platform, the repo's reparse-point test
+/// idiom (real reparse point, no mock).
+#[cfg(unix)]
+fn plant_file_symlink(target: &Path, link: &Path) {
+    std::os::unix::fs::symlink(target, link).unwrap();
+}
+
+#[cfg(windows)]
+fn plant_file_symlink(target: &Path, link: &Path) {
+    std::os::windows::fs::symlink_file(target, link).unwrap();
+}
+
+#[test]
+fn bounded_discovery_read_accepts_a_regular_record_and_reports_absence() {
+    let fixture = Fixture::new();
+    let path = fixture.paths.app_home().join(DISCOVERY_FILE);
+    assert!(matches!(
+        read_bounded_discovery(&path),
+        Err(GatewayDrainError::DiscoveryAbsent)
+    ));
+    fixture.write_discovery("{\"a\":1}");
+    assert_eq!(read_bounded_discovery(&path).unwrap(), "{\"a\":1}");
+}
+
+#[test]
+fn bounded_discovery_read_refuses_a_planted_reparse_point() {
+    let fixture = Fixture::new();
+    // A real record the traversal would have reached had the read followed.
+    let target = fixture.paths.app_home().join("planted-discovery.json");
+    std::fs::write(&target, "{\"planted\":true}").unwrap();
+    let path = fixture.paths.app_home().join(DISCOVERY_FILE);
+    plant_file_symlink(&target, &path);
+    // The planted link IS traversable: a following read reaches the attacker's
+    // record. That is exactly what the no-follow read must refuse to do.
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        "{\"planted\":true}"
+    );
+    // Unreadable, never traversed, and never the absent verdict — the cold-path
+    // predicate must not read a planted link as "no gateway".
+    assert!(matches!(
+        read_bounded_discovery(&path),
+        Err(GatewayDrainError::DiscoveryUnreadable(_))
+    ));
+    assert!(matches!(
+        require_discovery_absent(&fixture.paths),
+        Err(GatewayDrainError::DiscoveryUnreadable(_))
+    ));
+}
+
+#[test]
+fn bounded_discovery_read_refuses_one_byte_over_the_cap() {
+    let fixture = Fixture::new();
+    let path = fixture.paths.app_home().join(DISCOVERY_FILE);
+    std::fs::write(
+        &path,
+        vec![b'x'; usize::try_from(MAX_DISCOVERY_BYTES).unwrap() + 1],
+    )
+    .unwrap();
+    assert!(matches!(
+        read_bounded_discovery(&path),
+        Err(GatewayDrainError::DiscoveryUnreadable(_))
+    ));
+}

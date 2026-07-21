@@ -264,21 +264,50 @@ pub(crate) fn require_discovery_absent(paths: &ProductPaths) -> Result<(), Gatew
 }
 
 /// Bounded no-follow read of the product discovery record.
+///
+/// The no-follow guarantee is platform-specific: `O_NOFOLLOW` on unix, and on
+/// Windows the reviewed [`vaultspec_windows_authority::AuthorityFile::open_reader`]
+/// authority, which opens with `FILE_FLAG_OPEN_REPARSE_POINT` and then rejects
+/// the retained handle unless it is a live regular non-reparse file. A junction
+/// or symlink planted at the discovery path therefore fails the open on either
+/// platform — surfacing as `DiscoveryUnreadable`, which the cold-path predicate
+/// treats as a refusal — rather than being silently traversed. Only genuine
+/// absence is [`GatewayDrainError::DiscoveryAbsent`].
 fn read_bounded_discovery(path: &Path) -> Result<String, GatewayDrainError> {
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
+    #[cfg(windows)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+        let mut authority = match vaultspec_windows_authority::AuthorityFile::open_reader(path) {
+            Ok(authority) => authority,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(GatewayDrainError::DiscoveryAbsent);
+            }
+            Err(error) => return Err(GatewayDrainError::DiscoveryUnreadable(error.to_string())),
+        };
+        read_capped_discovery(authority.file_mut())
     }
-    let mut file = match options.open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return Err(GatewayDrainError::DiscoveryAbsent);
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
         }
-        Err(error) => return Err(GatewayDrainError::DiscoveryUnreadable(error.to_string())),
-    };
+        let mut file = match options.open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Err(GatewayDrainError::DiscoveryAbsent);
+            }
+            Err(error) => return Err(GatewayDrainError::DiscoveryUnreadable(error.to_string())),
+        };
+        read_capped_discovery(&mut file)
+    }
+}
+
+/// The shared bounded tail of a discovery read over an already no-follow
+/// handle: regular-file proof, then a capped read that refuses one byte over.
+fn read_capped_discovery(file: &mut std::fs::File) -> Result<String, GatewayDrainError> {
     let metadata = file
         .metadata()
         .map_err(|error| GatewayDrainError::DiscoveryUnreadable(error.to_string()))?;
@@ -288,7 +317,7 @@ fn read_bounded_discovery(path: &Path) -> Result<String, GatewayDrainError> {
         ));
     }
     let mut bytes = Vec::new();
-    std::io::Read::by_ref(&mut file)
+    std::io::Read::by_ref(file)
         .take(MAX_DISCOVERY_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| GatewayDrainError::DiscoveryUnreadable(error.to_string()))?;

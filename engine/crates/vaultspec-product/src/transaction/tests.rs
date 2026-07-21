@@ -349,3 +349,86 @@ fn mark_accepted_refuses_every_pre_activation_phase() {
             .is_some()
     );
 }
+
+/// Create a file symlink on either platform, the repo's reparse-point test
+/// idiom (real reparse point, no mock).
+#[cfg(unix)]
+fn plant_file_symlink(target: &Path, link: &Path) {
+    std::os::unix::fs::symlink(target, link).unwrap();
+}
+
+#[cfg(windows)]
+fn plant_file_symlink(target: &Path, link: &Path) {
+    std::os::windows::fs::symlink_file(target, link).unwrap();
+}
+
+#[cfg(windows)]
+fn plant_directory_junction(target: &Path, link: &Path) {
+    std::os::windows::fs::symlink_dir(target, link).unwrap();
+}
+
+#[test]
+fn bounded_descriptor_read_accepts_a_regular_file_and_reports_absence() {
+    let fixture = Fixture::new();
+    let path = fixture.paths.transaction_dir().join("plain.v1");
+    assert!(
+        read_bounded_nofollow(&path, MAX_DESCRIPTOR_BYTES)
+            .unwrap()
+            .is_none()
+    );
+    std::fs::write(&path, b"descriptor bytes").unwrap();
+    assert_eq!(
+        read_bounded_nofollow(&path, MAX_DESCRIPTOR_BYTES).unwrap(),
+        Some(b"descriptor bytes".to_vec())
+    );
+}
+
+#[test]
+fn bounded_descriptor_read_refuses_a_planted_reparse_point() {
+    let fixture = Fixture::new();
+    // A real target the traversal would have reached had the read followed.
+    let target = fixture.paths.app_home().join("elsewhere.v1");
+    std::fs::write(&target, b"attacker-chosen descriptor").unwrap();
+    let link = fixture.paths.transaction_dir().join("linked.v1");
+    plant_file_symlink(&target, &link);
+    // The planted link IS traversable: a following read reaches the attacker's
+    // bytes. That is exactly what the no-follow read must refuse to do.
+    assert_eq!(
+        std::fs::read(&link).unwrap(),
+        b"attacker-chosen descriptor".to_vec()
+    );
+    // Refusal, not traversal, and NOT the absent verdict: the planted reparse
+    // point must never read as "no descriptor".
+    let outcome = read_bounded_nofollow(&link, MAX_DESCRIPTOR_BYTES);
+    assert!(
+        matches!(outcome, Err(_)),
+        "planted symlink must be refused, got {outcome:?}"
+    );
+
+    // The directory-reparse shape (a Windows junction) is refused the same way.
+    #[cfg(windows)]
+    {
+        let dir_target = fixture.paths.app_home().join("elsewhere-dir");
+        std::fs::create_dir_all(&dir_target).unwrap();
+        std::fs::write(dir_target.join("inner.v1"), b"planted").unwrap();
+        let junction = fixture.paths.transaction_dir().join("junction.v1");
+        plant_directory_junction(&dir_target, &junction);
+        let outcome = read_bounded_nofollow(&junction, MAX_DESCRIPTOR_BYTES);
+        assert!(
+            matches!(outcome, Err(_)),
+            "planted junction must be refused, got {outcome:?}"
+        );
+    }
+}
+
+#[test]
+fn bounded_descriptor_read_refuses_one_byte_over_the_cap() {
+    let fixture = Fixture::new();
+    let path = fixture.paths.transaction_dir().join("oversized.v1");
+    std::fs::write(&path, vec![b'x'; 17]).unwrap();
+    assert!(matches!(
+        read_bounded_nofollow(&path, 16),
+        Err(TransactionError::InvalidDescriptor(_))
+    ));
+    assert!(read_bounded_nofollow(&path, 17).unwrap().is_some());
+}

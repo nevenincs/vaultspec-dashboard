@@ -548,22 +548,49 @@ pub(crate) fn clear_descriptor(paths: &ProductPaths) -> Result<(), TransactionEr
     sync_dir(&paths.transaction_dir())
 }
 
+/// Bounded no-follow read of a descriptor, absent-tolerant on BOTH platforms.
+///
+/// The no-follow guarantee is platform-specific: `O_NOFOLLOW` on unix, and on
+/// Windows the reviewed [`vaultspec_windows_authority::AuthorityFile::open_reader`]
+/// authority, which opens with `FILE_FLAG_OPEN_REPARSE_POINT` and then rejects
+/// the retained handle unless it is a live regular non-reparse file. A junction
+/// or symlink planted at the descriptor path therefore fails the open on either
+/// platform rather than being silently traversed; only genuine absence is
+/// `Ok(None)`.
 pub(crate) fn read_bounded_nofollow(
     path: &Path,
     cap: u64,
 ) -> Result<Option<Vec<u8>>, TransactionError> {
-    let mut options = std::fs::OpenOptions::new();
-    options.read(true);
-    #[cfg(unix)]
+    #[cfg(windows)]
     {
-        use std::os::unix::fs::OpenOptionsExt;
-        options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+        let mut authority = match vaultspec_windows_authority::AuthorityFile::open_reader(path) {
+            Ok(authority) => authority,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(TransactionError::io("descriptor open", error)),
+        };
+        read_capped_descriptor(authority.file_mut(), cap).map(Some)
     }
-    let mut file = match options.open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(TransactionError::io("descriptor open", error)),
-    };
+    #[cfg(not(windows))]
+    {
+        let mut options = std::fs::OpenOptions::new();
+        options.read(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_CLOEXEC);
+        }
+        let mut file = match options.open(path) {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(TransactionError::io("descriptor open", error)),
+        };
+        read_capped_descriptor(&mut file, cap).map(Some)
+    }
+}
+
+/// The shared bounded tail of a descriptor read over an already no-follow
+/// handle: regular-file proof, then a capped read that refuses one byte over.
+fn read_capped_descriptor(file: &mut std::fs::File, cap: u64) -> Result<Vec<u8>, TransactionError> {
     let metadata = file
         .metadata()
         .map_err(|error| TransactionError::io("descriptor stat", error))?;
@@ -573,7 +600,7 @@ pub(crate) fn read_bounded_nofollow(
         ));
     }
     let mut bytes = Vec::new();
-    Read::by_ref(&mut file)
+    Read::by_ref(file)
         .take(cap + 1)
         .read_to_end(&mut bytes)
         .map_err(|error| TransactionError::io("descriptor read", error))?;
@@ -582,7 +609,7 @@ pub(crate) fn read_bounded_nofollow(
             "descriptor exceeds byte bound".to_string(),
         ));
     }
-    Ok(Some(bytes))
+    Ok(bytes)
 }
 
 pub(crate) fn write_new_nofollow(path: &Path, bytes: &[u8]) -> Result<(), TransactionError> {
