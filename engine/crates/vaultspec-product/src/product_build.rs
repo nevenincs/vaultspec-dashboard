@@ -51,6 +51,9 @@ pub enum ProductBuildError {
     /// The member's `file_digests` does not describe exactly the scanned tree
     /// (a missing, extra, drifted, or self-listed manifest-path entry).
     FileDigestsMismatch { detail: String },
+    /// The capsule does not carry an independently-invokable standalone MCP
+    /// entrypoint distinct from its gateway.
+    StandaloneMcpNotCarried { detail: String },
 }
 
 impl std::fmt::Display for ProductBuildError {
@@ -74,11 +77,43 @@ impl std::fmt::Display for ProductBuildError {
             Self::FileDigestsMismatch { detail } => {
                 write!(f, "file_digests does not match the composed tree: {detail}")
             }
+            Self::StandaloneMcpNotCarried { detail } => {
+                write!(
+                    f,
+                    "capsule does not carry a standalone MCP entrypoint: {detail}"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for ProductBuildError {}
+
+/// Verify the capsule carries an independently-invokable standalone MCP entrypoint
+/// that is DISTINCT from the gateway entrypoint, WITHOUT binding it to any
+/// dashboard lifecycle.
+///
+/// The dashboard build carries this entrypoint inside the placed capsule so an
+/// operator can invoke the MCP server directly; it is deliberately NEVER registered
+/// as a lifecycle-owned component — lifecycle ownership belongs to the gateway
+/// alone. This is a pure carriage check over the verified capsule manifest: it
+/// asserts the standalone MCP is present and separate, and by construction assigns
+/// it no lifecycle role (this module registers nothing).
+pub fn verify_standalone_mcp_carried(capsule: &CapsuleManifest) -> Result<(), ProductBuildError> {
+    let mcp = &capsule.entrypoints.standalone_mcp;
+    let gateway = &capsule.entrypoints.gateway;
+    if mcp.relative_command.is_empty() {
+        return Err(ProductBuildError::StandaloneMcpNotCarried {
+            detail: "the standalone MCP entrypoint has no relative command".to_string(),
+        });
+    }
+    if mcp.relative_command == gateway.relative_command {
+        return Err(ProductBuildError::StandaloneMcpNotCarried {
+            detail: "the standalone MCP entrypoint is not distinct from the gateway".to_string(),
+        });
+    }
+    Ok(())
+}
 
 /// Scan every regular file under `tree_root`, returning each app-tree-relative
 /// path (forward-slashed), byte size, and lowercase SHA-256 using the crate's
