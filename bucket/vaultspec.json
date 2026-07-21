@@ -1,14 +1,14 @@
 {
   "version": "0.1.2",
-  "description": "Unified dashboard UI for the vaultspec ecosystem",
+  "description": "The complete vaultspec dashboard product: the dashboard, the copied external updater, the pinned A2A companion capsule, and the signed release manifest, licenses, and SBOM — installed as one offline-complete tree. Only the `vaultspec` dashboard command is shimmed onto PATH; the companion files stay in the install directory.",
   "homepage": "https://github.com/nevenincs/vaultspec-dashboard",
   "license": "MIT",
-  "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.2/vaultspec-cli-x86_64-pc-windows-msvc.zip",
-  "hash": "d809321b9d508f7f8e81fbc5f132e1b6f1c1f6cae164dd048b0e448fba980f73",
-  "bin": "vaultspec.exe",
+  "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.2/vaultspec-0.1.2-x86_64-pc-windows-msvc.zip",
+  "hash": "0000000000000000000000000000000000000000000000000000000000000000",
+  "bin": "bin/vaultspec.exe",
   "checkver": "github",
   "autoupdate": {
-    "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v$version/vaultspec-cli-x86_64-pc-windows-msvc.zip",
+    "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v$version/vaultspec-$version-x86_64-pc-windows-msvc.zip",
     "hash": {
       "url": "$url.sha256"
     }
