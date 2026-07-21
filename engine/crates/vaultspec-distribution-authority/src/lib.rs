@@ -302,6 +302,23 @@ pub async fn verify_distribution(
     verify_with_root(EMBEDDED_PRODUCTION_ROOT, request).await
 }
 
+/// Verify a release from a CALLER-supplied TUF root, for out-of-crate acceptance
+/// tests only (S11 Stage 1). Gated behind the `unsealed-verify` feature, which
+/// is enabled exclusively under `vaultspec-product`'s dev-dependencies and
+/// proven off in production via [`UNSEALED_VERIFY_ENABLED`].
+///
+/// Distribution-trust D3 constrains the PRODUCTION entrypoint
+/// ([`verify_distribution`]); this seam leaves it unchanged and performs the
+/// identical bounded verification against `root_bytes` instead of the embedded
+/// (empty-until-ceremony) production root.
+#[cfg(feature = "unsealed-verify")]
+pub async fn verify_distribution_with_unsealed_root(
+    root_bytes: &[u8],
+    request: VerificationRequest,
+) -> Result<VerifiedDistributionRelease, VerificationError> {
+    verify_with_root(root_bytes, request).await
+}
+
 #[cfg(windows)]
 fn production_platform_gate() -> Result<(), VerificationError> {
     Err(VerificationError::WindowsDatastoreAuthorityNotProvisioned)

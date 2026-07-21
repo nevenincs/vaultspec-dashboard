@@ -36,6 +36,14 @@ windows-acl = "0.3.0"
 winapi = "0.3.9"
 
 [dev-dependencies]
+# S11 Stage 1: the `unsealed-verify` seam is a NON-production, test-only entry
+# (verify_distribution_with_unsealed_root). Enabling it here — dev-dependencies
+# ONLY — turns it on for this crate's own acceptance tests while resolver v3
+# keeps it OFF in every production build; the api crate compile-time-asserts
+# that (DISTRIBUTION_UNSEALED_VERIFY_ENABLED).
+vaultspec-distribution-authority = { path = "../vaultspec-distribution-authority", features = [
+    "unsealed-verify",
+] }
 # The S18 capsule-ownership acceptance test extracts a REAL built A2A desktop
 # capsule (a DEFLATE zip) and its bundled CPython runtime (a gzip tar) to launch
 # a real process tree from the capsule's own interpreter. Dev-only; the shipped

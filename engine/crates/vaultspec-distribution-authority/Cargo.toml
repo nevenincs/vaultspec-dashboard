@@ -7,6 +7,17 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[features]
+# Non-production verification seam (S11 Stage 1). Exposes
+# `verify_distribution_with_unsealed_root`, letting out-of-crate acceptance
+# tests obtain a VerifiedDistributionRelease from a CALLER-supplied ephemeral
+# test root — the embedded production root is empty by design until the key
+# ceremony. Enabled ONLY under vaultspec-product's [dev-dependencies]; a
+# compile-time assert proves it is off in the production dependency graph. The
+# production entrypoint `verify_distribution` (distribution-trust D3) is
+# unchanged and this seam performs the identical bounded verification.
+unsealed-verify = []
+
 [dependencies]
 base64 = "0.22.1"
 cap-std = "3.4.4"
