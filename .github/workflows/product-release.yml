@@ -112,28 +112,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # A build-spec assembling THIS target's real dashboard + updater + the
-          # fetched capsule + evidence into the generation tree; product_build
-          # verifies the capsule vs the lock and the emitted manifest vs the tree.
-          # (The spec assembler is a small release-support script; the contract is
-          # the BuildSources JSON product_build consumes.)
-          echo "::notice::product-build composes + self-verifies; see build-spec assembly (release-support)."
-          # ./ci/assemble-build-spec.sh ${{ matrix.target }} ${{ steps.version.outputs.value }} > build-spec.json
-          # ./engine/target/release/product_build build-spec.json
+          version="${{ steps.version.outputs.value }}"
+          target="${{ matrix.target }}"
+          suffix=""; [ "${{ matrix.ext }}" = "zip" ] && suffix=".exe"
+          gen_root="${PWD}/out/generations/0001"
+          # Marshal the built binaries + fetched capsule + evidence into a
+          # BuildSources spec; product_build composes, verifies the capsule against
+          # the lock, emits release.json, and proves it covers the placed tree.
+          # (SBOM + LICENSE are release inputs — an SBOM-generation step + the repo
+          # LICENSE; sourced here as ${PWD}/packaging/sbom.cdx.json + ${PWD}/LICENSE.)
+          python3 packaging/assemble-build-spec.py \
+            --target "$target" --version "$version" \
+            --commit "$(git rev-parse HEAD)" --cohort-id "release-${version}" \
+            --generation-root "$gen_root" \
+            --dashboard "${PWD}/engine/target/${target}/release/vaultspec${suffix}" \
+            --updater "${PWD}/engine/target/${target}/release/vaultspec-updater${suffix}" \
+            --capsule-archive "${PWD}/capsule/capsule.zip" \
+            --capsule-manifest "${PWD}/capsule/component-manifest.json" \
+            --tree-evidence "${PWD}/capsule/tree.json" \
+            --lock "${PWD}/packaging/a2a-component.lock.json" \
+            --sbom "${PWD}/packaging/sbom.cdx.json" \
+            --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
+            > build-spec.json
+          ./engine/target/release/product_build build-spec.json
+          echo "GEN_ROOT=${gen_root}" >> "$GITHUB_ENV"
       - name: Archive + checksum
         shell: bash
         run: |
           set -euo pipefail
           name="vaultspec-${{ steps.version.outputs.value }}-${{ matrix.target }}"
-          tree="tree-out"  # the composed generation directory
           if [ "${{ matrix.ext }}" = "zip" ]; then
-            (cd "$tree" && 7z a -tzip "../${name}.zip" .) || (cd "$tree" && zip -r "../${name}.zip" .)
+            (cd "$GEN_ROOT" && 7z a -tzip "${GITHUB_WORKSPACE}/${name}.zip" .) \
+              || (cd "$GEN_ROOT" && zip -r "${GITHUB_WORKSPACE}/${name}.zip" .)
           else
-            tar -czf "${name}.tar.gz" -C "$tree" .
+            tar -czf "${GITHUB_WORKSPACE}/${name}.tar.gz" -C "$GEN_ROOT" .
           fi
           archive="${name}.${{ matrix.ext }}"
-          sha256sum "$archive" | awk '{print $1}' > "${archive}.sha256" \
-            || shasum -a 256 "$archive" | awk '{print $1}' > "${archive}.sha256"
+          ( sha256sum "$archive" || shasum -a 256 "$archive" ) | awk '{print $1}' > "${archive}.sha256"
+          # The member manifest (release.json) drives the S166 cohort digest.
+          cp "$GEN_ROOT/release.json" "release-${{ matrix.target }}.json"
       - name: Upload the release-set member
         uses: actions/upload-artifact@v4
         with:
@@ -141,6 +158,7 @@ jobs:
           path: |
             vaultspec-*-${{ matrix.target }}.${{ matrix.ext }}
             vaultspec-*-${{ matrix.target }}.${{ matrix.ext }}.sha256
+            release-${{ matrix.target }}.json
 
   self-verify:
     name: Clean-runner self-verify
@@ -169,19 +187,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        run: echo "channel=$(grep -m1 '^channel' engine/rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: engine
       - uses: actions/download-artifact@v4
         with:
           path: members
-      - name: Aggregate the five members + emit the cohort digest
+      - name: Aggregate the five verified members + emit the cohort digest
         shell: bash
         run: |
           set -euo pipefail
           # S166: aggregate exactly one verified member per target, enforce the
-          # common A2A commit / component-lock / release-schema / protocol / state
-          # identity across all five, and emit the receipt-bound cohort digest
-          # (SHA-256 of the RFC 8785 JCS CohortDescriptor). This requires the
-          # cohort-digest emitter (a bounded Rust verb over the five member
-          # manifests — a small follow-on; the JCS preimage must not be hand-rolled
-          # in shell). Marked TBD pending that verb.
-          echo "::notice::cohort-digest emitter (Rust verb over the 5 members) is the S166 follow-on; the RFC 8785 JCS preimage is not hand-rolled here."
-          test "$(ls members | wc -l)" -eq 5 || { echo "::error::expected 5 target members"; exit 1; }
+          # common cohort id / A2A commit / component-lock / release-schema /
+          # protocol / state identity across all five, and emit the receipt-bound
+          # cohort digest — SHA-256 of the RFC 8785 JCS CohortDescriptor, produced
+          # by the cohort-digest verb (serde_jcs, never hand-rolled in shell).
+          cargo build --release -p vaultspec-product --bin cohort_digest --manifest-path engine/Cargo.toml
+          ./engine/target/release/cohort_digest \
+            --lock packaging/a2a-component.lock.json \
+            --member aarch64-apple-darwin=members/product-aarch64-apple-darwin/release-aarch64-apple-darwin.json \
+            --member x86_64-apple-darwin=members/product-x86_64-apple-darwin/release-x86_64-apple-darwin.json \
+            --member aarch64-unknown-linux-gnu=members/product-aarch64-unknown-linux-gnu/release-aarch64-unknown-linux-gnu.json \
+            --member x86_64-unknown-linux-gnu=members/product-x86_64-unknown-linux-gnu/release-x86_64-unknown-linux-gnu.json \
+            --member x86_64-pc-windows-msvc=members/product-x86_64-pc-windows-msvc/release-x86_64-pc-windows-msvc.json \
+            --out cohort-descriptor.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cohort-descriptor
+          path: cohort-descriptor.json
