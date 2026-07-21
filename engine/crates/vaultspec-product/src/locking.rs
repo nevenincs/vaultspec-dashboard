@@ -237,8 +237,9 @@ impl InstallLockGuard {
     ) -> Result<File, LockAuthorityError> {
         // The guard authority is verified against the product paths; the Windows
         // credential directory authorities re-derive the credentials tree by
-        // race-safe relative child traversal from the product root, so the
-        // returned handle only proves the root is an openable directory.
+        // absolute path under the installation guard (this handle is dropped
+        // there), so the returned handle only proves the root is an openable
+        // directory.
         self.verify_for_product(paths)?;
         Ok(crate::credentials::platform::retain_product_root(
             paths.root(),

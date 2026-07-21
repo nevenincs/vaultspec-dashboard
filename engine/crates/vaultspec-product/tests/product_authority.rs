@@ -16,7 +16,6 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-#[cfg(unix)]
 use vaultspec_product::credentials::CredentialError;
 #[cfg(unix)]
 use vaultspec_product::credentials::CredentialRole;
@@ -305,7 +304,6 @@ fn atomic_receipt_activation_leaves_no_torn_or_staged_state() {
     assert_eq!(active.schema_version, RECEIPT_SCHEMA_VERSION);
 }
 
-#[cfg(unix)]
 #[test]
 fn only_dashboard_bootstrap_creates_the_ownership_capability() {
     let dir = tempfile::tempdir().unwrap();
@@ -490,7 +488,6 @@ fn verified_ownership_rejects_named_file_replacement() {
     );
 }
 
-#[cfg(unix)]
 #[test]
 fn prepared_bootstrap_interruption_is_durable_and_classified() {
     let dir = tempfile::tempdir().unwrap();
