@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#windows-private-file-authority'
 date: '2026-07-20'
-modified: '2026-07-20'
+modified: '2026-07-21'
 related:
   - "[[2026-07-20-windows-private-file-authority-research]]"
 ---
@@ -42,9 +42,11 @@ supersedes neither.
 - The fixed principal set is the current user, LocalSystem, and built-in Administrators.
 - Creation, recovery, read-only observation, rewrite, and retirement require different
   rights and remain distinct Rust authority types.
-- `windows-acl` remains the safe mutation and bounded-entry-enumeration layer once given
-  a sufficiently authorized handle.
-- Protected-state observation is the only new native security-descriptor primitive.
+- `windows-acl` remains the safe mutation layer once given a sufficiently authorized
+  handle. (Amended 2026-07-21: validation-time entry enumeration moved out of
+  `windows-acl` into the D3 snapshot; see the amended D3.)
+- One bounded snapshot observation of DACL control and entries is the only new native
+  security-descriptor primitive. (Amended 2026-07-21 from protected-state-only.)
 - Real NTFS inheritance and close/reopen behavior are the acceptance boundary.
 - Existing typed Windows refusals remain mandatory until implementation, independent
   review, and acceptance evidence all succeed.
@@ -108,10 +110,34 @@ the pinned `windows-acl` handle API to remove unexpected entries and install the
 three-principal policy. File mutation uses the exact retained handle. Directory mutation
 remains bound by its retained handle, delete-sharing exclusion, and full identity check.
 
-**D3: Observe protected state inside D9.** The private operating-system module adds one
-bounded control observation over an owned retained file or directory handle. It reports
-whether the DACL is protected and exposes no mutable descriptor, pointer, raw handle, or
-caller-selected flag. The safe layer joins this with bounded entry enumeration.
+**D3 (superseded in place 2026-07-21): Observe DACL control and entries in one snapshot
+inside D9.** The private operating-system module adds one bounded observation over an
+owned retained file or directory handle: a single `GetSecurityInfo` call requesting DACL
+security information returns one allocated self-relative descriptor, and the primitive
+reads BOTH the descriptor control word (protected state) and the DACL entry list from
+that same allocation before freeing it inside the call. The primitive returns a bounded,
+normalized, owned snapshot — the protected flag plus, per entry, the entry type,
+inheritance/audit flags, access mask, and textual principal identifier — and exposes no
+raw handle, pointer, raw descriptor bytes, mutable descriptor state, caller-selected
+security-information flag, or product policy. Absent, NULL, empty, unknown-type,
+malformed, or oversized (beyond a fixed entry cap) DACLs fail closed as typed errors
+inside the primitive. The safe shared validation layer consumes this one snapshot for
+every D4 fact — current-user, LocalSystem, and built-in Administrators principals,
+exact masks and flags, duplicate detection — so protected state and entry facts can
+never be assembled from two descriptor states. Validation over a snapshot is explicitly
+point-in-time and is repeated around authoritative operations per D5.
+
+*Supersession note.* The original D3 returned only a protected-state boolean and
+directed the safe layer to join it with separate `windows-acl` entry enumeration. That
+composition was implemented and rejected: the control word and the entry list came from
+two independently fetched security descriptors, so the joined "protected exact list"
+claim could straddle two different descriptor states between the fetches — a
+time-of-check race no consumer-side care could close. Microsoft documents that
+`GetSecurityInfo` returns the requested information in one allocated descriptor, which
+removes the race by construction. Only this observation primitive changes: D1's
+purpose-split rights, D2's `windows-acl` 0.3.0 mutation layer, D4's complete validation
+fact list, D5-D7, the fixed principal set, consumer gates, and typed refusals all remain
+binding as written.
 
 **D4: Define one complete private-authority validation.** Validation requires
 `SE_DACL_PROTECTED`, no inherited entry, exactly one explicit allow entry for each fixed
@@ -144,6 +170,13 @@ code at acceptance: `AuthorityFile::create_prepared` omits `WRITE_DAC`, the read
 reader constructor is used on recovery paths that later require rewrite and exact
 retirement, and `windows-acl` 0.3.0 sets `SE_DACL_PROTECTED` during mutation while
 exposing no way to observe it.
+
+Amendment accepted 2026-07-21 with explicit user approval: D3 is superseded in place by
+the single-snapshot observation above. Driving evidence: the first implementation of the
+shared private-policy validation was rejected in review because protected state and
+entry checks were read from two separately fetched, raceable security descriptors; the
+prototype was removed while consumer gates stayed intact. The amendment is narrow — no
+other decision, constraint, gate, or the `windows-acl` mutation role changes.
 
 Boundary note recorded at acceptance: this decision governs the private-file
 DACL/protected-state authority (credentials, bootstrap descriptors, distribution rollback
