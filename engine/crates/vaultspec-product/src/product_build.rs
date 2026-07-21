@@ -13,15 +13,22 @@
 //! hand, so a candidate can never silently disagree with its pins.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 
 use serde::Serialize;
 
-use crate::manifest::{CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target};
+use crate::manifest::{
+    CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target, sha256_hex,
+};
 
 /// The digest algorithm every release-set artifact is bound under.
 const DIGEST_ALGORITHM: &str = "sha256";
 /// The first complete release-set member schema version.
 const SCHEMA_VERSION: &str = "2.0";
+/// The maximum number of installed regular files a composed product tree may hold.
+const MAX_TREE_FILES: usize = 100_000;
+/// The maximum size of any single installed file (bundled runtimes are large).
+const MAX_TREE_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 
 /// Why a product build could not compose a verified member manifest. Bounded and
 /// free of any secret (the build handles only public release artifacts).
@@ -32,6 +39,15 @@ pub enum ProductBuildError {
     SelfVerify(ManifestError),
     /// The emitted manifest could not be serialized.
     Serialize(String),
+    /// A bounded I/O error while scanning the composed tree.
+    Io(String),
+    /// The composed tree exceeds the fixed installed-file-count ceiling.
+    TreeTooLarge,
+    /// A single composed file exceeds the fixed per-file byte ceiling.
+    FileTooLarge { path: String },
+    /// The composed tree contains a non-regular entry (symlink, device, socket);
+    /// an installed product tree is regular files only.
+    NonRegularEntry { path: String },
 }
 
 impl std::fmt::Display for ProductBuildError {
@@ -44,11 +60,85 @@ impl std::fmt::Display for ProductBuildError {
                 )
             }
             Self::Serialize(detail) => write!(f, "member manifest serialization failed: {detail}"),
+            Self::Io(detail) => write!(f, "composed-tree scan io error: {detail}"),
+            Self::TreeTooLarge => write!(f, "composed tree exceeds the installed-file ceiling"),
+            Self::FileTooLarge { path } => {
+                write!(f, "composed file {path} exceeds the per-file byte ceiling")
+            }
+            Self::NonRegularEntry { path } => {
+                write!(f, "composed tree contains a non-regular entry: {path}")
+            }
         }
     }
 }
 
 impl std::error::Error for ProductBuildError {}
+
+/// Scan every regular file under `tree_root`, returning each app-tree-relative
+/// path (forward-slashed), byte size, and lowercase SHA-256 using the crate's
+/// canonical hash, sorted by path. Bounded by [`MAX_TREE_FILES`] and
+/// [`MAX_TREE_FILE_BYTES`]; a symlink or other non-regular entry is refused
+/// because an installed product tree is regular files only.
+///
+/// This is the composer's evidence source: `file_digests` and the placed-artifact
+/// facts a member manifest is emitted from are COMPUTED over what was actually
+/// placed on disk, never asserted by the caller.
+pub fn scan_composed_tree(tree_root: &Path) -> Result<Vec<ComposedArtifact>, ProductBuildError> {
+    let mut out = Vec::new();
+    scan_dir(tree_root, tree_root, &mut out)?;
+    out.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(out)
+}
+
+fn scan_dir(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<ComposedArtifact>,
+) -> Result<(), ProductBuildError> {
+    let entries =
+        std::fs::read_dir(dir).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    for entry in entries {
+        let entry = entry.map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        let path = entry.path();
+        let metadata = std::fs::symlink_metadata(&path)
+            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        let file_type = metadata.file_type();
+        if file_type.is_dir() {
+            scan_dir(root, &path, out)?;
+        } else if file_type.is_file() {
+            if out.len() >= MAX_TREE_FILES {
+                return Err(ProductBuildError::TreeTooLarge);
+            }
+            if metadata.len() > MAX_TREE_FILE_BYTES {
+                return Err(ProductBuildError::FileTooLarge {
+                    path: relative_path(root, &path),
+                });
+            }
+            let bytes =
+                std::fs::read(&path).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+            out.push(ComposedArtifact {
+                path: relative_path(root, &path),
+                size: metadata.len(),
+                digest: sha256_hex(&bytes),
+            });
+        } else {
+            return Err(ProductBuildError::NonRegularEntry {
+                path: relative_path(root, &path),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// The forward-slashed app-tree-relative path of `path` under `root`.
+fn relative_path(root: &Path, path: &Path) -> String {
+    path.strip_prefix(root)
+        .unwrap_or(path)
+        .components()
+        .map(|component| component.as_os_str().to_string_lossy())
+        .collect::<Vec<_>>()
+        .join("/")
+}
 
 /// A regular file placed in the composed tree, by app-tree-relative path, byte
 /// length, and lowercase SHA-256 digest.

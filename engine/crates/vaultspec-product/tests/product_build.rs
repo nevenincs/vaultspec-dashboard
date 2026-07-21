@@ -14,6 +14,7 @@ use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
 use vaultspec_product::product_build::{
     A2aComponentEvidence, ComposedArtifact, ComposedMember, DashboardArtifact, EvidenceArtifact,
     LicenseArtifact, ProductBuildError, SbomArtifact, TreeEvidenceArtifact, emit_member_manifest,
+    scan_composed_tree,
 };
 
 const LOCK_JSON: &str = include_str!("../../../../packaging/a2a-component.lock.json");
@@ -187,5 +188,53 @@ fn an_incomplete_cohort_roster_fails_self_verification() {
     assert!(
         matches!(refused, Err(ProductBuildError::SelfVerify(_))),
         "an incomplete cohort roster must fail the emitter's self-verification, got {refused:?}"
+    );
+}
+
+#[test]
+fn scan_composed_tree_digests_every_regular_file_sorted() {
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    std::fs::create_dir_all(root.join("bin")).unwrap();
+    std::fs::create_dir_all(root.join("a2a")).unwrap();
+    std::fs::write(root.join("bin/dashboard.exe"), b"dashboard").unwrap();
+    std::fs::write(root.join("empty.txt"), b"").unwrap();
+    std::fs::write(root.join("a2a/capsule.zip"), b"zip-bytes").unwrap();
+
+    let scanned = scan_composed_tree(root).unwrap();
+    let paths: Vec<&str> = scanned
+        .iter()
+        .map(|artifact| artifact.path.as_str())
+        .collect();
+    // Sorted, forward-slashed, app-tree-relative — the same key space the verifier
+    // applies to installed objects.
+    assert_eq!(
+        paths,
+        vec!["a2a/capsule.zip", "bin/dashboard.exe", "empty.txt"]
+    );
+
+    let empty = scanned
+        .iter()
+        .find(|artifact| artifact.path == "empty.txt")
+        .unwrap();
+    assert_eq!(empty.size, 0);
+    // The well-known SHA-256 of the empty byte string proves the canonical hash.
+    assert_eq!(
+        empty.digest,
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    );
+
+    let dashboard = scanned
+        .iter()
+        .find(|artifact| artifact.path == "bin/dashboard.exe")
+        .unwrap();
+    assert_eq!(dashboard.size, 9);
+    assert_eq!(dashboard.digest.len(), 64);
+    assert!(
+        dashboard
+            .digest
+            .chars()
+            .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+        "digests are lowercase hex"
     );
 }
