@@ -27,15 +27,17 @@ use vaultspec_windows_authority::{
     PrivateFileCreation, PrivateFileRecovery, ReadOnlyAuthorityDirectory, ReadOnlyAuthorityFile,
     private_policy,
 };
+// The three principals, the exact mask, and the file/directory ACE flags are
+// single-sourced by `private_policy` (windows-private-file-authority, private-file
+// class addendum); this module declares no policy literal of its own, so what it
+// installs and what the shared validator requires cannot drift apart.
+use vaultspec_windows_authority::private_policy::{
+    ADMINISTRATORS_SID, DIRECTORY_EXPLICIT_FLAGS, FILE_ALL_ACCESS, FILE_EXPLICIT_FLAGS,
+    LOCAL_SYSTEM_SID,
+};
 use windows_acl::acl::{ACL, AceType};
 
 use super::TOKEN_BYTES;
-
-const SYSTEM_SID: &str = "S-1-5-18";
-const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
-const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
-const DIRECTORY_ACE_FLAGS: u8 = 0x03;
-const FILE_ACE_FLAGS: u8 = 0x00;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileIdentity {
@@ -502,12 +504,12 @@ fn harden_directory(path: &Path) -> std::io::Result<()> {
         false,
     )
     .map_err(win_error)?;
-    add_three_principals(&mut acl, &current, DIRECTORY_ACE_FLAGS)?;
+    add_three_principals(&mut acl, &current, DIRECTORY_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &hardening.dacl_snapshot()?,
         &current,
-        DIRECTORY_ACE_FLAGS,
+        DIRECTORY_EXPLICIT_FLAGS,
     )?;
     hardening.revalidate()?;
     // Final proof reads ONE snapshot: protected bit + exact three-principal list
@@ -523,18 +525,18 @@ fn harden_created(created: &PrivateFileCreation) -> std::io::Result<()> {
         false,
     )
     .map_err(win_error)?;
-    add_three_principals(&mut acl, &current, FILE_ACE_FLAGS)?;
+    add_three_principals(&mut acl, &current, FILE_EXPLICIT_FLAGS)?;
     remove_nonconforming(
         &mut acl,
         &created.dacl_snapshot()?,
         &current,
-        FILE_ACE_FLAGS,
+        FILE_EXPLICIT_FLAGS,
     )
 }
 
 /// Install the exact three allow entries (windows-acl mutation).
 fn add_three_principals(acl: &mut ACL, current: &str, required_flags: u8) -> std::io::Result<()> {
-    for sid_text in [current, SYSTEM_SID, ADMINISTRATORS_SID] {
+    for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
@@ -558,7 +560,8 @@ fn remove_nonconforming(
 ) -> std::io::Result<()> {
     for entry in snapshot.entries() {
         let sid = entry.sid();
-        let known_principal = sid == current || sid == SYSTEM_SID || sid == ADMINISTRATORS_SID;
+        let known_principal =
+            sid == current || sid == LOCAL_SYSTEM_SID || sid == ADMINISTRATORS_SID;
         let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
             && known_principal
             && entry.flags() == required_flags

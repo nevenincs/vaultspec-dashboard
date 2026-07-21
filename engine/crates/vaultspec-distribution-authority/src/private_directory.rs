@@ -121,19 +121,14 @@ pub(crate) fn ensure_owner_private_directory(path: &Path) -> Result<(), PrivateD
         .map_err(|violation| PrivateDirectoryError::policy(violation.to_string()))
 }
 
-/// LocalSystem.
+// The three principals, the exact mask, and the directory ACE flags are
+// single-sourced by the authority crate's `private_policy` (private-file class
+// addendum); this module declares no policy literal of its own, so what it
+// installs and what the shared validator requires cannot drift apart.
 #[cfg(windows)]
-const SYSTEM_SID: &str = "S-1-5-18";
-/// Built-in Administrators.
-#[cfg(windows)]
-const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
-/// `FILE_ALL_ACCESS` — the exact mask every private-authority allow entry grants.
-#[cfg(windows)]
-const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
-/// `OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE`, the explicit flags a private
-/// DIRECTORY entry carries so its children inherit exactly these principals.
-#[cfg(windows)]
-const DIRECTORY_ACE_FLAGS: u8 = 0x03;
+use vaultspec_windows_authority::private_policy::{
+    ADMINISTRATORS_SID, DIRECTORY_EXPLICIT_FLAGS, FILE_ALL_ACCESS, LOCAL_SYSTEM_SID,
+};
 
 /// Install the exact three allow entries (`windows-acl` mutation, D2).
 #[cfg(windows)]
@@ -143,14 +138,14 @@ fn add_three_principals(
 ) -> Result<(), PrivateDirectoryError> {
     use windows_acl::acl::AceType;
 
-    for sid_text in [current, SYSTEM_SID, ADMINISTRATORS_SID] {
+    for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
         let sid = windows_acl::helper::string_to_sid(sid_text)
             .map_err(win_error)
             .map_err(PrivateDirectoryError::Filesystem)?;
         acl.add_entry(
             sid.as_ptr().cast_mut().cast(),
             AceType::AccessAllow,
-            DIRECTORY_ACE_FLAGS,
+            DIRECTORY_EXPLICIT_FLAGS,
             FILE_ALL_ACCESS,
         )
         .map_err(win_error)
@@ -173,10 +168,11 @@ fn remove_nonconforming(
 
     for entry in snapshot.entries() {
         let sid = entry.sid();
-        let known_principal = sid == current || sid == SYSTEM_SID || sid == ADMINISTRATORS_SID;
+        let known_principal =
+            sid == current || sid == LOCAL_SYSTEM_SID || sid == ADMINISTRATORS_SID;
         let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
             && known_principal
-            && entry.flags() == DIRECTORY_ACE_FLAGS
+            && entry.flags() == DIRECTORY_EXPLICIT_FLAGS
             && entry.mask() == FILE_ALL_ACCESS
             && !entry.inherited();
         if !conforming {

@@ -7,10 +7,12 @@ use std::os::windows::io::AsRawHandle;
 use windows_acl::acl::{ACL, AceType};
 use windows_acl::helper::{current_user, name_to_sid, sid_to_string, string_to_sid};
 
+/// A FOREIGN principal, deliberately not part of the private policy: the D7
+/// fixtures use it as the extra inheritable entry hardening must remove.
 const BUILTIN_USERS_SID: &str = "S-1-5-32-545";
-const SYSTEM_SID: &str = "S-1-5-18";
-const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
-const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
+// The policy values themselves are single-sourced by `private_policy`, so the
+// acceptance evidence proves the same constants production installs.
+use private_policy::{ADMINISTRATORS_SID, FILE_ALL_ACCESS, LOCAL_SYSTEM_SID as SYSTEM_SID};
 
 fn create_directory(path: &Path) {
     std::fs::create_dir(path).unwrap();

@@ -13,16 +13,24 @@
 
 use crate::{DaclAceKind, DaclSnapshot};
 
+// The fixed private-file policy is SINGLE-SOURCED here (windows-private-file-
+// authority, private-file class addendum). Every consumer that installs entries
+// with the `windows-acl` mutation layer imports these exact values; no consumer
+// may declare its own principal, mask, or flag literal. Drift then becomes
+// impossible rather than merely discouraged: a consumer that installs anything
+// other than what the shared validator below requires fails its own validation
+// immediately, in production and in the NTFS acceptance evidence.
+
 /// LocalSystem.
-const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
+pub const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
 /// Built-in Administrators.
-const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
+pub const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
 /// `FILE_ALL_ACCESS` — the exact mask every private-authority allow entry grants.
-const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
+pub const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
 /// Explicit (non-inherited, non-propagating) file ACE header flags.
-const FILE_EXPLICIT_FLAGS: u8 = 0x00;
+pub const FILE_EXPLICIT_FLAGS: u8 = 0x00;
 /// Explicit directory ACE header flags: `OBJECT_INHERIT_ACE | CONTAINER_INHERIT_ACE`.
-const DIRECTORY_EXPLICIT_FLAGS: u8 = 0x03;
+pub const DIRECTORY_EXPLICIT_FLAGS: u8 = 0x03;
 
 /// A private-authority DACL that does not meet the complete D4 validation.
 #[derive(Debug)]

@@ -277,15 +277,15 @@ mod windows_owner_restricted {
     use std::path::Path;
 
     use vaultspec_windows_authority::{DaclAceKind, PrivateFileCreation, private_policy};
+    // The principals, mask, and ACE flags are single-sourced by `private_policy`
+    // (windows-private-file-authority, private-file class addendum): composition
+    // copies are accepted, duplicated policy literals are not.
+    use vaultspec_windows_authority::private_policy::{
+        ADMINISTRATORS_SID, FILE_ALL_ACCESS, FILE_EXPLICIT_FLAGS, LOCAL_SYSTEM_SID,
+    };
     use windows_acl::acl::{ACL, AceType};
 
     use super::{HandoffError, io, redact};
-
-    const SYSTEM_SID: &str = "S-1-5-18";
-    const ADMINISTRATORS_SID: &str = "S-1-5-32-544";
-    const FILE_ALL_ACCESS: u32 = 0x001f_01ff;
-    // A regular file carries no inheritance flags (a directory would be 0x03).
-    const FILE_ACE_FLAGS: u8 = 0x00;
 
     pub(super) fn create_hardened_descriptor(
         path: &Path,
@@ -351,22 +351,22 @@ mod windows_owner_restricted {
             false,
         )
         .map_err(win_error)?;
-        for sid_text in [current, SYSTEM_SID, ADMINISTRATORS_SID] {
+        for sid_text in [current, LOCAL_SYSTEM_SID, ADMINISTRATORS_SID] {
             let sid = windows_acl::helper::string_to_sid(sid_text).map_err(win_error)?;
             acl.add_entry(
                 sid.as_ptr().cast_mut().cast(),
                 AceType::AccessAllow,
-                FILE_ACE_FLAGS,
+                FILE_EXPLICIT_FLAGS,
                 FILE_ALL_ACCESS,
             )
             .map_err(win_error)?;
         }
         for entry in created.dacl_snapshot()?.entries() {
             let sid = entry.sid();
-            let known = sid == current || sid == SYSTEM_SID || sid == ADMINISTRATORS_SID;
+            let known = sid == current || sid == LOCAL_SYSTEM_SID || sid == ADMINISTRATORS_SID;
             let conforming = entry.entry_type() == DaclAceKind::AccessAllowed
                 && known
-                && entry.flags() == FILE_ACE_FLAGS
+                && entry.flags() == FILE_EXPLICIT_FLAGS
                 && entry.mask() == FILE_ALL_ACCESS
                 && !entry.inherited();
             if !conforming {

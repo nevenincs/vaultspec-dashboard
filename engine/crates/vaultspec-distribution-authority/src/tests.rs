@@ -906,8 +906,8 @@ fn grant_inheritable_everyone(path: &Path) {
     acl.add_entry(
         sid.as_ptr().cast_mut().cast(),
         AceType::AccessAllow,
-        0x03,
-        0x001f_01ff,
+        vaultspec_windows_authority::private_policy::DIRECTORY_EXPLICIT_FLAGS,
+        vaultspec_windows_authority::private_policy::FILE_ALL_ACCESS,
     )
     .expect("grant inheritable entry");
 }
