@@ -72,7 +72,7 @@ fn summarize(run: &UpdaterRun) -> String {
 fn exit_code(error: &UpdaterError) -> i32 {
     match error {
         UpdaterError::Busy => EXIT_BUSY,
-        UpdaterError::Descriptor(_) => EXIT_DESCRIPTOR,
+        UpdaterError::Descriptor(_) | UpdaterError::Intent(_) => EXIT_DESCRIPTOR,
         UpdaterError::Drain(_)
         | UpdaterError::Verification(_)
         | UpdaterError::Activation(_)
