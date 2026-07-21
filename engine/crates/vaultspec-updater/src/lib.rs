@@ -16,6 +16,10 @@
 //! materializer; the runner reaches it via the transaction/activation contract and
 //! never implements the swap here.
 
+mod handoff;
+
+pub use handoff::{HandoffError, copy_updater_out, write_handoff_descriptor};
+
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
