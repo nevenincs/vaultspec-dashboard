@@ -268,6 +268,13 @@ transaction directory outside the active release set and launches that copy
 with a one-time transaction descriptor. On self-installed copies the helper may
 replace both the dashboard and installed updater after they exit on Windows.
 
+Recorded 2026-07-21: the receipt's bootstrap-ownership fact is structurally
+underivable. It exists only as PROVEN — requiring a live retained credential
+proof that revalidates through its own handles at the moment of assertion — or
+as CARRIED, which can only transport what a prior settled receipt recorded.
+There is no boolean path into either, so an update cannot mint a first-install
+claim.
+
 The updater acquires the installation transaction lock first. If the owned
 gateway is live, the updater blocks new runs and drains active runs within a
 bound. It authenticates and stops the gateway, then waits for its runtime
