@@ -52,3 +52,11 @@ terminal settlement 6/6, real gateway admission/restart 6/6, production
 cross-repository lost-ack 1/1, mounted frontend 2/2, plus TypeScript, Ruff,
 production Rust check, and CLI build. Cross-repository CI coordination and five
 foreign product-module decompositions remain explicit medium external queues.
+
+The final resource hardening adds indexed/count-bounded terminal lease
+retention, strict pre-parse `/v1` body bounds, bounded actor-token wire fields,
+redacted discovery diagnostics, exact-bound release, and TTL expiry for uncertain
+commits. Final aggregate evidence is 75/75 dashboard A2A tests, 7/7 real gateway
+tests, and 1/1 production cross-repository lost-ack proof. The reviewed route and
+lease modules remain below 1,500 lines; five foreign product modules remain in
+the external decomposition queue.

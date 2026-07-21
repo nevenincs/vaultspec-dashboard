@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#a2a-orchestration-edge'
 date: '2026-07-19'
-modified: '2026-07-19'
+modified: '2026-07-20'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-17-a2a-orchestration-edge-plan]]"
@@ -566,3 +566,35 @@ Current certification evidence:
 The implementation is ready for the final three-lane adversarial verdict. The
 two remaining medium items are cross-repository CI coordination and foreign
 product-module decomposition; neither is hidden as A2A runtime closure.
+
+## Final bounded-resource and strict-wire closure — 2026-07-20
+
+The last performance and security pass tightened the implementation around the
+already-proven lost-ack path. Terminal lease history now has a partial retention
+index, a 4,096-row ceiling, and 256-row deletion batches run on terminal
+transitions and maintenance, so a long-lived dashboard cannot turn each reserve
+into a 30-day table scan or an unbounded delete transaction. The A2A discovery
+record uses a custom redacted `Debug` implementation; the service bearer cannot
+enter diagnostics through derived formatting.
+
+The sibling now rejects authenticated `/v1` write bodies above 1 MiB before JSON
+parsing, forbids unknown run-start and actor-token fields, applies the production
+agent-id grammar and 63-character role bound, and caps actor and engine bearers
+at 512 UTF-8 bytes. Release requires the exact prepared binding digest. Both
+`ACTIVE` and uncertain `COMMITTING` reservations expire under the same TTL, so
+database uncertainty cannot permanently consume the admission ceiling.
+
+Verification on the final bytes is 75/75 dashboard A2A Rust tests, including
+5/5 lease-repository cases; 7/7 real armed-gateway admission/restart/body-bound
+tests; 1/1 production cross-repository lost-ack proof in 15.90 seconds; focused
+actor-wire tests 10/10; Rust production check and CLI build; and Ruff. The
+contract re-review returned pass with no remaining critical, high, or medium
+finding after the `COMMITTING` expiry correction.
+
+The module-size disposition remains external and explicit. Current failing
+product-authority files are `generation.rs` 1,711, `locking.rs` 1,955,
+`manifest.rs` 4,453, `receipt.rs` 2,604, and
+`vaultspec-windows-authority/src/lib.rs` 2,630. The reviewed dashboard A2A route
+and lease modules are 1,426 and 926 lines. Cross-repository CI coordination and
+those five foreign decompositions remain the only medium queue items; neither is
+represented as an A2A runtime defect.

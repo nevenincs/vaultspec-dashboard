@@ -76,3 +76,11 @@ cross-repository lost-ack proof, 2/2 mounted frontend tests, TypeScript, Ruff,
 Rust production check, and CLI build. The module queue now contains five foreign
 product-authority modules after the concurrent Windows-authority file also grew
 past 1,500 lines.
+
+The final bounded-resource re-review also passed. Dashboard terminal lease
+retention is indexed, capped at 4,096 rows, and pruned in 256-row transactions;
+the sibling rejects `/v1` writes above 1 MiB before parsing, strictly bounds and
+validates actor-token fields, and expires uncertain `COMMITTING` reservations.
+Final evidence is 75/75 dashboard A2A tests, 7/7 real gateway tests, and the 1/1
+fresh production lost-ack proof. The only retained medium queues are coordinated
+cross-repository CI and decomposition of five foreign product-authority modules.
