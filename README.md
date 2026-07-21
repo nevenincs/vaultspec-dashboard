@@ -93,29 +93,28 @@ and x64, and Windows on x64.
 The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.
 
-> **Note:** v0.1.3 and v0.1.4 were tagged without binary assets - they are being
-> republished. Until the next release restores them, all script installers, the Windows
-> zip, and direct downloads resolve nothing newer than v0.1.2. Scoop explicitly tracks
-> v0.1.2. See [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases).
+Every supported channel installs the **complete product** — the `vaultspec`
+dashboard, the copied external updater, the pinned A2A companion capsule, and the
+signed release manifest, licenses, and software bill of materials — as one
+offline-complete tree, and **verifies** that tree against its own release manifest
+with the shipped bounded authority (`vaultspec verify-release`) before it is
+considered installed. A partial or binary-only install is not a supported state.
 
-**Shell script** (macOS and Linux):
+**Shell script** (macOS and Linux) — the product-owned installer:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | sh
 ```
 
-**PowerShell script** (Windows):
+**PowerShell script** (Windows) — the product-owned installer:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/vaultspec-cli-installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1 | iex"
 ```
 
-**MSI installer** (Windows): the MSI channel is configured and the template has been
-verified locally, but no release has shipped the artifact yet - v0.1.3 and v0.1.4
-predated the config addition, and v0.1.4 produced no assets. The `.msi` will appear
-under [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) from the
-next release onward. Until then, use the PowerShell script or direct zip download for
-Windows installation.
+**MSI installer** (Windows): the complete MSI packages every product file with a
+product receipt and clean uninstall; it appears as `vaultspec-<version>-x86_64-pc-windows-msvc.msi`
+under [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases).
 
 **Scoop** (Windows):
 
@@ -127,10 +126,21 @@ scoop install vaultspec/vaultspec
 The `bucket/` directory in this repository is a self-hosted Scoop bucket. Run
 `scoop update vaultspec` to upgrade after a new release lands.
 
-**Direct binary download**: every release publishes platform-specific archives and a
-unified `sha256.sum` checksum file under
-[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases/latest).
-Unpack the archive for your platform and place the binary on your `PATH`.
+**WinGet** (Windows): `winget install vaultspec.vaultspec` points at the complete
+MSI with manager-owned upgrade and rollback.
+
+**Update and removal.** A self-installed copy updates itself in place with
+`vaultspec update` (the copied external updater replaces the release outside the
+active seat, under the installation lock — never a partial swap); package-manager
+copies update through their manager (`scoop update vaultspec`, `winget upgrade`).
+Uninstalling removes the product tree but **preserves your data**, which lives
+outside the install directory.
+
+> **Not supported: `cargo install` / `cargo-binstall`.** A bare Cargo install
+> places only the `vaultspec` binary, not the complete offline tree, so it cannot
+> preserve the release-set, receipt, verification, update, and removal guarantees
+> above. `vaultspec-cli` is withheld from crates.io until a Cargo channel can carry
+> the composite release contract. Use one of the channels above.
 
 > **Note on code signing:** the installers, MSI, and binary archives are currently
 > unsigned. macOS Gatekeeper will quarantine the binary on first run - right-click the
