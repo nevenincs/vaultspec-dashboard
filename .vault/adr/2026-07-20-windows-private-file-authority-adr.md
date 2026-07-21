@@ -81,7 +81,9 @@ The accepted provisioning-authority D5-D7 boundary is stable. Secrets still arri
 after hardening; pending credentials remain tied to the installation guard; bootstrap
 remains descriptor-led and recoverable; exact cleanup remains handle-based. The accepted
 generation-authority distinction between retained capability and copied observation is
-also stable. A copied identity or ACL list cannot replace a retained handle.
+also stable. A copied identity or ACL list cannot replace a retained handle. (Addendum
+2026-07-21: one explicit, bounded narrowing exists for the Windows credentials
+DIRECTORY; see the dated addendum in the Acceptance section. Files are not affected.)
 
 The extension exposes fixed-purpose safe operations only. It cannot expose raw pointers,
 generic ACL construction, arbitrary security-information flags, unbounded descriptor
@@ -185,6 +187,27 @@ shared private-policy validation was rejected in review because protected state 
 entry checks were read from two separately fetched, raceable security descriptors; the
 prototype was removed while consumer gates stayed intact. The amendment is narrow — no
 other decision, constraint, gate, or the `windows-acl` mutation role changes.
+
+Addendum recorded 2026-07-21 (review-driven, credentials-directory observation): the
+Windows credentials DIRECTORY is an explicit, bounded narrowing of the retained-handle
+constraint. `RetainedCredentialDirectory` holds a copied path plus full-width filesystem
+identity — no live directory handle — and re-observes the directory per operation
+through the read-only directory observation authority, revalidating identity and the D3
+DACL snapshot and failing closed on any mismatch. Credential FILES are unaffected: each
+remains created, hardened, revalidated, written, and retired on its own exact retained
+handle. Reason for the narrowing: a long-lived retained directory authority denies
+write sharing, so it cannot coexist with the hardening authority's `WRITE_DAC` open —
+holding the directory handle would block the directory's own hardening and
+re-validation. Why it stays sound under this decision's threat model: the model is
+cooperative same-user (see the provisioning-authority constraints); an
+intermediate-path substitution between observations is detectable only after the fact,
+but it cannot forge file-level protection because every credential file's protected
+three-principal state is proven on that file's own retained handle, and the next
+directory observation fails closed on identity or DACL mismatch. This narrowing grants
+no traversal: the observation authority opens the directory object only and never opens
+children through it. If this boundary ever needs strengthening, the vehicle is the
+tracked Windows parent-directory durability follow-on (plan step W01.P01.S177), not an
+inline widening.
 
 Boundary note recorded at acceptance: this decision governs the private-file
 DACL/protected-state authority (credentials, bootstrap descriptors, distribution rollback
