@@ -321,3 +321,108 @@ fn a_self_listed_manifest_path_is_rejected() {
         Err(ProductBuildError::FileDigestsMismatch { .. })
     ));
 }
+
+fn write_source(dir: &std::path::Path, name: &str, bytes: &[u8]) -> std::path::PathBuf {
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).unwrap();
+    path
+}
+
+fn source(
+    path: std::path::PathBuf,
+    dest: &str,
+) -> vaultspec_product::product_build::SourceArtifact {
+    vaultspec_product::product_build::SourceArtifact {
+        source: path,
+        dest_relative: dest.to_string(),
+    }
+}
+
+#[test]
+fn compose_product_tree_places_scans_emits_and_covers() {
+    use vaultspec_product::product_build::{BuildSources, LicenseSource, compose_product_tree};
+
+    let lock = lock();
+    let capsule = capsule(&lock);
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+
+    let sources = BuildSources {
+        target: TARGET,
+        cohort_id: "release-2026.07.19".to_string(),
+        cohort_targets: vec![
+            Target::Aarch64AppleDarwin,
+            Target::X86_64AppleDarwin,
+            Target::Aarch64UnknownLinuxGnu,
+            Target::X86_64UnknownLinuxGnu,
+            Target::X86_64PcWindowsMsvc,
+        ],
+        release_manifest_path: "release.json".to_string(),
+        dashboard_version: "0.1.4".to_string(),
+        dashboard_commit: "a".repeat(40),
+        dashboard: source(
+            write_source(src.path(), "dashboard.exe", b"dashboard-bytes"),
+            "bin/dashboard.exe",
+        ),
+        updater_version: "0.1.4".to_string(),
+        updater: source(
+            write_source(src.path(), "updater.exe", b"updater-bytes"),
+            "bin/updater.exe",
+        ),
+        capsule_archive: source(
+            write_source(src.path(), "capsule.zip", b"PK-zip-bytes"),
+            "a2a/capsule.zip",
+        ),
+        capsule_manifest: source(
+            write_source(src.path(), "cm.json", b"{capsule-manifest}"),
+            "a2a/component-manifest.json",
+        ),
+        tree_evidence_doc: source(
+            write_source(src.path(), "tree.json", b"{tree-evidence}"),
+            "a2a/tree.json",
+        ),
+        tree_digest: "2".repeat(64),
+        tree_file_count: 3,
+        component_lock: source(
+            write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
+            "packaging/a2a-component.lock.json",
+        ),
+        licenses: vec![LicenseSource {
+            source: write_source(src.path(), "a2a.txt", b"MIT license text"),
+            dest_relative: "licenses/a2a.txt".to_string(),
+            component: "vaultspec-a2a".to_string(),
+            spdx: "MIT".to_string(),
+        }],
+        sbom: source(
+            write_source(src.path(), "sbom.json", b"{sbom}"),
+            "sbom.cdx.json",
+        ),
+        sbom_format: "cyclonedx".to_string(),
+    };
+
+    let raw = compose_product_tree(&generation_root, &sources, &lock, &capsule)
+        .expect("a complete source set must compose, emit, self-verify, and cover the tree");
+
+    // The manifest was written into the tree and describes the real placed files.
+    let written = std::fs::read_to_string(generation_root.join("release.json")).unwrap();
+    assert_eq!(written, raw);
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    // file_digests carries the real placed-file digests (not caller assertions) and
+    // excludes the manifest's own path.
+    assert!(value["file_digests"]["bin/dashboard.exe"].is_string());
+    assert!(value["file_digests"].get("release.json").is_none());
+    // Every placed regular file except release.json is covered.
+    for placed in [
+        "bin/dashboard.exe",
+        "bin/updater.exe",
+        "a2a/capsule.zip",
+        "licenses/a2a.txt",
+        "sbom.cdx.json",
+    ] {
+        assert!(
+            value["file_digests"][placed].is_string(),
+            "{placed} covered"
+        );
+    }
+}

@@ -287,6 +287,177 @@ pub fn verify_member_covers_tree(
     Ok(())
 }
 
+/// One pre-built source artifact and its fixed app-tree-relative destination.
+#[derive(Debug, Clone)]
+pub struct SourceArtifact {
+    pub source: std::path::PathBuf,
+    pub dest_relative: String,
+}
+
+/// A third-party license source with its destination and SPDX identity.
+#[derive(Debug, Clone)]
+pub struct LicenseSource {
+    pub source: std::path::PathBuf,
+    pub dest_relative: String,
+    pub component: String,
+    pub spdx: String,
+}
+
+/// The complete set of pre-built inputs one target's product tree is composed
+/// from. Binaries, the capsule archive, and evidence documents are all produced
+/// upstream (the dashboard/updater builds and the A2A capsule); the composer
+/// places them, computes the installed-byte evidence, and emits the manifest.
+///
+/// The capsule tree-evidence facts (`tree_digest`, `tree_file_count`) are CARRIED
+/// from the A2A-produced evidence, never recomputed — A2A owns that digest's
+/// canonical preimage; the composer places the evidence document and binds its
+/// declared facts.
+#[derive(Debug, Clone)]
+pub struct BuildSources {
+    pub target: Target,
+    pub cohort_id: String,
+    pub cohort_targets: Vec<Target>,
+    pub release_manifest_path: String,
+    pub dashboard_version: String,
+    pub dashboard_commit: String,
+    pub dashboard: SourceArtifact,
+    pub updater_version: String,
+    pub updater: SourceArtifact,
+    pub capsule_archive: SourceArtifact,
+    pub capsule_manifest: SourceArtifact,
+    pub tree_evidence_doc: SourceArtifact,
+    pub tree_digest: String,
+    pub tree_file_count: usize,
+    pub component_lock: SourceArtifact,
+    pub licenses: Vec<LicenseSource>,
+    pub sbom: SourceArtifact,
+    pub sbom_format: String,
+}
+
+/// Compose the complete product tree for one target under `generation_root`, emit
+/// and self-verify its release-set member manifest, write it as
+/// `release_manifest_path`, and prove the manifest covers exactly the placed tree.
+///
+/// This is the S64 build: PLACE every pre-built input at its fixed app-tree
+/// destination, SCAN the placed tree for real installed-byte evidence, ASSEMBLE
+/// the member facts from that evidence (never from caller assertions), EMIT +
+/// self-verify the manifest through the S06 verifier, and finally prove the
+/// written manifest describes exactly the tree. The generation-layout is produced
+/// directly (the installer later places it and the generation-writer adopts it);
+/// the capsule is placed as its archive plus carried tree-evidence, never
+/// extracted. Returns the emitted manifest bytes.
+pub fn compose_product_tree(
+    generation_root: &Path,
+    sources: &BuildSources,
+    lock: &ComponentLock,
+    capsule: &CapsuleManifest,
+) -> Result<String, ProductBuildError> {
+    // PLACE every input at its fixed destination.
+    let placements = [
+        &sources.dashboard,
+        &sources.updater,
+        &sources.capsule_archive,
+        &sources.capsule_manifest,
+        &sources.tree_evidence_doc,
+        &sources.component_lock,
+        &sources.sbom,
+    ];
+    for artifact in placements {
+        place(generation_root, &artifact.source, &artifact.dest_relative)?;
+    }
+    for license in &sources.licenses {
+        place(generation_root, &license.source, &license.dest_relative)?;
+    }
+
+    // SCAN the placed tree (before the manifest is written) for installed bytes.
+    let scanned = scan_composed_tree(generation_root)?;
+    let by_path = |relative: &str| -> Result<ComposedArtifact, ProductBuildError> {
+        scanned
+            .iter()
+            .find(|artifact| artifact.path == relative)
+            .cloned()
+            .ok_or_else(|| ProductBuildError::FileDigestsMismatch {
+                detail: format!("expected placed file {relative} is absent from the composed tree"),
+            })
+    };
+
+    // ASSEMBLE the member facts from the scanned evidence.
+    let member = ComposedMember {
+        target: sources.target,
+        cohort_id: sources.cohort_id.clone(),
+        cohort_targets: sources.cohort_targets.clone(),
+        release_manifest_path: sources.release_manifest_path.clone(),
+        dashboard: DashboardArtifact {
+            version: sources.dashboard_version.clone(),
+            commit: sources.dashboard_commit.clone(),
+            artifact: by_path(&sources.dashboard.dest_relative)?,
+        },
+        updater_version: sources.updater_version.clone(),
+        updater: by_path(&sources.updater.dest_relative)?,
+        a2a_component: A2aComponentEvidence {
+            component_lock: evidence(&by_path(&sources.component_lock.dest_relative)?),
+            capsule_manifest: evidence(&by_path(&sources.capsule_manifest.dest_relative)?),
+            capsule_archive: by_path(&sources.capsule_archive.dest_relative)?,
+            tree_evidence: TreeEvidenceArtifact {
+                artifact: by_path(&sources.tree_evidence_doc.dest_relative)?,
+                tree_digest: sources.tree_digest.clone(),
+                file_count: sources.tree_file_count,
+            },
+        },
+        licenses: sources
+            .licenses
+            .iter()
+            .map(|license| {
+                Ok(LicenseArtifact {
+                    component: license.component.clone(),
+                    spdx: license.spdx.clone(),
+                    path: license.dest_relative.clone(),
+                    digest: by_path(&license.dest_relative)?.digest,
+                })
+            })
+            .collect::<Result<Vec<_>, ProductBuildError>>()?,
+        sbom: SbomArtifact {
+            format: sources.sbom_format.clone(),
+            artifact: by_path(&sources.sbom.dest_relative)?,
+        },
+        file_digests: file_digests_from_scan(&scanned, &sources.release_manifest_path),
+    };
+
+    // EMIT + self-verify, then write the manifest into the tree.
+    let raw = emit_member_manifest(&member, lock, capsule)?;
+    let manifest_path = generation_root.join(&sources.release_manifest_path);
+    if let Some(parent) = manifest_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    }
+    std::fs::write(&manifest_path, raw.as_bytes())
+        .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+
+    // PROVE the written manifest describes exactly the final tree (now including
+    // the manifest itself, which the completeness law excludes by its own path).
+    let final_scan = scan_composed_tree(generation_root)?;
+    verify_member_covers_tree(&member, &final_scan)?;
+    Ok(raw)
+}
+
+/// Copy one source file to `root/dest_relative`, creating parent directories.
+fn place(root: &Path, source: &Path, dest_relative: &str) -> Result<(), ProductBuildError> {
+    let dest = root.join(dest_relative);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    }
+    std::fs::copy(source, &dest).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    Ok(())
+}
+
+fn evidence(artifact: &ComposedArtifact) -> EvidenceArtifact {
+    EvidenceArtifact {
+        path: artifact.path.clone(),
+        digest: artifact.digest.clone(),
+    }
+}
+
 /// Emit a schema-2.0 release-set member manifest from the composed facts, deriving
 /// the runtime/protocol/state-schema pins from the trusted `lock` and verified
 /// `capsule`, then SELF-VERIFY the emitted bytes through the production verifier.
