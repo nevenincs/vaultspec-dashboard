@@ -30,7 +30,9 @@ use vaultspec_product::migration::{MigrationPlan, StagedMigration};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::recovery::{RecoveryError, RecoveryOutcome, recover};
 use vaultspec_product::snapshot::ConsistencyGroupSpec;
-use vaultspec_product::transaction::{TransactionError, UpdatePlan, UpdateTransaction};
+use vaultspec_product::transaction::{
+    ReadyToActivate, TransactionError, UpdatePlan, UpdateTransaction,
+};
 
 /// The maximum owner-restricted descriptor size the updater will read.
 const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
@@ -166,46 +168,42 @@ pub struct ExecuteInputs {
     pub migration_plan: MigrationPlan,
 }
 
-/// How far the fresh-update EXECUTE drive reached.
-#[derive(Debug, PartialEq, Eq)]
-pub enum ExecuteOutcome {
-    /// The drive drained the discovered gateway, snapshotted, and migrated, and
-    /// reached the activation boundary. The materialize + receipt-commit SWAP is
-    /// the materializer seam; until it lands the drive rolls back cleanly rather
-    /// than leave a mid-flight transaction or fake an activation.
-    ReadyToActivatePendingSwap,
-    /// Discovery was absent — installed-but-cleanly-stopped, a valid cold state
-    /// (per the accepted `guard_owned_mutation` D4 contract). Proceeding requires
-    /// the cold `Quiescence` mint (`assert_cold_stopped`), which is pending in the
-    /// materializer lane, so the drive rolled back rather than fake-mint a witness.
-    ColdPathPendingMint,
-}
-
-/// Drive one fresh update against the discovered gateway.
+/// Drive one fresh update to the activation boundary.
 ///
 /// Order (the recorded drive contract): begin the transaction, acquire the sealed
 /// [`OwnedGatewayLease`] over the DISCOVERED gateway (only `OwnedLive` proceeds;
-/// a foreign/stale/incompatible gateway is a typed rollback; absent discovery is
-/// the valid cold state), drain-and-stop it (receiving the `Quiescence` witness —
-/// never minting it), snapshot, migrate, and reach the activation boundary. The
-/// materialize + receipt-commit swap is the materializer seam.
-pub fn execute_update(
+/// a foreign/stale/incompatible gateway is a typed rollback), OR — for absent
+/// discovery — mint the cold witness via `assert_cold_stopped` (installed-but-
+/// cleanly-stopped is a valid cold state; a gateway that reappears in the window
+/// rolls back). Both branches converge on a real, never-faked `Quiescence`, then
+/// snapshot, migrate, and reach `ready_to_activate`.
+///
+/// The returned [`ReadyToActivate`] MUST be consumed by the caller: either
+/// [`activate_and_accept`] (the swap tail) or `rollback`. Dropping it leaves the
+/// transaction mid-flight at `Migrating`, which the next `recover` rolls back.
+pub fn execute_update<'guard>(
     paths: &ProductPaths,
-    guard: &InstallLockGuard,
+    guard: &'guard InstallLockGuard,
     inputs: ExecuteInputs,
-) -> Result<ExecuteOutcome, UpdaterError> {
+) -> Result<ReadyToActivate<'guard>, UpdaterError> {
     let mut txn = UpdateTransaction::begin(paths.clone(), guard, inputs.plan)?;
 
-    let lease = match OwnedGatewayLease::acquire(paths, guard, &inputs.drain_context) {
-        Ok(lease) => lease,
+    // Both branches converge on a real, never-faked `Quiescence` before snapshot.
+    let quiescence = match OwnedGatewayLease::acquire(paths, guard, &inputs.drain_context) {
+        Ok(lease) => {
+            // The witness is minted INSIDE the transaction that performed the
+            // proven discovered stop.
+            let (quiescence, _evidence) = txn.drain_and_stop_discovered(lease, inputs.deadlines)?;
+            quiescence
+        }
         Err(GatewayDrainError::DiscoveryAbsent) => {
-            // Installed-but-cleanly-stopped is a valid cold state, but the cold
-            // Quiescence mint (`assert_cold_stopped`) is pending the materializer
-            // lane; roll back rather than fake-mint a witness. Full cold-path
-            // safety additionally requires the SEAT stopped (so nothing launches a
-            // new gateway after the cold snapshot) — S60's seat-exit precondition.
-            let _ = txn.rollback();
-            return Ok(ExecuteOutcome::ColdPathPendingMint);
+            // Installed-but-cleanly-stopped is a valid cold state. `assert_cold_stopped`
+            // re-reads discovery (pure record-absence), requires it STILL absent — a
+            // gateway that began publishing in the window → `GatewayDiscoverable` →
+            // rollback — and mints the `Quiescence` inside the transaction. The
+            // seat-stopped cold precondition is satisfied by construction: the
+            // updater runs POST-seat-exit (S60 stops the seat, then launches it).
+            txn.assert_cold_stopped()?
         }
         Err(error) => {
             // A foreign gateway is never drained (ADR D4); a stale one is the
@@ -216,20 +214,13 @@ pub fn execute_update(
         }
     };
 
-    // The witness is minted INSIDE the transaction that performed the proven stop.
-    let (quiescence, _evidence) = txn.drain_and_stop_discovered(lease, inputs.deadlines)?;
     txn.snapshot(&inputs.group)?;
     txn.migrate(
         &inputs.staged_migration,
         &inputs.migration_plan,
         &quiescence,
     )?;
-
-    let ready = txn.ready_to_activate();
-    // The materialize + receipt-commit SWAP is the materializer seam. Until it
-    // lands, roll back cleanly (prior-or-complete, no partial active generation).
-    ready.rollback()?;
-    Ok(ExecuteOutcome::ReadyToActivatePendingSwap)
+    Ok(txn.ready_to_activate())
 }
 
 /// Read and validate the owner-restricted descriptor.

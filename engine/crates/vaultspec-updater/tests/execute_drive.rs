@@ -16,7 +16,7 @@
 //! becomes Windows-runnable too.
 
 use std::ffi::OsString;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use vaultspec_product::gateway_drain::{DrainContext, DrainDeadlines};
@@ -29,7 +29,7 @@ use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::receipt::Channel;
 use vaultspec_product::snapshot::{ConsistencyGroupSpec, SchemaBearingStore};
 use vaultspec_product::transaction::{UpdatePlan, read_descriptor};
-use vaultspec_updater::{ExecuteInputs, ExecuteOutcome, UpdaterError, execute_update};
+use vaultspec_updater::{ExecuteInputs, UpdaterError, execute_update};
 
 struct Installed {
     paths: ProductPaths,
@@ -88,7 +88,7 @@ fn drain_context() -> DrainContext {
     }
 }
 
-fn execute_inputs(context: DrainContext, capsule_root: &Path) -> ExecuteInputs {
+fn execute_inputs(context: DrainContext, staged_migration: StagedMigration) -> ExecuteInputs {
     ExecuteInputs {
         plan: UpdatePlan::new(
             9,
@@ -116,13 +116,7 @@ fn execute_inputs(context: DrainContext, capsule_root: &Path) -> ExecuteInputs {
             None,
         )
         .unwrap(),
-        staged_migration: StagedMigration::from_capsule_relative(
-            capsule_root,
-            &["no-such-migrator"],
-            Vec::<OsString>::new(),
-            MigrationLimits::new(64 * 1024, Duration::from_secs(10)),
-        )
-        .unwrap(),
+        staged_migration,
         migration_plan: forward_plan(),
     }
 }
@@ -131,24 +125,54 @@ fn forward_plan() -> MigrationPlan {
     plan_migration(None, &MigrationRangeSpec::new("0001", "0008").unwrap()).unwrap()
 }
 
+/// A migration whose program cannot be spawned — unused on the branches that fail
+/// at lease acquisition before migrate is reached.
+fn unreachable_migration(capsule_root: &Path) -> StagedMigration {
+    StagedMigration::from_capsule_relative(
+        capsule_root,
+        &["no-such-migrator"],
+        Vec::<OsString>::new(),
+        MigrationLimits::new(64 * 1024, Duration::from_secs(10)),
+    )
+    .unwrap()
+}
+
+/// A migration that runs to a successful exit: the test binary re-invoked with a
+/// filter matching no test exits 0 with bounded output.
+fn succeeding_migration() -> StagedMigration {
+    let exe = std::env::current_exe().unwrap();
+    StagedMigration::from_capsule_relative(
+        exe.parent().unwrap(),
+        &[exe.file_name().unwrap().to_str().unwrap()],
+        vec![
+            OsString::from("zzz_no_such_test_filter"),
+            OsString::from("--test-threads=1"),
+        ],
+        MigrationLimits::new(64 * 1024, Duration::from_secs(10)),
+    )
+    .unwrap()
+}
+
 fn assert_descriptor_cleared(paths: &ProductPaths, guard: &InstallLockGuard) {
     assert!(read_descriptor(paths, guard).unwrap().is_none());
 }
 
 #[test]
-fn absent_discovery_is_the_valid_cold_path() {
+fn absent_discovery_is_the_valid_cold_path_with_a_real_quiescence() {
     let product = installed();
     let guard = product.guard();
-    let capsule: PathBuf = product._temp.path().to_path_buf();
-    // No discovery file: installed-but-cleanly-stopped valid cold state.
-    let outcome = execute_update(
+    // No discovery file: installed-but-cleanly-stopped valid cold state. The cold
+    // predicate mints a REAL (never-faked) Quiescence and the drive reaches
+    // ready_to_activate through a real snapshot + migration.
+    let ready = execute_update(
         &product.paths,
         &guard,
-        execute_inputs(drain_context(), &capsule),
+        execute_inputs(drain_context(), succeeding_migration()),
     )
     .unwrap();
-    assert_eq!(outcome, ExecuteOutcome::ColdPathPendingMint);
-    // The transaction rolled back rather than fake-mint a Quiescence.
+    // The swap tail is the unix/CI end-to-end proof; here we roll the reached
+    // transaction back cleanly.
+    ready.rollback().unwrap();
     assert_descriptor_cleared(&product.paths, &guard);
 }
 
@@ -166,7 +190,7 @@ fn a_foreign_gateway_rolls_back_and_is_never_drained() {
     let error = execute_update(
         &product.paths,
         &guard,
-        execute_inputs(drain_context(), &capsule),
+        execute_inputs(drain_context(), unreachable_migration(&capsule)),
     )
     .unwrap_err();
     assert!(matches!(
@@ -187,7 +211,7 @@ fn a_stale_owned_gateway_rolls_back() {
     let error = execute_update(
         &product.paths,
         &guard,
-        execute_inputs(drain_context(), &capsule),
+        execute_inputs(drain_context(), unreachable_migration(&capsule)),
     )
     .unwrap_err();
     assert!(matches!(
@@ -210,8 +234,12 @@ fn an_incompatible_owned_gateway_rolls_back() {
 
     let mut context = drain_context();
     context.supported_protocol = range("v2", "v2");
-    let error =
-        execute_update(&product.paths, &guard, execute_inputs(context, &capsule)).unwrap_err();
+    let error = execute_update(
+        &product.paths,
+        &guard,
+        execute_inputs(context, unreachable_migration(&capsule)),
+    )
+    .unwrap_err();
     assert!(matches!(
         error,
         UpdaterError::Drain(vaultspec_product::gateway_drain::GatewayDrainError::Incompatible)
