@@ -23,7 +23,10 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
+# Anchored: this is Python packaging's ROOT-generated MANIFEST file. Unanchored
+# it also matched any directory segment named `manifest` (case-insensitively on
+# Windows), which silently hid Rust source under src/manifest/.
+/MANIFEST
 
 # Auto-generated temp files
 tmp/
