@@ -8,6 +8,7 @@ modified: '2026-07-21'
 related:
   - '[[2026-07-20-windows-private-file-authority-adr]]'
   - '[[2026-07-20-windows-private-file-authority-research]]'
+  - '[[2026-07-21-windows-private-file-authority-audit]]'
 ---
 
 # `windows-private-file-authority` feature index
@@ -19,6 +20,10 @@ Auto-generated index of all documents tagged with `#windows-private-file-authori
 ### adr
 
 - `2026-07-20-windows-private-file-authority-adr` - `windows-private-file-authority` adr: `protected exact-handle authority for Windows private files` | (**status:** `accepted`)
+
+### audit
+
+- `2026-07-21-windows-private-file-authority-audit` - `windows-private-file-authority` audit: `D9 single-snapshot private-file authority review`
 
 ### research
 
