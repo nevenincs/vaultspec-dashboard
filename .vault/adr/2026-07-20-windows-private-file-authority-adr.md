@@ -241,7 +241,19 @@ discipline binds the datastore FILES: each is created or reopened relative to it
 retained parent with the rights its own hardening requires, hardened on that exact
 handle, and validated unchanged by D4; no validator for inherited-only, unprotected child
 descriptors is authorized, here or anywhere (the class boundary that decides which files
-this binds is stated in the private-file class addendum below). Two boundaries
+this binds is stated in the private-file class addendum below). The parent-relative FILE
+half of D1's purpose split is exactly TWO constructors — exclusive create-new hardening
+authority, and read-only verification authority — each differing from its path-named
+sibling in one respect only: how the object is named. No parent-relative RECOVERY or
+retirement variant is authorized: recovery authority exists for the credential bootstrap
+descriptor's reopen-rewrite-retire lifecycle, the datastore has no such lifecycle, and
+public surface on this reviewed unsafe boundary is not added for symmetry with a lifecycle
+that does not exist. Because these constructors are selected BY rights mask, the crate's
+access-right and file-flag constants must first be single-sourced: a mask value may be
+declared exactly once in this crate and never hand-typed beside an import of the same name
+from the system bindings, since a safety argument that rests on a right being ABSENT from
+a mask is only as sound as the guarantee that both spellings of that mask denote the same
+value. Two boundaries
 this grants nothing on. It grants no traversal and no general pathname-to-handle bridge:
 a relative constructor opens exactly one named direct child and nothing beneath it. It
 does not advance gate retirement — the datastore lane carries a further Windows refusal
