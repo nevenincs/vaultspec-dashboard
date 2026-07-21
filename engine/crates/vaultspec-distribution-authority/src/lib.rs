@@ -12,6 +12,9 @@ mod publication;
 
 use materialization::StagedArchive;
 pub use materialization::{MaterializationSource, VerifiedArchiveReader};
+use private_directory::{
+    ensure_owner_private_child_directory, prove_owner_private_child_directory,
+};
 use product_scope::{ProcessVerificationLease, ProductRootScope};
 pub use publication::{
     CapsuleMetadata, CompatibilityRange, ComponentLock, FileReference, PublicationError,
@@ -704,31 +707,23 @@ fn ensure_cap_directory(root: &Dir, name: &str) -> Result<Dir, VerificationError
         Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => false,
         Err(_) => return Err(VerificationError::DatastoreUnavailable),
     };
-    #[cfg(windows)]
-    let _ = created;
+    // Establish owner-private protection BEFORE any datastore state exists, and
+    // re-establish it IDEMPOTENTLY for a directory that already existed. An
+    // unprotected pre-created directory is repaired rather than merely refused —
+    // the failure mode the credentials lane already had to fix. Resolution is
+    // relative to the retained capability; no absolute path is reconstructed.
+    ensure_owner_private_child_directory(root, name)
+        .map_err(|_| VerificationError::DatastoreUnavailable)?;
     let directory = open_cap_directory_exact(root, name)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        let file = directory
+    if created {
+        #[cfg(unix)]
+        directory
             .try_clone()
             .map_err(|_| VerificationError::DatastoreUnavailable)?
-            .into_std_file();
-        let metadata = file
-            .metadata()
+            .into_std_file()
+            .sync_all()
             .map_err(|_| VerificationError::DatastoreUnavailable)?;
-        if metadata.uid() != nix::unistd::Uid::effective().as_raw() {
-            return Err(VerificationError::DatastoreUnavailable);
-        }
-        if created {
-            file.set_permissions(std::fs::Permissions::from_mode(0o700))
-                .map_err(|_| VerificationError::DatastoreUnavailable)?;
-            file.sync_all()
-                .map_err(|_| VerificationError::DatastoreUnavailable)?;
-            sync_cap_directory(root)?;
-        } else if metadata.permissions().mode() & 0o777 != 0o700 {
-            return Err(VerificationError::DatastoreUnavailable);
-        }
+        sync_cap_directory(root)?;
     }
     Ok(directory)
 }
@@ -780,21 +775,11 @@ fn classify_cap_datastore(
     }
     let directory = open_cap_directory_exact(root, name)
         .map_err(|_| VerificationError::InvalidDatastoreState)?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        let metadata = directory
-            .try_clone()
-            .map_err(|_| VerificationError::InvalidDatastoreState)?
-            .into_std_file()
-            .metadata()
-            .map_err(|_| VerificationError::InvalidDatastoreState)?;
-        if metadata.uid() != nix::unistd::Uid::effective().as_raw()
-            || metadata.permissions().mode() & 0o777 != 0o700
-        {
-            return Err(VerificationError::InvalidDatastoreState);
-        }
-    }
+    // Verification-only: PROVE the owner-private state, never establish it. This
+    // path decides whether existing trust state may be believed, so it opens
+    // with read-only observation rights and cannot re-DACL or delete.
+    prove_owner_private_child_directory(root, name)
+        .map_err(|_| VerificationError::InvalidDatastoreState)?;
     classify_datastore_directory(&directory).map(Some)
 }
 

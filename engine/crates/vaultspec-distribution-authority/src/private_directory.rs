@@ -24,6 +24,7 @@
 //! covered by inheritance: each of those is hardened on its own exact retained
 //! handle by its owning consumer.
 
+use cap_std::fs::Dir;
 use std::path::Path;
 
 /// An owner-private directory could not be established or proven.
@@ -84,16 +85,32 @@ pub(crate) fn ensure_owner_private_directory(path: &Path) -> Result<(), PrivateD
 /// directory, then prove the resulting state.
 #[cfg(windows)]
 pub(crate) fn ensure_owner_private_directory(path: &Path) -> Result<(), PrivateDirectoryError> {
-    use std::os::windows::io::AsRawHandle as _;
-
-    use vaultspec_windows_authority::{DaclSnapshot, HardeningDirectory, private_policy};
-    use windows_acl::acl::ACL;
+    use vaultspec_windows_authority::HardeningDirectory;
 
     // The hardening authority carries WRITE_DAC + READ_CONTROL and denies
     // delete/rename sharing, so the DACL is mutated AND snapshotted through one
     // exact retained handle whose identity cannot change mid-hardening.
     let hardening =
         HardeningDirectory::open_existing(path).map_err(PrivateDirectoryError::Filesystem)?;
+    harden_and_prove(&hardening)
+}
+
+/// Install and prove the exact protected three-principal DACL through ONE
+/// already-retained hardening handle.
+///
+/// Shared by the pathname and parent-relative entry points so this crate holds a
+/// single hardening composition: the two entry points differ only in how the
+/// directory is NAMED, never in what protection they establish or how they prove
+/// it.
+#[cfg(windows)]
+fn harden_and_prove(
+    hardening: &vaultspec_windows_authority::HardeningDirectory,
+) -> Result<(), PrivateDirectoryError> {
+    use std::os::windows::io::AsRawHandle as _;
+
+    use vaultspec_windows_authority::{DaclSnapshot, private_policy};
+    use windows_acl::acl::ACL;
+
     let current = current_user_sid()?;
     let mut acl = ACL::from_file_handle(
         hardening.directory().as_raw_handle() as *mut winapi::ctypes::c_void,
@@ -119,6 +136,132 @@ pub(crate) fn ensure_owner_private_directory(path: &Path) -> Result<(), PrivateD
         .map_err(PrivateDirectoryError::Filesystem)?;
     private_policy::validate_private_directory(&snapshot, &current)
         .map_err(|violation| PrivateDirectoryError::policy(violation.to_string()))
+}
+
+/// Establish (or idempotently re-prove) owner-private protection on ONE named
+/// direct child directory of a capability-held parent, resolved RELATIVELY.
+///
+/// This is the cap-std bridge. A `cap-std` `Dir` carries read and traverse
+/// rights only, so it cannot be hardened through itself — but the requested
+/// access of a relative open binds the CHILD, not the parent supplied as the
+/// resolution root, so the child opens with `WRITE_DAC` through a parent holding
+/// none. No absolute path is ever reconstructed for a capability-rooted object:
+/// reconstructing one would detect a substituted object only after it had
+/// already been opened and hardened, and could not speak for intermediate
+/// components at all.
+#[cfg(windows)]
+pub(crate) fn ensure_owner_private_child_directory(
+    parent: &Dir,
+    name: &str,
+) -> Result<(), PrivateDirectoryError> {
+    use vaultspec_windows_authority::HardeningDirectory;
+
+    let root = capability_root(parent)?;
+    let hardening = HardeningDirectory::open_child_existing(&root, std::ffi::OsStr::new(name))
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    harden_and_prove(&hardening)
+}
+
+/// Prove — never establish — owner-private protection on one named direct child
+/// of a capability-held parent. Verification-only: it opens with read-only
+/// observation rights and cannot re-DACL, delete, or traverse.
+#[cfg(windows)]
+pub(crate) fn prove_owner_private_child_directory(
+    parent: &Dir,
+    name: &str,
+) -> Result<(), PrivateDirectoryError> {
+    use vaultspec_windows_authority::{ReadOnlyAuthorityDirectory, private_policy};
+
+    let root = capability_root(parent)?;
+    let observation =
+        ReadOnlyAuthorityDirectory::open_child_observation(&root, std::ffi::OsStr::new(name))
+            .map_err(PrivateDirectoryError::Filesystem)?;
+    let current = current_user_sid()?;
+    let snapshot = observation
+        .dacl_snapshot()
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    private_policy::validate_private_directory(&snapshot, &current)
+        .map_err(|violation| PrivateDirectoryError::policy(violation.to_string()))
+}
+
+/// Borrow the capability handle as a plain directory handle for one relative
+/// open. The clone is the SAME kernel object, so this is retained capability,
+/// not a copied observation of it.
+#[cfg(windows)]
+fn capability_root(parent: &Dir) -> Result<std::fs::File, PrivateDirectoryError> {
+    Ok(parent
+        .try_clone()
+        .map_err(PrivateDirectoryError::Filesystem)?
+        .into_std_file())
+}
+
+/// Establish (or idempotently re-prove) owner-private protection on ONE named
+/// direct child directory of a capability-held parent, resolved RELATIVELY.
+#[cfg(unix)]
+pub(crate) fn ensure_owner_private_child_directory(
+    parent: &Dir,
+    name: &str,
+) -> Result<(), PrivateDirectoryError> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    let child = open_child_exact(parent, name)?;
+    child
+        .set_permissions(std::fs::Permissions::from_mode(0o700))
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    let metadata = child
+        .metadata()
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    if metadata.uid() != nix::unistd::Uid::effective().as_raw() {
+        return Err(PrivateDirectoryError::policy(
+            "owner-private directory is not owned by the effective user",
+        ));
+    }
+    if metadata.permissions().mode() & 0o777 != 0o700 {
+        return Err(PrivateDirectoryError::policy(
+            "owner-private directory does not carry mode 0700",
+        ));
+    }
+    Ok(())
+}
+
+/// Prove — never establish — owner-private protection on one named direct child
+/// of a capability-held parent.
+#[cfg(unix)]
+pub(crate) fn prove_owner_private_child_directory(
+    parent: &Dir,
+    name: &str,
+) -> Result<(), PrivateDirectoryError> {
+    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
+
+    let metadata = open_child_exact(parent, name)?
+        .metadata()
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    if metadata.uid() != nix::unistd::Uid::effective().as_raw()
+        || metadata.permissions().mode() & 0o777 != 0o700
+    {
+        return Err(PrivateDirectoryError::policy(
+            "owner-private directory is not an effective-user 0700 directory",
+        ));
+    }
+    Ok(())
+}
+
+/// Open one named direct child directory through the capability, refusing a
+/// symlink or non-directory final link.
+#[cfg(unix)]
+fn open_child_exact(parent: &Dir, name: &str) -> Result<std::fs::File, PrivateDirectoryError> {
+    let named = parent
+        .symlink_metadata(name)
+        .map_err(PrivateDirectoryError::Filesystem)?;
+    if !named.is_dir() || named.file_type().is_symlink() {
+        return Err(PrivateDirectoryError::policy(
+            "owner-private path is not a directory final link",
+        ));
+    }
+    Ok(parent
+        .open_dir(name)
+        .map_err(PrivateDirectoryError::Filesystem)?
+        .into_std_file())
 }
 
 // The three principals, the exact mask, and the directory ACE flags are

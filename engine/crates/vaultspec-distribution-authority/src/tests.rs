@@ -1264,3 +1264,84 @@ async fn windows_datastore_lane_refuses_until_durability_is_provisioned() {
         "a refused verification must not leave committed trust state"
     );
 }
+
+/// The cap-std bridge proof (windows-private-file-authority, parent-relative
+/// addendum): a child opens with `WRITE_DAC` and hardens through a `cap-std`
+/// parent handle that carries no such right.
+///
+/// Non-vacuous by construction. The parent's rights-poverty is ASSERTED first —
+/// `ACL::from_file_handle` needs `READ_CONTROL` and fails on the capability
+/// handle — so the child's success below cannot be explained by the capability
+/// handle having carried the rights all along. This is the fact the whole bridge
+/// rests on, proven on real NTFS rather than inferred from cap-std's source.
+#[cfg(windows)]
+#[test]
+fn capability_parent_hardens_a_child_it_could_not_harden_itself() {
+    use std::os::windows::io::AsRawHandle as _;
+
+    let temp = TempDir::new().expect("temporary capability root");
+    let root_path = temp.path().join("product");
+    std::fs::create_dir(&root_path).expect("product root");
+    let capability =
+        Dir::open_ambient_dir(&root_path, cap_std::ambient_authority()).expect("capability root");
+
+    // Pin the parent's exact rights-poverty. cap-std opens with GENERIC_READ,
+    // whose STANDARD_RIGHTS_READ component IS READ_CONTROL, so the handle CAN
+    // read its own DACL — but it carries no WRITE_DAC, so it cannot write one.
+    // Proven by doing it: the read succeeds, the write is denied.
+    let borrowed = capability
+        .try_clone()
+        .expect("clone capability")
+        .into_std_file();
+    let mut parent_acl = windows_acl::acl::ACL::from_file_handle(
+        borrowed.as_raw_handle() as *mut winapi::ctypes::c_void,
+        false,
+    )
+    .expect("cap-std handle carries READ_CONTROL, so reading its DACL succeeds");
+    let system = windows_acl::helper::string_to_sid(
+        vaultspec_windows_authority::private_policy::LOCAL_SYSTEM_SID,
+    )
+    .expect("LocalSystem SID");
+    assert!(
+        parent_acl
+            .add_entry(
+                system.as_ptr().cast_mut().cast(),
+                windows_acl::acl::AceType::AccessAllow,
+                vaultspec_windows_authority::private_policy::DIRECTORY_EXPLICIT_FLAGS,
+                vaultspec_windows_authority::private_policy::FILE_ALL_ACCESS,
+            )
+            .is_err(),
+        "the cap-std parent must lack WRITE_DAC, or this proof is vacuous"
+    );
+
+    // A pre-existing, unprotected child - the state the credentials lane had to
+    // fix at runtime - must be hardened idempotently, not merely adopted.
+    capability
+        .create_dir(LIVE_DATASTORE)
+        .expect("create datastore child");
+    assert!(
+        super::private_directory::prove_owner_private_child_directory(&capability, LIVE_DATASTORE)
+            .is_err(),
+        "a freshly created child must not already satisfy the private policy"
+    );
+
+    super::private_directory::ensure_owner_private_child_directory(&capability, LIVE_DATASTORE)
+        .expect("harden the child through the rights-poor capability parent");
+    super::private_directory::prove_owner_private_child_directory(&capability, LIVE_DATASTORE)
+        .expect("the hardened child must prove owner-private");
+
+    // Re-establishment is idempotent, and the read-only prove variant still holds.
+    super::private_directory::ensure_owner_private_child_directory(&capability, LIVE_DATASTORE)
+        .expect("re-hardening an already-protected child must succeed");
+    super::private_directory::prove_owner_private_child_directory(&capability, LIVE_DATASTORE)
+        .expect("protection survives idempotent re-hardening");
+
+    // The bridge grants no traversal and no parent escape.
+    for rejected in ["..", ".", r"nested\child", "absent"] {
+        assert!(
+            super::private_directory::ensure_owner_private_child_directory(&capability, rejected)
+                .is_err(),
+            "the relative bridge must refuse {rejected:?}"
+        );
+    }
+}
