@@ -21,11 +21,14 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use vaultspec_distribution_authority::MaterializationSource;
 use vaultspec_product::discovery::handoff_is_owner_restricted;
 use vaultspec_product::gateway_drain::{
     DrainContext, DrainDeadlines, GatewayDrainError, OwnedGatewayLease,
 };
+use vaultspec_product::generation::LockedProduct;
 use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard};
+use vaultspec_product::materializer::{ActivationLimits, activate_update};
 use vaultspec_product::migration::{MigrationPlan, StagedMigration};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::recovery::{RecoveryError, RecoveryOutcome, recover};
@@ -223,6 +226,121 @@ pub fn execute_update<'guard>(
     Ok(txn.ready_to_activate())
 }
 
+/// Context handed to the injected relaunch/probe seam AFTER the receipt commit.
+pub struct RelaunchContext<'a> {
+    /// The product paths.
+    pub paths: &'a ProductPaths,
+    /// The receipt-selected (now active) generation identifier.
+    pub generation: &'a str,
+    /// The relaunch instruction from the descriptor, if one was carried.
+    pub relaunch: Option<&'a RelaunchSpec>,
+}
+
+/// Why the injected relaunch/probe seam reported failure. Bounded and
+/// secret-free. Post-commit this NEVER rolls back — the release is committed.
+#[derive(Debug)]
+pub struct RelaunchError(String);
+
+impl RelaunchError {
+    /// Build a bounded, secret-free relaunch failure.
+    #[must_use]
+    pub fn new(detail: impl Into<String>) -> Self {
+        Self(redact(&detail.into()))
+    }
+}
+
+impl std::fmt::Display for RelaunchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "relaunch/probe failed: {}", self.0)
+    }
+}
+
+impl std::error::Error for RelaunchError {}
+
+/// Bounds and provenance for the activation swap.
+#[derive(Debug, Clone, Copy)]
+pub struct ActivationParams {
+    /// Wall-clock bound on the whole materialize-and-activate drive.
+    pub limits: ActivationLimits,
+    /// Wall-clock creation time recorded in the receipt (epoch milliseconds).
+    pub created_ms: i64,
+}
+
+/// The terminal outcome of the activation swap.
+#[derive(Debug, PartialEq, Eq)]
+pub enum ActivationOutcome {
+    /// The receipt committed the candidate, the seat relaunched and probed
+    /// healthy, and the transaction advanced to `Accepted` — the clean terminal.
+    Accepted,
+    /// The receipt committed the candidate (the release is LIVE and cannot roll
+    /// back), but the relaunch/probe did not confirm. Recovery — or the next
+    /// stable-launcher start — resolves it roll-forward; there is no rollback
+    /// after the commit.
+    CommittedRelaunchPending,
+}
+
+/// Materialize the verified release into the candidate generation, commit it
+/// through the fixed receipt, run the injected relaunch/probe, and finalize.
+///
+/// The one post-commit rule is absolute: after `activate_update` commits the
+/// receipt the candidate is selected and CANNOT roll back — a relaunch/probe
+/// failure returns [`ActivationOutcome::CommittedRelaunchPending`] (recovery
+/// resolves roll-forward), never a rollback. A PRE-commit failure rolls back
+/// through the retained `ReadyToActivate`.
+///
+/// The `relaunch_probe` seam is injected because the concrete launcher command
+/// and health predicate are S60/front-door-coupled; the orchestration
+/// (mark-accepted-after-probe, committed-relaunch-pending) is complete here.
+pub fn activate_and_accept<'guard>(
+    ready: ReadyToActivate<'guard>,
+    paths: &ProductPaths,
+    guard: &'guard InstallLockGuard,
+    source: &mut MaterializationSource<'_>,
+    params: ActivationParams,
+    relaunch: Option<&RelaunchSpec>,
+    relaunch_probe: impl FnOnce(&RelaunchContext<'_>) -> Result<(), RelaunchError>,
+) -> Result<ActivationOutcome, UpdaterError> {
+    let mut product = LockedProduct::bind(paths.clone(), guard)
+        .map_err(|error| UpdaterError::Activation(redact(&error.to_string())))?;
+
+    let activated = match activate_update(
+        ready,
+        &mut product,
+        source,
+        params.limits,
+        params.created_ms,
+    ) {
+        Ok(activated) => activated,
+        Err(failure) => {
+            if failure.is_committed() {
+                // Committed mid-activation: no rollback; recovery resolves forward.
+                return Ok(ActivationOutcome::CommittedRelaunchPending);
+            }
+            let detail = redact(&failure.error().to_string());
+            failure.rollback().map_err(UpdaterError::Transaction)?;
+            return Err(UpdaterError::Activation(detail));
+        }
+    };
+
+    // The receipt is COMMITTED here — past this point there is no rollback.
+    let generation = activated.generation().to_string();
+    let transaction = activated.into_transaction();
+    let context = RelaunchContext {
+        paths,
+        generation: &generation,
+        relaunch,
+    };
+    match relaunch_probe(&context) {
+        Ok(()) => {
+            transaction
+                .mark_accepted()
+                .map_err(UpdaterError::Transaction)?;
+            Ok(ActivationOutcome::Accepted)
+        }
+        Err(_relaunch_error) => Ok(ActivationOutcome::CommittedRelaunchPending),
+    }
+}
+
 /// Read and validate the owner-restricted descriptor.
 pub fn read_descriptor(descriptor_path: &Path) -> Result<UpdaterDescriptor, UpdaterError> {
     if !handoff_is_owner_restricted(descriptor_path) {
@@ -312,6 +430,10 @@ pub enum UpdaterError {
     /// The discovered gateway could not be drained and stopped (foreign, stale,
     /// incompatible, or the stop was unproven within the deadline).
     Drain(GatewayDrainError),
+    /// The materialize + receipt-commit activation failed before the commit
+    /// (bounded, secret-redacted). Post-commit failures are never this variant —
+    /// they are `CommittedRelaunchPending`.
+    Activation(String),
     /// The ordered update transaction failed.
     Transaction(TransactionError),
     /// Interruption recovery failed.
@@ -329,6 +451,7 @@ impl std::fmt::Display for UpdaterError {
                 "the installation lock is held by another installer or updater"
             ),
             Self::Drain(error) => write!(f, "gateway drain failed: {error}"),
+            Self::Activation(detail) => write!(f, "activation failed pre-commit: {detail}"),
             Self::Transaction(error) => write!(f, "update transaction failed: {error}"),
             Self::Recovery(error) => write!(f, "interruption recovery failed: {error}"),
             Self::Io(detail) => write!(f, "updater io error: {detail}"),
@@ -342,7 +465,7 @@ impl std::error::Error for UpdaterError {
             Self::Drain(error) => Some(error),
             Self::Transaction(error) => Some(error),
             Self::Recovery(error) => Some(error),
-            Self::Descriptor(_) | Self::Busy | Self::Io(_) => None,
+            Self::Descriptor(_) | Self::Busy | Self::Activation(_) | Self::Io(_) => None,
         }
     }
 }
