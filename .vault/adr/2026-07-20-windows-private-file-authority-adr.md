@@ -209,6 +209,49 @@ children through it. If this boundary ever needs strengthening, the vehicle is t
 tracked Windows parent-directory durability follow-on (plan step W01.P01.S177), not an
 inline widening.
 
+Addendum recorded 2026-07-21 (architect ruling, distribution-datastore directory
+bridge): the distribution-authority datastore objects held through `cap-std` receive
+their Windows owner-private protection through PARENT-RELATIVE retained authority, and
+never through a reconstructed pathname. Driving fact: a `cap-std` directory handle is
+opened with `GENERIC_READ` and permissive read/write sharing, so it carries neither
+`WRITE_DAC` nor `READ_CONTROL`-plus-mutation rights and cannot itself be hardened —
+confirming that hardening THROUGH the held handle is impossible. That impossibility was
+read too broadly. The requested access of a relative kernel open applies to the CHILD
+object being opened, not to the parent handle supplied as its root; and every datastore
+object requiring protection is a NAMED SINGLE-COMPONENT CHILD of a directory this crate
+already retains. A child may therefore be opened with `READ_CONTROL | WRITE_DAC` through
+a parent that holds neither, hardened, and proven — retained capability, not copied
+observation. This extends D1's purpose split with parent-relative constructors for
+directory hardening and for read-only directory observation, and adds no new native
+primitive: the two relative-open unsafe calls already reviewed under the
+`a2a-archive-materialization` D4 boundary are parameterized by rights mask, their
+no-reparse, exact-disposition, and delete-share-denial behavior unchanged. The
+alternative bridge — opening the hardening authority on a reconstructed absolute path,
+with or without comparing the resulting identity against the one observed through the
+`cap-std` handle — is REFUSED. Identity comparison detects a substituted object after it
+has been opened and hardened; it does not prevent one, and it cannot speak for
+intermediate path components, which Windows resolves through reparse points regardless of
+no-reparse behavior at the final link. The credentials-directory narrowing above is not a
+precedent for it: that narrowing is sound only because every credential FILE carries an
+independent protected proof on its own retained handle, whereas a datastore directory
+protects its contents BY INHERITANCE and so has no independent fallback proof. Under the
+accepted generation-authority distinction, copied observation is admissible only where
+retained capability is unavailable; here it is available, so it governs. The same
+discipline binds the datastore FILES: each is created or reopened relative to its
+retained parent with the rights its own hardening requires, hardened on that exact
+handle, and validated unchanged by D4 — inherited-only, unprotected child descriptors are
+not a second, weaker private class and no such validator is authorized. Two boundaries
+this grants nothing on. It grants no traversal and no general pathname-to-handle bridge:
+a relative constructor opens exactly one named direct child and nothing beneath it. It
+does not advance gate retirement — the datastore lane carries a further Windows refusal
+for directory-metadata durability, which belongs to the tracked parent-durability
+follow-on (plan step `W01.P01.S177`) and must not be resolved inline; the outer
+`production_platform_gate` retires only after that refusal is settled and real-NTFS
+evidence exists, since retiring it earlier converts an honest up-front refusal into a
+mid-operation failure over already-mutated state. Consistent with D7 and the
+artifact-level proof rule, a `cfg(test)`-only Windows success arm standing in for a
+production refusal is not acceptance evidence and must be removed rather than relied on.
+
 Boundary note recorded at acceptance: this decision governs the private-file
 DACL/protected-state authority (credentials, bootstrap descriptors, distribution rollback
 state, and the protected-state verification arm). The retained-parent-relative child
