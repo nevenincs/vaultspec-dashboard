@@ -378,7 +378,11 @@ fn run<R: Read + Seek>(
             capsule_root: feed.capsule_root.clone(),
             provenance: crate::channels::self_install::SelfInstallAuthority::new().provenance(),
             channel: Channel::SelfInstall,
-            bootstrap_created_ownership: prior.bootstrap_created_ownership,
+            // The update path CARRIES the prior settled receipt's fact; it has no
+            // way to mint one, so an update can never claim bootstrap creation.
+            bootstrap_created_ownership: crate::manifest::BootstrapOwnership::carried_from_prior(
+                prior.bootstrap_created_ownership,
+            ),
             prior_seat: Some(PriorSeatIdentity {
                 generation: prior.active_generation.clone(),
                 dashboard_version: prior.dashboard_version.clone(),

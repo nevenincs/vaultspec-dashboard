@@ -318,6 +318,25 @@ impl<'guard> PendingDashboardCredentials<'guard> {
         }
     }
 
+    /// Re-prove both retained credential files at the moment a fact is derived
+    /// from this proof's existence (D5 point-in-time).
+    ///
+    /// Holding the value says the files were private when it was created; this
+    /// says they still are, and still have the exact identities recorded then.
+    /// The activation boundary calls it before asserting that this install
+    /// created ownership, so the claim rests on a re-observed fact rather than
+    /// on the age of the value.
+    #[allow(
+        dead_code,
+        reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+    )]
+    pub(crate) fn revalidate_retained(&self) -> Result<(), CredentialError> {
+        for file in [&self.ownership_file, &self.attach_file] {
+            platform::revalidate_retained_file(file).map_err(CredentialError::Io)?;
+        }
+        Ok(())
+    }
+
     /// Retained ownership credential.
     #[must_use]
     pub fn ownership(&self) -> &Credential {

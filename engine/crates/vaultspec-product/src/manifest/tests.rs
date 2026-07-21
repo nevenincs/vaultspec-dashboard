@@ -342,7 +342,7 @@ impl Fixture {
 fn valid_receipt_context() -> ReceiptActivationContext {
     ReceiptActivationContext {
         channel: Channel::SelfInstall,
-        bootstrap_created_ownership: true,
+        bootstrap_created_ownership: BootstrapOwnership::carried_from_prior(true),
         prior_seat: Some(PriorSeatIdentity {
             generation: "generation-prior".to_string(),
             dashboard_version: "0.1.3".to_string(),

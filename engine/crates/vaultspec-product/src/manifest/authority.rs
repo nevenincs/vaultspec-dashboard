@@ -390,7 +390,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
                 a2a_identity: manifest.a2a_component.release_identity,
                 active_generation,
                 channel,
-                bootstrap_created_ownership,
+                bootstrap_created_ownership: bootstrap_created_ownership.get(),
                 prior_seat,
                 consistency_generation,
                 created_ms,

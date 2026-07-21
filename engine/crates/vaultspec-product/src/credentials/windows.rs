@@ -323,6 +323,20 @@ pub fn open_and_read(path: &Path) -> std::io::Result<(RetainedCredentialFile, Ve
     Ok((retained, bytes))
 }
 
+/// Re-prove ONE still-held retained credential file through its own exact
+/// handle (D5).
+///
+/// Deliberately not a reopen: the first-install proof holds its files
+/// exclusively, so reopening one would fail with a sharing violation rather than
+/// prove anything. The retained handle can always re-observe itself.
+#[allow(
+    dead_code,
+    reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+)]
+pub fn revalidate_retained_file(file: &RetainedCredentialFile) -> std::io::Result<()> {
+    file.revalidate_protected()
+}
+
 pub fn revalidate_named(
     directory: &RetainedCredentialDirectory,
     name: &std::ffi::OsStr,
@@ -718,6 +732,55 @@ mod tests {
             );
         }
         drop(guard);
+    }
+
+    /// The D6 first-install fact rests on a proof that is BOTH re-provable and
+    /// untamperable while held.
+    ///
+    /// The obvious negative — corrupt the credential, watch revalidation catch
+    /// it — cannot be staged on Windows, and the reason is the guarantee itself:
+    /// the proof retains each file with sharing fully denied, so an outside
+    /// writer cannot modify the credential at all. So this asserts both halves
+    /// of what actually holds: the retained proof revalidates through its own
+    /// handles, and an external write is REFUSED with a sharing violation rather
+    /// than silently succeeding. Together those are stronger than
+    /// detect-after-the-fact.
+    #[test]
+    fn pending_proof_revalidates_and_cannot_be_tampered_with_while_held() {
+        let (_dir, paths) = bootstrapped();
+        let guard = InstallLock::new(paths.install_lock_path())
+            .acquire(Actor::Installer, "windows-pending-revalidation")
+            .expect("lock acquisition")
+            .expect("uncontended lock");
+        let store = DashboardCredentialStore::for_product(&paths);
+        let pending = store
+            .begin_bootstrap(&guard)
+            .expect("Windows credential bootstrap succeeds");
+
+        // The live proof re-proves itself through its own retained handles.
+        pending
+            .revalidate_retained()
+            .expect("a live first-install proof must revalidate");
+        // ...and repeatedly, since the activation boundary re-derives the fact.
+        pending
+            .revalidate_retained()
+            .expect("revalidation is repeatable");
+
+        // An outside writer cannot substitute the credential the fact rests on.
+        for name in ["ownership.cap", "attach.cred"] {
+            let error = std::fs::write(paths.credentials_dir().join(name), b"substituted")
+                .expect_err("a retained credential must not be externally writable");
+            assert_eq!(
+                error.raw_os_error(),
+                Some(32),
+                "{name} must refuse an outside writer with a sharing violation"
+            );
+        }
+
+        // Still valid after the refused attempts.
+        pending
+            .revalidate_retained()
+            .expect("a refused tamper attempt must not disturb the proof");
     }
 
     /// Committing the parent index is IDEMPOTENT, and a second retirement of an

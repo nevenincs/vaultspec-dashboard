@@ -184,6 +184,28 @@ impl RetainedCredentialFile {
     }
 }
 
+/// Re-prove ONE still-held retained credential file through its own exact
+/// descriptor (D5). Deliberately not a path lookup: the fact must rest on the
+/// handle the proof retains, not on whatever currently answers to the name.
+#[allow(
+    dead_code,
+    reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+)]
+pub fn revalidate_retained_file(file: &RetainedCredentialFile) -> std::io::Result<()> {
+    let held = rustix::fs::fstat(&file.file)?;
+    validate_file_state(&held)?;
+    let identity = FileIdentity {
+        device: held.st_dev as u64,
+        inode: held.st_ino as u64,
+    };
+    if identity != file.identity {
+        return Err(std::io::Error::other(
+            "retained credential identity changed",
+        ));
+    }
+    Ok(())
+}
+
 pub fn revalidate_named(
     directory: &RetainedCredentialDirectory,
     name: &OsStr,

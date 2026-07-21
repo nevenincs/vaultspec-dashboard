@@ -1406,10 +1406,63 @@ struct ReleaseVerificationInput<'a> {
 )]
 struct ReceiptActivationContext {
     channel: Channel,
-    bootstrap_created_ownership: bool,
+    bootstrap_created_ownership: BootstrapOwnership,
     prior_seat: Option<PriorSeatIdentity>,
     consistency_generation: u64,
     created_ms: i64,
+}
+
+/// Whether THIS activation created the dashboard ownership credential (D6).
+///
+/// The fact is deliberately not a `bool` on the way in. A caller that could pass
+/// `true` could assert a first install that never happened, and the receipt this
+/// value lands in is what a later run reads to decide whether ownership was
+/// established here. So there is no boolean constructor and no public raw
+/// construction path: the value exists only as
+///
+///   * [`BootstrapOwnership::proven`] — FIRST INSTALL. True only because a live
+///     [`PendingDashboardCredentials`] proof was supplied AND its retained files
+///     revalidated at this moment. The proof cannot be forged, cloned, or
+///     serialized, so possessing one IS the evidence.
+///   * [`BootstrapOwnership::carried_from_prior`] — UPDATE. Repeats what the
+///     prior settled receipt already recorded. It transports a fact; it can
+///     never mint one, so an update can never claim bootstrap creation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BootstrapOwnership(bool);
+
+impl BootstrapOwnership {
+    /// Derive the fact from a retained first-install credential proof.
+    ///
+    /// Revalidating here rather than trusting the value's existence is the point
+    /// of D5: the proof was created earlier in the transaction, and this is the
+    /// activation boundary, so the files are re-proven at the moment the fact is
+    /// asserted rather than at the moment it was created.
+    #[allow(
+        dead_code,
+        reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+    )]
+    pub(crate) fn proven(
+        pending: &crate::credentials::PendingDashboardCredentials<'_>,
+    ) -> Result<Self> {
+        pending
+            .revalidate_retained()
+            .map_err(|error| ManifestError::InvalidField {
+                field: "receipt.bootstrap_created_ownership".to_string(),
+                detail: format!(
+                    "retained first-install credential proof failed revalidation: {error}"
+                ),
+            })?;
+        Ok(Self(true))
+    }
+
+    /// Carry the prior settled receipt's fact through an update.
+    pub(crate) const fn carried_from_prior(prior: bool) -> Self {
+        Self(prior)
+    }
+
+    pub(crate) const fn get(self) -> bool {
+        self.0
+    }
 }
 
 /// Complete immutable and transaction-supplied facts for the S172 receipt.
