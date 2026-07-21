@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-21'
+modified: '2026-07-22'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - "[[2026-07-18-a2a-product-provisioning-reference]]"
@@ -173,6 +173,18 @@ PostgreSQL, Jaeger, and VidaiMock are excluded from this base closure.
 Installation stores immutable generations separately from the A2A app home,
 where SQLite, workspaces, discovery, credentials, snapshots, logs, and receipts
 remain mutable.
+
+Recorded 2026-07-22: release CONSTRUCTION is a publisher-side concern and is
+deliberately absent from this crate's public surface. The canonicalization that
+defines the format — the deterministic tree digest and the cohort-descriptor
+digest — stays private, because those ARE the verification algorithms, and a
+second implementation of either could drift from the thing it verifies against.
+A consumer of this crate consumes and verifies a release; it never builds one,
+so the absence is correct rather than a gap. Consequently the integrated proof
+of the sealed provisioning transaction lives in this crate's own test space and
+not in an out-of-crate integration test. That is the intended end state, not a
+limitation awaiting removal: widening these items' visibility to relocate that
+proof would trade a real seal for a test's address.
 
 **D2: Cargo Dist orchestrates; product-owned installers compose.** Cargo Dist
 continues to plan the target matrix, checksums, GitHub release, and generated
