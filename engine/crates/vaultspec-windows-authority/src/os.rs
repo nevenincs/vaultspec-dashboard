@@ -28,19 +28,23 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO,
-    FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES,
-    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE,
-    FileAttributeTagInfo, FileDispositionInfo, FileIdInfo, FileStandardInfo,
-    GetFileInformationByHandleEx, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-    READ_CONTROL, SYNCHRONIZE, SetFileInformationByHandle, WRITE_DAC,
+    FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_GENERIC_READ,
+    FILE_GENERIC_WRITE, FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
+    FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE, FileAttributeTagInfo,
+    FileDispositionInfo, FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx,
+    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW, READ_CONTROL, SYNCHRONIZE,
+    SetFileInformationByHandle, WRITE_DAC,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
 
 use crate::{HighResFileId, ProcessExistence};
 
-const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
-const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
+// Every access right and file flag composed into the masks below comes from the
+// system bindings imported above — none is hand-typed here or anywhere else in
+// the crate. The safety arguments in this module rest on specific rights being
+// PRESENT or ABSENT from a mask, and such an argument is only as sound as the
+// guarantee that every spelling of that right denotes the same value.
 const DIRECTORY_ACCESS: u32 = DELETE
     | FILE_LIST_DIRECTORY
     | FILE_ADD_SUBDIRECTORY
@@ -237,10 +241,61 @@ const CHILD_FILE_ACCESS: u32 = DELETE | FILE_GENERIC_READ | FILE_GENERIC_WRITE |
 const CHILD_FILE_CREATE_OPTIONS: u32 =
     FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
 
+/// Create-new hardening access for a private child file
+/// (windows-private-file-authority, parent-relative addendum): the materializer
+/// mask plus `WRITE_DAC` and nothing else. `FILE_GENERIC_READ` already contains
+/// the `READ_CONTROL` the DACL snapshot needs, so no separate right is added,
+/// and `DELETE` is retained deliberately — it is what lets a failed post-create
+/// validation retire the EXACT handle via delete-on-close rather than by name.
+const CHILD_FILE_HARDENING_ACCESS: u32 = CHILD_FILE_ACCESS | WRITE_DAC;
+
+/// Read-only verification access for a private child file: `FILE_GENERIC_READ`
+/// alone, which already carries `READ_CONTROL` for the snapshot and the
+/// `SYNCHRONIZE` that `FILE_SYNCHRONOUS_IO_NONALERT` requires. It carries no
+/// `WRITE_DAC`, no `DELETE`, and no generic-write bit: mutation must not be
+/// expressible through this handle.
+const CHILD_FILE_READONLY_ACCESS: u32 = FILE_GENERIC_READ;
+
 /// Exclusively create one direct child regular file relative to the retained
 /// parent directory handle (archive-materialization D4). `FILE_CREATE` cannot
 /// open an existing object, so a name collision fails instead of replacing.
 pub(super) fn create_child_regular_file(parent: &File, name: &[u16]) -> io::Result<File> {
+    open_child_regular_file_with(parent, name, CHILD_FILE_ACCESS, 0, true)
+}
+
+/// Exclusively create one direct child regular file that can additionally be
+/// HARDENED through its own retained handle
+/// (windows-private-file-authority, parent-relative addendum). Identical to
+/// [`create_child_regular_file`] except for the added `WRITE_DAC`; the
+/// materializer's own mask is deliberately left unwidened.
+pub(super) fn create_child_regular_file_for_hardening(
+    parent: &File,
+    name: &[u16],
+) -> io::Result<File> {
+    open_child_regular_file_with(parent, name, CHILD_FILE_HARDENING_ACCESS, 0, true)
+}
+
+/// Open one existing direct child regular file for READ-ONLY verification.
+///
+/// Read sharing admits other readers while write and delete sharing stay denied
+/// for the retained lifetime, matching the pathname sibling exactly.
+pub(super) fn open_child_regular_file_readonly(parent: &File, name: &[u16]) -> io::Result<File> {
+    open_child_regular_file_with(
+        parent,
+        name,
+        CHILD_FILE_READONLY_ACCESS,
+        FILE_SHARE_READ,
+        false,
+    )
+}
+
+fn open_child_regular_file_with(
+    parent: &File,
+    name: &[u16],
+    access: u32,
+    share: u32,
+    create: bool,
+) -> io::Result<File> {
     let byte_length = name
         .len()
         .checked_mul(std::mem::size_of::<u16>())
@@ -269,22 +324,27 @@ pub(super) fn create_child_regular_file(parent: &File, name: &[u16]) -> io::Resu
     // `unicode_name`, `object_attributes`, `raw_handle`, and `io_status`
     // remain live, aligned, and correctly sized for the call. The
     // UNICODE_STRING length is checked and its buffer is read-only by
-    // contract. FILE_CREATE cannot open an existing object,
-    // FILE_NON_DIRECTORY_FILE cannot yield a directory, and
+    // contract. `access` and `share` are fixed product masks chosen by the thin
+    // wrappers above — never caller-selected — and the requested access binds
+    // only the child object this call opens, not the parent resolution root.
+    // The disposition is exactly one of FILE_CREATE (which cannot open an
+    // existing object, so a collision fails instead of replacing) or FILE_OPEN
+    // (which cannot create one); neither is FILE_OPEN_IF, and the returned
+    // disposition is asserted below so an ambiguous outcome cannot pass.
+    // FILE_NON_DIRECTORY_FILE cannot yield a directory and
     // FILE_OPEN_REPARSE_POINT prevents reparse-target traversal at the leaf;
     // the caller still re-verifies the attribute tag on the returned handle.
-    // Share access is zero, so no second handle can reach the entry while it
-    // is retained. Every optional pointer is null. No pointer escapes.
+    // Every optional pointer is null. No pointer escapes.
     let status = unsafe {
         NtCreateFile(
             &raw mut raw_handle,
-            CHILD_FILE_ACCESS,
+            access,
             &raw const object_attributes,
             &raw mut io_status,
             std::ptr::null(),
             FILE_ATTRIBUTE_NORMAL,
-            0,
-            FILE_CREATE,
+            share,
+            if create { FILE_CREATE } else { FILE_OPEN },
             CHILD_FILE_CREATE_OPTIONS,
             std::ptr::null(),
             0,
@@ -302,9 +362,14 @@ pub(super) fn create_child_regular_file(parent: &File, name: &[u16]) -> io::Resu
     // SAFETY: successful NtCreateFile returned one newly owned handle. File
     // takes that ownership exactly once and closes it on every later path.
     let file = unsafe { File::from_raw_handle(raw_handle) };
-    if io_status.Information != IO_INFORMATION_FILE_CREATED {
+    let expected_information = if create {
+        IO_INFORMATION_FILE_CREATED
+    } else {
+        IO_INFORMATION_FILE_OPENED
+    };
+    if io_status.Information != expected_information {
         return Err(io::Error::other(format!(
-            "native file disposition mismatch: expected {IO_INFORMATION_FILE_CREATED}, got {}",
+            "native file disposition mismatch: expected {expected_information}, got {}",
             io_status.Information
         )));
     }

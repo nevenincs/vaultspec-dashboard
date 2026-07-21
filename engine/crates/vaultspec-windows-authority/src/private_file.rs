@@ -41,6 +41,36 @@ impl PrivateFileCreation {
         })
     }
 
+    /// Exclusively create and retain one empty regular non-reparse file as a
+    /// direct child of `parent`, resolved relatively and never through a
+    /// pathname (windows-private-file-authority, parent-relative addendum).
+    ///
+    /// The create-new half of the parent-relative FILE purpose split. It exists
+    /// for capability-held trees whose parent handle cannot carry `WRITE_DAC`;
+    /// the rights requested here bind the CHILD, not the resolution root. Like
+    /// its pathname sibling it is fully exclusive, refuses to adopt an existing
+    /// object, and yields an EMPTY file so hardening precedes the first byte.
+    ///
+    /// There is deliberately no parent-relative RECOVERY or retirement variant:
+    /// recovery authority exists for the credential descriptor's
+    /// reopen-rewrite-retire lifecycle, which capability-held datastores do not
+    /// have. A caller needing a file it created earlier in the same operation
+    /// retains the creation handle rather than reopening.
+    pub fn create_child(parent: &File, name: &OsStr) -> io::Result<Self> {
+        let name = validate_child_component(name)?;
+        let file = os::create_child_regular_file_for_hardening(parent, &name)?;
+        let state = os::validated_regular_file_state(&file)?;
+        if state.size != 0 {
+            return Err(io::Error::other(
+                "new private-file creation did not produce an empty file",
+            ));
+        }
+        Ok(Self {
+            file,
+            identity: state.identity,
+        })
+    }
+
     /// The retained full-width identity.
     #[must_use]
     pub fn identity(&self) -> HighResFileId {
@@ -185,6 +215,23 @@ impl ReadOnlyAuthorityFile {
             false,
             false,
         )?;
+        let identity = os::validated_regular_file_state(&file)?.identity;
+        Ok(Self { file, identity })
+    }
+
+    /// Open ONE existing direct child regular file of `parent` for read-only
+    /// verification, resolved relatively and never through a pathname
+    /// (windows-private-file-authority, parent-relative addendum).
+    ///
+    /// The read-only half of the parent-relative FILE purpose split, and the
+    /// value whose point is that mutation cannot COMPILE through it: like its
+    /// pathname sibling it exposes no `File` and no raw handle, has no
+    /// conversion to creation authority, and its mask carries no `WRITE_DAC`,
+    /// no `DELETE`, and no generic-write bit. Verification therefore never has
+    /// to open the mutation-capable creation authority.
+    pub fn open_child_readonly(parent: &File, name: &OsStr) -> io::Result<Self> {
+        let name = validate_child_component(name)?;
+        let file = os::open_child_regular_file_readonly(parent, &name)?;
         let identity = os::validated_regular_file_state(&file)?.identity;
         Ok(Self { file, identity })
     }

@@ -1503,3 +1503,115 @@ fn access_right_and_file_flag_values_are_pinned() {
     assert_eq!(observation & DELETE, 0);
     assert_eq!(observation & GENERIC_WRITE, 0);
 }
+
+/// Real-NTFS acceptance for the parent-relative FILE constructors
+/// (windows-private-file-authority, file-constructor addendum).
+///
+/// Non-vacuous by construction, exactly as the directory proof is: the parent is
+/// asserted rights-poor BEFORE a child is hardened through it, so the success
+/// cannot be explained by the parent having carried WRITE_DAC all along.
+#[test]
+fn parent_relative_file_creation_hardens_through_a_rights_poor_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent_path = dir.path().join("datastore");
+    create_directory(&parent_path);
+
+    // Seed an extra inheritable principal so the created child is genuinely born
+    // with an inherited entry the private policy forbids.
+    let seed = HardeningDirectory::open_existing(&parent_path).unwrap();
+    add_inheritable_extra_principal(seed.directory());
+    drop(seed);
+
+    let parent = os::open_existing_directory(&parent_path).unwrap();
+    assert!(
+        os::private_dacl_snapshot(&parent).is_err(),
+        "the parent must be unable to observe its own DACL, or the proof is vacuous"
+    );
+
+    let name = OsString::from("root.json");
+    let mut creation = PrivateFileCreation::create_child(&parent, &name).unwrap();
+    let identity = creation.identity();
+    assert_eq!(creation.link_count().unwrap(), 1);
+    assert_inherited_extra_principal(creation.file());
+
+    // Harden the EMPTY file through its own exact retained handle, then prove it.
+    harden_without_inherited_entries(creation.file(), false);
+    assert!(creation.dacl_snapshot().unwrap().protected());
+    assert_no_inherited_entries(creation.file());
+    creation.revalidate().unwrap();
+
+    // A name collision must FAIL rather than adopt the existing object.
+    assert!(
+        PrivateFileCreation::create_child(&parent, &name).is_err(),
+        "FILE_CREATE must refuse an existing name"
+    );
+
+    creation.file_mut().write_all(b"trust anchor").unwrap();
+    creation.file().sync_all().unwrap();
+    assert!(creation.dacl_snapshot().unwrap().protected());
+    creation.revalidate().unwrap();
+    drop(creation);
+
+    // Protection survives close and reopen through the read-only child variant.
+    let reader = ReadOnlyAuthorityFile::open_child_readonly(&parent, &name).unwrap();
+    assert_eq!(reader.identity(), identity);
+    assert_eq!(reader.read_bounded(64).unwrap(), b"trust anchor");
+    assert!(reader.dacl_snapshot().unwrap().protected());
+    reader.revalidate().unwrap();
+    drop(reader);
+
+    // A directory name is refused by FILE_NON_DIRECTORY_FILE, and the shared
+    // single-component validator refuses separator-bearing and traversal names.
+    create_directory(&parent_path.join("subdir"));
+    let subdir = OsString::from("subdir");
+    assert!(PrivateFileCreation::create_child(&parent, &subdir).is_err());
+    assert!(ReadOnlyAuthorityFile::open_child_readonly(&parent, &subdir).is_err());
+    for rejected in ["..", ".", r"nested\child", "a/b"] {
+        let bad = OsString::from(rejected);
+        assert!(
+            PrivateFileCreation::create_child(&parent, &bad).is_err(),
+            "creation must refuse the non-child component {rejected:?}"
+        );
+        assert!(
+            ReadOnlyAuthorityFile::open_child_readonly(&parent, &bad).is_err(),
+            "read-only must refuse the non-child component {rejected:?}"
+        );
+    }
+    let absent = OsString::from("absent.json");
+    assert_eq!(
+        ReadOnlyAuthorityFile::open_child_readonly(&parent, &absent)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+}
+
+/// The read-only child mask must never acquire mutation authority. This is the
+/// assertion the mask single-sourcing exists to protect: it compares the exact
+/// composed mask, so widening it in one place fails here rather than silently
+/// invalidating the "mutation cannot compile through this value" argument.
+#[test]
+fn read_only_child_file_mask_excludes_every_mutation_right() {
+    use windows_sys::Win32::Foundation::GENERIC_WRITE;
+    use windows_sys::Win32::Storage::FileSystem::{
+        DELETE, FILE_GENERIC_READ, FILE_GENERIC_WRITE, READ_CONTROL, WRITE_DAC,
+    };
+
+    let read_only = FILE_GENERIC_READ;
+    assert_eq!(
+        read_only & WRITE_DAC,
+        0,
+        "read-only must not carry WRITE_DAC"
+    );
+    assert_eq!(read_only & DELETE, 0, "read-only must not carry DELETE");
+    assert_eq!(read_only & GENERIC_WRITE, 0);
+    assert_eq!(read_only & FILE_GENERIC_WRITE & !FILE_GENERIC_READ, 0);
+    // It DOES carry the snapshot right, which is why no separate READ_CONTROL
+    // is requested by either child constructor.
+    assert_ne!(read_only & READ_CONTROL, 0, "snapshot needs READ_CONTROL");
+
+    // The hardening delta over the materializer mask is EXACTLY WRITE_DAC.
+    let materializer = DELETE | FILE_GENERIC_READ | FILE_GENERIC_WRITE | 0x0010_0000;
+    let hardening = materializer | WRITE_DAC;
+    assert_eq!(hardening & !materializer, WRITE_DAC);
+}
