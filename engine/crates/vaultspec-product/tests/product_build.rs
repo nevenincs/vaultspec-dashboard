@@ -521,3 +521,31 @@ fn a_standalone_mcp_collapsed_onto_the_gateway_is_rejected() {
         Err(ProductBuildError::StandaloneMcpNotCarried { .. })
     ));
 }
+
+#[test]
+fn scan_rejects_a_non_portable_file_name() {
+    let temp = tempfile::tempdir().unwrap();
+    // A space is outside the portable ASCII release-path grammar, yet the OS
+    // accepts the name — exactly the drift the build must catch, not install.
+    std::fs::write(temp.path().join("my file.txt"), b"x").unwrap();
+    let refused = scan_composed_tree(temp.path());
+    assert!(
+        matches!(refused, Err(ProductBuildError::NonPortablePath { .. })),
+        "a non-portable file name must fail the build scan, got {refused:?}"
+    );
+}
+
+#[test]
+fn scan_rejects_a_tree_deeper_than_the_segment_ceiling() {
+    let temp = tempfile::tempdir().unwrap();
+    let mut deep = temp.path().to_path_buf();
+    for _ in 0..33 {
+        deep.push("d");
+    }
+    std::fs::create_dir_all(&deep).unwrap();
+    let refused = scan_composed_tree(temp.path());
+    assert!(
+        matches!(refused, Err(ProductBuildError::TreeTooDeep)),
+        "a tree deeper than the 32-segment ceiling must fail the build scan, got {refused:?}"
+    );
+}

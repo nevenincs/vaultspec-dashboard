@@ -12,13 +12,14 @@
 //! trusted component lock and the verified capsule manifest, never restated by
 //! hand, so a candidate can never silently disagree with its pins.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
 use crate::manifest::{
-    CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target, sha256_hex,
+    CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target, semantic_path_key,
+    sha256_hex, validate_portable_path,
 };
 
 /// The digest algorithm every release-set artifact is bound under.
@@ -29,6 +30,10 @@ const SCHEMA_VERSION: &str = "2.0";
 const MAX_TREE_FILES: usize = 100_000;
 /// The maximum size of any single installed file (bundled runtimes are large).
 const MAX_TREE_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+/// The maximum directory depth a composed tree may nest — the SAME 32-segment
+/// ceiling the install verifier's `scan_generation` enforces, so a tree that
+/// composes here can never be rejected only at install for depth.
+const MAX_TREE_DEPTH: usize = 32;
 
 /// Why a product build could not compose a verified member manifest. Bounded and
 /// free of any secret (the build handles only public release artifacts).
@@ -48,6 +53,20 @@ pub enum ProductBuildError {
     /// The composed tree contains a non-regular entry (symlink, device, socket);
     /// an installed product tree is regular files only.
     NonRegularEntry { path: String },
+    /// A composed file's name is not a portable install path (the same grammar
+    /// the install verifier applies) — a non-portable name caught at build.
+    NonPortablePath { detail: String },
+    /// A composed file name is not valid UTF-8; it would be silently mangled into
+    /// replacement characters, so it is refused outright.
+    NonUtf8Name { path: String },
+    /// Two composed files collide under the install path's ASCII casefold key —
+    /// they would be indistinguishable to a case-insensitive filesystem.
+    CasefoldCollision { path: String },
+    /// The composed tree nests deeper than the install grammar's segment ceiling.
+    TreeTooDeep,
+    /// A required per-target runtime pin is absent from the component lock, so the
+    /// member cannot bind it — named here rather than emitted as an empty digest.
+    MissingRuntimePin { detail: String },
     /// The member's `file_digests` does not describe exactly the scanned tree
     /// (a missing, extra, drifted, or self-listed manifest-path entry).
     FileDigestsMismatch { detail: String },
@@ -73,6 +92,28 @@ impl std::fmt::Display for ProductBuildError {
             }
             Self::NonRegularEntry { path } => {
                 write!(f, "composed tree contains a non-regular entry: {path}")
+            }
+            Self::NonPortablePath { detail } => {
+                write!(
+                    f,
+                    "composed file name is not a portable install path: {detail}"
+                )
+            }
+            Self::NonUtf8Name { path } => {
+                write!(f, "composed file name is not valid UTF-8: {path}")
+            }
+            Self::CasefoldCollision { path } => {
+                write!(
+                    f,
+                    "composed file collides under the install casefold key: {path}"
+                )
+            }
+            Self::TreeTooDeep => write!(f, "composed tree nests deeper than 32 segments"),
+            Self::MissingRuntimePin { detail } => {
+                write!(
+                    f,
+                    "component lock is missing a required runtime pin: {detail}"
+                )
             }
             Self::FileDigestsMismatch { detail } => {
                 write!(f, "file_digests does not match the composed tree: {detail}")
@@ -126,7 +167,8 @@ pub fn verify_standalone_mcp_carried(capsule: &CapsuleManifest) -> Result<(), Pr
 /// placed on disk, never asserted by the caller.
 pub fn scan_composed_tree(tree_root: &Path) -> Result<Vec<ComposedArtifact>, ProductBuildError> {
     let mut out = Vec::new();
-    scan_dir(tree_root, tree_root, &mut out)?;
+    let mut keys = BTreeSet::new();
+    scan_dir(tree_root, tree_root, 0, &mut out, &mut keys)?;
     out.sort_by(|left, right| left.path.cmp(&right.path));
     Ok(out)
 }
@@ -134,8 +176,13 @@ pub fn scan_composed_tree(tree_root: &Path) -> Result<Vec<ComposedArtifact>, Pro
 fn scan_dir(
     root: &Path,
     dir: &Path,
+    depth: usize,
     out: &mut Vec<ComposedArtifact>,
+    keys: &mut BTreeSet<String>,
 ) -> Result<(), ProductBuildError> {
+    if depth > MAX_TREE_DEPTH {
+        return Err(ProductBuildError::TreeTooDeep);
+    }
     let entries =
         std::fs::read_dir(dir).map_err(|error| ProductBuildError::Io(error.to_string()))?;
     for entry in entries {
@@ -145,40 +192,69 @@ fn scan_dir(
             .map_err(|error| ProductBuildError::Io(error.to_string()))?;
         let file_type = metadata.file_type();
         if file_type.is_dir() {
-            scan_dir(root, &path, out)?;
+            scan_dir(root, &path, depth + 1, out, keys)?;
         } else if file_type.is_file() {
             if out.len() >= MAX_TREE_FILES {
                 return Err(ProductBuildError::TreeTooLarge);
             }
+            // UTF-8 refusal FIRST, so a mangled replacement-char key never exists.
+            let relative = portable_relative(root, &path)?;
+            // Apply the SAME install path grammar the verifier applies (portable
+            // segments, no backslash/colon, 1..=32 segments) — build catches drift.
+            validate_portable_path("composed tree", &relative).map_err(|error| {
+                ProductBuildError::NonPortablePath {
+                    detail: error.to_string(),
+                }
+            })?;
+            // Reject an ASCII-casefold collision: two names a case-insensitive
+            // filesystem cannot distinguish at install.
+            if !keys.insert(semantic_path_key(&relative)) {
+                return Err(ProductBuildError::CasefoldCollision { path: relative });
+            }
             if metadata.len() > MAX_TREE_FILE_BYTES {
-                return Err(ProductBuildError::FileTooLarge {
-                    path: relative_path(root, &path),
-                });
+                return Err(ProductBuildError::FileTooLarge { path: relative });
             }
             let bytes =
                 std::fs::read(&path).map_err(|error| ProductBuildError::Io(error.to_string()))?;
             out.push(ComposedArtifact {
-                path: relative_path(root, &path),
+                path: relative,
                 size: metadata.len(),
                 digest: sha256_hex(&bytes),
             });
         } else {
             return Err(ProductBuildError::NonRegularEntry {
-                path: relative_path(root, &path),
+                path: lossy_relative(root, &path),
             });
         }
     }
     Ok(())
 }
 
-/// The forward-slashed app-tree-relative path of `path` under `root`.
-fn relative_path(root: &Path, path: &Path) -> String {
+/// The forward-slashed app-tree-relative path of `path` under `root`, refusing any
+/// non-UTF-8 component OUTRIGHT (before a lossy conversion could mint a mangled
+/// replacement-character key).
+fn portable_relative(root: &Path, path: &Path) -> Result<String, ProductBuildError> {
+    let relative = path.strip_prefix(root).unwrap_or(path);
+    let mut segments = Vec::new();
+    for component in relative.components() {
+        let segment =
+            component
+                .as_os_str()
+                .to_str()
+                .ok_or_else(|| ProductBuildError::NonUtf8Name {
+                    path: relative.to_string_lossy().into_owned(),
+                })?;
+        segments.push(segment);
+    }
+    Ok(segments.join("/"))
+}
+
+/// A lossy relative path for a diagnostic only (a refused non-regular entry).
+fn lossy_relative(root: &Path, path: &Path) -> String {
     path.strip_prefix(root)
         .unwrap_or(path)
-        .components()
-        .map(|component| component.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+        .to_string_lossy()
+        .replace('\\', "/")
 }
 
 /// A regular file placed in the composed tree, by app-tree-relative path, byte
@@ -508,7 +584,7 @@ pub fn emit_member_manifest(
     lock: &ComponentLock,
     capsule: &CapsuleManifest,
 ) -> Result<String, ProductBuildError> {
-    let manifest = build_member(member, lock, capsule);
+    let manifest = build_member(member, lock, capsule)?;
     let raw = serde_json::to_string(&manifest)
         .map_err(|error| ProductBuildError::Serialize(error.to_string()))?;
     // Prove the emitted bytes verify under the production authority (pin-skew,
@@ -521,8 +597,8 @@ fn build_member(
     member: &ComposedMember,
     lock: &ComponentLock,
     capsule: &CapsuleManifest,
-) -> Member {
-    Member {
+) -> Result<Member, ProductBuildError> {
+    Ok(Member {
         schema_version: SCHEMA_VERSION,
         target: member.target.triple().to_owned(),
         digest_algorithm: DIGEST_ALGORITHM,
@@ -582,12 +658,12 @@ fn build_member(
             cpython: runtime_from_lock(
                 &lock.base_closure.python.version,
                 &lock.base_closure.python.license,
-                digest_or_empty(lock.python_digest(member.target)),
+                require_pin("cpython", lock.python_digest(member.target))?,
             ),
             node: runtime_from_lock(
                 &lock.base_closure.node.version,
                 &lock.base_closure.node.license,
-                digest_or_empty(lock.node_digest(member.target)),
+                require_pin("node", lock.node_digest(member.target))?,
             ),
             acp: runtime_from_lock(
                 &lock.base_closure.acp.version,
@@ -624,7 +700,7 @@ fn build_member(
             digest: member.sbom.artifact.digest.clone(),
         },
         file_digests: member.file_digests.clone(),
-    }
+    })
 }
 
 fn runtime_from_lock(version: &str, license: &str, digest: &str) -> RuntimeOut {
@@ -635,8 +711,15 @@ fn runtime_from_lock(version: &str, license: &str, digest: &str) -> RuntimeOut {
     }
 }
 
-fn digest_or_empty(digest: crate::manifest::Result<&str>) -> &str {
-    digest.unwrap_or("")
+/// Require a per-target runtime pin from the lock, naming the missing runtime
+/// rather than emitting an empty digest that fails opaquely downstream.
+fn require_pin<'a>(
+    name: &str,
+    digest: crate::manifest::Result<&'a str>,
+) -> Result<&'a str, ProductBuildError> {
+    digest.map_err(|error| ProductBuildError::MissingRuntimePin {
+        detail: format!("{name}: {error}"),
+    })
 }
 
 #[derive(Serialize)]
@@ -768,4 +851,28 @@ struct SbomOut {
     path: String,
     size: u64,
     digest: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `portable_relative` refuses a non-UTF-8 name OUTRIGHT, so a mangled
+    /// replacement-character key can never enter the scan even transiently. On
+    /// Windows an unpaired surrogate is a valid OS name but not UTF-8 — the exact
+    /// case `to_string_lossy` would have silently corrupted.
+    #[cfg(windows)]
+    #[test]
+    fn portable_relative_refuses_a_non_utf8_component() {
+        use std::os::windows::ffi::OsStringExt as _;
+
+        let bad = std::ffi::OsString::from_wide(&[0xD800]);
+        let root = Path::new("root");
+        let path = root.join(&bad);
+        let refused = portable_relative(root, &path);
+        assert!(
+            matches!(refused, Err(ProductBuildError::NonUtf8Name { .. })),
+            "a non-UTF-8 component must be refused before any lossy conversion"
+        );
+    }
 }
