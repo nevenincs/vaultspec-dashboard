@@ -15,6 +15,10 @@ fs4 = { version = "0.13", default-features = false, features = ["sync"] }
 getrandom = "0.4.2"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+# RFC 8785 JSON Canonicalization Scheme — the cohort-digest preimage MUST be JCS
+# bytes; the canonical form is never hand-rolled (same crate the distribution
+# authority uses).
+serde_jcs = "=0.2.0"
 sha2 = { version = "0.10.9", default-features = false }
 sysinfo = { version = "0.39.6", default-features = false, features = ["system"] }
 # Types only: the opaque MaterializationSource capability. tough and its

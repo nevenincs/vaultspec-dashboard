@@ -32,6 +32,7 @@
 
 pub mod bootstrap;
 pub mod channels;
+pub mod cohort;
 pub mod control;
 pub mod credentials;
 pub mod discovery;
