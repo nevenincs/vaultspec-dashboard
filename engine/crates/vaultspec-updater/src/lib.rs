@@ -21,7 +21,10 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use vaultspec_distribution_authority::MaterializationSource;
+use vaultspec_distribution_authority::{
+    DistributionTarget, MaterializationSource, VerificationError, VerificationRequest,
+    verify_distribution,
+};
 use vaultspec_product::discovery::handoff_is_owner_restricted;
 use vaultspec_product::gateway_drain::{
     DrainContext, DrainDeadlines, GatewayDrainError, OwnedGatewayLease,
@@ -36,6 +39,11 @@ use vaultspec_product::snapshot::ConsistencyGroupSpec;
 use vaultspec_product::transaction::{
     ReadyToActivate, TransactionError, UpdatePlan, UpdateTransaction,
 };
+
+/// The exact target triple this updater was compiled for, surfaced by `build.rs`
+/// from cargo's `TARGET`. The fresh-update verify anchors on THIS triple (the
+/// closed [`DistributionTarget`]), never a triple carried in the descriptor.
+const COMPILED_TARGET: &str = env!("UPDATER_TARGET");
 
 /// The maximum owner-restricted descriptor size the updater will read.
 const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
@@ -341,6 +349,78 @@ pub fn activate_and_accept<'guard>(
     }
 }
 
+/// Drive one complete fresh update end-to-end under a held installation lock.
+///
+/// The order is Fable's finalized drive contract:
+/// 1. VERIFY the staged bundle IN-PROCESS against the updater's OWN compiled
+///    triple and the CURRENT product root — `verify_distribution` re-derives the
+///    embedded production root, enforces TUF version + latest-known-time
+///    monotonicity anchored on the product root, and holds the product-root
+///    verification lock for the release lifetime. The staged-bundle path carries
+///    zero trust weight (a wrong path just fails TUF). This is done BEFORE the
+///    seat is touched, so an untrustworthy candidate never drains the running
+///    release. On Windows `verify_distribution` self-gates
+///    (`WindowsDatastoreAuthorityNotProvisioned`) until the windows-private-file
+///    NTFS D7 evidence retires that gate — the whole drive stays typed-gated
+///    with the prior release intact.
+/// 2. EXECUTE the transaction to the activation boundary (`execute_update`:
+///    begin → drain-or-cold → snapshot → migrate → ready).
+/// 3. Split the verified release into a `MaterializationSource` (the one async
+///    touch) and run the swap tail (`activate_and_accept`): materialize, commit
+///    the receipt, run the injected relaunch/probe, finalize.
+///
+/// The single async touch (verify + `materialization_source`) is hosted in a
+/// current-thread runtime this call owns; the sync transaction drive runs between
+/// the two awaits. The `relaunch_probe` seam is injected because the concrete
+/// launcher and health predicate are front-door-coupled (S60).
+pub fn drive_fresh_update(
+    paths: &ProductPaths,
+    guard: &InstallLockGuard,
+    staged_bundle: &Path,
+    inputs: ExecuteInputs,
+    params: ActivationParams,
+    relaunch: Option<&RelaunchSpec>,
+    relaunch_probe: impl FnOnce(&RelaunchContext<'_>) -> Result<(), RelaunchError>,
+) -> Result<ActivationOutcome, UpdaterError> {
+    let target = DistributionTarget::parse(COMPILED_TARGET).map_err(UpdaterError::Verification)?;
+    let request = VerificationRequest::for_product_root(staged_bundle, paths.root(), target)
+        .map_err(UpdaterError::Verification)?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| UpdaterError::Io(redact(&error.to_string())))?;
+
+    // VERIFY before touching the seat. On Windows this returns the typed
+    // WindowsDatastoreAuthorityNotProvisioned refusal (D6), leaving the prior
+    // release running — the same fail-closed discipline as the DACL-gated write.
+    let mut release = runtime
+        .block_on(verify_distribution(request))
+        .map_err(UpdaterError::Verification)?;
+
+    // Verified: drain the discovered gateway (or mint the cold witness) and stage
+    // the transaction to the activation boundary.
+    let ready = execute_update(paths, guard, inputs)?;
+
+    // The one async touch, then the synchronous swap tail — both inside the
+    // runtime so the borrow of `release` by the source stays live across the swap.
+    runtime.block_on(async move {
+        let mut source = release
+            .materialization_source()
+            .await
+            .map_err(UpdaterError::Verification)?;
+        activate_and_accept(
+            ready,
+            paths,
+            guard,
+            &mut source,
+            params,
+            relaunch,
+            relaunch_probe,
+        )
+    })
+}
+
 /// Read and validate the owner-restricted descriptor.
 pub fn read_descriptor(descriptor_path: &Path) -> Result<UpdaterDescriptor, UpdaterError> {
     if !handoff_is_owner_restricted(descriptor_path) {
@@ -430,6 +510,11 @@ pub enum UpdaterError {
     /// The discovered gateway could not be drained and stopped (foreign, stale,
     /// incompatible, or the stop was unproven within the deadline).
     Drain(GatewayDrainError),
+    /// In-process distribution verification (TUF + cohort, or the
+    /// `materialization_source` split) refused. Includes the typed Windows gate
+    /// (`WindowsDatastoreAuthorityNotProvisioned`) that stays closed until the
+    /// windows-private-file NTFS D7 evidence retires it.
+    Verification(VerificationError),
     /// The materialize + receipt-commit activation failed before the commit
     /// (bounded, secret-redacted). Post-commit failures are never this variant —
     /// they are `CommittedRelaunchPending`.
@@ -451,6 +536,7 @@ impl std::fmt::Display for UpdaterError {
                 "the installation lock is held by another installer or updater"
             ),
             Self::Drain(error) => write!(f, "gateway drain failed: {error}"),
+            Self::Verification(error) => write!(f, "distribution verification refused: {error}"),
             Self::Activation(detail) => write!(f, "activation failed pre-commit: {detail}"),
             Self::Transaction(error) => write!(f, "update transaction failed: {error}"),
             Self::Recovery(error) => write!(f, "interruption recovery failed: {error}"),
@@ -463,6 +549,7 @@ impl std::error::Error for UpdaterError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Drain(error) => Some(error),
+            Self::Verification(error) => Some(error),
             Self::Transaction(error) => Some(error),
             Self::Recovery(error) => Some(error),
             Self::Descriptor(_) | Self::Busy | Self::Activation(_) | Self::Io(_) => None,

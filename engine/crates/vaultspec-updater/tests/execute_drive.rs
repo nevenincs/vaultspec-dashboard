@@ -22,6 +22,7 @@ use std::time::Duration;
 use vaultspec_product::gateway_drain::{DrainContext, DrainDeadlines};
 use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard};
 use vaultspec_product::manifest::RangeBounds;
+use vaultspec_product::materializer::ActivationLimits;
 use vaultspec_product::migration::{
     MigrationLimits, MigrationPlan, MigrationRangeSpec, StagedMigration, plan_migration,
 };
@@ -29,7 +30,9 @@ use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::receipt::Channel;
 use vaultspec_product::snapshot::{ConsistencyGroupSpec, SchemaBearingStore};
 use vaultspec_product::transaction::{UpdatePlan, read_descriptor};
-use vaultspec_updater::{ExecuteInputs, UpdaterError, execute_update};
+use vaultspec_updater::{
+    ActivationParams, ExecuteInputs, UpdaterError, drive_fresh_update, execute_update,
+};
 
 struct Installed {
     paths: ProductPaths,
@@ -244,5 +247,48 @@ fn an_incompatible_owned_gateway_rolls_back() {
         error,
         UpdaterError::Drain(vaultspec_product::gateway_drain::GatewayDrainError::Incompatible)
     ));
+    assert_descriptor_cleared(&product.paths, &guard);
+}
+
+/// The main fresh-update flow VERIFIES the staged bundle before it drains the
+/// seat, and fails closed with a TYPED verification refusal. In a dev/test build
+/// the embedded production root is empty (`ProductionRootNotProvisioned`); on
+/// Windows the platform gate (`WindowsDatastoreAuthorityNotProvisioned`) closes
+/// it until the windows-private-file NTFS D7 evidence retires the gate. Either
+/// way the refusal is raised BEFORE any transaction is staged — proven by the
+/// descriptor staying clear (a live gateway is present, yet never drained).
+#[test]
+fn drive_fresh_update_verifies_before_it_drains_and_fails_closed() {
+    let product = installed();
+    let guard = product.guard();
+    // A live, ours-and-fresh gateway is published: if verify did NOT gate first,
+    // the drive would proceed to drain it. It must not.
+    product.write_discovery(&discovery_json(
+        &product.our_owner(),
+        std::process::id(),
+        1_000_000,
+    ));
+    // The staged-bundle path carries zero trust weight; any path fails TUF the
+    // same way. Verification refuses before the path is even consulted here.
+    let staged_bundle = product._temp.path().join("staged-bundle");
+
+    let outcome = drive_fresh_update(
+        &product.paths,
+        &guard,
+        &staged_bundle,
+        execute_inputs(drain_context(), unreachable_migration(product._temp.path())),
+        ActivationParams {
+            limits: ActivationLimits::new(Duration::from_secs(30)).unwrap(),
+            created_ms: 1_000_000,
+        },
+        None,
+        |_context| Ok(()),
+    );
+
+    assert!(
+        matches!(outcome, Err(UpdaterError::Verification(_))),
+        "the fresh-update flow must fail closed with a typed verification refusal, got {outcome:?}"
+    );
+    // The seat was never drained and no transaction was staged: verify gated first.
     assert_descriptor_cleared(&product.paths, &guard);
 }

@@ -12,6 +12,9 @@ vaultspec-product = { path = "../vaultspec-product" }
 vaultspec-distribution-authority = { path = "../vaultspec-distribution-authority" }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+# The single async touch (verify + materialization_source) is hosted in a
+# current-thread runtime the updater owns; `rt` is all that block_on needs.
+tokio = { version = "1.49.0", features = ["rt"] }
 
 [dev-dependencies]
 rusqlite = { version = "0.40.1", features = ["bundled"] }

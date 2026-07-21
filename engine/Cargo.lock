@@ -3778,6 +3778,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
  "vaultspec-distribution-authority",
  "vaultspec-product",
 ]
