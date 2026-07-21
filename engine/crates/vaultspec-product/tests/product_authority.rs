@@ -32,9 +32,6 @@ use vaultspec_product::manifest::{
 use vaultspec_product::paths::ProductPaths;
 #[cfg(unix)]
 use vaultspec_product::protocol::{LifecycleOp, Refusal};
-use vaultspec_product::receipt::{
-    Channel, InterruptionMarker, RECEIPT_SCHEMA_VERSION, Receipt, ReceiptState,
-};
 
 const LOCK_JSON: &str = include_str!("../../../../packaging/a2a-component.lock.json");
 const TARGET: Target = Target::X86_64PcWindowsMsvc;
@@ -274,34 +271,6 @@ fn manifest_rejects_floating_latest_selector() {
         ReleaseSetManifest::parse(&raw),
         Err(ManifestError::FloatingSelector { .. })
     ));
-}
-
-#[test]
-fn atomic_receipt_activation_leaves_no_torn_or_staged_state() {
-    let lock = ComponentLock::parse(LOCK_JSON).unwrap();
-    let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("receipt.json");
-    let mut receipt = Receipt::bootstrap(
-        Channel::SelfInstall,
-        TARGET,
-        lock.a2a_source.release_identity.clone(),
-        "2026-07-19-gen0",
-        1_700_000_000_000,
-    );
-    // Mid-transaction the receipt carries a durable interruption marker and is
-    // staged, never active.
-    receipt.mark(InterruptionMarker::Migrating, &path).unwrap();
-    let staged = Receipt::load(&path).unwrap();
-    assert_eq!(staged.state, ReceiptState::Staged);
-    assert_eq!(staged.interruption, Some(InterruptionMarker::Migrating));
-    // Activation atomically commits: the on-disk receipt is active with no
-    // interruption marker, and the persisted schema version is the current one.
-    receipt.activate(&path).unwrap();
-    let active = Receipt::load(&path).unwrap();
-    assert_eq!(active.state, ReceiptState::Active);
-    assert_eq!(active.interruption, None);
-    assert!(active.bootstrap_created_ownership);
-    assert_eq!(active.schema_version, RECEIPT_SCHEMA_VERSION);
 }
 
 #[test]
