@@ -54,7 +54,13 @@ const MAX_TREE_EVIDENCE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_INSTALLED_FILES: usize = 100_000;
 const MAX_TREE_FILES: usize = 80_000;
 const MAX_DIRECTORIES: usize = 100_000;
-const MAX_EXPANDED_BYTES: u64 = 8 * 1024 * 1024 * 1024;
+/// Total expanded bytes admitted for one release tree — the decompression bound
+/// the generation verifier and the archive materializer BOTH enforce. They must
+/// agree: an archive whose expansion exceeds this could otherwise be
+/// materialized and then fail tree verification. It doubles as the ceiling on
+/// any single declared artifact, which by construction cannot exceed the whole
+/// tree's budget.
+pub(crate) const MAX_EXPANDED_TREE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const READ_CHUNK: usize = 1024 * 1024;
 
 /// The five product release targets.
@@ -1287,7 +1293,7 @@ fn validate_artifact_file(field: &str, artifact: &ArtifactFile) -> Result<()> {
 
 fn validate_artifact(field: &str, path: &str, size: u64, digest: &str) -> Result<()> {
     validate_portable_path(&format!("{field}.path"), path)?;
-    if size == 0 || size > MAX_EXPANDED_BYTES {
+    if size == 0 || size > MAX_EXPANDED_TREE_BYTES {
         return invalid(&format!("{field}.size"), "must be 1..=8589934592");
     }
     require_digest(&format!("{field}.digest"), digest)

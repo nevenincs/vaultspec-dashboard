@@ -24,7 +24,9 @@ use std::time::Instant;
 
 use sha2::{Digest as _, Sha256};
 
-use crate::manifest::{preflight_inventory, semantic_path_key, validate_portable_path};
+use crate::manifest::{
+    MAX_EXPANDED_TREE_BYTES, preflight_inventory, semantic_path_key, validate_portable_path,
+};
 
 use super::MaterializeError;
 
@@ -37,8 +39,6 @@ const MAX_PATH_BYTES: usize = 4096;
 const MAX_SEGMENTS: usize = 32;
 const MAX_SEGMENT_BYTES: usize = 128;
 const MAX_DERIVED_DIRECTORIES: usize = 100_000;
-/// Total expanded bytes across every entry (mirrors the tree verifier bound).
-const MAX_EXPANDED_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 /// Aggregate decompression-ratio bound: expanded may exceed compressed by at
 /// most this factor plus a fixed slack floor for tiny archives.
 const MAX_EXPANSION_FACTOR: u64 = 100;
@@ -279,7 +279,7 @@ pub(crate) fn preflight<R: Read + Seek>(
         }
         total_expanded = total_expanded
             .checked_add(size)
-            .filter(|total| *total <= MAX_EXPANDED_BYTES)
+            .filter(|total| *total <= MAX_EXPANDED_TREE_BYTES)
             .ok_or_else(|| grammar("expanded bytes exceed the fixed bound"))?;
         total_compressed = total_compressed
             .checked_add(compressed_size)

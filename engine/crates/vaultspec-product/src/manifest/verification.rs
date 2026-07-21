@@ -139,7 +139,7 @@ fn scan_generation_inner(
                     detail: "expanded size overflow".to_string(),
                 }
             })?;
-            if total_bytes > MAX_EXPANDED_BYTES {
+            if total_bytes > MAX_EXPANDED_TREE_BYTES {
                 return invalid("generation tree", "expanded bytes exceed 8 GiB");
             }
             if excluded_manifest != Some(portable.as_str()) {
@@ -523,7 +523,7 @@ fn hash_regular_file(path: &Path, expected_size: u64) -> Result<ObservedFile> {
                 limit: expected_size,
                 found: u64::MAX,
             })?;
-        if total > expected_size || total > MAX_EXPANDED_BYTES {
+        if total > expected_size || total > MAX_EXPANDED_TREE_BYTES {
             return Err(ManifestError::SizeMismatch {
                 path: path.display().to_string(),
                 expected: expected_size,
@@ -1091,7 +1091,7 @@ pub(super) fn verify_tree_evidence(
                 detail: "expanded size overflow".to_string(),
             })
     })?;
-    if expanded > MAX_EXPANDED_BYTES {
+    if expanded > MAX_EXPANDED_TREE_BYTES {
         return invalid("tree_evidence.components", "expanded tree exceeds 8 GiB");
     }
     let computed = tree_digest(&records)?;
