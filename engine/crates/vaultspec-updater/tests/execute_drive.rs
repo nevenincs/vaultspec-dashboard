@@ -8,12 +8,30 @@
 //! intact. These branches classify and fail BEFORE any credential is read, so
 //! they run on every platform.
 //!
-//! The OwnedLive SUCCESS drive (drain → snapshot → migrate → ready) is
-//! credential-gated — Windows credential bootstrap refuses until the
-//! windows-private-file DACL authority lands — so it is a `#[cfg(unix)]` proof
-//! plus reliance on the product's own transaction-level drain+Quiescence proof
-//! (`gateway_drain::tests`). When the DACL authority lands, the live drive
-//! becomes Windows-runnable too.
+//! The OwnedLive SUCCESS drive (drain → snapshot → migrate → ready → activate →
+//! relaunch/probe → OwnedLive) is proven no-mock at the STAGE level across the
+//! updater + product suites: execute_update cold-success (a real never-faked
+//! Quiescence) here; the activation swap (materialize → verify → commit the fixed
+//! receipt) via `activate_update_feed` + a real zip feed in
+//! `vaultspec_product::materializer::tests`; the OwnedLive relaunch health probe
+//! over real files with a real live pid + watermark in `relaunch_probe.rs`; and
+//! the owner-restricted descriptor write (Unix + Windows) in
+//! `vaultspec_product::handoff::tests`.
+//!
+//! The ONE piece not yet proven end-to-end is the single top-level
+//! `drive_fresh_update` SUCCESS call threading a REAL `MaterializationSource`
+//! through all of those. That is a documented residual, NOT a defect and NOT this
+//! crate's to close:
+//!   - The production `verify_distribution` fails closed until the
+//!     distribution-authority SEALING ceremony (the embedded production root is
+//!     empty until the key ceremony) and, on Windows, its own datastore gate
+//!     (`WindowsDatastoreAuthorityNotProvisioned`) — a DIFFERENT lane.
+//!   - The `unsealed-verify` S11 test seam bypasses only the production gate, but
+//!     obtaining a `MaterializationSource` from it needs a valid signed TUF root +
+//!     published bundle whose builders are PRIVATE to the distribution-authority
+//!     test module. Closing the single-call e2e waits on that crate exposing a
+//!     `test-support` fixture (`ephemeral_root` + `publish_bundle`) — a tracked
+//!     cross-lane ask. This crate will not reimplement TUF signing it does not own.
 
 use std::ffi::OsString;
 use std::path::Path;
