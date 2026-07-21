@@ -213,15 +213,20 @@ Addendum recorded 2026-07-21 (architect ruling, distribution-datastore directory
 bridge): the distribution-authority datastore objects held through `cap-std` receive
 their Windows owner-private protection through PARENT-RELATIVE retained authority, and
 never through a reconstructed pathname. Driving fact: a `cap-std` directory handle is
-opened with `GENERIC_READ` and permissive read/write sharing, so it carries neither
-`WRITE_DAC` nor `READ_CONTROL`-plus-mutation rights and cannot itself be hardened —
-confirming that hardening THROUGH the held handle is impossible. That impossibility was
+opened with `GENERIC_READ` and permissive read/write sharing, so it lacks exactly one
+right that matters here: `WRITE_DAC`. It is not otherwise rights-poor — `GENERIC_READ`
+maps through `STANDARD_RIGHTS_READ` to `READ_CONTROL`, so a capability handle CAN observe
+its own DACL; what it cannot do is write one, which is why hardening THROUGH the held
+handle is impossible. (Corrected 2026-07-21 from a broader claim of rights-poverty. The
+correction came from real-NTFS evidence, not review: an acceptance test asserting the
+parent could not read its own DACL FAILED, and was rewritten to pin the actual boundary by
+driving both operations through the capability handle — the DACL read succeeds, the DACL
+write is denied, and the child hardens regardless. Nothing downstream changes.) That impossibility was
 read too broadly. The requested access of a relative kernel open applies to the CHILD
 object being opened, not to the parent handle supplied as its root; and every datastore
 object requiring protection is a NAMED SINGLE-COMPONENT CHILD of a directory this crate
-already retains. A child may therefore be opened with `READ_CONTROL | WRITE_DAC` through
-a parent that holds neither, hardened, and proven — retained capability, not copied
-observation. This extends D1's purpose split with parent-relative constructors for
+already retains. A child may therefore be opened with `WRITE_DAC` through a parent that
+lacks it, hardened, and proven — retained capability, not copied observation. This extends D1's purpose split with parent-relative constructors for
 directory hardening and for read-only directory observation, and adds no new native
 primitive: the two relative-open unsafe calls already reviewed under the
 `a2a-archive-materialization` D4 boundary are parameterized by rights mask, their
