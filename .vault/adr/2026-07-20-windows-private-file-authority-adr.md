@@ -286,9 +286,25 @@ evidence remains achievable meanwhile, since the parent-relative constructors ar
 without driving the lane. For the integrated Windows leg to become possible that follow-on
 must leave no typed durability refusal in the non-test build, reach the object through a
 handle already retained rather than any reconstructed path, stay bounded and fail closed,
-and — if its honest outcome is that the platform's journaling makes an explicit directory
-sync unnecessary — record that as a reviewed durability argument about the trust store
-rather than assume it silently.
+and carry a REVIEWED durability argument about the trust store rather than an asserted
+one. (Amended 2026-07-21 on real-NTFS evidence: the premise that Windows cannot flush
+directory metadata is FALSE, and the typed refusal rested on an unexamined assumption
+rather than a platform limit. `FlushFileBuffers` requires `FILE_WRITE_DATA` or
+`FILE_APPEND_DATA`; on a DIRECTORY `FILE_ADD_SUBDIRECTORY` IS `FILE_APPEND_DATA`, which
+this crate's own directory rights already carry — only the capability handles the
+datastore passes lack it. The sanctioned closure is a bounded reopen of an already-retained
+handle TO ITSELF: a relative open with an EMPTY name, flush-only rights, and identity
+proven on the reopened handle. It resolves no pathname and belongs to the relative-open
+family already reviewed, so it is a new primitive requiring the full D9 unsafe review, not
+a new exception requiring a decision. Widening the long-lived capability handles' rights
+instead is REFUSED: a retained directory handle that denies write sharing is what collided
+with hardening twice already, and flush-capable rights must not accrue to the hardening
+value, which deliberately excludes them. The durability argument accordingly no longer
+asks why no flush is needed but what the flush ESTABLISHES — what `FlushFileBuffers` on a
+directory handle commits, what NTFS metadata journaling contributes, and the bound the
+claim cannot exceed on a volume whose write cache does not honour a flush. Ordering is
+fixed: contents become durable before the name that publishes them — a file before its
+containing directory, and a directory's contents before any rename that makes it visible.)
 
 Addendum recorded 2026-07-21 (architect ruling, private-file class boundary and
 single-sourced policy constants). First, the boundary between per-file hardening and
