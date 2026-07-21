@@ -39,7 +39,10 @@ nix = { version = "0.29", default-features = false, features = ["user"] }
 
 [target.'cfg(windows)'.dependencies]
 vaultspec-windows-authority = { path = "../vaultspec-windows-authority" }
+# The safe handle-based DACL mutation layer (windows-private-file-authority D2).
+# `winapi` supplies only the `c_void` the pinned `windows-acl` handle API takes.
 windows-acl = "0.3.0"
+winapi = "0.3.9"
 
 [dev-dependencies]
 aws-lc-rs = "1.16.0"

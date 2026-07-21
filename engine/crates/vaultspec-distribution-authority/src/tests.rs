@@ -797,26 +797,119 @@ async fn publication_refuses_nonportable_cohort_paths() {
     assert!(matches!(result, Err(PublicationError::InvalidRelease)));
 }
 
+/// Real-NTFS acceptance for the retired Windows publication-staging refusal
+/// (windows-private-file-authority D6/D7): the PRODUCTION entrypoint now runs on
+/// Windows, and both directories it publishes carry the exact protected
+/// three-principal DACL — the property `0700` gives the Unix arm.
 #[cfg(windows)]
 #[tokio::test(flavor = "current_thread")]
-async fn production_publication_typed_refuses_unproven_windows_private_staging() {
+async fn windows_publication_publishes_through_protected_owner_private_directories() {
     let temp = TempDir::new().expect("temporary test root");
     let material = signing_material(temp.path()).await;
-    let source = temp.path().join("windows-gated-source");
+    let source = temp.path().join("windows-private-source");
     std::fs::create_dir(&source).expect("source directory");
-    let cohort = cohort_for(&source, "windows-gated-release");
-    let result = super::publication::write_release_repository(publication_request(
-        temp.path().join("windows-gated-output"),
+    let cohort = cohort_for(&source, "windows-private-release");
+    let output = temp.path().join("windows-private-output");
+    let published = super::publication::write_release_repository(publication_request(
+        output.clone(),
         &material,
         source,
         cohort,
         1,
     ))
-    .await;
-    assert!(matches!(
-        result,
-        Err(PublicationError::WindowsPrivateStagingNotProvisioned)
-    ));
+    .await
+    .expect("production publication succeeds on Windows");
+    assert_eq!(published.root_version.get(), 1);
+
+    assert_protected_owner_private(&output.join("metadata"));
+    assert_protected_owner_private(&output.join("targets"));
+}
+
+/// Real-NTFS acceptance for the interior staging sites: a child created under a
+/// parent carrying an extra INHERITABLE principal really does inherit it, and
+/// hardening replaces that inherited list with the exact protected
+/// three-principal list (windows-private-file-authority D7).
+#[cfg(windows)]
+#[test]
+fn windows_owner_private_hardening_replaces_inherited_entries() {
+    use vaultspec_windows_authority::{HardeningDirectory, ReadOnlyAuthorityDirectory};
+
+    let temp = TempDir::new().expect("temporary hardening root");
+    let parent = temp.path().join("parent");
+    let child = temp.path().join("parent").join("child");
+    std::fs::create_dir(&parent).expect("parent directory");
+    grant_inheritable_everyone(&parent);
+    std::fs::create_dir(&child).expect("child directory");
+
+    let inherited = ReadOnlyAuthorityDirectory::open_observation(&child)
+        .expect("observe child")
+        .dacl_snapshot()
+        .expect("child DACL snapshot");
+    assert!(
+        inherited
+            .entries()
+            .iter()
+            .any(|entry| entry.sid() == EVERYONE_SID && entry.inherited()),
+        "child did not inherit the extra principal, so the proof would be vacuous"
+    );
+
+    super::private_directory::ensure_owner_private_directory(&child)
+        .expect("harden the inherited child");
+    assert_protected_owner_private(&child);
+
+    // The hardening authority is exactly the retained handle the mutation used;
+    // reopening proves the protected state survived close and reopen.
+    HardeningDirectory::open_existing(&child)
+        .expect("reopen hardened child")
+        .revalidate()
+        .expect("hardened child identity is unchanged");
+}
+
+#[cfg(windows)]
+const EVERYONE_SID: &str = "S-1-1-0";
+
+/// Prove one directory carries the exact protected three-principal DACL from one
+/// snapshot, through the read-only observation authority.
+#[cfg(windows)]
+fn assert_protected_owner_private(path: &Path) {
+    use vaultspec_windows_authority::{ReadOnlyAuthorityDirectory, private_policy};
+
+    let current = match super::private_directory::current_user_sid() {
+        Ok(sid) => sid,
+        Err(error) => panic!("current user SID is unavailable: {error:?}"),
+    };
+    let snapshot = ReadOnlyAuthorityDirectory::open_observation(path)
+        .unwrap_or_else(|error| panic!("observe {}: {error}", path.display()))
+        .dacl_snapshot()
+        .unwrap_or_else(|error| panic!("snapshot {}: {error}", path.display()));
+    assert!(snapshot.protected(), "{} is not protected", path.display());
+    private_policy::validate_private_directory(&snapshot, &current)
+        .unwrap_or_else(|violation| panic!("{}: {violation}", path.display()));
+}
+
+/// Grant an extra INHERITABLE principal so a later-created child genuinely
+/// inherits an entry the private policy forbids.
+#[cfg(windows)]
+fn grant_inheritable_everyone(path: &Path) {
+    use std::os::windows::io::AsRawHandle as _;
+
+    use vaultspec_windows_authority::HardeningDirectory;
+    use windows_acl::acl::{ACL, AceType};
+
+    let hardening = HardeningDirectory::open_existing(path).expect("open parent for hardening");
+    let mut acl = ACL::from_file_handle(
+        hardening.directory().as_raw_handle() as *mut winapi::ctypes::c_void,
+        false,
+    )
+    .expect("read parent DACL");
+    let sid = windows_acl::helper::string_to_sid(EVERYONE_SID).expect("Everyone SID");
+    acl.add_entry(
+        sid.as_ptr().cast_mut().cast(),
+        AceType::AccessAllow,
+        0x03,
+        0x001f_01ff,
+    )
+    .expect("grant inheritable entry");
 }
 
 async fn signing_material(root: &Path) -> SigningMaterial {
@@ -940,14 +1033,7 @@ fn keypair() -> (Ed25519KeyPair, Vec<u8>) {
 async fn publish_repository(
     request: PublicationRequest,
 ) -> Result<UnsealedPublication, PublicationError> {
-    #[cfg(unix)]
-    {
-        super::publication::write_release_repository(request).await
-    }
-    #[cfg(windows)]
-    {
-        super::publication::write_test_repository(request).await
-    }
+    super::publication::write_release_repository(request).await
 }
 
 async fn publish_bundle(

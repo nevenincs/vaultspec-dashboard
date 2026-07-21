@@ -4,6 +4,7 @@
 //! signed root.  This module never generates, stores, or blesses production
 //! keys and does not turn its input root into product trust authority.
 
+use super::private_directory::{PrivateDirectoryError, ensure_owner_private_directory};
 use super::{
     COHORT_TARGET_NAME, DistributionTarget, MAX_ARCHIVE_BYTES, MAX_COHORT_BYTES, MAX_RELEASE_BYTES,
     TARGETS, hex_lower, portable_relative_path, valid_digest,
@@ -129,10 +130,10 @@ pub struct UnsealedPublication {
 
 #[derive(Debug, Error)]
 pub enum PublicationError {
-    #[error("Windows owner-private publication staging is not provisioned")]
-    WindowsPrivateStagingNotProvisioned,
     #[error("publication input violates the six-member release contract")]
     InvalidRelease,
+    #[error("publication directory is not owner-private: {0}")]
+    PrivateDirectory(String),
     #[error("publication filesystem operation failed")]
     Filesystem(#[source] std::io::Error),
     #[error("TUF metadata publication failed")]
@@ -147,6 +148,15 @@ impl From<tough::error::Error> for PublicationError {
     }
 }
 
+impl From<PrivateDirectoryError> for PublicationError {
+    fn from(error: PrivateDirectoryError) -> Self {
+        match error {
+            PrivateDirectoryError::Filesystem(error) => Self::Filesystem(error),
+            PrivateDirectoryError::Policy(detail) => Self::PrivateDirectory(detail),
+        }
+    }
+}
+
 /// Produce signed metadata and consistent-snapshot target files.
 ///
 /// This is a metadata-builder/signer-facing seam, not an authorization seam:
@@ -155,20 +165,6 @@ pub async fn write_release_repository(
     request: PublicationRequest,
 ) -> Result<UnsealedPublication, PublicationError> {
     let staging = create_private_publication_staging()?;
-    write_release_repository_inner(request, staging).await
-}
-
-#[cfg(test)]
-pub(crate) async fn write_test_repository(
-    request: PublicationRequest,
-) -> Result<UnsealedPublication, PublicationError> {
-    #[cfg(unix)]
-    let staging = create_private_publication_staging()?;
-    #[cfg(windows)]
-    let staging = tempfile::Builder::new()
-        .prefix("vaultspec-test-release-publication-")
-        .tempdir()
-        .map_err(PublicationError::Filesystem)?;
     write_release_repository_inner(request, staging).await
 }
 
@@ -435,51 +431,23 @@ fn write_staged_file(path: &Path, bytes: &[u8]) -> Result<(), PublicationError> 
         .map_err(PublicationError::Filesystem)
 }
 
-#[cfg(unix)]
+/// The publication staging root. Every interior directory this run creates —
+/// `input`, `repository`, the private metadata and target directories, and the
+/// caller's two output directories — is separately established owner-private
+/// through the same authority, so retiring the former Windows refusal here does
+/// not leave any interior staging path unprotected.
 fn create_private_publication_staging() -> Result<tempfile::TempDir, PublicationError> {
     let staging = tempfile::Builder::new()
         .prefix("vaultspec-release-publication-")
         .tempdir()
         .map_err(PublicationError::Filesystem)?;
-    validate_private_directory(staging.path(), true)?;
+    ensure_owner_private_directory(staging.path())?;
     Ok(staging)
-}
-
-#[cfg(windows)]
-fn create_private_publication_staging() -> Result<tempfile::TempDir, PublicationError> {
-    Err(PublicationError::WindowsPrivateStagingNotProvisioned)
 }
 
 fn create_private_staging_directory(path: &Path) -> Result<(), PublicationError> {
     std::fs::create_dir(path).map_err(PublicationError::Filesystem)?;
-    #[cfg(unix)]
-    validate_private_directory(path, true)?;
-    Ok(())
-}
-
-#[cfg(unix)]
-fn validate_private_directory(path: &Path, set_mode: bool) -> Result<(), PublicationError> {
-    use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-
-    let named = path
-        .symlink_metadata()
-        .map_err(PublicationError::Filesystem)?;
-    let retained = std::fs::File::open(path).map_err(PublicationError::Filesystem)?;
-    if set_mode {
-        retained
-            .set_permissions(std::fs::Permissions::from_mode(0o700))
-            .map_err(PublicationError::Filesystem)?;
-    }
-    let metadata = retained.metadata().map_err(PublicationError::Filesystem)?;
-    if !named.is_dir()
-        || named.file_type().is_symlink()
-        || named.dev() != metadata.dev()
-        || named.ino() != metadata.ino()
-        || metadata.uid() != nix::unistd::Uid::effective().as_raw()
-        || metadata.permissions().mode() & 0o777 != 0o700
-    {
-        return Err(PublicationError::InvalidRelease);
-    }
+    ensure_owner_private_directory(path)?;
     Ok(())
 }
 
@@ -712,8 +680,7 @@ fn create_unsealed_output_directory(path: &Path) -> Result<(), PublicationError>
     let parent = path.parent().ok_or(PublicationError::InvalidRelease)?;
     std::fs::create_dir_all(parent).map_err(PublicationError::Filesystem)?;
     std::fs::create_dir(path).map_err(PublicationError::Filesystem)?;
-    #[cfg(unix)]
-    validate_private_directory(path, true)?;
+    ensure_owner_private_directory(path)?;
     Ok(())
 }
 

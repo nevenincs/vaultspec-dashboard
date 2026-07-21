@@ -6,6 +6,7 @@
 //! the separately approved root metadata, it returns a typed refusal.
 
 mod materialization;
+mod private_directory;
 mod product_scope;
 mod publication;
 
