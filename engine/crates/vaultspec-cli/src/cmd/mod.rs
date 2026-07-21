@@ -12,6 +12,7 @@ pub mod map;
 pub mod node;
 pub mod provision;
 pub mod status;
+pub mod verify_release;
 
 use std::path::PathBuf;
 

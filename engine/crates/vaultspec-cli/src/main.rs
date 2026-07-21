@@ -124,6 +124,13 @@ enum Command {
         #[command(subcommand)]
         action: A2aAction,
     },
+    /// Verify an installed product tree matches its own `release.json` under the
+    /// embedded trusted component lock — the product-owned installers' placement
+    /// integrity check (a2a-product-provisioning W04.P09). No corpus is consulted.
+    VerifyRelease {
+        /// The installed product-tree root (the generation directory).
+        root: std::path::PathBuf,
+    },
 }
 
 /// The bounded A2A lifecycle actions. A closed enum — clap rejects any token
@@ -315,6 +322,7 @@ fn main() -> std::process::ExitCode {
             | Command::Update
             | Command::Provision { .. }
             | Command::A2a { .. }
+            | Command::VerifyRelease { .. }
     ) {
         let (name, result) = match command {
             Command::Open => ("open", cmd::launch::open_app()),
@@ -323,6 +331,7 @@ fn main() -> std::process::ExitCode {
             Command::Update => ("update", cmd::lifecycle::update()),
             Command::Provision { action } => ("provision", run_provision(action)),
             Command::A2a { action } => ("a2a", cmd::a2a_lifecycle::run((&action).into())),
+            Command::VerifyRelease { root } => ("verify-release", cmd::verify_release::run(&root)),
             _ => unreachable!(),
         };
         // Provision results carry the plane's own served tiers; lifecycle
@@ -367,7 +376,8 @@ fn main() -> std::process::ExitCode {
         | Command::Restart
         | Command::Update
         | Command::Provision { .. }
-        | Command::A2a { .. } => {
+        | Command::A2a { .. }
+        | Command::VerifyRelease { .. } => {
             unreachable!("handled above")
         }
     };
@@ -423,7 +433,8 @@ fn main() -> std::process::ExitCode {
         | Command::Restart
         | Command::Update
         | Command::Provision { .. }
-        | Command::A2a { .. } => {
+        | Command::A2a { .. }
+        | Command::VerifyRelease { .. } => {
             unreachable!("handled above")
         }
     };
