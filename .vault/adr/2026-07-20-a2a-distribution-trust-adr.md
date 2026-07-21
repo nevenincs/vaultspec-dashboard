@@ -221,3 +221,29 @@ provide independent-human approval.
   posture remains honest and unchanged.
 - The product-provisioning D8 and D10 contracts become implementable without changing
   their artifact-level certification or fixed-journal semantics.
+
+## Amendment (2026-07-21): free open-source scope — unsigned release, ceremony is not a prerequisite
+
+The maintainer has scoped this project as a small, free, open-source effort with no
+code-signing of any kind: neither paid operating-system code signing (already refused by
+the dashboard-packaging zero-paid-signing posture) nor self-managed release signing.
+Under this scope:
+
+- The initial and supported release path is the existing UNSIGNED cargo-dist channel
+  (GitHub Releases plus product installers, Scoop, WinGet, and cargo-binstall),
+  consistent with the dashboard-packaging and distribution-channels decisions.
+- The TUF-rooted authenticated-update authority defined by this ADR — and implemented in
+  `vaultspec-distribution-authority` and `vaultspec-release-verify` — is RETAINED IN CODE
+  but DEFERRED as an optional future enhancement. It is NOT a release gate. The D6 key
+  ceremony is therefore NOT a prerequisite for shipping, and no production root need be
+  embedded to publish a release.
+- Electing TUF-authenticated updates later requires only generating free, self-managed
+  keys and signing a root — no certificate authority, no purchase, no recurring cost. The
+  D1–D8 design stands ready for that future election unchanged.
+- Honest consequence: users receive unsigned artifacts (ordinary "unknown publisher"
+  SmartScreen and Gatekeeper warnings) and update through normal open-source channels
+  without cryptographic update verification. This is accepted for the project's scale.
+
+This amendment refines only the release-gating interpretation of D6 and D8 for the
+current scope. It supersedes none of the cryptographic design, which remains valid and
+buildable if the project later elects signed updates.

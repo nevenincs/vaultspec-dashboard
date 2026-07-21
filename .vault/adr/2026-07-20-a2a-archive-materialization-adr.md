@@ -3,12 +3,13 @@ tags:
   - '#adr'
   - '#a2a-archive-materialization'
 date: '2026-07-20'
-modified: '2026-07-20'
+modified: '2026-07-21'
 related:
   - "[[2026-07-20-a2a-archive-materialization-research]]"
   - "[[2026-07-20-a2a-distribution-trust-adr]]"
   - "[[2026-07-20-a2a-generation-authority-adr]]"
   - "[[2026-07-20-a2a-provisioning-authority-adr]]"
+  - "[[2026-07-18-a2a-product-provisioning-adr]]"
 ---
 
 # `a2a-archive-materialization` adr: `capability-bound verified archive materialization` | (**status:** `accepted`)
@@ -26,7 +27,8 @@ tree, or recover interrupted writes. The one-shot helper therefore cannot compos
 verification with installation and correctly remains a fixed refusal.
 
 This decision defines the missing mutation bridge. It refines distribution-trust D5, the
-generation-authority decision, and provisioning-authority D1 and D7. It supersedes none
+generation-authority decision, provisioning-authority D1 and D7, and product-provisioning
+D2's composite archive shape and installer-verification delegation. It supersedes none
 of them.
 
 ## Considerations
@@ -207,7 +209,8 @@ separately reviewable.
   the discovery record absent and refuses typed whenever one exists.
 
 - Composite release production must replace the legacy target archive split with the
-  canonical ZIP profile.
+  canonical ZIP profile, refining product-provisioning D2's composite release unit
+  accordingly.
 - Product code gains a sealed materializer and retained generation writer; archive crates
   remain bounded readers only.
 - The Windows authority boundary needs one additional purpose-specific child regular-file

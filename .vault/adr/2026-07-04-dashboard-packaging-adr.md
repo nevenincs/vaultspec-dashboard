@@ -7,6 +7,7 @@ modified: '2026-07-07'
 related:
   - '[[2026-07-04-dashboard-packaging-research]]'
   - '[[2026-06-12-dashboard-foundation-adr]]'
+  - '[[2026-07-18-a2a-product-provisioning-adr]]'
 ---
 
 # `dashboard-packaging` adr: `installable single-binary distribution and release pipeline` | (**status:** `accepted`)
@@ -72,3 +73,4 @@ Embedding the SPA (F3: the bundle is self-contained, origin-relative, WASM/worke
 - **Provisioning UX depends on uv/PyPI reachability** at the user's install time; offline users see an honest floor failure but no local fix until bundled-uv lands.
 - **Phasing.** v1 ships an unsigned installable single binary with the `dist` pipeline, detect-and-instruct probe, and releaser cleanup. v2 opens up broadened channels (winget/Homebrew/MSI/DMG), optional bundled-uv first-run bootstrap, the formalized handshake, optional SignPath signing, and Playwright e2e in the release gate. v3 (Tauri v2 native shell) is explicitly deferred, opened only on explicit native-shell demand — recorded as a path, not a commitment.
 - **Open validation carried into the plan:** winget unsigned-manifest acceptance, and whether the project qualifies for SignPath Foundation OSS signing.
+- **Partially amended (2026-07-18) by `2026-07-18-a2a-product-provisioning-adr`:** Cargo Dist remains the target-matrix/checksum/GitHub-Release planner recorded here, but its generated shell, PowerShell, and MSI installers are replaced by product-owned installers that also install and verify the A2A companion; the composite release set that results is gated on that ADR's own phase-zero artifact-level certification proofs. The zero-budget signing posture recorded in this ADR is unchanged.

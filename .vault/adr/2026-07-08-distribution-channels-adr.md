@@ -8,6 +8,7 @@ related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-04-dashboard-packaging-research]]"
   - "[[2026-07-07-release-automation-adr]]"
+  - "[[2026-07-18-a2a-product-provisioning-adr]]"
 ---
 
 # `distribution-channels` adr: `scoop, cargo-binstall, and winget over the shipped artifacts - and a boundary-clean embed` | (**status:** `accepted`)
@@ -62,3 +63,4 @@ Every channel rides the artifacts the pipeline already publishes - no second bui
 - The embed becomes boundary-clean at the cost of one extra copy step in two build paths; a stale staged directory can no longer serve silently wrong assets in dev because dev builds do not enable the feature, and release builds fail compile without staging.
 - crates.io remains deliberately unserved; if user demand ever materializes, the recorded path is the staged-assets `include` plus a twelve-crate publish chain - a conscious future project, not drift.
 - The winget identifier and the bucket become small public contracts to maintain (renames are breaking for users).
+- **Partially amended (2026-07-18) by `2026-07-18-a2a-product-provisioning-adr`:** Scoop now installs the complete Windows ZIP (dashboard plus A2A capsule) rather than the binary-only zip recorded here, WinGet moves from the portable-ZIP manifest decided here to the complete product MSI, and the documented Cargo `binstall`/`cargo install` channel is withdrawn until composite receipts are supported. Each change is gated on that ADR's own phase-zero artifact-level certification proofs before it ships; the manifest-governance and staged-SPA decisions recorded here stand.

@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-19'
+modified: '2026-07-21'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - "[[2026-07-18-a2a-product-provisioning-reference]]"
@@ -12,6 +12,8 @@ related:
   - "[[2026-07-07-project-provisioning-adr]]"
   - "[[2026-07-12-single-app-runtime-adr]]"
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
+  - "[[2026-07-20-a2a-archive-materialization-adr]]"
+  - "[[2026-07-20-a2a-distribution-trust-adr]]"
 ---
 
 # `a2a-product-provisioning` adr: `the dashboard-owned A2A companion and composite release set` | (**status:** `accepted`)
@@ -195,6 +197,12 @@ installers, and the product-owned WiX source replaces the generated binary-only
 MSI. Stale binary-only installers are neither published nor presented as
 supported artifacts. This also amends WinGet from the earlier portable-ZIP
 contract to the complete product MSI.
+
+This composite archive shape and installer-verification delegation are later
+refined by the canonical ZIP profile in
+[[2026-07-20-a2a-archive-materialization-adr]] and the isolated TUF helper in
+[[2026-07-20-a2a-distribution-trust-adr]]; neither refinement supersedes this
+decision.
 
 **D3: One lifecycle plane, separate from run control.** A dedicated lifecycle
 registry follows the existing typed, job-shaped provisioning conventions and
