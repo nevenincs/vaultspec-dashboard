@@ -1,0 +1,67 @@
+# The WinGet publication path (a2a-product-provisioning W04.P10.S159).
+#
+# Publishes the composite-product WinGet manifests (packaging/winget/*.yaml) to
+# the community repository microsoft/winget-pkgs. This is a DELIBERATE,
+# manually-dispatched act — cross-repo publication is never automatic — and it
+# is FAIL-CLOSED behind the shared channel-publish-gate: the submission step
+# cannot run unless the WinGet channel has earned publication per the support
+# matrix + phase-zero reversibility proof.
+#
+# TWO STANDING DEPENDENCIES, both authored-pending:
+#
+#   1. MSI (W04.P10.S76, DEFERRED — WiX not installed on the build box). WinGet's
+#      installer manifest references the complete product MSI, not the zip. Until
+#      the MSI artifact is built and published, this path has no artifact to
+#      submit. The manifests are authored-PENDING-MSI.
+#
+#   2. CROSS-REPO PUBLISH (#46/#50 class). Submission targets
+#      microsoft/winget-pkgs via a fork + PR (komac/wingetcreate). That requires
+#      a fork and a token with access to it; the submission step below is
+#      authored but the actual push is the cross-repo coordination point.
+#
+# Even once both land, the gate still refuses until the phase-zero clean-machine
+# WinGet proof (W01.P01.S149) flips the matrix entry to `supported`. Today it
+# fails closed at the gate (matrix marks winget `feasibility_gated`).
+
+name: winget-publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version to publish (without the leading v).'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  # W04.P10.S159: the fail-closed gate. No submission runs unless WinGet is
+  # matrix-`supported` AND the phase-zero proof workflow exists.
+  gate:
+    uses: ./.github/workflows/channel-publish-gate.yml
+    with:
+      channel: winget
+
+  submit:
+    needs: gate
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Submit the composite-product manifests to winget-pkgs
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # AUTHORED-PENDING (see header): the MSI artifact (S76) and the
+          # winget-pkgs fork/token (cross-repo) must both exist before this
+          # submits. The gate has already proven the channel is publishable, so
+          # reaching here means the matrix marks winget `supported`.
+          #
+          # Submission uses the authored manifests under packaging/winget/ against
+          # the published complete MSI. When the MSI + fork/token land, wire the
+          # komac/wingetcreate submission here; until then this is a fail-loud
+          # placeholder so no partial publish can occur.
+          Write-Error "winget-publish: MSI artifact (S76) and winget-pkgs fork/token (cross-repo) are pending; no submission performed"
+          exit 1

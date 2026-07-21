@@ -32,7 +32,18 @@ permissions:
   contents: write
 
 jobs:
+  # W04.P10.S85: fail-closed publication gate. The Scoop manifest bump is a
+  # PUBLICATION act, so it must not proceed until the Scoop channel has earned
+  # publication per the support matrix + phase-zero reversibility proof. Today
+  # this fails closed (matrix marks scoop `feasibility_gated`), which is the
+  # correct honest state until W01.P01.S147/S148 flip it to `supported`.
+  gate:
+    uses: ./.github/workflows/channel-publish-gate.yml
+    with:
+      channel: scoop
+
   bump:
+    needs: gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
