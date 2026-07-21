@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-20'
+modified: '2026-07-21'
 tier: L3
 related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
@@ -13,6 +13,16 @@ related:
   - '[[2026-07-20-a2a-distribution-trust-adr]]'
   - '[[2026-07-20-a2a-provisioning-authority-adr]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 <!-- RETIRED: S08, S162 -->
 
@@ -65,6 +75,7 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 - [ ] `W01.P01.S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix and Windows, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery; `engine/crates/vaultspec-product/src/credentials.rs, engine/crates/vaultspec-product/src/credentials, engine/crates/vaultspec-product/src/bootstrap.rs, engine/crates/vaultspec-product/src/lifecycle.rs, engine/crates/vaultspec-cli/src/cmd/a2a_lifecycle.rs, engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
 - [ ] `W01.P01.S176` - Implement sealed provisioning and active-release facades that consume TUF-verified distribution exact installation-lock and unpublished-generation authority sealed install provenance plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery; `engine/crates/vaultspec-product/src/provisioning.rs, engine/crates/vaultspec-product/src/lib.rs, engine/crates/vaultspec-product/src/manifest.rs, engine/crates/vaultspec-product/src/manifest/authority.rs, engine/crates/vaultspec-product/src/receipt.rs, engine/crates/vaultspec-product/src/receipt/publish.rs, engine/crates/vaultspec-release-verify`.
 - [ ] `W01.P01.S11` - Verify through production APIs that one TUF-authenticated complete real generation activates only through the sealed transaction, the fixed receipt survives reopen, fallback unpublished and legacy state remain inert, dashboard credentials and bootstrap recovery preserve actor and access authority, and cross-process lock exclusion and child cleanup stay bounded; `engine/crates/vaultspec-product/tests/product_authority.rs, engine/crates/vaultspec-distribution-authority/tests/offline_repository.rs`.
+- [ ] `W01.P01.S177` - Investigate Windows parent-directory durability for credential retirement, decide safe-flush vs new D9 surface (ADR amendment + independent review if new rights/native calls), implement, and certify on real NTFS to the MOVEFILE_WRITE_THROUGH journal bar; `engine/crates/vaultspec-product/src/credentials/windows.rs, engine/crates/vaultspec-windows-authority`.
 
 ### Phase `W01.P02` - control only the owned gateway
 
