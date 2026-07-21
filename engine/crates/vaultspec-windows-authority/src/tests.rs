@@ -874,3 +874,79 @@ fn install_child_file_no_replace_renames_by_handle_and_refuses_an_occupant() {
     drop(second);
     assert!(!workdir.join(".second.vsmz-tmp").exists());
 }
+
+// windows-private-file-authority D3 primitive exercise. These prove the
+// GetSecurityInfo -> control -> LocalFree fence executes on real files and
+// directories and reports the unhardened (inherited, unprotected) state
+// correctly; the full harden -> protected -> exact-list -> negative NTFS
+// acceptance matrix (D7) hardens with the safe `windows-acl` layer separately.
+
+#[test]
+fn is_dacl_protected_reports_false_for_an_inherited_unprotected_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("ordinary");
+    std::fs::write(&path, b"payload").unwrap();
+    let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
+    // A tempdir file inherits its parent's DACL: present but not protected, so
+    // the whole GetSecurityInfo -> GetSecurityDescriptorControl -> free path
+    // runs and reports false.
+    assert!(!reader.is_dacl_protected().unwrap());
+    reader.revalidate().unwrap();
+}
+
+#[test]
+fn is_dacl_protected_observes_a_directory_handle() {
+    let dir = tempfile::tempdir().unwrap();
+    let hardening = HardeningDirectory::open_existing(dir.path()).unwrap();
+    // SE_FILE_OBJECT covers directories; an inherited tempdir DACL is present
+    // and unprotected, so this observes without error and reports false.
+    assert!(!hardening.is_dacl_protected().unwrap());
+    hardening.revalidate().unwrap();
+}
+
+#[test]
+fn read_only_authority_coexists_with_a_live_creation_claim() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("private");
+    let creation = AuthorityFile::create_private(&path).unwrap();
+    // The creation handle denies write and delete sharing but always shares
+    // read, so a read-only verification handle opens alongside it.
+    let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
+    assert_eq!(reader.identity(), creation.identity());
+    assert_eq!(reader.link_count().unwrap(), 1);
+    reader.revalidate().unwrap();
+    drop(reader);
+    drop(creation);
+}
+
+#[test]
+fn create_private_is_exclusive_and_recovery_reopens_the_same_identity() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("private");
+    let created = AuthorityFile::create_private(&path).unwrap();
+    let identity = created.identity();
+    assert!(
+        AuthorityFile::create_private(&path).is_err(),
+        "create-new must refuse an existing name"
+    );
+    drop(created);
+    let recovered = AuthorityFile::open_private_recovery(&path).unwrap();
+    assert_eq!(recovered.identity(), identity);
+    recovered.mark_delete_on_close().unwrap();
+    drop(recovered);
+    assert!(!path.exists(), "delete-on-close must retire the exact file");
+}
+
+#[test]
+fn dacl_is_protected_has_no_leak_under_iteration() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("loop");
+    std::fs::write(&path, b"loop").unwrap();
+    let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
+    // Each call allocates one security descriptor and frees it through the
+    // LocalSecurityDescriptor Drop guard; the repetition documents no-leak
+    // intent under iteration.
+    for _ in 0..512 {
+        reader.is_dacl_protected().unwrap();
+    }
+}

@@ -14,9 +14,8 @@ use windows_sys::Wdk::Storage::FileSystem::{
     NtSetInformationFile,
 };
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, ERROR_SUCCESS, HANDLE, HLOCAL,
-    LocalFree, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, UNICODE_STRING, WAIT_OBJECT_0,
-    WAIT_TIMEOUT,
+    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, ERROR_SUCCESS, HANDLE, LocalFree,
+    OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, UNICODE_STRING, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{GetSecurityInfo, SE_FILE_OBJECT};
 use windows_sys::Win32::Security::{
@@ -471,13 +470,15 @@ pub(super) fn validated_regular_file_state(file: &File) -> io::Result<RegularFil
 /// bounded entry enumeration the safe layer joins with this observation.
 pub(super) fn dacl_is_protected(file: &File) -> io::Result<bool> {
     let mut security_descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
-    // SAFETY: `file` owns a valid handle opened with READ_CONTROL for this
-    // synchronous call. Only the security-descriptor out-parameter is
-    // requested; the owner, group, DACL, and SACL out-pointers are null, so
-    // Windows returns nothing but the self-relative descriptor it allocates.
-    // `security_descriptor` is a live, aligned out-pointer. GetSecurityInfo
-    // copies the handle's security into a fresh allocation and retains no
-    // borrowed pointer.
+    // SAFETY: `file` owns a valid handle carrying READ_CONTROL for this
+    // synchronous call — every public constructor that reaches this fn requests
+    // either GENERIC_READ (whose generic mapping includes READ_CONTROL) or
+    // READ_CONTROL explicitly, so the handle can always read its own security.
+    // Only the security-descriptor out-parameter is requested; the owner,
+    // group, DACL, and SACL out-pointers are null, so Windows returns nothing
+    // but the self-relative descriptor it allocates. `security_descriptor` is a
+    // live, aligned out-pointer. GetSecurityInfo copies the handle's security
+    // into a fresh allocation and retains no borrowed pointer.
     let status = unsafe {
         GetSecurityInfo(
             file.as_raw_handle(),
@@ -517,6 +518,13 @@ pub(super) fn dacl_is_protected(file: &File) -> io::Result<bool> {
     if result == 0 {
         return Err(io::Error::last_os_error());
     }
+    // SECURITY_DESCRIPTOR_REVISION is 1; an indeterminate control revision means
+    // the control word cannot be trusted, so fail closed rather than read it.
+    if revision != 1 {
+        return Err(io::Error::other(
+            "security descriptor control has an unexpected revision",
+        ));
+    }
     if control & SE_DACL_PRESENT == 0 {
         return Err(io::Error::other(
             "authority object has no present DACL to protect",
@@ -536,7 +544,7 @@ impl Drop for LocalSecurityDescriptor {
         // descriptor GetSecurityInfo allocated with LocalAlloc, and frees that
         // allocation exactly once. LocalFree accepts the pointer as an HLOCAL
         // and returns null on success; the returned handle is ignored.
-        let _ = unsafe { LocalFree(self.0 as HLOCAL) };
+        let _ = unsafe { LocalFree(self.0.cast::<core::ffi::c_void>()) };
     }
 }
 
