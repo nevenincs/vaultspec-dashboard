@@ -2,6 +2,18 @@ use super::publish::{ACTIVE_RECEIPT_INIT_NAME, active_wire_from_facts, prepare_i
 use super::*;
 use crate::generation::LockedProduct;
 use crate::locking::{Actor, InstallLock};
+use crate::paths::ACTIVE_RECEIPTS_JOURNAL_NAME;
+
+/// The init file must stay the journal's `.init` sibling. Both are `'static`
+/// literals because their call sites need `OsStr`s, so only a test can hold the
+/// relationship the publish sequence depends on.
+#[test]
+fn init_name_is_the_journal_sibling() {
+    assert_eq!(
+        ACTIVE_RECEIPT_INIT_NAME,
+        format!("{ACTIVE_RECEIPTS_JOURNAL_NAME}.init")
+    );
+}
 
 struct JournalFixture {
     guard: InstallLockGuard,

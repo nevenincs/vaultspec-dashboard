@@ -1,8 +1,12 @@
 use super::*;
 use crate::manifest::{VerifiedReceiptFacts, VerifiedReleaseSet};
+use crate::paths::ACTIVE_RECEIPTS_JOURNAL_NAME;
 
+/// The transient init sibling the journal is published from: the journal's name
+/// plus `.init`. It stays a literal because the `OsStr` call sites need a
+/// `'static` str; the `init_name_is_the_journal_sibling` test holds it to
+/// `ACTIVE_RECEIPTS_JOURNAL_NAME` so the pair cannot drift apart.
 pub(super) const ACTIVE_RECEIPT_INIT_NAME: &str = "active-receipts.v1.init";
-const ACTIVE_RECEIPT_JOURNAL_NAME: &str = "active-receipts.v1";
 #[cfg(windows)]
 const MAX_RETAINED_INSTALL_DIAGNOSTICS: usize = 3;
 
@@ -906,7 +910,7 @@ fn publish_active_receipt_attempt_unfinalized(
                 verified
                     .install_activation_init_file(
                         std::ffi::OsStr::new(ACTIVE_RECEIPT_INIT_NAME),
-                        std::ffi::OsStr::new(ACTIVE_RECEIPT_JOURNAL_NAME),
+                        std::ffi::OsStr::new(ACTIVE_RECEIPTS_JOURNAL_NAME),
                     )
                     .map_err(|error| {
                         publish_attempt_error(
@@ -928,7 +932,7 @@ fn publish_active_receipt_attempt_unfinalized(
                 use crate::generation::AppHomeInstallOutcome;
                 match verified.install_synchronized_activation_file(
                     std::ffi::OsStr::new(ACTIVE_RECEIPT_INIT_NAME),
-                    std::ffi::OsStr::new(ACTIVE_RECEIPT_JOURNAL_NAME),
+                    std::ffi::OsStr::new(ACTIVE_RECEIPTS_JOURNAL_NAME),
                 ) {
                     AppHomeInstallOutcome::Installed(installed) => {
                         let actual = exact_file_bytes(installed.file()).map_err(|error| {

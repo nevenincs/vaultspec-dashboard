@@ -25,6 +25,17 @@
 
 use std::path::{Path, PathBuf};
 
+/// The filename of the fixed-size active-receipt authority journal, under the
+/// product app home. This is the LIVE journal's name and the one authority for
+/// it: every writer, reader, and file-rename primitive that names the live
+/// journal names it through this constant, so the name can never be changed in
+/// one place and missed in another.
+///
+/// Deliberately NOT shared with the snapshot member of the same name
+/// (`snapshot.rs`): that one is a token in an already-serialized on-disk
+/// snapshot format, and a snapshot captured before a rename must still restore.
+pub const ACTIVE_RECEIPTS_JOURNAL_NAME: &str = "active-receipts.v1";
+
 /// Why a product path could not be derived.
 #[derive(Debug)]
 pub enum PathError {
@@ -136,7 +147,7 @@ impl ProductPaths {
     /// authority.
     #[must_use]
     pub fn active_receipts_journal_path(&self) -> PathBuf {
-        self.app_home().join("active-receipts.v1")
+        self.app_home().join(ACTIVE_RECEIPTS_JOURNAL_NAME)
     }
 
     /// The mutable user-data directory (SQLite stores, workspaces) under the app

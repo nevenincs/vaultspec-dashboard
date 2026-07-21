@@ -42,6 +42,10 @@ const SNAPSHOT_MANIFEST_NAME: &str = "snapshot.json";
 const SNAPSHOT_MANIFEST_TMP: &str = "snapshot.json.tmp";
 const STORES_SUBDIR: &str = "stores";
 const STORE_PRIMARY_NAME: &str = "primary";
+/// The receipt-journal member's name INSIDE a snapshot directory. It currently
+/// equals `paths::ACTIVE_RECEIPTS_JOURNAL_NAME`, but the two are deliberately
+/// independent: this one is a token of an already-serialized snapshot format,
+/// and a snapshot captured before a live-journal rename must still restore.
 const RECEIPT_JOURNAL_MEMBER: &str = "active-receipts.v1";
 
 /// The SQLite sidecars captured with a store's primary file. Order is fixed so
