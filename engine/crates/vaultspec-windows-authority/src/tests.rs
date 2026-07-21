@@ -1332,3 +1332,56 @@ fn oversized_dacl_fails_snapshot_typed() {
 // fail-closed contract for malformed/degenerate DACLs is instead proven by the
 // present-but-empty and oversized cases above plus source review of the
 // null-pointer branch; nothing is silently skipped.
+
+// windows-private-file-authority read-only DIRECTORY observation authority
+// (D1 amendment). Real NTFS, no mocks: the type-check-on-open refusals, the
+// permissive-sharing contract, and a genuine inherited/unprotected observation.
+
+#[test]
+fn read_only_observation_refuses_a_file_and_a_reparse_point() {
+    let dir = tempfile::tempdir().unwrap();
+    let file_path = dir.path().join("plain-file");
+    std::fs::write(&file_path, b"not a directory").unwrap();
+    // The exact mirror of ReadOnlyAuthorityFile refusing directories.
+    assert!(ReadOnlyAuthorityDirectory::open_observation(&file_path).is_err());
+
+    let target = dir.path().join("target");
+    create_directory(&target);
+    let link = dir.path().join("dir-link");
+    symlink_dir(&target, &link).unwrap();
+    // Opened no-follow, the reparse point itself is refused as a non-plain dir.
+    assert!(ReadOnlyAuthorityDirectory::open_observation(&link).is_err());
+}
+
+#[test]
+fn read_only_observation_reads_an_inherited_unprotected_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let child = dir.path().join("ordinary");
+    create_directory(&child);
+    let observation = ReadOnlyAuthorityDirectory::open_observation(&child).unwrap();
+    assert_ne!(observation.identity().file_id, 0);
+    let snapshot = observation.dacl_snapshot().unwrap();
+    // A tempdir child inherits its parent's DACL: present, unprotected, with at
+    // least one inherited entry.
+    assert!(!snapshot.protected());
+    assert!(snapshot.entries().iter().any(|entry| entry.inherited()));
+    observation.revalidate().unwrap();
+}
+
+#[test]
+fn read_only_observation_permits_a_concurrent_owner_write_handle() {
+    let dir = tempfile::tempdir().unwrap();
+    let child = dir.path().join("shared");
+    create_directory(&child);
+    // An owner holds the directory open with GENERIC_WRITE + FILE_WRITE_ATTRIBUTES
+    // while the read-only observation authority snapshots it. Permissive sharing
+    // means the observation neither blocks nor is blocked by the writer — the
+    // deliberate inverse of the private-file exclusivity contract.
+    let owner = open_directory_for_generic_write(&child).unwrap();
+    let observation = ReadOnlyAuthorityDirectory::open_observation(&child).unwrap();
+    assert!(!observation.dacl_snapshot().unwrap().entries().is_empty());
+    // A second concurrent observation succeeds alongside both.
+    let second = ReadOnlyAuthorityDirectory::open_observation(&child).unwrap();
+    assert_eq!(second.identity(), observation.identity());
+    drop(owner);
+}

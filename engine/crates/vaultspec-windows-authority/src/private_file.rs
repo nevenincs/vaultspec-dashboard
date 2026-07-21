@@ -327,3 +327,69 @@ impl HardeningDirectory {
         Ok(())
     }
 }
+
+/// A retained non-reparse directory handle for READ-ONLY DACL OBSERVATION of an
+/// arbitrary installed object (windows-private-file-authority D1, read-only
+/// directory observation amendment).
+///
+/// This is the deliberate INVERSE of the private-file exclusivity contract. Its
+/// targets are objects the verifier may not own — a tree-wide restricted-ACL
+/// scan — so it must neither block nor be blocked by an owner. It therefore
+/// opens with the minimum observation rights only (`READ_CONTROL`,
+/// `FILE_READ_ATTRIBUTES`, and `SYNCHRONIZE` — no `WRITE_DAC`, no `DELETE`, no
+/// traverse, no list-directory, and no generic rights) under PERMISSIVE sharing
+/// (read, write, and delete), the opposite of [`ReadOnlyAuthorityFile`]'s
+/// exclusivity. It observes the directory OBJECT itself: it opens no children
+/// through the handle and exposes no handle borrow, no child traversal, and no
+/// mutation — only `identity`, `revalidate`, and one bounded `dacl_snapshot`.
+/// Exactly as [`ReadOnlyAuthorityFile`] refuses directories, this refuses files.
+#[derive(Debug)]
+pub struct ReadOnlyAuthorityDirectory {
+    directory: File,
+    identity: HighResFileId,
+}
+
+impl ReadOnlyAuthorityDirectory {
+    /// Open an existing directory OBJECT for read-only DACL observation.
+    ///
+    /// The final link is opened without reparse traversal under permissive
+    /// sharing. It fails closed with a typed error unless the handle is a live,
+    /// non-reparse directory with a non-zero full-width identity; a file, a
+    /// reparse point, or a zero identity is refused.
+    pub fn open_observation(path: &Path) -> io::Result<Self> {
+        let directory = open(
+            path,
+            OpenDisposition::Existing,
+            READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            true,
+            true,
+            true,
+        )?;
+        let identity = os::validated_directory_identity(&directory)?;
+        Ok(Self {
+            directory,
+            identity,
+        })
+    }
+
+    /// The copied full-width identity of this exact retained directory.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    /// Observe this exact retained directory's DACL in one bounded snapshot.
+    pub fn dacl_snapshot(&self) -> io::Result<DaclSnapshot> {
+        os::private_dacl_snapshot(&self.directory)
+    }
+
+    /// Re-observe the retained directory state, rejecting an identity change.
+    pub fn revalidate(&self) -> io::Result<()> {
+        if os::validated_directory_identity(&self.directory)? != self.identity {
+            return Err(io::Error::other(
+                "retained observation directory identity changed unexpectedly",
+            ));
+        }
+        Ok(())
+    }
+}

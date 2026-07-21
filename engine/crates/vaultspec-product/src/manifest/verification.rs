@@ -311,12 +311,11 @@ fn require_windows_restricted_acl(_path: &Path) -> Result<()> {
 
 #[cfg(windows)]
 fn require_windows_restricted_acl(path: &Path) -> Result<()> {
-    use windows_acl::acl::{ACL, AceType};
+    use vaultspec_windows_authority::{AuthorityFile, DaclAceKind, ReadOnlyAuthorityDirectory};
     use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
 
     static CURRENT_USER_SID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     let restricted = (|| {
-        let path = path.to_str()?;
         let user_sid = CURRENT_USER_SID
             .get_or_init(|| {
                 let user = current_user()?;
@@ -324,20 +323,33 @@ fn require_windows_restricted_acl(path: &Path) -> Result<()> {
                 sid_to_string(sid.as_ptr().cast_mut().cast()).ok()
             })
             .as_deref()?;
-        let acl = ACL::from_file_path(path, false).ok()?;
-        let entries = acl.all().ok()?;
+        // Observe the DACL through a handle-based single snapshot, never a raced
+        // path enumeration: a directory through the read-only OBSERVATION
+        // authority (permissive sharing, no WRITE_DAC, no traverse), a regular
+        // file through an exact read handle.
+        let metadata = std::fs::symlink_metadata(path).ok()?;
+        let snapshot = if metadata.is_dir() {
+            ReadOnlyAuthorityDirectory::open_observation(path)
+                .ok()?
+                .dacl_snapshot()
+                .ok()?
+        } else {
+            AuthorityFile::open_reader(path)
+                .ok()?
+                .dacl_snapshot()
+                .ok()?
+        };
         let allowed = [user_sid, "S-1-5-18", "S-1-5-32-544"];
         let mut user_allowed = false;
-        for entry in entries {
-            match entry.entry_type {
-                AceType::AccessAllow => {
-                    if !allowed.contains(&entry.string_sid.as_str()) {
+        for entry in snapshot.entries() {
+            match entry.entry_type() {
+                DaclAceKind::AccessAllowed => {
+                    if !allowed.contains(&entry.sid()) {
                         return None;
                     }
-                    user_allowed |= entry.string_sid == user_sid;
+                    user_allowed |= entry.sid() == user_sid;
                 }
-                AceType::AccessDeny => {}
-                _ => return None,
+                DaclAceKind::AccessDenied => {}
             }
         }
         user_allowed.then_some(())

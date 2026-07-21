@@ -1340,7 +1340,7 @@ impl DirectoryAuthority {
 #[cfg(windows)]
 fn windows_directory_dacl_is_restricted(path: &Path) -> bool {
     use std::os::windows::fs::MetadataExt;
-    use windows_acl::acl::{ACL, AceType};
+    use vaultspec_windows_authority::{DaclAceKind, ReadOnlyAuthorityDirectory};
     use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
 
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
@@ -1353,9 +1353,6 @@ fn windows_directory_dacl_is_restricted(path: &Path) -> bool {
     {
         return false;
     }
-    let Some(path) = path.to_str() else {
-        return false;
-    };
     let Some(user) = current_user() else {
         return false;
     };
@@ -1365,24 +1362,25 @@ fn windows_directory_dacl_is_restricted(path: &Path) -> bool {
     let Ok(user_sid) = sid_to_string(user_sid.as_ptr().cast_mut().cast()) else {
         return false;
     };
-    let Ok(acl) = ACL::from_file_path(path, false) else {
+    // Observe the directory object's DACL through one read-only snapshot; the
+    // observation authority also refuses files and reparse points fail-closed.
+    let Ok(observation) = ReadOnlyAuthorityDirectory::open_observation(path) else {
         return false;
     };
-    let Ok(entries) = acl.all() else {
+    let Ok(snapshot) = observation.dacl_snapshot() else {
         return false;
     };
     let allowed = [user_sid.as_str(), "S-1-5-18", "S-1-5-32-544"];
     let mut user_allowed = false;
-    for entry in entries {
-        match entry.entry_type {
-            AceType::AccessAllow => {
-                if !allowed.contains(&entry.string_sid.as_str()) {
+    for entry in snapshot.entries() {
+        match entry.entry_type() {
+            DaclAceKind::AccessAllowed => {
+                if !allowed.contains(&entry.sid()) {
                     return false;
                 }
-                user_allowed |= entry.string_sid == user_sid;
+                user_allowed |= entry.sid() == user_sid.as_str();
             }
-            AceType::AccessDeny => {}
-            _ => return false,
+            DaclAceKind::AccessDenied => {}
         }
     }
     user_allowed

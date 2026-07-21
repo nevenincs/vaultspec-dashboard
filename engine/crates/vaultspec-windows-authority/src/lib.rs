@@ -33,7 +33,8 @@ mod snapshot;
 
 use install::install_file_state;
 pub use private_file::{
-    HardeningDirectory, PrivateFileCreation, PrivateFileRecovery, ReadOnlyAuthorityFile,
+    HardeningDirectory, PrivateFileCreation, PrivateFileRecovery, ReadOnlyAuthorityDirectory,
+    ReadOnlyAuthorityFile,
 };
 pub use snapshot::{DaclAceKind, DaclEntry, DaclSnapshot};
 
@@ -42,6 +43,8 @@ const GENERIC_READ: u32 = 0x8000_0000;
 const GENERIC_WRITE: u32 = 0x4000_0000;
 const READ_CONTROL: u32 = 0x0002_0000;
 const WRITE_DAC: u32 = 0x0004_0000;
+const FILE_READ_ATTRIBUTES: u32 = 0x0000_0080;
+const SYNCHRONIZE: u32 = 0x0010_0000;
 const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 const MAX_DIRECTORY_COMPONENT_UTF16_UNITS: usize = 255;
