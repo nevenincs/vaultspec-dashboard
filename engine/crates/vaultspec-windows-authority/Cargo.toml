@@ -13,6 +13,13 @@ windows-sys = { version = "=0.61.2", features = ["Wdk_Foundation", "Wdk_Storage_
 [dev-dependencies]
 tempfile = "3.27.0"
 
+[target.'cfg(windows)'.dev-dependencies]
+# Dev-only: the D7 real-NTFS acceptance matrix hardens real DACLs with the same
+# safe layer the product uses, so it can prove the SE_DACL_PROTECTED observation
+# against genuinely protected and inherited-unprotected descriptors. The shipped
+# crate stays windows-sys-only.
+windows-acl = "=0.3.0"
+
 # This crate is the one ADR-approved operating-system boundary that may contain
 # project-owned unsafe code. Keep the crate default at deny; only the private
 # `os` module lowers the lint for its individually documented Win32 calls.

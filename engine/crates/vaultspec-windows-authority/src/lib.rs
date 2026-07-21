@@ -14,7 +14,7 @@ use std::ffi::OsStr;
 use std::fs::{File, OpenOptions};
 use std::io;
 use std::os::windows::ffi::OsStrExt;
-use std::os::windows::fs::OpenOptionsExt;
+use std::os::windows::fs::{FileExt, OpenOptionsExt};
 use std::path::Path;
 
 use windows_sys::Win32::Storage::FileSystem::{
@@ -38,6 +38,7 @@ const WRITE_DAC: u32 = 0x0004_0000;
 const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
 const FILE_FLAG_BACKUP_SEMANTICS: u32 = 0x0200_0000;
 const MAX_DIRECTORY_COMPONENT_UTF16_UNITS: usize = 255;
+const MAX_PRIVATE_FILE_READ_BYTES: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Copy)]
 enum OpenDisposition {
@@ -989,7 +990,7 @@ fn directory_identity_at_path(path: &Path) -> io::Result<HighResFileId> {
 }
 
 fn open_path_entry(path: &Path) -> io::Result<File> {
-    open(path, OpenDisposition::Existing, 0, true, true)
+    open(path, OpenDisposition::Existing, 0, true, true, true)
 }
 
 /// An owned regular-file handle bound to a high-resolution identity.
@@ -1008,6 +1009,7 @@ impl AuthorityFile {
             path,
             OpenDisposition::Existing,
             GENERIC_READ | DELETE_ACCESS,
+            true,
             false,
             false,
         )?;
@@ -1025,6 +1027,7 @@ impl AuthorityFile {
             GENERIC_READ | DELETE_ACCESS,
             true,
             true,
+            true,
         )?;
         Self::from_file(file)
     }
@@ -1039,43 +1042,7 @@ impl AuthorityFile {
             GENERIC_READ | GENERIC_WRITE | DELETE_ACCESS,
             true,
             true,
-        )?;
-        Self::from_file(file)
-    }
-
-    /// Create a new empty private file with complete creation authority
-    /// (windows-private-file-authority D1/D5): generic read, generic write,
-    /// `READ_CONTROL`, `WRITE_DAC`, and exact-handle delete. `WRITE_DAC` lets
-    /// the safe `windows-acl` layer install the protected three-principal DACL
-    /// through this exact retained handle; `READ_CONTROL` lets both that layer
-    /// and [`Self::is_dacl_protected`] read the resulting descriptor. Write and
-    /// delete sharing are denied, so the empty file cannot be mutated, renamed,
-    /// or replaced before its DACL and bytes are established through this
-    /// handle.
-    pub fn create_private(path: &Path) -> io::Result<Self> {
-        let file = open(
-            path,
-            OpenDisposition::CreateNew,
-            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC | DELETE_ACCESS,
-            false,
-            false,
-        )?;
-        Self::from_file(file)
-    }
-
-    /// Reopen an existing private file with complete recovery authority
-    /// (windows-private-file-authority D1/D5): the same read, write,
-    /// `READ_CONTROL`, `WRITE_DAC`, and delete rights as creation. Interrupted
-    /// bootstrap recovery rewrites the descriptor and later retires this exact
-    /// handle, so — unlike a read-only reader — recovery authority must carry
-    /// data-write and delete access from the moment it is opened.
-    pub fn open_private_recovery(path: &Path) -> io::Result<Self> {
-        let file = open(
-            path,
-            OpenDisposition::Existing,
-            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC | DELETE_ACCESS,
-            false,
-            false,
+            true,
         )?;
         Self::from_file(file)
     }
@@ -1088,6 +1055,7 @@ impl AuthorityFile {
             OpenDisposition::OpenOrCreate,
             GENERIC_READ | GENERIC_WRITE,
             true,
+            true,
             false,
         )?;
         Self::from_file(file)
@@ -1096,7 +1064,7 @@ impl AuthorityFile {
     /// Open an existing file or directory without delete access to obtain its
     /// exact no-follow high-resolution identity.
     pub fn identity_at_path(path: &Path) -> io::Result<HighResFileId> {
-        let file = open(path, OpenDisposition::Existing, 0, true, true)?;
+        let file = open(path, OpenDisposition::Existing, 0, true, true, true)?;
         let metadata = file.metadata()?;
         if metadata.is_file() {
             return os::validated_regular_file_state(&file).map(|state| state.identity);
@@ -1112,7 +1080,14 @@ impl AuthorityFile {
     /// Open a regular non-reparse file for bounded reads while allowing an
     /// existing delete-capable authority handle to remain open.
     pub fn open_reader(path: &Path) -> io::Result<Self> {
-        let file = open(path, OpenDisposition::Existing, GENERIC_READ, true, true)?;
+        let file = open(
+            path,
+            OpenDisposition::Existing,
+            GENERIC_READ,
+            true,
+            true,
+            true,
+        )?;
         Self::from_file(file)
     }
 
@@ -1166,6 +1141,7 @@ impl AuthorityFile {
             path,
             OpenDisposition::Existing,
             GENERIC_READ | GENERIC_WRITE,
+            true,
             false,
             false,
         )?;
@@ -1173,7 +1149,14 @@ impl AuthorityFile {
     }
 
     fn open_install_destination(path: &Path) -> io::Result<Self> {
-        let file = open(path, OpenDisposition::Existing, GENERIC_READ, false, false)?;
+        let file = open(
+            path,
+            OpenDisposition::Existing,
+            GENERIC_READ,
+            true,
+            false,
+            false,
+        )?;
         Self::from_file(file)
     }
 
@@ -1188,14 +1171,164 @@ impl AuthorityFile {
     }
 }
 
+/// Exclusive authority over a newly created EMPTY private file
+/// (windows-private-file-authority D1/D5).
+///
+/// This is deliberately not [`AuthorityFile`] or [`PrivateFileRecovery`]. It
+/// proves create-new lineage and carries no conversion into either general or
+/// recovery authority. All sharing stays denied while callers harden the empty
+/// file, write and synchronize its bytes, reread them, and revalidate authority.
+#[derive(Debug)]
+pub struct PrivateFileCreation {
+    file: File,
+    identity: HighResFileId,
+}
+
+impl PrivateFileCreation {
+    /// Exclusively create and retain one empty regular non-reparse file.
+    pub fn create(path: &Path) -> io::Result<Self> {
+        let file = open(
+            path,
+            OpenDisposition::CreateNew,
+            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC | DELETE_ACCESS,
+            false,
+            false,
+            false,
+        )?;
+        let state = os::validated_regular_file_state(&file)?;
+        if state.size != 0 {
+            return Err(io::Error::other(
+                "new private-file creation did not produce an empty file",
+            ));
+        }
+        Ok(Self {
+            file,
+            identity: state.identity,
+        })
+    }
+
+    /// The retained full-width identity.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    /// The exact retained file for authorized ACL mutation and bounded I/O.
+    #[must_use]
+    pub fn file(&self) -> &File {
+        &self.file
+    }
+
+    /// The exact retained file for bounded writes and rereads.
+    #[must_use]
+    pub fn file_mut(&mut self) -> &mut File {
+        &mut self.file
+    }
+
+    /// Number of hard-link names bound to this retained file.
+    pub fn link_count(&self) -> io::Result<u64> {
+        os::link_count(&self.file)
+    }
+
+    /// Whether this retained file's DACL is protected.
+    pub fn is_dacl_protected(&self) -> io::Result<bool> {
+        os::dacl_is_protected(&self.file)
+    }
+
+    /// Revalidate exact identity and safe regular-file state.
+    pub fn revalidate(&self) -> io::Result<()> {
+        revalidate_private_file(&self.file, self.identity)
+    }
+
+    /// Mark this exact retained creation residue for deletion on close.
+    pub fn mark_delete_on_close(&self) -> io::Result<()> {
+        os::mark_delete_on_close(&self.file)
+    }
+}
+
+/// Exclusive mutable authority over an EXISTING private file during recovery
+/// (windows-private-file-authority D1/D5).
+///
+/// Recovery authority is obtainable only by reopening an existing name. It is
+/// distinct from new-file creation and read-only verification and retains the
+/// write, DACL-write, and exact-retirement rights required through settlement.
+#[derive(Debug)]
+pub struct PrivateFileRecovery {
+    file: File,
+    identity: HighResFileId,
+}
+
+impl PrivateFileRecovery {
+    /// Exclusively reopen one regular non-reparse private file for recovery.
+    pub fn open(path: &Path) -> io::Result<Self> {
+        let file = open(
+            path,
+            OpenDisposition::Existing,
+            GENERIC_READ | GENERIC_WRITE | READ_CONTROL | WRITE_DAC | DELETE_ACCESS,
+            false,
+            false,
+            false,
+        )?;
+        let identity = os::validated_regular_file_state(&file)?.identity;
+        Ok(Self { file, identity })
+    }
+
+    /// The retained full-width identity.
+    #[must_use]
+    pub fn identity(&self) -> HighResFileId {
+        self.identity
+    }
+
+    /// The exact retained file for authorized ACL mutation and bounded I/O.
+    #[must_use]
+    pub fn file(&self) -> &File {
+        &self.file
+    }
+
+    /// The exact retained file for bounded rewrite and reread.
+    #[must_use]
+    pub fn file_mut(&mut self) -> &mut File {
+        &mut self.file
+    }
+
+    /// Number of hard-link names bound to this retained file.
+    pub fn link_count(&self) -> io::Result<u64> {
+        os::link_count(&self.file)
+    }
+
+    /// Whether this retained file's DACL is protected.
+    pub fn is_dacl_protected(&self) -> io::Result<bool> {
+        os::dacl_is_protected(&self.file)
+    }
+
+    /// Revalidate exact identity and safe regular-file state.
+    pub fn revalidate(&self) -> io::Result<()> {
+        revalidate_private_file(&self.file, self.identity)
+    }
+
+    /// Mark this exact retained recovery file for deletion on close.
+    pub fn mark_delete_on_close(&self) -> io::Result<()> {
+        os::mark_delete_on_close(&self.file)
+    }
+}
+
+fn revalidate_private_file(file: &File, identity: HighResFileId) -> io::Result<()> {
+    if os::validated_regular_file_state(file)?.identity != identity {
+        return Err(io::Error::other(
+            "retained private-file identity changed unexpectedly",
+        ));
+    }
+    Ok(())
+}
+
 /// A retained regular-file handle for READ-ONLY private-file verification
 /// (windows-private-file-authority D1).
 ///
 /// It carries generic read and `READ_CONTROL` only — never data-write,
 /// `WRITE_DAC`, or delete — so it can observe identity, link count, protected
 /// state, and bounded bytes but can never rewrite, re-DACL, rename, or delete
-/// the file. It exposes no conversion to [`AuthorityFile`]: read-only authority
-/// cannot silently become creation or recovery authority.
+/// the file. It exposes neither `File` nor a raw handle and has no conversion to
+/// creation or recovery authority, so mutation cannot compile through this API.
 #[derive(Debug)]
 pub struct ReadOnlyAuthorityFile {
     file: File,
@@ -1204,15 +1337,17 @@ pub struct ReadOnlyAuthorityFile {
 
 impl ReadOnlyAuthorityFile {
     /// Open an existing regular non-reparse file for read-only verification.
-    /// Write and delete sharing remain enabled so an existing delete-capable
-    /// authority handle may stay open across the observation.
+    /// Read sharing admits other readers, but write and delete sharing are
+    /// denied for the retained lifetime. That makes bounded reads coherent and
+    /// prevents content or named-entry mutation during authority validation.
     pub fn open_private_readonly(path: &Path) -> io::Result<Self> {
         let file = open(
             path,
             OpenDisposition::Existing,
             GENERIC_READ | READ_CONTROL,
             true,
-            true,
+            false,
+            false,
         )?;
         let identity = os::validated_regular_file_state(&file)?.identity;
         Ok(Self { file, identity })
@@ -1235,12 +1370,55 @@ impl ReadOnlyAuthorityFile {
         os::dacl_is_protected(&self.file)
     }
 
-    /// Borrow the retained standard file for bounded read-only I/O. `File`
-    /// implements [`std::io::Read`]/[`std::io::Seek`] through a shared reference,
-    /// so callers read without any mutable, write-capable, or deleting borrow.
-    #[must_use]
-    pub fn file(&self) -> &File {
-        &self.file
+    /// Read this exact retained file from offset zero within both a caller bound
+    /// and the authority crate's fixed one-MiB ceiling.
+    ///
+    /// The file is revalidated before and after the read. Growth, truncation,
+    /// identity change, or an unexpected short read fails closed.
+    pub fn read_bounded(&self, max_bytes: usize) -> io::Result<Vec<u8>> {
+        if max_bytes > MAX_PRIVATE_FILE_READ_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "private-file read bound exceeds the fixed authority ceiling",
+            ));
+        }
+        let before = os::validated_regular_file_state(&self.file)?;
+        if before.identity != self.identity {
+            return Err(io::Error::other(
+                "retained read-only file identity changed unexpectedly",
+            ));
+        }
+        let size = usize::try_from(before.size)
+            .map_err(|_| io::Error::other("private file size cannot fit in memory"))?;
+        if size > max_bytes {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "private file exceeds the caller's read bound",
+            ));
+        }
+
+        let mut bytes = vec![0_u8; size];
+        let mut offset = 0;
+        while offset < bytes.len() {
+            let file_offset = u64::try_from(offset)
+                .map_err(|_| io::Error::other("private file offset is not representable"))?;
+            let read = self.file.seek_read(&mut bytes[offset..], file_offset)?;
+            if read == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "private file changed during bounded read",
+                ));
+            }
+            offset += read;
+        }
+
+        let after = os::validated_regular_file_state(&self.file)?;
+        if after.identity != self.identity || after.size != before.size {
+            return Err(io::Error::other(
+                "private file identity or size changed during bounded read",
+            ));
+        }
+        Ok(bytes)
     }
 
     /// Re-observe the retained regular-file state, rejecting an identity change.
@@ -1316,6 +1494,7 @@ fn open(
     path: &Path,
     disposition: OpenDisposition,
     access: u32,
+    share_read: bool,
     share_write: bool,
     share_delete: bool,
 ) -> io::Result<File> {
@@ -1326,7 +1505,7 @@ fn open(
     options
         .access_mode(access)
         .share_mode(
-            FILE_SHARE_READ
+            if share_read { FILE_SHARE_READ } else { 0 }
                 | if share_write { FILE_SHARE_WRITE } else { 0 }
                 | if share_delete { FILE_SHARE_DELETE } else { 0 },
         )

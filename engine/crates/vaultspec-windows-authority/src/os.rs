@@ -44,11 +44,13 @@ const DIRECTORY_ACCESS: u32 = DELETE
     | FILE_TRAVERSE
     | FILE_READ_ATTRIBUTES
     | SYNCHRONIZE;
-/// Directory-hardening access (windows-private-file-authority D1): the retained
-/// traversal and identity rights plus READ_CONTROL and WRITE_DAC, so the safe
-/// `windows-acl` layer can install and observe the protected three-principal
-/// DACL through this exact retained handle.
-const DIRECTORY_HARDENING_ACCESS: u32 = DIRECTORY_ACCESS | READ_CONTROL | WRITE_DAC;
+/// Directory-hardening access (windows-private-file-authority D1): only the
+/// traversal and identity-observation rights plus READ_CONTROL and WRITE_DAC.
+/// Unlike [`DIRECTORY_ACCESS`], this deliberately carries neither DELETE nor
+/// FILE_ADD_SUBDIRECTORY because the hardening value cannot remove the retained
+/// directory or create children.
+const DIRECTORY_HARDENING_ACCESS: u32 =
+    FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE | READ_CONTROL | WRITE_DAC;
 const DIRECTORY_CREATE_OPTIONS: u32 =
     FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
 const IO_INFORMATION_FILE_OPENED: usize = 1;
@@ -465,9 +467,10 @@ pub(super) fn validated_regular_file_state(file: &File) -> io::Result<RegularFil
 /// allocates a self-relative security descriptor, `GetSecurityDescriptorControl`
 /// copies its scalar control word out, and the descriptor is freed inside this
 /// call. No security descriptor, raw pointer, SID, ACL, or control word ever
-/// escapes. An absent DACL fails closed: a null DACL grants everyone full
-/// access and cannot be meaningfully protected. `windows-acl` supplies the
-/// bounded entry enumeration the safe layer joins with this observation.
+/// escapes. Absence of the `SE_DACL_PRESENT` control bit fails closed. This
+/// primitive intentionally does not claim that the present DACL has entries:
+/// a present NULL or empty DACL is rejected by the bounded `windows-acl` entry
+/// validation that the safe policy layer must join with this observation.
 pub(super) fn dacl_is_protected(file: &File) -> io::Result<bool> {
     let mut security_descriptor: PSECURITY_DESCRIPTOR = std::ptr::null_mut();
     // SAFETY: `file` owns a valid handle carrying READ_CONTROL for this

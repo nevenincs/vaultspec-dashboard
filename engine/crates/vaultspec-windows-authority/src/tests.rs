@@ -1,7 +1,13 @@
 use super::*;
 use std::ffi::OsString;
+use std::io::{Read as _, Seek as _, SeekFrom, Write as _};
 use std::os::windows::ffi::OsStringExt;
 use std::os::windows::fs::{symlink_dir, symlink_file};
+use std::os::windows::io::AsRawHandle;
+use windows_acl::acl::ACL;
+use windows_acl::helper::{current_user, name_to_sid, string_to_sid};
+
+const BUILTIN_USERS_SID: &str = "S-1-5-32-545";
 
 fn create_directory(path: &Path) {
     std::fs::create_dir(path).unwrap();
@@ -37,6 +43,85 @@ fn open_directory_for_generic_write(path: &Path) -> io::Result<File> {
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
         .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
     options.open(path)
+}
+
+fn acl_for(file: &File) -> ACL {
+    ACL::from_file_handle(file.as_raw_handle().cast(), false)
+        .expect("the retained authority handle must expose its DACL")
+}
+
+fn current_user_sid() -> Vec<u8> {
+    let name = current_user().expect("the Windows test account must have a name");
+    name_to_sid(&name, None).expect("the Windows test account must resolve to a SID")
+}
+
+fn add_inheritable_extra_principal(file: &File) {
+    let sid = string_to_sid(BUILTIN_USERS_SID).expect("built-in Users SID must resolve");
+    let mut acl = acl_for(file);
+    acl.allow(
+        sid.as_ptr().cast_mut().cast(),
+        true,
+        windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS,
+    )
+    .expect("the retained hardening handle must add an inheritable test ACE");
+}
+
+fn harden_without_inherited_entries(file: &File, directory: bool) {
+    let mut acl = acl_for(file);
+    let inherited = acl
+        .all()
+        .expect("the retained authority handle must enumerate its DACL")
+        .into_iter()
+        .filter(|entry| u32::from(entry.flags) & windows_sys::Win32::Security::INHERITED_ACE != 0)
+        .collect::<Vec<_>>();
+    assert!(
+        !inherited.is_empty(),
+        "the D7 fixture must begin with inherited entries"
+    );
+    for entry in inherited {
+        let sid = string_to_sid(&entry.string_sid).expect("enumerated SID must round-trip");
+        acl.remove_entry(
+            sid.as_ptr().cast_mut().cast(),
+            Some(entry.entry_type),
+            Some(entry.flags),
+        )
+        .expect("the retained authority handle must remove inherited ACEs");
+    }
+
+    let owner = current_user_sid();
+    acl.allow(
+        owner.as_ptr().cast_mut().cast(),
+        directory,
+        windows_sys::Win32::Storage::FileSystem::FILE_ALL_ACCESS,
+    )
+    .expect("the retained authority handle must install an explicit test ACE");
+}
+
+fn assert_inherited_extra_principal(file: &File) {
+    let entries = acl_for(file)
+        .all()
+        .expect("the retained authority handle must enumerate its DACL");
+    assert!(entries.iter().any(|entry| {
+        entry.string_sid == BUILTIN_USERS_SID
+            && u32::from(entry.flags) & windows_sys::Win32::Security::INHERITED_ACE != 0
+    }));
+}
+
+fn assert_no_inherited_entries(file: &File) {
+    let entries = acl_for(file)
+        .all()
+        .expect("the retained authority handle must enumerate its DACL");
+    assert!(entries.iter().all(|entry| {
+        u32::from(entry.flags) & windows_sys::Win32::Security::INHERITED_ACE == 0
+    }));
+}
+
+fn assert_sharing_violation(error: &io::Error) {
+    assert_eq!(
+        error.raw_os_error(),
+        Some(32),
+        "exclusive private authority must reject a second open with ERROR_SHARING_VIOLATION"
+    );
 }
 
 #[test]
@@ -875,11 +960,11 @@ fn install_child_file_no_replace_renames_by_handle_and_refuses_an_occupant() {
     assert!(!workdir.join(".second.vsmz-tmp").exists());
 }
 
-// windows-private-file-authority D3 primitive exercise. These prove the
-// GetSecurityInfo -> control -> LocalFree fence executes on real files and
-// directories and reports the unhardened (inherited, unprotected) state
-// correctly; the full harden -> protected -> exact-list -> negative NTFS
-// acceptance matrix (D7) hardens with the safe `windows-acl` layer separately.
+// windows-private-file-authority D3/D7 authority-boundary exercise. These use
+// real NTFS objects and the production ACL dependency. The product layer's
+// exact current-user/SYSTEM/Administrators list remains a separately gated
+// policy consumer; this crate proves retained rights, protection, inheritance
+// removal, identity, I/O, reopen, recovery, and exact retirement.
 
 #[test]
 fn is_dacl_protected_reports_false_for_an_inherited_unprotected_file() {
@@ -905,36 +990,112 @@ fn is_dacl_protected_observes_a_directory_handle() {
 }
 
 #[test]
-fn read_only_authority_coexists_with_a_live_creation_claim() {
+fn private_file_authority_hardens_writes_recovers_and_retires_on_real_ntfs() {
     let dir = tempfile::tempdir().unwrap();
+    let parent = HardeningDirectory::open_existing(dir.path()).unwrap();
+    add_inheritable_extra_principal(parent.directory());
+    assert!(parent.is_dacl_protected().unwrap());
+
     let path = dir.path().join("private");
-    let creation = AuthorityFile::create_private(&path).unwrap();
-    // The creation handle denies write and delete sharing but always shares
-    // read, so a read-only verification handle opens alongside it.
-    let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
-    assert_eq!(reader.identity(), creation.identity());
-    assert_eq!(reader.link_count().unwrap(), 1);
-    reader.revalidate().unwrap();
-    drop(reader);
+    let mut creation = PrivateFileCreation::create(&path).unwrap();
+    let identity = creation.identity();
+    assert_eq!(creation.link_count().unwrap(), 1);
+    assert!(!creation.is_dacl_protected().unwrap());
+    assert_inherited_extra_principal(creation.file());
+
+    let refused = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap_err();
+    assert_sharing_violation(&refused);
+    assert!(
+        PrivateFileCreation::create(&path).is_err(),
+        "create-new must refuse an existing name"
+    );
+
+    harden_without_inherited_entries(creation.file(), false);
+    assert!(creation.is_dacl_protected().unwrap());
+    assert_no_inherited_entries(creation.file());
+    creation.revalidate().unwrap();
+
+    creation.file_mut().write_all(b"first descriptor").unwrap();
+    creation.file().sync_all().unwrap();
+    creation.file_mut().seek(SeekFrom::Start(0)).unwrap();
+    let mut same_handle = Vec::new();
+    creation.file_mut().read_to_end(&mut same_handle).unwrap();
+    assert_eq!(same_handle, b"first descriptor");
+    assert!(creation.is_dacl_protected().unwrap());
+    creation.revalidate().unwrap();
     drop(creation);
+
+    let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
+    assert_eq!(reader.identity(), identity);
+    assert_eq!(reader.read_bounded(64).unwrap(), b"first descriptor");
+    assert_eq!(
+        reader.read_bounded(4).unwrap_err().kind(),
+        io::ErrorKind::InvalidData
+    );
+    assert_eq!(
+        reader
+            .read_bounded(MAX_PRIVATE_FILE_READ_BYTES + 1)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::InvalidInput
+    );
+    assert!(reader.is_dacl_protected().unwrap());
+    reader.revalidate().unwrap();
+    let refused = PrivateFileRecovery::open(&path).unwrap_err();
+    assert_sharing_violation(&refused);
+    drop(reader);
+
+    let mut recovery = PrivateFileRecovery::open(&path).unwrap();
+    assert_eq!(recovery.identity(), identity);
+    let refused = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap_err();
+    assert_sharing_violation(&refused);
+    recovery.file().set_len(0).unwrap();
+    recovery.file_mut().seek(SeekFrom::Start(0)).unwrap();
+    recovery
+        .file_mut()
+        .write_all(b"settled descriptor")
+        .unwrap();
+    recovery.file().sync_all().unwrap();
+    recovery.revalidate().unwrap();
+    assert!(recovery.is_dacl_protected().unwrap());
+    drop(recovery);
+
+    let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).unwrap();
+    assert_eq!(reader.identity(), identity);
+    assert_eq!(reader.read_bounded(64).unwrap(), b"settled descriptor");
+    drop(reader);
+
+    let recovery = PrivateFileRecovery::open(&path).unwrap();
+    assert_eq!(recovery.identity(), identity);
+    recovery.mark_delete_on_close().unwrap();
+    drop(recovery);
+    assert!(!path.exists(), "delete-on-close must retire the exact file");
 }
 
 #[test]
-fn create_private_is_exclusive_and_recovery_reopens_the_same_identity() {
+fn directory_hardening_removes_inheritance_and_survives_reopen_on_real_ntfs() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join("private");
-    let created = AuthorityFile::create_private(&path).unwrap();
-    let identity = created.identity();
-    assert!(
-        AuthorityFile::create_private(&path).is_err(),
-        "create-new must refuse an existing name"
-    );
-    drop(created);
-    let recovered = AuthorityFile::open_private_recovery(&path).unwrap();
-    assert_eq!(recovered.identity(), identity);
-    recovered.mark_delete_on_close().unwrap();
-    drop(recovered);
-    assert!(!path.exists(), "delete-on-close must retire the exact file");
+    let parent = HardeningDirectory::open_existing(dir.path()).unwrap();
+    add_inheritable_extra_principal(parent.directory());
+
+    let child_path = dir.path().join("credentials");
+    std::fs::create_dir(&child_path).unwrap();
+    let child = HardeningDirectory::open_existing(&child_path).unwrap();
+    let identity = child.identity();
+    assert!(!child.is_dacl_protected().unwrap());
+    assert_inherited_extra_principal(child.directory());
+
+    harden_without_inherited_entries(child.directory(), true);
+    assert!(child.is_dacl_protected().unwrap());
+    assert_no_inherited_entries(child.directory());
+    child.revalidate().unwrap();
+    drop(child);
+
+    let reopened = HardeningDirectory::open_existing(&child_path).unwrap();
+    assert_eq!(reopened.identity(), identity);
+    assert!(reopened.is_dacl_protected().unwrap());
+    assert_no_inherited_entries(reopened.directory());
+    reopened.revalidate().unwrap();
 }
 
 #[test]
