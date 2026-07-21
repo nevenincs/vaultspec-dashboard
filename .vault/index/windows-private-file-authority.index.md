@@ -9,6 +9,7 @@ related:
   - '[[2026-07-20-windows-private-file-authority-adr]]'
   - '[[2026-07-20-windows-private-file-authority-research]]'
   - '[[2026-07-21-windows-private-file-authority-audit]]'
+  - '[[2026-07-21-windows-private-file-authority-ungating-audit]]'
 ---
 
 # `windows-private-file-authority` feature index
@@ -24,6 +25,7 @@ Auto-generated index of all documents tagged with `#windows-private-file-authori
 ### audit
 
 - `2026-07-21-windows-private-file-authority-audit` - `windows-private-file-authority` audit: `D9 single-snapshot private-file authority review`
+- `2026-07-21-windows-private-file-authority-ungating-audit` - `windows-private-file-authority` audit: `approved D6 un-gating review`
 
 ### research
 
