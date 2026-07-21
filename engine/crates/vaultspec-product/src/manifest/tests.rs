@@ -1,5 +1,6 @@
 use super::*;
 use crate::generation::{DiscardOutcome, LockedProduct};
+use crate::hex;
 use crate::locking::{Actor, InstallLock, InstallLockGuard};
 use crate::paths::ProductPaths;
 
@@ -74,28 +75,28 @@ impl Fixture {
             "dependency_lock": {"uv_lock_digest": "2".repeat(64), "package_lock_digest": "3".repeat(64)}
         });
         let capsule = serde_json::to_vec(&capsule_value).unwrap();
-        let capsule_digest = sha256_hex(&capsule);
+        let capsule_digest = hex::sha256(&capsule);
         let mut tree_records = vec![
             ValidatedTreeRecord {
                 path: "bin/vaultspec-a2a".to_string(),
                 mode: entrypoint_mode.to_string(),
                 size: gateway_file.len() as u64,
                 size_text: gateway_file.len().to_string(),
-                digest: sha256_hex(&gateway_file),
+                digest: hex::sha256(&gateway_file),
             },
             ValidatedTreeRecord {
                 path: "bin/vaultspec-a2a-mcp".to_string(),
                 mode: entrypoint_mode.to_string(),
                 size: standalone_file.len() as u64,
                 size_text: standalone_file.len().to_string(),
-                digest: sha256_hex(&standalone_file),
+                digest: hex::sha256(&standalone_file),
             },
             ValidatedTreeRecord {
                 path: "runtime/tool".to_string(),
                 mode: "0644".to_string(),
                 size: tree_file.len() as u64,
                 size_text: tree_file.len().to_string(),
-                digest: sha256_hex(&tree_file),
+                digest: hex::sha256(&tree_file),
             },
         ];
         tree_records.sort_by(|left, right| left.path.cmp(&right.path));
@@ -118,7 +119,7 @@ impl Fixture {
                 {
                     "type": "file",
                     "name": "bin/vaultspec-a2a",
-                    "hashes": [{"alg": "SHA-256", "content": sha256_hex(&gateway_file)}],
+                    "hashes": [{"alg": "SHA-256", "content": hex::sha256(&gateway_file)}],
                     "properties": [
                         {"name": "vaultspec:file-mode", "value": entrypoint_mode},
                         {"name": "vaultspec:file-size", "value": gateway_file.len().to_string()}
@@ -127,7 +128,7 @@ impl Fixture {
                 {
                     "type": "file",
                     "name": "bin/vaultspec-a2a-mcp",
-                    "hashes": [{"alg": "SHA-256", "content": sha256_hex(&standalone_file)}],
+                    "hashes": [{"alg": "SHA-256", "content": hex::sha256(&standalone_file)}],
                     "properties": [
                         {"name": "vaultspec:file-mode", "value": entrypoint_mode},
                         {"name": "vaultspec:file-size", "value": standalone_file.len().to_string()}
@@ -136,7 +137,7 @@ impl Fixture {
                 {
                     "type": "file",
                     "name": "runtime/tool",
-                    "hashes": [{"alg": "SHA-256", "content": sha256_hex(&tree_file)}],
+                    "hashes": [{"alg": "SHA-256", "content": hex::sha256(&tree_file)}],
                     "properties": [
                         {"name": "vaultspec:file-mode", "value": "0644"},
                         {"name": "vaultspec:file-size", "value": tree_file.len().to_string()}
@@ -165,10 +166,10 @@ impl Fixture {
         let mut digests = serde_json::Map::new();
         let mut sizes = BTreeMap::new();
         for (path, bytes) in &payloads {
-            digests.insert(path.clone(), serde_json::Value::String(sha256_hex(bytes)));
+            digests.insert(path.clone(), serde_json::Value::String(hex::sha256(bytes)));
             sizes.insert(path.clone(), bytes.len() as u64);
         }
-        let lock_digest = sha256_hex(LOCK_BYTES);
+        let lock_digest = hex::sha256(LOCK_BYTES);
         let release = serde_json::json!({
             "schema_version": "2.0",
             "target": TARGET.triple(),
@@ -197,7 +198,7 @@ impl Fixture {
             "file_digests": serde_json::Value::Object(digests)
         });
         let member = serde_json::to_vec(&release).unwrap();
-        let member_digest = sha256_hex(&member);
+        let member_digest = hex::sha256(&member);
         let descriptor = cohort_bytes(&member_digest);
         let cohort_digest = cohort_descriptor_digest(&descriptor).unwrap();
         Self {
@@ -332,7 +333,7 @@ impl Fixture {
         let mut value: serde_json::Value = serde_json::from_slice(&self.member).unwrap();
         mutate(&mut value);
         self.member = serde_json::to_vec(&value).unwrap();
-        self.member_digest = sha256_hex(&self.member);
+        self.member_digest = hex::sha256(&self.member);
         self.descriptor = cohort_bytes(&self.member_digest);
         self.cohort_digest = cohort_descriptor_digest(&self.descriptor).unwrap();
     }
@@ -491,7 +492,7 @@ fn complete_real_generation_constructs_verified_authority() {
         assert_eq!(verified.dashboard_commit(), "a".repeat(40));
         assert_eq!(
             verified.dashboard_digest(),
-            sha256_hex(fixture.payload("bin/dashboard.exe"))
+            hex::sha256(fixture.payload("bin/dashboard.exe"))
         );
         assert_eq!(verified.capsule_manifest().contract_version, "2.0");
         let facts = verified.receipt_facts();
@@ -592,7 +593,7 @@ fn missing_extra_and_same_size_wrong_bytes_are_rejected() {
     let unrecorded_tree_file = b"declared release file but absent A2A tree evidence";
     fixture.mutate_member(|member| {
         member["file_digests"]["a2a/capsule/unrecorded"] =
-            serde_json::json!(sha256_hex(unrecorded_tree_file));
+            serde_json::json!(hex::sha256(unrecorded_tree_file));
     });
     fixture.with_generation(|generation| {
         write_file(

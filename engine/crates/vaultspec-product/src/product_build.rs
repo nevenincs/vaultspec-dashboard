@@ -17,9 +17,10 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::hex;
 use crate::manifest::{
     CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target, semantic_path_key,
-    sha256_hex, validate_portable_path,
+    validate_portable_path,
 };
 
 /// The digest algorithm every release-set artifact is bound under.
@@ -219,7 +220,7 @@ fn scan_dir(
             out.push(ComposedArtifact {
                 path: relative,
                 size: metadata.len(),
-                digest: sha256_hex(&bytes),
+                digest: hex::sha256(&bytes),
             });
         } else {
             return Err(ProductBuildError::NonRegularEntry {

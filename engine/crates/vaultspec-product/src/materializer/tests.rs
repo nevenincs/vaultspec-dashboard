@@ -98,11 +98,6 @@ fn deadline() -> Instant {
     Instant::now() + Duration::from_secs(60)
 }
 
-fn sha256_hex_of(bytes: &[u8]) -> String {
-    use sha2::Digest as _;
-    archive::hex_lower(&sha2::Sha256::digest(bytes))
-}
-
 /// The fixture's release tree as archive inputs: every payload plus the
 /// member manifest, with the fixture's entrypoint modes.
 fn release_entries(fixture: &Fixture) -> Vec<ZipInput> {
@@ -177,7 +172,7 @@ fn feed_for(fixture: &Fixture, zip: Vec<u8>) -> UpdateFeed<Cursor<Vec<u8>>> {
     let (release_identity, members) = descriptor_members(fixture);
     UpdateFeed {
         archive_length: zip.len() as u64,
-        archive_sha256_hex: sha256_hex_of(&zip),
+        archive_sha256_hex: crate::hex::sha256(&zip),
         release_identity,
         target_triple: fixture.target_triple().to_string(),
         member_manifest_sha256: fixture.member_digest_hex().to_string(),

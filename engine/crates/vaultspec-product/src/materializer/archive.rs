@@ -24,6 +24,7 @@ use std::time::Instant;
 
 use sha2::{Digest as _, Sha256};
 
+use crate::hex;
 use crate::manifest::{
     MAX_EXPANDED_TREE_BYTES, preflight_inventory, semantic_path_key, validate_portable_path,
 };
@@ -552,7 +553,7 @@ fn decode_digest<R: Read>(
     if produced != expected_size {
         return Err(grammar("decoded bytes fall short of the declared size"));
     }
-    Ok(hex_lower(&hasher.finalize()))
+    Ok(hex::encode(&hasher.finalize()))
 }
 
 fn decode_retained<R: Read>(
@@ -582,14 +583,4 @@ fn decode_retained<R: Read>(
         return Err(grammar("decoded manifest falls short of its declared size"));
     }
     Ok(bytes)
-}
-
-pub(crate) fn hex_lower(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut value = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        value.push(char::from(HEX[usize::from(byte >> 4)]));
-        value.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    value
 }

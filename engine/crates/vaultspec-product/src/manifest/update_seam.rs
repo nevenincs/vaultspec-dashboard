@@ -4,6 +4,7 @@
 //! crate-visible raw construction path.
 
 use super::*;
+use crate::hex;
 
 // ---------------------------------------------------------------------------
 // Sealed materializer seams (archive-materialization D2/D3)
@@ -55,7 +56,7 @@ pub(crate) fn verify_update_release<'generation, 'product, 'lock>(
     generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
     facts: UpdateReleaseFacts<'_>,
 ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>> {
-    let cohort_digest = sha256_hex(&facts.cohort_descriptor_bytes);
+    let cohort_digest = hex::sha256(&facts.cohort_descriptor_bytes);
     let authority = TrustedReleaseAuthority {
         expected_target: facts.target,
         expected_member_manifest_digest: facts.member_manifest_sha256,
@@ -63,7 +64,7 @@ pub(crate) fn verify_update_release<'generation, 'product, 'lock>(
         receipt_external_cohort_digest: cohort_digest,
         trusted_component_lock_bytes: facts.component_lock_bytes.to_vec(),
         trusted_component_lock_path: COMPONENT_LOCK_PATH.to_string(),
-        expected_component_lock_digest: sha256_hex(facts.component_lock_bytes),
+        expected_component_lock_digest: hex::sha256(facts.component_lock_bytes),
         trusted_capsule_root: facts.capsule_root,
         _adapter: facts.provenance,
     };

@@ -31,8 +31,8 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
+use crate::hex;
 use crate::locking::{InstallLockGuard, LockAuthorityError};
 use crate::paths::{PathError, ProductPaths};
 use crate::receipt::PriorSeatIdentity;
@@ -528,7 +528,7 @@ fn capture_member(source: &Path, destination: &Path) -> Result<MemberState, Snap
     match read_regular_nofollow(source, MAX_MEMBER_BYTES)? {
         None => Ok(MemberState::Absent),
         Some(bytes) => {
-            let sha256 = sha256_hex(&bytes);
+            let sha256 = hex::sha256(&bytes);
             write_new_nofollow(destination, &bytes)?;
             Ok(MemberState::Present {
                 size: bytes.len() as u64,
@@ -554,7 +554,7 @@ fn verify_member(path: &Path, expected: &MemberState) -> Result<(), SnapshotErro
                     detail: "snapshot member recorded present but missing on disk",
                 },
             )?;
-            if bytes.len() as u64 != *size || &sha256_hex(&bytes) != sha256 {
+            if bytes.len() as u64 != *size || &hex::sha256(&bytes) != sha256 {
                 return Err(SnapshotError::Unverified {
                     detail: "snapshot member size or digest drifted",
                 });
@@ -601,16 +601,6 @@ fn read_manifest(generation_dir: &Path) -> Result<SnapshotManifest, SnapshotErro
     serde_json::from_slice(&bytes).map_err(|_| SnapshotError::Unverified {
         detail: "snapshot manifest grammar is invalid",
     })
-}
-
-fn sha256_hex(bytes: &[u8]) -> String {
-    let digest = Sha256::digest(bytes);
-    let mut out = String::with_capacity(64);
-    for byte in digest {
-        use std::fmt::Write as _;
-        let _ = write!(out, "{byte:02x}");
-    }
-    out
 }
 
 // ---------------------------------------------------------------------------

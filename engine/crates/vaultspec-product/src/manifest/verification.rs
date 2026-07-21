@@ -4,6 +4,7 @@
 )]
 
 use super::*;
+use crate::hex;
 
 #[path = "verification/snapshot.rs"]
 mod snapshot;
@@ -595,8 +596,8 @@ pub(super) fn verify_installed_exact_bytes(
     if bytes != expected {
         return Err(ManifestError::DigestDrift {
             field: relative.to_string(),
-            expected: sha256_hex(expected),
-            found: sha256_hex(&bytes),
+            expected: hex::sha256(expected),
+            found: hex::sha256(&bytes),
         });
     }
     Ok(())
@@ -818,7 +819,7 @@ pub(super) fn read_installed_bounded(
         owner: final_state.owner,
         link_count: final_state.link_count,
         size: bytes.len() as u64,
-        digest: sha256_hex(&bytes),
+        digest: hex::sha256(&bytes),
         normalized_mode: final_state.normalized_mode,
     };
     if !initial.semantically_matches(&reread) {
@@ -1192,7 +1193,7 @@ pub(super) fn tree_digest(records: &[ValidatedTreeRecord]) -> Result<String> {
     let mut bytes =
         serde_json::to_vec(&canonical).map_err(|error| ManifestError::Parse(error.to_string()))?;
     bytes.push(b'\n');
-    Ok(sha256_hex(&bytes))
+    Ok(hex::sha256(&bytes))
 }
 
 // ---------------------------------------------------------------------------
@@ -1453,8 +1454,4 @@ fn is_windows_reserved(segment: &str) -> bool {
 
 pub(crate) fn semantic_path_key(path: &str) -> String {
     path.to_ascii_lowercase()
-}
-
-pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
-    format!("{:x}", Sha256::digest(bytes))
 }

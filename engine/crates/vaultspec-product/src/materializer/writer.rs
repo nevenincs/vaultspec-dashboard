@@ -28,7 +28,8 @@ use sha2::{Digest as _, Sha256};
 use crate::generation::UnpublishedGeneration;
 
 use super::MaterializeError;
-use super::archive::{RESERVED_TEMP_SUFFIX, hex_lower};
+use super::archive::RESERVED_TEMP_SUFFIX;
+use crate::hex;
 
 #[cfg(unix)]
 type DirHandle = rustix::fd::OwnedFd;
@@ -389,5 +390,5 @@ fn copy_counted(
             "decoded bytes fall short of the declared size".to_string(),
         ));
     }
-    Ok(hex_lower(&hasher.finalize()))
+    Ok(hex::encode(&hasher.finalize()))
 }

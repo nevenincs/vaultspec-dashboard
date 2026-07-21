@@ -14,7 +14,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::manifest::{ComponentLock, ManifestError, ReleaseSetManifest, Target, sha256_hex};
+use crate::hex;
+use crate::manifest::{ComponentLock, ManifestError, ReleaseSetManifest, Target};
 
 /// The five release targets in canonical `TargetTriple` enum order — the closed,
 /// exact cohort roster.
@@ -139,7 +140,7 @@ pub fn emit_cohort_descriptor(
                 detail: format!("duplicate member for {}", target.triple()),
             });
         }
-        by_target[slot] = Some((sha256_hex(raw.as_bytes()), value));
+        by_target[slot] = Some((hex::sha256(raw.as_bytes()), value));
     }
 
     let shared = shared.expect("five members verified above");
@@ -167,7 +168,7 @@ pub fn emit_cohort_descriptor(
     // never hand-rolled.
     let descriptor_jcs = serde_jcs::to_vec(&descriptor)
         .map_err(|error| CohortError::Serialize(error.to_string()))?;
-    let cohort_digest = sha256_hex(&descriptor_jcs);
+    let cohort_digest = hex::sha256(&descriptor_jcs);
     Ok(CohortEmission {
         descriptor_jcs,
         cohort_digest,

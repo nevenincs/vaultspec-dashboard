@@ -590,7 +590,7 @@ impl ClaimRecord {
             owner: owner.to_string(),
             pid,
             process_start_time,
-            nonce: hex_encode(&nonce),
+            nonce: crate::hex::encode(&nonce),
         })
     }
 
@@ -1137,16 +1137,6 @@ fn valid_owner(owner: &str) -> bool {
     !owner.trim().is_empty()
         && owner.len() <= MAX_OWNER_BYTES
         && !owner.chars().any(char::is_control)
-}
-
-fn hex_encode(bytes: &[u8]) -> String {
-    const HEX: &[u8; 16] = b"0123456789abcdef";
-    let mut encoded = String::with_capacity(bytes.len() * 2);
-    for byte in bytes {
-        encoded.push(char::from(HEX[usize::from(byte >> 4)]));
-        encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    encoded
 }
 
 fn process_start_time(pid: u32) -> Option<u64> {

@@ -4,6 +4,7 @@
 )]
 
 use super::*;
+use crate::hex;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -63,7 +64,7 @@ fn parse_cohort(raw: &[u8]) -> Result<CohortDescriptor> {
 #[cfg(test)]
 pub(super) fn cohort_descriptor_digest(raw: &[u8]) -> Result<String> {
     let descriptor = parse_cohort(raw)?;
-    Ok(sha256_hex(&canonical_cohort_bytes(&descriptor)))
+    Ok(hex::sha256(&canonical_cohort_bytes(&descriptor)))
 }
 
 fn canonical_cohort_bytes(descriptor: &CohortDescriptor) -> Vec<u8> {
@@ -248,7 +249,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             MAX_MEMBER_MANIFEST_BYTES as u64,
             observed_file(&initial_snapshot.files, &member_manifest_path)?,
         )?;
-        let member_digest = sha256_hex(&located_member_bytes);
+        let member_digest = hex::sha256(&located_member_bytes);
         let manifest = parse_release(&located_member_bytes)?;
         expect_literal(
             "release_manifest.path",
@@ -262,7 +263,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             });
         }
 
-        let component_lock_digest = sha256_hex(&authority.trusted_component_lock_bytes);
+        let component_lock_digest = hex::sha256(&authority.trusted_component_lock_bytes);
         expect_digest(
             "trusted_component_lock_bytes",
             &authority.expected_component_lock_digest,
@@ -282,7 +283,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
         verify_release_lock_joins(&manifest, &lock)?;
 
         let cohort = parse_cohort(input.cohort_descriptor_bytes)?;
-        let cohort_digest = sha256_hex(&canonical_cohort_bytes(&cohort));
+        let cohort_digest = hex::sha256(&canonical_cohort_bytes(&cohort));
         expect_digest(
             "cohort descriptor",
             &authority.expected_cohort_digest,

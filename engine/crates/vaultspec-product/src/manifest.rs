@@ -1490,7 +1490,7 @@ use verification::{
 #[cfg(test)]
 use verification::{ValidatedTreeRecord, tree_digest};
 pub(crate) use verification::{
-    semantic_path_key, sha256_hex, validate_portable_path, validate_portable_segment,
+    semantic_path_key, validate_portable_path, validate_portable_segment,
 };
 
 #[cfg(test)]

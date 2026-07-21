@@ -39,6 +39,8 @@ pub mod discovery;
 pub mod gateway_drain;
 pub mod generation;
 pub mod handoff;
+/// Lowercase hex encoding — crate-internal, no part of the product contract.
+mod hex;
 pub mod lifecycle;
 pub mod locking;
 pub mod manifest;
