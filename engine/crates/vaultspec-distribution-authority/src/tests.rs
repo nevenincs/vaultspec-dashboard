@@ -1,3 +1,8 @@
+// Sibling file rather than a `tests/` directory so the flat module layout and
+// the 1500-line module gate both hold.
+#[path = "tests_adversarial.rs"]
+mod adversarial;
+
 use super::publication::{
     CapsuleMetadata, CompatibilityRange, ComponentLock, FileReference, PublicationRequest,
     UnsealedPublication,
@@ -1280,5 +1285,50 @@ fn datastore_files_are_hardened_on_their_own_creation_handle() {
         super::private_directory::write_private_datastore_file(&datastore, "root.json", anchor)
             .is_err(),
         "an existing trust anchor must never be silently replaced"
+    );
+}
+
+/// The PUBLIC unsealed-verify seam reaches SUCCESS on this platform over a real
+/// TUF repository (S11 Stage 1 seam; the entrypoint Stage 4's integrated proof
+/// is built on).
+///
+/// Before W01.P01.S177 this could not succeed on Windows at all: the datastore
+/// sequence refused on directory-metadata durability. Proving the PUBLIC
+/// entrypoint rather than the private `verify_with_root` it delegates to is the
+/// point — it is what an out-of-crate acceptance test can actually call.
+#[cfg(feature = "unsealed-verify")]
+#[tokio::test(flavor = "current_thread")]
+async fn unsealed_verify_seam_reaches_success_over_a_real_repository() {
+    let temp = TempDir::new().expect("temporary test root");
+    let material = signing_material(temp.path()).await;
+    let bundle = publish_bundle(
+        temp.path(),
+        &material,
+        1,
+        "unsealed-seam",
+        DistributionTarget::X86_64PcWindowsMsvc,
+    )
+    .await;
+    let product = temp.path().join("product");
+    std::fs::create_dir(&product).expect("product root");
+
+    let request = VerificationRequest::for_product_root(
+        &bundle,
+        &product,
+        DistributionTarget::X86_64PcWindowsMsvc,
+    )
+    .expect("bounded request");
+    let verified = crate::verify_distribution_with_unsealed_root(&material.root_bytes, request)
+        .await
+        .expect("the public unsealed-verify seam must reach success");
+    verified
+        .verify_for_product_root(&product)
+        .expect("authority joins the retained product root");
+    assert_eq!(verified.release_identity(), "unsealed-seam");
+
+    // The persistent trust datastore was actually written and committed.
+    assert!(
+        product.join(LIVE_DATASTORE).join("root.json").is_file(),
+        "a successful verification must persist the trust anchor"
     );
 }
