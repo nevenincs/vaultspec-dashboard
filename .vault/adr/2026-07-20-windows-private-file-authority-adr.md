@@ -264,6 +264,26 @@ evidence exists, since retiring it earlier converts an honest up-front refusal i
 mid-operation failure over already-mutated state. Consistent with D7 and the
 artifact-level proof rule, a `cfg(test)`-only Windows success arm standing in for a
 production refusal is not acceptance evidence and must be removed rather than relied on.
+What legitimately replaces such an arm is platform-scoping the success-path tests to the
+platform that can execute them PLUS one test asserting the other platform's real
+behaviour — the typed refusal, reached over genuine inputs, leaving no committed state.
+That is the opposite defect class, not a restatement of it: the deleted arm ASSERTED a
+success the production code cannot deliver, whereas scoping withdraws a coverage claim and
+replaces silence with a positive assertion of what actually happens. It is admissible only
+as TRACKED debt: every scoped test cites the follow-on that will discharge it, the scope
+comes off when that follow-on lands, and a test that cannot then be un-scoped is a finding
+rather than maintenance. Recorded consequence of applying this: because the distribution
+datastore's directory-durability step refuses on Windows from inside the mutation
+sequence, the tracked parent-directory durability follow-on (plan step `W01.P01.S177`) is
+a PREREQUISITE of the datastore lane's integrated Windows evidence, not a follow-on to it;
+the dependency reads the other way around from how it was planned. Constructor-level NTFS
+evidence remains achievable meanwhile, since the parent-relative constructors are provable
+without driving the lane. For the integrated Windows leg to become possible that follow-on
+must leave no typed durability refusal in the non-test build, reach the object through a
+handle already retained rather than any reconstructed path, stay bounded and fail closed,
+and — if its honest outcome is that the platform's journaling makes an explicit directory
+sync unnecessary — record that as a reviewed durability argument about the trust store
+rather than assume it silently.
 
 Addendum recorded 2026-07-21 (architect ruling, private-file class boundary and
 single-sourced policy constants). First, the boundary between per-file hardening and
