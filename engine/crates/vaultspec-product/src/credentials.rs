@@ -179,7 +179,6 @@ impl DashboardCredentialStore {
         self.directory().join(role.file_name())
     }
 
-    #[cfg(unix)]
     pub(crate) fn open_directory_for_guard(
         &self,
         guard: &InstallLockGuard,
@@ -187,7 +186,6 @@ impl DashboardCredentialStore {
         directory_for_product(&self.paths, Some(guard), false)
     }
 
-    #[cfg(unix)]
     pub(crate) fn prepare_directory_for_guard(
         &self,
         guard: &InstallLockGuard,
@@ -456,12 +454,6 @@ pub(crate) fn read_role(
 ) -> Result<(RetainedCredentialFile, Credential), CredentialError> {
     let (file, bytes) = match platform::open_and_read(path) {
         Ok(value) => value,
-        #[cfg(windows)]
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(CredentialError::PlatformAuthorityUnavailable(
-                "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
-            ));
-        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(CredentialError::Missing(role));
         }
@@ -482,14 +474,6 @@ fn directory_for_product(
     guard: Option<&InstallLockGuard>,
     create: bool,
 ) -> Result<RetainedCredentialDirectory, CredentialError> {
-    #[cfg(windows)]
-    {
-        let _ = (paths, guard, create);
-        Err(CredentialError::PlatformAuthorityUnavailable(
-            "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
-        ))
-    }
-    #[cfg(unix)]
     let root = match guard {
         Some(guard) => guard.retained_product_root(paths).map_err(|_| {
             CredentialError::PlatformAuthorityUnavailable(
@@ -498,23 +482,12 @@ fn directory_for_product(
         })?,
         None => platform::retain_product_root(paths.root())?,
     };
-    #[cfg(unix)]
     let result = if create {
         platform::prepare_directory_authority(root, paths.root())
     } else {
         platform::open_directory_authority(root, paths.root())
     };
-    #[cfg(unix)]
-    match result {
-        Ok(directory) => Ok(directory),
-        #[cfg(windows)]
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            Err(CredentialError::PlatformAuthorityUnavailable(
-                "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
-            ))
-        }
-        Err(error) => Err(CredentialError::Io(error)),
-    }
+    result.map_err(CredentialError::Io)
 }
 
 pub(crate) fn read_role_in(
@@ -527,12 +500,6 @@ pub(crate) fn read_role_in(
         TOKEN_BYTES,
     ) {
         Ok(value) => value,
-        #[cfg(windows)]
-        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            return Err(CredentialError::PlatformAuthorityUnavailable(
-                "Windows readers cannot prove SE_DACL_PROTECTED until the D9 authority amendment lands",
-            ));
-        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(CredentialError::Missing(role));
         }
@@ -561,7 +528,6 @@ pub(crate) fn validate_token(token: &str) -> Result<(), &'static str> {
     Ok(())
 }
 
-#[cfg(unix)]
 pub(crate) fn random_token() -> std::io::Result<String> {
     use std::fmt::Write as _;
 

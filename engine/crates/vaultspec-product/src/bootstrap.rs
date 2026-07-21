@@ -9,14 +9,11 @@
     reason = "failure must preserve the complete non-cloneable descriptor authority for retry"
 )]
 
-#[cfg(unix)]
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-#[cfg(unix)]
 use sha2::{Digest as _, Sha256};
 
-#[cfg(unix)]
 use crate::credentials::read_role_in;
 use crate::credentials::{
     CredentialError, CredentialRole, DashboardCredentialStore, FileIdentity,
@@ -26,9 +23,7 @@ use crate::credentials::{
 use crate::locking::InstallLockGuard;
 use crate::locking::PendingCredentialsClaim;
 
-#[cfg(unix)]
 const DESCRIPTOR_NAME: &str = "bootstrap-credentials.v1";
-#[cfg(unix)]
 const DESCRIPTOR_VERSION: u8 = 1;
 const MAX_DESCRIPTOR_BYTES: usize = 4096;
 
@@ -156,39 +151,31 @@ pub(crate) fn begin<'guard>(
     guard: &'guard InstallLockGuard,
     claim: PendingCredentialsClaim<'guard>,
 ) -> Result<PendingDashboardCredentials<'guard>, CredentialError> {
-    #[cfg(windows)]
-    {
-        let _ = (store, guard, claim);
-        Err(windows_authority_unavailable())
-    }
-    #[cfg(unix)]
-    {
-        let directory_authority = match store.open_directory_for_guard(guard) {
-            Ok(directory) => directory,
-            Err(CredentialError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
-                return prepare(store, guard, claim)?.create();
-            }
-            Err(error) => return Err(error),
-        };
-        let descriptor_path = store.directory().join(DESCRIPTOR_NAME);
-        require_no_settled_receipt(store, guard)?;
-
-        match open_descriptor(&directory_authority) {
-            Ok((file, descriptor)) => {
-                return recover(
-                    guard,
-                    claim,
-                    directory_authority,
-                    &descriptor_path,
-                    file,
-                    descriptor,
-                );
-            }
-            Err(CredentialError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+    let directory_authority = match store.open_directory_for_guard(guard) {
+        Ok(directory) => directory,
+        Err(CredentialError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
+            return prepare(store, guard, claim)?.create();
         }
-        prepare(store, guard, claim)?.create()
+        Err(error) => return Err(error),
+    };
+    let descriptor_path = store.directory().join(DESCRIPTOR_NAME);
+    require_no_settled_receipt(store, guard)?;
+
+    match open_descriptor(&directory_authority) {
+        Ok((file, descriptor)) => {
+            return recover(
+                guard,
+                claim,
+                directory_authority,
+                &descriptor_path,
+                file,
+                descriptor,
+            );
+        }
+        Err(CredentialError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
     }
+    prepare(store, guard, claim)?.create()
 }
 
 pub(crate) fn prepare<'guard>(
@@ -196,61 +183,44 @@ pub(crate) fn prepare<'guard>(
     guard: &'guard InstallLockGuard,
     claim: PendingCredentialsClaim<'guard>,
 ) -> Result<PreparedDashboardBootstrap<'guard>, CredentialError> {
-    #[cfg(windows)]
-    {
-        let _ = (store, guard, claim);
-        Err(windows_authority_unavailable())
-    }
-    #[cfg(unix)]
-    {
-        let directory_authority = store.prepare_directory_for_guard(guard)?;
-        require_no_settled_receipt(store, guard)?;
-        match open_descriptor(&directory_authority) {
-            Ok(_) => {
-                return Err(CredentialError::RecoveryRequired(
-                    BootstrapRecoveryState::ExistingDescriptor,
-                ));
-            }
-            Err(CredentialError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error),
+    let directory_authority = store.prepare_directory_for_guard(guard)?;
+    require_no_settled_receipt(store, guard)?;
+    match open_descriptor(&directory_authority) {
+        Ok(_) => {
+            return Err(CredentialError::RecoveryRequired(
+                BootstrapRecoveryState::ExistingDescriptor,
+            ));
         }
-        for role in [CredentialRole::Ownership, CredentialRole::AttachControl] {
-            if platform::entry_exists(&directory_authority, std::ffi::OsStr::new(role.file_name()))?
-            {
-                return Err(CredentialError::AlreadyExists(role));
-            }
-        }
-        let ownership_secret = crate::credentials::random_token()?;
-        let attach_secret = crate::credentials::random_token()?;
-        let descriptor = Descriptor {
-            version: DESCRIPTOR_VERSION,
-            phase: Phase::Prepared,
-            ownership_sha256: digest(&ownership_secret),
-            attach_control_sha256: digest(&attach_secret),
-            ownership_identity: None,
-            attach_control_identity: None,
-        };
-        let descriptor_authority = create_descriptor(&directory_authority, &descriptor)?;
-        Ok(PreparedDashboardBootstrap {
-            descriptor,
-            descriptor_authority,
-            directory: directory_authority,
-            ownership_secret,
-            attach_secret,
-            guard,
-            claim,
-        })
+        Err(CredentialError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
     }
+    for role in [CredentialRole::Ownership, CredentialRole::AttachControl] {
+        if platform::entry_exists(&directory_authority, std::ffi::OsStr::new(role.file_name()))? {
+            return Err(CredentialError::AlreadyExists(role));
+        }
+    }
+    let ownership_secret = crate::credentials::random_token()?;
+    let attach_secret = crate::credentials::random_token()?;
+    let descriptor = Descriptor {
+        version: DESCRIPTOR_VERSION,
+        phase: Phase::Prepared,
+        ownership_sha256: digest(&ownership_secret),
+        attach_control_sha256: digest(&attach_secret),
+        ownership_identity: None,
+        attach_control_identity: None,
+    };
+    let descriptor_authority = create_descriptor(&directory_authority, &descriptor)?;
+    Ok(PreparedDashboardBootstrap {
+        descriptor,
+        descriptor_authority,
+        directory: directory_authority,
+        ownership_secret,
+        attach_secret,
+        guard,
+        claim,
+    })
 }
 
-#[cfg(windows)]
-fn windows_authority_unavailable() -> CredentialError {
-    CredentialError::PlatformAuthorityUnavailable(
-        "Windows protected private-file authority awaits independent D9 review and real-NTFS acceptance",
-    )
-}
-
-#[cfg(unix)]
 fn recover<'guard>(
     guard: &'guard InstallLockGuard,
     claim: PendingCredentialsClaim<'guard>,
@@ -322,7 +292,6 @@ fn recover<'guard>(
     ))
 }
 
-#[cfg(unix)]
 fn optional_matching_role(
     directory: &RetainedCredentialDirectory,
     role: CredentialRole,
@@ -341,7 +310,6 @@ fn optional_matching_role(
     }
 }
 
-#[cfg(unix)]
 fn require_no_settled_receipt(
     store: &DashboardCredentialStore,
     guard: &InstallLockGuard,
@@ -361,7 +329,6 @@ fn require_no_settled_receipt(
     }
 }
 
-#[cfg(unix)]
 fn create_descriptor(
     directory: &RetainedCredentialDirectory,
     descriptor: &Descriptor,
@@ -371,7 +338,6 @@ fn create_descriptor(
     descriptor_authority(file, &directory.path().join(DESCRIPTOR_NAME))
 }
 
-#[cfg(unix)]
 fn descriptor_authority(
     file: RetainedCredentialFile,
     path: &Path,
@@ -384,11 +350,13 @@ fn descriptor_authority(
     })
 }
 
-#[cfg(unix)]
 fn open_descriptor(
     directory: &RetainedCredentialDirectory,
 ) -> Result<(RetainedCredentialFile, Descriptor), CredentialError> {
-    let (file, bytes) = platform::open_private_in(
+    // Recovery authority: the descriptor is durably rewritten (phase advance)
+    // and exact-retired, so it needs a writable, retire-capable handle — not a
+    // read-only one (on Windows the two are distinct D9 authorities).
+    let (file, bytes) = platform::open_recovery_in(
         directory,
         std::ffi::OsStr::new(DESCRIPTOR_NAME),
         MAX_DESCRIPTOR_BYTES,
@@ -401,7 +369,6 @@ fn open_descriptor(
     Ok((file, descriptor))
 }
 
-#[cfg(unix)]
 fn validate_descriptor(descriptor: &Descriptor) -> Result<(), CredentialError> {
     if descriptor.version != DESCRIPTOR_VERSION
         || crate::credentials::validate_token(&descriptor.ownership_sha256).is_err()
@@ -446,7 +413,6 @@ fn encode_descriptor(descriptor: &Descriptor) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-#[cfg(unix)]
 fn digest(secret: &str) -> String {
     let bytes = Sha256::digest(secret.as_bytes());
     let mut output = String::with_capacity(64);

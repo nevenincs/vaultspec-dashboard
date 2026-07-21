@@ -396,32 +396,30 @@ mod tests {
         );
     }
 
-    #[cfg(windows)]
     #[test]
-    fn shutdown_control_stops_at_the_typed_windows_ownership_authority_gate() {
+    fn ownership_bootstrap_creates_the_protected_credential_files() {
+        // Post windows-private-file D6 un-gating, credential bootstrap succeeds
+        // cross-platform: the descriptor and both credential files exist, each
+        // created empty then hardened before bytes (Unix mode 0600, Windows the
+        // protected three-principal DACL).
         let dir = tempfile::tempdir().unwrap();
         let paths = crate::paths::ProductPaths::under_app_home(dir.path());
         paths.ensure().unwrap();
         let guard = crate::locking::InstallLock::new(paths.install_lock_path())
-            .acquire(
-                crate::locking::Actor::Installer,
-                "control-windows-gate-test",
-            )
+            .acquire(crate::locking::Actor::Installer, "control-bootstrap-test")
             .unwrap()
             .unwrap();
-        let result = crate::credentials::DashboardCredentialStore::for_product(&paths)
-            .begin_bootstrap(&guard);
+        crate::credentials::DashboardCredentialStore::for_product(&paths)
+            .begin_bootstrap(&guard)
+            .expect("credential bootstrap must succeed after the D6 un-gating");
 
-        assert!(matches!(
-            result,
-            Err(crate::credentials::CredentialError::PlatformAuthorityUnavailable(_))
-        ));
         for name in ["bootstrap-credentials.v1", "ownership.cap", "attach.cred"] {
             assert!(
-                !paths.credentials_dir().join(name).exists(),
-                "typed Windows gate must precede credential or control authority creation: {name}"
+                paths.credentials_dir().join(name).exists(),
+                "bootstrap must create the protected credential authority: {name}"
             );
         }
+        drop(guard);
     }
 
     #[test]

@@ -326,6 +326,16 @@ pub fn open_private_in(
     Ok((retained, bytes))
 }
 
+pub fn open_recovery_in(
+    directory: &RetainedCredentialDirectory,
+    name: &OsStr,
+    maximum: usize,
+) -> std::io::Result<(RetainedCredentialFile, Vec<u8>)> {
+    // A Unix retained credential file already carries exact-retirement and
+    // rewrite authority, so recovery reuses the read-in path.
+    open_private_in(directory, name, maximum)
+}
+
 pub fn restrict_existing(path: &Path) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))
