@@ -7,6 +7,15 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+# Withdrawn from crates.io + bare `cargo install`/`cargo-binstall`
+# (a2a-product-provisioning W04.P09.S78): a bare Cargo install places only the
+# `vaultspec` binary, not the complete offline product tree (dashboard + updater
+# + pinned A2A capsule + manifests + licenses + SBOM + receipt), so it cannot
+# preserve the release-set, receipt, verification, update, and removal
+# guarantees. Publication is withheld until a Cargo channel can carry the
+# composite release contract; the supported channels are the product-owned
+# installers, Scoop, and WinGet.
+publish = false
 
 [package.metadata.wix]
 upgrade-guid = "51ED63D0-D794-406A-8F96-ED09840177B1"

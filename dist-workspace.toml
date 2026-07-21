@@ -7,20 +7,26 @@ members = ["cargo:engine"]
 cargo-dist-version = "0.32.0"
 # CI backends to support
 ci = "github"
-# The installers to generate for each app
-installers = ["shell", "powershell", "msi"]
-# The msi template (wix/main.wxs) is deliberately customized beyond what
-# `dist init` generates (Start-Menu shortcut, product naming) - exempt it
-# from the generated-file freshness check.
-allow-dirty = ["msi"]
+# No Cargo Dist installers (a2a-product-provisioning W04.P09.S73): Dist's
+# generated shell/PowerShell/MSI installers are BINARY-ONLY — they place the
+# `vaultspec` binary but not the complete offline product tree (dashboard +
+# updater + pinned A2A capsule + manifests + licenses + SBOM + receipt). The
+# product-owned installers replace them: `packaging/install.sh`,
+# `packaging/install.ps1`, and the complete MSI built from `engine/crates/
+# vaultspec-cli/wix/main.wxs`. Dist is retained ONLY for target planning,
+# checksums, and GitHub release hosting.
+installers = []
 # Target platforms to build apps for (Rust target-triple syntax)
 targets = ["aarch64-apple-darwin", "aarch64-unknown-linux-gnu", "x86_64-apple-darwin", "x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
 # Path that installers should place binaries in
 install-path = "CARGO_HOME"
 # Where to host releases
 hosting = "github"
-# Whether to install an updater program
-install-updater = true
+# No Dist updater (a2a-product-provisioning W04.P09.S73 + W03.P07): Dist's
+# axoupdater is retired in favour of the product-owned copied external updater
+# (`vaultspec-updater`), which replaces the release outside the active seat under
+# the installation lock. The product installers place it; Dist must not.
+install-updater = false
 # Features to pass to cargo build
 features = ["embed-spa"]
 # Steps injected into every build job BEFORE cargo runs: the embed-spa build
