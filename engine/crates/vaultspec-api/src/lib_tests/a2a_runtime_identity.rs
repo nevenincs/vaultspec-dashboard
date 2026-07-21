@@ -277,17 +277,17 @@ fn retired_receipt_cannot_authorize_stale_discovery_quarantine_or_start() {
 
 #[cfg(windows)]
 #[test]
-fn windows_seated_control_respects_the_typed_credential_authority_gate() {
+fn windows_seated_control_bootstraps_then_reconciles_uninstalled() {
     let (_home, plane, paths) = install_home();
     let guard = InstallLock::new(paths.install_lock_path())
         .acquire(Actor::Installer, "runtime-windows-authority-test")
         .unwrap()
         .unwrap();
-    match DashboardCredentialStore::for_product(&paths).begin_bootstrap(&guard) {
-        Err(vaultspec_product::credentials::CredentialError::PlatformAuthorityUnavailable(_)) => {}
-        Err(error) => panic!("unexpected Windows credential refusal: {error}"),
-        Ok(_) => panic!("Windows credential bootstrap must remain typed unavailable"),
-    }
+    // Credential bootstrap now succeeds on Windows (D6 un-gating); seated-boot
+    // reconciliation still reports the product uninstalled with no receipt.
+    DashboardCredentialStore::for_product(&paths)
+        .begin_bootstrap(&guard)
+        .expect("Windows credential bootstrap must succeed after the D6 un-gating");
     drop(guard);
     let outcome = plane.reconcile_seated_boot(None);
     assert_eq!(outcome["action"], "none", "{outcome}");
