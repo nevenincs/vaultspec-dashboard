@@ -1385,3 +1385,82 @@ fn read_only_observation_permits_a_concurrent_owner_write_handle() {
     assert_eq!(second.identity(), observation.identity());
     drop(owner);
 }
+
+/// Real-NTFS acceptance for the parent-relative constructors
+/// (windows-private-file-authority, parent-relative addendum).
+///
+/// The load-bearing claim: a child can be opened with `READ_CONTROL | WRITE_DAC`
+/// through a parent handle that holds NEITHER, because a relative open's
+/// requested access binds the child object rather than the resolution root. The
+/// test first proves the parent really is rights-poor by showing it cannot
+/// snapshot its own DACL, so the success below cannot be explained by the parent
+/// having carried the rights all along.
+#[test]
+fn parent_relative_hardening_opens_a_child_through_a_rights_poor_parent() {
+    let dir = tempfile::tempdir().unwrap();
+    let parent_path = dir.path().join("datastore");
+    create_directory(&parent_path);
+
+    // Seed an extra INHERITABLE principal on the parent so the child below is
+    // really born with an inherited entry the private policy forbids. The
+    // seeding handle is released before the rights-poor parent is opened.
+    let seed = HardeningDirectory::open_existing(&parent_path).unwrap();
+    add_inheritable_extra_principal(seed.directory());
+    drop(seed);
+
+    let child_name = OsString::from("live");
+    create_directory(&parent_path.join("live"));
+
+    // Exactly the rights a capability-held (cap-std) directory carries: no
+    // READ_CONTROL, no WRITE_DAC.
+    let parent = os::open_existing_directory(&parent_path).unwrap();
+    assert!(
+        os::private_dacl_snapshot(&parent).is_err(),
+        "the parent must be unable to observe its own DACL, or the proof is vacuous"
+    );
+
+    let hardening = HardeningDirectory::open_child_existing(&parent, &child_name).unwrap();
+    assert_inherited_extra_principal(hardening.directory());
+    harden_without_inherited_entries(hardening.directory(), true);
+    assert!(hardening.dacl_snapshot().unwrap().protected());
+    assert_no_inherited_entries(hardening.directory());
+    hardening.revalidate().unwrap();
+    let hardened_identity = hardening.identity();
+    drop(hardening);
+
+    // The read-only counterpart resolves the same object through the same
+    // rights-poor parent and sees the protected state.
+    let observation =
+        ReadOnlyAuthorityDirectory::open_child_observation(&parent, &child_name).unwrap();
+    assert_eq!(observation.identity(), hardened_identity);
+    assert!(observation.dacl_snapshot().unwrap().protected());
+    observation.revalidate().unwrap();
+
+    // The relative constructors resolve exactly one direct child: no traversal,
+    // no parent escape, no absent name.
+    for rejected in ["..", ".", r"nested\child", r"live\..\live"] {
+        let name = OsString::from(rejected);
+        assert!(
+            HardeningDirectory::open_child_existing(&parent, &name).is_err(),
+            "hardening must refuse the non-child component {rejected:?}"
+        );
+        assert!(
+            ReadOnlyAuthorityDirectory::open_child_observation(&parent, &name).is_err(),
+            "observation must refuse the non-child component {rejected:?}"
+        );
+    }
+    let absent = OsString::from("absent");
+    assert_eq!(
+        HardeningDirectory::open_child_existing(&parent, &absent)
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::NotFound
+    );
+
+    // Both constructors refuse a regular-file child, exactly as their pathname
+    // counterparts do.
+    std::fs::write(parent_path.join("regular"), b"not a directory").unwrap();
+    let regular = OsString::from("regular");
+    assert!(HardeningDirectory::open_child_existing(&parent, &regular).is_err());
+    assert!(ReadOnlyAuthorityDirectory::open_child_observation(&parent, &regular).is_err());
+}

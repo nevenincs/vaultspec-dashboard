@@ -297,6 +297,30 @@ impl HardeningDirectory {
         })
     }
 
+    /// Open ONE existing direct child directory of `parent` for hardening,
+    /// resolved relatively and never through a pathname
+    /// (windows-private-file-authority, parent-relative addendum).
+    ///
+    /// This exists for capability-held trees — a `cap-std` datastore directory
+    /// carries neither `READ_CONTROL` nor `WRITE_DAC` and so cannot be hardened
+    /// through itself, but the rights requested here bind the CHILD, not the
+    /// parent resolution root. Reconstructing an absolute path instead is
+    /// refused by the governing decision: an identity comparison detects a
+    /// substituted object only after it has been opened and hardened, and cannot
+    /// speak for intermediate components at all.
+    ///
+    /// It grants no traversal: exactly one validated direct child is opened, and
+    /// nothing beneath it is reachable through the returned value.
+    pub fn open_child_existing(parent: &File, name: &OsStr) -> io::Result<Self> {
+        let name = validate_child_component(name)?;
+        let directory = os::open_child_directory_for_hardening(parent, &name)?;
+        let identity = os::validated_directory_identity(&directory)?;
+        Ok(Self {
+            directory,
+            identity,
+        })
+    }
+
     /// The copied full-width identity of this exact retained directory.
     #[must_use]
     pub fn identity(&self) -> HighResFileId {
@@ -365,6 +389,21 @@ impl ReadOnlyAuthorityDirectory {
             true,
             true,
         )?;
+        let identity = os::validated_directory_identity(&directory)?;
+        Ok(Self {
+            directory,
+            identity,
+        })
+    }
+
+    /// Observe ONE existing direct child directory of `parent`, resolved
+    /// relatively and never through a pathname (windows-private-file-authority,
+    /// parent-relative addendum). The read-only counterpart of
+    /// [`HardeningDirectory::open_child_existing`], so verification never has to
+    /// open the mutation-capable, exclusive hardening authority.
+    pub fn open_child_observation(parent: &File, name: &OsStr) -> io::Result<Self> {
+        let name = validate_child_component(name)?;
+        let directory = os::open_child_directory_for_observation(parent, &name)?;
         let identity = os::validated_directory_identity(&directory)?;
         Ok(Self {
             directory,

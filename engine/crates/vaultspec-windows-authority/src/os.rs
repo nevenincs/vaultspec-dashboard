@@ -29,10 +29,10 @@ use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
     FILE_ATTRIBUTE_REPARSE_POINT, FILE_ATTRIBUTE_TAG_INFO, FILE_DISPOSITION_INFO,
     FILE_GENERIC_READ, FILE_GENERIC_WRITE, FILE_ID_INFO, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES,
-    FILE_SHARE_READ, FILE_STANDARD_INFO, FILE_TRAVERSE, FileAttributeTagInfo, FileDispositionInfo,
-    FileIdInfo, FileStandardInfo, GetFileInformationByHandleEx, MOVEFILE_REPLACE_EXISTING,
-    MOVEFILE_WRITE_THROUGH, MoveFileExW, READ_CONTROL, SYNCHRONIZE, SetFileInformationByHandle,
-    WRITE_DAC,
+    FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_STANDARD_INFO, FILE_TRAVERSE,
+    FileAttributeTagInfo, FileDispositionInfo, FileIdInfo, FileStandardInfo,
+    GetFileInformationByHandleEx, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
+    READ_CONTROL, SYNCHRONIZE, SetFileInformationByHandle, WRITE_DAC,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
@@ -54,6 +54,10 @@ const DIRECTORY_ACCESS: u32 = DELETE
 /// directory or create children.
 const DIRECTORY_HARDENING_ACCESS: u32 =
     FILE_TRAVERSE | FILE_READ_ATTRIBUTES | SYNCHRONIZE | READ_CONTROL | WRITE_DAC;
+/// Read-only directory-observation access (windows-private-file-authority D1,
+/// read-only directory observation amendment): identity and DACL reading only —
+/// no WRITE_DAC, no DELETE, no traverse, and no list-directory.
+const DIRECTORY_OBSERVATION_ACCESS: u32 = READ_CONTROL | FILE_READ_ATTRIBUTES | SYNCHRONIZE;
 const DIRECTORY_CREATE_OPTIONS: u32 =
     FILE_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT;
 const IO_INFORMATION_FILE_OPENED: usize = 1;
@@ -89,7 +93,44 @@ pub(super) fn open_existing_directory_for_hardening(path: &Path) -> io::Result<F
 }
 
 pub(super) fn open_child_directory(parent: &File, name: &[u16], create: bool) -> io::Result<File> {
-    open_child_directory_with(parent, name, create, FILE_SHARE_READ)
+    open_child_directory_with(parent, name, create, DIRECTORY_ACCESS, FILE_SHARE_READ)
+}
+
+/// Open one existing direct child directory for HARDENING relative to a retained
+/// parent (windows-private-file-authority, parent-relative addendum).
+///
+/// The requested access applies to the CHILD object being opened, not to the
+/// parent supplied as the resolution root, so this succeeds through a parent
+/// that itself holds neither `READ_CONTROL` nor `WRITE_DAC`. That is what lets a
+/// capability-held datastore directory harden its children without ever
+/// reconstructing an absolute pathname. Reparse, disposition, and delete-share
+/// behavior are identical to [`open_child_directory`]; only the rights differ.
+pub(super) fn open_child_directory_for_hardening(parent: &File, name: &[u16]) -> io::Result<File> {
+    open_child_directory_with(
+        parent,
+        name,
+        false,
+        DIRECTORY_HARDENING_ACCESS,
+        FILE_SHARE_READ,
+    )
+}
+
+/// Open one existing direct child directory for READ-ONLY DACL OBSERVATION
+/// relative to a retained parent.
+///
+/// Permissive sharing mirrors the pathname observation constructor: an
+/// observation must neither block nor be blocked by an owner.
+pub(super) fn open_child_directory_for_observation(
+    parent: &File,
+    name: &[u16],
+) -> io::Result<File> {
+    open_child_directory_with(
+        parent,
+        name,
+        false,
+        DIRECTORY_OBSERVATION_ACCESS,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+    )
 }
 
 /// Materialization-mode child directory: write sharing is admitted so kernel
@@ -105,7 +146,8 @@ pub(super) fn open_child_directory_write_shared(
         parent,
         name,
         create,
-        FILE_SHARE_READ | windows_sys::Win32::Storage::FileSystem::FILE_SHARE_WRITE,
+        DIRECTORY_ACCESS,
+        FILE_SHARE_READ | FILE_SHARE_WRITE,
     )
 }
 
@@ -113,6 +155,7 @@ fn open_child_directory_with(
     parent: &File,
     name: &[u16],
     create: bool,
+    access: u32,
     share: u32,
 ) -> io::Result<File> {
     let byte_length = name
@@ -142,13 +185,14 @@ fn open_child_directory_with(
     // synchronous call. `name`, `unicode_name`, `object_attributes`,
     // `raw_handle`, and `io_status` remain live, aligned, and correctly sized
     // for the call. The UNICODE_STRING length is checked and its buffer is
-    // read-only by contract. `share` is one of the two fixed share modes the
-    // thin wrappers above pass. Every optional pointer is null. No pointer
-    // escapes.
+    // read-only by contract. `access` and `share` are fixed product masks chosen
+    // by the thin wrappers above — never caller-selected — and the requested
+    // access binds only the child object this call opens. Every optional pointer
+    // is null. No pointer escapes.
     let status = unsafe {
         NtCreateFile(
             &raw mut raw_handle,
-            DIRECTORY_ACCESS,
+            access,
             &raw const object_attributes,
             &raw mut io_status,
             std::ptr::null(),
