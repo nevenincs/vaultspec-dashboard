@@ -29,6 +29,12 @@ pub const MAX_WORKSPACE_ROWS: usize = 32;
 /// tests and harness isolation (mirroring how the dev harness isolates ports);
 /// otherwise `~/.vaultspec` from `USERPROFILE`/`HOME` (the same resolution the
 /// rag discovery client uses). `None` only when no home variable is set at all.
+///
+/// DUPLICATED, deliberately, by `vaultspec_product::paths::ProductPaths::derive`
+/// — the two crates are siblings and neither may depend on the other. Change
+/// this precedence only together with that one; the
+/// `the_two_app_home_resolvers_agree` test in `vaultspec-cli` fails if they
+/// drift, and records when to revisit extracting a shared crate.
 pub fn app_home_dir() -> Option<PathBuf> {
     if let Some(over) = std::env::var_os("VAULTSPEC_APP_HOME") {
         return Some(PathBuf::from(over));

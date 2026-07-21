@@ -78,6 +78,12 @@ impl ProductPaths {
     /// overrides for tests and harness isolation (the same override the seat and
     /// launcher state honour); otherwise `~/.vaultspec` from `USERPROFILE`/`HOME`.
     /// The product root is the `a2a` subtree of that app home.
+    ///
+    /// DUPLICATED, deliberately, by `vaultspec_session::app_home_dir` — the two
+    /// crates are siblings and neither may depend on the other. Change this
+    /// precedence only together with that one; the
+    /// `the_two_app_home_resolvers_agree` test in `vaultspec-cli` fails if they
+    /// drift, and records when to revisit extracting a shared crate.
     pub fn derive() -> std::result::Result<Self, PathError> {
         let app_home = if let Some(over) = std::env::var_os("VAULTSPEC_APP_HOME") {
             PathBuf::from(over)
