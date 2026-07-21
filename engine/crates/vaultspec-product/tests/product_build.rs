@@ -549,3 +549,115 @@ fn scan_rejects_a_tree_deeper_than_the_segment_ceiling() {
         "a tree deeper than the 32-segment ceiling must fail the build scan, got {refused:?}"
     );
 }
+
+/// Compose a real product tree (writes release.json + the placed files) and
+/// return the temp dirs + the generation root, for the install-verify proofs.
+fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf) {
+    use vaultspec_product::product_build::{BuildSources, LicenseSource, compose_product_tree};
+    let lock = lock();
+    let capsule = capsule(&lock);
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+    let sources = BuildSources {
+        target: TARGET,
+        cohort_id: "release-2026.07.19".to_string(),
+        cohort_targets: vec![
+            Target::Aarch64AppleDarwin,
+            Target::X86_64AppleDarwin,
+            Target::Aarch64UnknownLinuxGnu,
+            Target::X86_64UnknownLinuxGnu,
+            Target::X86_64PcWindowsMsvc,
+        ],
+        release_manifest_path: "release.json".to_string(),
+        dashboard_version: "0.1.4".to_string(),
+        dashboard_commit: "a".repeat(40),
+        dashboard: source(
+            write_source(src.path(), "dashboard.exe", b"dashboard-bytes"),
+            "bin/dashboard.exe",
+        ),
+        updater_version: "0.1.4".to_string(),
+        updater: source(
+            write_source(src.path(), "updater.exe", b"updater-bytes"),
+            "bin/updater.exe",
+        ),
+        capsule_archive: source(
+            write_source(src.path(), "capsule.zip", b"PK-zip-bytes"),
+            "a2a/capsule.zip",
+        ),
+        capsule_manifest: source(
+            write_source(src.path(), "cm.json", b"{capsule-manifest}"),
+            "a2a/component-manifest.json",
+        ),
+        tree_evidence_doc: source(
+            write_source(src.path(), "tree.json", b"{tree-evidence}"),
+            "a2a/tree.json",
+        ),
+        tree_digest: "2".repeat(64),
+        tree_file_count: 3,
+        component_lock: source(
+            write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
+            "packaging/a2a-component.lock.json",
+        ),
+        licenses: vec![LicenseSource {
+            source: write_source(src.path(), "a2a.txt", b"MIT license text"),
+            dest_relative: "licenses/a2a.txt".to_string(),
+            component: "vaultspec-a2a".to_string(),
+            spdx: "MIT".to_string(),
+        }],
+        sbom: source(
+            write_source(src.path(), "sbom.json", b"{sbom}"),
+            "sbom.cdx.json",
+        ),
+        sbom_format: "cyclonedx".to_string(),
+    };
+    compose_product_tree(&generation_root, &sources, &lock, &capsule).unwrap();
+    (src, out, generation_root)
+}
+
+#[test]
+fn verify_installed_tree_accepts_a_faithfully_composed_tree() {
+    use vaultspec_product::product_build::verify_installed_tree;
+    let (_src, _out, root) = composed_tree();
+    verify_installed_tree(&root, "release.json", &lock())
+        .expect("a tree that matches its own release.json must verify");
+}
+
+#[test]
+fn verify_installed_tree_rejects_a_corrupted_file() {
+    use vaultspec_product::product_build::{ProductBuildError, verify_installed_tree};
+    let (_src, _out, root) = composed_tree();
+    // A corrupted placed file no longer matches its manifest digest.
+    std::fs::write(root.join("bin/dashboard.exe"), b"tampered").unwrap();
+    let refused = verify_installed_tree(&root, "release.json", &lock());
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}
+
+#[test]
+fn verify_installed_tree_rejects_an_extra_file() {
+    use vaultspec_product::product_build::{ProductBuildError, verify_installed_tree};
+    let (_src, _out, root) = composed_tree();
+    // An unexpected file the manifest does not declare.
+    std::fs::write(root.join("bin/ghost.exe"), b"unexpected").unwrap();
+    let refused = verify_installed_tree(&root, "release.json", &lock());
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}
+
+#[test]
+fn verify_installed_tree_rejects_a_missing_file() {
+    use vaultspec_product::product_build::{ProductBuildError, verify_installed_tree};
+    let (_src, _out, root) = composed_tree();
+    // A declared file that is absent from the installed tree.
+    std::fs::remove_file(root.join("bin/updater.exe")).unwrap();
+    let refused = verify_installed_tree(&root, "release.json", &lock());
+    assert!(matches!(
+        refused,
+        Err(ProductBuildError::FileDigestsMismatch { .. })
+    ));
+}

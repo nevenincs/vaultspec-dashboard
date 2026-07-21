@@ -894,6 +894,20 @@ impl UnverifiedReleaseSetManifest {
     pub fn verify_against_lock(&self, lock: &ComponentLock) -> Result<()> {
         verify_release_lock_joins(&self.inner, lock)
     }
+
+    /// The declared installed-file digests (path -> lowercase SHA-256), covering
+    /// every immutable installed file except the manifest's own path. Exposed for
+    /// the build-time composer and the install-time placement-integrity check to
+    /// compare the declared inventory against the real placed tree.
+    pub(crate) fn file_digests(&self) -> &BTreeMap<String, String> {
+        &self.inner.file_digests
+    }
+
+    /// The manifest's own app-tree-relative path — the sole file excluded from
+    /// `file_digests`.
+    pub(crate) fn release_manifest_path(&self) -> &str {
+        &self.inner.release_manifest.path
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]

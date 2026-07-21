@@ -361,20 +361,61 @@ pub fn verify_member_covers_tree(
     member: &ComposedMember,
     scanned: &[ComposedArtifact],
 ) -> Result<(), ProductBuildError> {
-    if member
-        .file_digests
-        .contains_key(&member.release_manifest_path)
-    {
+    check_file_digests_cover_tree(&member.file_digests, scanned, &member.release_manifest_path)
+}
+
+/// Verify an INSTALLED product tree matches its own `release.json` — the light,
+/// bounded placement-integrity check the product-owned installer runs (ADR D2:
+/// installers install AND verify the tree, a step distinct from the DACL-gated
+/// runtime receipt establishment).
+///
+/// Reads the manifest from `manifest_relative` inside `tree_root`, proves it is
+/// structurally valid + component-lock-pinned through the SAME S06 authority a
+/// consumer trusts (`parse_and_verify`, no re-implementation), scans the installed
+/// tree with the hardened scan, and proves the declared `file_digests` describe
+/// EXACTLY the placed tree via the SAME coverage check the build-time
+/// [`verify_member_covers_tree`] uses — so a build that composed and an install
+/// that verifies agree by construction. This is placement INTEGRITY (the download
+/// or copy was not truncated, corrupted, or tampered); it carries no
+/// `TrustedReleaseAuthority` — the deeper TUF/receipt trust is established at build
+/// and at runtime first-run provisioning, not here.
+pub fn verify_installed_tree(
+    tree_root: &Path,
+    manifest_relative: &str,
+    lock: &ComponentLock,
+) -> Result<(), ProductBuildError> {
+    let raw = std::fs::read_to_string(tree_root.join(manifest_relative))
+        .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    let manifest =
+        ReleaseSetManifest::parse_and_verify(&raw, lock).map_err(ProductBuildError::SelfVerify)?;
+    let scanned = scan_composed_tree(tree_root)?;
+    check_file_digests_cover_tree(
+        manifest.file_digests(),
+        &scanned,
+        manifest.release_manifest_path(),
+    )
+}
+
+/// The shared complete-inventory check: `file_digests` describes EXACTLY the
+/// scanned tree minus `manifest_path` (every file present with the observed
+/// digest, no missing entry, no extra entry, the manifest's own path never
+/// self-listed). Used by BOTH the build-time composer and the install-time
+/// integrity check, so the two can never disagree.
+fn check_file_digests_cover_tree(
+    file_digests: &BTreeMap<String, String>,
+    scanned: &[ComposedArtifact],
+    manifest_path: &str,
+) -> Result<(), ProductBuildError> {
+    if file_digests.contains_key(manifest_path) {
         return Err(ProductBuildError::FileDigestsMismatch {
             detail: format!(
-                "the release manifest path {} must not appear in file_digests",
-                member.release_manifest_path
+                "the release manifest path {manifest_path} must not appear in file_digests"
             ),
         });
     }
-    let expected = file_digests_from_scan(scanned, &member.release_manifest_path);
+    let expected = file_digests_from_scan(scanned, manifest_path);
     for (path, digest) in &expected {
-        match member.file_digests.get(path) {
+        match file_digests.get(path) {
             Some(declared) if declared == digest => {}
             Some(_) => {
                 return Err(ProductBuildError::FileDigestsMismatch {
@@ -388,10 +429,10 @@ pub fn verify_member_covers_tree(
             }
         }
     }
-    for path in member.file_digests.keys() {
+    for path in file_digests.keys() {
         if !expected.contains_key(path) {
             return Err(ProductBuildError::FileDigestsMismatch {
-                detail: format!("file_digests lists {path}, which is not in the composed tree"),
+                detail: format!("file_digests lists {path}, which is not in the tree"),
             });
         }
     }
