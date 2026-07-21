@@ -37,6 +37,7 @@ pub mod credentials;
 pub mod discovery;
 pub mod gateway_drain;
 pub mod generation;
+pub mod handoff;
 pub mod lifecycle;
 pub mod locking;
 pub mod manifest;

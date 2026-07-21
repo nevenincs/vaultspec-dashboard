@@ -1,7 +1,7 @@
 //! Schema + builder proofs for the descriptor execute-intent (W03.P07.S60).
 //!
 //! The intent is declarative serde facts the dashboard observes on the current
-//! install; the runtime `ExecuteInputs` is assembled by `into_inputs`, delegating
+//! install; the runtime `ExecuteInputs` is assembled by `build_execute_inputs`, delegating
 //! every validation to the owning product constructor. A malformed or stale
 //! intent is a TYPED refusal, never a silent build. These exercise the real
 //! product constructors — no doubles.
@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::receipt::Channel;
-use vaultspec_updater::{ExecuteIntent, StoreIntent, UpdaterDescriptor, UpdaterError};
+use vaultspec_updater::{
+    ExecuteIntent, StoreIntent, UpdaterDescriptor, UpdaterError, build_execute_inputs,
+};
 
 fn range(min: &str, max: &str) -> RangeBounds {
     RangeBounds {
@@ -105,13 +107,12 @@ fn an_unknown_execute_field_is_rejected() {
 #[test]
 fn a_well_formed_intent_assembles_runtime_inputs() {
     let temp = tempfile::tempdir().unwrap();
-    let (_inputs, staged) = valid_intent(temp.path())
-        .into_inputs()
+    let (_inputs, staged) = build_execute_inputs(valid_intent(temp.path()))
         .expect("a well-formed intent must assemble runtime inputs");
     assert_eq!(
         staged,
         temp.path(),
-        "into_inputs must return the staged-bundle path for the verify target"
+        "build_execute_inputs must return the staged-bundle path for the verify target"
     );
 }
 
@@ -121,8 +122,7 @@ fn a_malformed_candidate_generation_is_a_typed_refusal() {
     let mut intent = valid_intent(temp.path());
     // A path-escaping generation id must be rejected by the product grammar.
     intent.candidate_generation = "../escape".to_string();
-    let error = intent
-        .into_inputs()
+    let error = build_execute_inputs(intent)
         .err()
         .expect("an invalid generation must be refused");
     assert!(
@@ -138,8 +138,7 @@ fn a_stale_installed_schema_head_fails_closed_as_an_incompatible_range() {
     // Installed head is neither the candidate base (0001) nor the head (0008):
     // the migration range is incompatible and must fail closed, never proceed.
     intent.installed_schema_head = Some("0005".to_string());
-    let error = intent
-        .into_inputs()
+    let error = build_execute_inputs(intent)
         .err()
         .expect("a stale installed head must be refused");
     assert!(

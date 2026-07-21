@@ -16,16 +16,10 @@
 //! materializer; the runner reaches it via the transaction/activation contract and
 //! never implements the swap here.
 
-mod handoff;
-
-pub use handoff::{HandoffError, copy_updater_out, write_handoff_descriptor};
-
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant, SystemTime};
-
-use serde::{Deserialize, Serialize};
 
 use vaultspec_distribution_authority::{
     DistributionTarget, MaterializationSource, VerificationError, VerificationRequest,
@@ -45,11 +39,20 @@ use vaultspec_product::migration::{
     MigrationLimits, MigrationPlan, MigrationRangeSpec, StagedMigration, plan_migration,
 };
 use vaultspec_product::paths::ProductPaths;
-use vaultspec_product::receipt::{Channel, PriorSeatIdentity};
 use vaultspec_product::recovery::{RecoveryError, RecoveryOutcome, recover};
 use vaultspec_product::snapshot::{ConsistencyGroupSpec, SchemaBearingStore};
 use vaultspec_product::transaction::{
     ReadyToActivate, TransactionError, UpdatePlan, UpdateTransaction,
+};
+
+/// The one-time dashboard→updater handoff CONTRACT lives product-side (dependency
+/// direction: the dashboard WRITES it, the updater READS it, both over their
+/// existing edge onto `vaultspec-product`). Re-exported here so the updater's
+/// public API and call sites stay stable; the read/build/drive orchestration over
+/// these types is below.
+pub use vaultspec_product::handoff::{
+    ExecuteIntent, HandoffError, RelaunchSpec, StoreIntent, UpdaterDescriptor, copy_updater_out,
+    write_handoff_descriptor,
 };
 
 /// The exact target triple this updater was compiled for, surfaced by `build.rs`
@@ -62,76 +65,34 @@ const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
 const DESCRIPTOR_VERSION: u8 = 1;
 const MAX_OWNER_BYTES: usize = 1024;
 
-/// The one-time, owner-restricted handoff descriptor the dashboard writes for the
-/// copied updater. It carries no secret: the machine app home the updater derives
-/// its product paths from, the installation-lock owner id, the optional prior-seat
-/// relaunch instruction, and — when the handoff drives a fresh update — the
-/// declarative [`ExecuteIntent`].
-///
-/// A descriptor WITHOUT an execute-intent is a pure recovery handoff (acquire the
-/// lock, retire the descriptor, recover any interrupted transaction). One WITH an
-/// intent additionally drives a fresh update. The intent CONTENT joins the
-/// descriptor now; WRITING the descriptor under the owner-restricted protected
-/// DACL is the S60 cutover, gated on the windows-private-file authority.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct UpdaterDescriptor {
-    /// Descriptor grammar version.
-    pub version: u8,
-    /// The machine app home the updater derives its product paths from.
-    pub app_home: PathBuf,
-    /// The installation-lock owner id the updater acquires under.
-    pub owner: String,
-    /// How to relaunch the prior seat after the run, when one should be relaunched.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub relaunch: Option<RelaunchSpec>,
-    /// The fresh-update execute-intent, when this handoff drives an update. Absent
-    /// for a pure recovery handoff.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub execute: Option<ExecuteIntent>,
-}
-
-impl UpdaterDescriptor {
-    fn validate(&self) -> Result<(), UpdaterError> {
-        if self.version != DESCRIPTOR_VERSION {
-            return Err(UpdaterError::Descriptor("unsupported descriptor version"));
-        }
-        if !self.app_home.is_absolute() {
-            return Err(UpdaterError::Descriptor(
-                "app home must be an absolute path",
-            ));
-        }
-        let owner = self.owner.trim();
-        if owner.is_empty()
-            || self.owner.len() > MAX_OWNER_BYTES
-            || self.owner.chars().any(char::is_control)
-        {
-            return Err(UpdaterError::Descriptor(
-                "owner must be non-empty, bounded, control-free text",
-            ));
-        }
-        if let Some(relaunch) = &self.relaunch {
-            relaunch.validate()?;
-        }
-        Ok(())
+/// Validate a handoff descriptor on READ (the updater side of the contract):
+/// bounded, absolute app home, non-empty control-free owner, and — when present —
+/// a non-empty relaunch workspace. The schema lives product-side; this read-time
+/// grammar check stays with the updater that consumes it.
+fn validate_descriptor(descriptor: &UpdaterDescriptor) -> Result<(), UpdaterError> {
+    if descriptor.version != DESCRIPTOR_VERSION {
+        return Err(UpdaterError::Descriptor("unsupported descriptor version"));
     }
-}
-
-/// How the updater relaunches the prior seat after completing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RelaunchSpec {
-    /// The workspace directory to relaunch the seat in.
-    pub workspace: PathBuf,
-}
-
-impl RelaunchSpec {
-    fn validate(&self) -> Result<(), UpdaterError> {
-        if self.workspace.as_os_str().is_empty() {
-            return Err(UpdaterError::Descriptor("relaunch workspace is empty"));
-        }
-        Ok(())
+    if !descriptor.app_home.is_absolute() {
+        return Err(UpdaterError::Descriptor(
+            "app home must be an absolute path",
+        ));
     }
+    let owner = descriptor.owner.trim();
+    if owner.is_empty()
+        || descriptor.owner.len() > MAX_OWNER_BYTES
+        || descriptor.owner.chars().any(char::is_control)
+    {
+        return Err(UpdaterError::Descriptor(
+            "owner must be non-empty, bounded, control-free text",
+        ));
+    }
+    if let Some(relaunch) = &descriptor.relaunch
+        && relaunch.workspace.as_os_str().is_empty()
+    {
+        return Err(UpdaterError::Descriptor("relaunch workspace is empty"));
+    }
+    Ok(())
 }
 
 /// What one updater run resolved.
@@ -197,153 +158,84 @@ pub struct ExecuteInputs {
     pub migration_plan: MigrationPlan,
 }
 
-/// One schema-bearing store, as a declarative descriptor fact.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct StoreIntent {
-    /// The stable store id.
-    pub id: String,
-    /// The store's app-home-relative path segments.
-    pub segments: Vec<String>,
-    /// The store's declared schema authority.
-    pub schema_authority: String,
-    /// The store's declared schema version.
-    pub schema_version: String,
-}
-
-/// The declarative fresh-update execute-intent the dashboard writes into the
-/// one-time descriptor. Every field is a serde-safe fact the dashboard observes
-/// on the CURRENT install at descriptor-write time; the runtime [`ExecuteInputs`]
-/// is assembled from it by [`ExecuteIntent::into_inputs`] at run time, resolving
-/// the two runtime bits: the updater's current time (the drain freshness clock)
-/// and the staged-bundle path (the migration capsule root). The staged-bundle
-/// path carries ZERO trust weight — a wrong path just fails TUF or capsule
-/// resolution, both typed refusals.
+/// Assemble the runtime [`ExecuteInputs`] plus the staged-bundle path from the
+/// product-side [`ExecuteIntent`] facts. Every product-side validation —
+/// generation grammar, deadline bounds, store segments, migration range and
+/// compatibility — is delegated to the owning constructor, so a malformed or
+/// stale intent is a TYPED refusal, never a silent build. The two runtime bits
+/// are resolved here: the updater's current time (the drain freshness clock) and
+/// the staged-bundle path (the migration capsule root).
 ///
-/// The descriptor may carry this content now; WRITING the descriptor with the
-/// owner-restricted protected DACL is the S60 cutover, gated on the
-/// windows-private-file authority.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExecuteIntent {
-    /// The staged release bundle directory (`metadata/` + `targets/`): the verify
-    /// target AND the migration capsule root.
-    pub staged_bundle: PathBuf,
-    /// The consistency-group generation to snapshot and restore.
-    pub consistency_generation: u64,
-    /// The final-name candidate generation to activate.
-    pub candidate_generation: String,
-    /// The retained prior generation a rollback re-selects, if any.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prior_generation: Option<String>,
-    /// The install/update channel whose activation authority applies.
-    pub channel: Channel,
-    /// The target release-set head this update lands.
-    pub target_head: String,
-    /// How recent a discovered heartbeat must be to count as fresh.
-    pub freshness_ms: i64,
-    /// The gateway API version range the installed release set supports.
-    pub supported_protocol: RangeBounds,
-    /// The packaged state-schema range the installed release set supports.
-    pub supported_state_schema: RangeBounds,
-    /// Drain-call I/O budget (milliseconds).
-    pub drain_call_ms: u64,
-    /// Post-shutdown process-exit budget (milliseconds).
-    pub stop_ms: u64,
-    /// Liveness poll interval (milliseconds).
-    pub poll_ms: u64,
-    /// The schema-bearing stores captured as one consistency group.
-    pub stores: Vec<StoreIntent>,
-    /// The prior-seat descriptor to include in the group, if one exists.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub prior_seat: Option<PriorSeatIdentity>,
-    /// The capsule-relative segments of the staged migration program.
-    pub migration_program: Vec<String>,
-    /// The staged migration arguments.
-    #[serde(default)]
-    pub migration_args: Vec<String>,
-    /// The captured-output byte cap for the migration invocation.
-    pub migration_output_cap: u64,
-    /// The wall-clock timeout for the migration invocation (milliseconds).
-    pub migration_wall_ms: u64,
-    /// The currently-installed schema head the dashboard observed. `None` means a
-    /// fresh install; a stale value fails closed as a typed incompatible range.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub installed_schema_head: Option<String>,
-    /// The candidate migration range base.
-    pub migration_base: String,
-    /// The candidate migration range head.
-    pub migration_head: String,
-}
-
-impl ExecuteIntent {
-    /// Assemble the runtime [`ExecuteInputs`] plus the staged-bundle path from the
-    /// declarative facts. Every product-side validation — generation grammar,
-    /// deadline bounds, store segments, migration range and compatibility — is
-    /// delegated to the owning constructor, so a malformed or stale intent is a
-    /// TYPED refusal, never a silent build.
-    pub fn into_inputs(self) -> Result<(ExecuteInputs, PathBuf), UpdaterError> {
-        let plan = UpdatePlan::new(
-            self.consistency_generation,
-            self.candidate_generation,
-            self.prior_generation,
-            self.channel,
-            self.target_head,
-        )?;
-        let drain_context = DrainContext {
-            now_ms: now_ms(),
-            freshness_ms: self.freshness_ms,
-            supported_protocol: self.supported_protocol,
-            supported_state_schema: self.supported_state_schema,
-        };
-        let deadlines = DrainDeadlines::new(
-            Duration::from_millis(self.drain_call_ms),
-            Duration::from_millis(self.stop_ms),
-            Duration::from_millis(self.poll_ms),
-        )?;
-        let stores = self
-            .stores
-            .into_iter()
-            .map(|store| {
-                SchemaBearingStore::new(
-                    store.id,
-                    store.segments,
-                    store.schema_authority,
-                    store.schema_version,
-                )
-            })
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
-        let group = ConsistencyGroupSpec::new(stores, self.prior_seat)
-            .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
-        let limits = MigrationLimits::new(
-            usize::try_from(self.migration_output_cap).unwrap_or(usize::MAX),
-            Duration::from_millis(self.migration_wall_ms),
-        );
-        let segments: Vec<&str> = self.migration_program.iter().map(String::as_str).collect();
-        let staged_migration = StagedMigration::from_capsule_relative(
-            &self.staged_bundle,
-            &segments,
-            self.migration_args.into_iter().map(OsString::from),
-            limits,
-        )
+/// This is a free function rather than a method because the [`ExecuteIntent`]
+/// schema is a foreign (product-side) type; the read/build orchestration is the
+/// updater's, over the shared contract.
+pub fn build_execute_inputs(
+    intent: ExecuteIntent,
+) -> Result<(ExecuteInputs, PathBuf), UpdaterError> {
+    let plan = UpdatePlan::new(
+        intent.consistency_generation,
+        intent.candidate_generation,
+        intent.prior_generation,
+        intent.channel,
+        intent.target_head,
+    )?;
+    let drain_context = DrainContext {
+        now_ms: now_ms(),
+        freshness_ms: intent.freshness_ms,
+        supported_protocol: intent.supported_protocol,
+        supported_state_schema: intent.supported_state_schema,
+    };
+    let deadlines = DrainDeadlines::new(
+        Duration::from_millis(intent.drain_call_ms),
+        Duration::from_millis(intent.stop_ms),
+        Duration::from_millis(intent.poll_ms),
+    )?;
+    let stores = intent
+        .stores
+        .into_iter()
+        .map(|store| {
+            SchemaBearingStore::new(
+                store.id,
+                store.segments,
+                store.schema_authority,
+                store.schema_version,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()
         .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
-        let range = MigrationRangeSpec::new(self.migration_base, self.migration_head)
-            .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
-        let migration_plan = plan_migration(self.installed_schema_head.as_deref(), &range)
-            .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
-        Ok((
-            ExecuteInputs {
-                plan,
-                drain_context,
-                deadlines,
-                group,
-                staged_migration,
-                migration_plan,
-            },
-            self.staged_bundle,
-        ))
-    }
+    let group = ConsistencyGroupSpec::new(stores, intent.prior_seat)
+        .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
+    let limits = MigrationLimits::new(
+        usize::try_from(intent.migration_output_cap).unwrap_or(usize::MAX),
+        Duration::from_millis(intent.migration_wall_ms),
+    );
+    let segments: Vec<&str> = intent
+        .migration_program
+        .iter()
+        .map(String::as_str)
+        .collect();
+    let staged_migration = StagedMigration::from_capsule_relative(
+        &intent.staged_bundle,
+        &segments,
+        intent.migration_args.into_iter().map(OsString::from),
+        limits,
+    )
+    .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
+    let range = MigrationRangeSpec::new(intent.migration_base, intent.migration_head)
+        .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
+    let migration_plan = plan_migration(intent.installed_schema_head.as_deref(), &range)
+        .map_err(|error| UpdaterError::Intent(redact(&error.to_string())))?;
+    Ok((
+        ExecuteInputs {
+            plan,
+            drain_context,
+            deadlines,
+            group,
+            staged_migration,
+            migration_plan,
+        },
+        intent.staged_bundle,
+    ))
 }
 
 /// Drive one fresh update to the activation boundary.
@@ -699,7 +591,7 @@ pub fn read_descriptor(descriptor_path: &Path) -> Result<UpdaterDescriptor, Upda
     let bytes = read_bounded_nofollow(descriptor_path, MAX_DESCRIPTOR_BYTES)?;
     let descriptor: UpdaterDescriptor = serde_json::from_slice(&bytes)
         .map_err(|_| UpdaterError::Descriptor("descriptor grammar is invalid"))?;
-    descriptor.validate()?;
+    validate_descriptor(&descriptor)?;
     Ok(descriptor)
 }
 
