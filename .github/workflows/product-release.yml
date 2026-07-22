@@ -125,8 +125,8 @@ jobs:
             --target "$target" --version "$version" \
             --commit "$(git rev-parse HEAD)" --cohort-id "release-${version}" \
             --generation-root "$gen_root" \
-            --dashboard "${PWD}/engine/target/${target}/release/vaultspec${suffix}" \
-            --updater "${PWD}/engine/target/${target}/release/vaultspec-updater${suffix}" \
+            --dashboard "${CARGO_TARGET_DIR}/${target}/release/vaultspec${suffix}" \
+            --updater "${CARGO_TARGET_DIR}/${target}/release/vaultspec-updater${suffix}" \
             --capsule-archive "${PWD}/capsule/capsule.zip" \
             --capsule-manifest "${PWD}/capsule/component-manifest.json" \
             --tree-evidence "${PWD}/capsule/tree.json" \
@@ -134,7 +134,7 @@ jobs:
             --sbom "${PWD}/packaging/sbom.cdx.json" \
             --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
             > build-spec.json
-          ./engine/target/release/product_build build-spec.json
+          "${CARGO_TARGET_DIR}/release/product_build" build-spec.json
           echo "GEN_ROOT=${gen_root}" >> "$GITHUB_ENV"
       - name: Archive + checksum
         shell: bash
@@ -243,7 +243,7 @@ jobs:
           # cohort digest — SHA-256 of the RFC 8785 JCS CohortDescriptor, produced
           # by the cohort-digest verb (serde_jcs, never hand-rolled in shell).
           cargo build --release -p vaultspec-product --bin cohort_digest --manifest-path engine/Cargo.toml
-          ./engine/target/release/cohort_digest \
+          "${CARGO_TARGET_DIR}/release/cohort_digest" \
             --lock packaging/a2a-component.lock.json \
             --member aarch64-apple-darwin=members/product-aarch64-apple-darwin/release-aarch64-apple-darwin.json \
             --member x86_64-apple-darwin=members/product-x86_64-apple-darwin/release-x86_64-apple-darwin.json \

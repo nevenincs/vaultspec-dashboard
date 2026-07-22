@@ -77,7 +77,7 @@ jobs:
           uv tool install vaultspec-core
           echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Unit tests (vitest)
-        run: npm --prefix frontend run test
+        run: VAULTSPEC_TEST_ENGINE_BIN="$CARGO_TARGET_DIR/debug/vaultspec" npm --prefix frontend run test
       - name: Unused code (knip — advisory)
         run: npx --yes knip@5 --directory frontend
         continue-on-error: true
@@ -162,7 +162,7 @@ jobs:
 
           # Start serve on an OS-assigned port; service.json carries the real
           # port + token (same pattern as conformance.rs start_serve).
-          "$GITHUB_WORKSPACE/engine/target/debug/vaultspec" serve --port 0 &
+          "$CARGO_TARGET_DIR/debug/vaultspec" serve --port 0 &
           SERVE_PID=$!
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
 

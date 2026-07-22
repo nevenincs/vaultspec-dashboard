@@ -30,13 +30,26 @@ jobs:
       # floating stable: the action exports RUSTUP_TOOLCHAIN, which overrides
       # the file, so the pin must be read and passed explicitly
       # (dashboard-packaging P03 reproducibility fix).
-      - name: Read pinned toolchain
-        id: toolchain
+      # Read the pinned channel per-OS. The self-hosted Windows Git-Bash mangles
+      # the runner's temp script path (drops separators → "No such file or
+      # directory"), so the Windows leg reads the toml through pwsh instead of
+      # bash; the Linux leg keeps the grep/cut form.
+      - name: Read pinned toolchain (unix)
+        id: toolchain-nix
+        if: runner.os != 'Windows'
         shell: bash
         run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - name: Read pinned toolchain (windows)
+        id: toolchain-win
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $line = Get-Content rust-toolchain.toml | Where-Object { $_ -match '^channel' } | Select-Object -First 1
+          $channel = ($line -split '"')[1]
+          "channel=$channel" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ steps.toolchain.outputs.channel }}
+          toolchain: ${{ steps.toolchain-nix.outputs.channel || steps.toolchain-win.outputs.channel }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
