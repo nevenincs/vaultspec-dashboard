@@ -559,3 +559,118 @@ fn legacy_receipt_json_never_selects_a_generation() {
     let generation = product.create_unpublished("release-a").unwrap();
     assert_eq!(generation.generation(), "release-a");
 }
+
+/// Coexistence proof for the root-purpose directory access constant.
+///
+/// A retained distribution scope and a bound [`LockedProduct`] could not both
+/// live on one product root on Windows, in either order. The cause was entirely
+/// ours: `bind` requested `DELETE` on the root — a right it never exercises,
+/// since the product authority deletes GENERATIONS beneath the root and never
+/// the root itself — and `cap-std` deliberately denies delete sharing on every
+/// directory it opens, so the two opens excluded each other. Narrowing our own
+/// request to `DIRECTORY_ROOT_ACCESS` is the whole fix.
+///
+/// The simultaneous liveness is the FEATURE, not an incidental convenience: it
+/// is what keeps "the release I verified is installed into the root I verified"
+/// a retained capability rather than a copied observation across a gap in which
+/// the root could be substituted. So this proves BOTH orders — the defect was
+/// order-symmetric and the fix must be shown symmetric — and then asserts,
+/// rather than argues, that the exclusivity being touched still holds.
+mod distribution_scope_coexistence {
+    use super::*;
+
+    use vaultspec_distribution_authority::{DistributionTarget, VerificationRequest};
+
+    const TARGET: DistributionTarget = DistributionTarget::X86_64PcWindowsMsvc;
+
+    /// A live retained scope over `root`, exactly as production obtains one.
+    ///
+    /// The returned request OWNS the `ProductRootScope`, so the retained root
+    /// handle stays open for as long as the value is held — which is what makes
+    /// holding it across a `bind` a real coexistence test rather than a
+    /// sequence of two independent opens.
+    fn retained_scope(root: &Path) -> VerificationRequest {
+        VerificationRequest::for_product_root(root.join("bundle"), root, TARGET)
+            .expect("the distribution authority retains a real product root")
+    }
+
+    /// Assert the root cannot be substituted right now.
+    ///
+    /// Every coexistence case ends here, and that is deliberate: a test that
+    /// only proved two constructors both returned `Ok` would still pass if one
+    /// handle had been silently closed. The substitution denial is observable
+    /// evidence that a retained handle is genuinely LIVE at this instant, so it
+    /// doubles as the liveness witness the two order cases need.
+    fn assert_not_substitutable(root: &Path, when: &str) {
+        let decoy = root
+            .parent()
+            .expect("the product root has a parent")
+            .join("substituted-root");
+        assert!(
+            std::fs::rename(root, &decoy).is_err(),
+            "a third party renamed the product root {when}"
+        );
+        assert!(!decoy.exists(), "the substitution must leave no trace");
+    }
+
+    #[test]
+    fn verify_then_bind_coexist_on_one_root() {
+        let fixture = Fixture::new("coexistence-verify-then-bind");
+        let scope = retained_scope(fixture.paths.root());
+        let product = LockedProduct::bind(fixture.paths.clone(), &fixture.guard)
+            .expect("a product binds beneath an already-retained distribution scope");
+
+        assert_not_substitutable(fixture.paths.root(), "with a scope retained before binding");
+        drop(product);
+        drop(scope);
+    }
+
+    #[test]
+    fn bind_then_verify_coexist_on_one_root() {
+        let fixture = Fixture::new("coexistence-bind-then-verify");
+        let product =
+            LockedProduct::bind(fixture.paths.clone(), &fixture.guard).expect("locked product");
+        let scope = retained_scope(fixture.paths.root());
+
+        assert_not_substitutable(fixture.paths.root(), "with a scope retained after binding");
+        drop(product);
+        drop(scope);
+    }
+
+    /// The guarantee the narrowing touches, asserted rather than argued.
+    ///
+    /// Dropping `DELETE` from our own request loosens nothing against third
+    /// parties: both handles still deny delete sharing to everyone else, so
+    /// while either is live no one can delete or rename the root out from under
+    /// the other. Least privilege on our side does not weaken exclusivity
+    /// against others — it only stops us from being the one who breaks it.
+    #[test]
+    fn no_third_party_can_substitute_the_root_while_both_are_live() {
+        let fixture = Fixture::new("coexistence-anti-substitution");
+        let root = fixture.paths.root().to_path_buf();
+        let scope = retained_scope(&root);
+        let product =
+            LockedProduct::bind(fixture.paths.clone(), &fixture.guard).expect("locked product");
+
+        // A rename IS the substitution: swap the verified root aside and put a
+        // different directory at the name. It must be refused outright.
+        assert_not_substitutable(
+            &root,
+            "while a verified scope and a bound product were both live",
+        );
+
+        // On Windows the sharing denial is the mechanism, so assert it directly:
+        // an opener that REQUESTS `DELETE` — which is precisely what `bind` used
+        // to do, and what a deleter must do — is still refused. This is the
+        // exclusivity the narrowing is accused of weakening, shown intact.
+        #[cfg(windows)]
+        assert!(
+            vaultspec_windows_authority::AuthorityDirectory::open_existing(&root).is_err(),
+            "a DELETE-requesting open of the root succeeded while a verified scope \
+             and a bound product were live; delete sharing is no longer denied"
+        );
+
+        drop(product);
+        drop(scope);
+    }
+}

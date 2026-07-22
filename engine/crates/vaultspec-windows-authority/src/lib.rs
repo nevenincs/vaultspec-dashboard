@@ -128,6 +128,16 @@ impl AuthorityDirectory {
         Self::from_file(os::open_existing_directory(path)?)
     }
 
+    /// Bootstrap authority over an install ROOT.
+    ///
+    /// Identical to [`open_existing`](Self::open_existing) except that it does
+    /// not request `DELETE` - a root is never deleted through this handle, and
+    /// requesting a right we do not use would make the root unopenable while a
+    /// capability handle is live on it.
+    pub fn open_existing_root(path: &Path) -> io::Result<Self> {
+        Self::from_file(os::open_existing_root_directory(path)?)
+    }
+
     /// Open one existing direct child directory relative to this retained
     /// authority.
     pub fn open_child_directory(&self, name: &OsStr) -> io::Result<Self> {

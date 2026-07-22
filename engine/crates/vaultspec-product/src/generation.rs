@@ -1260,7 +1260,9 @@ struct DirectoryAuthority {
 #[cfg(windows)]
 impl DirectoryAuthority {
     fn open_root(path: &Path) -> std::io::Result<Self> {
-        Self::from_directory(vaultspec_windows_authority::AuthorityDirectory::open_existing(path)?)
+        Self::from_directory(
+            vaultspec_windows_authority::AuthorityDirectory::open_existing_root(path)?,
+        )
     }
 
     fn open_child(&self, name: &OsStr) -> std::io::Result<Self> {

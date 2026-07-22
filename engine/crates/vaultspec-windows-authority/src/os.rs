@@ -51,6 +51,30 @@ const DIRECTORY_ACCESS: u32 = DELETE
     | FILE_TRAVERSE
     | FILE_READ_ATTRIBUTES
     | SYNCHRONIZE;
+/// Root-purpose directory access: [`DIRECTORY_ACCESS`] WITHOUT `DELETE`.
+///
+/// The product authority deletes GENERATIONS beneath the install root; it never
+/// deletes the root itself, so `DELETE` here was a right the handle never used.
+/// On Windows that is not free. Sharing is a two-way check, and `cap-std` denies
+/// delete sharing on every directory it opens - deliberately, to stop a
+/// directory being deleted or renamed under its sandboxed lookups. So a `DELETE`
+/// request on the root is refused whenever a capability handle is live on the
+/// same directory, which made a verified distribution scope and a bound product
+/// mutually exclusive on one root.
+///
+/// Narrowing our own request is what lets them coexist, and that overlap is the
+/// point: it keeps "the release I verified is installed into the root I
+/// verified" a RETAINED CAPABILITY rather than a copied observation across a
+/// gap. This loosens nothing against third parties - the handle still denies
+/// write and delete sharing to everyone else. Least privilege on our side does
+/// not weaken exclusivity against others; it only stops us being the one who
+/// breaks it. Same purpose-split reasoning as [`DIRECTORY_HARDENING_ACCESS`]
+/// below, which the root open simply never received.
+const DIRECTORY_ROOT_ACCESS: u32 = FILE_LIST_DIRECTORY
+    | FILE_ADD_SUBDIRECTORY
+    | FILE_TRAVERSE
+    | FILE_READ_ATTRIBUTES
+    | SYNCHRONIZE;
 /// Directory-hardening access (windows-private-file-authority D1): only the
 /// traversal and identity-observation rights plus READ_CONTROL and WRITE_DAC.
 /// Unlike [`DIRECTORY_ACCESS`], this deliberately carries neither DELETE nor
@@ -195,6 +219,18 @@ pub(super) fn flush_directory_metadata(directory: &File) -> io::Result<()> {
         ));
     }
     reopened.sync_all()
+}
+
+/// Root variant of [`open_existing_directory`]: identical except that it does
+/// not request `DELETE`, so it can coexist with a capability handle on the same
+/// directory. Sharing is unchanged - still `FILE_SHARE_READ` only.
+pub(super) fn open_existing_root_directory(path: &Path) -> io::Result<File> {
+    let mut options = OpenOptions::new();
+    options
+        .access_mode(DIRECTORY_ROOT_ACCESS)
+        .share_mode(FILE_SHARE_READ)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS);
+    options.open(path)
 }
 
 /// Directory-hardening variant of [`open_existing_directory`]: opens the final
