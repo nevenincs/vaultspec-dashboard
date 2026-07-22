@@ -429,6 +429,135 @@ async fn a_foreign_target_cohort_is_refused_at_the_install_boundary_not_as_targe
 }
 
 // ---------------------------------------------------------------------------
+// Cross-process install-lock contention, against a REAL second OS process
+// ---------------------------------------------------------------------------
+
+/// A hidden helper this module re-invokes as a real child process.
+///
+/// It holds the install lock at `D8_LOCK_PATH` for real, announces itself by
+/// writing its pid to `D8_LOCK_READY`, and waits for `D8_LOCK_RELEASE` to appear
+/// before dropping the guard. Under a normal `cargo test` run no environment is
+/// set and it is a no-op, so it costs nothing.
+///
+/// Re-invoking the test binary is what makes the contention proof REAL. The
+/// in-process case is already covered elsewhere, and it cannot distinguish a
+/// lock that excludes another OS process from one that merely excludes another
+/// handle in the same process — which is the only distinction that matters for
+/// a lock whose entire job is to serialize separate installer invocations.
+#[test]
+fn d8_lock_holder_process() {
+    let Ok(lock_path) = std::env::var("D8_LOCK_PATH") else {
+        return;
+    };
+    let lock = crate::locking::InstallLock::new(&lock_path);
+    let guard = lock
+        .acquire(crate::locking::Actor::Installer, "d8-foreign-holder")
+        .expect("the child acquires the install lock")
+        .expect("the lock is free when the child starts");
+
+    let ready = std::env::var("D8_LOCK_READY").expect("the child announces readiness");
+    std::fs::write(&ready, std::process::id().to_string()).expect("announce the holding pid");
+
+    let release = std::env::var("D8_LOCK_RELEASE").expect("the child is told when to release");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+    while std::time::Instant::now() < deadline {
+        if std::path::Path::new(&release).exists() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+    drop(guard);
+}
+
+/// Block until `path` exists, or give up at `budget`.
+fn wait_for_file(path: &Path, budget: std::time::Duration) -> bool {
+    let deadline = std::time::Instant::now() + budget;
+    while std::time::Instant::now() < deadline {
+        if path.exists() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    false
+}
+
+/// The install lock excludes a genuinely separate OS process, and the refusal
+/// is BOUNDED — it reports rather than queueing.
+///
+/// Boundedness is asserted, not assumed. The contract is a non-blocking try, so
+/// an installer that finds the lock held must fail loudly instead of waiting
+/// behind an update of unknown duration. A lock that queued would still "pass" a
+/// test that only checked the eventual outcome, so this times the attempt while
+/// the child is definitely still holding.
+#[test]
+fn the_install_lock_excludes_a_real_second_process_without_queueing() {
+    let home = tempfile::tempdir().expect("temporary product home");
+    let paths = crate::paths::ProductPaths::under_app_home(home.path());
+    paths.ensure().expect("product directories");
+    let lock_path = paths.install_lock_path();
+    let ready = home.path().join("holder.ready");
+    let release = home.path().join("holder.release");
+
+    let mut child = std::process::Command::new(
+        std::env::current_exe().expect("the test binary re-invokes itself"),
+    )
+    .args(["d8_lock_holder_process", "--nocapture", "--test-threads=1"])
+    .env("D8_LOCK_PATH", &lock_path)
+    .env("D8_LOCK_READY", &ready)
+    .env("D8_LOCK_RELEASE", &release)
+    .stdout(std::process::Stdio::null())
+    .stderr(std::process::Stdio::null())
+    .spawn()
+    .expect("spawn the real second process");
+
+    assert!(
+        wait_for_file(&ready, std::time::Duration::from_secs(30)),
+        "the child never announced that it holds the lock"
+    );
+    let holder_pid: u32 = std::fs::read_to_string(&ready)
+        .expect("read the holding pid")
+        .trim()
+        .parse()
+        .expect("the child wrote its pid");
+    assert_ne!(
+        holder_pid,
+        std::process::id(),
+        "the lock must be held by a genuinely different process"
+    );
+
+    // THE REFUSAL, timed. The child is still alive and still holding.
+    let started = std::time::Instant::now();
+    let outcome = crate::locking::InstallLock::new(&lock_path)
+        .acquire(crate::locking::Actor::Installer, "d8-contender")
+        .expect("a contended acquire is a refusal, not an I/O failure");
+    let elapsed = started.elapsed();
+    match outcome {
+        Err(busy) => assert_eq!(
+            busy.owner.as_deref(),
+            Some("d8-foreign-holder"),
+            "the refusal must name the foreign holder"
+        ),
+        Ok(_) => panic!("a lock held by a live foreign process must not be acquirable"),
+    }
+    assert!(
+        elapsed < std::time::Duration::from_secs(5),
+        "a contended acquire must report promptly rather than queue; took {elapsed:?}"
+    );
+
+    // Release, reap, and prove the exclusion was the LOCK rather than anything
+    // permanent about the path.
+    std::fs::write(&release, b"go").expect("tell the child to release");
+    let status = child.wait().expect("reap the child");
+    assert!(status.success(), "the holder exited badly: {status:?}");
+    drop(
+        crate::locking::InstallLock::new(&lock_path)
+            .acquire(crate::locking::Actor::Installer, "d8-successor")
+            .expect("acquire after release")
+            .expect("the lock is free once the holder exits"),
+    );
+}
+
+// ---------------------------------------------------------------------------
 // The serialization constraint, made executable
 // ---------------------------------------------------------------------------
 
