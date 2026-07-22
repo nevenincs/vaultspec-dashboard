@@ -312,7 +312,7 @@ fn require_windows_restricted_acl(_path: &Path) -> Result<()> {
 
 #[cfg(windows)]
 fn require_windows_restricted_acl(path: &Path) -> Result<()> {
-    use vaultspec_windows_authority::{AuthorityFile, DaclAceKind, ReadOnlyAuthorityDirectory};
+    use vaultspec_windows_authority::{AuthorityFile, ReadOnlyAuthorityDirectory, private_policy};
     use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
 
     static CURRENT_USER_SID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
@@ -340,20 +340,7 @@ fn require_windows_restricted_acl(path: &Path) -> Result<()> {
                 .dacl_snapshot()
                 .ok()?
         };
-        let allowed = [user_sid, "S-1-5-18", "S-1-5-32-544"];
-        let mut user_allowed = false;
-        for entry in snapshot.entries() {
-            match entry.entry_type() {
-                DaclAceKind::AccessAllowed => {
-                    if !allowed.contains(&entry.sid()) {
-                        return None;
-                    }
-                    user_allowed |= entry.sid() == user_sid;
-                }
-                DaclAceKind::AccessDenied => {}
-            }
-        }
-        user_allowed.then_some(())
+        private_policy::validate_no_outside_principal(&snapshot, user_sid).ok()
     })()
     .is_some();
     if restricted {

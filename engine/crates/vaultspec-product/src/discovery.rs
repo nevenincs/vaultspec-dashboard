@@ -245,7 +245,7 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
 
     #[cfg(windows)]
     {
-        use vaultspec_windows_authority::{AuthorityFile, DaclAceKind};
+        use vaultspec_windows_authority::{AuthorityFile, private_policy};
         use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
 
         let Some(user) = current_user() else {
@@ -266,20 +266,7 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
         let Ok(snapshot) = reader.dacl_snapshot() else {
             return false;
         };
-        let allowed = [user_sid.as_str(), "S-1-5-18", "S-1-5-32-544"];
-        let mut user_allowed = false;
-        for entry in snapshot.entries() {
-            match entry.entry_type() {
-                DaclAceKind::AccessAllowed => {
-                    if !allowed.contains(&entry.sid()) {
-                        return false;
-                    }
-                    user_allowed |= entry.sid() == user_sid.as_str();
-                }
-                DaclAceKind::AccessDenied => {}
-            }
-        }
-        return user_allowed;
+        return private_policy::validate_no_outside_principal(&snapshot, &user_sid).is_ok();
     }
 
     #[allow(unreachable_code)]

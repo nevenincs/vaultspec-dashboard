@@ -3,13 +3,26 @@
 //!
 //! This module contains NO unsafe code and no native call. It consumes ONE
 //! [`crate::DaclSnapshot`] — the single-descriptor observation the D9 `os`
-//! primitive produces — and decides every D4 fact from it: `SE_DACL_PROTECTED`,
-//! zero inherited entries, exactly the three explicit allow entries for the
-//! current user, LocalSystem, and built-in Administrators, exact masks and
-//! inheritance flags, and duplicate rejection. Anything else fails closed as a
-//! typed [`PrivatePolicyViolation`]. Because both the protected bit and the
-//! entry list come from one snapshot, the "protected exact list" claim can never
-//! straddle two descriptor states.
+//! primitive produces — and decides every fact from it. Because both the
+//! protected bit and the entry list come from one snapshot, a claim about them
+//! can never straddle two descriptor states.
+//!
+//! Two policies live here, and they are NOT interchangeable:
+//!
+//! - The STRICT private-authority policy ([`validate_private_file`],
+//!   [`validate_private_directory`]) decides every D4 fact: `SE_DACL_PROTECTED`,
+//!   zero inherited entries, exactly the three explicit allow entries for the
+//!   current user, LocalSystem, and built-in Administrators, exact masks and
+//!   inheritance flags, and duplicate rejection. It applies to objects this
+//!   authority itself created to that exact shape.
+//! - The LOOSER no-outside-principal policy
+//!   ([`validate_no_outside_principal`]) decides only that no principal outside
+//!   those three is granted anything. It applies to objects that merely must not
+//!   leak authority — an installed product object, a discovered handoff
+//!   descriptor — which this authority did not create and cannot require to be
+//!   protected.
+//!
+//! Anything else fails closed as a typed [`PrivatePolicyViolation`].
 
 use crate::{DaclAceKind, DaclSnapshot};
 
@@ -80,6 +93,52 @@ pub fn validate_private_directory(
     current_user_sid: &str,
 ) -> Result<(), PrivatePolicyViolation> {
     validate(snapshot, current_user_sid, DIRECTORY_EXPLICIT_FLAGS)
+}
+
+/// Validate that `snapshot` grants access to NO principal outside the current
+/// user, LocalSystem, and built-in Administrators, and that the current user is
+/// itself granted something.
+///
+/// This is DELIBERATELY weaker than [`validate_private_file`] /
+/// [`validate_private_directory`], and the difference is load-bearing: it does
+/// not require `SE_DACL_PROTECTED`, does not fix the entry count, and pins
+/// neither masks nor inheritance flags. Its consumers observe objects they did
+/// not create — an installed product object, a discovered handoff descriptor, a
+/// generation directory — which legitimately carry inherited entries and extra
+/// grants to the SAME three principals. Substituting the strict validator at
+/// those call sites would reject conforming objects; substituting this one where
+/// the strict policy is required would accept an unprotected descriptor.
+///
+/// Deny entries are ignored: a deny ACE only ever subtracts access, so it can
+/// never delegate authority to an outside principal.
+///
+/// `current_user_sid` is caller-supplied, on the same contract as the strict
+/// validators above.
+pub fn validate_no_outside_principal(
+    snapshot: &DaclSnapshot,
+    current_user_sid: &str,
+) -> Result<(), PrivatePolicyViolation> {
+    let mut current_user_granted = false;
+    for entry in snapshot.entries() {
+        match entry.entry_type() {
+            DaclAceKind::AccessAllowed => {
+                let sid = entry.sid();
+                if sid != current_user_sid && sid != LOCAL_SYSTEM_SID && sid != ADMINISTRATORS_SID {
+                    return Err(PrivatePolicyViolation::new(format!(
+                        "DACL grants access to outside principal {sid}"
+                    )));
+                }
+                current_user_granted |= sid == current_user_sid;
+            }
+            DaclAceKind::AccessDenied => {}
+        }
+    }
+    if !current_user_granted {
+        return Err(PrivatePolicyViolation::new(
+            "DACL grants the current user no access",
+        ));
+    }
+    Ok(())
 }
 
 fn validate(

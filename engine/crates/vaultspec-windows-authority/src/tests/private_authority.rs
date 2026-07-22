@@ -709,3 +709,118 @@ fn directory_flush_requires_the_append_data_right() {
         .sync_all()
         .expect("flushing a directory handle carrying append-data access must succeed");
 }
+
+// ---------------------------------------------------------------------------
+// The LOOSER no-outside-principal policy. These are pure snapshot decisions, so
+// they are proven against synthetic descriptors rather than real NTFS: the point
+// under test is exactly which shapes the weaker policy accepts that the strict
+// one rejects, and several of those shapes cannot be produced by the private
+// authority itself.
+// ---------------------------------------------------------------------------
+
+fn allow(sid: &str, inherited: bool) -> DaclEntry {
+    DaclEntry::new(
+        DaclAceKind::AccessAllowed,
+        0x00,
+        inherited,
+        FILE_ALL_ACCESS,
+        sid.to_owned(),
+    )
+}
+
+#[test]
+fn no_outside_principal_accepts_an_unprotected_inherited_descriptor() {
+    let user = "S-1-5-21-1-2-3-1001";
+    // Unprotected, every entry inherited, and a duplicate grant — the strict
+    // policy rejects all three, and this one must not, because its consumers
+    // observe objects they did not create.
+    let snapshot = DaclSnapshot::new(
+        false,
+        vec![
+            allow(user, true),
+            allow(SYSTEM_SID, true),
+            allow(ADMINISTRATORS_SID, true),
+            allow(ADMINISTRATORS_SID, true),
+        ],
+    );
+    private_policy::validate_no_outside_principal(&snapshot, user).unwrap();
+    assert!(
+        private_policy::validate_private_file(&snapshot, user).is_err(),
+        "the strict policy must still reject what the looser one admits"
+    );
+}
+
+#[test]
+fn no_outside_principal_rejects_a_grant_to_a_foreign_principal() {
+    let user = "S-1-5-21-1-2-3-1001";
+    let snapshot = DaclSnapshot::new(
+        true,
+        vec![
+            allow(user, false),
+            allow(SYSTEM_SID, false),
+            allow(ADMINISTRATORS_SID, false),
+            allow(BUILTIN_USERS_SID, false),
+        ],
+    );
+    let violation = private_policy::validate_no_outside_principal(&snapshot, user).unwrap_err();
+    assert!(
+        violation.detail().contains(BUILTIN_USERS_SID),
+        "the violation must name the outside principal, got {}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn no_outside_principal_ignores_a_deny_entry_for_a_foreign_principal() {
+    let user = "S-1-5-21-1-2-3-1001";
+    // A deny ACE only subtracts access, so a foreign DENY delegates nothing and
+    // must not be read as an outside grant.
+    let snapshot = DaclSnapshot::new(
+        false,
+        vec![
+            DaclEntry::new(
+                DaclAceKind::AccessDenied,
+                0x00,
+                false,
+                FILE_ALL_ACCESS,
+                BUILTIN_USERS_SID.to_owned(),
+            ),
+            allow(user, false),
+        ],
+    );
+    private_policy::validate_no_outside_principal(&snapshot, user).unwrap();
+}
+
+#[test]
+fn no_outside_principal_rejects_a_descriptor_granting_the_current_user_nothing() {
+    let user = "S-1-5-21-1-2-3-1001";
+    // No outside principal appears, but the current user is absent: the object
+    // is not the caller's, so this fails closed rather than vacuously passing.
+    let snapshot = DaclSnapshot::new(
+        false,
+        vec![allow(SYSTEM_SID, false), allow(ADMINISTRATORS_SID, false)],
+    );
+    let violation = private_policy::validate_no_outside_principal(&snapshot, user).unwrap_err();
+    assert!(
+        violation.detail().contains("no access"),
+        "unexpected violation detail: {}",
+        violation.detail()
+    );
+}
+
+#[test]
+fn no_outside_principal_accepts_the_exact_strict_private_file_descriptor() {
+    let user = "S-1-5-21-1-2-3-1001";
+    // Every descriptor the strict policy admits must also satisfy the weaker one
+    // — the two policies are ordered, not merely different.
+    let snapshot = DaclSnapshot::new(
+        true,
+        vec![
+            allow(user, false),
+            allow(SYSTEM_SID, false),
+            allow(ADMINISTRATORS_SID, false),
+        ],
+    );
+    private_policy::validate_private_file(&snapshot, user).unwrap();
+    private_policy::validate_no_outside_principal(&snapshot, user).unwrap();
+}
