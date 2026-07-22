@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#dashboard-packaging'
 date: '2026-07-04'
-modified: '2026-07-07'
+modified: '2026-07-21'
 related:
   - '[[2026-07-04-dashboard-packaging-research]]'
   - '[[2026-06-12-dashboard-foundation-adr]]'

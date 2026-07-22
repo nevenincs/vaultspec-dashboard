@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#distribution-channels'
 date: '2026-07-08'
-modified: '2026-07-08'
+modified: '2026-07-21'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-04-dashboard-packaging-research]]"

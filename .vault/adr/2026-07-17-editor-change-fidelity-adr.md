@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#editor-change-fidelity'
 date: '2026-07-17'
-modified: '2026-07-18'
+modified: '2026-07-21'
 related:
   - '[[2026-07-12-authoring-surface-research]]'
   - '[[2026-07-16-agentic-authoring-ux-research]]'

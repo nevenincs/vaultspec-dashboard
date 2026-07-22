@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-distribution-trust'
 date: '2026-07-20'
-modified: '2026-07-20'
+modified: '2026-07-21'
 related:
   - "[[2026-07-20-a2a-distribution-trust-research]]"
   - "[[2026-07-18-a2a-product-provisioning-adr]]"
