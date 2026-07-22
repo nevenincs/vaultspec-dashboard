@@ -334,7 +334,31 @@ async fn the_unmutated_harness_installs_and_settles() {
 // TUF refusals
 // ---------------------------------------------------------------------------
 
-/// Expired role metadata is refused, and the product is untouched.
+/// A DISTRIBUTION-link refusal leaves ZERO product-side residue.
+///
+/// The representative case for that whole crossing. Expired metadata is the
+/// vehicle, but the vehicle is not the point — the distribution authority owns
+/// that refusal and proves it at its own entrypoint. What it cannot see, and
+/// therefore cannot assert, is that the product stayed pristine: no credential
+/// bootstrapped, no descriptor armed, no journal slot written, because the
+/// chain never reached the transaction at all.
+///
+/// ONE CASE, DELIBERATELY. Four cases once stood here, each driving a different
+/// distribution refusal into the identical residue assertion. They proved one
+/// proposition four times while re-proving four refusals their owning layer
+/// already owns, which is the duplication this module exists to avoid. The
+/// complement that genuinely differs — verification SUCCEEDING and the product
+/// refusing — is
+/// `a_foreign_target_cohort_is_refused_at_the_install_boundary_not_as_target_mismatch`.
+///
+/// ONE FINDING WORTH KEEPING from the folded cases, because the plausible guess
+/// is wrong: requesting a target the bundle does not carry is NOT refused by the
+/// bounded layout inspection. A published bundle carries the cohort plus the
+/// selected member's archive, which is exactly the two entries that inspection
+/// admits, so the layout is VALID. The refusal arrives one step later, as a TUF
+/// transport failure, when the verifier fetches the requested target and finds
+/// no file. An assertion written against the layout variant passes for a reason
+/// that is not the stated one.
 #[tokio::test(flavor = "current_thread")]
 async fn expired_metadata_refuses_and_writes_no_receipt() {
     let chain = Chain::new().await;
@@ -352,102 +376,6 @@ async fn expired_metadata_refuses_and_writes_no_receipt() {
     );
     chain.assert_no_receipt("after refusing expired metadata");
     chain.assert_no_product_residue("after refusing expired metadata");
-}
-
-/// A version rollback is refused BY THE PRODUCT ROOT's own persisted datastore.
-///
-/// The control is inside the test and is load-bearing: the newer release must
-/// verify FIRST, because that success is what persists the version the older
-/// release then fails to beat. Without it this would assert only that some
-/// repository failed.
-#[tokio::test(flavor = "current_thread")]
-async fn version_rollback_against_the_persisted_datastore_refuses_and_writes_no_receipt() {
-    let chain = Chain::new().await;
-    let identity = chain.identity();
-    let newer = chain.publish(2, &format!("{identity}-newer")).await;
-    let older = chain.publish(1, &format!("{identity}-older")).await;
-
-    // CONTROL: the newer release verifies against a fresh product root, which is
-    // what writes version 2 into the persisted datastore.
-    let verified = chain
-        .verify(&newer, TARGET)
-        .await
-        .expect("the newer release verifies against a fresh product root");
-    // The retained release holds the product's verification lock for its whole
-    // lifetime, so the rollback attempt must come after it is released — a
-    // `VerificationInProgress` refusal would prove nothing about rollback.
-    drop(verified);
-
-    assert_verification_refused(
-        chain.verify(&older, TARGET).await,
-        "a metadata rollback to be refused against the persisted datastore",
-        |error| matches!(error, VerificationError::Tuf(_)),
-    );
-    chain.assert_no_receipt("after refusing a version rollback");
-    chain.assert_no_product_residue("after refusing a version rollback");
-}
-
-/// Substituted archive bytes are refused, and the product is untouched.
-#[tokio::test(flavor = "current_thread")]
-async fn target_substitution_refuses_and_writes_no_receipt() {
-    let chain = Chain::new().await;
-    let identity = chain.identity();
-    let bundle = chain.publish(1, &identity).await;
-
-    // Replace the selected member's archive with different bytes. TUF binds
-    // length and digest, so the substitution is caught even though the file is
-    // in the right place under the right name.
-    vaultspec_release_fixtures::substitute_published_archive(
-        &bundle,
-        TARGET,
-        b"substituted archive bytes",
-    );
-
-    assert_verification_refused(
-        chain.verify(&bundle, TARGET).await,
-        "a substituted selected archive to be refused",
-        |error| matches!(error, VerificationError::Tuf(_)),
-    );
-    chain.assert_no_receipt("after refusing a substituted archive");
-    chain.assert_no_product_residue("after refusing a substituted archive");
-}
-
-/// Asking for a target the bundle does not carry is refused by the DISTRIBUTION
-/// layer, before the install boundary ever sees a target.
-///
-/// The crossing claim is the point: a refusal at the FIRST link must leave zero
-/// product-side residue, because the chain never reached the transaction. No
-/// credential, no armed descriptor, no journal slot. The distribution authority
-/// owns the refusal itself and proves it at its own entrypoint; what it cannot
-/// see, and therefore cannot assert, is that the product stayed pristine.
-///
-/// It also records WHY the manifest layer's own `manifest_rejects_target_mismatch`
-/// is not reachable from here. That is expected rather than suspicious — a
-/// refusal belongs to the layer that owns it — but it is worth stating so the
-/// next reader does not go looking for a chain expression of it.
-///
-/// The mechanism is worth stating exactly, because the plausible guess is wrong.
-/// It is NOT the bounded layout inspection: a published bundle carries the
-/// cohort plus the selected member's archive, which is exactly the two entries
-/// that inspection admits, so the layout is VALID. The refusal comes one step
-/// later, when the verifier tries to fetch the requested target and finds no
-/// such file — a TUF transport failure. Either way the product is never
-/// consulted, but only one of those two accounts is true.
-#[tokio::test(flavor = "current_thread")]
-async fn a_target_the_bundle_does_not_carry_is_refused_by_the_distribution_layer() {
-    let chain = Chain::new().await;
-    let identity = chain.identity();
-    let bundle = chain.publish(1, &identity).await;
-
-    assert_verification_refused(
-        chain
-            .verify(&bundle, DistributionTarget::Aarch64AppleDarwin)
-            .await,
-        "a request for a target the bundle does not carry to be refused at the distribution layer",
-        |error| matches!(error, VerificationError::Tuf(_)),
-    );
-    chain.assert_no_receipt("after refusing an uncarried target");
-    chain.assert_no_product_residue("after refusing an uncarried target");
 }
 
 /// A bundle published FOR another target, carrying that target's archive, is
@@ -1245,31 +1173,4 @@ async fn a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_arm
         "a pre-commit refusal must retain the authority that can retire what it armed"
     );
     assert!(failure.into_retained().is_some());
-}
-
-/// A cohort whose members disagree with the published archives is refused as an
-/// invalid cohort, before any product state is touched.
-#[tokio::test(flavor = "current_thread")]
-async fn cohort_member_mismatch_refuses_and_writes_no_receipt() {
-    let chain = Chain::new().await;
-    let identity = chain.identity();
-    let bundle = chain.publish(1, &identity).await;
-
-    // Re-sign the target metadata so a NON-selected member's digest disagrees
-    // with the trusted cohort record. The selected archive is untouched, so only
-    // the cross-member consistency check can refuse this.
-    vaultspec_release_fixtures::corrupt_member_archive_digest(
-        &bundle,
-        &chain.material,
-        1,
-        DistributionTarget::Aarch64AppleDarwin,
-    );
-
-    assert_verification_refused(
-        chain.verify(&bundle, TARGET).await,
-        "a cohort whose members disagree with the published archives to be refused",
-        |error| matches!(error, VerificationError::InvalidCohort),
-    );
-    chain.assert_no_receipt("after refusing a mismatched cohort");
-    chain.assert_no_product_residue("after refusing a mismatched cohort");
 }
