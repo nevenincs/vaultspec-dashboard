@@ -111,6 +111,18 @@ superseding that ADR or changing its status.
   sharing to everyone else. Generalizing past this instance: when two retained
   authorities appear mutually exclusive, suspect an over-broad rights request before
   reshaping the lifecycle that needs them both.
+- Corollary recorded 2026-07-22, because the two halves sound contradictory until
+  separated: what coexists is the verified VALUE and the bound product, never the
+  verification WORK and the bound product. Writing the trust datastore is itself a
+  mutation of the product root, so it is SERIALIZED against a bound product authority
+  rather than concurrent with it — and the lease's denial of write sharing is what
+  enforces that exclusion, the same denial that carries the anti-substitution guarantee.
+  The production order is therefore verify, hold the resulting value, bind, activate; a
+  verification that writes while a product is bound fails closed, which is the lease
+  working rather than a defect. This is load-bearing rather than descriptive: NO
+  production flow may require a datastore write while a product is bound. If one is ever
+  found to — a rollback or repair path re-verifying under a held lease, say — that is a
+  design question to raise, never a sharing mode to loosen.
 
 ## Implementation
 
