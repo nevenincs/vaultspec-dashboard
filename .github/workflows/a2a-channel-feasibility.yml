@@ -58,7 +58,7 @@ jobs:
   scoop:
     name: Phase-zero Scoop proof
     if: contains(inputs.channels, 'scoop')
-    runs-on: windows-latest
+    runs-on: Windows
     outputs:
       result: ${{ steps.proof.outputs.result }}
       reason: ${{ steps.proof.outputs.reason }}
@@ -135,11 +135,18 @@ jobs:
             }
             exit 1
           }
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   winget:
     name: Phase-zero WinGet proof
     if: contains(inputs.channels, 'winget')
-    runs-on: windows-latest
+    runs-on: Windows
     outputs:
       result: ${{ steps.proof.outputs.result }}
       reason: ${{ steps.proof.outputs.reason }}
@@ -193,12 +200,19 @@ jobs:
             }
             exit 1
           }
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   record:
     name: Record channel outcomes into the support matrix (S148)
     needs: [scoop, winget]
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v6
         with:
@@ -252,3 +266,11 @@ jobs:
           git add "$MATRIX"
           git commit -m "chore(channels): record phase-zero feasibility outcomes into the support matrix"
           git push origin main
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1

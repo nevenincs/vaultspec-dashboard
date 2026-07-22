@@ -47,7 +47,8 @@ on:
 jobs:
   # Run 'dist plan' (or host) to determine what tasks we need to do
   plan:
-    runs-on: "ubuntu-22.04"
+    # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+    runs-on: Linux
     outputs:
       val: ${{ steps.plan.outputs.manifest }}
       tag: ${{ !github.event.pull_request && github.ref_name || '' }}
@@ -86,6 +87,15 @@ jobs:
         with:
           name: artifacts-plan-dist-manifest
           path: plan-dist-manifest.json
+      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
 
   # Build and packages all the platform-specific things
   build-local-artifacts:
@@ -204,13 +214,40 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+      - name: Reclaim runner disk (always · unix)
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf target engine/target 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+      - name: Reclaim runner disk (always · windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          if ('${{ job.status }}' -eq 'failure') {
+            Remove-Item -Recurse -Force target, engine\target -ErrorAction SilentlyContinue
+          }
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   # Build and package all the platform-agnostic(ish) things
   build-global-artifacts:
     needs:
       - plan
       - build-local-artifacts
-    runs-on: "ubuntu-22.04"
+    # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+    runs-on: Linux
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       BUILD_MANIFEST_NAME: target/distrib/global-dist-manifest.json
@@ -251,6 +288,18 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf target/distrib 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
   # Determines if we should publish/announce
   host:
     needs:
@@ -261,7 +310,8 @@ jobs:
     if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    runs-on: "ubuntu-22.04"
+    # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+    runs-on: Linux
     outputs:
       val: ${{ steps.host.outputs.manifest }}
     steps:
@@ -315,6 +365,15 @@ jobs:
           gh release upload "${{ needs.plan.outputs.tag }}" artifacts/*
 
           gh release edit "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --draft=false
+      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
 
   announce:
     needs:
@@ -324,7 +383,8 @@ jobs:
     # still allowing individual publish jobs to skip themselves (for prereleases).
     # "host" however must run to completion, no skipping allowed!
     if: ${{ always() && needs.host.result == 'success' }}
-    runs-on: "ubuntu-22.04"
+    # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+    runs-on: Linux
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -332,6 +392,15 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
 
   custom-scoop-bump:
     needs:

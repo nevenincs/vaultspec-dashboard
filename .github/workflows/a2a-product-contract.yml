@@ -44,15 +44,15 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            runner: macos-14
+            runner: macOS
           - target: x86_64-apple-darwin
-            runner: macos-15-intel
+            runner: macOS
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
+            runner: Linux
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
+            runner: Linux
           - target: x86_64-pc-windows-msvc
-            runner: windows-2022
+            runner: Windows
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     steps:
@@ -141,3 +141,27 @@ jobs:
           path: producer/dist/capsules/${{ matrix.target }}.manifest.json
           if-no-files-found: error
           retention-days: 7
+      - name: Reclaim runner disk (always · unix)
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf dashboard/engine/target 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+      - name: Reclaim runner disk (always · windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          if ('${{ job.status }}' -eq 'failure') {
+            Remove-Item -Recurse -Force dashboard\engine\target -ErrorAction SilentlyContinue
+          }
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize

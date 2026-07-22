@@ -20,7 +20,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [Linux, Windows]
     defaults:
       run:
         working-directory: engine
@@ -58,3 +58,29 @@ jobs:
           echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Test (unit + integration + e2e + bench)
         run: cargo test --workspace
+      - name: Reclaim runner disk (always · unix)
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        working-directory: ${{ github.workspace }}
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+      - name: Reclaim runner disk (always · windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        working-directory: ${{ github.workspace }}
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          if ('${{ job.status }}' -eq 'failure') {
+            Remove-Item -Recurse -Force engine\target, frontend\node_modules -ErrorAction SilentlyContinue
+          }
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize

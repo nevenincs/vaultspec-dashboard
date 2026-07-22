@@ -54,11 +54,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-pc-windows-msvc, os: windows-latest, ext: zip }
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-latest, ext: tar.gz }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-latest, ext: tar.gz }
-          - { target: x86_64-apple-darwin, os: macos-latest, ext: tar.gz }
-          - { target: aarch64-apple-darwin, os: macos-latest, ext: tar.gz }
+          - { target: x86_64-pc-windows-msvc, os: Windows, ext: zip }
+          - { target: x86_64-unknown-linux-gnu, os: Linux, ext: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, os: Linux, ext: tar.gz }
+          - { target: x86_64-apple-darwin, os: macOS, ext: tar.gz }
+          - { target: aarch64-apple-darwin, os: macOS, ext: tar.gz }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -159,11 +159,35 @@ jobs:
             vaultspec-*-${{ matrix.target }}.${{ matrix.ext }}
             vaultspec-*-${{ matrix.target }}.${{ matrix.ext }}.sha256
             release-${{ matrix.target }}.json
+      - name: Reclaim runner disk (always · unix)
+        if: always() && runner.os != 'Windows'
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target out 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
+      - name: Reclaim runner disk (always · windows)
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          if ('${{ job.status }}' -eq 'failure') {
+            Remove-Item -Recurse -Force engine\target, out -ErrorAction SilentlyContinue
+          }
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   self-verify:
     name: Clean-runner self-verify
     needs: build-product-tree
-    runs-on: windows-latest
+    runs-on: Windows
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -180,11 +204,20 @@ jobs:
           archive=$(ls dl/*.zip)
           7z x "$archive" -oinstalled -y
           ./installed/bin/vaultspec.exe verify-release ./installed
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Get-Process vaultspec -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force installed, dl -ErrorAction SilentlyContinue
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   cohort-digest:
     name: Cohort digest (S166)
     needs: build-product-tree
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
@@ -222,6 +255,19 @@ jobs:
         with:
           name: cohort-descriptor
           path: cohort-descriptor.json
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
 
   # W01.P01.S147/S149: resolve the release version, then run the phase-zero
   # channel feasibility proof over the published complete archive/MSI. The proof
@@ -231,7 +277,7 @@ jobs:
   # release assets + capsule (#1) + MSI (S76) make a real proof possible.
   resolve-version:
     name: Resolve release version
-    runs-on: ubuntu-latest
+    runs-on: Linux
     outputs:
       value: ${{ steps.v.outputs.value }}
     steps:
@@ -244,6 +290,14 @@ jobs:
           else
             echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
           fi
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
 
   channel-feasibility:
     name: Phase-zero channel feasibility (S147/S149)

@@ -44,7 +44,7 @@ jobs:
 
   bump:
     needs: gate
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v6
         with:
@@ -98,3 +98,12 @@ jobs:
           git add bucket/vaultspec.json
           git commit -m "chore(scoop): bump manifest to ${TAG}"
           git push origin main
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -f /tmp/complete.zip 2>/dev/null || true
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1

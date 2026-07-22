@@ -46,7 +46,7 @@ jobs:
 
   submit:
     needs: gate
-    runs-on: windows-latest
+    runs-on: Windows
     steps:
       - uses: actions/checkout@v6
       - name: Submit the composite-product manifests to winget-pkgs
@@ -65,3 +65,10 @@ jobs:
           # placeholder so no partial publish can occur.
           Write-Error "winget-publish: MSI artifact (S76) and winget-pkgs fork/token (cross-repo) are pending; no submission performed"
           exit 1
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: pwsh
+        run: |
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
+          Remove-Item -Recurse -Force $env:TEMP\vaultspec-* -ErrorAction SilentlyContinue
+          Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize

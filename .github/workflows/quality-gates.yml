@@ -20,14 +20,22 @@ concurrency:
 jobs:
   spellcheck:
     name: Spell check (typos)
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@master
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
 
   frontend:
     name: Frontend (eslint · prettier · tsc · vitest)
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -73,6 +81,19 @@ jobs:
       - name: Unused code (knip — advisory)
         run: npx --yes knip@5 --directory frontend
         continue-on-error: true
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
 
   engine-conformance:
     # Consumer-typed conformance (engine-hardening P01.S02, ADR D1): boot a
@@ -80,7 +101,7 @@ jobs:
     # EngineClient against it so wire-vs-TypeScript-type drift fails CI.
     # This closes the seam the Rust conformance.rs cannot reach (c812371).
     name: Engine TS conformance (live serve · EngineClient)
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v4
       # Pin to the repo toolchain (see the frontend job's note).
@@ -166,10 +187,23 @@ jobs:
       - name: Stop serve
         if: always()
         run: kill "$SERVE_PID" 2>/dev/null || true
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
 
   scoop-bucket-guard:
     name: Scoop bucket version guard
-    runs-on: ubuntu-latest
+    runs-on: Linux
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -192,10 +226,18 @@ jobs:
             exit 1
           fi
           echo "bucket version ${BASE_VERSION} -> ${HEAD_VERSION} — forward, OK"
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
 
   supply-chain:
     name: Supply chain (cargo-deny · uv audit · npm audit)
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v4
       - name: cargo-deny
@@ -217,6 +259,19 @@ jobs:
       - run: npm --prefix frontend ci
       - name: npm audit
         run: npm --prefix frontend audit
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
 
   release-inputs-gate:
     # The release-inputs gate (a2a-product-provisioning W04.P08.S72): validate the
@@ -226,7 +281,7 @@ jobs:
     # and exercises the lock/capsule/release-manifest verifiers, so a drift between
     # the pins, the schema, and the builder fails here rather than at release.
     name: Release inputs (lock · schema · product builder)
-    runs-on: ubuntu-latest
+    runs-on: Linux
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
@@ -248,3 +303,16 @@ jobs:
       - name: Product builder, manifest verifiers, and lock/capsule/release pins
         run: cargo test -p vaultspec-product
         working-directory: engine
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          df -h . 2>/dev/null | tail -1
+          pkill -f 'vaultspec .*serve' 2>/dev/null || true
+          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          if [ "${{ job.status }}" = "failure" ]; then
+            rm -rf engine/target frontend/node_modules 2>/dev/null || true
+          fi
+          df -h . 2>/dev/null | tail -1
