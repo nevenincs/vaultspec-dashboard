@@ -540,10 +540,11 @@ fn now_ms() -> i64 {
 ///    verification lock for the release lifetime. The staged-bundle path carries
 ///    zero trust weight (a wrong path just fails TUF). This is done BEFORE the
 ///    seat is touched, so an untrustworthy candidate never drains the running
-///    release. On Windows `verify_distribution` self-gates
-///    (`WindowsDatastoreAuthorityNotProvisioned`) until the windows-private-file
-///    NTFS D7 evidence retires that gate — the whole drive stays typed-gated
-///    with the prior release intact.
+///    release. Note the ORDER is required, not merely preferred: verification
+///    writes its trust datastore into the product root and must durably flush
+///    the root to publish those names, and the product's root lease denies the
+///    write sharing that flush's append-mode reopen needs. So verification
+///    cannot overlap a bound product — it precedes one, as it does here.
 /// 2. EXECUTE the transaction to the activation boundary (`execute_update`:
 ///    begin → drain-or-cold → snapshot → migrate → ready).
 /// 3. Split the verified release into a `MaterializationSource` (the one async
@@ -572,9 +573,8 @@ pub fn drive_fresh_update(
         .build()
         .map_err(|error| UpdaterError::Io(redact(&error.to_string())))?;
 
-    // VERIFY before touching the seat. On Windows this returns the typed
-    // WindowsDatastoreAuthorityNotProvisioned refusal (D6), leaving the prior
-    // release running — the same fail-closed discipline as the DACL-gated write.
+    // VERIFY before touching the seat. Any refusal here leaves the prior release
+    // running — the same fail-closed discipline as the DACL-gated write.
     let mut release = runtime
         .block_on(verify_distribution(request))
         .map_err(UpdaterError::Verification)?;
@@ -697,9 +697,7 @@ pub enum UpdaterError {
     /// range — fail-closed, never a silent proceed.
     Intent(String),
     /// In-process distribution verification (TUF + cohort, or the
-    /// `materialization_source` split) refused. Includes the typed Windows gate
-    /// (`WindowsDatastoreAuthorityNotProvisioned`) that stays closed until the
-    /// windows-private-file NTFS D7 evidence retires it.
+    /// `materialization_source` split) refused.
     Verification(VerificationError),
     /// The materialize + receipt-commit activation failed before the commit
     /// (bounded, secret-redacted). Post-commit failures are never this variant —

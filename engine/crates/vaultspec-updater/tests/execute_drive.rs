@@ -23,15 +23,26 @@
 //! through all of those. That is a documented residual, NOT a defect and NOT this
 //! crate's to close:
 //!   - The production `verify_distribution` fails closed until the
-//!     distribution-authority SEALING ceremony (the embedded production root is
-//!     empty until the key ceremony) and, on Windows, its own datastore gate
-//!     (`WindowsDatastoreAuthorityNotProvisioned`) — a DIFFERENT lane.
-//!   - The `unsealed-verify` S11 test seam bypasses only the production gate, but
-//!     obtaining a `MaterializationSource` from it needs a valid signed TUF root +
-//!     published bundle whose builders are PRIVATE to the distribution-authority
-//!     test module. Closing the single-call e2e waits on that crate exposing a
-//!     `test-support` fixture (`ephemeral_root` + `publish_bundle`) — a tracked
-//!     cross-lane ask. This crate will not reimplement TUF signing it does not own.
+//!     distribution-authority SEALING ceremony: the embedded production root is
+//!     empty until the key ceremony.
+//!   - The `unsealed-verify` S11 test seam bypasses only that production gate.
+//!     The remaining cost is a valid signed TUF root and a published bundle,
+//!     which `vaultspec-release-fixtures` now provides. This crate will still not
+//!     reimplement TUF signing it does not own.
+//!
+//! TWO EARLIER CLAIMS HERE WERE WRONG and are corrected rather than deleted,
+//! because a lane reading them would plan work it does not need:
+//!   - The residual was attributed to FIXTURE AVAILABILITY. That was never the
+//!     real obstacle. The actual cause was that `LockedProduct::bind` requested
+//!     DELETE on the product root, which cap-std's delete-sharing denial refused
+//!     whenever a verified distribution scope was live on the same root — so the
+//!     production signature was unsatisfiable with a real distribution value, in
+//!     either order. That is FIXED: the root open no longer requests a right it
+//!     never used, and coexistence is proven in both orders on real NTFS.
+//!   - A Windows platform gate `WindowsDatastoreAuthorityNotProvisioned` was
+//!     cited as blocking. That variant no longer exists anywhere in the engine.
+//!
+//! `activate_update`'s SIGNATURE DOES NOT CHANGE as a result of any of this.
 
 use std::ffi::OsString;
 use std::path::Path;
@@ -270,10 +281,9 @@ fn an_incompatible_owned_gateway_rolls_back() {
 
 /// The main fresh-update flow VERIFIES the staged bundle before it drains the
 /// seat, and fails closed with a TYPED verification refusal. In a dev/test build
-/// the embedded production root is empty (`ProductionRootNotProvisioned`); on
-/// Windows the platform gate (`WindowsDatastoreAuthorityNotProvisioned`) closes
-/// it until the windows-private-file NTFS D7 evidence retires the gate. Either
-/// way the refusal is raised BEFORE any transaction is staged — proven by the
+/// the embedded production root is empty (`ProductionRootNotProvisioned`), so that
+/// is the refusal raised here. Either way it is raised BEFORE any transaction is
+/// staged — proven by the
 /// descriptor staying clear (a live gateway is present, yet never drained).
 #[test]
 fn drive_fresh_update_verifies_before_it_drains_and_fails_closed() {
