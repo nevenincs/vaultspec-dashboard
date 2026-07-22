@@ -50,6 +50,10 @@ vaultspec-distribution-authority = { path = "../vaultspec-distribution-authority
 # crate depends on none of these.
 rusqlite = { version = "0.40.1", features = ["bundled"] }
 static_assertions = "1.1.0"
+# Dev-only: the S11 chain drives the async distribution verifier. tough and its
+# runtime stay behind the distribution-authority boundary; this never reaches
+# vaultspec-product's runtime surface.
+tokio = { version = "1.49.0", features = ["macros", "rt"] }
 # Dev-only scaffolding that builds a REAL signed TUF repository from already-public
 # distribution-authority API. No production target depends on it, so it cannot
 # reach a shipped binary by construction.

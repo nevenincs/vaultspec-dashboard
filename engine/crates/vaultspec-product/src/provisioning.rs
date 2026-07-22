@@ -607,6 +607,10 @@ impl std::fmt::Display for ProvisioningError {
 impl std::error::Error for ProvisioningError {}
 
 #[cfg(test)]
+#[path = "provisioning/s11_chain.rs"]
+mod s11_chain;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::generation::LockedProduct;

@@ -9,7 +9,7 @@ const CREATED_MS: i64 = 1_721_344_500_000;
 
 /// One authored archive entry for the deterministic fixture builder.
 #[derive(Clone)]
-struct ZipInput {
+pub(crate) struct ZipInput {
     path: String,
     bytes: Vec<u8>,
     mode: u32,
@@ -29,7 +29,7 @@ fn entry(path: &str, bytes: &[u8], mode: u32) -> ZipInput {
 /// zero timestamps, no extra fields or comments, Unix made-by with the mode in
 /// the external attributes. Malformed variants mutate the finished bytes or
 /// the input list.
-fn build_zip(entries: &[ZipInput]) -> Vec<u8> {
+pub(crate) fn build_zip(entries: &[ZipInput]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut central = Vec::new();
     for input in entries {
@@ -100,7 +100,7 @@ fn deadline() -> Instant {
 
 /// The fixture's release tree as archive inputs: every payload plus the
 /// member manifest, with the fixture's entrypoint modes.
-fn release_entries(fixture: &Fixture) -> Vec<ZipInput> {
+pub(crate) fn release_entries(fixture: &Fixture) -> Vec<ZipInput> {
     let executable_mode = u32::from_str_radix(fixture.entrypoint_mode_text(), 8).unwrap_or(0o755);
     let mut entries: Vec<ZipInput> = fixture
         .payload_files()

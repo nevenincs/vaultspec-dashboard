@@ -3746,6 +3746,7 @@ dependencies = [
  "sysinfo",
  "tar",
  "tempfile",
+ "tokio",
  "vaultspec-distribution-authority",
  "vaultspec-release-fixtures",
  "vaultspec-windows-authority",

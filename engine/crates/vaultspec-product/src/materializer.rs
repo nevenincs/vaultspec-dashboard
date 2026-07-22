@@ -582,4 +582,4 @@ impl std::error::Error for MaterializeError {
 
 #[cfg(test)]
 #[path = "materializer/tests.rs"]
-mod tests;
+pub(crate) mod tests;
