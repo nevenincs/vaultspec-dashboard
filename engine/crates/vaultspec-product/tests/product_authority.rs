@@ -247,19 +247,13 @@ fn manifest_rejects_target_mismatch() {
     ));
 }
 
-#[test]
-fn manifest_rejects_digest_drift() {
-    let lock = ComponentLock::parse(LOCK_JSON).unwrap();
-    // A capsule whose ACP digest disagrees with the lock is drift, not a read.
-    let raw = capsule_json(&lock, |v| {
-        v["assets"][3]["digest"] = serde_json::json!("0".repeat(64));
-    });
-    let capsule = CapsuleManifest::parse(&raw).unwrap();
-    assert!(matches!(
-        capsule.verify_against_lock(&lock, TARGET),
-        Err(ManifestError::DigestDrift { .. })
-    ));
-}
+// `manifest_rejects_digest_drift` lived here. It is DISCHARGED by
+// `provisioning::d8_refusals::a_capsule_that_drifts_from_the_component_lock_refuses_at_the_install_boundary`,
+// which drives the identical ACP-adapter drift through the real chain — sealed
+// into the real archive, published in a real signed repository, verified by the
+// distribution authority, and refused by the product — and pins the exact field
+// (`digest drift in assets[acp-adapter].digest`) rather than accepting any
+// digest complaint. Its two neighbours below are NOT discharged and stay.
 
 #[test]
 fn manifest_rejects_floating_latest_selector() {

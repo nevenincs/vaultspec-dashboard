@@ -428,6 +428,79 @@ async fn a_foreign_target_cohort_is_refused_at_the_install_boundary_not_as_targe
     chain.assert_no_receipt("after refusing a foreign-target release");
 }
 
+// ---------------------------------------------------------------------------
+// Manifest refusals, reached through the real chain
+// ---------------------------------------------------------------------------
+
+/// A capsule whose ACP asset digest disagrees with the component LOCK is
+/// refused at the install boundary, with the whole chain otherwise honest.
+///
+/// This is the chain expression of the carried fixture
+/// `manifest_rejects_digest_drift`, which reaches `ManifestError::DigestDrift`
+/// by calling `verify_against_lock` directly. Here the drifted capsule travels
+/// the full route: it is sealed into the real archive, published in a real
+/// signed repository, verified by the distribution authority, and only then
+/// refused by the product.
+///
+/// The mutation is deliberately COHERENT — every digest the release states
+/// about the capsule moves with it — so the refusal cannot be a file-digest
+/// mismatch masquerading as drift. That is what makes this the same refusal the
+/// carried fixture asserts, rather than a different one at a different layer.
+/// The component lock is the fixture's REAL committed
+/// `packaging/a2a-component.lock.json`, so the pin being violated is a real pin.
+#[tokio::test(flavor = "current_thread")]
+async fn a_capsule_that_drifts_from_the_component_lock_refuses_at_the_install_boundary() {
+    let mut chain = Chain::new().await;
+
+    // Drift exactly one pin: the ACP adapter's digest. Everything else about
+    // the release stays true, including the archive, which is built from these
+    // same mutated payloads below.
+    chain.fixture.mutate_capsule(|capsule| {
+        let acp = capsule["assets"]
+            .as_array_mut()
+            .expect("capsule assets")
+            .iter_mut()
+            .find(|asset| asset["kind"] == "acp-adapter")
+            .expect("the capsule pins the ACP adapter");
+        acp["digest"] = serde_json::json!("0".repeat(64));
+    });
+
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+
+    // Verification SUCCEEDS. The distribution authority has no view of the
+    // component lock, so the drift is invisible to it — which is precisely why
+    // the product must catch it.
+    let mut verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("a drifted capsule is still a well-formed signed release");
+
+    let failure = chain
+        .install(&mut verified, "generation-drifted-capsule")
+        .await
+        .expect_err("a capsule that drifts from the component lock must not install");
+    assert_eq!(
+        failure.kind(),
+        crate::provisioning::ProvisioningErrorKind::FirstInstallAdapterUnavailable,
+        "expected the install boundary to refuse the drift, got {failure:?} - {}",
+        failure.detail
+    );
+    // Pin the exact check, not merely "a digest complaint". This is the field
+    // the carried fixture `manifest_rejects_digest_drift` asserts against, and
+    // naming it is what lets this case DISCHARGE that fixture: a matrix that
+    // accepted any digest refusal here would still pass if the chain started
+    // failing on some unrelated digest, and would then be covering nothing.
+    assert!(
+        failure
+            .detail
+            .contains("digest drift in assets[acp-adapter].digest"),
+        "the refusal must be the capsule-versus-lock ACP drift, got: {}",
+        failure.detail
+    );
+    chain.assert_no_receipt("after refusing a lock-drifted capsule");
+}
+
 /// A cohort whose members disagree with the published archives is refused as an
 /// invalid cohort, before any product state is touched.
 #[tokio::test(flavor = "current_thread")]

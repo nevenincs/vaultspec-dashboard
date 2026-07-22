@@ -390,7 +390,7 @@ impl Fixture {
             .unwrap()
     }
 
-    fn mutate_member(&mut self, mutate: impl FnOnce(&mut serde_json::Value)) {
+    pub(crate) fn mutate_member(&mut self, mutate: impl FnOnce(&mut serde_json::Value)) {
         let mut value: serde_json::Value = serde_json::from_slice(&self.member).unwrap();
         mutate(&mut value);
         self.member = serde_json::to_vec(&value).unwrap();
@@ -398,7 +398,73 @@ impl Fixture {
         self.descriptor = cohort_bytes(&self.member_digest);
         self.cohort_digest = cohort_descriptor_digest(&self.descriptor).unwrap();
     }
+
+    /// Rewrite the capsule manifest and re-record EVERY digest the release
+    /// states about it, so the tree stays internally coherent.
+    ///
+    /// Coherence is the entire point. Mutating the capsule alone would be
+    /// refused as a file-digest mismatch against `release.json`, which proves
+    /// only that the digest map works — a refusal at the wrong layer, and the
+    /// exact trap a refusal matrix must avoid. Three places name this file's
+    /// digest and all three must move together: the `file_digests` map, the
+    /// `a2a_component.capsule_manifest.digest` field, and the
+    /// `vaultspec:component-manifest-sha256` property inside the tree evidence
+    /// (which is itself digested, so `a2a/tree.json` must be re-recorded too).
+    /// With all of them updated, the only disagreement left is the one the
+    /// caller introduced — against the component LOCK, which is trusted
+    /// separately and cannot be restated by the candidate.
+    pub(crate) fn mutate_capsule(&mut self, mutate: impl FnOnce(&mut serde_json::Value)) {
+        let mut capsule: serde_json::Value =
+            serde_json::from_slice(self.payload(CAPSULE_MANIFEST_PATH)).unwrap();
+        mutate(&mut capsule);
+        let capsule_bytes = serde_json::to_vec(&capsule).unwrap();
+        let capsule_digest = hex::sha256(&capsule_bytes);
+
+        // The tree evidence carries the capsule-manifest digest as a property,
+        // so it changes with the capsule and must be re-serialized identically
+        // to how the constructor built it (compact, one trailing newline).
+        let mut tree: serde_json::Value =
+            serde_json::from_slice(self.payload(TREE_EVIDENCE_PATH)).unwrap();
+        for property in tree["metadata"]["component"]["properties"]
+            .as_array_mut()
+            .unwrap()
+        {
+            if property["name"] == "vaultspec:component-manifest-sha256" {
+                property["value"] = serde_json::json!(capsule_digest);
+            }
+        }
+        let mut tree_bytes = serde_json::to_vec(&tree).unwrap();
+        tree_bytes.push(b'\n');
+        let tree_digest_hex = hex::sha256(&tree_bytes);
+        let tree_size = tree_bytes.len() as u64;
+
+        self.set_payload(CAPSULE_MANIFEST_PATH, capsule_bytes);
+        self.set_payload(TREE_EVIDENCE_PATH, tree_bytes);
+        self.mutate_member(|member| {
+            member["file_digests"][CAPSULE_MANIFEST_PATH] = serde_json::json!(capsule_digest);
+            member["file_digests"][TREE_EVIDENCE_PATH] = serde_json::json!(tree_digest_hex);
+            member["a2a_component"]["capsule_manifest"]["digest"] =
+                serde_json::json!(capsule_digest);
+            member["a2a_component"]["tree_evidence"]["digest"] = serde_json::json!(tree_digest_hex);
+            member["a2a_component"]["tree_evidence"]["size"] = serde_json::json!(tree_size);
+        });
+    }
+
+    fn set_payload(&mut self, path: &str, bytes: Vec<u8>) {
+        let slot = self
+            .payloads
+            .iter_mut()
+            .find_map(|(candidate, slot)| (candidate == path).then_some(slot))
+            .unwrap();
+        *slot = bytes;
+    }
 }
+
+/// The capsule manifest's path inside the release tree.
+pub(crate) const CAPSULE_MANIFEST_PATH: &str = "a2a/component-manifest.json";
+
+/// The A2A installed-tree evidence path inside the release tree.
+pub(crate) const TREE_EVIDENCE_PATH: &str = "a2a/tree.json";
 
 /// A valid activation context for field-validation fixtures.
 ///
