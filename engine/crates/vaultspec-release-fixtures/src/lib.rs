@@ -212,6 +212,34 @@ pub fn cohort_for(source: &Path, identity: &str) -> ReleaseCohort {
     cohort_with_archive(source, identity, None)
 }
 
+/// The placeholder component lock, used whenever the caller does not supply the
+/// real one.
+const PLACEHOLDER_COMPONENT_LOCK: &[u8] = b"dashboard=0.1.4\na2a=0.1.0\n";
+
+/// The real facts of ONE selected target, for a cohort that must DESCRIBE the
+/// release it carries rather than merely carry it.
+///
+/// Supplying a real archive was enough to make a repository verify, because TUF
+/// binds only length and digest. It is not enough to make that release
+/// INSTALLABLE: the product verifies the tree it installed against the cohort's
+/// own metadata, so a real archive described by placeholder metadata fails at
+/// the install boundary with a missing-member digest - the archive and the
+/// description are of two different releases. This carries both, from one
+/// construction, so they cannot disagree.
+#[derive(Debug, Clone)]
+pub struct RealRelease {
+    /// The target whose member these facts describe.
+    pub target: DistributionTarget,
+    /// The real capsule archive for that target.
+    pub archive: Vec<u8>,
+    /// SHA-256 of the release member manifest actually inside the archive.
+    pub member_manifest_sha256: String,
+    /// The real component lock bytes the installed tree carries.
+    pub component_lock: Vec<u8>,
+    /// The capsule root the installed tree actually uses.
+    pub capsule_root: String,
+}
+
 /// Build a cohort whose SELECTED target carries a caller-supplied REAL archive.
 ///
 /// The placeholder archives satisfy TUF, which only binds length and digest, but
@@ -222,18 +250,48 @@ pub fn cohort_for(source: &Path, identity: &str) -> ReleaseCohort {
 ///
 /// The other four members keep placeholders: a cohort needs five members to be
 /// well formed, but only the selected target is ever extracted.
+///
+/// The METADATA stays placeholder here. A caller that needs the cohort to also
+/// describe the release - anything that goes on to install it - wants
+/// [`cohort_with_release`] instead.
 pub fn cohort_with_archive(
     source: &Path,
     identity: &str,
     real: Option<(DistributionTarget, Vec<u8>)>,
 ) -> ReleaseCohort {
+    let real = real.map(|(target, archive)| RealRelease {
+        target,
+        archive,
+        // Exactly the placeholder this builder has always written, so an
+        // archive-only caller sees no change in behaviour.
+        member_manifest_sha256: digest_hex(
+            format!("manifest-{}", target.archive_name()).as_bytes(),
+        ),
+        component_lock: PLACEHOLDER_COMPONENT_LOCK.to_vec(),
+        capsule_root: "capsule".to_owned(),
+    });
+    cohort_with_release(source, identity, real.as_ref())
+}
+
+/// Build a cohort that both CARRIES and DESCRIBES a real release.
+///
+/// The selected member gets the real archive and the real member-manifest
+/// digest, and the cohort gets the real component lock and capsule root, so a
+/// consumer that verifies the installed tree against this metadata is verifying
+/// against the release it actually installed.
+pub fn cohort_with_release(
+    source: &Path,
+    identity: &str,
+    real: Option<&RealRelease>,
+) -> ReleaseCohort {
     let members = TARGETS
         .iter()
         .map(|target| {
             let name = target.archive_name();
-            let bytes = match &real {
-                Some((selected, archive)) if selected == target => archive.clone(),
-                _ => archive_bytes(*target),
+            let selected = real.filter(|real| real.target == *target);
+            let bytes = match selected {
+                Some(real) => real.archive.clone(),
+                None => archive_bytes(*target),
             };
             std::fs::write(source.join(name), &bytes).expect("archive source");
             ReleaseMember {
@@ -241,11 +299,21 @@ pub fn cohort_with_archive(
                 archive: name.to_owned(),
                 archive_length: bytes.len() as u64,
                 archive_sha256: digest_hex(&bytes),
-                member_manifest_sha256: digest_hex(format!("manifest-{name}").as_bytes()),
+                member_manifest_sha256: match selected {
+                    Some(real) => real.member_manifest_sha256.clone(),
+                    None => digest_hex(format!("manifest-{name}").as_bytes()),
+                },
             }
         })
         .collect();
-    let component_lock = b"dashboard=0.1.4\na2a=0.1.0\n";
+    let component_lock: &[u8] = match real {
+        Some(real) => &real.component_lock,
+        None => PLACEHOLDER_COMPONENT_LOCK,
+    };
+    let capsule_root = match real {
+        Some(real) => real.capsule_root.clone(),
+        None => "capsule".to_owned(),
+    };
     let digest = digest_hex(b"fixed");
     ReleaseCohort {
         schema_version: "1.0".to_owned(),
@@ -265,8 +333,8 @@ pub fn cohort_with_archive(
             sha256: digest.clone(),
         },
         capsule: CapsuleMetadata {
-            root: "capsule".to_owned(),
-            manifest_path: "capsule/manifest.json".to_owned(),
+            manifest_path: format!("{capsule_root}/manifest.json"),
+            root: capsule_root,
             contract_version: "1".to_owned(),
         },
         protocol: CompatibilityRange {
@@ -338,13 +406,44 @@ pub async fn publish_bundle_with_root_archive(
     selected: DistributionTarget,
     real_archive: Option<(DistributionTarget, Vec<u8>)>,
 ) -> PathBuf {
+    let real = real_archive.map(|(target, archive)| RealRelease {
+        target,
+        archive,
+        member_manifest_sha256: digest_hex(
+            format!("manifest-{}", target.archive_name()).as_bytes(),
+        ),
+        component_lock: PLACEHOLDER_COMPONENT_LOCK.to_vec(),
+        capsule_root: "capsule".to_owned(),
+    });
+    publish_bundle_with_root_release(
+        test_root,
+        material,
+        root_history,
+        version,
+        identity,
+        selected,
+        real.as_ref(),
+    )
+    .await
+}
+
+/// Root-history variant that publishes a cohort DESCRIBING its real release.
+pub async fn publish_bundle_with_root_release(
+    test_root: &Path,
+    material: &SigningMaterial,
+    root_history: &[PathBuf],
+    version: u64,
+    identity: &str,
+    selected: DistributionTarget,
+    real: Option<&RealRelease>,
+) -> PathBuf {
     let latest_root_bytes = std::fs::read(root_history.last().expect("nonempty root history"))
         .expect("read latest supplied root");
     let latest_root: Signed<Root> =
         serde_json::from_slice(&latest_root_bytes).expect("parse latest supplied root");
     let source = test_root.join(format!("source-{identity}"));
     std::fs::create_dir(&source).expect("source targets");
-    let cohort = cohort_with_archive(&source, identity, real_archive);
+    let cohort = cohort_with_release(&source, identity, real);
     let output = test_root.join(format!("repository-{identity}"));
     let mut request = publication_request(output.clone(), material, source, cohort, version);
     request.root_history = root_history.to_vec();
@@ -366,6 +465,27 @@ pub async fn publish_bundle_with_root_archive(
         name.ends_with(COHORT_TARGET_NAME) || name.ends_with(selected.archive_name())
     });
     bundle
+}
+
+/// Publish a bundle whose selected target both carries AND describes a real
+/// release, so a consumer can verify the tree it installed against this cohort.
+pub async fn publish_bundle_with_release(
+    test_root: &Path,
+    material: &SigningMaterial,
+    version: u64,
+    identity: &str,
+    real: &RealRelease,
+) -> PathBuf {
+    publish_bundle_with_root_release(
+        test_root,
+        material,
+        std::slice::from_ref(&material.root_path),
+        version,
+        identity,
+        real.target,
+        Some(real),
+    )
+    .await
 }
 
 /// Publish a bundle whose selected target carries a real capsule archive.
