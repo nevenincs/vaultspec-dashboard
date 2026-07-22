@@ -136,6 +136,7 @@ fn home_dir() -> Option<PathBuf> {
 /// The filesystem roots: existing drive letters on Windows, `/` elsewhere,
 /// plus a `places` block (home directory) the picker's places rail renders.
 fn list_roots(registered: &HashSet<String>) -> Value {
+    #[cfg(windows)]
     let mut entries: Vec<Value> = Vec::new();
     #[cfg(windows)]
     for letter in b'A'..=b'Z' {
@@ -154,7 +155,7 @@ fn list_roots(registered: &HashSet<String>) -> Value {
         }
     }
     #[cfg(not(windows))]
-    entries.push(entry_row("/", Path::new("/"), registered));
+    let entries: Vec<Value> = vec![entry_row("/", Path::new("/"), registered)];
 
     let places: Vec<Value> = home_dir()
         .into_iter()
@@ -227,6 +228,10 @@ fn is_hidden(name: &str, path: &Path) -> bool {
             return meta.file_attributes() & FILE_ATTRIBUTE_HIDDEN != 0;
         }
     }
+    // Only Windows carries an OS hidden-file attribute beyond the dotfile rule;
+    // elsewhere the path is not inspected further.
+    #[cfg(not(windows))]
+    let _ = path;
     false
 }
 

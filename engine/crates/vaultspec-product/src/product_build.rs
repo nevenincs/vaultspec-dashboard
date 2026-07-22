@@ -895,7 +895,10 @@ struct SbomOut {
     digest: String,
 }
 
-#[cfg(test)]
+// The only test here exercises Windows-specific non-UTF-8 name handling, so the
+// whole module is Windows-gated; on other platforms it would be an empty module
+// with an unused `super::*` import.
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
 
@@ -903,7 +906,6 @@ mod tests {
     /// replacement-character key can never enter the scan even transiently. On
     /// Windows an unpaired surrogate is a valid OS name but not UTF-8 — the exact
     /// case `to_string_lossy` would have silently corrupted.
-    #[cfg(windows)]
     #[test]
     fn portable_relative_refuses_a_non_utf8_component() {
         use std::os::windows::ffi::OsStringExt as _;
