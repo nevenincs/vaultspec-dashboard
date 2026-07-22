@@ -71,7 +71,7 @@ pub enum ProductBuildError {
     /// The member's `file_digests` does not describe exactly the scanned tree
     /// (a missing, extra, drifted, or self-listed manifest-path entry).
     FileDigestsMismatch { detail: String },
-    /// The capsule does not carry an independently-invokable standalone MCP
+    /// The capsule does not carry an independently-invocable standalone MCP
     /// entrypoint distinct from its gateway.
     StandaloneMcpNotCarried { detail: String },
 }
@@ -131,7 +131,7 @@ impl std::fmt::Display for ProductBuildError {
 
 impl std::error::Error for ProductBuildError {}
 
-/// Verify the capsule carries an independently-invokable standalone MCP entrypoint
+/// Verify the capsule carries an independently-invocable standalone MCP entrypoint
 /// that is DISTINCT from the gateway entrypoint, WITHOUT binding it to any
 /// dashboard lifecycle.
 ///

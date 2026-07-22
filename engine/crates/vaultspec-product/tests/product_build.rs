@@ -497,7 +497,7 @@ fn the_capsule_carries_a_distinct_standalone_mcp_entrypoint() {
     let lock = lock();
     let capsule = capsule(&lock);
     verify_standalone_mcp_carried(&capsule)
-        .expect("the capsule must carry an independently-invokable standalone MCP entrypoint");
+        .expect("the capsule must carry an independently-invocable standalone MCP entrypoint");
     // Present, kind-tagged standalone, and distinct from the gateway entrypoint.
     assert_eq!(capsule.entrypoints.standalone_mcp.kind, "standalone-mcp");
     assert_ne!(
@@ -512,7 +512,7 @@ fn a_standalone_mcp_collapsed_onto_the_gateway_is_rejected() {
     let lock = lock();
     let mut capsule = capsule(&lock);
     // Collapse the standalone MCP onto the gateway entrypoint: no longer an
-    // independently-invokable MCP, so carriage verification must reject it.
+    // independently-invocable MCP, so carriage verification must reject it.
     capsule.entrypoints.standalone_mcp.relative_command =
         capsule.entrypoints.gateway.relative_command.clone();
     let refused = verify_standalone_mcp_carried(&capsule);
