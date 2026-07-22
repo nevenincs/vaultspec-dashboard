@@ -216,6 +216,19 @@ impl ProductPaths {
         ] {
             std::fs::create_dir_all(dir)?;
         }
+        // The credentials directory is owner-restricted (mode 0700). `create_dir_all`
+        // honors the process umask, so on a default-umask (022) host it lands at 0755;
+        // first-install credential bootstrap then fails closed against a retained
+        // owner-mode-0700 directory. Restrict it explicitly. Windows owner-privacy is
+        // established through the DACL authority in the credentials module, not a mode.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(
+                self.credentials_dir(),
+                std::fs::Permissions::from_mode(0o700),
+            )?;
+        }
         Ok(())
     }
 }
