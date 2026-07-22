@@ -21,7 +21,9 @@ use aws_lc_rs::rand::SystemRandom;
 use aws_lc_rs::signature::Ed25519KeyPair;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha256};
-use tough::schema::{Role as _, RoleKeys, RoleType, Root, Signature, Signed};
+use tough::schema::{
+    Hashes, Role, RoleKeys, RoleType, Root, Signature, Signed, Snapshot, Targets, Timestamp,
+};
 use tough::sign::Sign as _;
 use vaultspec_distribution_authority::{
     COHORT_TARGET_NAME, CapsuleMetadata, CompatibilityRange, ComponentLock, DistributionTarget,
@@ -355,6 +357,181 @@ pub fn cohort_with_release(
         },
         members,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Adversarial re-signing
+// ---------------------------------------------------------------------------
+//
+// A refusal fixture is only worth its runtime if the repository it refuses is
+// otherwise VALID — a tampered file that also breaks its own signature proves
+// the signature check, not the refusal under test. These helpers re-sign the
+// tampered role and every role that commits to it, so what reaches the verifier
+// is signature-clean all the way down and only the property under test is
+// wrong.
+//
+// The same four helpers exist privately in the distribution authority's own
+// adversarial suite. That is duplication the dependency direction FORCES rather
+// than an oversight: this crate depends on the distribution authority, so the
+// authority cannot reach these without a dev-dependency cycle. If that cycle is
+// ever taken deliberately, this is the copy to keep — it is the shared home.
+
+/// Lowercase hex of already-computed digest bytes.
+///
+/// Distinct from [`digest_hex`], which HASHES its input; passing a digest to
+/// that one would hash the hash.
+#[must_use]
+pub fn hex_lower(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+/// Re-sign one role document with a single held key, as release engineering
+/// would: canonical form, Ed25519 signature, declared key id.
+pub fn resign<R: Role>(signed: R, pair: &Ed25519KeyPair) -> Vec<u8> {
+    let canonical = signed.canonical_form().expect("canonical role form");
+    let signatures = vec![Signature {
+        keyid: pair.tuf_key().key_id().expect("signer key id"),
+        sig: Ed25519KeyPair::sign(pair, &canonical)
+            .as_ref()
+            .to_vec()
+            .into(),
+    }];
+    serde_json::to_vec_pretty(&Signed { signed, signatures }).expect("signed role JSON")
+}
+
+/// Read and parse one signed role document.
+pub fn read_signed<R: serde::de::DeserializeOwned>(path: &Path) -> Signed<R> {
+    let bytes = std::fs::read(path).expect("read role metadata");
+    serde_json::from_slice(&bytes).expect("parse role metadata")
+}
+
+/// Apply one targets-metadata edit, then re-sign the complete dependent chain
+/// (targets, then snapshot, then timestamp) so every digest and length upstream
+/// agrees with the tampered bytes.
+pub fn resign_targets_chain(
+    metadata: &Path,
+    material: &SigningMaterial,
+    version: u64,
+    edit: impl FnOnce(&mut Targets),
+) {
+    let targets_name = format!("{version}.targets.json");
+    let mut targets: Signed<Targets> = read_signed(&metadata.join(&targets_name));
+    edit(&mut targets.signed);
+    let targets_bytes = resign(targets.signed, &material.targets);
+    std::fs::write(metadata.join(&targets_name), &targets_bytes).expect("write targets");
+
+    let snapshot_name = format!("{version}.snapshot.json");
+    let mut snapshot: Signed<Snapshot> = read_signed(&metadata.join(&snapshot_name));
+    let meta = snapshot
+        .signed
+        .meta
+        .get_mut("targets.json")
+        .expect("snapshot lists targets role");
+    if meta.hashes.is_some() {
+        meta.hashes = Some(Hashes {
+            sha256: Sha256::digest(&targets_bytes).to_vec().into(),
+            _extra: HashMap::new(),
+        });
+    }
+    if meta.length.is_some() {
+        meta.length = Some(targets_bytes.len() as u64);
+    }
+    let snapshot_bytes = resign(snapshot.signed, &material.snapshot);
+    std::fs::write(metadata.join(&snapshot_name), &snapshot_bytes).expect("write snapshot");
+
+    let mut timestamp: Signed<Timestamp> = read_signed(&metadata.join("timestamp.json"));
+    let meta = timestamp
+        .signed
+        .meta
+        .get_mut("snapshot.json")
+        .expect("timestamp lists snapshot role");
+    if meta.hashes.is_some() {
+        meta.hashes = Some(Hashes {
+            sha256: Sha256::digest(&snapshot_bytes).to_vec().into(),
+            _extra: HashMap::new(),
+        });
+    }
+    if meta.length.is_some() {
+        meta.length = Some(snapshot_bytes.len() as u64);
+    }
+    let timestamp_bytes = resign(timestamp.signed, &material.timestamp);
+    std::fs::write(metadata.join("timestamp.json"), &timestamp_bytes).expect("write timestamp");
+}
+
+/// Locate the single digest-prefixed target file with the given suffix.
+///
+/// Published repositories use consistent snapshots, so a target's on-disk name
+/// carries its digest — a caller that wants to tamper with one cannot simply
+/// join the plain name.
+#[must_use]
+pub fn digest_named_target(targets: &Path, suffix: &str) -> PathBuf {
+    let mut found = None;
+    for entry in std::fs::read_dir(targets).expect("targets listing") {
+        let entry = entry.expect("targets entry");
+        let name = entry.file_name();
+        let name = name.to_str().expect("UTF-8 target name");
+        if name.ends_with(suffix) {
+            assert!(found.is_none(), "one digest-named file per target");
+            found = Some(entry.path());
+        }
+    }
+    found.expect("digest-named target present")
+}
+
+// ---------------------------------------------------------------------------
+// Named tampering verbs
+// ---------------------------------------------------------------------------
+//
+// These wrap the re-signing primitives above so a consumer can express ONE
+// tampering intent without naming a `tough` type. That matters beyond
+// convenience: `vaultspec-product` deliberately keeps `tough` behind the
+// distribution-authority boundary, and a test-only reason is not a good enough
+// reason to breach it. Every verb leaves the repository signature-clean, so what
+// the verifier refuses is the property under test and nothing else.
+
+/// Freeze the timestamp role in the past, then re-sign it.
+///
+/// Only the expiry is wrong afterwards; the document still verifies against the
+/// root, so the refusal is an expiry refusal rather than a signature one.
+pub fn expire_timestamp_metadata(bundle: &Path, material: &SigningMaterial) {
+    let path = bundle.join("metadata").join("timestamp.json");
+    let mut timestamp: Signed<Timestamp> = read_signed(&path);
+    timestamp.signed.expires = "2020-01-01T00:00:00Z".parse().expect("past expiry");
+    std::fs::write(&path, resign(timestamp.signed, &material.timestamp))
+        .expect("write expired timestamp");
+}
+
+/// Point one member's target metadata at bytes that were never published, then
+/// re-sign the whole dependent chain.
+///
+/// Used against a NON-selected member, this isolates the cross-member cohort
+/// consistency check: the selected archive is untouched, so nothing else can
+/// account for the refusal.
+pub fn corrupt_member_archive_digest(
+    bundle: &Path,
+    material: &SigningMaterial,
+    version: u64,
+    member: DistributionTarget,
+) {
+    resign_targets_chain(&bundle.join("metadata"), material, version, |targets| {
+        let name = tough::TargetName::new(member.archive_name()).expect("member target name");
+        let entry = targets
+            .targets
+            .get_mut(&name)
+            .expect("published cohort lists every member");
+        entry.hashes.sha256 = Sha256::digest(b"bytes that were never published")
+            .to_vec()
+            .into();
+    });
+}
+
+/// Overwrite a published archive's BYTES, leaving every signature intact.
+///
+/// Nothing is re-signed: TUF binds length and digest, so this is refused by the
+/// target check itself rather than by any product-level comparison.
+pub fn substitute_published_archive(bundle: &Path, target: DistributionTarget, bytes: &[u8]) {
+    let archive = digest_named_target(&bundle.join("targets"), target.archive_name());
+    std::fs::write(&archive, bytes).expect("substitute published archive bytes");
 }
 
 pub fn archive_bytes(target: DistributionTarget) -> Vec<u8> {
