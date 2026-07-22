@@ -240,11 +240,15 @@ jobs:
     runs-on: Linux
     steps:
       - uses: actions/checkout@v4
-      - name: cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          manifest-path: engine/Cargo.toml
-          command: check
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo-deny (native — no Docker on the self-hosted runner)
+        shell: bash
+        run: |
+          # Install cargo-deny into the shared CARGO_HOME/bin so it is reused
+          # across runs (built once); the Docker-based action fails on the
+          # self-hosted runner's credential helper.
+          command -v cargo-deny >/dev/null 2>&1 || cargo install cargo-deny --locked
+          cargo deny --manifest-path engine/Cargo.toml check
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
