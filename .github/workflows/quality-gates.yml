@@ -103,6 +103,15 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm --prefix frontend ci
+      - uses: astral-sh/setup-uv@v6
+      - name: Install vaultspec-core (live-engine declared-tier dependency)
+        # The engine startup gate probes vaultspec-core on PATH (floor 0.1.36);
+        # without it `vaultspec serve` fails and the conformance test errors with
+        # "executable not found on PATH: vaultspec-core". Mirror the frontend job.
+        shell: bash
+        run: |
+          uv tool install vaultspec-core
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Create fixture and start serve
         shell: bash
         run: |
