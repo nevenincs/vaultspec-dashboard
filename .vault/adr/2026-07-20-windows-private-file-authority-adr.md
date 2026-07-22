@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#windows-private-file-authority'
 date: '2026-07-20'
-modified: '2026-07-21'
+modified: '2026-07-22'
 related:
   - "[[2026-07-20-windows-private-file-authority-research]]"
   - '[[2026-07-21-windows-private-file-authority-ntfs-directory-durability-research]]'
@@ -411,6 +411,24 @@ lock-step by two checks: no principal, mask, or flag literal is declared outside
 call. The pinned `windows-acl` 0.3.0 API's `winapi` pointer type is a bounded consequence
 of that pin, not a second native-authority surface; it carries no unsafe code into either
 consumer and retires with any future replacement of that dependency.
+
+Permitted-primitive addition recorded 2026-07-22: the D9 module gains ONE caller-identity
+primitive — the current process's token user SID — from exactly two new native calls,
+`OpenProcessToken` and `GetTokenInformation(TokenUser)`, reusing the already-reviewed
+SID-to-string conversion rather than adding a second. It is bounded to the CURRENT process
+under `TOKEN_QUERY`: no caller-supplied process, no thread or impersonation token, no
+adjust right, a fixed size cap that fails closed instead of looping, and only the textual
+SID escaping — never the token handle, the raw SID pointer, or the `TOKEN_USER`. It does
+not contradict D3's "only new security-descriptor primitive" clause, because it observes
+the CALLER's identity rather than an object's descriptor; it is entered here because that
+enumeration keeps its value only if additions are entered in it. The reason it exists is
+CORRECTNESS, not consolidation. The six derivations it replaces resolved a NAME back to a
+SID through `LookupAccountName` — an approximation of the principal an access check
+actually evaluates, which can differ under a filtered token, a local-versus-domain name
+collision, a service account, or impersonation, and which made a security-critical
+derivation depend on reaching a domain controller. Equivalence for the ordinary
+interactive account was PROVEN rather than assumed, and the per-process cache was removed
+rather than repaired, since the cost that had justified it was the name lookup itself.
 
 Boundary note recorded at acceptance: this decision governs the private-file
 DACL/protected-state authority (credentials, bootstrap descriptors, distribution rollback
