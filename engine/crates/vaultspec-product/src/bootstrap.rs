@@ -12,7 +12,6 @@
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 
 use crate::credentials::read_role_in;
 use crate::credentials::{
@@ -414,11 +413,5 @@ fn encode_descriptor(descriptor: &Descriptor) -> std::io::Result<Vec<u8>> {
 }
 
 fn digest(secret: &str) -> String {
-    let bytes = Sha256::digest(secret.as_bytes());
-    let mut output = String::with_capacity(64);
-    for byte in bytes {
-        use std::fmt::Write as _;
-        let _ = write!(output, "{byte:02x}");
-    }
-    output
+    crate::hex::sha256(secret.as_bytes())
 }

@@ -553,16 +553,12 @@ pub(crate) fn validate_token(token: &str) -> Result<(), &'static str> {
 }
 
 pub(crate) fn random_token() -> std::io::Result<String> {
-    use std::fmt::Write as _;
-
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes)
         .map_err(|error| std::io::Error::other(format!("OS CSPRNG unavailable: {error}")))?;
-    let mut token = String::with_capacity(TOKEN_BYTES);
-    for byte in bytes {
-        let _ = write!(token, "{byte:02x}");
-    }
-    Ok(token)
+    // 32 CSPRNG bytes encode to exactly the TOKEN_BYTES-long lowercase-hex form
+    // `validate_token` requires.
+    Ok(crate::hex::encode(&bytes))
 }
 
 /// Compatibility helper for existing non-credential owner-private files. New
