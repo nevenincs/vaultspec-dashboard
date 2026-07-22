@@ -277,6 +277,15 @@ pub enum VerificationError {
     InvalidDatastoreState,
     #[error("verified distribution authority belongs to a different product root")]
     ProductRootMismatch,
+    /// The product root could not be opened or observed at all.
+    ///
+    /// Deliberately NOT [`Self::ProductRootMismatch`]: collapsing an operating-
+    /// system failure into an identity verdict reports a sharing violation as a
+    /// substituted root, which is a different and far more alarming claim. It
+    /// also costs the diagnosis - that conflation is why a coexistence conflict
+    /// here took three reproductions to characterize instead of one.
+    #[error("product root could not be opened for verification")]
+    ProductRootUnavailable(#[source] std::io::Error),
     #[error("verified archive staging is unavailable")]
     StagingUnavailable,
     #[error("another distribution verification owns the product rollback authority")]

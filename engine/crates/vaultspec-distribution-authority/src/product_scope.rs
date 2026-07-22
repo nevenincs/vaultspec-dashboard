@@ -83,12 +83,14 @@ impl ProductRootScope {
 
     #[cfg(windows)]
     pub(crate) fn retain(path: &Path) -> Result<Self, VerificationError> {
+        // An OS failure and an identity mismatch are different findings; keep
+        // the cause rather than collapsing both into "mismatch".
         let identity = vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
-            .map_err(|_| VerificationError::ProductRootMismatch)?;
+            .map_err(VerificationError::ProductRootUnavailable)?;
         let authority = cap_std::fs::Dir::open_ambient_dir(path, cap_std::ambient_authority())
-            .map_err(|_| VerificationError::ProductRootMismatch)?;
+            .map_err(VerificationError::ProductRootUnavailable)?;
         if vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
-            .map_err(|_| VerificationError::ProductRootMismatch)?
+            .map_err(VerificationError::ProductRootUnavailable)?
             != identity
         {
             return Err(VerificationError::ProductRootMismatch);

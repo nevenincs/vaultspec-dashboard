@@ -1332,3 +1332,46 @@ async fn unsealed_verify_seam_reaches_success_over_a_real_repository() {
         "a successful verification must persist the trust anchor"
     );
 }
+
+/// An operating-system failure to open the root must not be reported as an
+/// identity mismatch.
+///
+/// `retain` once mapped every failure to `ProductRootMismatch` with
+/// `.map_err(|_| …)`, which turned a sharing violation — a transient, local,
+/// entirely benign condition — into the claim that the product root had been
+/// SUBSTITUTED. Those are different findings and only one of them is alarming.
+/// The conflation is also what cost the diagnosis: a coexistence conflict on
+/// this exact path took three reproductions to characterize because the error
+/// it surfaced described the wrong thing.
+#[cfg(windows)]
+#[test]
+fn a_sharing_violation_on_the_root_is_not_reported_as_a_mismatch() {
+    let temp = TempDir::new().expect("temporary product home");
+    let product = temp.path().join("product-root");
+    std::fs::create_dir(&product).expect("real product root");
+
+    // A real exclusive lease on the root, taken exactly as the product
+    // authority's DELETE-requesting open does. It denies the sharing `retain`
+    // needs, so the very next open fails at the OS.
+    let _lease = vaultspec_windows_authority::AuthorityDirectory::open_existing(&product)
+        .expect("an exclusive lease on the root");
+
+    match VerificationRequest::for_product_root(
+        temp.path().join("bundle"),
+        &product,
+        DistributionTarget::X86_64PcWindowsMsvc,
+    ) {
+        Err(VerificationError::ProductRootUnavailable(error)) => {
+            assert_eq!(
+                error.raw_os_error(),
+                Some(32),
+                "the underlying sharing violation must survive verbatim, not be \
+                 flattened to some generic io error"
+            );
+        }
+        Err(VerificationError::ProductRootMismatch) => {
+            panic!("a sharing violation was reported as a substituted product root")
+        }
+        other => panic!("expected ProductRootUnavailable, got {other:?}"),
+    }
+}
