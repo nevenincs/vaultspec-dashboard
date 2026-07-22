@@ -714,12 +714,7 @@ fn ensure_cap_directory(root: &Dir, name: &str) -> Result<Dir, VerificationError
     let directory = open_cap_directory_exact(root, name)?;
     if created {
         #[cfg(unix)]
-        directory
-            .try_clone()
-            .map_err(|_| VerificationError::DatastoreUnavailable)?
-            .into_std_file()
-            .sync_all()
-            .map_err(|_| VerificationError::DatastoreUnavailable)?;
+        sync_cap_directory(&directory)?;
         sync_cap_directory(root)?;
     }
     Ok(directory)
@@ -962,14 +957,25 @@ fn remove_cap_store_residue(root: &Dir, name: &str) -> Result<(), VerificationEr
         .map_err(|_| VerificationError::InvalidDatastoreState)
 }
 
+/// Durably flush directory metadata on Unix (W01.P01.S177 parity).
+///
+/// cap-std holds directories as O_PATH descriptors, on which `fsync` fails
+/// EBADF — the same "cannot flush the capability handle through itself"
+/// constraint the Windows path documents. An O_PATH fd is a valid `*at()`
+/// dirfd, so the directory is reopened through ITSELF (".") to obtain a real
+/// read handle `fsync` accepts. No pathname beyond the self-referential "."
+/// is resolved, so the reopened object is the pinned inode, not a re-walked
+/// path.
 #[cfg(unix)]
 fn sync_cap_directory(directory: &Dir) -> Result<(), VerificationError> {
-    directory
-        .try_clone()
-        .map_err(|_| VerificationError::DatastoreUnavailable)?
-        .into_std_file()
-        .sync_all()
-        .map_err(|_| VerificationError::DatastoreUnavailable)
+    let syncable = rustix::fs::openat(
+        directory,
+        ".",
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(|_| VerificationError::DatastoreUnavailable)?;
+    rustix::fs::fsync(&syncable).map_err(|_| VerificationError::DatastoreUnavailable)
 }
 
 /// Durably flush directory metadata on Windows (W01.P01.S177).
@@ -1001,10 +1007,19 @@ fn prepare_attempt_datastore(
     #[cfg(unix)]
     {
         use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
-        let retained = directory
-            .try_clone()
-            .map_err(|_| VerificationError::DatastoreUnavailable)?
-            .into_std_file();
+        // cap-std holds this directory as an O_PATH descriptor, on which fchmod
+        // and fsync fail EBADF. An O_PATH fd is a valid *at() dirfd, so reopen
+        // the directory through itself (".") for a real RDONLY handle that
+        // carries the mode-set and durability flush; fchmod accepts a read-only
+        // handle.
+        let retained: std::fs::File = rustix::fs::openat(
+            &directory,
+            ".",
+            rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|_| VerificationError::DatastoreUnavailable)?
+        .into();
         let metadata = retained
             .metadata()
             .map_err(|_| VerificationError::DatastoreUnavailable)?;

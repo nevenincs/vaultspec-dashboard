@@ -209,8 +209,17 @@ pub(crate) fn ensure_owner_private_child_directory(
     use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _};
 
     let child = open_child_exact(parent, name)?;
-    child
-        .set_permissions(std::fs::Permissions::from_mode(0o700))
+    // cap-std holds directory handles as O_PATH descriptors on Linux, and fchmod
+    // on an O_PATH fd fails EBADF. Set the mode through the parent capability's
+    // fchmodat instead (an O_PATH fd is valid as the *at() dirfd), keeping the
+    // child name resolved RELATIVELY with no absolute path reconstructed. The
+    // pinned `child` fd below still fstat-verifies the inode we opened, so a
+    // between-open-and-chmod swap is caught as a mode/owner policy violation.
+    parent
+        .set_permissions(
+            name,
+            cap_std::fs::Permissions::from_std(std::fs::Permissions::from_mode(0o700)),
+        )
         .map_err(PrivateDirectoryError::Filesystem)?;
     let metadata = child
         .metadata()

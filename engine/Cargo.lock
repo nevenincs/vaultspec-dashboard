@@ -3712,6 +3712,7 @@ dependencies = [
  "futures-util",
  "jiff",
  "nix 0.29.0",
+ "rustix",
  "serde",
  "serde_jcs",
  "serde_json",
