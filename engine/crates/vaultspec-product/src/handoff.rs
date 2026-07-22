@@ -105,6 +105,25 @@ pub struct ExecuteIntent {
     /// The final-name candidate generation to activate.
     pub candidate_generation: String,
     /// The retained prior generation a rollback re-selects, if any.
+    ///
+    /// A rollback re-selecting this must TRUST THE RECEIPT JOURNAL rather than
+    /// re-verify the prior release. Verification writes the trust datastore,
+    /// which is a mutation of the product root and is therefore serialized
+    /// against a bound product lease — attempting it under one fails closed.
+    /// That exclusion is deliberate and recorded (the a2a-generation-authority
+    /// ADR, verified-value versus verification-work corollary); a flow that
+    /// needs it is a design question about ordering, never a sharing mode to
+    /// loosen. `vaultspec_updater::drive_fresh_update` carries the full
+    /// reasoning and the escape route.
+    ///
+    /// This is the DESCRIPTOR field. `transaction::UpdatePlan` and
+    /// `UpdateTransaction` each expose a `prior_generation` of the same name,
+    /// but those are this value AFTER threading — the updater's
+    /// `build_execute_inputs` passes it into `UpdatePlan`, and the materializer
+    /// refuses unless it AGREES WITH the settled receipt's active generation.
+    /// The journal is thus already the authority on which generation was live,
+    /// which is exactly why a re-verification would be asking a question that
+    /// has been answered.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prior_generation: Option<String>,
     /// The install/update channel whose activation authority applies.
