@@ -429,6 +429,349 @@ async fn a_foreign_target_cohort_is_refused_at_the_install_boundary_not_as_targe
 }
 
 // ---------------------------------------------------------------------------
+// The serialization constraint, made executable
+// ---------------------------------------------------------------------------
+
+/// A distribution verification cannot run while a product is BOUND.
+///
+/// This is the standing design constraint made testable rather than left as
+/// prose. Verifying writes a trust datastore into the product root, which is
+/// itself a root mutation; the product lease denies write sharing, and that
+/// denial is also the anti-substitution guarantee. So the two are mutually
+/// exclusive BY DESIGN, and first install and update both satisfy it by
+/// verifying before they bind.
+///
+/// Nothing in production violates it today — traced across the whole engine:
+/// the only production caller of the verifier verifies before binding, and
+/// there is no release-rollback or repair flow at all (both `repair_immutable`
+/// and `remove` are typed refusals, and the only executing "rollback" is
+/// transaction abort, which verifies nothing). That makes the constraint
+/// currently unenforced by anything except intent, which is exactly the
+/// situation a test should fix: the day a rollback re-verifies a prior release
+/// while holding a lease, this fails and says why.
+///
+/// If it ever DOES fail, the answer is a design question about serialization —
+/// never a loosened sharing mode. Loosening it would silently falsify every
+/// assertion that rests on the anti-substitution guarantee.
+///
+/// The control is inside the test: the same verification SUCCEEDS on the same
+/// root once the product is dropped, so the refusal is attributable to the
+/// binding and to nothing else about the fixture.
+#[tokio::test(flavor = "current_thread")]
+async fn a_verification_cannot_run_while_a_product_is_bound() {
+    let chain = Chain::new().await;
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+
+    let product = LockedProduct::bind(chain.fixture.paths.clone(), &chain.fixture.guard)
+        .expect("locked product");
+    let refused = chain.verify(&bundle, TARGET).await;
+    assert!(
+        matches!(refused, Err(VerificationError::DatastoreUnavailable)),
+        "a verification under a bound product must be refused by the lease, got {refused:?}"
+    );
+    chain.assert_no_receipt("after refusing a verification under a bound product");
+
+    // CONTROL: release the lease and the identical verification succeeds. Without
+    // this the refusal above could be any latent defect in the fixture.
+    drop(product);
+    drop(
+        chain
+            .verify(&bundle, TARGET)
+            .await
+            .expect("the same verification succeeds once the product is unbound"),
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Generation substitution and alias
+// ---------------------------------------------------------------------------
+
+/// The generation a settled receipt selects can be neither re-created nor
+/// reached under an alias.
+///
+/// Two distinct attacks on the same name. Re-creating it would let a second
+/// tree occupy the identity the receipt already points at; reaching it through
+/// a traversal alias would let a caller aim the product outside the generations
+/// parent while appearing to name a generation. Both are refused, and the
+/// receipt still selects the original.
+#[tokio::test(flavor = "current_thread")]
+async fn the_receipt_selected_generation_resists_substitution_and_alias() {
+    let chain = Chain::new().await;
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+    let mut verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("the honest repository verifies");
+    let release = chain
+        .install(&mut verified, "generation-selected")
+        .await
+        .unwrap_or_else(|failure| {
+            panic!("control install: {} - {}", failure.message, failure.detail)
+        });
+    assert_eq!(release.active_generation(), "generation-selected");
+
+    let mut product = LockedProduct::bind(chain.fixture.paths.clone(), &chain.fixture.guard)
+        .expect("locked product");
+
+    // SUBSTITUTION: the selected name is not available for a second tree.
+    let refused = product
+        .create_unpublished("generation-selected")
+        .expect_err("the receipt-selected generation must not be re-creatable");
+    // `Refused` rather than any error: it is the variant that carries no
+    // residue, so this also asserts the rejected substitution left nothing on
+    // disk under the selected name.
+    assert!(
+        matches!(
+            refused,
+            crate::generation::CreateUnpublishedError::Refused(
+                crate::generation::GenerationError::SelectedByActiveReceipt(_)
+                    | crate::generation::GenerationError::AlreadyExists(_)
+            )
+        ),
+        "expected a residue-free substitution refusal naming the selected generation, got {refused}"
+    );
+
+    // ALIAS: a name that traverses out of the generations parent is refused by
+    // the path grammar, before anything is created.
+    for alias in [
+        "../generation-selected",
+        "generation-selected/../generation-elsewhere",
+        ".",
+    ] {
+        let refused = product
+            .create_unpublished(alias)
+            .err()
+            .unwrap_or_else(|| panic!("the alias {alias:?} must not resolve to a generation"));
+        assert!(
+            matches!(
+                refused,
+                crate::generation::CreateUnpublishedError::Refused(
+                    crate::generation::GenerationError::Path(_)
+                )
+            ),
+            "expected {alias:?} to be refused by the path grammar with no residue, got {refused}"
+        );
+    }
+
+    // The receipt still selects what it always selected.
+    let observation = observe_active_release(&chain.fixture.paths, &chain.fixture.guard)
+        .expect("journal observation");
+    match observation.state().expect("settled state") {
+        ActiveReleaseState::Settled(active) => {
+            assert_eq!(active.active_generation(), "generation-selected");
+        }
+        other => panic!("expected the original settled release, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Credential refusals
+// ---------------------------------------------------------------------------
+
+/// Once a receipt has settled, no further bootstrap can mint ownership.
+///
+/// This is the collision that matters. Bootstrap is what CREATES the ownership
+/// capability, so a second bootstrap against an installed product would mint a
+/// second ownership secret for a product that already has an owner. The
+/// precondition is checked against the fixed journal, not against the presence
+/// of the credential files, so deleting them does not re-open the door.
+#[tokio::test(flavor = "current_thread")]
+async fn bootstrap_is_refused_once_a_receipt_has_settled() {
+    let chain = Chain::new().await;
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+    let mut verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("the honest repository verifies");
+    drop(
+        chain
+            .install(&mut verified, "generation-owned")
+            .await
+            .unwrap_or_else(|failure| {
+                panic!("control install: {} - {}", failure.message, failure.detail)
+            }),
+    );
+
+    let store = crate::credentials::DashboardCredentialStore::for_product(&chain.fixture.paths);
+    let refused = store
+        .begin_bootstrap(&chain.fixture.guard)
+        .expect_err("a settled receipt must refuse a second credential bootstrap");
+    assert!(
+        matches!(
+            refused,
+            crate::credentials::CredentialError::PlatformAuthorityUnavailable(_)
+        ),
+        "expected a settled-receipt refusal, got {refused:?}"
+    );
+
+    // And removing the credential FILES does not re-open it: the precondition is
+    // the journal, not the residue.
+    std::fs::remove_file(chain.fixture.paths.credentials_dir().join("ownership.cap"))
+        .expect("remove the ownership credential");
+    let refused = store
+        .begin_bootstrap(&chain.fixture.guard)
+        .expect_err("deleting the credential must not re-open bootstrap");
+    assert!(
+        matches!(
+            refused,
+            crate::credentials::CredentialError::PlatformAuthorityUnavailable(_)
+        ),
+        "expected the journal to still refuse bootstrap, got {refused:?}"
+    );
+}
+
+/// A malformed credential token is refused as invalid, never read as a secret.
+///
+/// The negative control is the first half: the credential written by a real
+/// install READS BACK cleanly, so the refusal below is attributable to the
+/// corruption and not to the reader being broken for every input.
+#[tokio::test(flavor = "current_thread")]
+async fn a_malformed_credential_token_is_refused_rather_than_read() {
+    let chain = Chain::new().await;
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+    let mut verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("the honest repository verifies");
+    drop(
+        chain
+            .install(&mut verified, "generation-tokens")
+            .await
+            .unwrap_or_else(|failure| {
+                panic!("control install: {} - {}", failure.message, failure.detail)
+            }),
+    );
+
+    let store = crate::credentials::DashboardCredentialStore::for_product(&chain.fixture.paths);
+    let genuine = store
+        .read_ownership()
+        .expect("the credential a real install created reads back");
+    assert_eq!(genuine.secret().len(), 64, "a token is 64 lowercase hex");
+
+    // Each corruption violates a different clause of the token grammar: too
+    // short, correct length but out of alphabet, and empty.
+    for (label, corruption) in [
+        ("truncated", "abc123"),
+        ("non-hexadecimal", &"z".repeat(64)[..]),
+        ("empty", ""),
+    ] {
+        std::fs::write(
+            chain.fixture.paths.credentials_dir().join("ownership.cap"),
+            corruption,
+        )
+        .expect("write the corrupted credential");
+        let refused = store
+            .read_ownership()
+            .err()
+            .unwrap_or_else(|| panic!("a {label} token must not read as a credential"));
+        assert!(
+            matches!(refused, crate::credentials::CredentialError::Invalid { .. }),
+            "expected a {label} token to be refused as invalid, got {refused:?}"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bootstrap interruption recovery
+// ---------------------------------------------------------------------------
+
+/// An interrupted bootstrap is classified by PHASE, and resumes only into the
+/// exact matching state.
+///
+/// The descriptor is published before either secret, so every interruption
+/// after that point leaves durable state a later attempt must classify rather
+/// than blindly overwrite. This walks the real phases on a real filesystem: a
+/// descriptor with neither credential, then with exactly one. Each is a
+/// distinct typed classification, and neither silently completes.
+///
+/// The refusal is the CORRECT outcome here, not a limitation: completing an
+/// interrupted bootstrap automatically would mint ownership over residue nobody
+/// has adjudicated.
+#[tokio::test(flavor = "current_thread")]
+async fn an_interrupted_bootstrap_is_classified_by_phase_and_never_auto_completes() {
+    let chain = Chain::new().await;
+    let store = crate::credentials::DashboardCredentialStore::for_product(&chain.fixture.paths);
+
+    // PHASE ONE: descriptor durable, neither credential written. Dropping the
+    // prepared value is the interruption — it leaves the descriptor behind by
+    // design.
+    let prepared = store
+        .prepare_bootstrap(&chain.fixture.guard)
+        .expect("a fresh product prepares a bootstrap");
+    drop(prepared);
+    assert!(
+        chain
+            .fixture
+            .paths
+            .credentials_dir()
+            .join("bootstrap-credentials.v1")
+            .exists(),
+        "the interruption must leave the durable descriptor that makes recovery possible"
+    );
+
+    let refused = store
+        .begin_bootstrap(&chain.fixture.guard)
+        .expect_err("a descriptor with no credentials must require recovery");
+    assert!(
+        matches!(
+            refused,
+            crate::credentials::CredentialError::RecoveryRequired(
+                crate::bootstrap::BootstrapRecoveryState::PreparedEmpty
+            )
+        ),
+        "expected PreparedEmpty, got {refused:?}"
+    );
+
+    // PHASE TWO: both credentials exist and then ONE is lost. Getting here
+    // honestly matters. The obvious arrangement — hand-writing a credential
+    // file — does not work and should not: a file this process creates itself
+    // does not carry the protected DACL the private-file policy demands, so the
+    // reader refuses it as a policy violation long before any phase logic runs,
+    // and the test would have been asserting the wrong thing entirely. So the
+    // credentials are created by the REAL bootstrap and the interruption is
+    // expressed by DELETING one, which needs no privileged creation.
+    std::fs::remove_file(
+        chain
+            .fixture
+            .paths
+            .credentials_dir()
+            .join("bootstrap-credentials.v1"),
+    )
+    .expect("clear the phase-one descriptor");
+    let pending = store
+        .begin_bootstrap(&chain.fixture.guard)
+        .expect("a cleared product bootstraps for real");
+    drop(pending);
+    let attach = chain.fixture.paths.credentials_dir().join("attach.cred");
+    assert!(
+        attach.exists(),
+        "the real bootstrap created both credentials"
+    );
+    std::fs::remove_file(&attach).expect("lose one credential");
+
+    let refused = store
+        .begin_bootstrap(&chain.fixture.guard)
+        .expect_err("a bootstrap missing one of its described credentials must refuse");
+    assert!(
+        matches!(
+            refused,
+            crate::credentials::CredentialError::Missing(
+                crate::credentials::CredentialRole::AttachControl
+            )
+        ),
+        "expected the refusal to name the missing role, got {refused:?}"
+    );
+
+    // Throughout, nothing has settled. An interrupted bootstrap is inert: it is
+    // the RECEIPT that authorizes, and no receipt was ever written.
+    chain.assert_no_receipt("after an interrupted bootstrap");
+}
+
+// ---------------------------------------------------------------------------
 // Manifest refusals, reached through the real chain
 // ---------------------------------------------------------------------------
 
