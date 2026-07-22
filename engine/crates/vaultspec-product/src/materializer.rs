@@ -41,11 +41,10 @@ use crate::transaction::{ReadyToActivate, TransactionError, UpdateTransaction};
 use descriptor::{MaterializeDescriptor, MaterializePhase};
 use writer::GenerationWriter;
 
-/// The canonical five-target order the synthesized cohort descriptor must
+/// The canonical four-target order the synthesized cohort descriptor must
 /// carry (the same closed order the manifest cohort parser enforces).
-const CANONICAL_TRIPLES: [&str; 5] = [
+const CANONICAL_TRIPLES: [&str; 4] = [
     "aarch64-apple-darwin",
-    "x86_64-apple-darwin",
     "aarch64-unknown-linux-gnu",
     "x86_64-unknown-linux-gnu",
     "x86_64-pc-windows-msvc",
@@ -194,7 +193,7 @@ pub(crate) struct UpdateFeed<R: Read + Seek> {
     pub(crate) release_identity: String,
     pub(crate) target_triple: String,
     pub(crate) member_manifest_sha256: String,
-    /// `(triple, member_manifest_sha256)` in canonical five-target order.
+    /// `(triple, member_manifest_sha256)` in canonical four-target order.
     pub(crate) members: Vec<(String, String)>,
     pub(crate) component_lock: Vec<u8>,
     pub(crate) capsule_root: String,
@@ -425,7 +424,6 @@ struct PriorFacts {
 pub(crate) fn triple_to_target(triple: &str) -> Result<Target, MaterializeError> {
     match triple {
         "aarch64-apple-darwin" => Ok(Target::Aarch64AppleDarwin),
-        "x86_64-apple-darwin" => Ok(Target::X86_64AppleDarwin),
         "aarch64-unknown-linux-gnu" => Ok(Target::Aarch64UnknownLinuxGnu),
         "x86_64-unknown-linux-gnu" => Ok(Target::X86_64UnknownLinuxGnu),
         "x86_64-pc-windows-msvc" => Ok(Target::X86_64PcWindowsMsvc),
@@ -435,7 +433,7 @@ pub(crate) fn triple_to_target(triple: &str) -> Result<Target, MaterializeError>
     }
 }
 
-/// Synthesize the canonical RFC 8785 five-member cohort descriptor from the
+/// Synthesize the canonical RFC 8785 four-member cohort descriptor from the
 /// verified distribution members. The strings are closed ASCII grammars, so
 /// fixed-order emission without escapes is exactly the canonical form the
 /// verifier's cohort parser re-proves.
@@ -455,7 +453,7 @@ pub(crate) fn synthesize_cohort_descriptor(
     }
     if members.len() != CANONICAL_TRIPLES.len() {
         return Err(MaterializeError::Distribution(
-            "the verified cohort does not carry exactly five members".to_string(),
+            "the verified cohort does not carry exactly four members".to_string(),
         ));
     }
     let mut body =

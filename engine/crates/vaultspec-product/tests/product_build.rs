@@ -70,7 +70,6 @@ fn composed_member() -> ComposedMember {
         cohort_id: "release-2026.07.19".to_string(),
         cohort_targets: vec![
             Target::Aarch64AppleDarwin,
-            Target::X86_64AppleDarwin,
             Target::Aarch64UnknownLinuxGnu,
             Target::X86_64UnknownLinuxGnu,
             Target::X86_64PcWindowsMsvc,
@@ -177,13 +176,13 @@ fn the_emitter_derives_runtime_pins_from_the_lock_not_the_caller() {
 #[test]
 fn an_incomplete_cohort_roster_fails_self_verification() {
     // Release-set skew (an S65 rejection): a member that does not carry the exact
-    // five-target cohort roster must fail closed at the emitter's self-verify,
+    // four-target cohort roster must fail closed at the emitter's self-verify,
     // never ship. The roster is a caller-supplied fact, so the verifier is the
     // authority that catches a skewed one.
     let lock = lock();
     let capsule = capsule(&lock);
     let mut member = composed_member();
-    member.cohort_targets.pop(); // four targets, not five
+    member.cohort_targets.pop(); // three targets, not four
     let refused = emit_member_manifest(&member, &lock, &capsule);
     assert!(
         matches!(refused, Err(ProductBuildError::SelfVerify(_))),
@@ -353,7 +352,6 @@ fn compose_product_tree_places_scans_emits_and_covers() {
         cohort_id: "release-2026.07.19".to_string(),
         cohort_targets: vec![
             Target::Aarch64AppleDarwin,
-            Target::X86_64AppleDarwin,
             Target::Aarch64UnknownLinuxGnu,
             Target::X86_64UnknownLinuxGnu,
             Target::X86_64PcWindowsMsvc,
@@ -444,7 +442,6 @@ fn compose_fails_on_a_missing_source_payload() {
         cohort_id: "release-2026.07.19".to_string(),
         cohort_targets: vec![
             Target::Aarch64AppleDarwin,
-            Target::X86_64AppleDarwin,
             Target::Aarch64UnknownLinuxGnu,
             Target::X86_64UnknownLinuxGnu,
             Target::X86_64PcWindowsMsvc,
@@ -564,7 +561,6 @@ fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf)
         cohort_id: "release-2026.07.19".to_string(),
         cohort_targets: vec![
             Target::Aarch64AppleDarwin,
-            Target::X86_64AppleDarwin,
             Target::Aarch64UnknownLinuxGnu,
             Target::X86_64UnknownLinuxGnu,
             Target::X86_64PcWindowsMsvc,

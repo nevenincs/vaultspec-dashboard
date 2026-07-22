@@ -1,4 +1,4 @@
-//! Fail-closed distribution authority for the vaultspec six-member release cohort.
+//! Fail-closed distribution authority for the vaultspec five-member release cohort.
 //!
 //! Verification is deliberately offline: repository metadata and targets are
 //! read only through `tough`'s filesystem transport.  The production entrypoint
@@ -49,7 +49,7 @@ pub const COHORT_TARGET_NAME: &str = "cohort.v1.json";
 pub const MAX_COHORT_BYTES: u64 = 256 * 1024;
 /// Maximum accepted size of one platform archive.
 pub const MAX_ARCHIVE_BYTES: u64 = 2 * 1024 * 1024 * 1024;
-/// Maximum accepted aggregate size of the six primary targets.
+/// Maximum accepted aggregate size of the five primary targets.
 pub const MAX_RELEASE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 
 const MAX_METADATA_ENTRIES: usize = 40;
@@ -65,14 +65,10 @@ const VERIFICATION_LOCK: &str = "distribution-verification.lock";
 // root-key ceremony.  An empty value is an intentional, typed production gate.
 const EMBEDDED_PRODUCTION_ROOT: &[u8] = b"";
 
-const TARGETS: [(&str, DistributionTarget); 5] = [
+const TARGETS: [(&str, DistributionTarget); 4] = [
     (
         "archive.aarch64-apple-darwin",
         DistributionTarget::Aarch64AppleDarwin,
-    ),
-    (
-        "archive.x86_64-apple-darwin",
-        DistributionTarget::X86_64AppleDarwin,
     ),
     (
         "archive.aarch64-unknown-linux-gnu",
@@ -93,8 +89,6 @@ const TARGETS: [(&str, DistributionTarget); 5] = [
 pub enum DistributionTarget {
     #[serde(rename = "aarch64-apple-darwin")]
     Aarch64AppleDarwin,
-    #[serde(rename = "x86_64-apple-darwin")]
-    X86_64AppleDarwin,
     #[serde(rename = "aarch64-unknown-linux-gnu")]
     Aarch64UnknownLinuxGnu,
     #[serde(rename = "x86_64-unknown-linux-gnu")]
@@ -116,7 +110,6 @@ impl DistributionTarget {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Aarch64AppleDarwin => "aarch64-apple-darwin",
-            Self::X86_64AppleDarwin => "x86_64-apple-darwin",
             Self::Aarch64UnknownLinuxGnu => "aarch64-unknown-linux-gnu",
             Self::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
             Self::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
@@ -269,7 +262,7 @@ pub enum VerificationError {
     CohortUnavailable,
     #[error("release cohort is not canonical RFC 8785 JSON")]
     NonCanonicalCohort,
-    #[error("release cohort violates the six-member contract")]
+    #[error("release cohort violates the five-member contract")]
     InvalidCohort,
     #[error("persistent distribution datastore is unavailable")]
     DatastoreUnavailable,
@@ -437,7 +430,7 @@ async fn verify_with_root_bounded(
         .is_some_and(|delegations| !delegations.keys.is_empty() || !delegations.roles.is_empty());
     if !repository.root().signed.consistent_snapshot
         || has_delegations
-        || repository.all_targets().count() != 6
+        || repository.all_targets().count() != 5
     {
         return Err(VerificationError::InvalidRepositoryLayout);
     }

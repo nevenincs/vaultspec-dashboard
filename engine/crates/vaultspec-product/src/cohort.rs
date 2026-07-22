@@ -1,15 +1,15 @@
-//! The external five-member cohort descriptor + digest (a2a-product-provisioning
+//! The external four-member cohort descriptor + digest (a2a-product-provisioning
 //! W04.P08.S166).
 //!
-//! After all five per-target member manifests exist, the release aggregates
-//! exactly one VERIFIED member for each of the five unique target triples,
+//! After all four per-target member manifests exist, the release aggregates
+//! exactly one VERIFIED member for each of the four unique target triples,
 //! enforces the common identity every member must share (cohort id, A2A commit,
 //! component-lock join, release schema, protocol, and state-schema), and emits the
 //! external CohortDescriptor. The cohort digest is SHA-256 of that descriptor's
 //! RFC 8785 JSON Canonicalization Scheme (JCS) serialization — the canonical
 //! preimage is produced by `serde_jcs`, NEVER hand-rolled. The descriptor is
 //! EXTERNAL to every member (a member's `cohort.id` matches it, but the digest is
-//! never embedded back), so hashing the five raw member documents is non-circular.
+//! never embedded back), so hashing the four raw member documents is non-circular.
 
 use serde::Serialize;
 use serde_json::Value;
@@ -17,11 +17,10 @@ use serde_json::Value;
 use crate::hex;
 use crate::manifest::{ComponentLock, ManifestError, ReleaseSetManifest, Target};
 
-/// The five release targets in canonical `TargetTriple` enum order — the closed,
+/// The four release targets in canonical `TargetTriple` enum order — the closed,
 /// exact cohort roster.
-const COHORT_ROSTER: [Target; 5] = [
+const COHORT_ROSTER: [Target; 4] = [
     Target::Aarch64AppleDarwin,
-    Target::X86_64AppleDarwin,
     Target::Aarch64UnknownLinuxGnu,
     Target::X86_64UnknownLinuxGnu,
     Target::X86_64PcWindowsMsvc,
@@ -36,9 +35,9 @@ pub enum CohortError {
         error: ManifestError,
     },
     /// A member's declared target does not match the roster slot it was supplied
-    /// for, or the roster is not exactly the five unique targets.
+    /// for, or the roster is not exactly the four unique targets.
     Roster { detail: String },
-    /// The five members do not share the identity a cohort requires (id, A2A
+    /// The four members do not share the identity a cohort requires (id, A2A
     /// commit, component-lock join, release schema, protocol, or state schema).
     Identity { detail: String },
     /// The descriptor could not be canonicalized (JCS) or serialized.
@@ -80,7 +79,7 @@ pub struct CohortEmission {
 /// descriptor and emit its JCS preimage + digest.
 ///
 /// Each `(target, raw member manifest)` is verified through the S06 authority
-/// against `lock`; the five must form the exact roster and share one cohort id,
+/// against `lock`; the four must form the exact roster and share one cohort id,
 /// A2A commit, component-lock join, release schema, protocol, and state schema. A
 /// member cannot self-authorize its lock — the join is checked against the same
 /// independently trusted `lock`.
@@ -143,7 +142,7 @@ pub fn emit_cohort_descriptor(
         by_target[slot] = Some((hex::sha256(raw.as_bytes()), value));
     }
 
-    let shared = shared.expect("five members verified above");
+    let shared = shared.expect("four members verified above");
     // Members array in canonical roster order.
     let mut cohort_members = Vec::with_capacity(COHORT_ROSTER.len());
     for (index, target) in COHORT_ROSTER.iter().enumerate() {
@@ -175,7 +174,7 @@ pub fn emit_cohort_descriptor(
     })
 }
 
-/// The identity fields all five members must share.
+/// The identity fields all four members must share.
 struct Identity {
     id: String,
     target: String,

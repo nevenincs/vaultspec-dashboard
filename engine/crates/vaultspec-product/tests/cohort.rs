@@ -20,9 +20,8 @@ fn lock() -> ComponentLock {
     ComponentLock::parse(LOCK_JSON).unwrap()
 }
 
-const ROSTER: [Target; 5] = [
+const ROSTER: [Target; 4] = [
     Target::Aarch64AppleDarwin,
-    Target::X86_64AppleDarwin,
     Target::Aarch64UnknownLinuxGnu,
     Target::X86_64UnknownLinuxGnu,
     Target::X86_64PcWindowsMsvc,
@@ -127,15 +126,15 @@ fn all_members(lock: &ComponentLock) -> Vec<(Target, String)> {
 }
 
 #[test]
-fn five_matching_members_emit_a_deterministic_cohort_digest() {
+fn four_matching_members_emit_a_deterministic_cohort_digest() {
     let lock = lock();
     let members = all_members(&lock);
-    let a = emit_cohort_descriptor(&members, &lock).expect("five matching members emit a cohort");
+    let a = emit_cohort_descriptor(&members, &lock).expect("four matching members emit a cohort");
     // The digest is deterministic — a re-emit of the same inputs is identical.
     let b = emit_cohort_descriptor(&members, &lock).unwrap();
     assert_eq!(a, b);
     assert_eq!(a.cohort_digest.len(), 64);
-    // The JCS preimage carries the five targets in canonical order + the digest.
+    // The JCS preimage carries the four targets in canonical order + the digest.
     let text = String::from_utf8(a.descriptor_jcs.clone()).unwrap();
     assert!(text.contains("\"schema_version\":\"1.0\""));
     assert!(text.contains("aarch64-apple-darwin"));
@@ -143,7 +142,7 @@ fn five_matching_members_emit_a_deterministic_cohort_digest() {
 }
 
 #[test]
-fn fewer_than_five_members_is_rejected() {
+fn fewer_than_four_members_is_rejected() {
     let lock = lock();
     let mut members = all_members(&lock);
     members.pop();
@@ -157,7 +156,7 @@ fn fewer_than_five_members_is_rejected() {
 fn a_member_disagreeing_on_the_cohort_id_is_rejected() {
     let lock = lock();
     let mut members = all_members(&lock);
-    // Rewrite the last member's cohort id so the five no longer share identity.
+    // Rewrite the last member's cohort id so the four no longer share identity.
     let (target, raw) = members.last().unwrap();
     let divergent = raw.replace(COHORT_ID, "release-9999.99.99");
     let last = members.len() - 1;
@@ -172,7 +171,7 @@ fn a_member_disagreeing_on_the_cohort_id_is_rejected() {
 fn a_member_supplied_for_the_wrong_target_slot_is_rejected() {
     let lock = lock();
     let mut members = all_members(&lock);
-    // Two entries both claim the Windows member (the roster is not the five
+    // Two entries both claim the Windows member (the roster is not the four
     // unique targets), which the emitter must reject.
     members[0].1 = member(&lock, Target::X86_64PcWindowsMsvc);
     members[0].0 = Target::Aarch64AppleDarwin; // slot says darwin, manifest says windows

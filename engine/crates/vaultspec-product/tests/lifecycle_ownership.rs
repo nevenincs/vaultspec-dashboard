@@ -56,10 +56,6 @@ fn current_target() -> (&'static str, Target) {
     {
         ("aarch64-apple-darwin", Target::Aarch64AppleDarwin)
     }
-    #[cfg(all(target_arch = "x86_64", target_os = "macos"))]
-    {
-        ("x86_64-apple-darwin", Target::X86_64AppleDarwin)
-    }
 }
 
 /// Locate a real capsule ZIP: the `VAULTSPEC_PRODUCT_CAPSULE` override, else the

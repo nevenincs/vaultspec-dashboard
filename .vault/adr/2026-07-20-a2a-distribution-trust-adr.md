@@ -18,7 +18,7 @@ own `TrustedReleaseAuthority`. No production source currently supplies the indep
 target, cohort, component-lock, and release digests needed to construct that authority.
 
 The committed component lock authenticates selected build inputs, but it does not
-authenticate a published five-target cohort or a future candidate. An active receipt
+authenticate a published four-target cohort or a future candidate. An active receipt
 authenticates the installed release, not the next release. File ownership and the
 installation lock protect local mutation ordering; they do not establish distribution
 provenance.
@@ -105,11 +105,18 @@ dashboard-packaging, or distribution-channel decisions.
 roles. Every published bundle includes all metadata and target bytes required for
 filesystem-only verification, including every intermediate root required for rotation.
 
-**D2: Six primary targets form one authenticated release.** One RFC 8785 canonical
-cohort record binds the five platform members. The other five targets are the complete
+**D2: Five primary targets form one authenticated release.** One RFC 8785 canonical
+cohort record binds the four platform members. The other four targets are the complete
 target-specific archives. The verifier selects exactly one archive from the trusted
 cohort and the product's closed target enum. It rejects extra primary targets,
 duplicates, omissions, cross-target substitution, or a cohort/archive mismatch.
+
+Amended 2026-07-22 (per the user directive "no Intel Mac"): the platform roster drops
+`x86_64-apple-darwin`, so the authenticated release is now four platform archives plus
+the one cohort record — five primary targets, a four-member cohort — aligning the
+dashboard with the A2A capsule's four-target set. The closed target enum, the cohort
+roster, and the release-set-manifest schema all reduce in lock-step; nothing else about
+the trust model changes.
 
 **D3: One isolated Rust boundary performs verification.** A dedicated
 distribution-authority crate contains `tough 0.24.0` and exposes only bounded safe product
@@ -189,7 +196,7 @@ The isolated `tough` boundary prevents dependency and policy spread through the 
 crate, updater, and platform scripts. One opaque verified value composes with D10's
 private receipt construction without exposing raw trust anchors.
 
-The six-target model authenticates the release as one cohort while retaining exact
+The five-target model authenticates the release as one cohort while retaining exact
 per-platform archive hashes and sizes. RFC 8785 canonicalization reuses the accepted
 cohort identity contract instead of creating another byte representation.
 

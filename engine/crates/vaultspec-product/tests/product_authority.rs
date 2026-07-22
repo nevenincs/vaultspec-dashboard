@@ -116,7 +116,6 @@ fn release_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Va
             "id": "release-2026.07.19",
             "targets": [
                 "aarch64-apple-darwin",
-                "x86_64-apple-darwin",
                 "aarch64-unknown-linux-gnu",
                 "x86_64-unknown-linux-gnu",
                 TRIPLE

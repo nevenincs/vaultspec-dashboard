@@ -2,7 +2,7 @@
 //!
 //! Parsing is deliberately not activation authority. A caller receives a
 //! [`VerifiedReleaseSet`] only after the independently trusted member digest,
-//! component lock, external five-member cohort, A2A capsule contract, complete
+//! component lock, external four-member cohort, A2A capsule contract, complete
 //! installed-file inventory, and bytes beneath one retained unpublished
 //! generation have all joined. The verified value keeps that exact generation
 //! borrowed and rechecks its final filesystem snapshot before activation.
@@ -63,13 +63,11 @@ const MAX_DIRECTORIES: usize = 100_000;
 pub(crate) const MAX_EXPANDED_TREE_BYTES: u64 = 8 * 1024 * 1024 * 1024;
 const READ_CHUNK: usize = 1024 * 1024;
 
-/// The five product release targets.
+/// The four product release targets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Target {
     #[serde(rename = "aarch64-apple-darwin")]
     Aarch64AppleDarwin,
-    #[serde(rename = "x86_64-apple-darwin")]
-    X86_64AppleDarwin,
     #[serde(rename = "aarch64-unknown-linux-gnu")]
     Aarch64UnknownLinuxGnu,
     #[serde(rename = "x86_64-unknown-linux-gnu")]
@@ -84,7 +82,6 @@ impl Target {
     pub const fn triple(self) -> &'static str {
         match self {
             Self::Aarch64AppleDarwin => "aarch64-apple-darwin",
-            Self::X86_64AppleDarwin => "x86_64-apple-darwin",
             Self::Aarch64UnknownLinuxGnu => "aarch64-unknown-linux-gnu",
             Self::X86_64UnknownLinuxGnu => "x86_64-unknown-linux-gnu",
             Self::X86_64PcWindowsMsvc => "x86_64-pc-windows-msvc",
@@ -92,9 +89,8 @@ impl Target {
     }
 }
 
-const TARGETS: [Target; 5] = [
+const TARGETS: [Target; 4] = [
     Target::Aarch64AppleDarwin,
-    Target::X86_64AppleDarwin,
     Target::Aarch64UnknownLinuxGnu,
     Target::X86_64UnknownLinuxGnu,
     Target::X86_64PcWindowsMsvc,
@@ -388,7 +384,7 @@ impl ComponentLock {
             if artifact.per_target_sha256.len() != TARGETS.len() {
                 return invalid(
                     &format!("base_closure.{name}.per_target_sha256"),
-                    "must contain exactly the five supported targets",
+                    "must contain exactly the four supported targets",
                 );
             }
             for target in TARGETS {

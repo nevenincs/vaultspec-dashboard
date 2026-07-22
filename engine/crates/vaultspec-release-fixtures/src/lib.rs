@@ -189,11 +189,10 @@ pub fn publication_request(
     }
 }
 
-/// The closed five-target set, in canonical order. Built from the public enum
+/// The closed four-target set, in canonical order. Built from the public enum
 /// and its public `archive_name`, not from any private table.
-const TARGETS: [DistributionTarget; 5] = [
+const TARGETS: [DistributionTarget; 4] = [
     DistributionTarget::Aarch64AppleDarwin,
-    DistributionTarget::X86_64AppleDarwin,
     DistributionTarget::Aarch64UnknownLinuxGnu,
     DistributionTarget::X86_64UnknownLinuxGnu,
     DistributionTarget::X86_64PcWindowsMsvc,
@@ -248,7 +247,7 @@ pub struct RealRelease {
 /// it verifies against - passes it here, so the published repository carries the
 /// bytes that will actually be materialized rather than a stand-in.
 ///
-/// The other four members keep placeholders: a cohort needs five members to be
+/// The other three members keep placeholders: a cohort needs four members to be
 /// well formed, but only the selected target is ever extracted.
 ///
 /// The METADATA stays placeholder here. A caller that needs the cohort to also

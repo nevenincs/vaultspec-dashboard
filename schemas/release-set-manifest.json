@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vaultspec.dev/schemas/release-set-manifest.json",
   "title": "ReleaseSetManifest",
-  "description": "The dashboard-owned complete release-set member manifest (a2a-product-provisioning W01.P01.S04). Each target manifest binds one member of an exact five-target cohort to the trusted dashboard component lock, the A2A-emitted capsule manifest, capsule archive and installed-tree evidence, the dashboard and updater binaries, runtime inputs, installed-file digests, license evidence, and a software bill of materials. A candidate manifest never authorizes its own component lock: consumers compare the declared component-lock digest with independently trusted lock bytes and verify all five cohort members together. The cohort digest is intentionally external to every member manifest so hashing the five raw member documents is non-circular.",
+  "description": "The dashboard-owned complete release-set member manifest (a2a-product-provisioning W01.P01.S04). Each target manifest binds one member of an exact four-target cohort to the trusted dashboard component lock, the A2A-emitted capsule manifest, capsule archive and installed-tree evidence, the dashboard and updater binaries, runtime inputs, installed-file digests, license evidence, and a software bill of materials. A candidate manifest never authorizes its own component lock: consumers compare the declared component-lock digest with independently trusted lock bytes and verify all four cohort members together. The cohort digest is intentionally external to every member manifest so hashing the four raw member documents is non-circular.",
   "x-vaultspec-invariants": [
-    "W04.P08.S166 emits a separate descriptor validated by $defs/CohortDescriptor only after the raw-byte SHA-256 digest of each of the five member manifests exists.",
+    "W04.P08.S166 emits a separate descriptor validated by $defs/CohortDescriptor only after the raw-byte SHA-256 digest of each of the four member manifests exists.",
     "The cohort-digest preimage is exactly the RFC 8785 JSON Canonicalization Scheme serialization of the validated CohortDescriptor, encoded as UTF-8 with no byte-order mark and no trailing bytes. SHA-256 of exactly those bytes is the cohort digest.",
     "CohortDescriptor.members maps each TargetTriple to its member-manifest raw-byte SHA-256 digest in canonical TargetTriple enum order. The descriptor's own JCS-byte digest is bound by candidate authority and the active receipt and is never embedded back into a member manifest.",
     "Every member cohort.id must equal the validated external CohortDescriptor.id; W04.P08.S166 enforces this across publication inputs and S06 enforces it for candidate verification.",
@@ -38,7 +38,7 @@
     "target": { "$ref": "#/$defs/TargetTriple" },
     "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
     "cohort": {
-      "description": "The immutable member-visible identity shared by all five target manifests. Consumers verify five manifests with one common id and the closed target roster below. After all five raw member digests exist, S166 emits the external $defs/CohortDescriptor; every member cohort.id must equal descriptor.id. SHA-256 of the descriptor's RFC 8785 JCS UTF-8 bytes is the receipt-bound cohort digest and is never embedded in a member.",
+      "description": "The immutable member-visible identity shared by all four target manifests. Consumers verify four manifests with one common id and the closed target roster below. After all four raw member digests exist, S166 emits the external $defs/CohortDescriptor; every member cohort.id must equal descriptor.id. SHA-256 of the descriptor's RFC 8785 JCS UTF-8 bytes is the receipt-bound cohort digest and is never embedded in a member.",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "targets"],
@@ -224,11 +224,10 @@
   },
   "$defs": {
     "TargetTriple": {
-      "description": "The five accepted desktop release targets, as Rust-style triples.",
+      "description": "The four accepted desktop release targets, as Rust-style triples.",
       "type": "string",
       "enum": [
         "aarch64-apple-darwin",
-        "x86_64-apple-darwin",
         "aarch64-unknown-linux-gnu",
         "x86_64-unknown-linux-gnu",
         "x86_64-pc-windows-msvc"
@@ -237,12 +236,11 @@
     "TargetRoster": {
       "description": "Every supported target exactly once in the order used by the canonical external cohort descriptor.",
       "type": "array",
-      "minItems": 5,
-      "maxItems": 5,
+      "minItems": 4,
+      "maxItems": 4,
       "uniqueItems": true,
       "prefixItems": [
         { "const": "aarch64-apple-darwin" },
-        { "const": "x86_64-apple-darwin" },
         { "const": "aarch64-unknown-linux-gnu" },
         { "const": "x86_64-unknown-linux-gnu" },
         { "const": "x86_64-pc-windows-msvc" }
@@ -250,7 +248,7 @@
       "items": false
     },
     "CohortDescriptor": {
-      "description": "The closed external five-member cohort contract emitted by W04.P08.S166 after every member-manifest raw-byte digest exists. Validate this object first. Its cohort-digest preimage is exactly its RFC 8785 JSON Canonicalization Scheme serialization encoded as UTF-8, with no byte-order mark and no trailing bytes; SHA-256 of exactly that JCS byte sequence is the cohort digest. The descriptor carries no digest of itself.",
+      "description": "The closed external four-member cohort contract emitted by W04.P08.S166 after every member-manifest raw-byte digest exists. Validate this object first. Its cohort-digest preimage is exactly its RFC 8785 JSON Canonicalization Scheme serialization encoded as UTF-8, with no byte-order mark and no trailing bytes; SHA-256 of exactly that JCS byte sequence is the cohort digest. The descriptor carries no digest of itself.",
       "type": "object",
       "additionalProperties": false,
       "required": ["schema_version", "id", "digest_algorithm", "members"],
@@ -260,8 +258,8 @@
         "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
         "members": {
           "type": "array",
-          "minItems": 5,
-          "maxItems": 5,
+          "minItems": 4,
+          "maxItems": 4,
           "prefixItems": [
             {
               "type": "object",
@@ -269,15 +267,6 @@
               "required": ["target", "member_manifest_digest"],
               "properties": {
                 "target": { "const": "aarch64-apple-darwin" },
-                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["target", "member_manifest_digest"],
-              "properties": {
-                "target": { "const": "x86_64-apple-darwin" },
                 "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
               }
             },

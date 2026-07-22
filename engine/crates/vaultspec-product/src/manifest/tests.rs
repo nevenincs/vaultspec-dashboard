@@ -1197,7 +1197,6 @@ fn independent_known_vectors_pin_jcs_and_a2a_tree_preimages() {
     const COHORT_VECTOR: &str = r#"{
             "members":[
                 {"target":"aarch64-apple-darwin","member_manifest_digest":"0000000000000000000000000000000000000000000000000000000000000000"},
-                {"target":"x86_64-apple-darwin","member_manifest_digest":"1111111111111111111111111111111111111111111111111111111111111111"},
                 {"target":"aarch64-unknown-linux-gnu","member_manifest_digest":"2222222222222222222222222222222222222222222222222222222222222222"},
                 {"target":"x86_64-unknown-linux-gnu","member_manifest_digest":"3333333333333333333333333333333333333333333333333333333333333333"},
                 {"target":"x86_64-pc-windows-msvc","member_manifest_digest":"4444444444444444444444444444444444444444444444444444444444444444"}
@@ -1208,7 +1207,7 @@ fn independent_known_vectors_pin_jcs_and_a2a_tree_preimages() {
         }"#;
     assert_eq!(
         cohort_descriptor_digest(COHORT_VECTOR.as_bytes()).unwrap(),
-        "7ee09a8a08f555f52d50ad0cf711794fc8b7e780c422a89d9ab918831a0de358"
+        "729a3486c5497ae66e55ec11d2a262bf84e84bf125b554592f83640924c3f6b1"
     );
     let records = vec![
         ValidatedTreeRecord {
@@ -1248,7 +1247,7 @@ fn cohort_order_duplicate_and_member_mismatch_are_rejected() {
 
     let mut fixture = Fixture::new();
     let mut descriptor: serde_json::Value = serde_json::from_slice(&fixture.descriptor).unwrap();
-    descriptor["members"][4]["member_manifest_digest"] = serde_json::json!("9".repeat(64));
+    descriptor["members"][3]["member_manifest_digest"] = serde_json::json!("9".repeat(64));
     fixture.descriptor = serde_json::to_vec(&descriptor).unwrap();
     fixture.cohort_digest = cohort_descriptor_digest(&fixture.descriptor).unwrap();
     assert!(matches!(
