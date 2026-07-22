@@ -557,6 +557,29 @@ fn now_ms() -> i64 {
 ///    serialization. Do not loosen the lease's sharing mode to make it pass:
 ///    that denial is also the anti-substitution guarantee, and loosening it
 ///    would silently falsify assertions that depend on it.
+///
+///    THE READER THIS IS FOR is whoever implements RELEASE rollback, which does
+///    not exist yet — `LifecycleOp::Rollback` is inert (a variant of the pure
+///    `plan_transition` state machine, a URL segment, an authorize target), and
+///    the only thing named rollback that RUNS today is
+///    `UpdateTransaction::rollback`, a transaction ABORT that is safe under a
+///    bound product precisely because it verifies nothing.
+///
+///    Note there are TWO fields named `prior_generation` and they are in
+///    opposite states, so do not read one as evidence about the other.
+///    `ExecuteIntent::prior_generation` — documented as "the retained prior
+///    generation a rollback re-selects" — is the SEED of that future rollback
+///    and has no production consumer: it is read only by
+///    `build_execute_inputs`, whose only callers are tests. The one that is
+///    genuinely wired is `UpdatePlan`'s, and it is the PRECEDENT to follow:
+///    `materializer.rs` refuses with `MaterializeError::PriorReceipt` unless
+///    the plan's prior generation AGREES WITH the settled receipt's active
+///    generation.
+///
+///    So the settled journal is ALREADY the authority on which generation was
+///    live. A rollback should re-select through it, not re-verify the prior
+///    release — that asks a question the receipt has already answered, and on
+///    Windows the answer is `os error 32`.
 /// 2. EXECUTE the transaction to the activation boundary (`execute_update`:
 ///    begin → drain-or-cold → snapshot → migrate → ready).
 /// 3. Split the verified release into a `MaterializationSource` (the one async
