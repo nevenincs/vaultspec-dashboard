@@ -540,11 +540,23 @@ fn now_ms() -> i64 {
 ///    verification lock for the release lifetime. The staged-bundle path carries
 ///    zero trust weight (a wrong path just fails TUF). This is done BEFORE the
 ///    seat is touched, so an untrustworthy candidate never drains the running
-///    release. Note the ORDER is required, not merely preferred: verification
-///    writes its trust datastore into the product root and must durably flush
-///    the root to publish those names, and the product's root lease denies the
-///    write sharing that flush's append-mode reopen needs. So verification
-///    cannot overlap a bound product — it precedes one, as it does here.
+///    release. Note the ORDER is required, not merely preferred: writing the
+///    trust datastore IS a mutation of the product root, and the product lease
+///    exists to serialize root mutations. Windows enforces that by refusing the
+///    append-mode reopen the durable flush needs while a bound product denies
+///    write sharing. So verification cannot overlap a bound product — it
+///    precedes one, as it does here.
+///
+///    THIS IS AN ACCEPTED CONSTRAINT WITH A RECORDED ESCAPE ROUTE, not a bug.
+///    A flow that re-verifies a distribution while holding a bound
+///    `LockedProduct` gets `VerificationError::DatastoreUnavailable`, which
+///    bottoms out in a Windows sharing violation (`os error 32`). That is
+///    mutual exclusion on root mutation working as intended — the lease refusing
+///    an unserialized second mutator. If some future flow genuinely needs a
+///    datastore write under a held lease, raise it as a DESIGN QUESTION about
+///    serialization. Do not loosen the lease's sharing mode to make it pass:
+///    that denial is also the anti-substitution guarantee, and loosening it
+///    would silently falsify assertions that depend on it.
 /// 2. EXECUTE the transaction to the activation boundary (`execute_update`:
 ///    begin → drain-or-cold → snapshot → migrate → ready).
 /// 3. Split the verified release into a `MaterializationSource` (the one async
