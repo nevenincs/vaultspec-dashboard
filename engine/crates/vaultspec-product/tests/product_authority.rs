@@ -247,13 +247,36 @@ fn manifest_rejects_target_mismatch() {
     ));
 }
 
-// `manifest_rejects_digest_drift` lived here. It is DISCHARGED by
-// `provisioning::d8_refusals::a_capsule_that_drifts_from_the_component_lock_refuses_at_the_install_boundary`,
-// which drives the identical ACP-adapter drift through the real chain — sealed
-// into the real archive, published in a real signed repository, verified by the
-// distribution authority, and refused by the product — and pins the exact field
-// (`digest drift in assets[acp-adapter].digest`) rather than accepting any
-// digest complaint. Its two neighbours below are NOT discharged and stay.
+/// Capsule-versus-lock drift, at the layer that owns the comparison.
+///
+/// This is the RIGHT home for this refusal and it stays here. The manifest
+/// layer is the one that can express it directly: a capsule whose ACP digest
+/// disagrees with the lock is drift, not a read, and asserting that needs
+/// nothing but the two documents.
+///
+/// A chain case does exist and is NOT a replacement — it proves a different
+/// proposition. `provisioning::composition::
+/// a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_armed`
+/// uses this same ACP drift as its inducing input, but what it asserts is the
+/// CROSSING: that the distribution authority admits such a release, because it
+/// has no view of the component lock, and that the resulting refusal leaves the
+/// fixed journal unmutated while leaving the bootstrap descriptor still armed.
+/// Layer-owns-refusal here; composition proves the consequence there. Neither
+/// discharges the other, and removing this one would leave the comparison
+/// itself asserted only as a side effect of a chain test.
+#[test]
+fn manifest_rejects_digest_drift() {
+    let lock = ComponentLock::parse(LOCK_JSON).unwrap();
+    // A capsule whose ACP digest disagrees with the lock is drift, not a read.
+    let raw = capsule_json(&lock, |v| {
+        v["assets"][3]["digest"] = serde_json::json!("0".repeat(64));
+    });
+    let capsule = CapsuleManifest::parse(&raw).unwrap();
+    assert!(matches!(
+        capsule.verify_against_lock(&lock, TARGET),
+        Err(ManifestError::DigestDrift { .. })
+    ));
+}
 
 #[test]
 fn manifest_rejects_floating_latest_selector() {

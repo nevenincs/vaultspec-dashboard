@@ -611,8 +611,8 @@ impl std::error::Error for ProvisioningError {}
 mod s11_chain;
 
 #[cfg(test)]
-#[path = "provisioning/d8_refusals.rs"]
-mod d8_refusals;
+#[path = "provisioning/composition.rs"]
+mod composition;
 
 #[cfg(test)]
 mod tests {

@@ -1,26 +1,41 @@
-//! The D8 refusal matrix.
+//! Composition proofs over the integrated install chain.
 //!
-//! Every case here runs the SAME chain the S11 proof runs — a real signed TUF
-//! repository, a real capsule archive, a real product root, a real generation on
-//! disk — mutates exactly ONE thing, and asserts the specific typed refusal that
-//! results. Nothing is stubbed, mocked, skipped, or marked `#[ignore]`.
+//! WHAT THIS IS NOT. This is NOT the a2a-orchestration-edge D8 release matrix,
+//! and nothing here discharges any line of it. That matrix installs and
+//! exercises real product artifacts across all five targets and every
+//! applicable channel — clean and offline install, relocation, ACP execution,
+//! cold gateway and lazy worker, concurrent ensure, foreign attach, drain,
+//! migration, update, rollback, interrupted-update recovery, consistency-group
+//! restoration, repair, removal, channel payload parity. It is a different
+//! artifact at a different level and it remains OUTSTANDING.
 //!
-//! WHAT THIS LAYER ADDS, and why it is not a second copy of an existing suite.
-//! The distribution authority already proves its own refusals against its own
-//! entrypoint: expired metadata, missing roles, mixed versions, non-canonical
-//! cohorts, unexpected target names, cohort/archive digest mismatch, tampered
-//! archive bytes, metadata rollback. Repeating those assertions here would buy
-//! nothing. What is NOT proven there — because that crate cannot see a product —
-//! is the consequence: that a refused release leaves the PRODUCT untouched. So
-//! every case below asserts the refusal AND the absence of durable effect. That
-//! second half is the reason these tests exist.
+//! What D8 contributes here is its LAST clause, which binds everything below:
+//! production code, real files and real processes, no fakes, mocks, stubs,
+//! patches, skips, or expected-failures. Every case honours that.
 //!
-//! THE EVIDENCE STANDARD. A refusal test is worth its runtime only if the
-//! refusal happens for the reason under test, so each case pins the specific
-//! typed error rather than "something failed", and each family establishes its
-//! negative control — the unmutated case SUCCEEDS — before mutating one thing.
-//! Without the control, a fixture that broke for an unrelated reason would still
-//! print green.
+//! WHAT THIS IS. Each layer already proves its own refusals in isolation, and
+//! proves them well — the distribution authority owns TUF and cohort refusals
+//! against its own entrypoint, the manifest layer owns document-versus-lock
+//! comparisons, the receipt layer owns journal mutation, the credential store
+//! owns bootstrap phases. What NOTHING proves is the CROSSING: that a refusal
+//! at one link leaves the other links' state as it should be. The chain is the
+//! only place that proposition exists, so it is the only thing this module
+//! asserts.
+//!
+//! THE HAZARD THIS MODULE MUST AVOID, stated plainly because it is subtle. A
+//! chain case that appears to cover a refusal while actually tripping an
+//! EARLIER one at a different layer is not merely redundant — it is a FALSE
+//! TEST, and worse than absent coverage, because it reads as proof. Re-proving
+//! a per-layer refusal through the chain manufactures that hazard once per
+//! case. So nothing here re-asserts a refusal its owning layer already owns;
+//! each case asserts what the owning layer CANNOT see.
+//!
+//! THE EVIDENCE STANDARD. Pin the specific typed error rather than "something
+//! failed", and establish the negative control — the unmutated case SUCCEEDS —
+//! before mutating exactly one thing. Two assertions in this module were WRONG
+//! before a real run corrected them; both would have passed as green tests
+//! proving the wrong proposition had the failure message not printed the actual
+//! error. Keep that habit in anything added here.
 //!
 //! WHY IN-CRATE. The same reason the S11 chain is: `publish_active_receipt` is
 //! `pub(crate)` and the fixture rests on `pub(super)` canonicalization. No
@@ -175,21 +190,38 @@ impl Chain {
         );
     }
 
-    /// Assert the refusal left no credential residue either.
+    /// Assert a DISTRIBUTION-link refusal left no product-side residue at all.
     ///
-    /// Bootstrap runs INSIDE `prepare_first_install`, so a refusal that never
-    /// reached the transaction must not have created credentials, and one that
-    /// did reach it must not have left a settled pair behind.
-    fn assert_no_credentials(&self, after: &str) {
+    /// This is the composition claim for the first link. Credential bootstrap
+    /// runs INSIDE `prepare_first_install`, so a chain that never reached the
+    /// transaction must have created neither credential AND must have armed no
+    /// bootstrap descriptor. The descriptor matters most of the three: it is
+    /// durable, it is what a later recovery classifies, and one armed by a
+    /// release that was never admitted would make a future bootstrap demand
+    /// recovery for an install that never began.
+    fn assert_no_product_residue(&self, after: &str) {
         let credentials = self.fixture.paths.credentials_dir();
-        for name in ["ownership.cap", "attach.cred"] {
+        for name in ["ownership.cap", "attach.cred", BOOTSTRAP_DESCRIPTOR] {
             assert!(
                 !credentials.join(name).exists(),
-                "a refusal before the credential bootstrap must leave no {name}, but {after} it did"
+                "a refusal that never reached the transaction must leave no {name}, but {after} it did"
             );
         }
     }
+
+    /// Whether the durable bootstrap descriptor is currently armed.
+    fn descriptor_is_armed(&self) -> bool {
+        self.fixture
+            .paths
+            .credentials_dir()
+            .join(BOOTSTRAP_DESCRIPTOR)
+            .exists()
+    }
 }
+
+/// The durable bootstrap descriptor. Its PRESENCE is what arms recovery, and
+/// its retirement is the disarm — which runs only after the receipt settles.
+const BOOTSTRAP_DESCRIPTOR: &str = "bootstrap-credentials.v1";
 
 /// Assert a verification refused for a specific reason, printing the actual
 /// error when it did not.
@@ -268,6 +300,17 @@ async fn the_unmutated_harness_installs_and_settles() {
             "the control install must leave the credential it created: {name}"
         );
     }
+
+    // The success side of the ordering contract, and the negative control for
+    // `a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_armed`.
+    // Retirement is the disarm and it runs only after the receipt settles, so a
+    // settled install leaves NO armed descriptor. Read the two together: armed
+    // on refusal, retired on success. Neither assertion means anything alone.
+    assert!(
+        !chain.descriptor_is_armed(),
+        "a settled receipt must leave no armed bootstrap descriptor - retirement \
+         is the disarm and it ran"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -291,7 +334,7 @@ async fn expired_metadata_refuses_and_writes_no_receipt() {
         |error| matches!(error, VerificationError::Tuf(_)),
     );
     chain.assert_no_receipt("after refusing expired metadata");
-    chain.assert_no_credentials("after refusing expired metadata");
+    chain.assert_no_product_residue("after refusing expired metadata");
 }
 
 /// A version rollback is refused BY THE PRODUCT ROOT's own persisted datastore.
@@ -324,7 +367,7 @@ async fn version_rollback_against_the_persisted_datastore_refuses_and_writes_no_
         |error| matches!(error, VerificationError::Tuf(_)),
     );
     chain.assert_no_receipt("after refusing a version rollback");
-    chain.assert_no_credentials("after refusing a version rollback");
+    chain.assert_no_product_residue("after refusing a version rollback");
 }
 
 /// Substituted archive bytes are refused, and the product is untouched.
@@ -349,17 +392,22 @@ async fn target_substitution_refuses_and_writes_no_receipt() {
         |error| matches!(error, VerificationError::Tuf(_)),
     );
     chain.assert_no_receipt("after refusing a substituted archive");
-    chain.assert_no_credentials("after refusing a substituted archive");
+    chain.assert_no_product_residue("after refusing a substituted archive");
 }
 
 /// Asking for a target the bundle does not carry is refused by the DISTRIBUTION
 /// layer, before the install boundary ever sees a target.
 ///
-/// This is the empirical settlement of an open question about the carried
-/// fixture `manifest_rejects_target_mismatch`, which reaches
-/// `ManifestError::TargetMismatch` by calling `verify_against_lock` directly at
-/// the manifest layer. The suspicion was that a wrong-target request cannot
-/// reach that comparison through the real chain. It cannot, and this pins WHY.
+/// The crossing claim is the point: a refusal at the FIRST link must leave zero
+/// product-side residue, because the chain never reached the transaction. No
+/// credential, no armed descriptor, no journal slot. The distribution authority
+/// owns the refusal itself and proves it at its own entrypoint; what it cannot
+/// see, and therefore cannot assert, is that the product stayed pristine.
+///
+/// It also records WHY the manifest layer's own `manifest_rejects_target_mismatch`
+/// is not reachable from here. That is expected rather than suspicious — a
+/// refusal belongs to the layer that owns it — but it is worth stating so the
+/// next reader does not go looking for a chain expression of it.
 ///
 /// The mechanism is worth stating exactly, because the plausible guess is wrong.
 /// It is NOT the bounded layout inspection: a published bundle carries the
@@ -382,23 +430,23 @@ async fn a_target_the_bundle_does_not_carry_is_refused_by_the_distribution_layer
         |error| matches!(error, VerificationError::Tuf(_)),
     );
     chain.assert_no_receipt("after refusing an uncarried target");
-    chain.assert_no_credentials("after refusing an uncarried target");
+    chain.assert_no_product_residue("after refusing an uncarried target");
 }
 
 /// A bundle published FOR another target, carrying that target's archive, is
 /// still refused — and the refusal is a release-identity/digest refusal at the
 /// install boundary, never `ManifestError::TargetMismatch`.
 ///
-/// This is the harder half of the same question. Here the bundle genuinely
-/// carries the requested target, so the layout check passes and verification
-/// SUCCEEDS; the chain reaches the install boundary with a coherent Apple-
-/// Silicon release. The product then refuses it — but for the member-manifest
-/// reason, because the fixture's installed tree is a Windows tree. The
-/// manifest-layer target comparison is never consulted.
+/// The complement to the case above, and the more interesting crossing. Here
+/// the bundle genuinely carries the requested target, so verification SUCCEEDS
+/// and the chain reaches the install boundary with a coherent Apple-Silicon
+/// release. The refusal therefore belongs to the PRODUCT, and it is the
+/// member-manifest reason, because the fixture's installed tree is a Windows
+/// tree — the manifest-layer target comparison is never consulted.
 ///
-/// The consequence is recorded rather than papered over: the carried fixture
-/// covers a comparison this chain structurally cannot reach, so no case here
-/// discharges it.
+/// Two links admitting a release that the third refuses is exactly the shape
+/// only the chain can exhibit: neither layer alone can tell you that a release
+/// good enough to verify is still not good enough to install.
 #[tokio::test(flavor = "current_thread")]
 async fn a_foreign_target_cohort_is_refused_at_the_install_boundary_not_as_target_mismatch() {
     let chain = Chain::new().await;
@@ -901,32 +949,38 @@ async fn an_interrupted_bootstrap_is_classified_by_phase_and_never_auto_complete
 }
 
 // ---------------------------------------------------------------------------
-// Manifest refusals, reached through the real chain
+// The manifest-link crossing: the ordering contract's FAILURE side
 // ---------------------------------------------------------------------------
 
-/// A capsule whose ACP asset digest disagrees with the component LOCK is
-/// refused at the install boundary, with the whole chain otherwise honest.
+/// A refusal AFTER credential bootstrap but BEFORE the receipt settles leaves
+/// the journal unmutated AND the bootstrap descriptor STILL ARMED.
 ///
-/// This is the chain expression of the carried fixture
-/// `manifest_rejects_digest_drift`, which reaches `ManifestError::DigestDrift`
-/// by calling `verify_against_lock` directly. Here the drifted capsule travels
-/// the full route: it is sealed into the real archive, published in a real
-/// signed repository, verified by the distribution authority, and only then
-/// refused by the product.
+/// This is the sharpest thing the chain can prove, and until now it was proven
+/// on the success side only. The ordering contract is: bootstrap first, so an
+/// interruption leaves durable state recovery can classify; then verify; then
+/// commit the receipt; and ONLY once the receipt has settled, retire the
+/// descriptor — because retiring it is the DISARM, and disarming recovery for a
+/// receipt that never settled is precisely the corruption the ordering exists
+/// to prevent.
 ///
-/// The mutation is deliberately COHERENT — every digest the release states
-/// about the capsule moves with it — so the refusal cannot be a file-digest
-/// mismatch masquerading as drift. That is what makes this the same refusal the
-/// carried fixture asserts, rather than a different one at a different layer.
-/// The component lock is the fixture's REAL committed
-/// `packaging/a2a-component.lock.json`, so the pin being violated is a real pin.
+/// Every clause of that has a success-side assertion today. None of it had a
+/// failure-side one, which is the half that matters: an ordering contract whose
+/// failure path is unasserted is a contract enforced by whoever remembers it.
+/// If retirement ever migrated ahead of the commit, every existing test would
+/// still pass and this one would fail.
+///
+/// The refusal is induced at the manifest link with a lock-drifted capsule —
+/// a real adversarial input that the distribution authority correctly admits,
+/// because it has no view of the component lock. Using an empty generation
+/// would refuse at the same link but for a reason no attacker could produce.
+///
+/// The negative control is the whole point of the pairing: the SAME assertions
+/// are made on the success path in `the_unmutated_harness_installs_and_settles`,
+/// where the descriptor is GONE and the journal is Settled. Armed-versus-retired
+/// is only meaningful as a contrast.
 #[tokio::test(flavor = "current_thread")]
-async fn a_capsule_that_drifts_from_the_component_lock_refuses_at_the_install_boundary() {
+async fn a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_armed() {
     let mut chain = Chain::new().await;
-
-    // Drift exactly one pin: the ACP adapter's digest. Everything else about
-    // the release stays true, including the archive, which is built from these
-    // same mutated payloads below.
     chain.fixture.mutate_capsule(|capsule| {
         let acp = capsule["assets"]
             .as_array_mut()
@@ -940,37 +994,69 @@ async fn a_capsule_that_drifts_from_the_component_lock_refuses_at_the_install_bo
     let identity = chain.identity();
     let bundle = chain.publish(1, &identity).await;
 
-    // Verification SUCCEEDS. The distribution authority has no view of the
-    // component lock, so the drift is invisible to it — which is precisely why
-    // the product must catch it.
+    // The chain must get PAST the distribution link for this to test anything.
+    assert!(
+        !chain.descriptor_is_armed(),
+        "no descriptor may be armed before the transaction runs"
+    );
     let mut verified = chain
         .verify(&bundle, TARGET)
         .await
-        .expect("a drifted capsule is still a well-formed signed release");
+        .expect("the distribution authority admits a lock-drifted release");
 
     let failure = chain
-        .install(&mut verified, "generation-drifted-capsule")
+        .install(&mut verified, "generation-crossing")
         .await
-        .expect_err("a capsule that drifts from the component lock must not install");
+        .expect_err("a lock-drifted capsule must not install");
+
+    // The refusal is the MANIFEST link, named precisely — otherwise this could
+    // be any later or earlier failure wearing the same outcome.
     assert_eq!(
         failure.kind(),
-        crate::provisioning::ProvisioningErrorKind::FirstInstallAdapterUnavailable,
-        "expected the install boundary to refuse the drift, got {failure:?} - {}",
-        failure.detail
+        crate::provisioning::ProvisioningErrorKind::FirstInstallAdapterUnavailable
     );
-    // Pin the exact check, not merely "a digest complaint". This is the field
-    // the carried fixture `manifest_rejects_digest_drift` asserts against, and
-    // naming it is what lets this case DISCHARGE that fixture: a matrix that
-    // accepted any digest refusal here would still pass if the chain started
-    // failing on some unrelated digest, and would then be covering nothing.
     assert!(
         failure
             .detail
             .contains("digest drift in assets[acp-adapter].digest"),
-        "the refusal must be the capsule-versus-lock ACP drift, got: {}",
+        "expected the manifest-link drift refusal, got: {}",
         failure.detail
     );
-    chain.assert_no_receipt("after refusing a lock-drifted capsule");
+
+    // CROSSING CLAIM ONE: the receipt never moved.
+    chain.assert_no_receipt("after a manifest-link refusal");
+
+    // CROSSING CLAIM TWO: bootstrap DID run, so its credentials exist. This is
+    // not incidental — it is what proves the chain reached past the bootstrap
+    // and therefore that the descriptor question below is live rather than
+    // vacuous.
+    let credentials = chain.fixture.paths.credentials_dir();
+    for name in ["ownership.cap", "attach.cred"] {
+        assert!(
+            credentials.join(name).exists(),
+            "the refusal happened after bootstrap, so {name} must exist"
+        );
+    }
+
+    // CROSSING CLAIM THREE, the one nobody asserted: the descriptor is STILL
+    // ARMED. Retirement runs only after a settled receipt, and no receipt
+    // settled, so recovery must remain armed for this interrupted install.
+    assert!(
+        chain.descriptor_is_armed(),
+        "the descriptor must remain ARMED after a pre-commit refusal - retiring \
+         it is the disarm, and disarming recovery for a receipt that never \
+         settled is the corruption the bootstrap-then-commit-then-retire \
+         ordering exists to prevent"
+    );
+
+    // CROSSING CLAIM FOUR: the failure still HOLDS the authority needed to
+    // retry or clean up. A refusal that armed recovery and then dropped the
+    // authority to resolve it would strand the descriptor forever.
+    assert!(
+        failure.retains_credential_authority(),
+        "a pre-commit refusal must retain the authority that can retire what it armed"
+    );
+    assert!(failure.into_retained().is_some());
 }
 
 /// A cohort whose members disagree with the published archives is refused as an
@@ -997,5 +1083,5 @@ async fn cohort_member_mismatch_refuses_and_writes_no_receipt() {
         |error| matches!(error, VerificationError::InvalidCohort),
     );
     chain.assert_no_receipt("after refusing a mismatched cohort");
-    chain.assert_no_credentials("after refusing a mismatched cohort");
+    chain.assert_no_product_residue("after refusing a mismatched cohort");
 }
