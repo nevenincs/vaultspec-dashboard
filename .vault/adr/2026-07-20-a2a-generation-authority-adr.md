@@ -123,6 +123,17 @@ superseding that ADR or changing its status.
   production flow may require a datastore write while a product is bound. If one is ever
   found to — a rollback or repair path re-verifying under a held lease, say — that is a
   design question to raise, never a sharing mode to loosen.
+- Recorded 2026-07-22 (Unix enforcement of the corollary): the serialization above is
+  enforced on Unix, not merely intended. LockedProduct::bind holds a nonblocking
+  exclusive flock on its retained product-root directory descriptor for the product's
+  lifetime; verification takes a nonblocking shared flock on the same directory for the
+  duration of its datastore-writing work only, released before the verified value is
+  constructed. A verification refused by the bound product's lock fails closed as
+  datastore-unavailable. The lock is advisory by design: it serializes the engine's own
+  flows and claims nothing against uncooperative writers — anti-substitution on Unix
+  remains inode-identity detection at every trust boundary. The verified VALUE still
+  coexists with the bound product in both orders; only the verification WORK is excluded,
+  mirroring the Windows lease exactly.
 
 ## Implementation
 

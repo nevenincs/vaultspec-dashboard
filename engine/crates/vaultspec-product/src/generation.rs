@@ -45,6 +45,57 @@ pub struct LockedProduct<'lock> {
     app_home: DirectoryAuthority,
     #[cfg(windows)]
     app_home: AppHomeAuthority,
+    /// Advisory exclusive lock on the product-root directory inode, held for the
+    /// bound product's whole lifetime; dropping the product releases it.
+    #[cfg(unix)]
+    _root_lock: RootDirectoryLock,
+}
+
+/// Advisory exclusive lock on the product-root directory inode, held on a fresh
+/// independent open-file-description for the full lifetime of a bound product.
+/// Dropping the guard closes the descriptor, which releases the `flock`.
+///
+/// It serializes the engine's own generation-mutation flows against a
+/// concurrent distribution verification's datastore write (which takes a shared
+/// lock on the same inode) and against a second `bind`. Advisory by design: it
+/// claims nothing against an uncooperating writer — anti-substitution stays
+/// inode-identity detection at every trust boundary. See the 2026-07-20
+/// generation-authority ADR Unix-enforcement corollary.
+#[cfg(unix)]
+#[derive(Debug)]
+struct RootDirectoryLock {
+    _descriptor: rustix::fd::OwnedFd,
+}
+
+#[cfg(unix)]
+impl RootDirectoryLock {
+    fn acquire_exclusive(root: &DirectoryAuthority) -> Result<Self, GenerationError> {
+        // A fresh independent OFD on the same directory inode as the retained
+        // root authority; the retained descriptor stays free for the relative
+        // child opens that binding performs next.
+        let descriptor = rustix::fs::openat(
+            root.fd(),
+            c".",
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::DIRECTORY
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|error| GenerationError::Io(error.into()))?;
+        // Nonblocking: a refusal fails closed typed rather than deadlocking.
+        match rustix::fs::flock(
+            &descriptor,
+            rustix::fs::FlockOperation::NonBlockingLockExclusive,
+        ) {
+            Ok(()) => Ok(Self {
+                _descriptor: descriptor,
+            }),
+            Err(error) if error == rustix::io::Errno::WOULDBLOCK => {
+                Err(GenerationError::RootAuthorityBusy)
+            }
+            Err(error) => Err(GenerationError::Io(error.into())),
+        }
+    }
 }
 
 /// Windows app-home authority is never discarded while a locked product is
@@ -171,6 +222,15 @@ impl<'lock> LockedProduct<'lock> {
     ///
     /// The guard is verified both before the sole pathname bootstrap and after
     /// the retained child relationships have been established.
+    ///
+    /// On Unix the bound product takes a nonblocking exclusive advisory lock on
+    /// the product-root directory inode for its whole lifetime. This serializes
+    /// the engine's product-mutation flows against a distribution verification's
+    /// datastore write and, as a deliberate strengthening, against a second
+    /// concurrent `bind` on the same root — converging Unix onto the Windows
+    /// deny-share behaviour, where a second exclusive directory open already
+    /// fails. It is advisory only and does not weaken the inode-identity
+    /// anti-substitution proof performed at every trust boundary.
     pub fn bind(
         paths: ProductPaths,
         guard: &'lock InstallLockGuard,
@@ -178,6 +238,8 @@ impl<'lock> LockedProduct<'lock> {
         guard.verify_for_product(&paths)?;
         let root = DirectoryAuthority::open_root(paths.root())
             .map_err(|error| bind_io("root bootstrap", error))?;
+        #[cfg(unix)]
+        let root_lock = RootDirectoryLock::acquire_exclusive(&root)?;
         let generations = root
             .open_child(OsStr::new("generations"))
             .map_err(|error| bind_io("generations relative open", error))?;
@@ -192,6 +254,8 @@ impl<'lock> LockedProduct<'lock> {
             root,
             generations,
             app_home,
+            #[cfg(unix)]
+            _root_lock: root_lock,
         };
         product.validate_relationships()?;
         product.guard.verify_for_product(&product.paths)?;
@@ -1402,6 +1466,11 @@ pub enum GenerationError {
     /// materializer; general product operations resume only after
     /// `end_materialization` restores and revalidates exclusivity.
     RootAuthorityMaterializing,
+    /// The product-root directory is already exclusively held (another bound
+    /// product, or a distribution verification writing its datastore). On Unix
+    /// this is the nonblocking advisory-lock refusal that serializes the
+    /// engine's own product-mutation flows.
+    RootAuthorityBusy,
     /// The generation name no longer resolves to the retained identity.
     IdentityChanged(String),
     /// The settled active receipt selects the requested generation.

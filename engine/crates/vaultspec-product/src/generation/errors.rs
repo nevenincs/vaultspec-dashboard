@@ -40,6 +40,10 @@ impl std::fmt::Display for GenerationError {
                 f,
                 "generation root authority is leased to the archive materializer"
             ),
+            Self::RootAuthorityBusy => write!(
+                f,
+                "product-root directory authority is exclusively held by another product or verification"
+            ),
             Self::IdentityChanged(generation) => {
                 write!(f, "generation {generation:?} filesystem identity changed")
             }

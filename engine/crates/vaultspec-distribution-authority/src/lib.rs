@@ -363,6 +363,14 @@ async fn verify_with_root_bounded(
     request
         .product_scope
         .ensure_named(&request.product_root_path)?;
+    // Serialize this verification's datastore-writing work against a bound
+    // product on Unix: the generation authority holds an exclusive advisory
+    // lock on the product-root inode for its lifetime, so a shared lock here
+    // fails closed as datastore-unavailable while a product is bound. Held only
+    // across the datastore rotation below and dropped before the verified value
+    // is constructed (the 2026-07-20 generation-authority ADR Unix corollary).
+    #[cfg(unix)]
+    let datastore_directory_lock = request.product_scope.lock_datastore_shared()?;
     recover_cap_datastore_layout(&request.product_scope.authority)?;
     #[cfg(test)]
     eprintln!("distribution verification: datastore layout recovered");
@@ -549,6 +557,12 @@ async fn verify_with_root_bounded(
     request
         .product_scope
         .ensure_named(&request.product_root_path)?;
+
+    // Release the shared datastore lock before the verified value exists: the
+    // value carries no directory lock, so it coexists with a bound product in
+    // either order — only the verification WORK above is excluded.
+    #[cfg(unix)]
+    drop(datastore_directory_lock);
 
     Ok(VerifiedDistributionRelease {
         target: request.target,

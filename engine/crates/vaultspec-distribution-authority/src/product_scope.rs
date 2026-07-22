@@ -124,6 +124,62 @@ impl ProductRootScope {
         vaultspec_windows_authority::AuthorityFile::identity_at_path(path)
             .is_ok_and(|identity| identity == self.identity)
     }
+
+    /// Take the one-directional advisory shared lock on the product-root
+    /// directory inode for the duration of verification's datastore-writing
+    /// work. This is the Unix analogue of S168's directory-handle lease: it
+    /// excludes a concurrently bound product — which holds the exclusive lock on
+    /// the same inode — from running verification's datastore rotation, while
+    /// leaving the verified value free to coexist with a bound product in either
+    /// order (the value holds no directory lock). The lock is advisory by design
+    /// and claims nothing against an uncooperating writer; anti-substitution
+    /// stays inode-identity detection at every trust boundary. The returned
+    /// guard MUST be released before the verified value is constructed.
+    #[cfg(unix)]
+    pub(crate) fn lock_datastore_shared(
+        &self,
+    ) -> Result<DatastoreDirectoryLock, VerificationError> {
+        DatastoreDirectoryLock::acquire_shared(&self.directory)
+    }
+}
+
+/// Advisory shared lock held on a fresh, independent open-file-description for
+/// the product-root directory inode. Dropping the guard closes the descriptor,
+/// which releases the `flock`; it is held only for verification's
+/// datastore-writing work and released before the verified value exists.
+#[cfg(unix)]
+#[derive(Debug)]
+pub(crate) struct DatastoreDirectoryLock {
+    _descriptor: rustix::fd::OwnedFd,
+}
+
+#[cfg(unix)]
+impl DatastoreDirectoryLock {
+    fn acquire_shared(directory: &File) -> Result<Self, VerificationError> {
+        // A fresh independent OFD on the same directory inode; the retained
+        // `directory` descriptor is untouched, so verification's own relative
+        // datastore operations are unaffected while the lock is held.
+        let descriptor = rustix::fs::openat(
+            directory,
+            c".",
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::DIRECTORY
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|_| VerificationError::DatastoreUnavailable)?;
+        // Nonblocking: a refusal (a bound product holds the exclusive lock)
+        // fails closed as datastore-unavailable rather than deadlocking.
+        match rustix::fs::flock(
+            &descriptor,
+            rustix::fs::FlockOperation::NonBlockingLockShared,
+        ) {
+            Ok(()) => Ok(Self {
+                _descriptor: descriptor,
+            }),
+            Err(_) => Err(VerificationError::DatastoreUnavailable),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
