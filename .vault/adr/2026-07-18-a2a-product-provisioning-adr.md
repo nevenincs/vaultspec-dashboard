@@ -184,7 +184,12 @@ so the absence is correct rather than a gap. Consequently the integrated proof
 of the sealed provisioning transaction lives in this crate's own test space and
 not in an out-of-crate integration test. That is the intended end state, not a
 limitation awaiting removal: widening these items' visibility to relocate that
-proof would trade a real seal for a test's address.
+proof would trade a real seal for a test's address. That prohibition is about widening
+PRODUCTION items to move the proof OUT of the crate. It does not reach `pub(crate)`
+widening of `cfg(test)`-gated scaffolding so the proof can STAY in — that direction serves
+this constraint rather than evading it, cannot reach a shipped binary by construction, and
+is preferable to duplicating fixture construction, which would reintroduce the drift a
+single shared builder exists to prevent.
 
 **D2: Cargo Dist orchestrates; product-owned installers compose.** Cargo Dist
 continues to plan the target matrix, checksums, GitHub release, and generated
