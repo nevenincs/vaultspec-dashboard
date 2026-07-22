@@ -3,7 +3,7 @@ tags:
   - '#audit'
   - '#a2a-orchestration-edge'
 date: '2026-07-19'
-modified: '2026-07-20'
+modified: '2026-07-21'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-17-a2a-orchestration-edge-plan]]"
