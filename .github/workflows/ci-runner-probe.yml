@@ -1,0 +1,52 @@
+# L0 runner-foundation probe (W06.P15.S179). Verifies each self-hosted runner is
+# correctly based BEFORE anything is built on it: shell:bash resolves and runs
+# (Git Bash, not WSL bash, on Windows), pwsh runs, and a third-party bash-using
+# action (dtolnay/rust-toolchain — the exact one that failed on WSL bash) succeeds.
+# Dispatch-only; not part of the gating CI.
+name: ci-runner-probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe-linux:
+    name: probe (Linux)
+    runs-on: Linux
+    steps:
+      - name: bash resolves + a bash temp-script runs
+        shell: bash
+        run: |
+          echo "bash at: $(command -v bash)"
+          echo "uname: $(uname -sm)"
+          bash -c 'echo "nested-bash-ok cwd=$PWD"'
+      - name: third-party bash-using action
+        uses: dtolnay/rust-toolchain@stable
+      - run: cargo --version
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: df -h . 2>/dev/null | tail -1 || true
+
+  probe-windows:
+    name: probe (Windows)
+    runs-on: Windows
+    steps:
+      - name: bash resolves to Git Bash and a temp-script runs
+        shell: bash
+        run: |
+          echo "bash at: $(command -v bash)"
+          echo "version: $(bash --version | head -1)"
+          bash -c 'echo "nested-bash-ok cwd=$PWD"'
+      - name: pwsh runs
+        shell: pwsh
+        run: Write-Output "pwsh ok: $($PSVersionTable.PSVersion)"
+      - name: third-party bash-using action (failed on WSL bash before)
+        uses: dtolnay/rust-toolchain@stable
+      - run: cargo --version
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: pwsh
+        run: (Get-PSDrive C | Select-Object -ExpandProperty Free)
