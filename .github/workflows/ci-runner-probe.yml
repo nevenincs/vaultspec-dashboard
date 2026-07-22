@@ -42,7 +42,8 @@ jobs:
           bash -c 'echo "nested-bash-ok cwd=$PWD"'
       - name: pwsh runs
         shell: pwsh
-        run: Write-Output "pwsh ok: $($PSVersionTable.PSVersion)"
+        run: |
+          Write-Output "pwsh ok $($PSVersionTable.PSVersion)"
       - name: third-party bash-using action (failed on WSL bash before)
         uses: dtolnay/rust-toolchain@stable
       - run: cargo --version
