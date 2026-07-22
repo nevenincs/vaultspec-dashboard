@@ -153,12 +153,29 @@ impl Chain {
         verified: &mut VerifiedDistributionRelease,
         generation_name: &str,
     ) -> Result<ProvisionedRelease, Box<FirstInstallFailure<'_>>> {
+        self.install_after(verified, generation_name, |_| {}).await
+    }
+
+    /// [`Self::install`] with a hook that runs AFTER the generation is populated
+    /// and BEFORE the sealed transaction reads it.
+    ///
+    /// The hook is the only way an external caller can reach inside the
+    /// transaction's window. It exists to prove the transaction validates the
+    /// tree it is about to commit rather than trusting that the tree was
+    /// correct when it was written, which are different guarantees.
+    async fn install_after(
+        &self,
+        verified: &mut VerifiedDistributionRelease,
+        generation_name: &str,
+        between_populate_and_commit: impl FnOnce(&Path),
+    ) -> Result<ProvisionedRelease, Box<FirstInstallFailure<'_>>> {
         let mut product = LockedProduct::bind(self.fixture.paths.clone(), &self.fixture.guard)
             .expect("locked product");
         let mut generation = product
             .create_unpublished(generation_name)
             .expect("real unpublished generation");
         self.fixture.populate(generation.path());
+        between_populate_and_commit(generation.path());
 
         let transaction = ProvisioningTransaction::begin_self_install(
             &self.fixture.paths,
@@ -744,8 +761,179 @@ async fn the_receipt_selected_generation_resists_substitution_and_alias() {
 }
 
 // ---------------------------------------------------------------------------
+// Substitution INSIDE the transaction's own window
+// ---------------------------------------------------------------------------
+
+/// A generation substituted between verification and commit is refused, and the
+/// verified distribution capability does NOT vouch for it.
+///
+/// The distinction this draws is the reason it exists. Elsewhere the module
+/// proves a substitution is refused once a receipt already selects a generation
+/// — that is an AFTER-commit claim, and a weaker one, because by then a
+/// settled receipt is doing the work. This is the BETWEEN case: the release has
+/// been verified and the transaction has not yet committed, so the only thing
+/// that can catch a swapped tree is the transaction re-reading it.
+///
+/// It is also a crossing claim in the strict sense. A verified
+/// `VerifiedDistributionRelease` is a real capability, and the tempting
+/// assumption is that holding one means the tree is good. It does not: the
+/// capability vouches for the ARCHIVE and the cohort, never for whatever
+/// happens to be sitting in the generation directory. Nothing at either layer
+/// alone can show that, because neither can see both halves.
+///
+/// The substitution is a single byte-level change to one real payload, applied
+/// after `populate` and before the transaction reads the tree — the narrowest
+/// window an external caller can reach.
+#[tokio::test(flavor = "current_thread")]
+async fn a_generation_swapped_between_verification_and_commit_is_refused() {
+    let chain = Chain::new().await;
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+
+    let mut verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("the honest repository verifies");
+
+    let failure = chain
+        .install_after(&mut verified, "generation-swapped", |generation| {
+            // One real file of the release tree, replaced after the tree was
+            // written correctly. Everything else about this install is honest.
+            std::fs::write(
+                generation.join("bin/dashboard.exe"),
+                b"substituted dashboard payload",
+            )
+            .expect("substitute a payload inside the transaction window");
+        })
+        .await
+        .expect_err("a tree swapped before commit must not be committed");
+
+    assert_eq!(
+        failure.kind(),
+        crate::provisioning::ProvisioningErrorKind::FirstInstallAdapterUnavailable
+    );
+    // Pin the reason: the transaction re-read the file and found the wrong
+    // bytes. Any other refusal here would mean the swap was caught by something
+    // that is not the tree check, and this test would be proving that instead.
+    assert!(
+        failure
+            .detail
+            .contains("digest drift in installed file bin/dashboard.exe"),
+        "expected the transaction's own installed-file check to refuse, got: {}",
+        failure.detail
+    );
+
+    chain.assert_no_receipt("after a between-verification-and-commit substitution");
+    // Bootstrap ran before the tree check, so the descriptor is armed and must
+    // stay armed — the same ordering the manifest-link case pins, reached by a
+    // different route.
+    assert!(
+        chain.descriptor_is_armed(),
+        "a pre-commit refusal must leave recovery armed"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Credential refusals
 // ---------------------------------------------------------------------------
+
+/// A SECOND full install against an owned product is refused, and the first
+/// install's ownership is left byte-for-byte intact.
+///
+/// This is credential collision at its real strength. Asking the credential
+/// store to bootstrap twice tests the store; running the WHOLE CHAIN twice
+/// tests what actually threatens a user — a second install arriving at a
+/// product that already has an owner.
+///
+/// The load-bearing assertion is the ownership SECRET comparison. A refusal
+/// that nonetheless rotated the ownership token would lock the legitimate owner
+/// out of their own installation while reporting failure, and every
+/// coarser assertion — that it refused, that a credential file still exists,
+/// that the receipt still names the first generation — would stay green through
+/// exactly that. So the secret is read before and after and compared.
+#[tokio::test(flavor = "current_thread")]
+async fn a_second_install_against_an_owned_product_cannot_rotate_ownership() {
+    let chain = Chain::new().await;
+    let identity = chain.identity();
+    let bundle = chain.publish(1, &identity).await;
+
+    // FIRST INSTALL: the honest one that establishes ownership.
+    let mut verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("the honest repository verifies");
+    let first = chain
+        .install(&mut verified, "generation-first-owner")
+        .await
+        .unwrap_or_else(|failure| panic!("the first install must succeed: {}", failure.detail));
+    assert_eq!(first.active_generation(), "generation-first-owner");
+
+    let store = crate::credentials::DashboardCredentialStore::for_product(&chain.fixture.paths);
+    let owner_before = store
+        .read_ownership()
+        .expect("the first install left a readable ownership credential")
+        .secret()
+        .to_owned();
+
+    // The retained release holds the product's verification lock, so the second
+    // attempt cannot even begin until it is dropped.
+    drop(verified);
+
+    // SECOND INSTALL: the same real release, the same real product, arriving at
+    // a product that is already owned.
+    let mut second_verified = chain
+        .verify(&bundle, TARGET)
+        .await
+        .expect("re-verifying the same release against the same root is not a rollback");
+    let failure = chain
+        .install(&mut second_verified, "generation-second-owner")
+        .await
+        .expect_err("a second install must not be able to take an owned product");
+    assert_eq!(
+        failure.kind(),
+        crate::provisioning::ProvisioningErrorKind::FirstInstallAdapterUnavailable,
+        "expected the bootstrap precondition to refuse, got {failure:?} - {}",
+        failure.detail
+    );
+    // Pin WHICH link refused. The second install must be stopped at the
+    // CREDENTIAL BOOTSTRAP, before it can verify or commit anything — a refusal
+    // arriving later would mean the chain had already begun re-establishing
+    // ownership on an owned product and merely failed to finish.
+    assert_eq!(
+        failure.message, "first-install credential bootstrap failed",
+        "the second install must be refused at the bootstrap, not later: {}",
+        failure.detail
+    );
+    assert!(
+        !chain.descriptor_is_armed(),
+        "a second install refused at the bootstrap must not arm a descriptor over \
+         the first install's settled state"
+    );
+
+    // THE CLAIM: ownership did not move. Not merely "a credential exists" —
+    // the same secret.
+    let owner_after = store
+        .read_ownership()
+        .expect("ownership survives a refused second install")
+        .secret()
+        .to_owned();
+    assert_eq!(
+        owner_before, owner_after,
+        "a refused second install must not rotate the owner's credential"
+    );
+
+    // And the first install is still the one the journal selects.
+    let observation = observe_active_release(&chain.fixture.paths, &chain.fixture.guard)
+        .expect("journal observation");
+    match observation.state().expect("settled state") {
+        ActiveReleaseState::Settled(active) => assert_eq!(
+            active.active_generation(),
+            "generation-first-owner",
+            "the refused second install must not have re-selected anything"
+        ),
+        other => panic!("expected the first install to remain settled, got {other:?}"),
+    }
+}
 
 /// Once a receipt has settled, no further bootstrap can mint ownership.
 ///
