@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-generation-authority'
 date: '2026-07-20'
-modified: '2026-07-20'
+modified: '2026-07-22'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
@@ -97,6 +97,20 @@ superseding that ADR or changing its status.
 - If creation succeeds but exact retained child authority cannot be established, the
   operation must return an indeterminate result. Any residue remains subject to the
   normal bounded generation inventory and cannot become active authority.
+- Recorded 2026-07-22: a retained distribution scope and a bound product authority MUST
+  be able to hold the same product root at the same time. The overlap IS the guarantee —
+  it is what makes "the release verified against this root is being installed into this
+  root" one retained capability rather than two copied observations joined across a gap
+  in which the root could be substituted. Any design that releases one before taking the
+  other — staging and then dropping the verification scope, or binding before retaining —
+  reintroduces exactly that window and is refused, however tidy the resulting lifecycle
+  reads. Coexistence was proven rather than assumed: the product-root open had been
+  requesting a `DELETE` right it never exercises, and Windows sharing refused a second
+  opener on account of it; narrowing that one right to the rights actually used restores
+  coexistence in BOTH orders and loosens nothing, because both handles still deny delete
+  sharing to everyone else. Generalizing past this instance: when two retained
+  authorities appear mutually exclusive, suspect an over-broad rights request before
+  reshaping the lifecycle that needs them both.
 
 ## Implementation
 
