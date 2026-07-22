@@ -1342,8 +1342,9 @@ impl DirectoryAuthority {
 #[cfg(windows)]
 fn windows_directory_dacl_is_restricted(path: &Path) -> bool {
     use std::os::windows::fs::MetadataExt;
-    use vaultspec_windows_authority::{DaclAceKind, ReadOnlyAuthorityDirectory};
-    use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
+    use vaultspec_windows_authority::{
+        ReadOnlyAuthorityDirectory, current_user_sid, private_policy,
+    };
 
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
     let Ok(metadata) = std::fs::symlink_metadata(path) else {
@@ -1355,13 +1356,9 @@ fn windows_directory_dacl_is_restricted(path: &Path) -> bool {
     {
         return false;
     }
-    let Some(user) = current_user() else {
-        return false;
-    };
-    let Ok(user_sid) = name_to_sid(&user, None) else {
-        return false;
-    };
-    let Ok(user_sid) = sid_to_string(user_sid.as_ptr().cast_mut().cast()) else {
+    // Fail closed on every step, as the whole predicate does: an undetermined
+    // principal is "cannot prove restricted", never "does not match".
+    let Ok(user_sid) = current_user_sid() else {
         return false;
     };
     // Observe the directory object's DACL through one read-only snapshot; the
@@ -1372,20 +1369,7 @@ fn windows_directory_dacl_is_restricted(path: &Path) -> bool {
     let Ok(snapshot) = observation.dacl_snapshot() else {
         return false;
     };
-    let allowed = [user_sid.as_str(), "S-1-5-18", "S-1-5-32-544"];
-    let mut user_allowed = false;
-    for entry in snapshot.entries() {
-        match entry.entry_type() {
-            DaclAceKind::AccessAllowed => {
-                if !allowed.contains(&entry.sid()) {
-                    return false;
-                }
-                user_allowed |= entry.sid() == user_sid.as_str();
-            }
-            DaclAceKind::AccessDenied => {}
-        }
-    }
-    user_allowed
+    private_policy::validate_no_outside_principal(&snapshot, &user_sid).is_ok()
 }
 
 /// Why retained generation authority refused an operation.

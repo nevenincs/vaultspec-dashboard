@@ -824,3 +824,79 @@ fn no_outside_principal_accepts_the_exact_strict_private_file_descriptor() {
     private_policy::validate_private_file(&snapshot, user).unwrap();
     private_policy::validate_no_outside_principal(&snapshot, user).unwrap();
 }
+
+// ---------------------------------------------------------------------------
+// The current-principal derivation. The crate reads the PROCESS TOKEN; the
+// dev-only `windows-acl` helper resolves a user NAME. These agree for an
+// ordinary interactive account, and that agreement is what makes the cutover
+// away from the name path safe for the common case — the doc on the primitive
+// records the cases where they can legitimately differ.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn current_user_sid_is_a_wellformed_stable_token_sid() {
+    let sid = crate::current_user_sid().expect("the process token must yield a user SID");
+    assert!(
+        sid.starts_with("S-1-"),
+        "a textual SID must carry the S-1- prefix, got {sid}"
+    );
+    // A user SID is an authority plus sub-authorities, never a bare prefix.
+    assert!(
+        sid.matches('-').count() >= 3,
+        "a user SID must carry sub-authorities, got {sid}"
+    );
+    // No cache backs this, so a second call re-queries the token: it must still
+    // agree, and it must not fail on the repeat.
+    let again = crate::current_user_sid().expect("the query must be repeatable");
+    assert_eq!(sid, again, "the process token user must be stable");
+}
+
+#[test]
+fn current_user_sid_agrees_with_the_name_based_derivation() {
+    let from_token = crate::current_user_sid().expect("token derivation");
+    let from_name = current_user_sid_string();
+    assert_eq!(
+        from_token, from_name,
+        "for an ordinary account the token principal and the name lookup must \
+         name the same SID"
+    );
+}
+
+#[test]
+fn current_user_sid_validates_a_real_hardened_private_file() {
+    // The end-to-end join the cutover rests on: the SID this crate derives is
+    // the one the strict validator accepts for a file hardened to the exact
+    // three-principal policy. A derivation that named a DIFFERENT principal than
+    // the one installed in the DACL would fail here.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("private");
+    let creation = PrivateFileCreation::create(&path).unwrap();
+    let sid = crate::current_user_sid().expect("token derivation");
+
+    // Install the three-principal DACL naming the TOKEN-derived SID, then read
+    // it back off a real NTFS descriptor. This proves the textual SID the token
+    // path produces is one Windows accepts as a principal and returns byte-for
+    // -byte identically through a descriptor round trip — the join every call
+    // site depends on.
+    harden_three_principal(creation.file(), false, &sid);
+    creation.revalidate().unwrap();
+    private_policy::validate_private_file(&creation.dacl_snapshot().unwrap(), &sid)
+        .expect("the token-derived principal must satisfy the installed private-file DACL");
+}
+
+#[test]
+fn win32_error_maps_a_real_code_and_refuses_an_impossible_one() {
+    // ERROR_FILE_NOT_FOUND round-trips to the same io::ErrorKind the OS reports.
+    let mapped = crate::win32_error(2);
+    assert_eq!(mapped.raw_os_error(), Some(2));
+    assert_eq!(mapped.kind(), io::ErrorKind::NotFound);
+    // A value above i32::MAX cannot be a Win32 error code. The checked
+    // conversion reports that rather than reinterpreting it into a negative
+    // code naming an unrelated error, which a bare `as i32` would do.
+    let unmappable = crate::win32_error(u32::MAX);
+    assert_eq!(unmappable.raw_os_error(), None);
+    assert!(
+        unmappable.to_string().contains(&u32::MAX.to_string()),
+        "the refusal must name the offending code, got {unmappable}"
+    );
+}

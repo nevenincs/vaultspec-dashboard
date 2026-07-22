@@ -107,6 +107,37 @@ pub fn probe_process_existence(pid: u32) -> ProcessExistence {
     os::probe_process_existence(pid)
 }
 
+/// The textual SID of the user this process runs as — the one derivation of the
+/// current principal in the workspace.
+///
+/// This is the value every [`private_policy`] validator takes as its
+/// `current_user_sid` argument. It reads the PROCESS TOKEN, the principal
+/// Windows itself evaluates in an access check, rather than resolving a user
+/// NAME; see the primitive for why the two are not equivalent.
+///
+/// The result is deliberately NOT cached. The token user is stable for a process
+/// lifetime, so a cache would be sound, but the query is local and cheap and an
+/// unnecessary cache on a security-critical derivation is process-global state
+/// for no gain. Callers that need a boolean fail closed on the error themselves.
+pub fn current_user_sid() -> io::Result<String> {
+    os::current_user_sid()
+}
+
+/// Build an [`io::Error`] from a raw Win32 error code.
+///
+/// Windows reports error codes as `u32` while `from_raw_os_error` takes `i32`,
+/// and every genuine Win32 code is far below `i32::MAX`. The conversion is
+/// therefore CHECKED rather than a bare `as` cast: a value that cannot be a
+/// Win32 error code is reported as such instead of being silently reinterpreted
+/// into a negative code that would name an unrelated error.
+#[must_use]
+pub fn win32_error(code: u32) -> io::Error {
+    match i32::try_from(code) {
+        Ok(code) => io::Error::from_raw_os_error(code),
+        Err(_) => io::Error::other(format!("unmappable Win32 error code {code}")),
+    }
+}
+
 /// An owned non-reparse directory handle bound to a full-width identity.
 ///
 /// The handle denies write and delete sharing for its retained lifetime. Child

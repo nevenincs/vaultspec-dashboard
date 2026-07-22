@@ -312,18 +312,17 @@ fn require_windows_restricted_acl(_path: &Path) -> Result<()> {
 
 #[cfg(windows)]
 fn require_windows_restricted_acl(path: &Path) -> Result<()> {
-    use vaultspec_windows_authority::{AuthorityFile, ReadOnlyAuthorityDirectory, private_policy};
-    use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
+    use vaultspec_windows_authority::{
+        AuthorityFile, ReadOnlyAuthorityDirectory, current_user_sid, private_policy,
+    };
 
-    static CURRENT_USER_SID: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
     let restricted = (|| {
-        let user_sid = CURRENT_USER_SID
-            .get_or_init(|| {
-                let user = current_user()?;
-                let sid = name_to_sid(&user, None).ok()?;
-                sid_to_string(sid.as_ptr().cast_mut().cast()).ok()
-            })
-            .as_deref()?;
+        // Queried per call rather than memoized. The previous cache existed to
+        // amortize a `LookupAccountName` that could reach a domain controller
+        // once per verified file; the token query has no such cost. It also
+        // cached FAILURE permanently, so one transient lookup failure poisoned
+        // every later verification in the process.
+        let user_sid = current_user_sid().ok()?;
         // Observe the DACL through a handle-based single snapshot, never a raced
         // path enumeration: a directory through the read-only OBSERVATION
         // authority (permissive sharing, no WRITE_DAC, no traverse), a regular
@@ -340,7 +339,7 @@ fn require_windows_restricted_acl(path: &Path) -> Result<()> {
                 .dacl_snapshot()
                 .ok()?
         };
-        private_policy::validate_no_outside_principal(&snapshot, user_sid).ok()
+        private_policy::validate_no_outside_principal(&snapshot, &user_sid).ok()
     })()
     .is_some();
     if restricted {

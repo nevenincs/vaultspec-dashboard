@@ -27,6 +27,9 @@
 use cap_std::fs::Dir;
 use std::path::Path;
 
+#[cfg(windows)]
+use vaultspec_windows_authority::win32_error as win_error;
+
 /// An owner-private directory could not be established or proven.
 #[derive(Debug)]
 pub(crate) enum PrivateDirectoryError {
@@ -342,24 +345,10 @@ fn remove_nonconforming(
     Ok(())
 }
 
+/// This crate's error-typed view of the one shared principal derivation.
 #[cfg(windows)]
 pub(crate) fn current_user_sid() -> Result<String, PrivateDirectoryError> {
-    let name = windows_acl::helper::current_user().ok_or_else(|| {
-        PrivateDirectoryError::Filesystem(std::io::Error::other(
-            "current Windows user is unavailable",
-        ))
-    })?;
-    let sid = windows_acl::helper::name_to_sid(&name, None)
-        .map_err(win_error)
-        .map_err(PrivateDirectoryError::Filesystem)?;
-    windows_acl::helper::sid_to_string(sid.as_ptr().cast_mut().cast())
-        .map_err(win_error)
-        .map_err(PrivateDirectoryError::Filesystem)
-}
-
-#[cfg(windows)]
-fn win_error(code: u32) -> std::io::Error {
-    std::io::Error::from_raw_os_error(code as i32)
+    vaultspec_windows_authority::current_user_sid().map_err(PrivateDirectoryError::Filesystem)
 }
 
 /// Create ONE named direct child file of a capability-held parent, establish its

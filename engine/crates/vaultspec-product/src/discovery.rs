@@ -245,16 +245,11 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
 
     #[cfg(windows)]
     {
-        use vaultspec_windows_authority::{AuthorityFile, private_policy};
-        use windows_acl::helper::{current_user, name_to_sid, sid_to_string};
+        use vaultspec_windows_authority::{AuthorityFile, current_user_sid, private_policy};
 
-        let Some(user) = current_user() else {
-            return false;
-        };
-        let Ok(user_sid) = name_to_sid(&user, None) else {
-            return false;
-        };
-        let Ok(user_sid) = sid_to_string(user_sid.as_ptr().cast_mut().cast()) else {
+        // Fail closed on every step, as the whole predicate does: an undetermined
+        // principal is "cannot prove restricted", never "does not match".
+        let Ok(user_sid) = current_user_sid() else {
             return false;
         };
         // Read the DACL through an exact retained regular-file read handle (the

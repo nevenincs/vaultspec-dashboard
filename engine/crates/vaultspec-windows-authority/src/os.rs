@@ -14,16 +14,17 @@ use windows_sys::Wdk::Storage::FileSystem::{
     NtSetInformationFile,
 };
 use windows_sys::Win32::Foundation::{
-    CloseHandle, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND, ERROR_SUCCESS, HANDLE, LocalFree,
-    OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, UNICODE_STRING, WAIT_OBJECT_0, WAIT_TIMEOUT,
+    CloseHandle, ERROR_INSUFFICIENT_BUFFER, ERROR_INVALID_PARAMETER, ERROR_MR_MID_NOT_FOUND,
+    ERROR_SUCCESS, HANDLE, LocalFree, OBJ_CASE_INSENSITIVE, RtlNtStatusToDosError, UNICODE_STRING,
+    WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, GetSecurityInfo, SE_FILE_OBJECT,
 };
 use windows_sys::Win32::Security::{
     ACCESS_ALLOWED_ACE, ACL, DACL_SECURITY_INFORMATION, GetAce, GetSecurityDescriptorControl,
-    GetSecurityDescriptorDacl, PSECURITY_DESCRIPTOR, SE_DACL_PRESENT, SE_DACL_PROTECTED,
-    SECURITY_DESCRIPTOR_CONTROL,
+    GetSecurityDescriptorDacl, GetTokenInformation, PSECURITY_DESCRIPTOR, SE_DACL_PRESENT,
+    SE_DACL_PROTECTED, SECURITY_DESCRIPTOR_CONTROL, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_ADD_SUBDIRECTORY, FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_NORMAL,
@@ -36,7 +37,9 @@ use windows_sys::Win32::Storage::FileSystem::{
     SetFileInformationByHandle, WRITE_DAC,
 };
 use windows_sys::Win32::System::IO::IO_STATUS_BLOCK;
-use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
+use windows_sys::Win32::System::Threading::{
+    GetCurrentProcess, OpenProcess, OpenProcessToken, WaitForSingleObject,
+};
 
 use crate::{HighResFileId, ProcessExistence};
 
@@ -917,6 +920,132 @@ fn sid_to_string(sid: *mut core::ffi::c_void) -> io::Result<String> {
     // SAFETY: `guard.0` is a non-null NUL-terminated wide string just allocated
     // by ConvertSidToStringSidW; it stays live until the guard drops.
     let text = unsafe { wide_ptr_to_string(guard.0) };
+    Ok(text)
+}
+
+/// Owns a process-token handle and closes it exactly once on drop.
+///
+/// The token is wrapped the instant it is opened rather than paired with a
+/// manual `CloseHandle`, so none of the fallible steps that follow can return
+/// early and leak it.
+struct OwnedToken(HANDLE);
+
+impl Drop for OwnedToken {
+    fn drop(&mut self) {
+        // SAFETY: this type is constructed only from a real token handle
+        // `OpenProcessToken` just opened, and closes it exactly once. The
+        // `GetCurrentProcess` PSEUDO-handle is deliberately never wrapped in
+        // this type: it is not an owned resource and closing it would be a bug.
+        let _ = unsafe { CloseHandle(self.0) };
+    }
+}
+
+/// The largest `TOKEN_USER` the size probe may report.
+///
+/// A `TOKEN_USER` is one pointer-and-attributes header plus one SID, and Windows
+/// caps a SID at 68 bytes. This bound sits far above that, so a report beyond it
+/// means the probe did not describe a token user at all: the query then fails
+/// closed rather than allocating on the reported size or retrying.
+const MAX_TOKEN_USER_BYTES: u32 = 4096;
+
+/// The textual SID of the user THIS PROCESS runs as.
+///
+/// Derived from the process token — the principal Windows itself evaluates in an
+/// access check, which is exactly what a DACL policy needs to name. It is
+/// deliberately NOT a `GetUserName` + `LookupAccountName` round trip: resolving a
+/// NAME is an indirection that can land on a different SID than the kernel will
+/// actually evaluate (a UAC split/filtered token, a local-versus-domain name
+/// collision, a service account), and `LookupAccountName` can reach a domain
+/// controller, making a security-critical principal derivation depend on the
+/// network and fail or stall off it. This query is local and cannot.
+///
+/// Scope is fixed and minimal: the CURRENT process, `TOKEN_QUERY` and no other
+/// right. There is no caller-supplied process handle, no thread or impersonation
+/// token, and no adjust right — this is a principal derivation, not a general
+/// identity API. Only the textual SID leaves the function; the token handle, the
+/// raw SID pointer, and the `TOKEN_USER` never escape.
+pub(super) fn current_user_sid() -> io::Result<String> {
+    let mut raw_token: HANDLE = std::ptr::null_mut();
+    // SAFETY: `GetCurrentProcess` returns a pseudo-handle valid for this call
+    // which is NOT owned and is never closed. `OpenProcessToken` writes one
+    // newly owned token handle into `raw_token` on success; the guard below
+    // takes that ownership exactly once.
+    let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &raw mut raw_token) };
+    if opened == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if raw_token.is_null() {
+        return Err(io::Error::other(
+            "OpenProcessToken succeeded without returning a token handle",
+        ));
+    }
+    let token = OwnedToken(raw_token);
+
+    // The documented two-call size probe: a null buffer of length zero fails
+    // with ERROR_INSUFFICIENT_BUFFER and reports the required byte count.
+    let mut needed: u32 = 0;
+    // SAFETY: `token.0` is a live TOKEN_QUERY handle. A null buffer with zero
+    // length writes nothing but the required size through `needed`, which is a
+    // valid writable u32.
+    let probed = unsafe {
+        GetTokenInformation(token.0, TokenUser, std::ptr::null_mut(), 0, &raw mut needed)
+    };
+    if probed != 0 {
+        return Err(io::Error::other(
+            "token user size probe unexpectedly succeeded with no buffer",
+        ));
+    }
+    let probe_error = io::Error::last_os_error();
+    if probe_error.raw_os_error()
+        != Some(i32::try_from(ERROR_INSUFFICIENT_BUFFER).expect("Win32 error fits i32"))
+    {
+        return Err(probe_error);
+    }
+    let minimum =
+        u32::try_from(std::mem::size_of::<TOKEN_USER>()).expect("TOKEN_USER size fits u32");
+    if needed < minimum || needed > MAX_TOKEN_USER_BYTES {
+        return Err(io::Error::other(format!(
+            "token user information size {needed} is outside the accepted bound"
+        )));
+    }
+
+    // u64 elements make the allocation 8-byte aligned, so the TOKEN_USER pointer
+    // field it is read back through is correctly aligned. Sized from the probe,
+    // never grown: there is no retry loop.
+    let mut buffer = vec![0u64; (needed as usize).div_ceil(std::mem::size_of::<u64>())];
+    let mut written: u32 = 0;
+    // SAFETY: `token.0` is a live TOKEN_QUERY handle and `buffer` is at least
+    // `needed` bytes long and suitably aligned, so Windows writes the TOKEN_USER
+    // wholly in bounds. `written` is a valid writable u32.
+    let filled = unsafe {
+        GetTokenInformation(
+            token.0,
+            TokenUser,
+            buffer.as_mut_ptr().cast::<core::ffi::c_void>(),
+            needed,
+            &raw mut written,
+        )
+    };
+    if filled == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if written < minimum || written > needed {
+        return Err(io::Error::other(format!(
+            "token user information length {written} does not describe the requested {needed} bytes"
+        )));
+    }
+
+    // SAFETY: a successful GetTokenInformation(TokenUser) wrote a complete
+    // TOKEN_USER at the start of `buffer` — `written` was checked to cover it —
+    // and the allocation is aligned for it. Only the SID pointer is copied out.
+    let sid = unsafe { (*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid };
+    if sid.is_null() {
+        return Err(io::Error::other("token user carries a null SID"));
+    }
+    // The SID lives inside `buffer`, which outlives this call, and the existing
+    // reviewed conversion frees its own allocation before returning.
+    let text = sid_to_string(sid.cast::<core::ffi::c_void>())?;
+    drop(token);
     Ok(text)
 }
 

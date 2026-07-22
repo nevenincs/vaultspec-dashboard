@@ -276,7 +276,10 @@ mod windows_owner_restricted {
     use std::os::windows::io::AsRawHandle as _;
     use std::path::Path;
 
-    use vaultspec_windows_authority::{DaclAceKind, PrivateFileCreation, private_policy};
+    use vaultspec_windows_authority::{
+        DaclAceKind, PrivateFileCreation, current_user_sid, private_policy,
+        win32_error as win_error,
+    };
     // The principals, mask, and ACE flags are single-sourced by `private_policy`
     // (windows-private-file-authority, private-file class addendum): composition
     // copies are accepted, duplicated policy literals are not.
@@ -409,19 +412,6 @@ mod windows_owner_restricted {
         }
         Ok(())
     }
-
-    // Exposed to the parent module for the owner-restriction proof in tests, which
-    // validates the reopened DACL against this exact principal.
-    pub(super) fn current_user_sid() -> std::io::Result<String> {
-        let name = windows_acl::helper::current_user()
-            .ok_or_else(|| std::io::Error::other("current Windows user is unavailable"))?;
-        let sid = windows_acl::helper::name_to_sid(&name, None).map_err(win_error)?;
-        windows_acl::helper::sid_to_string(sid.as_ptr().cast_mut().cast()).map_err(win_error)
-    }
-
-    fn win_error(code: u32) -> std::io::Error {
-        std::io::Error::from_raw_os_error(code as i32)
-    }
 }
 
 #[cfg(test)]
@@ -489,7 +479,7 @@ mod tests {
 
         // Prove owner-restriction from a fresh read-only reopen: one DACL
         // snapshot, validated by the shared authority against the current user.
-        let sid = windows_owner_restricted::current_user_sid().expect("current user sid");
+        let sid = vaultspec_windows_authority::current_user_sid().expect("current user sid");
         let reader = ReadOnlyAuthorityFile::open_private_readonly(&path).expect("reopen readonly");
         let snapshot = reader.dacl_snapshot().expect("dacl snapshot");
         assert!(

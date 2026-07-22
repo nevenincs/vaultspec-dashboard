@@ -76,8 +76,10 @@ impl std::error::Error for PrivatePolicyViolation {}
 /// Validate that `snapshot` is the exact protected three-principal DACL required
 /// of a private FILE (windows-private-file-authority D4).
 ///
-/// `current_user_sid` is caller-supplied (consumers derive it with
-/// `windows_acl::helper::{current_user, name_to_sid, sid_to_string}`).
+/// `current_user_sid` is caller-supplied, and every consumer derives it with
+/// [`crate::current_user_sid`] — the one process-token derivation in the
+/// workspace. Passing a principal obtained any other way is what this contract
+/// exists to prevent.
 pub fn validate_private_file(
     snapshot: &DaclSnapshot,
     current_user_sid: &str,

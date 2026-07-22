@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use vaultspec_windows_authority::{
     AuthorityFile, DaclAceKind, DaclSnapshot, HardeningDirectory, HighResFileId,
     PrivateFileCreation, PrivateFileRecovery, ReadOnlyAuthorityDirectory, ReadOnlyAuthorityFile,
-    private_policy,
+    current_user_sid, private_policy, win32_error as win_error,
 };
 // The three principals, the exact mask, and the file/directory ACE flags are
 // single-sourced by `private_policy` (windows-private-file-authority, private-file
@@ -649,13 +649,6 @@ fn policy_error(violation: private_policy::PrivatePolicyViolation) -> std::io::E
     std::io::Error::other(violation.to_string())
 }
 
-fn current_user_sid() -> std::io::Result<String> {
-    let name = windows_acl::helper::current_user()
-        .ok_or_else(|| std::io::Error::other("current Windows user is unavailable"))?;
-    let sid = windows_acl::helper::name_to_sid(&name, None).map_err(win_error)?;
-    windows_acl::helper::sid_to_string(sid.as_ptr().cast_mut().cast()).map_err(win_error)
-}
-
 fn bounded_read(file: &mut std::fs::File, maximum: usize) -> std::io::Result<Vec<u8>> {
     use std::io::Seek as _;
     file.rewind()?;
@@ -672,10 +665,6 @@ fn bounded_read(file: &mut std::fs::File, maximum: usize) -> std::io::Result<Vec
         return Err(std::io::Error::other("private file exceeds its byte bound"));
     }
     Ok(buffer[..used].to_vec())
-}
-
-fn win_error(code: u32) -> std::io::Error {
-    std::io::Error::from_raw_os_error(code as i32)
 }
 
 #[cfg(test)]
