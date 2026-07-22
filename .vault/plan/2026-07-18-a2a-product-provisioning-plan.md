@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-21'
+modified: '2026-07-22'
 tier: L3
 related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
@@ -13,6 +13,16 @@ related:
   - '[[2026-07-20-a2a-distribution-trust-adr]]'
   - '[[2026-07-20-a2a-provisioning-authority-adr]]'
 ---
+
+<!-- LINK RULES:
+     - [[wiki-links]] are ONLY for .vault/ documents in the
+       related: field above.
+     - The related: field carries the AUTHORISING documents
+       (ADR, research, reference, prior plan) for every Step in
+       this plan. Steps inherit this chain; per-row reference
+       footers do not exist.
+     - NEVER use [[wiki-links]] or markdown links in the
+       document body. -->
 
 <!-- RETIRED: S08, S162 -->
 
@@ -62,7 +72,7 @@ Dispatch to vaultspec-high-executor to establish the tracked component lock, rel
 - [x] `W01.P01.S172` - Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain the exact verified journal and Windows installation authorities on every non-success, durably publish by exact positional overwrite and synchronization of only the inactive fixed journal slot or by the D9-authorized first-install path, transition only the older proof subrecord then synchronize close reopen and validate one logical replica at a time, normalize all three to active before the first target byte, recover torn proof writes from quorum, preserve the prior for an unchanged empty or partial-invalid target, fail on any third complete envelope, and resume selection only after the intended target and all retired logical replicas exactly revalidate; `engine/crates/vaultspec-product/src/generation.rs, engine/crates/vaultspec-product/src/manifest.rs, engine/crates/vaultspec-product/src/receipt.rs`.
 - [x] `W01.P01.S163` - Prove exact retained generation-root authority and semantic nested release equality, reject namespace-only empty directories, preserve unretained post-create residue without pathname deletion, and prove collisions substitutions partial writers exact discard and bounded abandoned generations fail closed with real filesystem objects; `engine/crates/vaultspec-product/src/generation.rs, engine/crates/vaultspec-product/src/generation/tests.rs, engine/crates/vaultspec-product/src/manifest/verification.rs, engine/crates/vaultspec-product/src/manifest/tests.rs, engine/crates/vaultspec-product/tests/generation_authority.rs`.
 - [x] `W01.P01.S174` - Implement the isolated TUF 1.0 distribution-authority crate and bounded helper that verify an exactly six-target offline repository from embedded-root authority through pinned tough 0.24.0 filesystem transport, persist rollback freeze root-continuity and latest-known-time state, and expose only opaque non-cloneable verified release authority to linked Rust consumers; `engine/crates/vaultspec-distribution-authority, engine/crates/vaultspec-release-verify, engine/Cargo.toml`.
-- [ ] `W01.P01.S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix and Windows, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery; `engine/crates/vaultspec-product/src/credentials.rs, engine/crates/vaultspec-product/src/credentials, engine/crates/vaultspec-product/src/bootstrap.rs, engine/crates/vaultspec-product/src/lifecycle.rs, engine/crates/vaultspec-cli/src/cmd/a2a_lifecycle.rs, engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
+- [x] `W01.P01.S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix and Windows, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery; `engine/crates/vaultspec-product/src/credentials.rs, engine/crates/vaultspec-product/src/credentials, engine/crates/vaultspec-product/src/bootstrap.rs, engine/crates/vaultspec-product/src/lifecycle.rs, engine/crates/vaultspec-cli/src/cmd/a2a_lifecycle.rs, engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
 - [ ] `W01.P01.S176` - Implement sealed provisioning and active-release facades that consume TUF-verified distribution exact installation-lock and unpublished-generation authority sealed install provenance plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery; `engine/crates/vaultspec-product/src/provisioning.rs, engine/crates/vaultspec-product/src/lib.rs, engine/crates/vaultspec-product/src/manifest.rs, engine/crates/vaultspec-product/src/manifest/authority.rs, engine/crates/vaultspec-product/src/receipt.rs, engine/crates/vaultspec-product/src/receipt/publish.rs, engine/crates/vaultspec-release-verify`.
 - [ ] `W01.P01.S11` - Verify through production APIs that one TUF-authenticated complete real generation activates only through the sealed transaction, the fixed receipt survives reopen, fallback unpublished and legacy state remain inert, dashboard credentials and bootstrap recovery preserve actor and access authority, and cross-process lock exclusion and child cleanup stay bounded; `engine/crates/vaultspec-product/tests/product_authority.rs, engine/crates/vaultspec-distribution-authority/tests/offline_repository.rs`.
 - [x] `W01.P01.S177` - Deliver Windows directory-metadata durability for the trust datastore as a BLOCKING PREREQUISITE of the Stage-4 integrated proof and the Stage-5 datastore half. No typed durability refusal may remain in the non-test Windows build. Reach the object through an already-retained handle, never a reconstructed path. Bounded and fail-closed. Acceptance removes the 8 cfg(unix) scopes so those tests pass on real NTFS and deletes the interim refusal test. If NTFS journaling makes an explicit sync unnecessary, record that as a reviewed durability argument with crash and power-loss reasoning, never assume it silently.; `engine/crates/vaultspec-distribution-authority, engine/crates/vaultspec-windows-authority, engine/crates/vaultspec-product/src/credentials/windows.rs`.
