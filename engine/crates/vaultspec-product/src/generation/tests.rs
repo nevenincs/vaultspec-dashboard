@@ -576,6 +576,15 @@ fn legacy_receipt_json_never_selects_a_generation() {
 /// the root could be substituted. So this proves BOTH orders — the defect was
 /// order-symmetric and the fix must be shown symmetric — and then asserts,
 /// rather than argues, that the exclusivity being touched still holds.
+///
+/// Windows-only. The excluding mechanism is cap-std's share-mode delete
+/// denial, which exists solely on Windows; on Unix a capability handle carries
+/// no share-mode, so two opens of one root never exclude each other and the
+/// coexistence proven here is unconditional. Unix substitution safety is not
+/// prevention but detection — the inode identity revalidated on every parent
+/// re-open (`ParentIdentityChanged`) — so a rename-refusal assertion cannot
+/// hold there and would misrepresent the platform's contract.
+#[cfg(windows)]
 mod distribution_scope_coexistence {
     use super::*;
 
