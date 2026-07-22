@@ -18,6 +18,7 @@ pub mod handshake;
 pub mod registry;
 pub mod routes;
 mod row_delta;
+mod search_bounds;
 pub mod seat;
 
 use std::sync::Arc;

@@ -36,15 +36,12 @@ pub(super) const SEARCH_HTTP_BUDGET: Duration = rag_client::control::READ_BUDGET
 /// other backend, so a killed apply is recoverable by re-running, never source loss.)
 pub(super) const STORAGE_SIBLING_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// Search request query ceiling. The frontend intent store clips at the same
-/// user-facing size, but the API is a public boundary and must reject unbounded
-/// external callers before building rag argv.
-pub(super) const MAX_SEARCH_QUERY_CHARS: usize = 512;
-
-/// Search result ceiling forwarded to rag. Absent `max_results` lets rag use its
-/// own default; an explicit request above this API ceiling is rejected before the
-/// sibling process is spawned.
-pub(super) const MAX_SEARCH_RESULTS: u32 = 50;
+/// The search input ceilings this route ENFORCES before spawning the sibling
+/// process. Single-sourced with the `search_graph` tool catalog that advertises
+/// them (the frontend intent store clips at the same user-facing size, but this
+/// is the public boundary and rejects unbounded external callers before any rag
+/// argv is built).
+pub(crate) use crate::search_bounds::{MAX_SEARCH_QUERY_CHARS, MAX_SEARCH_RESULTS};
 
 /// The R1 core whitelist: vault check + stats. Anything else is a sibling
 /// filing, not whitelist growth.

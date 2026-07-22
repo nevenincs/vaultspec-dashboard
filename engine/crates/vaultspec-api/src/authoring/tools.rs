@@ -15,10 +15,22 @@ use super::api::{
 use super::model::{ChangesetId, CommandKind, IdempotencyKey, RevisionToken, RunId, ToolCallId};
 use super::policy::{ToolPermissionRequirement, ToolRiskTier, tool_permission_requirement};
 
-pub const DEFAULT_SEARCH_RESULT_CAP: u32 = 8;
-pub const MAX_SEARCH_RESULTS: u32 = 50;
-pub const MAX_SEARCH_QUERY_CHARS: usize = 512;
+/// The search input ceilings this catalog ADVERTISES and pre-validates against.
+/// Single-sourced with the `/search` route that enforces them, so the bounds an
+/// agent is told about are the bounds it will actually be held to.
+pub(crate) use crate::search_bounds::{MAX_SEARCH_QUERY_CHARS, MAX_SEARCH_RESULTS};
+
 pub const MAX_SEARCH_SCOPE_CHARS: usize = 256;
+
+/// A page of a document LISTING — a different quantity from the search bounds
+/// above, despite the ceiling happening to equal the search one today. Kept
+/// separate deliberately: a listing page is bounded by what a caller can
+/// usefully page through, a search result count by what is forwarded to rag.
+/// Binding them together would make either unmovable without silently moving
+/// the other, and these were previously named for search while only ever
+/// bounding `read_context`'s `document_list`.
+pub const DEFAULT_DOCUMENT_LIST_CAP: u32 = 8;
+pub const MAX_DOCUMENT_LIST_CAP: u32 = 50;
 pub const DEFAULT_CONTEXT_BYTES: u64 = 16 * 1024;
 pub const MAX_CONTEXT_BYTES: u64 = 64 * 1024;
 
@@ -142,7 +154,7 @@ pub enum ReadContextInput {
     DocumentList {
         #[serde(skip_serializing_if = "Option::is_none")]
         cursor: Option<String>,
-        #[serde(default = "default_search_result_cap")]
+        #[serde(default = "default_document_list_cap")]
         cap: u32,
     },
 }
@@ -553,8 +565,8 @@ fn validate_search_graph(input: &SearchGraphInput) -> Result<(), String> {
 }
 
 fn validate_cap(cap: u32) -> Result<(), String> {
-    if cap == 0 || cap > MAX_SEARCH_RESULTS {
-        return Err(format!("cap must be between 1 and {MAX_SEARCH_RESULTS}"));
+    if cap == 0 || cap > MAX_DOCUMENT_LIST_CAP {
+        return Err(format!("cap must be between 1 and {MAX_DOCUMENT_LIST_CAP}"));
     }
     Ok(())
 }
@@ -613,8 +625,8 @@ fn envelope<T>(
     }
 }
 
-fn default_search_result_cap() -> u32 {
-    DEFAULT_SEARCH_RESULT_CAP
+fn default_document_list_cap() -> u32 {
+    DEFAULT_DOCUMENT_LIST_CAP
 }
 
 fn default_context_bytes() -> u64 {
