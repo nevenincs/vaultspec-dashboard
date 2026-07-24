@@ -1022,7 +1022,9 @@ fn prepare_attempt_datastore(
         let retained: std::fs::File = rustix::fs::openat(
             &directory,
             ".",
-            rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::DIRECTORY
+                | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
         )
         .map_err(|_| VerificationError::DatastoreUnavailable)?
