@@ -1,20 +1,17 @@
-# Producer-consumer A2A capsule contract check: builds
-# the real A2A desktop capsule (target archive + detached manifest) from the
-# producer repository at the dashboard's pinned commit, then validates that
-# manifest with the dashboard's own production parser
-# (`vaultspec-product::manifest::CapsuleManifest::parse_and_verify`, driven
-# through the bounded `a2a_contract_check` executable). No fixture or
-# synthetic manifest is used here; the checker's fixture-driven proofs
-# already run on every push/PR inside `engine-ci.yml`'s `cargo test
-# --workspace` (see `engine/crates/vaultspec-product/tests/a2a_contract_check.rs`).
+# Producer build check: builds the dashboard-bundled A2A runtime as a frozen
+# PyInstaller onedir from the producer repository at the dashboard's pinned
+# commit, then runs the binary's own dispatch smoke gate. This replaces the
+# former capsule-manifest contract check: A2A no longer emits a capsule manifest
+# — it ships clean gateway source plus an in-repo PyInstaller freeze recipe, and
+# the dashboard builds and bundles the binary itself
+# (see the `a2a-product-provisioning` decision, 2026-07-24).
 #
-# NOT a push/PR gate. `packaging/a2a-component.lock.json` currently pins an
-# A2A producer commit that emits capsule contract `1.0`, while the dashboard
-# parser requires exact contract `2.0`.
-# Every dispatch of this workflow is therefore EXPECTED TO FAIL until that
-# cross-repository version selection is resolved and the lock re-pinned.
-# Promote this to a required `push`/`pull_request` gate only once the pinned
-# commit emits contract `2.0` and a real run turns green.
+# The `build_binary.py` entry drives the versioned onedir spec and smoke-tests
+# the frozen dispatch surface (version, help, run-module allowlist refusal); a
+# green run proves the pinned producer source freezes and boots its CLI.
+#
+# NOTE: PyInstaller does not cross-compile — each target's onedir must build on a
+# runner of the matching OS/arch. The onedir lands at `dist/onedir/vaultspec-a2a/`.
 name: a2a-product-contract
 
 on:
@@ -22,8 +19,8 @@ on:
     inputs:
       producer_ref:
         description: >-
-          Candidate vaultspec-a2a commit/ref to check instead of the pinned
-          lock commit (pre-repin validation only; leave empty to check the
+          Candidate vaultspec-a2a commit/ref to build instead of the pinned
+          lock commit (pre-repin validation only; leave empty to build the
           committed lock as-is).
         required: false
         type: string
@@ -36,8 +33,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  contract:
-    name: Build + validate capsule (${{ matrix.target }})
+  build:
+    name: Build + smoke onedir (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
@@ -86,56 +83,22 @@ jobs:
         working-directory: producer
         run: uv python install 3.13
 
-      - name: Install producer's locked build environment
+      - name: Install producer's locked freeze environment
         working-directory: producer
-        run: uv sync --locked --no-default-groups --group tooling
+        run: uv sync --locked --no-default-groups --group freeze
 
-      - name: Restore producer download cache
-        uses: actions/cache@v4
-        with:
-          path: producer/.capsule-cache
-          key: a2a-product-contract-capsule-inputs-${{ matrix.target }}-${{ hashFiles('producer/scripts/desktop_capsule_inputs.toml') }}
-          restore-keys: |
-            a2a-product-contract-capsule-inputs-${{ matrix.target }}-
-
-      - name: Emit real capsule manifest + target archive
+      - name: Build + smoke the frozen onedir
         shell: bash
         working-directory: producer
         run: |
-          uv run --no-sync --frozen python scripts/build_desktop_capsule.py build \
-            --target ${{ matrix.target }} \
-            --out-dir dist/capsules \
-            --cache-dir .capsule-cache
+          uv run --no-sync --frozen python scripts/build_binary.py --dist dist/onedir
 
-      - name: Read pinned dashboard Rust toolchain
-        id: toolchain
-        shell: bash
-        working-directory: dashboard/engine
-        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
-
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: ${{ steps.toolchain.outputs.channel }}
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: dashboard/engine
-
-      - name: Validate the real manifest with the dashboard production parser
-        shell: bash
-        working-directory: dashboard/engine
-        run: |
-          cargo run --quiet -p vaultspec-product --bin a2a_contract_check -- \
-            ../packaging/a2a-component.lock.json \
-            ../../producer/dist/capsules/${{ matrix.target }}.manifest.json \
-            ${{ matrix.target }}
-
-      - name: Upload checked manifest
+      - name: Upload the built onedir
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: a2a-product-contract-${{ matrix.target }}
-          path: producer/dist/capsules/${{ matrix.target }}.manifest.json
+          name: a2a-onedir-${{ matrix.target }}
+          path: producer/dist/onedir/vaultspec-a2a
           if-no-files-found: error
           retention-days: 7
       - name: Reclaim runner disk (always · unix)
