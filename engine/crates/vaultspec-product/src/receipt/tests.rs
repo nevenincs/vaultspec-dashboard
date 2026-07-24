@@ -459,7 +459,7 @@ fn real_s171_failures_preserve_both_attempts_and_retry_to_success() {
     second.retry().unwrap();
     let read = read_active_receipt_journal(&fixture.paths, &fixture.guard).unwrap();
     let ActiveReceiptReadState::Settled(receipt) = read.state().unwrap() else {
-        panic!("S171 retry did not settle");
+        panic!("app-home authority move retry did not settle");
     };
     assert_eq!(receipt.active_generation(), "generation-1");
     assert_eq!(receipt.sequence(), 1);

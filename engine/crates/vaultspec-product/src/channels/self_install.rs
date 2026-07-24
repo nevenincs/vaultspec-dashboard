@@ -1,4 +1,4 @@
-//! Self-install channel authority adapter (a2a-product-provisioning W03.P06.S51).
+//! Self-install channel authority adapter.
 //!
 //! For the self-install channel the copied external updater — not a package
 //! manager — owns file activation and rollback. This adapter expresses that
@@ -16,8 +16,8 @@
 //! The adapter is the sole sanctioned source of the self-install
 //! [`InstallProvenanceAuthority`] (channel self-install, manager ownership
 //! false). Completeness verification of the created generation is performed by
-//! the S52 transaction over the sealed release authority; this adapter owns the
-//! channel identity and the final-name creation mechanism.
+//! the sealing transaction over the sealed release authority; this adapter owns
+//! the channel identity and the final-name creation mechanism.
 
 use crate::channels::InstallProvenanceAuthority;
 use crate::generation::{CreateUnpublishedError, LockedProduct, UnpublishedGeneration};
@@ -47,12 +47,12 @@ impl SelfInstallAuthority {
         false
     }
 
-    /// Mint the sealed provenance for the self-install channel. The S52
+    /// Mint the sealed provenance for the self-install channel. The sealing
     /// transaction consumes this to derive the receipt channel fact; a caller can
     /// never label a self-install as a manager-owned channel.
     #[allow(
         dead_code,
-        reason = "S51 mints self-install provenance before the S52 transaction consumes it"
+        reason = "self-install provenance is minted before the sealing transaction consumes it"
     )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::SelfInstall, false)

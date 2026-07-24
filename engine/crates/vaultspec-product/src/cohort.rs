@@ -1,5 +1,4 @@
-//! The external four-member cohort descriptor + digest (a2a-product-provisioning
-//! W04.P08.S166).
+//! The external four-member cohort descriptor + digest.
 //!
 //! After all four per-target member manifests exist, the release aggregates
 //! exactly one VERIFIED member for each of the four unique target triples,
@@ -78,8 +77,8 @@ pub struct CohortEmission {
 /// Aggregate exactly one verified member per target into the external cohort
 /// descriptor and emit its JCS preimage + digest.
 ///
-/// Each `(target, raw member manifest)` is verified through the S06 authority
-/// against `lock`; the four must form the exact roster and share one cohort id,
+/// Each `(target, raw member manifest)` is verified through the manifest
+/// authority against `lock`; the four must form the exact roster and share one cohort id,
 /// A2A commit, component-lock join, release schema, protocol, and state schema. A
 /// member cannot self-authorize its lock — the join is checked against the same
 /// independently trusted `lock`.

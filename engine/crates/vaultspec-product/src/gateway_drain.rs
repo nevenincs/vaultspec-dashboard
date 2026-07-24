@@ -1,5 +1,5 @@
-//! Authenticated drain-and-stop of the DISCOVERED owned gateway
-//! (a2a-product-provisioning W03.P07 S62 — the copied updater's drive).
+//! Authenticated drain-and-stop of the DISCOVERED owned gateway, driven by the
+//! copied updater.
 //!
 //! The copied external updater does not own the gateway process: the exiting
 //! dashboard spawned it, so the updater holds no child handle and must reach
@@ -10,12 +10,12 @@
 //! - the discovery record is read only from the product-derived app home
 //!   (bounded, no-follow), parsed secret-free, and classified against the
 //!   product-root owner identity; ONLY [`Verdict::OwnedLive`] yields a lease.
-//!   A foreign gateway is never drained or stopped — ADR D4 immutability
-//!   binds the updater exactly as it binds the dashboard.
+//!   A foreign gateway is never drained or stopped — foreign-gateway
+//!   immutability binds the updater exactly as it binds the dashboard.
 //! - credentials come only from the product-derived store: the attach token
 //!   authenticates transport, and the receipt-bound ownership capability —
-//!   verified under the exact installation guard — authorizes the stop
-//!   (ADR D5). The attach credential alone cannot stop a gateway.
+//!   verified under the exact installation guard — authorizes the stop.
+//!   The attach credential alone cannot stop a gateway.
 //! - the stop is proven, never assumed: the recorded pid must exit within the
 //!   bounded deadline AND the endpoint must stop answering. There is
 //!   deliberately NO force-kill path — killing a non-child pid by number is a
@@ -42,7 +42,7 @@ use crate::manifest::RangeBounds;
 use crate::paths::ProductPaths;
 
 /// The secret-free discovery record the desktop gateway publishes in the
-/// product app home (ADR D5).
+/// product app home.
 pub const DISCOVERY_FILE: &str = "gateway-discovery.json";
 /// Discovery records are small JSON documents; a larger file is malformed.
 const MAX_DISCOVERY_BYTES: u64 = 64 * 1024;

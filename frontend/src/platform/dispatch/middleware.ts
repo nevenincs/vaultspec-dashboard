@@ -1,4 +1,4 @@
-// Dispatch middleware (ADR D2): the cross-cutting concerns every dispatched
+// Dispatch middleware: the cross-cutting concerns every dispatched
 // intent gets for free - structured logging, trace correlation, and the
 // arm-to-confirm guard generalized from the right rail's ops surface. The
 // app-wide `appDispatcher` is wired with all three so any consumer that routes

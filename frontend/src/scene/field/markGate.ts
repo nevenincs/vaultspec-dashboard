@@ -1,4 +1,4 @@
-// The 14px grayscale-by-shape gate (iconography ADR a11y contract). Every
+// The 14px grayscale-by-shape gate (a11y contract). Every
 // domain mark — adopted or authored — must be distinguishable in pure
 // grayscale at the 14px legibility floor by SHAPE alone, with hue never
 // load-bearing. This module renders a mark to a deterministic ink bitmap at the

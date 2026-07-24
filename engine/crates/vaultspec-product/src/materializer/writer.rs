@@ -1,5 +1,4 @@
-//! The crate-private retained generation writer
-//! (archive-materialization D4/D5).
+//! The crate-private retained generation writer.
 //!
 //! The writer is borrowed from the exact `UnpublishedGeneration` and is the
 //! ONLY descendant mutation surface: it accepts validated path segments and
@@ -75,10 +74,9 @@ impl<'generation, 'product, 'lock> GenerationWriter<'generation, 'product, 'lock
 
     /// Decode one admitted entry into its final name: transaction-reserved
     /// sibling, counted+digested write, synchronize, same-handle revalidate,
-    /// admitted mode, no-replace install, parent synchronize
-    /// (archive-materialization D5). The decoded digest must equal the
-    /// preflight digest, so the write pass cannot install bytes preflight
-    /// never proved.
+    /// admitted mode, no-replace install, parent synchronize. The decoded
+    /// digest must equal the preflight digest, so the write pass cannot
+    /// install bytes preflight never proved.
     pub(super) fn install_entry(
         &mut self,
         path: &str,
@@ -312,7 +310,7 @@ fn synchronize_directory(_directory: &DirHandle) -> Result<(), MaterializeError>
     // Windows exposes no directory synchronization under these leases; the
     // write-through file installs plus the complete post-materialization
     // verification carry ordering, and production Windows activation remains
-    // gated (windows-private-file-authority D6).
+    // gated behind the windows-private-file authority.
     Ok(())
 }
 

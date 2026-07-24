@@ -4,7 +4,7 @@
 //! # The read-and-infer fence (load-bearing)
 //!
 //! This crate is the sanctioned "builds beside" layer the foundation contract
-//! reserved (§9) and the `user-state-persistence` ADR realized. It is the ONLY
+//! reserved for durable user-state persistence. It is the ONLY
 //! crate in the `engine/` workspace permitted to hold durable session/settings
 //! state and persist its OWN SQLite file. It inherits — and never relaxes — the
 //! same hard prohibitions the inference crates carry:
@@ -149,9 +149,9 @@ impl UserState {
 
     // --- workspace-registry convenience delegators --------------------------
     //
-    // The registry of WHICH project roots exist (dashboard-workspace-registry
-    // ADR). All read-only over repository content: registering, selecting, and
-    // forgetting write only config rows in this best-effort store.
+    // The registry of WHICH project roots exist. All read-only over
+    // repository content: registering, selecting, and forgetting write only
+    // config rows in this best-effort store.
 
     /// List the registered project roots in their stable registry order.
     pub fn list_roots(&self) -> Result<Vec<WorkspaceRoot>> {
@@ -169,8 +169,8 @@ impl UserState {
         self.store.add_root(root, now)
     }
 
-    /// Auto-register the launch workspace as the FIRST root on first run
-    /// (dashboard-workspace-registry ADR, S03), so the single-project experience
+    /// Auto-register the launch workspace as the FIRST root on first run,
+    /// so the single-project experience
     /// is unchanged: a fresh (or best-effort-recreated) registry seeds the
     /// launch workspace as the launch-default root, and a registry that already
     /// holds the launch id is left untouched (idempotent — a reboot does not

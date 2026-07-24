@@ -28,7 +28,8 @@ pub(super) struct ActiveReceiptPublishAttemptError {
 }
 
 /// Fail-closed publication error which retains the exact verified generation
-/// borrow. On Windows it also retains every still-useful S171 file authority.
+/// borrow. On Windows it also retains every still-useful app-home authority
+/// move file authority.
 pub(crate) struct ActiveReceiptPublishError<'generation, 'product, 'lock> {
     verified: Option<VerifiedReleaseSet<'generation, 'product, 'lock>>,
     failure: ActiveReceiptPublishAttemptError,
@@ -94,8 +95,9 @@ impl<'generation, 'product, 'lock> ActiveReceiptPublishError<'generation, 'produ
     }
 
     /// Resume publication with the same verified release set. Windows first
-    /// retries exact app-home authority recovery when S171 left transition
-    /// authority; Unix resumes directly from the durable journal cutpoint.
+    /// retries exact app-home authority recovery when the app-home authority
+    /// move left transition authority; Unix resumes directly from the
+    /// durable journal cutpoint.
     pub(crate) fn retry(
         mut self: Box<Self>,
     ) -> Result<VerifiedReleaseSet<'generation, 'product, 'lock>, Box<Self>> {
@@ -187,7 +189,7 @@ impl<'generation, 'product, 'lock> ActiveReceiptPublishError<'generation, 'produ
                 .join("; ");
             self.failure.kind = ActiveReceiptPublishFailureKind::RecoveryRequired;
             self.failure.message =
-                format!("S171 retry limit reached with all retained diagnostics: {summaries}");
+                format!("app-home authority move retry limit reached with all retained diagnostics: {summaries}");
             self.failure.journal_error = retained_journal_error.take();
             self.verified = Some(verified);
             return Err(self);
@@ -958,7 +960,7 @@ fn publish_active_receipt_attempt_unfinalized(
                             return Err(ActiveReceiptPublishAttemptError {
                                 kind: ActiveReceiptPublishFailureKind::RecoveryRequired,
                                 message: format!(
-                                    "S171 {:?}/{:?} requires semantic reconciliation: {}; {}",
+                                    "app-home authority move {:?}/{:?} requires semantic reconciliation: {}; {}",
                                     failure.stage,
                                     failure.outcome,
                                     failure.error,
@@ -975,7 +977,7 @@ fn publish_active_receipt_attempt_unfinalized(
                         return Err(ActiveReceiptPublishAttemptError {
                             kind: ActiveReceiptPublishFailureKind::Indeterminate,
                             message: format!(
-                                "S171 {:?}/{:?} retained transition authority: {}; {}",
+                                "app-home authority move {:?}/{:?} retained transition authority: {}; {}",
                                 failure.stage,
                                 failure.outcome,
                                 failure.error,

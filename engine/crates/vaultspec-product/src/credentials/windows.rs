@@ -288,7 +288,7 @@ impl RetainedCredentialFile {
         }
     }
 
-    /// The load-bearing fail-closed check (windows-private-file-authority D4):
+    /// The load-bearing fail-closed check:
     /// exact identity, one link, and — from ONE snapshot — a protected
     /// three-principal DACL. An unreadable/absent DACL (`Err`) and an
     /// equivalent-looking unprotected DACL both refuse.
@@ -324,14 +324,14 @@ pub fn open_and_read(path: &Path) -> std::io::Result<(RetainedCredentialFile, Ve
 }
 
 /// Re-prove ONE still-held retained credential file through its own exact
-/// handle (D5).
+/// handle.
 ///
 /// Deliberately not a reopen: the first-install proof holds its files
 /// exclusively, so reopening one would fail with a sharing violation rather than
 /// prove anything. The retained handle can always re-observe itself.
 #[allow(
     dead_code,
-    reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+    reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
 )]
 pub fn revalidate_retained_file(file: &RetainedCredentialFile) -> std::io::Result<()> {
     file.revalidate_protected()
@@ -424,7 +424,7 @@ pub fn open_private(
             "credential file has more than one link",
         ));
     }
-    // Point-in-time protected-DACL proof before AND after the bounded read (D5).
+    // Point-in-time protected-DACL proof before AND after the bounded read.
     validate_file_dacl(&reader.dacl_snapshot()?)?;
     let bytes = reader.read_bounded(maximum)?;
     reader.revalidate()?;
@@ -634,13 +634,13 @@ fn remove_nonconforming(
 }
 
 /// Validate the exact protected three-principal DACL of a credential FILE from
-/// one snapshot (windows-private-file-authority D4).
+/// one snapshot.
 fn validate_file_dacl(snapshot: &DaclSnapshot) -> std::io::Result<()> {
     private_policy::validate_private_file(snapshot, &current_user_sid()?).map_err(policy_error)
 }
 
 /// Validate the exact protected three-principal DACL of the credentials
-/// DIRECTORY from one snapshot (windows-private-file-authority D4).
+/// DIRECTORY from one snapshot.
 fn validate_directory_dacl(snapshot: &DaclSnapshot) -> std::io::Result<()> {
     private_policy::validate_private_directory(snapshot, &current_user_sid()?).map_err(policy_error)
 }
@@ -683,7 +683,7 @@ mod tests {
     }
 
     /// Retirement completes on Windows: the credential is GONE and the parent
-    /// index change is committed (W01.P01.S177 consumer).
+    /// index change is committed.
     ///
     /// This asserts SUCCESS, not the absence of an error. Retirement is the
     /// rollback path, and its failure direction is FAIL-OPEN — a retirement whose

@@ -1,4 +1,4 @@
-//! Real-process acceptance for the bounded S145 dashboard contract checker.
+//! Real-process acceptance for the bounded dashboard contract checker.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -122,7 +122,7 @@ impl Inputs {
 fn run_checker<const N: usize>(paths: [&Path; N], target: &str) -> Output {
     let mut command = Command::new(CHECKER);
     command.args(paths).arg(target);
-    command.output().expect("run real S145 checker process")
+    command.output().expect("run real contract checker process")
 }
 
 fn output_text(bytes: &[u8]) -> String {

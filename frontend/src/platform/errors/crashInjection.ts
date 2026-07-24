@@ -1,6 +1,6 @@
-// Dev-only crash injection (ADR D5, restored per the frontend-localization
-// S108 closing review). The original floating CrashInjector panel was fully
-// removed by the localization campaign (S243) because its rendered chrome
+// Dev-only crash injection, restored after the frontend-localization
+// closing review. The original floating CrashInjector panel was fully
+// removed by the localization campaign because its rendered chrome
 // carried unlocalizable internal vocabulary; this restoration keeps the
 // integration-level containment proof (adverse.spec.ts) WITHOUT any rendered
 // chrome: the lever is the dev-only `__crashControls` global registered in

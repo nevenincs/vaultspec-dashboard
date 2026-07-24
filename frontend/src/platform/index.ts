@@ -1,4 +1,4 @@
-// The platform substrate's published interface (ADR D1). The data, scene, and
+// The platform substrate's published interface. The data, scene, and
 // chrome teams import their cross-cutting seams from here:
 //
 //   import { logger, ErrorBoundary, useAction, classifyError } from "../platform";
@@ -8,31 +8,31 @@
 // Nothing in here imports app/, scene/, or the stores - the substrate is a
 // foundation, not a peer.
 
-// Observability spine (P01)
+// Observability spine
 export * from "./logger/logger";
 export * from "./logger/globalTraps";
 export * from "./logger/workerBridge";
 
-// Exception containment (P02)
+// Exception containment
 export * from "./errors/ErrorBoundary";
 
-// Dispatch seam (P03)
+// Dispatch seam
 export * from "./dispatch/dispatch";
 export * from "./dispatch/useAction";
 
-// Shared action descriptor + resolver registry (dashboard-context-menus W01)
+// Shared action descriptor + resolver registry (dashboard-context-menus)
 export * from "./actions/action";
 export * from "./actions/entity";
 export * from "./actions/registry";
 
-// Action verb families (dashboard-context-menus W02): copy + host-shell verbs.
+// Action verb families (dashboard-context-menus): copy + host-shell verbs.
 // Importing these modules registers their terminal handlers on the seam.
 export * from "./actions/clipboardActions";
 export * from "./actions/shellActions";
 
-// Exception-handling policy (P04)
+// Exception-handling policy
 export * from "./policy/failurePolicy";
 
-// Theme model (design-language adoption W01.P02.S09)
+// Theme model (design-language adoption)
 export * from "./theme/themeController";
 export * from "./theme/useTheme";

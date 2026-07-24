@@ -1,4 +1,4 @@
-// The shared action descriptor (dashboard-context-menus ADR, layer 1): the one
+// The shared action descriptor (layer 1): the one
 // declare-once verb unit the whole app speaks. It generalizes the palette's
 // `PaletteCommand` so the command palette and the context menu consume the SAME
 // shape and cannot drift (the brief's "standardise the commands"). An action is
@@ -43,7 +43,7 @@ export type ActionIcon = ComponentType<{
  * navigate/select first, transform (mutating, non-destructive) next, copy after,
  * danger (destructive, arm-to-confirm), and `global` last - the terminal tail for
  * the kind-agnostic global-tail actions appended to every menu (global-context-
- * actions ADR D1). The palette groups by its own `family` instead and leaves
+ * actions). The palette groups by its own `family` instead and leaves
  * `section` unset.
  */
 export type ActionSection = "navigate" | "transform" | "copy" | "danger" | "global";

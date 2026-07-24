@@ -185,11 +185,11 @@ impl RetainedCredentialFile {
 }
 
 /// Re-prove ONE still-held retained credential file through its own exact
-/// descriptor (D5). Deliberately not a path lookup: the fact must rest on the
+/// descriptor. Deliberately not a path lookup: the fact must rest on the
 /// handle the proof retains, not on whatever currently answers to the name.
 #[allow(
     dead_code,
-    reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+    reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
 )]
 pub fn revalidate_retained_file(file: &RetainedCredentialFile) -> std::io::Result<()> {
     let held = rustix::fs::fstat(&file.file)?;

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Copy verb family (W02.P04.S20): the terminal handler writes to the clipboard
+// Copy verb family: the terminal handler writes to the clipboard
 // and dispatches through the appDispatcher seam; copyAction builds a copy-section
 // descriptor that routes the same verb.
 

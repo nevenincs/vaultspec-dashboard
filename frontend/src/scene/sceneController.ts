@@ -1,17 +1,16 @@
-// Scene state lives OUTSIDE React (gui-spec §5.2, non-negotiable boundary):
+// Scene state lives OUTSIDE React (a non-negotiable boundary):
 // the renderer owns positions, LOD, and per-frame animation. React never
 // renders the field's nodes; it sends commands and subscribes to events.
 // This module is framework-free by design — no React imports, ever.
 //
-// Interface shape reviewed by experience-architect (2026-06-12 redline).
-// LOCKED (W01.P01.S04, 2026-06-12): the RL-1 to RL-5 fold is final. The
+// LOCKED: the RL-1 to RL-5 fold is final. The
 // command, event, and anchor surface below is the seam every consumer
-// builds against; the PixiJS v8 field (G6.b verdict: confirmed, S03) plugs
+// builds against; the PixiJS v8 field (verdict: confirmed) plugs
 // in behind it, and the sigma.js v3 fallback must keep implementing the
 // same surface. Surface changes from here on are ADR-flagged redlines, not
 // drive-by edits.
 //
-// 2026-06-19: the live graph seam is the three.js + d3-force field. The Cosmos
+// The live graph seam is the three.js + d3-force field. The Cosmos
 // config command has been removed; force tuning is the field's own concern.
 
 import type { RepresentationMode } from "./field/representationLayout";
@@ -32,8 +31,8 @@ export interface GraphForceParams {
 }
 
 /**
- * The appearance / "look" knobs the graph-controls UI tunes on the active field
- * (graph-backend-unification ADR D3): node-size scale, salience spread, edge
+ * The appearance / "look" knobs the graph-controls UI tunes on the active field:
+ * node-size scale, salience spread, edge
  * width/opacity range, and edge colour-inheritance mode. Mirrors the field's
  * AppearanceParams structurally; all optional — the field merges them via its own
  * setAppearanceParams. Defined locally (not imported from scene/three) to keep the
@@ -63,7 +62,7 @@ export type GraphBoundsShape = "free" | "circle" | "rect";
  */
 export interface SceneNodeData {
   id: string;
-  /** Node species/doc type — drives the silhouette glyph (gui-spec §3.1). */
+  /** Node species/doc type — drives the silhouette glyph. */
   kind: string;
   /**
    * Vault document type (`adr`/`plan`/`exec`/`audit`/`index`/`research`/…) when
@@ -77,8 +76,8 @@ export interface SceneNodeData {
   /** Display title — drives the DOI-culled label (contract §4 node field). */
   title?: string;
   /**
-   * Feature-membership tags (contract §4 node field). Drives the feature overlays
-   * (graph-representation ADR): GMap country labels and BubbleSets hulls group
+   * Feature-membership tags (contract §4 node field). Drives the feature overlays:
+   * GMap country labels and BubbleSets hulls group
    * nodes by feature. Additive optional seam field; absent on nodes outside any
    * feature (a bare code/commit artifact).
    */
@@ -93,31 +92,31 @@ export interface SceneNodeData {
   dates?: { created?: string; modified?: string };
   /**
    * Feature-convergence nodes only: documents converging on the feature
-   * (contract §4 `member_count`, engine addendum S02). Drives the
-   * center-of-gravity radius (ADR D4.1) — the visual semantic that makes
+   * (contract §4 `member_count`). Drives the
+   * center-of-gravity radius — the visual semantic that makes
    * feature nodes the constellation's anchors.
    *
-   * SEAM REDLINE (2026-06-13, dashboard-gui addendum): additive, optional,
+   * SEAM REDLINE: additive, optional,
    * backward-compatible field on the locked RL-1 node-data surface. Flagged in
-   * the GUI ADR (2026-06-12-dashboard-gui-adr §9a, "RL-1 additive") per the
-   * W01.P01.S04 lock discipline; it is the minimal surface needed to render the
+   * the GUI ADR ("RL-1 additive") per the
+   * lock discipline; it is the minimal surface needed to render the
    * convergence entity, not a drive-by edit. The sigma.js fallback ignores it
    * harmlessly.
    */
   memberCount?: number;
   /**
-   * Per-lens importance scalar in [0,1] (graph-node-salience ADR, consumed via
-   * graph-representation). Drives node SIZE (superseding the member-count radius
+   * Per-lens importance scalar in [0,1], consumed via
+   * graph-representation. Drives node SIZE (superseding the member-count radius
    * for non-feature species) and LABEL PRIORITY in the DOI cull. Absent when the
    * origin does not serve it; the sprite layer falls back to the base radius.
    *
-   * SEAM REDLINE (graph-representation W01.P01): additive, optional,
+   * SEAM REDLINE: additive, optional,
    * backward-compatible on the locked RL-1 node-data surface — flagged per the
-   * W01.P01.S04 lock discipline. The sigma.js fallback ignores it harmlessly.
+   * lock discipline. The sigma.js fallback ignores it harmlessly.
    */
   salience?: number;
   /**
-   * CODE corpus module identity (codebase-graphing CGR-002): the owning top-level
+   * CODE corpus module identity (codebase-graphing): the owning top-level
    * `module` key, the 0..6 `moduleHue` ordered-palette index (or null for a
    * long-tail module → the neutral `code` hue), and the path `depth`. Backend-
    * served; drive the module-hue colour + depth gradient in `appearance.ts` and the
@@ -135,7 +134,7 @@ export interface SceneNodeData {
    */
   packageEntry?: boolean;
   /**
-   * Engine-served recency percentile over the code corpus (code-graph-heat ADR):
+   * Engine-served recency percentile over the code corpus:
    * 0 = oldest worktree mtime, 1 = newest; a package-rollup representative
    * carries its members' max. Drives the Recency node-color mode's theme-token
    * heat ramp. Absent on undated files and on vault nodes (the cold end /
@@ -144,32 +143,32 @@ export interface SceneNodeData {
   recencyRank?: number;
   temporal?: { bucket: string };
   /**
-   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
-   * the rag embedding the CPU worker projects with UMAP for the semantic layout
+   * Per-node semantic embedding vector: the rag embedding the CPU worker
+   * projects with UMAP for the semantic layout
    * mode. The renderer never receives layout coordinates from the engine; it
    * receives this raw vector and the worker projects it. Absent on nodes lacking
    * an embedding (drawn in a connectivity-fallback position).
    */
   embedding?: number[];
   /**
-   * The node's resolved per-type lifecycle status (node-visual-richness ADR
-   * P01/P03): the raw `value` token, its resolved treatment `class`, and an
+   * The node's resolved per-type lifecycle status: the raw `value`
+   * token, its resolved treatment `class`, and an
    * `ordinal` magnitude (tiered 1..4 / graded 1..4) when the class carries one.
    * Drives the status STAMP — the single grayscale-safe status treatment per
    * node at field LOD (`statusStamp.ts` `stampFor`). Absent on nodes with no
    * per-type status (a bare code/commit artifact, or a type with no status
    * machine); the sprite layer renders no stamp then.
    *
-   * SEAM REDLINE (node-visual-richness P03.S08): additive, optional,
+   * SEAM REDLINE: additive, optional,
    * backward-compatible on the locked RL-1 node-data surface — flagged per the
-   * W01.P01.S04 lock discipline, mirroring the `salience`/`memberCount`
+   * lock discipline, mirroring the `salience`/`memberCount`
    * redlines. The sigma.js fallback ignores it harmlessly.
    */
   status?: { value?: string; class?: StatusClass; ordinal?: number };
   /**
-   * The authority register the node answers in (graph-node-semantics ADR):
+   * The authority register the node answers in:
    * `design`/`roadmap`/`evidence`/`judgment`/`manifest`. The lineage layout
-   * (W03 D5) suppresses `manifest` (generated index) nodes from the derivation
+   * suppresses `manifest` (generated index) nodes from the derivation
    * spine — they are manifests, not lineage members. Additive/optional.
    */
   authorityClass?: string;
@@ -197,7 +196,7 @@ export interface SceneEdgeData {
    */
   meta?: { count: number; breakdownByTier: Record<string, number> };
   /**
-   * Pipeline-derivation relation label (graph-node-semantics ADR), carried
+   * Pipeline-derivation relation label, carried
    * ALONGSIDE the inference `tier`. Drives the lineage layout's derivation axis
    * (research -> adr -> plan -> exec -> audit -> rule) and the lineage edge
    * treatment. Absent on edges without a framework-derivation meaning (e.g. a
@@ -225,7 +224,7 @@ export interface SceneDelta {
  * the inputs are not mutated.
  *
  * Shared by the field renderer's `applyDeltas` and the controller's held-model
- * update so the two stay consistent (GIR-006). It mirrors the renderer's in-place
+ * update so the two stay consistent. It mirrors the renderer's in-place
  * fold exactly — a removed node's incident edges are dropped only by their own
  * `remove` deltas, matching what the field actually draws — so the controller's
  * nodeCount/edgeCount reflect the rendered graph after a live splice, not a stale
@@ -307,12 +306,12 @@ export type SceneCommand =
   // (default false) requests a ONE-SHOT camera frame to the cohort on a genuine change
   // (the rail feature-select frame, follow-gated); the durable re-apply never re-frames.
   // (The prior one-shot `set-meta-highlight` id-set command this superseded was DELETED
-  // as a deliberate contract event — emphasis-state-grammar ADR 2026-07-03.)
+  // as a deliberate contract event.)
   | { kind: "set-feature-spotlight"; tag: string | null; frame?: boolean }
-  // Transient cross-highlight (G2.b): lift the named nodes briefly — the
-  // timeline's event-click pulse. Additive seam amendment at S36.
+  // Transient cross-highlight: lift the named nodes briefly — the
+  // timeline's event-click pulse. Additive seam amendment.
   | { kind: "pulse"; ids: ReadonlySet<string> }
-  // --- graph-quality addenda (2026-06-13, P01.S02) ----------------------------
+  // --- graph-quality addenda ----------------------------------------------
   // Camera commands — executed by the field, avoid polling/state leak into app.
   | { kind: "zoom-in" }
   | { kind: "zoom-out" }
@@ -329,17 +328,17 @@ export type SceneCommand =
   | { kind: "frame-nodes"; ids: ReadonlySet<string> }
   | { kind: "reset-view" }
   | { kind: "set-simulation-active"; active: boolean }
-  // Deliberate PLAY intent (graph sim play/pause control, 2026-07-03): run the sim NOW.
-  // Distinct from `set-simulation-active {active:true}` (energy-neutral resume, GIR-002):
+  // Deliberate PLAY intent: run the sim NOW.
+  // Distinct from `set-simulation-active {active:true}` (energy-neutral resume):
   // play RESUMES an in-flight paused settle, but on an already-settled layout it is the
   // named explicit-restart entry point (`reheatNow`) — the one deliberate energy pump the
-  // simulation-stability ADR reserves for explicit user intent. A frozen field ignores it
+  // simulation stability model reserves for explicit user intent. A frozen field ignores it
   // (the chrome unfreezes first). ADDITIVE to the locked union; no member changed.
   | { kind: "sim-play" }
   // Three-native force tuning (replaces the retired set-cosmos-config): the
   // graph-controls sliders patch the field's d3-force params live.
   | { kind: "set-force-params"; params: GraphForceParams }
-  // Three-native appearance tuning (graph-backend-unification ADR D3): the
+  // Three-native appearance tuning: the
   // graph-controls appearance sliders patch the field's node-size + edge look.
   | { kind: "set-appearance-params"; params: GraphAppearanceParams }
   // --- live interaction addenda ----------------------------------------------
@@ -356,8 +355,8 @@ export type SceneCommand =
   // holds the camera for full manual control.
   | { kind: "set-autoframe"; enabled: boolean }
   | { kind: "set-bounds"; shape: GraphBoundsShape; size?: number }
-  // --- graph-representation addenda (W03.P08) -------------------------------
-  // Representation-mode switch (graph-representation ADR): connectivity (FA2,
+  // --- graph-representation addenda -----------------------------------------
+  // Representation-mode switch: connectivity (FA2,
   // default) | lineage (derivation-DAG axis) | semantic (UMAP over embeddings).
   // EXPLICITLY DISTINCT from `set-layout-mode` (force|circular): representation
   // mode changes WHICH CPU-worker layout runs and what data it consumes;
@@ -366,7 +365,7 @@ export type SceneCommand =
   // transition) and echoes `representation-mode-changed`. Additive to the locked
   // union; no existing member is renamed or removed.
   | { kind: "set-representation-mode"; mode: RepresentationMode }
-  // Overlay visibility (graph-representation ADR): feature-country labels at
+  // Overlay visibility: feature-country labels at
   // overview, BubbleSets hulls at document LOD. View state owned by the
   // view-store; the scene toggles the hull/label layer WITHOUT re-layout (set
   // overlays are projections that do not move nodes).
@@ -384,7 +383,7 @@ export type SceneCommand =
   // field re-reads every token and re-renders, with the d3-force layout preserved.
   | { kind: "refresh-theme" };
 
-// RL-5c folded at lock time (W01.P01.S04): `expand` (keyboard E / context
+// RL-5c folded at lock time: `expand` (keyboard E / context
 // menu, distinct from open) and `pin` are part of the locked union — a
 // locked seam cannot carry an "open by design" event set.
 export type SceneEvent =
@@ -393,15 +392,15 @@ export type SceneEvent =
   | { kind: "open"; id: string }
   | { kind: "expand"; id: string }
   | { kind: "pin"; id: string; pinned: boolean }
-  // --- graph-quality addenda (2026-06-13, P01.S04 / P02.S06) -----------------
+  // --- graph-quality addenda --------------------------------------------------
   /** Emitted on every camera.onChange — toolbar zoom display + LOD level. */
   | { kind: "camera-change"; scale: number; level: SemanticLevel }
-  // --- context menu (2026-06-15, dashboard-context-menus W04.P10) -------------
+  // --- context menu ------------------------------------------------------------
   /**
    * Emitted on right-click over the field: `id` is the node under the pointer or
    * null for empty canvas; `clientX`/`clientY` are viewport coords for the menu
-   * anchor. ADR-flagged additive redline (dashboard-context-menus ADR, layer 6)
-   * per the W01.P01.S04 lock discipline - additive to the locked union, no
+   * anchor. ADR-flagged additive redline (layer 6)
+   * per the lock discipline - additive to the locked union, no
    * existing member changed. The scene only REPORTS the gesture; app-chrome owns
    * the menu and all intent.
    */
@@ -485,8 +484,8 @@ export interface SceneFieldRenderer {
 
 /**
  * The renderer-owned scene store, kept renderer-agnostic: the PixiJS v8
- * field (gui-spec §6.1; spike gate closed and verdict confirmed,
- * W01.P01.S03) plugs in behind this surface, and the sigma.js fallback
+ * field (spike gate closed and verdict confirmed)
+ * plugs in behind this surface, and the sigma.js fallback
  * (layers system) must be able to implement the same surface — this
  * interface is what makes the swap cheap.
  */
@@ -497,7 +496,7 @@ export class SceneController {
   private edges: SceneEdgeData[] = [];
   private field: SceneFieldRenderer | null;
 
-  // --- graph-representation: representation-mode + overlay state (W03.P08) ------
+  // --- graph-representation: representation-mode + overlay state ----------------
   private _representationMode: RepresentationMode = "connectivity";
   private _overlays: { featureCountries: boolean; featureHulls: boolean } = {
     featureCountries: true,
@@ -550,7 +549,7 @@ export class SceneController {
         break;
       case "apply-deltas": {
         // Fold the delta batch into the held model so nodeCount/edgeCount stay truthful
-        // after a live splice (GIR-006). The field renderer applies the same fold to its
+        // after a live splice. The field renderer applies the same fold to its
         // own set below via foldSceneDeltas, so the two never diverge. The incremental
         // solver rebuild (layout) remains the field renderer's concern.
         const folded = foldSceneDeltas(this.nodes, this.edges, cmd.deltas);
@@ -609,7 +608,7 @@ export class SceneController {
     };
   }
 
-  // Last emitted sim run state (GPR-001): cached here so a bridge that (re)mounts
+  // Last emitted sim run state: cached here so a bridge that (re)mounts
   // can SEED its mirror instead of waiting for the next transition — a settle that
   // fired while no listener was subscribed is otherwise lost and the play/pause
   // chrome renders stale until the next genuine run-state change.
@@ -650,7 +649,7 @@ export class SceneController {
     return this.edges.length;
   }
 
-  // --- graph-quality: minimap registration (P02.S06) ----------------------------
+  // --- graph-quality: minimap registration ----------------------------------------
 
   /**
    * Chrome mounts a <canvas> and calls this to register it; the scene renders
@@ -665,7 +664,7 @@ export class SceneController {
     }
   }
 
-  // --- graph-representation: representation-mode + overlay reads (W03.P08) ------
+  // --- graph-representation: representation-mode + overlay reads ----------------
 
   /** Synchronous snapshot of the active representation mode (connectivity by
    *  default) and overlay visibility — the AlgorithmPanel/RepresentationModePanel

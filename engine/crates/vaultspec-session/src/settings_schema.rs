@@ -1,5 +1,5 @@
 //! The settings schema registry: the single source of truth for every
-//! user/application setting (dashboard-settings ADR).
+//! user/application setting.
 //!
 //! Each setting is declared ONCE here — its key, value type and constraints,
 //! default, scope-eligibility, and the UI hint that tells the client which
@@ -600,7 +600,7 @@ fn build_registry() -> Vec<SettingDef> {
             step: None,
             unit: None,
         },
-        // The active graph corpus / view mode (codebase-graphing ADR D7): the
+        // The active graph corpus / view mode: the
         // WHOLE graph surface renders either the VAULT knowledge graph (the
         // default) or the disconnected CODE graph. Durable, user-settings-backed,
         // per-scope (a worktree remembers its last view mode); the left-rail

@@ -1,4 +1,4 @@
-//! Cohort descriptor + digest acceptance (a2a-product-provisioning W04.P08.S166).
+//! Cohort descriptor + digest acceptance.
 //!
 //! The emitter aggregates exactly one VERIFIED member per target, enforces the
 //! common cohort identity, and emits the RFC 8785 JCS preimage + SHA-256 digest.

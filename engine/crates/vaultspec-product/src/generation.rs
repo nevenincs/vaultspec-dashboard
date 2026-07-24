@@ -1,5 +1,4 @@
 //! Retained unpublished-generation authority.
-//! (a2a-product-provisioning W01.P01.S169).
 //!
 //! Generation mutation is available only through a [`LockedProduct`] bound to
 //! the exact installation guard. The product root is the sole pathname
@@ -67,8 +66,7 @@ pub struct LockedProduct<'lock> {
 /// concurrent distribution verification's datastore write (which takes a shared
 /// lock on the same inode) and against a second `bind`. Advisory by design: it
 /// claims nothing against an uncooperating writer — anti-substitution stays
-/// inode-identity detection at every trust boundary. See the 2026-07-20
-/// generation-authority ADR Unix-enforcement corollary.
+/// inode-identity detection at every trust boundary.
 #[cfg(unix)]
 #[derive(Debug)]
 struct RootDirectoryLock {
@@ -107,7 +105,7 @@ impl RootDirectoryLock {
 }
 
 /// Windows app-home authority is never discarded while a locked product is
-/// live. The private `InCall` state exists only while one synchronous S171
+/// live. The private `InCall` state exists only while one synchronous
 /// installation call owns the exact directory handle; every return path
 /// replaces it with either exclusive or transition authority.
 #[cfg(windows)]
@@ -118,9 +116,10 @@ enum AppHomeAuthority {
     InCall,
 }
 
-/// Retained S171 failure evidence. File authorities remain live until receipt
-/// publication either reconciles under restored exclusivity or explicitly
-/// retries recovery from an indeterminate directory transition.
+/// Retained app-home authority move failure evidence. File authorities
+/// remain live until receipt publication either reconciles under restored
+/// exclusivity or explicitly retries recovery from an indeterminate
+/// directory transition.
 #[cfg(windows)]
 #[derive(Debug)]
 pub(crate) struct AppHomeInstallFailure {
@@ -139,8 +138,9 @@ pub(crate) struct AppHomeInstallFailure {
     pub(crate) directory_recovery_error: Option<std::io::Error>,
 }
 
-/// Copied/owned S171 diagnostics retained after exact file leases are released
-/// so common journal reconciliation can reopen the destination.
+/// Copied/owned app-home authority move diagnostics retained after exact
+/// file leases are released so common journal reconciliation can reopen the
+/// destination.
 #[cfg(windows)]
 #[derive(Debug)]
 pub(crate) struct AppHomeInstallDiagnostic {
@@ -162,7 +162,7 @@ pub(crate) struct AppHomeInstallDiagnostic {
 impl AppHomeInstallDiagnostic {
     pub(crate) fn summary(&self) -> String {
         format!(
-            "S171 {:?}/{:?}, destination_snapshot={}, source={}, old={}, reacquired_old={}, installed={}, destination_reacquisition_error={}, native_move_error={}, directory_recovery_error={}, error={}",
+            "app-home authority move {:?}/{:?}, destination_snapshot={}, source={}, old={}, reacquired_old={}, installed={}, destination_reacquisition_error={}, native_move_error={}, directory_recovery_error={}, error={}",
             self.stage,
             self.outcome,
             self.pre_move_destination_snapshot.is_some(),
@@ -216,7 +216,7 @@ impl AppHomeInstallFailure {
     }
 }
 
-/// Result of moving the exact retained app-home authority through S171.
+/// Result of moving the exact retained app-home authority.
 #[cfg(windows)]
 #[derive(Debug)]
 pub(crate) enum AppHomeInstallOutcome {
@@ -386,7 +386,7 @@ impl<'lock> LockedProduct<'lock> {
                 return Err(GenerationError::ParentIdentityChanged);
             }
         }
-        // On Windows S168's FILE_SHARE_READ-only leases deny rename, deletion,
+        // On Windows the FILE_SHARE_READ-only leases deny rename, deletion,
         // generic-write/reparse mutation opens, and a second authority open of
         // these exact directories. Their initial relative opens are therefore
         // the continuing name/identity relationship; the DACL is separately
@@ -528,7 +528,7 @@ type RootAuthority = DirectoryAuthority;
 /// Windows generation-root authority. During the crate-private archive
 /// materialization window the exclusive deny-write lease is released and the
 /// writer holds the write-shared, delete-denied materialization lease on the
-/// SAME verified identity (archive-materialization D4); every general product
+/// SAME verified identity; every general product
 /// operation on the token fails typed until `end_materialization` restores and
 /// revalidates exclusivity.
 #[cfg(windows)]
@@ -554,9 +554,10 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
 
     /// Revalidate the complete retained product/name/permission join.
     ///
-    /// This crate-private seam lets S170 verify before and after its bounded
-    /// filesystem walk and lets S172 preserve the exact authority through
-    /// publication. It exposes no handle or copied identity.
+    /// This crate-private seam lets the retained join be verified before and
+    /// after its bounded filesystem walk, and lets the publication path
+    /// preserve the exact authority through it. It exposes no handle or
+    /// copied identity.
     pub(crate) fn validate_retained(&self) -> Result<(), GenerationError> {
         let expected = self.product_paths().generation_dir(&self.generation)?;
         if expected != self.path {
@@ -677,7 +678,7 @@ impl<'product, 'lock> UnpublishedGeneration<'product, 'lock> {
         self.validate_retained()
     }
 
-    /// Move the exact retained Windows app-home authority through the S171
+    /// Move the exact retained Windows app-home authority through the
     /// synchronized-file installation primitive.
     ///
     /// Every return path restores either full exclusive authority or the exact

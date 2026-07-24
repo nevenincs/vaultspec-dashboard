@@ -1,4 +1,4 @@
-// React face of the dispatch seam (ADR D2). Components dispatch typed intents
+// React face of the dispatch seam. Components dispatch typed intents
 // through the app-wide dispatcher so every intent is logged, traced, and
 // guardable in one place. `useConfirmable` packages the arm-to-confirm flow -
 // the right rail's ops pattern - as a reusable hook so surfaces stop

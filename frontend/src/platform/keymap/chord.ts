@@ -1,4 +1,4 @@
-// The normalized chord primitive (keyboard-action-system ADR, decision 5 / F6).
+// The normalized chord primitive.
 //
 // A `Chord` is the one canonical representation of a keyboard shortcut. Today
 // the ~29 scattered key handlers each compare raw `event.key` plus modifier
@@ -17,7 +17,7 @@
 // non-macOS, `Mod` and `Ctrl` both resolve to the Control key, which is correct
 // and expected.
 //
-// AltGr convention (keyboard-shortcut-conflict-review ADR D7), reviewer-enforced. A new
+// AltGr convention, reviewer-enforced. A new
 // DEFAULT chord must NEVER be `Mod+Alt+<symbol>` where the symbol requires AltGr to type on
 // a common EU keyboard layout (the bracket/brace/at/euro class). On Windows/EU layouts AltGr
 // emits `ctrlKey + altKey` — the exact bit pattern `matchesChord` treats as `Mod+Alt` on

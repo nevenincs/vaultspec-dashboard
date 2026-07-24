@@ -1,8 +1,8 @@
-//! Consumer-shaped conformance test (addendum plan S06, audit ADD-901):
+//! Consumer-shaped conformance test:
 //! asserts the TYPED-CLIENT expectations per contract capability over live
 //! serve responses — the GUI's reading, not the engine's own. Written
-//! failing-first: each S49 divergence is reproduced as an assertion that
-//! was red before the S01–S05 fixes landed.
+//! failing-first: each conformance divergence is reproduced as an assertion
+//! that was red before the underlying fixes landed.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -50,7 +50,7 @@ fn fixture() -> (tempfile::TempDir, PathBuf) {
     std::fs::create_dir_all(root.join("src")).unwrap();
     std::fs::write(root.join("src/lib.rs"), "pub fn alpha() {}\n").unwrap();
     // The ADR carries the H1 status line (`accepted`) so the per-type status
-    // projection (node-visual-richness ADR P01) has a real decision token to
+    // projection has a real decision token to
     // read — `accepted` -> status_class `affirmed`.
     std::fs::write(
         root.join(".vault/adr/2026-06-13-conf-adr.md"),
@@ -197,7 +197,7 @@ fn typed_client_expectations_hold_over_live_serve() {
     let (_guard, port, token) = start_serve(&root);
     let scope = root.to_string_lossy().replace('\\', "/");
 
-    // --- S49 divergence 1: as-of and diff accept ms timestamps ----------------
+    // --- conformance divergence 1: as-of and diff accept ms timestamps --------
     let t = now_ms();
     let (status, asof) = http(
         port,
@@ -237,7 +237,7 @@ fn typed_client_expectations_hold_over_live_serve() {
     );
     assert_eq!(status, 200, "revision form still accepted");
 
-    // S50 follow-up: asof in the FEATURE species — a historical keyframe that
+    // Follow-up: asof in the FEATURE species — a historical keyframe that
     // matches the live constellation (feature nodes + meta-edges), not a
     // disjoint document graph, so the constellation can time-travel cheaply.
     let (status, hist) = http(
@@ -262,14 +262,14 @@ fn typed_client_expectations_hold_over_live_serve() {
         hist["data"]["meta_edges"].is_array(),
         "feature-granularity asof carries constellation meta-edges"
     );
-    // S50 keyframe seq anchor: a historical (as_of) keyframe has NO live
+    // Keyframe seq anchor: a historical (as_of) keyframe has NO live
     // position, so last_seq is null — the client knows not to resume a stream.
     assert!(
         hist["data"]["last_seq"].is_null(),
         "as_of keyframe carries last_seq: null (no live position): {hist}"
     );
 
-    // --- S49 divergence 2: feature granularity synthesizes the convergence ---
+    // --- conformance divergence 2: feature granularity synthesizes the convergence ---
     let (status, constellation) = http(
         port,
         "POST",
@@ -283,7 +283,7 @@ fn typed_client_expectations_hold_over_live_serve() {
     let nodes = constellation["data"]["nodes"].as_array().expect("nodes");
     assert!(
         !nodes.is_empty(),
-        "feature granularity synthesizes nodes (D4.1), never empty"
+        "feature granularity synthesizes nodes, never empty"
     );
     assert!(
         nodes.iter().all(|n| n["kind"] == "feature"),
@@ -333,7 +333,7 @@ fn typed_client_expectations_hold_over_live_serve() {
         "any meta-edge present addresses feature NODE IDS, not bare tags"
     );
 
-    // --- S50: the constellation rides the single monotonic delta clock --------
+    // --- the constellation rides the single monotonic delta clock -------------
     // A LIVE feature keyframe anchors the stream: numeric last_seq = clock tip,
     // so a held constellation resumes from exactly here without refetching.
     assert!(
@@ -367,7 +367,7 @@ fn typed_client_expectations_hold_over_live_serve() {
         "every feature diff entry is tagged granularity=feature: {fdiff}"
     );
 
-    // --- S49 divergence 3: contract §4 fields on list-shape nodes -------------
+    // --- conformance divergence 3: additive contract fields on list-shape nodes
     let (status, docs) = http(
         port,
         "POST",
@@ -410,7 +410,7 @@ fn typed_client_expectations_hold_over_live_serve() {
 
     // --- graph-node-semantics: the ADDITIVE ontology wire fields --------------
     // The node gains authority_class (the register) and an aggregate hint, both
-    // additive and never re-keying the node (the §4 id is unchanged).
+    // additive and never re-keying the node (the contract id is unchanged).
     assert_eq!(
         plan_node["authority_class"], "roadmap",
         "plan maps to the roadmap authority register"
@@ -513,7 +513,7 @@ fn typed_client_expectations_hold_over_live_serve() {
         "in-body wiki-link mentions are NOT served as graph edges (strict reference-only): {docs}"
     );
     // Every edge carries the `derivation` key (null when no pipeline shape) —
-    // the field is unconditionally part of the additive §4 edge view.
+    // the field is unconditionally part of the additive contract edge view.
     assert!(
         docs["data"]["edges"]
             .as_array()
@@ -528,14 +528,14 @@ fn typed_client_expectations_hold_over_live_serve() {
         docs["tiers"].is_object(),
         "the success envelope carries the tiers block"
     );
-    // S50: a LIVE document keyframe also anchors the clock (numeric last_seq),
+    // A LIVE document keyframe also anchors the clock (numeric last_seq),
     // so both species resume on the single monotonic clock.
     assert!(
         docs["data"]["last_seq"].as_u64().is_some(),
         "live document keyframe carries a numeric last_seq too"
     );
 
-    // --- S49 divergence 4: /status git block + /vault-tree dates/doc_type -----
+    // --- conformance divergence 4: /status git block + /vault-tree dates/doc_type
     let (status, st) = http(port, "GET", "/status", &token, None);
     assert_eq!(status, 200);
     assert!(
@@ -560,7 +560,7 @@ fn typed_client_expectations_hold_over_live_serve() {
     assert_eq!(entry["doc_type"], "plan", "doc_type server-side");
     assert_eq!(entry["dates"]["created"], "2026-06-13", "dates server-side");
     // Plan checkbox progress projected onto the vault-tree entry from the SAME
-    // lifecycle facet the node-graph pipeline reads (dashboard-pipeline-wire):
+    // lifecycle facet the node-graph pipeline reads:
     // the conf plan has `[x] S01` + `[ ] S02` => done 1 / total 2 (in-progress),
     // so the left rail's plan-status pip lights up from real lifecycle truth.
     assert_eq!(
@@ -589,7 +589,7 @@ fn typed_client_expectations_hold_over_live_serve() {
         );
     }
 
-    // --- S49 divergence 5: bounded commit-event node_ids ----------------------
+    // --- conformance divergence 5: bounded commit-event node_ids --------------
     let (status, events) = http(
         port,
         "GET",
@@ -619,7 +619,7 @@ fn typed_client_expectations_hold_over_live_serve() {
         "doc ids never truncated"
     );
     // Event id (the monotonic seq) tracks time order: a stream splicing by
-    // `since=<id>` relies on it (sweep LOW, 2026-06-13 — ids were assigned from
+    // `since=<id>` relies on it (ids were assigned from
     // newest-first walk order then re-sorted by ts, anti-correlating id and ts).
     let pairs: Vec<(u64, i64)> = raws
         .iter()
@@ -710,10 +710,10 @@ fn error_surface_carries_tiers_and_hides_internals() {
     );
 }
 
-/// Session + settings conformance (user-state-persistence W03.P07.S23): the
+/// Session + settings conformance: the
 /// top-level orchestration surface carries the tiers block on every response,
 /// roundtrips a PUT through a GET, and rejects an unknown scope with a tiered
-/// 400 — the exact contract W04's client and mock must mirror.
+/// 400 — the exact contract the client and mock must mirror.
 #[test]
 fn session_and_settings_surface_roundtrips_and_carries_tiers() {
     let (_dir, root) = fixture();

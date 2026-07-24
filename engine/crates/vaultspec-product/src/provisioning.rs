@@ -1,4 +1,4 @@
-//! Adapter-gated release preparation and bounded active-release observation (S176).
+//! Adapter-gated release preparation and bounded active-release observation.
 //!
 //! A settled fixed receipt is useful only as non-authorizing active-release
 //! observation and as a future update baseline. It is not install provenance.
@@ -236,7 +236,7 @@ impl<'guard> ProvisioningTransaction<'guard> {
     /// sequences internally - so an interruption anywhere after this point
     /// leaves durable descriptor state that recovery can classify. Verification
     /// then derives the bootstrap-ownership fact from that live proof rather
-    /// than from a flag (D6). Only once `publish_active_receipt` returns -
+    /// than from a flag. Only once `publish_active_receipt` returns -
     /// having synchronized, closed, reopened, and re-read the journal to confirm
     /// the exact intended receipt settled - is the descriptor retired, which is
     /// what disarms recovery. Retiring it earlier would disarm recovery for a

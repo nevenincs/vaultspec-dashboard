@@ -1,4 +1,4 @@
-// Dispatch seam (ADR D2): a thin typed action pipeline - NOT a state
+// Dispatch seam: a thin typed action pipeline - NOT a state
 // container. Zustand stays the store; this is the single place a user intent
 // can be logged, traced, guarded, and (later) rolled back. It generalizes the
 // two proto-commands - the scene's `command()` union and the right rail's
@@ -6,7 +6,7 @@
 // locked). An action flows through a middleware chain (log -> trace -> guard)
 // before a registered handler runs the effect.
 //
-// Substrate module (ADR D1): no imports from app/, scene/, or the stores.
+// Substrate module: no imports from app/, scene/, or the stores.
 
 export interface ActionMeta {
   [key: string]: unknown;

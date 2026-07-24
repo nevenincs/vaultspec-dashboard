@@ -1,4 +1,4 @@
-// Decomposed from threeField.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from threeField.ts.
 
 import { specById } from "../graphControlSchema";
 import type { D3ForceParams } from "../d3ForceSolver";
@@ -9,7 +9,7 @@ export function hexCss(n: number): string {
 }
 
 /** Reduced-motion gate for the emphasis cross-fade, fence ramp, and display lerp:
- *  snap instead of ease. The MediaQueryList is created ONCE at module load (GPR-002 —
+ *  snap instead of ease. The MediaQueryList is created ONCE at module load (
  *  `applyDisplayLerp` reads this per frame, and `matchMedia()` allocates a fresh MQL
  *  per call); `.matches` is a live view, so no change listener is needed. */
 const reducedMotionQuery =

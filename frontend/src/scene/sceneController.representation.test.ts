@@ -1,4 +1,4 @@
-// graph-representation W03.P08.S31: the set-representation-mode and set-overlays
+// graph-representation: the set-representation-mode and set-overlays
 // seam commands — distinct from set-layout-mode, additive to the locked union,
 // with id-keyed object constancy across a switch and an honest echoed event.
 

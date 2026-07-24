@@ -1,9 +1,9 @@
-// The platform logger (ADR D3): the one observability spine the whole
+// The platform logger: the one observability spine the whole
 // frontend logs through. Leveled and namespaced (mirroring the engine's
 // tracing vocabulary so frontend logs and the engine's /logs read as one
 // system), with a bounded ring buffer feeding the dev overlay and future
 // correlation, and a pluggable sink array. This module is substrate: it
-// imports nothing from `app/`, `scene/`, or the stores (ADR D1).
+// imports nothing from `app/`, `scene/`, or the stores.
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
 

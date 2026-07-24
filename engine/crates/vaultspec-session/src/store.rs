@@ -3,7 +3,7 @@
 //! A dedicated `user-state.sqlite3` file co-located with `service.json` and
 //! `engine.sqlite3` in the gitignored `.vault/data/engine-data/` zone — a
 //! SEPARATE file from the engine cache, reusing `engine-store`'s rusqlite/WAL
-//! machinery (user-state-persistence ADR, "Persistence substrate").
+//! machinery as its persistence substrate.
 //!
 //! Corruption discipline is **best-effort**, matching the prototype posture:
 //! a corrupt, unopenable, or shape-mismatched file is deleted and recreated
@@ -168,12 +168,11 @@ mod tests {
 
     #[test]
     fn heal_recreates_the_workspace_registry_table_too() {
-        // The durable workspace registry (dashboard-workspace-registry ADR)
-        // rides the SAME best-effort store: a corrupt file is recreated empty,
-        // and the recreated store carries an empty, queryable
-        // `workspace_registry` table. There is nothing precious to safeguard, so
-        // a corrupt registry resets to "no roots yet" (the launch workspace is
-        // re-auto-registered on the next boot, S03).
+        // The durable workspace registry rides the SAME best-effort store: a
+        // corrupt file is recreated empty, and the recreated store carries an
+        // empty, queryable `workspace_registry` table. There is nothing
+        // precious to safeguard, so a corrupt registry resets to "no roots
+        // yet" (the launch workspace is re-auto-registered on the next boot).
         let dir = tempfile::tempdir().unwrap();
         let vault_root = dir.path().join(".vault");
         let path = db_path(&vault_root);

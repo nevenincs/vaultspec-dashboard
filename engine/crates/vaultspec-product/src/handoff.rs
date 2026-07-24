@@ -1,6 +1,5 @@
-//! The one-time dashboard→updater handoff CONTRACT (a2a-product-provisioning
-//! W03.P07): the descriptor schema plus the owner-restricted WRITE and the
-//! copy-out.
+//! The one-time dashboard→updater handoff CONTRACT: the descriptor schema
+//! plus the owner-restricted WRITE and the copy-out.
 //!
 //! Placement is by dependency direction: the DASHBOARD (the running seat, the
 //! product and api crates) WRITES this descriptor and spawns the copied updater;
@@ -16,8 +15,8 @@
 //! that is not actually owner-restricted would let any local account substitute a
 //! hostile update intent. Unix establishes the restriction race-free at create
 //! time (mode 0600, `O_EXCL`). Windows requires the exact three-principal
-//! protected DACL, established through the reviewed windows-private-file authority
-//! (windows-private-file-authority D1/D5, D6 un-gated): the descriptor file is
+//! protected DACL, established through the reviewed windows-private-file
+//! authority: the descriptor file is
 //! created EMPTY via [`PrivateFileCreation`] (which carries `WRITE_DAC`), hardened
 //! to the exact three-principal protected list through its retained handle BEFORE
 //! any descriptor byte is written, and only then written, synchronized,
@@ -46,7 +45,7 @@ use crate::receipt::{Channel, PriorSeatIdentity};
 /// lock, retire the descriptor, recover any interrupted transaction). One WITH an
 /// intent additionally drives a fresh update. The intent CONTENT joins the
 /// descriptor now; WRITING the descriptor under the owner-restricted protected
-/// DACL is the S60 cutover, gated on the windows-private-file authority.
+/// DACL is a later cutover, gated on the windows-private-file authority.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UpdaterDescriptor {
@@ -110,11 +109,11 @@ pub struct ExecuteIntent {
     /// re-verify the prior release. Verification writes the trust datastore,
     /// which is a mutation of the product root and is therefore serialized
     /// against a bound product lease — attempting it under one fails closed.
-    /// That exclusion is deliberate and recorded (the a2a-generation-authority
-    /// ADR, verified-value versus verification-work corollary); a flow that
-    /// needs it is a design question about ordering, never a sharing mode to
-    /// loosen. `vaultspec_updater::drive_fresh_update` carries the full
-    /// reasoning and the escape route.
+    /// That exclusion is deliberate — a verified value is not the same as
+    /// verification work in progress; a flow that needs it is a design
+    /// question about ordering, never a sharing mode to loosen.
+    /// `vaultspec_updater::drive_fresh_update` carries the full reasoning and
+    /// the escape route.
     ///
     /// This is the DESCRIPTOR field. `transaction::UpdatePlan` and
     /// `UpdateTransaction` each expose a `prior_generation` of the same name,
@@ -237,7 +236,7 @@ pub fn copy_updater_out(release_updater: &Path, dest_dir: &Path) -> Result<PathB
 /// Unix: create-new (`O_EXCL`) at mode `0600` so the restriction holds from the
 /// first byte, write, synchronize, then VERIFY the result is owner-restricted
 /// before returning — a descriptor that somehow is not restricted is removed and
-/// refused. Windows: TYPED-GATED per ADR D6 (see the module docs).
+/// refused. Windows: TYPED-GATED (see the module docs).
 pub fn write_handoff_descriptor(
     path: &Path,
     descriptor: &UpdaterDescriptor,
@@ -275,7 +274,7 @@ fn write_owner_restricted(path: &Path, bytes: &[u8]) -> Result<(), HandoffError>
 }
 
 /// The Windows owner-restricted descriptor write, composing the reviewed
-/// windows-private-file authority (windows-private-file-authority D1/D5) with the
+/// windows-private-file authority with the
 /// safe `windows-acl` handle-mutation layer — the same create → harden → write →
 /// re-prove shape the credential store uses (`credentials::windows`), but for the
 /// secret-free handoff descriptor. It adds no unsafe and no native call; the

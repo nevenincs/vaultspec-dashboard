@@ -121,7 +121,7 @@ fn graph_query_scale_and_concurrency() {
     let concurrent_ms = t.elapsed().as_millis();
 
     // Concurrent FEATURE (constellation LOD) load — exercises the memoized
-    // meta_edges (perf ADR D3): the O(E·tags²) projection computes once and
+    // meta_edges: the O(E·tags²) projection computes once and
     // every concurrent reader shares it instead of recomputing per query.
     let t = Instant::now();
     std::thread::scope(|s| {

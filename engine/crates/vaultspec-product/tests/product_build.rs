@@ -1,7 +1,7 @@
-//! Product-tree builder acceptance (a2a-product-provisioning W04.P08.S64/S65).
+//! Product-tree builder acceptance.
 //!
-//! The builder GENERATES release-set member manifests; the production verifier
-//! (W01.P01.S06) VALIDATES them. These prove the two agree: an emit derived from
+//! The builder GENERATES release-set member manifests; the production
+//! manifest verifier VALIDATES them. These prove the two agree: an emit derived from
 //! the real committed component lock verifies under that same lock, and a pin that
 //! disagrees with the lock — or a floating selector — fails the emit's own
 //! self-verification rather than shipping. Fixtures are derived from the committed
@@ -63,7 +63,7 @@ fn capsule(lock: &ComponentLock) -> CapsuleManifest {
 }
 
 /// A composed member whose facts agree with the committed lock for Windows — the
-/// same pin set the S06 verifier accepts.
+/// same pin set the manifest verifier accepts.
 fn composed_member() -> ComposedMember {
     ComposedMember {
         target: TARGET,
@@ -175,7 +175,7 @@ fn the_emitter_derives_runtime_pins_from_the_lock_not_the_caller() {
 
 #[test]
 fn an_incomplete_cohort_roster_fails_self_verification() {
-    // Release-set skew (an S65 rejection): a member that does not carry the exact
+    // Release-set skew: a member that does not carry the exact
     // four-target cohort roster must fail closed at the emitter's self-verify,
     // never ship. The roster is a caller-supplied fact, so the verifier is the
     // authority that catches a skewed one.

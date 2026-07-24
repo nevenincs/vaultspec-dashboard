@@ -1,12 +1,11 @@
-//! Lifecycle-ownership acceptance against the REAL A2A desktop capsule
-//! (a2a-product-provisioning W01.P02.S18).
+//! Lifecycle-ownership acceptance against the REAL A2A desktop capsule.
 //!
 //! These proofs run against a real built capsule: they verify the capsule
 //! manifest against the committed component lock, re-derive every asset digest
 //! from the capsule bytes, extract the capsule's own bundled CPython runtime, and
 //! launch a real process tree from that interpreter to prove the ownership
-//! outcomes the S15/S16 code implements — stop, descendant cleanup, bounded
-//! timeout, data preservation, remove, and repair.
+//! outcomes the process-tree and lifecycle-control code implements — stop,
+//! descendant cleanup, bounded timeout, data preservation, remove, and repair.
 //!
 //! Capsule availability gates the suite: it reads `VAULTSPEC_PRODUCT_CAPSULE`
 //! (or the conventional `dist/capsules/<target>.zip`). When no capsule is
@@ -80,7 +79,7 @@ fn locate_capsule() -> Option<PathBuf> {
 fn skip_reason(what: &str) {
     let (triple, _) = current_target();
     eprintln!(
-        "S18 {what}: no capsule available (set VAULTSPEC_PRODUCT_CAPSULE or place \
+        "{what}: no capsule available (set VAULTSPEC_PRODUCT_CAPSULE or place \
          dist/capsules/{triple}.zip); skipping the real-capsule proof."
     );
 }
@@ -483,7 +482,7 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     // (a legacy `receipt.json` is not the journal `observe_active_release` reads),
     // so the AUTHORITY gate refuses NotInstalled. The positive path — a
     // journal-settled install authorizing the mutation — is proven in-crate by the
-    // S11 first-install chain, where `publish_active_receipt` is reachable.
+    // first-install integration chain, where `publish_active_receipt` is reachable.
     assert_eq!(
         ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&owned)),
         Err(Refusal::NotInstalled)

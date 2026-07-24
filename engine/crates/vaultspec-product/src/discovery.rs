@@ -1,7 +1,6 @@
-//! Authenticated, versioned discovery validation (a2a-product-provisioning
-//! W01.P02.S13).
+//! Authenticated, versioned discovery validation.
 //!
-//! ADR D5: the desktop gateway publishes an atomically-written, owner-restricted
+//! The desktop gateway publishes an atomically-written, owner-restricted
 //! discovery record that carries NO secret. It names the endpoint, process,
 //! owner, install identity, generation, release set, protocol, state schema, and
 //! a non-secret trusted-handoff reference (the path to the owner-ACL
@@ -13,7 +12,7 @@
 //! - it proves the process is live and the heartbeat fresh;
 //! - it checks protocol/state-schema compatibility;
 //! - it treats a foreign gateway as immutable, attachable read-only ONLY when a
-//!   trusted handoff is present and it is compatible and live (ADR D4).
+//!   trusted handoff is present and it is compatible and live.
 //!
 //! This module does not perform the authenticated service probe itself (that is
 //! `control.rs`); it validates the discovery record and classifies the attach
@@ -27,7 +26,7 @@ use crate::locking::process_is_alive;
 use crate::manifest::{RangeBounds, Target};
 
 /// Keys that must never appear in a discovery record. Discovery carries no
-/// secret (ADR D5); a record presenting any of these is malformed and rejected
+/// secret; a record presenting any of these is malformed and rejected
 /// rather than read, so a compromised or buggy publisher cannot leak a bearer
 /// through the discovery channel.
 const FORBIDDEN_SECRET_KEYS: &[&str] = &[
@@ -135,7 +134,7 @@ pub enum Verdict {
     /// (subject to the owner-matched proof-of-death in `locking`).
     OwnedStale,
     /// A foreign gateway that is live, fresh, compatible, and offers a trusted
-    /// handoff: attachable READ-ONLY (never mutable — ADR D4).
+    /// handoff: attachable READ-ONLY (never mutable).
     ForeignAttachable,
     /// A foreign (or unusable) gateway that must be left immutable.
     ForeignImmutable { reason: ImmutableReason },

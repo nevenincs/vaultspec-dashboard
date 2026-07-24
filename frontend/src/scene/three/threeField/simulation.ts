@@ -63,7 +63,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
   protected applyEmphasis(): void {
     if (!this.nodeMesh) return;
     const active = this.emphasisSet();
-    // NODES — continuous colour-recede (emphasis-state-grammar ADR): each node's TARGET
+    // NODES — continuous colour-recede: each node's TARGET
     // recede fraction is 0 for a focus node (or no emphasis) and otherwise the depth of
     // the ACTIVE state — shallow for a transient hover, deeper for a durable selection /
     // feature spotlight, so the durable state reads stronger. The frame loop eases the
@@ -152,13 +152,12 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
     this.wake();
   }
 
-  /** Resume ticking after a pause — ENERGY-NEUTRAL (GIR-002). Resumes an in-flight
+  /** Resume ticking after a pause — ENERGY-NEUTRAL. Resumes an in-flight
    *  settle WITHOUT pumping new heat; a graph already at rest stays exactly put. An
    *  explicit re-energise is reheatNow()'s job, never resume()'s. Mirrors the set-frozen
    *  unfreeze path so pause/resume and freeze/unfreeze behave identically.
    *
-   *  This is the accepted stability design, not a limitation (ADR "graph simulation
-   *  stability model", Option B): a settled layout is a frozen-yet-authoritative state
+   *  This is the accepted stability design, not a limitation: a settled layout is a frozen-yet-authoritative state
    *  held still by pinning, so resuming must NOT re-inject energy — doing so would
    *  displace an at-rest layout for no user action. Every energy-injecting path is a
    *  deliberate, named entry point (set-data warm-start, setForceParams retune,
@@ -226,7 +225,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
       this.appearance.edgeOpacityMax !== prev.edgeOpacityMax ||
       this.appearance.edgeColorMode !== prev.edgeColorMode;
     const iconsChanged = this.appearance.nodeIcons !== prev.nodeIcons;
-    // A node COLOUR MODE change (category ↔ recency heat, code-graph-heat ADR)
+    // A node COLOUR MODE change (category ↔ recency heat)
     // re-bakes every baked colour consumer at once — node aColor, edge
     // end-colours, glyph inks, minimap — via the proven refresh-theme rebuild
     // (layout + selection preserved). One rebuild on a rare, deliberate toggle
@@ -371,7 +370,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
       // Freeze when the solver has cooled below alphaMin (and no drag holds it
       // warm) — a real convergence stop that idles the GPU to zero. The settle
       // TRANSITION persists the layout as the next cold load's base
-      // (graph-simulation-stability ADR) — once per settle, never per frame.
+      // once per settle, never per frame.
       //
       // Fixed-timestep accumulator (sim-smoothness reference): the sim targets a
       // 60Hz tick rate in WALL-CLOCK terms. A slow renderer (long frames) runs
@@ -414,7 +413,7 @@ export abstract class ThreeFieldSimulation extends ThreeFieldData {
       dirty = true;
     }
 
-    // Emphasis cross-fade (emphasis-state-grammar ADR): ease every node's displayed
+    // Emphasis cross-fade: ease every node's displayed
     // recede + the fence alpha toward their targets, holding the loop awake until settled.
     if (this.emphasisAnim) {
       this.stepEmphasisFade();

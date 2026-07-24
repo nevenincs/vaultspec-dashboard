@@ -1,6 +1,6 @@
-//! The owned gateway process tree (a2a-product-provisioning W01.P02.S15).
+//! The owned gateway process tree.
 //!
-//! The dashboard owns exactly the gateway process (ADR D4). It spawns ONLY the
+//! The dashboard owns exactly the gateway process. It spawns ONLY the
 //! manifest-declared gateway entrypoint — the launch program is resolved from
 //! the capsule manifest's declared `relative_command` under the capsule root,
 //! never a free-form path — and it contains the owned tree through bounded

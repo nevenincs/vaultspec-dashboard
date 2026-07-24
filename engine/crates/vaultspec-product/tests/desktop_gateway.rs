@@ -1,4 +1,4 @@
-//! Desktop gateway ownership acceptance (a2a-product-provisioning W01.P02.S17).
+//! Desktop gateway ownership acceptance.
 //!
 //! Proves owner attach, foreign conflict, stale-owner recovery, credential
 //! separation, and lifecycle refusal against REAL artifacts: a real loopback
@@ -260,10 +260,11 @@ fn gateway_credential_bootstrap_creates_the_protected_files_on_windows() {
 #[test]
 fn lifecycle_refuses_a_mutation_without_the_ownership_capability() {
     // A real product home with a legacy `receipt.json`: a receipt-bound mutation
-    // is refused without the ownership capability (NotOwner), and — post-S167 —
-    // refused even WITH the correct capability, because a legacy receipt is not
-    // the fixed active-receipt journal that `observe_active_release` reads, so the
-    // install reads Absent and the authority gate returns NotInstalled.
+    // is refused without the ownership capability (NotOwner), and now that the
+    // fixed active-receipt reader has landed, refused even WITH the correct
+    // capability, because a legacy receipt is not the fixed active-receipt
+    // journal that `observe_active_release` reads, so the install reads
+    // Absent and the authority gate returns NotInstalled.
     let dir = tempfile::tempdir().unwrap();
     let paths = ProductPaths::under_app_home(dir.path());
     paths.ensure().unwrap();
@@ -301,8 +302,8 @@ fn lifecycle_refuses_a_mutation_without_the_ownership_capability() {
     // Even the correct ownership capability cannot turn a legacy receipt into
     // active authority: only the fixed journal selects an installation, so the
     // gate refuses NotInstalled. (The positive authorize path — a journal-settled
-    // install → Ok — is proven in-crate by the S11 first-install chain, where
-    // `publish_active_receipt` is reachable.)
+    // install → Ok — is proven in-crate by the first-install integration chain,
+    // where `publish_active_receipt` is reachable.)
     assert_eq!(
         ctrl.authorize(LifecycleOp::Stop, Some(&ownership)),
         Err(Refusal::NotInstalled)

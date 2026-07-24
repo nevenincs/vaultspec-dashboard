@@ -1,4 +1,4 @@
-// Decomposed from threeField.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from threeField.ts.
 
 import { controlNumber } from "../graphControlSchema";
 
@@ -47,7 +47,7 @@ export const AUTOFRAME_SETTLE_EPS = 0.004; // within this fraction of target →
 export const LABEL_BUDGET = controlNumber("labelBudget");
 export const PULSE_RING_WIDTH = controlNumber("pulseRingWidth");
 export const PULSE_RING_ALPHA = controlNumber("pulseRingAlpha");
-// Emphasis-state grammar (2026-07-03 graph-representation ADR): the three interaction
+// Emphasis-state grammar: the three interaction
 // states differentiate by GRAMMAR, not hue. De-emphasis stays COLOUR-ONLY at full opacity
 // (a non-focus node mixes toward the canvas background, node material uDimColor =
 // canvasBackground; focus nodes keep full category colour; edges keep their category
@@ -75,7 +75,7 @@ export const DISPLAY_SNAP_EPS = 0.01; // world units: within this of truth → s
 export const SIM_TICK_MS = 1000 / 60;
 export const SIM_MAX_CATCHUP_TICKS = 3;
 export const FOCUS_RING_WIDTH_PX = 2; // thin accent focus ring on the hovered hub
-// Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker of
+// Cluster-selection perimeter fence: the positive marker of
 // the durable feature-cluster selection — a convex padded hull (rounded n-gon) traced
 // around the visible cohort on the 2D overlay. Pad beyond the largest member's screen
 // radius; hairline accent stroke over a whisper fill; alpha rides the emphasis ease.

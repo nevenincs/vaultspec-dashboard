@@ -1,15 +1,15 @@
 // Shared domain-mark source — one currentColor SVG per mark, consumed by
 // BOTH the Pixi texture seam (`domainGlyphs.ts`, the GlyphTextureProvider)
 // and the React chrome (`markComponents.tsx`), so the canvas and the DOM render the
-// same silhouette from one source (iconography ADR: "both planes ultimately
-// consume the same currentColor ink").
+// same silhouette from one source: both planes ultimately
+// consume the same currentColor ink.
 //
 // Two provenance classes live here, both as clean per-icon SVG on Phosphor's
 // 256-unit grid with `fill="currentColor"` and rounded joins:
 //
 //   * ADOPTED — verbatim regular-weight path data lifted from
-//     `@phosphor-icons/react` (the doc-type and event marks the iconography
-//     ADR adopts directly). The path strings are the package's own geometry;
+//     `@phosphor-icons/react` (the doc-type and event marks it
+//     adopts directly). The path strings are the package's own geometry;
 //     inlining them (rather than extracting from the React `createElement`
 //     defs at runtime) keeps one deterministic `d` source shared by both
 //     planes without a build-time SVG-asset pipeline.
@@ -75,7 +75,7 @@ const CODE = p(
 
 // --- ADOPTED: event marks (verbatim Phosphor regular weight) -----------------
 //
-// The event vocabulary the iconography ADR adopts directly: git-commit for the
+// The event vocabulary it adopts directly: git-commit for the
 // commit event, file-plus / file-text for doc-created / doc-modified, and
 // flag-pennant for the lifecycle event.
 

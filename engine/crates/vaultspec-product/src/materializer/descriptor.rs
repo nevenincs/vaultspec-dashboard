@@ -1,5 +1,4 @@
-//! The durable `materialize.v1` descriptor (archive-materialization D6,
-//! acceptance Refinement B).
+//! The durable `materialize.v1` descriptor.
 //!
 //! Materialization owns its OWN transaction-reserved descriptor, durably
 //! written and parent-synchronized before generation creation and advanced at
@@ -20,7 +19,7 @@ const DESCRIPTOR_TMP: &str = "materialize.v1.tmp";
 const DESCRIPTOR_VERSION: u8 = 1;
 const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
 
-/// The minimum durable materialization phases (archive-materialization D6).
+/// The minimum durable materialization phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum MaterializePhase {

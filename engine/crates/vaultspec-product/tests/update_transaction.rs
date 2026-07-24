@@ -1,4 +1,4 @@
-//! Integration proof for the ordered update transaction (W03.P06.S55).
+//! Integration proof for the ordered update transaction.
 //!
 //! A candidate failure restores the whole consistency group — real SQLite
 //! primary and checkpoint databases, the fixed receipt-journal generation, and

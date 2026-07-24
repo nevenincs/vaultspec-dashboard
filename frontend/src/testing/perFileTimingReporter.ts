@@ -1,4 +1,4 @@
-// Per-file wall-clock vitest reporter (TIH campaign, P05 instrumentation).
+// Per-file wall-clock vitest reporter.
 //
 // Records each test module's execution wall-clock plus vitest's own timing
 // breakdown, and prints a slowest-first summary at the end of the run. It is the

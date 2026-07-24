@@ -1,4 +1,4 @@
-// The entity descriptor union (dashboard-context-menus ADR, layer 3): the
+// The entity descriptor union (layer 3): the
 // per-surface "information context" the brief asks to standardise, reduced to
 // one shape. Every right-clickable thing in the dashboard is one of these
 // `{ kind, id, …fields }` descriptors, which each surface already holds at event

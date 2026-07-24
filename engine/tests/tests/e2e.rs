@@ -1,7 +1,7 @@
-//! End-to-end suite (W03.P12.S54): a multi-worktree fixture workspace
+//! End-to-end suite: a multi-worktree fixture workspace
 //! exercised across both front doors — CLI/serve parity, the first true
 //! multi-corpus-view facet exercise, degradation paths, and the
-//! CLI-index-during-serve concurrency case (DF-4 retirement).
+//! CLI-index-during-serve concurrency case.
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
@@ -247,7 +247,7 @@ fn http_stream_capture(port: u16, path: &str, token: &str, window: Duration) -> 
 
 #[test]
 fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
-    // W03.P07.S24: with a workspace holding two vault-bearing worktrees, a
+    // With a workspace holding two vault-bearing worktrees, a
     // PUT /session active_scope switch must (a) retarget reads to THAT
     // worktree's divergent corpus and (b) keep per-scope SSE `since=` resume
     // correct against the switched scope's OWN monotonic clock.
@@ -307,7 +307,7 @@ fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
         "the session now names the feature worktree as active"
     );
 
-    // Code-artifact mentions are non-displayable knowledge nodes (ADR D5/D6), so
+    // Code-artifact mentions are non-displayable knowledge nodes, so
     // the branch-only `src/new.rs` mention is NOT served as a document-graph edge
     // in either scope — the document graph stays code-free, and edges to the
     // excluded node are pruned (never dangle). The scope retargeting is proven
@@ -323,8 +323,7 @@ fn switching_active_scope_serves_that_worktree_and_resumes_its_own_clock() {
     assert_eq!(status, 200);
     assert!(
         !has_new_edge(&feature_graph),
-        "code-artifact mentions are not served as document-graph edges \
-         (ADR D5/D6): {feature_graph}"
+        "code-artifact mentions are not served as document-graph edges: {feature_graph}"
     );
 
     // Content-level retarget proof (D6-surviving): with the `src/new.rs` code edge
@@ -446,7 +445,7 @@ fn multi_worktree_corpus_views_diverge_as_facets() {
     let plan = graph
         .node(&engine_model::NodeId("doc:2026-06-12-e2e-plan".into()))
         .expect("plan node");
-    assert_eq!(plan.facets.len(), 2, "one node, two corpus views (D4.2)");
+    assert_eq!(plan.facets.len(), 2, "one node, two corpus views");
     let divergences = engine_graph::divergences(plan);
     assert!(
         divergences
@@ -465,7 +464,7 @@ fn multi_worktree_corpus_views_diverge_as_facets() {
 
 #[test]
 fn cli_and_serve_agree_on_the_graph() {
-    // D6.1 parity: same capability, same payload modulo envelope.
+    // Parity: same capability, same payload modulo envelope.
     let (_dir, main, _feature) = fixture_landscape();
     let (code, cli) = run_cli(&main, &["graph"]);
     assert_eq!(code, 0);
@@ -505,10 +504,10 @@ fn cli_and_serve_agree_on_the_graph() {
         .filter_map(|e| e["id"].as_str())
         .collect();
 
-    // D6.1 parity is on the graph PAYLOAD (the same node and edge set), modulo
+    // Parity is on the graph PAYLOAD (the same node and edge set), modulo
     // envelope AND modulo the serve front door's salience presentation order:
     // `/graph/query` orders document nodes by descending active-lens DOI so the
-    // bounded wire keeps the top-salience nodes (graph-node-salience ADR), while
+    // bounded wire keeps the top-salience nodes, while
     // the CLI `graph` export is a raw id-ordered dump. Both expose the identical
     // graph — assert that by comparing the sorted id sets, not the wire order.
     let mut cli_nodes_sorted = cli_nodes.clone();
@@ -543,7 +542,7 @@ fn cli_and_serve_agree_on_the_graph() {
 
 #[test]
 fn concurrent_cli_index_does_not_kill_serve() {
-    // DF-4 retirement: the documented CLI-vs-serve concurrency story.
+    // The documented CLI-vs-serve concurrency story.
     let (_dir, main, _feature) = fixture_landscape();
     let (_guard, token) = start_serve(&main, 8822);
 

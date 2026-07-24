@@ -1,4 +1,4 @@
-//! Retained dashboard credential authority (W01.P01.S175).
+//! Retained dashboard credential authority.
 //!
 //! Rust owns only the dashboard-created ownership and attach-control roles. The
 //! packaged Python gateway owns worker-IPC creation. Dashboard minting paths are
@@ -328,7 +328,7 @@ impl<'guard> PendingDashboardCredentials<'guard> {
     /// on the age of the value.
     #[allow(
         dead_code,
-        reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+        reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
     )]
     pub(crate) fn revalidate_retained(&self) -> Result<(), CredentialError> {
         for file in [&self.ownership_file, &self.attach_file] {

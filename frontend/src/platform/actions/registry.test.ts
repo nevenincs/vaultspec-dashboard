@@ -1,7 +1,7 @@
-// Registry + descriptor units (W01.P01.S05): a resolver registered by entity
+// Registry + descriptor units: a resolver registered by entity
 // kind is the only thing that produces a menu; an unregistered kind yields a
 // quiet empty list; the disposer removes the resolver. The central time-travel
-// gate is tested separately (W02.P06.S26).
+// gate is tested separately.
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -292,7 +292,7 @@ describe("resolver registry", () => {
   });
 });
 
-describe("time-travel gate (W02.P06.S26)", () => {
+describe("time-travel gate", () => {
   it("removes disabledInTimeTravel actions in time-travel, keeps them live", () => {
     registerResolver("node", () => [
       { id: "focus", label: { key: "common:actions.copy" } },

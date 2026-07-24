@@ -1,9 +1,9 @@
-//! The product-tree BUILDER (a2a-product-provisioning W04.P08.S64): compose a
+//! The product-tree BUILDER: compose a
 //! complete, verified product tree for one target and emit its release-set member
 //! manifest.
 //!
 //! This is the GENERATE side of the release-set contract. The PARSE + VERIFY side
-//! is already owned by [`crate::manifest`] (W01.P01.S06); this module never
+//! is already owned by [`crate::manifest`]; this module never
 //! re-implements it. Instead the emitter produces a schema-2.0 member manifest
 //! from the composed, exactly-pinned inputs and SELF-VERIFIES it by round-tripping
 //! through the production verifier — a manifest this builder emits is proven by
@@ -356,8 +356,8 @@ pub fn file_digests_from_scan(
 /// minus `release_manifest_path`: every installed file present with the observed
 /// digest, no missing entry, no extra entry, and the manifest's own path never
 /// self-listed. This is the build-time proof that the emitted manifest faithfully
-/// describes the placed tree — the same complete-inventory law the S06 verifier
-/// enforces at install, checked here before shipping.
+/// describes the placed tree — the same complete-inventory law the manifest
+/// verifier enforces at install, checked here before shipping.
 pub fn verify_member_covers_tree(
     member: &ComposedMember,
     scanned: &[ComposedArtifact],
@@ -366,12 +366,12 @@ pub fn verify_member_covers_tree(
 }
 
 /// Verify an INSTALLED product tree matches its own `release.json` — the light,
-/// bounded placement-integrity check the product-owned installer runs (ADR D2:
-/// installers install AND verify the tree, a step distinct from the DACL-gated
-/// runtime receipt establishment).
+/// bounded placement-integrity check the product-owned installer runs: installers
+/// install AND verify the tree, a step distinct from the DACL-gated
+/// runtime receipt establishment.
 ///
 /// Reads the manifest from `manifest_relative` inside `tree_root`, proves it is
-/// structurally valid + component-lock-pinned through the SAME S06 authority a
+/// structurally valid + component-lock-pinned through the SAME manifest authority a
 /// consumer trusts (`parse_and_verify`, no re-implementation), scans the installed
 /// tree with the hardened scan, and proves the declared `file_digests` describe
 /// EXACTLY the placed tree via the SAME coverage check the build-time
@@ -494,10 +494,10 @@ pub struct BuildSources {
 /// and self-verify its release-set member manifest, write it as
 /// `release_manifest_path`, and prove the manifest covers exactly the placed tree.
 ///
-/// This is the S64 build: PLACE every pre-built input at its fixed app-tree
+/// This build: PLACE every pre-built input at its fixed app-tree
 /// destination, SCAN the placed tree for real installed-byte evidence, ASSEMBLE
 /// the member facts from that evidence (never from caller assertions), EMIT +
-/// self-verify the manifest through the S06 verifier, and finally prove the
+/// self-verify the manifest through the manifest verifier, and finally prove the
 /// written manifest describes exactly the tree. The generation-layout is produced
 /// directly (the installer later places it and the generation-writer adopts it);
 /// the capsule is placed as its archive plus carried tree-evidence, never

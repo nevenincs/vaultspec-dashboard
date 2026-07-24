@@ -63,7 +63,7 @@ export type EdgeColorMode = "solid" | "gradient";
 
 /** How node bodies take colour: `category` = the module-identity / doc-type
  *  palette (the stock look); `recency` = the engine-served recency percentile
- *  mapped onto a two-stop theme ramp (code-graph-heat ADR) — cold structure
+ *  mapped onto a two-stop theme ramp — cold structure
  *  recedes toward the muted neutral, recently-touched nodes glow toward the one
  *  accent. Nodes with no served rank (undated files, vault nodes) paint the
  *  cold end, honestly reading as "not recently touched". */
@@ -91,8 +91,8 @@ export interface AppearanceParams {
   edgeOpacityMax: number;
   /** How an edge inherits colour from its endpoint nodes (never tier/grey/black). */
   edgeColorMode: EdgeColorMode;
-  /** How node bodies take colour: category palette or the recency heat ramp
-   *  (code-graph-heat ADR). A mode change re-bakes the GL colours via the
+  /** How node bodies take colour: category palette or the recency heat ramp.
+   *  A mode change re-bakes the GL colours via the
    *  refresh-theme rebuild path. */
   nodeColorMode: NodeColorMode;
   /** Draw nodes as their doc-type element mark instead of a plain category circle
@@ -103,7 +103,7 @@ export interface AppearanceParams {
 // Derived from the canonical control registry (graphControlSchema) — the schema is
 // the single source of truth for the appearance defaults (node size/salience spread,
 // edge width/opacity range, and the gradient edge-colour default; "solid" remains a
-// selectable mode). graph-backend-unification ADR D2: gradient edges are binding.
+// selectable mode). Gradient edges are binding.
 export const APPEARANCE_DEFAULTS: AppearanceParams = appearanceDefaults();
 
 /** World-space node radius — BASE_POINT_SIZE scaled by the live appearance params.
@@ -124,7 +124,7 @@ export function nodeWorldRadius(
 ): number {
   const scale = params.nodeSizeScale;
   // Feature-convergence nodes AND code package-rollup representatives size by
-  // member count (CGR-002 P02.S07, code-graph-files-only): the package's entry
+  // member count (code-graph-files-only): the package's entry
   // FILE reads as a constellation anchor sized by how much its package holds,
   // not an identical circle to a plain file. Both species carry the served
   // `member_count`; plain files fall through to the degree branch below (a
@@ -156,7 +156,7 @@ export function nodeWorldRadius(
 }
 
 /** The seven categorical scene hues, in a FIXED order, reused as the code
- *  MODULE-IDENTITY palette (CGR-002): a served `module_hue` 0..6 indexes these.
+ *  MODULE-IDENTITY palette: a served `module_hue` 0..6 indexes these.
  *  Zero new hex — the same literal-hex `--color-scene-category-*` tokens, so the
  *  palette is theme-correct in all three modes for free. `module_hue === null`
  *  (long-tail modules) is NOT in this palette; it paints the neutral `code` hue via
@@ -180,8 +180,8 @@ export function categoryPaletteHue(index: number): number {
   return categoryColor(MODULE_HUE_CATEGORIES[i]);
 }
 
-/** Per-path-depth mix toward the canvas ground for the module DEPTH gradient
- *  (CGR-002): top-of-module (depth 0) reads saturated; each level deeper recedes a
+/** Per-path-depth mix toward the canvas ground for the module DEPTH gradient:
+ *  top-of-module (depth 0) reads saturated; each level deeper recedes a
  *  step toward the warm paper, CLAMPED to a legibility floor so a deep leaf never
  *  dissolves. The CPU analogue of the shader's NODE_RECEDE_MIX (mix toward
  *  `canvasBackground`). */
@@ -210,7 +210,7 @@ export function mixHexToward(color: number, target: number, t: number): number {
  *  invisibility (the same recede idiom as the module depth gradient). */
 const HEAT_COLD_RECEDE_MIX = 0.35;
 
-/** The recency heat ramp (code-graph-heat ADR): a gradient BETWEEN two existing
+/** The recency heat ramp: a gradient BETWEEN two existing
  *  theme roles — the muted ink receded toward the canvas (cold) and the one
  *  accent (hot) — via the same tested sRGB mixer the depth gradient uses. Both
  *  stops are literal theme-token reads, so the ramp is theme-correct in all
@@ -221,12 +221,12 @@ export function recencyHeatColor(rank: number | undefined): number {
   return mixHexToward(cold, accentColor(), Math.max(0, Math.min(1, rank)));
 }
 
-/** Node body fill. For a CODE node with a served module-hue index (CGR-002): the
+/** Node body fill. For a CODE node with a served module-hue index: the
  *  MODULE's palette hue mixed toward the canvas ground by path DEPTH — hue carries
  *  module identity, lightness carries depth (size still carries salience, one
  *  channel per meaning). A long-tail code module (`moduleHue` null) or any vault
  *  node falls through to the seven-category hue — which for code is the neutral
- *  `code` swatch. In the RECENCY node-color mode (code-graph-heat ADR) every node
+ *  `code` swatch. In the RECENCY node-color mode every node
  *  paints its engine-served recency percentile on the theme heat ramp instead —
  *  no rank paints the cold end. */
 export function nodeColorNumber(

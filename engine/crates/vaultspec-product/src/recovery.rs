@@ -1,8 +1,8 @@
-//! Deterministic interruption recovery (a2a-product-provisioning W03.P06.S53).
+//! Deterministic interruption recovery.
 //!
 //! An external-update transaction can be interrupted at any declared boundary.
 //! Recovery resolves the outcome deterministically from two durable authorities:
-//! the transaction descriptor's phase (S52) and the fixed active-receipt journal
+//! the transaction descriptor's phase and the fixed active-receipt journal
 //! (the commit authority). It never guesses.
 //!
 //! The fixed receipt is the sole commit point: the candidate is committed iff it

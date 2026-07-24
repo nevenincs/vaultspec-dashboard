@@ -1,4 +1,4 @@
-// Theme controller (W01.P02.S09, design-language ADR layer 2).
+// Theme controller (design-language, layer 2).
 //
 // The single mechanism for the theme model: dark and light are equal peers
 // with a first-class high-contrast peer, system auto-switch, and a manual

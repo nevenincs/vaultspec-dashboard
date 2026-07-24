@@ -1,16 +1,16 @@
-//! The ordered external-update transaction (a2a-product-provisioning W03.P06.S52).
+//! The ordered external-update transaction.
 //!
 //! The copied external updater runs a fixed, durable, recoverable transaction.
 //! The ordered phases — recorded in a durable descriptor so an interruption at
-//! any boundary is resolvable (S53) — are:
+//! any boundary is resolvable — are:
 //!
 //! 1. **acquire the install lock** (`Actor::CopiedUpdater`) — done by the caller
 //!    before `begin`, and reproven on every phase;
 //! 2. **stage** the candidate (`Staged`);
 //! 3. **drain and stop** the owned runtime (`Draining`), yielding proven
 //!    [`Quiescence`];
-//! 4. **snapshot and verify** the consistency group (`Snapshotted`, S49);
-//! 5. **run the staged migration** under quiescence (`Migrating`, S50);
+//! 4. **snapshot and verify** the consistency group (`Snapshotted`);
+//! 5. **run the staged migration** under quiescence (`Migrating`);
 //! 6. **activate** the verified final-name generation (`Activated`) — atomic
 //!    receipt selection is the commit;
 //! 7. **relaunch and probe** acceptance (`Accepted`).
@@ -284,8 +284,8 @@ impl<'guard> UpdateTransaction<'guard> {
         Ok((Quiescence::asserted_after_stop(), termination))
     }
 
-    /// Drain and stop the DISCOVERED owned gateway (the copied-updater path,
-    /// S62), advancing to `Draining` and yielding proven [`Quiescence`].
+    /// Drain and stop the DISCOVERED owned gateway (the copied-updater path),
+    /// advancing to `Draining` and yielding proven [`Quiescence`].
     ///
     /// The copied updater holds no child handle — the exiting dashboard
     /// spawned the gateway — so the drive goes through the sealed
@@ -328,7 +328,7 @@ impl<'guard> UpdateTransaction<'guard> {
         Ok(Quiescence::asserted_after_stop())
     }
 
-    /// Capture and verify the consistency-group snapshot (S49), advancing to
+    /// Capture and verify the consistency-group snapshot, advancing to
     /// `Snapshotted`. The captured snapshot is retained for rollback.
     pub fn snapshot(&mut self, group: &ConsistencyGroupSpec) -> Result<(), TransactionError> {
         self.expect_phase(InterruptionMarker::Draining)?;
@@ -344,7 +344,7 @@ impl<'guard> UpdateTransaction<'guard> {
         Ok(())
     }
 
-    /// Run the staged migration under proven quiescence (S50), advancing to
+    /// Run the staged migration under proven quiescence, advancing to
     /// `Migrating`. A migration failure rolls the transaction back.
     pub fn migrate(
         &mut self,
@@ -438,7 +438,7 @@ impl<'guard> UpdateTransaction<'guard> {
 
     /// Record a failure by rolling back, preserving the ORIGINAL error. If the
     /// rollback itself fails, the original error is still returned — recovery
-    /// (S53) resumes the durable `RollingBack` descriptor.
+    /// resumes the durable `RollingBack` descriptor.
     fn fail(&mut self, error: TransactionError) -> TransactionError {
         let _ = self.rollback_in_place();
         error

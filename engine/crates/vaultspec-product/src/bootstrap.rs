@@ -1,4 +1,4 @@
-//! Durable dashboard credential bootstrap transaction (W01.P01.S175).
+//! Durable dashboard credential bootstrap transaction.
 //!
 //! The descriptor is published before either secret file and contains only
 //! token digests. A settled active receipt remains the later authorization

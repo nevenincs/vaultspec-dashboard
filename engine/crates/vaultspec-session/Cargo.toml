@@ -1,6 +1,6 @@
 [package]
 name = "vaultspec-session"
-description = "Co-resident orchestration crate: durable session/settings user-state store (rusqlite) at .vault/data/engine-data/user-state.sqlite3. Best-effort persistence; never writes .vault/ docs or mutates git (user-state-persistence ADR)."
+description = "Co-resident orchestration crate: durable session/settings user-state store (rusqlite) at .vault/data/engine-data/user-state.sqlite3. Best-effort persistence; never writes .vault/ docs or mutates git."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

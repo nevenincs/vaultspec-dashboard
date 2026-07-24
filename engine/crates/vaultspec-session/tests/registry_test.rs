@@ -1,5 +1,5 @@
 //! Integration tests over the workspace registry through the public
-//! `UserState` handle (dashboard-workspace-registry ADR), exercising the real
+//! `UserState` handle, exercising the real
 //! on-disk SQLite store across reopen cycles (no mocks, no doubles). The
 //! registry is USER-STATE CONFIG: these tests RECORD, select, and forget
 //! registry rows and never touch any repository on disk.

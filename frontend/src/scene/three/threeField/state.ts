@@ -155,7 +155,7 @@ export abstract class ThreeFieldState {
 
   protected visibleNodeIds: ReadonlySet<string> | null = null;
 
-  // Emphasis cross-fade (emphasis-state-grammar ADR): per-node recede TARGETS; the frame
+  // Emphasis cross-fade: per-node recede TARGETS; the frame
   // loop eases the displayed aDim toward them (EMPHASIS_FADE_TAU_MS) while `emphasisAnim`
   // holds the loop awake. Bounded: one float per node, reallocated with the node set.
   protected dimTarget = new Float32Array(0);
@@ -294,8 +294,8 @@ export abstract class ThreeFieldState {
 
   protected minimapDragging = false;
 
-  // Persisted settled-layout base (graph-simulation-stability ADR): the bounded
-  // LRU PositionCache (built in W01.P02.S08, wired here) keyed per workspace +
+  // Persisted settled-layout base: the bounded
+  // LRU PositionCache (wired here) keyed per workspace +
   // scope. In-memory warm-start still keys on node id; the cache is the
   // CROSS-SESSION base a cold load seeds from.
   protected positionCache = defaultPositionCache();

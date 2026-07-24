@@ -82,7 +82,7 @@ export abstract class ThreeFieldOverlay extends ThreeFieldSimulation {
     // glow + label colours below — recomputed once per draw.
     const focus = this.emphasisSet();
 
-    // Cluster-selection perimeter fence (emphasis-state-grammar ADR) — drawn FIRST so
+    // Cluster-selection perimeter fence — drawn FIRST so
     // rings and labels layer above it.
     this.drawFence(ctx, accent, s, ppw);
 
@@ -207,7 +207,7 @@ export abstract class ThreeFieldOverlay extends ThreeFieldSimulation {
     ctx.globalAlpha = 1;
   }
 
-  /** Cluster-selection perimeter fence (emphasis-state-grammar ADR): the positive marker
+  /** Cluster-selection perimeter fence: the positive marker
    *  of the durable feature-cluster selection — a convex padded hull (rounded n-gon)
    *  traced around the spotlit cohort's on-screen positions, accent-token stroke over a
    *  whisper fill, its alpha riding the shared emphasis ease (fade in on select, fade out

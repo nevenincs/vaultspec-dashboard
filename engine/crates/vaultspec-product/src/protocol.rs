@@ -1,8 +1,8 @@
-//! Typed lifecycle protocol contracts (a2a-product-provisioning W01.P02.S12).
+//! Typed lifecycle protocol contracts.
 //!
-//! The lifecycle plane accepts typed intent, not free-form paths or arguments
-//! (ADR D3), and it distinguishes a service-ready cold gateway from execution
-//! readiness (ADR D4/D7). This module is the shared, transport-free vocabulary
+//! The lifecycle plane accepts typed intent, not free-form paths or arguments,
+//! and it distinguishes a service-ready cold gateway from execution
+//! readiness. This module is the shared, transport-free vocabulary
 //! the discovery, control, and lifecycle modules speak: the ten lifecycle
 //! operations, the one readiness model the dashboard and A2A both expose, and
 //! the closed set of typed refusals. No free-form string ever stands in for a
@@ -11,7 +11,7 @@
 use serde::{Deserialize, Serialize};
 
 /// The ten lifecycle operations the A2A component surface exposes. These never
-/// ride `/ops/a2a` — that namespace keeps its orchestration verbs (ADR D3).
+/// ride `/ops/a2a` — that namespace keeps its orchestration verbs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LifecycleOp {
@@ -48,8 +48,8 @@ impl LifecycleOp {
     }
 
     /// Whether the operation is a receipt-bound mutation that requires the
-    /// matching active receipt AND the receipt-bound ownership capability
-    /// (ADR D3/D5). `Install` bootstraps the receipt, so it is gated by the
+    /// matching active receipt AND the receipt-bound ownership capability.
+    /// `Install` bootstraps the receipt, so it is gated by the
     /// bootstrap descriptor rather than an existing capability; `Doctor` and a
     /// bare `Ensure`/`Start` attach are not install mutations.
     #[must_use]
@@ -67,7 +67,7 @@ impl LifecycleOp {
 }
 
 /// The worker's execution state. The gateway lazily starts its worker on first
-/// run demand (ADR D4), so a running gateway with a cold worker is still ready.
+/// run demand, so a running gateway with a cold worker is still ready.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum WorkerState {
@@ -77,14 +77,14 @@ pub enum WorkerState {
     Ready,
 }
 
-/// The single readiness model the dashboard and A2A both expose (ADR D5: "one
-/// readiness model rather than contradictory health summaries").
+/// The single readiness model the dashboard and A2A both expose — one
+/// readiness model rather than contradictory health summaries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "state")]
 pub enum Readiness {
     /// No installed generation.
     Uninstalled,
-    /// Installed but the gateway is stopped — a VALID cold state (ADR D4), not a
+    /// Installed but the gateway is stopped — a VALID cold state, not a
     /// degradation.
     InstalledStopped,
     /// The gateway is up and service-ready; the worker may still be cold.
@@ -120,10 +120,10 @@ pub enum Refusal {
     /// No active receipt authorizes a receipt-bound mutation.
     NoActiveReceipt,
     /// The caller lacks the receipt-bound ownership capability. The attach
-    /// credential alone cannot invoke a receipt-bound operation (ADR D5).
+    /// credential alone cannot invoke a receipt-bound operation.
     NotOwner,
     /// A live foreign or unverifiable resident holds the runtime; it stays
-    /// immutable and is never displaced speculatively (ADR D4).
+    /// immutable and is never displaced speculatively.
     ForeignResident,
     /// The gateway or staged release declares an incompatible protocol or
     /// state-schema range.
@@ -139,7 +139,7 @@ pub enum Refusal {
     /// The job registry is at its hard admission ceiling with nothing evictable.
     AtCapacity,
     /// Stale discovery exists but the recorded process was not proven dead, so
-    /// quarantine is refused (ADR D4: prove absence first).
+    /// quarantine is refused: prove absence first.
     StaleUnproven,
 }
 

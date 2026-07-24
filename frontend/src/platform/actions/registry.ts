@@ -1,4 +1,4 @@
-// The resolver registry (dashboard-context-menus ADR, layer 3): a generic menu
+// The resolver registry (layer 3): a generic menu
 // host fed by per-surface resolvers contributed against an entity kind (the VS
 // Code "contributed menus" model adapted to this stack). A surface registers a
 // pure `(entity, ctx) => ActionDescriptor[]` for its entity kind; the host calls
@@ -8,7 +8,7 @@
 //
 // Substrate module: no imports from app/, scene/, or stores. Resolvers live in
 // the app layer and read stores themselves; the central time-travel gate
-// (W02.P06) is the one cross-cutting concern this pipeline applies.
+// is the one cross-cutting concern this pipeline applies.
 
 import { normalizeActionDescriptor, type ActionDescriptor } from "./action";
 import {
@@ -36,7 +36,7 @@ export interface ActionContext {
   /** The active graph corpus (`vault` | `code`), threaded like `scope` so a
    *  resolver can honestly disable a vault-only capability while code is
    *  active (the commit row's time-travel entry — the code corpus has no
-   *  git-history axis; code-timeline-range ADR). Absent ≡ vault. */
+   *  git-history axis). Absent ≡ vault. */
   corpus?: "vault" | "code";
 }
 
@@ -48,7 +48,7 @@ export type ActionResolver<E extends EntityDescriptor = EntityDescriptor> = (
 
 const resolvers = new Map<EntityKind, ActionResolver>();
 
-// Global-tail contributors (global-context-actions ADR D2): kind-agnostic resolvers
+// Global-tail contributors (global-context-actions): kind-agnostic resolvers
 // whose actions are appended to EVERY resolved menu, after the per-kind body, under the
 // terminal `global` section. Registered once at app load (the Refresh state control is
 // the sole shipped member, D3); the seam stays open for any future truly-universal verb.

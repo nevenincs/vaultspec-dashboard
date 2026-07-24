@@ -42,7 +42,7 @@ export const GLYPH_KEYS = [
   "exec",
   "audit",
   "reference",
-  // The CODE corpus's mark (codebase-graphing ADR D7): the Phosphor Code bracket
+  // The CODE corpus's mark (codebase-graphing): the Phosphor Code bracket
   // in `DOC_TYPE_MARK_DEFS.code`. Reached only on the disconnected code corpus,
   // where a `code-artifact` file node folds to the `code` glyph key
   // (glyphKeyForNode via nodeCategory) — the same family as every other mark.
@@ -71,7 +71,7 @@ export interface GlyphAtlas {
  * `categoryColor` uses to colour the node body, so a node's icon always matches its
  * hue. `docType` wins; then the wire species (`feature`); else the category fallback
  * (`nodeCategory` always lands on a key in GLYPH_KEYS). A CODE-corpus node
- * (`code-artifact`, codebase-graphing ADR D7) folds through `nodeCategory` to
+ * (`code-artifact`, codebase-graphing) folds through `nodeCategory` to
  * the `code` glyph key (the Phosphor Code bracket). `index` is never a graph
  * node (dropped at ingest), so it folds to the `reference` mark.
  */

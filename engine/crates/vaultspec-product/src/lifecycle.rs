@@ -1,11 +1,10 @@
-//! Receipt-gated lifecycle transitions (a2a-product-provisioning W01.P02.S16,
-//! plus the standalone-MCP fence S86).
+//! Receipt-gated lifecycle transitions, plus the standalone-MCP fence.
 //!
 //! This module is the decision core that binds the receipt, credential,
 //! discovery, process, and protocol contracts into one authority. Every
 //! receipt-bound mutation is gated on the matching active receipt AND the
 //! receipt-bound ownership capability; the attach credential alone can never
-//! invoke one (ADR D3/D5). Cold installed state is preserved as a first-class
+//! invoke one. Cold installed state is preserved as a first-class
 //! valid state, a foreign resident is never displaced speculatively, and mutable
 //! data survives every transition except an explicit typed removal.
 //!
@@ -13,7 +12,7 @@
 //! control orchestration are thin wrappers over `process`/`control` exercised
 //! against real processes in the acceptance suites.
 //!
-//! **Standalone-MCP fence (S86):** the capsule declares a caller-owned standalone
+//! **Standalone-MCP fence:** the capsule declares a caller-owned standalone
 //! MCP entrypoint. The dashboard lifecycle keeps it INSPECTABLE
 //! ([`standalone_mcp_entrypoint`]) but launches, adopts, stops, drains, and cleans
 //! up ONLY the gateway ([`owned_gateway_entrypoint`]). No path in this module
@@ -75,7 +74,7 @@ pub enum AttachMode {
     /// Our own owned, live gateway — full lifecycle authority.
     Owned,
     /// A compatible foreign gateway with a trusted handoff — READ-ONLY attach;
-    /// no lifecycle mutation (ADR D4).
+    /// no lifecycle mutation.
     ForeignReadOnly,
 }
 
@@ -172,24 +171,24 @@ impl LifecycleController {
     }
 
     /// Guard a MUTATING control call before it reaches the gateway. Both gates
-    /// must hold, composed here so no mutation path can satisfy only one (P02
-    /// review: `resolve_attach` and `authorize` were decoupled pure functions
-    /// with nothing composing them):
+    /// must hold, composed here so no mutation path can satisfy only one —
+    /// previously `resolve_attach` and `authorize` were decoupled pure
+    /// functions with nothing composing them:
     ///
     /// 1. the discovery verdict must classify the gateway as OUR owned, live
     ///    gateway (`resolve_attach` == `Owned`) — a foreign-attachable gateway is
-    ///    read-only and can never be mutated (ADR D4);
+    ///    read-only and can never be mutated;
     /// 2. the caller must present the receipt-bound ownership capability
-    ///    (`authorize`) — the attach credential alone is insufficient (ADR D5).
+    ///    (`authorize`) — the attach credential alone is insufficient.
     ///
     /// A `control.rs` mutation (stop/repair/update/rollback/remove) must pass
     /// through this before it is issued.
     ///
     /// The discovery state is `Option<&Verdict>`: `None` means no discovery
-    /// record exists at all. Per ADR D5 the gateway publishes discovery ONLY
-    /// while it runs, and per D4 "installed-but-stopped is a valid cold state,
-    /// not a degradation" — so an absent record is a VALID precondition, not a
-    /// refusal. The attach gate follows the ADR D6 four-branch model:
+    /// record exists at all. The gateway publishes discovery ONLY while it
+    /// runs, and installed-but-stopped is a valid cold state, not a
+    /// degradation — so an absent record is a VALID precondition, not a
+    /// refusal. The attach gate follows a four-branch model:
     ///
     /// - (a) NO discovery: nothing live to protect — the local receipt +
     ///   ownership authority alone governs (this is how `remove`/`repair` reach a
@@ -198,9 +197,9 @@ impl LifecycleController {
     ///   `ForeignResident` (a live foreign resident is never mutated);
     /// - (c) discovery present, OURS but stale/dead: refuse `StaleUnproven` — the
     ///   owner-matched quarantine dance (`locking::quarantine_owner_matched_stale`)
-    ///   is wired in W02.P04; until then refuse with the HONEST reason;
+    ///   is wired in a later phase; until then refuse with the HONEST reason;
     /// - (d) discovery present, OURS and live: permit the gate (the
-    ///   drain/authenticate/stop control effect is W02.P04).
+    ///   drain/authenticate/stop control effect lands separately).
     ///
     /// The authority gate (`authorize`: active receipt + verified ownership
     /// capability) is REQUIRED in every permit branch — an absent discovery never
@@ -215,7 +214,7 @@ impl LifecycleController {
         match verdict {
             // (a) No discovery: absent/dead gateway, valid cold precondition.
             None => {}
-            // (d) Ours and live: the gate passes (control effect is W02.P04).
+            // (d) Ours and live: the gate passes (control effect lands separately).
             Some(Verdict::OwnedLive) => {}
             // (c) Ours but stale/dead: honest refusal until quarantine lands.
             Some(Verdict::OwnedStale) => return Err(Refusal::StaleUnproven),
@@ -239,7 +238,7 @@ impl LifecycleController {
 
     /// Load and verify the capsule manifest in one step, so a lifecycle consumer
     /// never holds a capsule that parsed but was not joined to the lock's pins
-    /// (P01 review fold-in — uses `CapsuleManifest::parse_and_verify`).
+    /// (uses `CapsuleManifest::parse_and_verify`).
     pub fn load_verified_capsule(
         raw_manifest: &str,
         lock: &ComponentLock,
@@ -250,7 +249,7 @@ impl LifecycleController {
 
     /// Spawn the OWNED gateway from the verified capsule. The launch program is
     /// resolved from the capsule's gateway entrypoint only — the standalone MCP is
-    /// never spawned (S86 fence).
+    /// never spawned (the standalone-MCP fence).
     pub fn spawn_owned_gateway(
         &self,
         capsule_root: &std::path::Path,
@@ -280,8 +279,8 @@ impl LifecycleController {
 
     /// Remove owned generations, the receipt, and the credentials. Mutable user
     /// data under the app home is PRESERVED unless `typed_data_removal` is an
-    /// explicit request to delete it (ADR D6: "removes installed generations
-    /// while preserving or deleting data only through an explicit typed choice").
+    /// explicit request to delete it: removes installed generations while
+    /// preserving or deleting data only through an explicit typed choice.
     /// Owned processes must already be stopped by the caller.
     pub fn remove(&self, _typed_data_removal: bool) -> std::result::Result<(), LifecycleError> {
         Err(LifecycleError::Refused(Refusal::Unverifiable {
@@ -292,7 +291,7 @@ impl LifecycleController {
     /// Repair (replace) an immutable file within a generation tree from pristine
     /// bytes. The relative path is validated component-by-component so repair can
     /// only ever write UNDER the generation directory — never over mutable
-    /// app-home data (ADR D6: "Repair never overwrites mutable state").
+    /// app-home data: repair never overwrites mutable state.
     pub fn repair_immutable(
         &self,
         generation: &str,
@@ -393,7 +392,7 @@ pub fn resolve_attach(
 }
 
 // ---------------------------------------------------------------------------
-// Standalone-MCP fence (S86)
+// Standalone-MCP fence
 // ---------------------------------------------------------------------------
 
 /// The dashboard-owned gateway entrypoint — the ONLY launch surface any
@@ -406,7 +405,7 @@ pub fn owned_gateway_entrypoint(manifest: &CapsuleManifest) -> &LaunchEntrypoint
 /// The caller-owned standalone MCP entrypoint. Exposed for INSPECTION only (a
 /// UI may surface that it exists and how to invoke it); the dashboard lifecycle
 /// neither launches nor adopts it, and no start/stop/drain/cleanup path here
-/// touches it (ADR D4, S86).
+/// touches it.
 #[must_use]
 pub fn standalone_mcp_entrypoint(manifest: &CapsuleManifest) -> &LaunchEntrypoint {
     &manifest.entrypoints.standalone_mcp

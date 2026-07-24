@@ -91,7 +91,7 @@ describe("SceneController", () => {
     expect(seen).toEqual(["select"]);
   });
 
-  it("carries the locked RL-5c event union: expand and pin (W01.P01.S04)", () => {
+  it("carries the locked RL-5c event union: expand and pin", () => {
     const scene = new SceneController();
     const seen: string[] = [];
     scene.on((event) => {
@@ -103,7 +103,7 @@ describe("SceneController", () => {
     expect(seen).toEqual(["expand", "pin"]);
   });
 
-  it("routes selection back through the preserved channel: select out, set-selected in, forwarded to the field (S51)", () => {
+  it("routes selection back through the preserved channel: select out, set-selected in, forwarded to the field", () => {
     const commands: unknown[] = [];
     const fake = {
       mount: () => {},
@@ -152,7 +152,7 @@ describe("SceneController", () => {
     expect(commands).toContainEqual({ kind: "refresh-theme" });
   });
 
-  it("hover intent routes through the preserved hover event, carrying id or null (S51)", () => {
+  it("hover intent routes through the preserved hover event, carrying id or null", () => {
     const scene = new SceneController();
     const hovered: (string | null)[] = [];
     scene.on((e) => {
@@ -175,7 +175,7 @@ describe("SceneController", () => {
     expect(anchors).toEqual([{ x: 10, y: 20, scale: 1.5 }, null]);
   });
 
-  it("delegates lifecycle to an injected field renderer (W01.P03.S09)", () => {
+  it("delegates lifecycle to an injected field renderer", () => {
     const calls: string[] = [];
     const fake = {
       mount: () => calls.push("mount"),

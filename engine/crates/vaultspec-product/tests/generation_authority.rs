@@ -1,4 +1,4 @@
-//! Unpublished-generation authority acceptance (W01.P01.S163).
+//! Unpublished-generation authority acceptance.
 //!
 //! These tests exercise the production API against real filesystem objects and
 //! installation locks. A directory is inert namespace state until a settled

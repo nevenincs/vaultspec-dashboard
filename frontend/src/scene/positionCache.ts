@@ -1,5 +1,4 @@
-// Client-side position cache and warm-start persistence (W01.P02.S08, ADR
-// G5.d and G3.e).
+// Client-side position cache and warm-start persistence.
 //
 // Node positions for a given scope are cached per workspace so reopening
 // the app restores the remembered map — mental-map preservation is the

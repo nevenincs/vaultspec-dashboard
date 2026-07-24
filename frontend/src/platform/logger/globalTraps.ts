@@ -1,4 +1,4 @@
-// Global error traps (ADR D3/D5): the last-resort net for failures that
+// Global error traps: the last-resort net for failures that
 // escape React entirely - an uncaught error on the window, or a promise
 // rejection with no handler. Both route into the platform logger so they
 // land in the same ring buffer the dev overlay and the failure policy read.

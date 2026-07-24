@@ -1,4 +1,4 @@
-//! Fixed active-receipt authority (a2a-product-provisioning W01.P01.S167).
+//! Fixed active-receipt authority.
 //!
 //! `active-receipts.v1` is one owner-private, exact-size journal containing two
 //! receipt slots and three logical non-selection proof replicas. Each logical
@@ -8,12 +8,12 @@
 //! proofs permit highest-sequence selection. Active or split-retirement proof
 //! state is recovery authority only and never selects its target.
 //!
-//! The legacy S08 `receipt.json` types remain below as a temporary compilation
+//! The legacy `receipt.json` types remain below as a temporary compilation
 //! seam for lifecycle code. The fixed reader never opens or parses that path.
 
 #![allow(
     dead_code,
-    reason = "S167 deliberately lands a crate-internal reader before S168-S170 bind its authority consumers"
+    reason = "this crate-internal reader deliberately lands before its authority consumers bind to it"
 )]
 
 use std::fs::{File, OpenOptions};
@@ -483,7 +483,7 @@ pub(crate) enum ActiveReceiptRecoveryKind {
 }
 
 /// Opaque recovery context. The intended target is deliberately not exposed as
-/// a settled receipt; the later S172 recovery writer consumes the proof journal.
+/// a settled receipt; the later recovery writer consumes the proof journal.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ActiveReceiptRecovery {
     kind: ActiveReceiptRecoveryKind,
@@ -1061,8 +1061,8 @@ struct BoundTransaction {
 pub const RECEIPT_SCHEMA_VERSION: &str = "1.0";
 
 /// Which installer authority wrote a generation. Recorded so update and rollback
-/// route file activation to the correct authority (ADR D2: "Every installer
-/// writes channel provenance into the release receipt").
+/// route file activation to the correct authority: every installer
+/// writes channel provenance into the release receipt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Channel {
@@ -1091,8 +1091,8 @@ pub enum ReceiptState {
 
 /// The durable transaction-phase marker an interrupted update leaves behind.
 /// Recovery reads it to resume or roll back deterministically from the exact
-/// boundary (ADR D6: "Interruption recovery resolves staged and active receipts
-/// deterministically").
+/// boundary — interruption recovery resolves staged and active receipts
+/// deterministically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum InterruptionMarker {

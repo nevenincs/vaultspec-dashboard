@@ -1,5 +1,5 @@
-//! Sealed materializer seams over the private manifest authority
-//! (archive-materialization D2/D3). A child module of `manifest`, so the
+//! Sealed materializer seams over the private manifest authority.
+//! A child module of `manifest`, so the
 //! private trusted-authority and receipt-context values never gain a
 //! crate-visible raw construction path.
 
@@ -7,7 +7,7 @@ use super::*;
 use crate::hex;
 
 // ---------------------------------------------------------------------------
-// Sealed materializer seams (archive-materialization D2/D3)
+// Sealed materializer seams
 // ---------------------------------------------------------------------------
 
 /// Preflight view of one candidate member manifest already located by its
@@ -15,7 +15,7 @@ use crate::hex;
 /// plus the manifest's own declared path. The authoritative complete
 /// verification remains [`VerifiedReleaseSet::verify`]; this exists so the
 /// archive materializer can refuse to WRITE anything the trusted manifest does
-/// not name (archive-materialization D2).
+/// not name.
 pub(crate) struct PreflightInventory {
     pub(crate) file_digests: BTreeMap<String, String>,
     pub(crate) manifest_path: String,
@@ -90,11 +90,10 @@ pub(crate) fn verify_update_release<'generation, 'product, 'lock>(
 /// fact arrives: an update CARRIES the prior receipt's value, while a first
 /// install must PROVE it. So this seam takes the live
 /// [`PendingDashboardCredentials`] proof rather than a boolean — there is no
-/// field a caller could set to assert an ownership creation that did not happen
-/// (D6).
+/// field a caller could set to assert an ownership creation that did not happen.
 #[allow(
     dead_code,
-    reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+    reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
 )]
 pub(crate) struct InstallReleaseFacts<'a, 'guard> {
     pub(crate) target: Target,
@@ -120,7 +119,7 @@ pub(crate) struct InstallReleaseFacts<'a, 'guard> {
 /// activation, deriving the bootstrap-ownership fact from the retained proof.
 #[allow(
     dead_code,
-    reason = "sealed first-install substrate; Stage 3 wires it to the provisioning transaction"
+    reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
 )]
 pub(crate) fn verify_install_release<'generation, 'product, 'lock>(
     generation: &'generation mut UnpublishedGeneration<'product, 'lock>,

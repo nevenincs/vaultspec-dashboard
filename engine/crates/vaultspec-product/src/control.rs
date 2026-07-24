@@ -1,18 +1,18 @@
-//! Bounded, authenticated gateway control (a2a-product-provisioning W01.P02.S14).
+//! Bounded, authenticated gateway control.
 //!
 //! The dashboard brokers liveness, readiness, drain, shutdown, and lifecycle
-//! calls to the owned gateway over its loopback endpoint (ADR D4/D5). Every call
+//! calls to the owned gateway over its loopback endpoint. Every call
 //! here obeys the resource-bounds law: a connect timeout, a read timeout, and a
 //! hard response byte cap — a hung or flooding gateway fails typed, never hangs
 //! or exhausts memory. Transport authentication uses the dashboard control
 //! (attach-control) token; a receipt-bound operation such as shutdown ALSO
 //! carries the ownership capability, which the attach credential alone cannot
-//! stand in for (ADR D5).
+//! stand in for.
 //!
 //! The transport is a minimal HTTP/1.1 client built on `std::net` — the same
 //! dependency-free posture the core subprocess runner takes — so the crate gains
-//! no HTTP framework. Loopback is the only permitted destination (ADR D5: "the
-//! only desktop bind surface"); a non-loopback endpoint is refused before a
+//! no HTTP framework. Loopback is the only permitted destination — the
+//! only desktop bind surface; a non-loopback endpoint is refused before a
 //! socket is opened.
 
 use std::io::{Read as _, Write as _};
@@ -156,7 +156,7 @@ impl ControlClient {
 
     /// Shut the gateway down. This receipt-bound operation carries the ownership
     /// capability in addition to the attach token; the attach credential alone
-    /// cannot invoke it (ADR D5).
+    /// cannot invoke it.
     pub fn shutdown(&self, ownership: &Credential) -> std::result::Result<(), ControlError> {
         let resp = self.request("POST", "/shutdown", Some(ownership.secret()))?;
         Self::expect_ok(&resp).map(|_| ())

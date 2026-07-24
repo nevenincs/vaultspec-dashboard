@@ -1,5 +1,4 @@
-//! The sealed archive→generation materializer and update activation
-//! (archive-materialization D3–D7; a2a-product-provisioning W04 keystone).
+//! The sealed archive→generation materializer and update activation.
 //!
 //! One sealed operation turns the opaque verified distribution capability
 //! into an installed, fully verified, receipt-selected generation. It accepts

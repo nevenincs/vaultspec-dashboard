@@ -1,4 +1,4 @@
-//! The S11 integrated first-install proof.
+//! The integrated first-install proof.
 //!
 //! One chain, no diagnostic joins: ephemeral role keys sign a REAL TUF
 //! repository whose selected target carries a REAL capsule archive; the
@@ -16,7 +16,7 @@
 //! second implementation would fork the release format to reproduce. Release
 //! CONSTRUCTION is publisher-side by design — a consumer of this crate verifies
 //! releases and never builds one — so those staying private is the correct shape,
-//! not a gap (a2a-provisioning-authority D1). Widening them to relocate this
+//! not a gap. Widening them to relocate this
 //! proof would trade a real seal for a test's address.
 //!
 //! WHAT THIS DOES NOT CLAIM. The transaction deliberately does not materialize:

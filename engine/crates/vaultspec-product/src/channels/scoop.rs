@@ -1,4 +1,4 @@
-//! Scoop channel authority adapter (a2a-product-provisioning W03.P06.S156).
+//! Scoop channel authority adapter.
 //!
 //! Scoop owns file activation for this channel: it stages, activates, and rolls
 //! back the release under its own apps/shims/cache/bucket state. The product
@@ -60,7 +60,7 @@ impl ScoopAuthority {
     /// Mint the sealed provenance for the Scoop channel.
     #[allow(
         dead_code,
-        reason = "S156 mints Scoop provenance before the S52 transaction consumes it"
+        reason = "Scoop provenance is minted before the sealing transaction consumes it"
     )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::Scoop, true)

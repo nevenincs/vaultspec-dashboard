@@ -1,4 +1,4 @@
-// Wire → scene mapping (W02.P06.S21). The engine serves snake_case
+// Wire → scene mapping. The engine serves snake_case
 // contract shapes; the scene speaks the locked seam types. This is the
 // only place the two vocabularies meet. Scene-layer module: framework-free.
 
@@ -53,9 +53,9 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     lifecycle: node.lifecycle,
     degreeByTier: node.degree_by_tier,
     dates: node.dates,
-    // Feature-convergence sizing input (S02 / ADR D4.1); absent on documents.
+    // Feature-convergence sizing input; absent on documents.
     memberCount: node.member_count,
-    // CODE corpus module identity (CGR-002): owning module, 0..6 hue index, depth.
+    // CODE corpus module identity: owning module, 0..6 hue index, depth.
     module: node.module,
     moduleHue: node.module_hue,
     depth: node.depth,
@@ -66,13 +66,13 @@ export function engineNodeToScene(node: EngineNode): SceneNodeData {
     // node-color heat ramp; absent on undated files and vault nodes.
     recencyRank: typeof node.recency_rank === "number" ? node.recency_rank : undefined,
     // Per-lens salience (graph-node-salience) -> size + label priority; the
-    // embedding feeds the semantic UMAP worker (graph-representation §4).
+    // embedding feeds the semantic UMAP worker.
     salience: node.salience,
     embedding: node.embedding,
     // Authority register (graph-node-semantics) -> the lineage layout suppresses
-    // `manifest` (generated index) nodes from the derivation spine (W03 D5).
+    // `manifest` (generated index) nodes from the derivation spine.
     authorityClass: node.authority_class,
-    // Per-type lifecycle status (node-visual-richness P01/P03) -> the status
+    // Per-type lifecycle status -> the status
     // stamp. The ordinal magnitude is derived from the raw value by the scene's
     // pure util (never a view component); absent when the wire carries no status.
     status: nodeStatusFromWire(node.status_value, node.status_class),
@@ -124,7 +124,7 @@ export function sliceToScene(slice: unknown): {
  * Returns null for entries that carry neither a node nor an edge — the
  * caller filters nulls before routing to SceneController.
  *
- * Used by the spliceLive path (constellation-live-delta S05): Stage maps
+ * Used by the spliceLive path (constellation-live-delta): Stage maps
  * feature-granularity delta entries to SceneDeltas and pushes them via
  * `SceneController.command({ kind: "apply-deltas", ... })`.
  */

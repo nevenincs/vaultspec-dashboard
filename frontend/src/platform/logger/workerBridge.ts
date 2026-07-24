@@ -1,4 +1,4 @@
-// Worker log bridge (ADR D3): an off-main-thread worker cannot import the
+// Worker log bridge: an off-main-thread worker cannot import the
 // main-thread logger, so it posts structured log envelopes across the worker
 // boundary; the main-side wrapper recognizes the envelope and re-emits it
 // through `logger.ingest`, so a worker diagnostic lands in the same ring buffer

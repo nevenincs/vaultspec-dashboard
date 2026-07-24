@@ -1,10 +1,10 @@
-//! The product-tree builder CLI (a2a-product-provisioning W04.P08.S64).
+//! The product-tree builder CLI.
 //!
 //! Invoked with exactly one operand: the path to a build-spec JSON that names the
 //! target, the destination generation root, and every pre-built source artifact.
 //! The CLI reads the spec, loads the trusted component lock and the A2A capsule
 //! manifest from the spec's own source paths, verifies the capsule against the
-//! lock, confirms the standalone MCP entrypoint is carried (S87), then composes and
+//! lock, confirms the standalone MCP entrypoint is carried, then composes and
 //! self-verifies the complete product tree. All authority lives in the library;
 //! this shell only parses, dispatches, and classifies into a stable exit code.
 

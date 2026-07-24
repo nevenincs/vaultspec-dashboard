@@ -240,7 +240,7 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
         state: "ok",
         recoverable: true,
       });
-      // Resume ticking only when there is genuinely unfinished settling (GPR-004):
+      // Resume ticking only when there is genuinely unfinished settling:
       // a restore over a SETTLED graph otherwise emitted a spurious sim-state
       // true→false flicker, ran a ghost tick over fully-pinned nodes, and re-wrote
       // the persisted layout blob for nothing. The repaint alone suffices there.
@@ -573,7 +573,7 @@ export abstract class ThreeFieldGpuResources extends ThreeFieldState {
     this.edgeData = [];
     this.edgeBaseAlpha = new Float32Array(0);
     // Clear the id/adjacency/position structures so an EMPTY graph is empty everywhere
-    // (GIR-008): the n===0 set-data path returns early WITHOUT rebuilding these, so a
+    // The n===0 set-data path returns early WITHOUT rebuilding these, so a
     // leftover idToIndex + cpuPositions would let emitAnchors resolve a tracked id and
     // focusNode centre on a ghost node over a blank canvas. The non-empty path rebuilds
     // all four before use (idToIndex, neighbors, featureCohort, cpuPositions), so

@@ -2,8 +2,8 @@
 //! feature-tag contexts, and a bounded recents list.
 //!
 //! The session is the "where am I and what am I looking at" state the
-//! dashboard restores on load instead of recomputing a default
-//! (user-state-persistence ADR). It persists ONLY its own rows in the
+//! dashboard restores on load instead of recomputing a default.
+//! It persists ONLY its own rows in the
 //! best-effort store; it never writes `.vault/` documents or mutates git.
 
 use rusqlite::{OptionalExtension, params};
@@ -247,7 +247,7 @@ impl Store {
         Ok(removed)
     }
 
-    // --- workspace registry (dashboard-workspace-registry ADR) --------------
+    // --- workspace registry --------------------------------------------------
     //
     // The ordered set of registered project roots. Registering, selecting, and
     // forgetting are all USER-STATE CONFIG: they write only registry/settings
@@ -258,7 +258,7 @@ impl Store {
     /// List the registered project roots in their stable registry order
     /// (position ascending, the order they were added). A fresh or
     /// best-effort-recreated store returns an empty list; the launch workspace
-    /// is re-auto-registered on the next boot (S03).
+    /// is re-auto-registered on the next boot.
     pub fn list_roots(&self) -> Result<Vec<WorkspaceRoot>> {
         let mut stmt = self.conn().prepare(
             "SELECT id, label, path, is_launch, reachable, unreachable_reason

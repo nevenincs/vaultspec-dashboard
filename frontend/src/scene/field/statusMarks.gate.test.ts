@@ -1,5 +1,5 @@
 // The status-stamp mark families through the 14px grayscale-by-shape gate
-// (iconography ADR a11y contract; node-visual-richness prototype). The two
+// (a11y contract; node-visual-richness prototype). The two
 // authored families — the severity gauge and the tier staircase — must each be
 // mutually distinct in pure grayscale at the legibility floor by SHAPE alone,
 // and must not collide with any existing mark in the texture-able set. The gate

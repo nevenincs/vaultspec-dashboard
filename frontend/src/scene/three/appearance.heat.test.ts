@@ -1,4 +1,4 @@
-// Guard suite for the recency heat ramp (code-graph-heat ADR): the ranked node
+// Guard suite for the recency heat ramp: the ranked node
 // colour is a gradient BETWEEN two theme roles — the receded muted ink (cold) and
 // the accent (hot) — via the tested sRGB mixer; nodes without a served rank paint
 // the cold end, and category mode is untouched. Runs on the node-env token

@@ -12,8 +12,8 @@ import { SceneGraphModel } from "./graphModel";
 import type { SceneDelta, SceneEdgeData, SceneNodeData } from "./sceneController";
 
 /**
- * Ceiling on the retained delta log (GIR-011,
- * bounded-by-default-for-every-accumulator): `deltas` is a retained list, so it
+ * Ceiling on the retained delta log
+ * (bounded-by-default-for-every-accumulator): `deltas` is a retained list, so it
  * carries an explicit bound at the point it accumulates. A log longer than this
  * is a re-keyframe case, not a growing accumulator — appending past the ceiling
  * flips the log gapped (→ `needsKeyframe`) and refuses the rest, exactly like a

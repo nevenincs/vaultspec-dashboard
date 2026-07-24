@@ -1,4 +1,4 @@
-//! MSI channel authority adapter (a2a-product-provisioning W03.P06.S158).
+//! MSI channel authority adapter.
 //!
 //! The Windows Installer owns activation for this channel. The product delegates
 //! install, upgrade, downgrade, rollback, repair, and removal to the Windows
@@ -70,7 +70,7 @@ impl MsiAuthority {
     /// Mint the sealed provenance for the MSI channel.
     #[allow(
         dead_code,
-        reason = "S158 mints MSI provenance before the S52 transaction consumes it"
+        reason = "MSI provenance is minted before the sealing transaction consumes it"
     )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::Msi, true)

@@ -1,4 +1,4 @@
-// CGR-002 module-identity colouring + module-rollup sizing (P02.S06 / P02.S07).
+// Module-identity colouring + module-rollup sizing.
 //
 // Node test env (no `document`): the token seam returns the light-theme fallbacks
 // pinned in categoryColor.ts (CATEGORY_FALLBACK) and canvasBackground's fallback
@@ -53,7 +53,7 @@ describe("categoryPaletteHue (module-hue ordered palette)", () => {
   });
 });
 
-describe("nodeColorNumber (CGR-002 module colouring)", () => {
+describe("nodeColorNumber (module colouring)", () => {
   it("paints the module palette hue for a code node with a hue index (depth 0)", () => {
     expect(nodeColorNumber(node({ moduleHue: 0 }))).toBe(FEATURE);
     expect(nodeColorNumber(node({ moduleHue: 6 }))).toBe(REFERENCE);
@@ -81,7 +81,7 @@ describe("nodeColorNumber (CGR-002 module colouring)", () => {
   });
 });
 
-describe("nodeWorldRadius (CGR-002 package-rollup sizing, code-graph-files-only)", () => {
+describe("nodeWorldRadius (package-rollup sizing, code-graph-files-only)", () => {
   it("sizes a package-rollup entry file by member count, like a feature node", () => {
     const feature = nodeWorldRadius(node({ kind: "feature", memberCount: 8 }));
     const entry = nodeWorldRadius(

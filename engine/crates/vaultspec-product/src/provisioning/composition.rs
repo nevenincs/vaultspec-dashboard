@@ -37,9 +37,9 @@
 //! proving the wrong proposition had the failure message not printed the actual
 //! error. Keep that habit in anything added here.
 //!
-//! WHY IN-CRATE. The same reason the S11 chain is: `publish_active_receipt` is
-//! `pub(crate)` and the fixture rests on `pub(super)` canonicalization. No
-//! visibility is widened to host these.
+//! WHY IN-CRATE. The same reason the first-install integration chain is:
+//! `publish_active_receipt` is `pub(crate)` and the fixture rests on
+//! `pub(super)` canonicalization. No visibility is widened to host these.
 
 use std::path::{Path, PathBuf};
 
@@ -266,9 +266,10 @@ fn assert_verification_refused(
 
 /// The unmutated chain SUCCEEDS, on the same harness every refusal case uses.
 ///
-/// This is not a duplicate of the S11 proof. S11 proves the chain over its own
-/// hand-built fixture; this proves THIS harness — the one every case below
-/// mutates — reaches a settled receipt when nothing is tampered with. Without
+/// This is not a duplicate of the first-install integration proof. That proof
+/// proves the chain over its own hand-built fixture; this proves THIS harness
+/// — the one every case below mutates — reaches a settled receipt when
+/// nothing is tampered with. Without
 /// it, a harness that had quietly broken would make every refusal below pass
 /// vacuously, which is the exact failure mode a refusal matrix is prone to.
 #[tokio::test(flavor = "current_thread")]

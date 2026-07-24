@@ -1,4 +1,4 @@
-//! Adversarial degradation tests (engine-hardening P03.S06, ADR D4):
+//! Adversarial degradation tests:
 //! assert the engine's tiers block truthfully reflects each backend-outage
 //! failure mode — closing the gap between the
 //! `every-wire-response-carries-the-tiers-block` rule and its enforcement.

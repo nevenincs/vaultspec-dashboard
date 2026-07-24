@@ -18,7 +18,7 @@ import { localization, localizationNamespaces } from "./runtime";
 
 const LOCALIZATION_HOOK_OPTIONS = Object.freeze({ useSuspense: false });
 
-// Dev-only e2e verification lever (W06.P19.S105/S138): a bounded escape hatch
+// Dev-only e2e verification lever: a bounded escape hatch
 // that swaps the bound runtime instance so a real browser render exercises
 // expanded-copy/right-to-left behavior against the PRODUCTION component tree —
 // never a separate mock tree, never faked DOM. Every normal boot (production

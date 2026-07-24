@@ -1,4 +1,4 @@
-//! Migration-range validation and quiescence-gated staged migration (S50).
+//! Migration-range validation and quiescence-gated staged migration.
 //!
 //! A transactional update may advance the A2A desktop schema, but only the A2A
 //! capsule owns the migration graph. This module owns the two product-side
@@ -12,8 +12,8 @@
 //!    candidate's declared base and head.
 //! 2. **Quiescence-gated bounded invocation.** Invoke ONLY the staged (candidate)
 //!    A2A migration entrypoint, and only after complete quiescence — admission
-//!    closed and the owned runtime stopped. Quiescence is a typed proof the S52
-//!    transaction constructs after it drains and stops the gateway; a migration
+//!    closed and the owned runtime stopped. Quiescence is a typed proof the
+//!    update transaction constructs after it drains and stops the gateway; a migration
 //!    cannot run without it. The invocation is bounded by an output byte cap AND
 //!    a wall-clock timeout, and the whole process tree is killed on either breach
 //!    (resource-bounds law).
@@ -169,7 +169,7 @@ pub fn plan_migration(
 
 /// Typed proof that admission is closed and the owned runtime is stopped.
 ///
-/// The S52 transaction constructs this only after it has drained and stopped the
+/// The update transaction constructs this only after it has drained and stopped the
 /// owned gateway. A staged migration requires it, so a migration can never run
 /// against a live database. It carries no authority beyond that ordering witness.
 #[derive(Debug)]
@@ -181,7 +181,7 @@ impl Quiescence {
     #[must_use]
     #[allow(
         dead_code,
-        reason = "S50 lands the quiescence witness before its S52 transaction consumer"
+        reason = "this lands the quiescence witness before its update-transaction consumer"
     )]
     pub(crate) fn asserted_after_stop() -> Self {
         Self(())

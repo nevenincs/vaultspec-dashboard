@@ -1,4 +1,4 @@
-// Cluster-selection fence geometry (emphasis-state-grammar ADR 2026-07-03): the convex
+// Cluster-selection fence geometry: the convex
 // hull + Minkowski-offset pair that traces the rounded n-gon perimeter around the
 // spotlit cohort. Pure-math coverage: hull winding/degenerates and the offset path's
 // outward, arc-joined trace (via a recording 2D-path surface — no canvas rendering).

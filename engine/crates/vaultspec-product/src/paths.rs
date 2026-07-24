@@ -1,9 +1,8 @@
-//! Product-owned path authority (a2a-product-provisioning W01.P01.S07).
+//! Product-owned path authority.
 //!
 //! Every install, generation, app-home, transaction, staging, snapshot, and
 //! updater location derives from product state — the machine app home, never a
-//! client-supplied path string. ADR D3: "Targets and install roots derive from
-//! product state, never client path strings." The lifecycle plane accepts typed
+//! client-supplied path string. The lifecycle plane accepts typed
 //! intent, and a generation identifier is the *only* caller-influenced token; it
 //! is validated to a strict `[A-Za-z0-9._-]` grammar with no separators and no
 //! `..`, so it can never escape the product root.
@@ -158,7 +157,7 @@ impl ProductPaths {
 
     /// The mutable user-data directory (SQLite stores, workspaces) under the app
     /// home. Preserved across removal unless an explicit typed data removal is
-    /// requested (ADR D6).
+    /// requested.
     #[must_use]
     pub fn data_dir(&self) -> PathBuf {
         self.app_home().join("data")

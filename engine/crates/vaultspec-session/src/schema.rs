@@ -1,6 +1,6 @@
 //! Session and settings table DDL and a migration-free schema init.
 //!
-//! Best-effort posture (user-state-persistence ADR): there is no
+//! Best-effort posture: there is no
 //! `user_version` gate and no migration ladder. `ensure_schema` runs
 //! `CREATE TABLE IF NOT EXISTS` on every open; a file whose shape does not
 //! match is recreated empty by the store's `open_or_heal`, never migrated.
@@ -16,8 +16,8 @@
 //!   ordered by a monotonic `position`, deduped by value on write.
 //! - `settings` is a kv table whose `scope` column distinguishes global keys
 //!   (sentinel scope `""`) from scope-scoped keys.
-//! - `workspace_registry` is the ordered set of registered project roots
-//!   (dashboard-workspace-registry ADR): each row is a git workspace the
+//! - `workspace_registry` is the ordered set of registered project roots:
+//!   each row is a git workspace the
 //!   operator pointed the dashboard at — a stable id (the canonical git common
 //!   dir), an operator label, the absolute root path, a launch-default marker,
 //!   and a last-seen reachability state with an optional degradation reason.
@@ -90,8 +90,8 @@ CREATE INDEX IF NOT EXISTS idx_workspace_registry_position
     ON workspace_registry (position);
 ";
 
-/// One registered project root in the workspace registry
-/// (dashboard-workspace-registry ADR). A `WorkspaceRoot` is USER-STATE CONFIG:
+/// One registered project root in the workspace registry.
+/// A `WorkspaceRoot` is USER-STATE CONFIG:
 /// it RECORDS a git workspace the operator pointed the dashboard at — it never
 /// implies any mutation of the repository it names. Each registered root is
 /// READ exactly as the launch workspace is.

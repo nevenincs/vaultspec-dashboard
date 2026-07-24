@@ -1,9 +1,9 @@
-// Exception-handling policy (ADR D4): the one coherent answer to "what does
+// Exception-handling policy: the one coherent answer to "what does
 // this failure become?" - mechanism here, vocabulary in the app. The platform
 // classifies a failure into a kind and logs it; the binding of a `degraded`
 // failure to a specific degradation SurfaceState stays in app/degradation,
 // invoked through an injected handler. That split is what keeps the substrate
-// from importing upward (ADR D1): this module recognizes the engine's HTTP
+// from importing upward: this module recognizes the engine's HTTP
 // error structurally (a numeric `status`) rather than importing EngineError
 // from the stores.
 
@@ -130,7 +130,7 @@ export type DegradationHandler = (
 class FailurePolicy {
   private degradationHandler: DegradationHandler | null = null;
 
-  /** app/degradation injects the vocabulary binding here (ADR D4). */
+  /** app/degradation injects the vocabulary binding here. */
   setDegradationHandler(handler: DegradationHandler | null): void {
     this.degradationHandler = handler;
   }

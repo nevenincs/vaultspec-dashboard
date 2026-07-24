@@ -1,4 +1,4 @@
-// Consumer-typed engine conformance (engine-hardening P01.S01, ADR D1).
+// Consumer-typed engine conformance (engine-hardening).
 //
 // Drives the REAL `EngineClient` against a live `vaultspec serve` binary so
 // that wire-vs-type mismatches fail CI — the class of bug that silently killed
@@ -104,7 +104,7 @@ describe("live engine wire conformance (consumer-typed)", () => {
     // ms-timestamp is passed. It must parse as a finite number.
     expect(Number.isFinite(Number(asof.t))).toBe(true);
     // last_seq must be a key on the response (the wire field name, may be null
-    // while the engine S50 asof-seq gap is open).
+    // while the engine asof-seq gap is open).
     expect("last_seq" in asof).toBe(true);
     // seq must NOT be a key — the wire has no `seq` field on asof responses.
     // This is the exact type drift c812371 fixed; a regression would read
@@ -176,7 +176,7 @@ describe("live engine wire conformance (consumer-typed)", () => {
 
   // --- /search ---------------------------------------------------------------
   // The pass-through shape: `{ data: { results, via, ... }, tiers }`.
-  // There is NO nested `envelope` — see smoke.spec.ts S49 fix.
+  // There is NO nested `envelope` — see smoke.spec.ts fix.
 
   test("search: results live at data.results, not data.envelope.data.results", async () => {
     // POST to /search — rag may be down in CI, but the response SHAPE is what

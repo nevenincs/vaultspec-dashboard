@@ -1,6 +1,5 @@
-//! The cohort-digest CLI (a2a-product-provisioning W04.P08.S166): aggregate the
-//! five verified member manifests into the external cohort descriptor and emit its
-//! RFC 8785 JCS preimage + digest.
+//! The cohort-digest CLI: aggregate the five verified member manifests into the
+//! external cohort descriptor and emit its RFC 8785 JCS preimage + digest.
 //!
 //! Invoked by the product-release workflow after the five per-target member
 //! manifests exist. All authority lives in the library

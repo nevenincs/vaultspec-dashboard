@@ -1,4 +1,4 @@
-// Host-shell verbs (dashboard-context-menus ADR, layer 2 / W02.P05): reveal a
+// Host-shell verbs (layer 2): reveal a
 // path in the OS file manager, and open a path in the user's editor. These need
 // a host bridge the browser does not provide, so they DEGRADE HONESTLY: when no
 // host shell is present (the pure web context) the verbs are disabled-with-reason

@@ -1,6 +1,6 @@
-// Trailing-edge debounce (dashboard-optimization ADR D2b): collapse a burst of
+// Trailing-edge debounce: collapse a burst of
 // calls into a single trailing invocation, so stream-driven cache invalidation
-// does not storm (P-HIGH-1/2). A framework-free substrate timing primitive; the
+// does not storm. A framework-free substrate timing primitive; the
 // returned function carries `cancel()` for effect teardown.
 
 export interface Debounced<A extends unknown[]> {
@@ -36,7 +36,7 @@ export function debounce<A extends unknown[]>(
   return debounced;
 }
 
-// Leading+trailing throttle / cooldown floor (graph-slice-delta ADR D1): fire the
+// Leading+trailing throttle / cooldown floor: fire the
 // FIRST call immediately, then at most once per `waitMs`, with a single TRAILING
 // call carrying the latest args so the final state always lands. Unlike `debounce`,
 // which delays every call, this bounds the RATE while still landing promptly on the

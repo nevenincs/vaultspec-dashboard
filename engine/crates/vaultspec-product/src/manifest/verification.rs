@@ -625,9 +625,9 @@ pub(super) fn verify_artifact_joins(
     manifest: &RawReleaseSetManifest,
     observed: &BTreeMap<String, ObservedFile>,
 ) -> Result<()> {
-    // S06 proves the declared license and SBOM files are present and byte-bound.
-    // Semantic coverage/completeness remains release-workflow authority owned by
-    // W04.P08.S64/S65; this verifier does not claim to interpret those contents.
+    // This proves the declared license and SBOM files are present and byte-bound.
+    // Semantic coverage/completeness remains release-workflow authority owned
+    // elsewhere; this verifier does not claim to interpret those contents.
     verify_sized_join(
         "dashboard",
         &manifest.dashboard.path,
@@ -1098,9 +1098,9 @@ fn verify_entrypoint_tree_record(
 ) -> Result<()> {
     let relative = entrypoint.relative_command.join("/");
     // The A2A producer permits bounded Unicode path segments, while the
-    // committed S04 release inventory is deliberately ASCII. S13/S64 release
-    // composition must reject an otherwise valid Unicode capsule; S06 keeps
-    // that mismatch fail-closed rather than silently widening S04.
+    // committed release inventory is deliberately ASCII. Release composition
+    // must reject an otherwise valid Unicode capsule; this verifier keeps
+    // that mismatch fail-closed rather than silently widening the inventory.
     validate_portable_path(&format!("capsule.entrypoints.{field}"), &relative)?;
     let record = records
         .iter()
@@ -1174,8 +1174,9 @@ pub(super) fn tree_digest(records: &[ValidatedTreeRecord]) -> Result<String> {
         .collect();
     // This exactly matches A2A `deterministic_tree_digest`: validated records
     // sorted by path, lexicographic object keys, compact UTF-8 JSON, one LF.
-    // S04's schema prose names canonical evidence but should later codify this
-    // preimage mechanically; this consumer follows the current producer.
+    // The upstream schema prose names canonical evidence but should later
+    // codify this preimage mechanically; this consumer follows the current
+    // producer.
     let mut bytes =
         serde_json::to_vec(&canonical).map_err(|error| ManifestError::Parse(error.to_string()))?;
     bytes.push(b'\n');

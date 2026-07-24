@@ -1,4 +1,4 @@
-//! Product-authority acceptance (a2a-product-provisioning W01.P01.S11).
+//! Product-authority acceptance.
 //!
 //! These tests exercise the production `vaultspec-product` API against real
 //! files, real credential material, a real receipt on disk, and — for the lock

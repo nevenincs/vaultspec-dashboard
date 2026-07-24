@@ -1,5 +1,4 @@
-//! The closed deterministic ZIP grammar and bounded preflight
-//! (archive-materialization D1/D2, acceptance Refinement A).
+//! The closed deterministic ZIP grammar and bounded preflight.
 //!
 //! Parsing produces a bounded PLAN, never a filesystem effect. The parser is
 //! hand-rolled because the profile is a closed grammar: comments, extra
@@ -15,7 +14,7 @@
 //! entry content truth is SHA-256: preflight digests every decoded entry,
 //! locates exactly one member manifest by the independently authenticated
 //! digest, and proves the archive inventory equal to the trusted manifest
-//! inventory before any generation content exists (D2). The complete
+//! inventory before any generation content exists. The complete
 //! double-scan verification then re-proves the installed tree.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -32,7 +31,7 @@ use crate::manifest::{
 use super::MaterializeError;
 
 /// The ZIP32 end-of-central-directory entry-count field is sixteen bits, so
-/// the closed grammar admits at most 65,535 entries (acceptance Refinement A).
+/// the closed grammar admits at most 65,535 entries.
 /// The 100,000-file limits remain the generation-tree verifier's bounds.
 pub(crate) const MAX_ARCHIVE_ENTRIES: usize = 65_535;
 const MAX_CENTRAL_DIRECTORY_BYTES: u64 = 64 * 1024 * 1024;
@@ -45,7 +44,7 @@ const MAX_DERIVED_DIRECTORIES: usize = 100_000;
 const MAX_EXPANSION_FACTOR: u64 = 100;
 const EXPANSION_SLACK_BYTES: u64 = 1024 * 1024;
 /// The transaction-reserved sibling-name suffix is excluded from the archive
-/// grammar (archive-materialization D5).
+/// grammar.
 pub(crate) const RESERVED_TEMP_SUFFIX: &str = ".vsmz-tmp";
 
 const EOCD_LEN: u64 = 22;
@@ -93,7 +92,7 @@ pub(crate) struct ArchivePlan {
     /// recovery resume and the tests' bound assertions.
     #[allow(
         dead_code,
-        reason = "a plan fact consumed by tests now and by descriptor recovery (S53 resume) next"
+        reason = "a plan fact consumed by tests now and by descriptor recovery on resume next"
     )]
     pub(crate) derived_directories: BTreeSet<String>,
 }
@@ -437,8 +436,8 @@ pub(crate) fn preflight<R: Read + Seek>(
         )
     })?;
 
-    // Retain and parse the located manifest, then prove inventory equality
-    // (D2): every non-manifest entry is declared with the exact digest, and
+    // Retain and parse the located manifest, then prove inventory equality:
+    // every non-manifest entry is declared with the exact digest, and
     // nothing declared is absent.
     reader
         .seek(SeekFrom::Start(planned[manifest_index].data_offset))

@@ -1,9 +1,9 @@
-//! Verified consistency-group snapshot (a2a-product-provisioning W03.P06.S49).
+//! Verified consistency-group snapshot.
 //!
 //! A transactional update snapshots every mutable schema-bearing store as ONE
 //! consistency group before it stages migrations or activates a candidate
-//! generation, so a failed candidate can restore the whole group together (ADR
-//! "make mutable state transactional"). The group is:
+//! generation, so a failed candidate can restore the whole group together —
+//! mutable state stays transactional. The group is:
 //!
 //! - every manifest-declared schema-bearing store (the capsule consistency group
 //!   declares the primary and checkpoint databases), captured with any SQLite
@@ -12,7 +12,7 @@
 //! - the prior seat descriptor retained for rollback relaunch.
 //!
 //! The snapshot is taken only AFTER the owned runtime is drained and stopped
-//! (the S52 transaction order), so the store files are quiescent and a byte-level
+//! (the update transaction order), so the store files are quiescent and a byte-level
 //! capture is a consistent snapshot — no live-database backup API and no SQLite
 //! dependency are required. The store SET is supplied by the caller from the
 //! verified capsule manifest; this module owns the grouping, verification, and
@@ -256,7 +256,7 @@ impl ConsistencySnapshot {
     /// then written back atomically, any live sidecar absent from the snapshot is
     /// removed (so a post-snapshot WAL cannot corrupt the restored database), an
     /// absent store's live files are removed, and the receipt journal is restored
-    /// last. Restore is idempotent, so an interrupted restore (S53) resumes by
+    /// last. Restore is idempotent, so an interrupted restore resumes by
     /// re-running from the same durable snapshot.
     pub fn restore(
         &self,

@@ -1,4 +1,4 @@
-//! WinGet channel authority adapter (a2a-product-provisioning W03.P06.S157).
+//! WinGet channel authority adapter.
 //!
 //! WinGet owns file activation for this channel: it installs, upgrades, and
 //! removes the complete MSI through the Windows Package Manager and the Windows
@@ -60,7 +60,7 @@ impl WinGetAuthority {
     /// Mint the sealed provenance for the WinGet channel.
     #[allow(
         dead_code,
-        reason = "S157 mints WinGet provenance before the S52 transaction consumes it"
+        reason = "WinGet provenance is minted before the sealing transaction consumes it"
     )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::WinGet, true)

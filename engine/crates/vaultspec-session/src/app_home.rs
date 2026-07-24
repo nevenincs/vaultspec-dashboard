@@ -1,11 +1,12 @@
-//! The machine-global app home (`~/.vaultspec/`) — the single-app-runtime
-//! ADR's D3 launcher state and D1 seat discovery location.
+//! The machine-global app home (`~/.vaultspec/`) — the launcher state and
+//! seat discovery location.
 //!
 //! This module owns paths and one small, BOUNDED launcher-state file; it holds
 //! no SQLite and no per-workspace user state (that stays in each workspace's
-//! `.vault/data/engine-data/`, deliberately un-hoisted — ADR option O5
-//! rejected). Everything here is best-effort and tolerant on read: a missing
-//! or corrupt file loads as the empty default, mirroring the store posture.
+//! `.vault/data/engine-data/`, deliberately un-hoisted — a machine-global
+//! store was considered and rejected). Everything here is best-effort and
+//! tolerant on read: a missing or corrupt file loads as the empty default,
+//! mirroring the store posture.
 //!
 //! Two files live under the app home:
 //!

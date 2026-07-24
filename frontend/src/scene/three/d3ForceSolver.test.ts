@@ -81,7 +81,7 @@ function settle(solver: D3ForceSolver, maxTicks = 2000): boolean {
 
 /** Anneal-aware settle: prewarm chews the violent early phase, then tick the
  *  live loop until the convergence-gated anneal releases and the freeze lands
- *  (graph-simulation-stability ADR). prewarm alone now intentionally returns
+ *  prewarm alone now intentionally returns
  *  MID-anneal (the visible live settle); the tests below assert SETTLED-state
  *  contracts, so they run the full lifecycle first. Bounded. */
 function settleLive(solver: D3ForceSolver): void {
@@ -491,7 +491,7 @@ describe("D3ForceSolver — isSettled & activeCount lifecycle", () => {
     const a1 = solver.alpha();
     expect(a1).toBeLessThan(a0);
     // prewarm chews the violent phase within its bounded budget and returns
-    // MID-anneal by design (graph-simulation-stability ADR); the full
+    // MID-anneal by design; the full
     // lifecycle — anneal release + decay + freeze — completes live.
     expect(solver.prewarm()).toBeGreaterThan(0); // returns the tick count it ran
     settleLive(solver);
@@ -585,7 +585,7 @@ describe("D3ForceSolver — params plumbing", () => {
     solver.setParams(params({ linkDistance: 60 }));
     expect(solver.getParams().linkDistance).toBe(60);
     // setParams reheats GENTLY by default (reheatGentle @ GENTLE_REHEAT_ALPHA, not the
-    // old violent reheat(false) @ WARM_ALPHA — GIR-003). reheatGentle still unpins and
+    // old violent reheat(false) @ WARM_ALPHA). reheatGentle still unpins and
     // wakes the whole graph and lifts alpha, so the layout is awake and no longer settled.
     expect(solver.isSettled()).toBe(false);
     expect((solver as any).awakeCount).toBe(20);

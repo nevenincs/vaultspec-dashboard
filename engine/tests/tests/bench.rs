@@ -1,4 +1,4 @@
-//! Cold-index performance smoke benchmark (W03.P12.S55): a generated
+//! Cold-index performance smoke benchmark: a generated
 //! corpus indexed cold, wall-clock recorded and printed so the baseline
 //! lands in the step record; a generous ceiling guards regressions without
 //! flaking on slow machines.

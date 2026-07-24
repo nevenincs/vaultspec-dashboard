@@ -1,4 +1,4 @@
-// useTheme (W01.P02.S09) - the chrome's read/write seam onto the theme
+// useTheme - the chrome's read/write seam onto the theme
 // controller. The app layer cycles or pins the theme through this hook and
 // never touches document.documentElement.dataset.theme directly; the
 // controller owns <html>, persistence, and OS media listening.

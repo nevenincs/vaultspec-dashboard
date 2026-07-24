@@ -1,4 +1,4 @@
-//! Integration proof for the consistency-group snapshot (W03.P06.S54).
+//! Integration proof for the consistency-group snapshot.
 //!
 //! Uses REAL SQLite primary and checkpoint databases and the production snapshot
 //! API (no fakes): a captured group restores both databases together, and an

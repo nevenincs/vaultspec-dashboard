@@ -1,5 +1,5 @@
 //! The crate-private materialization-window seams over the exact retained
-//! generation (archive-materialization D4): a bounded root handle for
+//! generation: a bounded root handle for
 //! descriptor-relative population, the Windows exclusive↔materializing lease
 //! swap, and the final generations-parent synchronization.
 
@@ -7,8 +7,8 @@ use super::*;
 
 impl UnpublishedGeneration<'_, '_> {
     /// Crate-private materializer seam: a fresh bounded root handle over the
-    /// exact retained generation for descriptor-relative population
-    /// (archive-materialization D4). The retained token authority is
+    /// exact retained generation for descriptor-relative population.
+    /// The retained token authority is
     /// unchanged; identity equality is proven before the handle is returned.
     #[cfg(unix)]
     pub(crate) fn open_materialization_root(
@@ -81,7 +81,7 @@ impl UnpublishedGeneration<'_, '_> {
     }
 
     /// Synchronize the retained generations parent after the writer's final
-    /// bottom-up tree synchronization (archive-materialization D5). Windows
+    /// bottom-up tree synchronization. Windows
     /// has no directory-synchronization primitive under these leases; ordering
     /// there rests on the write-through installs and the post-materialization
     /// verification, and production Windows activation remains gated.

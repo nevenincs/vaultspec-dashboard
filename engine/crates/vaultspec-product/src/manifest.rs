@@ -8,7 +8,7 @@
 //! borrowed and rechecks its final filesystem snapshot before activation.
 //!
 //! The bounded no-follow double scan is the accepted cooperative installer
-//! boundary from S06. On Windows the retained lease prevents generation-root
+//! boundary. On Windows the retained lease prevents generation-root
 //! substitution; on Unix the retained descriptor and named identity checks
 //! detect persistent substitution while the installation guard serializes
 //! cooperating product writers. Child reads remain pathname-sensitive and do
@@ -584,7 +584,7 @@ impl CapsuleManifest {
     /// Legacy runtime-boundary join used by lifecycle inspection. This proves
     /// only capsule-to-lock compatibility; it is not a complete release-set or
     /// activation verifier. Receipt-selected start integration must consume
-    /// [`VerifiedReleaseSet`] (plan W01.P02.S16 / W02.P04.S164).
+    /// [`VerifiedReleaseSet`].
     pub fn parse_and_verify(raw: &str, lock: &ComponentLock, expected: Target) -> Result<Self> {
         let (manifest, _) = parse_capsule(raw.as_bytes())?;
         manifest.verify_against_lock(lock, expected)?;
@@ -1356,8 +1356,9 @@ fn verify_release_lock_joins(manifest: &RawReleaseSetManifest, lock: &ComponentL
 ///
 /// No public raw constructor exists: candidate manifests and descriptors must
 /// never manufacture their own expected digests, target, component lock, or
-/// installed capsule root. W01.P02.S16/W02.P04.S164 will obtain this value only
-/// from receipt-selected, product-owned provenance under the installation lock.
+/// installed capsule root. Receipt-selected start integration will obtain
+/// this value only from receipt-selected, product-owned provenance under the
+/// installation lock.
 #[allow(
     dead_code,
     reason = "compile-time sealed substrate awaits a production adapter authority"

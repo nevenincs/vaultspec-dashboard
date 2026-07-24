@@ -56,7 +56,7 @@ describe("sceneMapping (pure wire→seam transforms)", () => {
     expect(scene.title).toBe(featureNode.title);
     expect(scene.degreeByTier).toEqual(featureNode.degree_by_tier);
     expect(scene.lifecycle).toEqual(featureNode.lifecycle);
-    // Feature-convergence sizing input carries across the seam (S02 / D4.1).
+    // Feature-convergence sizing input carries across the seam.
     expect(scene.memberCount).toBe(featureNode.member_count);
   });
 
@@ -100,7 +100,7 @@ describe("sceneMapping (pure wire→seam transforms)", () => {
   });
 });
 
-// graphDeltaToScene — spliceLive bridge (constellation-live-delta S07).
+// graphDeltaToScene — spliceLive bridge (constellation-live-delta).
 // Stage maps feature-granularity GraphDeltaEntry objects through this
 // function before pushing them via SceneController.command("apply-deltas").
 describe("graphDeltaToScene", () => {

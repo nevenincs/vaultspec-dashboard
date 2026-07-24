@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Host-shell verbs (W02.P05.S23): without a host bridge they are
+// Host-shell verbs: without a host bridge they are
 // disabled-with-reason and their handlers return a degraded result (no throw);
 // with a bridge they are enabled and dispatch through the seam to the host.
 

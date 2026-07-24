@@ -1,4 +1,4 @@
-//! Integration proof for interruption recovery (W03.P06.S56).
+//! Integration proof for interruption recovery.
 //!
 //! A transaction is driven to a durable phase and then "crashed" (the transaction
 //! and its installation guard are dropped, as on process death, freeing the OS
@@ -6,7 +6,7 @@
 //! reopens the REAL transaction directory and receipt journal to resolve the
 //! outcome deterministically. Every phase reachable through the public transaction
 //! API is covered; the committed roll-forward and the downstream Activated/Accepted
-//! phases (which require the sealed activation) are proven at the unit level (S53).
+//! phases (which require the sealed activation) are proven at the unit level.
 
 use std::ffi::OsString;
 use std::path::Path;

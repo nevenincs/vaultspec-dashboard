@@ -1,5 +1,4 @@
-// Settle-probe GUARD suite — resurrected diagnostic (ADR
-// `2026-07-02-graph-implementation-review-adr`, remediation item R4).
+// Settle-probe GUARD suite — resurrected diagnostic.
 //
 // The graph's "settled" state is NOT a force fixed point: forceCollide is
 // deliberately not alpha-scaled, so the field never fully cools; the layout reads
@@ -9,10 +8,10 @@
 // and mandates PERMANENT guards for its invariants — the since-removed settle-probe
 // measurements, returned as build-gated tests rather than comment-reading vigilance.
 //
-// These four guards pin the post-valve-closure (WI-2 / R1-R3) contract:
+// These four guards pin the post-valve-closure contract:
 //   (a) an energy-neutral resume (tick with NO reheat) moves a settled layout < ε —
-//       reheat/reheatNow is the ONLY heat-pump path (GIR-002 closed);
-//   (b) reheatGentle(a) NEVER lowers the current temperature (GIR-003 discipline);
+//       reheat/reheatNow is the ONLY heat-pump path (closed);
+//   (b) reheatGentle(a) NEVER lowers the current temperature;
 //   (c) a same-id-set warm update (prewarmReflow, no new nodes) does ZERO ticks and
 //       moves nothing (the prewarmReflow authority guarantee);
 //   (d) the alphaMin freeze fires — isSettled() holds with nothing awake, and a
@@ -83,7 +82,7 @@ const EPSILON = 1e-3;
 
 /** Anneal-aware settle: prewarm chews the violent early phase, then tick the
  *  live loop until the convergence-gated anneal releases and the freeze lands
- *  (graph-simulation-stability ADR). prewarm alone now intentionally returns
+ *  prewarm alone now intentionally returns
  *  MID-anneal (the visible live settle); the tests below assert SETTLED-state
  *  contracts, so they run the full lifecycle first. Bounded. */
 function settleLive(solver: D3ForceSolver): void {
@@ -92,7 +91,7 @@ function settleLive(solver: D3ForceSolver): void {
 
 describe("D3ForceSolver settle-probe — (a) energy-neutral resume", () => {
   it("ticking a settled layout WITHOUT reheat moves every node < ε and stays settled", () => {
-    // This is the GIR-002 contract: threeField.resume() (set-simulation-active:true)
+    // This is the contract: threeField.resume() (set-simulation-active:true)
     // just re-runs the tick loop — it must NOT call solver.reheat. A settled solver
     // has every node asleep+pinned, so plain ticking discharges no energy.
     const solver = makeSolver(50, ringEdges(50));
@@ -136,7 +135,7 @@ describe("D3ForceSolver settle-probe — (a) energy-neutral resume", () => {
 describe("D3ForceSolver settle-probe — (b) reheatGentle never lowers alpha", () => {
   it("a below-current gentle kick leaves the temperature untouched", () => {
     // reheatGentle scales alpha to max(current, kick), so a small kick during a hot
-    // settle cannot COOL the layout (the GIR-003 no-violent-retune discipline's
+    // settle cannot COOL the layout (the no-violent-retune discipline's
     // companion: gentle is never a downward step either).
     const solver = makeSolver(40, ringEdges(40));
     solver.reheat(true); // alpha = COLD_ALPHA = 1
@@ -245,7 +244,7 @@ describe("D3ForceSolver settle-probe — (d) the alphaMin freeze fires", () => {
 
 describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
   it("holds the alpha target after a cold restart and releases into a converged freeze", () => {
-    // graph-simulation-stability ADR: a restart holds alphaTarget at the anneal
+    // A restart holds alphaTarget at the anneal
     // temperature (the freeze CANNOT fire during the hold), releases on
     // sustained calm or the hard cap, and only then decays + freezes — so the
     // frozen layout is a MEASURED equilibrium, never an interrupted anneal.
@@ -271,7 +270,7 @@ describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
       prev = m.meanDisplacement;
     }
     expect(releaseTick).toBeGreaterThan(30); // a real hold, never an instant release
-    // The early hold is HOT (near the anneal target); the ADR-amendment ramp
+    // The early hold is HOT (near the anneal target); the amendment ramp
     // then cools it continuously, so no constant-amplitude buzz + snap-off.
     expect(alphaAtEarlyHold).toBeGreaterThan(0.2);
     expect(frozeTick).toBeGreaterThanOrEqual(releaseTick); // never frozen mid-hold
@@ -281,7 +280,7 @@ describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
   });
 
   it("an already-converged layout releases on the improvement stall, well before the cap", () => {
-    // ADR amendment: the temperature-normalized trend detector. Settle one
+    // The temperature-normalized trend detector. Settle one
     // solver fully, seed a FRESH solver at those converged positions, and
     // restart it: nothing structural improves, so the stall window (not the
     // 600-tick cap) ends the hold — the "seemingly already settled" case
@@ -325,7 +324,7 @@ describe("D3ForceSolver settle-probe — (f) convergence-gated anneal", () => {
 
 describe("D3ForceSolver settle-probe — (g) smooth many-body field", () => {
   it("edgeless free-floating nodes hold near-still at the anneal temperature", () => {
-    // graph-simulation-stability ADR amendment 2: two thirds of the live
+    // Two thirds of the live
     // jitter was Barnes-Hut approximation noise (quadtree force estimates
     // jumping as nodes cross cells) — visible as edgeless nodes jiggling with
     // no spring or contact acting on them. The tightened default theta keeps

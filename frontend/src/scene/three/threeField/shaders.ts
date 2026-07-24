@@ -1,4 +1,4 @@
-// Decomposed from threeField.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from threeField.ts.
 
 import { controlNumber } from "../graphControlSchema";
 import {

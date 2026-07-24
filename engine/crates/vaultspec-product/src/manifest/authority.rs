@@ -468,7 +468,7 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             .map_err(ManifestError::from)
     }
 
-    /// Move the exact retained Windows app-home authority through S171.
+    /// Move the exact retained Windows app-home authority.
     #[cfg(windows)]
     pub(crate) fn install_synchronized_activation_file(
         &mut self,
@@ -480,7 +480,8 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
     }
 
     /// Retry recovery of the exact app-home transition authority retained by
-    /// this verified set after an indeterminate S171 outcome.
+    /// this verified set after an indeterminate app-home authority move
+    /// outcome.
     #[cfg(windows)]
     pub(crate) fn recover_activation_app_home(&mut self) -> Result<()> {
         self.generation

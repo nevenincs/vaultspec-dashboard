@@ -1,4 +1,4 @@
-// The keybinding registry (keyboard-action-system ADR, decisions 1, 2, 4).
+// The keybinding registry.
 //
 // The declarative catalog of BINDABLE COMMAND ACTIONS (Class A). Each surface
 // contributes its bindable verbs as `KeybindingDef`s - a stable action `id`
@@ -327,7 +327,7 @@ export interface KeybindingConflict {
 }
 
 /**
- * The one formal conflict definition (keyboard-shortcut-conflict-review ADR D1),
+ * The one formal conflict definition,
  * shared by every surface that reasons about bindings. A CONFLICT is: two distinct
  * action ids whose effective chords canonicalize identically AND whose contexts sit
  * at EQUAL specificity — i.e. both `global`, or both the same named surface context.

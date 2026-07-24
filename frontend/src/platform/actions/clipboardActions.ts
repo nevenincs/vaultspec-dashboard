@@ -1,4 +1,4 @@
-// The copy verb family (dashboard-context-menus ADR, layer 2 / W02.P04): a
+// The copy verb family (layer 2): a
 // terminal handler registered on the appDispatcher seam, exactly like ops, but
 // wire-free - it touches the clipboard, never the engine, so it lives in the
 // platform substrate. Every copy action a menu offers (copy id / title / path /

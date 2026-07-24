@@ -441,7 +441,7 @@ export abstract class ThreeFieldData extends ThreeFieldGpuResources {
         Math.max(swap.startAlpha, Math.min(priorAlpha, COLD_START_ALPHA)),
       );
     } else {
-      // Persisted-base seed (graph-simulation-stability ADR): a COLD load (no
+      // Persisted-base seed: a COLD load (no
       // in-memory carry — first visit, corpus reset, scope switch) opens at the
       // last SETTLED equilibrium for this scope when one is persisted. Matching
       // ids seed their converged positions and the anneal merely relaxes the
@@ -500,7 +500,7 @@ export abstract class ThreeFieldData extends ThreeFieldGpuResources {
     // handles the warm path and its deadband no-ops an unchanged frame.
     //
     // A DELTA-driven warm set-data (ambient SSE vault edits, folded in via applyDeltas) is
-    // NOT such a state change (GIR-012): re-engaging on it would clear a user's manual-nav
+    // NOT such a state change: re-engaging on it would clear a user's manual-nav
     // suspension and yank the camera back to the whole-graph frame on any background edit.
     // Skip re-engagement for deltas — an engaged (unsuspended) autoframe still tracks the
     // new bounds via its interval poll, and a disengaged one stays where the user left it.
@@ -520,10 +520,10 @@ export abstract class ThreeFieldData extends ThreeFieldGpuResources {
   protected applyDeltas(deltas: SceneDelta[]): void {
     if (!deltas || deltas.length === 0) return;
     // Fold via the shared helper so the field's set and the controller's held model
-    // (nodeCount/edgeCount) fold identically (GIR-006).
+    // (nodeCount/edgeCount) fold identically.
     const { nodes, edges } = foldSceneDeltas(this.nodes, this.edgeData, deltas);
     // reflow=false (normal warm gate), deltaDriven=true so an ambient delta never
-    // re-frames the camera (GIR-012).
+    // re-frames the camera.
     this.setData(nodes, edges, false, true);
   }
 

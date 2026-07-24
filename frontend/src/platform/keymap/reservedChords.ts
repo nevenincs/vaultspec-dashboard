@@ -1,4 +1,4 @@
-// Platform/browser-reserved chord denylist (keyboard-shortcut-conflict-review ADR D3).
+// Platform/browser-reserved chord denylist.
 //
 // A flat, hand-maintained set of canonical chord strings that a major browser or OS
 // hard-reserves REGARDLESS of `preventDefault` — so a default binding on one of them is

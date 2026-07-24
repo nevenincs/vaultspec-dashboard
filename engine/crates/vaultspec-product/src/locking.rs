@@ -1,6 +1,6 @@
-//! The installation transaction lock (a2a-product-provisioning W01.P01.S10).
+//! The installation transaction lock.
 //!
-//! ADR constraint "Lock ordering is global": the controller (and the copied
+//! Lock ordering is global: the controller (and the copied
 //! external updater) acquires the installation transaction lock *first*, before
 //! any drain, snapshot, migration, or file activation, and holds it through
 //! activation or rollback. It is a short-lived operating-system exclusive lock,
@@ -1366,7 +1366,7 @@ pub struct StaleState {
 #[derive(Debug, PartialEq, Eq)]
 pub enum QuarantineRefusal {
     /// The stale state belongs to a different owner. A live foreign or
-    /// unverifiable resident stays immutable (ADR D4).
+    /// unverifiable resident stays immutable.
     ForeignOwner,
     /// The recorded process is still alive; it must be proven dead first.
     ProcessLive,
