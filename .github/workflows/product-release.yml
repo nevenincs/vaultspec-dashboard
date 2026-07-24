@@ -7,23 +7,24 @@
 # (see dist-workspace.toml); this workflow produces the offline-complete product
 # artifacts Dist's binary-only installers do not.
 #
-# Per target it builds the dashboard + copied updater, FETCHES the pinned A2A
-# capsule, and runs `product-build` (which verifies the capsule manifest against
-# the committed component lock — the capsule's asset digests must match the lock's
-# pinned python/node/acp, fail-closed — then composes + self-verifies the tree
-# through the compose-and-verify authority). The tree is archived as
+# Per target it builds the dashboard + copied updater, BUILDS the pinned A2A
+# frozen onedir from source (2026-07-24 a2a-product-provisioning decision, D3:
+# checkout the pinned a2a commit, restore its locked freeze environment, run
+# a2a's in-repo build entry, which also smoke-tests the frozen dispatch
+# surface), and runs `product-build` to compose + self-verify the tree through
+# the compose-and-verify authority. The tree is archived as
 # `vaultspec-<version>-<target>.{tar.gz,zip}` + a sibling `.sha256`.
 #
 # VERIFICATION REALITY: authored here; the real proof is a release-CI run on a
 # clean runner (the self-verify job below), not a local green.
 #
-# CROSS-REPO TBD: the exact A2A capsule fetch source — where vaultspec-a2a
-# publishes the pinned capsule (at lock commit 7df84b1de4455ed79895136ab085c821ce988c9a)
-# as a fetchable release artifact, and its URL/naming per target — is a cross-repo
-# coordination point (the #46/#50 class ask), parameterized below as
-# A2A_CAPSULE_BASE_URL. The capsule's TRUST does not depend on where it is hosted:
-# product-build fails closed if the fetched capsule's manifest disagrees with the
-# committed lock.
+# FAIL-CLOSED GATE: the compose step refuses until `product_build`'s
+# BuildSources accepts the built onedir as an ordinary build source (the
+# a2a_component reshape, D2: the lock shrinks to a source pin and the capsule
+# manifest join retires). Until that lands, every run fails at the compose
+# step by design - the same fail-closed posture the retired
+# A2A_CAPSULE_BASE_URL fetch carried. PyInstaller cannot cross-compile: the
+# freeze leg requires a native-architecture runner per target.
 
 name: Product Release
 
@@ -39,12 +40,6 @@ on:
 
 permissions:
   contents: write
-
-env:
-  # CROSS-REPO TBD (see header): base URL the pinned A2A capsule is fetched from,
-  # per target as `<base>/<target>/capsule.zip` + `.../component-manifest.json` +
-  # `.../tree.json`. Wired when the vaultspec-a2a publish contract is coordinated.
-  A2A_CAPSULE_BASE_URL: ""
 
 concurrency:
   group: product-release-${{ github.ref }}
@@ -93,23 +88,33 @@ jobs:
           cargo build --release --target ${{ matrix.target }} \
             -p vaultspec-cli -p vaultspec-updater --bin vaultspec --bin vaultspec-updater
           cargo build --release -p vaultspec-product --bin product_build
-      - name: Fetch + trust the pinned A2A capsule
+      - name: Resolve pinned A2A commit
+        id: a2a
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${A2A_CAPSULE_BASE_URL}" ]; then
-            echo "::error::A2A_CAPSULE_BASE_URL is not set — the capsule fetch source is a cross-repo coordination point (see workflow header)." >&2
-            exit 1
-          fi
-          mkdir -p capsule
-          base="${A2A_CAPSULE_BASE_URL}/${{ matrix.target }}"
-          curl -fsSL "${base}/capsule.zip" -o capsule/capsule.zip
-          curl -fsSL "${base}/component-manifest.json" -o capsule/component-manifest.json
-          curl -fsSL "${base}/tree.json" -o capsule/tree.json
-          # Trust: product-build fails closed if the capsule manifest disagrees
-          # with the committed component lock (asset digests must match the lock's
-          # pinned python/node/acp). No separate archive-digest check is needed —
-          # the manifest verify IS the anchor.
+          echo "commit=$(jq -r '.a2a_source.commit' packaging/a2a-component.lock.json)" >> "$GITHUB_OUTPUT"
+      - name: Checkout pinned A2A source
+        uses: actions/checkout@v4
+        with:
+          repository: nevenincs/vaultspec-a2a
+          ref: ${{ steps.a2a.outputs.commit }}
+          path: a2a-src
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Build + smoke the pinned A2A onedir
+        shell: bash
+        working-directory: a2a-src
+        run: |
+          set -euo pipefail
+          uv python install 3.13
+          uv sync --locked --no-default-groups --group freeze
+          uv run --no-sync --frozen python scripts/build_binary.py --dist dist/onedir
+          # The build entry smoke-tests the frozen dispatch surface (version,
+          # help, run-module allowlist refusal) before this step reports green.
       - name: Compose + self-verify the product tree
         shell: bash
         run: |
@@ -118,9 +123,12 @@ jobs:
           target="${{ matrix.target }}"
           suffix=""; [ "${{ matrix.ext }}" = "zip" ] && suffix=".exe"
           gen_root="${PWD}/out/generations/0001"
-          # Marshal the built binaries + fetched capsule + evidence into a
-          # BuildSources spec; product_build composes, verifies the capsule against
-          # the lock, emits release.json, and proves it covers the placed tree.
+          # FAIL-CLOSED (see header): compose awaits the a2a_component
+          # BuildSources reshape - product_build still expects a capsule
+          # archive + manifest that no longer exist. Refuse loudly here
+          # rather than hand the builder a synthetic capsule.
+          echo "::error::compose is gated on the a2a_component BuildSources reshape (built onedir at a2a-src/dist/onedir/vaultspec-a2a is ready to admit)" >&2
+          exit 1
           # (SBOM + LICENSE are release inputs — an SBOM-generation step + the repo
           # LICENSE; sourced here as ${PWD}/packaging/sbom.cdx.json + ${PWD}/LICENSE.)
           python3 packaging/assemble-build-spec.py \
@@ -129,9 +137,6 @@ jobs:
             --generation-root "$gen_root" \
             --dashboard "${PWD}/engine/target/${target}/release/vaultspec${suffix}" \
             --updater "${PWD}/engine/target/${target}/release/vaultspec-updater${suffix}" \
-            --capsule-archive "${PWD}/capsule/capsule.zip" \
-            --capsule-manifest "${PWD}/capsule/component-manifest.json" \
-            --tree-evidence "${PWD}/capsule/tree.json" \
             --lock "${PWD}/packaging/a2a-component.lock.json" \
             --sbom "${PWD}/packaging/sbom.cdx.json" \
             --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
