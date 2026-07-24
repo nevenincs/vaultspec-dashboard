@@ -478,16 +478,22 @@ fn mutating_control_requires_owned_attach_and_ownership() {
     let foreign = discovery_verdict("someone-else", &handoff, &ctx);
     assert_eq!(foreign, Verdict::ForeignAttachable);
 
-    // BOTH gates hold (live owned gateway) -> the mutation is allowed.
-    assert!(
-        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&owned))
-            .is_ok()
+    // The attach gate classifies OWNED-LIVE and the caller presents the ownership
+    // capability — but this fixture never settled a fixed active-receipt journal
+    // (a legacy `receipt.json` is not the journal `observe_active_release` reads),
+    // so the AUTHORITY gate refuses NotInstalled. The positive path — a
+    // journal-settled install authorizing the mutation — is proven in-crate by the
+    // S11 first-install chain, where `publish_active_receipt` is reachable.
+    assert_eq!(
+        ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&owned)),
+        Err(Refusal::NotInstalled)
     );
-    // (a) NO discovery (cleanly stopped install) + ownership -> PERMIT: the
-    // local receipt + ownership authority alone governs a cold-state mutation.
-    assert!(
-        ctrl.guard_owned_mutation(LifecycleOp::Remove, Some(&ownership), None)
-            .is_ok()
+    // (a) NO discovery (cleanly stopped install) + ownership: the attach gate is a
+    // valid cold precondition, but the authority gate still requires a settled
+    // journal install, so a legacy receipt reads NotInstalled.
+    assert_eq!(
+        ctrl.guard_owned_mutation(LifecycleOp::Remove, Some(&ownership), None),
+        Err(Refusal::NotInstalled)
     );
     // NO discovery but NO ownership capability -> refused (authority still required).
     assert_eq!(
@@ -505,15 +511,15 @@ fn mutating_control_requires_owned_attach_and_ownership() {
         Err(Refusal::ForeignResident)
     );
 
-    // Past the gate, the real control call carries the ownership capability to
-    // the real gateway socket and settles; without it the gateway rejects it.
+    // The control channel itself carries the ownership capability to the real
+    // gateway socket and settles the shutdown — exercised directly over a real
+    // loopback socket, independent of the authority gate above (which refuses
+    // NotInstalled absent a journal-settled install).
     let endpoint = spawn_shutdown_stub(creds.ownership().secret().to_string());
     let client = ControlClient::new(&endpoint, creds.attach_control().secret());
-    ctrl.guard_owned_mutation(LifecycleOp::Stop, Some(&ownership), Some(&owned))
-        .expect("gate passes");
     client
         .shutdown(creds.ownership())
-        .expect("gated shutdown settles over the real socket");
+        .expect("the shutdown settles over the real socket");
 }
 
 #[cfg(windows)]
