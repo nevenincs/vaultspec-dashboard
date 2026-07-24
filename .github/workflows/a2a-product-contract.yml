@@ -1,17 +1,27 @@
-# Producer build check: builds the dashboard-bundled A2A runtime as a frozen
-# PyInstaller onedir from the producer repository at the dashboard's pinned
-# commit, then runs the binary's own dispatch smoke gate. This replaces the
-# former capsule-manifest contract check: A2A no longer emits a capsule manifest
-# — it ships clean gateway source plus an in-repo PyInstaller freeze recipe, and
-# the dashboard builds and bundles the binary itself
-# (see the `a2a-product-provisioning` decision, 2026-07-24).
+# A2A onedir build proof: builds the dashboard-bundled a2a runtime binary
+# from the producer repository at the dashboard's pinned commit, per target,
+# using a2a's own in-repo freeze recipe (`scripts/build_binary.py`, which
+# drives the versioned PyInstaller onedir spec and then smoke-tests the
+# produced binary's dispatch surface: version, help tree, and the run-module
+# allowlist refusing an unlisted module).
 #
-# The `build_binary.py` entry drives the versioned onedir spec and smoke-tests
-# the frozen dispatch surface (version, help, run-module allowlist refusal); a
-# green run proves the pinned producer source freezes and boots its CLI.
+# This replaces the retired producer-consumer capsule contract proof
+# (2026-07-24 a2a-product-provisioning decision, D2): a2a no longer emits a
+# capsule or a component manifest, so there is nothing to cross-validate with
+# a manifest parser. The proof that matters under the dashboard-built-onedir
+# model is that the pinned source FREEZES and its frozen dispatch surface
+# WORKS on each target - exactly what the release pipeline runs before
+# composition (D3).
 #
-# NOTE: PyInstaller does not cross-compile — each target's onedir must build on a
-# runner of the matching OS/arch. The onedir lands at `dist/onedir/vaultspec-a2a/`.
+# NOT a push/PR gate: dispatch-only, like its predecessor. PyInstaller cannot
+# cross-compile, so each target must run on a native-architecture runner.
+#
+# The pinned producer commit lives in `packaging/a2a-component.lock.json`
+# (`a2a_source.commit`); `producer_ref` overrides it for pre-pin rehearsal
+# against a candidate a2a commit.
+#
+# The built onedir lands at `dist/onedir/vaultspec-a2a/` inside the producer
+# checkout — the same `--dist` scheme the release pipeline uses.
 name: a2a-product-contract
 
 on:
@@ -33,7 +43,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  contract:
     name: Build + smoke onedir (${{ matrix.target }})
     strategy:
       fail-fast: false
@@ -92,6 +102,26 @@ jobs:
         working-directory: producer
         run: |
           uv run --no-sync --frozen python scripts/build_binary.py --dist dist/onedir
+
+      - name: Write built onedir inventory
+        if: always()
+        shell: bash
+        working-directory: producer
+        run: |
+          # An inventory (not the multi-hundred-MB tree): the file list is
+          # enough to diagnose a hidden-import or data-file miss from the log.
+          if [ -d dist/onedir/vaultspec-a2a ]; then
+            find dist/onedir/vaultspec-a2a -type f \
+              | sort > onedir-inventory-${{ matrix.target }}.txt
+          fi
+
+      - name: Upload inventory artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a2a-onedir-inventory-${{ matrix.target }}
+          path: producer/onedir-inventory-${{ matrix.target }}.txt
+          if-no-files-found: ignore
 
       - name: Upload the built onedir
         if: always()
