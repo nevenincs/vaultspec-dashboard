@@ -1,9 +1,9 @@
 {
   "lock_version": "1.0",
-  "description": "Dashboard-owned lock pinning the exact A2A source commit, release identity, and every base-closure artifact digest for the desktop capsule (a2a-product-provisioning plan W01.P01.S03). Every value is an exact pin: no floating minor, no `latest`, and no runtime resolution. The A2A repository owns the emitted capsule and its `schemas/desktop-capsule-manifest.json` contract; this lock is the dashboard's authoritative pin of that producer output, verified by `vaultspec-product`'s manifest parser (W01.P01.S06).",
+  "description": "Dashboard-owned lock pinning the exact A2A source commit and release identity the release pipeline builds the frozen onedir from (2026-07-24 a2a-product-provisioning decision, D2/D3). Every value is an exact pin: no floating minor, no `latest`, and no runtime resolution. TRANSITIONAL SHAPE: the capsule_contract and base_closure blocks are retained only because the dashboard's lock parser and its compiled-in test fixtures still deserialize them; they describe a producer output that no longer exists and retire with the a2a_component BuildSources reshape, which shrinks this lock to the source pin plus the freeze-recipe entry identity (scripts/build_binary.py + packaging/pyinstaller spec).",
   "a2a_source": {
     "repository": "vaultspec-a2a",
-    "commit": "7df84b1de4455ed79895136ab085c821ce988c9a",
+    "commit": "d59b41b6c1ac8b6e498326ea74ab32898ac9c08b",
     "release_identity": {
       "name": "vaultspec-a2a",
       "version": "0.1.0"
