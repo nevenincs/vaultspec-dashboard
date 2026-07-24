@@ -83,6 +83,11 @@ is retired.
   publishes product artifacts; the a2a record assigns target-matrix and
   bundling ownership to the dashboard. A cross-repo binary fetch would recreate
   the never-wired capsule fetch under another name.
+- **Keep the full release-time ceremony (TUF authority, product-owned
+  installers, external updater, composite certification, cohort digest) —
+  rejected by owner (2026-07-24).** Under the unsigned free-open-source scope
+  and with no capsule product, the release ceremony has no consumer. The
+  runtime lifecycle does, and it is kept; see the Amendment below.
 
 ## Constraints
 
@@ -150,14 +155,22 @@ the unchanged discovery record, bearer handoff, and authenticated health,
 readiness, drain, and shutdown verbs. Ownership, foreign-attach,
 receipt-bound mutation, and drain-before-stop semantics are unchanged.
 
-**D5: Everything shape-independent survives unchanged.** The dashboard's own
-cargo-dist release orchestration; the composite product tree, product-owned
-installers, channel matrix, and publish gates; the generation-root authority,
-sealed materialization, double-scan verification, fixed two-slot receipt
-journal, and Windows authority boundary; and the deferred TUF apparatus. The
-archive-materialization note that "the nested A2A capsule ZIP remains one
-opaque regular product file" narrows to: the onedir's files are ordinary
-admitted release files with no nested-archive special case.
+**D5: The runtime survives; the release ceremony does not (as amended
+2026-07-24).** KEPT, unchanged in semantics: the dashboard's own cargo-dist
+release orchestration and its delivery channels (GitHub Release archives,
+Scoop, cargo-binstall); the a2a service lifecycle over the frozen CLI verbs
+(ownership, drain, foreign-attach, discovery, bearer handoff,
+health/readiness/shutdown); and the on-machine runtime authorities —
+generation-root authority, sealed materialization, double-scan verification,
+installation receipts in the fixed two-slot journal, and the Windows authority
+boundary — re-homed to first-run provisioning per the Amendment. CUT: the
+TUF distribution authority and its verifier crates, the product-owned shell
+and PowerShell installers, the composite MSI, the copied external updater,
+the composite certification wave, and the cohort-digest plus
+release-set-member cross-binding ceremony. The archive-materialization note
+that "the nested A2A capsule ZIP remains one opaque regular product file"
+narrows to: the onedir's files are ordinary admitted release files with no
+nested-archive special case.
 
 **D6: Supersession semantics.** This record AMENDS, and does not wholly
 supersede, the 2026-07-18 parent: D1's capsule composition clause (private
@@ -207,3 +220,73 @@ composition-time file digests instead of a second manifest chain.
 - If a2a's freeze recipe ever emits empty directories or links, generation
   verification refuses the tree — by design. The constraint flows upstream to
   the recipe, not downstream into a verifier exception.
+
+## Amendment (2026-07-24): prune the release ceremony, keep the runtime lifecycle (owner decision)
+
+The owner has scoped the split between what this release drive ships and what
+it deletes. The dividing line is CONSUMER, not machinery age: release-time
+ceremony that only a signed, multi-channel capsule product would consume is
+cut; runtime machinery that the unsigned release still exercises on the
+user's machine is kept.
+
+**CUT (release-time ceremony — no consumer under the unsigned, no-capsule
+scope):**
+
+- The TUF distribution authority: `engine/crates/vaultspec-distribution-authority`
+  and `engine/crates/vaultspec-release-verify` leave the tree (they were
+  already deferred-not-a-gate; now they are pruned, superseding the
+  retained-in-code posture of the distribution-trust amendment for this
+  repository's tree).
+- The product-owned installers `packaging/install.sh` and
+  `packaging/install.ps1`, and the composite MSI: delivery REVERTS to the
+  cargo-dist generated installers and archives.
+- The copied external updater (`engine/crates/vaultspec-updater`): self-update
+  REVERTS to cargo-dist's axoupdater.
+- The composite certification wave and the cohort-digest plus
+  release-set-member cross-binding ceremony of the 2.0 manifest schema.
+
+**KEPT (runtime, consuming the unsigned release on the user's machine):**
+
+- The a2a service lifecycle through the frozen CLI verbs
+  (`serve`/`setup`/`start`/`stop`/`status`/`restart`), with ownership, drain,
+  and foreign-attach semantics unchanged.
+- The per-target PyInstaller onedir build, bundling, and the CLI-verb smoke
+  gate in the release pipeline.
+- Installation receipts, sealed provisioning, the generation-root authority,
+  sealed materialization, double-scan verification, the fixed two-slot
+  receipt journal, and the Windows authority boundary.
+
+**Where the kept runtime machinery now runs — first-run provisioning.** With
+the product installers cut, no install-time step composes or verifies
+anything: delivery places files, nothing more. The generation, receipt, and
+verification authorities therefore re-home to FIRST-RUN (and per-upgrade)
+provisioning: on launch, the seated dashboard locates the bundled a2a payload
+delivered alongside it, materializes it through the sealed materializer into
+an app-home generation, double-scan verifies it against the shipped payload
+manifest, publishes the active receipt in the two-slot journal, and only then
+manages the service lifecycle. A minimal per-target payload manifest (file
+digests over the bundled payload, emitted at build time and shipped in the
+archive) SURVIVES as the verification input; what is cut is the cohort and
+member cross-binding ceremony around it, not the digest manifest itself.
+
+**Open flag for the owner — binary-only delivery channels.** First-run
+provisioning is complete and offline for FULL-ARCHIVE channels: a directly
+downloaded GitHub Release archive and the Scoop zip both place the payload
+next to the binary. It is ORPHANED for binary-only placements: cargo-dist's
+generated shell/PowerShell installers historically place declared binaries
+only, and `cargo-binstall`/`cargo install` place or build only the
+executable — under those channels the payload never arrives and first-run
+provisioning has no source. Before any of those channels is presented as
+carrying the a2a capability, one of three resolutions must be elected: (a)
+prove (not assume) that the dist archive `include` payload survives the dist
+installers' placement; (b) let binary-only channels degrade the agent tier
+honestly with remediation pointing at the full archive; or (c) elect a
+checksum-pinned first-run fetch, accepting the first-run network dependency
+this record's parents rejected. Until elected, binary-only channels are
+documented as dashboard-only.
+
+**Consequence deltas.** The prune is an ADR-directed deletion lane, not a
+0.1.5 gate. The receipt-journal code paths are load-bearing again, so their
+Linux test failures are defects to fix, never tests to retire. The
+quality-gates release-inputs job re-scopes to the source pin, the freeze
+build, the smoke gate, and the payload manifest.
