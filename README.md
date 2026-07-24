@@ -141,7 +141,7 @@ outside the install directory.
 > preserve the release-set, receipt, verification, update, and removal guarantees
 > above. `vaultspec-cli` is withheld from crates.io until a Cargo channel can carry
 > the composite release contract. Use one of the channels above.
-
+>
 > **Note on code signing:** the installers, MSI, and binary archives are currently
 > unsigned. macOS Gatekeeper will quarantine the binary on first run - right-click the
 > binary, choose **Open**, and confirm the override prompt. Windows SmartScreen may show
