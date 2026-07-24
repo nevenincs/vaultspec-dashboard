@@ -1,4 +1,4 @@
-// Agent-panel view-store tests (agentic-authoring-ux W02.P02.S09). Pure local
+// Agent-panel view-store tests. Pure local
 // chrome state — no wire. Covers the open/toggle lifecycle and the current-session
 // pointer. The docked column's WIDTH lives in the shell-layout store now, so its
 // clamp/persist coverage is in shellLayout.test.ts.

@@ -1,4 +1,4 @@
-// A2A lifecycle dispatch terminal effect (a2a-product-provisioning W05.P11.S91):
+// A2A lifecycle dispatch terminal effect:
 // the ONE engine call that starts a lifecycle job lives in the stores layer — the
 // sole wire client — registered onto the platform dispatch seam so a non-hook
 // surface (an ActionDescriptor fired from outside React) can run a lifecycle
@@ -6,7 +6,7 @@
 // the handler is a pure manipulation effect (no cache write); the caller
 // (`useA2aLifecycleRun`, a2aLifecycle.ts) owns the status-cache invalidation.
 //
-// The validator is the wire-contract guard (ADR D3): the run body carries ONLY a
+// The validator is the wire-contract guard: the run body carries ONLY a
 // closed, typed `op` — no path, no free-form argument, and no implicit
 // data-removal flag. `remove` is a BOUNDED intent (the engine preserves user data
 // on remove); there is NO client-side purge / delete-data field, so a body

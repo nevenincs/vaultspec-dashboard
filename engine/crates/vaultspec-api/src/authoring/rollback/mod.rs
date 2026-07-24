@@ -1,4 +1,4 @@
-//! Rollback generation and eligibility (W03.P38).
+//! Rollback generation and eligibility.
 //!
 //! Rolling back an applied authoring change is itself a NEW auditable changeset
 //! (agentic-rollback-history ADR `rollback-appends-a-new-authoring-changeset`): a
@@ -13,7 +13,7 @@
 //! only kinds with a DETERMINISTIC inverse from already-retained material are
 //! invertible. A body or frontmatter edit rolls back by restoring the stored
 //! whole-document PREIMAGE against the CURRENT base, materialized as a
-//! whole-document `ReplaceBody`. A `Rename` (W02.P04) rolls back by a
+//! whole-document `ReplaceBody`. A `Rename` rolls back by a
 //! RENAME-BACK — a genuine `Rename` inverse to the ORIGINAL stem the source was
 //! proposed FROM, never a preimage-restore (a `ReplaceBody`-of-preimage rollback
 //! of a rename would write the old content to the OLD path while the document
@@ -210,7 +210,7 @@ pub fn generate_rollback(
             .into_iter()
             .next()
             .expect("eligibility guarantees exactly one source child");
-        // COUPLING (W04.P09.S33): this unwrap is safe only because
+        // COUPLING: this unwrap is safe only because
         // `preimage_available` still gates EVERY invertible kind — including
         // `SetPlanStepState` — on a present source preimage. A plan-tick inverse
         // does not actually consume it (it is a state flip, not a restore), so a
@@ -457,7 +457,7 @@ pub fn generate_rollback(
                 (ChangesetOperationKind::SectionEdit, materialized)
             }
             ChangesetOperationKind::SetPlanStepState => {
-                // OPPOSITE-STATE inverse (authoring-surface ADR D1), built in
+                // OPPOSITE-STATE inverse, built in
                 // `rollback_inverses`: the inverse of a plan tick is the opposite
                 // set-plan-step-state against the same step, NEVER a
                 // whole-document preimage restore (that clobber stays impossible).

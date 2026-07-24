@@ -633,7 +633,7 @@ describe("the lens-keyed graph query cache", () => {
   });
 
   it("carries ONLY the timeline date_range into the code-corpus identity", () => {
-    // code-timeline-range ADR: the range facet is the one shared narrow, so a
+    // The range facet is the one shared narrow, so a
     // timeline change re-keys the code slice while every other facet stays pinned.
     expect(
       normalizeGraphSliceRequestIdentity(
@@ -850,7 +850,7 @@ describe("graph cache key (graph-filter-fetch-split: backend re-query, cache-ins
   });
 });
 
-describe("useProgressiveGraphSlice (on-demand-cold-start ADR D1)", () => {
+describe("useProgressiveGraphSlice (on-demand cold start)", () => {
   it("serves the constellation while a cold document slice is in flight, then passes the document slice through", async () => {
     const scope = await liveScope();
     // Delay ONLY the document-granularity graph query so the cold window is

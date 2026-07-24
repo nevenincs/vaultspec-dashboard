@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// figma:names gate (figma-naming-contract campaign). The Figma <-> code join is
+// figma:names gate. The Figma <-> code join is
 // name-as-contract: a component's Figma node name equals its React export symbol, with a
 // cited-node fallback for aliases/sub-frames (see frontend/figma/README.md). There is no
 // component-map.json registry and no Code Connect.

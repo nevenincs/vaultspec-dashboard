@@ -1,11 +1,10 @@
-// Shared open-state for the framework control panels (activity-rail-realignment
-// ADR D3). The rail is status-only; the three admin surfaces — Search service,
+// Shared open-state for the framework control panels. The rail is status-only; the three admin surfaces — Search service,
 // Backend health, Vault health — live in modal control panels toggled from the
 // rail-footer status cluster. Each panel is the one modal Dialog idiom over this
 // tiny shared view-store flag, mirroring `settingsDialog`, so the chip, the
 // command palette, and the keymap all drive the same panel.
 //
-// Review is NOT a modal panel (review-surface-flow ADR F1): its queue folded into
+// Review is NOT a modal panel: its queue folded into
 // the Agent panel as a "Pending changes" view, so it lives on the footer cluster
 // as a first-class chip (`FooterChipId`) whose action opens that view — never a
 // `ControlPanelId`. The two spaces are deliberately decoupled here.
@@ -23,7 +22,7 @@ export type ControlPanelId =
   | "agent-service";
 
 /** Every modal panel id, in cluster order. The agent-service panel
- *  (a2a-product-provisioning W05.P12) is a MODAL identity only — it is deliberately
+ *  is a MODAL identity only — it is deliberately
  *  NOT a footer chip, so the footer cluster is left unchanged. */
 export const CONTROL_PANEL_IDS: readonly ControlPanelId[] = [
   "search-service",
@@ -32,11 +31,11 @@ export const CONTROL_PANEL_IDS: readonly ControlPanelId[] = [
   "agent-service",
 ];
 
-/** The rail-footer status chips (activity-rail-realignment ADR D2). A standalone
+/** The rail-footer status chips. A standalone
  *  union — NOT derived from `ControlPanelId` — because two of the three chips open
- *  modal panels while `approvals` opens the Agent panel's pending-changes view
- *  (review-surface-flow ADR F1). Backend health has no chip: its engine-status read
- *  unclearly, so it was pulled from the footer (user UX decision, 2026-07-15); the
+ *  modal panels while `approvals` opens the Agent panel's pending-changes view.
+ *  Backend health has no chip: its engine-status read
+ *  unclearly, so it was pulled from the footer; the
  *  Cmd+K palette is its only surfacing path. */
 export type FooterChipId = "search-service" | "approvals" | "vault-health";
 export const FOOTER_CHIP_IDS: readonly FooterChipId[] = [

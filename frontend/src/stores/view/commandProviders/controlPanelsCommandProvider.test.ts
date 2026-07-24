@@ -20,9 +20,8 @@ afterEach(() => {
 describe("controlPanelsCommandProvider", () => {
   it("surfaces the four modal panels plus the review inbox, under the app family", () => {
     // The four modal panels' labels track the open-panel snapshot; the review
-    // inbox (review-surface-flow ADR F1) opens the Agent pending view, so its
-    // label is snapshot-independent and it sits last. The agent-service panel
-    // (a2a-product-provisioning W05.P12) is the fourth modal, in cluster order.
+    // inbox opens the Agent pending view, so its label is snapshot-independent and
+    // it sits last. The agent-service panel is the fourth modal, in cluster order.
     const closed = commands(null);
     expect(closed.map((command) => command.label)).toEqual([
       { key: "common:controlPanels.actions.showSearch" },

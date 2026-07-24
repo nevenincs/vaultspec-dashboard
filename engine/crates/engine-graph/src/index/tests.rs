@@ -8,7 +8,7 @@ fn scope() -> ScopeRef {
 
 #[test]
 fn worktree_corpus_fingerprint_changes_on_edit_and_is_stable_otherwise() {
-    // graph-worktree-edge-consistency ADR (the cache-key trap): the present-view
+    // The cache-key trap: the present-view
     // declared cache keys on this corpus fingerprint, NOT the HEAD sha — so a
     // `.vault/` edit (a doc's new content hash, e.g. an uncommitted `related:`
     // change) MUST change the fingerprint so the fold misses the cache and
@@ -61,7 +61,7 @@ fn worktree_corpus_fingerprint_changes_on_edit_and_is_stable_otherwise() {
 
 #[test]
 fn frontmatter_stamped_reads_the_modified_key_distinct_from_date() {
-    // #14: `dates.stamped` is the frontmatter `modified:` CLI stamp, read like
+    // `dates.stamped` is the frontmatter `modified:` CLI stamp, read like
     // `date:` → `created`. A doc with both keys yields both, distinctly; a doc
     // with only `date:` has no stamp (truthful absence), and the `modified:`
     // key must not be confused with `date:`.
@@ -78,7 +78,7 @@ fn frontmatter_stamped_reads_the_modified_key_distinct_from_date() {
 
 #[test]
 fn adr_status_parser_extracts_each_status_and_none_when_absent() {
-    // W01.P01.S03: the H1 status marker the ADR template emits carries one
+    // The H1 status marker the ADR template emits carries one
     // of the four enum values; the parser reads each, and a status-less
     // document (or an out-of-enum value) is truthful absence, not a guess.
     for status in ["proposed", "accepted", "rejected", "deprecated"] {
@@ -105,7 +105,7 @@ fn adr_status_parser_extracts_each_status_and_none_when_absent() {
 
 #[test]
 fn body_metadata_parsers_are_fence_aware_and_word_bounded() {
-    // #42 metadata-parser correctness pass: the body parsers must not read a
+    // The body parsers must not read a
     // fenced EXAMPLE as the document's own metadata, and severity/status
     // matching is whole-word, not substring. Each assertion FAILS against the
     // pre-fix parsers (whole-body substring / fence-blind line scans).
@@ -198,7 +198,7 @@ fn feature_tag_parser_accepts_single_double_and_bare_quote_styles() {
 
 #[test]
 fn plan_tier_parser_extracts_each_tier_and_none_when_missing_or_invalid() {
-    // W01.P01.S04: the plan `tier:` frontmatter key carries one of L1-L4;
+    // The plan `tier:` frontmatter key carries one of L1-L4;
     // the parser reads each, and a missing or out-of-enum tier is None.
     for tier in ["L1", "L2", "L3", "L4"] {
         let plan = format!("---\ntags:\n  - '#plan'\n  - '#x'\ntier: {tier}\n---\n\nbody\n");
@@ -224,7 +224,7 @@ fn plan_tier_parser_extracts_each_tier_and_none_when_missing_or_invalid() {
 
 #[test]
 fn rule_species_projects_from_the_rules_tree_with_promoted_from_edges() {
-    // graph-node-semantics ADR: rules live OUTSIDE `.vault/` and project as
+    // Rules live OUTSIDE `.vault/` and project as
     // `rule` species nodes (authority law) with a `promoted-from` edge back
     // into the audit that bore them — never minted as vault documents.
     let dir = tempfile::tempdir().unwrap();
@@ -346,7 +346,7 @@ tier: L3
 
 #[test]
 fn reingesting_a_plan_re_keys_no_existing_step_node_or_edge() {
-    // W03.P07.S38: identity survives re-index. Minting the same plan twice
+    // Identity survives re-index. Minting the same plan twice
     // (the watcher's partial re-ingest path) must converge to the same
     // node and edge ids — stable keys are plan stem + canonical ids only.
     let dir = tempfile::tempdir().unwrap();
@@ -414,7 +414,7 @@ fn reingesting_a_plan_re_keys_no_existing_step_node_or_edge() {
 
 #[test]
 fn toggling_a_step_checkbox_updates_completion_without_changing_the_step_node_id() {
-    // W03.P07.S39: a `- [ ]` -> `- [x]` toggle changes the step's
+    // A `- [ ]` -> `- [x]` toggle changes the step's
     // completion facet, never its node id (the id is identity-bearing, the
     // completion lives outside the key).
     let dir = tempfile::tempdir().unwrap();
@@ -448,7 +448,7 @@ fn toggling_a_step_checkbox_updates_completion_without_changing_the_step_node_id
 
 #[test]
 fn step_containers_bind_to_their_exec_records() {
-    // W03.P07.S37: a step container binds to its exec-record doc node when
+    // A step container binds to its exec-record doc node when
     // one exists, via an identity-only References edge.
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -486,7 +486,7 @@ fn step_containers_bind_to_their_exec_records() {
 
 #[test]
 fn a_step_binds_only_to_its_own_plans_exec_record_not_a_sibling_plans() {
-    // Review HIGH-1 regression: two plans share the identical container tail
+    // Regression: two plans share the identical container tail
     // `W01-P01-S01`. A step must bind ONLY to its own plan's exec record,
     // never to a sibling plan's exec record carrying the same tail.
     let dir = tempfile::tempdir().unwrap();
@@ -540,7 +540,7 @@ fn a_step_binds_only_to_its_own_plans_exec_record_not_a_sibling_plans() {
 
 #[test]
 fn ingested_adr_and_plan_carry_honest_status_and_tier_facets() {
-    // W01.P03.S15: an ingested ADR carries its real H1 status and a plan
+    // An ingested ADR carries its real H1 status and a plan
     // carries its frontmatter tier through to the doc node — the exact
     // query-time facets the engine-query filter vocabulary enumerates
     // (statuses/plan_tiers, tested data-driven in engine-query::filter).
@@ -594,7 +594,7 @@ fn declared_tier_degrades_truthfully_while_structural_survives() {
     // produces NODES. Regression guard for the wiring that was missing
     // entirely (the graph was silently declared-empty-yet-claimed).
     //
-    // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+    // STRICT reference-only graph: in-body
     // `[[wiki-link]]` mentions are NOT graphed — only `related:` frontmatter
     // (declared) defines edges. So a core-less worktree carries doc NODES but
     // ZERO edges (the body mention below is deliberately not ingested), and
@@ -639,13 +639,13 @@ fn declared_tier_degrades_truthfully_while_structural_survives() {
 
 #[test]
 fn structural_index_carries_nodes_and_the_building_sentinel_without_a_subprocess() {
-    // Perf ADR D1: the fast servable parse builds the structural tier ONLY,
+    // The fast servable parse builds the structural tier ONLY,
     // never running the declared-tier core subprocess. It must carry the
     // same document NODES index_worktree produces, zero declared edges,
     // and the DECLARED_BUILDING sentinel (the async fold is pending — a
     // truthful "not yet" state, NOT a failure reason).
     //
-    // STRICT reference-only graph (user ruling, 2026-06-28): the structural
+    // STRICT reference-only graph: the structural
     // pass no longer graphs in-body `[[wiki-link]]` mentions, so the fast
     // parse carries nodes but ZERO edges until the declared (frontmatter)
     // fold lands.
@@ -683,11 +683,11 @@ fn structural_index_carries_nodes_and_the_building_sentinel_without_a_subprocess
 
 #[test]
 fn cloned_structural_plus_declared_equals_a_combined_build() {
-    // Perf ADR D1 convergence invariant: the async fold clones the
+    // Convergence invariant: the async fold clones the
     // structural graph and ingests declared into the clone. That folded
     // clone(structural)+declared graph MUST equal a graph built structural
     // THEN declared from the same JSON in one pass — declared ingest is
-    // replace-by-id idempotent over the structural graph (D8.2). Proven on
+    // replace-by-id idempotent over the structural graph. Proven on
     // the canonical snapshot (no core subprocess: we feed a fixed JSON).
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -724,7 +724,7 @@ fn cloned_structural_plus_declared_equals_a_combined_build() {
     assert_eq!(
         canonical_snapshot(&folded),
         canonical_snapshot(&combined),
-        "clone(structural)+declared converges to structural+declared (D8.2)"
+        "clone(structural)+declared converges to structural+declared"
     );
     assert!(
         folded.edge_count() > structural.edge_count(),
@@ -734,7 +734,7 @@ fn cloned_structural_plus_declared_equals_a_combined_build() {
 
 #[test]
 fn index_documents_are_never_nodes_and_leave_no_incident_edge() {
-    // index-node-exclusion ADR D1: a `.vault/index` feature-index document is
+    // A `.vault/index` feature-index document is
     // a metanode. It must never become a graph node, and no edge — structural
     // or declared — incident to it may survive. Both the structural reader and
     // the declared-graph ingest are exercised.
@@ -855,7 +855,7 @@ fn core_derived_similarity_edges_are_never_ingested_into_the_graph() {
 
 #[test]
 fn in_body_wikilink_mentions_are_never_graphed_strict_reference_only() {
-    // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+    // STRICT reference-only graph: in-body
     // `[[wiki-link]]` mentions are FORBIDDEN as graph fact — wiki-links live
     // only in `related:` frontmatter, which (via the declared tier) IS the
     // node graph. A document whose BODY mentions another document must NOT mint
@@ -894,7 +894,7 @@ fn in_body_wikilink_mentions_are_never_graphed_strict_reference_only() {
 
 #[test]
 fn full_index_equals_structural_plus_declared_from_json_d8_2() {
-    // Review LOW (perf ADR D1, D8.2 lock): the async fold's serve path is
+    // The async fold's serve path is
     // `index_worktree_structural` + `ingest_declared_from_json`. Tie it back
     // to the SYNCHRONOUS full `index_worktree` (the CLI / re-derivability
     // path): for the SAME declared input and observed_at, the full path's
@@ -957,7 +957,7 @@ fn full_index_equals_structural_plus_declared_from_json_d8_2() {
         canonical_snapshot(&full_plus),
         canonical_snapshot(&fold_path),
         "full + declared(JSON) == structural + declared(JSON): the fold path \
-             converges to the synchronous full path (D8.2)"
+             converges to the synchronous full path"
     );
     assert!(
         fold_path.edge_count() > structural_edge_count,

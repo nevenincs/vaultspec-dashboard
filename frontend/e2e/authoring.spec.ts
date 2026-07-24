@@ -1,8 +1,8 @@
-// Authoring restart/replay/reconnect + security-negative acceptance (W14.P42
-// S207/S208). Drives the REAL `/authoring/v1/*` wire — no mock — over a
+// Authoring restart/replay/reconnect + security-negative acceptance.
+// Drives the REAL `/authoring/v1/*` wire — no mock — over a
 // dedicated, scratch-scoped `vaultspec serve` process this file spawns and
 // controls itself (`./authoring/engine.ts`), never the shared main worktree's
-// `serve`. The review-station UI (P40) is a thin skeleton with no surface for
+// `serve`. The review-station UI is a thin skeleton with no surface for
 // most of these flows (restart, replay cursors, fencing, forbidden-tool), so
 // every scenario here is driven API-level, exactly the way the engine's own
 // live-wire acceptance test drives it

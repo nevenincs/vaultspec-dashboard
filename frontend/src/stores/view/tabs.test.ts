@@ -324,7 +324,7 @@ describe("rename re-key", () => {
     });
   });
 
-  // INTEGRATION test for the REAL rename sequence (S19 adversarial-review defect):
+  // INTEGRATION test for the REAL rename sequence (an adversarial-review defect):
   // `renameNow` calls `markEditorSaving()` (status -> "saving") BEFORE the mutation
   // resolves, so the unsaved flag MUST be captured before that and threaded into
   // applyRenamed — re-deriving it inside applyRenamed would always observe "saving"

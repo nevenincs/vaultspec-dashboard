@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Split from queries.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from queries.test.ts.
 
 import { afterEach, describe, expect, it } from "vitest";
 import { liveTransport } from "../../../testing/liveClient";

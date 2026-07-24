@@ -41,17 +41,16 @@ fn fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
 
 #[test]
 fn rebuild_swap_converges_the_graph_and_emits_diffs() {
-    // Audit gates W02P06-302/303: the watcher path is rebuild+swap at scope
-    // granularity — a filesystem edit must converge the live graph to a cold
-    // rebuild and emit the change as diff deltas on the per-scope clock
-    // (W02.P04.S12).
+    // The watcher path is rebuild+swap at scope granularity — a filesystem
+    // edit must converge the live graph to a cold rebuild and emit the
+    // change as diff deltas on the per-scope clock.
     //
-    // STRICT reference-only graph (user ruling, 2026-06-28): in-body
-    // `[[wiki-link]]` mentions are no longer graphed — the only edges are
-    // `related:` frontmatter references via the declared tier, which is absent
-    // in this core-less fixture. So the rebuild+swap convergence + diff
-    // emission is exercised at the NODE level: a new document on disk is a node
-    // delta the watcher must emit and converge.
+    // STRICT reference-only graph: in-body `[[wiki-link]]` mentions are no
+    // longer graphed — the only edges are `related:` frontmatter references
+    // via the declared tier, which is absent in this core-less fixture. So
+    // the rebuild+swap convergence + diff emission is exercised at the NODE
+    // level: a new document on disk is a node delta the watcher must emit
+    // and converge.
     let (dir, state) = fixture_state();
     // build_state already cold-indexed the launch cell, so the live graph
     // holds the initial node. Assert that starting state directly.
@@ -413,10 +412,10 @@ fn warm_projections_warms_document_views_only_after_a_drill_in() {
 
 #[test]
 fn salience_basis_is_memoized_per_generation() {
-    // graph-node-salience W05.P11.S45: the expensive lens basis (the PPR
-    // partial vectors, Brandes betweenness, k-core, role features) is computed
-    // ONCE per graph generation and shared by every lens. A no-op query is a
-    // warm-cache hit (same Arc); a generation bump (rebuild) recomputes.
+    // The expensive lens basis (the PPR partial vectors, Brandes
+    // betweenness, k-core, role features) is computed ONCE per graph
+    // generation and shared by every lens. A no-op query is a warm-cache
+    // hit (same Arc); a generation bump (rebuild) recomputes.
     let (_dir, state) = fixture_state();
     let cell = state.active_cell();
     cell.rebuild_and_swap().unwrap();
@@ -438,8 +437,8 @@ fn salience_basis_is_memoized_per_generation() {
 
 #[test]
 fn embeddings_cache_invalidates_when_the_semantic_epoch_advances() {
-    // rag-control-plane P03.S19: the embedding vector cache is keyed on the
-    // semantic freshness epoch. An unchanged epoch serves the cached vector
+    // The embedding vector cache is keyed on the semantic freshness epoch.
+    // An unchanged epoch serves the cached vector
     // map (no Qdrant re-scroll); an advanced epoch (a completed reindex)
     // invalidates it, forcing a re-read. This is the semantic analog of the
     // generation-keyed projection caches.
@@ -491,9 +490,9 @@ fn embeddings_cache_invalidates_when_the_semantic_epoch_advances() {
 
 #[test]
 fn each_scope_cell_owns_an_independent_delta_clock() {
-    // W02.P03/P04: two warm cells must NOT share a delta clock — a rebuild
-    // on one advances only its own seq, so per-scope `since=` resume stays
-    // correct and independent.
+    // Two warm cells must NOT share a delta clock — a rebuild on one
+    // advances only its own seq, so per-scope `since=` resume stays correct
+    // and independent.
     let (_dir, state) = fixture_state();
     let active = state.active_cell();
     active.rebuild_and_swap().unwrap();

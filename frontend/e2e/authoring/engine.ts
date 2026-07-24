@@ -1,4 +1,4 @@
-// Authoring e2e engine harness (W14.P42 S207/S208): spawns a REAL `vaultspec
+// Authoring e2e engine harness: spawns a REAL `vaultspec
 // serve` binary — never a mock — scoped to its own scratch git worktree, so the
 // restart/replay/reconnect and security-negative scenarios in `authoring.spec.ts`
 // exercise the genuine wire end to end without touching the shared main
@@ -10,7 +10,7 @@
 // addition this suite needs that the vitest harness does not: `restartEngine`,
 // which kills the process and respawns it against the SAME scratch directory so
 // the durable authoring store (`.vault/data/authoring-state/`) is proven to
-// survive a genuine backend restart — the S208 scenario this harness exists for.
+// survive a genuine backend restart — the scenario this harness exists for.
 //
 // Port choice: an OS-assigned free port, not a pinned `dev-ports.ts` entry. The
 // dev-ports rule reserves the ephemeral-port exception for exactly this shape of
@@ -266,7 +266,7 @@ async function killProcess(proc: ChildProcess): Promise<void> {
   }
 }
 
-/** S208 — kill the running engine and respawn it against the SAME scratch
+/** Kill the running engine and respawn it against the SAME scratch
  *  worktree (a fresh port + a freshly-rotated service token, exactly like a real
  *  process restart), proving the durable authoring store on disk survives. */
 export async function restartEngine(

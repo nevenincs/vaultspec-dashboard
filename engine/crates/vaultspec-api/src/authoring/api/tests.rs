@@ -40,7 +40,7 @@ fn route_fixtures_cover_every_family_with_versioned_authoring_paths() {
         );
         assert_eq!(
             fixture.idempotency_required, fixture.mutating,
-            "only mutating fixtures require idempotency in W01.P04: {fixture:?}"
+            "only mutating fixtures require idempotency: {fixture:?}"
         );
     }
 }

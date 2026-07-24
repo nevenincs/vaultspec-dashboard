@@ -445,7 +445,7 @@ fn staged_multi_document_statuses_are_reserved_and_unreachable() {
 
 #[test]
 fn plan_step_tick_source_is_rollback_eligible_by_the_opposite_state_inverse() {
-    // W04.P09.S33: a SetPlanStepState source is now INVERTIBLE — the inverse
+    // A SetPlanStepState source is now INVERTIBLE — the inverse
     // is the OPPOSITE set-plan-step-state against the same step (built in
     // `rollback.rs`), never the whole-document preimage restore that would
     // clobber concurrent step edits. This guard locks the new invariant:
@@ -584,7 +584,7 @@ fn rollback_is_a_new_changeset_and_source_status_is_not_rewritten() {
 
 #[test]
 fn policy_requeue_arc_is_declared_and_gated_to_system_over_approved() {
-    // P48-R1: the Approved→NeedsReview kill-switch arc is DECLARED in the append
+    // The Approved→NeedsReview kill-switch arc is DECLARED in the append
     // vocabulary (so it is not a synthetic 2-hop leaking undeclared arcs).
     assert!(append_allows_status_transition(
         ChangesetKind::Authoring,

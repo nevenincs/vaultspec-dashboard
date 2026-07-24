@@ -1,5 +1,5 @@
 /**
- * Style Dictionary build for the vaultspec-dashboard color framework (plan W01.P02/P03).
+ * Style Dictionary build for the vaultspec-dashboard color framework.
  *
  * Canonical source: the DTCG token files under `tokens/`. This build regenerates the
  * COLOR portion of `src/styles.css` in place, inside two generator-managed marker regions
@@ -139,7 +139,7 @@ export async function generateRegions(): Promise<{ colors: string; themes: strin
 }
 
 /* ---------------------------------------------------------------------------
-   NON-COLOR FOUNDATION (figma-parity-reconciliation W01.P01.S05).
+   NON-COLOR FOUNDATION.
 
    The Figma-binding type, radius, elevation, and spacing families are authored as
    DTCG under tokens/{type,radius,elevation,spacing}.tokens.json and generated into a
@@ -155,8 +155,8 @@ export async function generateRegions(): Promise<{ colors: string; themes: strin
      --shadow-fg-<level>
      --spacing-fg-<step>
    The legacy --text-* / --radius-vs-* / --shadow-* / --spacing-vs-* names remain
-   hand-authored as deprecated aliases onto these (S08-S10) until the W02/W03 rewrite
-   cuts usages over and W04 removes the aliases.
+   hand-authored as deprecated aliases onto these until the rewrite
+   cuts usages over and removes the aliases.
    --------------------------------------------------------------------------- */
 
 type NonColorLeaf = { path: string[]; value: string | number };

@@ -1,13 +1,13 @@
 //! Engine-owned persistence: a single-file embedded SQLite store under
-//! `.vault/data/engine-data/` (engine-spec §8).
+//! `.vault/data/engine-data/`.
 //!
 //! Persistence is cache, not truth: it holds derived artifacts keyed by
 //! input content hashes, the temporal event log, and the semantic TTL
-//! cache. Deleting it loses nothing but warm-up time (D8.1);
+//! cache. Deleting it loses nothing but warm-up time;
 //! `vaultspec index --full` from a deleted cache must converge to the
-//! identical graph (D8.2).
+//! identical graph.
 //!
-//! Concurrency model (engine-spec §8): **single-writer, many concurrent
+//! Concurrency model: **single-writer, many concurrent
 //! readers** — the rag posture, kept. [`Store`] is the one writer (owns a
 //! read-write connection; `rusqlite::Connection` is `!Sync`, so the type
 //! system already prevents shared mutable use); any number of
@@ -68,8 +68,8 @@ pub enum StoreError {
     Io(#[from] std::io::Error),
     #[error("unsupported schema version {found} (engine supports {supported})")]
     SchemaVersion { found: i64, supported: i64 },
-    /// Corrupt `node_ids` payload in the event log — loud, never silent
-    /// (audit W01P01-002): the field is the timeline↔stage join key.
+    /// Corrupt `node_ids` payload in the event log — loud, never silent:
+    /// the field is the timeline↔stage join key.
     #[error("corrupt event row seq {seq}: {detail}")]
     CorruptEventRow { seq: i64, detail: String },
 }
@@ -128,7 +128,7 @@ pub struct EventRow {
     pub git_ref: String,
     pub node_ids: Vec<String>,
     /// How many correlated code-artifact ids were dropped by the wire
-    /// bound (contract §5, addendum S05). Set by the live `commit_rows`
+    /// bound (contract §5). Set by the live `commit_rows`
     /// path, which both front doors use. The persisted-event read path
     /// (`events_in_range*`) is NOT bound-aware and is currently off-wire
     /// (no serve/CLI caller); it reports 0. Anyone wiring the persisted log
@@ -188,11 +188,11 @@ impl Store {
 
     /// Open the canonical store, self-healing a corrupt or unopenable cache.
     ///
-    /// The cache is pure, deletable, fully re-derivable (D8.1): a corrupt
+    /// The cache is pure, deletable, fully re-derivable: a corrupt
     /// `engine.sqlite3` (e.g. a stale WAL after a hard kill) must NOT take the
     /// service down at boot. On an open/corruption failure this deletes the
     /// database file and its WAL/SHM siblings once and recreates the schema.
-    /// A schema-version mismatch is *intentionally* fail-loud (D5.1) and is
+    /// A schema-version mismatch is *intentionally* fail-loud and is
     /// NOT healed — it propagates unchanged. If the recreate also fails the
     /// error propagates and the caller may still choose to abort.
     pub fn open_or_heal(vault_root: &Path) -> Result<Self> {
@@ -250,8 +250,7 @@ impl Store {
             SCHEMA_VERSION => {}
             other => {
                 // Cache, not truth: an unknown version could simply be
-                // rebuilt, but failing loud keeps the operator informed
-                // (D5.1 posture applied to our own artifacts).
+                // rebuilt, but failing loud keeps the operator informed.
                 return Err(StoreError::SchemaVersion {
                     found: other,
                     supported: SCHEMA_VERSION,
@@ -297,7 +296,7 @@ impl Store {
     /// mints a fresh, fat payload (megabytes) under a new `input_hash` on every
     /// HEAD change and never replaced the old one — an unbounded leak (observed
     /// in the field at 34 generations / 166 MB for a ~740-doc corpus). The cache
-    /// is pure and re-derivable (D8.1), so evicting an old generation costs only
+    /// is pure and re-derivable, so evicting an old generation costs only
     /// warm-up if a past state is revisited. Returns the number of rows removed.
     pub fn prune_artifacts_keep_newest(&self, kind: &str, keep_newest: usize) -> Result<usize> {
         let n = self.conn.execute(
@@ -504,7 +503,7 @@ fn events_in_range(conn: &Connection, from_ts: i64, to_ts: i64) -> Result<Vec<Ev
     let mut out = Vec::new();
     for row in rows {
         let (seq, ts, kind, git_ref, node_ids_json) = row?;
-        // Corrupt node_ids is a loud, typed error (audit W01P01-002).
+        // Corrupt node_ids is a loud, typed error.
         let node_ids = Store::decode_node_ids(seq, &node_ids_json)?;
         out.push(EventRow {
             seq,
@@ -758,7 +757,7 @@ mod tests {
 
     #[test]
     fn prune_then_reclaim_shrinks_the_db_file() {
-        // P01.S03 (reproduce) + B5 (fix): a `DELETE` alone frees pages only
+        // A `DELETE` alone frees pages only
         // logically; with `auto_vacuum=INCREMENTAL` (set in `open_at`),
         // `reclaim()` returns those pages to the OS so the file actually shrinks.
         // Proves the 100s-of-MB cache cannot stay inflated after eviction.

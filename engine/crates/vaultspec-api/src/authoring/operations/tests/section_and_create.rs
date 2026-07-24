@@ -157,7 +157,7 @@ fn section_edit_materialized_operation_round_trips_including_the_section_edit_pa
     assert!(recovered.rename_edit.is_none());
 }
 
-// --- W02.P05: CreateDocument validation + materialization --------------
+// --- CreateDocument validation + materialization --------------
 
 const CREATE_FIXED_CREATED_AT_MS: i64 = 1_768_435_200_000; // 2026-01-15T00:00:00Z
 const CREATE_FIXED_DATE: &str = "2026-01-15";

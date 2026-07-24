@@ -198,10 +198,8 @@ fn scope_fence_accepts_the_same_canonical_token_the_routes_serve() {
 
     #[cfg(windows)]
     assert_eq!(
-        crate::routes::scope_token(std::path::Path::new(
-            r"\\?\Y:\code\vaultspec-dashboard-worktrees\cold"
-        )),
-        "Y:/code/vaultspec-dashboard-worktrees/cold"
+        crate::routes::scope_token(std::path::Path::new(r"\\?\C:\work\project\cold")),
+        "C:/work/project/cold"
     );
 }
 
@@ -607,7 +605,7 @@ fn percent_encode_escapes_path_separators_and_drive_colon() {
 
 #[test]
 fn http_business_refusal_forwards_verbatim_with_sibling_status() {
-    // ADR D1: a 4xx the sibling ANSWERS is a business refusal forwarded
+    // A 4xx the sibling ANSWERS is a business refusal forwarded
     // verbatim at 200 with its sibling_status — the sibling is up, tiers stay
     // healthy. This is the a2a analog of the rag write runner's exit-1
     // status:"failed" forward.

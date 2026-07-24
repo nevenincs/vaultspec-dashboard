@@ -1,4 +1,4 @@
-// Unit tests for the document copy-link verb (authoring-surface ADR D3). The builder
+// Unit tests for the document copy-link verb. The builder
 // is a pure function of its options — no DOM, no store — so it is asserted directly:
 // the wiki-link format (the app's only navigable document reference), the single
 // shared id, the runnable (never dispatch) shape so it is valid on both the menu and

@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import type { TiersBlock } from "../engine";

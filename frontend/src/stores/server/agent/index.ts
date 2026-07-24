@@ -194,8 +194,8 @@ export class AgentClient {
   }
 
   /** `GET /authoring/v1/runs/{run_id}/interrupts` — the bounded, raise-order pending
-   *  interrupt listing for a run (agent-wire-gaps D3). The SERVED recovery read that
-   *  replaces the client-staged interrupt annex: a client reads its pending
+   *  interrupt listing for a run. The SERVED recovery read that replaces the
+   *  client-staged interrupt annex: a client reads its pending
    *  `awaiting_permission` interrupts (and their typed decision projections) back from
    *  here instead of retaining the tool-execute response. */
   async listRunInterrupts(
@@ -240,8 +240,8 @@ export class AgentClient {
   }
 
   /** `POST /authoring/v1/feedback-batches` — freeze the reviewer's chosen comments
-   *  into an immutable engine feedback batch (feedback-loop ADR D4). Dual-auth like
-   *  every authoring command (machine bearer + the ambient actor token; the author
+   *  into an immutable engine feedback batch. Dual-auth like every authoring
+   *  command (machine bearer + the ambient actor token; the author
    *  is the server-resolved principal). Returns the content-addressed
    *  `{batch_id, digest}`; the next turn carries the `batch_id`. */
   async createFeedbackBatch(
@@ -274,10 +274,10 @@ export class AgentClient {
     );
   }
 
-  /** `POST /authoring/v1/sessions/{id}/cancel` — explicitly END the conversation
-   *  (agent-wire-gaps D2, S45): cancels the active run, voids queued turns, and marks
-   *  the session cancelled. Distinct from the run-scoped `cancelRun` (Stop), which
-   *  leaves the session active. */
+  /** `POST /authoring/v1/sessions/{id}/cancel` — explicitly END the conversation:
+   *  cancels the active run, voids queued turns, and marks the session cancelled.
+   *  Distinct from the run-scoped `cancelRun` (Stop), which leaves the session
+   *  active. */
   async cancelSession(
     sessionId: string,
     payload: CancelSessionPayload,
@@ -293,9 +293,9 @@ export class AgentClient {
     );
   }
 
-  /** `POST /authoring/v1/runs/{id}/complete` — the driver-reported run settle
-   *  (agent-wire-gaps D1, S61): transitions the run to its terminal state and emits
-   *  `run.completed`, which the lifecycle feed consumes to render Done/Failed and to
+  /** `POST /authoring/v1/runs/{id}/complete` — the driver-reported run settle:
+   *  transitions the run to its terminal state and emits `run.completed`, which
+   *  the lifecycle feed consumes to render Done/Failed and to
    *  promote the next queued turn. Without this call a client-driven run never
    *  completes. `completed` carries no failure_reason; `failed` requires one. */
   async completeRun(
@@ -509,9 +509,9 @@ export function useAgentToolCatalog(): UseQueryResult<AgentToolCatalog, Error> {
   });
 }
 
-/** The bounded pending-interrupt listing for a run (agent-wire-gaps D3, S41): the
- *  SERVED recovery read the transcript's Approve/Deny surface consumes instead of a
- *  client-staged annex. Enabled only for a live run; the shared lifecycle feed
+/** The bounded pending-interrupt listing for a run: the SERVED recovery read the
+ *  transcript's Approve/Deny surface consumes instead of a client-staged annex.
+ *  Enabled only for a live run; the shared lifecycle feed
  *  invalidates the agent caches so a newly-parked run refreshes without a poll. */
 export function useRunInterrupts(
   runId: string | null,
@@ -526,7 +526,7 @@ export function useRunInterrupts(
   });
 }
 
-// The operation-mode read lives in ONE home (S43): the authoring store's
+// The operation-mode read lives in ONE home: the authoring store's
 // `useAuthoringOperationMode`, consumed by `useReviewStationView` for the autonomy
 // control's pre-proposal fallback. It was consolidated OUT of this slice (no agent
 // surface reads it) to avoid a duplicate hook against the same route.
@@ -554,8 +554,8 @@ export function useStartTurn() {
 }
 
 /** Freeze the composer's staged comments into an engine feedback batch, returning
- *  its content-addressed id for the turn to carry (feedback-loop ADR D4). Does not
- *  invalidate the session caches — a batch is immutable and not a session event. */
+ *  its content-addressed id for the turn to carry. Does not invalidate the
+ *  session caches — a batch is immutable and not a session event. */
 export function useCreateFeedbackBatch() {
   return useMutation({
     mutationFn: async (payload: CreateFeedbackBatchPayload) =>
@@ -576,8 +576,8 @@ export function useCancelRun() {
   });
 }
 
-/** Explicitly END the conversation (S45): cancel the active run, void queued turns,
- *  and mark the session cancelled. Distinct from Stop (`useCancelRun`), which is
+/** Explicitly END the conversation: cancel the active run, void queued turns, and
+ *  mark the session cancelled. Distinct from Stop (`useCancelRun`), which is
  *  run-scoped and leaves the session active. */
 export function useCancelSession() {
   return useMutation({
@@ -589,7 +589,7 @@ export function useCancelSession() {
   });
 }
 
-/** Report a run's terminal settle (S61): the driver calls this on finish so
+/** Report a run's terminal settle: the driver calls this on finish so
  *  `run.completed` fires and the run transitions to Done/Failed. */
 export function useCompleteRun() {
   return useMutation({
@@ -649,7 +649,7 @@ export function useDecideToolPermission() {
  *  session/run transition appears without a poll. */
 const AGENT_LIFECYCLE_AGGREGATES: ReadonlySet<string> = new Set(["session", "run"]);
 
-/** The specific TURN-aggregate event kinds the agent slice reacts to (S37). We do
+/** The specific TURN-aggregate event kinds the agent slice reacts to. We do
  *  NOT widen `AGENT_LIFECYCLE_AGGREGATES` to include the whole `turn` aggregate —
  *  that would push every turn-aggregate event to every consumer of this predicate
  *  (which none of them handle). Only `turn.queued` changes a session snapshot's
@@ -668,7 +668,7 @@ const TERMINAL_RUN_EVENT_KINDS: ReadonlySet<string> = new Set([
   "run.failed",
 ]);
 
-/** The SESSION lifecycle event kinds that terminate a session (S37): an explicit
+/** The SESSION lifecycle event kinds that terminate a session: an explicit
  *  `session.cancelled` is the session's last state change, so — like a terminal run —
  *  it must reach inactive caches to land the cancelled snapshot even behind a
  *  collapsed panel. */
@@ -678,7 +678,7 @@ const TERMINAL_SESSION_EVENT_KINDS: ReadonlySet<string> = new Set([
 
 /** True when a shared-feed lifecycle event belongs to the agent plane and this slice
  *  should refresh for it: a session or run aggregate event, OR the specific
- *  `turn.queued` kind (S37) that changes served queue state. */
+ *  `turn.queued` kind that changes served queue state. */
 export function isAgentLifecycleEvent(event: AuthoringLifecycleEvent): boolean {
   return (
     AGENT_LIFECYCLE_AGGREGATES.has(event.aggregate_kind) ||

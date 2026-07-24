@@ -1,5 +1,5 @@
-// Keyframe + delta replay on the single sequence clock (W01.P02.S06, ADR
-// G4.b; contract: keyframe + diff committed, REDLINE-3 single delta clock).
+// Keyframe + delta replay on the single sequence clock (contract: keyframe +
+// diff committed, REDLINE-3 single delta clock).
 //
 // The client holds a keyframe (a full snapshot from the asof endpoint) plus
 // an ordered delta log (diff entries and live `graph` SSE events share one

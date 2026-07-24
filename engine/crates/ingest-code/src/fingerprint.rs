@@ -1,4 +1,4 @@
-//! Source-tree fingerprint (codebase-graphing ADR D6): the extraction cache
+//! Source-tree fingerprint: the extraction cache
 //! key, mirroring the vault's `worktree_corpus_fingerprint` discipline in a
 //! DISTINCT key space (a code fingerprint can never collide into the vault
 //! fold's cache).
@@ -6,8 +6,8 @@
 //! Composition: `(rel_path, len, mtime_ms)` per walked file, in the walk's
 //! deterministic order. Length+mtime rather than content bytes is the
 //! build-system-standard fast key: checking it costs one directory walk, not a
-//! full re-read of every source file. The accepted trade-off (recorded in ADR
-//! D6): an editor that rewrites a file preserving BOTH size and mtime would
+//! full re-read of every source file. The accepted trade-off: an editor that
+//! rewrites a file preserving BOTH size and mtime would
 //! false-hit — tooling-standard behavior (make, cargo) and vanishingly rare in
 //! practice; content hashes still ride each node's facet for exact provenance.
 

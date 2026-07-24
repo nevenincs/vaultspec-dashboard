@@ -1,4 +1,4 @@
-// Relate/link dispatch effect (ledgered-edit-migration W03.P10) — the
+// Relate/link dispatch effect — the
 // read-modify-write REQUEST side. Spies `engineClient.content` (the read) and
 // `authoringClient.directWrite` (the write) to CAPTURE the outgoing requests
 // and return fixtures shaped like the live wire — the same "REQUEST-side"

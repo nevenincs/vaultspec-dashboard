@@ -1,4 +1,4 @@
-// Live graph sync (ADR D3 / constellation-live-delta S06): subscribe the live
+// Live graph sync: subscribe the live
 // `graph` SSE channel, drive targeted cache invalidation of the constellation,
 // and — when keyframeSeq is supplied — extract feature-granularity deltas for
 // direct `apply-deltas` scene splice (the no-refetch delta-apply path). Gap
@@ -40,24 +40,24 @@ import { normalizeStoreScope } from "./scopeIdentity";
 
 const normalizeGraphSliceScope = normalizeStoreScope;
 
-/** Collapse a delta burst into one trailing constellation refetch (P-HIGH-1). */
+/** Collapse a delta burst into one trailing constellation refetch. */
 const GRAPH_INVALIDATE_DEBOUNCE_MS = 150;
 export const GRAPH_FEATURE_DELTAS_CAP = 128;
 export const GRAPH_LIVE_GAP_COUNT_MAX = 1_000_000;
 
-/** The D1 refetch-storm floor (graph-slice-delta ADR): under sustained corpus churn,
- *  the FALLBACK full-sweep is spaced at least this far apart (trailing-edge, so the
- *  final state always lands). ~15s balances staleness against the storm ceiling; the
- *  D4 delta path is exempt (it is cheap by construction). */
+/** The refetch-storm floor: under sustained corpus churn, the FALLBACK full-sweep
+ *  is spaced at least this far apart (trailing-edge, so the final state always
+ *  lands). ~15s balances staleness against the storm ceiling; the delta path is
+ *  exempt (it is cheap by construction). */
 export const GRAPH_REFETCH_COOLDOWN_MS = 15_000;
 
-/** Bounded poll cadence (ms) while a held slice's tiers report a tier mid-build
- *  (graph-slice-delta ADR): re-read the tiers through the DELTA path (sub-KB) on this
+/** Bounded poll cadence (ms) while a held slice's tiers report a tier mid-build:
+ *  re-read the tiers through the DELTA path (sub-KB) on this
  *  interval instead of the old full-slice `refetchInterval` that perpetually re-pulled
  *  ~3.5 MB on a corpus under continuous edit. Stops the moment the tier flips ready. */
 export const GRAPH_BUILDING_REFETCH_MS = 4_000;
 
-/** Merge an id-keyed graph-slice delta onto a held slice (graph-slice-delta ADR D4):
+/** Merge an id-keyed graph-slice delta onto a held slice:
  *  drop `removed`, replace/insert `changed`, at the new generation. The scene keys by
  *  node/edge id (object constancy via `prewarmReflow` on the existing set-data path),
  *  so within-slice order is irrelevant — survivors keep their order and changed rows
@@ -93,7 +93,7 @@ export function mergeGraphSliceDelta(
   };
 }
 
-/** The reconcile decision (ADR D4), PURE so every branch is deterministic: `patch` a
+/** The reconcile decision, PURE so every branch is deterministic: `patch` a
  *  held slice from the delta; `full-drain` on `full_required` OR a delta touching more
  *  than half the held NODE set (guard #3 — a large delta is not worth patching);
  *  `noop` when the generation is unchanged AND the building-tier state is unchanged.
@@ -121,7 +121,7 @@ export function planGraphSliceReconcile(
 
 /**
  * Reconcile every ACTIVE present-view document graph slice for `scope` from the
- * generation-keyed delta (ADR D4), patching each via the SHARED identity guard
+ * generation-keyed delta, patching each via the SHARED identity guard
  * (`applyRowReconcile`). The delta body is reconstructed from the query key (the
  * request identity, by TanStack law: `[…, "graph", scope, filterKey, asOf,
  * granularity, lens, focus, corpus]`) plus the held slice's echoed `filter` and its
@@ -189,7 +189,7 @@ export async function reconcileGraphSlice(
   if (needsSweep) sweep(scope);
 }
 
-/** The D1 graph-only floored fallback sweep (graph-slice-delta ADR), as a reusable
+/** The graph-only floored fallback sweep, as a reusable
  *  hook: a memoized trailing-throttled invalidation of ONLY the `graph` subtree for a
  *  scope, spaced at least `GRAPH_REFETCH_COOLDOWN_MS` apart so a corpus under sustained
  *  edit cannot storm full ~3.5 MB refetches. Cancels its pending trailing call on
@@ -211,7 +211,7 @@ function useGraphSliceFloorSweep(): Debounced<[string]> {
 }
 
 /**
- * Building-tier poll (graph-slice-delta ADR): while a held graph slice reports a tier
+ * Building-tier poll: while a held graph slice reports a tier
  * mid-build, re-read the tiers on the `GRAPH_BUILDING_REFETCH_MS` cadence through the
  * SAME graph-slice DELTA path (`reconcileGraphSlice`) — a sub-KB round-trip whose fresh
  * tiers flip the "Still loading links…" banner and whose fold-completion edge splice
@@ -221,7 +221,7 @@ function useGraphSliceFloorSweep(): Debounced<[string]> {
  * `deltaEligible` mirrors `reconcileGraphSlice`'s guard #2 (present-view document-vault
  * only): an eligible building slice re-reads via the sub-KB delta; a non-eligible one
  * (the feature constellation, the code corpus, an as-of read) degrades through the
- * graph-only floored sweep directly — the D1 floor turns its full re-pull into at most
+ * graph-only floored sweep directly — the floor turns its full re-pull into at most
  * one per `GRAPH_REFETCH_COOLDOWN_MS`. (`reconcileGraphSlice` intentionally SKIPS
  * non-eligible observers without sweeping — a document delta must not stale the feature
  * constellation — so the poll must route them to the sweep itself.) The poll is bounded
@@ -393,7 +393,7 @@ export function maxSeq(chunks: readonly StreamChunk[] | undefined): number | nul
  * Drive LIVE-mode reactivity from the `graph` stream.
  *
  * Mount in Stage in LIVE mode only (the time-travel driver owns the scene
- * otherwise). When `keyframeSeq` is supplied (constellation-live-delta S06),
+ * otherwise). When `keyframeSeq` is supplied,
  * the subscription anchors at `since=keyframeSeq` so only new deltas arrive;
  * the hook extracts `granularity=feature` entries and returns them as
  * `featureDeltas` for direct `apply-deltas` splicing. A seq discontinuity
@@ -426,7 +426,7 @@ export function useGraphLiveSync(
   // cached data). Stable during the session — TanStack retries on error ride
   // the same key; the streamReducer dedup handles any replay overlap.
   const sinceArg = normalizedKeyframeSeq === null ? undefined : normalizedKeyframeSeq;
-  // Subscribe against THIS scope's own clock (W02.P04.S14 per-scope stream):
+  // Subscribe against THIS scope's own clock (per-scope stream):
   // pass the active scope so `since=` resume stays correct and independent per
   // worktree, and so two scopes' streams never share a cache entry.
   const scopeArg = normalizedScope ?? undefined;
@@ -439,7 +439,7 @@ export function useGraphLiveSync(
 
   // A gap / re-keyframe stales the WHOLE generation: sweep every graph-derived read
   // (including the graph slice itself) on a trailing debounce so a burst collapses to
-  // one refetch instead of one per delta (P-HIGH-1).
+  // one refetch instead of one per delta.
   const invalidateConstellation = useMemo(
     () =>
       debounce((scopeArg: string) => {
@@ -451,9 +451,9 @@ export function useGraphLiveSync(
 
   // A document-granularity delta keeps the open editor, the vault/code tree, the
   // filter facets, and the selected node's projections fresh on an external re-ingest
-  // (W03.P04.S10) — on the same trailing debounce — WITHOUT dragging the ~3.5 MB graph
-  // slice back over the wire. That slice is delta-patched (D4) below, or drained on
-  // its own D1 floor on degradation. Only the graph subtree changes treatment; every
+  // — on the same trailing debounce — WITHOUT dragging the ~3.5 MB graph
+  // slice back over the wire. That slice is delta-patched below, or drained on
+  // its own floor on degradation. Only the graph subtree changes treatment; every
   // sibling's freshness is preserved.
   const refreshGenerationSiblings = useMemo(
     () =>
@@ -467,7 +467,7 @@ export function useGraphLiveSync(
     [refreshGenerationSiblings],
   );
 
-  // The D1 floored FALLBACK sweep (graph-slice-delta ADR): when the document-slice
+  // The floored FALLBACK sweep: when the document-slice
   // delta can't patch, drain ONLY the graph subtree, rate-floored. Shared with the
   // building poll below.
   const graphSliceFloorSweep = useGraphSliceFloorSweep();
@@ -523,7 +523,7 @@ export function useGraphLiveSync(
     // [] on a refetch, so an array shorter than what we have already consumed
     // means the stream reset. Re-consume from the rebuilt head and re-anchor
     // gap detection — else every post-reconnect delta is silently dropped, the
-    // invalidation never fires, and the re-keyframe fallback dies (review HIGH-1).
+    // invalidation never fires, and the re-keyframe fallback dies.
     const wasReconnect = chunks.length < processedRef.current;
     if (wasReconnect) {
       processedRef.current = 0;
@@ -595,9 +595,9 @@ export function useGraphLiveSync(
     // `apply-deltas` with no refetch. A gap forces the resilient re-keyframe floor
     // (the debounced FULL sweep, unchanged). A document-granularity delta (or a chunk
     // with nothing spliceable) refreshes the generation SIBLINGS on the debounce (so
-    // the open editor / tree / facets re-read an external re-ingest, W03.P04.S10) and
-    // attempts the DOCUMENT-SLICE delta (graph-slice-delta ADR D4) — patching the held
-    // ~3.5 MB slice through the existing set-data path — falling back to the D1-floored
+    // the open editor / tree / facets re-read an external re-ingest) and
+    // attempts the DOCUMENT-SLICE delta — patching the held
+    // ~3.5 MB slice through the existing set-data path — falling back to the floored
     // graph-only drain only when the delta can't apply. The feature constellation is
     // left to its own feature-delta splice; a document delta does not stale it.
     if (gapDetected) {

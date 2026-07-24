@@ -16,4 +16,4 @@ All three steps closed. The README carries an honest Install section (GitHub Rel
 
 ## Description
 
-Commits: S20 `f4e7f56e4c`; S21/S22 findings persisted in `4c226cc9a1` from a dispatched researcher (web-verified against microsoft/winget-pkgs docs, the winget validation reference, signpath.org terms, and the SignPath GitHub integration docs). Both records carry the repo-identity caveat: winget manifests and a SignPath application must point at the real public release location, so the wgergely-vs-nevenincs discrepancy has to be settled first.
+Commits: S20 `f4e7f56e4c`; S21/S22 findings persisted in `4c226cc9a1` from a dispatched researcher (web-verified against microsoft/winget-pkgs docs, the winget validation reference, signpath.org terms, and the SignPath GitHub integration docs). Both records carry the repo-identity caveat: winget manifests and a SignPath application must point at the real public release location, so the stale-handle-vs-nevenincs discrepancy has to be settled first.

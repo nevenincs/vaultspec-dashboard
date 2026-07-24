@@ -1,4 +1,4 @@
-// The Agent panel transcript (ADR D3, Figma frame 1223:4518): the session's
+// The Agent panel transcript (Figma frame 1223:4518): the session's
 // turns in FIXED order — user prompt → thinking → tool calls (with the inline
 // permission prompt) → final text → run status → proposal-card slot — assembled
 // by the pure `assembleTranscript` reconciler from the durable session snapshot
@@ -15,7 +15,7 @@
 // carries one. Settled turns collapse transient running chrome to the terminal
 // served status only.
 //
-// TEAM runs are the exception: the a2a relay channel (a2a ADR D3) that carries
+// TEAM runs are the exception: the a2a relay channel that carries
 // reasoning / tool calls / final text now exists end-to-end, and `TeamRunTranscript`
 // renders it as live collapsible activity — mounted beside this single-agent
 // transcript by `AgentPanel`, not through this reconciler.
@@ -209,8 +209,8 @@ function TranscriptTurn({ view }: { view: TranscriptTurnView }) {
       {/* Final text: no wire surface serves the agent's message yet (a2a relay
           gap) — the position stays honestly empty rather than faking output. */}
       <TurnStatusLine view={view} />
-      {/* S16/S42 proposal-card slot: the inline proposal card mounts here bound to
-          THIS turn's run by the served `run_id` (ADR D5). Per-turn now — each turn
+      {/* Proposal-card slot: the inline proposal card mounts here bound to
+          THIS turn's run by the served `run_id`. Per-turn now — each turn
           shows only the proposal its own run produced (an exact bind, not the former
           latest-turn heuristic); the slot stays empty until that run's proposal
           resolves. `AgentTurnProposal` reads the shared review-queue store. */}

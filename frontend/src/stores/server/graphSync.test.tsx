@@ -156,7 +156,7 @@ describe("useGraphLiveSync", () => {
     resetGraphLiveDeltaState();
   });
 
-  it("advances lastSeq + marks connected immediately, and debounces the document-delta SIBLING refresh to one trailing sweep, leaving the graph slice to its delta (P-HIGH-1 / graph-slice-delta D4)", () => {
+  it("advances lastSeq + marks connected immediately, and debounces the document-delta SIBLING refresh to one trailing sweep, leaving the graph slice to its delta", () => {
     vi.useFakeTimers();
     try {
       const client = new QueryClient();
@@ -165,7 +165,7 @@ describe("useGraphLiveSync", () => {
         { channel: "graph", data: { seq: 6, op: "change" } },
       ];
       // Seed the stream query (staleTime Infinity => useQuery returns it, no fetch).
-      // Scope folds into the stream key (W02.P04.S14 per-scope clock), so the seed
+      // Scope folds into the stream key (per-scope clock), so the seed
       // must carry the same scope the active hook subscribes with.
       client.setQueryData(engineKeys.stream(["graph"], undefined, "scopeA"), chunks);
       const invalidate = vi.spyOn(client, "invalidateQueries");
@@ -180,8 +180,8 @@ describe("useGraphLiveSync", () => {
       vi.advanceTimersByTime(150);
       // ONE coalesced trailing SIBLING refresh per burst: every generation-keyed
       // projection re-reads the fresh generation (the open editor / tree / facets /
-      // node, W03.P04.S10) EXCEPT the ~3.5 MB graph document slice, which the
-      // graph-slice delta patches instead of refetching (graph-slice-delta ADR D4).
+      // node) EXCEPT the ~3.5 MB graph document slice, which the
+      // graph-slice delta patches instead of refetching.
       // With no active graph observer mounted here, the graph subtree is never
       // invalidated.
       expect(invalidate).not.toHaveBeenCalledWith(
@@ -228,7 +228,7 @@ describe("useGraphLiveSync", () => {
     expect(useLiveStatusStore.getState().streamConnected).toBeNull();
   });
 
-  // --- spliceLive path (constellation-live-delta S06/S07) ---
+  // --- spliceLive path ---
 
   it("since=keyframeSeq produces a different stream cache key from no-since", () => {
     const keyWithSince = engineKeys.stream(["graph"], 42);
@@ -238,7 +238,7 @@ describe("useGraphLiveSync", () => {
     expect(keyWithSince).not.toEqual(keyNoSince);
     expect(Array.isArray(keyWithSince)).toBe(true);
     expect(Array.isArray(keyNoSince)).toBe(true);
-    // Scope is part of the stream identity too (W02.P04.S14 per-scope clock):
+    // Scope is part of the stream identity too (per-scope clock):
     // two scopes' streams carry different deltas and must not share a cache
     // entry. Absent scope folds to the "active" sentinel, distinct from a named
     // scope.
@@ -497,7 +497,7 @@ describe("useGraphLiveSync", () => {
     expect(result.current.featureDeltas).toHaveLength(1);
   });
 
-  it("re-extracts deltas after a stream reconnect resets the chunk array (HIGH-1)", async () => {
+  it("re-extracts deltas after a stream reconnect resets the chunk array", async () => {
     const client = new QueryClient();
     const key = engineKeys.stream(["graph"], 10, "scopeA");
     const fc = (seq: number): StreamChunk => ({
@@ -579,7 +579,7 @@ describe("useGraphLiveSync", () => {
     await waitFor(() => expect(result.current.gapCount).toBe(1), ENGINE_WAIT);
   });
 
-  it("does NOT refetch the constellation for a clean feature-only batch (MED-1)", () => {
+  it("does NOT refetch the constellation for a clean feature-only batch", () => {
     vi.useFakeTimers();
     try {
       const client = new QueryClient();
@@ -728,7 +728,7 @@ describe("useGraphSliceBuildingReconcilePoll (building-tier delta poll — graph
 
       await vi.advanceTimersByTimeAsync(GRAPH_BUILDING_REFETCH_MS);
       // No delta attempted; the floored sweep fires its leading edge on the graph
-      // subtree only (the D1 floor bounds a non-eligible full re-pull to ≤1/cooldown).
+      // subtree only (the floor bounds a non-eligible full re-pull to ≤1/cooldown).
       expect(deltaCalls).toBe(0);
       expect(invalidate).toHaveBeenCalledWith(
         expect.objectContaining({

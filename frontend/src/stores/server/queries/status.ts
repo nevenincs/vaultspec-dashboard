@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import {
@@ -12,7 +12,7 @@ import { isRagRunning } from "../liveAdapters";
 import { useEngineStatus } from "./internal";
 import type { MessageDescriptor } from "../../../platform/localization/message";
 
-// --- git working-tree state (git-diff-browser ADR) -----------------------------------
+// --- git working-tree state -----------------------------------------------------------
 //
 // The git diff browser is app chrome; it consumes git state through these stores
 // selectors and NEVER reads the raw `tiers` block (dashboard-layer-ownership). The
@@ -150,15 +150,15 @@ export function useCoreStatus(): CoreStatusView {
   return deriveCoreStatusView(status.data, status.error, status.isPending);
 }
 
-// --- rag service status (dashboard-rag-manager ADR) ----------------------------------
+// --- rag service status ----------------------------------------------------------------
 //
 // The rag rollup is app chrome; it reads rag readiness through this stores
 // selector and NEVER inspects `status.rag` or the raw `tiers` block directly
-// (dashboard-layer-ownership / rag-manager ADR "Reads status truth via stores").
+// (dashboard-layer-ownership: reads status truth via stores).
 // The `/status` snapshot carries `rag: { service, watcher?, index?, jobs? }` plus
-// the wire `tiers` block. Per the rag-manager ADR, rag-down, rag-absent, and a
+// the wire `tiers` block. rag-down, rag-absent, and a
 // `semantic` tier reporting unavailable are all DESIGNED degraded states sourced
-// from that truth — never failures. "Readiness" is the COMPOSITE the ADR names
+// from that truth — never failures. "Readiness" is the COMPOSITE this view names
 // (running + index present + watcher live), derived ONLY from fields the snapshot
 // actually carries; no rag semantics are reconstructed here.
 
@@ -193,7 +193,7 @@ export interface RagStatusView {
   /** In-flight job count when present; undefined otherwise. */
   jobs?: number;
   /**
-   * The composite readiness the ADR names: rag is "ready" only when the service
+   * The composite readiness this view names: rag is "ready" only when the service
    * is running, the index is present, and the watcher is live. Derived strictly
    * from the carried fields; false whenever any is missing or the tier degrades.
    */
@@ -231,8 +231,8 @@ function ragStatusPresentation({
  * `status.rag`. A served tiers block that marks `semantic` unavailable (or omits it)
  * is degradation (contract §2: absence ≠ available); a tiers-less transport fault is
  * the errored branch. The composite `ready` is true only when running + index +
- * watcher all hold — the ADR's "states the composite plainly rather than making the
- * operator infer it".
+ * watcher all hold — this view states the composite plainly rather than making
+ * the operator infer it.
  */
 export function deriveRagStatusView(
   data: EngineStatus | undefined,
@@ -408,11 +408,11 @@ export function useStatusRollup(): StatusRollupView {
   };
 }
 
-// --- work pillar availability (dashboard-activity-rail ADR) ---------------------------
+// --- work pillar availability -----------------------------------------------------------
 //
 // The right-rail `work` tab is the in-flight pipeline pillar: the active ADRs and
 // plans in scope, with their wave/phase/step progress. That CONTENT and its wire are
-// specified by the sibling `dashboard-pipeline-status` ADR and are out of scope for
+// specified by the sibling `dashboard-pipeline-status` plan and are out of scope for
 // the activity-rail plan; what lands now is the tab FRAME with its own designed
 // degraded and empty states. The frame is app chrome under dashboard-layer-ownership:
 // it reads availability through this stores selector ONLY, never fetching the engine

@@ -1,4 +1,4 @@
-//! S11 Stage 1 production-graph contract check.
+//! Production-graph contract check.
 //!
 //! The distribution crate's non-production `unsealed-verify` seam
 //! (`verify_distribution_with_unsealed_root`) is enabled ONLY under

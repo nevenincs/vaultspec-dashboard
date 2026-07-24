@@ -1,4 +1,4 @@
-// The document copy-link verb (authoring-surface ADR D3). ONE shared action
+// The document copy-link verb. ONE shared action
 // descriptor, enrolled UNCHANGED across the two planes it is eligible for under the
 // one id `vault-doc:copy-link`: the vault-doc context-menu resolver (app) and the
 // document-scoped command palette (stores). Because it must be consumed by BOTH the
@@ -10,7 +10,7 @@
 // address), so the "deep link" it copies is the Obsidian-style wiki-link reference the
 // vault already uses for cross-document links — `[[stem]]` — resolvable through the
 // reader's `remarkWikiLink` navigation. A section anchor (`[[stem#slug]]`) is produced
-// when a heading slug is supplied (a block-scoped invocation, D3); document-scoped
+// when a heading slug is supplied (a block-scoped invocation); document-scoped
 // invocations copy the bare `[[stem]]`.
 
 import { Link } from "lucide-react";

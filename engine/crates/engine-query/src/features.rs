@@ -1,4 +1,4 @@
-//! The bounded feature-coverage projection (feature-group-authoring ADR D2/D3):
+//! The bounded feature-coverage projection:
 //! a projection over the existing `LinkageGraph` that answers, per feature tag,
 //! what the feature's pipeline group already contains — for each pipeline doc
 //! type the present documents' newest stem and a present flag, the missing
@@ -11,7 +11,7 @@
 //! computed over the FULL pre-truncation corpus (no node ceiling — coverage must
 //! be honest), and surfaced through the shared envelope by the route layer
 //! (`every-wire-response-carries-the-tiers-block`). Eligibility is served
-//! guidance; the engine and core refuse nothing new (ADR D3) — the gate lives in
+//! guidance; the engine and core refuse nothing new — the gate lives in
 //! the presentation plane.
 
 use std::collections::BTreeMap;
@@ -22,9 +22,9 @@ use serde::Serialize;
 /// The pipeline document types this projection reports coverage for, in pipeline
 /// order (research/reference are the parallel entry points → adr → plan → exec →
 /// audit). `exec` is reported for coverage but is NEVER eligible from this
-/// surface (ADR D4: exec records are plan-derived scaffolds, not free-form
+/// surface (exec records are plan-derived scaffolds, not free-form
 /// creates); `audit` legally opens a pipeline so it is always eligible with an
-/// advisory when nothing upstream exists (ADR D3).
+/// advisory when nothing upstream exists.
 pub const PIPELINE_DOC_TYPES: &[&str] = &["research", "reference", "adr", "plan", "exec", "audit"];
 
 /// Hard cap on the number of features carried in the coverage map / roster
@@ -34,8 +34,8 @@ pub const PIPELINE_DOC_TYPES: &[&str] = &["research", "reference", "adr", "plan"
 /// list; the retained features are the lexicographically-first `CAP`.
 pub const FEATURE_COVERAGE_ROSTER_CAP: usize = 500;
 
-/// Coverage of one pipeline doc type within a feature group (ADR D2/D3). Present
-/// carries the newest stem (the link target the panel pre-fills, ADR D5) and a
+/// Coverage of one pipeline doc type within a feature group. Present
+/// carries the newest stem (the link target the panel pre-fills) and a
 /// count (multiple same-type documents per feature are legal). `eligible` is the
 /// served hierarchy gate; `note` names why a type is ineligible or carries
 /// advice, for the disabled-with-reason / advisory the panel renders — a single
@@ -49,12 +49,12 @@ pub struct TypeCoverage {
     /// How many documents of this type the feature has (0 when absent).
     pub count: u32,
     /// The newest present stem (newest by date prefix, ties by stem ordering) —
-    /// the deterministic cross-link target (ADR D5). Absent when the type is
+    /// the deterministic cross-link target. Absent when the type is
     /// missing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub newest_stem: Option<String>,
     /// Whether this type may be created from the feature-group panel right now
-    /// (served guidance, not an integrity boundary — ADR D3).
+    /// (served guidance, not an integrity boundary).
     pub eligible: bool,
     /// A token naming why the type is ineligible, or an advisory when eligible:
     /// `requires-research-or-reference` (adr), `requires-adr` (plan),
@@ -64,7 +64,7 @@ pub struct TypeCoverage {
     pub note: Option<&'static str>,
 }
 
-/// Full pipeline coverage for one feature group (ADR D2). Served for a requested
+/// Full pipeline coverage for one feature group. Served for a requested
 /// feature; an unknown feature (a brand-new one being started in the panel)
 /// yields an all-missing coverage whose `next_step` is the first entry point.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -83,7 +83,7 @@ pub struct FeatureCoverage {
     pub next_step: Option<&'static str>,
 }
 
-/// A compact per-feature roster entry (ADR D2, all-features variant): the feature
+/// A compact per-feature roster entry (all-features variant): the feature
 /// tag, its document counts, and the advised next step — enough for the panel's
 /// feature combobox to show group progress without a per-feature round trip.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -100,10 +100,10 @@ pub struct FeatureRosterEntry {
     pub next_step: Option<&'static str>,
 }
 
-/// The generation-stable coverage map over the whole corpus (ADR D2). Holds full
+/// The generation-stable coverage map over the whole corpus. Holds full
 /// per-feature coverage for the lexicographically-first `FEATURE_COVERAGE_ROSTER_CAP`
 /// features, so ONE memoized structure serves both the per-feature read and the
-/// roster. Memoized on graph `generation` by the cell (S05).
+/// roster. Memoized on graph `generation` by the cell.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CoverageMap {
     features: BTreeMap<String, FeatureCoverage>,
@@ -226,9 +226,9 @@ fn build_coverage(feature: &str, per_type: &BTreeMap<&'static str, TypeAcc>) -> 
     }
 }
 
-/// The per-type eligibility gate + reason token (ADR D3). research/reference are
+/// The per-type eligibility gate + reason token. research/reference are
 /// always eligible; adr needs an entry point (research OR reference); plan needs
-/// an adr; exec is never eligible from this surface (plan-derived, ADR D4); audit
+/// an adr; exec is never eligible from this surface (plan-derived); audit
 /// is always eligible but carries a `no-upstream` advisory when it would open the
 /// pipeline.
 fn eligibility(
@@ -254,7 +254,7 @@ fn eligibility(
             }
         }
         // exec records are plan-derived scaffolds; the free-form panel never
-        // offers them (ADR D4) — a removed non-capability, surfaced with its
+        // offers them — a removed non-capability, surfaced with its
         // reason rather than silently dropped.
         "exec" => (false, Some("plan-derived")),
         // audit legally opens a pipeline, so it is always eligible; the advisory
@@ -270,8 +270,8 @@ fn eligibility(
     }
 }
 
-/// The advised next link to close along the research/reference → adr → plan chain
-/// (ADR D2/D5). `research` names the primary entry point when neither entry
+/// The advised next link to close along the research/reference → adr → plan chain.
+/// `research` names the primary entry point when neither entry
 /// document exists; then `adr`, then `plan`. Absent once a plan exists (exec and
 /// audit are plan-derived / closeout, not part of the linear next chain).
 fn next_step(entry_present: bool, adr_present: bool, plan_present: bool) -> Option<&'static str> {
@@ -286,7 +286,7 @@ fn next_step(entry_present: bool, adr_present: bool, plan_present: bool) -> Opti
     }
 }
 
-/// Build the whole-corpus coverage map (ADR D2). One pass over the document nodes
+/// Build the whole-corpus coverage map. One pass over the document nodes
 /// groups each pipeline document under every feature tag it carries, tracking the
 /// newest stem and count per type; the map is then capped at
 /// `FEATURE_COVERAGE_ROSTER_CAP` (lexicographically-first features) and each
@@ -450,7 +450,7 @@ mod tests {
 
     #[test]
     fn exec_is_never_eligible_from_this_surface() {
-        // ADR D4: even with a plan present, exec is not offered — it is
+        // Even with a plan present, exec is not offered — it is
         // plan-derived, surfaced with its reason.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("2026-07-14-x-research", "research", &["x"]));

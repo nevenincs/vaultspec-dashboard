@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The rag-search controller (W02.P16.S32, dashboard-rag-search ADR): the
+// The rag-search controller: the
 // stores-layer sole wire client for search.
 //
 // The degradation STATE MACHINE — idle / loading / results / no-results /
@@ -19,7 +19,7 @@
 // held-open superseded response, a rag-came-back SSE frame) are NOT reproducible
 // against a healthy live engine and are intentionally not faked here — their LOGIC
 // is fully pinned by the pure interpretSearch tests. Restoring live degradation
-// wiring would need a rag-DOWN engine instance (see FINDINGS S1).
+// wiring would need a rag-DOWN engine instance.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -87,8 +87,8 @@ describe("normalizeSearchQuery (shared search request identity)", () => {
   });
 });
 
-// The rag-down text fallback (`buildFallbackResults`) retired with the ADR D2
-// fold: name matches now come from the files(vault) search provider through the
+// The rag-down text fallback (`buildFallbackResults`) retired: name matches
+// now come from the files(vault) search provider through the
 // one shared literal matcher, covered by `literalMatch` + `searchProviders`
 // vectors. The tiers-gated `semanticOffline` truth this controller still exports
 // is exercised below.
@@ -239,7 +239,7 @@ describe("latestBackendsRagAvailable (value-based, survives the 256-frame ring c
     // accumulator through `streamReducer` past saturation, then a recovery frame:
     // the capped accumulator is exactly STREAM_RETENTION long (so a length
     // detector sees no growth and never fires), yet the value detector still reads
-    // the newest carried value — the >256 regression the HIGH finding named.
+    // the newest carried value — the >256 regression this test guards against.
     let acc: StreamChunk[] = [];
     for (let i = 0; i < 300; i++) acc = streamReducer(acc, frame("stopped"));
     expect(acc.length).toBe(STREAM_RETENTION); // capped — length is pinned
@@ -318,7 +318,7 @@ describe("interpretSearch (the explicit state machine)", () => {
   });
 
   it("semantic-offline: tiers-gated, contributes NO results (files provider carries names)", () => {
-    // ADR D2 fold: the controller no longer serves a text fallback. When rag is
+    // The controller no longer serves a text fallback. When rag is
     // offline it reports the tiers-gated `semanticOffline` truth and an EMPTY
     // result set — the files(vault) provider carries name matches in the host.
     const v = interpretSearch({

@@ -1,11 +1,11 @@
-//! The index pipeline (engine-spec §2.4, D2.4): cold full-index with
+//! The index pipeline: cold full-index with
 //! parallel per-document fan-out, and content-hash incremental re-index
 //! against the store cache (skip-heavy and deterministic).
 //!
 //! Cold start is a feature: the one-shot CLI runs this same pipeline
-//! without a resident service. Persistence is cache, not truth (D8.1):
+//! without a resident service. Persistence is cache, not truth:
 //! `full_index` from a deleted cache must converge to the identical graph
-//! (D8.2 — proven by the re-derivability test in `tests/`).
+//! — proven by the re-derivability test in `tests/`.
 
 use std::path::Path;
 
@@ -37,8 +37,8 @@ pub enum IndexError {
     /// before the root commit. The message is engine-authored and LEAK-FREE
     /// (no build-machine paths or gix `file:line`), so the API boundary echoes
     /// it verbatim instead of the generic "expected a commit-ish …" fallback,
-    /// which self-contradicts when the input WAS a valid timestamp (sweep LOW,
-    /// 2026-06-13). Distinct from [`IndexError::Git`], whose strings carry gix
+    /// which self-contradicts when the input WAS a valid timestamp.
+    /// Distinct from [`IndexError::Git`], whose strings carry gix
     /// internals and must never reach a client.
     #[error("{0}")]
     Revision(String),
@@ -55,14 +55,14 @@ pub struct IndexStats {
     pub cache_hits: usize,
     pub extracted: usize,
     pub edges: usize,
-    /// Per-document outcome in core's sync vocabulary (D6.2 / audit G2):
+    /// Per-document outcome in core's sync vocabulary:
     /// `unchanged` (cache hit) or `updated` (re-extracted). `created` and
     /// `removed` are inapplicable to a rebuild-from-truth pipeline — the
     /// graph is derived wholly each pass, so blob novelty and blob change
     /// are indistinguishable and both report as `updated`.
     pub outcomes: Vec<(String, &'static str)>,
-    /// Declared-tier edges ingested from core's authored graph (engine-spec
-    /// §3/§5.1). 0 when core is unreachable — see `declared_unavailable`.
+    /// Declared-tier edges ingested from core's authored graph.
+    /// 0 when core is unreachable — see `declared_unavailable`.
     pub declared_edges: usize,
     /// `None` when the declared tier was ingested (the engine's core
     /// capability: ingest core's vault graph); `Some(reason)` when core was
@@ -82,7 +82,7 @@ pub struct IndexStats {
 /// resolve + edge ingest AND the declared-tier core subprocess, synchronously.
 ///
 /// This full path is the CLI's (`vaultspec index`, `vaultspec status`) and the
-/// D8.2 re-derivability comparator; its output is UNCHANGED by the perf ADR
+/// re-derivability comparator; its output is UNCHANGED by the async-fold split
 /// (the async split lives in the serve path via [`index_worktree_structural`]).
 pub fn index_worktree(
     root: &Path,
@@ -96,15 +96,15 @@ pub fn index_worktree(
 }
 
 /// Sentinel `declared_unavailable` reason a STRUCTURAL-only index records: the
-/// declared tier is not yet ingested because the async fold is in progress
-/// (perf ADR D1). The serve path's `query_tiers` renders this as the
+/// declared tier is not yet ingested because the async fold is in progress.
+/// The serve path's `query_tiers` renders this as the
 /// `declared` tier unavailable-while-building, flipping to available once the
 /// fold's `commit_graph` lands. Distinct from a real core-unreachable reason,
 /// which is what the fold itself records on a genuine failure.
 pub const DECLARED_BUILDING: &str = "declared tier building";
 
 /// Sentinel `declared_unavailable` reason when a rebuild GRAFTED the last completed
-/// fold's declared edges onto the fresh graph (declared-edge-continuity ADR): the
+/// fold's declared edges onto the fresh graph: the
 /// served graph carries near-current links while the async fold recomputes them, so
 /// the tier is refreshing rather than building-from-nothing. The wire keeps
 /// `available: false` in both cases (a fold is in flight); this reason carries the
@@ -115,8 +115,8 @@ pub const DECLARED_BUILDING: &str = "declared tier building";
 pub const DECLARED_REFRESHING: &str = "declared tier refreshing";
 
 /// Index one worktree scope into a fresh graph, STRUCTURAL TIER ONLY — every
-/// phase of [`index_worktree`] EXCEPT the declared-tier core subprocess (perf
-/// ADR D1). This is the fast servable parse: the serve path commits it
+/// phase of [`index_worktree`] EXCEPT the declared-tier core subprocess.
+/// This is the fast servable parse: the serve path commits it
 /// immediately so the worktree is interactive in roughly the structural-parse
 /// time, then folds the declared tier in asynchronously.
 ///
@@ -137,7 +137,7 @@ pub fn index_worktree_structural(
 
 /// Full re-index: bypasses the extraction cache (every document is
 /// re-extracted and the cache rewritten). The `vaultspec index --full`
-/// path; converges to the incremental graph by D8.2.
+/// path; converges to the incremental graph.
 pub fn index_worktree_full(
     root: &Path,
     scope: &ScopeRef,
@@ -150,7 +150,7 @@ pub fn index_worktree_full(
 }
 
 /// Index one worktree scope into an existing graph — the watcher's partial
-/// re-ingestion path. **Idempotent** (audit W02P05-202): re-ingesting the
+/// re-ingestion path. **Idempotent**: re-ingesting the
 /// same documents converges to the cold rebuild, never inflates.
 pub fn index_worktree_into(
     graph: &mut LinkageGraph,
@@ -177,7 +177,7 @@ fn index_documents(
     // mentions above are only one tier; without this the linkage graph carries no
     // declared cross-references at all.
     //
-    // PRESENT-VIEW CONSISTENCY (graph-worktree-edge-consistency ADR, Option A):
+    // PRESENT-VIEW CONSISTENCY:
     // the structural tier above sources its NODES from a working-tree file walk
     // (`index_structural` → `vault_documents`), so the declared cross-reference
     // EDGES must come from the SAME working-tree snapshot — otherwise an
@@ -185,8 +185,8 @@ fn index_documents(
     // live only in the working tree, not yet at HEAD). We therefore pass `None`
     // (working tree), not `Some("HEAD")`.
     //
-    // READ-AND-INFER (D1.2) is PRESERVED: the original `--ref HEAD` pin guarded
-    // against a 2026-06-13 finding that working-tree `vault graph` ran core's
+    // READ-AND-INFER is PRESERVED: the original `--ref HEAD` pin guarded
+    // against a finding that working-tree `vault graph` ran core's
     // index refresh (stamping `modified:`, rewriting `.gitignore`). That premise
     // was re-verified against the installed core (0.1.34) and no longer holds —
     // `vault graph` mutates ZERO `.vault/` documents (the `modified:` stamp is
@@ -220,7 +220,7 @@ fn index_documents(
 
 /// The structural tier of the index: read+extract, resolver build, resolve +
 /// edge ingest. Everything [`index_documents`] does EXCEPT the declared-tier
-/// core subprocess (perf ADR D1). Shared by the full path (which then ingests
+/// core subprocess. Shared by the full path (which then ingests
 /// declared synchronously) and [`index_worktree_structural`] (the fast
 /// servable parse, declared deferred to the async fold).
 fn index_structural(
@@ -255,7 +255,7 @@ fn index_structural(
         };
     }
 
-    // Parallel per-document read + extract fan-out (CPU-bound; D2.4).
+    // Parallel per-document read + extract fan-out (CPU-bound).
     // The store is single-writer, so cache lookups/writes happen on the
     // coordinating thread after the parallel section.
     let extracted: Vec<(String, String, String)> = docs
@@ -278,12 +278,12 @@ fn index_structural(
     // node upsert mutates the graph, also serial. The per-document `extract` +
     // EXTRACT_KIND cache below is the incremental-index change-detection telemetry
     // (`extracted`/`cache_hits`, surfaced by the `vaultspec index` CLI); the
-    // extracted body mentions are NOT graphed (strict reference-only ruling,
-    // 2026-06-28 — the structural body-mention EDGE producer was retired), so the
+    // extracted body mentions are NOT graphed (strict reference-only ruling
+    // — the structural body-mention EDGE producer was retired), so the
     // cached extraction is no longer resolved into edges.
     let mut per_doc: Vec<(String, String, Vec<ExtractedMention>)> =
         Vec::with_capacity(extracted.len());
-    // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
+    // `.vault/index` feature-index documents are
     // metanodes, never graph nodes. Skip them at the source so no index node is
     // ever minted, and record their ids so any edge that resolved onto an index
     // stem can be pruned below (no dangling incident edge survives).
@@ -306,7 +306,7 @@ fn index_structural(
             stats.duplicate_stems.push(stem.clone());
         }
         let feature_tags = frontmatter_feature_tags(&text);
-        // Plan-container minting (dashboard-pipeline-wire W03.P07): a plan
+        // Plan-container minting: a plan
         // document's interior becomes first-class-but-subordinate
         // PlanContainer nodes + Contains edges, keyed only by plan stem +
         // canonical container ids. Done here (the plan node is upserted just
@@ -315,11 +315,11 @@ fn index_structural(
         if doc_type_of(&rel_path).as_deref() == Some("plan") {
             mint_plan_containers(graph, &stem, &text, &feature_tags, scope, observed_at);
         }
-        // Contract §4 node fields on the LIST shape (addendum S03):
+        // Contract §4 node fields on the LIST shape:
         // title from the body H1, created from the frontmatter date,
         // modified from the worktree mtime (ms), doc_type from the vault
         // subdirectory, lifecycle from the type-specific vocabulary
-        // (graph-node-semantics ADR: ADR status / plan tier+progress / audit
+        // (ADR status / plan tier+progress / audit
         // max-severity / rule active-superseded, else checkbox progress).
         let modified = std::fs::metadata(root.join(&rel_path))
             .ok()
@@ -339,14 +339,13 @@ fn index_structural(
                 stamped: frontmatter_stamped(&text),
             }),
             feature_tags,
-            // Status/tier query-time facets (dashboard-pipeline-wire W01.P02
-            // S07/S08): the ADR H1 status and the plan frontmatter tier, read
+            // Status/tier query-time facets: the ADR H1 status and the plan frontmatter tier, read
             // the same deterministic way as dates/feature_tags. Both are
             // truthful-absence Options — a non-ADR carries no status, a non-plan
             // (or tier-less plan) carries no tier.
             status: frontmatter_adr_status(&text),
             tier: frontmatter_plan_tier(&text),
-            // Document weight (left-rail-tree-controls ADR D2): measured on the
+            // Document weight: measured on the
             // body this pass already holds — O(bytes), no second read.
             size: Some(engine_model::DocSize::measure(&text)),
             facets: vec![Facet {
@@ -358,7 +357,7 @@ fn index_structural(
         });
 
         // Content-hash skip: reuse cached extraction when the blob is
-        // unchanged (D2.4 cache discipline).
+        // unchanged (cache discipline).
         let cached = if force_extract {
             None
         } else {
@@ -395,7 +394,7 @@ fn index_structural(
     let live_extract_keys: Vec<String> = per_doc.iter().map(|(_, h, _)| h.clone()).collect();
     store.retain_artifacts(EXTRACT_KIND, &live_extract_keys)?;
 
-    // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+    // STRICT reference-only graph: in-body
     // `[[wiki-link]]` mentions are NOT graph fact — wiki-links live ONLY in
     // `related:` frontmatter, served as declared `references` (+ the typed
     // related-family kinds and the plan `Contains` hierarchy), which IS the node
@@ -405,17 +404,17 @@ fn index_structural(
     // into edges.
 
     // Post-pass: bind each step plan-container node to its exec-record document
-    // node where one exists (W03.P07.S37). Runs after every doc node is in the
+    // node where one exists. Runs after every doc node is in the
     // graph so minting order is irrelevant; the binding edge id is identity-only.
     bind_steps_to_exec_records(graph, scope, observed_at);
 
-    // index-node-exclusion ADR D1: drop any structural edge that resolved onto a
+    // Drop any structural edge that resolved onto a
     // skipped index document, so an index stem leaves no dangling incident edge.
     if !excluded_index_ids.is_empty() {
         graph.prune_edges_incident_to(&excluded_index_ids);
     }
 
-    // Rule node species (graph-node-semantics ADR): project the codify
+    // Rule node species: project the codify
     // pipeline's output from the rules tree as authority-class `law` nodes with
     // `promoted-from` edges back into the audit that bore them. Read-and-infer:
     // rules live OUTSIDE `.vault/` and are NEVER minted as vault documents — the
@@ -428,7 +427,7 @@ fn index_structural(
 }
 
 /// Project the rules tree (`.vaultspec/rules/rules/*.md`, OUTSIDE `.vault/`)
-/// into `rule` species nodes (graph-node-semantics ADR). Each rule becomes a
+/// into `rule` species nodes. Each rule becomes a
 /// node of kind `Rule` (authority class `law`) carrying its active/superseded
 /// lifecycle, and — when the rule names the audit it was promoted from
 /// (`derived_from:` frontmatter, or a `## Source` audit-stem reference) — a
@@ -559,8 +558,8 @@ pub(crate) fn rule_source_audit(text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
-/// Ingest core's authored `vault graph` as declared-tier edges (engine-spec
-/// §3/§5.1, D5.1). `git_ref` selects the corpus: `None` reads the working tree
+/// Ingest core's authored `vault graph` as declared-tier edges.
+/// `git_ref` selects the corpus: `None` reads the working tree
 /// (present view); `Some(sha)` reads the git object DB at that ref (blob-true
 /// historical view, core 0.1.31 `vault graph --ref`) so an as-of snapshot
 /// carries the declared tier too — core's authored cross-references AS THEY
@@ -579,9 +578,9 @@ pub(crate) fn ingest_core_graph(
     git_ref: Option<&str>,
 ) -> (usize, Option<String>) {
     // Split into the subprocess fetch and the parse/ingest so the async
-    // declared fold (perf ADR D1) can cache the raw JSON between them — keyed on
+    // declared fold can cache the raw JSON between them — keyed on
     // the working-tree corpus fingerprint for the present view, the commit sha for
-    // an as-of build (graph-worktree-edge-consistency ADR). This combined path keeps
+    // an as-of build. This combined path keeps
     // the synchronous full `index_worktree` (CLI / re-derivability test)
     // behaviorally UNCHANGED: fetch, then ingest.
     let json = match fetch_core_graph_json(root, git_ref) {
@@ -591,15 +590,15 @@ pub(crate) fn ingest_core_graph(
     ingest_declared_from_json(graph, &json, scope, observed_at)
 }
 
-/// The graph-v2 envelope schema core emits (engine-spec §5.1).
+/// The graph-v2 envelope schema core emits.
 const GRAPH_SCHEMA: &str = "vaultspec.vault.graph.v2";
 
 /// Run `vaultspec-core vault graph [--ref <git_ref>]` in `root` and return the
-/// raw `data` payload as a JSON STRING (the cacheable unit, perf ADR D1).
+/// raw `data` payload as a JSON STRING (the cacheable unit).
 ///
 /// `git_ref` selects the corpus exactly as [`ingest_core_graph`] documents:
-/// `None` reads the WORKING TREE — the present view (graph-worktree-edge-consistency
-/// ADR): core 0.1.34 `vault graph` mutates no `.vault/` document (its only side
+/// `None` reads the WORKING TREE — the present view: core 0.1.34
+/// `vault graph` mutates no `.vault/` document (its only side
 /// effect is a gitignored, re-derivable `.graph-cache` write under `.vault/data/`),
 /// so a working-tree read is read-and-infer-safe. `Some(sha)` reads the git object
 /// DB at that ref (blob-true) for HISTORICAL / as-of views. Both are read-only with
@@ -625,8 +624,8 @@ pub fn fetch_core_graph_json(
             Err(e) => return Err(format!("core graph payload: {e}")),
         },
         // The full error embeds core's stderr — absolute paths and a
-        // sibling-workspace hint — which must NOT reach the wire `tiers` block
-        // (sweep MEDIUM, 2026-06-13). Log the detail for operators; surface only
+        // sibling-workspace hint — which must NOT reach the wire `tiers` block.
+        // Log the detail for operators; surface only
         // the leak-free category as the declared-tier degradation reason.
         Err(e) => {
             eprintln!("vaultspec: declared tier unavailable — core graph read failed: {e}");
@@ -638,7 +637,7 @@ pub fn fetch_core_graph_json(
 
 /// Parse a raw core graph-v2 `data` JSON string and ingest its declared +
 /// core-derived edges into `graph`. The CPU-side counterpart to
-/// [`fetch_core_graph_json`] (perf ADR D1): the async fold caches the JSON by
+/// [`fetch_core_graph_json`]: the async fold caches the JSON by
 /// the working-tree corpus fingerprint (present view) or commit sha (as-of), then
 /// calls this to fold the declared tier into a clone of the live structural graph.
 ///
@@ -646,7 +645,7 @@ pub fn fetch_core_graph_json(
 /// success, `Some(reason)` if the JSON was unparseable. Ingesting into the
 /// structural graph is idempotent (replace-by-id), so the folded
 /// clone(structural)+declared graph is byte-identical to a synchronous
-/// structural+declared build (D8.2 convergence).
+/// structural+declared build.
 /// A content fingerprint over the working-tree corpus as captured in the
 /// structural graph: the sorted `(doc stem, content hash)` pairs of the scope's
 /// document nodes (each doc node's facet carries the working-tree blob hash, set
@@ -655,16 +654,16 @@ pub fn fetch_core_graph_json(
 /// `.vault/` document — including a `related:` frontmatter change — alters a
 /// content hash and therefore the fingerprint.
 ///
-/// This is the PRESENT-VIEW declared-graph cache key
-/// (graph-worktree-edge-consistency ADR, Option A), replacing the worktree HEAD
+/// This is the PRESENT-VIEW declared-graph cache key,
+/// replacing the worktree HEAD
 /// sha. HEAD is invariant under uncommitted edits, so a HEAD-keyed cache re-served
 /// stale edges after an uncommitted `related:` change; keying on the corpus
 /// content makes such an edit miss the cache so the declared tier re-reads the
 /// working tree. The as-of / historical declared cache stays keyed on its explicit
 /// commit sha (a committed snapshot does not change), so only the present view uses
 /// this fingerprint.
-/// The git ref the PRESENT-VIEW declared ingest reads (graph-worktree-edge-consistency
-/// ADR + its version-guard hardening). `None` (working tree) when the resolved core's
+/// The git ref the PRESENT-VIEW declared ingest reads.
+/// `None` (working tree) when the resolved core's
 /// `vault graph` is verified document-read-only, so a node and its `related:` edges
 /// share one working-tree snapshot; `Some("HEAD")` (committed, object-DB read) when the
 /// core is older/unknown — a fail-safe fallback so a core that might still run the
@@ -721,7 +720,7 @@ pub fn ingest_declared_from_json(
         Ok(parsed) => parsed,
         Err(e) => return (0, Some(format!("core graph parse: {e}"))),
     };
-    // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
+    // `.vault/index` feature-index documents are
     // metanodes, never graph nodes. Core's authored graph still references them,
     // so identify the index nodes from the parsed node list and drop every
     // declared / core-derived edge incident to one — no dangling index edge enters
@@ -762,7 +761,7 @@ pub fn ingest_declared_from_json(
     // a body `[[wiki-link]]` mention (structural). Computed similarity is not a
     // reference, so it is rejected at this ingest gate — the single boundary where
     // a core payload becomes served graph fact — exactly as ephemeral semantic
-    // (RAG) matches are rejected as graph fact (see `Tier` doc, engine-spec D3.5).
+    // (RAG) matches are rejected as graph fact (see `Tier` doc).
     // This is a PERMANENT exclusion at ingest, not a per-request `relations`
     // filter: the edges are never generated into the graph, never propagated to
     // the constellation `meta_edges`, and never serialized onto the wire. The
@@ -773,8 +772,8 @@ pub fn ingest_declared_from_json(
     (count, None)
 }
 
-/// Mint the plan-container interior of one plan document (dashboard-pipeline-
-/// wire W03.P07): one `NodeKind::PlanContainer` node per wave/phase/step keyed
+/// Mint the plan-container interior of one plan document:
+/// one `NodeKind::PlanContainer` node per wave/phase/step keyed
 /// by `CanonicalKey::PlanContainer { plan_stem, container_id }`, and the
 /// subordinate `Contains` edges plan -> wave -> phase -> step.
 ///
@@ -784,7 +783,7 @@ pub fn ingest_declared_from_json(
 /// completion lives OUTSIDE the key, on a facet), so re-indexing the same plan
 /// — even with a toggled checkbox — re-keys no existing node or edge
 /// (`provenance-stable-keys-are-identity-bearing`). The structure is bounded by
-/// the parser's ceiling (W03.P06.S31).
+/// the parser's ceiling.
 ///
 /// `container_id` strings are the canonical ids joined with `/` to a stable
 /// path under the plan stem: a wave is `W01`, a phase `W01/P02`, a step
@@ -828,7 +827,7 @@ pub(crate) fn mint_plan_containers(
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: None,
-                // Per-step completion rides the lifecycle facet (W03.P07.S35):
+                // Per-step completion rides the lifecycle facet:
                 // a closed step is `complete` 1/1, an open step `active` 0/1.
                 // Toggling a checkbox changes THIS facet, never the node id.
                 lifecycle,
@@ -904,7 +903,7 @@ pub(crate) fn mint_plan_containers(
     }
 }
 
-/// The per-step lifecycle facet carrying completion (W03.P07.S35): a closed
+/// The per-step lifecycle facet carrying completion: a closed
 /// step is `complete` (1/1), an open step `active` (0/1). One step = one unit
 /// of progress, so the Work surface renders a step's done-ness uniformly with
 /// the plan-level progress ring.
@@ -918,7 +917,7 @@ fn step_lifecycle(done: bool) -> engine_model::Lifecycle {
     }
 }
 
-/// A subordinate `Contains` edge (W03.P07.S36) from a parent container (or the
+/// A subordinate `Contains` edge from a parent container (or the
 /// plan node) to a child container. Declared tier (the structure is authored,
 /// not inferred). The edge stable key is composed ONLY from the endpoint
 /// container ids: src/dst already encode plan stem + canonical id, and the
@@ -954,7 +953,7 @@ fn contains_edge(
 }
 
 /// Bind each step plan-container node to its exec-record document node where one
-/// exists (W03.P07.S37): a `References` edge with an IDENTITY-ONLY stable key.
+/// exists: a `References` edge with an IDENTITY-ONLY stable key.
 ///
 /// Exec records are vault documents whose stem encodes the step's canonical
 /// display path with `-` separators (e.g. `2026-06-14-feature-W01-P01-S01`).
@@ -1046,7 +1045,7 @@ fn is_step_leaf(leaf: &str) -> bool {
     }
 }
 
-/// Canonical, deterministic serialization of a graph — the D8.2
+/// Canonical, deterministic serialization of a graph — the
 /// re-derivability comparator (sorted nodes and edges by id).
 pub fn canonical_snapshot(graph: &LinkageGraph) -> String {
     let mut nodes: Vec<&Node> = graph.nodes().collect();
@@ -1171,8 +1170,8 @@ pub(crate) fn frontmatter_stamped(text: &str) -> Option<String> {
     })
 }
 
-/// The ADR H1 status value (contract §4 status facet, dashboard-pipeline-wire
-/// W01.P01.S01): one of `proposed`, `accepted`, `rejected`, or `deprecated`,
+/// The ADR H1 status value (contract §4 status facet):
+/// one of `proposed`, `accepted`, `rejected`, or `deprecated`,
 /// read from the H1 status marker the ADR template emits, e.g.
 /// `# `feature` adr: `topic` | (**status:** `accepted`)`. The marker is
 /// `(**status:** `<value>`)`; the value is the backtick-wrapped enum token.
@@ -1196,8 +1195,8 @@ pub(crate) fn frontmatter_adr_status(text: &str) -> Option<String> {
     STATUSES.contains(&value.as_str()).then_some(value)
 }
 
-/// The plan frontmatter `tier` value (contract §4 tier facet,
-/// dashboard-pipeline-wire W01.P01.S02): one of `L1`, `L2`, `L3`, or `L4`,
+/// The plan frontmatter `tier` value (contract §4 tier facet):
+/// one of `L1`, `L2`, `L3`, or `L4`,
 /// read from the `tier:` frontmatter key the plan template requires.
 ///
 /// A document with no `tier:` key, or a tier outside the four-value enum,
@@ -1245,7 +1244,7 @@ fn checkbox_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
     })
 }
 
-/// Type-specific lifecycle vocabulary (graph-node-semantics ADR): the single
+/// Type-specific lifecycle vocabulary: the single
 /// generic `state` string is a lossy collapse, so each species surfaces its
 /// own state machine, parsed from frontmatter and body. This is the ADDITIVE
 /// lifecycle extension — it RETAINS the §4 `{state, progress?}` shape and only
@@ -1253,7 +1252,7 @@ fn checkbox_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
 /// progress for plans). Parsed from body conventions (ADR H1 status line, audit
 /// finding-severity headings, frontmatter tier/status), it DEGRADES HONESTLY:
 /// a document predating the convention falls back to the generic checkbox
-/// lifecycle (or `None`), never a fabricated state (ADR `Frontier caution`).
+/// lifecycle (or `None`), never a fabricated state.
 pub(crate) fn doc_lifecycle(doc_type: Option<&str>, text: &str) -> Option<engine_model::Lifecycle> {
     match doc_type {
         // ADR: the H1 status line — `(**status:** \`accepted\`)`.
@@ -1359,7 +1358,7 @@ fn is_severity_bearing_line(line: &str) -> bool {
 /// "supersedes" another rule is the ACTIVE successor (it names the rule it
 /// retires), NOT itself retired — only "superseded by" means this rule is gone
 /// (codify convention). Rules default to active because a shipped rule binds by
-/// default (ADR: pinned to shipped reality), and the scan is confined to the
+/// default, and the scan is confined to the
 /// `## Status` section so prose elsewhere ("…supersedes the prior framing…")
 /// cannot flip a live rule to superseded.
 pub(crate) fn rule_status(text: &str) -> String {

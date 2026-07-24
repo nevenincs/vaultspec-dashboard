@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -16,7 +16,7 @@ import {
 } from "./index";
 import { TIERS } from "./testFixtures";
 
-describe("deriveSearchNodeId (node-id grammar, null floor — search ADR)", () => {
+describe("deriveSearchNodeId (node-id grammar, null floor)", () => {
   it("the engine annotation always wins", () => {
     expect(deriveSearchNodeId({ node_id: "doc:explicit", path: "x.md" })).toBe(
       "doc:explicit",
@@ -34,7 +34,7 @@ describe("deriveSearchNodeId (node-id grammar, null floor — search ADR)", () =
 
   it("derives code:{path} for a code hit — NEVER papers a code hit as doc:", () => {
     // A non-.md path is a code hit; papering it as doc: would lose the directory
-    // and point at no graph node (search ADR risk: phantom click-through).
+    // and point at no graph node (a phantom click-through).
     expect(deriveSearchNodeId({ path: "src/lib/auth.rs" })).toBe(
       "code:src/lib/auth.rs",
     );

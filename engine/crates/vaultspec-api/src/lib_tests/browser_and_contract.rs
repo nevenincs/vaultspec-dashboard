@@ -27,7 +27,7 @@ async fn spa_fallback_serves_placeholder_without_a_bundle() {
     assert!(content_type.starts_with("text/html"));
 }
 
-/// P01.S04 (dashboard-packaging): the embedded bundle serves standalone —
+/// The embedded bundle serves standalone —
 /// index with the token bootstrap, assets with correct MIME, deep links
 /// falling back to the shell, and the API prefix boundary staying JSON.
 #[cfg(feature = "embed-spa")]

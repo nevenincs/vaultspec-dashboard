@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
@@ -17,7 +17,7 @@ import type {
 } from "../engine";
 import { isRec } from "./internal";
 
-// --- pipeline / plan-interior / git (dashboard-pipeline-wire W05.P11.S61) ---------
+// --- pipeline / plan-interior / git ------------------------------------------------
 //
 // Tolerant adapters for the three new wire capabilities, mirroring adaptGraphSlice:
 // the live `{data, tiers}` envelope is already unwrapped by `unwrapEnvelope` before

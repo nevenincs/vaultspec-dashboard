@@ -1,4 +1,4 @@
-//! Structural extractors (engine-spec §3): canonical step identifiers and
+//! Structural extractors: canonical step identifiers and
 //! wiki-link stems, each mention carrying byte-span provenance into the source
 //! document.
 //!

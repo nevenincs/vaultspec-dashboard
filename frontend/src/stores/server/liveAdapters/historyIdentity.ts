@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import { normalizeNodeIds } from "../../nodeIds";
@@ -15,7 +15,7 @@ import type {
 } from "../engine";
 import { isRec } from "./internal";
 
-// --- §5 recent commit history (status-overview ADR) --------------------------------
+// --- §5 recent commit history --------------------------------------------------------
 //
 // The bounded recent-commit list with subjects, consumed through the stores
 // history query (the sole wire client of `/history`). TOLERANT (the same one-code-
@@ -245,7 +245,7 @@ export function adaptIssues(body: unknown): IssuesResponse {
 // suffix to recover a vault document's stem, then prefix `doc:` for its node id.
 // Both `deriveSearchNodeId` (the live search adapter) and the search controller's
 // `pathStem`/`pathToDocNodeId` consume this pair, so the grammar lives in exactly
-// one place instead of being re-implemented per consumer (centralisation audit L2).
+// one place instead of being re-implemented per consumer.
 
 /** A vault path → its canonical stem: the filename without directory or `.md`. */
 export function stemFromPath(path: string): string {

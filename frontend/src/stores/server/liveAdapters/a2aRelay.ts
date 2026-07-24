@@ -1,11 +1,11 @@
 // Tolerant adapters for the a2a run-progress RELAY channel
-// (`GET /ops/a2a/runs/{run_id}/stream`, a2a-orchestration-edge ADR D3). The
+// (`GET /ops/a2a/runs/{run_id}/stream`). The
 // relay re-serves the resident a2a gateway's SSE progress frames through the
 // engine with an added engine `seq`; this module absorbs their wire-shape
 // variation into one bounded transcript-frame shape — the liveAdapters role
 // (wire-shape variation is absorbed here, never trusted raw at a consumer).
 //
-// Authority (ADR D3): these frames are NON-AUTHORITATIVE and droppable. The
+// Authority: these frames are NON-AUTHORITATIVE and droppable. The
 // transcript renders them for live progress, but truth is recovered by re-reading
 // `run-status` + the durable authoring events — never reconstructed from a relay
 // frame. A `gap` (the engine evicted the resume point or the broadcast lagged) or

@@ -1,4 +1,4 @@
-//! A2A terminal-settlement acceptance (a2a-product-provisioning W02.P05.S155).
+//! A2A terminal-settlement acceptance.
 //!
 //! Drives the real `POST /internal/a2a/run-terminal` route through the production
 //! router against the production lease repository and the product credential
@@ -7,10 +7,10 @@
 //! revocation, and callback lease-id verification. No mocks — a real AppState, a
 //! real router, real bootstrapped credentials, and a real SQLite lease repo.
 //!
-//! The retention (INPUT_REQUIRED), expiry, and restart-reconciliation legs of
-//! S155 are proved here against the seated production lease repository through
+//! The retention (INPUT_REQUIRED), expiry, and restart-reconciliation legs are
+//! proved here against the seated production lease repository through
 //! the committed repo API. The BOOT-time reconciliation WIRING that drives those
-//! primitives from a live gateway re-query lands with S160/S161.
+//! primitives from a live gateway re-query lands separately.
 
 use super::*;
 use axum::body::Body;

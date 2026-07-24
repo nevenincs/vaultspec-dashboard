@@ -1,6 +1,6 @@
-//! `POST /graph/query` and its generation-keyed slice delta (graph-slice-delta ADR
-//! D2/D3). Extracted from `routes/query.rs` so the query handler and the delta
-//! handler live together; the snapshot ring + id-keyed node/edge diff live in
+//! `POST /graph/query` and its generation-keyed slice delta. Extracted from
+//! `routes/query.rs` so the query handler and the delta handler live together;
+//! the snapshot ring + id-keyed node/edge diff live in
 //! `crate::graph_delta`. The delta targets ONLY the present-view DOCUMENT vault
 //! slice (the ~3.5 MB payload the idle refetch storm re-read); `as_of`, feature,
 //! and code paths never record or delta.
@@ -36,18 +36,18 @@ pub struct GraphQueryBody {
     pub granularity: Option<String>,
     #[serde(default)]
     pub as_of: Option<String>,
-    /// The active salience lens (graph-node-salience ADR wire amendment):
-    /// `status` (default when omitted) or `design`. Switching lens is a re-query.
+    /// The active salience lens: `status` (default when omitted) or `design`.
+    /// Switching lens is a re-query.
     #[serde(default)]
     pub lens: Option<String>,
     /// The focus node id for the DOI focus-distance term. Absent = no focus.
     #[serde(default)]
     pub focus: Option<String>,
-    /// Which dataset to serve (codebase-graphing ADR D5): `vault` (default) or
+    /// Which dataset to serve: `vault` (default) or
     /// `code` — the DISCONNECTED code corpus. Unknown values are a typed 400.
     #[serde(default)]
     pub corpus: Option<String>,
-    /// CODE-CORPUS narrowing (ADR D5): keep only nodes under this repo-relative
+    /// CODE-CORPUS narrowing: keep only nodes under this repo-relative
     /// directory prefix. Ignored (validated away) on `vault`.
     #[serde(default)]
     pub dir_prefix: Option<String>,
@@ -169,7 +169,7 @@ pub async fn graph_query_route(
     let cell = super::query::validate_scope(&state, &body.scope)?;
     let granularity = super::query::parse_granularity(&state, body.granularity.as_deref())?;
     let lens = super::query::parse_lens(&state, body.lens.as_deref())?;
-    // CORPUS DISPATCH (codebase-graphing ADR D5): `code` serves the DISCONNECTED
+    // CORPUS DISPATCH: `code` serves the DISCONNECTED
     // dataset through this same route/envelope; the vault path below is
     // byte-identical to the pre-corpus contract.
     match body.corpus.as_deref() {
@@ -194,8 +194,8 @@ pub async fn graph_query_route(
         }
     }
     let filter = body.filter.clone().unwrap_or_default();
-    // PRESENT-VIEW DOCUMENT (the delta-eligible path, graph-slice-delta ADR): build
-    // + record via the shared builder, serving the `generation` and the opaque
+    // PRESENT-VIEW DOCUMENT (the delta-eligible path): build + record via the
+    // shared builder, serving the `generation` and the opaque
     // `slice_token` so the client can request a `since=` delta instead of re-reading
     // the whole slice on every generation bump.
     if body.as_of.is_none() && granularity == Granularity::Document {
@@ -228,7 +228,7 @@ pub async fn graph_query_route(
                 "truncated": built.truncated,
                 "lens": lens.as_str(),
                 "salience_partial": built.salience_partial,
-                // graph-slice-delta ADR D2/D3: the serving generation + the opaque
+                // The serving generation + the opaque
                 // params token the client returns in a `since=` delta request.
                 "generation": built.generation,
                 "slice_token": built.fingerprint,
@@ -333,7 +333,7 @@ pub async fn graph_query_route(
     ))
 }
 
-/// The DISCONNECTED code corpus served through the same route/envelope (ADR D5).
+/// The DISCONNECTED code corpus served through the same route/envelope.
 /// Never delta-eligible (the code graph is a separate, lazy dataset).
 async fn code_corpus_query(
     state: &Arc<AppState>,
@@ -465,7 +465,7 @@ pub struct GraphQueryDeltaBody {
     pub slice_token: String,
 }
 
-/// `POST /graph/query/delta` (graph-slice-delta ADR D3): re-serve the current
+/// `POST /graph/query/delta`: re-serve the current
 /// present-view document vault slice (warm memo → cheap CPU; the win is the wire +
 /// parse, not the projection) and diff it against the ring snapshot at
 /// `(slice_token, since)` by node/edge id. `full_required` when the shape is not
@@ -500,7 +500,7 @@ pub async fn graph_query_delta_route(
     // baseline at the CLIENT'S opaque token (guard #1) against it.
     let current_built =
         build_and_record_present_document_slice(&state, &cell, filter, lens, query.focus, &tiers)?;
-    // Guard #1 hardening (review LOW): the token must be THE identity of the body
+    // Guard #1 hardening: the token must be THE identity of the body
     // params — a token minted for different params must never diff against this
     // build. The intended client cannot hit this (a param change is a new query
     // key → full drain), but the cross-check forecloses any cross-param diff for
@@ -598,7 +598,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_route_carries_generation_and_an_opaque_slice_token() {
-        // D2/D3: the present-view document route serves the generation + the token
+        // The present-view document route serves the generation + the token
         // the client returns in a delta request.
         let (_dir, state) = vault_fixture();
         let scope = active_scope(&state);

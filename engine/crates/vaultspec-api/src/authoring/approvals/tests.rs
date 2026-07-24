@@ -435,8 +435,8 @@ fn automated_self_approval_ban_covers_delegated_on_behalf_and_tool_executor() {
 #[test]
 fn self_approval_ban_keys_on_origin_author_not_latest_reviewer() {
     // Agent A proposes+submits (origin=A); human H approves -> latest().actor
-    // becomes H. The ban (which P36 apply reuses) MUST still deny A keyed on
-    // ORIGIN=A, even though latest().actor is now the reviewer (P23-R1).
+    // becomes H. The ban (which apply reuses) MUST still deny A keyed on
+    // ORIGIN=A, even though latest().actor is now the reviewer.
     let (_dir, mut store) = temp_store();
     let changeset_id = ChangesetId::new("changeset_1").unwrap();
     let proposal_id = ProposalId::new("proposal_1").unwrap();
@@ -526,7 +526,7 @@ fn re_request_supersedes_the_prior_pending_approval() {
     assert_eq!(old_retention.lifecycle_status, LifecycleStatus::Superseded);
 }
 
-// --- S113 decision matrix ---
+// --- decision matrix ---
 
 #[test]
 fn approved_proposal_reaches_approved_and_records_durable_state() {
@@ -576,7 +576,7 @@ fn pending_approval_is_registered_in_retention() {
     request(&mut store, &proposal_id, &changeset_id, &revision);
 
     // A pending approval MUST be registered in retention so compaction can
-    // never silently delete it (S40).
+    // never silently delete it.
     let retained = store
         .with_unit_of_work(CommandKind::CreateProposal, |uow| {
             uow.retention()
@@ -630,8 +630,8 @@ fn request_changes_returns_the_proposal_to_draft_under_the_reviewer() {
     let revision = seed_needs_review(&mut store, &changeset_id, &author);
     request(&mut store, &proposal_id, &changeset_id, &revision);
 
-    // W13.P24 activates request-changes (the deferred W05.P23 remainder): the reviewer
-    // sends the proposal back for revision through the EditProposal arc.
+    // This activates request-changes: the reviewer sends the proposal back
+    // for revision through the EditProposal arc.
     let outcome = decide(
         &mut store,
         CommandKind::EditProposal,

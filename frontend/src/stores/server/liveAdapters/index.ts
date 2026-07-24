@@ -1,4 +1,4 @@
-// Barrel for the decomposed liveAdapters module (module-decomposition mandate, 2026-07-12).
+// Barrel for the decomposed liveAdapters module.
 // Re-exports every submodule so the historical specifier `./liveAdapters` resolves here
 // unchanged. Public surface is a superset (promoted cross-module helpers are additionally
 // visible; no former export was removed or renamed).

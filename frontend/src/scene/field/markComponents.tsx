@@ -1,5 +1,5 @@
 // The React chrome plane for the domain-mark family — the SAME mark source the
-// Pixi texture seam consumes, rendered as DOM SVG (W02.P17.S37). Chrome that
+// Pixi texture seam consumes, rendered as DOM SVG. Chrome that
 // renders a domain species (e.g. a doc-type mark in the inspector or a tier
 // mark in a legend) imports these components so the canvas and the DOM share
 // one silhouette source; neither plane defines its own mark geometry.

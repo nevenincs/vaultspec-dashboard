@@ -1,6 +1,6 @@
 use super::*;
 
-// Two-sided D2 budget anchor: the frontend guards the client-outlives-engine
+// Two-sided budget anchor: the frontend guards the client-outlives-engine
 // ordering against its mirrored `ENGINE_SEARCH_BUDGET_MS`
 // (`frontend/src/stores/server/queries.ts`), which cannot see this constant.
 // Pinning the numeric value HERE makes a budget retune fail at the source of
@@ -113,7 +113,7 @@ fn an_empty_results_array_is_a_healthy_zero_match_not_a_miss() {
 
 #[test]
 fn annotation_carries_the_freshness_epoch_and_forwards_index_state() {
-    // P02.S06 (D3): the freshness contract on the annotated success envelope —
+    // The freshness contract on the annotated success envelope —
     // a warm epoch is present verbatim, a cold/failed read is an honest null,
     // and rag's native `index_state` block is forwarded byte-for-byte in every
     // case. The expected epoch values are the ones the caller hands in (the
@@ -578,7 +578,7 @@ async fn a_well_behaved_sibling_envelope_passes_through() {
 
 #[tokio::test]
 async fn reindex_with_a_bad_type_is_a_tiered_400_before_any_round_trip() {
-    // P02.S12/S15: arg validation rejects an unknown `type` BEFORE the
+    // Arg validation rejects an unknown `type` BEFORE the
     // transport is built, as a tiers-carrying 400 (mirrors the search target
     // guard) — the bad value never reaches rag.
     let (_dir, state) = sibling_state();
@@ -624,7 +624,7 @@ async fn reindex_with_a_bad_initiator_kind_is_a_tiered_400() {
 
 #[tokio::test]
 async fn watcher_reconfigure_out_of_bounds_args_are_tiered_400s() {
-    // P02.S12/S15: bound enforcement — a debounce past the ceiling and a
+    // Bound enforcement — a debounce past the ceiling and a
     // negative cooldown are each a tiers-carrying 400 before forwarding.
     let (_dir, state) = sibling_state();
     let err = ops_rag(
@@ -656,7 +656,7 @@ async fn watcher_reconfigure_out_of_bounds_args_are_tiered_400s() {
 
 #[tokio::test]
 async fn evict_with_a_dash_prefixed_root_is_a_tiered_400() {
-    // P02.S12: the flag-injection guard — a dash-prefixed evict root is
+    // The flag-injection guard — a dash-prefixed evict root is
     // rejected, mirroring the diff-path/rev guards.
     let (_dir, state) = sibling_state();
     let err = ops_rag(
@@ -675,7 +675,7 @@ async fn evict_with_a_dash_prefixed_root_is_a_tiered_400() {
 
 #[tokio::test]
 async fn an_unknown_read_verb_403s_before_any_round_trip() {
-    // P02.S15: an unknown GET read verb 403s with the tiers block, never
+    // An unknown GET read verb 403s with the tiers block, never
     // reaching discovery or rag.
     let (_dir, state) = sibling_state();
     let err = ops_rag_get(
@@ -702,7 +702,7 @@ async fn an_unknown_post_verb_403s_with_the_tiers_block() {
 
 #[test]
 fn brokered_envelope_forwards_rags_value_verbatim_with_tiers() {
-    // P02.S15: on success rag's envelope passes through VERBATIM under
+    // On success rag's envelope passes through VERBATIM under
     // `data.envelope` (unreshaped), with the tiers block attached
     // (engine-read-and-infer + every-wire-response-carries-the-tiers-block).
     let (_dir, state) = sibling_state();
@@ -720,7 +720,7 @@ fn brokered_envelope_forwards_rags_value_verbatim_with_tiers() {
 
 #[test]
 fn brokered_envelope_degrades_the_semantic_tier_on_a_rag_fault() {
-    // P02.S15: a rag transport/shape fault degrades the semantic tier with an
+    // A rag transport/shape fault degrades the semantic tier with an
     // empty envelope — never a hard 5xx (degradation-is-read-from-tiers). The
     // declared tier still reports truthfully through the shared overlay.
     let (_dir, state) = sibling_state();
@@ -734,7 +734,7 @@ fn brokered_envelope_degrades_the_semantic_tier_on_a_rag_fault() {
     );
 }
 
-// --- the bounded write-sibling runner (W04.P12: shared by the retained
+// --- the bounded write-sibling runner (shared by the retained
 // autofix/archive maintenance ops; the write/create channels that used to
 // exercise it here were deleted along with their routes) ----------------
 
@@ -1016,7 +1016,7 @@ fn rag_start_args_appends_json_after_the_validated_flags() {
     );
 }
 
-// --- version-tolerant --json retry (ADR D5 / T1-R1) ---
+// --- version-tolerant --json retry ---
 
 /// `lifecycle_run_to_envelope` is the pure conversion step inside
 /// `run_sibling_version_tolerant`.  It must turn an exit-0 JSON stdout into

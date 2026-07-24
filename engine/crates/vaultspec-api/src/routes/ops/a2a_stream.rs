@@ -1,10 +1,10 @@
-//! The `/ops/a2a/runs/{run_id}/stream` progress relay (a2a-orchestration-edge ADR
-//! D3): a NEW engine SSE channel that re-serves the resident a2a gateway's
+//! The `/ops/a2a/runs/{run_id}/stream` progress relay: a NEW engine SSE channel
+//! that re-serves the resident a2a gateway's
 //! `run-stream` verb (`GET /v1/runs/{run_id}/stream`) to the frontend, layering
 //! the engine's own seq + since-replay + gap contract on top of the upstream
 //! frames — the same machinery the multiplexed `/stream` channels use.
 //!
-//! The division of authority (ADR D3): these frames are NON-AUTHORITATIVE and
+//! The division of authority: these frames are NON-AUTHORITATIVE and
 //! droppable. Durable document-lifecycle truth rides the authoring events surface;
 //! orchestration progress rides this relay. A client recovering truth re-reads
 //! `run-status` and the durable events, NEVER a relay frame. So the relay is free
@@ -482,7 +482,7 @@ fn get_or_create_relay(run_id: &str) -> Option<Arc<RunRelay>> {
 /// Start at most one producer for a resident relay. A compare-exchange makes
 /// concurrent browser reconnects converge on one reader thread. The seated
 /// `LifecyclePlane` is carried so the reader dual-resolves its upstream endpoint
-/// through the product controller with the service.json fallback (S31).
+/// through the product controller with the service.json fallback.
 fn ensure_relay_reader(run_id: &str, relay: &Arc<RunRelay>, plane: Arc<LifecyclePlane>) {
     if !relay.claim_producer() {
         return;
@@ -1027,7 +1027,7 @@ fn map_live_frame(
     }
 }
 
-/// `GET /ops/a2a/runs/{run_id}/stream?since=` — the run progress relay (ADR D3).
+/// `GET /ops/a2a/runs/{run_id}/stream?since=` — the run progress relay.
 /// Subscribes to the resident per-run relay (starting its upstream reader on first
 /// use), replays the ring from `since=` (emitting a `gap` when the resume point was
 /// evicted), then streams live frames with lag→gap. An invalid run id or a relay at

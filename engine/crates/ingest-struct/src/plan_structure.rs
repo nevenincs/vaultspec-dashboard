@@ -1,5 +1,4 @@
-//! Plan-structure parsing (dashboard-pipeline-wire W03, engine ADR
-//! `2026-06-12-vaultspec-engine-adr` §4.3 / D4.1): parse a plan document body
+//! Plan-structure parsing: parse a plan document body
 //! into its canonical wave/phase/step tree with per-step completion.
 //!
 //! This is the one genuinely-new ingest surface this cycle. It is deterministic
@@ -14,8 +13,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Node ceiling for a parsed plan interior (dashboard-pipeline-wire W03.P06.S31
-/// / `graph-queries-are-bounded-by-default`): a large L4 plan's full step tree
+/// Node ceiling for a parsed plan interior
+/// (`graph-queries-are-bounded-by-default`): a large L4 plan's full step tree
 /// is a real payload, so the parsed structure is bounded and any overflow is
 /// reported honestly rather than serialized whole. The count is total entities
 /// (waves + phases + steps). 2000 entities is generous for any real plan while
@@ -56,7 +55,7 @@ pub struct PlanStep {
     pub done: bool,
 }
 
-/// Honest truncation report (dashboard-pipeline-wire W03.P06.S31, mirroring the
+/// Honest truncation report (mirroring the
 /// graph-query `truncated` block): the original total and what was kept.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlanTruncated {
@@ -69,7 +68,7 @@ pub struct PlanTruncated {
 /// the document carries, plus an optional truncation block when the entity
 /// count exceeded the ceiling.
 ///
-/// Tier-shape honest (W03.P06.S33): an L1 plan parses as `waves: []`,
+/// Tier-shape honest: an L1 plan parses as `waves: []`,
 /// `phases: []`, and a flat `steps` list; an L2 plan carries phases with no
 /// waves; L3/L4 carry the full wave tree. The parser never synthesizes a
 /// container the document does not declare.
@@ -111,7 +110,7 @@ enum Line<'a> {
     Step(PlanStep),
 }
 
-/// Parse a plan document body into its wave/phase/step tree (W03.P06.S29).
+/// Parse a plan document body into its wave/phase/step tree.
 ///
 /// Deterministic single pass over the lines: a `## Wave `W##`` heading opens a
 /// wave, a `### Phase `W##.P##`` heading opens a phase under the current wave
@@ -120,7 +119,7 @@ enum Line<'a> {
 /// id is the LAST dotted segment of the backtick-wrapped display path, so the
 /// parser reads `W01.P02.S03` and binds the step under its canonical `S03`.
 ///
-/// Bounded (W03.P06.S31): once the entity ceiling is reached, parsing stops
+/// Bounded: once the entity ceiling is reached, parsing stops
 /// appending and records the honest total it would have produced had it
 /// continued, keeping the returned subtree self-consistent.
 pub fn parse_plan_structure(text: &str) -> PlanStructure {
@@ -471,7 +470,7 @@ mod tests {
 
     #[test]
     fn parses_an_l3_wave_phase_step_tree_with_completion() {
-        // W03.P06.S32: the full L3 tree, each step's completion read honestly
+        // The full L3 tree, each step's completion read honestly
         // from its checkbox glyph.
         let s = parse_plan_structure(L3_FIXTURE);
         assert!(
@@ -510,7 +509,7 @@ mod tests {
 
     #[test]
     fn l1_and_l2_plans_parse_without_inventing_absent_containers() {
-        // W03.P06.S33: an L1 (steps-only) plan parses as a flat step list with
+        // An L1 (steps-only) plan parses as a flat step list with
         // no waves/phases; an L2 (phases) plan carries phases with no waves.
         let l1 = "\
 # `demo` plan
@@ -551,7 +550,7 @@ mod tests {
 
     #[test]
     fn the_structure_is_bounded_with_honest_truncation() {
-        // W03.P06.S31: a plan whose entity count exceeds the ceiling truncates
+        // A plan whose entity count exceeds the ceiling truncates
         // at the cap and reports the original total honestly.
         let mut body = String::from("# `big` plan\n\n### Phase `P01` - p\n\n");
         let steps = MAX_PLAN_STRUCTURE_NODES + 50;

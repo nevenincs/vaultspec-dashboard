@@ -1,4 +1,4 @@
-//! Context assembly (engine-spec §4.3, D4.4): `context(node)` returns
+//! Context assembly: `context(node)` returns
 //! everything relevant to a node as one tier-labelled, serializable bundle.
 //!
 //! This function is the orchestration-era contract: it must remain a

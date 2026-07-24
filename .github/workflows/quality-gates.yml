@@ -77,7 +77,7 @@ jobs:
           uv tool install vaultspec-core
           echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Unit tests (vitest)
-        run: VAULTSPEC_TEST_ENGINE_BIN="$CARGO_TARGET_DIR/debug/vaultspec" npm --prefix frontend run test
+        run: npm --prefix frontend run test
       - name: Unused code (knip — advisory)
         run: npx --yes knip@5 --directory frontend
         continue-on-error: true
@@ -96,7 +96,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   engine-conformance:
-    # Consumer-typed conformance (engine-hardening P01.S02, ADR D1): boot a
+    # Consumer-typed conformance: boot a
     # live vaultspec serve binary against a two-commit fixture and drive
     # EngineClient against it so wire-vs-TypeScript-type drift fails CI.
     # This closes the seam the Rust conformance.rs cannot reach (c812371).
@@ -162,7 +162,7 @@ jobs:
 
           # Start serve on an OS-assigned port; service.json carries the real
           # port + token (same pattern as conformance.rs start_serve).
-          "$CARGO_TARGET_DIR/debug/vaultspec" serve --port 0 &
+          "$GITHUB_WORKSPACE/engine/target/debug/vaultspec" serve --port 0 &
           SERVE_PID=$!
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
 
@@ -278,7 +278,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   release-inputs-gate:
-    # The release-inputs gate (a2a-product-provisioning W04.P08.S72): validate the
+    # The release-inputs gate: validate the
     # component lock, the release-set-manifest schema, and the product builder +
     # its manifest verifiers BEFORE any release job may run. The vaultspec-product
     # suite composes + self-verifies real product trees against the committed lock

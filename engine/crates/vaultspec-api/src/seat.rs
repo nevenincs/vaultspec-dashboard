@@ -1,4 +1,4 @@
-//! The machine-singleton SEAT (single-app-runtime ADR D1).
+//! The machine-singleton SEAT.
 //!
 //! One resident app process per machine. The seat is an OS-level exclusive
 //! file lock on `<app home>/seat.lock`, held for the process lifetime: the

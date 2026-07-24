@@ -125,9 +125,9 @@ export interface SessionSnapshot {
   turns: PromptTurnRecord[];
   runs: AgentRunRecord[];
   active_run: AgentRunRecord | null;
-  /** The ids of turns QUEUED behind the active run (engine `queued_turn_ids`,
-   *  agent-wire-gaps D1): the SERVED queue state the composer reads instead of a
-   *  client one-slot queue. Empty when nothing is queued. */
+  /** The ids of turns QUEUED behind the active run (engine `queued_turn_ids`): the
+   *  SERVED queue state the composer reads instead of a client one-slot queue.
+   *  Empty when nothing is queued. */
   queued_turn_ids: string[];
   caps: SessionSnapshotCaps;
   tiers: TiersBlock;
@@ -212,15 +212,15 @@ export interface CreateSessionPayload {
 export interface StartTurnPayload {
   prompt: string;
   summary?: string;
-  /** The opaque feedback-batch id this turn consumes (feedback-loop ADR D4). When
-   *  present the engine verifies the batch exists and belongs to the session before
-   *  starting the turn, and threads the id to the a2a run. */
+  /** The opaque feedback-batch id this turn consumes. When present the engine
+   *  verifies the batch exists and belongs to the session before starting the turn,
+   *  and threads the id to the a2a run. */
   feedback_batch_id?: string;
 }
 
 /** `POST /authoring/v1/feedback-batches` payload: the reviewer's chosen comments
  *  frozen into an immutable batch keyed to one source document + revision and the
- *  session (feedback-loop ADR D4). The author is the server-resolved principal. */
+ *  session. The author is the server-resolved principal. */
 export interface CreateFeedbackBatchPayload {
   session_id: string;
   source_document: string;
@@ -244,16 +244,16 @@ export interface CancelRunPayload {
   reason: string;
 }
 
-/** `POST /authoring/v1/sessions/{id}/cancel` payload (agent-wire-gaps D2, S45): the
- *  EXPLICIT end-the-conversation cancel — cancels the active run, voids queued turns,
- *  and marks the session cancelled. Distinct from the run-scoped Stop (CancelRunPayload),
- *  which since D2 leaves the session active. */
+/** `POST /authoring/v1/sessions/{id}/cancel` payload: the EXPLICIT end-the-
+ *  conversation cancel — cancels the active run, voids queued turns, and marks the
+ *  session cancelled. Distinct from the run-scoped Stop (CancelRunPayload), which
+ *  leaves the session active. */
 export interface CancelSessionPayload {
   reason: string;
 }
 
-/** `POST /authoring/v1/runs/{id}/complete` payload (agent-wire-gaps D1, S61): the
- *  driver-reported run settle that transitions the run to its terminal state and emits
+/** `POST /authoring/v1/runs/{id}/complete` payload: the driver-reported run settle
+ *  that transitions the run to its terminal state and emits
  *  `run.completed`. The engine defaults `outcome` to `completed`; a `failed` outcome
  *  REQUIRES a `failure_reason` and a `completed` outcome must NOT carry one. */
 export interface CompleteRunPayload {
@@ -266,16 +266,16 @@ export interface ResumeRunPayload {
   session_id?: string;
 }
 
-/** The typed decision the resume WRITE carries (engine `InterruptResumeDecision`,
- *  agent-wire-gaps S18): approve/reject a tool permission, OR steer the parked run
- *  with a fresh prompt. UNTAGGED on the wire (disjoint by their required fields), the
- *  SAME language the read projection speaks. */
+/** The typed decision the resume WRITE carries (engine `InterruptResumeDecision`):
+ *  approve/reject a tool permission, OR steer the parked run with a fresh prompt.
+ *  UNTAGGED on the wire (disjoint by their required fields), the SAME language the
+ *  read projection speaks. */
 export type AgentInterruptDecision =
   | { decision: "approve" | "reject"; comment?: string }
   | { prompt: string };
 
 export interface ResumeInterruptPayload {
-  /** The typed decision the run resumes with (S18: no longer opaque). */
+  /** The typed decision the run resumes with (no longer opaque). */
   decision: AgentInterruptDecision;
 }
 
@@ -284,16 +284,16 @@ export interface ResumeInterruptPayload {
 export type InterruptResumeState = "pending" | "resolved";
 
 /** The typed, per-kind human decision projected onto a RESOLVED interrupt (engine
- *  `InterruptDecisionProjection`, D3/S18): tagged so the client switches on `kind`.
- *  A legacy opaque blob projects as `decision_unreadable`. */
+ *  `InterruptDecisionProjection`): tagged so the client switches on `kind`. A legacy
+ *  opaque blob projects as `decision_unreadable`. */
 export type InterruptDecisionProjection =
   | { kind: "tool_permission"; decision: "approve" | "reject"; comment?: string }
   | { kind: "steer"; prompt: string }
   | { kind: "decision_unreadable" };
 
-/** One interrupt as served on the recovery listing (engine `InterruptProjection`,
- *  D3): the stable id, the run it gates, its kind, the gated tool call, its resume
- *  state, and — when resolved — the typed decision projection. */
+/** One interrupt as served on the recovery listing (engine `InterruptProjection`):
+ *  the stable id, the run it gates, its kind, the gated tool call, its resume state,
+ *  and — when resolved — the typed decision projection. */
 export interface AgentInterrupt {
   interrupt_id: string;
   run_id: string;

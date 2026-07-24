@@ -1,4 +1,4 @@
-// Adverse-condition E2E (dashboard-platform P05.S13): unlike the live-origin
+// Adverse-condition E2E: unlike the live-origin
 // smoke (playwright.config.ts), this runs against the Vite DEV server with the
 // mock engine. The dev affordances the adverse pass drives - the crash injector
 // and the degradation debug switch - only exist when `import.meta.env.DEV` is

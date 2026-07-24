@@ -1,4 +1,4 @@
-// Barrel for the decomposed engine module (module-decomposition mandate, 2026-07-12).
+// Barrel for the decomposed engine module.
 // Re-exports every submodule so the historical import specifier "./engine"
 // (and "../engine", "../../stores/server/engine") resolves here unchanged.
 // tiers is exported first so CANONICAL_TIERS is initialized before client pulls

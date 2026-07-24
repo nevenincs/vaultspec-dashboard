@@ -110,7 +110,7 @@ describe("event plane propagates at ms-level for every event kind", () => {
       direction: "backward",
     });
     // Tab is no longer a walk verb — it is left to browser focus traversal so the
-    // canvas can never trap the keyboard (no-keyboard-trap; keymap W03.P09).
+    // canvas can never trap the keyboard (no-keyboard-trap).
     expect(actionForKey({ key: "Tab" })).toBeNull();
     expect(actionForKey({ key: "Enter" })).toEqual({ kind: "open" });
     expect(actionForKey({ key: "e" })).toEqual({ kind: "expand" });

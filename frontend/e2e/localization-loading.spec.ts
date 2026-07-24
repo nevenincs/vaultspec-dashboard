@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S139): exercises live LOADING and
+// Localization E2E: exercises live LOADING and
 // progressive-result states against the real served application. A slow
 // `/vault-tree` response is forced through Playwright's network-layer route
 // interception (an honest lever external to the app — never faked DOM, never

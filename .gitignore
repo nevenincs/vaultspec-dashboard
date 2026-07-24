@@ -139,6 +139,8 @@ playwright-report/
 **/output/tech-review-assets/
 # Transient mobile review-capture screenshots (dev/review state, not code)
 **/output/mobile-review/
+# Skill/agent handover scratch notes (transient dev artifacts, not code)
+**/output/handoffs/
 # Figma seed captures are explicitly temp — always re-exportable from the Figma
 # frame, never committed (the figma/ doc set stays; only the seed images go).
 **/figma/seed-*.png

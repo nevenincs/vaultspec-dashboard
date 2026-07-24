@@ -1,12 +1,11 @@
-//! Direct human editor-save composition (W10.P49, retired to sole authority
-//! W14.P47).
+//! Direct human editor-save composition, the sole authority for this path.
 //!
 //! The direct-changeset path is the editor save's ONE materializer: it opens a
 //! self-approved `kind=direct` changeset and applies it through the same
 //! `apply_changeset` every other changeset uses. The legacy `/ops/core`
 //! dual-run comparison this module measured against during the transition
-//! (latency + conflict-UX parity, agentic-operation-modes ADR) is retired —
-//! there is no second write path to compare against or fall back to.
+//! (latency + conflict-UX parity) is retired — there is no second write
+//! path to compare against or fall back to.
 
 use std::path::Path;
 use std::time::Instant;
@@ -339,7 +338,7 @@ fn operation_target_blob_hash(operation: &DirectOperationInput) -> String {
     }
 }
 
-/// The W02.P06 scope pin: `None` when the request carries no pin (proceed
+/// The scope pin: `None` when the request carries no pin (proceed
 /// against whatever is active, backward-compatible) or when it matches the
 /// server's CURRENT active scope. `Some(outcome)` is an EPHEMERAL denial
 /// value — never persisted to this workspace's `direct_writes` table, since
@@ -453,7 +452,7 @@ pub fn execute_direct_write(
     // `CreateDocument` has nothing to resolve or stale-check: its collision
     // class (the predicted path already occupied) is caught at APPLY-TIME
     // preflight instead — the SAME `detect_conflicts` check the standard
-    // propose flow already relies on (W02.P05's `CreateDocumentPathCollision`).
+    // propose flow already relies on (`CreateDocumentPathCollision`).
     let existing_target = match &operation {
         DirectOperationInput::ReplaceBody {
             doc_ref,
@@ -746,7 +745,7 @@ pub fn execute_direct_write(
 }
 
 /// Build the `ChangesetChildOperationDraft` for one direct-write operation —
-/// reusing the SAME propose-side shape `materialize_drafts` (W02.P05a)
+/// reusing the SAME propose-side shape `materialize_drafts`
 /// dispatches on, so a direct-write save is materialized through the
 /// IDENTICAL per-kind materializers the standard propose flow uses, never a
 /// re-implementation. `existing_document` is the base-revision-fenced target
@@ -1032,7 +1031,7 @@ fn in_flight_outcome(ids: &DirectWriteIds) -> DirectWriteOutcome {
     }
 }
 
-/// Map the apply-preflight's structured classification (W05.P14) onto the
+/// Map the apply-preflight's structured classification onto the
 /// direct-write wire vocabulary. `None` (an apply denial the preflight could
 /// not classify — e.g. a stale approval/validation-digest refusal) collapses
 /// to `Other` — a `Denied` outcome ALWAYS carries a concrete `denial_kind`,

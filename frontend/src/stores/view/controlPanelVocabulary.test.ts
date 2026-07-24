@@ -16,8 +16,8 @@ describe("control panel vocabulary", () => {
   it("is exhaustive, frozen, and exact for every stable panel id", () => {
     // The vocabulary covers every control SURFACE: the modal panels
     // (`CONTROL_PANEL_IDS`) plus the footer-only review chip (`approvals`, a
-    // FooterChipId that opens the Agent pending view, review-surface-flow ADR F1).
-    // The agent-service panel (a2a-product-provisioning W05.P12) is the fourth modal.
+    // FooterChipId that opens the Agent pending view).
+    // The agent-service panel is the fourth modal.
     expect(Object.keys(CONTROL_PANEL_VOCABULARY)).toEqual([
       "search-service",
       "approvals",

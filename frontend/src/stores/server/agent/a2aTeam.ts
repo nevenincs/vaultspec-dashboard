@@ -1,13 +1,12 @@
-// The SOLE frontend client for a2a TEAM runs (agentic-authoring-ux ADR D9,
-// a2a-orchestration-edge ADR D1/D3). The frontend NEVER calls the a2a gateway
-// directly — every team operation transits the engine's whitelisted
+// The SOLE frontend client for a2a TEAM runs. The frontend NEVER calls the a2a
+// gateway directly — every team operation transits the engine's whitelisted
 // `/ops/a2a/{verb}` pass-through (`presets-list` feeds the Team selector,
 // `run-start`/`run-status`/`run-cancel` bind team runs, `service-state` feeds
 // degradation) and the per-run progress relay (`/ops/a2a/runs/{id}/stream`).
 //
 // Degradation is read from `tiers` ONLY (never a transport error): a2a-down
 // renders the Team selector disabled-with-reason while single-agent authoring
-// keeps working. Relay frames are non-authoritative (ADR D3) — truth is recovered
+// keeps working. Relay frames are non-authoritative — truth is recovered
 // by re-reading `run-status`, never reconstructed from a relay frame; when the
 // relay signals a gap or degrades, the consumer falls back to bounded run-status
 // polling with honest state, never faked liveness.
@@ -390,7 +389,7 @@ export interface AgentAvailability {
  * HEALTHY (a2a reachable, or simply not probed on this response), and a PRESENT
  * `available:false` is a2a-down with the served reason.
  *
- * FOLLOW-UP (edge P05, a reviewed wire-contract event): seed `agent` as an
+ * FOLLOW-UP (a reviewed wire-contract event): seed `agent` as an
  * always-present canonical tier in `engine-query/src/envelope.rs`; then this can
  * collapse into `readTierAvailability(["agent"])` and this tolerant reader retires.
  */
@@ -550,7 +549,7 @@ export const a2aKeys = {
     [...a2aKeys.all, "active-runs", scope, featureTag ?? ""] as const,
 };
 
-/** Bounded run-status poll cadence for the degraded fallback (D3): when the relay
+/** Bounded run-status poll cadence for the degraded fallback: when the relay
  *  gaps or degrades, run-status is the authoritative recovery read. */
 export const RUN_STATUS_POLL_MS = 5_000;
 
@@ -621,8 +620,8 @@ export function useA2aServiceState(): UseQueryResult<A2aServiceState, Error> {
   });
 }
 
-/** The workspace's live team runs, for reload-recovery of a lost viewing binding
- *  (a2a-edge D5). `enabled` gates the read to when recovery is actually needed (no
+/** The workspace's live team runs, for reload-recovery of a lost viewing binding.
+ *  `enabled` gates the read to when recovery is actually needed (no
  *  run bound) so an already-bound panel never polls it. Bounded staleTime/gcTime;
  *  a2a-down degrades to an empty list through the tiers, never an error surface. */
 export function useActiveTeamRuns(
@@ -642,7 +641,7 @@ export function useActiveTeamRuns(
 }
 
 /** The AUTHORITATIVE run-status read. `pollWhileDegraded` drives the bounded
- *  fallback poll (D3): a consumer sets it true when the relay signals a gap /
+ *  fallback poll: a consumer sets it true when the relay signals a gap /
  *  degradation / loss so run-status stays fresh without the relay. */
 export function useTeamRunStatus(
   runId: string | null,
@@ -681,7 +680,7 @@ export function useCancelTeamRun() {
   });
 }
 
-// --- the run-progress relay + bounded polling fallback (S22, ADR D3) ------------
+// --- the run-progress relay + bounded polling fallback --------------------------
 
 /** Adapt an SSE Response into a bounded stream of transcript frames. */
 export async function* relayFrames(
@@ -871,8 +870,8 @@ export function resolveRunReconciliation(
  *  authoritative run-status, and the honest degraded flag. When the latest relay
  *  frame forces reconcile (a gap / a degradation) OR the relay stream is lost,
  *  run-status polls at the bounded cadence and `degraded` is true so the surface
- *  labels the state honestly rather than faking liveness (ADR D3 / D9). Derives
- *  OUTSIDE the query hooks in a memo. */
+ *  labels the state honestly rather than faking liveness. Derives OUTSIDE the
+ *  query hooks in a memo. */
 export interface RunProgress {
   readonly frames: RelayTranscriptFrame[];
   readonly status?: TeamRunStatus;

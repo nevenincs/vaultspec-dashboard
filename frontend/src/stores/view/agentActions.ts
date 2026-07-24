@@ -123,8 +123,8 @@ export function hasEndableAgentSession(): boolean {
   return endableAgentSessionId() !== null;
 }
 
-/** Explicitly END the current conversation (S45): cancel the active run, void
- *  queued turns, and mark the session cancelled — DISTINCT from Stop, which since D2
+/** Explicitly END the current conversation: cancel the active run, void
+ *  queued turns, and mark the session cancelled — DISTINCT from Stop, which
  *  is run-scoped and leaves the session active. The ONE seam the panel's
  *  End-conversation control fires; a no-op when there is no endable session. */
 export async function endActiveAgentSession(): Promise<void> {

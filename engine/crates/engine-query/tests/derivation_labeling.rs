@@ -1,5 +1,4 @@
-//! DERIVATION LABELING COMPLETENESS (graph-node-representation ADR D3 /
-//! graph-lineage-dag ADR D3/D4/D7, plan W02.P06.S32): the authored
+//! DERIVATION LABELING COMPLETENESS: the authored
 //! plan -> wave -> phase -> step -> exec hierarchy is one connected
 //! `generated-by` spine, and BOTH front-door surfaces that read the shared
 //! `ontology::derivation_label` projection see the same label, while combos
@@ -10,13 +9,13 @@
 //!   - `/graph/query` (`graph::graph_query`) — the topological derivation slice
 //!     the Sugiyama layout lays out; and
 //!   - `/graph/lineage` (`lineage::lineage`) — the diachronic timeline arc that
-//!     S29 wired to the SAME projection (D4 timeline parity), closing the
+//!     was wired to the SAME projection (timeline parity), closing the
 //!     hardcoded-`None` drop.
 //!
-//! Both surfaces share ONE projection (D7): they must agree on the label. The
+//! Both surfaces share ONE projection: they must agree on the label. The
 //! container-path detection reads `node.kind` (the `PlanContainer` species,
-//! `doc_type: None`), the shape the old doc-type-pair gate dropped (D3.1). The
-//! label is ADDITIVE and NEVER part of the edge stable key (D3.3): re-deriving
+//! `doc_type: None`), the shape the old doc-type-pair gate dropped. The
+//! label is ADDITIVE and NEVER part of the edge stable key: re-deriving
 //! the same logical edge yields the same `edge_id` regardless of the label.
 
 use engine_graph::{EdgeAttrs, LinkageGraph, ingest};
@@ -254,8 +253,7 @@ fn derivation_in_slice<'a>(
 
 #[test]
 fn the_plan_exec_wikilink_is_generated_by_and_the_container_scaffold_is_pruned() {
-    // graph-node-representation ADR D3 + documents-only slice (commit 60f6779d21,
-    // narrowed by the 2026-06-21 wire-waste prune): the `generated-by` derivation
+    // Documents-only slice (narrowed by the wire-waste prune): the `generated-by` derivation
     // LABEL is live, but the PlanContainer scaffold edges — the `Contains`
     // hierarchy and the step -> exec binding, all with a PlanContainer endpoint —
     // are NOT `.vault/` documents, so they are PRUNED from the documents-only slice
@@ -288,7 +286,7 @@ fn the_plan_exec_wikilink_is_generated_by_and_the_container_scaffold_is_pruned()
 
 #[test]
 fn the_lineage_arc_surface_carries_the_same_generated_by_label_as_graph_query() {
-    // graph-lineage-dag ADR D4/D7 (plan S29): `/graph/lineage`'s `lineage_arc`
+    // `/graph/lineage`'s `lineage_arc`
     // reads the SAME `ontology::derivation_label` projection `/graph/query` uses,
     // closing the hardcoded-`None` drop. The exec -> plan wikilink arc (both
     // endpoints are dated, lane-owning documents, so they survive into the
@@ -309,13 +307,13 @@ fn the_lineage_arc_surface_carries_the_same_generated_by_label_as_graph_query() 
     assert_eq!(
         arc.derivation.as_deref(),
         Some("generated-by"),
-        "the lineage arc carries the shared label (D4 timeline parity, S29 closed the None drop)"
+        "the lineage arc carries the shared label (timeline parity, closing the None drop)"
     );
 }
 
 #[test]
 fn unrelated_relation_and_doc_type_combos_stay_honest_null() {
-    // graph-node-representation ADR D3: combos with no real derivation semantics
+    // Combos with no real derivation semantics
     // remain honest `null` — the widening labels only what is genuinely a
     // derivation relation, never invents structure to fill holes.
     let mut g = LinkageGraph::new();
@@ -352,7 +350,6 @@ fn unrelated_relation_and_doc_type_combos_stay_honest_null() {
 
 #[test]
 fn the_generated_by_label_never_enters_the_edge_stable_key() {
-    // graph-node-representation ADR D3 / graph-lineage-dag ADR D3.3
     // (provenance-stable-keys-are-identity-bearing): the WIDENED container-path
     // detection changes the served label only, NEVER an id. Re-deriving the
     // step->exec binding's stable key with the same endpoints/relation/tier/
@@ -379,6 +376,6 @@ fn the_generated_by_label_never_enters_the_edge_stable_key() {
     );
     assert_eq!(
         recomputed.0, ids.binding,
-        "the generated-by label never threads into the edge stable key (D3.3)"
+        "the generated-by label never threads into the edge stable key"
     );
 }

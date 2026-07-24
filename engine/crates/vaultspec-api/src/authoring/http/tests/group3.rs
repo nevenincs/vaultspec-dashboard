@@ -419,7 +419,7 @@ async fn comment_create_rejects_a_traversal_shaped_node_id_without_reading_outsi
     );
 }
 
-/// agent-wire-gaps D3 (S26): a client that lost the `/execute` `awaiting_permission`
+/// A client that lost the `/execute` `awaiting_permission`
 /// response recovers its pending interrupts from the bounded listing route — raise
 /// order, pending flagged, honest `truncated` — and a resolved interrupt serves its
 /// decision through the typed projection rather than an opaque string.
@@ -539,7 +539,7 @@ async fn run_interrupt_listing_recovers_pending_and_serves_typed_decisions() {
     );
 }
 
-/// agent-wire-gaps D5 (S26): `GET /v1/mode` serves the DEFAULT record on a fresh
+/// `GET /v1/mode` serves the DEFAULT record on a fresh
 /// store and round-trips the mode write — the same record, read pre-proposal with
 /// no token (principal-permissive read).
 #[tokio::test]
@@ -598,11 +598,11 @@ async fn mode_read_serves_default_and_round_trips_the_write() {
     assert_eq!(body["data"]["mode"], written_mode, "round-trip: {body}");
 }
 
-/// The feedback-batch create + read routes (a2a-orchestration-edge P04.S09/S10):
+/// The feedback-batch create + read routes:
 /// a create envelope carrying `command:"create_feedback_batch"` freezes a
 /// content-addressed batch, the GET route reads it back verbatim, an unknown id
 /// 404s, and a mismatched-but-valid command kind is a typed 400 refusal. Guards
-/// the exact wire contract the S12 frontend ships against.
+/// the exact wire contract the frontend ships against.
 #[tokio::test]
 async fn feedback_batch_create_and_read_round_trips_through_the_routes() {
     let (_dir, state) = fixture_state();
@@ -696,7 +696,7 @@ async fn feedback_batch_create_and_read_round_trips_through_the_routes() {
     );
 }
 
-/// HTTP-level route contract for the S13 session-close verb: an envelope carrying
+/// HTTP-level route contract for the session-close verb: an envelope carrying
 /// `command:"close_session"` marks the (quiescent) session `Closed`, a re-close replays
 /// as a benign no-op that still reports `closed`, and a mismatched-but-valid command
 /// kind is a typed 400 refusal. Guards the exact wire contract the a2a submit-success
@@ -765,7 +765,7 @@ async fn close_session_marks_closed_and_refuses_a_mismatched_kind() {
     );
 }
 
-/// P05 review floor (HIGH finding fix): a STANDING, registered actor with no
+/// Authorization floor: a STANDING, registered actor with no
 /// connection to the run — not its owner, not the owner's delegator — may not
 /// resume its interrupt (neither approving a stranger's pending tool grant nor
 /// injecting a steering prompt). Typed refusal; the interrupt stays pending.

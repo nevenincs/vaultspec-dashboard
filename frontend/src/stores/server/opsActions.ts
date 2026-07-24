@@ -31,7 +31,7 @@ export interface OpsPayload {
    * ledger). Every genuine content edit (set-body/set-frontmatter/rename/create/
    * relate-link) is ledgered instead (`stores/server/authoring.ts`
    * `directWrite()`), so the legacy `write`/`create`/`link` modes this seam used
-   * to carry are RETIRED (ledgered-edit-migration W04.P12) — this dispatcher
+   * to carry are RETIRED — this dispatcher
    * whitelists only `archive`/`autofix`/argument-free control verbs now. A `rag`
    * target ignores `mode` (it always forwards `body` to the brokered control
    * verb).
@@ -309,8 +309,8 @@ function assertOpsDispatchIntent(payload: unknown): asserts payload is OpsPayloa
 // (archive/autofix) route through this seam so their mutations stay logged,
 // traced, and centrally guardable — the app layer never reaches the engine
 // client itself. Every genuine content edit is ledgered instead
-// (ledgered-edit-migration W04.P12 retired the `write`/`create`/`link` modes
-// this seam used to carry).
+// (the legacy `write`/`create`/`link` modes this seam used to carry were
+// retired).
 appDispatcher.register<OpsPayload>(OPS_ACTION, (action) => {
   const payload = action.payload as unknown;
   if (!payload) throw new Error("ops:run dispatched without a payload");

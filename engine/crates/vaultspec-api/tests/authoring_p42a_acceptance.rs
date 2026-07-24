@@ -1,12 +1,11 @@
-//! W14.P42a S263 — consolidated cross-engine acceptance, realizing the Increment-5
-//! demo (plan S250) through the ACTUALLY-WIRED stack over the live HTTP router.
+//! Consolidated cross-engine acceptance, realizing the Increment-5 demo through the
+//! ACTUALLY-WIRED stack over the live HTTP router.
 //!
 //! Drives the REAL app router (machine `bearer_gate` + actor-principal layer) against a
 //! real git worktree — no mocks — exercising the six wired engines TOGETHER: the
-//! authorization floor (S257), advisory leases + apply fencing (S258), conflict
-//! detection serve + apply preflight gate (S259), explicit rebase (S260), and the
-//! review-station claim/queue/provenance (S261). Compaction (S262) rides the prompt-turn
-//! boundary and is proven in `session.rs`.
+//! authorization floor, advisory leases + apply fencing, conflict detection serve + apply
+//! preflight gate, explicit rebase, and review-station claim/queue/provenance. Compaction
+//! rides the prompt-turn boundary and is proven in `session.rs`.
 //!
 //! LIVE-WIRE CONSTRAINTS (flagged — see the per-test notes):
 //! - No core is scaffolded: the apply's set-body write degrades to a FAILED receipt, but
@@ -14,13 +13,13 @@
 //!   apply PROCEEDED past the preflight fence/conflict gate, and a `denied` value (no
 //!   receipt) == the gate refused it. That distinction is exactly what these tests assert;
 //!   the applied-receipt leg is covered by `authoring_vertical_slices`.
-//! - A `Conflicted` head is not deterministically wire-reachable post-S259 (the conflict
-//!   preflight denies a stale-base apply BEFORE it can fail-to-Conflicted), so the
-//!   rebase-POSITIVE `Conflicted -> Draft` path is unit-covered (S260, store-seeded); the
+//! - A `Conflicted` head is not deterministically wire-reachable post-preflight (the
+//!   conflict preflight denies a stale-base apply BEFORE it can fail-to-Conflicted), so
+//!   the rebase-POSITIVE `Conflicted -> Draft` path is unit-covered (store-seeded); the
 //!   wire test here asserts the rebase route's live wiring + deterministic gating.
 //! - The floor's 403 `authoring_authorization_denied` is not externally wire-reachable
 //!   (token issuance registers the base actor active and rejects a delegated record), so
-//!   it is unit-covered (S257 coverage guard); the wire test here asserts the reachable
+//!   it is unit-covered (coverage guard); the wire test here asserts the reachable
 //!   redacted refusals (unknown token; cross-workspace scope denial).
 
 use std::path::Path;
@@ -382,7 +381,7 @@ async fn apply(
 }
 
 // =================================================================================
-// Scenario 1 (S250): two concurrent writers + lease coordination visible + fencing.
+// Scenario 1: two concurrent writers + lease coordination visible + fencing.
 // =================================================================================
 
 #[tokio::test]
@@ -441,8 +440,8 @@ async fn demo_two_writers_lease_coordination_visible_and_fencing() {
         "the current token clears the fence and reaches the core: {current}"
     );
 
-    // On a SEPARATE document under its own live lease, an ABSENT token PROCEEDS (S258-R1
-    // advisory semantics: no token == non-participant, the revision check remains the floor).
+    // On a SEPARATE document under its own live lease, an ABSENT token PROCEEDS (advisory
+    // semantics: no token == non-participant, the revision check remains the floor).
     let approval2 =
         create_submit_approve(&state, &agent, &reviewer, &DOC2, "changeset_absent", &base2).await;
     let _token2 = acquire_lease(&state, &agent, &DOC2, &base2, "idem:lease:2").await;
@@ -462,7 +461,7 @@ async fn demo_two_writers_lease_coordination_visible_and_fencing() {
 }
 
 // =================================================================================
-// Scenario 2 (S250): a stale proposal conflicts deterministically; apply refused.
+// Scenario 2: a stale proposal conflicts deterministically; apply refused.
 // =================================================================================
 
 #[tokio::test]
@@ -540,7 +539,7 @@ async fn demo_stale_proposal_conflicts_deterministically_and_apply_refused() {
 }
 
 // =================================================================================
-// Scenario 3 (S250): explicit rebase route — live wiring + deterministic gating.
+// Scenario 3: explicit rebase route — live wiring + deterministic gating.
 // (The positive Conflicted -> Draft path is unit-covered; see the module note.)
 // =================================================================================
 
@@ -603,7 +602,7 @@ async fn demo_explicit_rebase_route_is_wired_and_deterministically_gates() {
 }
 
 // =================================================================================
-// Scenario 4 (S250): an unauthorized actor is refused with a REDACTED error.
+// Scenario 4: an unauthorized actor is refused with a REDACTED error.
 // (The floor's 403 is unit-covered; the reachable wire refusals are asserted here.)
 // =================================================================================
 

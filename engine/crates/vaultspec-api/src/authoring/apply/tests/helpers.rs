@@ -254,7 +254,7 @@ pub(super) const FRONTMATTER_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#a
 
 pub(super) const FRONTMATTER_DOC_PATH: &str = ".vault/plan/apply-frontmatter-demo.md";
 
-/// The `setup` sibling for an `EditFrontmatter` child (W02.P03): the SAME
+/// The `setup` sibling for an `EditFrontmatter` child: the SAME
 /// Draft->NeedsReview->Approve scaffolding, materialized through
 /// `materialize_edit_frontmatter` instead of `materialize_replace_body`.
 pub(super) fn setup_frontmatter(approve: bool) -> Fx {
@@ -454,7 +454,7 @@ pub(super) fn setup_frontmatter(approve: bool) -> Fx {
     }
 }
 
-// --- W02.P03-R1: EditFrontmatter against the REAL core (kind-gated post-verify) ---
+// --- EditFrontmatter against the REAL core (kind-gated post-verify) ---
 
 /// Serializes the tests that spawn the REAL `vaultspec-core` subprocess
 /// (mirrors `direct_write::tests::REAL_CORE_TEST_LOCK`).
@@ -687,7 +687,7 @@ pub(super) fn setup_live_frontmatter() -> Fx {
     }
 }
 
-// --- W02.P04: Rename against the REAL core -----------------------------
+// --- Rename against the REAL core -----------------------------
 
 pub(super) const LIVE_RENAME_OLD_STEM: &str = "apply-rename-live-demo";
 

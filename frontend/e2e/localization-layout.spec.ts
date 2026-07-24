@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S105/S138): verifies EXPANDED-COPY and
+// Localization E2E: verifies EXPANDED-COPY and
 // right-to-left test locale behavior — layout direction, focus order, rich
 // interpolation, live regions, `lang`, and `dir` — against the REAL,
 // production component tree. The app ships only the English source locale

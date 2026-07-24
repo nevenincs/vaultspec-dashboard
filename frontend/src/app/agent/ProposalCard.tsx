@@ -1,5 +1,5 @@
-// The inline proposal card for the Agent transcript (agentic-authoring-ux ADR D5,
-// Figma proposal card in transcript frame 1223:4518): the preview-then-approve
+// The inline proposal card for the Agent transcript (Figma proposal card in
+// transcript frame 1223:4518): the preview-then-approve
 // review happy path INSIDE the conversation. When a turn's run settles into a
 // proposal, the transcript slot shows the served summary + change count, a
 // Show-changes disclosure over the ONE diff primitive, and eligibility-driven

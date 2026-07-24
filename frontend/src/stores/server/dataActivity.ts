@@ -1,8 +1,8 @@
-// The ONE data-activity projection (universal-data-loading ADR D1): the
+// The ONE data-activity projection: the
 // stores-owned truth for "data is moving", aggregating TanStack's fetch and
-// mutation counts, the drain-progress slice (the multi-page listing walks,
-// ADR D3), and nothing else. Chrome renders this view once per shell branch
-// (ADR D2); no surface re-derives activity from transport events, and
+// mutation counts, the drain-progress slice (the multi-page listing walks),
+// and nothing else. Chrome renders this view once per shell branch;
+// no surface re-derives activity from transport events, and
 // degradation stays a separate, tiers-read concern (wire-contract) — this
 // view says only that work is in flight, never that a backend is down.
 //
@@ -10,7 +10,7 @@
 // subscriptions (`["engine","stream",...]`) hold `fetchStatus: "fetching"`
 // for their whole mounted lifetime, so counting them would pin the indicator
 // permanently on. This predicate is the maintenance point when a new
-// stream-shaped query family lands (ADR consequences).
+// stream-shaped query family lands.
 
 import { useIsFetching, useIsMutating } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -25,7 +25,7 @@ export const ACTIVITY_MIN_VISIBLE_MS = 600;
 
 export type DataActivityKind = "idle" | "fetching" | "mutating" | "draining";
 
-/** The interpreted activity view chrome consumes (ADR D1). `visible` is the
+/** The interpreted activity view chrome consumes. `visible` is the
  *  debounced signal the indicator renders; `determinate` carries the drain
  *  rollup ("N rows…") when a listing walk is the activity, else null and the
  *  indicator renders indeterminate. */
@@ -96,7 +96,7 @@ export function resolveActivityKind(
 }
 
 /**
- * Stores hook: the one interpreted data-activity view (ADR D1). Selector
+ * Stores hook: the one interpreted data-activity view. Selector
  * discipline (frontend-store-selectors): the drain selector returns the RAW
  * record; the rollup derives in `useMemo` keyed on it.
  */

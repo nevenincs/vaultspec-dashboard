@@ -1,15 +1,15 @@
-//! Edge ingestion (engine-spec §3, D3.1/D3.2): tier and provenance are
+//! Edge ingestion: tier and provenance are
 //! mandatory by type; this module enforces the **fixed per-tier confidence
 //! bands** and the structural-state invariants at the graph boundary, so
 //! no malformed edge can enter the in-memory graph.
 //!
-//! Bands (D3.2 — fixed, nothing learned or tunable in v1):
+//! Bands (fixed, nothing learned or tunable in v1):
 //! - declared: exactly 1.0, or exactly 0.8 for the `core-derived` relation
 //! - structural: 0.9 (resolved), 0.5 (stale), 0.0 (broken — retained,
 //!   flagged, floor confidence)
 //! - temporal: 0.3 ..= 0.9
 //!
-//! Semantic (RAG) matches are NOT a graph tier (D3.5): they are ephemeral
+//! Semantic (RAG) matches are NOT a graph tier: they are ephemeral
 //! suggestions that live in the rag client's ephemeral TTL cache, never in the
 //! graph. `Tier` carries no `Semantic` variant, so a `"semantic"` edge tier
 //! string fails to deserialize as an unknown tier — rejected by the normal
@@ -87,10 +87,10 @@ pub fn validate(edge: &Edge) -> Result<(), EdgeError> {
     Ok(())
 }
 
-/// Validate and insert. Same-id re-ingestion REPLACES (idempotent, audit
-/// W02P05-202): multiplicity is aggregated at extraction granularity and
-/// passed once via [`EdgeAttrs`] (audit W01P01-003); core's weight is
-/// explicitly carried (audit W01P03-103). The freshest observation wins.
+/// Validate and insert. Same-id re-ingestion REPLACES (idempotent):
+/// multiplicity is aggregated at extraction granularity and
+/// passed once via [`EdgeAttrs`]; core's weight is
+/// explicitly carried. The freshest observation wins.
 pub fn ingest(graph: &mut LinkageGraph, edge: Edge, attrs: EdgeAttrs) -> Result<(), EdgeError> {
     validate(&edge)?;
     graph.insert_validated_edge(edge, attrs);
@@ -176,7 +176,7 @@ mod tests {
         assert!(validate(&edge(Tier::Structural, 0.5, Some(ResolutionState::Stale))).is_ok());
         assert!(
             validate(&edge(Tier::Structural, 0.0, Some(ResolutionState::Broken))).is_ok(),
-            "broken edges are retained, flagged, never dropped (D3.3)"
+            "broken edges are retained, flagged, never dropped"
         );
         assert_eq!(
             validate(&edge(Tier::Structural, 0.9, None)),
@@ -188,8 +188,8 @@ mod tests {
 
     #[test]
     fn a_semantic_edge_tier_is_rejected_as_an_unknown_tier_never_minted() {
-        // Semantic (RAG) matches are ephemeral suggestions, never graph fact
-        // (D3.5). With no `Tier::Semantic` variant, a `"semantic"` edge tier on
+        // Semantic (RAG) matches are ephemeral suggestions, never graph fact.
+        // With no `Tier::Semantic` variant, a `"semantic"` edge tier on
         // the wire is rejected by the normal unknown-tier deserialize path — the
         // same path any unknown tier string takes — rather than a special-case
         // ingestion error. It is rejected gracefully (an Err), never a panic.
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn same_id_reingestion_is_idempotent_replace_not_increment() {
-        // Audit W02P05-202: re-ingesting the same logical edge (dirtied
+        // Re-ingesting the same logical edge (dirtied
         // doc re-extract, double watcher fire) must not inflate
         // multiplicity — the value is aggregated upstream and replaces.
         let mut g = LinkageGraph::new();

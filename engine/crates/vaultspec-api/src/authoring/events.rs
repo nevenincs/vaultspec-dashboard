@@ -349,8 +349,8 @@ pub(crate) fn apply_started_event(
     })
 }
 
-/// Build a comment lifecycle event for the authoring SSE channel (authoring-surface
-/// ADR D2). Rides the SAME outbox/projector feed every changeset event uses; the
+/// Build a comment lifecycle event for the authoring SSE channel.
+/// Rides the SAME outbox/projector feed every changeset event uses; the
 /// payload carries the `comment_id` and `document_node_id` so an SSE consumer
 /// invalidates exactly the affected document's comment query. The dedupe key folds
 /// in the request's idempotency key, so a replayed mutation coalesces to one event

@@ -1064,20 +1064,18 @@ fn session_and_settings_surface_roundtrips_and_carries_tiers() {
     assert_eq!(language_def["value_type"]["type"], "enum");
     assert_eq!(
         language_def["value_type"]["members"],
-        serde_json::json!(["system", "en"]),
-        "only production locale identities are persistable"
+        serde_json::json!(["en"]),
+        "production ships the English source catalog only — test-only locales are \
+         not persistable (settings_schema: language)"
     );
-    assert_eq!(language_def["default"], "system");
+    assert_eq!(language_def["default"], "en");
     assert_eq!(language_def["scope_eligible"], false);
     assert_eq!(language_def["control"], "segmented");
     assert_eq!(language_def["display"]["id"], "appearance.language");
     assert_eq!(language_def["display"]["group"], "appearance");
     assert_eq!(
         language_def["display"]["enum_members"],
-        serde_json::json!([
-            { "value": "system", "id": "language.system" },
-            { "value": "en", "id": "language.english" }
-        ])
+        serde_json::json!([{ "value": "en", "id": "language.english" }])
     );
     // (dashboard-settings, Figma 17:1702) The Graph section carries five rows:
     // default_granularity plus the confidence-floor percent slider and the

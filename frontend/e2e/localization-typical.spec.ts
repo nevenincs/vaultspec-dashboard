@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S104): exercises the live served application (real
+// Localization E2E: exercises the live served application (real
 // `vaultspec serve` origin, same harness as smoke.spec.ts) in its TYPICAL
 // localized state — the shipped source locale, happy path, no forced state.
 // Proves the real component tree never leaks an unresolved catalog key, a raw

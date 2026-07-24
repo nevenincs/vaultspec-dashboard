@@ -366,7 +366,7 @@ fn eligible_changeset_is_approved_by_system_actor_in_autonomous_mode() {
 
 #[test]
 fn direct_changeset_is_never_system_auto_approved_even_in_autonomous_mode() {
-    // P49-R2 site-c guard (LOAD-BEARING): a crashed direct save can leave a Draft
+    // LOAD-BEARING guard: a crashed direct save can leave a Draft
     // kind=Direct changeset that a client pushes through the GENERIC submit route
     // (which gates nothing on kind) into this composition. Even in autonomous mode
     // over a non-destructive body edit — which WOULD auto-approve for Authoring —
@@ -596,7 +596,7 @@ fn mode_downgrade_requeues_not_yet_applying_system_approval_as_human_review() {
         })
         .unwrap();
     assert_eq!(latest.status, ChangesetStatus::NeedsReview);
-    // P48-R1: the kill switch re-queues through the SINGLE declared
+    // The kill switch re-queues through the SINGLE declared
     // Approved→NeedsReview arc — the head's predecessor is the Approved auto-approval,
     // NOT a synthetic Approved→Draft re-draft, and the system actor never authored a
     // Draft revision.

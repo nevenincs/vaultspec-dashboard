@@ -1,6 +1,6 @@
 [package]
 name = "engine-graph"
-description = "In-memory linkage graph: nodes, edges, facets, context assembly, filters. All queries answer from RAM; persistence is a rebuildable cache (engine-spec §8, D8.1)."
+description = "In-memory linkage graph: nodes, edges, facets, context assembly, filters. All queries answer from RAM; persistence is a rebuildable cache."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

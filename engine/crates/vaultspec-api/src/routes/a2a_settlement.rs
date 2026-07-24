@@ -1,5 +1,4 @@
-//! The authenticated A2A terminal-settlement callback
-//! (a2a-product-provisioning W02.P05.S41).
+//! The authenticated A2A terminal-settlement callback.
 //!
 //! `POST /internal/a2a/run-terminal` is the RECEIVING end of the gateway's
 //! fire-and-forget terminal-settlement emission (a2a `desktop/settlement.py`).
@@ -13,7 +12,7 @@
 //! gateway->dashboard callback, not a browser API verb. It authenticates on its
 //! own by verifying the presented `Authorization: Bearer <attach-control>` against
 //! the stored attach-control credential (constant-time), so a machine bearer, the
-//! worker-IPC secret, or any unrelated credential is rejected (S153). Settlement
+//! worker-IPC secret, or any unrelated credential is rejected. Settlement
 //! is idempotent and revokes the bundle only after verifying the callback's lease
 //! id matches the one bound at commit (defense-in-depth atop the auth).
 
@@ -32,7 +31,7 @@ type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
 /// The durably-terminal A2A run statuses (a2a `thread/enums.TERMINAL_STATUSES`).
 /// A settlement callback carries one of these; `input_required` and every other
-/// active status is NOT terminal (its lease is retained, S44).
+/// active status is NOT terminal (its lease is retained).
 const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "cancelled"];
 
 /// The bounded terminal-settlement callback body — mirrors the a2a producer's
@@ -46,7 +45,7 @@ pub(crate) struct TerminalSettlementBody {
 }
 
 /// A REQUIRED extractor witnessing that the request presented the dashboard-
-/// created attach-control credential (S41/S153). Because a handler takes it as an
+/// created attach-control credential. Because a handler takes it as an
 /// argument, the auth is enforced BY CONSTRUCTION — the handler body cannot run
 /// unless this passed, and it runs BEFORE the body is read. It reads
 /// `Authorization: Bearer <secret>` and constant-time compares against the stored
@@ -86,7 +85,7 @@ impl FromRequestParts<Arc<AppState>> for AttachControlAuth {
 }
 
 /// `POST /internal/a2a/run-terminal` — the attach-control-authenticated terminal
-/// settlement callback (S41). The `AttachControlAuth` extractor enforces the
+/// settlement callback. The `AttachControlAuth` extractor enforces the
 /// credential before this body runs; here it only confirms the status is durably
 /// terminal, then idempotently settles the run's lease (revoking exactly its
 /// hashed bundle) after verifying the callback lease id.
@@ -105,7 +104,7 @@ pub(crate) async fn a2a_run_terminal(
     };
 
     // Confirm the reported status is durably terminal — an active status (e.g.
-    // input_required) never settles a lease (S44).
+    // input_required) never settles a lease.
     if !TERMINAL_STATUSES.contains(&body.terminal_status.as_str()) {
         return Err(super::api_error_kind(
             &state,

@@ -1,7 +1,7 @@
-//! The ONE bounded, timed background janitor (agent-wire-gaps P04a / D1).
+//! The ONE bounded, timed background janitor.
 //!
 //! A single sweep drives every genuinely undriven hygiene duty — the abandoned-run
-//! reap (D1's crash backstop for a runtime that dies without reporting settlement),
+//! reap (the crash backstop for a runtime that dies without reporting settlement),
 //! tool-permission expiry, interrupt-side permission expiry, and lease expiry — plus a
 //! stated COMPACTION BACKSTOP over the same bounded `compact_due` set the opportunistic
 //! per-turn path owns. It is never a second owner of compaction and never a second
@@ -138,7 +138,7 @@ pub fn janitor_sweep(store: &mut Store, now_ms: i64, config: &JanitorConfig) -> 
                 "",
                 json!({ "run": run }),
             )?;
-            // D2: settlement — reported or reaped — is the queue's promotion trigger.
+            // Settlement — reported or reaped — is the queue's promotion trigger.
             if let Some(next) = uow
                 .sessions()
                 .promote_next_queued_turn(&run.session_id, now_ms)?

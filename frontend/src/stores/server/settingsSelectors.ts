@@ -1,4 +1,4 @@
-// Effective-value resolution for the settings module (dashboard-settings W02).
+// Effective-value resolution for the settings module.
 //
 // Pure selectors over the served schema (the single source of truth) and the
 // {global, scoped} value maps. They resolve each declared setting's EFFECTIVE
@@ -306,7 +306,7 @@ export function resolveGraphSettingsDefaults(
     activeScope,
     CONSUMED_SETTING_KEYS.labelFilter,
   );
-  // The active graph corpus / view mode (codebase-graphing ADR D7): consumed
+  // The active graph corpus / view mode: consumed
   // here so the durable `graph_corpus` setting seeds a fresh dashboard-state
   // scope's `corpus` field (the setting is not a dead control). Tolerant of an
   // older engine that does not serve it — corpus stays vault.
@@ -389,7 +389,7 @@ export function decodeInt(value: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-// --- keybinding override map decode (keyboard-action-system W02) ---------------
+// --- keybinding override map decode ---------------
 //
 // The `keybindings` setting persists a sparse `{action_id: chord}` JSON OBJECT
 // STRING. The selector below decodes the effective value into the

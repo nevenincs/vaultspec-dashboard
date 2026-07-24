@@ -752,7 +752,7 @@ SET schema_version = 14
 WHERE singleton = 1;
 ";
 
-// P49-R2: widen the `changeset_kind` CHECK to admit `direct` (operation-modes
+// Widen the `changeset_kind` CHECK to admit `direct` (operation-modes
 // kind=direct). The column carries a CHECK constraint, so its value set can only be
 // widened by recreating the table. `authoring_changeset_revisions` is FK-referenced by
 // `authoring_changeset_child_operations`, and `foreign_keys` is ON, so BOTH tables are
@@ -881,7 +881,7 @@ SET schema_version = 15
 WHERE singleton = 1;
 ";
 
-// W12.P32: durable interrupt + tool-call records (langgraph-integration ADR). Both are
+// Durable interrupt + tool-call records (langgraph-integration ADR). Both are
 // PRODUCT state that must survive independently of LangGraph checkpoint pruning, so they
 // live in the authoring store, not the checkpointer. Two fresh additive tables (no
 // CHECK-widen, no table recreate). `authoring_interrupts` is keyed by a STABLE
@@ -938,7 +938,7 @@ SET schema_version = 16
 WHERE singleton = 1;
 ";
 
-// W13.P26: advisory leases + fencing tokens (concurrency-leases-conflicts ADR). A single
+// Advisory leases + fencing tokens (concurrency-leases-conflicts ADR). A single
 // FRESH additive table (no CHECK-widen, no table recreate — nothing FK-references it),
 // keyed by `scope_id` so each scope holds exactly ONE lease row that acquire/renew/
 // release/expire update in place. This makes the table structurally bounded (one row per
@@ -985,7 +985,7 @@ SET schema_version = 17
 WHERE singleton = 1;
 ";
 
-// W13.P24: advisory review-station claims (review-station-state ADR). A single FRESH
+// Advisory review-station claims (review-station-state ADR). A single FRESH
 // additive table (no CHECK-widen, no table recreate) keyed by `changeset_id` so each
 // changeset holds exactly ONE claim row that claim/release/respond/expire update in place.
 // A claim is ADVISORY assignment, NOT authority (review-claims-are-not-authority): the
@@ -1026,7 +1026,7 @@ SET schema_version = 18
 WHERE singleton = 1;
 ";
 
-// W14.P47: the direct-write dual-run/legacy-comparison measurement machinery is
+// The direct-write dual-run/legacy-comparison measurement machinery is
 // retired (direct-changeset is the sole editor-save materializer) — the column
 // that recorded a legacy `/ops/core` comparison outcome per save has no writer
 // left, so it is dropped rather than kept as a permanently-`not_run` fossil.
@@ -1048,7 +1048,7 @@ SET schema_version = 19
 WHERE singleton = 1;
 ";
 
-// W01.P02 (authoring-surface ADR D2): the section-anchored comments plane. A single
+// The section-anchored comments plane. A single
 // FRESH additive table (no CHECK-widen, no table recreate — nothing FK-references it),
 // keyed by a stable `comment_id`. A comment is a durable, non-re-derivable authoring-state
 // entity: it anchors to a heading SECTION via the section selector (`sections.rs`) stored
@@ -1091,16 +1091,16 @@ SET schema_version = 20
 WHERE singleton = 1;
 ";
 
-// D1+D2/D4/D7 wire-gap closure (agent-wire-gaps plan P01.S01): ONE additive version
-// bump carrying three independent shapes so later phases add only code, not a second
+// Wire-gap closure: ONE additive version
+// bump carrying three independent shapes so later work adds only code, not a second
 // migration. (1) `queue_state` on prompt turns backs the bounded FIFO turn queue —
 // existing turns backfill to `direct` (they each started their own run, the pre-queue
 // behavior); a queued turn carries no run until FIFO promotion flips it to `promoted`,
 // and session cancel flips a still-queued turn to `voided` (readable history, never
 // runnable). (2) `run_id`/`turn_id` provenance on changeset revisions is authored here
-// but stamped by P03's tool-executor dispatch (human/direct changesets stay NULL).
-// (3) `authoring_feedback_batches` is the immutable digest-addressed batch table P04
-// consumes; a shape change discovered at P04 time ships as a FRESH version bump, never
+// but stamped by the tool-executor dispatch (human/direct changesets stay NULL).
+// (3) `authoring_feedback_batches` is the immutable digest-addressed batch table the
+// feedback-loop work consumes; a later shape change ships as a FRESH version bump, never
 // an edit of this landed version.
 const QUEUE_PROVENANCE_FEEDBACK_SCHEMA: &str = "
 ALTER TABLE authoring_prompt_turns

@@ -686,8 +686,8 @@ fn typed_inputs_can_still_represent_the_backend_domain_without_core_capabilities
 fn propose_changeset_serves_valid_top_level_json_schema() {
     // The served schema is a STANDARD, valid JSON Schema (top-level object +
     // properties) - the shape the a2a normalizer passes through verbatim - so a
-    // bridged agent can construct operations (the opaque `payload` type ref was
-    // the S20 blocker). create/append/replace share the model-owned surface
+    // bridged agent can construct operations (the opaque `payload` type ref
+    // used to block that). create/append/replace share the model-owned surface
     // {summary, operations}; the a2a-injected ids are NOT advertised.
     let schema = input_schema(SemanticToolName::ProposeChangeset);
     assert_eq!(schema["type"], "object");
@@ -736,7 +736,7 @@ fn propose_changeset_serves_valid_top_level_json_schema() {
 
     // And, crucially, ALSO served on the operations item itself - where the model
     // constructs each operation - so the scope-B truncation is not silent to a
-    // model reading only the array item's schema (reviewer MEDIUM).
+    // model reading only the array item's schema.
     let item_description = props["operations"]["items"]["description"]
         .as_str()
         .expect("operations item carries a served scope description");

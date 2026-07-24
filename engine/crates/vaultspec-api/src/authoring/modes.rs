@@ -1,4 +1,4 @@
-//! Operation-mode execution layer (W10.P48).
+//! Operation-mode execution layer.
 //!
 //! Modes are policy bundles over the existing authoring lifecycle. This module
 //! selects the per-worktree mode, records system-actor auto-approvals, exposes the
@@ -230,7 +230,7 @@ impl ModeRepository<'_, '_> {
         let policy =
             decide_changeset_approval(mode_record.mode, None, latest.kind, operations.as_slice());
         // A DIRECT changeset is human-self-approved at creation (operation-modes
-        // kind=direct); the mode machinery must NEVER system-auto-approve it (P49-R2).
+        // kind=direct); the mode machinery must NEVER system-auto-approve it.
         // This guard is LOAD-BEARING, not merely defensive: a crashed direct save can
         // leave a Draft kind=Direct changeset, and the GENERIC submit route
         // (POST /proposals/{id}/submit) gates nothing on kind — so a client can push
@@ -575,7 +575,7 @@ impl ModeRepository<'_, '_> {
 
             let system = system_actor();
             // ONE declared policy-requeue arc (Approved → NeedsReview) under the system
-            // actor — never a synthetic Approved → Draft re-draft (P48-R1: an
+            // actor — never a synthetic Approved → Draft re-draft (an
             // undeclared arc distorts provenance and leaks into projections + the event
             // stream). Gate it on the fine helper (system actor over an approved head).
             if !policy_requeue_transition_eligibility(&latest, &system).allowed {
@@ -691,7 +691,7 @@ fn requeue_approval_id(
 }
 
 fn mode_is_downgrade(previous: OperationMode, next: OperationMode) -> bool {
-    // Autonomy rank is owned by `policy::OperationMode` (one source, P48-R1 dedup).
+    // Autonomy rank is owned by `policy::OperationMode` (one source of dedup).
     next.autonomy_rank() < previous.autonomy_rank()
 }
 

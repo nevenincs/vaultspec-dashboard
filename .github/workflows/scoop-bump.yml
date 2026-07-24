@@ -1,4 +1,4 @@
-# Post-announce scoop-manifest bump (distribution-channels ADR): dist calls
+# Post-announce scoop-manifest bump: dist calls
 # this AFTER the GitHub Release publishes (`post-announce-jobs` in
 # dist-workspace.toml). `scoop update` reads the COMMITTED manifest — scoop's
 # checkver/autoupdate stanzas only serve maintainer tooling — so each release
@@ -31,12 +31,16 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: scoop-bump-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  # W04.P10.S85: fail-closed publication gate. The Scoop manifest bump is a
+  # Fail-closed publication gate. The Scoop manifest bump is a
   # PUBLICATION act, so it must not proceed until the Scoop channel has earned
   # publication per the support matrix + phase-zero reversibility proof. Today
   # this fails closed (matrix marks scoop `feasibility_gated`), which is the
-  # correct honest state until W01.P01.S147/S148 flip it to `supported`.
+  # correct honest state until the phase-zero proof flips it to `supported`.
   gate:
     uses: ./.github/workflows/channel-publish-gate.yml
     with:
@@ -57,7 +61,7 @@ jobs:
           set -euo pipefail
           TAG=$(printf '%s' "$PLAN" | jq -r '.announcement_tag')
           VERSION="${TAG#v}"
-          # W04.P10.S81: bump to the COMPLETE product archive (the whole offline
+          # Bump to the COMPLETE product archive (the whole offline
           # tree), never the binary-only vaultspec-cli archive.
           ASSET="vaultspec-${VERSION}-x86_64-pc-windows-msvc.zip"
           URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ASSET}"

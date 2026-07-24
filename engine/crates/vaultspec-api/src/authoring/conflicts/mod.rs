@@ -1,4 +1,4 @@
-//! Base-revision conflict detection (W13.P27).
+//! Base-revision conflict detection.
 //!
 //! This module is the pure, backend-served DETECTOR for the conflict states the
 //! concurrency-leases-conflicts ADR names as first-class: a proposal whose recorded
@@ -77,11 +77,11 @@ pub enum ConflictKind {
     /// leases exist to reduce.
     PolicyConflict,
     /// A `Rename` child's PROPOSED target stem already resolves to a different
-    /// document (W02.P04) — a rename-specific collision distinct from every base/
+    /// document — a rename-specific collision distinct from every base/
     /// identity finding above, since it is about the DESTINATION, not the source.
     RenameTargetCollision,
     /// A `CreateDocument` child's DETERMINISTIC predicted path (`create_document_date`
-    /// combined with `feature` and `doc_type`, fixed at materialize time — W02.P05)
+    /// combined with `feature` and `doc_type`, fixed at materialize time)
     /// already resolves to a document in the current worktree, OR a DIFFERENT live
     /// sibling changeset's `CreateDocument` child predicts the SAME path. Either way,
     /// core's `vault add` (which this apply invocation never passes `--force` to) can
@@ -98,7 +98,7 @@ pub enum ConflictKind {
 }
 
 impl ConflictKind {
-    /// A stable ordinal for deterministic report ordering (S135). The numeric value is
+    /// A stable ordinal for deterministic report ordering. The numeric value is
     /// an internal sort key only; the served representation is the snake_case name.
     fn order_key(self) -> u8 {
         match self {
@@ -155,7 +155,7 @@ pub struct ConflictReport {
 impl ConflictReport {
     /// Build a report, deriving `has_conflict` from the findings (the flag can never
     /// desync from the set) and sorting the findings into a stable order so the served
-    /// value is deterministic regardless of detection order (S135).
+    /// value is deterministic regardless of detection order.
     fn new(changeset_id: ChangesetId, mut findings: Vec<ConflictFinding>) -> Self {
         findings.sort_by(|left, right| {
             left.child_key
@@ -421,7 +421,7 @@ fn detect_child_policy_conflict(
 }
 
 /// A `Rename` target-stem collision: a document already exists at the PROPOSED
-/// new stem (W02.P04). Reuses `DocumentResolver::rename_target`'s OWN
+/// new stem. Reuses `DocumentResolver::rename_target`'s OWN
 /// collision check — the SAME check the eventual core `--to` write would hit —
 /// rather than re-deriving resolve-and-compare logic here.
 fn detect_child_rename_collision(
@@ -488,7 +488,7 @@ fn create_document_predicted_path(
     Some((stem, path))
 }
 
-/// A `CreateDocument` predicted-path collision (W02.P05): the DETERMINISTIC path this
+/// A `CreateDocument` predicted-path collision: the DETERMINISTIC path this
 /// child's apply invocation would target already resolves to a document in the current
 /// worktree, OR a DIFFERENT live sibling changeset's `CreateDocument` child predicts the
 /// SAME path. Either finding means at most one of the colliding creates can ever land —
@@ -629,8 +629,8 @@ fn child_hunks(child: &ChangesetChildOperationRecord) -> Option<&[ReviewDiffHunk
     (!hunks.is_empty()).then_some(hunks)
 }
 
-/// Whether a child is a whole-document-shaped draft: `replace_body`, (W02.P03)
-/// `edit_frontmatter`, or (section-scoped-operations ADR) `section_edit` — all
+/// Whether a child is a whole-document-shaped draft: `replace_body`,
+/// `edit_frontmatter`, or `section_edit` — all
 /// three materialize a whole-document preview (`operations.rs`
 /// `finish_materialization`), so a present materialization is the signal either
 /// way. A stale base therefore reports `StaleWholeDocumentDraft` for these

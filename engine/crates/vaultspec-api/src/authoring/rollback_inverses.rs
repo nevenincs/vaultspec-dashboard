@@ -1,4 +1,4 @@
-//! Rollback inverse construction (authoring-surface ADR D1, W04.P09.S33).
+//! Rollback inverse construction.
 //!
 //! Extracted from [`super::rollback`] so that grandfathered module stays within
 //! its size ratchet. Hosts the plan-step OPPOSITE-STATE inverse builder plus the
@@ -112,8 +112,8 @@ pub(super) fn rollback_preimage_id(rollback_id: &ChangesetId, child_key: &str) -
 /// Whether the preimage material a `child`'s rollback inverse needs is present.
 /// Every kind gates on the WHOLE-document preimage `whole_document_present`
 /// names; a `SectionEdit` child ALSO requires the SELECTED preimage its own
-/// materialized operation carries (section-scoped-operations ADR: the inverse
-/// restores the selected preimage, never the whole-document one) — an applied
+/// materialized operation carries (the inverse restores the selected
+/// preimage, never the whole-document one) — an applied
 /// record from before this feature landed carries no `section_edit` payload
 /// and is honestly unavailable rather than silently falling back to a
 /// whole-document restore that would clobber unrelated content.
@@ -258,7 +258,7 @@ mod tests {
     fn plan_tick_check_rolls_back_by_an_uncheck_never_a_preimage_restore() {
         // The invariant this locks: a `SetPlanStepState` source is invertible by
         // the OPPOSITE set-plan-step-state against the SAME step, never a
-        // whole-document preimage restore. Retires the W01.P01 unavailable gate.
+        // whole-document preimage restore. Retires the prior unavailable gate.
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let mut store = temp_store(root);

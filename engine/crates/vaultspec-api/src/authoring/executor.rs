@@ -1,8 +1,8 @@
-//! Agent tool-call executor run loop (W12.P41).
+//! Agent tool-call executor run loop.
 //!
-//! This is THE seam that makes the P22 tool-permission plane and the P32 executor
+//! This is THE seam that makes the tool-permission plane and the executor
 //! gate real: an agent tool call becomes an effect ONLY by passing through here. The
-//! run loop is one atomic, un-skippable step (arch-reviewer's run-loop bar):
+//! run loop is one atomic, un-skippable step:
 //!
 //!   resolve permission → `tool_execution_gate` → RECORD the `ToolCallRecord`
 //!   BEFORE any dispatch → dispatch to the mapped existing backend command.
@@ -27,7 +27,7 @@
 //!
 //! A read/context tool needs no permission and dispatches freely. A mutating/dangerous
 //! tool without a granted permission does NOT execute: it opens a `Pending` permission
-//! request and RAISES a stable-id tool-permission interrupt (P32), suspending the run
+//! request and RAISES a stable-id tool-permission interrupt, suspending the run
 //! until a human decides — never a terminal record, so a later grant lets the same
 //! `tool_call_id` proceed. An explicitly rejected/expired permission is a terminal
 //! refusal.

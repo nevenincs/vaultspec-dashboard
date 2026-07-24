@@ -1,4 +1,4 @@
-// W01.P03 is the vocabulary definition phase. Downstream W01.P04+ phases wire
+// This module defines the authoring domain vocabulary. Downstream work wires
 // these types into DTOs, command handlers, stores, and frontend fixtures.
 #![allow(dead_code)]
 
@@ -180,7 +180,8 @@ pub enum DocumentRef {
         /// author cannot self-author this — the two-step create+set-body apply
         /// replaces the body but the scaffold's frontmatter wins — so it must ride
         /// the create target from a client that knows the grounding docs' canonical
-        /// stems (P04.S16). Defaults empty for back-compat with pre-S16 changesets.
+        /// stems. Defaults empty for back-compat with changesets created before
+        /// this field existed.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         related: Vec<String>,
     },
@@ -314,9 +315,9 @@ impl ChangesetKind {
     /// states); `Rollback` is not (it is a `RollbackProposed`-rooted inverse
     /// changeset). Centralizes the `Authoring | Direct` behaviour so a new
     /// authoring-like kind never silently mis-behaves in a scattered `== Authoring`
-    /// comparison (P49-R2).
+    /// comparison.
     ///
-    /// USE PER-SITE (arch-reviewer P49-R2 bar). A `ChangesetKind` comparison falls in
+    /// USE PER-SITE. A `ChangesetKind` comparison falls in
     /// one of THREE semantic classes — decide each consciously, do NOT blanket-swap:
     /// - **authoring-like BEHAVIOUR** (transitions, apply, rollback-source eligibility,
     ///   risk classification): use `is_authoring_like()` — `Direct` MATCHES.

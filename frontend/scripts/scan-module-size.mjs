@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Module-size gate (module-decomposition mandate, 2026-07-12): fails when a source
+// Module-size gate: fails when a source
 // module reaches monolith size. A module at or over the limit is a decomposition
 // target, never a place to keep writing. The gate is a RATCHET:
 //

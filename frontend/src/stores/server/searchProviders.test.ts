@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-// Provider-host vectors (search-providers ADR D1/D2). The merge/dedupe/band/epoch
+// Provider-host vectors. The merge/dedupe/band/epoch
 // collapse is tested PURE over synthetic provider results (no render needed); one
 // live case renders `useSearchProviders` against the REAL engine to prove the host
 // wires to the three providers end to end (no mocks — wire-contract).
@@ -49,7 +49,7 @@ function provider(
   return { id, state, entries, ...extra };
 }
 
-describe("literalBand (ADR D2 two-tier split)", () => {
+describe("literalBand (two-tier split)", () => {
   it("classifies at or above the strong floor as strong, else weak", () => {
     expect(literalBand(0.95)).toBe("strong-literal");
     expect(literalBand(0.7)).toBe("strong-literal");

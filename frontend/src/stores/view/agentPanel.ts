@@ -13,7 +13,7 @@
 
 import { create } from "zustand";
 
-/** The two panel views (review-surface-flow ADR F1): the running conversation and
+/** The two panel views: the running conversation and
  *  the folded-in cross-run "Pending changes" inbox. Local chrome — the transcript
  *  is the default; the inbox has no composer of its own. */
 export type AgentPanelView = "transcript" | "pending";
@@ -46,7 +46,7 @@ interface AgentPanelState {
   /** Whether the docked panel is open. Collapsed, its only trace is the footer
    *  chip (the panel is gone, not merely hidden). */
   open: boolean;
-  /** Which view the open panel renders (review-surface-flow ADR F1): the running
+  /** Which view the open panel renders: the running
    *  transcript (default) or the folded-in pending-changes inbox. */
   panelView: AgentPanelView;
   /** The session the header names and the transcript renders, or `null` when no
@@ -59,7 +59,7 @@ interface AgentPanelState {
    *
    *  This is still only a viewing BINDING, not durable run ownership: on reload the
    *  engine's bounded `active-runs` read may restore one unambiguous workspace run,
-   *  while the run itself remains durable in a2a (edge ADR D5). The original prompt
+   *  while the run itself remains durable in a2a. The original prompt
    *  is intentionally absent after recovery because discovery does not disclose it. */
   teamRunId: string | null;
   teamRunPrompt: string | null;

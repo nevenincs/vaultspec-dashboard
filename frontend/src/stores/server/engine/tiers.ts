@@ -1,10 +1,10 @@
-// Decomposed from engine.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from engine.ts.
 
 // --- cross-cutting contract shapes (§2) ----------------------------------------
 
 /**
  * The component compatibility handshake the engine attaches to a tier
- * (dashboard-packaging D6): the sibling tool the tier rides on, the floor the
+ * the sibling tool the tier rides on, the floor the
  * dashboard declares for it, the probed version (null when unknowable — rag
  * reports none), and the served floor verdict. All values are engine-served;
  * the client only maps them to presentation.
@@ -107,7 +107,7 @@ export interface TierAvailability {
   /** Per-tier human reason the engine supplied, keyed by tier name. */
   reasons: Record<string, string>;
   /** The served component handshake per inspected tier, when the engine
-   *  attached one (dashboard-packaging D6): advisory floor/version data for
+   *  attached one: advisory floor/version data for
    *  status surfaces. Never folded into `degraded` — the engine's served
    *  eligibility is the authority on what a below-floor component blocks.
    *  Optional so composed availability shapes need not carry it. */
@@ -134,11 +134,11 @@ export function readTierAvailability(
   const components: Record<string, TierComponent> = {};
   for (const tier of tierNames) {
     const state = tiers[tier];
-    // The component handshake (dashboard-packaging D6) is exposed as served
+    // The component handshake is exposed as served
     // data, NOT folded into `degraded`: a below-floor core still reads fine —
     // the engine's own served eligibility blocks the authoring verbs it
     // cannot honor, and inventing a whole-tier client-side degradation would
-    // grey working read surfaces (P02 review). Surfaces that want to render
+    // grey working read surfaces. Surfaces that want to render
     // component staleness (status chrome, settings) read `components`.
     if (state?.component) components[tier] = state.component;
     if (state === undefined || state.available === false) {

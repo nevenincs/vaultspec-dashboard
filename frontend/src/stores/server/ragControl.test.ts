@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The rag control plane (rag-control-plane ADR D6): the stores-layer sole wire
+// The rag control plane: the stores-layer sole wire
 // client for the brokered `/ops/rag/*` management surface.
 //
 // The pure job-progress interpreters (isJobTerminal / isJobFailed /

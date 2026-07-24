@@ -1,4 +1,4 @@
-//! agent-wire-gaps read routes (D3/D5). Principal-permissive GET handlers that
+//! Principal-permissive GET handlers that
 //! expose durable authoring state the shipped frontend interims work around today:
 //! a run's interrupt listing (recovery of a lost `awaiting_permission` response) and
 //! the active scope's operation mode (so the autonomy control renders pre-proposal).
@@ -23,7 +23,7 @@ use super::*;
 use crate::app::AppState;
 
 /// `GET /authoring/v1/runs/{run_id}/interrupts` — the bounded, raise-order interrupt
-/// listing for a run (agent-wire-gaps ADR D3). A recovery read: a client that dropped
+/// listing for a run. A recovery read: a client that dropped
 /// the tool-execute `awaiting_permission` response reads its pending interrupts back
 /// from here, each carrying the typed per-kind decision projection (`decision_unreadable`
 /// for a legacy opaque decision) and a `truncated` marker at `INTERRUPT_LIST_CAP`.
@@ -45,7 +45,7 @@ pub async fn get_run_interrupts(
 }
 
 /// `GET /authoring/v1/mode` — the active workspace scope's operation-mode record
-/// (agent-wire-gaps ADR D5). Reads the SAME record the write (`POST /v1/mode`) round-trips
+/// Reads the SAME record the write (`POST /v1/mode`) round-trips
 /// — the store's `current_record`, which resolves the default record when the scope was
 /// never set — so the autonomy control renders pre-proposal from the wire instead of
 /// inferring mode from an empty review queue. The scope is backend-derived from the active
@@ -76,7 +76,7 @@ pub async fn get_operation_mode(State(state): State<Arc<AppState>>) -> Response 
 }
 
 /// `POST /authoring/v1/feedback-batches` — freeze an immutable, digest-addressed
-/// feedback batch (agent-wire-gaps ADR D7 / feedback-loop ADR D3+D4). The author is
+/// feedback batch. The author is
 /// the middleware-resolved principal; the target session must exist (the batch is
 /// session-scoped — the turn-time consumption fence re-verifies ownership). Identical
 /// content replays the stored record idempotently; the receipt is `{batch_id, digest}`.

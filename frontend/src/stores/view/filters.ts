@@ -1,4 +1,4 @@
-// Pure filter projections (W02.P07.S28, ADR G3.f; contract redline R3).
+// Pure filter projections (ADR G3.f; contract redline R3).
 //
 // The legal vocabulary is engine-enumerated (the filters endpoint) and the
 // active choices live in canonical dashboard-state. This module only projects

@@ -1,4 +1,4 @@
-//! Generation-keyed DOCUMENT graph-slice delta (graph-slice-delta ADR D2/D3).
+//! Generation-keyed DOCUMENT graph-slice delta.
 //! Sibling of `crate::row_delta`: the listings ring is single-level (generation →
 //! rows), but the served graph slice is deterministic per (query-params
 //! fingerprint, generation), so this ring is TWO-LEVEL — a small bounded set of

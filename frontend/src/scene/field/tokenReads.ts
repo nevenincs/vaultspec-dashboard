@@ -1,7 +1,6 @@
 // Scene token-read seam — the ONE home for reading the scene-read --color-*
-// surface through getComputedStyle (audit H2; themes-are-oklch-generated-from-a-
-// token-tier; figma-parity-reconciliation W03.P07.S46). Scene-layer module:
-// framework-free by design.
+// surface through getComputedStyle (themes-are-oklch-generated-from-a-
+// token-tier). Scene-layer module: framework-free by design.
 //
 // THE LITERAL-HEX CONTRACT: the scene reads its colours through getComputedStyle
 // / getPropertyValue, which does NOT resolve a var() chain for a custom property

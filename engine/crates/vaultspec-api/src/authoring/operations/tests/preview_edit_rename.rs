@@ -615,7 +615,7 @@ fn review_diff_reports_truncation_when_byte_cap_is_reached() {
     );
 }
 
-// --- W02.P03: EditFrontmatter validation + materialization -------------
+// --- EditFrontmatter validation + materialization -------------
 
 #[test]
 fn edit_frontmatter_materializes_a_whole_document_preview_with_only_named_fields_changed() {
@@ -933,7 +933,7 @@ fn edit_frontmatter_rejects_a_stray_section_selector() {
 #[test]
 fn section_and_destructive_kinds_are_deferred_from_edit_frontmatter_materialization() {
     // EditFrontmatter's own materializer accepts only its own kind, exactly as
-    // materialize_replace_body accepts only ReplaceBody (`W03.P13` subset).
+    // materialize_replace_body accepts only ReplaceBody (a subset).
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     write_doc(
@@ -975,7 +975,7 @@ fn section_and_destructive_kinds_are_deferred_from_edit_frontmatter_materializat
     }
 }
 
-// --- W02.P04: Rename validation + materialization ----------------------
+// --- Rename validation + materialization ----------------------
 
 #[test]
 fn rename_materializes_an_unchanged_content_preview_carrying_the_new_stem() {

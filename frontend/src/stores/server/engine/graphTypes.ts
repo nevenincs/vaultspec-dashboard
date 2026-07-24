@@ -1,4 +1,4 @@
-// Decomposed from engine.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from engine.ts.
 
 import type { TiersBlock } from "./tiers";
 
@@ -30,7 +30,7 @@ export interface MapResponse {
   tiers: TiersBlock;
 }
 
-// --- workspace registry (dashboard-workspace-registry ADR) ----------------------
+// --- workspace registry ------------------------------------------------------
 //
 // The multi-workspace project-root registry surface. `GET /workspaces`
 // enumerates the registered roots; registry mutation (select/add/forget) rides
@@ -71,7 +71,7 @@ export interface VaultTreeEntry {
   doc_type: string;
   /** The document's H1 title (engine-served on every vault-tree row); absent when
    *  the document carries none. A match field for the files(vault) search
-   *  provider (search-providers ADR) — a document is findable by its title, not
+   *  provider — a document is findable by its title, not
    *  just its stem. */
   title?: string;
   feature_tags: string[];
@@ -80,16 +80,16 @@ export interface VaultTreeEntry {
   // `date_field` criterion (Issue #38). `modified` arrives on the wire as epoch
   // millis and is normalized to this form by `adaptVaultTreeDates`.
   dates: { created?: string; modified?: string; stamped?: string };
-  /** ADR H1 status (dashboard-pipeline-wire W01), when the entry is an ADR. */
+  /** ADR H1 status, when the entry is an ADR. */
   status?: string;
-  /** Plan tier (dashboard-pipeline-wire W01), when the entry is a plan. */
+  /** Plan tier, when the entry is a plan. */
   tier?: string;
   /** Plan checkbox lifecycle progress (done/total) for the active scope,
    *  projected from the SAME `lifecycle_in_scope` facet the node-graph pipeline
    *  reads. Present only on plan rows that carry checkbox progress; absent
    *  everywhere else so the left rail paints the honest not-started baseline. */
   progress?: { done: number; total: number };
-  /** Ingest-measured document weight (left-rail-tree-controls ADR D2): byte
+  /** Ingest-measured document weight: byte
    *  length + whitespace-separated word count of the body. Absent on an older
    *  engine or a node that carries none — honest absence, the rail renders
    *  nothing (never a fabricated zero). */
@@ -100,22 +100,22 @@ export interface VaultTreeResponse {
   entries: VaultTreeEntry[];
   tiers: TiersBlock;
   /** False while a progressive partial (the first page rendered ahead of the
-   *  continuing drain — universal-data-loading ADR D5) is held; true (or
+   *  continuing drain) is held; true (or
    *  absent, for cached pre-flag shapes) once the walk drained to completion.
    *  Client narrowing over an incomplete listing must surface the honest
    *  partial state (the complete-set law applies at the moment a narrow
    *  lands on the finished listing). */
   complete?: boolean;
-  /** The engine graph `generation` the drained rows belong to (vault-tree-delta
-   *  ADR D1). The client records it so a later generation-invalidation sweep can
+  /** The engine graph `generation` the drained rows belong to. The client
+   *  records it so a later generation-invalidation sweep can
    *  fetch a `since=<generation>` delta and patch this listing instead of
    *  re-draining it. Absent on an older engine or a partial mid-drain listing —
    *  a listing with no known generation has no delta baseline and re-drains. */
   generation?: number;
 }
 
-/** The engine-reduced generation-keyed delta response (vault-tree-delta ADR D3),
- *  KEY-GENERIC over the row entry type: a diff from the client's held generation to
+/** The engine-reduced generation-keyed delta response, KEY-GENERIC over the
+ *  row entry type: a diff from the client's held generation to
  *  the current one, or a full-drain instruction when the baseline is no longer a
  *  stable complete set (evicted/restarted, or — for code — a truncated corpus).
  *  `/vault-tree/delta` keys `Entry` by stem; `/code-files/delta` by path. */
@@ -140,7 +140,7 @@ export type VaultTreeDeltaResponse = RowDeltaResponse<VaultTreeEntry>;
 /** The `/code-files/delta` response (rows keyed by path). */
 export type CodeFilesDeltaResponse = RowDeltaResponse<CodeFileEntry>;
 
-// The complete code-file listing (search-providers ADR: the one contract event).
+// The complete code-file listing (the one contract event).
 // One minimal row per `code:` file node projected off the code corpus graph —
 // NOT the DOI-bounded graph slice — so the files(code) search provider narrows a
 // COMPLETE client-held listing (the complete-paginated-set rule), never a capped
@@ -159,7 +159,7 @@ export interface CodeFileEntry {
   lang?: string;
 }
 
-/** Honest walk-cap truncation (search-providers ADR / ADR D8): present only when
+/** Honest walk-cap truncation: present only when
  *  the ingest walk cap bounded the corpus, so the listing is NOT the complete
  *  source tree. `null`/absent means the walk ran to completion. */
 export interface CodeFilesTruncation {
@@ -175,14 +175,14 @@ export interface CodeFilesResponse {
    *  listing); paired with `generation` it is a valid delta baseline — but ONLY when
    *  `truncated` is null (a capped corpus is not a stable complete set). */
   complete?: boolean;
-  /** The code graph `generation` the drained rows belong to (vault-tree-delta ADR
-   *  `/code-files` follow-on). The reconcile fetches a `since=<generation>` delta and
+  /** The code graph `generation` the drained rows belong to. The reconcile
+   *  fetches a `since=<generation>` delta and
    *  patches this listing. OMITTED when the corpus is truncated — a capped listing has
    *  no stable delta baseline and re-drains. */
   generation?: number;
 }
 
-// --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
+// --- §3 code (worktree) file tree ----------------------------------------------
 //
 // The read-only codebase file-tree listing: `GET /file-tree?scope=&path=&cursor=`
 // returns ONE directory level within a worktree scope (the rail expands lazily),
@@ -286,7 +286,7 @@ export interface FsListParams {
   hidden?: boolean;
 }
 
-// --- §4 read-only content fetch (review-rail-viewers ADR) ------------------------
+// --- §4 read-only content fetch --------------------------------------------------
 //
 // `GET /nodes/{id}/content?scope=` is the ONE viewer backend: it serves the bytes
 // of one document (`doc:<stem>`) or source file (`code:<path>`) so the markdown
@@ -337,7 +337,7 @@ export interface EngineNode {
   feature_tags?: string[];
   title?: string;
   /**
-   * ADR H1 status (dashboard-pipeline-wire W01): one of
+   * ADR H1 status: one of
    * `proposed`/`accepted`/`rejected`/`deprecated`. A query-time facet served on
    * ADR doc nodes (and mirrored on vault-tree / graph-query nodes); absent
    * everywhere else. Makes "in-flight ADR" honest — real status, not a checkbox
@@ -345,7 +345,7 @@ export interface EngineNode {
    */
   status?: string;
   /**
-   * Plan frontmatter tier (dashboard-pipeline-wire W01): one of `L1`-`L4`,
+   * Plan frontmatter tier: one of `L1`-`L4`,
    * served on plan doc nodes; absent everywhere else.
    */
   tier?: string;
@@ -353,10 +353,10 @@ export interface EngineNode {
   lifecycle?: { state: string; progress?: { done: number; total: number } };
   degree_by_tier?: Partial<Record<"declared" | "structural" | "temporal", number>>;
   /**
-   * Aggregation anchors (constellation granularity, engine addendum S02): how
+   * Aggregation anchors (constellation granularity): how
    * many members converge on the node — documents for a feature convergence,
    * member FILES for a code package-rollup representative
-   * (code-graph-files-only). Drives the center-of-gravity sizing (ADR D4.1);
+   * (code-graph-files-only). Drives the center-of-gravity sizing;
    * absent on document nodes and file-granularity code nodes.
    */
   member_count?: number;
@@ -388,7 +388,7 @@ export interface EngineNode {
    */
   recency_rank?: number;
   /**
-   * The authority register the node answers in (graph-node-semantics ADR):
+   * The authority register the node answers in:
    * `design` (ADR), `roadmap` (plan/feature), `evidence` (exec), `judgment`
    * (audit), `law` (rule), `substrate` (research/reference), `manifest`
    * (index), or `unknown` (an unrecognized type, surfaced honestly). The
@@ -397,7 +397,7 @@ export interface EngineNode {
    */
   authority_class?: string;
   /**
-   * The aggregate-species hint (graph-node-semantics ADR): `true` for exec
+   * The aggregate-species hint: `true` for exec
    * records, collapsible into their parent plan at overview LOD so the long
    * tail does not swamp the field. `false`/absent for individually-weighted
    * species (ADR, plan, audit, rule).
@@ -405,7 +405,7 @@ export interface EngineNode {
   aggregate?: boolean;
   /**
    * The literal per-type lifecycle status TOKEN the node answers in
-   * (node-visual-richness ADR P01): the raw vocabulary term the type's status
+   * The literal per-type lifecycle status TOKEN the node answers in: the raw vocabulary term the type's status
    * machine resolved — e.g. `accepted`/`deprecated` (adr), `L2` (plan tier),
    * `high` (audit severity), `superseded` (rule), `in_flight` (feature). An
    * ADDITIVE projection beside `authority_class`/`aggregate`: present only when
@@ -416,7 +416,7 @@ export interface EngineNode {
   status_value?: string;
   /**
    * The closed status-treatment family the `status_value` resolves into
-   * (node-visual-richness ADR P01): one of
+   * The closed status-treatment family the `status_value` resolves into: one of
    * `affirmed|provisional|negated|retired|graded|tiered`. The shape channel for
    * status — the scene maps it to ONE grayscale-safe stamp treatment, tint only
    * reinforces. ADDITIVE beside `status_value`; the two ride together and are
@@ -425,18 +425,18 @@ export interface EngineNode {
   status_class?: string;
   /**
    * The single active-lens Degree-of-Interest salience float in [0,1]
-   * (graph-node-salience ADR): the engine-computed, per-lens, CPU-bound node
+   * the engine-computed, per-lens, CPU-bound node
    * importance for the REQUESTED lens. Present on document nodes; absent on
    * feature-convergence nodes (the salience model ranks documents). It is a
    * single float for the active lens, NEVER a per-lens map — treating it as a
    * fixed number anywhere discards the intent dimension the ADR exists for.
    * The representation layer CONSUMES this (node size + label priority,
-   * graph-representation ADR encoding map); now produced for real by the
+   * encoding map); now produced for real by the
    * merged salience engine, no longer a representation mock stub.
    */
   salience?: number;
   /**
-   * Per-node semantic embedding vector (graph-representation ADR §4 amendment):
+   * Per-node semantic embedding vector:
    * the rag embedding delivered to the CPU worker for the semantic UMAP layout
    * mode. The engine never serves layout coordinates (graph-compute-is-CPU); it
    * serves the raw embedding and the worker projects it. Absent on nodes lacking
@@ -447,7 +447,7 @@ export interface EngineNode {
 }
 
 /**
- * Constellation meta-edge wire shape (contract §4, engine addendum S02):
+ * Constellation meta-edge wire shape (contract §4):
  * the engine returns feature↔feature relationships as a SEPARATE top-level
  * `meta_edges` array at feature granularity (never folded into `edges`).
  * `src`/`dst` are the synthesized feature NODE ids (`feature:{tag}`); the
@@ -476,7 +476,7 @@ export interface EngineEdge {
   provenance?: string;
   observed_at?: string;
   /**
-   * The pipeline-derivation label (graph-node-semantics ADR), carried
+   * The pipeline-derivation label, carried
    * ALONGSIDE the §4 `relation`/`tier` and NEVER instead of them: a first-class
    * labeled relation drawn from the closed `DerivationRelation` vocabulary
    * (`grounds`, `authorizes`/`binds`, `generated-by`, `aggregates`, `reviews`,
@@ -491,7 +491,7 @@ export interface EngineEdge {
   meta?: { count: number; breakdown_by_tier: Record<string, number> };
 }
 
-/** The closed pipeline-derivation vocabulary (graph-node-semantics ADR). */
+/** The closed pipeline-derivation vocabulary. */
 export type DerivationRelation =
   | "grounds"
   | "authorizes"
@@ -505,7 +505,7 @@ export type DerivationRelation =
   | "promoted-from";
 
 /**
- * The salience lens (graph-node-salience ADR): the per-viewer-intent
+ * The salience lens: the per-viewer-intent
  * parameterization the engine biases its importance computation toward.
  * `status` (the default, "what is in-flight") leads with betweenness + hub
  * score + high recency; `design` ("why is the system this way") leads with
@@ -525,7 +525,7 @@ export interface GraphFilter {
   kinds?: string[];
   doc_types?: string[];
   feature_tags?: string[];
-  /** Glob/regex search over feature tags (filter-controls campaign): a node
+  /** Glob/regex search over feature tags: a node
    *  passes if any of its feature_tags matches. The feature search graduates to
    *  this for power queries; distinct from exact `feature_tags` membership. */
   feature_query?: { value: string; mode: "glob" | "regex" };
@@ -535,7 +535,7 @@ export interface GraphFilter {
    *  (in progress) / `complete` (finished). A node passes if its scoped lifecycle
    *  state is in this set; nodes with no lifecycle are excluded when it is set. */
   plan_states?: string[];
-  /** Document-health conditions (filter-controls campaign): `dangling`/`orphaned`
+  /** Document-health conditions: `dangling`/`orphaned`
    *  (engine-derived) + `invalid`/`empty-scaffold` (with core ingestion). A node
    *  passes if it carries any requested condition. */
   health?: string[];
@@ -564,7 +564,7 @@ export type DashboardTimelineMode =
 export const GRAPH_GRANULARITIES = ["document", "feature"] as const;
 export type GraphGranularity = (typeof GRAPH_GRANULARITIES)[number];
 
-// The active graph corpus / view mode (codebase-graphing ADR D7): which dataset
+// The active graph corpus / view mode: which dataset
 // the whole graph surface renders — the vault knowledge graph (default) or the
 // disconnected code graph. Mirrors the engine `GraphCorpus` wire enum.
 export const GRAPH_CORPORA = ["vault", "code"] as const;
@@ -640,7 +640,7 @@ export interface GraphSlice {
   filter?: GraphFilter;
   tiers: TiersBlock;
   /**
-   * Present on LIVE keyframe responses (constellation-live-delta S03): the
+   * Present on LIVE keyframe responses: the
    * monotonic seq clock tip at the time the keyframe was built. Absent on
    * as-of/time-travel responses. Consumers use this as the `since` anchor
    * for the graph SSE subscription so deltas resume without re-keyframing.
@@ -648,7 +648,7 @@ export interface GraphSlice {
   last_seq?: number | null;
   /**
    * The bounded-query honesty block (graph-queries-are-bounded-by-default,
-   * node-canvas ADR "States"): present and non-null ONLY when the engine's hard
+   * present and non-null ONLY when the engine's hard
    * node ceiling capped the slice. `/graph/query` serves it under the
    * `truncated` key (`vaultspec-api` `query.rs`); it survives `adaptGraphSlice`
    * untouched as part of the spread-through `rest`. The canvas renders it as the
@@ -657,8 +657,8 @@ export interface GraphSlice {
    */
   truncated?: { total_nodes: number; returned_nodes: number; reason: string } | null;
   /**
-   * The active salience lens the engine computed for (graph-node-salience ADR
-   * wire amendment), echoed so the client never re-derives which lens it renders.
+   * The active salience lens the engine computed for, echoed so the client
+   * never re-derives which lens it renders.
    * Defaults to `status` when the request omitted it.
    */
   lens?: SalienceLens;
@@ -668,19 +668,19 @@ export interface GraphSlice {
    * partial, never as a complete one. The degraded tier itself is in `tiers`.
    */
   salience_partial?: boolean;
-  /** The engine graph `generation` this present-view document slice belongs to
-   *  (graph-slice-delta ADR D2), present ONLY on the delta-eligible present-view
+  /** The engine graph `generation` this present-view document slice belongs to,
+   *  present ONLY on the delta-eligible present-view
    *  document vault slice (null on as-of/feature/code). Passed through `...rest` by
    *  `adaptGraphSlice`; the live-sync splice uses it as the `since` delta baseline. */
   generation?: number | null;
   /** The opaque params-fingerprint token the client returns verbatim in a
-   *  `/graph/query/delta` request (graph-slice-delta ADR D3, guard #1) — the ring
+   *  `/graph/query/delta` request — the ring
    *  keys on it, so no client-side canonicalization can drift the lookup. Present
    *  only alongside a numeric `generation`. */
   slice_token?: string;
 }
 
-/** The engine-reduced `/graph/query/delta` response (graph-slice-delta ADR D3): an
+/** The engine-reduced `/graph/query/delta` response: an
  *  id-keyed node + edge diff from the client's held generation to the current one,
  *  or a full-drain instruction when the (token, generation) pair is not retained or
  *  truncation composition differs. */
@@ -710,8 +710,8 @@ export interface FiltersVocabulary {
   /** Plan lifecycle states present in the corpus (`active`/`complete`) — the
    *  PLAN STATUS facet. Empty when no lifecycle-bearing docs exist. */
   plan_states?: string[];
-  /** Document-health conditions present in the corpus (filter-controls campaign):
-   *  the `dangling`/`orphaned` HEALTH facet, empty when the corpus is clean. */
+  /** Document-health conditions present in the corpus: the `dangling`/`orphaned`
+   *  HEALTH facet, empty when the corpus is clean. */
   health?: string[];
   date_bounds?: { from?: string; to?: string };
   /** Per-criterion corpus date spans (Issue #14): the timeline's left/right edges
@@ -730,10 +730,10 @@ export interface FiltersVocabulary {
 /**
  * The pipeline document types the feature-coverage projection reports, in pipeline
  * order (research/reference are the parallel entry points → adr → plan → exec →
- * audit). Mirrors the engine `PIPELINE_DOC_TYPES` (feature-group-authoring ADR
- * D2/D3): the canonical order the panel iterates, so a sparse served `types` array
+ * audit). Mirrors the engine `PIPELINE_DOC_TYPES`: the canonical order the
+ * panel iterates, so a sparse served `types` array
  * still renders every pipeline slot. `exec` is reported for coverage but is NEVER
- * offered for creation from the panel (ADR D4).
+ * offered for creation from the panel.
  */
 export const PIPELINE_COVERAGE_DOC_TYPES = [
   "research",
@@ -745,13 +745,13 @@ export const PIPELINE_COVERAGE_DOC_TYPES = [
 ] as const;
 
 /**
- * Coverage of one pipeline doc type within a feature group (feature-group-authoring
- * ADR D2/D3, the `/features?feature=` wire): whether at least one document of the
+ * Coverage of one pipeline doc type within a feature group (the
+ * `/features?feature=` wire): whether at least one document of the
  * type exists, how many, the newest present stem (the deterministic cross-link
- * target, ADR D5), the served hierarchy-gate `eligible` flag, and a `note` token
+ * target), the served hierarchy-gate `eligible` flag, and a `note` token
  * the dumb chrome maps to plain language (`requires-research-or-reference`,
  * `requires-adr`, `plan-derived`, `no-upstream`). Eligibility is engine-served
- * guidance, never client-recomputed (ADR D3).
+ * guidance, never client-recomputed.
  */
 export interface FeatureTypeCoverage {
   doc_type: string;
@@ -807,7 +807,7 @@ export interface FeatureRosterResponse {
 }
 
 /**
- * One served node embedding (graph-semantic-embeddings ADR D3): the stable node
+ * One served node embedding: the stable node
  * id and its raw float32 vector as a JSON `number[]` — the shape the semantic
  * UMAP worker projects. Identity rides the stable node id (`doc:{stem}`,
  * provenance-stable-keys); the vector is an additive value, never an id input.
@@ -820,12 +820,12 @@ export interface NodeEmbedding {
 /**
  * The dedicated bounded embedding slice (engine `/graph/embeddings`, unwrapped
  * from the `{data, tiers}` envelope): the stored rag vectors for the SERVED
- * document node set, carrying the graph `generation` they were read at (ADR D8 —
- * the client caches per generation), the per-tier `tiers` availability block
- * (ADR D7 — semantic availability is read from here, never a bare transport
+ * document node set, carrying the graph `generation` they were read at (the
+ * client caches per generation), the per-tier `tiers` availability block
+ * (semantic availability is read from here, never a bare transport
  * error), and an honest `truncated` block present and non-null ONLY when the node
- * ceiling capped the slice. Fetched LAZILY, only on entering semantic mode (ADR
- * D2). A node not present here has no stored vector — the scene draws the honest
+ * ceiling capped the slice. Fetched LAZILY, only on entering semantic mode. A
+ * node not present here has no stored vector — the scene draws the honest
  * fallback ring.
  */
 export interface EmbeddingsResponse {

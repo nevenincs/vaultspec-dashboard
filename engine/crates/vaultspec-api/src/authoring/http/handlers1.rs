@@ -42,7 +42,7 @@ pub async fn agent_tool_catalog(State(state): State<Arc<AppState>>) -> Response 
 
 /// `POST /authoring/v1/agent-tools/prepare` — validate one semantic agent tool
 /// call and return the backend command dispatch alias it would use. This is the
-/// S152 wiring seam only: durable permission requests, interrupt resume, and
+/// wiring seam only: durable permission requests, interrupt resume, and
 /// executable tool-call records remain later phases.
 pub async fn prepare_agent_tool_call(
     State(state): State<Arc<AppState>>,
@@ -76,9 +76,9 @@ pub(super) fn tool_error_response(state: &AppState, err: &ToolError) -> Response
 }
 
 /// `POST /authoring/v1/agent-tools/{tool_call_id}/permission-decision` — a human
-/// grants or rejects a queued tool-permission request (W12.P41). The reviewer is the
-/// server-resolved principal (ASA-010), never a body claim. Reviewer authority is the
-/// P22-R1 gate reused verbatim inside `submit_decision` (human-only, not the requester
+/// grants or rejects a queued tool-permission request. The reviewer is the
+/// server-resolved principal, never a body claim. Reviewer authority is the
+/// same gate reused verbatim inside `submit_decision` (human-only, not the requester
 /// nor its delegate) — an authority denial rides the 200 envelope as a value
 /// (denials-are-values); only a genuine fault (unknown request, conflicting decision)
 /// is a non-200.
@@ -108,9 +108,9 @@ pub async fn decide_tool_permission(
 }
 
 /// `POST /authoring/v1/interrupts/{interrupt_id}/resume` — resume a paused run by
-/// resolving its interrupt BY ID (W12.P41, P32). Replay-safe: an already-resolved
+/// resolving its interrupt BY ID. Replay-safe: an already-resolved
 /// interrupt returns its recorded decision unchanged (never re-decides). The decision is
-/// the typed `InterruptResumeDecision` (S18): serialized as the stored blob so the read
+/// the typed `InterruptResumeDecision`: serialized as the stored blob so the read
 /// projection parses it back through the same schema (write and read one language).
 pub async fn resume_interrupt(
     State(state): State<Arc<AppState>>,
@@ -134,7 +134,7 @@ pub async fn resume_interrupt(
     };
     match state.with_authoring_store(|store| {
         store.with_unit_of_work(CommandKind::ResumeRun, |uow| {
-            // Authorization floor (P05 review, HIGH): resuming an interrupt acts ON its
+            // Authorization floor: resuming an interrupt acts ON its
             // run — granting a pending tool permission or steering the agent — so the
             // resuming principal must be that run's owner or the owner's delegator,
             // exactly like `complete_run`. Without this, any standing actor could
@@ -246,7 +246,7 @@ pub async fn get_session(
 }
 
 /// `POST /authoring/v1/sessions/{session_id}/turns` — start a prompt turn. When a run
-/// is already active the turn is ENQUEUED behind it (D2 bounded FIFO queue), not joined.
+/// is already active the turn is ENQUEUED behind it (a bounded FIFO queue), not joined.
 pub async fn start_prompt_turn(
     State(state): State<Arc<AppState>>,
     Path(session_id): Path<SessionId>,
@@ -263,8 +263,8 @@ pub async fn start_prompt_turn(
     }
 }
 
-/// `POST /authoring/v1/sessions/{session_id}/cancel` — explicitly terminate a session
-/// (D2): cancel its active run if one exists, void every queued turn, and mark the
+/// `POST /authoring/v1/sessions/{session_id}/cancel` — explicitly terminate a session:
+/// cancel its active run if one exists, void every queued turn, and mark the
 /// session `Cancelled`. Distinct from the run-scoped `POST /v1/runs/{run_id}/cancel`,
 /// which leaves the session `Active`.
 pub async fn cancel_session(
@@ -283,8 +283,8 @@ pub async fn cancel_session(
     }
 }
 
-/// `POST /authoring/v1/sessions/{session_id}/close` — gracefully close a session
-/// (S13): the BENIGN terminal path marking it `Closed` and emitting `session.closed`.
+/// `POST /authoring/v1/sessions/{session_id}/close` — gracefully close a session:
+/// the BENIGN terminal path marking it `Closed` and emitting `session.closed`.
 /// Unlike `cancel`, it never tears down work — a session with a genuinely active run is
 /// refused; it is idempotent (re-closing, or closing an already-terminal session,
 /// publishes no duplicate transition).
@@ -371,7 +371,7 @@ pub async fn resume_run(
 
 /// Map a domain `StoreError` to a typed, tiers-bearing HTTP FAULT response.
 ///
-/// Denials-are-values (ADR "denials are values; errors are faults"): an
+/// Denials-are-values: an
 /// eligibility refusal NEVER reaches here — it rides the SUCCESS envelope as a
 /// denied value via [`proposal_result_response`]. So every `StoreError` is a
 /// genuine fault, mapped by category: a client-correctable fault to a 4xx (with
@@ -430,13 +430,13 @@ pub(super) fn command_error_response(state: &AppState, err: &StoreError) -> Resp
             err.to_string(),
         ),
         // The completing principal is not the run's owner (or its delegator): an
-        // owner-only authorization refusal on the run-settle command (D1), a 403.
+        // owner-only authorization refusal on the run-settle command, a 403.
         StoreError::RunForbidden(_) => (
             StatusCode::FORBIDDEN,
             "authoring_run_forbidden",
             err.to_string(),
         ),
-        // The per-session turn queue is at `TURN_QUEUE_CAP` (D2): a typed
+        // The per-session turn queue is at `TURN_QUEUE_CAP`: a typed
         // client-correctable refusal, a 422 with its own kind so the composer can
         // surface "queue full" distinctly from a generic session refusal.
         StoreError::TurnQueueFull(_) => (
@@ -525,7 +525,7 @@ pub(super) fn proposal_result_value(result: &ProposalCommandResult) -> (StatusCo
         }
         // Denials are VALUES: an eligibility refusal rides the SUCCESS envelope
         // (200) as a denied decision carrying the domain reason, never a 4xx fault
-        // (denials-are-values ADR; errors are faults).
+        // (denials are values; errors are faults).
         ProposalCommandResult::Denied { eligibility } => {
             (StatusCode::OK, denial_value(eligibility))
         }
@@ -604,7 +604,7 @@ pub(super) fn session_context(
     }
 }
 
-/// A denied eligibility as a 200 SUCCESS-envelope VALUE (denials-are-values ADR):
+/// A denied eligibility as a 200 SUCCESS-envelope VALUE (denials-are-values):
 /// the shared shape every command surface uses for a refusal — status, the command
 /// it refused, and the domain reason. The value form is reused by every per-command
 /// result mapper (`proposal_result_value`, `session_result_value`, ...) AND by the
@@ -633,7 +633,7 @@ pub(super) fn active_authorized_scope(state: &AppState) -> String {
 }
 
 /// Run the composed authorization engine ([`authorize_command`]) for one mutating command
-/// over a bounded actor-registry read (W14.P42a). Standing + delegation always run; the
+/// over a bounded actor-registry read. Standing + delegation always run; the
 /// document-scope guard runs when an `authorized_scope` is supplied AND `targets` are
 /// present; the review-authority guard runs for approve/apply-class commands carrying an
 /// `origin_author`. A refusal is a VALUE (`Ok(ActionEligibility { allowed: false, .. })`);
@@ -696,7 +696,7 @@ pub(super) fn authorization_fault_response(
 
 /// `POST /authoring/v1/proposals` — open a new authoring changeset (a Draft
 /// proposal). The wire `CreateProposalRequest` IS the domain input; the actor is
-/// the middleware-RESOLVED principal (ASA-010), never a body claim. The domain
+/// the middleware-RESOLVED principal, never a body claim. The domain
 /// handler owns its own idempotency + unit of work.
 pub async fn create_proposal(
     State(state): State<Arc<AppState>>,
@@ -704,7 +704,7 @@ pub async fn create_proposal(
 ) -> Response {
     let now = now_ms();
     let (actor, command_kind, idempotency_key, payload) = command.into_parts();
-    // W14.P42a — document-scope guard: fence every drafted target against the active
+    // Document-scope guard: fence every drafted target against the active
     // workspace's SERVER-AUTHORITATIVE authorized scope. Standing + delegation already
     // cleared at the extractor floor; a target claiming a different workspace is a denial
     // VALUE on the 200 envelope (denials-are-values), never a fault.
@@ -725,7 +725,7 @@ pub async fn create_proposal(
 }
 
 /// Fence a mutating command's client-supplied operation targets against the active
-/// workspace's authorized scope (W14.P42a document-scope guard). Standing + delegation are
+/// workspace's authorized scope (document-scope guard). Standing + delegation are
 /// already enforced at the extractor floor; this adds the target/scope dimension for the
 /// handlers that carry drafted `DocumentRef` targets. Returns the denial `Response` when a
 /// target is out of scope (a value) or authorization faults (redacted), or `None` when the
@@ -795,7 +795,7 @@ pub(super) async fn mutate_proposal_draft(
         )
         .into_response();
     }
-    // W14.P42a — document-scope guard: fence the appended/replaced targets against the
+    // Document-scope guard: fence the appended/replaced targets against the
     // active workspace's authorized scope, the same as create.
     if let Some(denied) =
         authorize_targets_or_deny(&state, command_kind, &actor, &payload.operations)
@@ -850,7 +850,7 @@ pub async fn replace_proposal_draft(
     mutate_proposal_draft(state, changeset_id, command, DraftRoute::Replace).await
 }
 
-// --- explicit rebase / supersession (W13.P28, wired W14.P42a) ------------------
+// --- explicit rebase / supersession ------------------
 
 /// `POST /authoring/v1/proposals/{changeset_id}/rebase` — rebase a CONFLICTED changeset
 /// onto the current document state in place, producing a fresh reviewable `Draft`

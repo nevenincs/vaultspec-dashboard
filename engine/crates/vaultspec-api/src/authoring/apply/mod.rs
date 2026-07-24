@@ -1,8 +1,8 @@
-//! Approved-changeset apply materialization (W03.P36).
+//! Approved-changeset apply materialization.
 //!
 //! Apply is the single side-effecting authoring command: it turns an APPROVED
 //! changeset into a real `.vault/` document change by driving the internal
-//! [`super::core_adapter`] (agentic-apply-materialization ADR). V1 is
+//! [`super::core_adapter`]. V1 is
 //! SINGLE-CHILD (ASA-004): a multi-child changeset is refused with an honest
 //! typed capability-limit result; the multi-document schema is retained, only
 //! materialization is single-child until core grows a batch transaction.
@@ -17,12 +17,12 @@
 //! LIFECYCLE-AND-LOCK DISCIPLINE. The core subprocess NEVER runs inside a SQLite
 //! write transaction. Apply is three stages: (A) a preflight unit of work reserves
 //! idempotency, gates, and appends the `Applying` revision; (B) the SYNC core
-//! adapter invoke runs with NO transaction held (the caller — the P39 route —
+//! adapter invoke runs with NO transaction held (the caller — the apply route —
 //! wraps this whole function in `spawn_blocking`; it must never run on an async
 //! worker); (C) a completion unit of work interprets the outcome, appends
 //! `Applied`/`Failed`, records the receipt, and publishes.
 //!
-//! OUTCOME-INDETERMINATE CONTRACT (P35-R1). A [`CoreAdapterError`] whose
+//! OUTCOME-INDETERMINATE CONTRACT. A [`CoreAdapterError`] whose
 //! [`CoreAdapterError::is_outcome_indeterminate`] is true (Timeout / OutputTooLarge)
 //! means the write outcome is UNKNOWN — the killed core, or on Windows its
 //! surviving grandchild, may have completed it. Apply then RE-VERIFIES the target
@@ -117,7 +117,7 @@ pub fn apply_changeset(
             // A crashed prior attempt: DO NOT re-invoke the core — the write may
             // already have landed. Re-verify the document post-state (against the
             // recorded expected blob hash) and complete to the terminal receipt,
-            // exactly the indeterminate-kill resolution (P36-R1).
+            // exactly the indeterminate-kill resolution.
             let resolution = post_state_resolution(
                 worktree_root,
                 &prep,
@@ -195,12 +195,12 @@ pub(super) enum Preflight {
     Replay(Box<ApplyReceipt>),
     InFlight,
     /// The eligibility denial, plus its structured classification when known
-    /// (W05.P14) — `None` for an unclassified denial.
+    /// — `None` for an unclassified denial.
     Denied(ActionEligibility, Option<ApplyDenialKind>),
     Proceed(Box<ApplyPrep>),
     /// A prior attempt crashed between stage A and stage C, its in-flight
     /// reservation has EXPIRED, and the head is wedged in `Applying`. Resume
-    /// completion by post-state re-verify only — NO core re-invoke (P36-R1).
+    /// completion by post-state re-verify only — NO core re-invoke.
     Reclaim(Box<ApplyPrep>),
 }
 
@@ -240,7 +240,7 @@ fn preflight_in_uow(
         ReplayLookup::InFlight(_) => return Ok(Ok(Preflight::InFlight)),
         ReplayLookup::Conflict(_) => return Ok(Err(ApplyError::Conflict)),
         ReplayLookup::Expired(record) => {
-            // P36-R1: an EXPIRED reservation whose head is wedged in `Applying` is a
+            // An EXPIRED reservation whose head is wedged in `Applying` is a
             // crashed attempt (a ghost `in_flight` before expiry, a permanent denial
             // after — the gate below only admits `Approved`). Reclaim it by resuming
             // completion instead of re-applying. One reclaim path heals both variants.
@@ -296,11 +296,11 @@ fn preflight_in_uow(
         return Ok(Ok(Preflight::Denied(eligibility, None)));
     }
 
-    // Base-revision conflict gate (W13.P27, wired W14.P42a). Consult the conflict detector
+    // Base-revision conflict gate. Consult the conflict detector
     // over the CURRENT worktree + live sibling proposals: a stale base, a stale whole-
     // document draft, an overlapping-hunk sibling, or an anchor drift refuses the apply as
     // a denial VALUE (no lease ever bypasses a revision check). Leases are passed EMPTY
-    // here: the advisory-lease dimension (`PolicyConflict`) is owned by S258's fencing
+    // here: the advisory-lease dimension (`PolicyConflict`) is owned by the advisory fencing
     // (which admits the current token holder) and keys on the proposing actor, so gating
     // apply on it would over-refuse a legitimate token-holder apply; the served conflict
     // route surfaces it for the reviewer.
@@ -382,7 +382,7 @@ fn preflight_in_uow(
             (document_path, base_blob_hash, core_base_blob_hash)
         };
 
-    // ADVISORY fencing (W13.P26, wired W14.P42a). A lease NEVER establishes correctness
+    // ADVISORY fencing. A lease NEVER establishes correctness
     // (leases-never-replace-revision-checks): the revision fence is the anti-stale-write
     // floor, and correctness must not depend on an unexpired lease. So the fence bites ONLY
     // a PRESENTED token that is stale/below the scope's current one (P26 monotonicity fences
@@ -530,7 +530,7 @@ fn complete_in_uow(
         ApplyChildOutcome::Applied => (ChangesetStatus::Applied, ApplyState::Applied),
         ApplyChildOutcome::Failed => (ChangesetStatus::Failed, ApplyState::Failed),
     };
-    // W03.P09a: a landed `CreateDocument` has no identity in `prep` (nothing
+    // A landed `CreateDocument` has no identity in `prep` (nothing
     // existed to resolve at prep time) — re-resolve it NOW, from the SAME
     // predicted stem `PostVerifyExpectation::CreatedAt` already confirmed,
     // so the receipt echoes the new document's real path/node-id/stem
@@ -750,8 +750,8 @@ pub(super) fn build_write_invocation(
         .map_err(|err| ApplyError::Internal(format!("invocation build failed: {err}")));
     }
     // SetPlanStepState is NOT a `write` over a document ref either — the plan CLI
-    // verb takes a positional `<plan_ref> <S##>` and NO `--expected-blob-hash`
-    // (authoring-surface ADR D1), so it takes its own early return via the
+    // verb takes a positional `<plan_ref> <S##>` and NO `--expected-blob-hash`,
+    // so it takes its own early return via the
     // dedicated builder rather than the `CoreInvocation::write` shape. The
     // apply-time base fence is ENGINE-SIDE (the direct-write stale-base
     // pre-check + the preflight conflict detector), never on this invocation.
@@ -995,8 +995,8 @@ pub(super) enum PostVerifyExpectation {
     /// preview equals the BASE, not the post-write bytes). Verification instead
     /// re-reads the plan document and parses the named Step's checkbox state
     /// with the SAME parser that serves the projection's `done` flag, confirming
-    /// it now matches `checked`. This is the authoring-surface ADR D1
-    /// core-authoritative post-verify — the plan CLI has no expected-blob-hash
+    /// it now matches `checked`. This is the core-authoritative post-verify
+    /// pattern — the plan CLI has no expected-blob-hash
     /// fence, so re-reading the resulting Step state is the resolution path for
     /// an indeterminate kill AND the crash-recovery reclaim, recomputed
     /// identically from the durable materialized operation.

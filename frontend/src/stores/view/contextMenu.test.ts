@@ -1,4 +1,4 @@
-// Menu open-state slice transitions (W01.P02.S08): single-instance open/close,
+// Menu open-state slice transitions: single-instance open/close,
 // arm/disarm, and the invariant that every dismiss clears the entity, anchor,
 // and armed slot.
 

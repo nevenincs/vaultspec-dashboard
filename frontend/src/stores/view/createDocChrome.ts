@@ -3,14 +3,14 @@ import { create } from "zustand";
 
 import type { FeatureCoverage } from "../server/engine";
 
-// Create-document chrome state (feature-group-authoring ADR D1/D5): a two-stage
+// Create-document chrome state: a two-stage
 // feature-first flow. Stage 1 selects-or-creates a feature; stage 2 adds an
 // ELIGIBLE document to it with a deterministically pre-filled, editable related-
 // links row. This module holds the pure draft + transitions + the coverage-derived
-// derivations (offered types, eligibility reconciliation, D5 link seeding); the
+// derivations (offered types, eligibility reconciliation, link seeding); the
 // write itself stays in stores/server/useCreateDoc, and the served coverage is read
-// by the panel through useFeatureCoverageView. exec is NOT an offered type (ADR D4:
-// exec records are plan-derived scaffolds); it left the set rather than shipping a
+// by the panel through useFeatureCoverageView. exec is NOT an offered type
+// (exec records are plan-derived scaffolds); it left the set rather than shipping a
 // permanently-disabled lie.
 export const CREATE_DOC_TYPES = [
   "research",
@@ -22,7 +22,7 @@ export const CREATE_DOC_TYPES = [
 export type CreateDocType = (typeof CREATE_DOC_TYPES)[number];
 export const DEFAULT_CREATE_DOC_TYPE: CreateDocType = "research";
 
-/** The two panel stages (ADR D1): select-or-create the feature, then add a
+/** The two panel stages: select-or-create the feature, then add a
  *  document to it. The panel opens on `feature`; Continue advances to `document`,
  *  Back returns. */
 export const CREATE_DOC_STAGES = ["feature", "document"] as const;
@@ -50,17 +50,17 @@ export const CREATE_DOC_RELATED_MAX = 16;
 
 export interface CreateDocChromeState {
   open: boolean;
-  /** The active stage (ADR D1). */
+  /** The active stage. */
   stage: CreateDocStage;
   docType: CreateDocType;
   feature: string;
   title: string;
-  /** The editable cross-link pre-fill (ADR D5), seeded from served coverage and
+  /** The editable cross-link pre-fill, seeded from served coverage and
    *  freely edited before submit. */
   related: string[];
   error: CreateDocIssue | null;
   /** A one-shot request to move focus to the feature field when the dialog opens
-   *  (set by the Features-section create affordance, D5/D6). Cleared once consumed. */
+   *  (set by the Features-section create affordance). Cleared once consumed. */
   focusFeatureField: boolean;
   toggleOpen: () => void;
   close: () => void;
@@ -172,7 +172,7 @@ export const useCreateDocChromeStore = create<CreateDocChromeState>((set) => ({
   toggleOpen: () =>
     set((state) =>
       state.open
-        ? // Dismiss PRESERVES the draft (create-panel-hardening ADR): an
+        ? // Dismiss PRESERVES the draft: an
           // accidental toggle/Escape must never wipe a typed feature, title, or
           // edited link list. Only a successful create resets (`reset`).
           { open: false, error: null, focusFeatureField: false }
@@ -210,14 +210,14 @@ export const useCreateDocChromeStore = create<CreateDocChromeState>((set) => ({
 
 // --- coverage-derived derivations (pure; consume the served FeatureCoverage) -----
 //
-// Eligibility and the newest link-target stems are ENGINE-SERVED (ADR D3): these
+// Eligibility and the newest link-target stems are ENGINE-SERVED: these
 // helpers only READ the served coverage, never recompute the hierarchy gate. The
 // panel calls them when coverage (or the selected type) changes and feeds the
 // result back through the store setters — keeping the store itself free of any
 // wire dependency (store-selectors-return-raw-state).
 
 /** One offered type row the document stage renders: the served coverage for an
- *  OFFERED type (exec excluded, ADR D4), carrying the served eligibility + reason
+ *  OFFERED type (exec excluded), carrying the served eligibility + reason
  *  the panel renders disabled-with-reason. */
 export interface OfferedCreateDocType {
   docType: CreateDocType;
@@ -235,8 +235,8 @@ function coverageTypeOf(coverage: FeatureCoverage | undefined, docType: string) 
 }
 
 /**
- * The offered document types for the current feature, in the panel's order (ADR
- * D4: exec is never offered). Each row carries the served eligibility/note so the
+ * The offered document types for the current feature, in the panel's order
+ * (exec is never offered). Each row carries the served eligibility/note so the
  * panel disables an ineligible type WITH its reason rather than hiding the
  * pipeline. Absent coverage yields the conservative floor (only the always-open
  * entry points eligible) — the panel gates on the tiers block regardless.
@@ -273,7 +273,7 @@ export function isCreateDocTypeEligible(
 }
 
 /**
- * Reconcile the selected type against served eligibility (ADR D3): if the current
+ * Reconcile the selected type against served eligibility: if the current
  * selection is still eligible it stands; otherwise it resets honestly to the
  * advised next step (when that is an offered, eligible type), else the first
  * eligible offered type, else the always-eligible entry point. The panel applies
@@ -300,7 +300,7 @@ export function reconcileCreateDocType(
 }
 
 /**
- * The deterministic cross-link pre-fill for a doc type (ADR D5), read from served
+ * The deterministic cross-link pre-fill for a doc type, read from served
  * coverage: adr ← the feature's newest research AND reference stems; plan ← newest
  * adr; audit ← newest plan (when present); research/reference ← none. No client
  * fuzzy matching — only stems the engine has already observed. The result is the
@@ -403,7 +403,7 @@ export function toggleCreateDocDialog(): void {
 
 export interface OpenCreateDocOptions {
   /** Move focus to the feature field once the dialog opens (the Features-section
-   *  create affordance, D5/D6). */
+   *  create affordance). */
   focusFeature?: boolean;
 }
 
@@ -466,7 +466,7 @@ export function consumeCreateDocFocusFeature(): boolean {
   return true;
 }
 
-/** Dismiss the dialog PRESERVING the draft (create-panel-hardening ADR): Escape,
+/** Dismiss the dialog PRESERVING the draft: Escape,
  *  backdrop, Cancel, and the close button all route here so an accidental dismiss
  *  never loses typed work. A reopen restores the draft at stage 1. */
 export function closeCreateDocDialog(): void {

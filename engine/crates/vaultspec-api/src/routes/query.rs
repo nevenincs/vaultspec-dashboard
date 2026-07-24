@@ -1,4 +1,4 @@
-//! Landscape and graph query endpoints (contract §3–§4, W03.P11.S49).
+//! Landscape and graph query endpoints.
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -17,8 +17,7 @@ use crate::app::{AppState, ScopeCell};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
-/// Resolve the per-request scope to its warm cell (contract §3, W02.P04.S15 +
-/// W02.P05.S16). The scope is no longer compared to ONE frozen value: it is
+/// Resolve the per-request scope to its warm cell. The scope is no longer compared to ONE frozen value: it is
 /// resolved through the registry to any selectable vault-bearing worktree in
 /// this workspace, building the cell on first access. An unknown or non-vault
 /// scope still 400s honestly with the tiers block attached.
@@ -31,11 +30,11 @@ pub fn validate_scope(
 }
 
 fn rag_tiers(cell: &ScopeCell) -> Value {
-    // Every front door must report ALL FOUR tiers truthfully (M-A3), and the
-    // declared tier must reflect ACTUAL core ingestion, never hardcoded true
-    // (M-D1). This helper used to build the block from rag discovery alone, so
+    // Every front door must report ALL FOUR tiers truthfully, and the
+    // declared tier must reflect ACTUAL core ingestion, never hardcoded true.
+    // This helper used to build the block from rag discovery alone, so
     // the 8 query routes that use it advertised declared:true even when core
-    // was unreachable — contradicting /status for the same state (LENSA-01).
+    // was unreachable — contradicting /status for the same state.
     // Delegate to the shared query_tiers, which overlays the cell's
     // declared_status for THIS resolved scope.
     super::query_tiers(cell)
@@ -64,8 +63,7 @@ fn node_scope_cell(
 
 // --- GET /map ----------------------------------------------------------------
 
-/// The optional `workspace=` selector (dashboard-workspace-registry ADR,
-/// P02.S07). Absent or `"active"` lists the active workspace (the unchanged
+/// The optional `workspace=` selector. Absent or `"active"` lists the active workspace (the unchanged
 /// single-workspace default); a registered workspace id lists that root; an
 /// unknown id 400s honestly.
 #[derive(Deserialize, Default)]
@@ -119,7 +117,7 @@ pub async fn map(State(state): State<Arc<AppState>>, Query(params): Query<MapPar
         .into_iter()
         .map(|b| json!({"name": b.name, "class": class(b.class), "degraded": b.degraded_tiers}))
         .collect();
-    // Corpus views + scope-token documentation (L2 + D6.1 parity with the
+    // Corpus views + scope-token documentation (parity with the
     // CLI map verb).
     let corpus_views: Vec<Value> = worktrees
         .iter()
@@ -133,7 +131,7 @@ pub async fn map(State(state): State<Arc<AppState>>, Query(params): Query<MapPar
             "branches": branches,
             "remote_refs": remotes,
             "corpus_views": corpus_views,
-            // The documented scope-token grammar (L2): what every
+            // The documented scope-token grammar: what every
             // scope= parameter accepts.
             "scope_token_format": "absolute worktree path, forward slashes, no extended-length prefix",
         }),
@@ -146,12 +144,12 @@ pub async fn map(State(state): State<Arc<AppState>>, Query(params): Query<MapPar
 //
 // The `/vault-tree` (+ `/vault-tree/delta`) and `/code-files` (+ `/code-files/delta`)
 // listing handlers moved to `routes::vault_tree` / `routes::code_files`
-// (vault-tree-delta ADR D1/D3 + its `/code-files` follow-on); the row projection,
+// (plus its `/code-files` follow-on); the row projection,
 // snapshot ring, and key-generic diff live in `crate::row_delta`. `validate_scope`
 // (below) stays the shared scope resolver every listing handler calls.
 
 /// Parse the `lens` request parameter, defaulting to the status lens when
-/// omitted (ADR: "defaulted to the status lens when omitted"). An unrecognized
+/// omitted. An unrecognized
 /// lens is a tiered 400, not a silent default.
 pub(crate) fn parse_lens(
     state: &AppState,
@@ -167,7 +165,7 @@ pub(crate) fn parse_lens(
 }
 
 /// Which tiers are unavailable in this cell's served tiers block, as the slice of
-/// names the salience partial-flag reads (graph-node-salience: degradation is
+/// names the salience partial-flag reads (degradation is
 /// read from the tiers block, not guessed). Reads the same `query_tiers` block
 /// the response carries so the flag and the block agree.
 pub(crate) fn unavailable_tier_names(tiers: &Value) -> Vec<&'static str> {
@@ -185,12 +183,12 @@ pub(crate) fn unavailable_tier_names(tiers: &Value) -> Vec<&'static str> {
     out
 }
 
-/// Parse the engine-owned granularity parameter (contract §4): document-level
+/// Parse the engine-owned granularity parameter: document-level
 /// edges, or feature-convergence nodes + meta-edges. Absent defaults to
 /// `document`, mirroring the live engine. Shared by `/graph/query` and
 /// `/graph/asof` so a historical slice can be requested in the SAME species as
 /// the live constellation (feature) — closing the asof/diff species mismatch
-/// (S50) that kept the constellation from time-travelling.
+/// that kept the constellation from time-travelling.
 pub(crate) fn parse_granularity(
     state: &AppState,
     raw: Option<&str>,
@@ -249,7 +247,7 @@ mod bound_tests {
 
     #[test]
     fn doi_ordered_truncation_keeps_the_top_salience_nodes() {
-        // graph-node-salience W03.P08.S31: when the active-lens DOI orders the
+        // When the active-lens DOI orders the
         // document nodes, MAX_GRAPH_NODES truncation keeps the TOP-DOI nodes for
         // the lens. Build a slice over the ceiling, give one specific node a high
         // salience, order by salience, then bound — it must survive.
@@ -413,8 +411,7 @@ mod bound_tests {
 pub struct EmbeddingsParams {
     pub scope: String,
     /// The active salience lens (kept consistent with `/graph/query`'s DOI
-    /// selection so the embedding set matches the served node set, ADR D2 / open
-    /// question). Defaults to status when omitted.
+    /// selection so the embedding set matches the served node set). Defaults to status when omitted.
     #[serde(default)]
     pub lens: Option<String>,
     /// The DOI focus node id, folded into the same salience ordering
@@ -425,7 +422,7 @@ pub struct EmbeddingsParams {
 }
 
 /// The per-socket inactivity timeout on each Qdrant scroll round-trip
-/// (subprocess-calls-carry-cap-and-timeout HTTP-read analog, ADR open question):
+/// (subprocess-calls-carry-cap-and-timeout HTTP-read analog):
 /// the transport's `set_read_timeout`/`set_write_timeout`, bounding how long a
 /// single page may stall with no bytes. It is NOT an overall deadline on its own —
 /// a 64-page scroll could otherwise accrue 64 × this — so `read_embeddings` is also
@@ -435,24 +432,24 @@ pub struct EmbeddingsParams {
 /// semantic tier (no vectors), never blocks the request.
 const EMBEDDING_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-/// The OVERALL wall-clock budget for the entire multi-page embedding scroll (W04
-/// review): the true bound the per-socket inactivity timeout alone cannot give.
+/// The OVERALL wall-clock budget for the entire multi-page embedding scroll: the
+/// true bound the per-socket inactivity timeout alone cannot give.
 /// Generous enough for the realistic ~1525-doc vault slice in a few round-trips,
 /// while capping the pathological many-page stall well below the worst case of
 /// `SCROLL_MAX_PAGES × EMBEDDING_READ_TIMEOUT`.
 const EMBEDDING_SCROLL_BUDGET: std::time::Duration = std::time::Duration::from_secs(45);
 
-/// The dedicated bounded embedding route (graph-semantic-embeddings ADR D2): the
+/// The dedicated bounded embedding route: the
 /// stored rag dense vectors for the SERVED document node set, keyed by node id,
-/// as raw float32 JSON `number[]` (ADR D3 — no server-side reduction, ADR D4),
+/// as raw float32 JSON `number[]` (no server-side reduction),
 /// capped at `MAX_GRAPH_NODES` with an honest `truncated` block, stamped with the
-/// graph generation it was read at (ADR D8 — so the client caches per generation;
+/// graph generation it was read at (so the client caches per generation;
 /// the embedding enters no node/edge stable key). Built through the shared
 /// envelope helper so success AND the rag-down degradation both carry the tiers
 /// block (every-wire-response-carries-the-tiers-block). NEVER inline on
 /// `/graph/query` — semantic is the non-default mode; the 99% of queries pay no
-/// embedding tax (ADR D2). The stores layer fetches this LAZILY only on entering
-/// semantic mode and reads semantic availability from the tiers block (ADR D7).
+/// embedding tax. The stores layer fetches this LAZILY only on entering
+/// semantic mode and reads semantic availability from the tiers block.
 pub async fn graph_embeddings(
     State(state): State<Arc<AppState>>,
     Query(params): Query<EmbeddingsParams>,
@@ -465,7 +462,7 @@ pub async fn graph_embeddings(
     // The SERVED document node set, selected EXACTLY as `/graph/query` selects it
     // at document granularity (same enriched views, same active-lens DOI order,
     // same MAX_GRAPH_NODES bound) so the embedding set matches the constellation's
-    // served node set (ADR D2 / open question). Reusing the per-generation cached
+    // served node set. Reusing the per-generation cached
     // views keeps this off the hot projection path.
     let views = cell.document_views();
     let mut slice = engine_query::graph::graph_query_cached(
@@ -495,7 +492,7 @@ pub async fn graph_embeddings(
     );
     engine_query::salience::order_by_salience(&mut slice.nodes, &scores);
     engine_query::graph::bound_slice(&mut slice);
-    // Only DOCUMENT nodes carry embeddings (ADR D10): the served set is already
+    // Only DOCUMENT nodes carry embeddings: the served set is already
     // document-granularity, so every id is a `doc:` node; collect them in order.
     let served_node_ids: Vec<String> = slice
         .nodes
@@ -505,10 +502,10 @@ pub async fn graph_embeddings(
 
     // Read the stored vectors from rag's Qdrant over loopback HTTP. rag/Qdrant
     // down ⇒ semantic tier Unavailable in the envelope tiers, no vectors returned
-    // (ADR D7) — the engine builds no embeddings, ever (ADR D1).
+    // — the engine builds no embeddings, ever.
     let vault_root = cell.root.join(".vault");
     // A degraded embedding envelope (no vectors) for any reason rag/Qdrant cannot
-    // serve — the stores layer reads availability from the tiers block (ADR D7),
+    // serve — the stores layer reads availability from the tiers block,
     // never a 5xx.
     let degraded_embeddings = |reason: &str| {
         Ok(super::envelope(
@@ -615,7 +612,7 @@ pub async fn graph_embeddings(
             }
         }
     }
-    // The semantic freshness epoch (rag-control-plane ADR D4): one bounded
+    // The semantic freshness epoch: one bounded
     // `/jobs` read against rag's SERVICE port, reduced to the newest terminal
     // reindex timestamp. It is the rag-side analog of the structural
     // `generation` counter — the embedding VECTOR cache below keys on it so a
@@ -624,10 +621,10 @@ pub async fn graph_embeddings(
     // fails (rag service flaking) degrades to `0` (treated as "unknown"): the
     // Qdrant scroll below still serves whatever vectors exist.
     let semantic_epoch_started = Instant::now();
-    // Read the epoch through the shared short-TTL cache (rag-integration-hardening
-    // D3): a warm window serves without a `/jobs` round-trip, and a successful read
+    // Read the epoch through the shared short-TTL cache: a warm window serves
+    // without a `/jobs` round-trip, and a successful read
     // here warms the same slot the `/search` freshness annotation reads. A
-    // cold/expired slot pays the one bounded `/jobs` read (offloaded, RCR-001); a
+    // cold/expired slot pays the one bounded `/jobs` read (offloaded); a
     // join failure OR a rag error yields no epoch — the vector key falls back to `0`
     // ("unknown", the existing behaviour) and the slot stays cold so `/search`
     // reports absent rather than a fabricated `0`. A successfully-read epoch (a
@@ -652,10 +649,10 @@ pub async fn graph_embeddings(
         }
     };
     let semantic_epoch_ms = semantic_epoch_started.elapsed().as_millis() as u64;
-    // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port (ADR D1), not rag's
+    // Embeddings are scrolled DIRECTLY from Qdrant's HTTP port, not rag's
     // service port — discovered the same `service.json` way. The transport carries
-    // the MAX_RAG_BODY byte cap (its bounded read) AND a wall-clock deadline (ADR
-    // open question: the subprocess-calls-carry-cap-and-timeout HTTP-read analog).
+    // the MAX_RAG_BODY byte cap (its bounded read) AND a wall-clock deadline
+    // (the subprocess-calls-carry-cap-and-timeout HTTP-read analog).
     let transport = rag_client::client::LoopbackTransport {
         port: info.qdrant_port(),
         // Qdrant's loopback HTTP needs no bearer; rag's service token is for rag's
@@ -668,8 +665,8 @@ pub async fn graph_embeddings(
     // (rag's `r{hash}_vault_docs` scheme) — computed from the project root, the
     // same path rag indexed under.
     let collection = rag_client::vectors::vault_collection_name(&cell.root);
-    // Warm-cache the multi-page Qdrant scroll on the semantic epoch (ADR D4 /
-    // P03.S18): unchanged epoch ⇒ serve the cached vector map (no scroll); a
+    // Warm-cache the multi-page Qdrant scroll on the semantic epoch:
+    // unchanged epoch ⇒ serve the cached vector map (no scroll); a
     // reindex (advanced epoch) ⇒ re-scroll and re-cache. The cached map is the
     // FULL vault-doc vector set, independent of the per-request lens/focus node
     // selection that happens after, so it is reusable across lens switches.
@@ -684,7 +681,7 @@ pub async fn graph_embeddings(
             let scroll_started = Instant::now();
             // The multi-page Qdrant scroll is the LONGEST blocking read in the rag
             // path (its own multi-page wall-clock budget) — offload it off the async
-            // worker (RCR-001) so it cannot pin a runtime thread. A join failure and
+            // worker so it cannot pin a runtime thread. A join failure and
             // a scroll error both degrade the semantic tier (no vectors), never a 500.
             let scroll_result = tokio::task::spawn_blocking(move || {
                 rag_client::vectors::read_embeddings(&transport, &collection, deadline)
@@ -695,7 +692,7 @@ pub async fn graph_embeddings(
                 // (store down, timeout, shape-miss, or the offload task): semantic
                 // suggestions are simply unavailable right now. Degrade the semantic
                 // tier (no vectors), never a 500 — the stores layer reads availability
-                // from tiers (ADR D7).
+                // from tiers.
                 Ok(super::envelope(
                     json!({
                         "embeddings": [],
@@ -744,12 +741,12 @@ pub async fn graph_embeddings(
     Ok(super::envelope(
         json!({
             "embeddings": embedding_slice.embeddings,
-            // The graph generation the vectors were read at (ADR D8): the client
+            // The graph generation the vectors were read at: the client
             // caches per generation and re-fetches on change. It is NOT folded
             // into any node or edge stable key.
             "generation": generation,
-            // The semantic-index freshness epoch the vectors were scrolled at
-            // (rag-control-plane ADR D4): the rag-side analog of `generation`. A
+            // The semantic-index freshness epoch the vectors were scrolled at:
+            // the rag-side analog of `generation`. A
             // completed reindex advances it; the client keys its embedding cache
             // on the (generation, semantic_epoch) PAIR so it re-fetches when
             // EITHER the structural graph or rag's index changed. Like
@@ -770,8 +767,7 @@ pub async fn graph_embeddings(
 
 // --- GET /pipeline?scope= ---------------------------------------------------------
 
-/// The in-flight pipeline projection (dashboard-pipeline-wire W02.P05.S22):
-/// resolve the per-request scope to its warm cell, run the bounded `in_flight`
+/// The in-flight pipeline projection: resolve the per-request scope to its warm cell, run the bounded `in_flight`
 /// projection over that scope's live graph, and return it through the shared
 /// envelope helper so the tiers block rides the response (success here, and the
 /// unknown-scope 400 via `validate_scope`/`api_error`). The projection is
@@ -799,7 +795,7 @@ pub async fn pipeline(
 #[derive(Deserialize)]
 pub struct FiltersParams {
     pub scope: String,
-    /// Which corpus's facet vocabulary to serve (codebase-graphing ADR D5):
+    /// Which corpus's facet vocabulary to serve:
     /// `vault` (default) or `code`. The route serves the ACTIVE corpus's
     /// vocabulary only — never a mixed one.
     #[serde(default)]
@@ -866,13 +862,13 @@ pub struct FeaturesParams {
     pub scope: String,
     /// Which feature group's pipeline coverage to serve. When present, the
     /// response is that feature's full coverage; when absent, the compact
-    /// all-features roster (feature-group-authoring ADR D2).
+    /// all-features roster.
     #[serde(default)]
     pub feature: Option<String>,
 }
 
-/// Per-feature pipeline coverage for the feature-group panel
-/// (feature-group-authoring ADR D2/D3): resolve the per-request scope to its warm
+/// Per-feature pipeline coverage for the feature-group panel:
+/// resolve the per-request scope to its warm
 /// cell, read the generation-memoized whole-corpus coverage map, and serve either
 /// the requested feature's coverage or the compact roster through the shared
 /// envelope so the tiers block rides success and the unknown-scope 400 alike. An
@@ -925,8 +921,7 @@ pub async fn node_detail(
     ))
 }
 
-/// The bounded plan-container interior of a plan node (dashboard-pipeline-wire
-/// W03.P08.S43): serves the interior through the shared envelope helper, so the
+/// The bounded plan-container interior of a plan node: serves the interior through the shared envelope helper, so the
 /// tiers block rides success and the unknown-node 404. Serves from the active
 /// scope's live graph like the rest of the /nodes/* family.
 pub async fn node_plan_interior(
@@ -967,7 +962,7 @@ pub struct NeighborParams {
     pub lens: Option<String>,
 }
 
-/// Ego-network depth ceiling (hardening, 2026-06-13 adversarial finding): an
+/// Ego-network depth ceiling (hardened against an adversarial finding): an
 /// unbounded `depth` walks the entire connected component into a single
 /// response. The GUI expands one hop at a time; cap the walk server-side so a
 /// hostile or accidental `depth=1e9` cannot dump the whole graph.
@@ -988,7 +983,7 @@ pub async fn node_neighbors(
             "declared" => Ok(Tier::Declared),
             "structural" => Ok(Tier::Structural),
             "temporal" => Ok(Tier::Temporal),
-            // `semantic` is NOT a graph tier (D3.5): it falls through to the
+            // `semantic` is NOT a graph tier: it falls through to the
             // unknown-tier rejection like any other unknown tier string.
             other => Err(super::api_error(
                 &state,
@@ -1033,7 +1028,7 @@ pub async fn node_neighbors(
         // ranks highest and always survives the cap.
         engine_query::salience::order_by_salience(nodes, &scores);
     }
-    // Serialize the ego edges through the SHARED §4 edge projection so the ego
+    // Serialize the ego edges through the shared edge projection so the ego
     // wire shape matches `/graph/query` exactly (mock-mirrors-live-wire-shape)
     // and the per-edge dead weight (the identical-per-edge `scope`, the
     // render-dead `provenance`, full-precision `confidence`) is stripped here too
@@ -1118,7 +1113,7 @@ pub async fn node_evidence(
                 format!("unknown node `{id}`"),
             )
         })?;
-    // S13: enrich the correlated commits with their subjects from a read-only
+    // Enrich the correlated commits with their subjects from a read-only
     // git lookup at the route seam (the pure graph projection has no git
     // access; the commit subject lives in the object DB, exactly as the history
     // route reads it). A scope with no readable workspace, or a sha that does
@@ -1141,7 +1136,7 @@ pub async fn node_evidence(
     // evidence fields sit directly under `data` (matching the mock's flat
     // shape and the inspector's `evidence.data.documents/...` reads), not
     // hand-built as a bare `{evidence, tiers}` body. The item shapes are now
-    // aligned to the GUI `NodeEvidence` type (S13): documents carry `{path,
+    // aligned to the GUI `NodeEvidence` type: documents carry `{path,
     // doc_type}` and commits carry `subject`.
     Ok(super::envelope(
         serde_json::to_value(evidence).expect("evidence serializes"),

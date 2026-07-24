@@ -8,7 +8,7 @@
 
 use crate::{EdgeId, NodeId, NodeKind, Provenance, RelationKind, Tier};
 
-/// The canonical identity key forms, one per node kind (engine-spec §4.1).
+/// The canonical identity key forms, one per node kind.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CanonicalKey<'a> {
     /// Feature tag (kebab-case, core's mandated convention).
@@ -24,7 +24,7 @@ pub enum CanonicalKey<'a> {
     Commit { sha: &'a str },
     /// Repo-relative path, optionally qualified by a symbol.
     ///
-    /// Key form is `{path}#{symbol}` (audit W01P01-004): this assumes repo
+    /// Key form is `{path}#{symbol}`: this assumes repo
     /// paths do not contain `#`. Paths that do would alias a symbol
     /// qualifier; such paths are vanishingly rare in practice and not
     /// produced by any vaultspec convention. Revisit with an escaped
@@ -34,7 +34,7 @@ pub enum CanonicalKey<'a> {
         symbol: Option<&'a str>,
     },
     /// Rule slug (kebab-case): the codify pipeline's output projected from the
-    /// rules tree (graph-node-semantics ADR). Identity is the slug, stable
+    /// rules tree. Identity is the slug, stable
     /// across re-projection.
     Rule { slug: &'a str },
 }
@@ -134,9 +134,8 @@ impl Provenance {
         match self {
             Provenance::CoreGraph { edge_id, .. } => format!("core:{edge_id}"),
             Provenance::DocumentBody { target, .. } => format!("body:{target}"),
-            // Temporal identity is per (commit, record), NOT per rule
-            // (audit redline W02P07-401, conducted as the W01P01-001
-            // contract-review event): the U2 enrichment-adoption upgrade
+            // Temporal identity is per (commit, record), NOT per rule:
+            // an enrichment-adoption upgrade
             // (rule-2 matches becoming rule-1 corpus-wide) must upgrade
             // confidence in place, never churn edge ids. The rule stays in
             // provenance as attribution only.
@@ -164,8 +163,8 @@ fn fnv1a_128(bytes: &[u8]) -> u128 {
 }
 
 /// Stable content hash of arbitrary bytes, as a 32-hex-digit string.
-/// Used for content-hash cache keys and payload identity (engine-spec §2.4
-/// cache discipline). Same determinism rationale as [`edge_id`].
+/// Used for content-hash cache keys and payload identity (cache discipline).
+/// Same determinism rationale as [`edge_id`].
 pub fn content_hash(bytes: &[u8]) -> String {
     format!("{:032x}", fnv1a_128(bytes))
 }
@@ -261,7 +260,7 @@ mod tests {
 
     #[test]
     fn imports_relation_wire_name_is_pinned() {
-        // codebase-graphing ADR D4: the import edge's relation token. `as_str`
+        // The import edge's relation token. `as_str`
         // must match the serde kebab-case encoding, like every other variant.
         assert_eq!(RelationKind::Imports.as_str(), "imports");
         let json = serde_json::to_string(&RelationKind::Imports).unwrap();

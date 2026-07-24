@@ -1,4 +1,4 @@
-// The rag job-dashboard view-local presentation store (rag-job-dashboard ADR D7):
+// The rag job-dashboard view-local presentation store:
 // boundary normalizers (unknown-tolerant, length-capped, enum-clamped), facet
 // toggling in canonical order, and raw stable selectors. Pure store tests — no
 // render, no wire; this state is presentation only and never a corpus filter.

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { SCOPE_ID_MAX_CHARS } from "../scopeIdentity";
@@ -83,7 +83,7 @@ describe("adaptDashboardState", () => {
     expect(adapted.panel_state).toEqual({
       left_collapsed: true,
       right_collapsed: false,
-      // The removed "search" tab heals to the default (search-providers ADR D3).
+      // The removed "search" tab heals to the default.
       right_tab: "status",
     });
     expect(adapted.graph_bounds).toEqual({ shape: "circle", size: 13 });
@@ -95,7 +95,7 @@ describe("adaptDashboardState", () => {
   });
 });
 
-describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
+describe("adaptGraphSlice (live constellation sample)", () => {
   // Captured verbatim from `vaultspec serve` over this repo's own vault at
   // feature granularity: feature-convergence nodes, edges EMPTY, and the
   // relationships in a SEPARATE meta_edges array (engine addendum S02). This
@@ -149,7 +149,7 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(slice.nodes[1].member_count).toBe(67);
   });
 
-  it("drops code nodes on the VAULT corpus but keeps them on the CODE corpus (ADR D7)", () => {
+  it("drops code nodes on the VAULT corpus but keeps them on the CODE corpus", () => {
     // A slice carrying code-corpus nodes: the vault-corpus adapter (default)
     // must exclude them (the vault graph stays clean); the code-corpus adapter
     // must keep them — they are the legitimate content of a different dataset.
@@ -201,7 +201,7 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(edge.id).toBe('meta:["feature:a","feature:b"]');
     expect(edge.relation).toBe("related");
     // Dominant tier = the breakdown's heaviest edge tier (temporal here). The
-    // engine never mints semantic graph edges (ADR D3.5), so semantic is never a
+    // engine never mints semantic graph edges, so semantic is never a
     // candidate even if a stray key appears in the breakdown.
     expect(edge.tier).toBe("temporal");
   });
@@ -251,7 +251,7 @@ describe("adaptGraphSlice (live constellation sample, 2026-06-13)", () => {
     expect(slice.edges[0].meta).toBeUndefined();
   });
 
-  it("drops index/code nodes and the edges referencing them (ADR D5/D6)", () => {
+  it("drops index/code nodes and the edges referencing them", () => {
     // Belt-and-braces: the engine excludes index/code at the projection, but the
     // frontend must not render them if a producer emits one. Code is detected by
     // kind, by the `code-artifact` species, AND by the `code:` id prefix.
@@ -403,7 +403,7 @@ describe("adaptGraphSlice ontology fields (graph-node-semantics)", () => {
   });
 });
 
-describe("adaptGraphSlice salience conformance (live sample, graph-node-salience W04.P10.S43)", () => {
+describe("adaptGraphSlice salience conformance (live sample)", () => {
   // A sample CAPTURED from the live `vaultspec serve` `/graph/query` document
   // response under the graph-node-salience wire amendment: the `{data, tiers}`
   // envelope carrying the single active-lens `salience` float on each document
@@ -481,9 +481,9 @@ describe("adaptGraphSlice salience conformance (live sample, graph-node-salience
   });
 });
 
-// graph-semantic-embeddings ADR D6 / W04.P16.S62: a captured-live `/graph/
-// embeddings` sample fed through the REAL adaptGraphEmbeddings client path the app
-// uses. The adapter must carry generation/tiers and drop malformed entries.
+// A captured-live `/graph/embeddings` sample fed through the REAL
+// adaptGraphEmbeddings client path the app uses. The adapter must carry
+// generation/tiers and drop malformed entries.
 
 describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)", () => {
   it("drops a malformed entry and passes internal bodies through unchanged", () => {
@@ -505,7 +505,7 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
   });
 });
 
-// graph-node-representation ADR D1 / W02.P05.S28: the embedding↔node join is
+// The embedding↔node join is
 // contractually keyed by `node_id`, NEVER by positional/DOI order. These tests
 // feed a captured live-shape `/graph/embeddings` envelope through the REAL client
 // path the app uses (unwrapEnvelope -> adaptGraphEmbeddings -> embeddingsByNodeId)
@@ -513,7 +513,7 @@ describe("adaptGraphEmbeddings (captured-live sample -> scene projection gate)",
 // array is REORDERED or a strict SUBSET of the node set, and that a node with no
 // served vector is an honest absence (no crash, no mis-assignment).
 
-describe("embeddingsByNodeId (node_id join contract, ADR D1)", () => {
+describe("embeddingsByNodeId (node_id join contract)", () => {
   const DIM = 4;
   /** A distinct, recognizable vector per node so a mis-join is observable: the
    *  vector encodes the node's index in its first slot. */

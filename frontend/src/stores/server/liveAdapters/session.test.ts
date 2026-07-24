@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { adaptPipeline, adaptPlanInterior, unwrapEnvelope } from "./index";
 import { TIERS } from "./testFixtures";
 
-// --- dashboard-pipeline-wire W05.P12: consumer fidelity ----------------------------
+// --- consumer fidelity --------------------------------------------------------------
 
-describe("adaptPipeline + /pipeline consumer fidelity (W05.P12.S62)", () => {
+describe("adaptPipeline + /pipeline consumer fidelity", () => {
   // A live `/pipeline` envelope: an active L3 plan (work started → execute) and a
   // proposed ADR (adr phase). The live route serves `{data: {artifacts}, tiers}`.
   const live = {
@@ -86,7 +86,7 @@ describe("adaptPipeline + /pipeline consumer fidelity (W05.P12.S62)", () => {
   });
 });
 
-describe("adaptPlanInterior + plan-interior consumer fidelity (W05.P12.S63)", () => {
+describe("adaptPlanInterior + plan-interior consumer fidelity", () => {
   // A live `/nodes/{id}/plan-interior` envelope: an L3 interior (one wave, one
   // phase, two steps) with a truncated block. The route wraps under `interior`.
   const live = {

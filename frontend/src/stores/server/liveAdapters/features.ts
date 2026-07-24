@@ -1,4 +1,4 @@
-// Feature-coverage tolerant adapters (feature-group-authoring ADR D2/D3).
+// Feature-coverage tolerant adapters.
 //
 // Tolerant adapters for `GET /features`. The live `{data: {coverage}, tiers}` /
 // `{data: {roster}, tiers}` envelope is already unwrapped by `unwrapEnvelope`
@@ -7,7 +7,7 @@
 // property (mock-mirrors-live-wire-shape). Every missing field defaults to a safe
 // value so a sparse or older shape NEVER throws and the chrome never reads the raw
 // tiers block (degradation truth rides on `tiers`, defaulted to an empty block when
-// absent). Eligibility is served, never recomputed here (ADR D3): a served `types`
+// absent). Eligibility is served, never recomputed here: a served `types`
 // entry's `eligible`/`note` pass through faithfully; a wholly-absent coverage
 // (a degraded read) yields an all-missing shape whose per-type eligibility is left
 // conservative (nothing eligible past the entry points) rather than reimplementing
@@ -40,7 +40,7 @@ function numOr(value: unknown, fallback: number): number {
 
 /** One served type-coverage entry → the internal shape, tolerating an absent or
  *  partial object. `eligible` defaults false (conservative: an unparseable entry
- *  is not offered); the served flag is authoritative when present (ADR D3). */
+ *  is not offered); the served flag is authoritative when present. */
 function adaptTypeCoverage(raw: unknown, docType: string): FeatureTypeCoverage {
   const r = isRec(raw) ? raw : {};
   return {

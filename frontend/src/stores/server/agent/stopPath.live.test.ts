@@ -1,9 +1,9 @@
-// Stop-path live-wire proof (agent-wire-gaps P01.S38/S12 named scenario).
+// Stop-path live-wire proof.
 //
 // Runs ONLINE against the real spawned engine: Stop (run-scoped cancel) leaves
 // the session Active, no fresh-session bootstrap is needed, and the SAME
 // session accepts the next turn — the conversation continues. This is the wire
-// truth the composer's submit-destination machine relies on since the D2
+// truth the composer's submit-destination machine relies on since the
 // cancel-semantics cutover deleted the cancel-collapses-session behavior.
 
 import { describe, expect, it } from "vitest";

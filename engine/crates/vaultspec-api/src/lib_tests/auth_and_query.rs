@@ -23,7 +23,7 @@ async fn health_is_ungated_everything_else_is_bearer_gated() {
 
 #[tokio::test]
 async fn authoring_status_is_enabled_and_semantic_and_tiered() {
-    // W03.P39 mount: the authoring domain is a fenced product API (NOT a
+    // The authoring domain is a fenced product API (NOT a
     // core-shaped write proxy) and is now ENABLED — the propose → review →
     // apply → rollback slice is live. The status snapshot reports the boundary
     // + the V1 capability set.
@@ -58,7 +58,7 @@ async fn authoring_status_is_enabled_and_semantic_and_tiered() {
 
 #[tokio::test]
 async fn authoring_command_routes_are_mounted_under_the_principal_layer() {
-    // W03.P39 mount smoke: the nested authoring router is reachable — a read
+    // The nested authoring router is reachable — a read
     // flows (principal-permissive) with just the machine bearer, and a command
     // route is mounted AND gated by the principal layer (a machine bearer alone,
     // with no actor token, is a 401 from the ResolvedCommand extractor, never a
@@ -101,7 +101,7 @@ async fn authoring_command_routes_are_mounted_under_the_principal_layer() {
 
 #[tokio::test]
 async fn proposal_append_and_replace_draft_routes_are_mounted_and_principal_gated() {
-    // W12.P22 fold-in: the served tool catalog advertises `propose_changeset`
+    // The served tool catalog advertises `propose_changeset`
     // append/replace, so those verbs MUST have executable routes (not
     // advertise-what-can't-run). Each is mounted AND principal-gated: a machine
     // bearer with no actor token is a 401 from the extractor, never a 404.
@@ -213,7 +213,7 @@ async fn scope_validation_rejects_unserved_scopes() {
 
 #[tokio::test]
 async fn graph_embeddings_carries_generation_and_degrades_semantic_when_rag_is_down() {
-    // graph-semantic-embeddings ADR D7/D8: /graph/embeddings rides the shared
+    // /graph/embeddings rides the shared
     // envelope so the tiers block is carried on every response, stamps the
     // graph generation it was read at, and — with rag/Qdrant down in this
     // test environment — reports the semantic tier Unavailable and returns NO
@@ -243,14 +243,14 @@ async fn graph_embeddings_carries_generation_and_degrades_semantic_when_rag_is_d
     .await;
     assert_eq!(status, StatusCode::OK);
     // The shared envelope carries the tiers block (every-wire-response rule);
-    // semantic is Unavailable because rag/Qdrant is not running here (D7).
+    // semantic is Unavailable because rag/Qdrant is not running here.
     assert_eq!(body["tiers"]["semantic"]["available"], Value::Bool(false));
     // No vectors served while rag is down — honest absence, not an error.
     assert_eq!(
         body["data"]["embeddings"].as_array().map(|a| a.len()),
         Some(0)
     );
-    // The generation stamp the client caches per generation (D8) is present
+    // The generation stamp the client caches per generation is present
     // and is an integer (read off the cell's generation counter).
     assert!(body["data"]["generation"].is_u64());
     // truncated is null on a degraded read (no bound fired).
@@ -259,7 +259,7 @@ async fn graph_embeddings_carries_generation_and_degrades_semantic_when_rag_is_d
 
 #[tokio::test]
 async fn pipeline_returns_active_artifacts_with_the_tiers_block_on_success() {
-    // W02.P05.S25: /pipeline returns the in-flight artifacts (active plan +
+    // /pipeline returns the in-flight artifacts (active plan +
     // proposed ADR) with the tiers block on success. A complete plan and a
     // rejected ADR must be excluded — the projection is bounded to active.
     let dir = tempfile::tempdir().unwrap();
@@ -333,7 +333,7 @@ async fn pipeline_returns_active_artifacts_with_the_tiers_block_on_success() {
 
 #[tokio::test]
 async fn plan_interior_carries_the_tiers_block_and_404s_an_unknown_node() {
-    // W03.P08.S47: /nodes/{id}/plan-interior carries the tiers block on
+    // /nodes/{id}/plan-interior carries the tiers block on
     // success and 404s an unknown node, through the shared envelope.
     let dir = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
@@ -402,7 +402,7 @@ async fn plan_interior_carries_the_tiers_block_and_404s_an_unknown_node() {
 
 #[tokio::test]
 async fn pipeline_unknown_scope_400s_with_the_tiers_block() {
-    // W02.P05.S26: an unknown scope 400s with the tiers block attached,
+    // An unknown scope 400s with the tiers block attached,
     // never a hand-built body — the shared envelope/api_error path.
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
@@ -437,7 +437,7 @@ async fn ops_whitelist_rejects_unlisted_verbs() {
 
 #[tokio::test]
 async fn served_tiers_carry_the_component_handshake() {
-    // P02.S08/S09 (dashboard-packaging D6): every served tiers block
+    // Every served tiers block
     // declares the component floors, with rag honestly version-less and —
     // in this fixture workspace, which has no rag service — semantic
     // truthfully unavailable alongside its component block.

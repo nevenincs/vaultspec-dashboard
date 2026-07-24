@@ -1,6 +1,6 @@
 use super::helpers::*;
 
-// --- W02.P05a: propose-side operation-kind generalization --------------
+// --- propose-side operation-kind generalization --------------
 
 /// Serializes the tests that spawn the REAL `vaultspec-core` subprocess
 /// (mirrors `apply::tests::REAL_CORE_TEST_LOCK` / `direct_write::tests::REAL_CORE_TEST_LOCK`).

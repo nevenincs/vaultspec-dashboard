@@ -264,7 +264,7 @@ enum ContentError {
 }
 
 /// Read the resolved path's bytes from this scope's substrate: the working tree
-/// for a worktree scope, the committed tree for a ref-only scope (D2.2 — a ref
+/// for a worktree scope, the committed tree for a ref-only scope (a ref
 /// has no checkout). A read failure degrades the STRUCTURAL tier honestly.
 fn read_bytes(
     cell: &ScopeCell,

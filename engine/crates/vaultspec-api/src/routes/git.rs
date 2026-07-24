@@ -1,6 +1,5 @@
 //! The read-only `/ops/git` pass-through and the changed-files SUMMARY projection
-//! (extracted from `routes/ops.rs` 2026-07-12; dashboard-pipeline-wire W04 +
-//! changes-summary-projection).
+//! (extracted from `routes/ops.rs`).
 //!
 //! Every whitelisted git verb is a pure read of the working tree — NO mutating
 //! verb (add/commit/checkout/reset/stash) is reachable, by construction
@@ -26,7 +25,7 @@ use crate::bounded_child::{BoundedLimits, CapPolicy, run_bounded};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
-/// The READ-ONLY git whitelist (dashboard-pipeline-wire W04.P09.S48), mirroring
+/// The READ-ONLY git whitelist, mirroring
 /// `CORE_WHITELIST` / `RAG_WHITELIST`: porcelain status (per-file `XY`), numstat
 /// (`+adds`/`-dels` per file), and unified diff for a path. Every verb is a pure
 /// read of the working tree — NO mutating git verb (add, commit, checkout,
@@ -43,7 +42,7 @@ const GIT_WHITELIST: &[(&str, &[&str])] = &[
     // cover BOTH staged (index-vs-HEAD) and unstaged (worktree-vs-index) changes
     // in one read — matching the full working-tree picture `status --porcelain`
     // reports. A bare `git diff --numstat` saw only unstaged changes, so every
-    // staged file reconciled to null tallies (dashboard git-backend audit HIGH-1).
+    // staged file reconciled to null tallies.
     // Untracked files are still absent (not in HEAD); they carry no diff tally by
     // construction and the client renders them without one.
     ("numstat", &["diff", "HEAD", "--numstat", "--no-color"]),
@@ -52,8 +51,8 @@ const GIT_WHITELIST: &[(&str, &[&str])] = &[
     // staged). Combined staged+unstaged vs HEAD is the "what changed in this file
     // since the last commit" the browser wants; `git_args_for` appends `-- <path>`.
     ("diff", &["diff", "HEAD", "--no-color"]),
-    // The bounded read-only HISTORICAL text diff (figma-parity-reconciliation
-    // S14): a two-rev `git diff <from> <to> -- <path>` over the git object DB.
+    // The bounded read-only HISTORICAL text diff: a two-rev
+    // `git diff <from> <to> -- <path>` over the git object DB.
     // Pure read-and-infer — the engine implements no diff algorithm and exposes
     // no mutating git verb. Both revs and the path are validated before they are
     // appended (`git_args_for`); the fixed args carry no write flag.
@@ -96,7 +95,7 @@ fn git_invocation() -> Vec<String> {
     vec!["git".into()]
 }
 
-/// Validate the optional `path` argument for the `diff` verb (W04.P09.S50): only
+/// Validate the optional `path` argument for the `diff` verb: only
 /// a bounded, in-tree relative path may be forwarded, never an arbitrary git
 /// argument channel. Rejects absolute paths, parent-dir traversal (`..`),
 /// and any token that begins with `-` (which git would read as a flag/option,
@@ -123,9 +122,9 @@ fn validate_diff_path(state: &AppState, path: &str) -> Result<String, (StatusCod
     Ok(path.to_string())
 }
 
-/// Validate a single git revision token for the historical-diff verb
-/// (figma-parity-reconciliation S14): a rev names a commit/ref/tag the two-rev
-/// `git diff` reads, never a flag or an argument channel. Rejects an empty
+/// Validate a single git revision token for the historical-diff verb: a rev
+/// names a commit/ref/tag the two-rev `git diff` reads, never a flag or an
+/// argument channel. Rejects an empty
 /// token, anything beginning with `-` (which git would read as a flag — the
 /// injection vector), and a `..`/`...` range expression (the route forms the
 /// range from two SEPARATE validated revs, so a smuggled range is rejected).
@@ -270,9 +269,8 @@ pub struct GitOpBody {
     pub to: Option<String>,
 }
 
-/// POST `/ops/git/{verb}` — the read-only git pass-through (dashboard-pipeline-
-/// wire W04.P10.S52; historical diff figma-parity-reconciliation S14; summary
-/// changes-summary-projection): forward a whitelisted, read-only git verb through
+/// POST `/ops/git/{verb}` — the read-only git pass-through: forward a
+/// whitelisted, read-only git verb through
 /// the bounded runner and the shared envelope helper, returning git's output
 /// VERBATIM inside `{data: {output, verb}}` with the tiers block. The `histdiff`
 /// verb runs a two-rev `git diff <from> <to> -- <path>` over the object DB (both
@@ -343,7 +341,7 @@ pub async fn ops_git(
             ),
         })
     });
-    // S15: the success envelope carries the per-tier degradation block through
+    // The success envelope carries the per-tier degradation block through
     // the shared `envelope` helper, and every error path above degrades through
     // `api_error` (which always attaches the tiers block) — so the historical
     // diff route, like every other front door, carries tiers on success AND
@@ -605,7 +603,7 @@ mod tests {
 
     #[test]
     fn every_whitelisted_git_verb_is_read_only_and_no_mutating_verb_is_reachable() {
-        // W04.P09.S51: every whitelisted git verb is a pure read; no mutating
+        // Every whitelisted git verb is a pure read; no mutating
         // git verb (add/commit/checkout/reset/stash) is reachable, and no
         // working-tree mutation flag is present in any whitelist entry.
         const MUTATING: &[&str] = &[
@@ -666,7 +664,7 @@ mod tests {
 
     #[test]
     fn diff_path_validation_rejects_flags_absolute_and_traversal() {
-        // W04.P09.S50: the diff path argument is bounded — no leading `-`
+        // The diff path argument is bounded — no leading `-`
         // (flag injection), no absolute path, no `..` traversal.
         let (_dir, state) = no_git_state();
         for bad in [
@@ -696,7 +694,7 @@ mod tests {
 
     #[test]
     fn git_args_for_appends_a_dash_dash_path_only_for_the_diff_verb() {
-        // W04.P09: the diff verb gets `-- <path>` so a path can never be read as
+        // The diff verb gets `-- <path>` so a path can never be read as
         // a flag; non-path verbs reject a supplied path; diff requires one.
         let (_dir, state) = no_git_state();
         let diff_args = git_args_for(
@@ -719,7 +717,7 @@ mod tests {
 
     #[test]
     fn histdiff_builds_a_two_rev_diff_with_a_dash_dash_path() {
-        // S14: histdiff forms `diff --no-color <from> <to> -- <path>` from two
+        // histdiff forms `diff --no-color <from> <to> -- <path>` from two
         // SEPARATE validated revs; the path still follows `--` so it can never be
         // read as a flag, and the revs precede the separator.
         let (_dir, state) = no_git_state();
@@ -760,7 +758,7 @@ mod tests {
 
     #[test]
     fn validate_rev_rejects_flags_ranges_and_whitespace() {
-        // S14: a rev is a single bounded revision token — never a flag, a `..`
+        // A rev is a single bounded revision token — never a flag, a `..`
         // range expression, or a whitespace-bearing argument channel.
         let (_dir, state) = no_git_state();
         for bad in [
@@ -825,7 +823,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_whitelisted_status_verb_forwards_git_output_verbatim_in_the_envelope() {
-        // W04.P10.S55: a whitelisted status verb forwards git output verbatim
+        // A whitelisted status verb forwards git output verbatim
         // inside the envelope with the tiers block.
         let (_dir, state) = git_repo_state();
         let scope = state
@@ -912,7 +910,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_non_whitelisted_git_verb_403s_before_the_subprocess() {
-        // W04.P10.S54: a non-whitelisted git verb 403s with the tiers block,
+        // A non-whitelisted git verb 403s with the tiers block,
         // never reaching the subprocess.
         let (_dir, state) = no_git_state();
         for mutating in ["commit", "add", "checkout", "reset", "stash", "push"] {
@@ -930,7 +928,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_git_fault_degrades_to_a_tiers_carrying_error_envelope() {
-        // W04.P10.S56: a sibling (git) fault degrades to a tiers-carrying error
+        // A sibling (git) fault degrades to a tiers-carrying error
         // envelope, never a hand-built body. Running git in a NON-git directory
         // makes `git status` exit non-zero — the bounded runner surfaces it as a
         // 502 error envelope through the shared api_error helper (which always

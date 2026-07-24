@@ -1,12 +1,11 @@
-# The phase-zero channel feasibility proof (a2a-product-provisioning
-# W01.P01.S147 Scoop / S149 WinGet + the S148 matrix write-back).
+# The phase-zero channel feasibility proof.
 #
-# This is the clean-machine REVERSIBILITY PROOF the whole channel story gates on
-# (ADR D2): a package-manager channel is a supported update channel ONLY if a
+# This is the clean-machine REVERSIBILITY PROOF the whole channel story gates
+# on: a package-manager channel is a supported update channel ONLY if a
 # real manager can install → upgrade → manager-owned downgrade → repair →
 # uninstall the COMPLETE product artifact and leave the machine clean. A channel
-# without that proof is NOT supported, and a failed proof reopens the ADR rather
-# than certifying on metadata alone.
+# without that proof is NOT supported, and a failed proof reopens the decision
+# rather than certifying on metadata alone.
 #
 # VERIFICATION REALITY — authored now; clean-machine-verified at release. The
 # real proof needs (a) clean-machine runners, (b) the RELEASED complete archive /
@@ -15,11 +14,11 @@
 # artifact (the bucket/manifest still carry placeholder digests), so today every
 # channel resolves `blocked` — visibly not-green, matrix left `feasibility_gated`.
 #
-# OUTCOME → MATRIX (S148). The `record` job writes each channel's result into
+# OUTCOME → MATRIX. The `record` job writes each channel's result into
 # packaging/a2a-support-matrix.json, three-stated and fail-closed:
 #   - `supported`   : genuine clean-machine pass → flip feasibility_gated→supported.
 #   - `unsupported` : a real reversibility step FAILED → flip →unsupported + set an
-#                     ADR-revisit reason (never silently downgrade certification).
+#                     revisit reason (never silently downgrade certification).
 #   - `blocked`     : inputs pending (artifact/capsule/MSI/prior-version) → leave
 #                     the matrix untouched at feasibility_gated; the job still fails.
 # The channel-publish-gate then publishes only channels the matrix marks
@@ -53,6 +52,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: a2a-channel-feasibility-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   scoop:
@@ -165,13 +168,13 @@ jobs:
           }
 
           # PREFLIGHT (fail-closed, authored-pending-MSI): WinGet installs the
-          # complete product MSI (S83), which requires the WiX MSI (S76, DEFERRED —
+          # complete product MSI, which requires the WiX MSI (DEFERRED —
           # WiX not on the build box). The installer manifest still carries a
           # placeholder InstallerSha256 until the MSI publishes → `blocked`.
           $installer = Get-Content packaging/winget/vaultspec.vaultspec.installer.yaml -Raw
           if ($installer -match 'InstallerSha256:\s*"?0{64}') {
-            Write-Host "winget preflight: installer digest is placeholder — complete MSI (S76) not yet built/published"
-            Emit 'blocked' 'complete product MSI (S76) not yet built (WiX deferred) — winget authored-pending-MSI'
+            Write-Host "winget preflight: installer digest is placeholder — complete MSI not yet built/published"
+            Emit 'blocked' 'complete product MSI not yet built (WiX deferred) — winget authored-pending-MSI'
             exit 1
           }
 
@@ -209,7 +212,7 @@ jobs:
           Get-PSDrive -PSProvider FileSystem | Where-Object { $_.Used } | Format-Table -AutoSize
 
   record:
-    name: Record channel outcomes into the support matrix (S148)
+    name: Record channel outcomes into the support matrix
     needs: [scoop, winget]
     if: always()
     runs-on: Linux
@@ -240,11 +243,11 @@ jobs:
                 echo "record: $channel → supported"
                 ;;
               unsupported)
-                # A real reversibility FAILURE → unsupported + ADR-revisit reason.
-                jq --arg t "$TGT" --arg c "$channel" --arg r "phase-zero reversibility proof failed — ADR D2 revisit required: $reason" \
+                # A real reversibility FAILURE → unsupported + revisit reason.
+                jq --arg t "$TGT" --arg c "$channel" --arg r "phase-zero reversibility proof failed — decision revisit required: $reason" \
                   '.targets[$t][$c].support_status = "unsupported" | .targets[$t][$c].unsupported_reason = $r' \
                   "$MATRIX" > "$MATRIX.tmp" && mv "$MATRIX.tmp" "$MATRIX"
-                echo "record: $channel → unsupported (ADR revisit): $reason"
+                echo "record: $channel → unsupported (revisit): $reason"
                 ;;
               *)
                 # blocked / skipped / empty → inputs pending; leave the matrix at

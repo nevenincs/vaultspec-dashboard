@@ -36,8 +36,8 @@ pub const CORE_FLOOR: (u64, u64, u64) = (0, 1, 36);
 /// honestly `null` rather than inventing one.
 pub const RAG_FLOOR: &str = "0.2.28";
 
-/// The A2A gateway API version the dashboard's release set is built against
-/// (a2a-product-provisioning W02.P04.S28). The A2A component is a dashboard-owned
+/// The A2A gateway API version the dashboard's release set is built against.
+/// The A2A component is a dashboard-owned
 /// COMPANION, not an attach-never-own sibling, so its handshake carries the
 /// installed release set, owned-or-foreign gateway identity, protocol/state-
 /// schema ranges, and authenticated readiness — resolved live per response, not
@@ -129,7 +129,7 @@ pub fn probe_git() -> &'static GitProbe {
 /// The refreshable memo backing [`probe_core`]. Unlike a bare `OnceLock`, it can
 /// be re-primed after a dashboard-driven `vaultspec-core` install/upgrade so the
 /// served handshake reflects the just-installed version WITHOUT a process
-/// restart (project-provisioning ADR D6). `None` means "not yet probed"; the
+/// restart. `None` means "not yet probed"; the
 /// first `probe_core()` primes it from the memoized `core_version()`.
 static CORE_PROBE: RwLock<Option<CoreProbe>> = RwLock::new(None);
 
@@ -150,7 +150,7 @@ pub fn probe_core() -> CoreProbe {
 }
 
 /// Re-prime the memoized core probe from a FRESH, uncached version read
-/// (project-provisioning ADR D6, post-provision reconciliation). Called by the
+/// (post-provision reconciliation). Called by the
 /// provisioning plane after a successful `vaultspec-core` acquisition/upgrade so
 /// every subsequent served `tiers` block reports the new floor verdict. Returns
 /// the freshly-probed value.
@@ -226,7 +226,7 @@ pub fn decorate_tiers(tiers: &mut Value) {
     decorate_agent_tier(tiers);
 }
 
-/// Decorate the dedicated `agent` tier with the A2A component handshake (D6/S28):
+/// Decorate the dedicated `agent` tier with the A2A component handshake:
 /// the installed release set, the owned-or-foreign gateway identity, the declared
 /// protocol/state-schema ranges, and the one authenticated readiness model. The
 /// A2A component is dashboard-OWNED, so — unlike the memoized `--version` probes

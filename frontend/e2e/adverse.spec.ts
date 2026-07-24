@@ -1,10 +1,10 @@
-// Adverse-condition E2E (dashboard-platform P05.S13): drives the running app
+// Adverse-condition E2E: drives the running app
 // (Vite dev server + mock engine) through the platform substrate's headline
 // guarantee - a thrown render is contained to its region and never
 // white-screens a sibling - and proves the region recovers. The crash is
-// injected through the dev-only `__crashControls` lever (ADR D5; the original
-// floating CrashInjector panel was removed by localization S243 and the lever
-// restored chrome-less per the S108 closing review), so the throw is a real
+// injected through the dev-only `__crashControls` lever (the original
+// floating CrashInjector panel was removed during a later localization pass and
+// the lever restored chrome-less per review), so the throw is a real
 // React render error caught by a real region boundary, not a simulation.
 
 import { expect, test } from "@playwright/test";
@@ -125,7 +125,7 @@ test.describe("platform exception containment (live)", () => {
     await expect(page.locator("[data-timeline]")).toBeVisible({ timeout: 20_000 });
 
     // Fire a real unhandled promise rejection in the page and read the
-    // dev-exposed ring buffer the global trap routes into (ADR D3/D5).
+    // dev-exposed ring buffer the global trap routes into.
     const captured = await page.evaluate(async () => {
       type Rec = { message: string };
       const ring = (

@@ -11,14 +11,14 @@ export type StatusSectionId =
   | "changes:deleted"
   | "changes:new"
   | "open-plans"
-  // The one pull-request section (2026-07-12 IA simplification): open PRs lead,
+  // The one pull-request section: open PRs lead,
   // recently merged follow — the former open-prs/recent-prs folds are retired.
   | "pull-requests"
   | "open-issues"
   | "recent-commits";
 // The former `rag-ops`, `rag-ops:details`, and `authoring-review` section ids all
 // retired: the search-service console moved into a modal control panel and was then
-// replaced outright by the rag job dashboard (rag-job-dashboard ADR D1), whose view
+// replaced outright by the rag job dashboard, whose view
 // state lives in its own view-local store — so no rail-section id survives for it.
 // The normalizer drops these unknowns, so a persisted/legacy blob can never re-mount
 // a retired fold.

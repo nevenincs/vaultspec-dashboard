@@ -126,7 +126,7 @@ describe("EngineClient", () => {
     const tree = await client.vaultTree("wt-1");
 
     expect(calls.map((c) => c.url)).toEqual([
-      // First page is deliberately small (progressive first paint, ADR D5);
+      // First page is deliberately small (progressive first paint);
       // continuation pages use the route max.
       "/api/vault-tree?scope=wt-1&page_size=200",
       "/api/vault-tree?scope=wt-1&page_size=2000&cursor=a-S01",
@@ -135,7 +135,7 @@ describe("EngineClient", () => {
     expect(tree.complete).toBe(true);
   });
 
-  it("hands out honest partial prefixes while the vault-tree drain continues (ADR D5)", async () => {
+  it("hands out honest partial prefixes while the vault-tree drain continues", async () => {
     // Narrow-during-drain guard (universal-data-loading): each onPartial batch is
     // the accumulated PREFIX marked complete:false — the rail can render and even
     // narrow it, but the flag keeps the affordance honest until the resolved

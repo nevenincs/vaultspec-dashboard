@@ -1,6 +1,6 @@
 //! LangGraph runtime reference mapping.
 //!
-//! W12.P30 keeps LangGraph execution state behind an adapter boundary. The
+//! This module keeps LangGraph execution state behind an adapter boundary. The
 //! runtime may create threads, runs, and checkpoints, but Vaultspec product
 //! records remain authoritative; this module only maps runtime references onto
 //! existing authoring sessions and runs.

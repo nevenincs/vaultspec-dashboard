@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import {
@@ -50,23 +50,23 @@ export const engineKeys = {
   // The workspace registry is workspace-singular (one registry per engine), so a
   // single stable key. Registry mutations (select/add/forget) ride the session
   // mutation, which invalidates this key so the picker re-reads the
-  // authoritative shape (dashboard-workspace-registry ADR).
+  // authoritative shape.
   workspaces: () => [...engineKeys.all, "workspaces"] as const,
   vaultTree: (scope: string) => [...engineKeys.all, "vault-tree", scope] as const,
-  // The complete code-file listing (search-providers ADR), keyed on scope alone:
+  // The complete code-file listing, keyed on scope alone:
   // one bounded cache entry per corpus, walked to completion by the client so the
   // files(code) provider narrows the WHOLE set. A scope/workspace swap evicts it
   // like the vault-tree cache (default gcTime bounds retention).
   codeFiles: (scope: string) => [...engineKeys.all, "code-files", scope] as const,
-  // The code (worktree) file tree is fetched ONE directory level per call
-  // (dashboard-code-tree ADR): the key folds (scope, dir-path, cursor) so each
+  // The code (worktree) file tree is fetched ONE directory level per call:
+  // the key folds (scope, dir-path, cursor) so each
   // expanded directory — and each page of a paginated level — is its own cache
   // entry, lazily fetched on first expansion and cached per scope. A wholesale
   // scope/workspace swap removes the whole `file-tree` subtree so the prior
   // corpus's levels never survive (mirrors the vault-tree cache discipline).
   fileTree: (scope: string, path?: string, cursor?: string) =>
     [...engineKeys.all, "file-tree", scope, path ?? "", cursor ?? ""] as const,
-  // The add-project OS folder picker (single-app-runtime ADR O6): keyed on the
+  // The add-project OS folder picker: keyed on the
   // browsed directory alone — this read is NOT project/scope-bound (it browses
   // the machine to find a folder to register), so no scope segment folds in.
   // Omitted `path` is the filesystem-roots level; each distinct directory is its
@@ -75,7 +75,7 @@ export const engineKeys = {
     [...engineKeys.all, "fs-list", path ?? "", q ?? "", hidden === true] as const,
   filters: (scope: string, corpus?: GraphCorpus) =>
     [...engineKeys.all, "filters", scope, corpus ?? "vault"] as const,
-  // Per-feature pipeline coverage (feature-group-authoring ADR D2): keyed by
+  // Per-feature pipeline coverage: keyed by
   // (scope, feature) — a feature's coverage is per-workspace-scope, so two scopes
   // never share an entry, and each feature group is its own entry. The `coverage`
   // kind segment fences it from the roster (below) so a feature literally named
@@ -83,7 +83,7 @@ export const engineKeys = {
   // the generation-refresh and scope-swap boundaries enroll the `features` family).
   featureCoverage: (scope: string, feature: string) =>
     [...engineKeys.all, "features", scope, "coverage", feature] as const,
-  // The compact all-features roster (feature-group-authoring ADR D2): keyed by
+  // The compact all-features roster: keyed by
   // scope alone — one roster per corpus. Same `features` family as coverage, so
   // one create-receipt sweep refreshes both.
   featureRoster: (scope: string) =>
@@ -106,25 +106,25 @@ export const engineKeys = {
       stableKey(filter),
       asOf ?? "live",
       granularity ?? "document",
-      // The active lens and focus are identity-bearing (graph-node-salience ADR:
-      // a lens switch is a re-query, a focus change runs a warm-started PPR pass):
+      // The active lens and focus are identity-bearing (a lens switch is a
+      // re-query, a focus change runs a warm-started PPR pass):
       // two lenses/focuses carry different salience and must not share a cache
       // entry. Defaulted so the omitted case is the status-lens, no-focus key.
       lens ?? DEFAULT_SALIENCE_LENS,
       focus ?? "none",
-      // The active corpus (codebase-graphing ADR D7): vault and code are
+      // The active corpus: vault and code are
       // DISCONNECTED datasets, so they must never share a cache entry — a corpus
       // switch is a key change that refetches the other corpus and reloads the
       // canvas. Defaulted to `vault` so the pre-corpus key is byte-identical.
       corpus ?? "vault",
     ] as const,
-  // The dedicated bounded embedding read (graph-semantic-embeddings ADR D2):
-  // keyed by (scope, lens, focus) — the SAME DOI selection unit `/graph/query`
+  // The dedicated bounded embedding read: keyed by (scope, lens, focus) —
+  // the SAME DOI selection unit `/graph/query`
   // uses, so the embedding set aligns with the served constellation node set.
   // Fetched LAZILY only on entering semantic mode (the hook's `enabled` gate),
   // and invalidated on a generation bump by the same `graph-embeddings` subtree
   // sweep the watcher rebuild drives — so a re-index re-fetches fresh vectors
-  // (full re-fetch per generation for v1, ADR D8) rather than diffing stale ones.
+  // (full re-fetch per generation for v1) rather than diffing stale ones.
   graphEmbeddings: (scope: string, lens?: SalienceLens, focus?: string | null) =>
     [
       ...engineKeys.all,
@@ -134,7 +134,7 @@ export const engineKeys = {
       focus ?? "none",
     ] as const,
   node: (scope: string, id: string) => [...engineKeys.all, "node", scope, id] as const,
-  // The read-only content fetch (review-rail-viewers ADR): keyed by (scope,
+  // The read-only content fetch: keyed by (scope,
   // nodeId) — the contract's cacheability unit for a per-scope read. The
   // `blob_hash` in the response makes the entry content-addressable, but the KEY
   // stays (scope, nodeId) so reopening the same doc/file is a cache hit; a changed
@@ -150,7 +150,7 @@ export const engineKeys = {
     [...engineKeys.all, "evidence", scope, id] as const,
   events: (scope: string, range: { from?: string; to?: string }, bucket?: string) =>
     [...engineKeys.all, "events", scope, stableKey(range), bucket ?? "raw"] as const,
-  // The bounded recent-commit history (status-overview ADR): keyed by (scope,
+  // The bounded recent-commit history: keyed by (scope,
   // limit) — the contract's cacheability unit for a per-scope read, folding the
   // bounded limit so two limits never collide. Bounded at the call site (gcTime +
   // the single-entry-per-observer shape, per bounded-by-default-for-every-
@@ -177,7 +177,7 @@ export const engineKeys = {
       "stream",
       identity.channels.join(","),
       identity.since ?? "live",
-      // Scope folds into the stream identity (W02.P04.S14 per-scope clock): two
+      // Scope folds into the stream identity (per-scope clock): two
       // scopes' streams carry different deltas on different clocks and must not
       // share a cache entry. Absent scope = the active-scope fallback ("active").
       identity.scope ?? "active",
@@ -185,7 +185,7 @@ export const engineKeys = {
   },
   diff: (scope: string, from: string | number, to: string | number, filter?: string) =>
     [...engineKeys.all, "diff", scope, String(from), String(to), filter ?? ""] as const,
-  // The bounded temporal-lineage projection (dashboard-timeline W02.P04.S22):
+  // The bounded temporal-lineage projection:
   // keyed by (scope, range, filter) — the contract's cacheability unit (range +
   // the engine-owned filter), so two date ranges or two filters never collide on
   // one cache entry, mirroring how `events` folds (range, bucket). `filter` is
@@ -204,12 +204,12 @@ export const engineKeys = {
       filter ?? "",
       asOf == null ? "live" : String(asOf),
     ] as const,
-  // The in-flight pipeline projection (dashboard-pipeline-status W01.P02.S06):
+  // The in-flight pipeline projection:
   // (scope, as-of) — the same cacheability unit the graph slice uses, so a
   // historical playhead reads a distinct cache entry from the live view.
   pipeline: (scope: string, asOf?: string | number) =>
     [...engineKeys.all, "pipeline", scope, asOf ?? "live"] as const,
-  // The bounded plan-container interior (dashboard-pipeline-status W01.P02.S07):
+  // The bounded plan-container interior:
   // keyed by (scope, plan node id) — lazily fetched only when a plan row expands.
   planInterior: (scope: string, id: string) =>
     [...engineKeys.all, "plan-interior", scope, id] as const,
@@ -217,7 +217,7 @@ export const engineKeys = {
   // active session and one settings document per workspace, so a single stable
   // key each. Mutations invalidate exactly these.
   session: () => [...engineKeys.all, "session"] as const,
-  // The provisioning status projection (project-provisioning ADR): keyed by the
+  // The provisioning status projection: keyed by the
   // resolved target so a per-workspace/worktree status caches independently.
   provisionStatus: (workspace?: string, worktree?: string) =>
     [
@@ -228,7 +228,7 @@ export const engineKeys = {
       worktree ?? "root",
     ] as const,
   provisionJob: (id: string) => [...engineKeys.all, "provision", "job", id] as const,
-  // The A2A component lifecycle plane (a2a-product-provisioning W05.P11). The
+  // The A2A component lifecycle plane. The
   // status projection is machine-global (a2a is one resident per machine), so a
   // single stable key; a job folds its id. A settled job invalidates the status
   // so the panel re-reads the reconciled projection.
@@ -241,7 +241,7 @@ export const engineKeys = {
   // it to render controls. Never invalidated by a value write (only the schema
   // CHANGING would, which requires a redeploy).
   settingsSchema: () => [...engineKeys.all, "settings-schema"] as const,
-  // The read-only `/ops/git` reads (git-diff-browser ADR / Feature B). Keyed by
+  // The read-only `/ops/git` reads. Keyed by
   // scope: the changed-files list (porcelain status + numstat) is one entry per
   // scope; the per-file diff folds the file path so each open file is its own
   // cache entry. Gated on the git rollup's presence in the status snapshot, so a
@@ -280,13 +280,13 @@ export const engineKeys = {
 
 export const SCOPED_ENGINE_QUERY_SUBTREES = [
   "vault-tree",
-  // The complete code-file listing (search-providers ADR D1): keyed on scope so
+  // The complete code-file listing: keyed on scope so
   // a workspace swap evicts the prior corpus's listing and the next scope starts
   // fresh — the files(code) provider must never serve another scope's files.
   "code-files",
   "file-tree",
   "filters",
-  // Per-feature pipeline coverage (feature-group-authoring ADR D2): scope-bound,
+  // Per-feature pipeline coverage: scope-bound,
   // so a workspace swap evicts the prior corpus's coverage/roster entries.
   "features",
   "dashboard-state",
@@ -315,7 +315,7 @@ export const SCOPED_ENGINE_QUERY_SUBTREES = [
 
 export const GRAPH_GENERATION_QUERY_SUBTREES = [
   "vault-tree",
-  // The complete code-file listing (search-providers ADR D1): projected from the
+  // The complete code-file listing: projected from the
   // LinkageGraph and memoized on the graph `generation` server-side, so a new
   // ingest (added or removed source file) bumps the generation and the client
   // listing must re-read from the fresh projection on the next render.
@@ -323,17 +323,17 @@ export const GRAPH_GENERATION_QUERY_SUBTREES = [
   // A watcher/SSE re-ingest (an external edit, a rename, or another client's
   // write) bumps the generation WITHOUT a local mutation, so the open reader/
   // editor's served bytes and the file-tree projection would otherwise go stale
-  // (document-edit-hardening W03.P04.S10: the re-ingest signal must reach the open
+  // (the re-ingest signal must reach the open
   // editor). Invalidating these on a generation bump makes the open document and
   // the tree re-read the fresh content - the backend->frontend half of the
   // bidirectional coupling, for changes the frontend did not originate.
   "content",
   "file-tree",
   "filters",
-  // Per-feature pipeline coverage (feature-group-authoring ADR D2): generation-
+  // Per-feature pipeline coverage: generation-
   // stable and computed over the corpus, so a create/edit that bumps the graph
   // generation must re-read fresh coverage — the receipt-driven invalidation the
-  // panel relies on to reflect a just-created document (ADR constraint).
+  // panel relies on to reflect a just-created document.
   "features",
   "dashboard-state",
   "graph",
@@ -396,8 +396,8 @@ let lastEngineRefreshAt = -Infinity;
  *     fan-out to what the user can actually see. CONTRACT: this holds only while a visible
  *     surface keeps an active (mounted, enabled) observer — a mounted-but-`enabled:false`
  *     query a user expects Refresh to update would NOT refetch here. The ONE such surface
- *     is the hidden-tab-paused backend-signal stream (universal-data-loading ADR D4),
- *     which is safe by construction: the tab is hidden (no user can press Refresh into
+ *     is the hidden-tab-paused backend-signal stream, which is safe by
+ *     construction: the tab is hidden (no user can press Refresh into
  *     it) and resume invalidates + refetches the stream key itself. Any future
  *     enabled-gated query must make the same argument or refetch on its own re-enable.
  * Client-side only — no backend mutation, so it is safe in time-travel and needs no

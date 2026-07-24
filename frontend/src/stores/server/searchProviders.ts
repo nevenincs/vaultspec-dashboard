@@ -1,10 +1,10 @@
-// The SearchProvider seam (search-providers ADR D1/D5). One user-facing "Search"
+// The SearchProvider seam. One user-facing "Search"
 // composes three sources — semantic (rag), files(vault), files(code) — behind a
 // single contract, so the Cmd+K palette renders ONE ranked interleaved list
 // without knowing which source a hit came from. This module is the CONTRACT: the
-// provider shape, the species vocabulary, and the score-band provenance. The three
-// concrete providers register in S08; the `useSearchProviders` host that merges
-// them registers in S09.
+// provider shape, the species vocabulary, and the score-band provenance, plus
+// the three concrete providers and the `useSearchProviders` host that merges
+// them.
 //
 // The seam formalizes structure that already exists: the unified controller was a
 // two-provider composition (per-corpus semantic controllers behind a pure merge).
@@ -32,7 +32,7 @@ import {
 } from "./searchController";
 import { useCodeFiles, useVaultTree, useVaultTreeAvailability } from "./queries";
 
-// ── Species vocabulary (ADR D5) ─────────────────────────────────────────────────
+// ── Species vocabulary ───────────────────────────────────────────────────────────
 //
 // The user-facing provider vocabulary IS the entry's SPECIES, derived from its
 // node identity — never a mechanism word (rag/semantic/vector). A `doc` renders
@@ -45,7 +45,7 @@ import { useCodeFiles, useVaultTree, useVaultTreeAvailability } from "./queries"
 export type SearchSpecies = SearchResultSpecies;
 export { searchResultSpecies };
 
-// ── Score bands (ADR D2) ────────────────────────────────────────────────────────
+// ── Score bands ──────────────────────────────────────────────────────────────────
 //
 // Every entry's score sits in exactly one band, kept as explicit provenance so a
 // literal name match never masquerades as semantic certainty NOR is buried by it:
@@ -108,14 +108,14 @@ export interface SearchProviderResult {
   entries: SearchProviderEntry[];
   /** The provider's honest phase (tiers-gated for degradation). */
   state: SearchProviderState;
-  /** The served semantic-index epoch (rag-integration-hardening ADR D3) — set
+  /** The served semantic-index epoch — set
    *  ONLY by the semantic provider; a files provider has no freshness axis and
    *  omits it. The host forwards it as the one shared epoch. */
   semanticEpoch?: number | null | undefined;
   /** True when this provider's backing listing was TRUNCATED — the engine walk
    *  cap or the client page-walk cap bounded it, so files beyond the cap are
    *  absent and the name matches may be incomplete. The host aggregates this so
-   *  the palette can state it honestly (walk-cap truncation ADR D8 / D1). */
+   *  the palette can state it honestly. */
   incomplete?: boolean;
   /** Re-run this provider's backing query (the host's retry fans out to all). */
   retry?: () => void;
@@ -173,7 +173,7 @@ function codeBasename(path: string): string {
  * It wraps `useUnifiedSearchController` (the vault+code semantic composition) and
  * presents its live, meaning-ranked hits as `semantic`-band entries. Degradation
  * is tiers-gated: when rag is offline the provider contributes NOTHING and reports
- * `degraded` — the files providers keep serving name matches (ADR D2 fold), so the
+ * `degraded` — the files providers keep serving name matches, so the
  * palette degrades to name-matching instead of a dead mode.
  */
 export function useSemanticProvider(
@@ -230,7 +230,7 @@ function vaultEntryToResult(entry: VaultTreeEntry, score: number): SearchResult 
 /**
  * The files(vault) provider: a literal NAME/title match over the COMPLETE cached
  * vault tree (the rail's already-walked listing), through the one shared matcher.
- * This is the home of the former rag-down text fallback (ADR D2 fold): it is
+ * This is the home of the former rag-down text fallback: it is
  * ALWAYS available on the structural tier, so it keeps serving when semantic is
  * offline. Matches over stem, path, title, and feature tags; `degraded` only when
  * the structural tier itself is down (then the tree is genuinely unavailable).
@@ -413,7 +413,7 @@ export function mergeSearchProviders(
 
 /**
  * Debounce the keystroke stream onto a settled term for the literal providers
- * (ADR D1: debounce is the HOST's job). Reuses the semantic path's one
+ * (debounce is the HOST's job). Reuses the semantic path's one
  * `SEARCH_DEBOUNCE_MS` constant — no second constant — and mirrors its policy: an
  * empty query settles immediately (idle is not a request worth waiting on), a
  * non-empty term debounces on the trailing edge. The semantic provider keeps its
@@ -438,7 +438,7 @@ function useDebouncedQuery(query: string): string {
 }
 
 /**
- * The one Search host (search-providers ADR D1): it composes the three registered
+ * The one Search host: it composes the three registered
  * providers — semantic FIRST — and delegates the shared merge/dedupe/bound/
  * degradation/epoch collapse to the pure `mergeSearchProviders`. The literal
  * providers consume the host-debounced query (the semantic path debounces

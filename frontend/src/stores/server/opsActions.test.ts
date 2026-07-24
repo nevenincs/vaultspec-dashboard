@@ -76,7 +76,7 @@ describe("ops dispatch adoption (B-1)", () => {
     ).toBe(false);
     expect(isOpsDispatchIntent({ target: "core", verb: "vault-check" })).toBe(true);
     expect(isOpsDispatchIntent({ target: "core", verb: "set-body" })).toBe(false);
-    // The `write`/`create` modes are retired (ledgered-edit-migration W04.P12):
+    // The `write`/`create` modes are retired:
     // every content edit is ledgered through `directWrite()` now, so a `write` or
     // `create` mode is an unrecognized mode and refuses regardless of verb/body.
     expect(

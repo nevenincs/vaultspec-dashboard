@@ -1,10 +1,10 @@
-//! Blob-true as-of reconstruction (engine-spec D7.3, contract §5): the
+//! Blob-true as-of reconstruction (contract §5): the
 //! graph as it stood at T, rebuilt from document blobs **as committed at
 //! T** via the git object DB — never from the present working tree. The
 //! playhead's progress rings are time-accurate.
 //!
 //! Historical views serve declared + structural + temporal tiers only; the
-//! semantic AVAILABILITY tier is present-only by design (D3.5). Semantic is
+//! semantic AVAILABILITY tier is present-only by design. Semantic is
 //! not a graph tier at all, so nothing in this module can mint a semantic edge
 //! by construction.
 
@@ -17,7 +17,7 @@ use engine_model::{
 use crate::graph::LinkageGraph;
 use crate::index::{IndexError, Result};
 
-/// How a `t=<ts|sha>` token was interpreted (ADD-901): the response echoes
+/// How a `t=<ts|sha>` token was interpreted: the response echoes
 /// this so a client never has to guess whether its token was read as a git
 /// revision or as a millisecond timestamp — the two can collide (an all-digit
 /// sha-prefix vs an epoch-ms value), so the engine's chosen reading is part of
@@ -32,8 +32,8 @@ pub enum Interpretation {
     Timestamp,
 }
 
-/// An as-of rebuild plus the resolution facts the response must echo
-/// (ADD-901): the graph as it stood at T, the 40-char `resolved_sha` the
+/// An as-of rebuild plus the resolution facts the response must echo:
+/// the graph as it stood at T, the 40-char `resolved_sha` the
 /// token resolved to, and the `interpretation` the engine chose.
 #[derive(Debug)]
 pub struct AsofGraph {
@@ -44,8 +44,8 @@ pub struct AsofGraph {
 
 /// Resolve a time-travel token (contract §5 `t=<ts|sha>`): revision-first,
 /// then — when the token is all digits — a millisecond timestamp resolved
-/// to the latest commit at-or-before T on the scope ref (addendum S01).
-/// Returns the resolved commit AND how the token was read (ADD-901).
+/// to the latest commit at-or-before T on the scope ref.
+/// Returns the resolved commit AND how the token was read.
 fn resolve_commit(
     repo: &gix::Repository,
     reference: &str,
@@ -56,8 +56,8 @@ fn resolve_commit(
             // Millisecond-timestamp fallback: only for all-digit tokens —
             // anything else is an invalid revision. The raw gix error is
             // DROPPED on purpose: it embeds the build user's home dir and the
-            // gix source file:line, which must never reach a wire client
-            // (adversarial finding, 2026-06-13). The message names both forms
+            // gix source file:line, which must never reach a wire client.
+            // The message names both forms
             // the contract grants (`t=<ts|sha>`).
             let Ok(t) = reference.parse::<i64>() else {
                 let _ = rev_err;
@@ -73,8 +73,7 @@ fn resolve_commit(
             // (breadth-first) order: only a commit-time-sorted walk makes the
             // first commit at-or-before T provably the LATEST such commit when
             // history is non-linear (merges, committer-clock skew). The
-            // first `ts_ms <= t` in this order is the answer (addendum S01,
-            // review H1).
+            // first `ts_ms <= t` in this order is the answer.
             use gix::revision::walk::Sorting;
             use gix::traverse::commit::simple::CommitTimeOrder;
             let walk = repo
@@ -106,13 +105,13 @@ fn resolve_commit(
 /// sha. Cheap — no tree traversal, no blob reads, no core subprocess. Lets
 /// `/graph/diff` short-circuit when `from` and `to` name the SAME commit
 /// (e.g. `HEAD` vs its sha), skipping two full as-of rebuilds that on a large
-/// corpus each cost ~20s (sweep HIGH, 2026-06-13).
+/// corpus each cost ~20s.
 pub fn resolve_ref(repo_dir: &Path, reference: &str) -> Result<String> {
     let repo = gix::open(repo_dir).map_err(|e| IndexError::Git(format!("open: {e}")))?;
     Ok(resolve_commit(&repo, reference)?.0.to_string())
 }
 
-/// Like [`resolve_ref`] but ALSO returns how the token was read (ADD-901). Cheap —
+/// Like [`resolve_ref`] but ALSO returns how the token was read. Cheap —
 /// no tree traversal, no blob reads, no core subprocess. The serve layer resolves
 /// `(sha, interpretation)` per request from THIS request's token, then fetches the
 /// historical graph from a by-sha cache: that keeps the `interpretation` echo
@@ -129,7 +128,7 @@ pub fn resolve_ref_interpreted(
 }
 
 /// Rebuild the as-of graph AND return the resolution facts the response must
-/// echo (ADD-901): the resolved 40-char sha and the chosen `interpretation`
+/// echo: the resolved 40-char sha and the chosen `interpretation`
 /// (revision vs ms-timestamp). The contract requires the response to echo both
 /// so a client never has to re-derive how its `t` token was read.
 pub fn asof_graph_resolved(
@@ -188,7 +187,7 @@ pub fn asof_graph_resolved_cached(
     let resolved_sha = commit_id.to_string();
 
     let mut graph = LinkageGraph::new();
-    // index-node-exclusion ADR D1: `.vault/index` feature-index documents are
+    // `.vault/index` feature-index documents are
     // metanodes, never graph nodes — skip them in the blob-true replay too, and
     // prune any incident edge below.
     let mut excluded_index_ids: std::collections::HashSet<NodeId> =
@@ -224,8 +223,7 @@ pub fn asof_graph_resolved_cached(
             feature_tags: crate::index::frontmatter_feature_tags(&body.text),
             // Status/tier facets are blob-true here too: both derive from
             // frontmatter/H1 the historical view reads, so an as-of snapshot
-            // carries the ADR status and plan tier AS THEY STOOD at that commit
-            // (dashboard-pipeline-wire W01).
+            // carries the ADR status and plan tier AS THEY STOOD at that commit.
             status: crate::index::frontmatter_adr_status(&body.text),
             tier: crate::index::frontmatter_plan_tier(&body.text),
             // Blob-true weight: measured on the committed body as it stood at T.
@@ -234,14 +232,13 @@ pub fn asof_graph_resolved_cached(
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: Some(body.blob_hash.clone()),
-                // Type-specific lifecycle, blob-true at T (graph-node-semantics
-                // ADR): the historical playhead reads each species' state from
+                // Type-specific lifecycle, blob-true at T: the historical playhead reads each species' state from
                 // the committed blob, not the present working tree.
                 lifecycle: crate::index::doc_lifecycle(doc_type.as_deref(), &body.text),
             }],
         });
 
-        // STRICT reference-only graph (user ruling, 2026-06-28): in-body
+        // STRICT reference-only graph: in-body
         // `[[wiki-link]]` MENTIONS are NOT graph fact — only `related:`
         // frontmatter (the declared tier) defines the node graph. The historical
         // view therefore mints document NODES blob-true at T but no structural
@@ -249,7 +246,7 @@ pub fn asof_graph_resolved_cached(
         // EDGE producer was retired).
     }
 
-    // index-node-exclusion ADR D1: drop any edge that resolved onto a skipped
+    // Drop any edge that resolved onto a skipped
     // index document, so the historical view carries no dangling index edge.
     graph.prune_edges_incident_to(&excluded_index_ids);
 
@@ -398,7 +395,7 @@ mod tests {
 
     #[test]
     fn ms_timestamp_resolves_the_latest_commit_not_the_first_in_topology() {
-        // Regression for review H1: on non-linear history, breadth-first
+        // Regression: on non-linear history, breadth-first
         // (topological) order can surface an OLDER commit before a NEWER one
         // that is also <= T. The resolver must return the LATEST commit at or
         // before T, which only a commit-time-ordered walk guarantees.
@@ -465,7 +462,7 @@ mod tests {
         // A timestamp before the root commit errors, never an empty graph —
         // and as a leak-free `Revision` error naming the REAL cause, so the API
         // boundary echoes it instead of the self-contradicting "expected a
-        // millisecond timestamp" fallback (sweep LOW, 2026-06-13).
+        // millisecond timestamp" fallback.
         let predates = resolve_commit(&repo, "1000000099000").unwrap_err();
         assert!(
             matches!(&predates, IndexError::Revision(m) if m.contains("predates the root commit")),

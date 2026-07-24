@@ -1,4 +1,4 @@
-// Corpus-fence structural guard (command-palette-providers ADR W01.P03). The command
+// Corpus-fence structural guard. The command
 // plane must carry only real app verbs — never transient vault vocabulary enrolled as
 // a standing command. This test registers every shipped command provider and asserts
 // that the resolved command list contains NO corpus-derived standing command (a

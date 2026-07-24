@@ -69,7 +69,7 @@ async fn a_respond_decision_routes_to_the_clarification_engine_not_the_reserved_
     register_actor(&state, &human_reviewer());
     let (_d, reviewer) = resolved_principal(&human_reviewer());
     // No claim is held, so the clarification engine denies with its OWN reason — proving
-    // the flip reaches review_station.respond, not the retired "reserved for W05.P24".
+    // the flip reaches review_station.respond, not the now-retired placeholder denial.
     let response = submit_review_decision(
         State(state.clone()),
         axum::extract::Path(approval_id.clone()),
@@ -904,7 +904,7 @@ async fn permission_decision_route_grants_a_queued_request_and_is_tiered() {
 
 #[tokio::test]
 async fn permission_decision_route_refuses_a_requester_self_decision_as_a_value() {
-    // The requester (an agent) cannot decide its own request (P22-R1). The denial
+    // The requester (an agent) cannot decide its own request. The denial
     // rides the 200 envelope as a value, never a fault.
     let (_dir, state) = fixture_state();
     let requester = agent();
@@ -1076,7 +1076,7 @@ async fn execute_route_dispatches_a_granted_mutating_tool_and_redrives_effective
     assert_eq!(status, StatusCode::OK);
     assert_eq!(suspended["data"]["disposition"], "awaiting_permission");
 
-    // The reviewer grants the queued permission (P22-R1: never the requester).
+    // The reviewer grants the queued permission (never the requester).
     let router = authoring_router(state.clone()).with_state(state.clone());
     let (status, decision) = post_authoring(
         router,
@@ -1258,7 +1258,7 @@ async fn every_mounted_mutating_route_refuses_an_unregistered_actor() {
             post_authoring(router, &path, &token, request_fixture(fixture.family)).await;
 
         if status == StatusCode::NOT_FOUND {
-            // The route is not yet mounted (a later W14.P42a wiring point).
+            // The route is not yet mounted (a later wiring point).
             continue;
         }
         assert_eq!(

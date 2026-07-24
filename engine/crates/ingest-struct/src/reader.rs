@@ -1,4 +1,4 @@
-//! Document body reading (engine-spec §5.1): directly from the working
+//! Document body reading: directly from the working
 //! tree for worktree scopes, and from git blobs for ref-only scopes.
 //! Reading is not CRUD; this crate still never writes.
 

@@ -1,6 +1,6 @@
 /**
- * Token-to-CSS serialization helpers for the vaultspec-dashboard color framework
- * (plan W01.P02.S08). These reproduce the exact CSS the design-language ADR settled in
+ * Token-to-CSS serialization helpers for the vaultspec-dashboard color framework.
+ * These reproduce the exact CSS the design-language ADR settled in
  * `src/styles.css`: primitives and the few diverging tokens as literal `oklch(...)`,
  * chrome surface tokens as `var()` aliases, and the scene-read subset as literal
  * `#rrggbb` (the HIGH-1 constraint — the canvas getComputedStyle readers parse only hex).

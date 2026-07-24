@@ -64,7 +64,7 @@ describe("silhouetteOf", () => {
   });
 });
 
-describe("the four abstract tier marks pass the 14px grayscale gate (S33)", () => {
+describe("the four abstract tier marks pass the 14px grayscale gate", () => {
   const defs = Object.values(TIER_MARK_DEFS);
 
   it("are mutually distinct in grayscale at 14px", () => {
@@ -83,7 +83,7 @@ describe("the four abstract tier marks pass the 14px grayscale gate (S33)", () =
   });
 });
 
-describe("the lifecycle state set passes the 14px grayscale gate (S34)", () => {
+describe("the lifecycle state set passes the 14px grayscale gate", () => {
   const defs = Object.values(STATE_MARK_DEFS);
 
   it("are mutually distinct in grayscale at 14px", () => {
@@ -140,7 +140,7 @@ describe("the node-feature mark honors its collision constraints", () => {
   //  family gate below.)
 });
 
-describe("the adopted doc-type marks pass the 14px grayscale gate (S33)", () => {
+describe("the adopted doc-type marks pass the 14px grayscale gate", () => {
   const defs = Object.values(DOC_TYPE_MARK_DEFS);
 
   it("every doc-type/feature species is mutually distinct at 14px", () => {

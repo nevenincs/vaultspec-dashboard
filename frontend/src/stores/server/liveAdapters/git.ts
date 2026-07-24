@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import type {
@@ -88,7 +88,7 @@ export function adaptGitChangesSummary(body: unknown): GitChangesSummary {
   };
 }
 
-// --- git output parsers (git-diff-browser ADR / missing-backend-inventory B) ----------
+// --- git output parsers ----------------------------------------------------------
 //
 // The `/ops/git` pass-through forwards git's stdout VERBATIM; the parse from that
 // text into the chrome's structured shapes lives here in the stores layer (the

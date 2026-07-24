@@ -1,8 +1,8 @@
 //! Lifecycle transition and eligibility decisions.
 //!
-//! W03.P16 owns pure status transition checks and stale-state guards. Command
+//! This module owns pure status transition checks and stale-state guards. Command
 //! handlers, approval records, apply receipts, routes, streams, sessions, and
-//! core adapter calls are later phases.
+//! core adapter calls build on top of it.
 
 use super::api::ChangesetOperationKind;
 use super::ledger::ChangesetAggregateRecord;
@@ -505,7 +505,7 @@ pub fn reject_transition_eligibility(
 }
 
 /// The served eligibility of the request-changes / reviewer-edit verdict (the third
-/// review action, W13.P24). It drives the changeset back through the kind-aware
+/// review action). It drives the changeset back through the kind-aware
 /// `EditProposal` arc (`NeedsReview|Approved -> Draft` / `RollbackProposed`). Unlike
 /// approve/reject it attaches NO review-decision or validation freshness: requesting
 /// changes is feedback, deliberately legal on a stale or unvalidated review (that is
@@ -567,7 +567,7 @@ pub fn apply_completion_transition_eligibility(
     )
 }
 
-/// The kill-switch POLICY-REQUEUE arc (P48-R1): `Approved → NeedsReview`. When a mode
+/// The kill-switch POLICY-REQUEUE arc: `Approved → NeedsReview`. When a mode
 /// downgrade stales a not-yet-applied system approval, the changeset is re-queued for
 /// human review through ONE declared arc — never a synthetic `Approved → Draft → …`
 /// re-draft (which would distort provenance and leak an undeclared arc into the

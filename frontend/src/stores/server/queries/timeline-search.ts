@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeSearchQuery } from "../../searchQuery";
@@ -113,8 +113,8 @@ export function normalizeGraphDiffRequestIdentity(
 }
 
 /**
- * The bounded temporal-lineage projection for the timeline (dashboard-timeline
- * ADR, W02.P04.S22). Wraps `engineClient.lineage` so the timeline surface is a
+ * The bounded temporal-lineage projection for the timeline.
+ * Wraps `engineClient.lineage` so the timeline surface is a
  * dumb single-selector consumer (dashboard-layer-ownership: the stores layer is
  * the sole wire client) — the surface never fetches the engine, never reads the
  * raw `tiers` block, and defines no lineage shape of its own. Returns the dated
@@ -143,7 +143,7 @@ export function useTimelineLineage(
         scope: request.scope!,
         ...request.range,
         filter: request.filter,
-        // BLOB-TRUE as-of (dashboard-timeline ADR fast-follow): when the timeline
+        // BLOB-TRUE as-of: when the timeline
         // is in time-travel it passes the (settled/debounced) playhead instant, so
         // the slice reflects the graph at T, not just creation-date gating. Absent
         // (LIVE) = live graph. A distinct `asOf` is its own cache entry (above).
@@ -172,7 +172,7 @@ export interface TimelineLineageView {
 
 export interface TimelineSurfaceChromeView {
   showLoading: boolean;
-  // Loading is UI-only (state-mode-uniformity ADR): the label is the screen-reader
+  // Loading is UI-only: the label is the screen-reader
   // name of the shared `Skeleton`, never visible body copy — no presentation
   // className is carried. Empty/degraded render through the shared `StateBlock`, so
   // their presentation classNames/dots are likewise the kit's, not the deriver's.
@@ -379,8 +379,8 @@ export function useEngineSearch(
   return enabled ? result : { ...result, data: undefined };
 }
 
-// The client-side search abort budget. Ordering invariant (rag-integration-
-// hardening ADR D2): this MUST stay STRICTLY GREATER than the engine's search
+// The client-side search abort budget. Ordering invariant:
+// this MUST stay STRICTLY GREATER than the engine's search
 // budget (`SEARCH_HTTP_BUDGET` = 10s in `engine/crates/vaultspec-api/src/routes/
 // ops.rs`) plus transport margin. When the client outlives the engine, every
 // search outcome — success, degraded, or shape-miss — arrives as a tiers-carrying
@@ -404,7 +404,7 @@ export const ENGINE_SEARCH_BUDGET_MS = 10_000;
 
 // The app-chosen per-target result bound, sent as `max_results` in the POST
 // /search body so the wire payload is app-bounded rather than left at rag's CLI
-// default (rag-integration-hardening ADR D5 / research G6). Sized to the unified
+// default. Sized to the unified
 // palette's merged-view bound (`UNIFIED_SEARCH_RESULTS_MAX_ITEMS` = 40 in
 // `searchController.ts`): the merge ranks vault + code hits together and keeps the
 // top N, so in the worst case all N winners come from one corpus — fetching up to

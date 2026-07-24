@@ -1,11 +1,10 @@
-//! `vaultspec serve` — the resident HTTP front door (engine-spec §7,
-//! contract §1).
+//! `vaultspec serve` — the resident HTTP front door.
 //!
 //! Single origin on loopback: the engine serves (a) the GUI SPA static
 //! bundle, (b) the query API, (c) the transparent ops proxy (`/ops/core/*`,
 //! `/ops/rag/*`, whitelisted, envelopes verbatim), and (d) the multiplexed
 //! SSE stream. `/health` is ungated; everything else is bearer-gated.
-//! No WebSocket in v1 (D7.1).
+//! No WebSocket in v1.
 
 mod a2a_run_leases;
 pub mod app;
@@ -28,7 +27,7 @@ use axum::routing::{get, post};
 use axum::{Json, Router, middleware};
 use serde_json::{Value, json};
 
-/// Request-body ceiling (defense-in-depth, 2026-06-13). Every API body —
+/// Request-body ceiling (defense-in-depth). Every API body —
 /// graph-query filters, search — is small JSON; 1 MiB is orders of
 /// magnitude of headroom while bounding a pathological body (and the response
 /// amplification a huge filter would drive). A 413 still rides the shared
@@ -122,29 +121,28 @@ pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/map", get(routes::query::map))
-        // Workspace registry enumeration (dashboard-workspace-registry ADR):
-        // the registered project roots with reachability, through the shared
+        // Workspace registry enumeration: the registered project roots with
+        // reachability, through the shared
         // envelope. Registry mutation rides /session (config), never here.
         .route("/workspaces", get(routes::registry::list_workspaces))
-        // Graceful stop (single-app-runtime D5): bearer-gated signal; the
-        // drain itself is the serve loop's one shared shutdown path.
+        // Graceful stop: bearer-gated signal; the drain itself is the serve
+        // loop's one shared shutdown path.
         .route("/shutdown", post(routes::lifecycle::shutdown))
         .route("/vault-tree", get(vault_tree::vault_tree))
         .route("/vault-tree/delta", get(vault_tree::vault_tree_delta))
         .route("/code-files", get(code_files::code_files))
         .route("/code-files/delta", get(code_files::code_files_delta))
-        // Read-only codebase file-tree listing (dashboard-code-tree ADR): one
+        // Read-only codebase file-tree listing: one
         // bounded, ignore-aware directory level per call, metadata only, through
         // the shared envelope so every response carries the tiers block.
         .route("/file-tree", get(routes::file_tree::file_tree))
-        // Bounded read-only directory browsing for the add-project picker
-        // (single-app-runtime S24, ADR O6 closure).
+        // Bounded read-only directory browsing for the add-project picker.
         .route("/fs/list", get(routes::fs_browse::fs_list))
-        // In-flight pipeline projection (dashboard-pipeline-wire W02): active
+        // In-flight pipeline projection: active
         // plans + in-flight ADRs in scope, through the shared envelope.
         .route("/pipeline", get(routes::query::pipeline))
-        // Bounded, transient dashboard intent session state (dashboard-state-
-        // centralization W01): read/patch through the shared envelope, never
+        // Bounded, transient dashboard intent session state: read/patch
+        // through the shared envelope, never
         // persisted into vault content or graph semantics.
         .route(
             "/dashboard-state",
@@ -152,36 +150,35 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/graph/query", post(graph::graph_query_route))
         .route("/graph/query/delta", post(graph::graph_query_delta_route))
-        // The dedicated bounded embedding route (graph-semantic-embeddings ADR
-        // D2): rag's stored dense vectors for the served document node set,
+        // The dedicated bounded embedding route: rag's stored dense vectors for the served document node set,
         // tiers-gated, generation-stamped, NEVER inline on /graph/query.
         .route("/graph/embeddings", get(routes::query::graph_embeddings))
         .route("/graph/asof", get(routes::temporal::graph_asof))
         .route("/graph/diff", get(routes::temporal::graph_diff))
-        // Bounded temporal-lineage projection (dashboard-timeline ADR, W01.P02):
-        // dated nodes in a [from, to] range together with the self-consistent
+        // Bounded temporal-lineage projection: dated nodes in a [from, to]
+        // range together with the self-consistent
         // edges among them, through the shared envelope (tiers on success and
         // error), bounded by the document node ceiling, semantic present-only.
         .route("/graph/lineage", get(routes::temporal::graph_lineage))
         .route("/filters", get(routes::query::filters))
         .route("/features", get(routes::query::features))
         .route("/nodes/{id}", get(routes::query::node_detail))
-        // Read-only, bounded content-fetch (review-rail-viewers ADR): the ONE
+        // Read-only, bounded content-fetch: the ONE
         // viewer backend — document/file bytes keyed on the stable node id,
         // byte-capped with an honest `truncated` block, tiers on success/error.
         // The listing routes stay metadata-only.
         .route("/nodes/{id}/content", get(routes::content::node_content))
         .route("/nodes/{id}/neighbors", get(routes::query::node_neighbors))
         .route("/nodes/{id}/evidence", get(routes::query::node_evidence))
-        // Bounded plan-container interior (dashboard-pipeline-wire W03): the
+        // Bounded plan-container interior: the
         // wave/phase/step tree of a plan node, under a node ceiling.
         .route(
             "/nodes/{id}/plan-interior",
             get(routes::query::node_plan_interior),
         )
         .route("/events", get(routes::temporal::events))
-        // Bounded, read-only recent-commit history with subjects (status-overview
-        // ADR): the last N commits as {hash, short_hash, subject, ts, node_ids},
+        // Bounded, read-only recent-commit history with subjects: the last N
+        // commits as {hash, short_hash, subject, ts, node_ids},
         // newest-first, capped at MAX_HISTORY_LIMIT, tiers-bearing.
         .route("/history", get(routes::history::history))
         // Read-only GitHub work items for the status rail (right-rail redesign):
@@ -193,9 +190,9 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/issues", get(routes::github::issues))
         .route("/status", get(routes::stream::status))
         .route("/stream", get(routes::stream::stream))
-        // Fenced agentic authoring backend (agentic-spec-authoring-backend),
-        // MOUNTED at W03.P39: the enabled status shell + the propose → review →
-        // apply → rollback command routes, nested as one `/authoring` subtree. Its
+        // Fenced agentic authoring backend: the enabled status shell + the
+        // propose → review → apply → rollback command routes, nested as one
+        // `/authoring` subtree. Its
         // `resolve_principal_layer` runs AFTER this router's `bearer_gate` (the nest
         // sits under it), so a valid machine bearer is required first, then the
         // actor principal resolves per command. Still NOT an `/ops/core/*` alias.
@@ -205,19 +202,19 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         )
         .route("/search", post(routes::ops::search))
         .route("/ops/core/{verb}", post(routes::ops::ops_core))
-        // Feature-scoped conformance autofix (W04.P06.S15): forwards
+        // Feature-scoped conformance autofix: forwards
         // `vault check all --fix --feature <tag>` so the editor's fixable
         // advisories can be repaired through the broker; watcher re-ingests.
-        // RETAINED vault-maintenance op (out-of-ledger by design, W04.P11 ADR):
+        // RETAINED vault-maintenance op (out-of-ledger by design):
         // every CONTENT edit verb (write/create/link/unarchive) is ledgered
-        // through `/authoring/*` (W02-W04); this route family is not.
+        // through `/authoring/*`; this route family is not.
         .route("/ops/core/autofix", post(routes::ops::ops_core_autofix))
         // Feature archive: forwards `vault feature archive <tag>` so the left rail
         // can retire a completed feature's documents through the broker. Feature-
         // scoped (the only archive grain vaultspec-core has); watcher re-ingests.
         // RETAINED vault-maintenance op — see the autofix route's note above.
         .route("/ops/core/archive", post(routes::ops::ops_core_archive))
-        // The brokered rag control plane (rag-control-plane ADR D2): GET for the
+        // The brokered rag control plane: GET for the
         // read verbs (service-state, jobs, watcher, projects, readiness, logs,
         // metrics), POST for the control verbs (reindex trigger, watcher
         // config, project-evict, quality) over rag's HTTP service, plus the
@@ -228,22 +225,22 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/ops/rag/{verb}",
             post(routes::ops::ops_rag).get(routes::ops::ops_rag_get),
         )
-        // Destructive rag storage broker (rag-storage-broker ADR): delete/prune/
+        // Destructive rag storage broker: delete/prune/
         // migrate on the bounded CLI runner, validated args, dry-run-default, rag
         // envelope verbatim. A 4-segment path, distinct from `/ops/rag/{verb}`.
         .route(
             "/ops/rag/storage/{verb}",
             post(routes::ops::ops_rag_storage),
         )
-        // The a2a orchestration control pass-through (a2a-orchestration-edge ADR
-        // D1/D2): five whitelisted control verbs (run-start / run-status /
+        // The a2a orchestration control pass-through: five whitelisted control
+        // verbs (run-start / run-status /
         // run-cancel / presets-list / service-state) plus bounded active-runs
         // discovery forwarded to the resident vaultspec-a2a
         // gateway, the sibling envelope verbatim inside the tiers envelope,
         // sibling-down degraded at 200, run-start actor-token provisioning. The rag
         // ops template retargeted at an HTTP sibling; attach-never-own discovery.
         .route("/ops/a2a/{verb}", post(routes::ops::ops_a2a))
-        // The a2a run-progress relay (a2a-orchestration-edge ADR D3): a new engine
+        // The a2a run-progress relay: a new engine
         // SSE channel re-serving the resident gateway's run-stream verb with the
         // engine's seq + since-replay + gap contract and non-authoritative frames;
         // the browser owns degraded run-status polling. The CompressionLayer's
@@ -252,11 +249,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/ops/a2a/runs/{run_id}/stream",
             get(routes::ops::a2a_run_stream),
         )
-        // Read-only git pass-through (dashboard-pipeline-wire W04): porcelain
+        // Read-only git pass-through: porcelain
         // status, numstat, unified diff — whitelisted, no mutating verb.
         .route("/ops/git/{verb}", post(routes::ops::ops_git))
-        // The A2A component lifecycle plane (a2a-product-provisioning W01.P03):
-        // typed install/ensure/start/stop/.../doctor as bounded, atomically-
+        // The A2A component lifecycle plane: typed install/ensure/start/stop/.../doctor as bounded, atomically-
         // admitted, component-single-flight jobs over the vaultspec-product
         // controller. A DEDICATED namespace, deliberately SEPARATE from the fixed
         // six-member `/ops/a2a` whitelist above — no lifecycle verb here.
@@ -273,21 +269,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/a2a/lifecycle/jobs/{id}",
             get(routes::a2a_lifecycle::a2a_lifecycle_job),
         )
-        // The authenticated A2A terminal-settlement callback (a2a-product-
-        // provisioning W02.P05.S41/S153): the RECEIVING end of the gateway's
+        // The authenticated A2A terminal-settlement callback: the RECEIVING end of the gateway's
         // fire-and-forget terminal-settlement emission. A DISTINCT internal
         // namespace — NOT a sixth `/ops/a2a` public verb, and NOT machine-bearer-
         // gated: `/internal` is deliberately ABSENT from `spa::API_PREFIXES`, so
         // the machine gate passes it through and the handler authenticates the
         // dashboard-created ATTACH-CONTROL credential itself (rejecting the machine
         // bearer, the worker-IPC secret, and unrelated credentials). Its prefix is
-        // reserved from the SPA fallback so a misrouted callback fails loud (S154).
+        // reserved from the SPA fallback so a misrouted callback fails loud.
         .route(
             "/internal/a2a/run-terminal",
             post(routes::a2a_settlement::a2a_run_terminal),
         )
-        // The framework acquisition + provisioning plane (project-provisioning
-        // ADR): a served status projection over a registry-resolved target, and
+        // The framework acquisition + provisioning plane: a served status
+        // projection over a registry-resolved target, and
         // job-shaped install/upgrade/migrate/acquire that BROKERS the owning
         // installer (vaultspec-core / uv) — the engine writes nothing. A dedicated
         // family, sibling to /ops/* (a provisioning target may be a non-servable
@@ -301,8 +296,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/provision/jobs/{id}",
             get(routes::provision::provision_job),
         )
-        // Top-level session + settings surface (user-state-persistence W03):
-        // the durable "where am I" session and user settings, both through the
+        // Top-level session + settings surface: the durable "where am I"
+        // session and user settings, both through the
         // shared envelope so every response carries the tiers block.
         .route(
             "/session",
@@ -319,7 +314,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             get(routes::session::get_settings_schema),
         )
         .fallback(get(routes::spa::spa_fallback))
-        // Panic containment (robustness H2, 2026-06-13): a handler panic must
+        // Panic containment: a handler panic must
         // become a contained 500, never a dropped connection AND — critically
         // — never a poisoned lock that cascades into a permanent outage. The
         // layer unwinds the panic at the service boundary so the worker keeps
@@ -365,8 +360,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // any cross-origin referrer. Applied OUTERMOST so every response — static
         // asset, API, error, and SSE — carries them.
         //
-        // CSP (single-app-runtime D7, closing the deferral recorded here):
-        // authored against the embedded SPA's ACTUAL needs — every script and
+        // CSP: authored against the embedded SPA's ACTUAL needs — every script and
         // stylesheet is a same-origin chunk (shiki grammars arrive via
         // same-origin dynamic import); the pre-hydration boot shell is one
         // inline <style> island and React styles are attributes (both under

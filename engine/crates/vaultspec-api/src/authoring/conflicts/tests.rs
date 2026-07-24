@@ -105,7 +105,7 @@ fn materialized_child(
     )
 }
 
-/// A materialized `edit_frontmatter` child (W02.P03) against the CURRENT worktree
+/// A materialized `edit_frontmatter` child against the CURRENT worktree
 /// frontmatter of `stem`, setting `date`. Mirrors `materialized_child` so a
 /// frontmatter edit exercises the SAME whole-document-relevance conflict path.
 fn materialized_frontmatter_child(
@@ -164,7 +164,7 @@ fn materialized_frontmatter_child(
     )
 }
 
-/// A materialized `rename` child (W02.P04) proposing to rename `stem` to
+/// A materialized `rename` child proposing to rename `stem` to
 /// `new_stem`. Mirrors `materialized_frontmatter_child` so a rename
 /// exercises the SAME conflict-record shape.
 fn materialized_rename_child(
@@ -428,7 +428,7 @@ fn stale_whole_document_draft_is_detected_distinctly_from_a_partial_base() {
 
 #[test]
 fn stale_frontmatter_draft_is_detected_as_whole_document_stale_like_a_body_replace() {
-    // W02.P03: `is_whole_document_replace` broadened to `edit_frontmatter`, so a
+    // `is_whole_document_replace` broadened to `edit_frontmatter`, so a
     // stale frontmatter draft reports `StaleWholeDocumentDraft` — the SAME
     // relevance a stale `replace_body` draft gets — never the generic partial
     // `StaleBaseRevision` finding.
@@ -907,9 +907,9 @@ fn rename_to_a_free_stem_reports_no_conflict() {
     );
 }
 
-// --- W02.P05: CreateDocument predicted-path collision -------------------
+// --- CreateDocument predicted-path collision -------------------
 
-/// A materialized `create_document` child (W02.P05) whose deterministic
+/// A materialized `create_document` child whose deterministic
 /// predicted path derives from `created_at_ms`/`feature`/`doc_type` — no
 /// worktree read needed to build it, unlike every other materializer here.
 fn materialized_create_child(

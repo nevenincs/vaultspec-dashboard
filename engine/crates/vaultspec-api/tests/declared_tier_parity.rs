@@ -1,5 +1,5 @@
-//! Adversarial repro (Lens A, 2026-06-13): the `declared` tier must reflect
-//! ACTUAL core-graph ingestion on EVERY front door (M-D1, M-A3). The shared
+//! Adversarial repro: the `declared` tier must reflect
+//! ACTUAL core-graph ingestion on EVERY front door. The shared
 //! `query_tiers()` reads `AppState::declared_status`; the `query.rs`
 //! `rag_tiers()` helper does NOT — so the 8 query routes that use it
 //! (`/map`, `/vault-tree`, `/graph/query` live path, `/filters`, `/nodes/{id}`
@@ -88,7 +88,7 @@ async fn declared_tier_degradation_is_consistent_across_front_doors() {
     // This is exactly what `ScopeCell::rebuild_and_swap` writes when
     // `vaultspec-core vault graph` is unavailable (engine-graph index.rs:
     // `declared_unavailable`). The declared status now lives per-scope on the
-    // cell (W02.P05).
+    // cell.
     *state.active_cell().declared_status.write().unwrap() =
         Some("core graph unavailable: forced for test".to_string());
 
@@ -105,7 +105,7 @@ async fn declared_tier_degradation_is_consistent_across_front_doors() {
     );
 
     // /vault-tree uses `rag_tiers()` -> should ALSO degrade declared, but
-    // does not. M-D1: the declared tier must reflect ACTUAL ingestion on
+    // does not. The declared tier must reflect ACTUAL ingestion on
     // every front door, never hardcoded true.
     let (status, tree) = get(
         router,
@@ -119,7 +119,7 @@ async fn declared_tier_degradation_is_consistent_across_front_doors() {
     // The bug: these two front doors disagree about the SAME tier state.
     assert_eq!(
         tree_declared, status_declared,
-        "M-D1/M-A3 VIOLATION: /vault-tree reports declared={tree_declared} while \
+        "declared-tier violation: /vault-tree reports declared={tree_declared} while \
          /status reports declared={status_declared} for the SAME unreachable-core \
          state; rag_tiers() ignores declared_status and lies about the declared tier"
     );
@@ -130,13 +130,13 @@ async fn a_search_keeps_the_declared_tier_truthful_independent_of_semantic() {
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
     // Core unreachable this rebuild: the declared tier could not ingest. The
-    // declared status lives per-scope on the active cell (W02.P05).
+    // declared status lives per-scope on the active cell.
     *state.active_cell().declared_status.write().unwrap() =
         Some("core graph unavailable: forced for test".to_string());
     let router = build_router(state);
 
-    // `/search` now rides the resident rag over HTTP (rag-integration-hardening
-    // D1), so the SEMANTIC tier reflects the ambient machine: degraded when no
+    // `/search` now rides the resident rag over HTTP, so the SEMANTIC tier
+    // reflects the ambient machine: degraded when no
     // resident rag is discoverable (the rag-down path), available when one
     // answers (an unindexed scope is a healthy 200 with empty results). Either
     // way the response is a tiers-carrying 200 — a degradable surface, never a
@@ -155,13 +155,13 @@ async fn a_search_keeps_the_declared_tier_truthful_independent_of_semantic() {
         body["data"]["results"].is_array(),
         "results is always an array on the tiers-carrying 200: {body}"
     );
-    // LENSA-02 (the load-bearing guard): whatever the semantic outcome, the
-    // declared tier must stay truthful — false here because core was unreachable
-    // — never hardcoded available by `rag_tiers()`.
+    // Whatever the semantic outcome, the declared tier must stay truthful —
+    // false here because core was unreachable — never hardcoded available by
+    // `rag_tiers()`.
     assert_eq!(
         body["tiers"]["declared"]["available"],
         Value::Bool(false),
-        "LENSA-02: a search response must keep the declared tier truthful when \
+        "a search response must keep the declared tier truthful when \
          core was unreachable, never hardcode declared:true: {body}"
     );
 }

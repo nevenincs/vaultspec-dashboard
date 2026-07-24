@@ -28,4 +28,4 @@ related:
 
 ## Notes
 
-- The `engine/Cargo.toml` `repository` field still says `wgergely/vaultspec-dashboard`; dist derives installer download URLs from it, so it must be reconciled to the real release host (all in-repo evidence points at nevenincs) before the first public release — user confirmation pending.
+- The `engine/Cargo.toml` `repository` field still says the old repo handle's `vaultspec-dashboard` path; dist derives installer download URLs from it, so it must be reconciled to the real release host (all in-repo evidence points at nevenincs) before the first public release — user confirmation pending.

@@ -1,5 +1,4 @@
-// Section-anchored comments + plan-step tick LIVE-WIRE tests (authoring-surface
-// W02.P03.S11).
+// Section-anchored comments + plan-step tick LIVE-WIRE tests.
 //
 // Test-integrity / wire-contract: these run ONLINE against the real `vaultspec
 // serve` binary the global setup spawns (over the committed fixture vault), never a
@@ -57,7 +56,7 @@ let scope: string;
  * computes and the section selector's `expected_content_hash` fences against.
  * Reproduced from the git blob spec (`sha1("blob " + len + "\0" + bytes)`), not
  * copied from a run, so an ANCHORED selector can be authored deterministically here
- * exactly as the reader affordance (S15) will build it from a live section.
+ * exactly as the reader affordance will build it from a live section.
  */
 function gitBlobOid(content: string): string {
   const bytes = Buffer.from(content, "utf8");

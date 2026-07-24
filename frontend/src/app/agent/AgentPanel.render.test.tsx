@@ -260,7 +260,7 @@ describe("AgentPanel transcript states", () => {
   });
 });
 
-describe("AgentPanel view switcher (review-surface-flow ADR F1)", () => {
+describe("AgentPanel view switcher", () => {
   it("defaults to the conversation view: composer present, no pending inbox", () => {
     useAgentPanel.setState({ open: true, currentSessionId: null });
     renderPanel();
@@ -362,7 +362,7 @@ async function seedOutOfSessionProposal(): Promise<void> {
   );
 }
 
-describe("AgentPanel autonomy + bridge (review-surface-flow ADR F2/F1)", () => {
+describe("AgentPanel autonomy + bridge", () => {
   it("renders the autonomy control composer-adjacent in the transcript view", async () => {
     useAgentPanel.setState({
       open: true,

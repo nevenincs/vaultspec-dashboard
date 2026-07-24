@@ -1,4 +1,4 @@
-// The framework provisioning plane (project-provisioning ADR) — the stores-layer
+// The framework provisioning plane — the stores-layer
 // SOLE wire client for the engine's `/provision/*` surface. This is where the
 // served status projection is fetched, where install / upgrade / migrate /
 // acquire are DISPATCHED as bounded jobs through the one engine client, and where
@@ -8,9 +8,9 @@
 // The empty-project dead-end (a registered root with no `.vault/`/`.vaultspec/`)
 // is DETECTED by the served `recommended` field — never re-derived on the client
 // (displayed-state-is-backend-served). A mutation returns a `{job, attached}`
-// immediately (ADR D4); `useProvisionJob` polls `/provision/jobs/{id}` to a
+// immediately; `useProvisionJob` polls `/provision/jobs/{id}` to a
 // terminal state, holding no connection open, then invalidates the status so the
-// panel re-reads the now-reconciled projection (ADR D6).
+// panel re-reads the now-reconciled projection.
 
 import { useCallback } from "react";
 
@@ -77,7 +77,7 @@ export function useProvisionRun() {
 
 /** Poll one provisioning job to a terminal state. Polling stops as soon as the
  *  job is `succeeded`/`failed`; on the transition the affected status projection
- *  is invalidated so the panel reflects the reconciled post-state (ADR D6). Pass
+ *  is invalidated so the panel reflects the reconciled post-state. Pass
  *  `null` to disable (no job in flight). */
 export function useProvisionJob(
   id: string | null,
@@ -97,7 +97,7 @@ export function useProvisionJob(
       }
       return job;
     },
-    // Trigger-then-poll: refetch while running, stop once terminal (ADR D4).
+    // Trigger-then-poll: refetch while running, stop once terminal.
     refetchInterval: runningJobRefetchInterval,
     gcTime: JOB_POLL_GC_MS,
   });

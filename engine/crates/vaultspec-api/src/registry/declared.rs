@@ -1,4 +1,4 @@
-//! The declared-tier fold machinery (perf ADR D1 + declared-edge-continuity ADR),
+//! The declared-tier fold machinery,
 //! extracted verbatim from `registry` to keep that module under the size cap — zero
 //! behavior change. Owns the async fold (subprocess → corpus-fingerprint cache →
 //! clone-and-commit), the stale-while-refolding carry (graft the last completed fold's
@@ -14,7 +14,7 @@ use crate::app::ScopeCell;
 
 /// Engine-store artifact kind for the cached raw core graph JSON, keyed by the
 /// working-tree corpus FINGERPRINT for the present view and the commit SHA for an
-/// as-of build (perf ADR D1 + graph-worktree-edge-consistency ADR). The declared
+/// as-of build. The declared
 /// graph for a fixed corpus state is stable, so a rebuild over an unchanged corpus
 /// (same fingerprint) is a cache hit that skips the ~16s core subprocess entirely.
 /// Lives in the re-derivable `.vault/data/engine-data/` zone — fully deletable,
@@ -49,8 +49,8 @@ const TEMPORAL_EVENT_RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1000;
 /// so two scopes never alias each other's cached JSON (defensive — the JSON is
 /// scope-independent, but the qualified key documents the per-scope contract). The
 /// `corpus_key` is a working-tree CONTENT FINGERPRINT for the present view
-/// (graph-worktree-edge-consistency ADR — an uncommitted edit must miss the cache)
-/// and an explicit COMMIT SHA for an as-of / historical build (a committed snapshot
+/// (an uncommitted edit must miss the cache) and an explicit COMMIT SHA for an
+/// as-of / historical build (a committed snapshot
 /// does not change). The two key spaces are distinct hex strings, so present-view
 /// and as-of artifacts coexist in one store, pruned by recency.
 pub(crate) fn declared_cache_key(scope_token: &str, corpus_key: &str) -> String {
@@ -58,8 +58,7 @@ pub(crate) fn declared_cache_key(scope_token: &str, corpus_key: &str) -> String 
 }
 
 /// The present-view declared `(git_ref, cache key material)` for a corpus state,
-/// gated on the core-version floor (graph-worktree-edge-consistency ADR + the
-/// version-guard hardening). On a verified read-only core: read the WORKING TREE
+/// gated on the core-version floor. On a verified read-only core: read the WORKING TREE
 /// (`None`), keyed on the corpus content fingerprint — so an uncommitted edit misses
 /// the cache and re-reads. On an older/unknown core: fail-safe to committed `HEAD`,
 /// keyed on `fingerprint@<head sha>` so BOTH a content edit AND a commit invalidate
@@ -93,8 +92,8 @@ pub(crate) fn cached_declared_json(cell: &ScopeCell, corpus_key: &str) -> Option
     store.get_artifact(DECLARED_GRAPH_KIND, &key).ok().flatten()
 }
 
-/// Reconcile the declared tier into a freshly-built structural graph BEFORE the swap
-/// (declared-edge-continuity ADR); returns the `declared_status` to record. No runtime
+/// Reconcile the declared tier into a freshly-built structural graph BEFORE the swap;
+/// returns the `declared_status` to record. No runtime
 /// (tests): ingest INLINE, falling through to the carry (with the core error as the
 /// honest fallback reason) on failure. Serve + unchanged corpus with a cached declared
 /// graph: ingest the exact cached edges → AVAILABLE. Otherwise (cold / corpus changed,
@@ -149,7 +148,7 @@ fn ingest_and_capture(
 }
 
 /// Graft the cell's carried declared edge set (last completed fold) onto `fresh`, pruned
-/// to its node set (declared-edge-continuity ADR). Returns `refreshing` when any survive
+/// to its node set. Returns `refreshing` when any survive
 /// (a fold will update them), else `fallback` (edge-less: building sentinel or core error).
 fn graft_carried_declared(
     cell: &ScopeCell,
@@ -180,9 +179,9 @@ pub(crate) fn capture_carried_declared(cell: &ScopeCell, graph: &engine_graph::L
     }
 }
 
-/// Asynchronously fold the declared tier into a cell's live graph (perf ADR
-/// D1 — the dominant win: the slow `vaultspec-core vault graph` subprocess off
-/// the servable-parse critical path).
+/// Asynchronously fold the declared tier into a cell's live graph — the
+/// dominant win: the slow `vaultspec-core vault graph` subprocess off the
+/// servable-parse critical path.
 ///
 /// The structural graph is already committed and servable; this task fingerprints
 /// the cell's working-tree corpus, gets the declared graph JSON (cache hit → no
@@ -198,7 +197,7 @@ pub(crate) fn capture_carried_declared(cell: &ScopeCell, graph: &engine_graph::L
 /// `Weak<ScopeCell>`, upgrading per use and exiting if the cell was evicted —
 /// it never keeps a dead scope alive.
 ///
-/// COALESCED with a closed trailing edge (perf ADR D1, review HIGH): a per-cell
+/// COALESCED with a closed trailing edge: a per-cell
 /// `declared_fold_active` flag means at most one fold runs per cell at a time.
 /// If one is already in flight, this sets the `declared_fold_pending`
 /// trailing-edge flag instead of dropping the request — the in-flight fold's
@@ -266,7 +265,7 @@ fn spawn_claimed_fold(cell: &Arc<ScopeCell>) {
     });
 }
 
-/// The blocking body of the declared fold (perf ADR D1): corpus-fingerprint →
+/// The blocking body of the declared fold: corpus-fingerprint →
 /// cache-or-subprocess JSON → clone-and-fold → commit. Runs on a blocking thread; the
 /// completion guard releases the coalescing slot and re-spawns on a raced rebuild.
 fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
@@ -364,8 +363,8 @@ fn declared_fold_blocking(weak: &std::sync::Weak<ScopeCell>) {
 
     // Clone the cell's CURRENT structural graph and fold the declared edges into
     // the clone, then commit. Cloning (not re-parsing) is why `LinkageGraph` is
-    // `Clone` (perf ADR D1): clone(structural)+declared is byte-identical to a
-    // synchronous structural+declared build (D8.2 convergence), since declared
+    // `Clone`: clone(structural)+declared is byte-identical to a
+    // synchronous structural+declared build (a convergence property), since declared
     // ingest is replace-by-id idempotent over the structural graph.
     let declared_status = match json {
         Ok(json) => {
@@ -474,7 +473,7 @@ mod tests {
 
     #[tokio::test]
     async fn declared_fold_ingests_from_the_corpus_fingerprint_cache_without_a_subprocess() {
-        // Perf ADR D1 + graph-worktree-edge-consistency ADR: the declared graph for
+        // The declared graph for
         // a given working-tree corpus is stable, so the fold caches the raw core
         // JSON by the corpus FINGERPRINT (not the HEAD sha — an uncommitted edit
         // leaves HEAD unchanged) and a fold over the same corpus is a cache HIT that
@@ -609,7 +608,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_rebuild_that_races_an_in_flight_fold_is_not_lost_trailing_edge() {
-        // Review HIGH (perf ADR D1 trailing-edge race): F1 claims the fold slot
+        // A trailing-edge race: F1 claims the fold slot
         // and begins folding at HEAD-A; a rebuild lands structural@HEAD-B and
         // finds the slot busy, so it cannot spawn its own fold. Without the
         // trailing-edge close, F1 finishes, clears the slot, and NO fold ever

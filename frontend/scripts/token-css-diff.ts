@@ -1,5 +1,5 @@
 /**
- * Pure, dependency-free helpers for the token drift gate (plan W01.P05). Importable by
+ * Pure, dependency-free helpers for the token drift gate. Importable by
  * both the Node runtime script (token-drift-check.ts) and the vitest suite without pulling
  * the Style Dictionary build chain.
  *

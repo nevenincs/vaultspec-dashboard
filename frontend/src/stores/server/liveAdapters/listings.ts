@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
@@ -35,8 +35,8 @@ import {
 import { isRec } from "./internal";
 
 /**
- * Live `/search` serves rag's FLAT annotated HTTP envelope (rag-integration-
- * hardening D1): `results` sits at the TOP level (already unwrapped from the §2
+ * Live `/search` serves rag's FLAT annotated HTTP envelope: `results` sits at
+ * the TOP level (already unwrapped from the §2
  * `{data, tiers}` wrapper by `unwrapEnvelope`), each item carrying rag's real
  * per-hit vocabulary (path/stem/source, score, `snippet`/excerpt/text, and the
  * species-specific metadata), plus the engine's `node_id` value-add. The
@@ -89,8 +89,8 @@ function normalizeSearchCount(value: unknown): number | undefined {
 }
 
 /**
- * The shared D4 semantic epoch the engine annotates on a `/search` success
- * (rag-integration-hardening D3). Three distinct served truths, preserved:
+ * The shared semantic epoch the engine annotates on a `/search` success.
+ * Three distinct served truths, preserved:
  * a finite non-negative number is the warm epoch; an explicit `null` is the
  * engine's HONEST absent marker (a cold/failed cache read — freshness unknown,
  * never fabricated); anything else (field absent, non-number) is `undefined` —
@@ -216,7 +216,7 @@ export function adaptSearch(body: unknown): SearchResponse {
 
 /** Stem-suffix doc-type derivation (matches the vault naming convention).
  *  `.index` (`.vault/index` feature-index) stems get NO special doc-type — they
- *  are strictly-ignored metanodes (index-node-exclusion ADR), never categorized as
+ *  are strictly-ignored metanodes, never categorized as
  *  an `index` type; they fall through to the generic `document`. */
 export function docTypeFromStem(stem: string): string {
   if (/-W\d+-P\d+-S\d+$|-P\d+-S\d+$|-S\d+$|-summary$/.test(stem)) return "exec";
@@ -295,7 +295,7 @@ function normalizeVaultTreeProgress(
   return { done, total };
 }
 
-/** Ingest-measured document weight (left-rail-tree-controls ADR D2): kept only
+/** Ingest-measured document weight: kept only
  *  when BOTH fields are finite non-negative numbers; anything malformed is
  *  dropped whole so the rail never renders a half-true weight. */
 function normalizeVaultTreeSize(value: unknown): VaultTreeEntry["size"] | undefined {
@@ -351,7 +351,7 @@ function normalizeGeneration(value: unknown): number | undefined {
 }
 
 /** Live stem/node_id tree entries → the internal path-bearing entries. Absorbs the
- *  optional `generation` (vault-tree-delta ADR D1) so the drained listing carries
+ *  optional `generation` so the drained listing carries
  *  its delta baseline. */
 export function adaptVaultTree(body: unknown): VaultTreeResponse {
   if (!isRec(body) || !Array.isArray(body.entries)) {
@@ -368,7 +368,7 @@ export function adaptVaultTree(body: unknown): VaultTreeResponse {
   };
 }
 
-/** Live `/…/delta` → the internal delta shape (vault-tree-delta ADR D3), KEY-GENERIC
+/** Live `/…/delta` → the internal delta shape, KEY-GENERIC
  *  over the row entry type via `adaptEntry` (vault: stem rows; code: path rows).
  *  TOLERANT and FAIL-SAFE: an unusable body, an absent generation, or a
  *  `full_required` flag all resolve to a full-drain instruction rather than a
@@ -413,7 +413,7 @@ export function adaptCodeFilesDelta(body: unknown): CodeFilesDeltaResponse {
   return adaptRowDelta(body, adaptCodeFileEntry);
 }
 
-// --- /code-files: the complete code-file listing (search-providers ADR) ----------
+// --- /code-files: the complete code-file listing ----------------------------------
 //
 // Tolerant adapter for the drained `/code-files` walk. Every field defaults to a
 // safe empty so a sparse or older shape NEVER throws: a row missing its `path` is
@@ -465,7 +465,7 @@ export function adaptCodeFiles(body: unknown): CodeFilesResponse {
   const entries = body.entries
     .map(adaptCodeFileEntry)
     .filter((entry): entry is CodeFileEntry => entry !== null);
-  // The serving code `generation` (vault-tree-delta ADR /code-files follow-on) is
+  // The serving code `generation` is
   // absorbed like the vault tree's, passed through verbatim. The truncated-corpus
   // baseline DROP happens downstream: the client walk omits its resolved
   // generation on a truncated/straddled listing, and the reconcile spec re-checks
@@ -479,7 +479,7 @@ export function adaptCodeFiles(body: unknown): CodeFilesResponse {
   };
 }
 
-// --- §3 code (worktree) file tree (dashboard-code-tree ADR) ----------------------
+// --- §3 code (worktree) file tree ------------------------------------------------
 //
 // Tolerant adapter for `GET /file-tree`. The live `{data, tiers, next_cursor?}`
 // envelope is already unwrapped by `unwrapEnvelope` before this runs (with the
@@ -632,7 +632,7 @@ export function adaptFsList(body: unknown): FsListResponse {
   };
 }
 
-// --- §4 read-only content fetch (review-rail-viewers ADR) ------------------------
+// --- §4 read-only content fetch ---------------------------------------------------
 //
 // Tolerant adapter for `GET /nodes/{id}/content`. The live `{data, tiers}`
 // envelope is already unwrapped by `unwrapEnvelope` before this runs; a body

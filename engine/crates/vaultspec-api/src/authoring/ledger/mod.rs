@@ -1,8 +1,8 @@
 //! Append-only changeset ledger records.
 //!
-//! W03.P15 owns durable aggregate revisions and ordered child operation rows.
+//! This module owns durable aggregate revisions and ordered child operation rows.
 //! Lifecycle transition legality, proposal command orchestration, approvals,
-//! apply, routes, streams, and LangGraph state are later phases.
+//! apply, routes, streams, and LangGraph state live elsewhere.
 
 use std::collections::BTreeSet;
 
@@ -102,14 +102,14 @@ pub struct ChangesetAggregateRecord {
     pub status: ChangesetStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<SessionId>,
-    /// The agent run that produced this changeset (agent-wire-gaps ADR D4). Stamped
+    /// The agent run that produced this changeset. Stamped
     /// only for a changeset created through the tool-executor dispatch (the request
     /// carries the `run_id`); a human/direct changeset carries `None`. Pure provenance
     /// naming the producing fact — deliberately EXCLUDED from `aggregate_digest`, so it
     /// changes no `changeset_revision` identity (the wire-contract stable-key rule).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub run_id: Option<RunId>,
-    /// The prompt turn that produced this changeset (agent-wire-gaps ADR D4), joined
+    /// The prompt turn that produced this changeset, joined
     /// through the run record at dispatch. `None` for a human/direct changeset. Same
     /// provenance class as `run_id`; excluded from the digest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -166,8 +166,8 @@ impl ChangesetAggregateRecord {
         })
     }
 
-    /// Attach the agent run/turn provenance that produced this changeset (agent-wire-gaps
-    /// ADR D4). Applied AFTER `new` so it never enters `aggregate_digest` — provenance
+    /// Attach the agent run/turn provenance that produced this changeset.
+    /// Applied AFTER `new` so it never enters `aggregate_digest` — provenance
     /// names the producing fact and changes no `changeset_revision` identity. Called at
     /// the tool-executor dispatch; a human/direct changeset never calls it (stays `None`).
     pub fn with_run_provenance(mut self, run_id: Option<RunId>, turn_id: Option<String>) -> Self {

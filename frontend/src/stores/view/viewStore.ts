@@ -222,22 +222,21 @@ export interface ViewState {
    */
   scope: string | null;
   /**
-   * The active vault folder for the current scope (user-state-persistence
-   * W04.P09.S30): the durable "which folder am I browsing" projection over the
+   * The active vault folder for the current scope: the durable "which folder am I browsing" projection over the
    * `/vault-tree`, restored from the session on load. Null when no folder is
    * selected. This is session-defining state — its durable home is the session
    * API, NOT localStorage; the view store mirrors it for synchronous reads.
    */
   activeFolder: string | null;
   /**
-   * The active feature-tag contexts for the current scope (W04.P09.S30): the
+   * The active feature-tag contexts for the current scope: the
    * "current folder + contexts" concept built on the existing `feature_tags`
    * grouping primitive (a projection, never a new node model). Restored from the
    * session's `scope_context.feature_tags` on load.
    */
   featureContexts: string[];
   /**
-   * Supplementary edge/event selection metadata — VIEW-LOCAL BY DESIGN (SRR-004).
+   * Supplementary edge/event selection metadata — VIEW-LOCAL BY DESIGN.
    * The canonical NODE selection is shared corpus intent: it rides dashboard-state
    * `selected_ids` (one record, one write seam) and is written through
    * `patchDashboardState` on every selection. This slice carries only WHICH
@@ -250,13 +249,13 @@ export interface ViewState {
    */
   selection: Selection;
   /**
-   * The transient hovered node id — VIEW-LOCAL ONLY (graph-perf 2026-06-18). Hover
+   * The transient hovered node id — VIEW-LOCAL ONLY. Hover
    * is not "real" cross-surface state and must NEVER round-trip to the engine: it
    * is set from the scene's own GPU hover-detect (and the timeline) and read by the
    * hover-card host, all client-side. The visual node emphasis is applied directly
    * on the GPU by the scene field; this slice carries only the id for the DOM card.
    * Persisting it to dashboard-state caused a server PATCH on every pointer move
-   * (hover-state-004 / the historical `hovered_id:null` PATCH flood).
+   * (the historical `hovered_id:null` PATCH flood).
    */
   hoveredId: string | null;
   /**
@@ -318,7 +317,7 @@ export interface ViewState {
   editorStatus: EditorStatus;
   /**
    * The document body text captured when the editor opened — the "base" for the
-   * draft-vs-saved diff (authoring-surface ADR D4). Matches `draftText` at open
+   * draft-vs-saved diff. Matches `draftText` at open
    * (status `idle`); stays frozen while the draft diverges. Empty when no editor
    * is open. A SINGLE string, never a history (bounded-by-default).
    */
@@ -353,13 +352,13 @@ export interface ViewState {
    *  the pending base. */
   editorConflictResolutions: Record<string, "mine" | "theirs">;
   /**
-   * Whether the in-editor diff panel is expanded (authoring-surface ADR D4).
+   * Whether the in-editor diff panel is expanded.
    * False when no editor is open or the panel is collapsed. View-local chrome —
    * the toggle is reachable from keymap + palette under one shared action id.
    */
   editorDiffVisible: boolean;
   /**
-   * Overlay visibility (graph-representation ADR): feature-country labels at
+   * Overlay visibility: feature-country labels at
    * overview and BubbleSets hulls at document LOD. Owned here, emitted as
    * `set-overlays`.
    */
@@ -384,7 +383,7 @@ export interface ViewState {
    */
   swapWorkspace: (workspace: unknown, scope: unknown) => void;
   /**
-   * Seed the scope + folder context from the restored session (W04.P09.S30).
+   * Seed the scope + folder context from the restored session.
    * Used by the stores-layer restore hook on session load: it mirrors the
    * durable session shape into the view store WITHOUT triggering the wholesale
    * reset (which is for a user-initiated swap, not a restore). Durable
@@ -405,7 +404,7 @@ export interface ViewState {
     activeDocId?: string | null;
   }) => void;
   /**
-   * Set the active folder + feature-tag contexts (W04.P09.S30). Mirrors the
+   * Set the active folder + feature-tag contexts. Mirrors the
    * context into the view store for synchronous reads; the durable write goes
    * through the session API at the call site (a stores mutation), never
    * localStorage.
@@ -512,7 +511,7 @@ export interface ViewState {
   /** Close the editor (clears the target, draft, base, diff state, and resets
    *  status to `idle`) — the same single-value clear a scope swap performs. */
   closeEditor: () => void;
-  /** Toggle the in-editor draft-vs-saved diff panel (authoring-surface ADR D4).
+  /** Toggle the in-editor draft-vs-saved diff panel.
    *  A no-op when no editor is open (diff state resets on open/close anyway). */
   toggleEditorDiff: () => void;
   /**
@@ -535,7 +534,7 @@ export interface ViewState {
   leftRailWidth: number;
   /** Expanded right rail width in pixels. */
   rightRailWidth: number;
-  /** Docked Agent panel width in pixels (agentic-authoring-ux ADR D1). A shell
+  /** Docked Agent panel width in pixels. A shell
    *  column like the rails; its open flag lives in the agent-panel view store. */
   agentPanelWidth: number;
   /** Whether the bottom timeline region is mounted in the shell layout. */
@@ -596,7 +595,7 @@ export const LEFT_RAIL_DEFAULT_WIDTH = 252;
 export const RIGHT_RAIL_MIN_WIDTH = 220;
 export const RIGHT_RAIL_MAX_WIDTH = 420;
 export const RIGHT_RAIL_DEFAULT_WIDTH = 290;
-// The docked Agent panel (agentic-authoring-ux ADR D1) is a shell-layout column
+// The docked Agent panel is a shell-layout column
 // like the rails: its width lives here (canonical, resettable, shared-resize
 // state), a touch wider than the activity rail since it holds a conversation.
 export const AGENT_PANEL_MIN_WIDTH = 320;
@@ -1065,7 +1064,7 @@ export const useViewStore = create<ViewState>((set) => ({
         baseBlobHash: normalizeEditorBlobHash(baseBlobHash),
         editorStatus: "idle",
         // Capture the opening text as the diff base; reset the diff panel so
-        // each new editing session starts collapsed (authoring-surface ADR D4).
+        // each new editing session starts collapsed.
         editorBaseText: normalizedText,
         editorAgentBaseline: null,
         editorAgentSeen: false,

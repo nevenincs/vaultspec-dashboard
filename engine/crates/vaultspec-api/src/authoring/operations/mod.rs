@@ -1,6 +1,6 @@
 //! Proposal operation payload and preview primitives.
 //!
-//! W03.P13 is intentionally a whole-document subset for the walking skeleton:
+//! This module is intentionally a whole-document subset for the walking skeleton:
 //! existing-document `replace_body` drafts become materialized target snapshots
 //! plus review diffs. Section-scoped and atomic-hunk operations are deferred.
 
@@ -31,7 +31,7 @@ pub enum OperationError {
     #[error("operation child_key cannot be empty")]
     EmptyChildKey,
     #[error(
-        "operation `{child_key}` kind `{operation:?}` is not supported in the W03.P13 whole-document subset"
+        "operation `{child_key}` kind `{operation:?}` is not supported in the whole-document subset"
     )]
     UnsupportedOperationKind {
         child_key: String,
@@ -134,20 +134,20 @@ pub struct MaterializedProposalOperation {
     pub review_diff: ReviewDiffProjection,
     pub preimage: OperationPreimageRef,
     /// The field-level payload an `EditFrontmatter` apply carries through to the
-    /// `SetFrontmatter` core capability (W02.P03) — the SAME operation-kind-typed
+    /// `SetFrontmatter` core capability — the SAME operation-kind-typed
     /// value the draft supplied, threaded through the ledger so apply-time
     /// invocation-building never re-derives it from the whole-document preview.
     /// `None` for every other operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frontmatter_edit: Option<FrontmatterEditFields>,
     /// The target stem a `Rename` apply carries through to the `Rename` core
-    /// capability (W02.P04) — the SAME `new_stem` the draft supplied, threaded
+    /// capability — the SAME `new_stem` the draft supplied, threaded
     /// through the ledger for the same reason `frontmatter_edit` is. `None` for
     /// every other operation kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rename_edit: Option<String>,
     /// The ISO `yyyy-mm-dd` date a `CreateDocument` apply passes to core's
-    /// `--date` flag (W02.P05), FIXED at materialize time rather than
+    /// `--date` flag, FIXED at materialize time rather than
     /// recomputed at apply/reclaim time. Core's own scaffold naming convention
     /// (`{date}-{feature}-{doc_type}.md`) makes this the load-bearing input to
     /// BOTH the write invocation and the identity-bearing post-verify's
@@ -158,7 +158,7 @@ pub struct MaterializedProposalOperation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub create_document_date: Option<String>,
     /// The selector + selected-preimage/new-content payload a `SectionEdit`
-    /// apply/rollback carries through (section-scoped-operations ADR): the
+    /// apply/rollback carries through: the
     /// selector resolved at materialize time, the resolved section's PRE-edit
     /// bytes (distinct from the whole-document `preimage` capture above), and
     /// the NEW section bytes the draft spliced in. `None` for every other
@@ -166,7 +166,7 @@ pub struct MaterializedProposalOperation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section_edit: Option<SectionEditPayload>,
     /// The step id + desired state a `SetPlanStepState` apply carries through to
-    /// the `check` / `uncheck` plan CLI verb (authoring-surface ADR D1) — the
+    /// the `check` / `uncheck` plan CLI verb — the
     /// SAME `PlanStepEdit` the draft supplied, threaded through the ledger so
     /// apply-time invocation-building and the core-authoritative post-verify
     /// both read it from the durable materialized operation, never re-derive it.
@@ -194,7 +194,7 @@ impl MaterializedProposalOperation {
         )
     }
 
-    /// Materialize an `EditFrontmatter` draft (W02.P03): validate the field-level
+    /// Materialize an `EditFrontmatter` draft: validate the field-level
     /// payload, build a whole-document PREVIEW by surgically rewriting only the
     /// named frontmatter fields (every other byte — the body, every untouched
     /// frontmatter line — is carried over unchanged), and produce the SAME
@@ -227,7 +227,7 @@ impl MaterializedProposalOperation {
         )
     }
 
-    /// Materialize a `Rename` draft (W02.P04): validate the target-stem payload,
+    /// Materialize a `Rename` draft: validate the target-stem payload,
     /// and build a whole-document PREVIEW whose text is the base text UNCHANGED
     /// — a rename touches identity (stem/path), never content, so there is
     /// nothing to diff. The preview still exists (rather than being skipped)
@@ -261,7 +261,7 @@ impl MaterializedProposalOperation {
         )
     }
 
-    /// Materialize a `CreateDocument` draft (W02.P05): the ODD ONE OUT — there
+    /// Materialize a `CreateDocument` draft: the ODD ONE OUT — there
     /// is NO existing document to read, NO base revision to fence, and NO
     /// real preimage to capture, because the target does not exist yet. This
     /// is why CreateDocument does NOT call `validate_target_and_preimage`
@@ -346,7 +346,7 @@ impl MaterializedProposalOperation {
         )
     }
 
-    /// Materialize a `SectionEdit` draft (section-scoped-operations ADR):
+    /// Materialize a `SectionEdit` draft:
     /// resolve the selector's structural anchor against the base body — exact
     /// or a typed conflict, never a fuzzy patch — capture the resolved bytes
     /// as the SELECTED preimage, and splice the draft's `body` (the new
@@ -389,7 +389,7 @@ impl MaterializedProposalOperation {
         )
     }
 
-    /// Materialize a `SetPlanStepState` draft (authoring-surface ADR D1): like
+    /// Materialize a `SetPlanStepState` draft: like
     /// `materialize_rename`, the preview text is the base text UNCHANGED — a
     /// plan tick is CORE-AUTHORITATIVE over the resulting bytes (the `check` /
     /// `uncheck` verb flips the checkbox glyph, refreshes the `modified` stamp,
@@ -434,7 +434,7 @@ impl MaterializedProposalOperation {
 }
 
 /// The `SectionEdit` field-level payload a materialized operation carries
-/// through to apply and rollback (section-scoped-operations ADR): the
+/// through to apply and rollback: the
 /// resolved selector, the resolved section's PRE-edit bytes (the "selected
 /// preimage" — distinct from the whole-document preimage every kind
 /// captures), and the NEW section bytes the draft spliced in. Rollback uses
@@ -457,8 +457,8 @@ pub struct SectionEditPayload {
 /// validation_evidence` (the validate-time phantom observation) BOTH call
 /// this ONE helper rather than each deriving it inline, so the two stay in
 /// agreement BY CONSTRUCTION — a future change to one can never silently
-/// desync from the other (the exact propose/apply-mismatch class the P05a/
-/// P06 reviews flagged).
+/// desync from the other (guarding against exactly this class of
+/// propose/apply mismatch).
 pub(crate) fn create_document_phantom_base() -> (String, RevisionToken) {
     let empty_hash = blob_oid(b"");
     let phantom_revision = RevisionToken::new(format!("blob:{empty_hash}"))
@@ -650,7 +650,7 @@ fn validate_replace_body_draft(
     validate_target_and_preimage(changeset_id, child_key, draft, base_snapshot, preimage)
 }
 
-/// Validate an `EditFrontmatter` draft (W02.P03): the operation kind, its
+/// Validate an `EditFrontmatter` draft: the operation kind, its
 /// field-level payload shape, and the SAME target-fence + preimage checks every
 /// operation kind shares. `body` carries no meaning for a field-level edit and
 /// must be empty (R1: no accepted-but-ignored field). Returns the validated
@@ -694,7 +694,7 @@ fn validate_edit_frontmatter_draft<'a>(
     Ok(fields)
 }
 
-/// Validate a `Rename` draft (W02.P04): the operation kind, its target-stem
+/// Validate a `Rename` draft: the operation kind, its target-stem
 /// payload shape, and the SAME target-fence + preimage checks every operation
 /// kind shares. `body` carries no meaning for a rename and must be empty (R1,
 /// same discipline as `EditFrontmatter`). Returns the validated new stem so the
@@ -768,7 +768,7 @@ fn validate_rename_stem(child_key: &str, stem: &str) -> Result<()> {
     Ok(())
 }
 
-/// Validate a `CreateDocument` draft (W02.P05): the operation kind and its
+/// Validate a `CreateDocument` draft: the operation kind and its
 /// typed create-params payload — `doc_type`/`feature`/`title` from the target's
 /// `ProvisionalCreate` ref. `proposed_stem` (when present) is advisory-only —
 /// core's `vault add` accepts no caller-chosen stem; it always derives the
@@ -829,7 +829,7 @@ fn validate_create_document_draft(
     Ok((doc_type.as_str(), feature.as_str(), title.as_str()))
 }
 
-/// Validate a `SectionEdit` draft (section-scoped-operations ADR): the
+/// Validate a `SectionEdit` draft: the
 /// operation kind, its selector payload shape, and the SAME target-fence +
 /// preimage checks every operation kind shares — then resolve the selector's
 /// structural anchor against the base body. Resolution is exact-or-conflict
@@ -876,7 +876,7 @@ fn validate_section_edit_draft<'a>(
     Ok((selector, resolved))
 }
 
-/// Validate a `SetPlanStepState` draft (authoring-surface ADR D1): the
+/// Validate a `SetPlanStepState` draft: the
 /// operation kind, its plan-step payload shape, and the SAME target-fence +
 /// preimage checks every operation kind shares. `body` carries no meaning for a
 /// plan tick and must be empty (R1, same discipline as `Rename`); the step id

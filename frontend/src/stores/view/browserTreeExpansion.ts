@@ -105,8 +105,7 @@ export const VAULT_BROWSER_TREE_SECTION_KEYS = [
 /** A feature's collapsible level for the expand-all enumeration: the feature
  *  folder key plus its category sub-folder keys (one per doc type present under
  *  that feature). Mirrors the three-level Features hierarchy the tree renders
- *  (feature → category sub-folder → documents) per terminology-standardization
- *  ADR D4. */
+ *  (feature → category sub-folder → documents). */
 export interface VaultBrowserTreeFeatureKeyShape {
   feature: string;
   docTypes: readonly string[];

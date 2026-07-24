@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import {
@@ -15,7 +15,7 @@ import {
 import { EDGE_TIER_ORDER } from "./graph";
 import { isRec } from "./internal";
 
-// --- §5 bounded temporal-lineage slice (dashboard-timeline ADR) ------------------
+// --- §5 bounded temporal-lineage slice ------------------------------------------
 //
 // Tolerant adapter for `GET /graph/lineage`. The live `{data: {nodes, arcs,
 // truncated}, tiers}` envelope is already unwrapped by `unwrapEnvelope` before
@@ -25,8 +25,8 @@ import { isRec } from "./internal";
 // defaults to a safe empty so a sparse or older shape NEVER throws and the chrome
 // never reads the raw tiers block (degradation truth rides on `tiers`, defaulted
 // to an empty block when absent). The OPTIONAL wire fields — a node's `title`,
-// an arc's `derivation` (absent until the node-semantics field ships, the ADR's
-// one real dependency), and the whole `truncated` block — are tolerated absent.
+// an arc's `derivation` (absent until the node-semantics field ships, its one
+// real dependency), and the whole `truncated` block — are tolerated absent.
 
 const LINEAGE_PHASES: LineagePhase[] = [
   "research",
@@ -68,7 +68,7 @@ function adaptLineageNode(value: unknown): LineageNode {
  *  tier falls back to `structural` (the tier of the structural mentions the
  *  fallback edges carry), `confidence` to 0, and the optional `derivation` is
  *  forwarded only when present (absent until the node-semantics field lands —
- *  the graceful-fallback the ADR mandates). */
+ *  the graceful fallback here). */
 function adaptLineageArc(value: unknown): LineageArc {
   if (!isRec(value)) {
     return {
@@ -293,7 +293,7 @@ export function adaptStatus(body: unknown): EngineStatus {
     : false;
   // `ahead`/`behind` are Option<u32> on the wire: PRESERVE undefined (no upstream
   // configured) rather than coercing to 0, so "no upstream" stays distinguishable
-  // from "even with upstream" (git-diff-browser ADR: absent ≠ zero).
+  // from "even with upstream" (absent ≠ zero).
   const numOrUndef = (v: unknown): number | undefined =>
     typeof v === "number" ? v : undefined;
   return {

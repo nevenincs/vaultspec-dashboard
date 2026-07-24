@@ -1,4 +1,4 @@
-// Platform-reserved denylist guard (keyboard-shortcut-conflict-review ADR D3).
+// Platform-reserved denylist guard.
 //
 // `findConflicts` only sees two in-app bindings collide with EACH OTHER; it can never see
 // a single binding collide with the BROWSER or OS (a `Mod+1` binding has no in-app conflict
@@ -18,7 +18,7 @@ import type { KeybindingDef } from "../../platform/keymap/registry";
 import { isReservedChord } from "../../platform/keymap/reservedChords";
 import { assembleDefaultKeybindings } from "./assembleDefaultKeybindings.testsupport";
 
-describe("platform-reserved keybinding denylist guard (ADR D3)", () => {
+describe("platform-reserved keybinding denylist guard", () => {
   const defaults = assembleDefaultKeybindings();
 
   it("assembles a non-empty default set (coverage sanity)", () => {

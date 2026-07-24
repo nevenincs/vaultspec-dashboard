@@ -31,7 +31,7 @@ export const HEALTHY: DegradationInputs = {
 
 /**
  * Live signals the status snapshot cannot carry, injected by the surface-states
- * hook from the stores-owned live-connection slice (ADR D4): the runtime stream
+ * hook from the stores-owned live-connection slice: the runtime stream
  * connection and the broken-link count over the held slice. Keeping these as
  * parameters keeps `deriveInputs` pure and testable.
  */
@@ -55,7 +55,7 @@ export function deriveInputs(
       semanticDegraded ||
       (status.rag !== undefined && status.rag.service !== "running"),
     dateMandateMissing: status?.degradations.includes("date-mandate") ?? false,
-    // No longer hardwired (GUI finding 036): a count over the held slice's
+    // No longer hardwired: a count over the held slice's
     // broken structural edges, and an explicit stream disconnect.
     brokenLinkCount: live.brokenLinkCount ?? 0,
     streamLost: live.streamConnected === false,

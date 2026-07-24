@@ -1,4 +1,4 @@
-// Shared app-chrome ActionDescriptor builders (background-context-menus ADR D3): the
+// Shared app-chrome ActionDescriptor builders: the
 // escape hatches — command palette, settings, keyboard shortcuts, reset layout — authored
 // ONCE and composed by BOTH the background context menu (app layer) and the command palette
 // (stores layer), so the surfaces cannot drift (unified-action-plane). It lives in stores/

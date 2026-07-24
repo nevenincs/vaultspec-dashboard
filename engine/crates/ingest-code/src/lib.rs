@@ -1,5 +1,4 @@
-//! Code-corpus ingestion (codebase-graphing ADR D2-D4, code-graph-files-only):
-//! in-process tree-sitter extraction of file-level import edges and
+//! Code-corpus ingestion: in-process tree-sitter extraction of file-level import edges and
 //! package-entry containment from the working tree. Fully disconnected from
 //! the vault `LinkageGraph` corpus — this crate emits `code:` FILE nodes only
 //! (never a directory node) with `imports` / `contains` (entry-file→member)
@@ -28,7 +27,7 @@ use engine_model::{Node, ScopeRef, now_ms, scope_token};
 pub use modules::CodeEdge;
 pub use walk::WalkCaps;
 
-/// Honest extraction counters (ADR D8): served alongside the graph so the
+/// Honest extraction counters: served alongside the graph so the
 /// wire can state truncation and accuracy rather than implying completeness.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ExtractionStats {
@@ -57,7 +56,7 @@ pub struct CodeGraphData {
     pub nodes: Vec<Node>,
     pub edges: Vec<CodeEdge>,
     pub stats: ExtractionStats,
-    /// Source-tree fingerprint (ADR D6): the extraction cache key.
+    /// Source-tree fingerprint: the extraction cache key.
     pub fingerprint: String,
 }
 

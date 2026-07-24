@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
@@ -83,12 +83,12 @@ export function normalizeGraphSliceRequestIdentity(
 ): GraphSliceRequestIdentity {
   const normalizedCorpus = normalizeDashboardGraphCorpus(corpus);
   // The code corpus carries no vault Filter grammar, no salience lens, no as_of and
-  // no focus (ADR D1/D5 — the queryFn sends none of them), so none of those may be
+  // no focus (the queryFn sends none of them), so none of those may be
   // part of the request IDENTITY either: pin them to their canonical defaults so a
   // left-rail filter toggle cannot re-key and re-fetch a byte-identical code slice
-  // (settle-on-swap audit — the spurious re-deliveries that interrupted in-flight
+  // (the spurious re-deliveries that interrupted in-flight
   // settles and froze the layout mid-convergence). The ONE facet that does carry
-  // over is the timeline's `date_range` (code-timeline-range ADR): it stays in the
+  // over is the timeline's `date_range`: it stays in the
   // identity so a range change re-keys and re-narrows the code slice by mtime.
   if (normalizedCorpus === "code") {
     const dateRange = normalizeGraphSliceFilter(filter).date_range;
@@ -140,7 +140,7 @@ export function tiersReportBuilding(tiers: TiersBlock | undefined): boolean {
  * otherwise never clear from the held slice until an unrelated refetch — the stuck
  * "Still loading links…" banner (Issue #4A). While this holds, the stores-layer
  * building poll re-reads the tiers through the graph-slice DELTA path (sub-KB, not a
- * full ~3.5 MB refetch — graph-slice-delta ADR D4); once the fold flips the tier to
+ * full ~3.5 MB refetch); once the fold flips the tier to
  * ready it returns false and the poll stops. Mirrors `isBuildingReason` on the
  * chrome side.
  */
@@ -179,10 +179,10 @@ export function useGraphSlice(
       request.corpus,
     ),
     queryFn: () =>
-      // The code corpus is a DISCONNECTED dataset (ADR D1/D5): it carries no vault
+      // The code corpus is a DISCONNECTED dataset: it carries no vault
       // Filter grammar, no salience lens, and no as_of (present view only) — the
       // engine rejects those on the code corpus as typed errors. The ONE shared
-      // facet is the timeline `date_range` (code-timeline-range ADR), always sent
+      // facet is the timeline `date_range`, always sent
       // with its pinned `modified` criterion — the only date a code file carries.
       isCode
         ? engineClient.graphQuery({
@@ -207,7 +207,7 @@ export function useGraphSlice(
             focus: request.focus,
           }),
     enabled,
-    // Tier-1 filter changes (graph-filter-fetch-split ADR D1): hold the prior bounded
+    // Tier-1 filter changes: hold the prior bounded
     // slice while the newly-filtered one loads, so a filter change never blanks and a
     // previously-seen filter resolves instantly from cache. The scene's warm-start
     // (object constancy by id) animates the transition rather than re-exploding.
@@ -215,7 +215,7 @@ export function useGraphSlice(
   });
   // Held-slice tiers lag (Issue #4A): while a held tier reads building, the stores
   // building poll re-reads the tiers on a bounded cadence through the graph-slice
-  // DELTA path (sub-KB — graph-slice-delta ADR D4), NOT the old full-slice
+  // DELTA path (sub-KB), NOT the old full-slice
   // `refetchInterval` that perpetually re-pulled ~3.5 MB on a corpus under continuous
   // edit. The poll stops the moment the fold flips the tier to ready. Only a
   // present-view document-vault slice is delta-eligible; other shapes degrade to the
@@ -231,7 +231,7 @@ export function useGraphSlice(
 }
 
 /**
- * Constellation-first progressive graph slice (on-demand-cold-start ADR D1).
+ * Constellation-first progressive graph slice.
  * A LIVE document-granularity request whose slice is COLD (no held or
  * placeholder data — the 1.9MB-class read is still in flight) serves the
  * same-identity feature-LOD constellation as the held slice instead: 16x
@@ -303,7 +303,7 @@ export function useSalienceGraphSlice(
     granularity,
     state?.salience_lens,
     state?.salience_focus ?? null,
-    // The active corpus (codebase-graphing ADR D7): read from canonical
+    // The active corpus: read from canonical
     // dashboard state so a corpus switch is a re-query keyed on (…, corpus).
     state?.corpus,
   );
@@ -315,10 +315,10 @@ export function useSalienceGraphSlice(
  * re-derive partiality (dashboard-layer-ownership / degradation-is-read-from-
  * tiers). `loading` covers BOTH the initial fetch and a focus-change re-query
  * (`isFetching`), so the scene can show a loading state on a focus change behind
- * the stores->scene boundary (W04.P09.S39). `partial` is the engine's
+ * the stores->scene boundary. `partial` is the engine's
  * `salience_partial` flag when served, OR derived from a degraded tier in the
  * served block — read from tiers, fresh error tiers winning over a stale held
- * success block, NEVER from a bare transport error (S40).
+ * success block, NEVER from a bare transport error.
  */
 export interface SalienceSliceView {
   /** The active lens the slice was (or is being) computed for. */
@@ -389,15 +389,15 @@ export function useSalienceSliceView(
   return deriveSalienceSliceView(lens, slice.data, slice.error, loading);
 }
 
-// --- semantic embeddings (graph-semantic-embeddings ADR) ---------------------
+// --- semantic embeddings -----------------------------------------------------
 //
 // `GET /graph/embeddings` is the dedicated bounded embedding read. It is fetched
-// LAZILY only on entering semantic mode (the `enabled` gate, ADR D2) and cached
+// LAZILY only on entering semantic mode (the `enabled` gate) and cached
 // per generation (the watcher's gap-driven invalidation re-fetches on a
-// generation bump, ADR D8). The scene is a dumb consumer: it reads the
+// generation bump). The scene is a dumb consumer: it reads the
 // interpreted view below, never `engineClient.graphEmbeddings` or the raw `tiers`
-// block. Semantic availability is read from the `tiers` block (ADR D7 /
-// degradation-is-read-from-tiers), with FRESH error tiers winning over a stale
+// block. Semantic availability is read from the `tiers` block
+// (degradation-is-read-from-tiers), with FRESH error tiers winning over a stale
 // held-success block, never from a bare fetch rejection — so the scene draws the
 // honest fallback ring rather than flapping offline on a transport blip.
 
@@ -417,7 +417,7 @@ export interface SemanticEmbeddingsView {
    */
   unavailable: boolean;
   /**
-   * Meaning availability (graph-node-representation ADR D2): the mode is real and
+   * Meaning availability: the mode is real and
    * ready to ship ONLY when BOTH the embedding-presence floor is met AND the
    * `tiers` search/semantic tier reports available. An empty array with the tier
    * UP is NOT `unavailable` (held is read from tiers alone) — it is simply not yet
@@ -442,7 +442,7 @@ const SEMANTIC_TIER = "semantic";
 
 /**
  * The minimum count of served vectors for the stores-layer embedding-presence
- * floor (graph-node-representation ADR D2). At least this many nodes must carry a
+ * floor. At least this many nodes must carry a
  * real vector before Meaning is `available` — so the mode never reports ready on a
  * path that delivered no embeddings (the unserved-embedding blind spot). This is a
  * POSITIVE availability floor, NOT a held trigger: a response below it with the
@@ -484,7 +484,7 @@ export function normalizeGraphEmbeddingsRequestIdentity(
  * rendered as unavailable here (that is the query's error state), and an empty
  * embeddings array is NEVER read as held.
  *
- * Available (Meaning ships, ADR D2) requires BOTH the embedding-presence floor
+ * Available (Meaning ships) requires BOTH the embedding-presence floor
  * (`MEANING_EMBEDDING_PRESENCE_FLOOR` served vectors) AND the `semantic` tier
  * reporting available — so the mode reports ready only on a path that actually
  * delivered embeddings AND whose backend tier is up. The embeddings are keyed by
@@ -578,7 +578,7 @@ export function useGraphEmbeddings(
 /**
  * The graph slice's loading + degradation truth, derived inside the stores layer
  * so chrome (the nav toolbar's granularity descent) never reads the raw `tiers`
- * block (dashboard-layer-ownership / nav-controls ADR "States"). Contract §2: a
+ * block (dashboard-layer-ownership). Contract §2: a
  * tier marked `available:false` OR absent from the served block is a designed
  * degraded state. The reasons travel through both the success envelope
  * (`data.tiers`) and the error envelope (`EngineError.tiers`, transport-preserved)
@@ -591,8 +591,7 @@ export interface GraphSliceAvailability extends TierAvailability {
   loading: boolean;
   /** A re-query is in flight WHILE a previous slice is held on screen
    *  (`keepPreviousData`): the canvas renders this as a non-blocking corner
-   *  refresh banner, never a blanking loading card (universal-data-loading
-   *  ADR D2). */
+   *  refresh banner, never a blanking loading card. */
   refreshing: boolean;
 }
 
@@ -629,7 +628,7 @@ export function useGraphSliceAvailability(
     active && Boolean(slice?.isPending),
     // Refreshing = a re-query behind a HELD slice (fetching, not the initial
     // pending, data present) — the keepPreviousData window the canvas must
-    // signal without blanking (universal-data-loading ADR D2).
+    // signal without blanking.
     active &&
       Boolean(slice?.isFetching) &&
       !slice?.isPending &&
@@ -869,7 +868,7 @@ export function useNodeNeighbors(id: unknown, scope: unknown, depth: unknown = 1
 }
 
 // The edge-tier bucketing order for the inspector's neighbor list. The engine
-// never mints a semantic graph edge (ADR D3.5), so semantic is not an edge tier.
+// never mints a semantic graph edge, so semantic is not an edge tier.
 export const INSPECTOR_EDGE_TIER_ORDER = [
   "declared",
   "structural",

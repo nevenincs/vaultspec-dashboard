@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S143): destructive confirmations against the live
+// Localization E2E: destructive confirmations against the live
 // served application. Drives the REAL feature-archive confirmation (the one
 // destructive-kind confirmation reachable from the corpus browser) and proves
 // the dialog carries an explicit consequence body, a specific destructive verb

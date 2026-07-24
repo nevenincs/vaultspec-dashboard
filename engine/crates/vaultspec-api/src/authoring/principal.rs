@@ -43,9 +43,8 @@ pub enum PrincipalDenial {
 /// body.
 ///
 /// When the token was an A2A run token, the principal also carries the non-secret
-/// run-lease identity it belongs to (a2a-product-provisioning W02.P05.S37); it is
-/// server-resolved from the lease store, never a client claim, and is `None` for
-/// an authoring-session principal.
+/// run-lease identity it belongs to; it is server-resolved from the lease store,
+/// never a client claim, and is `None` for an authoring-session principal.
 #[derive(Debug, Clone)]
 pub struct AuthenticatedPrincipal {
     actor: ActorRef,
@@ -92,10 +91,10 @@ pub fn resolve_principal(
 }
 
 /// Resolve a presented A2A run token against the DEDICATED run-lease repository
-/// (a2a-product-provisioning W02.P05.S38) — the other path to a witness. The
-/// actor identity AND the non-secret lease identity both come from the
-/// server-held lease store (never a client claim), so the compile-time actor
-/// fence still holds. Unknown / expired / revoked / a store read fault →
+/// — the other path to a witness. The actor identity AND the non-secret lease
+/// identity both come from the server-held lease store (never a client claim),
+/// so the compile-time actor fence still holds. Unknown / expired / revoked / a
+/// store read fault →
 /// `UnknownPrincipal`, so the extraction seam can fall back to the authoring
 /// store fail-closed.
 pub fn resolve_lease_principal(

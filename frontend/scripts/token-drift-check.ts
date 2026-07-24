@@ -1,5 +1,5 @@
 /**
- * Token drift gate (plan W01.P05.S21).
+ * Token drift gate.
  *
  * Fails the build when the generator-managed color OR non-color foundation regions in
  * `src/styles.css` (color tier, theme remaps, and the Figma-binding type/radius/elevation/

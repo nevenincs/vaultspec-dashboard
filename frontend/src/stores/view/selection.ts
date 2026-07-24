@@ -56,7 +56,7 @@ export function useResolvedSelection(selectedNodeId: string | null): ResolvedSel
 }
 
 /**
- * Read the transient hovered node id (graph-perf 2026-06-18): VIEW-LOCAL, never
+ * Read the transient hovered node id: VIEW-LOCAL, never
  * the wire. Hover is not real cross-surface state — it lives in the view store and
  * is shared client-side across the scene, timeline, and hover-card host without any
  * server round-trip. The scene applies the node emphasis directly on the GPU; this

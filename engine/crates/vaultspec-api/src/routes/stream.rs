@@ -1,5 +1,5 @@
-//! `/status` and the multiplexed SSE stream (contract §6–§7,
-//! W03.P11.S51): channels, monotonic sequence numbers, and `since=`
+//! `/status` and the multiplexed SSE stream (contract §6–§7):
+//! channels, monotonic sequence numbers, and `since=`
 //! resume-or-gap on the single delta clock.
 
 use std::convert::Infallible;
@@ -20,7 +20,7 @@ use crate::app::AppState;
 // --- GET /status (the recovery snapshot, contract §6) -------------------------
 
 pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
-    // `/status` reports the ACTIVE scope's cell (W02.P04.S13): its live graph,
+    // `/status` reports the ACTIVE scope's cell: its live graph,
     // generation, watcher residency, and delta-clock tip. The active cell is
     // always present (pinned, never evicted).
     let cell = state.active_cell();
@@ -63,7 +63,7 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
     };
     let core = ingest_core::runner::CoreRunner::detect();
     // Git status of the served worktree (contract §6) — front-door parity
-    // with the CLI status verb (D6.1, addendum S04). Inspect only the served
+    // with the CLI status verb. Inspect only the served
     // worktree (status-worktree-latency): `/status` never needed every
     // worktree, so the targeted path keeps latency flat in worktree count.
     let git = ingest_git::workspace::Workspace::discover(&cell.root)
@@ -83,9 +83,9 @@ pub async fn status(State(state): State<Arc<AppState>>) -> Json<Value> {
         "backends": {
             "core": {"invocation": core.invocation.join(" ")},
             "rag": rag,
-            // The dashboard-owned A2A companion (a2a-product-provisioning
-            // W02.P04.S32): installation, gateway identity, the one readiness
-            // model, and lifecycle admission. A cold worker on a live gateway is
+            // The dashboard-owned A2A companion: installation, gateway identity,
+            // the one readiness model, and lifecycle admission. A cold worker on
+            // a live gateway is
             // READY here, never collapsed into a degraded backend.
             "a2a": state.a2a_lifecycle.stream_facts(),
         },
@@ -115,7 +115,7 @@ pub struct StreamParams {
     pub channels: Option<String>,
     #[serde(default)]
     pub since: Option<u64>,
-    /// The scope to stream (W02.P04.S14). WIRE CHANGE: per-scope live state
+    /// The scope to stream. WIRE CHANGE: per-scope live state
     /// means the client passes `scope` to stream a specific worktree. Absent,
     /// it falls back to the active scope — backward-compatible for a single-
     /// scope client. `since=` resume is against THIS scope's own monotonic
@@ -153,7 +153,7 @@ pub async fn stream(
         .map(str::to_string)
         .collect();
 
-    // Resolve the streamed scope's cell (W02.P04.S14). An explicit `scope`
+    // Resolve the streamed scope's cell. An explicit `scope`
     // resolves through the registry (building it warm if cold); absent or
     // unresolvable, the active scope's cell is the fallback — a stream is never
     // an error surface, so a bad scope degrades to the active scope rather than
@@ -178,8 +178,8 @@ pub async fn stream(
         // Poison recovery (robustness H2): a poisoned ring lock must not wedge
         // SSE resume; recover the inner buffer instead of panicking.
         let ring = cell.ring.lock().unwrap_or_else(|e| e.into_inner());
-        // Ring entries are `(seq, payload)` across BOTH granularity species
-        // (S50); resume and gap-detection are on the GLOBAL seq, application is
+        // Ring entries are `(seq, payload)` across BOTH granularity species;
+        // resume and gap-detection are on the GLOBAL seq, application is
         // per-granularity client-side.
         let oldest = ring.front().map(|(seq, _)| *seq);
         if let Some(oldest) = gap_oldest(since, oldest) {

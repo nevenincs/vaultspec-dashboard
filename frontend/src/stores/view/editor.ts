@@ -506,7 +506,7 @@ export function closeDocumentEditor(): void {
   useViewStore.getState().closeEditor();
 }
 
-/** Toggle the in-editor draft-vs-saved diff panel (authoring-surface ADR D4). */
+/** Toggle the in-editor draft-vs-saved diff panel. */
 export function toggleEditorDiff(): void {
   useViewStore.getState().toggleEditorDiff();
 }

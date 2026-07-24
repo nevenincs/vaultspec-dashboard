@@ -1,9 +1,9 @@
-//! Authorization engine and scope guards (W13.P20).
+//! Authorization engine and scope guards.
 //!
 //! This module is the who-can-act-on-what layer. It sits ABOVE identity resolution
 //! (the ASA-010 principal seam in [`super::principal`] already proves WHICH actor is
-//! acting) and BESIDE — never inside — the approval-policy plane ([`super::policy`],
-//! W10.P21) and the tool-permission plane ([`super::permissions`], W12.P22). It adds
+//! acting) and BESIDE — never inside — the approval-policy plane ([`super::policy`])
+//! and the tool-permission plane ([`super::permissions`]). It adds
 //! nothing those planes already own; it answers a distinct question: does this
 //! resolved, standing actor have the authority to run THIS command against THESE
 //! targets in THIS scope?

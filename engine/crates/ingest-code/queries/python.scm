@@ -1,4 +1,4 @@
-; Python import surface (codebase-graphing ADR D2).
+; Python import surface.
 
 ; import a.b, c.d          — each dotted_name is one module reference
 (import_statement

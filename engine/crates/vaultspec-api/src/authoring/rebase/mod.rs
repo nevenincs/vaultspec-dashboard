@@ -1,6 +1,6 @@
-//! Explicit rebase and supersession commands (W13.P28).
+//! Explicit rebase and supersession commands.
 //!
-//! The concurrency-leases-conflicts ADR is emphatic that rebase is EXPLICIT and
+//! Rebase is deliberately EXPLICIT and
 //! never a silent mutation: "A conflicted proposal can be regenerated or rebased
 //! into a new proposal revision against the current document state. Any automatic
 //! or LLM-assisted rebase produces a new reviewable candidate and invalidates prior
@@ -395,7 +395,7 @@ enum CarriedDrafts {
 /// materialized `ReplaceBody`/`Rename` children are carry-forwardable; anything else
 /// denies rather than silently dropping the edit intent.
 ///
-/// `CreateDocument` (W02.P05) is denied here too, at the VERY FIRST check (its target is
+/// `CreateDocument` is denied here too, at the VERY FIRST check (its target is
 /// a `ProvisionalCreate`, never `DocumentRef::Existing`) — deliberately, not an
 /// oversight: a create has no prior REVISION to rebase against (nothing existed to drift
 /// from), so "carry forward onto the current base" is not a meaningful operation for it.

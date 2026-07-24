@@ -398,8 +398,8 @@ describe("remaining scoped query cache boundaries", () => {
 });
 
 // ---------------------------------------------------------------------------
-// deriveHistoryView (Status overview recent-commit degradation, contract §2 /
-// status-overview ADR): degradation is read from the served `tiers` block (the
+// deriveHistoryView (Status overview recent-commit degradation, contract §2):
+// degradation is read from the served `tiers` block (the
 // `structural` tier the commit read resolves through), never guessed from a bare
 // transport error — and a FRESH error envelope's tiers win over a stale block.
 // ---------------------------------------------------------------------------

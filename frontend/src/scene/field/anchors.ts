@@ -1,4 +1,4 @@
-// Screen-space anchor driving for DOM islands (W01.P04.S14, ADR G6.a, RL-4).
+// Screen-space anchor driving for DOM islands (RL-4).
 //
 // The hybrid pattern's bridge: opened nodes render as DOM islands above the
 // GPU field, positioned through `trackNode` subscriptions on the seam. The

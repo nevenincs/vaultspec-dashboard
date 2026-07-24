@@ -139,7 +139,7 @@ export interface KeymapDeps {
  * Whether the event is an in-flight IME composition keystroke. A composition-confirming
  * key (e.g. Enter/Space selecting a candidate) must NEVER resolve to a command binding:
  * it belongs to the input method, and composition can occur inside contentEditable regions
- * the text-entry target check does not recognize (keyboard-shortcut-conflict-review ADR D6).
+ * the text-entry target check does not recognize.
  * `isComposing` is the modern signal; `keyCode === 229` is the legacy fallback some engines
  * still emit while composing.
  */

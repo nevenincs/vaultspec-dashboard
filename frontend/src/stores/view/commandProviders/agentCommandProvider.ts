@@ -1,7 +1,6 @@
-// Contributes agent
-// verbs to the ONE Cmd+K command plane, each composing the SHARED `agentActions`
-// builder (actions-keymap-palette) so the palette, the keymap chord, the footer
-// chip, and the in-panel controls all surface one verb from one definition.
+// Contributes agent verbs to the ONE Cmd+K command plane, each composing the SHARED
+// `agentActions` builder so the palette, the keymap chord, the footer chip, and the
+// in-panel controls all surface one verb from one definition.
 // Grouped under the `app` family, like the shared Settings / control-panel
 // commands. Stop is offered ONLY when a run is actually stoppable (eligibility
 // gate); toggle-panel and New session are

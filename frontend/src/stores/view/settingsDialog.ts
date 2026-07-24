@@ -1,4 +1,4 @@
-// Shared open/close state for the settings dialog (dashboard-settings W04.P09).
+// Shared open/close state for the settings dialog.
 // Both entry points — chrome and the command-palette "Settings" command — drive
 // the same dialog, so the open flag is a tiny shared view-store concept rather
 // than per-component state. The dialog remains app chrome; the mutable singleton

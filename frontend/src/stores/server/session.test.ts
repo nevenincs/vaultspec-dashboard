@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// Session + settings client and restore/persistence behavior (user-state-
-// persistence W04.P10.S33). Everything runs through the SAME client the live
+// Session + settings client and restore/persistence behavior.
+// Everything runs through the SAME client the live
 // app uses, over the REAL `vaultspec serve` engine spawned for the test run —
 // no in-memory double. A passing test exercised the genuine client → wire →
 // engine path. The engine's session store is shared and persistent across the

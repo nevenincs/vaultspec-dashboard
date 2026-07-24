@@ -6,7 +6,7 @@ import { classifyError, queryErrorRouter } from "../../platform/policy/failurePo
 // engine read flows through it. SSE streams will feed targeted cache
 // invalidation + small live slices once the engine's /stream lands.
 //
-// Every query failure routes through the platform failure policy (ADR D4): it
+// Every query failure routes through the platform failure policy: it
 // is classified and logged once here, and the retry predicate honors the
 // taxonomy - retry only the transient kinds (503/429/network blip), fail fast
 // on degraded/fatal so the degradation surfaces render immediately.

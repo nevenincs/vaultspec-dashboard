@@ -121,7 +121,7 @@ pub fn request_fixture(family: EndpointFamily) -> Value {
                 },
             },
         )),
-        // W12.P41 A3b: the route body is a bare `AgentToolCall` (not a domain DTO),
+        // The route body is a bare `AgentToolCall` (not a domain DTO),
         // riding the SAME `CommandEnvelope` wire wrapper as every other command route
         // (`ResolvedCommand<AgentToolCall>` deserializes `CommandEnvelope<AgentToolCall>`).
         // Built by hand (rather than importing `tools::AgentToolCall`) so `api.rs` stays

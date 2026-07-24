@@ -1,8 +1,8 @@
-// End-to-end smoke against live `vaultspec serve` (W03.P12.S50): the
+// End-to-end smoke against live `vaultspec serve`: the
 // SPA is served by the engine itself (single origin, token meta tag per
 // DF-6), the constellation renders from the real graph, and search
 // round-trips through the rag pass-through. The scrub leg is BLOCKED on
-// contract divergence item 1 (S49 record: /graph/asof and /graph/diff
+// a contract divergence (/graph/asof and /graph/diff
 // parse git revisions only, rejecting the millisecond timestamps the
 // contract commits) — flagged as an external dependency, not skipped
 // silently; it completes when the engine reconciliation lands.
@@ -79,7 +79,7 @@ test("search round-trips through the live pass-through", async ({ page }) => {
     });
     // Live /search shape: { data: { results, via, timing, ... }, tiers }
     // There is no nested `envelope` field — the results live directly in
-    // data (S49 pass-through contract, engine routes RAG response as-is).
+    // data (pass-through contract, engine routes RAG response as-is).
     const body = (await response.json()) as {
       data?: { results?: unknown[]; via?: string };
       tiers?: Record<string, unknown>;
@@ -94,7 +94,7 @@ test("search round-trips through the live pass-through", async ({ page }) => {
   expect(roundTrip.ok).toBe(true);
 });
 
-// RETIRED (localization-S108 follow-up sweep): "scrubbing the playhead renders
+// RETIRED (follow-up sweep): "scrubbing the playhead renders
 // the network as of T". The timeline rebuild tore down the playhead overlay
 // and its grip entirely (Timeline.tsx: "no visual playhead overlay"), and the
 // time-travel driver (timeTravel.ts scrubTo) currently has NO production call

@@ -1,4 +1,4 @@
-// Agent ActionDescriptor + seam tests (agentic-authoring-ux W02.P02.S11). Pure
+// Agent ActionDescriptor + seam tests. Pure
 // logic over the shared builders and imperative seams — the wire is exercised only
 // where a mutation is asserted (a spied client method + a preset session token, no
 // mocked engine transport otherwise).

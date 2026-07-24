@@ -89,7 +89,7 @@ fn fixture() -> LinkageGraph {
 
 #[test]
 fn health_filter_selects_dangling_and_orphaned_nodes() {
-    // filter-controls campaign: the health facet narrows by graph-derived
+    // The health facet narrows by graph-derived
     // conditions — `dangling` (a broken outgoing edge) and `orphaned` (no
     // incoming edge) — applied in graph_query (graph context), and an
     // out-of-set condition 400s.
@@ -281,7 +281,7 @@ fn feature_granularity_returns_meta_edges_not_doc_edges() {
     assert!(slice.edges.is_empty());
     assert_eq!(slice.meta_edges.len(), 1);
     assert_eq!(slice.meta_edges[0].count, 1, "cross-feature resolved edge");
-    // Meta-edges address feature NODE ids, not bare tags (S02).
+    // Meta-edges address feature NODE ids, not bare tags.
     assert_eq!(slice.meta_edges[0].src, "feature:feature-a");
     assert_eq!(slice.meta_edges[0].dst, "feature:feature-b");
 }
@@ -311,7 +311,7 @@ fn filtered_feature_granularity_prunes_dangling_meta_edges() {
 
 #[test]
 fn feature_granularity_synthesizes_convergence_nodes() {
-    // ADR D4.1: the convergence entity itself, never empty nodes.
+    // The convergence entity itself, never empty nodes.
     let g = fixture();
     let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Feature).unwrap();
     assert_eq!(slice.nodes.len(), 2);
@@ -327,7 +327,7 @@ fn feature_granularity_synthesizes_convergence_nodes() {
 
 #[test]
 fn document_list_shape_carries_contract_projections() {
-    // Addendum S03: degree_by_tier + lifecycle on the LIST shape.
+    // degree_by_tier + lifecycle on the LIST shape.
     let g = fixture();
     let slice = graph_query(&g, &scope(), Filter::default(), Granularity::Document).unwrap();
     let a = slice
@@ -337,7 +337,7 @@ fn document_list_shape_carries_contract_projections() {
         .expect("a-plan listed");
     assert!(a["degree_by_tier"]["structural"].as_u64().unwrap() >= 1);
     assert!(a.get("lifecycle").is_some(), "lifecycle key present");
-    // Ontology projection (graph-node-semantics ADR): authority_class and
+    // Ontology projection: authority_class and
     // aggregate ride additively on the document list shape.
     assert_eq!(
         a["authority_class"], "roadmap",
@@ -401,7 +401,7 @@ fn doc_with_state(stem: &str, doc_type: &str, state: &str) -> Node {
 
 #[test]
 fn document_node_carries_per_type_status_when_the_type_has_one() {
-    // node-visual-richness ADR P01: status_value/status_class ride additively
+    // status_value/status_class ride additively
     // on the document list shape, projected from the parsed lifecycle state.
     let mut g = LinkageGraph::new();
     g.upsert_node(doc_with_state("x-adr", "adr", "accepted"));
@@ -553,14 +553,14 @@ fn exec_doc(stem: &str) -> Node {
 
 #[test]
 fn plan_container_to_exec_binding_is_pruned_but_keeps_its_stable_key() {
-    // Documents-only slice (commit 60f6779d21, narrowed by the 2026-06-21
+    // Documents-only slice (narrowed by the
     // wire-waste prune): the PlanContainer(step) -> exec-record binding edge
     // has a PlanContainer src, which is NOT a `.vault/` document and is
     // excluded from the document slice — so the binding edge is PRUNED rather
     // than served to dangle against an absent node the client only filters out
     // (the lineage representation that once consumed the `generated-by` spine
-    // is retired). Its stable key still never re-keys (graph-lineage-dag ADR
-    // D3.3): the derivation label was never an id input.
+    // is retired). Its stable key still never re-keys: the derivation label
+    // was never an id input.
     let mut g = LinkageGraph::new();
     let step = plan_container("2026-06-16-feature-plan", "W01/P01/S01");
     let exec = exec_doc("2026-06-16-feature-W01-P01-S01");
@@ -603,7 +603,7 @@ fn plan_container_to_exec_binding_is_pruned_but_keeps_its_stable_key() {
         "the PlanContainer->exec binding edge is pruned from the documents-only slice"
     );
 
-    // D3.3: the stable key never re-keys. Re-computing the edge id with the
+    // The stable key never re-keys. Re-computing the edge id with the
     // SAME endpoints/relation/tier/provenance yields the same id.
     let recomputed = edge_id(
         &step_id,
@@ -614,13 +614,13 @@ fn plan_container_to_exec_binding_is_pruned_but_keeps_its_stable_key() {
     );
     assert_eq!(
         recomputed, binding_id,
-        "the derivation label never threads into the edge stable key (D3.3)"
+        "the derivation label never threads into the edge stable key"
     );
 }
 
 #[test]
 fn contains_hierarchy_edges_are_pruned_from_the_documents_only_slice() {
-    // Documents-only slice (commit 60f6779d21, narrowed by the 2026-06-21
+    // Documents-only slice (narrowed by the
     // wire-waste prune): the plan-internal Contains hierarchy
     // (plan -> wave -> phase -> step) has PlanContainer endpoints, none of
     // which are `.vault/` documents. The document slice serves documents only,
@@ -667,7 +667,7 @@ fn contains_hierarchy_edges_are_pruned_from_the_documents_only_slice() {
 }
 
 /// An `index` doc-type document node (a generated feature index): a real
-/// `doc:` node on disk, but never a displayable knowledge node (ADR D5).
+/// `doc:` node on disk, but never a displayable knowledge node.
 fn index_doc(stem: &str, feature: &str) -> Node {
     Node {
         id: node_id(&CanonicalKey::Document { stem }),
@@ -690,7 +690,7 @@ fn index_doc(stem: &str, feature: &str) -> Node {
 }
 
 /// A `code` artifact node (`NodeKind::CodeArtifact`): a source file in the
-/// index, but never a displayable knowledge node (ADR D6).
+/// index, but never a displayable knowledge node.
 fn code_artifact(path: &str, feature: &str) -> Node {
     Node {
         id: node_id(&CanonicalKey::CodeArtifact { path, symbol: None }),
@@ -714,7 +714,7 @@ fn code_artifact(path: &str, feature: &str) -> Node {
 
 #[test]
 fn vault_tree_rows_exclude_index_documents() {
-    // terminology-standardization ADR D5: an `index` document is a real
+    // An `index` document is a real
     // `doc:` node but must never appear as a `/vault-tree` row.
     let mut g = LinkageGraph::new();
     g.upsert_node(doc("a-plan", "feature-a"));
@@ -737,7 +737,7 @@ fn vault_tree_rows_exclude_index_documents() {
 
 #[test]
 fn vault_tree_rows_carry_size_and_absent_size_serves_null() {
-    // left-rail-tree-controls ADR D2: the ingest-measured weight rides the
+    // The ingest-measured weight rides the
     // row; a node without one (older cache, projection) serves an honest
     // null, never a fabricated zero.
     let mut g = LinkageGraph::new();
@@ -822,7 +822,7 @@ fn code_file_rows_empty_on_a_graph_with_no_code() {
 
 #[test]
 fn graph_query_excludes_index_and_code_nodes() {
-    // terminology-standardization ADR D5/D6: an `index` document and a
+    // An `index` document and a
     // `code` artifact are real graph nodes but are never emitted as
     // knowledge-graph nodes by the document slice.
     let mut g = LinkageGraph::new();
@@ -855,7 +855,7 @@ fn graph_query_excludes_index_and_code_nodes() {
 
 #[test]
 fn graph_query_drops_edges_to_an_excluded_node() {
-    // terminology-standardization ADR D5/D6 + graph-queries-are-bounded:
+    // Graph-queries-are-bounded:
     // when an `index`/`code` node is excluded from the kept node set, any
     // edge whose endpoint is that excluded (but in-scope) node must also be
     // dropped, so the returned subgraph stays self-consistent (only edges
@@ -900,7 +900,7 @@ fn graph_query_drops_edges_to_an_excluded_node() {
 
 #[test]
 fn document_slice_drops_unresolved_danglers_by_default_keeps_the_broken_lens() {
-    // User directive (2026-06-21): the backend must never serve an edge the
+    // The backend must never serve an edge the
     // client only filters out. A RESOLVED edge whose target never resolved to
     // a real graph node (the shape that leaked ~1.5k `mentions`-to-plan-step
     // edges onto the wire) is pure waste — dropped by default. A BROKEN edge to
@@ -954,7 +954,7 @@ fn text_and_feature_facets_narrow_nodes() {
 
 #[test]
 fn feature_delta_projects_constellation_changes_tagged_on_the_clock() {
-    // S50: the feature/meta-edge delta between two graph states.
+    // The feature/meta-edge delta between two graph states.
     // old: just feature-a, no cross-feature edge (no meta-edge yet).
     let mut old = LinkageGraph::new();
     old.upsert_node(doc("a-plan", "feature-a"));
@@ -993,7 +993,7 @@ fn feature_delta_projects_constellation_changes_tagged_on_the_clock() {
 
 #[test]
 fn over_ceiling_feature_delta_degrades_to_keyframe_only() {
-    // GIR-014: a feature diff whose feature-node/meta-edge delta count exceeds
+    // A feature diff whose feature-node/meta-edge delta count exceeds
     // MAX_DIFF_DELTAS degrades to keyframe-only (empty entries + honest
     // truncation), the SAME contract as the document diff. One distinct
     // feature tag per doc → one feature-convergence node → one add delta.

@@ -281,7 +281,7 @@ describe("assembleTeamRun", () => {
 });
 
 // GOLDEN FIXTURE — verbatim frame payloads CAPTURED LIVE from a real
-// `mock-autonomous` run over the a2a gateway's `/v1/runs/{id}/stream` (2026-07-18),
+// `mock-autonomous` run over the a2a gateway's `/v1/runs/{id}/stream`,
 // so the reducer is proven against actual wire bytes, not hand-authored shapes.
 // The `agents[]` roster carries `role`/`display_name`/`description` the reducer
 // must ignore, reading only `agent_id`/`state` — this fixture locks that.

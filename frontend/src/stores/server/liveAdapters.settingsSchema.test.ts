@@ -1,5 +1,4 @@
-// Settings SCHEMA surface against the REAL engine (dashboard-settings
-// W02.P05.S14). The live `vaultspec serve` GET /settings/schema envelope is fed
+// Settings SCHEMA surface against the REAL engine. The live `vaultspec serve` GET /settings/schema envelope is fed
 // through the SAME tolerant adapter the app uses and must reconcile onto the
 // internal schema shape; the engine's typed PUT validation (the `error_kind` on
 // a rejected write) is exercised against the live route. No mock, no captured

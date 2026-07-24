@@ -1,4 +1,4 @@
-// The transcript -> inbox bridge affordance (review-surface-flow ADR F1). Pinned
+// The transcript -> inbox bridge affordance. Pinned
 // composer-adjacent in the transcript view, it signposts pending changes the
 // conversation cannot show inline: proposals NOT correlated to the current
 // session's runs (other sessions, expired sessions, human/non-agent changesets)

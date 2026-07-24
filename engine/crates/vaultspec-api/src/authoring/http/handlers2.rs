@@ -504,7 +504,7 @@ pub async fn submit_review_decision(
         )
         .into_response();
     }
-    // FLIP (W14.P42a S261): `Respond` is a claim-based CLARIFICATION exchange, not an
+    // FLIP: `Respond` is a claim-based CLARIFICATION exchange, not an
     // approval decision — it never submits a decision and preserves the changeset status.
     // Route it to the review-station engine, resolving the changeset from the approval.
     if matches!(payload.decision, ReviewDecisionKind::Respond) {
@@ -594,7 +594,7 @@ pub async fn submit_review_decision(
     }
 }
 
-// --- review station: queue, claims, provenance (W13.P24, wired W14.P42a) -------
+// --- review station: queue, claims, provenance ---------------------------------
 
 /// Map a review-claim operation outcome to its enveloped VALUE: allowed vs a denial value (a
 /// contended claim, a non-holder release/respond, a self-review ban) with the item's current
@@ -731,7 +731,7 @@ pub(super) fn respond_via_review_decision(
 }
 
 /// `POST /authoring/v1/proposals/{changeset_id}/acknowledge` — durable after-fact
-/// acknowledgement (W10) of a system-auto-applied changeset served on the
+/// acknowledgement of a system-auto-applied changeset served on the
 /// `AppliedUnderPolicyProjection` lane. Non-destructive and status-preserving (it
 /// never transitions the changeset); idempotent per `idempotency_key` — a replay
 /// serves the SAME record rather than double-counting. The reviewer is the
@@ -920,8 +920,8 @@ pub(super) fn mode_update_response(
 
 /// `POST /authoring/v1/direct-writes` — route a human editor save through the
 /// authoring ledger as a self-approved direct changeset. Direct-changeset is
-/// the sole materializer (W14.P47 retired the legacy `/ops/core` dual-run
-/// comparison); `capabilities.enabled` is a pure kill switch, on by default.
+/// the sole materializer (the legacy `/ops/core` dual-run comparison has been
+/// retired); `capabilities.enabled` is a pure kill switch, on by default.
 pub async fn direct_write(
     State(state): State<Arc<AppState>>,
     command: ResolvedCommand<DirectWriteRequestDto>,
@@ -996,9 +996,9 @@ pub(super) fn direct_write_outcome_response(
     super::super::response::snapshot(state, data).into_response()
 }
 
-// --- advisory leases (W13.P26, wired W14.P42a) --------------------------------
+// --- advisory leases -----------------------------------------------------------
 
-/// The per-document lease scope for a target: the SAME P27 `document_lease_scope`
+/// The per-document lease scope for a target: the SAME `document_lease_scope`
 /// convention (`{scope_id_for_worktree}::{node_id}`) the apply-time fencing check derives,
 /// so acquire and apply agree on the fenced scope. `None` for a target with no fixed
 /// document identity (a provisional create), which cannot be leased.

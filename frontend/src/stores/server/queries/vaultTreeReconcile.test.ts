@@ -1,6 +1,6 @@
-// Pure unit tests for the generation-keyed listing reconcile (vault-tree-delta ADR
-// D4), exercising the KEY-GENERIC core through the vault-tree (stem-keyed) spec: the
-// merge, the patch/full-drain/noop decision, and the review-HIGH identity guard.
+// Pure unit tests for the generation-keyed listing reconcile, exercising the
+// KEY-GENERIC core through the vault-tree (stem-keyed) spec: the
+// merge, the patch/full-drain/noop decision, and the identity guard.
 // Both are pure — no wire, no DOM — so every branch is deterministic. The
 // code-files (path-keyed) spec is covered by codeFilesReconcile.test.ts; the live
 // end-to-end delta path by the queries/listings live suite.
@@ -156,7 +156,7 @@ describe("planRowReconcile (patch / full-drain / noop decision, vault spec)", ()
   });
 });
 
-describe("applyRowReconcile (review HIGH: overlapping reconciles)", () => {
+describe("applyRowReconcile (overlapping reconciles)", () => {
   const delta = (over: Partial<VaultTreeDeltaResponse>): VaultTreeDeltaResponse => ({
     generation: 5,
     tiers: TIERS,

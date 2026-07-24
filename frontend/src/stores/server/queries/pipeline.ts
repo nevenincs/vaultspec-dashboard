@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
@@ -29,7 +29,7 @@ import {
 import { engineKeys } from "./internal";
 import { WORK_PILLAR_TIER } from "./status";
 
-// --- in-flight pipeline status (dashboard-pipeline-status ADR) -------------------------
+// --- in-flight pipeline status ---------------------------------------------------------
 //
 // The Work surface's content data: the in-flight pipeline projection (active plans +
 // in-flight ADRs) and a plan's bounded wave/phase/step interior. The surface is app
@@ -42,7 +42,7 @@ import { WORK_PILLAR_TIER } from "./status";
 // (views-are-projections-of-one-model); the bounded interior + honest truncation honor
 // graph-queries-are-bounded-by-default.
 //
-// STAGED CAPABILITY (dashboard-pipeline-status ADR "Constraints"): the honest full
+// STAGED CAPABILITY: the honest full
 // surface is gated on the sibling `dashboard-pipeline-wire`. These constants signal
 // which wire capabilities are served so the surface renders a designed per-capability
 // placeholder rather than a broken control when a capability is not yet live (mirroring
@@ -88,10 +88,10 @@ export function normalizePlanInteriorRequestIdentity(
 }
 
 /**
- * The in-flight pipeline projection for the active scope (W01.P02.S06). Disabled when
+ * The in-flight pipeline projection for the active scope. Disabled when
  * scope is null (no worktree resolved yet), following the `useGraphSlice` pattern. The
- * `asOf` playhead folds into the cache key so a historical view reads a distinct entry
- * (W03.P08.S36 / dashboard-timeline ADR). The live wire's `pipeline(scope)` takes no
+ * `asOf` playhead folds into the cache key so a historical view reads a distinct entry.
+ * The live wire's `pipeline(scope)` takes no
  * as-of yet, so a past playhead reuses the live projection until the wire grows the
  * parameter — the surface still degrades honestly via the served tiers block.
  */
@@ -107,7 +107,7 @@ export function usePipelineStatus(scope: unknown, asOf?: unknown) {
 }
 
 /**
- * A plan node's bounded wave/phase/step interior (W01.P02.S07). Disabled until a plan
+ * A plan node's bounded wave/phase/step interior. Disabled until a plan
  * row is expanded (`planId === null` means collapsed), following the `useNodeNeighbors`
  * enabled-on-id pattern so the interior is fetched lazily, never for every row.
  */
@@ -123,7 +123,7 @@ export function usePlanInterior(planId: unknown, scope: unknown) {
 }
 
 /**
- * The interpreted pipeline-status view the Work surface renders (W01.P02.S08). Modeled on
+ * The interpreted pipeline-status view the Work surface renders. Modeled on
  * `deriveGraphSliceAvailability`: `loading` is the query's in-flight state, `degraded` is
  * read from the served `tiers` block (the `structural` tier the pipeline projection
  * resolves through), and `artifacts` is the in-flight list. The surface consumes this,
@@ -432,11 +432,11 @@ export function derivePipelineStatusView(
 }
 
 /**
- * Stores hook: the interpreted pipeline-status view for a scope + playhead (W01.P02.S09).
+ * Stores hook: the interpreted pipeline-status view for a scope + playhead.
  * Reads tiers from the success envelope, then the `EngineError` envelope (the FRESH error
  * winning over a stale held block), so the Work surface consumes interpreted truth and
  * never the raw tiers block. The active as-of playhead threads through so the surface
- * reflects the historical pipeline under a past playhead (W03.P08.S36).
+ * reflects the historical pipeline under a past playhead.
  */
 export function usePipelineStatusView(
   scope: unknown,
@@ -452,7 +452,7 @@ export function usePipelineStatusView(
 }
 
 /**
- * The interpreted plan-interior view the expandable step tree renders (W01.P02.S11):
+ * The interpreted plan-interior view the expandable step tree renders:
  * the ordered wave→phase→step tree with per-container rolled-up completion, the honest
  * bounded-interior truncation block, and the loading flag. The surface consumes this,
  * never the raw interior response.
@@ -572,7 +572,7 @@ function interiorStepView(step: InteriorStep): InteriorStepView {
 }
 
 /**
- * Derive the plan-interior view (W01.P02.S11): the per-container rollups and the
+ * Derive the plan-interior view: the per-container rollups and the
  * plan-level completion are READ FROM THE ENGINE (computed pre-truncation), never
  * re-counted client-side over a possibly-truncated tree
  * (`display-state-is-backend-served-not-frontend-derived`). The truncated honesty
@@ -654,8 +654,8 @@ export function derivePlanInteriorView(
 }
 
 /**
- * Stores hook: the interpreted plan-interior view for an expanded plan node
- * (W01.P02.S11). `planId === null` means the row is collapsed: the query is disabled and
+ * Stores hook: the interpreted plan-interior view for an expanded plan node.
+ * `planId === null` means the row is collapsed: the query is disabled and
  * the view is the inert empty state. The Work step tree renders rolled-up completion and
  * honest truncation directly from this, never the raw interior response.
  */

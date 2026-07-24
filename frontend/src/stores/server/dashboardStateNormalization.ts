@@ -23,7 +23,7 @@ import { normalizeNodeId, normalizeNodeIds } from "../nodeIds";
 import { normalizeSearchQuery } from "../searchQuery";
 
 // The toggleable EDGE-tier filter vocabulary (3 tiers). The engine never mints a
-// semantic graph edge (ADR D3.5), so `semantic` is not an edge-tier filter —
+// semantic graph edge, so `semantic` is not an edge-tier filter —
 // distinct from the 4-tier availability `CANONICAL_TIERS` degradation block.
 const DASHBOARD_EDGE_TIERS = ["declared", "structural", "temporal"] as const;
 const DASHBOARD_CONFIDENCE_FILTER_TIERS = ["temporal"] as const;
@@ -134,7 +134,7 @@ export function normalizeDashboardGraphGranularity(
   );
 }
 
-// The active graph corpus / view mode (codebase-graphing ADR D7): vault is the
+// The active graph corpus / view mode: vault is the
 // default so an absent or malformed value is the pre-corpus (vault) behaviour.
 export function normalizeDashboardGraphCorpus(corpus: unknown): GraphCorpus {
   return normalizeStringMember(corpus, GRAPH_CORPORA) ?? "vault";

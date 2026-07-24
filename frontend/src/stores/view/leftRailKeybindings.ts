@@ -111,7 +111,7 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
     },
     {
       id: LEFT_RAIL_EXPAND_TREE_ACTION_ID,
-      // ACCEPTED RISK (keyboard-shortcut-conflict-review ADR D7): Mod+Alt+] is a
+      // ACCEPTED RISK: Mod+Alt+] is a
       // Mod+Alt+<symbol> default, and `]` requires AltGr on most EU layouts where AltGr
       // emits ctrlKey+altKey (indistinguishable from Mod+Alt on non-Mac) — so this can
       // misfire or be unreachable there. No general AltGr fix lands now (a chord-model
@@ -124,7 +124,7 @@ export function deriveLeftRailKeybindings(): KeybindingDef[] {
     },
     {
       id: LEFT_RAIL_COLLAPSE_TREE_ACTION_ID,
-      // ACCEPTED RISK (keyboard-shortcut-conflict-review ADR D7): see the Mod+Alt+] note
+      // ACCEPTED RISK: see the Mod+Alt+] note
       // above — `[` likewise requires AltGr on most EU layouts. Same return trigger:
       // re-chord this pair (e.g. toward Mod+Shift+[) on a real affected-layout report.
       defaultChord: "Mod+Alt+[",
@@ -243,7 +243,7 @@ export function resetFiltersAction(resetFilters: () => void): ActionDescriptor {
   };
 }
 
-/** The vault tree's sort verbs (left-rail-tree-controls ADR D3): ONE descriptor
+/** The vault tree's sort verbs: ONE descriptor
  *  per sort option under a stable shared id, consumed by the rail-top sort menu,
  *  the vault-section context menu, and the palette. Choosing the active key again
  *  flips direction (the store owns that gesture). Store-only intents. */

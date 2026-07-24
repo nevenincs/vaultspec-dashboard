@@ -1,4 +1,4 @@
-# L0 runner-foundation probe (W06.P15.S179). Verifies each self-hosted runner is
+# L0 runner-foundation probe. Verifies each self-hosted runner is
 # correctly based BEFORE anything is built on it: shell:bash resolves and runs
 # (Git Bash, not WSL bash, on Windows), pwsh runs, and a third-party bash-using
 # action (dtolnay/rust-toolchain — the exact one that failed on WSL bash) succeeds.
@@ -10,6 +10,10 @@ on:
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-runner-probe-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   probe-linux:

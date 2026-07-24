@@ -1,6 +1,6 @@
 //! Durable authoring sessions, prompt turns, run ownership, and recovery snapshots.
 //!
-//! W12.P25 stores workflow state owned by the authoring backend. LangGraph ids
+//! This store keeps workflow state owned by the authoring backend. LangGraph ids
 //! are correlation references only; the session, turn, run, cancellation, and
 //! recovery surfaces below are product state in the authoring store.
 
@@ -39,7 +39,7 @@ pub(crate) const SESSION_LIST_CAP_MAX: u32 = 100;
 pub(crate) const PROMPT_TEXT_MAX_BYTES: usize = 64 * 1024;
 const RECOVERY_TURN_CAP: u32 = 20;
 const RECOVERY_RUN_CAP: u32 = 20;
-/// The bounded per-session turn queue depth (D2). A turn submitted while a run is
+/// The bounded per-session turn queue depth. A turn submitted while a run is
 /// active is enqueued rather than joined; the ninth pending turn is a typed 422.
 pub(crate) const TURN_QUEUE_CAP: i64 = 8;
 
@@ -101,7 +101,7 @@ impl SessionRepository<'_, '_> {
 
     /// Start a prompt turn. When the session has no active run the turn starts its own
     /// fresh run immediately (`Some(run)` — the `Direct` path). When a run is already
-    /// active the turn is ENQUEUED (D2): persisted as a `Queued` turn with no run yet
+    /// active the turn is ENQUEUED: persisted as a `Queued` turn with no run yet
     /// (`None`), bounded by [`TURN_QUEUE_CAP`] per session — the mid-run JOIN arm is
     /// deleted, so a second prompt is never silently folded into the running turn.
     pub fn start_prompt_turn(
@@ -203,7 +203,7 @@ impl SessionRepository<'_, '_> {
     }
 
     /// Promote the oldest queued turn (FIFO by `turn_index`) into a fresh `Active` run,
-    /// inside the SAME unit of work as the settle/cancel that drained the prior run (D2)
+    /// inside the SAME unit of work as the settle/cancel that drained the prior run
     /// — so a crash between settle and promote cannot strand a queued turn. Promotes
     /// only in a still-`Active` session; a cancelled session's queue is voided, never
     /// promoted. Returns the new run (for the `run.started` event) or `None` when the
@@ -233,8 +233,8 @@ impl SessionRepository<'_, '_> {
         Ok(Some(run))
     }
 
-    /// Cancel a single run (D2 run-scoped). The run transitions to `Cancelled`; the
-    /// owning session is LEFT `Active` (the D2 cutover deleted the session cascade), so
+    /// Cancel a single run (run-scoped). The run transitions to `Cancelled`; the
+    /// owning session is LEFT `Active` (a prior cutover deleted the session cascade), so
     /// Stop halts the run and the conversation continues — the caller promotes the next
     /// queued turn into the freed session. Terminal runs replay as an idempotent no-op.
     pub fn cancel_run(
@@ -263,7 +263,7 @@ impl SessionRepository<'_, '_> {
         Ok((run, true))
     }
 
-    /// The bounded page of ABANDONED candidates for the janitor's run-reap (P04a/D1):
+    /// The bounded page of ABANDONED candidates for the janitor's run-reap:
     /// runs still `active = 1` whose `updated_at_ms` is older than the staleness
     /// cutoff — a runtime that died without reporting settlement. Oldest first so the
     /// longest-abandoned runs are reaped before the budget runs out.
@@ -283,7 +283,7 @@ impl SessionRepository<'_, '_> {
             .collect()
     }
 
-    /// The janitor's abandoned-run transition (P04a/D1): the same `Failed` settle the
+    /// The janitor's abandoned-run transition: the same `Failed` settle the
     /// owner would report, applied as SYSTEM hygiene when no settlement report ever
     /// arrived. Deliberately skips the owner guard — the owner is presumed dead, and
     /// this path is reachable only from the in-process sweep, never from a route. An
@@ -314,7 +314,7 @@ impl SessionRepository<'_, '_> {
         Ok((run, true))
     }
 
-    /// Explicitly cancel a whole session (D2). Cancels the active run if one exists
+    /// Explicitly cancel a whole session. Cancels the active run if one exists
     /// (emitting nothing here — the caller owns events), VOIDS every queued turn in the
     /// SAME unit of work (no promotion into a cancelled session; voided turns stay
     /// readable history but are never runnable), and marks the session `Cancelled`.
@@ -354,7 +354,7 @@ impl SessionRepository<'_, '_> {
         Ok((session, cancelled_run, true))
     }
 
-    /// Gracefully close a session (S13): the BENIGN terminal path, `Active` → `Closed`.
+    /// Gracefully close a session: the BENIGN terminal path, `Active` → `Closed`.
     /// Unlike `cancel_session` this never tears down work — a session with a genuinely
     /// active run is REFUSED (cancel the run or await its settlement first), so a close
     /// only ever retires a quiescent session. Returns the session and whether anything
@@ -389,7 +389,7 @@ impl SessionRepository<'_, '_> {
         Ok((session, true))
     }
 
-    /// Settle an active run into its terminal state (D1). The reported `outcome`
+    /// Settle an active run into its terminal state. The reported `outcome`
     /// (`completed` — the default preserving pre-outcome callers — or `failed`) picks
     /// the terminal `RunStatus`; a `failed` outcome may carry a `failure_reason`, a
     /// `completed` one must not. Authorization is owner-only: the settling `actor` must
@@ -753,7 +753,7 @@ impl SessionRepository<'_, '_> {
         )
     }
 
-    /// Void every still-`Queued` turn of a session (D2 session-cancel): each becomes
+    /// Void every still-`Queued` turn of a session (session-cancel): each becomes
     /// `Voided` — readable history, never runnable. Rewrites both the queryable column
     /// and the record JSON so the two never disagree.
     fn void_queued_turns(&self, session_id: &SessionId, now_ms: i64) -> StoreResult<()> {
@@ -1027,8 +1027,8 @@ impl SessionRepository<'_, '_> {
     }
 }
 
-/// Owner-only authorization for the run-settle command (D1) and the interrupt-resume
-/// command (P05 review floor): the acting principal must be the run's `owner` or that
+/// Owner-only authorization for the run-settle command and the interrupt-resume
+/// command: the acting principal must be the run's `owner` or that
 /// owner's delegator. Any other actor is a typed `RunForbidden` (403) — nobody may
 /// forge another run's settlement, approve a stranger's pending tool permission, or
 /// inject a steering prompt into a run they have no connection to.

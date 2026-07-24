@@ -1,4 +1,4 @@
-//! Debounced filesystem watcher (engine-spec §2.4, D2.4): watches each
+//! Debounced filesystem watcher: watches each
 //! worktree's `.vault/` and `.git` for changes and drives partial
 //! re-ingestion of only the dirtied paths. Serve-mode machinery; the
 //! one-shot CLI never needs it.
@@ -33,8 +33,8 @@ pub struct WatchHandle {
     _supervisor: std::thread::JoinHandle<()>,
     // Truthful liveness for `/status`: true while a worker is actively
     // running, false during a respawn gap and permanently once the
-    // supervisor has exhausted its retry budget (DF-4: a dead watcher is
-    // stated, never papered over).
+    // supervisor has exhausted its retry budget: a dead watcher is
+    // stated, never papered over.
     alive: Arc<AtomicBool>,
 }
 
@@ -44,7 +44,7 @@ impl WatchHandle {
     /// transient panic no longer permanently zombifies the watcher. This
     /// stays truthful: it reads `false` during a respawn gap and `false`
     /// for good once the supervisor exhausts its retry budget — `/status`
-    /// must say so rather than claim a resident watcher (DF-4 residual).
+    /// must say so rather than claim a resident watcher.
     pub fn is_alive(&self) -> bool {
         self.alive.load(Ordering::SeqCst)
     }
@@ -122,7 +122,7 @@ fn supervise(
                 consecutive_failures += 1;
                 if consecutive_failures > MAX_RESPAWNS {
                     // Give up: a dead watcher is stated truthfully so the
-                    // operator restarts the service (DF-4).
+                    // operator restarts the service.
                     alive.store(false, Ordering::SeqCst);
                     return;
                 }
@@ -154,7 +154,7 @@ fn debounce_loop(
     let rx = rx.lock().unwrap_or_else(|e| e.into_inner());
     while let Ok(first) = rx.recv() {
         // `dirty` keeps insertion order for the callback; `seen` gives O(1)
-        // dedup (B9, resource-hardening) — the prior `Vec::contains` was O(N) per
+        // dedup — the prior `Vec::contains` was O(N) per
         // path, i.e. O(N^2) across a debounce window flooded by a large
         // `git checkout` or bulk copy.
         let mut dirty: Vec<PathBuf> = Vec::new();
@@ -188,7 +188,7 @@ fn collect(
         // (open/close) events for every directory a scan opens — including
         // the rebuild's OWN corpus walk — so treating them as dirt makes
         // each rebuild schedule the next: an endless walk→access→rebuild
-        // loop (CI quiescence failure 2026-07-08; ~20 directory paths per
+        // loop (~20 directory paths per
         // window, one rebuild per debounce, forever). Windows emits no
         // access events, which is why the loop never reproduced there.
         // Only creations, modifications, removals, and renames re-ingest.
@@ -202,7 +202,7 @@ fn collect(
             // declared-graph cache) all land under `.vault/data/engine-data/`,
             // and serve logs under `.vault/logs/`. Watching them makes the
             // watcher self-trigger on every cache write — an endless
-            // rebuild→write→rebuild churn (perf ADR follow-up). Mirrors the
+            // rebuild→write→rebuild churn. Mirrors the
             // `vault_documents` walk skip of `data`/`logs`.
             if is_engine_owned_path(&path) || is_git_noise_path(&path) {
                 continue;
@@ -222,7 +222,7 @@ fn collect(
 /// incidentally: ANY sibling `git status` — including the one vaultspec-core
 /// runs inside every declared fold — refreshes `.git/index` on Linux, so
 /// rebuilding on it self-sustains a rebuild→fold→git→index→rebuild loop that
-/// never reaches quiescence (CI failure, 2026-07-07). Lock files are
+/// never reaches quiescence. Lock files are
 /// transient even on signal paths: a HEAD move lands as a rename ONTO `HEAD`,
 /// which is the event that matters.
 fn is_git_noise_path(path: &Path) -> bool {
@@ -432,8 +432,8 @@ mod tests {
     fn collect_drops_access_events_entirely() {
         // Linux inotify reports Access (open/close) for every directory a
         // scan opens — including the rebuild's OWN corpus walk — so an
-        // access event treated as dirt makes each rebuild schedule the next
-        // (the CI quiescence loop, 2026-07-08). Reads are never corpus
+        // access event treated as dirt makes each rebuild schedule the next.
+        // Reads are never corpus
         // changes; only create/modify/remove/rename re-ingest.
         let doc = Path::new("/ws/main/.vault/plan/2026-06-14-x-plan.md");
         let mut dirty = Vec::new();
@@ -457,7 +457,7 @@ mod tests {
 
     #[test]
     fn collect_skips_engine_owned_cache_and_log_writes_but_keeps_documents() {
-        // Perf ADR follow-up: the engine's own cache writes under
+        // The engine's own cache writes under
         // `.vault/data/engine-data/` (the SQLite db + its WAL/SHM siblings and
         // the declared-graph cache) and serve logs under `.vault/logs/` must NOT
         // dirty the watcher, or every `put_artifact` retriggers a rebuild

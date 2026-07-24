@@ -1,6 +1,6 @@
-// Timeline command provider (command-palette-providers ADR W01.P02). Wraps the
-// tested pure `buildTimelineCommands` core (Issue #14: the date_range presets +
-// clear — the timeline is now a fixed date-range selector), reading its effects from
+// Timeline command provider. Wraps the tested pure `buildTimelineCommands` core
+// (Issue #14: the date_range presets + clear — the timeline is now a fixed
+// date-range selector), reading its effects from
 // the CommandContext, and self-registers.
 
 import { buildTimelineCommands } from "../commandPaletteCommands";

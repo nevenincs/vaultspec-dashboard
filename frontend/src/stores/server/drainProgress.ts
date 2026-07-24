@@ -1,9 +1,9 @@
-// Drain-progress slice (universal-data-loading ADR D3): the ONLY place the
+// Drain-progress slice: the ONLY place the
 // wire client's multi-page cursor walks (`vaultTree`, `codeFiles`) report
 // their per-page progress. The walks run to completion INSIDE one queryFn, so
 // without this seam the largest payloads in the product are invisible to any
 // loading affordance — TanStack sees one opaque in-flight promise. The
-// data-activity projection (ADR D1) reads this slice to render a determinate
+// data-activity projection reads this slice to render a determinate
 // "N rows" indicator; nothing else consumes it directly.
 //
 // Bounded at creation (resource-bounds): the entry map is capped at

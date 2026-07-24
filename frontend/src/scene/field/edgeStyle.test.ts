@@ -34,9 +34,9 @@ describe("edgeGroupKey", () => {
     expect(edgeGroupKey(edge("temporal", { confidence: 0.9 }))).toBe("temporal:3");
   });
 
-  it("surfaces unknown tiers as data errors, never re-buckets (audit 003)", () => {
+  it("surfaces unknown tiers as data errors, never re-buckets", () => {
     // `semantic` is not an edge tier (the engine never mints semantic graph
-    // edges, ADR D3.5), so it surfaces as an unknown-tier data error.
+    // edges), so it surfaces as an unknown-tier data error.
     expect(() => edgeGroupKey(edge("semantic", { confidence: 0.3 }))).toThrow(
       UnknownTierError,
     );

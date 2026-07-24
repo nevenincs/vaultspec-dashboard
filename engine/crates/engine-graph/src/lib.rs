@@ -1,11 +1,10 @@
-//! The in-memory linkage graph (engine-spec §8): nodes, edges, facets,
+//! The in-memory linkage graph: nodes, edges, facets,
 //! context assembly, and query-time projections.
 //!
 //! Vault corpora are thousands of documents, not millions — the graph fits
 //! in RAM; the expensive part is ingestion, not storage. Derived
 //! projections (per-tier degree counts, lifecycle/progress summaries,
-//! meta-edges) are computed at query time, never stored on nodes
-//! (engine-spec §4.3).
+//! meta-edges) are computed at query time, never stored on nodes.
 
 pub mod asof;
 pub mod context;

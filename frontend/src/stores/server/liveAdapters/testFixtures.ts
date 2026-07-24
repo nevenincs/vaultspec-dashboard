@@ -1,5 +1,5 @@
-// Shared test fixtures for the decomposed liveAdapters test suite
-// (module-decomposition mandate, 2026-07-12). Moved verbatim from liveAdapters.test.ts.
+// Shared test fixtures for the decomposed liveAdapters test suite,
+// moved verbatim from liveAdapters.test.ts.
 
 export const TIERS = {
   declared: { available: true },

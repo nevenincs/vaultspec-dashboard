@@ -1,4 +1,4 @@
-//! Advisory leases and fencing tokens (W13.P26).
+//! Advisory leases and fencing tokens.
 //!
 //! A lease is a TTL-bound ADVISORY coordination record over one `scope_id`
 //! (concurrency-leases-conflicts ADR). It reduces collisions for destructive,
@@ -374,7 +374,7 @@ impl LeaseRepository<'_, '_> {
         rows.iter().map(|json| read_record(json)).collect()
     }
 
-    /// Sweep-driven expiry (janitor P04a.S57): the SAME expire-on-read transition,
+    /// Sweep-driven expiry (janitor-driven): the SAME expire-on-read transition,
     /// driven eventually for leases nothing touches again. Bounded by `cap` (the table
     /// holds at most one row per scope, so the page is inherently small). Returns how
     /// many leases actually expired and how many rows were scanned — a scan that fills

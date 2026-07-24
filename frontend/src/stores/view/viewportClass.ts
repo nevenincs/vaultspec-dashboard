@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-// Viewport-class signal (mobile-responsive-layout ADR D1): the ONE source of
+// Viewport-class signal: the ONE source of
 // truth for "is this a compact (phone/tablet) viewport or a regular (desktop)
 // one". It is a single `matchMedia`-backed signal fed into the shell projection
 // (`deriveShellFrameView`) so the SAME projection emits either the desktop

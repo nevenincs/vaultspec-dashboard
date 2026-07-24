@@ -337,7 +337,7 @@ export interface ShellGridColumnsInput {
   rightCollapsed: boolean;
   rightRailWidth: number;
   /** Whether the docked Agent panel is open — it adds an explicit 4th track so the
-   *  stage's `1fr` reflows beside it (agentic-authoring-ux ADR D1); closed, the
+   *  stage's `1fr` reflows beside it; closed, the
    *  grid stays the three rail/stage tracks. */
   agentPanelOpen: boolean;
   agentPanelWidth: number;
@@ -369,8 +369,7 @@ export interface ShellFrameView extends ShellLayoutState {
   rightCollapsed: boolean;
   rightTab: DashboardPanelState["right_tab"];
   /** True when the viewport is compact (phone/tablet): the AppShell renders the
-   *  single-pane + bottom-tab-bar frame instead of the desktop three-column grid
-   *  (mobile-responsive-layout ADR D1/D2). */
+   *  single-pane + bottom-tab-bar frame instead of the desktop three-column grid. */
   compact: boolean;
   gridColumns: string;
   rootClassName: string;
@@ -400,7 +399,7 @@ export interface ShellFrameView extends ShellLayoutState {
   /** The Agent panel column width in px (the drag/keys pixel basis). */
   agentPanelWidth: number;
   /** The Agent panel column classes: pin it to the explicit 4th track so it never
-   *  auto-wraps to a new row under the left rail (agentic-authoring-ux ADR D1). */
+   *  auto-wraps to a new row under the left rail. */
   agentPanelClassName: string;
 }
 
@@ -440,7 +439,7 @@ const SHELL_RIGHT_RAIL_OPEN_CLASS = `${SHELL_RIGHT_RAIL_BASE_CLASS} border-l bor
 // shrink-0 sibling below it.
 const SHELL_ACTIVITY_RAIL_CLASS = "flex min-h-0 flex-1 flex-col";
 const SHELL_ACTIVITY_PANEL_CLASS = "min-h-0 flex-1 overflow-y-auto p-fg-2";
-// The docked Agent panel column (agentic-authoring-ux ADR D1): pinned to the
+// The docked Agent panel column: pinned to the
 // explicit 4th grid track (`col-start-4`) so it reflows BESIDE the stage and never
 // auto-wraps to a new row under the left rail. `relative` anchors its left-edge
 // resize handle. The column width is the grid track, so the aside carries no width.
@@ -572,7 +571,7 @@ export function useShellFrameView(scope: unknown): ShellFrameView {
   const shellLayout = useShellLayoutState();
   const viewportClass = useViewportClass();
   // The agent panel's open flag lives in its own view store (agent-domain state);
-  // the shell frame folds it in so the grid gains the panel's 4th track (ADR D1).
+  // the shell frame folds it in so the grid gains the panel's 4th track.
   const agentPanelOpen = useAgentPanelOpen();
   return deriveShellFrameView(shellLayout, shellChrome, viewportClass, agentPanelOpen);
 }

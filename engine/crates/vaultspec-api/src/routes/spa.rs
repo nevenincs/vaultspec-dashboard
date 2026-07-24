@@ -1,6 +1,6 @@
-//! SPA static serving (contract R2, W03.P11.S52): fallback routing to
+//! SPA static serving (contract R2): fallback routing to
 //! `index.html` for unknown non-API paths, correct MIME types, and an
-//! embedded-first asset source (dashboard-packaging ADR). A release build
+//! embedded-first asset source. A release build
 //! compiled with the `embed-spa` feature carries `frontend/dist` inside the
 //! binary and serves it from memory; without the feature (dev) the source is
 //! the disk passthrough — `VAULTSPEC_SPA_DIR` or `<workspace>/frontend/dist`.
@@ -12,9 +12,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 /// The compiled-in SPA bundle for release packaging, embedded from the
-/// crate-internal staged directory `assets/spa` (distribution-channels ADR:
-/// boundary-clean — the crate never reaches outside itself, so it is
-/// packageable). The packaged-build recipe and the CI build step stage
+/// crate-internal staged directory `assets/spa` — boundary-clean, the crate
+/// never reaches outside itself, so it is
+/// packageable. The packaged-build recipe and the CI build step stage
 /// `frontend/dist` into it; a feature-on build without staging is a COMPILE
 /// ERROR, preserving fail-loud. Present only under the `embed-spa` feature;
 /// dev builds omit it and keep the disk passthrough so a UI change needs no
@@ -72,7 +72,7 @@ impl SpaSource {
     }
 }
 
-/// Resolve the SPA asset source embedded-first (dashboard-packaging ADR): the
+/// Resolve the SPA asset source embedded-first: the
 /// compiled-in store when the `embed-spa` feature baked assets in, else the
 /// `VAULTSPEC_SPA_DIR` override or `<workspace_root>/frontend/dist` on disk,
 /// else `None` → the placeholder page. Dev builds (no feature) skip straight
@@ -89,8 +89,8 @@ fn resolve_spa_source(state: &AppState) -> Option<SpaSource> {
 /// relative path under the asset root. Rejects `..` segments, and — because
 /// `PathBuf::join` REPLACES the base when handed an absolute or drive-relative
 /// path — rejects absolute paths and any `:`-bearing segment (`C:/...`,
-/// `C:foo`), which on Windows would otherwise escape the root entirely
-/// (P01 review finding, disk-source hardening). No legitimate Vite asset name
+/// `C:foo`), which on Windows would otherwise escape the root entirely.
+/// No legitimate Vite asset name
 /// carries a colon or leads with a separator.
 fn is_safe_relative(requested: &str) -> bool {
     !requested.split(['/', '\\']).any(|seg| seg == "..")
@@ -119,12 +119,12 @@ const PLACEHOLDER: &str = "<!doctype html><html><head><title>vaultspec</title></
 (<code>npm run build</code> in <code>frontend/</code>) or set \
 <code>VAULTSPEC_SPA_DIR</code>.</p></body></html>";
 
-/// Token bootstrap (contract DF-6 amendment): the engine injects the
+/// Token bootstrap: the engine injects the
 /// service token into served `index.html` as a meta tag, so the SPA can
 /// authenticate without reading `service.json` (which a browser cannot).
 /// Dev proxies inject Authorization themselves; meta-tag absence is legal.
 pub fn inject_token(html: &str, token: &str) -> String {
-    // HTML-attribute-escape the token (B10, resource-hardening): the bearer is
+    // HTML-attribute-escape the token: the bearer is
     // 32 hex chars today, but escaping makes the injection permanently safe
     // against any future token format that could carry `"`/`<`/`&` and turn a
     // served page into an XSS sink.
@@ -162,9 +162,9 @@ fn escape_attr(s: &str) -> String {
 }
 
 /// API path prefixes: unknown paths under these are JSON 404s, never
-/// index.html (audit N6 / dogfood DF-3 — R2's fallback is for NON-API
+/// index.html (R2's fallback is for NON-API
 /// paths only; an API typo must fail loud, not render the SPA). The same
-/// list is the BEARER boundary (dogfood DF-7): API paths are gated, the
+/// list is the BEARER boundary: API paths are gated, the
 /// static shell is not — it carries the token bootstrap and must be
 /// reachable by a clean browser; loopback bind + Host validation is its
 /// trust boundary.
@@ -199,13 +199,13 @@ pub(crate) const API_PREFIXES: &[&str] = &[
     "/authoring",
     "/search",
     "/ops",
-    // The A2A component lifecycle plane (a2a-product-provisioning W01.P03),
+    // The A2A component lifecycle plane,
     // distinct from the fixed `/ops/a2a` orchestration namespace. Reserved so an
     // unknown `/a2a/lifecycle/*` path fails loud as a bearer-gated JSON 404,
     // never the SPA shell.
     "/a2a",
-    // Rides ahead of the in-flight provisioning plane (shared-tree commit
-    // sweep, kept deliberately): this list is a bearer boundary, and the
+    // Rides ahead of the in-flight provisioning plane, kept deliberately:
+    // this list is a bearer boundary, and the
     // /provision routes must never land without their prefix already gated.
     "/provision",
     "/health",
@@ -214,7 +214,7 @@ pub(crate) const API_PREFIXES: &[&str] = &[
 ];
 
 /// Prefixes reserved from the SPA fallback but NOT on the machine-`bearer_gate`
-/// boundary (a2a-product-provisioning W02.P05.S154). The A2A terminal-settlement
+/// boundary. The A2A terminal-settlement
 /// callback (`/internal/a2a/run-terminal`) is authenticated by the attach-control
 /// credential in its own handler, so it must NOT be an `API_PREFIXES` machine-
 /// gated path (the gateway holds no machine bearer) — yet a MISROUTED
@@ -258,7 +258,7 @@ pub async fn spa_fallback(State(state): State<Arc<AppState>>, uri: Uri) -> Respo
     };
     match source.read(target) {
         Some(bytes) => {
-            // index.html gets the token bootstrap meta tag (DF-6); other
+            // index.html gets the token bootstrap meta tag; other
             // assets pass through untouched.
             if target.rsplit('/').next() == Some("index.html") {
                 let html = String::from_utf8_lossy(&bytes);
@@ -282,7 +282,7 @@ mod tests {
     fn the_traversal_guard_rejects_every_root_escape_shape() {
         // The disk arm feeds the request straight into `PathBuf::join`, which
         // REPLACES the base for absolute and drive-relative paths — so the
-        // guard must reject them, not just `..` (P01 review, Windows escape).
+        // guard must reject them, not just `..` (Windows escape).
         for escape in [
             "../secret",
             "assets/../../secret",

@@ -128,7 +128,7 @@ describe("Composer keyboard contract", () => {
   });
 
   it("stages a comment as the shared chip and enables a comments-only submit", async () => {
-    // The comment→agent bridge (feedback-loop ADR D4/D6): a staged comment renders
+    // The comment→agent bridge: a staged comment renders
     // as the shared "N comments" chip, and — structured continuation — a
     // comments-only submit is valid because the batch rides the turn as a
     // feedback_batch_id, not the prompt text. The submit→create-batch→turn

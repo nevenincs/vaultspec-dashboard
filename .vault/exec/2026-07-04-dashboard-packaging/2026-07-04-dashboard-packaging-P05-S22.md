@@ -17,7 +17,7 @@ related:
 
 ## Description
 
-- Read the local `LICENSE` and confirm the project license (MIT, Copyright 2026 Gergely Wootsch)
+- Read the local `LICENSE` and confirm the project license (MIT, Copyright 2026 Neve Nincs)
 - Verify SignPath Foundation eligibility terms against signpath.org/terms.html
 - Verify the GitHub Actions integration mechanics against docs.signpath.io/trusted-build-systems/github and public applicant reports
 
@@ -28,5 +28,5 @@ Verdict: the project PLAUSIBLY QUALIFIES for free OSS signing. MIT satisfies the
 ## Notes
 
 - Deferred by the ADR to a follow-up: signing is an optional future path, not a v1 dependency; this record closes the eligibility question in the affirmative.
-- The repo-identity discrepancy (origin github.com/nevenincs/vaultspec-dashboard vs metadata github.com/wgergely/vaultspec-dashboard) must be reconciled before an application, since SignPath verifies the applicant maintains the linked public repo.
+- The repo-identity discrepancy (origin github.com/nevenincs/vaultspec-dashboard vs the stale metadata handle's github.com path) must be reconciled before an application, since SignPath verifies the applicant maintains the linked public repo.
 - SignPath signs only the project's own source builds; bundled third-party binaries are out of scope.

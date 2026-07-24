@@ -1,4 +1,4 @@
-// The Agent panel's "Pending changes" view (review-surface-flow ADR F1): the
+// The Agent panel's "Pending changes" view: the
 // cross-run review inbox, folded into the Agent panel in place of the modal
 // "Approvals" dialog. A DUMB view — it re-hosts the existing review-queue body
 // (`ReviewStationBody`, which itself renders the applied-under-policy lane) over
@@ -6,8 +6,8 @@
 // tiers, no card fork (a view rewrite freezes the contract): the queue rows,
 // degraded/truncation states, and after-the-fact lane are the station body's.
 //
-// The autonomy control is NOT here — it relocates composer-adjacent (ADR F2, a
-// later phase); this view is the inbox only, and the inbox carries no composer.
+// The autonomy control is NOT here — it relocates composer-adjacent; this
+// view is the inbox only, and the inbox carries no composer.
 
 import { useReviewStationView } from "../../stores/server/authoring";
 import { ReviewStationBody, useReviewActions } from "../authoring/ReviewStation";

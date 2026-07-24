@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Split from queries.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from queries.test.ts.
 
 import { afterEach, describe, expect, it } from "vitest";
 import { liveTransport } from "../../../testing/liveClient";
@@ -17,7 +17,7 @@ afterEach(() => {
 });
 
 // ---------------------------------------------------------------------------
-// deriveGitStatusView — git working-tree interpretation (git-diff-browser ADR).
+// deriveGitStatusView — git working-tree interpretation.
 // git is NOT a tier: availability tracks the PRESENCE of the git payload; `dirty`
 // is the live BOOLEAN; ahead/behind are Option (absent = no upstream).
 // ---------------------------------------------------------------------------

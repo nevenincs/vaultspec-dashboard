@@ -1,7 +1,7 @@
-//! Tool permission request flow (W12.P22).
+//! Tool permission request flow.
 //!
 //! A `tool_permission_request` is keyed by `tool_call_id` and asks whether an agent
-//! may perform ONE bounded tool action (approval-gates ADR). It is DISTINCT from a
+//! may perform ONE bounded tool action. It is DISTINCT from a
 //! changeset approval and NEVER substitutes for it: granting a tool permission lets
 //! the agent run the tool, but the resulting proposal still rides the full changeset
 //! approval matrix. This module owns the durable request, its claim/decision/expiry
@@ -272,8 +272,8 @@ impl ToolPermissionRepository<'_, '_> {
             return Ok(self.replay(record));
         }
         // A human-gated request may be claimed only by an eligible human reviewer, not
-        // the requester itself (P22-R1: claiming is a review action, same authority gate
-        // as deciding).
+        // the requester itself: claiming is a review action, same authority gate
+        // as deciding.
         if let Some(denied) = tool_reviewer_authority_blocker(&record, reviewer) {
             return Ok(ToolPermissionOutcome {
                 record,
@@ -324,7 +324,7 @@ impl ToolPermissionRepository<'_, '_> {
         if let Some(expired) = self.expire_in_place(&mut record, now_ms)? {
             return Ok(expired);
         }
-        // AUTHORITY (P22-R1): a human-gated tool permission may be decided ONLY by an
+        // AUTHORITY: a human-gated tool permission may be decided ONLY by an
         // eligible human reviewer who is not the requester — else the requester could
         // approve its own request and the human/dangerous floor becomes self-approvable.
         // A denied decision rides the success envelope as a value (denials-are-values).
@@ -370,7 +370,7 @@ impl ToolPermissionRepository<'_, '_> {
         Ok(record)
     }
 
-    /// Sweep-driven expiry over pending requests (janitor P04a.S55): expire every
+    /// Sweep-driven expiry over pending requests: expire every
     /// human-gated request past its decision window, bounded by `cap`. This is the SAME
     /// transition the decision/resume paths perform lazily on touch — the sweep only
     /// makes it eventual for records nothing ever touches again. Returns how many
@@ -531,7 +531,7 @@ impl ToolPermissionRepository<'_, '_> {
     }
 }
 
-/// The reviewer-authority gate for a HUMAN-GATED tool permission (P22-R1). A request
+/// The reviewer-authority gate for a HUMAN-GATED tool permission. A request
 /// whose requirement is HumanApprovalRequired may be decided or claimed ONLY by a HUMAN
 /// who is NOT the requester: a system actor's tool authority is the auto-permit lane the
 /// mode policy owns, never the reviewer hat (security-provenance), and the requester

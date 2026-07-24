@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Current-editor identity bootstrap (ledgered-edit-migration W01.P01).
+// Current-editor identity bootstrap.
 //
 // The ADR chose a first-class, SHARED editor identity over an anonymous
 // per-edit token: a plain editing session and the review station must resolve
@@ -240,7 +240,7 @@ describe("the editor and the review station resolve to the SAME principal", () =
   });
 });
 
-describe("ensureActorToken — ambient lazy mint (review provenance, ADR D5)", () => {
+describe("ensureActorToken — ambient lazy mint (review provenance)", () => {
   it("mints the shared local-operator principal on first use and caches it, with no explicit sign-in gesture", async () => {
     const spy = vi
       .spyOn(authoringClient, "issueActorToken")

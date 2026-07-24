@@ -41,4 +41,4 @@ Done. The `RagOpsConsole` frame (node `879:4125`) was composed section-by-sectio
 
 ## Notes
 
-The console is a NEW host-level surface (distinct from the per-scope index/watcher/search per ADR D7); it is intentionally surfaced for owner review before frame composition rather than auto-designed, per `figma-is-the-binding-source-of-truth` and the established design-review pattern. The Figma plugin MCP is authenticated (Gergely Wootsch, Pro) and the binding file is reachable; the standalone Figma MCP server disconnected this session (plugin MCP is the working path).
+The console is a NEW host-level surface (distinct from the per-scope index/watcher/search per ADR D7); it is intentionally surfaced for owner review before frame composition rather than auto-designed, per `figma-is-the-binding-source-of-truth` and the established design-review pattern. The Figma plugin MCP is authenticated (Pro account) and the binding file is reachable; the standalone Figma MCP server disconnected this session (plugin MCP is the working path).

@@ -1,6 +1,6 @@
-// Auto-split from authoring.ts (module-decomposition mandate, 2026-07-14).
-// The served wire vocabulary — projection shapes, command payloads, and command
-// outcomes — as pure types. Domain submodule of the authoring barrel; see ./index.ts.
+// Auto-split from authoring.ts. The served wire vocabulary — projection shapes,
+// command payloads, and command outcomes — as pure types. Domain submodule of the
+// authoring barrel; see ./index.ts.
 
 import type { TiersBlock } from "../engine";
 
@@ -46,8 +46,8 @@ export type RiskClass = "non_destructive" | "destructive";
 /** What approval the backend policy requires for the projected changeset. */
 export type ApprovalRequirement = "human_approval_required" | "system_auto_approvable";
 
-/** The V1 approval queue state (agentic-review-station-state ADR, ASA-003:
- *  FOUR states collapsed to the single-reviewer reality). */
+/** The V1 approval queue state: FOUR states collapsed to the single-reviewer
+ *  reality. */
 export type ApprovalQueueState = "queued" | "decision_submitted" | "closed";
 
 /** A recorded review decision (engine `ApprovalDecision`). */
@@ -149,10 +149,10 @@ export interface ProposalProjection {
   eligibility: ActionEligibility[];
   rollback: RollbackAvailabilityProjection;
   created_at_ms: number;
-  /** The served agent provenance (agent-wire-gaps D4/D5): the session/run/turn the
-   *  changeset originated from, when the origin carried them. The transcript binds
-   *  the inline proposal card to `run_id` EXACTLY (S42), retiring the former
-   *  actor-identity heuristic. Absent for a changeset with no agent origin. */
+  /** The served agent provenance: the session/run/turn the changeset originated
+   *  from, when the origin carried them. The transcript binds the inline proposal
+   *  card to `run_id` EXACTLY, retiring the former actor-identity heuristic.
+   *  Absent for a changeset with no agent origin. */
   session_id?: string;
   run_id?: string;
   turn_id?: string;
@@ -239,7 +239,7 @@ export interface AuthoringStatusCapabilities {
   rollback: boolean;
   /** Whether direct-changeset editor saves are enabled — a pure kill switch
    *  (on by default); direct-changeset is the sole editor-save path, so no
-   *  legacy/dual-run authority flag remains (W14.P47). */
+   *  legacy/dual-run authority flag remains. */
   direct_write: boolean;
   sessions: boolean;
   leases: boolean;
@@ -331,13 +331,13 @@ export interface SubmitForReviewPayload {
 }
 
 /** `POST /authoring/v1/reviews/{approvalId}/decisions` payload. The reviewer is
- *  the server-resolved principal — NEVER named in the body (ASA-010). */
+ *  the server-resolved principal — NEVER named in the body. */
 export interface ReviewDecisionPayload {
   proposal_id: string;
   approval_id: string;
-  /** The three-verdict vocabulary (approval-gates ADR, W13.P24): `approve` and
-   *  `reject` decide; `edit` is request-changes — a reviewer-driven return to draft
-   *  through the `EditProposal` arc, carrying the requested changes in `comment`. */
+  /** The three-verdict vocabulary: `approve` and `reject` decide; `edit` is
+   *  request-changes — a reviewer-driven return to draft through the
+   *  `EditProposal` arc, carrying the requested changes in `comment`. */
   decision: "approve" | "reject" | "edit";
   reviewed_revision: string;
   comment?: string;
@@ -356,9 +356,9 @@ export interface RollbackPayload {
   reason: string;
 }
 
-/** `POST /authoring/v1/proposals/{changesetId}/acknowledge` payload (W10): a durable
+/** `POST /authoring/v1/proposals/{changesetId}/acknowledge` payload: a durable
  *  after-fact "seen" over a system-auto-applied changeset. The reviewer is the
- *  server-resolved principal — never named in the body (ASA-010). */
+ *  server-resolved principal — never named in the body. */
 export interface AcknowledgeAppliedPayload {
   changeset_id: string;
   approval_id: string;
@@ -390,16 +390,16 @@ export interface DirectWriteCreateParams {
   related?: string[];
 }
 
-/** The desired state of a plan Step's checkbox (authoring-surface ADR D1):
- *  `checked` closes the Step (`vault plan step check`), `unchecked` re-opens it
- *  (`vault plan step uncheck`). */
+/** The desired state of a plan Step's checkbox: `checked` closes the Step
+ *  (`vault plan step check`), `unchecked` re-opens it (`vault plan step
+ *  uncheck`). */
 export type PlanStepDesiredState = "checked" | "unchecked";
 
 /** `POST /authoring/v1/direct-writes` set-plan-step-state params (the
- *  `set_plan_step_state` operation's payload, authoring-surface ADR D1): the
- *  canonical step id (`S##`) and the desired open/closed state. The plan CLI
- *  verb is idempotent, so re-requesting the state a Step already holds is a
- *  no-op success (`core_status: "unchanged"`), never an error. */
+ *  `set_plan_step_state` operation's payload): the canonical step id (`S##`) and
+ *  the desired open/closed state. The plan CLI verb is idempotent, so
+ *  re-requesting the state a Step already holds is a no-op success
+ *  (`core_status: "unchanged"`), never an error. */
 export interface DirectWritePlanStep {
   stepId: string;
   state: PlanStepDesiredState;
@@ -408,8 +408,8 @@ export interface DirectWritePlanStep {
 /**
  * `POST /authoring/v1/direct-writes` payload — a human editor save routed
  * through the ledger as a self-approved direct changeset, generalized to every
- * content kind the route materializes (ledgered-edit-migration W02.P06). The
- * route composes create-proposal → validate → submit → human self-approve →
+ * content kind the route materializes. The route composes create-proposal →
+ * validate → submit → human self-approve →
  * apply SERVER-SIDE; the client sends only the `operation` discriminator + the
  * fields THAT kind uses — never an accepted-but-ignored field (the backend
  * refuses a mismatched field at validation, e.g. `frontmatter` set on a
@@ -453,7 +453,7 @@ export type DirectWritePayload =
       summary?: string;
     }
   | {
-      // Tick/untick a plan Step through the ledger (authoring-surface ADR D1).
+      // Tick/untick a plan Step through the ledger.
       // The plan document is named by `ref`; `expected_blob_hash` is the
       // engine-side stale-base fence (the substitute for the plan CLI's absent
       // expected-blob-hash flag). The `planStep` carries the canonical step id +
@@ -479,7 +479,7 @@ export interface DirectWriteConflict {
 }
 
 /**
- * The structured WHY behind a `denied` direct-write outcome (W05.P14), matching
+ * The structured WHY behind a `denied` direct-write outcome, matching
  * the backend `DirectWriteDenialKind` enum verbatim. Replaces reason-text
  * substring matching (`RENAME_COLLISION_REASON_HINT`, retired): a `denied`
  * outcome ALWAYS carries one of these (the backend defaults to `"other"` rather
@@ -498,7 +498,7 @@ export type DirectWriteDenialKind =
  * stale optimistic base) and `denied` (an ineligible actor — e.g. a non-human
  * principal) ride the success (200) envelope as VALUES, never a thrown fault.
  * `applied` carries the changeset id + the new blob hash the editor adopts as
- * its next optimistic-concurrency base. `resultNodeId`/`resultStem` (W03.P09a)
+ * its next optimistic-concurrency base. `resultNodeId`/`resultStem`
  * are populated ONLY for a successfully-applied `create_document` — the
  * server-resolved identity of the newly-created document (`apply_receipt.
  * child.result_node_id`/`result_stem`), letting the create dialog auto-open it

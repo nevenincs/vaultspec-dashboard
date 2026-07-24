@@ -4,13 +4,13 @@
 // state the composer renders above its input: the `@`-mention chips and the staged
 // comment batch.
 //
-// The client-staged interrupt annex was REMOVED (agent-wire-gaps S41): the engine
-// now serves the pending-interrupt read (`GET /runs/{id}/interrupts`, D3), so the
+// The client-staged interrupt annex was REMOVED: the engine
+// now serves the pending-interrupt read (`GET /runs/{id}/interrupts`), so the
 // composer derives steer-eligibility from that served list (`useRunInterrupts`)
 // instead of a record forwarded from the tool-execute `awaiting_permission` arm —
 // pending permission prompts recover from the wire on reload, not client memory.
 //
-// The one-slot queued prompt was REMOVED (agent-wire-gaps S39): a mid-run submit
+// The one-slot queued prompt was REMOVED: a mid-run submit
 // now dispatches the turn to the engine, which enqueues it (`queued_turn_ids`) and
 // auto-promotes the next queued turn when the active run settles — server-side, in
 // the same unit of work — so the client holds no queue state.
@@ -42,9 +42,9 @@ export interface AgentMention {
   label: string;
 }
 
-/** One comment staged for the pending batch (feedback-loop ADR D2): the anchored
+/** One comment staged for the pending batch: the anchored
  *  text and its byte-range anchor a "Send to agent" action captured. On submit the
- *  batch is frozen into an engine feedback batch (ADR D4) and the turn carries its
+ *  batch is frozen into an engine feedback batch and the turn carries its
  *  opaque `feedback_batch_id`; a2a retrieves the authoritative context by id. Every
  *  field maps to one `FeedbackBatchItem` field the engine freezes verbatim. */
 export interface AgentCommentAttachment {
@@ -61,7 +61,7 @@ export interface AgentCommentAttachment {
   body: string;
 }
 
-/** A staged comment batch (feedback-loop ADR D2), scoped to ONE source document:
+/** A staged comment batch, scoped to ONE source document:
  *  a turn carries exactly one `feedback_batch_id` and the engine batch is
  *  single-document, so staging a comment from a different document starts a fresh
  *  batch (latest-document-wins). Callers append via `stageAgentComment`; the
@@ -72,7 +72,7 @@ export interface AgentCommentBatch {
    *  `source_document`. */
   sourceDocument: string;
   /** The document revision (content blob hash) the batch was taken against — the
-   *  engine `source_revision`, the marker the D4 staleness fence checks. */
+   *  engine `source_revision`, the marker the staleness fence checks. */
   sourceRevision: string;
   /** The staged comments in stage order, bounded at `AGENT_COMPOSER_COMMENT_CAP`. */
   comments: AgentCommentAttachment[];
@@ -81,14 +81,14 @@ export interface AgentCommentBatch {
 /** Where one composer submit goes:
  *  - `bootstrap`: no usable session; create one, then start the first turn.
  *    This includes a current session whose SERVED status is no longer `active`.
- *    Since D2 `cancel_run` is run-scoped and leaves the session `active`, Stop no
+ *    `cancel_run` is run-scoped and leaves the session `active`, so Stop no
  *    longer ends the conversation — the next prompt continues the same session.
  *    Only an explicit session cancel makes a session non-active; then the next
  *    prompt opens a fresh session.
  *  - `turn`: an active session with no live run; start the next prompt turn.
  *  - `steer`: the live run is parked on an interrupt; the same input resumes it.
  *  - `queue`: a run is streaming and not parked; the submit dispatches a turn the
- *    engine ENQUEUES server-side (S39) — the input never locks, and the queued
+ *    engine ENQUEUES server-side — the input never locks, and the queued
  *    turn surfaces in the served `queued_turn_ids`, not a client slot. */
 export type AgentSubmitDestination = "bootstrap" | "turn" | "steer" | "queue";
 
@@ -97,7 +97,7 @@ export type AgentSubmitDestination = "bootstrap" | "turn" | "steer" | "queue";
  *  active run has a SERVED pending interrupt). `sessionStatus` is the SERVED bounded
  *  token (null while the snapshot loads — treated as active, and a stale submit
  *  faults honestly on the wire). `hasPendingInterrupt` is read from the served
- *  `GET /runs/{id}/interrupts` list scoped to the active run (D3), so a pending
+ *  `GET /runs/{id}/interrupts` list scoped to the active run, so a pending
  *  entry there already belongs to the active run — no client run-matching needed. */
 export function agentSubmitDestination(args: {
   sessionId: string | null;
@@ -119,8 +119,8 @@ export function agentSubmitDestination(args: {
  *  corpus's own grammar (`[[stem]]` wiki-links, `#feature` tags). */
 export const AGENT_COMPOSER_CONTEXT_PREFIX = "Context:";
 
-/** The engine `POST /authoring/v1/feedback-batches` request payload (feedback-loop
- *  ADR D4): the reviewer's chosen comments frozen into an immutable batch, keyed to
+/** The engine `POST /authoring/v1/feedback-batches` request payload:
+ *  the reviewer's chosen comments frozen into an immutable batch, keyed to
  *  one source document + revision and the current session. The engine returns
  *  `{batch_id, digest}`; the turn then carries the opaque `batch_id`. */
 export interface FeedbackBatchRequest {
@@ -162,7 +162,7 @@ export function buildFeedbackBatchRequest(
 /** Serialize the typed text plus attached mentions into the one prompt string —
  *  each block deterministic and separated by a blank line. Staged comments no
  *  longer ride the prompt text: they are frozen into a structured engine feedback
- *  batch and the turn carries its opaque id (feedback-loop ADR D4). A mentions-only
+ *  batch and the turn carries its opaque id. A mentions-only
  *  submit is valid (attached context is the prompt). */
 export function buildAgentPrompt(
   text: string,
@@ -256,7 +256,7 @@ export function useAgentCommentBatch(): AgentCommentBatch | null {
 
 // --- imperative seams --------------------------------------------------------------
 
-/** Append one comment to the composer's pending batch (feedback-loop ADR D2, the
+/** Append one comment to the composer's pending batch (the
  *  "Send to agent" action), scoped to its source document + revision. Deduped by
  *  comment id and bounded; a stage from a different document starts a fresh batch.
  *  The composer renders the running "N comments" chip. */

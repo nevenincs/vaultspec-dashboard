@@ -1,4 +1,4 @@
-// Renderer-agnostic scene graph model (W01.P02.S05, ADR G3.a).
+// Renderer-agnostic scene graph model.
 //
 // Holds the contract-shaped graph slice currently materialized on stage,
 // keyed by the contract's stable ids (identity guarantees: node ids derive
@@ -6,8 +6,8 @@
 // and animates by id, never by position). Scene-layer module: framework-free
 // by design, no React imports, ever.
 //
-// This model is pure data + indices. The delta log (S06) mutates it via
-// keyframes and ordered deltas; the field renderer (W01.P03) reads it.
+// This model is pure data + indices. The delta log mutates it via
+// keyframes and ordered deltas; the field renderer reads it.
 
 import type { SceneDelta, SceneEdgeData, SceneNodeData } from "./sceneController";
 

@@ -1,6 +1,5 @@
 // Adversarial — LENS: scope/workspace isolation; the 018/022/023 cross-scope
-// state-corruption class, WIDENED to the workspace level (dashboard-workspace-
-// registry ADR).
+// state-corruption class, WIDENED to the workspace level.
 //
 // SUSPECT (PRIME): the workspace switch is the COARSEST scope change — a whole
 // different project, its own repository and vault. The ADR is explicit: a

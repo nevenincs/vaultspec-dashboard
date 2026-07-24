@@ -1,6 +1,6 @@
 //! Transaction-scoped repository boundary for authoring product state.
 //!
-//! W02.P06 adds the unit-of-work primitive only. Domain repositories,
+//! This module adds the unit-of-work primitive only. Domain repositories,
 //! idempotency records, and outbox writes attach to this transaction boundary in
 //! later phases.
 

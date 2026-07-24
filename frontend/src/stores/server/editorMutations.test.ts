@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// The bounded editor-state slice + the read-side editor derivations
-// (document-editor backend, W03). These are PURE store/selector logic, exercised
+// The bounded editor-state slice + the read-side editor derivations.
+// These are PURE store/selector logic, exercised
 // directly — no engine surface, no double.
 //
 // NOTE — the editor WRITE seam (useSaveBody / useSetFrontmatter / useRenameDoc
@@ -103,7 +103,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     expect(s.editorStatus).toBe("idle");
   });
 
-  it("pins the tab scope onto the editor target — the single save source (audit finding 2)", () => {
+  it("pins the tab scope onto the editor target — the single save source", () => {
     openDocumentEditor(DOC_ID, "body", "hash-1", " scope-x ");
     // The scope every save path (panel + Mod+S) reads, so a cross-scope tab always
     // writes to its own corpus, never the ambient active scope.
@@ -265,7 +265,7 @@ describe("editor-state slice (bounded, single-value)", () => {
     expect(view).toMatchObject({
       isEditing: true,
       // The pinned editor scope is surfaced so the panel save reads the SAME source
-      // as the Mod+S keybinding (audit finding 2).
+      // as the Mod+S keybinding.
       scope: "scope-x",
       draftText: "body",
       baseBlobHash: "hash-1",

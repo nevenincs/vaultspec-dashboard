@@ -59,7 +59,7 @@ export const KEYBOARD_SHORTCUTS_TOGGLE_BINDING: KeybindingDef = {
 
 /**
  * Derive the shortcut legend from the keybinding registry — the SINGLE source of
- * truth for what the app binds (keyboard-action-system W02.P07). The hand-
+ * truth for what the app binds. The hand-
  * transcribed list this replaces could drift from the live handlers; deriving from
  * `listKeybindings()` + the effective overrides means the legend is exactly the
  * set of bound command actions and their effective chords, and re-themes/re-binds

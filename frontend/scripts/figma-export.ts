@@ -1,5 +1,5 @@
 /**
- * Figma export generator (plan W01.P04.S18).
+ * Figma export generator.
  *
  * Emits `tokens/figma/tokens.json` in Tokens Studio format from the DTCG source. Figma
  * cannot store OKLCH, so every value is resolved to sRGB hex (culori; verified to match
@@ -11,7 +11,7 @@
  * A `$themes` array binds each mode so Tokens Studio's "Create Variables" produces the
  * Semantic collection with Light/Dark/High Contrast modes.
  *
- * The non-color foundation families (figma-parity-reconciliation W01.P01.S06) are exported
+ * The non-color foundation families are exported
  * alongside color as a single `foundation` set (active as source across all modes): the
  * Figma role-named type scale as Tokens Studio `typography` composites plus a `fontFamily`
  * set, radius as `borderRadius`, elevation as `boxShadow`, and spacing as `spacing`.
@@ -160,7 +160,7 @@ async function build(): Promise<void> {
   const dark = await tokensFor([PRIMITIVES, SEMANTIC, DARK]);
   const hc = await tokensFor([PRIMITIVES, SEMANTIC, HC]);
 
-  // Non-color foundation families (figma-parity-reconciliation W01.P01.S06): exported
+  // Non-color foundation families: exported
   // for Figma verification as Tokens Studio borderRadius / boxShadow / spacing / typography sets.
   const { typography, fontFamilies } = buildType();
   const radius = nestNonColor(flatLeaves(readJson(RADIUS).radius), "borderRadius");

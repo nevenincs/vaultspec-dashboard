@@ -1,5 +1,5 @@
-// Pure unit coverage for the pending-changes bridge derivation (review-surface-flow
-// ADR F1). No wire: the function is pure logic over served projections + the current
+// Pure unit coverage for the pending-changes bridge derivation.
+// No wire: the function is pure logic over served projections + the current
 // session's run ids, so it is driven directly. Only the fields the derivation reads
 // are load-bearing; the rest are shaped to the served contract so the cast is honest.
 

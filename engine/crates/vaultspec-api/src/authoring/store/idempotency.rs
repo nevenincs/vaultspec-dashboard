@@ -1,6 +1,6 @@
 //! Scoped idempotency outcome repository.
 //!
-//! W02.P07 persists replay guards for mutating frontend and agent commands. It
+//! This module persists replay guards for mutating frontend and agent commands. It
 //! deliberately stops at in-flight and recorded command outcomes; apply jobs,
 //! changeset records, outbox rows, routes, and core calls are later phases.
 

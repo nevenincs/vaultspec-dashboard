@@ -1,4 +1,4 @@
-// Transcript sub-parts (ADR D3): the collapsed-by-default tool-call entry with
+// Transcript sub-parts: the collapsed-by-default tool-call entry with
 // per-call SERVED status, the dimmed cost-labeled thinking block, and the inline
 // tool-permission prompt — an in-transcript entry, NEVER a dialog.
 //

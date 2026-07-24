@@ -667,7 +667,7 @@ export function Composer() {
    *  the whole session on this plane), then start the turn. When a comment batch is
    *  staged, freeze it into an engine feedback batch (once the session id is known,
    *  since the batch is session-scoped) and carry its opaque id on the turn
-   *  (feedback-loop ADR D4) — a2a never sees the content, only the id. Shared by the
+   *  — a2a never sees the content, only the id. Shared by the
    *  submit path and the queued-dispatch effect so both take the SAME lane. */
   const deliverPrompt = useCallback(
     async (

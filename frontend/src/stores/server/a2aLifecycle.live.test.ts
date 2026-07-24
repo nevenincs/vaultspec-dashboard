@@ -1,10 +1,10 @@
-// A2A lifecycle client live-wire tests (a2a-product-provisioning W05.P11.S95).
+// A2A lifecycle client live-wire tests.
 //
 // Test-integrity / wire-contract: these run ONLINE against the real `vaultspec
 // serve` the global setup spawns, never a mocked wire. They exercise the genuine
 // `EngineClient` lifecycle methods → the engine's `/a2a/lifecycle/*` plane end to
 // end, and PROVE the browser never opens a direct transport to the a2a gateway: the
-// dashboard reaches the component ONLY through the engine (ADR D3), so every request
+// dashboard reaches the component ONLY through the engine, so every request
 // this client makes rides the ENGINE origin.
 //
 // The live harness spawns the engine WITHOUT a resident a2a gateway, so this is the
@@ -79,7 +79,7 @@ describe("a2a lifecycle client (live)", () => {
 
     // EVERY request rode the engine origin and the lifecycle plane — the browser
     // never opened a direct transport to the a2a gateway (no cross-origin sibling
-    // call). This is the structural proof of ADR D3's browser→engine-only edge.
+    // call). This is the structural proof of the browser→engine-only edge.
     expect(seen.length).toBeGreaterThan(0);
     for (const url of seen) {
       expect(url.startsWith(LIVE_BASE_URL)).toBe(true);

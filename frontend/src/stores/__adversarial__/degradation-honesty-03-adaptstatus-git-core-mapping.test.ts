@@ -2,7 +2,7 @@
 //
 // Target: src/stores/server/liveAdapters.ts — adaptStatus.
 //
-// FINDING (2026-06-13 live capture): the engine was UP and serving
+// FINDING: the engine was UP and serving
 // /status with data.git = {dirty:true, head_ref:"refs/heads/main"} and
 // backends.core populated, yet the NowStrip read "git: no repository state"
 // and "core: vault unknown". Root causes:
@@ -59,9 +59,9 @@ describe("adaptStatus: git block mapping (NowStrip honesty)", () => {
   });
 
   // The LIVE wire serves `dirty` as a BOOLEAN ("is the tree dirty?"), NOT a
-  // per-file list (git-diff-browser review HIGH-1: the engine serves no per-file
-  // changed list). adaptStatus preserves the boolean truth so the surface renders
-  // clean vs. dirty honestly without fabricating a file list.
+  // per-file list — the engine serves no per-file changed list. adaptStatus
+  // preserves the boolean truth so the surface renders clean vs. dirty honestly
+  // without fabricating a file list.
   it("dirty:true (boolean) is preserved so the surface shows the dirty state", () => {
     const adapted = adaptStatus(liveBody({ git: { head_ref: "main", dirty: true } }));
     expect(adapted.git?.dirty).toBe(true);

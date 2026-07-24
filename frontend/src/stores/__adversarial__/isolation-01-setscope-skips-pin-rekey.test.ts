@@ -8,10 +8,9 @@
 // Cross-store, applied in one move." It must reach across scoped sibling
 // stores too.
 //
-// But pins persist client-side PER workspace+scope (pins.ts:1-5, ADR G5.d,
-// finding-018). setScope must re-key usePinStore; clearing other view-store
-// pin-like concepts is not enough because layout pins have their own scoped
-// persistence key.
+// But pins persist client-side PER workspace+scope (pins.ts:1-5, finding-018).
+// setScope must re-key usePinStore; clearing other view-store pin-like concepts is
+// not enough because layout pins have their own scoped persistence key.
 //
 // CONSEQUENCE guarded against (the 018/022/023 class, exactly): scope A is active, the user
 // pins node "a:pinned", then switches to scope B via setScope. The pin

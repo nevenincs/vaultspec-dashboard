@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId } from "../../nodeIds";
@@ -31,8 +31,7 @@ import { normalizeSearchScope } from "./timeline-search";
 //
 // Save, frontmatter, rename, and create ALL route through the authoring
 // ledger's `directWrite` route (`operation: "replace_body"` /
-// `"edit_frontmatter"` / `"rename"` / `"create_document"`,
-// ledgered-edit-migration W01.P02 / W03.P07 / W03.P08 / W03.P09) — a
+// `"edit_frontmatter"` / `"rename"` / `"create_document"`) — a
 // self-approving direct changeset, not the legacy `/ops/core` ops-dispatch
 // seam. `directWriteResultToOpsResult` maps the body/frontmatter outcome onto
 // the SAME `OpsWriteResult` shape the editor lifecycle already consumes
@@ -42,7 +41,7 @@ import { normalizeSearchScope } from "./timeline-search";
 // scope-switch is refused rather than silently landing in the wrong worktree.
 // Only `archive`/`link` (feature-archive, relate) still dispatch through the
 // legacy `dispatchOps` seam — the ops-dispatch write mode itself is now dead
-// in practice (no live caller), left alive per the ADR's staged W04 removal.
+// in practice (no live caller), left alive pending its staged removal.
 //
 // Either way, a conflict/refusal is a typed result the caller drives editor state
 // from — NOT a thrown error — so the mutation resolves (never rejects) on a
@@ -172,7 +171,7 @@ function invalidateScopedQuerySubtree(
     return;
   }
   if (subtree === "vault-tree") {
-    // Generation-keyed reconciliation (vault-tree-delta ADR D4): patch the held
+    // Generation-keyed reconciliation: patch the held
     // listing from a small delta instead of re-draining the whole ~765 KB listing.
     // Fire-and-forget — the reconcile falls back to a full invalidate itself on any
     // no-baseline / full_required / large-delta / error path.
@@ -180,8 +179,8 @@ function invalidateScopedQuerySubtree(
     return;
   }
   if (subtree === "code-files") {
-    // The SAME generation-keyed reconcile, keyed by path (ADR /code-files
-    // follow-on): the code delta route ensure-freshes the corpus, so a source edit
+    // The SAME generation-keyed reconcile, keyed by path: the code delta
+    // route ensure-freshes the corpus, so a source edit
     // since the client's baseline is surfaced and patched instead of re-draining.
     void reconcileRowGeneration(queryClient, codeFilesReconcileSpec(scope));
     return;
@@ -189,12 +188,12 @@ function invalidateScopedQuerySubtree(
   invalidateQueryPrefix(queryClient, [...engineKeys.all, subtree, scope]);
 }
 
-// --- generation-keyed listing reconcile (vault-tree-delta ADR D4, KEY-GENERIC) ------
+// --- generation-keyed listing reconcile (KEY-GENERIC) ------------------------------
 //
 // The reconcile machinery is shared by `/vault-tree` (keyed by stem) and
 // `/code-files` (keyed by path): the ring diff, the merge, the pure decision, and
 // the identity-guarded apply differ only by a `RowReconcileSpec` — never a
-// copy-paste twin. The review HIGH lost-update guard lives ONCE in
+// copy-paste twin. The lost-update guard lives ONCE in
 // `applyRowReconcile`.
 
 /** The per-listing parameters the generic reconcile is specialized by. */
@@ -219,7 +218,7 @@ export type RowReconcileAction<Listing> =
   | { kind: "full-drain" }
   | { kind: "noop" };
 
-/** Key-keyed merge (ADR D4): drop `removed`, replace/insert `changed`, and re-sort
+/** Key-keyed merge: drop `removed`, replace/insert `changed`, and re-sort
  *  by key to reproduce the engine's sorted order — producing ONE complete listing at
  *  the new generation. */
 export function mergeRowDelta<Entry, Listing>(
@@ -249,7 +248,7 @@ export function mergeRowDelta<Entry, Listing>(
   );
 }
 
-/** The reconcile decision (ADR D4), factored PURE so every branch is
+/** The reconcile decision, factored PURE so every branch is
  *  deterministically testable without the wire: `patch` a held complete listing
  *  from the delta; `full-drain` on any honest-degradation path (no valid baseline,
  *  `full_required`, or a delta touching more than half the set); `noop` when nothing
@@ -280,7 +279,7 @@ export function planRowReconcile<Entry, Listing>(
 }
 
 /**
- * Apply a planned reconcile action to the cache (review HIGH, vault-tree-delta):
+ * Apply a planned reconcile action to the cache:
  * generation bumps arrive in bursts, so two overlapping reconciles can resolve
  * OUT OF ORDER — a stale patch landing after a newer write would silently regress
  * the listing and stamp it fresh. The write is therefore guarded on baseline
@@ -310,7 +309,7 @@ export function applyRowReconcile<Listing>(
 }
 
 /**
- * Reconcile a held listing on a generation bump (ADR D4). With a valid baseline
+ * Reconcile a held listing on a generation bump. With a valid baseline
  * (complete, known generation, untruncated), fetch the `since=` delta and apply the
  * pure `planRowReconcile` decision through the identity-guarded `applyRowReconcile`;
  * a transport/shape fault or any degradation path falls back to the full-drain
@@ -468,11 +467,11 @@ export function invalidateGraphGenerationReads(
 
 /**
  * Invalidate the graph-generation SIBLING projections — every generation-keyed
- * read EXCEPT the `graph` document slice itself (graph-slice-delta ADR D4). On a
+ * read EXCEPT the `graph` document slice itself. On a
  * document-granularity stream delta the live-sync path patches the ~3.5 MB `graph`
  * slice through the delta route instead of refetching it, but the open editor's
  * served bytes, the vault/code tree, the filter facets, and the selected node's
- * projections must STILL re-read the fresh generation (the W03.P04.S10 external
+ * projections must STILL re-read the fresh generation (the external
  * re-ingest coupling). This sweep refreshes those siblings without dragging the
  * large slice back over the wire; the graph subtree is delta-patched (or, on
  * degradation, drained on its own D1-floored fallback).
@@ -604,8 +603,8 @@ function directWriteResultToOpsResult(outcome: DirectWriteOutcome): {
 
 /**
  * Save the open document's body through the authoring ledger's `directWrite`
- * route (`operation: "replace_body"`, ledgered-edit-migration W01.P02 /
- * W02.P06) — a self-approved direct changeset, not the legacy `set-body` ops
+ * route (`operation: "replace_body"`) — a self-approved direct changeset,
+ * not the legacy `set-body` ops
  * dispatch. Sends the open doc's `scope` as the direct-write scope PIN, so a
  * save that races a scope-switch is refused as a redacted denial rather than
  * silently landing in the wrong worktree. Resolves with the typed
@@ -687,8 +686,8 @@ export function normalizeSetFrontmatterArgs(
 
 /**
  * Set the open document's frontmatter (date / tags / related) through the
- * authoring ledger's `directWrite` route (`operation: "edit_frontmatter"`,
- * ledgered-edit-migration W03.P07) — a self-approved direct changeset, not
+ * authoring ledger's `directWrite` route (`operation: "edit_frontmatter"`) —
+ * a self-approved direct changeset, not
  * the legacy `set-frontmatter` ops dispatch. Sends the open doc's `scope` as
  * the direct-write scope pin, same as `useSaveBody`. Same typed-result
  * discipline — a `conflict`/`refused` resolves (never throws); a frontmatter
@@ -790,17 +789,17 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
 
 /**
  * Create a new document through the authoring ledger's `directWrite` route
- * (`operation: "create_document"`, ledgered-edit-migration W03.P09) — a
+ * (`operation: "create_document"`) — a
  * self-approved direct changeset, not the legacy `create` ops dispatch. Sends
  * the target `scope` as the direct-write scope pin, same as Save/frontmatter/
  * rename. Resolves with `{ result, nodeId }` where `result` is the typed
- * `OpsWriteResult` and `nodeId` is the SERVER-echoed `doc:<stem>` id (W03.P09a
- * — `vault add` names the created file itself; the client never predicted a
+ * `OpsWriteResult` and `nodeId` is the SERVER-echoed `doc:<stem>` id
+ * (`vault add` names the created file itself; the client never predicted a
  * stem, and now doesn't need to: the apply receipt echoes the real
  * `result_node_id`/`result_stem`/`document_path` for a landed create,
  * re-resolved server-side, never client-guessed). `conflict`/`refused`
  * (including a predicted-create-path collision, structurally tagged
- * `denialKind === "path_collision"` — W05.P14, never a reason-text substring
+ * `denialKind === "path_collision"`, never a reason-text substring
  * match) is a typed result the caller drives UI state from — NOT a thrown
  * error; only a transport fault, or the actor-token fail-safe
  * (`requireActorToken`), rejects. On a `created` outcome the same vault-
@@ -808,7 +807,7 @@ export function normalizeCreateDocArgs(args: unknown): NormalizedCreateDocArgs {
  * tree rows, graph nodes, filter facets, search hits, git change entries, and
  * feature-group coverage — the `features` subtree rides the same generation-
  * refresh sweep, so a just-created document surfaces in the panel's coverage
- * from the create receipt, feature-group-authoring ADR constraint).
+ * from the create receipt).
  */
 export function useCreateDoc() {
   const queryClient = useQueryClient();
@@ -843,7 +842,7 @@ export function useCreateDoc() {
         { actorToken: requireActorToken() },
       );
       if (outcome.kind === "applied") {
-        // W03.P09a: the apply receipt now echoes the created document's real
+        // The apply receipt now echoes the created document's real
         // identity (server-resolved, never client-predicted) —
         // `resultNodeId` is already the full `doc:<stem>` id.
         return {
@@ -869,8 +868,8 @@ export function useCreateDoc() {
           failure: createDocFailureKind(outcome),
         };
       }
-      // A predicted-create-path collision (`denialKind === "path_collision"`,
-      // W05.P14) rides the same denied-status VALUE as every other denial and
+      // A predicted-create-path collision (`denialKind === "path_collision"`)
+      // rides the same denied-status VALUE as every other denial and
       // folds into the SAME refused-with-checks result below: `OpsWriteResult`
       // (unlike rename's `RenameDocResult`) carries no distinct `collision`
       // kind for create, so there is no separate branch to route to.
@@ -957,7 +956,7 @@ function refusedRenameResult(): {
 
 /**
  * Rename a document's file through the authoring ledger's `directWrite` route
- * (`operation: "rename"`, ledgered-edit-migration W03.P08) — a self-approved
+ * (`operation: "rename"`) — a self-approved
  * direct changeset, not the legacy `rename` ops dispatch. Sends the open doc's
  * `scope` as the direct-write scope pin, same as Save/frontmatter. On a
  * `renamed` outcome the caller re-keys the open editor/tab from `oldNodeId` to
@@ -965,8 +964,8 @@ function refusedRenameResult(): {
  * and the watcher re-ingests) — `incomingRewritten` is not carried by the
  * direct-write outcome and floors to 0 (no consumer reads it today). A
  * `conflict` (a stale optimistic base) / `collision` (the target stem is
- * occupied, routed on the served structured `denialKind === "path_collision"`
- * — W05.P14, never a reason-text substring match) / `refused` (every other
+ * occupied, routed on the served structured `denialKind === "path_collision"`,
+ * never a reason-text substring match) / `refused` (every other
  * denial/failure/in-flight collision) is a typed result the caller drives
  * editor state from — NOT a thrown error; only a transport fault, or the
  * actor-token fail-safe (`requireActorToken`), rejects. The same vault-
@@ -1054,13 +1053,13 @@ export function useRenameDoc() {
   });
 }
 
-// --- plan-step tick (authoring-surface ADR D1) -----------------------------------
+// --- plan-step tick ---------------------------------------------------------------
 //
 // Ticking/unticking a plan Step rides the SAME ledgered `directWrite` route as
 // every editor save, under the `set_plan_step_state` operation: the engine
 // invokes `vault plan step check`/`uncheck` through the core adapter, fences the
 // plan's optimistic base engine-side (the plan CLI carries no expected-blob-hash
-// flag — authoring-surface ADR "Constraints"), and re-verifies the resulting Step
+// flag), and re-verifies the resulting Step
 // state through the SAME parser the plan-interior projection serves from. The
 // served `done` flag flips after the watcher re-ingests, so a successful tick
 // invalidates the vault-mutation read surfaces — the plan-interior projection
@@ -1128,7 +1127,7 @@ function planStepOutcomeToResult(
 
 /**
  * Tick or untick a plan Step through the authoring ledger's `directWrite` route
- * (`operation: "set_plan_step_state"`, authoring-surface ADR D1). Resolves with a
+ * (`operation: "set_plan_step_state"`). Resolves with a
  * typed {@link PlanStepTickResult} — a `conflict` (a stale plan base) or a
  * `refused` (a denial, e.g. a non-human actor or a scope-pin mismatch; a failure;
  * or an in-flight collision) is a value the caller drives checkbox state from, NOT

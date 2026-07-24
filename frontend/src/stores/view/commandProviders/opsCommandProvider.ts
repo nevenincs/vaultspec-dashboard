@@ -1,8 +1,7 @@
-// Ops command provider (command-palette-providers ADR W01.P02; the backend verb feed
-// extended with the reload/refresh family in the actions wave). Contributes the
-// whitelisted core/rag operational verbs and the open-settings app command, each
-// dispatched through the appDispatcher seam (palette-ops-dispatch-through-the-seam)
-// via the injected `runOp` intent. It replaces the hard-coded ops branch in the old
+// Ops command provider; the backend verb feed extended with the reload/refresh
+// family. Contributes the whitelisted core/rag operational verbs and the
+// open-settings app command, each dispatched through the appDispatcher seam via the
+// injected `runOp` intent. It replaces the hard-coded ops branch in the old
 // `buildCommands`; the OPS_WHITELIST stays the bounded source of WHICH verbs exist,
 // the provider is HOW they enter the palette.
 
@@ -24,9 +23,9 @@ export function opsCommandProvider(ctx: CommandContext): readonly unknown[] {
     disabledInTimeTravel: true,
     run: () => ctx.intents.runOp(target, verb),
   }));
-  // Compose the SHARED settings builder (unified-action-plane): the palette and the
-  // background context menu both surface Settings from one definition. The palette groups
-  // by `family`, not the descriptor's menu `section`.
+  // Compose the SHARED settings builder: the palette and the background context menu
+  // both surface Settings from one definition. The palette groups by `family`, not
+  // the descriptor's menu `section`.
   commands.push({ ...openSettingsAction(), family: "app" });
   return commands;
 }

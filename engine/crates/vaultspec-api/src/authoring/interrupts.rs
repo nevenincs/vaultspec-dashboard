@@ -1,17 +1,17 @@
-//! Interrupt resume and tool-call records (W12.P32).
+//! Interrupt resume and tool-call records.
 //!
 //! A LangGraph run pauses on interrupts (tool-permission and changeset-approval
 //! requests) and resumes when a human decides. This module owns the DURABLE product
-//! side of that (langgraph-integration ADR): interrupts normalized to stable domain
+//! side of that: interrupts normalized to stable domain
 //! records keyed by a stable interrupt id, resume-by-interrupt-id (never by position),
 //! tool-call records, and the replay-safe decision handling — all surviving
 //! independently of LangGraph checkpoint pruning.
 //!
-//! THE EXECUTOR BAR (arch-reviewer P32): the tool-execution surface must consult the
-//! P22 permission plane before running any tool. A read/context tool runs freely; a
+//! THE EXECUTOR BAR: the tool-execution surface must consult the
+//! permission plane before running any tool. A read/context tool runs freely; a
 //! MUTATING or DANGEROUS tool runs ONLY if its `tool_permission_request` is GRANTED
 //! (`permissions::ToolPermissionRequestRecord::granted`). This is where the permission
-//! plane built in P22 becomes real — without this gate, a granted-or-not permission is
+//! plane becomes real — without this gate, a granted-or-not permission is
 //! inert. The gate is a PURE decision over the tool's risk tier + the (looked-up)
 //! permission record; the caller resolves the record by `tool_call_id`.
 //!
@@ -36,10 +36,10 @@ const TOOL_CALL_SCHEMA: &str = "authoring.tool_call.v1";
 
 /// What a LangGraph interrupt asks a human to decide. V1 raises exactly one kind: a
 /// bounded `tool_permission` action (the executor gate). Product changeset approval is
-/// review-station STATE keyed by `proposal_id` (approval-gates ADR), decided async via
+/// review-station STATE keyed by `proposal_id`, decided async via
 /// the review-decision route — NOT a run-suspending interrupt — so no changeset-approval
-/// interrupt kind is constructed anywhere. (The langgraph-integration ADR sketches a
-/// `changeset_approval_request` interrupt payload for a future pause-on-approval node;
+/// interrupt kind is constructed anywhere. (A `changeset_approval_request` interrupt
+/// payload is sketched for a future pause-on-approval node;
 /// that kind returns with its wiring if/when such a node is built.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,8 +56,8 @@ pub enum InterruptResumeState {
 }
 
 /// A durable, normalized interrupt record keyed by a STABLE `interrupt_id` — so
-/// multiple simultaneous interrupts resume BY ID, never by position
-/// (langgraph-integration ADR). It is PRODUCT state and survives independently of
+/// multiple simultaneous interrupts resume BY ID, never by position.
+/// It is PRODUCT state and survives independently of
 /// LangGraph checkpoint pruning; the run may replay the interrupted node, so resume is
 /// idempotent (a replayed resume returns the recorded outcome, never re-decides).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,13 +91,13 @@ impl InterruptRecord {
     }
 }
 
-/// The bounded page cap for the served interrupt listing (agent-wire-gaps ADR D3): a
+/// The bounded page cap for the served interrupt listing: a
 /// recovery read of a run's interrupts is capped so a pathological run can never serve
 /// an unbounded page. The `interrupts_for_run` store query already `LIMIT`s; the page
 /// builder fetches one past the cap to set an honest `truncated` marker.
 pub const INTERRUPT_LIST_CAP: u32 = 50;
 
-/// The typed human decision the resume WRITE records (agent-wire-gaps ADR D3 / S18):
+/// The typed human decision the resume WRITE records:
 /// the ONE narrowed schema `POST /interrupts/{id}/resume` accepts, replacing the former
 /// opaque `Value`. `tool_permission` is the approve/reject the executor gate consumes;
 /// `steer` resumes the parked run with a fresh prompt. UNTAGGED so the `tool_permission`
@@ -119,7 +119,7 @@ pub enum InterruptResumeDecision {
     },
 }
 
-/// The typed, per-kind human decision projected onto a resolved interrupt (D3 / S18):
+/// The typed, per-kind human decision projected onto a resolved interrupt:
 /// the approve/reject + optional comment OR the steer prompt the resume write records. A
 /// stored decision that does not parse as [`InterruptResumeDecision`] (a legacy opaque
 /// blob) projects as `decision_unreadable` so the page degrades per record rather than
@@ -138,7 +138,7 @@ pub enum InterruptDecisionProjection {
     DecisionUnreadable,
 }
 
-/// One interrupt as served on the recovery listing (D3): the stable id, the run it
+/// One interrupt as served on the recovery listing: the stable id, the run it
 /// gates, its kind, the gated tool call, its resume state (a `pending` entry is the
 /// flag a client recovers a still-open permission prompt from), the raise/resolve
 /// timestamps, and — when resolved — the typed decision projection. A pending
@@ -158,7 +158,7 @@ pub struct InterruptProjection {
     pub updated_at_ms: i64,
 }
 
-/// A bounded page of interrupt projections for one run (D3): raise-order items, the
+/// A bounded page of interrupt projections for one run: raise-order items, the
 /// applied `cap`, and an honest `truncated` marker set when more interrupts exist than
 /// the cap serves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,14 +169,14 @@ pub struct InterruptListPage {
     pub truncated: bool,
 }
 
-/// Project the recorded human decision on an interrupt into its typed per-kind schema
-/// (D3). `None` for a still-pending interrupt (no decision recorded); a resolved
+/// Project the recorded human decision on an interrupt into its typed per-kind schema.
+/// `None` for a still-pending interrupt (no decision recorded); a resolved
 /// interrupt whose opaque decision blob does not parse as the typed schema yields
 /// `DecisionUnreadable` rather than an error, so one legacy record never fails the page.
 pub fn project_interrupt_decision(record: &InterruptRecord) -> Option<InterruptDecisionProjection> {
     let raw = record.decision.as_deref()?;
-    // Parse the stored blob through the SAME typed schema the resume write records
-    // (S18): one language across write and read. A blob matching neither arm (a legacy
+    // Parse the stored blob through the SAME typed schema the resume write records:
+    // one language across write and read. A blob matching neither arm (a legacy
     // opaque decision from before the typed schema) degrades to `decision_unreadable`
     // per record rather than failing the whole page.
     Some(match serde_json::from_str::<InterruptResumeDecision>(raw) {
@@ -190,7 +190,7 @@ pub fn project_interrupt_decision(record: &InterruptRecord) -> Option<InterruptD
     })
 }
 
-/// Project a durable interrupt record onto its served shape (D3), parsing its recorded
+/// Project a durable interrupt record onto its served shape, parsing its recorded
 /// decision through [`project_interrupt_decision`].
 pub fn project_interrupt(record: InterruptRecord) -> InterruptProjection {
     let decision = project_interrupt_decision(&record);
@@ -207,7 +207,7 @@ pub fn project_interrupt(record: InterruptRecord) -> InterruptProjection {
 }
 
 /// A durable tool-call record: the agent tool call, its risk tier, and whether the
-/// executor gate PERMITTED it to run (the P22 permission plane, snapshotted at
+/// executor gate PERMITTED it to run (the permission plane, snapshotted at
 /// execution). Bounded, product state.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -307,7 +307,7 @@ pub struct ToolCallOutcome {
     pub replayed: bool,
 }
 
-/// The durable interrupt repository (langgraph-integration ADR): raise-and-resolve of
+/// The durable interrupt repository: raise-and-resolve of
 /// interrupt records keyed by a STABLE `interrupt_id`. Resolve is resume-BY-ID and
 /// replay-safe — a replayed resume returns the recorded decision, never re-decides.
 pub struct InterruptRepository<'repo, 'conn> {
@@ -403,7 +403,7 @@ impl InterruptRepository<'_, '_> {
         }
     }
 
-    /// The bounded global page of PENDING interrupts (janitor P04a.S56), oldest first.
+    /// The bounded global page of PENDING interrupts, oldest first.
     /// The janitor drives the tool-permission lazy expiry from the interrupt side over
     /// exactly this page — an interrupt itself carries no TTL and its record never
     /// changes here (resolution stays the resume path's job); reaping means making the
@@ -440,7 +440,7 @@ impl InterruptRepository<'_, '_> {
         rows.iter().map(|json| read_interrupt(json)).collect()
     }
 
-    /// The bounded, raise-order interrupt page for a run (agent-wire-gaps ADR D3) — the
+    /// The bounded, raise-order interrupt page for a run — the
     /// recovery listing a client that lost its `/execute` `awaiting_permission` response
     /// reads its pending interrupts back from. Reuses `interrupts_for_run` (no new store
     /// query): it fetches one past the clamped cap to set an honest `truncated` marker,
@@ -772,7 +772,7 @@ mod tests {
         ));
     }
 
-    // ---- durable interrupt + tool-call records (S158) --------------------------------
+    // ---- durable interrupt + tool-call records --------------------------------
 
     use crate::authoring::model::{CommandKind, InterruptId, RunId};
     use crate::authoring::store::Store;
@@ -1017,7 +1017,7 @@ mod tests {
         assert_eq!(recorded.record.risk_tier, ToolRiskTier::ReadOnly);
     }
 
-    // ---- D3: bounded interrupt list page + typed decision projection ----------------
+    // ---- bounded interrupt list page + typed decision projection ----------------
 
     fn list_page(store: &mut Store, run_id: &str, cap: u32) -> InterruptListPage {
         store
@@ -1111,7 +1111,7 @@ mod tests {
     }
 
     #[test]
-    fn list_page_projects_a_steer_decision_typed(/* S18 */) {
+    fn list_page_projects_a_steer_decision_typed() {
         // A steer resume (the run continued with a fresh prompt) is stored as the typed
         // `InterruptResumeDecision::Steer` blob and projects back as the typed Steer arm —
         // write and read one language, no longer a `decision_unreadable` degradation.

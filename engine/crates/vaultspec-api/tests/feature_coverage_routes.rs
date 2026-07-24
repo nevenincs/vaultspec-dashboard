@@ -1,4 +1,4 @@
-//! Feature-coverage wire conformance (feature-group-authoring ADR D2/D3):
+//! Feature-coverage wire conformance:
 //! `/features?scope=&feature=` serves one feature group's pipeline coverage
 //! (present types + newest stems, missing types, eligibility, next step) and
 //! `/features?scope=` serves the compact all-features roster — both through the

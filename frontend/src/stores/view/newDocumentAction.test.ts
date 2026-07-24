@@ -1,4 +1,4 @@
-// The one new-document descriptor (authoring-surface ADR D5). Every visible create
+// The one new-document descriptor. Every visible create
 // affordance — the workspace empty-state button, the browser-region Plus, the
 // Features-section Plus, the context menus, the palette, and the chord — dispatches
 // this SAME descriptor under the one shared id, whatever prefill/focus options it

@@ -1,11 +1,10 @@
-// Feature-filter query helpers (left-rail feature-filter campaign). The rail's
+// Feature-filter query helpers. The rail's
 // canonical feature filter is `dashboardState.filters.feature_query`
 // ({ value, mode }) — a real BACKEND filter the engine applies as a glob or regex
 // over each node's `feature_tags` (engine-query `filter.rs`). These pure helpers
 // translate between the bar's raw typed text and that wire shape, and provide the
 // CLIENT-side matcher the rail tree narrows with so the rail agrees with the graph
-// the same filter authors (dashboard-layer-ownership, filtering-has-one-canonical-
-// surface).
+// the same filter authors.
 //
 // Syntax, in increasing power (search → glob → advanced):
 //   • plain term          → substring glob  (`dash`  ⇒ value `*dash*`, mode glob)

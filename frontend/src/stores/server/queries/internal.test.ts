@@ -83,7 +83,7 @@ describe("engineKeys", () => {
     expect(statusLens).not.toEqual(designLens);
     // With focus + corpus appended as the key tail, the lens sits at length-3.
     expect(designLens[designLens.length - 3]).toBe("design");
-    // The corpus is part of the cache identity (codebase-graphing ADR D7): the
+    // The corpus is part of the cache identity: the
     // vault and code corpora are disconnected datasets that never share a cache
     // entry, so a corpus switch is a refetch that reloads the canvas.
     const vaultCorpus = engineKeys.graph(

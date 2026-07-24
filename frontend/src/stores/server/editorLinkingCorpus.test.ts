@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 //
-// Unit test for the editor's link-picker corpus derivation
-// (document-editor-redesign ADR P01.S01): the pure projection from the served
+// Unit test for the editor's link-picker corpus derivation:
+// the pure projection from the served
 // vault-tree entries to the pickable document list + feature-tag vocabulary.
 
 import { describe, expect, it } from "vitest";

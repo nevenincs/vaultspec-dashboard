@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Split from queries.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from queries.test.ts.
 
 import { afterEach, describe, expect, it } from "vitest";
 import { StreamLostError } from "../../../platform/policy/failurePolicy";
@@ -119,7 +119,7 @@ describe("parseSseFrames", () => {
 });
 
 describe("sseChunks stream failure handling", () => {
-  it("throws StreamLostError on a non-ok stream response (ADR D2)", async () => {
+  it("throws StreamLostError on a non-ok stream response", async () => {
     const badResponse = new Response("nope", { status: 503 });
     await expect(async () => {
       for await (const _chunk of sseChunks(badResponse)) {

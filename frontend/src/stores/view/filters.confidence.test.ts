@@ -1,4 +1,4 @@
-// Regression (backend-hardening campaign, finding filters-01): the per-tier
+// Regression: the per-tier
 // min-confidence floor must stay within the R3 0..1 wire grammar (M-G7). An
 // out-of-range floor (a percent-shaped preset like 70) clamps; a non-finite
 // floor never ships on the wire and never silently includes the sub-floor

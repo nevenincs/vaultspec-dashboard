@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import {
@@ -65,7 +65,7 @@ export function useVaultTree(scope: unknown) {
   const queryKey = engineKeys.vaultTree(request.scope ?? "");
   const query = useQuery({
     queryKey,
-    // Progressive listing (universal-data-loading ADR D5): each accumulated
+    // Progressive listing: each accumulated
     // page prefix is written into THIS query's cache entry (`complete: false`)
     // so the rail paints the first page immediately; the resolved value — the
     // whole drained listing, `complete: true` — replaces it on settle. A
@@ -89,7 +89,7 @@ export function normalizeCodeFilesRequestIdentity(
   return { scope: normalizeGraphSliceScope(scope) };
 }
 
-/** The complete code-file listing (search-providers ADR): the client walks the
+/** The complete code-file listing: the client walks the
  *  cursor to completion, so the files(code) provider holds the WHOLE set to
  *  narrow client-side (the complete-paginated-set rule). Bounded cache keyed on
  *  scope, mirroring `useVaultTree`; default gcTime bounds retention. */
@@ -158,7 +158,7 @@ export interface VaultTreeSurfaceView {
   availability: VaultTreeAvailability;
   state: VaultTreeSurfaceState;
   /** False while a progressive partial listing is held (the drain is still
-   *  walking — universal-data-loading ADR D5): the rail renders its honest
+   *  walking): the rail renders its honest
    *  partial-narrow affordance until this flips true. */
   complete: boolean;
 }
@@ -206,8 +206,8 @@ export interface VaultTreeBrowserView {
   filteredToNothing: boolean;
 }
 
-// Pipeline reading order (terminology-standardization ADR D2); `index` is never a
-// displayed group (ADR D5), so it is omitted here and the feature projection skips
+// Pipeline reading order; `index` is never a
+// displayed group, so it is omitted here and the feature projection skips
 // index entries outright.
 const VAULT_TREE_DOC_TYPE_ORDER = [
   "research",
@@ -235,7 +235,7 @@ export function projectVaultTreeFeatureGroups(
   const UNTAGGED = "(untagged)";
   const byFeature = new Map<string, Map<string, VaultTreeEntry[]>>();
   for (const entry of entries) {
-    // `index` is never a displayed node (terminology-standardization ADR D5): a
+    // `index` is never a displayed node: a
     // generated feature index must not appear inside a feature's category sub-groups.
     if (entry.doc_type === "index") continue;
     const features = entry.feature_tags.length > 0 ? entry.feature_tags : [UNTAGGED];
@@ -261,7 +261,7 @@ export function projectVaultTreeFeatureGroups(
         .sort((a, b) =>
           // The historical sub-folder order is path-ascending (chronological by
           // the date-stamped stem); a chosen sort key reorders it through the
-          // ONE comparator (ADR D3 — one sort concept for the whole tree).
+          // ONE comparator (one sort concept for the whole tree).
           sort.key === "recency" || sort.key === "docs"
             ? (sort.direction === "desc" ? 1 : -1) *
               compareRepositoryPaths(repositoryPath(a.path), repositoryPath(b.path))
@@ -308,7 +308,7 @@ export function deriveVaultTreeBrowserView(
   };
 }
 
-// --- editor linking corpus (document-editor-redesign ADR) ------------------------
+// --- editor linking corpus --------------------------------------------------------
 //
 // The pickable corpus for the document editor's Related and Feature link pickers:
 // the existing vault documents (stem + human title + first feature tag) and the
@@ -316,8 +316,8 @@ export function deriveVaultTreeBrowserView(
 // `/vault-tree` listing, so the editor stays app/ leaf chrome that fetches nothing
 // (dashboard-layer-ownership): the picker reads THIS selector, never the wire.
 // Bounded by the vault tree's server ceiling; the combobox narrows this bounded
-// slice client-side. Index documents are already excluded from `/vault-tree` rows
-// (terminology-standardization ADR D5), so they never surface as link targets.
+// slice client-side. Index documents are already excluded from `/vault-tree` rows,
+// so they never surface as link targets.
 
 export interface EditorCorpusDocument {
   /** The document stem (`doc:` id tail) — the value persisted into `related`. */
@@ -373,14 +373,14 @@ export function useEditorLinkingCorpus(
 // Execution / Plans / References / Research → documents), each leaf a DocRow that
 // carries the human title + date + status. Both are narrowed by ONE facet pass —
 // the canonical left-rail filter (feature text, doc types, statuses, feature tags,
-// date range) — so the rail tree agrees with the graph it filters (left-rail-top
-// ADR D5). No engine work and no new wire field: `status`, `dates`, `doc_type`,
+// date range) — so the rail tree agrees with the graph it filters.
+// No engine work and no new wire field: `status`, `dates`, `doc_type`,
 // and `feature_tags` are already on the `VaultTreeEntry` the projection reads.
 
 /** Doc-type-first display order for the Documents section — the pipeline reading
- *  order (terminology-standardization ADR D2): Research · Decisions · Plans · Steps
+ *  order: Research · Decisions · Plans · Steps
  *  · Audits · References. `index` is hidden (the rail mirrors `.vault/` EXCEPT the
- *  generated index, ADR D5); unknown types append alphabetically. */
+ *  generated index); unknown types append alphabetically. */
 const VAULT_RAIL_DOC_TYPE_ORDER = [
   "research",
   "adr",
@@ -405,8 +405,8 @@ function compareVaultRecency(a: VaultTreeEntry, b: VaultTreeEntry): number {
   return compareRepositoryPaths(repositoryPath(a.path), repositoryPath(b.path));
 }
 
-/** A document's sortable field for a non-recency sort key (left-rail-tree-
- *  controls ADR D3): the served H1 title (falling back to the stem) for `name`,
+/** A document's sortable field for a non-recency sort key: the served H1 title
+ *  (falling back to the stem) for `name`,
  *  the day-granular ISO date for `created`/`modified`, the served word count for
  *  `size`. `null` = the fact is absent — an absent fact sorts LAST regardless of
  *  direction (honest absence never floats to the top). */
@@ -431,7 +431,7 @@ function vaultEntrySortField(
   }
 }
 
-/** The ONE document comparator the whole vault tree sorts by (ADR D3): `recency`
+/** The ONE document comparator the whole vault tree sorts by: `recency`
  *  is the historical newest-modified-first order (direction flips it); every
  *  other key compares its field with absent-last, path tiebreak. */
 export function compareVaultEntriesBySort(
@@ -582,7 +582,7 @@ export interface VaultRailView {
   totalCorpusBytes: number;
 }
 
-/** A feature folder's sortable aggregate for a non-recency key (ADR D3): its
+/** A feature folder's sortable aggregate for a non-recency key: its
  *  name, its newest member date, or its summed member word count. `null` =
  *  no member carries the fact — the folder sorts last. */
 function featureGroupSortField(
@@ -608,7 +608,7 @@ function featureGroupSortField(
 }
 
 /** Derive the whole Vault-tab view from the entries + the canonical facets,
- *  ordered by the ONE rail sort plane (left-rail-tree-controls ADR D3). The
+ *  ordered by the ONE rail sort plane. The
  *  default is the historical order byte-for-byte: features most-active first,
  *  documents newest-modified first. */
 export function deriveVaultRailView(
@@ -779,7 +779,7 @@ export function useVaultFilesNarrowText(scope: unknown): string {
   );
 }
 
-// --- code (worktree) file tree (dashboard-code-tree ADR) -------------------------
+// --- code (worktree) file tree -----------------------------------------------------
 //
 // The read-only codebase file-tree browser's wire seam, consumed through these
 // stores hooks so the CodeTree (chrome) never fetches the engine or reads the raw
@@ -829,8 +829,8 @@ export function useFileTree(scope: unknown, path?: unknown, enabled: unknown = t
 
 /**
  * The file-tree's degradation truth, derived inside the stores layer so the code
- * mode (chrome) never reads the raw `tiers` block (dashboard-layer-ownership /
- * dashboard-code-tree ADR "States"). The code tree is a WORKTREE-ONLY capability
+ * mode (chrome) never reads the raw `tiers` block (dashboard-layer-ownership).
+ * The code tree is a WORKTREE-ONLY capability
  * resolved by the engine's STRUCTURAL read of the working tree, so the
  * `structural` tier gates the code mode's availability: a remote-ref scope (no
  * working tree) or a scope whose structural tier is absent renders the code mode
@@ -971,9 +971,9 @@ export function useFileTreeRootSurface(scope: unknown): FileTreeRootSurfaceView 
 
 export interface FiltersVocabularyRequestIdentity {
   scope: string | null;
-  /** The corpus whose facet vocabulary is served (codebase-graphing ADR D5 —
+  /** The corpus whose facet vocabulary is served —
    *  `/filters` serves the ACTIVE corpus only; the code corpus carries its own
-   *  mtime date span per the code-timeline-range ADR). */
+   *  mtime date span. */
   corpus: GraphCorpus;
 }
 

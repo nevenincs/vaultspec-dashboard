@@ -1,10 +1,10 @@
-// Action coverage-grid guard (action-surface-mapping ADR, W03.P23). A mechanical
-// backstop for the convergence invariant the campaign closes: every verb that is
+// Action coverage-grid guard (action-surface-mapping ADR). A mechanical
+// backstop for the convergence invariant: every verb that is
 // eligible for more than one plane is enrolled under ONE shared action id, so its
 // inline accelerator and the `?` legend derive correctly and cannot drift. It asserts:
 //   1. every dual-plane (keymap + palette) verb appears in the resolved palette command
 //      list under its SHARED keymap action-id constant (cross-plane id identity), and
-//   2. the campaign's delta verbs (focus/clear filter) are present, and the
+//   2. the delta verbs (focus/clear filter) are present, and the
 //      right-rail entity kinds (commit, pull-request) each have a resolver.
 // If a future change renames a verb on one plane but not the other, the shared-id
 // assertion fails here rather than silently breaking accelerator derivation.
@@ -166,7 +166,7 @@ describe("action coverage grid guard", () => {
     });
   });
 
-  it("the campaign's delta verbs are present in the palette", () => {
+  it("the delta verbs (focus/clear filter) are present in the palette", () => {
     expect(paletteIds.has(LEFT_RAIL_FOCUS_FILTER_ACTION_ID)).toBe(true);
     expect(paletteIds.has(LEFT_RAIL_CLEAR_FILTER_ACTION_ID)).toBe(true);
   });
@@ -186,12 +186,12 @@ describe("action coverage grid guard", () => {
     for (const id of Object.values(CONTROL_PANEL_ACTION_IDS)) {
       expect(paletteIds.has(id)).toBe(true);
     }
-    // The agent-service lifecycle panel (a2a-product-provisioning W05.P12) is the
+    // The agent-service lifecycle panel is the
     // fourth modal toggle; require it explicitly on the palette plane under its
     // shared id, so a regression that drops it fails here.
     expect(paletteIds.has(CONTROL_PANEL_ACTION_IDS["agent-service"])).toBe(true);
-    // The review inbox re-uses the retired Approvals action id (review-surface-flow
-    // ADR F1): it is palette-enrolled under REVIEW_INBOX_ACTION_ID even though it now
+    // The review inbox re-uses the retired Approvals action id: it is
+    // palette-enrolled under REVIEW_INBOX_ACTION_ID even though it now
     // opens the Agent pending view rather than a modal panel, so it left
     // CONTROL_PANEL_ACTION_IDS. Assert it here too, restoring the cross-plane
     // enrollment symmetry that loop lost.

@@ -261,7 +261,7 @@ describe("buildLeftRailCommands", () => {
       "left-rail:toggle-facets",
       "left-rail:collapse-tree",
       "left-rail:reset-filters",
-      // The vault tree's sort plane (left-rail-tree-controls ADR D3): one
+      // The vault tree's sort plane: one
       // command per option + the reset, from the SAME shared builders.
       "left-rail:sort-recency",
       "left-rail:sort-docs",

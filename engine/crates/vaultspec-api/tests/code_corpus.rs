@@ -1,4 +1,4 @@
-//! Code-corpus wire conformance (codebase-graphing ADR D1/D5, plan W04):
+//! Code-corpus wire conformance:
 //! `/graph/query` with `corpus: "code"` serves the DISCONNECTED code dataset
 //! through the SAME envelope, field set, and ceiling as the vault corpus;
 //! the vault default stays byte-compatible (no `corpus` field, no code
@@ -198,7 +198,7 @@ async fn code_file_granularity_serves_imports_contains_and_language() {
     assert_eq!(app_node["language"], "rust");
     assert_eq!(app_node["package"], "src");
     assert_eq!(app_node["package_entry"], false);
-    // code-graph-heat ADR: every freshly-written (dated) file serves a
+    // Every freshly-written (dated) file serves a
     // percentile recency rank in [0, 1].
     let rank = app_node["recency_rank"].as_f64().expect("recency_rank");
     assert!((0.0..=1.0).contains(&rank), "{rank}");
@@ -330,7 +330,7 @@ fn git_at(dir: &std::path::Path, epoch_secs: i64, args: &[&str]) {
     );
 }
 
-/// code-graph-heat ADR amendment, end to end over a REAL repository: the served
+/// End to end over a REAL repository: the served
 /// recency rank rides COMMIT history (not worktree mtimes — every fixture file
 /// is written seconds apart, but the commits are days apart), dirty/untracked
 /// work ranks hottest, and an identical-commit block shares one tie rank.
@@ -384,7 +384,7 @@ async fn git_recency_ranks_ride_commit_history_and_dirty_state() {
     assert_eq!(rank("code:src/lib.rs"), 0.0, "{body}");
 }
 
-/// code-timeline-range ADR: `date_range` + `date_field: "modified"` is the ONE
+/// `date_range` + `date_field: "modified"` is the ONE
 /// vault-filter facet pair that carries over to the code corpus, narrowing by
 /// worktree-mtime day; any other criterion stays a typed error.
 #[tokio::test]
@@ -455,7 +455,7 @@ async fn filters_serves_the_code_vocabulary_per_corpus() {
     assert_eq!(vocab["languages"], json!(["rust", "typescript"]));
     assert_eq!(vocab["dirs"], json!(["src", "web"]));
     assert_eq!(body["data"]["corpus"], "code");
-    // code-timeline-range ADR: the code corpus advertises its mtime span in the
+    // The code corpus advertises its mtime span in the
     // same date-bounds shape the vault serves, so the timeline strip fits to it.
     assert!(
         vocab["date_bounds_by_field"]["modified"]["min"].is_string(),

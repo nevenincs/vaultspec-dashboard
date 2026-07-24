@@ -85,7 +85,7 @@ pub(super) async fn create_and_drive_to_conflicted(
     latest_changeset_revision_for_test(state, &changeset_id)
 }
 
-// ---- W14.P42a S261: review-station routes + Edit/Respond flip -------------------
+// ---- review-station routes + Edit/Respond flip -------------------
 
 pub(super) fn human_reviewer_b() -> ActorRef {
     ActorRef {
@@ -281,7 +281,7 @@ pub(super) async fn probe_body(router: Router, header: Option<&str>) -> String {
     String::from_utf8_lossy(&bytes).into_owned()
 }
 
-// ---- W12.P41 A2: tool-permission decision + interrupt resume routes -------------
+// ---- tool-permission decision + interrupt resume routes -------------
 
 pub(super) fn seed_pending_permission(state: &AppState, requester: &ActorRef, tool_call_id: &str) {
     state
@@ -306,7 +306,7 @@ pub(super) fn seed_pending_permission(state: &AppState, requester: &ActorRef, to
         .unwrap();
 }
 
-// ---- W12.P41 A3b: the agent-tool executor `/execute` route ----------------
+// ---- the agent-tool executor `/execute` route ----------------
 
 /// Start a real prompt turn over the `session_http_1` session `register_actor`
 /// seeds, returning the fresh `run_id` — the executor's ONLY per-run dependency
@@ -348,7 +348,7 @@ pub(super) fn execute_cancel_run_body(tool_call_id: &str, idem: &str, run_id: &R
     })
 }
 
-// ---- W14.P42a: route-layer authorization wiring --------------------------------
+// ---- route-layer authorization wiring --------------------------------
 
 /// A resolvable actor whose delegation names an absent delegator — the delegation
 /// standing guard (confused-deputy fence) must refuse it even though the actor itself
@@ -433,7 +433,7 @@ pub(super) fn create_proposal_targeting_scope(changeset_id: &str, foreign_scope:
     .unwrap()
 }
 
-// ---- W14.P42a S258: advisory lease routes --------------------------------------
+// ---- advisory lease routes --------------------------------------
 
 pub(super) fn lease_target() -> DocumentRef {
     DocumentRef::Existing {

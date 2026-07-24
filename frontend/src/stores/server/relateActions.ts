@@ -1,4 +1,4 @@
-// Relate/link dispatch terminal effect (ledgered-edit-migration W03.P10). Per
+// Relate/link dispatch terminal effect. Per
 // the ADR, a `related:` edge is NOT a bespoke ledger verb — it materializes as
 // an `edit_frontmatter` direct write on the SOURCE document (there is no
 // "append one link" primitive; `set-frontmatter`/`edit_frontmatter` REPLACES

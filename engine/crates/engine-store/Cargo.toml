@@ -1,6 +1,6 @@
 [package]
 name = "engine-store"
-description = "Rebuildable derived-artifact cache: SQLite (rusqlite) at .vault/data/engine-data/. Persistence is cache, not truth (engine-spec §8, D8.1/D8.2)."
+description = "Rebuildable derived-artifact cache: SQLite (rusqlite) at .vault/data/engine-data/. Persistence is cache, not truth."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

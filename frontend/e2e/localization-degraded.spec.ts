@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S140): exercises a live DEGRADED state against
+// Localization E2E: exercises a live DEGRADED state against
 // the real served application and proves every visible effect and recovery
 // action is user-facing catalog copy — never a raw transport error, a status
 // code, or an internal reason string. The degraded condition is forced

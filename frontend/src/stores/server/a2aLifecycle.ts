@@ -1,4 +1,4 @@
-// The A2A component lifecycle plane (a2a-product-provisioning W05.P11) — the
+// The A2A component lifecycle plane — the
 // stores-layer SOLE wire client for the engine's `/a2a/lifecycle/*` surface. This
 // is where the served install / readiness / ownership projection is fetched, where
 // install / start / stop / restart / repair / update / rollback / remove / doctor
@@ -11,7 +11,7 @@
 // block via the canonical `readAgentTierAvailability` — never re-derived from a
 // transport error (wire-contract). The install-level state (`install_state`,
 // `readiness`, `degraded`) is a SEPARATE, controller-served truth the panel renders
-// directly. A mutation returns a `{job, attached}` immediately (ADR D3);
+// directly. A mutation returns a `{job, attached}` immediately;
 // `useA2aLifecycleJob` polls to a terminal state holding no connection open, then
 // invalidates the status so the panel re-reads the reconciled projection.
 
@@ -37,7 +37,7 @@ import {
 import { engineKeys } from "./queries";
 
 /** The lifecycle ops that DESTROY or roll back durable state and so require an
- *  explicit confirm affordance before dispatch (S96). `remove` preserves user data
+ *  explicit confirm affordance before dispatch. `remove` preserves user data
  *  engine-side but retires the install; `rollback` reverts the active generation. */
 export const A2A_DESTRUCTIVE_OPS: ReadonlySet<A2aLifecycleOp> = new Set<A2aLifecycleOp>(
   ["remove", "rollback"],
@@ -95,7 +95,7 @@ export function useA2aLifecycleJob(id: string | null) {
       }
       return job;
     },
-    // Trigger-then-poll: refetch while running, stop once terminal (ADR D3).
+    // Trigger-then-poll: refetch while running, stop once terminal.
     refetchInterval: runningJobRefetchInterval,
     gcTime: JOB_POLL_GC_MS,
   });

@@ -1,5 +1,5 @@
-// Window/shell command provider (command-palette-providers ADR W01.P02). Wraps the
-// tested pure `buildWindowCommands` core, reading the shell-frame snapshot and the
+// Window/shell command provider. Wraps the tested pure `buildWindowCommands` core,
+// reading the shell-frame snapshot and the
 // window intents from the injected CommandContext, and self-registers into the
 // command-provider registry. The builder core is unchanged; this is the enrollment
 // seam that replaces the hand-call in the assembly hook.

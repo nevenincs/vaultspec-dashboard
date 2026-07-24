@@ -1,11 +1,10 @@
-//! The `/code-files` complete listing and its generation-keyed delta (vault-tree-
-//! delta ADR `/code-files` follow-on, reusing D1-D4). Extracted from
+//! The `/code-files` complete listing and its generation-keyed delta. Extracted from
 //! `routes/query.rs` so the full-listing handler and the delta handler live
 //! together; the row projection, the snapshot ring, and the key-generic diff live
 //! in `crate::row_delta` (shared with the vault tree).
 //!
 //! `/code-files` serves the path-sorted, filter-independent code-file projection,
-//! paginated per request, additionally carrying the serving `generation` (D1). Its
+//! paginated per request, additionally carrying the serving `generation`. Its
 //! freshness is LAZY (the code corpus is query-time fingerprinted, not watched), so
 //! both handlers `ensure_fresh` off the runtime before reading. A walk-capped
 //! (truncated) corpus is NOT a stable complete baseline: the full route states the
@@ -55,13 +54,13 @@ pub struct CodeFilesParams {
     pub page_size: Option<usize>,
 }
 
-/// The COMPLETE code-file listing (search-providers ADR: the one contract event).
+/// The COMPLETE code-file listing (the one contract event).
 /// Projects every `code:` FILE node off the code corpus `LinkageGraph` — never the
 /// DOI-bounded graph slice — so the `files (code)` search provider can hold the
 /// whole set client-side and narrow it (the complete-paginated-set rule). Twin of
 /// `/vault-tree`: the same cursor pagination and envelope, over a filter-independent
 /// projection memoized per code generation, now additionally carrying `generation`
-/// (D1) so a client can request a `since=` delta.
+/// so a client can request a `since=` delta.
 pub async fn code_files(
     State(state): State<Arc<AppState>>,
     Query(params): Query<CodeFilesParams>,
@@ -69,12 +68,12 @@ pub async fn code_files(
     let cell = validate_scope(&state, &params.scope)?;
     // Freshness side-effect only: the lazy corpus is probed/re-extracted before
     // the rows read. The rows come from the ring memo, whose build closure
-    // re-reads the CURRENT graph per attempt (review LOW parity with the vault
+    // re-reads the CURRENT graph per attempt (parity with the vault
     // path: a retry after a mid-build generation bump rebuilds from the settled
     // graph, never a stale capture).
     ensure_code_graph(&state, &cell).await?;
-    // The complete path-sorted listing + its generation, as one consistent pair
-    // (D1), served from the per-generation ring memo (a truncated corpus is served
+    // The complete path-sorted listing + its generation, as one consistent pair,
+    // served from the per-generation ring memo (a truncated corpus is served
     // but NOT recorded as a delta baseline).
     let (generation, entries, _truncated) = cell.code.code_file_rows_at();
     // Cursor pagination on the unbounded listing, clamped exactly like `/vault-tree`.
@@ -85,7 +84,7 @@ pub async fn code_files(
         params.cursor.as_deref(),
         page_size,
     );
-    // Honest walk-cap truncation (ADR D8 counters): when the ingest walk was capped
+    // Honest walk-cap truncation: when the ingest walk was capped
     // the listing is NOT the complete source tree — state it. Null when the walk ran
     // to completion. Orthogonal to the per-page cursor (`next_cursor`).
     let truncated = cell.code.stats_snapshot().filter(|s| s.capped).map(|s| {
@@ -110,7 +109,7 @@ pub struct CodeFilesDeltaParams {
     pub since: u64,
 }
 
-/// GET `/code-files/delta?scope=&since=<generation>` (D3): the path-keyed diff from
+/// GET `/code-files/delta?scope=&since=<generation>`: the path-keyed diff from
 /// the client's held code generation to the current one. Read-only; the diff is
 /// O(N) over in-memory rows. An unknown `since` (evicted/restarted/never-served) OR
 /// a truncated corpus yields `full_required` — an honest full-drain instruction,
@@ -163,7 +162,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_route_carries_the_serving_generation() {
-        // D1: the full /code-files page carries the generation the rows belong to.
+        // The full /code-files page carries the generation the rows belong to.
         let (_dir, state) = code_fixture();
         let scope = active_scope(&state);
         let Json(body) = code_files(
@@ -188,7 +187,7 @@ mod tests {
 
     #[tokio::test]
     async fn delta_short_circuits_when_since_is_current() {
-        // D3: since == current generation is an empty delta.
+        // since == current generation is an empty delta.
         let (_dir, state) = code_fixture();
         let scope = active_scope(&state);
         // Warm the corpus so the generation settles, then read it.
@@ -216,7 +215,7 @@ mod tests {
 
     #[tokio::test]
     async fn delta_requires_full_drain_for_an_unknown_since() {
-        // D3 + the process-local generation constraint: a `since` the ring never
+        // The process-local generation constraint means a `since` the ring never
         // held is answered with full_required — never a fabricated patch.
         let (_dir, state) = code_fixture();
         let scope = active_scope(&state);
@@ -241,9 +240,9 @@ mod tests {
 
     #[tokio::test]
     async fn delta_diffs_a_real_source_change_by_path() {
-        // D3 end-to-end: a source file added between generations shows up as a
-        // `changed` row keyed by its path. The debounce is bypassed by forcing a
-        // re-extract via a fresh fingerprint (a new file changes the tree).
+        // A source file added between generations shows up as a `changed` row
+        // keyed by its path. The debounce is bypassed by forcing a re-extract
+        // via a fresh fingerprint (a new file changes the tree).
         let (dir, state) = code_fixture();
         let cell = state.active_cell();
         ensure_code_graph(&state, &cell).await.unwrap();

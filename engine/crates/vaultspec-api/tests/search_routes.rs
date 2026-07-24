@@ -1,5 +1,5 @@
-//! Route-level wire tests for the HTTP search path (rag-integration-hardening
-//! D1/D2): `/search` now rides the resident rag service over the bounded
+//! Route-level wire tests for the HTTP search path: `/search` now rides the
+//! resident rag service over the bounded
 //! `rag-client` loopback transport instead of a per-query CLI spawn. These tests
 //! exercise the full router boundary WITHOUT a live rag, so they assert exactly
 //! the behavior that does not depend on rag being present: every user-controlled
@@ -8,7 +8,7 @@
 //! is a degradable surface, never a hard 5xx. The rag-down tier-parity path lives
 //! in `declared_tier_parity.rs`; the annotation and shape-miss contracts are pure
 //! functions covered in the `ops.rs` test module; the live success chain is the
-//! rag-gated test (P04).
+//! rag-gated test.
 
 use std::sync::Arc;
 

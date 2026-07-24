@@ -1,5 +1,5 @@
 //! Generation-keyed row-listing delta reconciliation, shared by `/vault-tree` and
-//! `/code-files` (vault-tree-delta ADR D2/D3 + its `/code-files` follow-on). The
+//! `/code-files` (plus its `/code-files` follow-on). The
 //! ring, the diff, the torn-pair-safe memoize, and the delta assembly are all
 //! KEY-GENERIC (vault rows key by `stem`, code rows by `path`); the only per-corpus
 //! differences are the row-key extractor, the row builder, and (for code) the
@@ -287,7 +287,7 @@ impl CodeGraphCell {
     /// (`record = !truncated`) — a later `since=` against a truncated generation
     /// misses the ring and degrades to `FullRequired`. The caller has already
     /// `ensure_fresh`ed the lazy corpus; the build closure re-reads the CURRENT
-    /// graph per attempt (review LOW parity with the vault path) so a retry after
+    /// graph per attempt (parity with the vault path) so a retry after
     /// a mid-build generation bump rebuilds from the settled graph, never a stale
     /// capture.
     pub(crate) fn code_file_rows_at(&self) -> (u64, Arc<Vec<Value>>, bool) {

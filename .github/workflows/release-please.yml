@@ -1,9 +1,9 @@
-# Release automation (release-automation ADR): release-please maintains a
+# Release automation: release-please maintains a
 # standing release PR from conventional commits on main; merging it bumps the
 # engine workspace version, writes engine/CHANGELOG.md, and mints the v-tag
 # that fires the dist-generated release.yml unchanged.
 #
-# TOKEN SEAM (the key hazard the ADR records): a tag minted with the default
+# TOKEN SEAM (the key hazard): a tag minted with the default
 # GITHUB_TOKEN does NOT trigger downstream `on: push: tags` workflows —
 # GitHub suppresses workflow chaining — so release.yml would silently never
 # fire. Provision RELEASE_PLEASE_TOKEN as a fine-grained PAT (or GitHub App

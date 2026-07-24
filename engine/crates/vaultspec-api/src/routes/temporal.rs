@@ -1,4 +1,4 @@
-//! Temporal endpoints (contract §5, W03.P11.S50): events with engine-side
+//! Temporal endpoints: events with engine-side
 //! bucketing, blob-true as-of snapshots, and the ordered diff log on the
 //! single delta clock.
 
@@ -46,7 +46,7 @@ pub async fn events(
         })?,
     };
     // An inverted range is a client error, not a silently-empty result —
-    // fail fast before the commit walk (hardening, 2026-06-13).
+    // fail fast before the commit walk.
     if let (Some(from), Some(to)) = (params.from, params.to)
         && from > to
     {
@@ -58,7 +58,7 @@ pub async fn events(
     }
     // Event sourcing shared with the CLI verb via the query core (G7). The HEAD
     // commit walk + node correlation (bounded to graph-known nodes + the code-id
-    // cap, addendum S05) is immutable per generation and was ~2.2s on EVERY
+    // cap) is immutable per generation and was ~2.2s on EVERY
     // request, so it is memoized on the cell (commit_event_rows, warmed off the
     // request path). The handler clones the cached rows and filters/buckets per
     // request — the per-request work that genuinely varies with from/to/kinds.
@@ -88,7 +88,7 @@ pub struct AsofParams {
     /// A ref name, commit sha, or millisecond timestamp.
     pub t: String,
     /// `document` (default) or `feature` — a historical keyframe in the same
-    /// species as the live view (S50: the constellation time-travels in its
+    /// species as the live view (the constellation time-travels in its
     /// own feature species, not as a disjoint document graph).
     #[serde(default)]
     pub granularity: Option<String>,
@@ -102,8 +102,8 @@ pub struct AsofParams {
     #[serde(default)]
     pub focus: Option<String>,
     /// The engine-owned wire filter as a URL-encoded JSON object — the SAME
-    /// grammar `/graph/query` and `/graph/lineage` accept (contract §4,
-    /// unified-filter-plane D4). ABSENT = no constraint (`Filter::default()`),
+    /// grammar `/graph/query` and `/graph/lineage` accept (contract §4).
+    /// ABSENT = no constraint (`Filter::default()`),
     /// the unfiltered historical view. PRESENT = the time-travelled snapshot is
     /// narrowed by every facet exactly as the live graph is, so an active filter
     /// is honoured across the time axis instead of dropped on scrub. A malformed
@@ -122,7 +122,7 @@ pub async fn graph_asof(
     // Parse the optional URL-encoded JSON filter; a malformed value is a client
     // error through the shared envelope (mirrors `/graph/lineage`). The graph
     // projection below validates the facet vocabulary, so this only catches a
-    // syntactically-broken value (unified-filter-plane D4).
+    // syntactically-broken value.
     let filter = match &params.filter {
         None => engine_query::filter::Filter::default(),
         Some(raw) => serde_json::from_str(raw).map_err(|e| {
@@ -137,9 +137,8 @@ pub async fn graph_asof(
     // present view), NOT the ref name: the ref is the TIME axis (`t`), not the
     // corpus-view label. Stamping the ref as the facet scope makes two
     // snapshots differ by label alone, which floods `/graph/diff` with
-    // spurious `change` deltas (2026-06-13 hardening). graph_query filters by
-    // this same scope, so both must agree. Now the RESOLVED cell's scope/root
-    // (W02.P05.S17).
+    // spurious `change` deltas. graph_query filters by
+    // this same scope, so both must agree. Now the RESOLVED cell's scope/root.
     let scope = cell.scope.clone();
     // Echo the RESOLVED sha + the chosen interpretation (ADD-901): a client
     // sends `t` (a ref, sha, or epoch-ms) and must learn, without re-deriving,
@@ -255,8 +254,8 @@ pub struct LineageParams {
 }
 
 /// `GET /graph/lineage?scope&from&to&filter=` — the bounded temporal-lineage
-/// projection (dashboard-timeline ADR, contract §5; W01.P02). For a scope and an
-/// inclusive `[from, to]` ISO date range, return the dated document nodes in
+/// projection. For a scope and an inclusive `[from, to]` ISO date range, return
+/// the dated document nodes in
 /// range together with the self-consistent edges among them — the diachronic
 /// lineage the phase-lane timeline draws.
 ///
@@ -301,8 +300,8 @@ pub async fn graph_lineage(
     // the client supplies `t`, the lineage must reflect the graph AS IT EXISTED
     // at instant T — resolved from the git object DB — not the live graph
     // creation-date-gated by range. Resolve the historical graph the SAME way
-    // `graph_asof` does (scoped to the served worktree, NOT the ref label —
-    // §5/2026-06-13 hardening), then run the graph-agnostic lineage projection
+    // `graph_asof` does (scoped to the served worktree, NOT the ref label),
+    // then run the graph-agnostic lineage projection
     // over it. The slice stays bounded + self-consistent + enveloped, and the
     // resolved sha + token interpretation are echoed so a client learns which
     // commit T landed on without re-deriving (ADD-901, consistency with
@@ -443,7 +442,7 @@ pub struct DiffParams {
     pub from: String,
     pub to: String,
     /// `document` (default) or `feature` — feature returns the projected
-    /// meta-edge/feature-node delta log (S50), each entry tagged `feature`.
+    /// meta-edge/feature-node delta log, each entry tagged `feature`.
     #[serde(default)]
     pub granularity: Option<String>,
     /// The active salience lens (graph-node-salience ADR wire amendment): the
@@ -466,14 +465,14 @@ pub async fn graph_diff(
     // reflects CONTENT changes (content_hash, presence, lifecycle, edges)
     // between the refs — not the ref LABEL. Using each ref name as the facet
     // scope made every node/edge common to both commits a spurious `change`
-    // (2026-06-13: HEAD~3..HEAD reported 8415 changes / 1 add — the diff was
+    // (HEAD~3..HEAD once reported 8415 changes / 1 add — the diff was
     // useless). The ref distinction lives in `from`/`to` and each entry's `t`.
-    // Now the RESOLVED cell's scope/root (W02.P05.S17).
+    // Now the RESOLVED cell's scope/root.
     let scope = cell.scope.clone();
     // Equal-ref fast path: if `from` and `to` resolve to the SAME commit (the
     // common `HEAD` vs its sha case, or a degenerate request), the delta log is
     // empty by definition — return it without building either as-of graph,
-    // which on a large corpus each cost ~20s (sweep HIGH, 2026-06-13). Resolve
+    // which on a large corpus each cost ~20s. Resolve
     // is cheap (no tree walk / no core subprocess); a resolve failure falls
     // through to the build path so the existing per-ref error shaping fires.
     if let (Ok(from_sha), Ok(to_sha)) = (
@@ -529,7 +528,7 @@ pub async fn graph_diff(
     // `commit_graph` advances the shared atomic; `last_seq` here is the
     // local log's end, and splicing to LIVE goes through a present
     // keyframe + the stream's own sequence space. At `feature` granularity the
-    // engine projects the document diff to the constellation species (S50), so
+    // engine projects the document diff to the constellation species, so
     // a scrub re-keyframes and replays in its own species; entries are tagged.
     let t = crate::app::now_ms();
     let (deltas, last_seq, truncated) = match granularity {

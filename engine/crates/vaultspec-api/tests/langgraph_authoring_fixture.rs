@@ -1,5 +1,5 @@
-//! End-to-end integration fixture for the P41 agent-tool executor run loop
-//! (W12.P41 CHECKPOINT B — the exit gate).
+//! End-to-end integration fixture for the agent-tool executor run loop
+//! (the exit-gate checkpoint).
 //!
 //! Drives the REAL app router over HTTP — through the machine `bearer_gate` and the
 //! actor-principal layer, against a real git worktree — no mocks (wire-contract rule:
@@ -240,7 +240,7 @@ async fn set_mode(state: &Arc<AppState>, bearer: &str, human_token: &str, mode: 
 }
 
 /// The target document ref. `scope` must be the SERVER-AUTHORITATIVE scope
-/// token of the served worktree (W14.P42a document-scope guard).
+/// token of the served worktree (document-scope guard).
 fn document(scope: &str, base_revision: &str) -> Value {
     json!({
         "kind": "existing",
@@ -313,7 +313,7 @@ async fn execute(
     .await
 }
 
-/// Decide a queued tool-permission request as a human reviewer (P22-R1: never the
+/// Decide a queued tool-permission request as a human reviewer (never the
 /// requester, never an agent). `decision` is the wire value (`approve` / `reject`).
 async fn decide_permission(
     state: &Arc<AppState>,
@@ -415,7 +415,7 @@ async fn agent_run_loop_suspends_grants_resumes_and_redrives_effectively_once() 
             "api_version": "v1",
             "command": "resume_run",
             "idempotency_key": "idem:resume:loop",
-            // S18: the resume decision is now the typed `InterruptResumeDecision`
+            // The resume decision is now the typed `InterruptResumeDecision`
             // (tool_permission approve/reject | steer), not an opaque blob.
             "payload": { "decision": { "decision": "approve" } },
         })),
@@ -842,7 +842,7 @@ fn create_draft_body(
 
 #[tokio::test]
 async fn manual_mode_request_approval_is_review_station_state_not_a_suspending_interrupt() {
-    // MODEL 2 (approval-gates ADR): a changeset approval is review-station STATE keyed
+    // MODEL 2: a changeset approval is review-station STATE keyed
     // by proposal_id, decided async via the review-decision route — NOT a run-suspending
     // interrupt. In the DEFAULT manual mode, request_approval (a Mutating tool) suspends
     // ONLY on its own tool-permission gate; once granted it DISPATCHES to submit — the

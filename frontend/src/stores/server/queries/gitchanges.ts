@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import {
@@ -40,8 +40,8 @@ export type OpsOutcome = "ok" | "backend-down" | "failed";
 
 /**
  * Classify an ops dispatch outcome in the stores layer so the chrome receipt
- * never inspects the raw `tiers` block itself (dashboard-layer-ownership /
- * rag-manager ADR: "reads status truth via stores"). A rejected dispatch whose
+ * never inspects the raw `tiers` block itself (dashboard-layer-ownership:
+ * reads status truth via stores). A rejected dispatch whose
  * `EngineError` carries a tiers block is the backend reporting itself down (the
  * rag-down 502 surfaces as section-2 tier truth, contract §2 /
  * every-wire-response-carries-the-tiers-block) — distinct from a tiers-less
@@ -57,8 +57,8 @@ export function classifyOpsOutcome(
       : "failed";
   }
   // A brokered rag control verb degrades to a 200 carrying a semantic-unavailable
-  // `tiers` block rather than a 502 (rag-control-plane ADR D2: degradation is
-  // read from tiers, not an error status). Read that truth here so a rag-down
+  // `tiers` block rather than a 502 (degradation is read from tiers, not an
+  // error status). Read that truth here so a rag-down
   // op still surfaces as backend-down, not a flat failure.
   if (readTierAvailability(result.tiers, ["semantic"]).degraded) {
     return "backend-down";
@@ -472,8 +472,7 @@ export interface ChangesOverviewView {
   changeGroups: GitChangeGroupView[];
   summary: ChangedFilesView["summary"];
   /** ONE aggregated changed-entries label ("31 files changed") — vault documents
-   *  are files too; a files-vs-documents split read as two unrelated counts
-   *  (2026-07-14 wording refinement). */
+   *  are files too; a files-vs-documents split read as two unrelated counts. */
   summaryLabels: {
     total: CountMessageDescriptor;
     additions: string;
@@ -744,7 +743,7 @@ export function useChangesSummary(scope: unknown): ChangesSummaryView {
 }
 
 /**
- * The interpreted state of a file's read-only diff (git-diff-browser ADR).
+ * The interpreted state of a file's read-only diff.
  *
  * The read-only diff IS served by the `/ops/git/diff` pass-through: this selector
  * fetches a file's unified diff through the `client.opsGit` seam and parses it into

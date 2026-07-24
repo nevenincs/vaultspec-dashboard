@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import { normalizeDashboardDateRange } from "../dashboardDateRange";
@@ -36,7 +36,7 @@ import { isRec, type Rec } from "./internal";
  * underlying edges in the aggregation (ties resolve by canonical order). A
  * meta-edge spans tiers, but the line treatment needs one — the dominant tier
  * is the honest single answer. Ties resolve by the canonical edge-tier order
- * (`EDGE_TIER_ORDER`). The engine never mints a semantic graph edge (ADR D3.5),
+ * (`EDGE_TIER_ORDER`). The engine never mints a semantic graph edge,
  * so semantic is never a candidate — a stray `semantic` key in the incoming
  * breakdown is ignored. An empty/all-zero breakdown (degenerate; the live engine
  * never emits one) falls back to `structural`, the tier of the cross-feature
@@ -90,8 +90,8 @@ export function metaEdgeToEdge(meta: WireMetaEdge): EngineEdge {
  * with `edges` empty. Fold those into the internal edge list so one downstream
  * path renders both granularities. TOLERANT: a body without `meta_edges`
  * (document granularity, or any origin that already inlined them) passes
- * through unchanged — the S49 one-code-path property. (`/graph/asof` stays on
- * the document path: its constellation-granularity shape is the open S50
+ * through unchanged — the one-code-path property. (`/graph/asof` stays on
+ * the document path: its constellation-granularity shape is an open
  * divergence, out of scope here.)
  */
 /** Defensive CLIENT-SIDE payload ceilings (bounded-by-default at the trust boundary):
@@ -109,8 +109,8 @@ function normalizeGraphGeneration(value: unknown): number | undefined {
     : undefined;
 }
 
-/** Live `/graph/query/delta` → the internal id-keyed node/edge delta (graph-slice-
- *  delta ADR D3). TOLERANT and FAIL-SAFE: an unusable body, an absent generation, or
+/** Live `/graph/query/delta` → the internal id-keyed node/edge delta.
+ *  TOLERANT and FAIL-SAFE: an unusable body, an absent generation, or
  *  a `full_required` flag all resolve to a full-drain instruction rather than a
  *  partial patch, so a shape drift can never corrupt the held slice. Changed rows
  *  are trusted as the engine's served (already-excluded) nodes/edges; only rows
@@ -158,7 +158,7 @@ export function adaptGraphSlice(
   options?: { corpus?: GraphCorpus },
 ): GraphSlice {
   if (!isRec(body)) return body as GraphSlice;
-  // The code corpus (codebase-graphing ADR D1/D7) is a DIFFERENT dataset whose
+  // The code corpus is a DIFFERENT dataset whose
   // `code:` file nodes are the legitimate content (code-graph-files-only: files
   // are its ONLY node kind) — the vault-only code-node exclusion below must NOT
   // fire when adapting it. On the vault corpus (default) the exclusion stays in
@@ -184,8 +184,8 @@ export function adaptGraphSlice(
   const metaEdges = Array.isArray(body.meta_edges)
     ? (body.meta_edges as WireMetaEdge[])
     : [];
-  // Defensive index/code exclusion (terminology-standardization ADR D5/D6,
-  // belt-and-braces): `index` documents and `code` artefacts are never displayable
+  // Defensive index/code exclusion (belt-and-braces): `index` documents and `code`
+  // artefacts are never displayable
   // knowledge nodes. The engine excludes them at the projection, but the frontend
   // must not render them if any producer (or the mock) ever emits one — so drop
   // them here and keep the slice self-consistent by dropping edges that reference a
@@ -235,7 +235,7 @@ export function adaptGraphSlice(
 }
 
 /**
- * A node the frontend must never render as a knowledge node (ADR D5/D6): an `index`
+ * A node the frontend must never render as a knowledge node: an `index`
  * document, or a `code` artefact. Code is detected three ways for robustness across
  * producer shapes — the `code:` id prefix, a `code` kind, or the `code-artifact`
  * wire species — so a code node is dropped however it is labelled.
@@ -250,7 +250,7 @@ function isExcludedGraphNode(node: EngineNode): boolean {
   return false;
 }
 
-// --- §3 dashboard state (dashboard-state-centralization W02) --------------------
+// --- §3 dashboard state ----------------------------------------------------------
 
 /**
  * Live `/dashboard-state` -> the canonical stores-layer state. The route is
@@ -295,7 +295,7 @@ export function adaptDashboardState(body: unknown): DashboardState {
   };
 }
 
-// --- §4 bounded embedding slice (graph-semantic-embeddings ADR) ------------------
+// --- §4 bounded embedding slice ------------------------------------------------
 //
 // Tolerant adapter for `GET /graph/embeddings`. The live `{data: {embeddings,
 // generation, truncated, lens}, tiers}` envelope is already unwrapped by
@@ -306,7 +306,7 @@ export function adaptDashboardState(body: unknown): DashboardState {
 // or malformed shape NEVER throws and never carries a half-formed vector into the
 // projection. `tiers` rides through verbatim (the envelope's degradation truth,
 // defaulted to an empty block when absent) — the stores layer reads semantic
-// availability from it (ADR D7), never a bare transport error. `generation`
+// availability from it, never a bare transport error. `generation`
 // defaults to 0 (the cache-per-generation key) and `truncated` to null.
 
 /** Default one served embedding, tolerating an absent/partial object: a missing
@@ -374,7 +374,7 @@ export function adaptGraphEmbeddings(body: unknown): EmbeddingsResponse {
 }
 
 /**
- * The CONTRACTUAL embedding↔node join (graph-node-representation ADR D1): build a
+ * The CONTRACTUAL embedding↔node join: build a
  * `Map<node_id, vector>` from the adapted embedding slice, keyed strictly by
  * `node_id`, NEVER by the positional/DOI order the rows happen to arrive in. The
  * `/graph/embeddings` route serves a `node_id`-keyed SUBSET of the graph node set

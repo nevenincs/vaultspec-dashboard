@@ -332,7 +332,7 @@ fn compaction_is_bounded_and_reports_remaining_due_records() {
 #[test]
 fn no_op_sweep_records_no_compaction_run_audit_row() {
     let (_dir, mut store) = temp_store();
-    // Nothing is due: a pure no-op sweep must write NO audit row. S262 drives this hook
+    // Nothing is due: a pure no-op sweep must write NO audit row. This hook drives
     // once per prompt turn and most turns are no-ops, so an unconditional insert would
     // grow the run table ~one row per turn forever (resource-bounds).
     let summary = store

@@ -31,7 +31,7 @@ P02 review. Folding the served `meets_floor: false` into `degraded` greyed funct
 
 ### repository-identity | high | the cargo repository field pointed at the wrong owner and would have 404'd the installers at first tag
 
-P03 review, escalating the discrepancy the channel research first flagged. dist derives installer download URLs from the workspace `repository` field; releases publish to the repo the workflow runs in (nevenincs, matching origin and the README), so the stale wgergely value would have broken both installer one-liners. RESOLVED in `bfa4356d17` (Cargo.toml) and `c572b1d2c9` (pyproject project URLs), with the owner confirming nevenincs as the release identity.
+P03 review, escalating the discrepancy the channel research first flagged. dist derives installer download URLs from the workspace `repository` field; releases publish to the repo the workflow runs in (nevenincs, matching origin and the README), so the stale metadata handle's value would have broken both installer one-liners. RESOLVED in `bfa4356d17` (Cargo.toml) and `c572b1d2c9` (pyproject project URLs), with the owner confirming nevenincs as the release identity.
 
 ### binstall-unresolvable | high | the README documented a cargo-binstall path that cannot resolve
 

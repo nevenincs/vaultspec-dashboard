@@ -1,6 +1,6 @@
 //! Proposal command handlers.
 //!
-//! W03.P17 owns backend-owned proposal creation, draft mutation, validation,
+//! This module owns backend-owned proposal creation, draft mutation, validation,
 //! review submission, supersession, cancellation, and snapshot reconstruction.
 //! It deliberately does not create approval records, apply jobs, routes,
 //! projections, actors, operation modes, LangGraph state, or core adapter calls.
@@ -125,8 +125,8 @@ pub struct ProposalSnapshot {
 }
 
 /// Open a new authoring (agent/human proposal) changeset — `kind=authoring`.
-/// Run/turn provenance stamped onto an AGENT-produced changeset (agent-wire-gaps ADR
-/// D4): the run whose tool-executor dispatch created this changeset, and the prompt turn
+/// Run/turn provenance stamped onto an AGENT-produced changeset: the run
+/// whose tool-executor dispatch created this changeset, and the prompt turn
 /// it joined through the run record. A human/direct changeset has none.
 #[derive(Debug, Clone)]
 pub struct RunProvenance {
@@ -151,7 +151,7 @@ pub fn create_proposal(
 }
 
 /// Open an agent's changeset (the tool-executor `propose_changeset`/create dispatch)
-/// carrying run/turn provenance (agent-wire-gaps ADR D4). Identical to `create_proposal`
+/// carrying run/turn provenance. Identical to `create_proposal`
 /// but stamps `run_provenance` onto the ledger record so the changeset is auditable to
 /// the exact run and turn that produced it. Provenance is metadata, not identity — it
 /// never changes the `changeset_revision`.
@@ -172,8 +172,8 @@ pub fn create_agent_proposal(
     )
 }
 
-/// Open a human editor's DIRECT save changeset — `kind=direct` (operation-modes ADR;
-/// P49-R2). Structurally identical to `create_proposal`, but the ledger records the
+/// Open a human editor's DIRECT save changeset — `kind=direct`.
+/// Structurally identical to `create_proposal`, but the ledger records the
 /// direct kind so the save is self-describing without a side-table join. It is
 /// self-approved by the human downstream, not system-auto-approved.
 pub fn create_direct_proposal(
@@ -238,7 +238,7 @@ fn create_proposal_of_kind(
                     created_at_ms: context.now_ms,
                 })
                 .map_err(|err| StoreError::Ledger(err.to_string()))?;
-                // D4: stamp the agent run/turn that produced this changeset (a human/direct
+                // Stamp the agent run/turn that produced this changeset (a human/direct
                 // save carries None). Applied after `new`, so it never enters the digest.
                 let record = match &run_provenance {
                     Some(prov) => {
@@ -489,7 +489,7 @@ pub fn validation_evidence(
                 latest.changeset_id, child.child_key
             ))
         })?;
-        // CreateDocument (W02.P05a) has no existing document to re-observe — the
+        // CreateDocument has no existing document to re-observe — the
         // shared `create_document_phantom_base` helper, never a live worktree
         // read (see its doc for why this must be the SAME derivation
         // `materialize_create_document` uses).
@@ -708,7 +708,7 @@ impl TransitionRequestExt for TransitionRequest {
 }
 
 /// The eligibility gate's decision, evaluated BEFORE any idempotency reservation
-/// (denials-are-values ADR; mirrors `apply`'s `Preflight::Denied`). `Admit`
+/// (denials-are-values; mirrors `apply`'s `Preflight::Denied`). `Admit`
 /// carries the loaded precondition state the handler needs, so the aggregate is
 /// read once; `Deny` rides the SUCCESS envelope as a value and reserves nothing.
 enum GateOutcome<L> {
@@ -863,7 +863,7 @@ struct MaterializedDrafts {
 /// an unhandled kind fails LOUD (a typed `StoreError`), never silently
 /// materializing the wrong shape.
 ///
-/// `CreateDocument` (W02.P05a) is the ODD ONE OUT, mirroring
+/// `CreateDocument` is the ODD ONE OUT, mirroring
 /// `MaterializedProposalOperation::materialize_create_document`'s own doc: its
 /// target has no existing document to snapshot or preimage against, so it
 /// takes the ONLY early branch, contributing NOTHING to `preimages` — the

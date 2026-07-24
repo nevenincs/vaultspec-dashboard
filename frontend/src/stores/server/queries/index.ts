@@ -1,4 +1,4 @@
-// Barrel for the decomposed queries module (module-decomposition mandate, 2026-07-12).
+// Barrel for the decomposed queries module.
 // Re-exports every submodule so the historical import specifier `./queries` resolves
 // here unchanged. Public surface is a superset of the former queries.ts (promoted
 // cross-module helpers are additionally visible; no former export was removed or renamed).

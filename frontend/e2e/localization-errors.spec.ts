@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S142): exercises production error boundaries
+// Localization E2E: exercises production error boundaries
 // against the real served application and proves raw diagnostics never
 // render in ANY build mode. Runs under BOTH playwright.config.ts (the
 // production `vaultspec serve` build) and playwright.localization.config.ts

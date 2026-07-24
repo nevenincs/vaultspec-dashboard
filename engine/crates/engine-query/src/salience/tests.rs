@@ -44,7 +44,7 @@ pub(super) fn edge(src: &str, dst: &str, tier: Tier) -> engine_model::Edge {
         span: (0, 1),
         target: dst.into(),
     };
-    // Tier-calibrated confidence bands (engine-model D3.2): declared is
+    // Tier-calibrated confidence bands: declared is
     // exactly 1.0, the others sit in their bands.
     let confidence = match tier {
         Tier::Declared => 1.0,
@@ -67,7 +67,7 @@ pub(super) fn edge(src: &str, dst: &str, tier: Tier) -> engine_model::Edge {
 
 /// A small known graph: adr <- plan -> research, plan -> exec leaf, plus a
 /// temporal edge that must NOT enter the backbone (semantic edges are never
-/// graph fact — D3.5 — so temporal is the off-backbone tier we can ingest).
+/// graph fact, so temporal is the off-backbone tier we can ingest).
 pub(super) fn fixture() -> (LinkageGraph, Vec<Node>) {
     let nodes = vec![
         doc("p", "plan", "f"),
@@ -359,7 +359,7 @@ fn lens_basis_computes_every_measure_in_one_sweep() {
     );
 }
 
-// --- W02.P03: recency, lifecycle, burst ------------------------------------
+// --- Recency, lifecycle, burst ------------------------------------
 
 #[test]
 fn recency_halves_at_the_half_life() {
@@ -406,7 +406,7 @@ fn activity_burst_weights_recent_temporal_edges() {
     assert_eq!(activity_burst(&g2, &q.id, now, 7.0), 0.0);
 }
 
-// --- W02.P04: normalization + composition + DOI ----------------------------
+// --- Normalization + composition + DOI ----------------------------
 
 #[test]
 fn rank_normalize_is_robust_to_heavy_tails() {
@@ -514,7 +514,7 @@ fn backbone_distance_is_bfs_hops_from_focus() {
     assert!(backbone_distance(&backbone, None).iter().all(|&d| d == 0.0));
 }
 
-// --- W02.P05: the weight-sensitivity sweep ---------------------------------
+// --- The weight-sensitivity sweep ---------------------------------
 
 /// A richer fixture with enough structure that a top-k is meaningful: two
 /// features, several plans/adrs/exec records.
@@ -577,7 +577,7 @@ fn kendall_tau_is_one_for_identical_orders_and_negative_for_reversed() {
     assert!((kendall_tau(&a, &reversed) + 1.0).abs() < 1e-9);
 }
 
-// --- W03.P06: the two lenses from one model --------------------------------
+// --- The two lenses from one model --------------------------------
 
 #[test]
 fn the_two_lenses_yield_distinct_orderings_on_the_same_graph() {
@@ -623,7 +623,7 @@ fn lens_parse_defaults_to_status() {
     assert_eq!(Lens::default(), Lens::Status);
 }
 
-// --- W03.P07: focus folding + memoization keys -----------------------------
+// --- Focus folding + memoization keys -----------------------------
 
 #[test]
 fn focus_folding_raises_nodes_near_the_focus() {
@@ -661,7 +661,7 @@ fn no_focus_lens_switch_keys_differ_focus_keys_match() {
     assert_eq!(status_focus, FocusKey::new(Lens::Status, Some(&a), false));
 }
 
-// --- W03.P08.S33: partial-tier flag ----------------------------------------
+// --- Partial-tier flag ----------------------------------------
 
 #[test]
 fn salience_is_partial_when_a_relevant_tier_is_degraded() {
@@ -687,7 +687,7 @@ fn salience_is_partial_when_a_relevant_tier_is_degraded() {
     );
 }
 
-// --- W03.P08: annotate + DOI-ordered bounding ------------------------------
+// --- Annotate + DOI-ordered bounding ------------------------------
 
 #[test]
 fn annotate_attaches_salience_to_scored_nodes_only() {

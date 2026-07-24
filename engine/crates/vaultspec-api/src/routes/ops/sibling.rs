@@ -17,17 +17,17 @@ use crate::bounded_child::{BoundedLimits, CapPolicy, run_bounded};
 
 use super::{ApiResult, RagControlBody, SIBLING_STDOUT_CAP, SIBLING_TIMEOUT};
 
-/// The `/search` HTTP budget (rag-integration-hardening D1/D2): search now rides
+/// The `/search` HTTP budget: search now rides
 /// the WARM resident rag service over the loopback transport, not a per-query CLI
 /// spawn, so it belongs to the Tier-1 READ class — a warm semantic round-trip,
 /// never the cold-spawn ceiling the deleted subprocess path needed. Pinned to
 /// rag-client's `READ_BUDGET` (10s) so a stalled service degrades the semantic
 /// tier quickly while a busy warm query still completes. The client search
 /// budget strictly exceeds this so the tiers envelope always lands before the
-/// client can abort (D2).
+/// client can abort.
 pub(super) const SEARCH_HTTP_BUDGET: Duration = rag_client::control::READ_BUDGET;
 
-/// Destructive-storage budget (rag-storage-broker ADR D4): a `prune` of a large
+/// Destructive-storage budget: a `prune` of a large
 /// orphaned set or an apply-mode `migrate` of a big shared store legitimately runs
 /// longer than the reindex budget, so the storage runner gets a more generous - but
 /// still bounded - ceiling rather than the 120s reindex bound killing a destructive
@@ -51,13 +51,13 @@ pub(super) const CORE_WHITELIST: &[(&str, &[&str])] = &[
 ];
 
 /// The JSON-runner lifecycle whitelist: the process-lifecycle rag verbs that run
-/// through the shared bounded `--json` sibling runner (rag-control-plane ADR D1,
-/// P02.S13) — you cannot HTTP a service that is not running, so status / doctor /
+/// through the shared bounded `--json` sibling runner
+/// — you cannot HTTP a service that is not running, so status / doctor /
 /// install stay CLI subprocess reads. `server-start` / `server-stop` are ALSO
 /// process lifecycle but are dispatched to their OWN dedicated capture handlers
 /// (`start_rag_service` / `stop_rag_service` — the machine-singleton
 /// attach-never-own discipline, with version-tolerant `--json` on start), so they
-/// intercept BEFORE this lookup and are deliberately NOT listed here (RCR-004: a
+/// intercept BEFORE this lookup and are deliberately NOT listed here (a
 /// dead row here would only ever fall through to `run_sibling`, which appends
 /// `--json` unconditionally — the exact rejection those handlers exist to manage).
 /// Every other rag verb — the reindex TRIGGER, job polling, watcher config,
@@ -71,8 +71,8 @@ pub(super) const RAG_CLI_WHITELIST: &[(&str, &[&str])] = &[
     ("server-install", &["install"]),
 ];
 
-/// The DESTRUCTIVE rag storage CLI whitelist: verb -> fixed rag base args
-/// (rag-storage-broker ADR D1). rag exposes these CLI-only (the destructive
+/// The DESTRUCTIVE rag storage CLI whitelist: verb -> fixed rag base args.
+/// rag exposes these CLI-only (the destructive
 /// storage HTTP routes were deliberately closed), so - like the lifecycle verbs -
 /// they run on the bounded subprocess runner, never over HTTP. They live in their
 /// OWN whitelist and route, not [`RAG_CLI_WHITELIST`], because each takes a
@@ -194,7 +194,7 @@ async fn run_sibling_bounded_in_dir(
     Ok(serde_json::from_str(&raw).unwrap_or_else(|_| json!({"raw": raw, "exit": run.code})))
 }
 
-/// The bounded sibling runner for a WRITE verb (W02): like
+/// The bounded sibling runner for a WRITE verb: like
 /// [`run_sibling_bounded`] in its spawn-bounds-kill lifecycle (8 MiB stdout cap
 /// AND 120s wall-clock timeout, `subprocess-calls-carry-cap-and-timeout`) but
 /// with two differences the write channel requires:
@@ -279,8 +279,8 @@ pub(super) async fn run_sibling_write_bounded(
     ))
 }
 
-/// Whether a parsed stdout value is a rag `--json` envelope (rag-storage-broker
-/// ADR D4). rag's storage verbs emit `{ok, command, data|error, ...}`; we key on a
+/// Whether a parsed stdout value is a rag `--json` envelope. rag's storage
+/// verbs emit `{ok, command, data|error, ...}`; we key on a
 /// top-level `ok` boolean AND a `command` string. This is the storage analog of the
 /// write runner's top-level-`status` key — rag's storage envelope nests `status`
 /// under `data`, so the write runner's key would not match here.
@@ -289,8 +289,8 @@ pub(super) fn is_rag_envelope(value: &Value) -> bool {
         && value.get("command").is_some_and(Value::is_string)
 }
 
-/// The bounded runner for a DESTRUCTIVE rag storage verb (rag-storage-broker ADR
-/// D4). Like [`run_sibling_bounded_in_dir`] in its spawn-bounds-kill lifecycle (the
+/// The bounded runner for a DESTRUCTIVE rag storage verb. Like
+/// [`run_sibling_bounded_in_dir`] in its spawn-bounds-kill lifecycle (the
 /// 8 MiB stdout cap AND the 120s wall-clock timeout), but with the exit-handling the
 /// rag storage CLI requires: rag emits its result envelope and THEN exits 1 on a
 /// non-applied preview (`would_remove`) or a refusal. So on completion stdout is
@@ -331,8 +331,8 @@ pub(super) async fn run_storage_sibling_bounded(
     })
 }
 
-/// Decide a storage subprocess's outcome from its stdout and exit success
-/// (rag-storage-broker ADR D4), as a pure function so the load-bearing
+/// Decide a storage subprocess's outcome from its stdout and exit success,
+/// as a pure function so the load-bearing
 /// exit-1-with-envelope decision is unit-tested without a subprocess. A rag
 /// envelope ([`is_rag_envelope`]) forwards verbatim REGARDLESS of the exit code (a
 /// `would_remove` preview exits 1 but is a business outcome); otherwise a non-zero
@@ -350,7 +350,7 @@ pub(super) fn storage_outcome(raw: &str, success: bool) -> Result<Value, String>
     Err("produced no parseable rag storage envelope".to_string())
 }
 
-/// Validate a rag storage namespace prefix (rag-storage-broker ADR D2): the
+/// Validate a rag storage namespace prefix: the
 /// `storage-delete` verb targets exactly one namespace by its canonical
 /// `r{12-lowercase-hex}_` prefix (rag's blake2b-6 `root_collection_prefix`).
 /// Validating it confines the destructive target to a real namespace shape AND
@@ -380,8 +380,8 @@ pub(super) fn validate_namespace_prefix(
     Ok(prefix.to_string())
 }
 
-/// The request body for the destructive storage broker (rag-storage-broker ADR
-/// D2/D3). `prefix` is the `storage-delete` target (validated); `to` is the
+/// The request body for the destructive storage broker.
+/// `prefix` is the `storage-delete` target (validated); `to` is the
 /// `storage-migrate` backend (`server`|`local`); `apply` is the explicit
 /// dry-run-default override (absent/false previews, `true` applies). `migrate`'s
 /// root is the engine's active scope cell, never a body field — the caller never
@@ -396,7 +396,7 @@ pub struct RagStorageBody {
     pub apply: Option<bool>,
 }
 
-/// Assemble the validated argv for a destructive storage verb (ADR D2/D3). Starts
+/// Assemble the validated argv for a destructive storage verb. Starts
 /// from the verb's fixed base args and appends, per verb: the validated namespace
 /// prefix (`delete`); the engine-controlled active-cell root and the `server|local`
 /// backend enum (`migrate`). Then the dry-run discipline: rag's `--json` mode
@@ -547,7 +547,7 @@ pub(super) async fn run_rag_lifecycle_capture(
 ///
 /// Each `probe_machine_state` call is blocking std::net I/O — offloaded via
 /// `rag_offload` (spawn_blocking) so the ≈7.5s worst-case probe loop never pins
-/// a Tokio async worker (ADR D5 / T1-R2). The inter-probe sleeps stay async
+/// a Tokio async worker. The inter-probe sleeps stay async
 /// (tokio::time::sleep).
 async fn reprobe_rag_until_running(
     state: &AppState,
@@ -574,8 +574,8 @@ async fn reprobe_rag_until_running(
     Ok(last)
 }
 
-/// `server-start` with the machine-singleton, attach-never-own discipline
-/// (rag-service-management ADR D1/D2). The dashboard manages whatever rag service
+/// `server-start` with the machine-singleton, attach-never-own discipline.
+/// The dashboard manages whatever rag service
 /// is running on the machine and starts its OWN only when one is genuinely
 /// absent: it NEVER starts speculatively. It gates on the machine-global
 /// running-predicate; an already-running service ATTACHES and succeeds (whether
@@ -659,7 +659,7 @@ pub(super) async fn start_rag_service(
     let vault = cell.root.join(".vault");
     // Gate: a running machine service is managed, not restarted (the start flags
     // are moot when we attach to an existing service). The /health probe is
-    // blocking socket I/O — offload it (RCR-001).
+    // blocking socket I/O — offload it.
     let gate_probe = super::rag_offload(state, {
         let vault = vault.clone();
         move || rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
@@ -699,7 +699,7 @@ pub(super) async fn start_rag_service(
     // downgrade a slow-but-successful start to "failed": trust exit 0 and harvest
     // pid/port best-effort without blocking on readiness.
     if run.code == Some(0) {
-        // Best-effort pid/port harvest — blocking /health probe, offload it (RCR-001).
+        // Best-effort pid/port harvest — blocking /health probe, offload it.
         let post_probe = super::rag_offload(state, {
             let vault = vault.clone();
             move || rag_client::client::probe_machine_state(&vault, RAG_LIFECYCLE_HEALTH_TIMEOUT)
@@ -797,7 +797,7 @@ pub(super) async fn start_rag_service(
 pub(super) async fn stop_rag_service(state: &AppState, cell: &ScopeCell) -> ApiResult {
     let run = run_rag_lifecycle_capture(state, &cell.root, &rag_invocation(), &["server", "stop"])
         .await?;
-    // TIERS-ON-STOP-FAILED (ADR D5 / T1-R3): the tiers block reports the TRUE
+    // TIERS-ON-STOP-FAILED: the tiers block reports the TRUE
     // current service state from discovery (`query_tiers`), NOT the outcome of
     // this stop attempt.  When stop fails and rag is still running, the semantic
     // tier correctly shows available — this is the decided, correct behavior.

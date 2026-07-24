@@ -171,7 +171,7 @@ describe("createDocChrome store", () => {
     expect(isCreateDocType("research")).toBe(true);
     expect(isCreateDocType("reference")).toBe(true);
     expect(isCreateDocType("audit")).toBe(true);
-    // exec left the offered set (ADR D4).
+    // exec left the offered set.
     expect(isCreateDocType("exec")).toBe(false);
     expect(isCreateDocType("story")).toBe(false);
     expect(isCreateDocStage("feature")).toBe(true);
@@ -312,7 +312,7 @@ describe("createDocChrome coverage derivations", () => {
     const offered = deriveOfferedCreateDocTypes(cov);
     const offeredTypes = offered.map((o) => o.docType);
     expect(offeredTypes).toEqual(["research", "reference", "adr", "plan", "audit"]);
-    // exec never enters the offered set (ADR D4).
+    // exec never enters the offered set.
     expect(offeredTypes).not.toContain("exec");
     const research = offered.find((o) => o.docType === "research")!;
     expect(research).toMatchObject({ present: true, eligible: true });
@@ -367,7 +367,7 @@ describe("createDocChrome coverage derivations", () => {
     expect(reconcileCreateDocType("plan", onlyEntry)).toBe("research");
   });
 
-  it("seeds related links deterministically from newest upstream stems (ADR D5)", () => {
+  it("seeds related links deterministically from newest upstream stems", () => {
     const full = coverage({
       research: { newestStem: "2026-07-14-x-research", eligible: true },
       reference: { newestStem: "2026-07-14-x-reference", eligible: true },

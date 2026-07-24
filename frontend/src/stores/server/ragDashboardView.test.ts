@@ -1,4 +1,4 @@
-// The rag job-dashboard jobs-table derivation (rag-job-dashboard ADR D3): pure
+// The rag job-dashboard jobs-table derivation: pure
 // functions over explicit vectors — sort, text filter, phase facets, group
 // counts, and the honest served-vs-total truncation bound. No render, no wire.
 

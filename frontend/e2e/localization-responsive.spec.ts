@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S145): compact and responsive surfaces against the
+// Localization E2E: compact and responsive surfaces against the
 // live served application. A phone-class viewport mounts the compact shell
 // (shellLayout viewport class — no canvas, bottom-tab navigation); this proves
 // the compact chrome carries localized accessible navigation — real translated

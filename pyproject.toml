@@ -1,5 +1,5 @@
 [project]
-authors = [{ name = "Gergely Wootsch", email = "hello@gergely-wootsch.com" }]
+authors = [{ name = "Neve Nincs", email = "hello@neve.md" }]
 dependencies = [
   "vaultspec-core>=0.1.36",
 ]

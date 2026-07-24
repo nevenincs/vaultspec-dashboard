@@ -1,5 +1,4 @@
-// Regression (backend-hardening campaign, finding degradation-honesty-01): the
-// transport error path must preserve the per-tier degradation block the engine
+// Regression: the transport error path must preserve the per-tier degradation block the engine
 // attaches to its error envelope (contract §2; the
 // every-wire-response-carries-the-tiers-block rule). A backend-DOWN condition
 // must reach the client as degradation truth the GUI can render — never a

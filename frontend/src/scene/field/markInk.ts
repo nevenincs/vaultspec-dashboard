@@ -5,7 +5,7 @@
 // texture provider can depend on the plumbing without pulling the path data,
 // and so the inventory file is purely geometry.
 //
-// The `currentColor` substitution is the spike finding (W01.P04.S20): Pixi's
+// The `currentColor` substitution is the spike finding: Pixi's
 // SVG color parser throws on the literal `currentColor` keyword because it
 // resolves against a live CSS cascade Pixi cannot see. The texture seam fills a
 // concrete white ink and the sprite layer tints it with state colour

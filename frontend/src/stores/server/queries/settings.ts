@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import type { KeybindingOverrides } from "../../../platform/keymap/registry";
@@ -31,7 +31,7 @@ import { useEffect, useMemo } from "react";
 import { engineKeys } from "./internal";
 import { seedSessionCache } from "./workspaces";
 
-// --- session / settings (user-state-persistence W04.P08.S26) -------------------------
+// --- session / settings -------------------------------------------------------------
 //
 // The durable "where am I" session and the user settings, consumed through
 // stores hooks so chrome and scene never touch the wire (dashboard-layer-
@@ -234,7 +234,7 @@ export function usePutSession() {
     mutationFn: (body: SessionUpdate) => engineClient.putSession(body),
     onSuccess: (session) => {
       // A session mutation may carry a registry mutation (select/add/forget a
-      // workspace, dashboard-workspace-registry ADR), so refresh the registry
+      // workspace), so refresh the registry
       // enumeration too — the picker re-reads the authoritative roots + active
       // marker without a separate mutation hook.
       seedSessionCache(queryClient, session);

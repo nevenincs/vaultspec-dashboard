@@ -1,4 +1,4 @@
-// Provisioning dispatch terminal effect (project-provisioning ADR D7): the one
+// Provisioning dispatch terminal effect: the one
 // engine call that starts a provisioning capability job lives in the stores
 // layer — the sole wire client — and is registered onto the ONE platform
 // dispatch seam so a non-hook surface (an ActionDescriptor fired from outside

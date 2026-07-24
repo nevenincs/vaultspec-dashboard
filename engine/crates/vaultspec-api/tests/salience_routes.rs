@@ -1,4 +1,4 @@
-//! Route-level salience wire tests (graph-node-salience W03.P08.S35): the `lens`
+//! Route-level salience wire tests: the `lens`
 //! request parameter defaults to status, every served document node carries the
 //! single active-lens `salience` float, truncation is lens-and-focus dependent,
 //! and the tiers block rides every envelope (success and error).
@@ -189,9 +189,9 @@ async fn an_unknown_lens_is_a_tiered_400() {
 
 #[tokio::test]
 async fn degraded_tier_flags_salience_partial_end_to_end() {
-    // graph-node-salience W05.P11.S46: a salience computed while a tier is
-    // degraded is flagged partial via the wire (read from the tiers block, never
-    // guessed). Force the declared tier degraded (a BACKBONE tier, so any lens is
+    // A salience value computed while a tier is degraded is flagged partial via
+    // the wire (read from the tiers block, never guessed). Force the declared
+    // tier degraded (a BACKBONE tier, so any lens is
     // partial) and assert the response says so for the SAME state the tiers block
     // reports.
     let (_dir, state) = fixture_state();

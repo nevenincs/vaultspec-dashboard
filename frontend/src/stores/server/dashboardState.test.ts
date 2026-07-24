@@ -483,7 +483,7 @@ describe("dashboard-state engine client (live engine)", () => {
       } as unknown as DashboardFilters),
     ).toEqual({});
     // `semantic` is not an edge tier (the engine never mints semantic graph
-    // edges, ADR D3.5), so it is dropped from the tier filter exactly like an
+    // edges), so it is dropped from the tier filter exactly like an
     // unknown key; `structural` survives as a real edge tier.
     expect(
       normalizeDashboardFilterTiers({
@@ -514,7 +514,7 @@ describe("dashboard-state engine client (live engine)", () => {
     expect(
       dashboardFiltersWithTier({ tiers: { structural: false } }, " structural ", true),
     ).toEqual({ tiers: { structural: true } });
-    // `semantic` is not an edge tier (ADR D3.5), so toggling it is a no-op: the
+    // `semantic` is not an edge tier, so toggling it is a no-op: the
     // invalid tier name is rejected and the existing edge-tier filter is kept.
     expect(
       dashboardFiltersWithTier({ tiers: { structural: false } }, " semantic ", true),

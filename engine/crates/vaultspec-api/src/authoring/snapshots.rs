@@ -1,6 +1,6 @@
 //! Revision snapshot and preimage capture primitives.
 //!
-//! W03.P11 captures document bytes, base revision checks, and rollback
+//! This module captures document bytes, base revision checks, and rollback
 //! preimages for later proposal, validation, apply, and rollback phases. It
 //! does not implement proposal operations, apply jobs, rollback commands, or
 //! route handlers.
@@ -179,7 +179,7 @@ impl SnapshotReader {
         }
     }
 
-    /// The worktree root this reader was bound to (W02.P04) — needed by a
+    /// The worktree root this reader was bound to — needed by a
     /// caller that must ALSO resolve document identities (e.g. a rename's
     /// rollback re-resolving by node id), not just read snapshots.
     pub fn root(&self) -> &Path {

@@ -65,7 +65,7 @@ pub struct FileTreeParams {
 
 /// Project one listed child onto the wire shape: its repo-relative path, the
 /// kind, the `has_children` disclosure hint, and the `code:<path>` node id —
-/// derived through the SHARED `node_id` rule (P02.S06), never a private
+/// derived through the SHARED `node_id` rule, never a private
 /// convention. The interlink id is the path-only `CodeArtifact` key
 /// (`code:<path>`); a symbol-qualified `code:<path>#<symbol>` is a future
 /// per-file outline facet, not this listing.

@@ -73,7 +73,7 @@ pub fn start_prompt_turn(
                 request_digest: request_digest.clone(),
             },
             |receipt_id| {
-                // D7 consumption fence: a referenced feedback batch must exist and
+                // Consumption fence: a referenced feedback batch must exist and
                 // belong to THIS session before the turn is accepted. The batch's
                 // `source_revision` is provenance; the apply path's base-revision
                 // fences bind it later — the turn fence is existence + ownership.
@@ -94,7 +94,7 @@ pub fn start_prompt_turn(
                     context.now_ms,
                 )?;
                 // A turn started its own run directly, or was enqueued behind the active
-                // run (D2). Each announces its own lifecycle kind; there is no JOIN arm.
+                // run. Each announces its own lifecycle kind; there is no JOIN arm.
                 let (status, run_id) = match &run {
                     Some(run) => {
                         append_session_event(
@@ -121,7 +121,7 @@ pub fn start_prompt_turn(
                         ("queued", None)
                     }
                 };
-                // W14.P42a S262 — OPPORTUNISTIC compaction. A new prompt turn is the natural
+                // OPPORTUNISTIC compaction. A new prompt turn is the natural
                 // activity boundary at which prior turns' generation transcripts have reached
                 // a terminal lifecycle and become past-due, so one bounded `compact_due` sweep
                 // runs inside THIS existing turn-creation unit of work (no background loop,
@@ -190,7 +190,7 @@ pub fn cancel_run(
                         receipt_id,
                         json!({ "run": run }),
                     )?;
-                    // D2: the session stays Active, so the freed slot promotes the oldest
+                    // The session stays Active, so the freed slot promotes the oldest
                     // queued turn atomically in THIS same unit of work.
                     if let Some(promoted) = uow
                         .sessions()
@@ -379,7 +379,7 @@ pub fn complete_run(
                         receipt_id,
                         json!({ "run": run }),
                     )?;
-                    // D2: settlement is the queue's promotion trigger — the oldest queued
+                    // Settlement is the queue's promotion trigger — the oldest queued
                     // turn is promoted into a fresh run atomically in THIS unit of work.
                     if let Some(promoted) = uow
                         .sessions()

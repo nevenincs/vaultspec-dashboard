@@ -1,8 +1,8 @@
-//! Ordered diff-log generation (engine-spec D7.4, contract §5): the delta
+//! Ordered diff-log generation (contract §5): the delta
 //! log between two graph states, with monotonic sequence numbers and
 //! `last_seq` reporting. Scrubbing applies these deltas client-side at
 //! frame rate; the live `graph` SSE channel shares this exact shape — one
-//! delta clock (contract REDLINE-3).
+//! delta clock.
 
 use engine_model::{Edge, Node};
 use serde::Serialize;
@@ -21,8 +21,7 @@ pub enum DiffOp {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct DiffEntry {
     pub op: DiffOp,
-    /// The delta's species on the single clock (contract §5/§7 amendment
-    /// 2026-06-13, constellation-live-delta ADR / S50): this `diff` produces
+    /// The delta's species on the single clock (contract §5/§7): this `diff` produces
     /// the DOCUMENT graph deltas; the feature/meta-edge projection is tagged
     /// `feature` elsewhere. A single-granularity consumer applies only its own.
     pub granularity: &'static str,
@@ -86,7 +85,7 @@ pub struct DiffLog {
 /// - `provenance`: the declared tier's `payload_hash` is the hash of the WHOLE
 ///   core-graph payload, which differs between ANY two snapshots even for a
 ///   byte-identical edge — the historical-diff spurious-`change` storm
-///   (2026-06-13: HEAD~3..HEAD reported ~7080 phantom edge changes);
+///   (HEAD~3..HEAD reported ~7080 phantom edge changes);
 /// - `scope`: a diff compares two views of the SAME corpus; identity is the id.
 ///
 /// (relation/tier are id-implied for a matched edge, compared for clarity.)
@@ -269,7 +268,7 @@ mod tests {
         // A diff whose symmetric difference exceeds MAX_DIFF_DELTAS must NOT ship a
         // partial (non-self-consistent) mutation log: it degrades to keyframe-only
         // — empty `entries` plus an honest `truncated` block the client answers
-        // with a re-keyframe (GIR-010, graph-queries-are-bounded-by-default).
+        // with a re-keyframe (graph-queries-are-bounded-by-default).
         let a = LinkageGraph::new();
         let mut b = LinkageGraph::new();
         let over = MAX_DIFF_DELTAS + 1;

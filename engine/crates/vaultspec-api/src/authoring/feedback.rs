@@ -1,4 +1,4 @@
-//! Immutable feedback batches (agent-wire-gaps ADR D7 / feedback-loop ADR D3+D4).
+//! Immutable feedback batches.
 //!
 //! A batch freezes the reviewer's chosen section-anchored comments into ONE
 //! digest-addressed engine record the next prompt turn references by id — so
@@ -9,7 +9,7 @@
 //! (`feedback-batch:<blob-oid>`), the row is insert-only under that primary
 //! key, and no update path exists in this module. Re-creating identical
 //! content replays the existing record idempotently; later comment edits
-//! never touch a frozen batch (feedback-loop D3, verbatim).
+//! never touch a frozen batch.
 
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +21,7 @@ use super::store::{Result as StoreResult, StoreError};
 
 const FEEDBACK_BATCH_SCHEMA: &str = "authoring.feedback_batch.v1";
 
-/// Comment-count cap, matching the shipped composer batch cap (ADR D7).
+/// Comment-count cap, matching the shipped composer batch cap.
 pub const FEEDBACK_BATCH_COMMENT_CAP: usize = 32;
 
 /// Bound on the serialized batch (bodies + anchors + instruction). Generous for

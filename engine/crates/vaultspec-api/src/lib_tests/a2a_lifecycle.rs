@@ -1,4 +1,4 @@
-//! A2A lifecycle job-plane acceptance (a2a-product-provisioning W01.P03.S26).
+//! A2A lifecycle job-plane acceptance.
 //!
 //! Proves the served lifecycle plane against PRODUCTION routes and a REAL
 //! registry + real `vaultspec-product` controller rooted at an isolated product

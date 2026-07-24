@@ -274,7 +274,7 @@ pub(super) fn landing_section_edit_timeout_adapter(
     CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_millis(2500))
 }
 
-// --- W02.P05: CreateDocument against the REAL core ----------------------
+// --- CreateDocument against the REAL core ----------------------
 
 pub(super) const LIVE_CREATE_DOC_TYPE: &str = "plan";
 
@@ -755,7 +755,7 @@ pub(super) fn ledger_status(fx: &mut Fx) -> ChangesetStatus {
 }
 
 /// Apply presenting a specific advisory fencing token (or `None`), so the apply-side
-/// fence (W14.P42a) can be exercised against a seeded lease.
+/// fence can be exercised against a seeded lease.
 pub(super) fn apply_with_token(
     fx: &mut Fx,
     adapter: &CoreAdapter,

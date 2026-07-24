@@ -5,7 +5,7 @@ use super::helpers2::*;
 
 #[test]
 fn edit_frontmatter_tags_order_is_preserved_by_the_real_core_write() {
-    // P03-review follow-on: `frontmatter_fields_match` compares list fields
+    // `frontmatter_fields_match` compares list fields
     // as ORDERED `Vec` equality. Source inspection of vaultspec-core's
     // `_serialise_block_list`/`resolve_related_inputs` confirmed order is
     // preserved (never sorted/deduped-out-of-order), but that was never
@@ -77,7 +77,7 @@ fn edit_frontmatter_tags_order_is_preserved_by_the_real_core_write() {
 
 #[test]
 fn edit_frontmatter_a_mismatched_or_not_landed_write_fails_closed() {
-    // P03-review follow-on: the `false → Failed` direction of the semantic
+    // The `false → Failed` direction of the semantic
     // post-verify was structurally guaranteed but never directly exercised
     // for frontmatter. Pin it at the `frontmatter_fields_match` unit level
     // (mismatch → false) alongside the tolerant-quoting positive case
@@ -269,7 +269,7 @@ fn create_document_apply_against_the_real_core_is_recognized_applied() {
         fx.doc_file.exists(),
         "the REAL vaultspec-core `vault add` scaffolded the document"
     );
-    // W03.P09a: the receipt echoes the created document's REAL identity
+    // The receipt echoes the created document's REAL identity
     // (previously always empty/None for a create) — never re-derived
     // client-side, no client-predictable filename guess needed.
     assert_eq!(receipt.child.document_path, LIVE_CREATE_DOC_PATH);
@@ -350,7 +350,7 @@ fn create_document_indeterminate_kill_after_both_steps_landed_is_recognized_appl
     assert_eq!(ledger_status(&mut fx), ChangesetStatus::Applied);
 
     assert!(fx.doc_file.exists());
-    // W03.P09a: the crash-recovery/reclaim path resolves the SAME real
+    // The crash-recovery/reclaim path resolves the SAME real
     // identity `resolve_outcome`'s happy path does (via the SAME
     // `resolve_created_document` helper) — not just "recognized
     // Applied" but the receipt actually echoes it.
@@ -647,7 +647,7 @@ fn an_out_of_band_edit_conflicts_and_refuses_the_apply_as_a_value() {
     );
 }
 
-// --- S177 matrix -------------------------------------------------------
+// --- apply matrix -------------------------------------------------
 
 #[test]
 fn approved_changeset_materializes_once_and_records_an_applied_receipt() {
@@ -1008,7 +1008,7 @@ fn a_crashed_in_flight_attempt_is_reported_in_flight_on_retry() {
 
 #[test]
 fn an_expired_wedged_applying_reservation_is_reclaimed_to_a_terminal_receipt() {
-    // P36-R1 falsifier: a crash between stage A (reservation + Applying) and
+    // Falsifier: a crash between stage A (reservation + Applying) and
     // stage C wedges the changeset in Applying. Within the TTL a retry reports
     // in_flight; PAST the TTL the reclaim path must RESUME COMPLETION to an
     // honest terminal receipt (Applied here — the write had landed), never a
@@ -1107,7 +1107,7 @@ fn an_expired_wedged_applying_reservation_is_reclaimed_to_a_terminal_receipt() {
     );
 }
 
-// --- W02.P03: EditFrontmatter apply wiring ------------------------------
+// --- EditFrontmatter apply wiring ------------------------------
 
 #[test]
 fn build_write_invocation_selects_set_frontmatter_capability_and_field_level_flags() {

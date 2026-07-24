@@ -2,7 +2,7 @@
 // BOTH the Pixi texture seam (`domainGlyphs.ts`, the GlyphTextureProvider)
 // and the React chrome (`markComponents.tsx`), so the canvas and the DOM render the
 // same silhouette from one source (iconography ADR: "both planes ultimately
-// consume the same currentColor ink"). W02.P17.S33–S35.
+// consume the same currentColor ink").
 //
 // Two provenance classes live here, both as clean per-icon SVG on Phosphor's
 // 256-unit grid with `fill="currentColor"` and rounded joins:
@@ -99,7 +99,7 @@ const EVENT_LIFECYCLE = p(
   "M242.63,96.44l-184-64A8,8,0,0,0,48,40V216a8,8,0,0,0,16,0V173.69l178.63-62.13a8,8,0,0,0,0-15.12ZM64,156.75V51.25L215.65,104Z",
 );
 
-// --- AUTHORED IN-FAMILY: the four abstract tier marks (S33) ------------------
+// --- AUTHORED IN-FAMILY: the four abstract tier marks ------------------------
 //
 // Bespoke product semantics — no framework ships them. Authored on the 256
 // grid in Phosphor's house style, carrying the retired hand-drawn family's
@@ -172,7 +172,7 @@ export const TIER_MARK_DEFS = {
 
 export type TierKey = keyof typeof TIER_MARK_DEFS;
 
-// --- AUTHORED IN-FAMILY: the lifecycle state set (S34) -----------------------
+// --- AUTHORED IN-FAMILY: the lifecycle state set -----------------------------
 //
 // Composed from Phosphor state energies (check / archive / warning) on the same
 // grid, honoring two documented collisions:

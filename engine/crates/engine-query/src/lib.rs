@@ -1,4 +1,4 @@
-//! The single shared query core (engine-spec D6.1).
+//! The single shared query core.
 //!
 //! CLI verbs and serve endpoints are thin shells over this crate; no
 //! capability exists in only one front door. Scope is fully stateless:

@@ -93,10 +93,10 @@ pub(crate) async fn fs_list(
     ))
 }
 
-/// The registered workspace roots, normalized for path comparison
-/// (workspace-picker-dialog D4): the client must not re-derive registration
-/// state by raw path comparison (Windows case/format hazards), so this reads
-/// the engine's own registry and hands back a comparison-normalized set.
+/// The registered workspace roots, normalized for path comparison: the
+/// client must not re-derive registration state by raw path comparison
+/// (Windows case/format hazards), so this reads the engine's own registry
+/// and hands back a comparison-normalized set.
 fn registered_paths(state: &AppState) -> HashSet<String> {
     let us = state.user_state.lock().unwrap_or_else(|e| e.into_inner());
     us.list_roots()

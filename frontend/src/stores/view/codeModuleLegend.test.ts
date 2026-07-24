@@ -1,4 +1,4 @@
-// CGR-002 P02.S08: the code-module legend rollup is a pure presentation of the
+// The code-module legend rollup is a pure presentation of the
 // engine's served `module_hue` classification (no re-classification).
 
 import { describe, expect, it } from "vitest";

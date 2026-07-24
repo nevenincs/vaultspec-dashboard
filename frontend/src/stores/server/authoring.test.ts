@@ -1,4 +1,4 @@
-// Authoring store adapter + outcome-interpretation unit tests (W03.P40 CHUNK A).
+// Authoring store adapter + outcome-interpretation unit tests.
 //
 // These exercise the PURE adapters/interpreters over literal wire shapes captured
 // from the served envelope grammar — NOT a mocked engine wire (the live-wire
@@ -670,7 +670,7 @@ describe("newIdempotencyKey", () => {
   });
 });
 
-describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
+describe("adaptDirectWriteOutcome", () => {
   it("reads a terminal applied outcome, including the observed post-state blob hash", () => {
     const outcome = adaptDirectWriteOutcome({
       status: "applied",
@@ -696,7 +696,7 @@ describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
     }
   });
 
-  it("reads the echoed create-document identity off a landed create's apply receipt (W03.P09a)", () => {
+  it("reads the echoed create-document identity off a landed create's apply receipt", () => {
     const outcome = adaptDirectWriteOutcome({
       status: "applied",
       replayed: false,
@@ -761,7 +761,7 @@ describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
     }
   });
 
-  it("reads the structured `denial_kind` off a denied outcome (W05.P14)", () => {
+  it("reads the structured `denial_kind` off a denied outcome", () => {
     const outcome = adaptDirectWriteOutcome({
       status: "denied",
       eligibility: {
@@ -835,7 +835,7 @@ describe("adaptDirectWriteOutcome (ledgered-edit-migration W01.P02)", () => {
   });
 });
 
-describe("directWriteWirePayload (ledgered-edit-migration W02.P06 generalization)", () => {
+describe("directWriteWirePayload", () => {
   it("marshals `replace_body` sending only ref/body/expected_blob_hash (+ common scope/summary)", () => {
     const wire = directWriteWirePayload({
       operation: "replace_body",

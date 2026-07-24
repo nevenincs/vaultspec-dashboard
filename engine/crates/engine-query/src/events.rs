@@ -47,7 +47,7 @@ pub struct RawEvent {
     #[serde(rename = "ref")]
     pub git_ref: String,
     pub node_ids: Vec<String>,
-    /// Code-artifact ids dropped by the wire bound (addendum S05);
+    /// Code-artifact ids dropped by the wire bound;
     /// omitted when nothing was truncated.
     #[serde(skip_serializing_if = "is_zero")]
     pub truncated_node_ids: u64,
@@ -145,8 +145,8 @@ pub fn parse_bucket_param(param: &str) -> Option<BucketMode> {
     }
 }
 
-/// Wire bound on code-artifact ids per commit event (contract §5,
-/// addendum S05): doc ids always survive — they are the timeline's join
+/// Wire bound on code-artifact ids per commit event (contract §5):
+/// doc ids always survive — they are the timeline's join
 /// key — while code ids beyond the cap truncate with a count.
 pub const CODE_NODE_IDS_CAP: usize = 20;
 
@@ -184,9 +184,9 @@ fn vault_doc_node_id(path: &str) -> Option<String> {
         .map(|stem| node_id(&CanonicalKey::Document { stem }).0)
 }
 
-/// Source commit events from a workspace ref into contract-shaped rows
-/// (audit G7: event sourcing lives in the query core; both front doors
-/// delegate here — D6.1, no capability in only one door).
+/// Source commit events from a workspace ref into contract-shaped rows:
+/// event sourcing lives in the query core; both front doors
+/// delegate here, no capability in only one door.
 ///
 /// Emits all THREE contract §5 event kinds from one commit walk:
 /// a `commit` row per commit (the full touched set); a `doc-modified` row per
@@ -199,7 +199,7 @@ fn vault_doc_node_id(path: &str) -> Option<String> {
 /// ALSO reported on `doc-modified` (its content changed at this commit); the
 /// lifecycle row is the distinct, additive birth/retirement mark.
 ///
-/// `known` bounds the correlation (S05): when given, code-artifact ids
+/// `known` bounds the correlation: when given, code-artifact ids
 /// keep only graph-known nodes; the survivors cap at
 /// [`CODE_NODE_IDS_CAP`] with the dropped count reported on the row. Doc
 /// and commit ids are never truncated.
@@ -213,8 +213,7 @@ pub fn commit_rows(
     // Build the rows with a PLACEHOLDER seq, then assign seq AFTER the
     // chronological sort. `walk` returns newest-first, so assigning seq from
     // walk order and then sorting by ts made id and ts ANTI-correlated — id 1
-    // was the newest event, last in the ts-ascending array (sweep LOW,
-    // 2026-06-13). The contract calls the id a monotonic seq and the stream
+    // was the newest event, last in the ts-ascending array. The contract calls the id a monotonic seq and the stream
     // splices by `since=<id>`, so id order MUST track time order. Tiebreak
     // same-ts events by (sha, kind) for a deterministic, stable id assignment
     // when a commit yields both a `commit` and a `doc-modified` row at the

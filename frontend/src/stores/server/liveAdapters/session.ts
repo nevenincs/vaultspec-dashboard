@@ -1,4 +1,4 @@
-// Auto-split from liveAdapters.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from liveAdapters.ts.
 // Domain submodule of the liveAdapters barrel; see ./index.ts.
 
 import { normalizeWorkspaceLayoutBlob } from "../../workspaceLayout";
@@ -22,7 +22,7 @@ import type {
 import { SCOPE_ID_MAX_CHARS } from "../scopeIdentity";
 import { isRec } from "./internal";
 
-// --- session / settings (user-state-persistence W04.P08.S28) ---------------------
+// --- session / settings -----------------------------------------------------------
 //
 // Tolerant adapters for the orchestration crate's session/settings surface. The
 // live `{data, tiers}` envelope is already unwrapped by `unwrapEnvelope` before
@@ -113,7 +113,7 @@ export function adaptSession(body: unknown): SessionState {
   return {
     workspace: normalizeSessionString(body.workspace) ?? "",
     active_scope: normalizeSessionString(body.active_scope) ?? "",
-    // The active WORKSPACE id (dashboard-workspace-registry ADR); null when
+    // The active WORKSPACE id; null when
     // absent (a sparse or older session shape) so the rail marks none current.
     active_workspace: normalizeSessionString(body.active_workspace) ?? null,
     scope_context: adaptScopeContext(body.scope_context),
@@ -123,7 +123,7 @@ export function adaptSession(body: unknown): SessionState {
   };
 }
 
-// --- workspace registry (dashboard-workspace-registry ADR) -----------------------
+// --- workspace registry -----------------------------------------------------------
 //
 // Tolerant adapter for `GET /workspaces`. The live `{data, tiers}` envelope is
 // already unwrapped by `unwrapEnvelope` before this runs; a body already in the

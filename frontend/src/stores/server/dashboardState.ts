@@ -87,8 +87,8 @@ export type DashboardFilterFacet =
   | "statuses"
   | "plan_states"
   | "health";
-// The edge-tier filter vocabulary. The engine never mints a semantic graph edge
-// (ADR D3.5), so `semantic` is not an edge tier and is not a toggleable filter
+// The edge-tier filter vocabulary. The engine never mints a semantic graph edge,
+// so `semantic` is not an edge tier and is not a toggleable filter
 // tier — distinct from the 4-tier availability `CANONICAL_TIERS` block.
 export type DashboardTierName = "declared" | "structural" | "temporal";
 const DASHBOARD_FILTER_FACETS: readonly DashboardFilterFacet[] = [
@@ -176,7 +176,7 @@ export function granularityPatch(
   return { graph_granularity: normalizeDashboardGraphGranularity(graph_granularity) };
 }
 
-// The active graph corpus / view mode (codebase-graphing ADR D7): the live
+// The active graph corpus / view mode: the live
 // dashboard-state driver a corpus switch writes, so the graph query re-keys and
 // the canvas reloads. The durable `graph_corpus` SETTING is the source of truth;
 // this mirrors it into dashboard-state.
@@ -664,7 +664,7 @@ export function dashboardGraphDefaultsPatch(
     graph_granularity: normalizeDashboardGraphGranularity(graph_granularity),
     ...(filters ? { filters: cloneDashboardFilters(filters) } : {}),
     // Seed the corpus / view mode on a fresh scope from the durable
-    // `graph_corpus` setting (codebase-graphing ADR D7). Omitted when not
+    // `graph_corpus` setting. Omitted when not
     // supplied so pre-corpus callers are unchanged (vault is the state default).
     ...(corpus === undefined ? {} : { corpus: normalizeDashboardGraphCorpus(corpus) }),
   };
@@ -866,7 +866,7 @@ function cloneDateRange(range: unknown): DashboardDateRange {
 
 // The graph-query filter forwards EVERY node/edge/text-reducing facet to the engine —
 // it must, and is never re-derived as a client-side narrow of the served slice
-// (node-facets-filter-on-the-engine; graph-filter-fetch-split ADR D2, REJECTED split).
+// (a client-side fetch/filter split was considered and rejected).
 // Two correctness gates make these facets un-client-narrowable:
 //   1. Feature-aggregation gate: at feature granularity the engine applies the facet to
 //      the underlying DOCUMENTS, then aggregates the survivors into feature-convergence

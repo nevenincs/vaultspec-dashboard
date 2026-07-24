@@ -1,9 +1,9 @@
-// Live-connection state (ADR D1): the runtime state of the engine graph SSE
+// Live-connection state: the runtime state of the engine graph SSE
 // stream that the degradation derivation and the stream resume both read. The
 // state system did not model liveness as a first-class state before this; the
 // two degradation rows that depend on it (stream-lost, structural-broken) were
-// hardwired (GUI audit finding 036). Scope-keyed in spirit: the graph-sync hook
-// resets it on a wholesale scope swap (findings 022/023), like the view stores.
+// hardwired. Scope-keyed in spirit: the graph-sync hook resets it on a wholesale
+// scope swap, like the view stores.
 
 import { create } from "zustand";
 import { useEffect } from "react";

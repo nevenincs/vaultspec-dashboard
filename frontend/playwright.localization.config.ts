@@ -1,4 +1,4 @@
-// Localization dev-affordance E2E (W06.P19.S105/S142): like
+// Localization dev-affordance E2E: like
 // playwright.adverse.config.ts, runs against the Vite DEV server so the
 // dev-only alternate-locale injection lever (LocalizationProvider instance
 // swap) the layout spec drives is present — it only exists when

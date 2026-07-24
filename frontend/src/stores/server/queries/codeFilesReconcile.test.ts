@@ -1,8 +1,8 @@
-// Pure unit tests for the code-files delta reconcile (vault-tree-delta ADR
-// /code-files follow-on), exercising the SAME KEY-GENERIC reconcile core as the
-// vault tree but through the code-files (path-keyed) spec: the merge, the
-// patch/full-drain/noop decision (including the truncated-corpus baseline
-// rejection), and the review-HIGH identity guard. Pure — no wire, no DOM.
+// Pure unit tests for the code-files delta reconcile, exercising the SAME
+// KEY-GENERIC reconcile core as the vault tree but through the code-files
+// (path-keyed) spec: the merge, the patch/full-drain/noop decision (including
+// the truncated-corpus baseline rejection), and the identity guard. Pure — no
+// wire, no DOM.
 
 import { QueryClient } from "@tanstack/react-query";
 import { describe, expect, it } from "vitest";
@@ -141,7 +141,7 @@ describe("planRowReconcile (code spec: truncation-aware baseline)", () => {
   });
 });
 
-describe("applyRowReconcile (review HIGH: overlapping code-files reconciles)", () => {
+describe("applyRowReconcile (overlapping code-files reconciles)", () => {
   const delta = (over: Partial<CodeFilesDeltaResponse>): CodeFilesDeltaResponse => ({
     generation: 5,
     tiers: TIERS,

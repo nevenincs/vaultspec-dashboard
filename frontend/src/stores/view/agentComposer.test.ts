@@ -1,5 +1,4 @@
-// Pure tests for the composer chrome store and its input-destination machine
-// (agentic-authoring-ux ADR D2/D4/D6, W02.P02.S10).
+// Pure tests for the composer chrome store and its input-destination machine.
 
 import { beforeEach, describe, expect, it } from "vitest";
 
@@ -57,7 +56,7 @@ describe("agentSubmitDestination", () => {
   });
 
   it("bootstraps a fresh session when the current one is no longer active", () => {
-    // Since D2, only an explicit session cancel makes a session non-active — Stop's
+    // Only an explicit session cancel makes a session non-active — Stop's
     // run-scoped `cancel_run` leaves it active. A non-active session rejects every
     // further turn, so the next submit opens a new session.
     expect(
@@ -92,7 +91,7 @@ describe("agentSubmitDestination", () => {
     ).toBe("queue");
   });
 
-  it("steers when the live run has a served pending interrupt (S41)", () => {
+  it("steers when the live run has a served pending interrupt", () => {
     // The served `GET /runs/{id}/interrupts` list is scoped to the active run, so a
     // pending entry already belongs to it — the machine takes a single boolean and
     // never re-matches the run id client-side.
@@ -130,7 +129,7 @@ describe("buildAgentPrompt", () => {
   });
 
   it("no longer serializes staged comments into the prompt text", () => {
-    // Structured continuation (ADR D4): comments ride a feedback batch id on the
+    // Structured continuation: comments ride a feedback batch id on the
     // turn, not the prompt string. buildAgentPrompt takes only text + mentions.
     expect(buildAgentPrompt("revise", mentions)).toBe(
       `revise\n\n${AGENT_COMPOSER_CONTEXT_PREFIX} [[2026-02-04-editor-demo-plan]] #editor-demo`,
@@ -205,7 +204,7 @@ describe("composer store bounds", () => {
     ).toHaveLength(1);
   });
 
-  // The client one-slot queued prompt was removed (S39): a mid-run submit now
+  // The client one-slot queued prompt was removed: a mid-run submit now
   // dispatches the turn and the engine enqueues it server-side (`queued_turn_ids`),
   // so the composer store no longer holds a queue slot.
 
@@ -253,7 +252,7 @@ describe("composer store bounds", () => {
     expect(useAgentComposer.getState().commentBatch).toBeNull();
   });
 
-  // The client-staged interrupt seam was removed (S41): pending-interrupt state is
-  // served (`GET /runs/{id}/interrupts`, D3) and read through `useRunInterrupts`,
+  // The client-staged interrupt seam was removed: pending-interrupt state is
+  // served (`GET /runs/{id}/interrupts`) and read through `useRunInterrupts`,
   // so the composer store no longer holds an interrupt record.
 });

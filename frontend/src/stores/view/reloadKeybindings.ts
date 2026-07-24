@@ -1,5 +1,5 @@
 // The light Refresh as ONE shared action on the ONE keymap registry + dispatcher
-// (global-context-actions ADR D4; keyboard-shortcuts-bind-through-the-one-keymap-
+// (keyboard-shortcuts-bind-through-the-one-keymap-
 // registry). Refresh re-fetches the active scope's engine data by invalidating the
 // TanStack query cache; it mutates nothing, so it carries no confirm guard and is not
 // time-travel gated. The SAME `refreshDataAction()` builder is composed by the reload

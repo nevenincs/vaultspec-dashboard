@@ -1,4 +1,4 @@
-//! Approval policy matrix (W10.P21).
+//! Approval policy matrix.
 //!
 //! Approval policy is DATA, not UI conditionals (approval-gates ADR
 //! `approval-policy-is-data`): this module is the single backend authority for WHAT
@@ -14,11 +14,11 @@
 //! never forks the lifecycle, relaxes the apply-time revision/validation floor, or
 //! widens the destructive-operation human-approval floor.
 //!
-//! SCOPE FENCE (W10.P21 vs W10.P48): this module DECIDES what the policy requires —
+//! SCOPE FENCE: this module DECIDES what the policy requires —
 //! the mode→requirement matrix, reviewer eligibility, tool gates, the stale
 //! classification, and the served reason. The system-actor auto-approval EXECUTION,
-//! the after-the-fact review lane, and the kill-switch re-queue are W10.P48
-//! (`modes.rs`); they CONSULT this policy. Wiring the existing `approvals` decision
+//! the after-the-fact review lane, and the kill-switch re-queue live in `modes.rs`;
+//! they CONSULT this policy. Wiring the existing `approvals` decision
 //! path to route through this layer is a deliberate contract event, not part of this
 //! phase.
 //!
@@ -54,7 +54,7 @@ impl OperationMode {
 
     /// Autonomy rank: higher is MORE autonomous. Used to resolve a narrowing-only
     /// session override (a session may lower the rank, never raise it), and to detect a
-    /// mode downgrade for the kill switch (`modes`, P48-R1 — one owner of the rank).
+    /// mode downgrade for the kill switch (`modes` — one owner of the rank).
     pub(crate) const fn autonomy_rank(self) -> u8 {
         match self {
             Self::Manual => 0,
@@ -156,7 +156,7 @@ pub enum ApprovalRequirement {
     HumanApprovalRequired,
     /// The changeset may be auto-approved by the SYSTEM actor under the mode policy.
     /// This is the policy REPRESENTATION of the allowance; the system-actor approval
-    /// record + the after-the-fact review lane are W10.P48.
+    /// record + the after-the-fact review lane live elsewhere.
     SystemAutoApprovable,
 }
 
@@ -206,7 +206,7 @@ pub fn reviewer_eligibility(
 /// fact from agent self-approval (operation-modes ADR): it is permitted ONLY for a
 /// `SystemAutoApprovable` requirement and ONLY by a genuine `System` actor — never an
 /// Agent/ToolExecutor wearing the system hat, and never for a human-required
-/// changeset. The EXECUTION of the auto-approval is W10.P48; this decides its
+/// changeset. The EXECUTION of the auto-approval lives elsewhere; this decides its
 /// legality.
 pub fn system_auto_approval_eligibility(
     command: CommandKind,
@@ -313,7 +313,7 @@ pub enum ReviewAction {
     Approve,
     Reject,
     /// Request changes — a reviewer-driven return to draft through the `EditProposal`
-    /// arc. ACTIVATED in W13.P24; decidable end-to-end (the third verdict).
+    /// arc; decidable end-to-end (the third verdict).
     Edit,
     /// Clarify / instruct without deciding — a status-preserving review-station
     /// exchange (`respond`), never an approval decision.
@@ -321,7 +321,7 @@ pub enum ReviewAction {
 }
 
 /// Whether a review action is a DECIDABLE verdict in V1. Approve, Reject, and Edit
-/// (request-changes, activated W13.P24) all drive a changeset transition through
+/// (request-changes) all drive a changeset transition through
 /// `submit_decision`. Respond is a clarification exchange that preserves the changeset
 /// status, so it is not a decidable verdict — it is served through the review-station
 /// respond path, never the decisions route.
@@ -394,7 +394,7 @@ pub struct PolicyDecisionProjection {
 /// Compute the served policy decision for a changeset: resolve the effective mode
 /// (narrowing-only), classify the changeset risk, and derive the approval
 /// requirement + reason. PURE — reads no state, holds none. The system-actor
-/// auto-approval execution and after-the-fact lane are W10.P48; this decides WHAT the
+/// auto-approval execution and after-the-fact lane live elsewhere; this decides WHAT the
 /// policy requires and WHY.
 pub fn decide_changeset_approval(
     scope_mode: OperationMode,
@@ -719,7 +719,7 @@ mod tests {
 
     #[test]
     fn approve_reject_edit_are_decidable_verdicts_respond_is_not() {
-        // Approve/Reject/Edit (request-changes, activated W13.P24) are decidable verdicts
+        // Approve/Reject/Edit (request-changes) are decidable verdicts
         // that drive a changeset transition through `submit_decision`.
         assert!(review_action_supported_in_v1(ReviewAction::Approve));
         assert!(review_action_supported_in_v1(ReviewAction::Reject));

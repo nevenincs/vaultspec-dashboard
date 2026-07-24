@@ -1,4 +1,4 @@
-// The live TEAM-run transcript (a2a-orchestration-edge ADR D3): the docked panel's
+// The live TEAM-run transcript: the docked panel's
 // rendering of an a2a team run's RELAYED progress — reasoning, tool calls, and each
 // agent's final text — as a continuous scroll of collapsed-by-default, animated
 // disclosure sections, the modern agent-UX pattern. It replaces the served-status
@@ -224,7 +224,7 @@ export function TeamRunTranscript() {
         )}
       </div>
       <ActiveAgentsIndicator view={view} />
-      {/* Honest degraded path (ADR D3): the relay gapped/degraded/was lost, so live
+      {/* Honest degraded path: the relay gapped/degraded/was lost, so live
           activity is paused and `run-status` polling is authoritative — never a
           faked token stream. */}
       {progress.degraded && !view.terminal && (

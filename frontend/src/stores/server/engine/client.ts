@@ -1,4 +1,4 @@
-// Decomposed from engine.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from engine.ts.
 
 import {
   adaptCodeFiles,
@@ -119,8 +119,8 @@ const CODE_FILES_MAX_PAGES = 25;
 // (bounded-by-default-for-every-accumulator) so a pathological corpus cannot
 // spin the loop unboundedly.
 //
-// The FIRST page is deliberately small (universal-data-loading ADR D5,
-// first-page-first): the cold-load rail paints after ~a couple hundred rows
+// The FIRST page is deliberately small (first-page-first): the cold-load
+// rail paints after ~a couple hundred rows
 // instead of buffering the route max, and the progressive `complete:false`
 // partial path engages on ordinary corpora too — with a 2000-row first page,
 // any vault under 2000 documents loaded as one monolithic response and the
@@ -129,15 +129,15 @@ const CODE_FILES_MAX_PAGES = 25;
 const VAULT_TREE_FIRST_PAGE_SIZE = 200;
 const VAULT_TREE_PAGE_SIZE = 2000;
 const VAULT_TREE_MAX_PAGES = 26;
-// A cursor walk can straddle a graph-generation bump mid-drain (vault-tree-delta
-// ADR D1 / constraint): the accumulated prefix would then mix two generations and
+// A cursor walk can straddle a graph-generation bump mid-drain (constraint):
+// the accumulated prefix would then mix two generations and
 // carry no reliable delta baseline. On a mid-walk generation change the drain
 // restarts from the first page; the restart budget bounds that loop (a pathological
 // rebuild storm cannot spin it), and on exhaustion the walk accepts the listing but
 // drops its generation baseline so the NEXT sweep re-drains cleanly rather than
 // patching a straddled listing.
 const VAULT_TREE_MAX_WALK_RESTARTS = 3;
-// Brief yield between continuation pages (on-demand-cold-start ADR D3) so the
+// Brief yield between continuation pages so the
 // background drain never contends with first paint / first interaction; the
 // page cap still bounds the loop, so total added latency is bounded too.
 const VAULT_TREE_PAGE_YIELD_MS = 120;
@@ -233,8 +233,8 @@ export class EngineClient {
     return adaptWorkspaces(await this.get("/workspaces"));
   }
 
-  /** Bounded, read-only OS directory browsing for the add-project picker
-   *  (single-app-runtime ADR O6 + workspace-picker-dialog ADR D4): omitted
+  /** Bounded, read-only OS directory browsing for the add-project picker:
+   *  omitted
    *  `path` lists the filesystem roots (with engine-served places), an
    *  absolute `path` lists that directory's immediate subdirectories. `q` and
    *  `hidden` narrow engine-side BEFORE the row cap (filtering law). */
@@ -258,8 +258,8 @@ export class EngineClient {
     // bug). Each page is the route's max; the page cap bounds the walk. Each
     // page reports into the drain-progress seam (universal-data-loading ADR
     // D3) so the multi-page walk is visible to the activity indicator; the
-    // entry is dropped on settle or error either way. `onPartial` (ADR D5)
-    // hands each accumulated prefix out with `complete: false` so the rail
+    // entry is dropped on settle or error either way. `onPartial` hands each
+    // accumulated prefix out with `complete: false` so the rail
     // can render the first page immediately while the drain continues; the
     // resolved value is the whole listing with `complete: true`.
     const drainId = `vault-tree:${scope}`;
@@ -330,7 +330,7 @@ export class EngineClient {
     }
   }
 
-  /** The generation-keyed vault-tree delta (vault-tree-delta ADR D3): the stem-keyed
+  /** The generation-keyed vault-tree delta: the stem-keyed
    *  diff from the client's held `since` generation to the current one, or a
    *  full-drain instruction when the baseline is no longer retained. A single small
    *  request — the reconcile seam patches its held listing instead of re-draining
@@ -347,7 +347,7 @@ export class EngineClient {
     // on every page), so the last-seen value is the honest whole-listing truth.
     const drainId = `code-files:${scope}`;
     try {
-      // Outer restart loop (D1, mirroring the vault tree): a mid-walk generation
+      // Outer restart loop (mirroring the vault tree): a mid-walk generation
       // change restarts the drain from page 0, bounded by the restart budget.
       for (let attempt = 0; ; attempt += 1) {
         const canRestart = attempt < VAULT_TREE_MAX_WALK_RESTARTS;
@@ -388,8 +388,8 @@ export class EngineClient {
           if (body.truncated !== undefined) truncated = body.truncated;
           cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
           if (cursor === undefined) break;
-          // Report only while another page remains (universal-data-loading ADR
-          // D3): the common single-page listing never touches the drain slice,
+          // Report only while another page remains: the common single-page
+          // listing never touches the drain slice,
           // so small corpora cannot flicker the indicator.
           reportDrainProgress(drainId, page + 1, entries.length);
         }
@@ -425,16 +425,16 @@ export class EngineClient {
     }
   }
 
-  /** The generation-keyed code-files delta (vault-tree-delta ADR /code-files
-   *  follow-on): the path-keyed diff from the client's held `since` generation to
+  /** The generation-keyed code-files delta: the path-keyed diff from the
+   *  client's held `since` generation to
    *  the current one, or a full-drain instruction when the baseline is no longer
    *  retained (evicted/restarted) or the corpus is truncated. */
   async codeFilesDelta(scope: string, since: number): Promise<CodeFilesDeltaResponse> {
     return adaptCodeFilesDelta(await this.get("/code-files/delta", { scope, since }));
   }
 
-  /** One bounded, ignore-aware directory level of the worktree file tree
-   *  (dashboard-code-tree ADR): metadata only (no bytes), `path` defaults to the
+  /** One bounded, ignore-aware directory level of the worktree file tree:
+   *  metadata only (no bytes), `path` defaults to the
    *  worktree root, `cursor` resumes a paginated level, `page_size` clamps a
    *  level. Each child carries the shared `code:<path>` interlink node id. */
   async fileTree(params: {
@@ -462,7 +462,7 @@ export class EngineClient {
     granularity?: "document" | "feature";
     as_of?: string | number;
     /**
-     * The active salience lens (graph-node-salience ADR §4 amendment): a request
+     * The active salience lens: a request
      * parameter selecting which per-lens importance field the engine computes
      * and — via DOI — which node set is served. `status` (default) or `design`;
      * omitted = the engine defaults to status. Switching lens is a re-query the
@@ -472,17 +472,17 @@ export class EngineClient {
     lens?: SalienceLens;
     /** The DOI focus node id folded into the salience distance term. */
     focus?: string | null;
-    /** The active graph corpus (codebase-graphing ADR D5/D7): `vault` (default,
+    /** The active graph corpus: `vault` (default,
      *  absent = byte-identical to the pre-corpus contract) or `code` — the
      *  DISCONNECTED code graph. */
     corpus?: GraphCorpus;
-    /** CODE-corpus narrowing (ADR D5): keep only nodes under this repo-relative
+    /** CODE-corpus narrowing: keep only nodes under this repo-relative
      *  directory prefix. Rejected by the engine on the vault corpus. */
     dir_prefix?: string;
     /** CODE-corpus narrowing: language wire tokens. Rejected on the vault corpus. */
     languages?: string[];
   }): Promise<GraphSlice> {
-    // The code corpus is a DIFFERENT dataset (ADR D1): its `code:` file nodes
+    // The code corpus is a DIFFERENT dataset: its `code:` file nodes
     // are legitimate here, so the adapter's vault-only code-node exclusion
     // must NOT fire. Tell the adapter which corpus it is adapting.
     return adaptGraphSlice(await this.post("/graph/query", body), {
@@ -490,7 +490,7 @@ export class EngineClient {
     });
   }
 
-  /** The generation-keyed graph-slice delta (graph-slice-delta ADR D3): the id-keyed
+  /** The generation-keyed graph-slice delta: the id-keyed
    *  node/edge diff from the client's held `since` generation to the current one, or a
    *  full-drain instruction. `slice_token` is the opaque params token the full route
    *  echoed (returned verbatim so the ring lookup can't drift). A single small
@@ -513,14 +513,14 @@ export class EngineClient {
   }
 
   /**
-   * The dedicated bounded embedding read (graph-semantic-embeddings ADR D2):
+   * The dedicated bounded embedding read:
    * rag's stored dense vectors for the SERVED document node set, fetched LAZILY
    * only on entering semantic mode and cached per generation (the stores hook
    * owns the laziness). `lens`/`focus` keep the embedding set aligned with
    * `/graph/query`'s DOI-ordered served node set. NEVER inline on `/graph/query`
    * — the default constellation path pays no embedding tax. The tolerant adapter
    * reconciles the wire shape; the stores layer reads semantic availability from
-   * the `tiers` block (ADR D7), never a bare transport error.
+   * the `tiers` block, never a bare transport error.
    */
   async graphEmbeddings(params: {
     scope: string;
@@ -537,7 +537,7 @@ export class EngineClient {
   }
 
   async filters(scope: string, corpus?: "vault" | "code"): Promise<FiltersVocabulary> {
-    // The vocabulary is per-corpus (codebase-graphing ADR D5): the code corpus
+    // The vocabulary is per-corpus: the code corpus
     // serves languages/dirs plus its mtime date span (code-timeline-range ADR).
     // The vault request stays byte-identical (no corpus param).
     return adaptFilters(
@@ -545,7 +545,7 @@ export class EngineClient {
     );
   }
 
-  /** Per-feature pipeline coverage (feature-group-authoring ADR D2/D3): the
+  /** Per-feature pipeline coverage: the
    *  requested feature group's present/missing types with newest stems, per-type
    *  eligibility, and the advised next step. An unknown feature reads as
    *  all-missing coverage ("start a new feature"), never a 404; the tolerant
@@ -558,7 +558,7 @@ export class EngineClient {
     );
   }
 
-  /** The compact all-features roster (feature-group-authoring ADR D2): every
+  /** The compact all-features roster: every
    *  feature group's document counts + advised next step, for the panel combobox. */
   async featureRoster(scope: string): Promise<FeatureRosterResponse> {
     return adaptFeatureRoster(await this.get("/features", { scope }));
@@ -575,7 +575,7 @@ export class EngineClient {
       : { ...state, graph_bounds: body.graph_bounds };
   }
 
-  /** The in-flight pipeline projection (dashboard-pipeline-wire W02): active
+  /** The in-flight pipeline projection: active
    *  plans + in-flight ADRs in scope. */
   async pipeline(scope: string): Promise<PipelineResponse> {
     return adaptPipeline(await this.get("/pipeline", { scope }));
@@ -587,7 +587,7 @@ export class EngineClient {
     );
   }
 
-  /** The read-only, bounded content fetch (review-rail-viewers ADR): the bytes of
+  /** The read-only, bounded content fetch: the bytes of
    *  the document or source file the node id names, keyed on the stable id
    *  (`doc:<stem>` / `code:<path>`). The id is `encodeURIComponent`-encoded so a
    *  `code:<path>` id's slashes stay one path segment. `scope` is optional (absent
@@ -618,8 +618,8 @@ export class EngineClient {
     );
   }
 
-  /** The bounded plan-container interior of a plan node (dashboard-pipeline-wire
-   *  W03): the wave/phase/step tree under a node ceiling. */
+  /** The bounded plan-container interior of a plan node: the wave/phase/step
+   *  tree under a node ceiling. */
   async planInterior(id: string, scope?: string): Promise<PlanInteriorResponse> {
     return adaptPlanInterior(
       await this.get(`/nodes/${encodeURIComponent(id)}/plan-interior`, { scope }),
@@ -637,7 +637,7 @@ export class EngineClient {
     return this.get("/events", params);
   }
 
-  /** The bounded, read-only recent-commit history (status-overview ADR): the
+  /** The bounded, read-only recent-commit history: the
    *  last N commits with subjects for a scope, newest-first. `limit` is optional
    *  (the engine defaults to ~20 and clamps a large value to a hard ceiling). The
    *  tolerant adapter reconciles the wire shape; the rail reads degraded state
@@ -650,7 +650,7 @@ export class EngineClient {
     return adaptHistory(await this.get("/history", params));
   }
 
-  /** Open or recently-merged pull requests for a scope (status-rail redesign),
+  /** Open or recently-merged pull requests for a scope,
    *  brokered engine-side through the bounded `gh` CLI. `state` is `open`
    *  (default) or `merged`; the tolerant adapter reconciles the wire shape and
    *  carries the capability-local `available`/`reason` the rail degrades on. */
@@ -662,7 +662,7 @@ export class EngineClient {
     return adaptPrs(await this.get("/prs", params));
   }
 
-  /** Open (or closed) issues for a scope (status-rail redesign), brokered
+  /** Open (or closed) issues for a scope, brokered
    *  engine-side through the bounded `gh` CLI; tolerant adapter, capability-local
    *  `available`/`reason`. */
   async issues(params: {
@@ -673,8 +673,8 @@ export class EngineClient {
     return adaptIssues(await this.get("/issues", params));
   }
 
-  /** The bounded temporal-lineage projection (dashboard-timeline ADR, contract
-   *  §5): for a scope and an inclusive `[from, to]` ISO `yyyy-mm-dd` date range
+  /** The bounded temporal-lineage projection (contract §5): for a scope and
+   *  an inclusive `[from, to]` ISO `yyyy-mm-dd` date range
    *  (either bound optional/open), the dated document nodes in range plus the
    *  self-consistent edges among them. `filter` is the engine-owned wire filter
    *  as a URL-encoded JSON string, exactly as `/graph/lineage` accepts it (the
@@ -687,8 +687,8 @@ export class EngineClient {
     to?: string;
     filter?: string;
     /** Optional as-of time-travel token (ts | sha | ref) — when present the engine
-     *  serves BLOB-TRUE lineage as it existed at T (dashboard-timeline ADR fast-
-     *  follow). Absent = lineage over the live graph. */
+     *  serves BLOB-TRUE lineage as it existed at T. Absent = lineage over the
+     *  live graph. */
     t?: string;
   }): Promise<LineageSlice> {
     return adaptLineageSlice(await this.get("/graph/lineage", params));
@@ -700,7 +700,7 @@ export class EngineClient {
     filter?: string;
   }): Promise<GraphAsofResponse> {
     // NB: the constellation-granularity shape of the time-travel surface is
-    // the open S50 asof/diff divergence question (routed to team-lead); this
+    // the open asof/diff divergence question (routed to team-lead); this
     // method intentionally stays on the document-granularity path the GUI
     // already consumes, untouched by the meta-edge fold.
     return this.get("/graph/asof", params);
@@ -733,8 +733,8 @@ export class EngineClient {
    *  feature token and forwards core's envelope VERBATIM under `data.envelope` with
    *  the tiers block (engine-read-and-infer); HTTP 200 for both a success and a
    *  business refusal (e.g. unknown tag), the caller branching on the envelope.
-   *  RETAINED (ledgered-edit-migration ADR): a multi-document vault-maintenance
-   *  op, not a document edit — stays on this brokered seam, never ledgered. */
+   *  RETAINED: a multi-document vault-maintenance op, not a document edit —
+   *  stays on this brokered seam, never ledgered. */
   opsCoreArchive(body: OpsArchiveBody): Promise<OpsResult> {
     return this.post("/ops/core/archive", body);
   }
@@ -742,14 +742,14 @@ export class EngineClient {
   /** A conformance-autofix op: `POST /ops/core/autofix` forwards
    *  `vault check all --fix --feature <tag>`. Feature-scoped (the only fix grain
    *  the sibling exposes); the engine validates/bounds the feature token and
-   *  forwards core's envelope verbatim under `data.envelope`. RETAINED
-   *  (ledgered-edit-migration ADR): a bulk vault-maintenance op with no single
+   *  forwards core's envelope verbatim under `data.envelope`. RETAINED: a bulk
+   *  vault-maintenance op with no single
    *  target, not a document edit — stays on this brokered seam, never ledgered. */
   opsCoreAutofix(body: OpsAutofixBody): Promise<OpsResult> {
     return this.post("/ops/core/autofix", body);
   }
 
-  /** The brokered rag READ verbs (rag-control-plane ADR D2): a GET against the
+  /** The brokered rag READ verbs: a GET against the
    *  one `/ops/rag/{verb}` namespace (service-state, jobs, watcher, projects,
    *  readiness, logs, metrics). rag's envelope is forwarded VERBATIM under
    *  `data.envelope` with the tiers block, so the unwrapped result is
@@ -763,7 +763,7 @@ export class EngineClient {
     return this.get(`/ops/rag/${encodeURIComponent(verb)}`, params, signal);
   }
 
-  /** Typed convenience for the brokered rag `logs` read (rag-job-dashboard ADR D4):
+  /** Typed convenience for the brokered rag `logs` read:
    *  forwards the bounded `lines` and optional `job_id` query params. The engine
    *  route (`GET /ops/rag/logs`) reads BOTH params and clamps `lines` server-side
    *  (`MAX_RAG_LOG_LINES`), so no passthrough gap remains; a down rag degrades the
@@ -777,7 +777,7 @@ export class EngineClient {
     return this.opsRagGet<RagLogsEnvelope>("logs", params, signal);
   }
 
-  /** The framework provisioning plane (project-provisioning ADR D2): the served
+  /** The framework provisioning plane: the served
    *  status projection of a registry-resolved target — git / uv / core+rag tool
    *  versions vs floors / framework install state / vault presence / pending
    *  migrations / rag enrollment. Backend-served truth the panel renders without
@@ -790,7 +790,7 @@ export class EngineClient {
   }
 
   /** Start a provisioning capability (install / upgrade / migrate / acquire) as a
-   *  bounded, single-flight JOB (ADR D3/D4): returns the job envelope + whether
+   *  bounded, single-flight JOB: returns the job envelope + whether
    *  the request ATTACHED to an already-running job for the same target. A force
    *  install must carry `confirm: "confirm-force"` or the engine refuses it. */
   provisionRun(
@@ -799,17 +799,17 @@ export class EngineClient {
     return this.post("/provision/run", body);
   }
 
-  /** Poll one provisioning job by id (ADR D4). A reclaimed/unknown id is a 404
+  /** Poll one provisioning job by id. A reclaimed/unknown id is a 404
    *  the caller surfaces as "job expired". */
   provisionJob(id: string, signal?: AbortSignal): Promise<{ job: ProvisionJob }> {
     return this.get(`/provision/jobs/${encodeURIComponent(id)}`, undefined, signal);
   }
 
-  /** The A2A component lifecycle plane (a2a-product-provisioning W05.P11): the
+  /** The A2A component lifecycle plane: the
    *  served install / readiness / ownership projection over the machine-global
    *  product state (engine `GET /a2a/lifecycle/status`). Bearer-gated by the same
    *  browser bearer every other route carries — the dashboard reaches the gateway
-   *  ONLY through the engine, never a browser→A2A transport (ADR D3). The `tiers`
+   *  ONLY through the engine, never a browser→A2A transport. The `tiers`
    *  block rides through, so the store reads the agent orchestration tier from the
    *  same response. */
   a2aLifecycleStatus(signal?: AbortSignal): Promise<A2aLifecycleStatus> {
@@ -817,7 +817,7 @@ export class EngineClient {
   }
 
   /** Dispatch one lifecycle operation as a bounded, single-flight JOB (engine
-   *  `POST /a2a/lifecycle/run`, ADR D3): the body carries ONLY the typed `op` —
+   *  `POST /a2a/lifecycle/run`): the body carries ONLY the typed `op` —
    *  no path, no free-form argument. Returns the job envelope plus whether the
    *  request ATTACHED to an already-in-flight identical operation. A refusal is an
    *  `EngineError` whose typed `errorKind` (`not_owner`, `at_capacity`, …) names
@@ -834,8 +834,7 @@ export class EngineClient {
     return this.get(`/a2a/lifecycle/jobs/${encodeURIComponent(id)}`, undefined, signal);
   }
 
-  /** The read-only git pass-through (dashboard-pipeline-wire W04; historical diff
-   *  figma-parity-reconciliation S14): a whitelisted read-only git verb
+  /** The read-only git pass-through: a whitelisted read-only git verb
    *  (`status` | `numstat` | `diff` | `histdiff`), git output forwarded verbatim.
    *  The `diff` verb requires a `path`; `histdiff` requires `path` plus the
    *  `from`/`to` revs of the two-rev historical diff; `status`/`numstat` take
@@ -859,8 +858,8 @@ export class EngineClient {
   }
 
   /** §7 — open the multiplexed SSE stream through the same transport. The
-   *  optional `scope` targets a specific worktree's clock (W02.P04.S14 wire
-   *  change): resume runs against that scope's own monotonic seq; absent, the
+   *  optional `scope` targets a specific worktree's clock: resume runs against
+   *  that scope's own monotonic seq; absent, the
    *  engine falls back to the active scope. */
   openStream(
     channels: string[],
@@ -871,11 +870,11 @@ export class EngineClient {
     return this.fetchImpl(this.streamUrl(channels, since, scope), { signal });
   }
 
-  // §7 — the SSE endpoint URL; consumption lives in queries.ts (S20).
+  // §7 — the SSE endpoint URL; consumption lives in queries.ts.
   streamUrl(channels: string[], since?: number, scope?: string): string {
     const params = new URLSearchParams({ channels: channels.join(",") });
     if (since !== undefined) params.set("since", String(since));
-    // Per-scope resume (W02.P04.S14): pass the scope so `since=` resumes against
+    // Per-scope resume: pass the scope so `since=` resumes against
     // that scope's own clock. Absent, the engine streams the active scope.
     if (scope !== undefined) params.set("scope", scope);
     return `${this.baseUrl}/stream?${params.toString()}`;
@@ -888,7 +887,7 @@ export class EngineClient {
       query: string;
       target?: "vault" | "code";
       filters?: Record<string, string>;
-      /** App-chosen result bound → rag's `top_k` (ADR D5); the engine rejects a
+      /** App-chosen result bound → rag's `top_k`; the engine rejects a
        *  value above its `MAX_SEARCH_RESULTS` ceiling. */
       max_results?: number;
     },
@@ -904,7 +903,7 @@ export class EngineClient {
     return adaptSearch(await this.post("/search", wire, signal)) as SearchResponse;
   }
 
-  // --- session / settings (W04.P08.S25) ------------------------------------
+  // --- session / settings ----------------------------------------------------
 
   /** Read the current session — the "where am I" state restored on load. */
   async session(): Promise<SessionState> {

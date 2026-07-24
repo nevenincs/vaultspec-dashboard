@@ -1,4 +1,4 @@
-//! The framework acquisition and provisioning plane (project-provisioning ADR).
+//! The framework acquisition and provisioning plane.
 //!
 //! Selecting or registering an active project can land the operator in a
 //! genuinely empty, non-vaultspec-managed repository. The dashboard already
@@ -33,7 +33,7 @@
 //!   (mirroring the rag storage dry-run/apply gate).
 //! - After a successful provision the plane REFRESHES the memoized handshake core
 //!   probe and EVICTS the target scope cell so a formerly-empty root becomes
-//!   servable in-session (ADR D6 reconciliation).
+//!   servable in-session (reconciliation).
 //!
 //! v1 excludes `uninstall` (destructive) and project-venv `uv add` dependency
 //! flows (wheel-purity: `uv-tool-acquisition-is-machine-level-only`).
@@ -389,7 +389,7 @@ impl RunRequest {
 /// workspace root comes from the registry (`resolve_map_workspace_root`); an
 /// optional `worktree` scope token is honored ONLY when it is one the workspace
 /// actually enumerates. Anything else is an honest 400 — a raw path off the wire
-/// never reaches argv (ADR D5).
+/// never reaches argv.
 fn resolve_target(
     state: &AppState,
     params: &TargetParams,
@@ -783,7 +783,7 @@ fn registry_lock() -> std::sync::MutexGuard<'static, Registry> {
 /// sibling runner uses (`run_sibling_bounded`); `breached` marks the outcome
 /// INDETERMINATE — a `uv run`/console-script grandchild can outlive a direct
 /// kill on either platform, so the caller must re-probe `GET /provision/status`
-/// rather than trust the exit code (ADR D4, mirroring `core_adapter`).
+/// rather than trust the exit code (mirroring `core_adapter`).
 async fn run_capability(argv: &[String]) -> (Option<i32>, String, bool) {
     let mut child = match tokio::process::Command::new(&argv[0])
         .args(&argv[1..])
@@ -877,7 +877,7 @@ pub(crate) async fn provision_run(
     Json(req): Json<RunRequest>,
 ) -> ApiResult {
     // Confirm gate FIRST (before target resolution / spawn): a force/overwrite
-    // install without the exact typed token is refused (ADR D5, mirroring the rag
+    // install without the exact typed token is refused (mirroring the rag
     // storage dry-run/apply gate).
     if req.force && req.confirm.as_deref() != Some(FORCE_CONFIRM_TOKEN) {
         return Err(super::api_error_kind(
@@ -966,7 +966,7 @@ pub(crate) async fn provision_run(
         let (code, combined, breached) = run_capability(&argv).await;
         let (job_state, outcome) = outcome_value(code, &combined, breached);
         registry_lock().set_outcome(&bg_id, job_state, outcome);
-        // Reconciliation (ADR D6): on a real success, refresh the memoized core
+        // Reconciliation: on a real success, refresh the memoized core
         // probe (a new/updated core version) and evict the target scope cell so a
         // formerly-empty root becomes servable in-session. A breach is NOT a
         // success, so it never reconciles on a possibly-incomplete write.
@@ -1028,7 +1028,7 @@ pub(crate) async fn provision_job(
     }
 }
 
-// --- one-shot CLI facade (single-app-runtime D6) ------------------------------
+// --- one-shot CLI facade ------------------------------------------------------
 //
 // The terminal gets the SAME provisioning mouth the GUI has: these wrappers
 // drive the exact route handlers above in-process (same DTO validation — the

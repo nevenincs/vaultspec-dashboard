@@ -1,6 +1,6 @@
 [package]
 name = "ingest-code"
-description = "Code-corpus ingestion: in-process tree-sitter extraction of file-level import edges, containment, and module rollup nodes from the working tree (codebase-graphing ADR D2-D4). Fully disconnected from the vault LinkageGraph corpus."
+description = "Code-corpus ingestion: in-process tree-sitter extraction of file-level import edges, containment, and module rollup nodes from the working tree. Fully disconnected from the vault LinkageGraph corpus."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

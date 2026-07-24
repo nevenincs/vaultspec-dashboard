@@ -1,4 +1,4 @@
-// Authoring store LIVE-WIRE tests (W03.P40 CHUNK C).
+// Authoring store LIVE-WIRE tests.
 //
 // Test-integrity / wire-contract: these run ONLINE against the real `vaultspec
 // serve` binary the global setup spawns (over the committed fixture vault), never
@@ -284,7 +284,7 @@ describe("human-in-the-loop review flow (live)", () => {
   });
 });
 
-// Direct editor save (ledgered-edit-migration W01.P02): the Save button's
+// Direct editor save: the Save button's
 // self-approving single-call route. Both cases below are NON-MUTATING (a
 // denial and a stale-base conflict never materialize a write), so they are
 // safe alongside the reject-only flow above without disturbing the shared
@@ -346,7 +346,7 @@ describe("direct editor save (live)", () => {
     }
   });
 
-  it("refuses a scope-pin mismatch as a redacted denial VALUE, never echoing the foreign scope (W02.P06)", async () => {
+  it("refuses a scope-pin mismatch as a redacted denial VALUE, never echoing the foreign scope", async () => {
     const humanToken = (
       await client.issueActorToken({
         actor: { id: `human:dw-scope-${run}`, kind: "human" },
@@ -375,7 +375,7 @@ describe("direct editor save (live)", () => {
     }
   });
 
-  it("refuses a rename to an occupied stem as a `denied` VALUE carrying the RenameTargetCollision reason (W03.P08)", async () => {
+  it("refuses a rename to an occupied stem as a `denied` VALUE carrying the RenameTargetCollision reason", async () => {
     // Non-mutating: the target-stem collision refuses at apply-time preflight,
     // before any write — never materializes, so `alpha-research` stays pristine
     // for the reject-only flow above.
@@ -401,7 +401,7 @@ describe("direct editor save (live)", () => {
     expect(outcome.kind).toBe("denied");
     if (outcome.kind === "denied") {
       expect(outcome.reason ?? "").toContain("already exists at the proposed stem");
-      // W05.P14: the live wire now carries the structured discriminator the
+      // The live wire now carries the structured discriminator the
       // frontend routes on, not just the reason prose.
       expect(outcome.denialKind).toBe("path_collision");
     }

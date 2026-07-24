@@ -1,4 +1,4 @@
-//! The resident-serve boot path (single-app-runtime W01/W02): workspace
+//! The resident-serve boot path: workspace
 //! resolution with the workspace-less bootstrap fallback, seat acquisition,
 //! discovery publication + heartbeat, launcher-state recording, and the one
 //! shared graceful-shutdown drain. Split from `lib.rs` (module-size gate);
@@ -13,7 +13,7 @@ use crate::{DEFAULT_PORT, app, build_router, handshake, registry, routes, seat};
 /// rebuild-and-swap (302/303), heartbeat on the discovery file.
 ///
 /// `no_seat` (with `--port 0` implying it) is the sanctioned multi-instance
-/// exemption (single-app-runtime D1): an exempt serve skips the machine seat
+/// exemption: an exempt serve skips the machine seat
 /// lock and keeps publishing the workspace-local discovery file, so the test
 /// harness and parallel dev worktrees are untouched by the seat law.
 pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> std::io::Result<()> {
@@ -44,9 +44,9 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         }
         None => std::env::current_dir()?,
     };
-    // Resolve like every other verb (dogfood DF-2, D2.1): any launch
+    // Resolve like every other verb: any launch
     // directory inside the workspace resolves to its containing worktree.
-    // WORKSPACE-LESS BOOT (single-app-runtime D4): a SEATED serve with no
+    // WORKSPACE-LESS BOOT: a SEATED serve with no
     // resolvable vault-bearing workspace (the first-ever double-click) does
     // not fail — it boots over the engine-owned bootstrap root (an empty,
     // deletable, re-derivable scratch corpus under the app home) so the SPA
@@ -54,15 +54,15 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     // workspace through the registry write seam. Exempt serves (--no-seat,
     // --port 0) keep the historical fail-loud contract the test harness
     // asserts.
-    // The ONE exemption predicate (review M3: it must exist exactly once).
+    // The ONE exemption predicate (it must exist exactly once).
     let seat_eligible = !(no_seat || explicit_port == Some(0));
 
-    // Machine seat (single-app-runtime D1): one resident app process per
+    // Machine seat: one resident app process per
     // machine, enforced by an OS file lock the kernel releases on ANY death
     // (dead-pid takeover is therefore automatic). Acquired FIRST — before
     // workspace resolution and any heavy work — so a conflict fails fast AND
-    // the bootstrap-root creation below is serialized by the lock (review
-    // finding: two concurrent workspace-less boots raced the check-then-init
+    // the bootstrap-root creation below is serialized by the lock (two
+    // concurrent workspace-less boots raced the check-then-init
     // when it ran pre-seat). `--port 0` implies exemption (the OS-ephemeral
     // test port, the dev-workflow rule's sanctioned exception); `--no-seat`
     // is the explicit dev escape hatch.
@@ -146,7 +146,7 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         Err(reason) => return Err(std::io::Error::other(reason)),
     };
 
-    // Detect-and-instruct (dashboard-packaging D3, amended by review): probe
+    // Detect-and-instruct: probe
     // the two external requirements BEFORE any heavy work and WARN with the
     // exact remediation — never exit. Serving degraded with honest tiers is
     // the binding doctrine (the adversarial degradation suite and the
@@ -183,8 +183,8 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
 
     // Loopback-only bind FIRST (R2: a port conflict fails loud here) so an
     // OS-assigned ephemeral port (`--port 0`) is resolved to the ACTUAL bound
-    // port before discovery is written — and BEFORE the heavy initial index
-    // (single-app-runtime S23), so discovery can publish a `starting` record
+    // port before discovery is written — and BEFORE the heavy initial index,
+    // so discovery can publish a `starting` record
     // the moment the port exists and a launcher, `status`, or `stop` can
     // distinguish an INDEXING seat from a dead one.
     let listener = match tokio::net::TcpListener::bind(std::net::SocketAddr::from((
@@ -208,8 +208,8 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     let port = listener.local_addr()?.port();
 
     // Discovery + heartbeat (contract §1), advertising the real bound port.
-    // SEATED serves publish at the machine app home (single-app-runtime D1
-    // cutover); exempt serves keep the workspace-local file byte-compatible.
+    // SEATED serves publish at the machine app home; exempt serves keep the
+    // workspace-local file byte-compatible.
     // The identity (bearer + boot instant) is minted BEFORE the index so the
     // `starting` record already carries the real token.
     let discovery_dir = match &seat_guard {
@@ -246,14 +246,13 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
                 } else {
                     "starting"
                 };
-                // Owner-checked: never clobbers a foreign serve's discovery
-                // (single-app-runtime S01).
+                // Owner-checked: never clobbers a foreign serve's discovery.
                 let _ = app::heartbeat_service_json(&identity, &dir, port, state);
             }
         }))
     };
 
-    // TEST-HARNESS knob (single-app-runtime review M2): hold the boot in the
+    // TEST-HARNESS knob: hold the boot in the
     // `starting` state for a bounded moment so the state machine (status,
     // stop, launcher waits) is testable deterministically — a fixture corpus
     // indexes too fast to observe the window reliably. Never set outside the
@@ -266,14 +265,14 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
 
     // Build the workspace-level state. This opens the SHARED user-state handle
     // once, eagerly builds the launch scope's cell into the registry (cold
-    // initial index, the same pipeline the one-shot CLI runs, D2.4), spawns
-    // that cell's watcher on its own clock (W02.P04.S13), and pins it as the
+    // initial index, the same pipeline the one-shot CLI runs), spawns
+    // that cell's watcher on its own clock, and pins it as the
     // active scope. We run inside the tokio runtime, so the watcher's rebuild
     // task spawns here.
     let state = app::build_state_with_bearer(root.clone(), identity.bearer.clone());
 
-    // Restore the persisted active scope through the shared user-state handle
-    // (W02.P03.S11): the workspace key is the launch root's token, the stored
+    // Restore the persisted active scope through the shared user-state handle:
+    // the workspace key is the launch root's token, the stored
     // active scope is a worktree token. Restore it only if it still names a
     // selectable vault-bearing worktree; otherwise fall back to the launch
     // worktree. Persist the resolved active scope back so a first run seeds it.
@@ -305,10 +304,9 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         let _ = us.set_active_scope(&workspace_key, &active_token, app::now_ms());
     }
 
-    // Auto-register the launch workspace as the first registry root
-    // (dashboard-workspace-registry ADR, P01.S03), so the single-project
-    // experience is unchanged. The BOOTSTRAP root is deliberately NOT
-    // registered (single-app-runtime D4): it is engine-owned scratch, not a
+    // Auto-register the launch workspace as the first registry root, so the
+    // single-project experience is unchanged. The BOOTSTRAP root is deliberately NOT
+    // registered: it is engine-owned scratch, not a
     // user workspace — an empty registry is the SPA's first-run signal.
     // The stable workspace id is the canonical git
     // common dir (the same identity-bearing derivation the rest of the contract
@@ -336,7 +334,7 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         }
     }
 
-    // Launcher state (single-app-runtime D3): a seated boot records its
+    // Launcher state: a seated boot records its
     // workspace in the machine-global known-roots file so a cwd-less launch
     // (double-click) can resolve "where did I work last". Best-effort. The
     // bootstrap root is scratch, never recorded.
@@ -362,17 +360,17 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         let _ = launcher.save(&guard.home);
     }
 
-    // Reconcile the receipt-owned A2A gateway (a2a-product-provisioning
-    // W02.P04.S27). A SEATED dashboard starts or authenticates ONLY a gateway its
-    // receipt owns and leaves every compatible foreign resident immutable
-    // (ADR D4); an exempt (--no-seat / --port 0) or bootstrap boot never touches
+    // Reconcile the receipt-owned A2A gateway. A SEATED dashboard starts or
+    // authenticates ONLY a gateway its
+    // receipt owns and leaves every compatible foreign resident immutable;
+    // an exempt (--no-seat / --port 0) or bootstrap boot never touches
     // product state. Best-effort: a not-installed product is a no-op, a start
     // failure degrades the agent tier honestly rather than aborting the seat.
     if seat_guard.is_some() && !bootstrap {
         let plane = state.a2a_lifecycle.clone();
         // Publish THIS seated dashboard's terminal-settlement callback URL to any
-        // gateway this boot starts, so a run's terminal state settles back here
-        // (a2a-product-provisioning W02.P05.S41/S153). Loopback + the bound seat
+        // gateway this boot starts, so a run's terminal state settles back here.
+        // Loopback + the bound seat
         // port; fail-soft on the gateway side if it is somehow unusable.
         let settlement_url = format!("http://127.0.0.1:{port}/internal/a2a/run-terminal");
         let outcome =
@@ -386,15 +384,15 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             eprintln!("vaultspec serve: a2a gateway reconcile: {outcome}");
         }
 
-        // Durable A2A lease reconciliation at seated boot (a2a-product-
-        // provisioning W02.P05.S161). Revoke every run-scoped token bundle whose
+        // Durable A2A lease reconciliation at seated boot. Revoke every
+        // run-scoped token bundle whose
         // bounded lifetime elapsed while this dashboard was down, and prune
         // terminal rows, so no lease outlives its window across a restart. This
         // is deliberately GATEWAY-INDEPENDENT: it touches only the local lease
         // store, so a temporarily unavailable compatible gateway cannot delay
         // it and it never blocks readiness (the bounded op is local SQLite).
         // Gateway-authoritative run-status reconciliation of still-unresolved
-        // leases (S160) stays on the per-request path, which degrades honestly
+        // leases stays on the per-request path, which degrades honestly
         // when the sibling is down rather than stalling this seated boot.
         let leases = state.a2a_run_leases.clone();
         let expired = tokio::task::spawn_blocking(move || {
@@ -411,14 +409,14 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     }
 
     // The index is done and the wire is about to serve: flip discovery to
-    // `ready` (single-app-runtime S23). The heartbeat keeps republishing it.
+    // `ready`. The heartbeat keeps republishing it.
     ready.store(true, std::sync::atomic::Ordering::Relaxed);
     let _ = app::write_service_json(&identity, &discovery_dir, port, "ready");
 
     println!(
         "vaultspec serve: listening on http://127.0.0.1:{port} (bearer token in service.json)"
     );
-    // Graceful shutdown (single-app-runtime D5): ONE shared exit path for
+    // Graceful shutdown: ONE shared exit path for
     // ctrl-c, SIGTERM (unix), and the bearer-gated `/shutdown` route. axum
     // stops accepting, in-flight requests and SSE streams drain (bounded by
     // the clients' own disconnects), then discovery is retracted and the
@@ -448,7 +446,7 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             eprintln!("vaultspec serve: shutting down gracefully");
         }
     };
-    // P04a: the ONE bounded background janitor — abandoned-run reap plus the undriven
+    // The ONE bounded background janitor — abandoned-run reap plus the undriven
     // expiry seams, on a fixed cadence. Serve-time only; aborts with the serve future
     // via the same abort-on-drop discipline as the heartbeat.
     let _janitor = AbortOnDrop(crate::authoring::session::spawn_janitor(
@@ -459,8 +457,8 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         .with_graceful_shutdown(shutdown_signal)
         .await
         .map_err(std::io::Error::other);
-    // Terminate the owned A2A gateway tree within a bound (a2a-product-
-    // provisioning W02.P04.S27, ADR D4) BEFORE releasing the seat, so a clean
+    // Terminate the owned A2A gateway tree within a bound
+    // BEFORE releasing the seat, so a clean
     // exit never orphans a gateway this dashboard started. A no-op when nothing
     // was started here (cold install, or attached to a foreign-owned gateway).
     if let Some(forced) = state
@@ -479,8 +477,8 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     result
 }
 
-/// The engine-owned bootstrap root for workspace-less boots (single-app-
-/// runtime D4): an empty scratch corpus under the app home — a bare-bones
+/// The engine-owned bootstrap root for workspace-less boots: an empty
+/// scratch corpus under the app home — a bare-bones
 /// git repository (initialized once, engine-owned, deletable, re-derivable;
 /// this touches NO user repository and is exempt from the never-mutate-git
 /// rule the same way the engine-data cache is exempt from never-write-vault)

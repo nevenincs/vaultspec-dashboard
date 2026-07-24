@@ -1,6 +1,6 @@
 [package]
 name = "engine-query"
-description = "The one shared query core behind both front doors (CLI and serve); the CLI and API crates contain no domain logic (engine-spec D6.1)."
+description = "The one shared query core behind both front doors (CLI and serve); the CLI and API crates contain no domain logic."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -21,7 +21,7 @@ ingest-git = { version = "0.1.0", path = "../ingest-git" }
 [dev-dependencies]
 tempfile = "3.27.0"
 
-# The salience feasibility benchmark (graph-node-salience W05.P11.S44):
+# The salience feasibility benchmark:
 # `harness = false` so it is a plain `main` printing wall-clock evidence (no
 # Criterion, no flaky pass/fail gate), compiled by `cargo build --benches` /
 # `cargo bench`. Mirrors the established no-wall-clock-ceiling bench convention.

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { categoryColor, nodeCategory } from "./categoryColor";
 
-describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)", () => {
+describe("nodeCategory — kind -> a scene category", () => {
   it("passes the sanctioned categories through unchanged", () => {
     for (const cat of [
       "feature",
@@ -18,7 +18,7 @@ describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)",
     }
   });
 
-  it("maps the CODE corpus species onto the code category (codebase-graphing ADR D7)", () => {
+  it("maps the CODE corpus species onto the code category", () => {
     // A source file paints the one `code` colour — files are the corpus's ONLY
     // node kind (code-graph-files-only). This category is reachable ONLY on
     // the disconnected code corpus — the vault graph never emits a code node.
@@ -28,12 +28,12 @@ describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)",
 
   it("is not aware of an index category at all", () => {
     // `.vault/index` feature-index documents are metanodes dropped at engine
-    // ingest (index-node-exclusion ADR); `index` is not a node category, so the
-    // literal kind folds to the defensive default rather than passing through.
+    // ingest; `index` is not a node category, so the literal kind folds to the
+    // defensive default rather than passing through.
     expect(nodeCategory("index")).not.toBe("index");
   });
 
-  it("maps reference onto its own bound category (ADR D3)", () => {
+  it("maps reference onto its own bound category", () => {
     // reference now has its own scene/category-reference colour and no longer folds
     // onto research.
     expect(nodeCategory("reference")).toBe("reference");
@@ -41,8 +41,8 @@ describe("nodeCategory — kind -> a scene category (index-node-exclusion ADR)",
 
   it("folds out-of-vocabulary doc types onto the nearest in-family category", () => {
     // summary -> exec (a summary IS an exec document — a Phase Summary of execution
-    // records; the prior summary->index mapping was the metanode confusion the
-    // index-node-exclusion ADR corrects); rule -> adr (codified decisions).
+    // records; the prior summary->index mapping was a metanode confusion, now
+    // corrected); rule -> adr (codified decisions).
     expect(nodeCategory("summary")).toBe("exec");
     expect(nodeCategory("rule")).toBe("adr");
   });
@@ -81,8 +81,8 @@ describe("categoryColor — node body fill from the scene-category token seam", 
     // All eight are distinct (the legend reads as separable hues).
     expect(new Set(colors).size).toBe(8);
     // Spot-check against the Figma variable values (83:2), the reference token
-    // (terminology-standardization ADR D3, light #9d5e86), and the code token
-    // (codebase-graphing ADR D7, light #b05a6b — the existing Files/search colour).
+    // (light #9d5e86), and the code token (light #b05a6b — the existing
+    // Files/search colour).
     expect(categoryColor("feature")).toBe(0xb3823c);
     expect(categoryColor("reference")).toBe(0x9d5e86);
     expect(categoryColor("code")).toBe(0xb05a6b);

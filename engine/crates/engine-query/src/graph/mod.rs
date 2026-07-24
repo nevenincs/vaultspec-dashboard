@@ -64,19 +64,18 @@ impl std::str::FromStr for Granularity {
 pub struct GraphSlice {
     /// Contract §4 node views: at document granularity, the stored node
     /// enriched with the list-shape projections (`degree_by_tier`,
-    /// hoisted `lifecycle` — addendum S03) and the additive ontology fields
-    /// (`authority_class`, `aggregate` — graph-node-semantics ADR); at feature
-    /// granularity, synthesized feature-convergence nodes (addendum S02, ADR
-    /// D4.1).
+    /// hoisted `lifecycle`) and the additive ontology fields
+    /// (`authority_class`, `aggregate`); at feature
+    /// granularity, synthesized feature-convergence nodes.
     pub nodes: Vec<Value>,
     /// Contract §4 edge views: the serialized edge plus the additive
-    /// `derivation` label (graph-node-semantics ADR), carried as a `Value` so
+    /// `derivation` label, carried as a `Value` so
     /// the label rides ALONGSIDE the §4 `relation`/`tier` fields without
     /// touching the edge stable key.
     pub edges: Vec<Value>,
     /// Feature-level meta-edges; populated at `Feature` granularity only.
     pub meta_edges: Vec<MetaEdge>,
-    /// The validated, normalized filter, echoed back (D7.2).
+    /// The validated, normalized filter, echoed back.
     pub filter: Filter,
 }
 
@@ -186,19 +185,17 @@ impl DocumentViews {
     }
 }
 
-/// Whether a node is a DISPLAYABLE knowledge node (terminology-standardization
-/// ADR D5/D6; index-node-exclusion ADR D3): `code` artifacts
+/// Whether a node is a DISPLAYABLE knowledge node: `code` artifacts
 /// (`NodeKind::CodeArtifact`) are never emitted as knowledge-graph nodes or
 /// `/vault-tree` rows. `index` doc-type documents (generated feature indexes) are
-/// now dropped at ingest and never become nodes at all (index-node-exclusion ADR
-/// D1), so the `index` branch below is a DEFENSIVE net only — it cannot fire on
+/// now dropped at ingest and never become nodes at all, so the `index` branch below is a DEFENSIVE net only — it cannot fire on
 /// the live path, but is retained to defend the display boundary against any
 /// future producer that re-mints an index node (the producer-drop + consumer-
 /// defense belt-and-braces the bounded-query rules use). The id/kind are
 /// untouched — this is a pure filter.
 pub fn is_displayable_node(node: &Node) -> bool {
-    // The CODE-corpus kind is fenced from the vault graph (codebase-graphing
-    // ADR D1: the corpora never mix; the code corpus is served only through its
+    // The CODE-corpus kind is fenced from the vault graph (the corpora
+    // never mix; the code corpus is served only through its
     // own query path). Files are the code corpus's ONLY node kind
     // (code-graph-files-only): the former directory `CodeModule` kind is
     // deleted from the model, so this one arm covers the whole fence.
@@ -211,8 +208,7 @@ pub fn is_displayable_node(node: &Node) -> bool {
     true
 }
 
-/// Hard ceiling on nodes serialized at either granularity (perf ADR D2 /
-/// research F2): an unbounded slice is linear but reaches a multi-gigabyte body
+/// Hard ceiling on nodes serialized at either granularity: an unbounded slice is linear but reaches a multi-gigabyte body
 /// at corpus scale, so NO engine front door — the HTTP route or the CLI `graph`
 /// verb — ever serializes more than this. Beyond it the client narrows with a
 /// filter; the feature constellation is the smallest view.
@@ -253,9 +249,9 @@ pub fn bound_slice(slice: &mut GraphSlice) -> Option<usize> {
 /// plus the query-time projections (`degree_by_tier`, the scope facet's
 /// `lifecycle` hoisted to the top level) and the ADDITIVE ontology fields:
 /// `authority_class` (the register `doc_type` answers in) and `aggregate` (the
-/// collapsibility hint) from the graph-node-semantics ADR, plus the OPTIONAL
-/// `status_value`/`status_class` per-type lifecycle status (node-visual-richness
-/// ADR P01) when the type carries one. All are pure re-computable projections —
+/// collapsibility hint), plus the OPTIONAL
+/// `status_value`/`status_class` per-type lifecycle status
+/// when the type carries one. All are pure re-computable projections —
 /// they perturb no existing field and do NOT touch the node id (the §4 identity
 /// guarantee is preserved).
 pub(crate) fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> Value {
@@ -272,7 +268,7 @@ pub(crate) fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> 
     view["aggregate"] = Value::Bool(crate::ontology::is_aggregate_species(
         node.doc_type.as_deref(),
     ));
-    // Per-type lifecycle status (node-visual-richness ADR P01): TWO additive
+    // Per-type lifecycle status: TWO additive
     // fields — `status_value` (the literal type-specific status token) and
     // `status_class` (the closed treatment-family enum) — projected from the
     // node's kind/doc_type and its ALREADY-PARSED lifecycle state. Both are
@@ -289,8 +285,8 @@ pub(crate) fn node_view(graph: &LinkageGraph, scope: &ScopeRef, node: &Node) -> 
     view
 }
 
-/// One edge in the contract §4 list shape plus the ADDITIVE `derivation` label
-/// (graph-node-semantics ADR). The label is inferred from the relation, the
+/// One edge in the contract §4 list shape plus the ADDITIVE `derivation` label.
+/// The label is inferred from the relation, the
 /// endpoint document types, the provenance, and the exec-record container-path
 /// signal — carried ALONGSIDE the §4 `relation`/`tier`, never instead of them,
 /// and DELIBERATELY not threaded into the edge id (labeling never re-keys).
@@ -338,19 +334,19 @@ pub fn edge_view(graph: &LinkageGraph, edge: &Edge) -> Value {
     view
 }
 
-/// The shared derivation-label projection for one edge (graph-lineage-dag ADR
-/// D4/D7): the ONE seam both `/graph/query`'s `edge_view` and `/graph/lineage`'s
+/// The shared derivation-label projection for one edge: the ONE seam both
+/// `/graph/query`'s `edge_view` and `/graph/lineage`'s
 /// `lineage_arc` read, so the topological slice and the diachronic timeline carry
 /// the same label vocabulary. Inspects the endpoint nodes' `kind` and `doc_type`
 /// to detect the container-path `generated-by` signal, then delegates to the
 /// closed [`crate::ontology::derivation_label`] vocabulary. Pure read-and-infer:
-/// it takes no id and returns no id, so the label NEVER enters `edge_id` (D3.3).
+/// it takes no id and returns no id, so the label NEVER enters `edge_id`.
 pub fn derivation_for_edge(graph: &LinkageGraph, edge: &Edge) -> Option<&'static str> {
     let src = graph.node(&edge.src);
     let dst = graph.node(&edge.dst);
     let src_type = src.and_then(|n| n.doc_type.clone());
     let dst_type = dst.and_then(|n| n.doc_type.clone());
-    // The container-path `generated-by` signal (graph-lineage-dag ADR D3.1): the
+    // The container-path `generated-by` signal: the
     // plan→step→exec hierarchy the corpus authors flows through TWO id-bearing
     // shapes the detection must both recognise, reading `node.kind` not only the
     // `doc_type` pair —
@@ -363,7 +359,7 @@ pub fn derivation_for_edge(graph: &LinkageGraph, edge: &Edge) -> Option<&'static
     //       doc-type-pair gate never fired here — the most reliable derivation in
     //       the corpus was being dropped to the off-spine lane.
     // Widening DETECTION only: `derivation_label`'s closed vocabulary is
-    // untouched and the label still never enters `edge_id` (ADR D3.3).
+    // untouched and the label still never enters `edge_id`.
     let container_endpoint = |node: Option<&Node>, other: Option<&Node>| -> bool {
         let Some(node) = node else { return false };
         match node.kind {
@@ -380,12 +376,12 @@ pub fn derivation_for_edge(graph: &LinkageGraph, edge: &Edge) -> Option<&'static
             _ => false,
         }
     };
-    // The authored plan-internal `Contains` hierarchy (graph-lineage-dag ADR
-    // D3.2): plan→wave→phase→step, carried by `Contains` edges between the plan
+    // The authored plan-internal `Contains` hierarchy:
+    // plan→wave→phase→step, carried by `Contains` edges between the plan
     // document and its `PlanContainer` nodes (and between containers). Labeling
     // it `generated-by` makes the WHOLE plan→wave→phase→step→exec hierarchy ONE
     // connected `generated-by` spine rather than dropping the scaffold off-spine
-    // — the open-question decision (S34): the hierarchy RIDES `generated-by`, no
+    // — the open-question decision: the hierarchy RIDES `generated-by`, no
     // distinct sub-label, so the closed vocabulary and `DERIVATION_AXIS_ORDER`
     // are untouched (a new sub-label would inject an axis rung the scene does not
     // know). A `Contains` edge always has at least one `PlanContainer` endpoint.
@@ -453,7 +449,7 @@ fn feature_nodes(graph: &LinkageGraph, scope: &ScopeRef, members: &[&Node]) -> V
                     "progress": {"done": done, "total": total},
                 })
             });
-            // Per-type status (node-visual-richness ADR P01): the synthesized
+            // Per-type status: the synthesized
             // convergence carries its in-flight/archived status additively, the
             // SAME two fields the document node_view attaches. A live feature in
             // the corpus is in-flight; the projection reads its aggregate
@@ -511,7 +507,7 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
     let mut rows: Vec<Value> = graph
         .nodes()
         .filter(|n| n.id.0.starts_with("doc:"))
-        // terminology-standardization ADR D5: `index` documents are never
+        // `index` documents are never
         // surfaced as rail rows (they still exist on disk / in the index).
         .filter(|n| is_displayable_node(n))
         .map(|n| {
@@ -532,8 +528,7 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
                 "status": n.status,
                 "tier": n.tier,
                 "progress": progress,
-                // Ingest-measured document weight (left-rail-tree-controls ADR
-                // D2): honestly absent (null) when the node carries none.
+                // Ingest-measured document weight: honestly absent (null) when the node carries none.
                 "size": n.size,
             })
         })
@@ -550,7 +545,7 @@ pub fn build_vault_tree_rows(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<Valu
 /// Build the path-sorted `/code-files` rows: one minimal row per `code:` FILE
 /// node projected off the code corpus's `LinkageGraph` (never the DOI-bounded
 /// graph projection), so a client can hold the COMPLETE code-file listing and
-/// narrow it (search-providers ADR: `files (code)` is a client narrow over a
+/// narrow it (`files (code)` is a client narrow over a
 /// complete set, never the capped graph slice). Every admitted source file
 /// mints exactly one `code:{path}` node (files-only representation), so the row
 /// count equals the corpus's file count. The row is deliberately minimal —
@@ -723,7 +718,7 @@ fn graph_query_inner(
 ) -> Result<GraphSlice, FilterError> {
     let filter = filter.validated()?;
 
-    // Borrow matched nodes (perf ADR D3): node_view / feature_nodes only read
+    // Borrow matched nodes: node_view / feature_nodes only read
     // each node and re-serialize it into a Value, so cloning the whole match set
     // up front was a redundant deep Node clone per node (id/key/title strings +
     // facets Vec) on every request. Sorting borrowed refs is cheap.
@@ -743,14 +738,14 @@ fn graph_query_inner(
             .filter(|n| filter.matches_node(n))
             .collect(),
     };
-    // terminology-standardization ADR D5/D6: `index` documents and `code`
+    // `index` documents and `code`
     // artifacts are not displayable knowledge nodes — drop them from the
     // candidate set BEFORE either granularity projects, so neither the document
     // slice, the feature-convergence aggregation, nor `kept` ever sees them. An
     // edge touching an excluded but in-scope node then fails `endpoint_ok` below
     // and is pruned, keeping the returned subgraph self-consistent.
     matched.retain(|n| is_displayable_node(n));
-    // Health facet (filter-controls campaign): orphaned/dangling are graph-context
+    // Health facet: orphaned/dangling are graph-context
     // (they read a node's incident edges), so they are applied here after the
     // per-node `matches_node` pass rather than inside it.
     if !filter.health.is_empty() {
@@ -777,7 +772,7 @@ fn graph_query_inner(
             // edge HERE. An edge to a genuinely unresolved/broken target is kept
             // ONLY under the explicitly-requested broken lens (see `endpoint_ok`
             // below); by default it is dropped too, as a dangling link the client
-            // never renders (audit W02P05-201, narrowed by the 2026-06-21 prune).
+            // never renders.
             //
             // FILE-BROWSER SCOPE: this is the `.vault/` document browser's graph, so
             // it must contain ONLY authored `.vault/` DOCUMENTS - one node per
@@ -795,11 +790,11 @@ fn graph_query_inner(
             let kept: HashSet<&str> = doc_nodes.iter().map(|n| n.id.0.as_str()).collect();
             // A served edge must connect two KEPT nodes — only then does the
             // client render it. Any other endpoint makes the edge pure wire waste
-            // the client just filters out (user directive 2026-06-21: never serve
+            // the client just filters out (never serve
             // an edge only to be filtered out). The ONE exception is the
             // explicitly-requested broken lens (`structural_state` ∋ "broken"): an
             // edge to a genuinely UNRESOLVED target — not a real graph node at all
-            // — is that lens's subject and may dangle (audit W02P05-201).
+            // — is that lens's subject and may dangle.
             // Membership is tested against the WHOLE graph, not the scope-faceted
             // set, so a real-but-excluded node (a plan-container wave/phase/step, a
             // code/index node, a cross-scope node) is never mistaken for
@@ -847,7 +842,7 @@ fn graph_query_inner(
                 .collect();
             (node_view_list, edge_view_list, Vec::new())
         }
-        // Constellation granularity (contract §4, ADR D4.1): synthesized
+        // Constellation granularity (contract §4): synthesized
         // feature-convergence nodes plus engine-aggregated meta-edges —
         // the GUI never flattens doc-level edges client-side.
         Granularity::Feature => {
@@ -881,7 +876,7 @@ fn graph_query_inner(
 }
 
 /// The feature/meta-edge delta between two graph states, on the single delta
-/// clock (constellation-live-delta ADR / S50). Projects `old` and `new` to the
+/// clock. Projects `old` and `new` to the
 /// FEATURE granularity (feature-convergence nodes + meta-edges) and diffs them
 /// by stable id into `granularity: "feature"` entries
 /// (`{op, granularity, node?|edge?, t, seq}` — the same wire shape as the
@@ -891,7 +886,7 @@ fn graph_query_inner(
 /// document edges); meta-edge identity is the endpoint pair, stable across
 /// re-derivation (provenance-stable keys).
 ///
-/// Bounded the SAME way the document diff is (GIR-014, sharing
+/// Bounded the SAME way the document diff is (sharing
 /// [`MAX_DIFF_DELTAS`] / [`DiffTruncated`] with `engine_graph::diff`): a diff
 /// whose feature-node + meta-edge delta count exceeds the ceiling DEGRADES TO
 /// KEYFRAME-ONLY — empty `entries` plus a truncation block — because a partial
@@ -989,7 +984,7 @@ pub fn feature_delta(
         }
     }
 
-    // Over the ceiling: degrade to KEYFRAME-ONLY (GIR-014), the same contract the
+    // Over the ceiling: degrade to KEYFRAME-ONLY, the same contract the
     // document diff uses — a partial feature/meta-edge mutation log is not
     // self-consistent, so emit no deltas plus an honest truncation block and let
     // the client re-keyframe via `/graph/asof`.

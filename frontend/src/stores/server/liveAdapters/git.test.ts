@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -20,7 +20,7 @@ import {
 } from "./index";
 import { TIERS } from "./testFixtures";
 
-describe("adaptGitOp + /ops/git consumer fidelity (W05.P12.S64)", () => {
+describe("adaptGitOp + /ops/git consumer fidelity", () => {
   // Live `/ops/git/{verb}` envelopes: git output forwarded verbatim under
   // `{data: {verb, output}, tiers}`.
   const liveStatus = {
@@ -66,7 +66,7 @@ describe("adaptGitOp + /ops/git consumer fidelity (W05.P12.S64)", () => {
   });
 });
 
-describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
+describe("git output parsers", () => {
   it("parses porcelain-v1 status into status-grouped changed-file entries", () => {
     // A porcelain-v1 sample exercising each XY status: branch header (skipped),
     // a worktree modify, a staged add, a worktree delete, a rename, untracked.
@@ -247,7 +247,7 @@ describe("git output parsers (git-diff-browser W06.P19.S72)", () => {
   });
 });
 
-describe("historical text-diff consumer fidelity (figma-parity-reconciliation S18)", () => {
+describe("historical text-diff consumer fidelity", () => {
   // A sample CAPTURED from the live `/ops/git/histdiff` wire: a two-rev unified
   // diff forwarded VERBATIM inside `{data: {verb, output}, tiers}`. Fed through
   // the SAME unwrap + adapter path the app uses verifies the historical diff route.

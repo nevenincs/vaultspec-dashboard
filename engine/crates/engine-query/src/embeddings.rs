@@ -1,4 +1,4 @@
-//! The bounded embedding projection (graph-semantic-embeddings ADR D2, D3, D8).
+//! The bounded embedding projection.
 //!
 //! This is the PURE, CPU-only selection half of the `/graph/embeddings` route:
 //! given the scope's served document node-id set and a node-id → stored-vector
@@ -8,10 +8,10 @@
 //! [`crate::graph::MAX_GRAPH_NODES`] with an honest `truncated` block, carrying
 //! the graph generation it was read at.
 //!
-//! The engine serves the raw vector verbatim — NO dimensionality reduction (ADR
-//! D4 forbids a server-side projection; the worker does PCA-to-2D). The vector is
+//! The engine serves the raw vector verbatim — NO dimensionality reduction
+//! (a server-side projection is forbidden; the worker does PCA-to-2D). The vector is
 //! an additive value keyed by a stable node id; it enters NO node or edge stable
-//! key (ADR D8 / provenance-stable-keys-are-identity-bearing), exactly as
+//! key (provenance-stable-keys-are-identity-bearing), exactly as
 //! `salience` and `status_value` are additive projections.
 
 use std::collections::HashMap;
@@ -25,7 +25,7 @@ use crate::graph::MAX_GRAPH_NODES;
 pub struct EmbeddingEntry {
     /// The stable node id the vector is a value on (`doc:{stem}`).
     pub node_id: String,
-    /// The raw stored dense vector, served verbatim (no reduction, ADR D4).
+    /// The raw stored dense vector, served verbatim (no reduction).
     pub vector: Vec<f32>,
 }
 
@@ -33,8 +33,7 @@ pub struct EmbeddingEntry {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct EmbeddingSlice {
     /// The served vectors, keyed by node id, in the SERVED node-set order so the
-    /// embedding set matches `/graph/query`'s DOI-ordered node set (ADR open
-    /// question: the embedding set matches the served node set).
+    /// embedding set matches `/graph/query`'s DOI-ordered node set.
     pub embeddings: Vec<EmbeddingEntry>,
 }
 
@@ -45,7 +44,7 @@ pub struct EmbeddingSlice {
 /// the node-id → stored-vector map read from Qdrant. For each served node that
 /// HAS a stored vector we emit an entry, preserving the served order; a served
 /// node with no stored vector is omitted (honest absence → the scene's fallback
-/// ring, ADR D7). The result is capped at [`MAX_GRAPH_NODES`]; the returned
+/// ring). The result is capped at [`MAX_GRAPH_NODES`]; the returned
 /// `Option<usize>` is the pre-cap total of would-be entries when truncation
 /// fired (for the honest `truncated` block, mirroring `graph::bound_slice`).
 pub fn build_embedding_slice(

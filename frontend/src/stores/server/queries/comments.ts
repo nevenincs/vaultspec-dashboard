@@ -1,4 +1,4 @@
-// Section-anchored document comments — hooks (authoring-surface ADR D2, W02.P03).
+// Section-anchored document comments — hooks.
 // Domain submodule of the queries barrel; see ./index.ts.
 //
 // The stores layer stays the SOLE wire client: these hooks consume the authoring
@@ -55,8 +55,8 @@ function invalidateDocumentComments(
 }
 
 /**
- * The bounded, backend-served comment listing for one open document
- * (authoring-surface ADR D2). Keyed by (scope, nodeId); disabled until a document
+ * The bounded, backend-served comment listing for one open document.
+ * Keyed by (scope, nodeId); disabled until a document
  * is open and a worktree is resolved (the `useNodeContent`/`usePlanInterior`
  * enabled-on-id pattern), so a surface that renders no thread fetches nothing
  * (mount-gating). A mounted thread subscribes to the authoring lifecycle stream so

@@ -1,7 +1,7 @@
-//! Bounded, ignore-aware source-tree walk (codebase-graphing ADR D3/D8).
+//! Bounded, ignore-aware source-tree walk.
 //!
 //! Mirrors the `/file-tree` listing's ignore discipline (`ingest-git`
-//! `file_tree.rs`, audit W01P04-104): dot-directories, the always-ignored
+//! `file_tree.rs`): dot-directories, the always-ignored
 //! build/dependency trees, plus simple directory-name and `dir/` entries from
 //! `.gitignore` files — applied from the directory that declares them down
 //! through its subtree. Glob and negation patterns stay out of scope (no second
@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use crate::lang::Lang;
 
-/// Walk bounds (ADR D8): every accumulator bounded at creation.
+/// Walk bounds: every accumulator bounded at creation.
 #[derive(Debug, Clone)]
 pub struct WalkCaps {
     /// Hard ceiling on parsed source files; the walk stops here and the

@@ -1,4 +1,4 @@
-// Regression (backend-hardening campaign, finding wire-03): adaptSearch must
+// Regression: adaptSearch must
 // derive a hit's click-through node_id only along the §2 / M-B1 node-id
 // grammar. The engine's `node_id` annotation wins; absent it, a CODE hit
 // derives `code:{repo-relative path}` (never a `doc:` id that loses the path
@@ -17,7 +17,7 @@ const TIERS = {
 };
 
 // The engine's flat annotated HTTP envelope after `unwrapEnvelope`: results at
-// the top level alongside the tiers block (rag-integration-hardening D1).
+// the top level alongside the tiers block.
 const envelope = (results: unknown[]) => ({
   results,
   tiers: TIERS,

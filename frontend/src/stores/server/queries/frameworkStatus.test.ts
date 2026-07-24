@@ -1,4 +1,4 @@
-// The framework-status cluster projection (activity-rail-realignment ADR D2). Pins
+// The framework-status cluster projection. Pins
 // the tone/count mapping per plane — ok / attention / down / unknown — over the
 // interpreted status inputs, so a chip can only render served health truth.
 

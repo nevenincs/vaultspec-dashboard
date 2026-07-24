@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S141): exercises live EMPTY states against the
+// Localization E2E: exercises live EMPTY states against the
 // real served application and proves each renders concise, catalog-driven
 // guidance — never a blank body, never raw catalog plumbing. Uses the
 // corpus's OWN naturally-empty sections (this repository genuinely has no

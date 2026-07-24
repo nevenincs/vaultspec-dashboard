@@ -1,4 +1,4 @@
-//! `/file-tree` integration coverage (dashboard-code-tree plan P04.S13/S14):
+//! `/file-tree` integration coverage:
 //! bounded reads truncate and cursor-paginate honestly, the listing honors the
 //! repository ignore rules, every response carries the tiers block, the
 //! `code:<path>` interlink is derived through the shared rule, and an
@@ -85,7 +85,7 @@ fn urlencode(s: &str) -> String {
 
 #[tokio::test]
 async fn file_tree_lists_one_level_with_the_shared_code_interlink_and_tiers() {
-    // P04.S13 (one-level listing) + P02.S06 (shared `code:<path>` id) +
+    // Covers one-level listing + the shared `code:<path>` id +
     // every-wire-response-carries-the-tiers-block.
     let (dir, state, scope) = worktree_state();
     touch(&dir.path().join("src/main.rs"), "fn main() {}\n");
@@ -148,7 +148,7 @@ async fn file_tree_lists_one_level_with_the_shared_code_interlink_and_tiers() {
 
 #[tokio::test]
 async fn file_tree_caps_a_pathological_level_and_cursor_paginates() {
-    // P04.S13: a directory with more children than the per-level ceiling
+    // A directory with more children than the per-level ceiling
     // truncates honestly (a `truncated`-style marker), and the level
     // cursor-paginates so the wire never carries the whole level at once.
     let (dir, state, scope) = worktree_state();
@@ -202,7 +202,7 @@ async fn file_tree_caps_a_pathological_level_and_cursor_paginates() {
 
 #[tokio::test]
 async fn file_tree_honors_gitignore_and_excludes_build_noise() {
-    // P04.S14: the listing honors the repository ignore rules — `.git`, build
+    // The listing honors the repository ignore rules — `.git`, build
     // output, vendored trees, and `.gitignore` directory entries do not appear,
     // while `.vault` (the corpus) and real source do.
     let (dir, state, scope) = worktree_state();
@@ -240,7 +240,7 @@ async fn file_tree_honors_gitignore_and_excludes_build_noise() {
 
 #[tokio::test]
 async fn file_tree_unknown_scope_400s_with_the_tiers_block() {
-    // P04.S14: an unknown / non-worktree scope (the remote-ref-style degradation
+    // An unknown / non-worktree scope (the remote-ref-style degradation
     // surface) is refused honestly with the tiers block attached — never a bare
     // error. (A remote ref has no selectable worktree, so it never resolves to a
     // file-tree; the scope-validation 400 is the honest refusal.)

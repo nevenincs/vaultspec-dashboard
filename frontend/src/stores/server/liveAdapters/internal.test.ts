@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { unwrapEnvelope } from "./index";

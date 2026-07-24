@@ -1,4 +1,4 @@
-// Provisioning ActionDescriptor builders (project-provisioning ADR D7): pure
+// Provisioning ActionDescriptor builders: pure
 // function tests over a served ProvisionStatus fixture, mirroring
 // `degradedBannerCopy`'s pure+testable precedent. The wire-routed dispatch
 // effect itself is covered live in `stores/server/provisionActions.test.ts`.

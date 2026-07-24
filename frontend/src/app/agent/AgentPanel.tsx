@@ -264,7 +264,7 @@ function AgentTranscriptContainer({
   );
 }
 
-/** The panel-header view switcher (review-surface-flow ADR F1): a two-segment
+/** The panel-header view switcher: a two-segment
  *  radiogroup flipping the open panel between the running conversation and the
  *  folded-in "Pending changes" inbox. Local chrome — it writes only the panel's
  *  view-store flag; the transcript is the default. */
@@ -290,7 +290,7 @@ function AgentViewSwitcher({ panelView }: { panelView: "transcript" | "pending" 
   );
 }
 
-/** The composer-adjacent autonomy control (review-surface-flow ADR F2): the
+/** The composer-adjacent autonomy control: the
  *  operation-mode toggle governs THIS conversation's autonomy, so it lives beside
  *  the composer, not in the review inbox. Fed exactly as the retired
  *  `ReviewStationSection` fed it — the SERVED worktree mode (scope-level GET /v1/mode

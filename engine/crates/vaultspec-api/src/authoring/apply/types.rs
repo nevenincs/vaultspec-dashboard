@@ -46,7 +46,7 @@ pub struct ApplyRequest<'a> {
     pub proposal_id: &'a ProposalId,
     pub actor: &'a ActorRef,
     pub idempotency_key: &'a IdempotencyKey,
-    /// The ADVISORY fencing token (W13.P26) the applying actor presents. Enforced ONLY
+    /// The ADVISORY fencing token the applying actor presents. Enforced ONLY
     /// when a live lease holds the target document's scope: a `None` or stale token against
     /// a live lease is refused as a denial value; with no live lease the apply proceeds.
     pub fencing_token: Option<i64>,
@@ -109,7 +109,7 @@ pub struct ApplyChildReceipt {
     /// A REDACTED failure category (never raw stderr/body/paths), when failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diagnostic: Option<String>,
-    /// The created document's stable node id (W03.P09a) — `Some` only for a
+    /// The created document's stable node id — `Some` only for a
     /// successfully-applied `CreateDocument` child (`None` for every other
     /// kind/outcome; `document_path` above already names an existing-doc
     /// kind's target, and a not-landed create has no identity to report).
@@ -125,7 +125,7 @@ pub struct ApplyChildReceipt {
     pub result_stem: Option<String>,
 }
 
-/// WHY an apply-preflight denied, when structurally known (W05.P14) — set at
+/// WHY an apply-preflight denied, when structurally known — set at
 /// the SAME point the `ActionEligibility` reason string is built, from the
 /// SAME structured source (a `ConflictKind` finding, or the self-approval
 /// blocker), never derived by matching the reason text afterward. `None`
@@ -145,8 +145,8 @@ pub(crate) enum ApplyDenialKind {
     SelfApproval,
 }
 
-/// The two `ConflictKind` classes a caller needs to distinguish structurally
-/// (W05.P14); every other `ConflictKind` (`OverlappingHunks`, `AnchorDrift`,
+/// The two `ConflictKind` classes a caller needs to distinguish structurally;
+/// every other `ConflictKind` (`OverlappingHunks`, `AnchorDrift`,
 /// `PolicyConflict` — none of which the apply preflight's EMPTY-lease
 /// `detect_conflicts` call can even produce for `PolicyConflict`) is honestly
 /// unclassified here, not force-fit into one of these two.
@@ -178,7 +178,7 @@ pub struct ApplyOutcome {
     /// True when a prior attempt for this key is still in flight (continue, do not
     /// re-apply).
     pub in_flight: bool,
-    /// The structured reason a `Preflight::Denied` fired, when known (W05.P14).
+    /// The structured reason a `Preflight::Denied` fired, when known.
     /// `None` for every non-denial outcome and for an unclassified denial.
     pub(crate) denial_kind: Option<ApplyDenialKind>,
 }

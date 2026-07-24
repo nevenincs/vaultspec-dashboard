@@ -1,4 +1,4 @@
-# Producer-consumer A2A capsule contract check (plan W01.P01.S145): builds
+# Producer-consumer A2A capsule contract check: builds
 # the real A2A desktop capsule (target archive + detached manifest) from the
 # producer repository at the dashboard's pinned commit, then validates that
 # manifest with the dashboard's own production parser
@@ -10,8 +10,7 @@
 #
 # NOT a push/PR gate. `packaging/a2a-component.lock.json` currently pins an
 # A2A producer commit that emits capsule contract `1.0`, while the dashboard
-# parser requires exact contract `2.0` (S145 exec record,
-# `.vault/exec/2026-07-18-a2a-product-provisioning/2026-07-18-a2a-product-provisioning-W01-P01-S145.md`).
+# parser requires exact contract `2.0`.
 # Every dispatch of this workflow is therefore EXPECTED TO FAIL until that
 # cross-repository version selection is resolved and the lock re-pinned.
 # Promote this to a required `push`/`pull_request` gate only once the pinned
@@ -44,8 +43,6 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            runner: macOS
-          - target: x86_64-apple-darwin
             runner: macOS
           - target: aarch64-unknown-linux-gnu
             runner: Linux

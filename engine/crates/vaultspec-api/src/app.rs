@@ -1,14 +1,14 @@
-//! The axum app skeleton (contract §1, plan W03.P11.S48): loopback-only
+//! The axum app skeleton (contract §1): loopback-only
 //! bind with fail-loud port conflict, `service.json` discovery with bearer
 //! token and heartbeat, ungated `/health`, bearer gating everywhere else.
 //!
-//! Watcher wiring (S48 + audit gates W02P06-302/303): dirty batches drive a
+//! Watcher wiring: dirty batches drive a
 //! **rebuild-at-scope-granularity** — a fresh graph is indexed and swapped
-//! behind the lock, never deltas ingested into a live graph (302), so
-//! removed mentions prune naturally (303). The old→new diff feeds the ring
+//! behind the lock, never deltas ingested into a live graph, so
+//! removed mentions prune naturally. The old→new diff feeds the ring
 //! buffer and the live SSE channel on one monotonic delta clock.
 //!
-//! # Multi-scope (user-state-persistence W02)
+//! # Multi-scope
 //!
 //! What was once a single `AppState` holding one graph/clock/ring/watcher is
 //! now split. The per-scope serve fields live in [`ScopeCell`] — one cell per
@@ -48,8 +48,8 @@ pub use crate::discovery::{
 /// route so a `doc:` fetch is an O(1) lookup, not a per-request tree walk.
 pub(crate) type DocBasenameIndex = HashMap<String, String>;
 
-/// rag's stored dense embedding vectors, node-id -> vector, scrolled from Qdrant
-/// (rag-control-plane ADR D4). Cached on the `ScopeCell` keyed on the semantic
+/// rag's stored dense embedding vectors, node-id -> vector, scrolled from Qdrant.
+/// Cached on the `ScopeCell` keyed on the semantic
 /// freshness epoch; aliased so the cache field stays a simple type (mirroring
 /// `DocViews`/`DocBasenameIndex`).
 pub(crate) type EmbeddingVectors = HashMap<String, Vec<f32>>;
@@ -100,7 +100,7 @@ pub struct StreamEvent {
 
 /// Per-scope serve state: ONE warm worktree's live graph, delta clock, resume
 /// ring, SSE channel, projection cache, and watcher. Extracted out of the old
-/// single `AppState` (W02.P03.S09) so the engine can serve N scopes
+/// single `AppState` so the engine can serve N scopes
 /// concurrently, each on its OWN monotonic clock — `since=` resume stays
 /// correct and independent per scope.
 pub struct ScopeCell {
@@ -108,7 +108,7 @@ pub struct ScopeCell {
     pub root: PathBuf,
     /// The corpus view this cell serves.
     pub scope: ScopeRef,
-    /// The live graph; swapped wholesale on rebuild (302 invariant).
+    /// The live graph; swapped wholesale on rebuild.
     pub graph: RwLock<Arc<LinkageGraph>>,
     pub store: Mutex<engine_store::Store>,
     /// This cell's monotonic delta clock (contract REDLINE-3, now per-scope).
@@ -116,21 +116,20 @@ pub struct ScopeCell {
     /// Recent deltas for `since=` resume; bounded. Stored as
     /// `(seq, payload)` so BOTH granularity species (document + the
     /// feature/meta-edge projection) ride one resume buffer on this cell's
-    /// clock (constellation-live-delta ADR / S50): `since=` replays across
+    /// clock: `since=` replays across
     /// both, application is per-granularity client-side.
     pub ring: Mutex<VecDeque<(u64, serde_json::Value)>>,
     pub tx: broadcast::Sender<StreamEvent>,
-    /// Memoized constellation meta-edges per graph generation (audit
-    /// W02P05-203).
+    /// Memoized constellation meta-edges per graph generation.
     pub meta_cache: Mutex<Option<(u64, Arc<Vec<MetaEdge>>)>>,
-    /// Memoized salience lens basis per graph generation (graph-node-salience
-    /// ADR: "the lens basis is precomputed once per graph generation for all
-    /// launch lenses"). The expensive PPR/Brandes/k-core sweep runs once per
+    /// Memoized salience lens basis per graph generation — the lens basis is
+    /// precomputed once per graph generation for all launch lenses. The
+    /// expensive PPR/Brandes/k-core sweep runs once per
     /// rebuild and every lens combines over the shared partial-vector basis;
     /// invalidated on a generation bump.
     pub salience_cache: Mutex<Option<(u64, Arc<engine_query::salience::LensBasis>)>>,
-    /// Memoized enriched document node/edge views per graph generation
-    /// (perf-sweep A1): the dominant per-request Document-query cost
+    /// Memoized enriched document node/edge views per graph generation:
+    /// the dominant per-request Document-query cost
     /// (node_view/edge_view projections) computed once per rebuild and reused.
     pub doc_views_cache: Mutex<Option<(u64, Arc<DocumentViews>)>>,
     /// The UNFILTERED constellation feature-node projection, memoized per
@@ -138,13 +137,13 @@ pub struct ScopeCell {
     /// into feature-convergence nodes; this serves the default (unfiltered) poll
     /// from cache, invalidated on a generation bump like the other projections.
     pub feature_nodes_cache: Mutex<Option<(u64, Arc<Vec<Value>>)>>,
-    /// The stem-sorted `/vault-tree` document-row snapshot RING keyed by generation
-    /// (vault-tree-delta ADR D2): the freshest slot is the per-generation memo, the
+    /// The stem-sorted `/vault-tree` document-row snapshot RING keyed by generation:
+    /// the freshest slot is the per-generation memo, the
     /// retained generations back `/vault-tree/delta`. Memo/ring/diff in
     /// `crate::row_delta`.
     pub(crate) vault_tree_rows_ring: Mutex<crate::row_delta::RowSnapshotRing>,
-    /// The served DOCUMENT graph-slice snapshot ring backing `/graph/query/delta`
-    /// (graph-slice-delta ADR D2): (params fingerprint, generation) → slice.
+    /// The served DOCUMENT graph-slice snapshot ring backing `/graph/query/delta`:
+    /// (params fingerprint, generation) → slice.
     pub(crate) graph_slice_ring: Mutex<crate::graph_delta::GraphSliceRing>,
     /// The HEAD commit-correlated temporal event rows, memoized per generation. The
     /// /events activity feed walks up to 5000 commits and correlates each to graph
@@ -170,7 +169,7 @@ pub struct ScopeCell {
     /// project the active plans/ADRs — a generation-stable projection. Invalidated
     /// on a generation bump.
     pub pipeline_cache: Mutex<Option<(u64, Arc<Vec<engine_query::pipeline::PipelineArtifact>>)>>,
-    /// The whole-corpus feature-coverage map (feature-group-authoring ADR D2),
+    /// The whole-corpus feature-coverage map,
     /// memoized per generation. `/features` projects per-feature pipeline coverage
     /// (present types + newest stems, missing types, eligibility, next step) over
     /// the graph; the projection is generation-stable, so ONE cached map serves
@@ -197,8 +196,8 @@ pub struct ScopeCell {
     /// `.vault` tree walk is built once per rebuild and reused, like the sibling
     /// caches.
     pub doc_index_cache: Mutex<Option<(u64, Arc<DocBasenameIndex>)>>,
-    /// Memoized rag embedding vectors keyed on the SEMANTIC freshness epoch
-    /// (rag-control-plane ADR D4): the node-id -> dense-vector map scrolled from
+    /// Memoized rag embedding vectors keyed on the SEMANTIC freshness epoch:
+    /// the node-id -> dense-vector map scrolled from
     /// rag's Qdrant, cached so repeat embedding reads skip the multi-page scroll.
     /// Keyed on the epoch — NOT the graph generation — because the vectors are
     /// rag's index state, not the engine graph's: a watcher rebuild bumps the
@@ -224,7 +223,7 @@ pub struct ScopeCell {
     /// use; never reset (a session that opened Detail keeps it warm).
     pub doc_views_used: AtomicBool,
     /// This cell's resident watcher handle; `/status` reports a dead watcher
-    /// truthfully instead of claiming residency (DF-4 residual). Dropping the
+    /// truthfully instead of claiming residency. Dropping the
     /// handle (on eviction) tears the OS watch down.
     pub watcher: Mutex<Option<engine_graph::watch::WatchHandle>>,
     /// Declared-tier ingestion status from the last rebuild: `None` when
@@ -233,11 +232,11 @@ pub struct ScopeCell {
     /// tiers block reads this so `declared` degrades TRUTHFULLY instead of
     /// claiming a tier the index could not build.
     pub declared_status: RwLock<Option<String>>,
-    /// Coalescing guard for the async declared fold (perf ADR D1): true while
+    /// Coalescing guard for the async declared fold: true while
     /// a fold task is in flight for this cell, so at most one fold runs per
     /// cell at a time.
     pub declared_fold_active: AtomicBool,
-    /// Trailing-edge flag (perf ADR D1, review HIGH): set when a rebuild lands
+    /// Trailing-edge flag: set when a rebuild lands
     /// while a fold is already in flight (the new `spawn_declared_fold` could
     /// not claim the slot, so it could not fold the NEW structural graph). The
     /// in-flight fold's completion guard checks this and re-spawns a fold at
@@ -246,14 +245,14 @@ pub struct ScopeCell {
     /// piggy-back on). Without it, a fold finishing after a final HEAD advance
     /// would serve the superseded commit's declared edges indefinitely.
     pub declared_fold_pending: AtomicBool,
-    /// The last COMPLETED declared fold's edge set (declared-edge-continuity ADR),
+    /// The last COMPLETED declared fold's edge set,
     /// `Arc`-shared and replaced only by a completed fold — never partially. A
     /// rebuild grafts it onto the fresh graph (pruned to the new node set) so a corpus
     /// under continuous editing is never presented edge-less; the running fold's
     /// completion replaces it. `None` before the first fold (node-only + building).
     /// Bounded by the corpus's own declared edge count — no new unbounded accumulator.
     pub(crate) declared_edges: RwLock<Option<Arc<Vec<engine_graph::StoredEdge>>>>,
-    /// The CODE corpus (codebase-graphing ADR D1): a SEPARATE `LinkageGraph`
+    /// The CODE corpus: a SEPARATE `LinkageGraph`
     /// instance with its own generation counter and extraction cache, served
     /// beside the vault graph and never merged into it. The two datasets share
     /// no node or edge; the frontend switches which corpus the graph surface
@@ -323,7 +322,7 @@ impl ScopeCell {
         self.graph.read().unwrap_or_else(|e| e.into_inner()).clone()
     }
 
-    /// Meta-edges, memoized per generation (W02P05-203): the constellation
+    /// Meta-edges, memoized per generation: the constellation
     /// hot path pays one aggregation per rebuild, not per request.
     /// Eagerly build the per-generation memoized projections OFF the request
     /// path. Called from the watcher rebuild (which already runs on a blocking
@@ -473,7 +472,7 @@ impl ScopeCell {
         fresh
     }
 
-    /// The whole-corpus feature-coverage map (feature-group-authoring ADR D2),
+    /// The whole-corpus feature-coverage map,
     /// memoized per generation. `/features` re-projected per-feature pipeline
     /// coverage over every `doc:` node on each panel read; the map is
     /// generation-stable (it changes only on a rebuild), so it is memoized here
@@ -573,10 +572,10 @@ impl ScopeCell {
         // Reuse / populate the HISTORICAL (as-of) declared-graph snapshot for THIS
         // committed sha, in its OWN cache kind (`DECLARED_GRAPH_ASOF_KIND`), keyed by
         // the sha. This is a SEPARATE key space and kind from the present-view fold's
-        // fingerprint cache (graph-worktree-edge-consistency ADR): a historical view can
+        // fingerprint cache: a historical view can
         // never pick up the present-view fold's working-tree edges (which may include
         // uncommitted `related:` links absent at this sha), and the two caches never
-        // evict each other (audit MEDIUM-1). On a miss we fetch the committed `--ref
+        // evict each other. On a miss we fetch the committed `--ref
         // sha` declared JSON ONCE (off the lock), persist it under the sha key, and pass
         // it into the build — so a later as-of revisit to this sha reuses it across
         // restart / in-memory-LRU eviction.
@@ -653,8 +652,8 @@ impl ScopeCell {
         fresh
     }
 
-    /// Enriched per-document node/edge views, memoized per generation
-    /// (perf-sweep A1). `build_document_views` runs the heavy node_view/edge_view
+    /// Enriched per-document node/edge views, memoized per generation.
+    /// `build_document_views` runs the heavy node_view/edge_view
     /// projections (serialize + degree-by-tier adjacency walk + ontology + status)
     /// once per rebuild; `graph_query_cached` then reuses them so repeat and
     /// concurrent Document queries skip the dominant per-request cost. Invalidated
@@ -731,9 +730,9 @@ impl ScopeCell {
         fresh
     }
 
-    /// The salience lens basis, memoized per generation (graph-node-salience ADR:
-    /// the basis is precomputed once per graph generation for all launch lenses;
-    /// only the focus-folded final score is computed per request). The basis is
+    /// The salience lens basis, memoized per generation — precomputed once per
+    /// graph generation for all launch lenses; only the focus-folded final
+    /// score is computed per request. The basis is
     /// built over this cell's scope document nodes — the bounded member set the
     /// query serves. The expensive PPR/Brandes/k-core sweep runs at most once per
     /// rebuild.
@@ -766,7 +765,7 @@ impl ScopeCell {
     }
 
     /// The cached rag embedding vectors IF they were scrolled at `epoch`, else
-    /// `None` (rag-control-plane ADR D4 / P03.S18). A `None` return means either
+    /// `None`. A `None` return means either
     /// a cold cache or a reindex that advanced the semantic epoch — in both cases
     /// the embeddings route re-scrolls Qdrant and stores the fresh map under the
     /// new epoch via [`ScopeCell::store_embeddings`]. Keyed on the epoch alone
@@ -785,7 +784,7 @@ impl ScopeCell {
     }
 
     /// Store the freshly-scrolled rag embedding vectors under the semantic epoch
-    /// they were read at (rag-control-plane ADR D4 / P03.S18). The next read at
+    /// they were read at. The next read at
     /// the SAME epoch is a warm-cache hit; the next read after a reindex (a new
     /// epoch) misses and re-scrolls.
     pub fn store_embeddings(&self, epoch: u64, vectors: Arc<EmbeddingVectors>) {
@@ -799,8 +798,8 @@ impl ScopeCell {
     /// Rebuild the scope's graph fresh and commit it (the watcher's path;
     /// also used at startup).
     ///
-    /// Builds the STRUCTURAL tier only and commits it immediately (perf ADR
-    /// D1): the worktree is interactive in roughly the structural-parse time.
+    /// Builds the STRUCTURAL tier only and commits it immediately: the
+    /// worktree is interactive in roughly the structural-parse time.
     /// `declared_status` is set to the building sentinel ONLY when there is no
     /// last-good declared graph to carry — on a routine re-index where declared
     /// was already available and the cached declared graph for the current HEAD
@@ -831,11 +830,11 @@ impl ScopeCell {
         // the served graph is complete in non-serve (test) contexts. Under
         // `serve` a runtime is always current, so this branch never runs there.
         // Uses the SAME fetch+ingest seam the async fold uses, at the version-gated
-        // present-view ref (graph-worktree-edge-consistency ADR: the working tree on a
+        // present-view ref (the working tree on a
         // verified read-only core so present-view edges share the nodes' snapshot,
         // else committed HEAD), so the sync and async declared graphs converge.
-        // Reconcile the declared tier into the fresh structural graph BEFORE the swap
-        // (declared-edge-continuity ADR): ingest inline (no-runtime tests) or from the
+        // Reconcile the declared tier into the fresh structural graph BEFORE the swap:
+        // ingest inline (no-runtime tests) or from the
         // unchanged-corpus cache (available), else GRAFT the last completed fold's
         // carried edges pruned to the new node set so a churned corpus is never
         // edge-less. The reason distinguishes refreshing (carried edges served) from
@@ -850,7 +849,7 @@ impl ScopeCell {
         Ok(self.commit_graph(fresh))
     }
 
-    /// THE single commit path for a new graph (audit N3+N4): one function
+    /// THE single commit path for a new graph: one function
     /// owns the ordering — (1) diff against the outgoing graph and advance
     /// this cell's delta clock, (2) append to the ring and broadcast, (3)
     /// swap the graph, (4) bump the generation (invalidating projections).
@@ -862,8 +861,8 @@ impl ScopeCell {
         let t = now_ms();
 
         // Document deltas first, then the feature/meta-edge projection deltas,
-        // CONTINUING the same monotonic clock (constellation-live-delta ADR /
-        // S50): one seq space across both species so a held constellation
+        // CONTINUING the same monotonic clock: one seq space across both
+        // species so a held constellation
         // keyframe splices live with no gap. Both ride the ring (resume
         // buffer) and the `graph` channel; each carries its `granularity` tag.
         //
@@ -873,7 +872,7 @@ impl ScopeCell {
         // are not blocked by graph-scale projection work.
         let doc_log = engine_graph::diff::diff(&old, &fresh, t, 0);
         let feat_seq_start = doc_log.entries.len() as u64;
-        // GIR-014/GIR-015: both diffs are delta-ceiling bounded and degrade to
+        // Both diffs are delta-ceiling bounded and degrade to
         // keyframe-only (empty entries + a truncation block) on a pathological
         // over-ceiling single commit. When that happens the deltas are DROPPED from
         // this broadcast — but the SIGNAL must NOT be. The client's ONLY live
@@ -913,7 +912,7 @@ impl ScopeCell {
                 None => eprintln!("vaultspec serve: dropping feature delta with no seq: {entry}"),
             }
         }
-        // GIR-015: a degraded commit dropped its deltas above; broadcast ONE
+        // A degraded commit dropped its deltas above; broadcast ONE
         // synthetic non-"feature" marker so the client re-keyframes. Its `seq` is
         // assigned by the broadcast loop below (like every other payload), so it
         // rides the resume ring with a valid contiguous seq — the clock advances
@@ -963,8 +962,8 @@ impl ScopeCell {
 /// Workspace-level serve state: the warm scope registry, the single shared
 /// user-state handle, the bearer token, and the active scope. Per-scope serve
 /// state lives in [`ScopeCell`], resolved through the registry.
-/// The freshness window for the cached semantic epoch
-/// (rag-integration-hardening D3). rag's index epoch only advances when a
+/// The freshness window for the cached semantic epoch.
+/// rag's index epoch only advances when a
 /// reindex COMPLETES — a minutes-long operation — so serving an epoch up to a
 /// few seconds stale is negligible against the build it tracks, while the window
 /// collapses a burst of `/search` freshness annotations and `/graph/embeddings`
@@ -978,7 +977,7 @@ struct CachedEpoch {
 }
 
 /// A bounded, single-value, short-TTL cache of rag's machine-global semantic
-/// freshness epoch (rag-integration-hardening D3). The epoch is ONE fact for the
+/// freshness epoch. The epoch is ONE fact for the
 /// resident service — the newest terminal reindex timestamp across its `/jobs`,
 /// derived by [`rag_client::control::semantic_epoch`] — so the whole cache is a
 /// single `(epoch, read_at)` slot, never a growing per-scope map
@@ -1027,11 +1026,11 @@ pub struct AppState {
     pub registry: RwLock<ScopeRegistry>,
     pub bearer: String,
     /// The single shared durable user-state handle, opened ONCE per workspace
-    /// from `workspace_root/.vault` — NEVER per-scope (the W01 single-writer
-    /// invariant: one SQLite writer per process). The W01 `Store` wraps a
+    /// from `workspace_root/.vault` — NEVER per-scope (the single-writer
+    /// invariant: one SQLite writer per process). The `Store` wraps a
     /// `rusqlite::Connection`, which is `!Sync`, so the shared handle rides a
     /// `Mutex` — serializing every read/write through one writer, exactly the
-    /// single-writer discipline the W01 review requires.
+    /// single-writer discipline requires.
     pub user_state: Arc<Mutex<vaultspec_session::UserState>>,
     /// The currently-active default scope token: the scope `/status`, boot,
     /// and the error-path tiers fallback resolve when no `scope=` is supplied.
@@ -1042,20 +1041,20 @@ pub struct AppState {
     /// authority during the browser session.
     pub dashboard_state: Mutex<crate::routes::state::DashboardStateSlot>,
     /// Bounded short-TTL cache of rag's machine-global semantic-index freshness
-    /// epoch (rag-integration-hardening D3): the `/search` freshness annotation
+    /// epoch: the `/search` freshness annotation
     /// and the `/graph/embeddings` vector-cache key read the epoch through this
     /// one seam, so a warm read never pays a second `/jobs` round-trip and the
     /// derivation is not duplicated. Single value plus a TTL — bounded at creation.
     pub semantic_epoch_cache: SemanticEpochCache,
-    /// Graceful-shutdown signal (single-app-runtime D5): the bearer-gated
+    /// Graceful-shutdown signal: the bearer-gated
     /// `/shutdown` route notifies it; the serve loop's graceful-shutdown
     /// future awaits it alongside ctrl-c/SIGTERM.
     pub shutdown: tokio::sync::Notify,
     /// Process boot instant (ms since epoch), advertised in discovery so the
     /// CLI seat block can report uptime.
     pub started_ms: i64,
-    /// The fenced authoring domain's durable store (agentic-spec-authoring-
-    /// backend W03.P39). Opened LAZILY against `workspace_root/.vault` on the
+    /// The fenced authoring domain's durable store. Opened LAZILY against
+    /// `workspace_root/.vault` on the
     /// first authoring request — as an `Option` so a bad or unopenable authoring
     /// db DEGRADES the authoring panel (a typed error at the route) rather than
     /// panicking the engine at boot, and so a workspace that never touches
@@ -1064,14 +1063,14 @@ pub struct AppState {
     /// serializes every unit of work through this one handle, exactly like
     /// `user_state`.
     pub authoring_store: Mutex<Option<crate::authoring::store::Store>>,
-    /// The A2A component lifecycle plane (a2a-product-provisioning W01.P03): the
+    /// The A2A component lifecycle plane: the
     /// `vaultspec-product` lifecycle controller plus its bounded, atomic job
     /// registry, rooted at the machine product app home. Owned HERE inside
     /// `AppState` — never a process-global static — so seated instances and tests
     /// each get their own registry and cannot share lifecycle mutation state.
     pub a2a_lifecycle: Arc<crate::routes::a2a_lifecycle::LifecyclePlane>,
-    /// The dedicated, durable A2A run-token lease repository (a2a-product-
-    /// provisioning W02.P05.S35/S151): the hash-only lease lifecycle store for
+    /// The dedicated, durable A2A run-token lease repository: the hash-only
+    /// lease lifecycle store for
     /// admit-before-mint run-start, attach-control terminal settlement, and boot
     /// reconciliation. Its OWN SQLite file under the workspace vault data dir —
     /// deliberately decoupled from the authoring-session store.
@@ -1107,7 +1106,7 @@ impl AppState {
     }
 
     /// The root path of the ACTIVE WORKSPACE — the registered root a per-request
-    /// scope is validated against (dashboard-workspace-registry ADR, P03.S11).
+    /// scope is validated against.
     ///
     /// Multi-workspace generalizes scope routing: `validate_scope` resolves a
     /// requested worktree against the *active workspace's* enumerable worktrees,
@@ -1129,7 +1128,7 @@ impl AppState {
     }
 
     /// Run `f` against the fenced authoring store, opening it lazily on first
-    /// use (agentic-spec-authoring-backend W03.P39). Serializes through the one
+    /// use. Serializes through the one
     /// `Mutex`-held handle (single-writer). A lazy-open failure surfaces as the
     /// store's own typed error so the route degrades honestly rather than the
     /// engine panicking; poison is recovered like every other guard here.
@@ -1278,7 +1277,7 @@ fn sanitize_boundary_message(raw: &str) -> String {
     reason.trim().to_string()
 }
 
-/// Constant-time byte comparison (audit low rider): the bearer check must
+/// Constant-time byte comparison: the bearer check must
 /// not leak prefix length through timing, loopback or not.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
@@ -1291,17 +1290,17 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 /// shared user-state handle and eagerly building the launch scope's cell into
 /// the registry as the active scope.
 ///
-/// Boot (S11, in `lib.rs`) further restores/persists the active scope through
+/// Boot (in `lib.rs`) further restores/persists the active scope through
 /// the user-state handle; this constructor is the shared core used by both
 /// `serve` and the unit tests.
 pub fn build_state(root: PathBuf) -> Arc<AppState> {
     build_state_with_bearer(root, mint_bearer())
 }
 
-/// Mint the 128-bit OS-CSPRNG bearer token (B10, resource-hardening).
+/// Mint the 128-bit OS-CSPRNG bearer token.
 /// Public so the BOOT path can mint it BEFORE the heavy initial index and
-/// publish a `starting` discovery record carrying it (single-app-runtime
-/// S23); getrandom draws from the OS entropy source, hex-encoded to the
+/// publish a `starting` discovery record carrying it;
+/// getrandom draws from the OS entropy source, hex-encoded to the
 /// 32-char shape every consumer expects.
 pub fn mint_bearer() -> String {
     let mut bytes = [0u8; 16];
@@ -1347,8 +1346,8 @@ fn build_state_full(root: PathBuf, bearer: String, product_app_home: PathBuf) ->
     let workspace_root = root.clone();
     let active_token = crate::routes::scope_token(&workspace_root);
     // The single shared user-state handle, opened ONCE per workspace. Like the
-    // cache, this is best-effort: a corrupt store is recreated empty (W01
-    // open_or_heal), never fatal at boot.
+    // cache, this is best-effort: a corrupt store is recreated empty
+    // (open_or_heal), never fatal at boot.
     let user_state = Arc::new(Mutex::new(
         vaultspec_session::UserState::open(&workspace_root.join(".vault"))
             .unwrap_or_else(|e| panic!("user-state store unavailable: {e}")),

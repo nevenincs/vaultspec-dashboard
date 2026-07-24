@@ -172,11 +172,11 @@ async fn put_session_registers_a_sibling_then_forgets_it_read_only() {
     );
 }
 
-// --- content-fetch route (review-rail-viewers P01) ---
+// --- content-fetch route ---
 
 #[tokio::test]
 async fn content_route_serves_a_vault_doc_and_a_code_file_with_tiers() {
-    // P01.S06: GET /nodes/{id}/content serves the bytes of a doc:<stem> and a
+    // GET /nodes/{id}/content serves the bytes of a doc:<stem> and a
     // code:<path> node through the shared envelope, with path/blob_hash/
     // byte_len/language_hint/text and the tiers block on success.
     let dir = tempfile::tempdir().unwrap();
@@ -240,7 +240,7 @@ async fn content_route_serves_a_vault_doc_and_a_code_file_with_tiers() {
 
 #[tokio::test]
 async fn content_route_byte_caps_a_large_file_with_an_honest_truncated_block() {
-    // P01.S06: a file beyond MAX_CONTENT_BYTES is truncated with a truncated
+    // A file beyond MAX_CONTENT_BYTES is truncated with a truncated
     // block stating the full and served sizes — never an unbounded body.
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -295,7 +295,7 @@ async fn content_route_byte_caps_a_large_file_with_an_honest_truncated_block() {
 
 #[tokio::test]
 async fn content_route_rejects_path_traversal_with_a_tiered_400() {
-    // P01.S06: a code id whose path escapes the worktree root is a tiered
+    // A code id whose path escapes the worktree root is a tiered
     // 400 (request error), distinct from degradation, carrying the tiers
     // block — never a read outside the root.
     let dir = tempfile::tempdir().unwrap();
@@ -366,7 +366,7 @@ async fn content_route_404s_a_missing_code_file_not_a_structural_degradation() {
 
 #[tokio::test]
 async fn content_route_404s_an_unknown_doc_stem_and_400s_a_non_content_node() {
-    // P01.S06: an unknown doc stem is a 404; a non-content node kind (a
+    // An unknown doc stem is a 404; a non-content node kind (a
     // feature) is a 400 — both with the tiers block.
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();

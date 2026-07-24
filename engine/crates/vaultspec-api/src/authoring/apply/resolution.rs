@@ -116,7 +116,7 @@ pub(super) fn resolve_outcome(
         }
         // OUTCOME-UNKNOWN: the core was killed mid-flight (and on Windows its
         // grandchild may have survived to finish). Re-verify post-state and FAIL
-        // CLOSED — the shared reclaim resolution (also used by P36-R1 recovery).
+        // CLOSED — the shared reclaim resolution (also used by crash-recovery).
         // `wire_reason` is the REDACTED category — never `{:?}`-Debug the error.
         Err(error) if error.is_outcome_indeterminate() => {
             post_state_resolution(worktree_root, prep, &error.wire_reason())
@@ -136,7 +136,7 @@ pub(super) fn resolve_outcome(
 }
 
 /// Resolve a child outcome by RE-VERIFYING the document post-state — no core
-/// invoke. Shared by the indeterminate-kill path and the P36-R1 crash-recovery
+/// invoke. Shared by the indeterminate-kill path and the crash-recovery
 /// reclaim. Dispatches on [`ApplyPrep::post_verify`] so a core-authoritative
 /// write (e.g. `EditFrontmatter`) is verified SEMANTICALLY rather than against
 /// a preview-derived hash core never received (see the type's docs — a
@@ -470,7 +470,7 @@ pub(super) fn resolve_by_stem(worktree_root: &Path, stem: &str) -> Option<Docume
 }
 
 /// Reconstruct an [`ApplyPrep`] from a changeset WEDGED in `Applying` whose
-/// in-flight reservation expired (P36-R1). The Applying revision carries the
+/// in-flight reservation expired. The Applying revision carries the
 /// single materialized child and the recorded receipt id; the completion path
 /// then re-verifies post-state and records the terminal receipt against the
 /// still-`in_flight` (expired) reservation — no core re-invoke.
@@ -563,7 +563,7 @@ pub(super) fn build_reclaim_prep(
     }))))
 }
 
-/// A landed `CreateDocument` child's REAL identity (W03.P09a).
+/// A landed `CreateDocument` child's REAL identity.
 pub(super) struct CreatedDocumentIdentity {
     pub(super) path: String,
     pub(super) node_id: String,

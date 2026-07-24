@@ -1,10 +1,10 @@
-//! Review-station queues and provenance audit (W13.P24).
+//! Review-station queues and provenance audit.
 //!
-//! The review-station-state ADR names a backend-served projection over proposals,
+//! This is a backend-served projection over proposals,
 //! approval requests, assignments, and policy: the queue of work waiting for humans,
 //! which item is claimed, what is waiting on an agent, and which actions are allowed. The
 //! V1 queue item state is FOUR (ASA-003): `queued`, `claimed`, `decision_submitted`,
-//! `closed`. This module lands the two capabilities W11.P50's count/list projections
+//! `closed`. This module lands two capabilities the earlier count/list projections
 //! deferred:
 //!
 //! 1. CLAIM OVERLAY. A claim is an ADVISORY assignment (review-claims-are-not-authority):
@@ -23,9 +23,9 @@
 //!    the approval decision (the reviewer + decision + comment), and the structured
 //!    lineage. It reads NO new durable table: the ledger + approvals + preimage fingerprints
 //!    ARE the trail, so this is a pure read (projections hold no state). REDACTION is
-//!    load-bearing (security-provenance ADR): the trail serves ids, hashes, revisions, and
+//!    load-bearing: the trail serves ids, hashes, revisions, and
 //!    actors, NEVER raw prompts, traces, preimage bodies, or tool outputs. The rebase/
-//!    supersession lineage W13.P28 records minimally in free-text summaries is FORMALIZED
+//!    supersession lineage recorded minimally in free-text summaries is FORMALIZED
 //!    here into structured served fields (`replaces` / `superseded_by` / `rebased_from`),
 //!    parsed FAIL-SAFE — a summary that does not match the well-defined token format
 //!    yields an ABSENT field, never a crash or a wrong link. (A durable structured lineage
@@ -235,9 +235,9 @@ pub struct ProvenanceEntry {
     pub materials: Vec<RedactedMaterialRef>,
 }
 
-/// The structured cross-changeset lineage FORMALIZED from what W13.P28 records minimally:
+/// The structured cross-changeset lineage FORMALIZED from what rebase/supersession records minimally:
 /// `rebased_from` is the in-place `Conflicted → Draft` predecessor (already structured via
-/// the revision chain); `replaces` / `superseded_by` are parsed FAIL-SAFE from P28's
+/// the revision chain); `replaces` / `superseded_by` are parsed FAIL-SAFE from rebase's
 /// consistent summary tokens (`Replaces {id}` / `Superseded by {id}`).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

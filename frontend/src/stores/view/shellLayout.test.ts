@@ -95,7 +95,7 @@ describe("shell layout frame view", () => {
     ).toBe("0px 1fr 0px");
   });
 
-  it("adds an explicit fourth track when the agent panel is open, so the stage reflows beside it (ADR D1)", () => {
+  it("adds an explicit fourth track when the agent panel is open, so the stage reflows beside it", () => {
     // Open → a fourth track of the panel's width; the stage's 1fr shrinks to make room.
     expect(
       appShellGridColumns({

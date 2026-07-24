@@ -1,4 +1,4 @@
-//! Code-corpus query projections (codebase-graphing ADR D3/D5, amended by the
+//! Code-corpus query projections (amended by the
 //! code-graph-files-only cutover).
 //!
 //! Operates on the SEPARATE code `LinkageGraph` instance (never the vault
@@ -21,7 +21,7 @@
 //! anchor treatment — never as folder nodes.
 //!
 //! Narrowing is code-corpus-shaped (directory prefix, language) and lives
-//! OUTSIDE the vault `Filter` grammar (ADR D5: the vault filter shape is
+//! OUTSIDE the vault `Filter` grammar (the vault filter shape is
 //! frozen; corpus-mismatched facets are a typed validation error at the route).
 
 use std::collections::{BTreeMap, HashSet};
@@ -34,13 +34,13 @@ use crate::graph::{GraphSlice, edge_view, node_view};
 
 /// The language wire token for a file path. Re-exported from `engine-model` (the
 /// single source of truth) so the code corpus's language classification cannot
-/// drift from `ingest-code`'s (codebase-graphing review CGR-007): this crate no
+/// drift from `ingest-code`'s: this crate no
 /// longer hand-mirrors the extension map, it shares the one in the dependency
 /// sink. Kept at this path so existing `engine_query::code::language_token`
 /// callers are unaffected.
 pub use engine_model::language_token;
 
-/// Code-corpus narrowing (ADR D5): the code corpus's own request grammar.
+/// Code-corpus narrowing: the code corpus's own request grammar.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CodeNarrow {
     /// Keep only nodes whose repo-relative path sits under this prefix.
@@ -50,7 +50,7 @@ pub struct CodeNarrow {
     pub languages: Vec<String>,
     /// Inclusive `yyyy-mm-dd` day-key bounds on a FILE's worktree mtime
     /// (`dates.modified`) — the timeline range facet, shared with the vault
-    /// grammar (code-timeline-range ADR). Either bound open; both `None` = no
+    /// grammar. Either bound open; both `None` = no
     /// date narrowing. A file with no mtime is excluded once a bound is set
     /// (mirrors the vault's missing-date exclusion); at the package rollup a
     /// package passes while at least one member file passes, so the package
@@ -171,8 +171,8 @@ fn annotate_package(view: &mut Value, key: &str, packages: &PackageIndex) {
     view["package_entry"] = Value::from(packages.is_entry(key));
 }
 
-/// Per-file GIT recency, folded from the bounded commit walk + git status
-/// (code-graph-heat ADR amendment). Owned by the API cell (memoized on
+/// Per-file GIT recency, folded from the bounded commit walk + git status.
+/// Owned by the API cell (memoized on
 /// `HEAD sha @ dirty-set hash` — its own freshness axis, distinct from the
 /// parse generation) and threaded into the query; `None` when the scope is not
 /// a git repository (the honest mtime fallback applies).
@@ -187,7 +187,7 @@ pub struct CodeRecency {
     pub dirty: HashSet<String>,
 }
 
-/// Percentile RECENCY rank per FILE key (code-graph-heat ADR, amended):
+/// Percentile RECENCY rank per FILE key:
 /// 0 = oldest, 1 = newest. The effective ordering key is GIT-derived — a clean
 /// file orders by the committer time of the last commit touching it; a
 /// DIRTY/UNTRACKED file orders above every committed file, with the worktree
@@ -199,7 +199,7 @@ pub struct CodeRecency {
 /// so an identical-timestamp block (a checkout stamping hundreds of files in
 /// one second, a horizon of equally-unknown old files) paints ONE color
 /// instead of spreading an arbitrary gradient across meaningless
-/// micro-differences — the defect that fired the ADR's re-open trigger. A
+/// micro-differences — the defect that fired the re-open trigger. A
 /// rank, not a linear age, so real distinct times still spread evenly.
 /// Computed over the FULL graph — never the narrowed slice — so a node's heat
 /// is stable under narrowing (the `module_hues` discipline). The package
@@ -246,7 +246,7 @@ fn recency_ranks(graph: &LinkageGraph, recency: Option<&CodeRecency>) -> BTreeMa
     ranks
 }
 
-/// Attach the served recency rank (code-graph-heat ADR) when the node has one.
+/// Attach the served recency rank when the node has one.
 fn annotate_recency(view: &mut Value, key: &str, ranks: &BTreeMap<String, f64>) {
     if let Some(rank) = ranks.get(key) {
         view["recency_rank"] = Value::from(*rank);
@@ -440,10 +440,10 @@ pub fn code_graph_query(
     }
 }
 
-/// The code corpus's facet vocabulary (ADR D5: `/filters` serves the ACTIVE
+/// The code corpus's facet vocabulary (`/filters` serves the ACTIVE
 /// corpus's vocabulary only): the distinct language tokens present, the
 /// source-bearing directory keys (for the `dir_prefix` narrow — a vocabulary
-/// of paths, NOT nodes), and the corpus date span (code-timeline-range ADR) —
+/// of paths, NOT nodes), and the corpus date span —
 /// the min/max worktree-mtime day over the file nodes, in the SAME
 /// `date_bounds` / `date_bounds_by_field` shape the vault vocabulary serves, so
 /// the timeline strip fits to the active corpus with one reader. Only the
@@ -766,7 +766,7 @@ mod tests {
         assert!(v.get("date_bounds_by_field").is_none());
     }
 
-    // ---- code-timeline-range ADR: mtime date narrowing ----------------------
+    // ---- Mtime date narrowing ----------------------
 
     fn dated_file_node(path: &str, mtime_ms: i64) -> Node {
         let mut n = file_node(path);
@@ -868,7 +868,7 @@ mod tests {
 
     #[test]
     fn recency_rank_is_a_percentile_with_package_max_and_honest_absence() {
-        // code-graph-heat ADR: files rank by mtime percentile over ALL dated
+        // Files rank by mtime percentile over ALL dated
         // files; the package rollup folds the MAX over member files; an
         // undated file serves NO rank.
         let (g, _old_day, _new_day) = dated_graph();
@@ -915,7 +915,7 @@ mod tests {
         assert_eq!(old["recency_rank"], json!(0.0));
     }
 
-    // ---- code-graph-heat ADR amendment: git-derived composite ranking -------
+    // ---- Git-derived composite ranking -------
 
     fn rank_in<'a>(slice: &'a GraphSlice, id: &str) -> Option<&'a Value> {
         slice

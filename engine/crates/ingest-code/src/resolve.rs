@@ -1,4 +1,4 @@
-//! Import-path resolution (codebase-graphing ADR D2): map a literal import
+//! Import-path resolution: map a literal import
 //! specification to a repo-relative TARGET FILE that the walk admitted.
 //!
 //! Resolution probes ONLY the walked-file set — never the filesystem — so it
@@ -6,7 +6,7 @@
 //! that resolves to nothing is either EXTERNAL (a package/stdlib reference —
 //! normal and counted) or UNRESOLVED (looked internal but no file matched —
 //! counted separately as the accuracy signal). Neither mints an edge in v1
-//! (ADR D2: dropped with counters).
+//! (dropped with counters).
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;

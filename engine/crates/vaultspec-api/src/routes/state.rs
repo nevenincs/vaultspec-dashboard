@@ -84,7 +84,7 @@ pub struct DashboardState {
     pub date_range: DateRange,
     pub timeline_mode: DashboardTimelineMode,
     pub graph_granularity: GraphGranularity,
-    /// The active graph corpus / view mode (codebase-graphing ADR D7): which
+    /// The active graph corpus / view mode: which
     /// dataset the whole graph surface renders — the VAULT knowledge graph
     /// (default) or the DISCONNECTED code graph. Threaded into the graph query
     /// so a switch re-queries the other corpus and the scene reloads. Seeded on
@@ -118,7 +118,7 @@ impl DashboardState {
     }
 }
 
-/// The graph corpus / view mode (codebase-graphing ADR D7). Vault is the
+/// The graph corpus / view mode. Vault is the
 /// default so an unspecified state is the pre-corpus behaviour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]

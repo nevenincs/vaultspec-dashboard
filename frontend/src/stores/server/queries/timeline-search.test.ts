@@ -157,7 +157,7 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
     ).toMatchObject({
       showLoading: true,
       // Loading is UI-only: the label is the screen-reader name of the shared
-      // Skeleton, with no presentation className carried (state-mode-uniformity ADR).
+      // Skeleton, with no presentation className carried.
       loadingLabel: "reading the timeline…",
       showEmpty: false,
       showError: false,
@@ -177,7 +177,7 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
     ).toMatchObject({
       showEmpty: true,
       // Empty renders through the shared StateBlock; only the sentence is the
-      // deriver's, presentation is the kit's (state-mode-uniformity ADR).
+      // deriver's, presentation is the kit's.
       emptyLabel: "lineage appears as documents gain dates",
     });
 
@@ -208,7 +208,7 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
       }),
     ).toMatchObject({
       // Degraded renders through the shared StateBlock inline notice; only the
-      // sentence is the deriver's (state-mode-uniformity ADR).
+      // sentence is the deriver's.
       showDegraded: true,
       degradedLabel: "reconnecting — showing the last lineage",
       showError: false,
@@ -237,15 +237,14 @@ describe("deriveTimelineSurfaceChromeView (timeline status chrome)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// adaptLineageSlice + /graph/lineage consumer fidelity (dashboard-timeline
-// W02.P04.S24).
+// adaptLineageSlice + /graph/lineage consumer fidelity.
 //
 // A sample CAPTURED from the live `/graph/lineage` wire shape (the engine
 // `graph_lineage` route's `{data: {nodes, arcs, truncated}, tiers}` envelope) is
 // fed through the SAME unwrap + adapter path the app uses.
 // ---------------------------------------------------------------------------
 
-describe("adaptLineageSlice + /graph/lineage consumer fidelity (W02.P04.S24)", () => {
+describe("adaptLineageSlice + /graph/lineage consumer fidelity", () => {
   // A live `/graph/lineage` envelope: two dated, lane-owning document nodes in
   // range and ONE self-consistent structural arc between them. The live route
   // serves `{data: {nodes, arcs, truncated}, tiers}`; the semantic tier is

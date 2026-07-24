@@ -22,7 +22,7 @@ pub(super) const COMMAND_OUTCOME_TTL_MS: i64 = 24 * 3_600 * 1_000;
 /// The direct-write feature gate. Direct-changeset is the SOLE editor-save
 /// path (no legacy alternative remains), so `enabled` is a pure kill switch —
 /// ON by default, overridable by hand-editing the capability file to `false`
-/// (the same transition-era ops story the P49-R2 review banked as an advisory:
+/// (the same transition-era ops story a prior review banked as an advisory:
 /// an admin route/setting seam should eventually own this).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,8 +86,8 @@ impl DirectWriteStatus {
     }
 }
 
-/// WHY a `Denied` direct-write outcome was refused, machine-readable (W05.P14)
-/// — replaces the frontend's fragile substring match on `eligibility.reason`
+/// WHY a `Denied` direct-write outcome was refused, machine-readable —
+/// replaces the frontend's fragile substring match on `eligibility.reason`
 /// text (a backend reason-WORDING change could silently break it). Set from a
 /// STRUCTURED source at the SAME point the reason string is built — a
 /// `ConflictKind` finding (via `apply::ApplyDenialKind`), or a classification
@@ -112,7 +112,7 @@ pub enum DirectWriteDenialKind {
     /// with the richer `DirectWriteConflict` detail, before `denial_kind` is
     /// ever read.
     StaleBase,
-    /// The scope pin (W02.P06) did not match the server's active workspace.
+    /// The scope pin did not match the server's active workspace.
     ScopeMismatch,
     /// The actor is not human; direct editor saves require a human actor.
     ForbiddenActor,
@@ -175,7 +175,7 @@ pub struct DirectWriteRecord {
     pub conflict: Option<DirectWriteConflict>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eligibility: Option<ActionEligibility>,
-    /// The structured denial classification (W05.P14) — see
+    /// The structured denial classification — see
     /// [`DirectWriteDenialKind`]'s doc for the "always `Some` when `Denied`"
     /// discipline.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -209,7 +209,7 @@ pub struct DirectWriteOutcome {
     pub conflict: Option<DirectWriteConflict>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eligibility: Option<ActionEligibility>,
-    /// The structured denial classification (W05.P14) — see
+    /// The structured denial classification — see
     /// [`DirectWriteDenialKind`]'s doc for the "always `Some` when `Denied`"
     /// discipline.
     #[serde(skip_serializing_if = "Option::is_none")]

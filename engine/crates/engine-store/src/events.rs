@@ -1,7 +1,7 @@
-//! Temporal event log persistence (engine-spec §8; contract §5 raw event
+//! Temporal event log persistence (contract §5 raw event
 //! shape), correlating events to engine node ids.
 //!
-//! Audit carry W01P01-002 is closed here: corrupt `node_ids` rows are a
+//! Corrupt `node_ids` rows are a
 //! loud, typed error on read — `node_ids` is contract-load-bearing
 //! (timeline click → pulse the stage nodes), so silent emptiness would
 //! corrupt the join key.
@@ -52,8 +52,7 @@ pub fn persist_events(store: &Store, events: &[EventRecord]) -> Result<Vec<i64>>
         .collect()
 }
 
-/// Read events in a time range, failing loud on corrupt `node_ids`
-/// (audit W01P01-002).
+/// Read events in a time range, failing loud on corrupt `node_ids`.
 pub fn events_in_range_strict(store: &Store, from_ts: i64, to_ts: i64) -> Result<Vec<EventRow>> {
     store.events_in_range(from_ts, to_ts)
 }

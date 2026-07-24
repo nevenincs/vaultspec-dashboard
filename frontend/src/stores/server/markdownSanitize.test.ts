@@ -1,5 +1,5 @@
-// Unit tests for the editorial reader sanitizer (document-reader hardening):
-// heading text reduces to plain text, intra-word underscores survive, HTML
+// Unit tests for the editorial reader sanitizer: heading text reduces to plain
+// text, intra-word underscores survive, HTML
 // comments are stripped in read mode, and fenced code blocks pass through.
 
 import { describe, expect, it } from "vitest";

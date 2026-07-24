@@ -221,7 +221,7 @@ fn vocabulary_serves_per_criterion_date_bounds_for_all_three_fields() {
 
 #[test]
 fn status_and_plan_tier_facets_are_enumerated_sorted_and_deduped() {
-    // W01.P03.S14: the status and plan-tier vocabulary is data-driven —
+    // The status and plan-tier vocabulary is data-driven —
     // enumerated from the nodes actually present, sorted, deduped. A node
     // with neither contributes to neither facet.
     use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
@@ -280,7 +280,7 @@ fn status_and_plan_tier_facets_are_enumerated_sorted_and_deduped() {
 
 #[test]
 fn status_and_plan_tier_filters_narrow_and_reject_out_of_enum() {
-    // W01.P03.S12/S13: the matches_node check narrows to the requested set;
+    // The matches_node check narrows to the requested set;
     // a node with no status/tier is excluded when the facet is non-empty;
     // validation rejects an out-of-enum status or tier.
     use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};
@@ -501,7 +501,7 @@ fn date_field_selects_which_date_the_window_filters_by() {
 
 #[test]
 fn feature_query_glob_and_regex_search_over_feature_tags() {
-    // filter-controls campaign: the feature query narrows by glob or regex
+    // The feature query narrows by glob or regex
     // over a node's feature_tags (any-match), case-insensitive; an empty
     // pattern is dropped; a malformed regex 400s.
     use engine_model::{CanonicalKey, NodeKind, Presence, ScopeRef, node_id};

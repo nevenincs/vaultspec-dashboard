@@ -179,7 +179,7 @@ fn materialized_child(
     )
 }
 
-/// A materialized `Rename` child (W02.P04 carry-forward coverage), mirroring
+/// A materialized `Rename` child (carry-forward coverage), mirroring
 /// `materialized_child`'s ReplaceBody pattern.
 fn materialized_rename_child(
     root: &Path,
@@ -406,7 +406,7 @@ fn successful_rebase_produces_new_reviewable_draft_against_current_base() {
 
 #[test]
 fn successful_rebase_carries_forward_a_rename_by_re_targeting_the_same_new_stem() {
-    // W02.P04 follow-on: carry-forward previously hardcoded ReplaceBody only
+    // Carry-forward previously hardcoded ReplaceBody only
     // (rebase.rs:442 pre-fix); a Conflicted Rename source must re-materialize
     // against the fresh base while PRESERVING the proposed target stem —
     // never dropping the rename intent, never silently downgrading to a
@@ -1052,7 +1052,7 @@ fn rebase_of_a_rollback_changeset_preserves_kind_into_rollback_proposed() {
     assert_eq!(rebased.status, ChangesetStatus::RollbackProposed);
 }
 
-// --- W02.P05: CreateDocument is denied carry-forward, not dropped -------
+// --- CreateDocument is denied carry-forward, not dropped -------
 
 fn materialized_create_document_child(
     changeset_id: &ChangesetId,

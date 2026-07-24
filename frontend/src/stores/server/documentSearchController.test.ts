@@ -1,7 +1,6 @@
 // @vitest-environment happy-dom
 
-// Document-search plane units (command-palette-planes ADR, W02.P05; search-
-// providers ADR D3): the honest state derivation plus the thin-consumer wiring.
+// Document-search plane units: the honest state derivation plus the thin-consumer wiring.
 // The literal MATCH now lives in the shared files(vault) provider over the one
 // `literalMatch` utility (covered by `literalMatch` + `searchProviders` vectors),
 // so the finder's private scanner is gone; this file keeps the finder's pure

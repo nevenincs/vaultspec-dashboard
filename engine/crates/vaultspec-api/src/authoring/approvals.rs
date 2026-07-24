@@ -1,4 +1,4 @@
-//! Changeset approval requests and decisions (W03.P23).
+//! Changeset approval requests and decisions.
 //!
 //! A `changeset_approval_request` is keyed by `proposal_id` and asks whether a
 //! reviewed proposal revision may later be applied (approval-gates-review-state
@@ -54,7 +54,7 @@ const APPROVAL_SCHEMA: &str = "authoring.approval.v1";
 /// the reviewed tuple (proposal_revision / target_revisions / validation_digest)
 /// vs current; policy staleness is a no-op-vs-constant in V1.
 ///
-/// RETURN TRIGGER: when the policy store lands (W05.P24 / Increment 5), replace
+/// RETURN TRIGGER: when the policy store lands (Increment 5), replace
 /// this constant with the resolved policy version at review time, and a
 /// policy-version change then makes an approval stale exactly like a revision or
 /// digest change (`policy_version_current` already threads through the freshness
@@ -64,7 +64,7 @@ pub const V1_POLICY_VERSION: &str = "authoring.approval_policy.v1";
 /// The V1 approval-request queue lifecycle (approval-gates-review-state ADR): a
 /// request is `queued` until a reviewer decides, `decision_submitted` once a
 /// decision is bound, then `closed`. Request-changes / edit-response loops that
-/// re-open review are the Increment 5 remainder (W05.P24).
+/// re-open review are the Increment 5 remainder.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalQueueState {
@@ -291,7 +291,7 @@ pub fn review_decision_eligibility(
             approve_transition_eligibility(current, freshness, validation)
         }
         ApprovalDecision::Reject => reject_transition_eligibility(current, freshness, validation),
-        // Request-changes ACTIVATES the deferred W05.P23 remainder (W13.P24): the reviewer
+        // Request-changes ACTIVATES the deferred remainder: the reviewer
         // sends the proposal back for revision through the declared EditProposal arc
         // (NeedsReview|Approved -> Draft / RollbackProposed), which stales the reviewed
         // material. It is feedback, not an approval, so the self-approval ban does not
@@ -366,7 +366,7 @@ impl ApprovalRepository<'_, '_> {
         self.store_record(&record)?;
         // A pending approval is product state: register it in retention as
         // record_kind="approval"/Pending so compaction can never silently delete
-        // it (approval-gates-review-state ADR; retention S40). Same unit of work.
+        // it. Same unit of work.
         self.register_retention(&record, LifecycleStatus::Pending)?;
         // Publish the `approval.requested` lifecycle transition to the durable outbox
         // in the SAME commit boundary, so a downstream verdict subscriber parks the run
@@ -458,7 +458,7 @@ impl ApprovalRepository<'_, '_> {
             .ok_or_else(|| ApprovalError::MissingChangeset(request.changeset_id.to_string()))?;
         // The self-approval ban keys on the ORIGIN (proposing) author, not
         // `current.actor` — after an approval revision, latest().actor is the
-        // reviewer (P23-R1). Read the first revision's actor.
+        // reviewer. Read the first revision's actor.
         let origin = self
             .uow
             .ledger()

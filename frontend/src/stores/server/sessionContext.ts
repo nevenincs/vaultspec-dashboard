@@ -42,7 +42,7 @@ export function deriveSessionScopeRestoreIntent({
 }
 
 /**
- * Persist the cold-start default scope ONCE (W04.P09.S29). The effect runs only
+ * Persist the cold-start default scope ONCE. The effect runs only
  * when the session has loaded with no active scope, the user has not picked one,
  * and a vault-bearing default exists. This is stores-layer session orchestration:
  * app surfaces mount it once, but do not interpret session/map state themselves.
@@ -215,8 +215,8 @@ export function deriveDurableWorkspaceLayoutView(
 }
 
 /**
- * Seed the view store's scope + folder context from the restored session
- * (W04.P09.S30). On the first successful session load it mirrors durable
+ * Seed the view store's scope + folder context from the restored session.
+ * On the first successful session load it mirrors durable
  * `{ active_scope, scope_context }` into the view store without triggering a
  * wholesale scope-swap reset. Later session refetches cannot clobber in-session
  * edits because this is one-shot per mount.

@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Graph-slice delta reconcile (graph-slice-delta ADR D4): the id-keyed node/edge
+// Graph-slice delta reconcile: the id-keyed node/edge
 // merge and the patch/full-drain/noop decision are pure and deterministic; the
 // reconcile enumerates active document-slice observers, patches via the SHARED
 // identity guard, and floors the fallback sweep. The live end-to-end delta wire is

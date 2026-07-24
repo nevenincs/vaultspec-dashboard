@@ -123,7 +123,7 @@ pub async fn release_lease(
     }
 }
 
-// --- section-anchored comments (authoring-surface ADR D2) ---------------------
+// --- section-anchored comments ---------------------
 
 #[derive(Debug, serde::Deserialize)]
 pub(crate) struct CommentListParams {
@@ -370,7 +370,7 @@ pub(super) async fn apply_changeset_body(
     payload: ApplyRequestDto,
 ) -> Result<(StatusCode, Value), Response> {
     let changeset_id = payload.changeset_id.clone();
-    // The ADVISORY fencing token the applying actor presents (W13.P26); enforced by the
+    // The ADVISORY fencing token the applying actor presents; enforced by the
     // apply preflight only when a live lease holds the target document's scope.
     let presented_fencing_token = payload.fencing_token;
 
@@ -473,7 +473,7 @@ pub(super) fn apply_outcome_value(outcome: &ApplyOutcome) -> (StatusCode, Value)
     )
 }
 
-// --- agent-tool executor seam (W12.P41 A3b) ------------------------------------
+// --- agent-tool executor seam ------------------------------------
 
 /// A command-dispatch idempotency key deterministically derived from the tool
 /// call's id (bounded via `blob_oid`, so an at-cap `tool_call_id` can never overflow
@@ -551,16 +551,16 @@ pub(super) fn agent_tool_execute_response(
     (status, super::super::response::snapshot(state, value)).into_response()
 }
 
-/// `POST /authoring/v1/runs/{run_id}/agent-tools/execute` — the P41 tool-call
-/// executor run loop wired to HTTP (W12.P41 A3b). `prepare_tool_call` resolves the
-/// semantic tool call to its typed dispatch shape (S152); `executor::execute_tool_call`
-/// runs the P22/P32 gate (record-before-dispatch, effectively-once by `tool_call_id`,
+/// `POST /authoring/v1/runs/{run_id}/agent-tools/execute` — the tool-call
+/// executor run loop wired to HTTP. `prepare_tool_call` resolves the
+/// semantic tool call to its typed dispatch shape; `executor::execute_tool_call`
+/// runs the gate (record-before-dispatch, effectively-once by `tool_call_id`,
 /// denials-are-values). A GRANTED mutating/dangerous dispatch routes to the SAME
 /// dedicated command body every purpose-built route uses — one implementation per
 /// command, no drift. A read tool never dispatches a command: the gate records its
 /// permitted `ToolCallRecord` and the caller serves the prepared read descriptor; the
 /// caller pulls the read itself through the dedicated read routes. The actor is the
-/// server-resolved principal (ASA-010), never a body claim.
+/// server-resolved principal, never a body claim.
 pub async fn execute_agent_tool_call(
     State(state): State<Arc<AppState>>,
     Path(run_id): Path<RunId>,
@@ -578,7 +578,7 @@ pub async fn execute_agent_tool_call(
     let tool = prepared.name;
     let tool_call_id = prepared.tool_call_id.clone();
 
-    // W14.P42a — authorization tool-requester guard: only a Human or an Agent may drive
+    // Authorization tool-requester guard: only a Human or an Agent may drive
     // the semantic tool surface. A System actor's authority is the policy auto-approve
     // lane and a ToolExecutor is an execution identity, not a requester; either is refused
     // as a denial VALUE (never a fault), BEFORE the tool-permission gate records anything.
@@ -671,7 +671,7 @@ pub(super) async fn dispatch_agent_tool_command(
     let command_kind = prepared.command;
     let reader = SnapshotReader::for_worktree(state.active_workspace_root());
 
-    // W14.P42a — the agent is the untrusted writer the standing/delegation/scope guards
+    // The agent is the untrusted writer the standing/delegation/scope guards
     // target. A granted tool call dispatches its MAPPED backend command INTERNALLY (no
     // second `ResolvedCommand` extraction), so authorize the mapped command EXPLICITLY here
     // before its effect: standing + delegation always, plus the document-scope guard over
@@ -727,7 +727,7 @@ pub(super) async fn dispatch_agent_tool_command(
         PreparedToolDispatch::ProposeChangeset { dispatch } => match dispatch {
             ProposeChangesetDispatch::Create { command } => {
                 let context = proposal_context(actor, command_key, now);
-                // D4: the granted tool call recorded its run before dispatch; stamp that
+                // The granted tool call recorded its run before dispatch; stamp that
                 // run and its prompt turn (joined through the run record) as the
                 // changeset's provenance so a proposal is auditable to the exact run.
                 let run_id = outcome

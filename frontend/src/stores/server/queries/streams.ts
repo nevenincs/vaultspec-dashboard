@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { StreamLostError } from "../../../platform/policy/failurePolicy";
@@ -101,7 +101,7 @@ function isAbort(cause: unknown): boolean {
 
 /**
  * Consume a long-lived SSE Response body as an async iterable of chunks. Any
- * transport end, including a clean EOF, throws `StreamLostError` (ADR D2) so
+ * transport end, including a clean EOF, throws `StreamLostError` so
  * the query retry policy reconnects instead of leaving a mounted consumer
  * permanently detached from a still-running producer.
  * An intentional abort (unmount / scope change) is re-thrown untouched - it is
@@ -203,7 +203,7 @@ export function engineStreamOptions(
     // The resume point is identity-bearing: two `since` offsets carry
     // different delta windows and must not collide on one cache entry
     // (adversarial finding stream-01), mirroring how `graph` folds as-of.
-    // Scope joins the key for the same reason (per-scope clock, W02.P04.S14).
+    // Scope joins the key for the same reason (per-scope clock).
     queryKey: engineKeys.stream(identity.channels, identity.since, identity.scope),
     queryFn: streamedQuery({
       streamFn: async (context) =>
@@ -258,8 +258,8 @@ export const BACKEND_SIGNAL_CHANNELS = ["backends", "git"] as const;
  * coalesces them onto the one EventSource (each filters the deduped accumulator
  * for its own channel). No `since`/`scope` — these channels are not anchored.
  */
-/** Grace before a hidden tab pauses the backend-signal stream
- *  (universal-data-loading ADR D4): long enough that tab-switching never
+/** Grace before a hidden tab pauses the backend-signal stream:
+ *  long enough that tab-switching never
  *  churns the EventSource, short enough that a parked tab stops holding a
  *  connection open. */
 export const BACKEND_SIGNAL_HIDDEN_PAUSE_MS = 60_000;
@@ -296,7 +296,7 @@ export function useDocumentHiddenPause(
 }
 
 /**
- * Hidden-tab pause (universal-data-loading ADR D4): when the tab stays hidden
+ * Hidden-tab pause: when the tab stays hidden
  * past the grace, the subscription disables AND the in-flight stream is
  * cancelled (closing the EventSource — `enabled: false` alone would leave it
  * open, and cancelling alone would let `retry` reconnect). On return the

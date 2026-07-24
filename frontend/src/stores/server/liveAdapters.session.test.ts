@@ -1,5 +1,4 @@
-// The mock-versus-live PARITY proof for the session/settings surface
-// (user-state-persistence W04.P10.S34): a sample CAPTURED from the live
+// The mock-versus-live PARITY proof for the session/settings surface: a sample CAPTURED from the live
 // `vaultspec serve` session/settings routes (the exact `{data, tiers}` shapes
 // `conformance.rs` asserts engine-side) is fed through the SAME tolerant adapter
 // the app uses, and must reconcile onto the internal shape. Tolerance is proven
@@ -176,8 +175,8 @@ describe("adaptSession (live session sample)", () => {
     expect(empty).toEqual({
       workspace: "",
       active_scope: "",
-      // The active-workspace field defaults to null (dashboard-workspace-registry
-      // ADR) so a sparse or older session restores as "no project selected yet".
+      // The active-workspace field defaults to null so a sparse or older session
+      // restores as "no project selected yet".
       active_workspace: null,
       scope_context: { folder: null, feature_tags: [] },
       recents: [],

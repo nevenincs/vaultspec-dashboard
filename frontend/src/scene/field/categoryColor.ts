@@ -1,5 +1,4 @@
-// Category colour for the node BODY (graph/Node-items 83:2, graph/Hero 85:2;
-// figma-parity-reconciliation W03.P07.S43).
+// Category colour for the node BODY (graph/Node-items 83:2, graph/Hero 85:2).
 //
 // The binding Figma redesign makes each canvas node a PLAIN FILLED CIRCLE
 // coloured by document category — one of seven category hues (`code` and `index`
@@ -20,11 +19,11 @@
 import { cssColorNumber } from "./tokenReads";
 
 /** The sanctioned node categories (Figma graph/Node-items 83:2), plus `reference`
- *  (terminology-standardization ADR D3) and `code` (codebase-graphing ADR D7).
+ *  and `code`.
  *  `index` is NOT a scene node category: `.vault/index` feature-index documents are
  *  metanodes dropped at ingest, never a knowledge-graph node.
  *
- *  `code` IS a category — but ONLY for the disconnected CODE corpus (ADR D7): the
+ *  `code` IS a category — but ONLY for the disconnected CODE corpus: the
  *  vault graph still never paints a code node (the adapter/engine exclude it), so
  *  `code` and the vault categories never appear in the same slice. It reuses the
  *  design system's existing `--color-scene-category-code` token (the same colour
@@ -44,11 +43,11 @@ export type NodeCategory =
  * doc-type vocabulary carries a few kinds outside the Figma swatches; they fold
  * onto the nearest category so every displayed node still reads as a category-
  * coloured circle:
- *   - reference -> reference (its own bound colour, ADR D3)
+ *   - reference -> reference (its own bound colour)
  *   - summary   -> exec      (a summary is an exec document — a Phase Summary of
  *                             execution records under `.vault/exec/`; the prior
- *                             summary->index mapping was the metanode confusion the
- *                             index-node-exclusion ADR corrects)
+ *                             summary->index mapping was a metanode confusion,
+ *                             now corrected)
  *   - rule      -> adr       (a rule is a codified decision)
  *
  * It ALSO accepts the wire node SPECIES (`kind`) for nodes that carry no doc
@@ -79,8 +78,8 @@ export function nodeCategory(kind: string): NodeCategory {
     // category so the species still paints a legend colour.
     case "plan-container":
       return "plan";
-    // The CODE corpus's one node species (codebase-graphing ADR D7,
-    // code-graph-files-only): a source FILE (`code-artifact`) paints the `code`
+    // The CODE corpus's one node species (code-graph-files-only): a source
+    // FILE (`code-artifact`) paints the `code`
     // category colour. Files are the corpus's only kind — a package is its
     // entry file, distinguished by the anchor treatment, not a second hue.
     case "code-artifact":
@@ -106,7 +105,7 @@ const CATEGORY_FALLBACK: Record<NodeCategory, number> = {
   exec: 0xb5703f,
   audit: 0x3f9aa6,
   reference: 0x9d5e86,
-  // codebase-graphing ADR D7: mirrors `--color-scene-category-code` light/:root.
+  // Mirrors `--color-scene-category-code` light/:root.
   code: 0xb05a6b,
 };
 

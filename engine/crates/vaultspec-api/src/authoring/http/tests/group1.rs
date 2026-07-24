@@ -6,7 +6,7 @@ use super::helpers2::*;
 #[tokio::test]
 async fn a_resolved_principal_and_a_valid_body_yield_the_server_actor() {
     let (_state_dir, state) = fixture_state();
-    // W14.P42a: the extractor now runs the standing floor, so the resolved actor
+    // The extractor now runs the standing floor, so the resolved actor
     // must be a registered, active actor to extract a command.
     register_actor(&state, &agent());
     let (_token_dir, principal) = resolved_principal(&agent());
@@ -424,7 +424,7 @@ async fn direct_write_route_uses_actor_token_and_records_agent_denial_as_value()
             .as_str()
             .is_some_and(|reason| reason.contains("agents must propose changesets"))
     );
-    // W05.P14: the wire discriminator, set from the actor-kind gate itself.
+    // The wire discriminator, set from the actor-kind gate itself.
     assert_eq!(body["data"]["denial_kind"], "forbidden_actor");
     assert!(body["tiers"]["semantic"]["available"].is_boolean());
     assert!(
@@ -541,7 +541,7 @@ async fn direct_write_route_applies_a_create_document_through_the_real_core() {
     let child = &body["data"]["record"]["apply_receipt"]["child"];
     assert_eq!(child["outcome"], "applied", "{body}");
 
-    // W03.P09a: the outcome now ECHOES the created document's real
+    // The outcome now ECHOES the created document's real
     // identity (path/node-id/stem) — the frontend auto-open restore
     // reads this instead of guessing core's date-slug filename
     // convention client-side. Assert on the ECHOED identity, then use
@@ -596,7 +596,7 @@ async fn direct_write_route_refuses_a_mismatched_scope_pin_as_a_redacted_denial(
             .as_str()
             .is_some_and(|reason| reason.contains("does not match the server's active workspace"))
     );
-    // W05.P14: the wire discriminator, set at the scope-pin check itself.
+    // The wire discriminator, set at the scope-pin check itself.
     assert_eq!(body["data"]["denial_kind"], "scope_mismatch");
     assert!(
         !body.to_string().contains("completely/different/workspace"),
@@ -829,7 +829,7 @@ async fn an_ineligible_command_is_a_200_denial_not_a_4xx_fault() {
     );
 }
 
-// ---- W14.P42a S259: conflict serve route ---------------------------------------
+// ---- conflict serve route ---------------------------------------
 
 /// The conflict route serves an HONEST empty report for a proposal whose base is still
 /// current — the "your base is current" value the review view renders directly.

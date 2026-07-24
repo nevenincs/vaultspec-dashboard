@@ -1,4 +1,4 @@
-//! Per-file syntactic import extraction (codebase-graphing ADR D2): parse with
+//! Per-file syntactic import extraction: parse with
 //! the language's tree-sitter grammar, run its import query, and return the
 //! captured import specifications with byte spans. Purely syntactic — literal
 //! import text, no name resolution (that is `resolve`'s job) — so extraction

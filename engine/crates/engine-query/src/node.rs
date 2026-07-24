@@ -10,7 +10,7 @@ use serde::Serialize;
 
 /// Node detail: the context bundle is the interior-structure carrier in
 /// v1 (plan wave/phase/step interiors arrive when plan-container nodes are
-/// minted from plan parsing — the W02P06-301 identity decision keeps
+/// minted from plan parsing — the identity decision keeps
 /// mention-target ids stable for that arrival).
 #[derive(Debug, Clone, Serialize)]
 pub struct NodeDetail {
@@ -22,12 +22,12 @@ pub fn node_detail(graph: &LinkageGraph, id: &NodeId) -> Option<NodeDetail> {
     context(graph, id).map(|bundle| NodeDetail { bundle })
 }
 
-// --- Plan-container interior (dashboard-pipeline-wire W03.P08) ----------------
+// --- Plan-container interior ----------------
 
 use engine_model::RelationKind;
 
 /// Hard ceiling on the number of plan-container entities serialized in one
-/// interior response (W03.P08.S42 / `graph-queries-are-bounded-by-default`): a
+/// interior response (`graph-queries-are-bounded-by-default`): a
 /// large L4 plan's step tree is a real payload, so the interior is served under
 /// a node ceiling with honest `truncated` reporting, never an unbounded slice.
 /// The count is total entities (waves + phases + steps).
@@ -80,7 +80,7 @@ pub struct InteriorWave {
     pub rollup: InteriorRollup,
 }
 
-/// Honest truncation block (W03.P08.S42), mirroring the graph-query shape.
+/// Honest truncation block, mirroring the graph-query shape.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct InteriorTruncated {
     pub total_nodes: usize,
@@ -109,7 +109,7 @@ pub struct PlanSummary {
     pub plan_state: Option<String>,
 }
 
-/// The bounded interior of a plan node (W03.P08.S40): the ordered
+/// The bounded interior of a plan node: the ordered
 /// wave/phase/step entities the plan descends into, at whatever depth the plan
 /// declares, plus an optional truncation block. Tier-shape honest like the
 /// parser: an L1 plan returns flat `steps`, an L2 plan `phases`, L3/L4 `waves`.
@@ -204,7 +204,7 @@ fn contained_children<'a>(graph: &'a LinkageGraph, parent: &NodeId) -> Vec<&'a N
     children
 }
 
-/// Project a plan node into its bounded plan-container interior (W03.P08.S41).
+/// Project a plan node into its bounded plan-container interior.
 /// Returns `None` for an unknown node or a node that is not a plan document
 /// (truthful absence). Descends the `Contains` hierarchy under a node ceiling;
 /// when the entity count exceeds the ceiling the returned subtree stays
@@ -428,14 +428,14 @@ pub fn neighbors(
         .filter_map(|node_id| graph.node(&NodeId(node_id.clone())).cloned())
         .collect();
     nodes.sort_by(|a, b| a.id.0.cmp(&b.id.0));
-    // #13 mis-resolved-edge prune (2026-06-22, product decision (b)): drop any edge
+    // Drop any edge
     // whose endpoint is not a materialized graph node, mirroring the document slice's
     // `endpoint_ok` (graph.rs). A step mention derives its target from the bare mention
     // text (`plan:W01.P01.S01`), which can never match a real plan-container step node
     // (`plan:<stem>/W01/P02/S03`) — a phantom; a broken wiki-link (`doc:<missing-stem>`)
     // and a temporal `commit:<sha>` endpoint are likewise non-materialized. The client
     // `buildEdges` filters such dangling edges anyway, so serving them is pure wire-waste
-    // the user directed us never to send (2026-06-21). The center is always materialized
+    // the user directed us never to send. The center is always materialized
     // (`graph.node(id)?` above), so it is never pruned.
     edges.retain(|e| graph.node(&e.src).is_some() && graph.node(&e.dst).is_some());
     edges.sort_by(|a, b| a.id.0.cmp(&b.id.0));
@@ -448,8 +448,8 @@ pub fn neighbors(
 
 /// Evidence for a node (contract §4 `/nodes/{id}/evidence`).
 ///
-/// The item shapes are ENRICHED to the GUI `NodeEvidence` type
-/// (figma-parity-reconciliation S13): `documents` carry `{ path, doc_type }`
+/// The item shapes are ENRICHED to the GUI `NodeEvidence` type:
+/// `documents` carry `{ path, doc_type }`
 /// (not bare stems), and `commits` carry the `subject`. The subject is filled
 /// by the route from a read-only git lookup (the pure graph projection has no
 /// git access), defaulting to empty until then.
@@ -481,7 +481,7 @@ pub struct CorrelatedCommit {
     /// git lookup; empty in the pure graph projection (which has no git access)
     /// and for a sha that does not resolve.
     pub subject: String,
-    /// The named correlation rule that fired (D3.4 attribution).
+    /// The named correlation rule that fired (attribution).
     pub rule: String,
     pub confidence: f32,
 }
@@ -555,7 +555,7 @@ mod tests {
 
     fn doc(stem: &str) -> Node {
         // Derive a doc_type from the stem suffix so the evidence projection's
-        // `{ path, doc_type }` document item is exercised (S13): `b-adr` → adr.
+        // `{ path, doc_type }` document item is exercised: `b-adr` → adr.
         let doc_type = stem.rsplit('-').next().map(|s| s.to_string());
         Node {
             id: node_id(&CanonicalKey::Document { stem }),
@@ -662,8 +662,8 @@ mod tests {
         let (g, a) = fixture();
         let one_hop = neighbors(&g, &a, 1, &[]).unwrap();
         // a—structural→b is kept; the commit—temporal→a edge is DROPPED because its
-        // `commit:<sha>` endpoint is not a materialized graph node (#13 prune, 2026-06-22:
-        // the ego serves only edges between real nodes, mirroring the document slice).
+        // `commit:<sha>` endpoint is not a materialized graph node
+        // (the ego serves only edges between real nodes, mirroring the document slice).
         assert_eq!(
             one_hop.edges.len(),
             1,
@@ -688,7 +688,7 @@ mod tests {
 
     #[test]
     fn neighbors_prunes_edges_to_unmaterialized_phantom_targets() {
-        // #13 (2026-06-22, product decision (b)): the ego must NOT serve an edge whose
+        // The ego must NOT serve an edge whose
         // endpoint is not a materialized node — the client `buildEdges` filters it anyway
         // (user directive: never send a filtered-out edge). Two phantom classes, BOTH
         // pruned — the ego has no broken-lens (unlike the doc-slice), so a broken-state
@@ -800,7 +800,7 @@ mod tests {
 
     #[test]
     fn evidence_serializes_to_the_gui_node_evidence_shape() {
-        // S13: the wire item shapes align to the GUI `NodeEvidence` type:
+        // The wire item shapes align to the GUI `NodeEvidence` type:
         // documents carry `{ path, doc_type }`, and commits carry `subject`.
         let (g, a) = fixture();
         let ev = evidence(&g, &a).unwrap();
@@ -813,7 +813,7 @@ mod tests {
         assert_eq!(commit0["rule"], "doc-and-code-in-one-commit");
     }
 
-    // --- Plan-interior projection (W03.P08.S45/S46) -------------------------
+    // --- Plan-interior projection -------------------------
 
     fn plan_doc(stem: &str) -> Node {
         Node {
@@ -899,7 +899,7 @@ mod tests {
 
     #[test]
     fn a_small_plan_interior_returns_whole_with_no_truncated_block() {
-        // W03.P08.S45: a small L3 interior returns the full wave/phase/step
+        // A small L3 interior returns the full wave/phase/step
         // tree with completion, and no truncated block.
         let mut g = LinkageGraph::new();
         let stem = "2026-06-14-x-plan";
@@ -971,7 +971,7 @@ mod tests {
 
     #[test]
     fn an_oversized_plan_interior_truncates_at_the_ceiling_and_reports_the_total() {
-        // W03.P08.S46: an interior exceeding the ceiling truncates at the cap,
+        // An interior exceeding the ceiling truncates at the cap,
         // keeps a self-consistent subtree, and reports the honest original
         // total. Build one phase with MAX + 100 steps directly under the plan.
         let mut g = LinkageGraph::new();

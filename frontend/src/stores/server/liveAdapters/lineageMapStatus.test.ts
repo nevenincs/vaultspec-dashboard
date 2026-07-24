@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { adaptFilters, adaptLineageSlice, adaptMap, adaptStatus } from "./index";
@@ -162,7 +162,7 @@ describe("adaptFilters (live vocabulary sample)", () => {
   });
 });
 
-describe("adaptLineageSlice (live lineage sample, dashboard-timeline W02.P03.S21)", () => {
+describe("adaptLineageSlice (live lineage sample)", () => {
   // Captured from the live `/graph/lineage` wire shape (engine `lineage.rs` →
   // `graph_lineage` route, unwrapped from `{data: {nodes, arcs, truncated},
   // tiers}`): dated document nodes in range with their derived phase lane, the

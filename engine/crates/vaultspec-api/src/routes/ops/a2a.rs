@@ -1,5 +1,5 @@
-//! The `/ops/a2a/{verb}` orchestration control pass-through (a2a-orchestration-
-//! edge ADR D1/D2): the engine forwards a FIXED six-verb whitelist to the
+//! The `/ops/a2a/{verb}` orchestration control pass-through: the engine forwards
+//! a FIXED six-verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -16,8 +16,8 @@
 //!   (a 4xx/5xx with a body) forwards VERBATIM at 200 with its `sibling_status`,
 //!   exactly as the rag write runner forwards a `status:"failed"` envelope.
 //!
-//! - **Actors and tokens are engine-provisioned after admission** (product ADR
-//!   D7): `run-start` first prepares an authenticated bounded reservation, mints
+//! - **Actors and tokens are engine-provisioned after admission**: `run-start`
+//!   first prepares an authenticated bounded reservation, mints
 //!   only its returned worker identities into the dedicated run-lease store,
 //!   then commits that reservation. Token values ride only the loopback body and
 //!   appear in NO log line.
@@ -47,7 +47,7 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED six-verb whitelist (ADR D1 + 2026-07-19 amendment): orchestration
+/// The FIXED six-verb whitelist: orchestration
 /// control and one bounded active-run recovery read only, with no mutating vault
 /// semantics. A verb outside this set is a 403 BEFORE any discovery or
 /// round-trip — the whitelist miss never reaches the sibling.
@@ -120,7 +120,7 @@ fn lock_run_start(run_id: &str) -> MutexGuard<'static, ()> {
 /// The typed request body for `POST /ops/a2a/{verb}`. Every field is optional at
 /// the type level and validated/bounded per verb before anything reaches the
 /// sibling; `actor_tokens` is deliberately ABSENT — the engine mints and injects
-/// them, a client can never supply an identity (ADR D2).
+/// them, a client can never supply an identity.
 #[derive(serde::Deserialize, Default)]
 pub struct A2aVerbBody {
     /// Client-observed active scope used only as a generation fence for
@@ -305,14 +305,14 @@ fn read_a2a_handoff(discovery_path: &std::path::Path, reference: &str) -> Result
     Ok(token)
 }
 
-/// DUAL-RESOLVE the resident a2a gateway endpoint (a2a-product-provisioning
-/// W02.P04.S30): PREFER the product controller's authenticated, versioned
+/// DUAL-RESOLVE the resident a2a gateway endpoint: PREFER the product
+/// controller's authenticated, versioned
 /// discovery (the secret-free `gateway-discovery.json` + the attach-control
-/// credential the `LifecyclePlane` resolves under ADR D5), and FALL BACK to the
+/// credential the `LifecyclePlane` resolves), and FALL BACK to the
 /// resident `service.json` + owner-restricted handoff path when the product path
 /// resolves nothing.
 ///
-/// The product path is the ADR-D5 target. The `service.json` fallback keeps the
+/// The product path is the preferred target. The `service.json` fallback keeps the
 /// live `/ops/a2a` edge green until the A2A capsule publishes the product
 /// discovery format, and retires when it does — it is NOT deleted. A product
 /// discovery that is stale, incompatible, or untrusted resolves `Unavailable`
@@ -536,7 +536,7 @@ fn build_forwarded_call(
             })
         }
         "active-runs" => {
-            // Reload-recovery of the live team-run binding (a2a-edge D3/D5): which
+            // Reload-recovery of the live team-run binding: which
             // runs are still non-terminal for THIS workspace, so a reloaded panel
             // can re-bind its transcript to a run it lost the client-side handle
             // to. `workspace_root` is the ENGINE-controlled active scope root, never
@@ -1097,7 +1097,7 @@ fn execute_broker_call(
 ) -> BrokeredRoundTrip {
     let _run_guard = run_start_id.map(lock_run_start);
 
-    // DUAL-RESOLVE (S30): prefer the product controller's authenticated discovery,
+    // DUAL-RESOLVE: prefer the product controller's authenticated discovery,
     // fall back to the resident service.json + handoff so the live edge stays green.
     let transport = match a2a_endpoint_dual(&state.a2a_lifecycle, discovery_candidates) {
         Ok((port, bearer)) => LoopbackTransport {
@@ -1280,8 +1280,8 @@ fn execute_broker_call(
     }
 }
 
-/// Map a loopback transport error to the engine response (ADR D1 sibling-down
-/// ruling): a business refusal the sibling ANSWERED (any non-2xx with a body)
+/// Map a loopback transport error to the engine response: a business refusal
+/// the sibling ANSWERED (any non-2xx with a body)
 /// forwards VERBATIM at 200 with its `sibling_status`; a genuine proxy fault —
 /// the sibling was discovered running but the round-trip crashed or timed out —
 /// is a 502/504. A read timeout surfaces as an `Io` error whose kind is
@@ -1338,8 +1338,8 @@ fn map_transport_error(
     }
 }
 
-/// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through
-/// (ADR D1/D2). A verb outside the six-verb whitelist is a 403 before any
+/// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through.
+/// A verb outside the six-verb whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor
@@ -1370,7 +1370,7 @@ pub async fn ops_a2a(
             .expect("validated run-start carries run_id")
     });
 
-    // RCR-001: the COMPLETE synchronous chain runs on Tokio's blocking pool —
+    // The COMPLETE synchronous chain runs on Tokio's blocking pool —
     // not only the final HTTP verb, but discovery-file reads, `/health`, status
     // preflight, and SQLite credential lifecycle as well. The closure owns every
     // value it needs; the body is never logged or formatted outside the socket

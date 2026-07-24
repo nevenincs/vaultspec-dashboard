@@ -1,16 +1,15 @@
-//! Structural-tier ingestion: deterministic extraction from document bodies
-//! (engine-spec §3).
+//! Structural-tier ingestion: deterministic extraction from document bodies.
 //!
 //! v1 extracts structural vault relationships only: canonical step identifiers
 //! (`W##.P##.S##`) and Obsidian wiki-link stems. Code paths and code symbols
 //! are prose, not graph relationships. Resolution state is signal: stale/broken
-//! edges are kept and surfaced, not dropped (D3.3).
+//! edges are kept and surfaced, not dropped.
 
 pub mod extract;
 pub mod plan_structure;
 pub mod reader;
 
-/// Fixed structural confidence bands (engine-spec §3, D3.2).
+/// Fixed structural confidence bands.
 pub const CONFIDENCE_RESOLVED: f32 = 0.9;
 pub const CONFIDENCE_STALE: f32 = 0.5;
 

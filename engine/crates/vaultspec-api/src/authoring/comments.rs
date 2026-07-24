@@ -1,4 +1,4 @@
-//! Section-anchored document comments (authoring-surface ADR D2).
+//! Section-anchored document comments.
 //!
 //! A comment is a durable, NON-re-derivable authoring-state entity: a note a
 //! human (or, later, an agent) attaches to a heading SECTION of a vault document.

@@ -1,4 +1,4 @@
-// Authoring wire client for the e2e acceptance suite (W14.P42 S207/S208): a thin,
+// Authoring wire client for the e2e acceptance suite: a thin,
 // framework-agnostic REST + SSE client over the REAL `/authoring/v1/*` surface —
 // no mock, no store/React coupling (the frontend's `stores/server/authoring.ts`
 // is a TanStack-bound facade, not reusable here). Mirrors the request shapes the

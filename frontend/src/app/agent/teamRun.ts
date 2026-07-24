@@ -1,4 +1,4 @@
-// The pure team-run reducer (a2a-orchestration-edge ADR D3): fold the relayed,
+// The pure team-run reducer: fold the relayed,
 // non-authoritative progress frames of ONE team run into an ordered, bounded view
 // the Transcript renders as a continuous scroll of collapsible sections. Pure so
 // the render tests drive it directly (mirrors `assembleTranscript`).

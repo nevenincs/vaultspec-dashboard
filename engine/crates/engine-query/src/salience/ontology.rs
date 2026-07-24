@@ -15,7 +15,7 @@ use engine_model::{Node, ScopeRef};
 
 use crate::ontology;
 
-/// The authority register (graph-node-semantics ADR "Authority class"): each
+/// The authority register: each
 /// document type names *what kind of question it answers*. The salience lenses
 /// bias their teleport toward an authority class, so this is the stable handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,7 +34,7 @@ pub enum AuthorityClass {
     Substrate,
     /// Any node without a recognized doc_type (commits, code artifacts, bare
     /// docs): no authority class to bias toward. `.vault/index` feature-index
-    /// metanodes are dropped at ingest (index-node-exclusion ADR) and so never
+    /// metanodes are dropped at ingest and so never
     /// reach this map; a stray one lands here, weighting to zero like any unknown.
     None,
 }
@@ -58,10 +58,10 @@ pub fn authority_class(node: &Node) -> AuthorityClass {
 }
 
 /// A type-specific lifecycle phase, collapsed to the cross-type axis the salience
-/// lifecycle multiplier needs (graph-node-semantics ADR "Type-specific lifecycle
+/// lifecycle multiplier needs ("Type-specific lifecycle
 /// vocabulary", reduced to the in-flight/durable/archived distinction that
 /// "recent but archived" and "old but in-flight" both turn on). The per-type
-/// vocabulary (ADR `proposed|accepted|deprecated`, plan progress, rule
+/// vocabulary (`proposed|accepted|deprecated`, plan progress, rule
 /// active|superseded) maps onto these phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LifecyclePhase {
@@ -83,7 +83,7 @@ pub enum LifecyclePhase {
 /// salience-specific axis the multiplier consumes.
 pub fn lifecycle_phase(node: &Node, scope: &ScopeRef) -> LifecyclePhase {
     // An archived facet presence wins: a recent-but-archived node is durable-at-
-    // most, never in-flight (the "recent but archived" case the ADR names).
+    // most, never in-flight (the "recent but archived" case).
     if node
         .facets
         .iter()
@@ -107,8 +107,7 @@ pub fn lifecycle_phase(node: &Node, scope: &ScopeRef) -> LifecyclePhase {
 }
 
 /// True when the node is an aggregate species — an execution record collapsible
-/// into its parent plan as "N records, M complete" (graph-node-semantics ADR
-/// "Aggregate-versus-individual weight hint"; the salience fan-out treatment
+/// into its parent plan as "N records, M complete" (the salience fan-out treatment
 /// consumes this). Delegates to the native semantics projection
 /// (`crate::ontology::is_aggregate_species`) so the hint has a single owner.
 pub fn is_aggregate(node: &Node) -> bool {
@@ -175,7 +174,7 @@ mod tests {
             authority_class(&node("rule", None, Presence::Exists)),
             AuthorityClass::Law
         );
-        // `index` is a metanode dropped at ingest (index-node-exclusion ADR) and
+        // `index` is a metanode dropped at ingest and
         // is no longer a register; a stray one degrades to None like any unknown.
         assert_eq!(
             authority_class(&node("index", None, Presence::Exists)),

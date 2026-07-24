@@ -1,4 +1,4 @@
-//! Worktree enumeration (engine-spec §2.2).
+//! Worktree enumeration.
 //!
 //! Worktrees are the privileged scopes: the local, disk-persisted
 //! development environments where structural resolution has a working tree
@@ -386,7 +386,7 @@ mod tests {
     use super::*;
     use crate::workspace::fixtures::*;
 
-    // S05: verify ahead=1, behind=0 after one local commit not yet pushed.
+    // Verify ahead=1, behind=0 after one local commit not yet pushed.
     #[test]
     fn ahead_behind_reflects_one_unpushed_commit() {
         let dir = tempfile::tempdir().unwrap();
@@ -482,7 +482,7 @@ mod tests {
         assert!(linked.dirty, "untracked file makes the worktree dirty");
     }
 
-    // S03: inspect_one returns exactly the matching worktree, and the result is
+    // inspect_one returns exactly the matching worktree, and the result is
     // identical to that worktree's entry from the full enumeration (parity).
     #[test]
     fn inspect_one_returns_the_matching_worktree() {

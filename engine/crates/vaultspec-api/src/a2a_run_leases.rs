@@ -1,18 +1,17 @@
-//! The dedicated, durable A2A run-token lease repository
-//! (a2a-product-provisioning W02.P05.S35/S39/S42/S160).
+//! The dedicated, durable A2A run-token lease repository.
 //!
 //! A2A run-start mints a bounded per-role token bundle only AFTER the gateway
-//! admits the run (ADR D7: admit before mint). Those tokens are the worker's
+//! admits the run (admit before mint). Those tokens are the worker's
 //! authenticated principal for its authoring commands, and they must be revoked
 //! the instant the run terminates, its dispatch fails, or its bounded lifetime
 //! expires. This repository is the DURABLE record of that lease lifecycle.
 //!
 //! It is deliberately SELF-CONTAINED and decoupled from the authoring-session
-//! store (S35/S150): its own SQLite file, its own migration ledger, its own
+//! store: its own SQLite file, its own migration ledger, its own
 //! schema. Nothing here reads or writes an authoring table, so a2a run admission
 //! never entangles with document-authoring persistence.
 //!
-//! Security invariants (ADR D7, S43):
+//! Security invariants:
 //! - Only token HASHES are stored — never a raw secret. The raw token exists
 //!   transiently at mint time to inject into the gateway payload, and once as a
 //!   presented header at resolve time; it never lands in a row, log, or output.
@@ -98,7 +97,7 @@ pub struct LeaseReservation {
 }
 
 /// A resolved token: the authenticated actor plus the non-secret lease identity
-/// it belongs to (carried with the principal, S37/S38).
+/// it belongs to (carried with the principal).
 #[derive(Debug, Clone)]
 pub struct ResolvedLease {
     pub actor: ActorRef,
@@ -106,7 +105,7 @@ pub struct ResolvedLease {
     pub role: String,
 }
 
-/// A lease row for reconciliation (S160): identity + state + the authoritative
+/// A lease row for reconciliation: identity + state + the authoritative
 /// run id (once committed) needed to re-query authoritative status.
 #[derive(Debug, Clone)]
 pub struct LeaseRow {
@@ -118,7 +117,7 @@ pub struct LeaseRow {
     pub expiry_ms: i64,
 }
 
-/// The outcome of a terminal settlement (S41): idempotent — a repeat settle of an
+/// The outcome of a terminal settlement: idempotent — a repeat settle of an
 /// already-settled lease reports `AlreadySettled` and revokes nothing new.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettleOutcome {
@@ -212,7 +211,7 @@ CREATE UNIQUE INDEX idx_a2a_run_leases_unresolved_run
     WHERE run_id IS NOT NULL AND state IN ('reserved','active');
 ";
 
-/// v2 (W02.P05.S39/S41): the gateway MINTS the non-secret run-scoped `lease_id`
+/// v2: the gateway MINTS the non-secret run-scoped `lease_id`
 /// and returns it at commit; the terminal-settlement callback keys by it. Stored
 /// here at commit so settlement can verify the callback's lease id against the
 /// bound one (defense-in-depth atop the attach-control auth). Appended as a
@@ -347,7 +346,7 @@ impl LeaseRepo {
     /// Commit the lease: bind the authoritative A2A run + thread id AND the
     /// gateway-minted non-secret lease id (the identity the terminal callback
     /// keys by), then move to `Active`. Only a `Reserved` lease commits; a repeat
-    /// is a no-op (S39).
+    /// is a no-op.
     pub fn commit(
         &self,
         lease_id: &str,
@@ -513,7 +512,7 @@ impl LeaseRepo {
     }
 
     /// Idempotently settle a lease terminal from an attach-control-authenticated
-    /// callback (S41): look up by the authoritative run id, VERIFY the callback's
+    /// callback: look up by the authoritative run id, VERIFY the callback's
     /// gateway lease id matches the one bound at commit (defense-in-depth atop the
     /// attach-control auth), then mark `Settled` and revoke exactly its hashed
     /// bundle. A repeat on an already-terminal lease is `AlreadyTerminal`; an
@@ -568,7 +567,7 @@ impl LeaseRepo {
     }
 
     /// Every not-yet-terminal lease, for reconciliation against authoritative A2A
-    /// run status (S160). Ordered by creation for deterministic bounded walks.
+    /// run status. Ordered by creation for deterministic bounded walks.
     pub fn unresolved_leases(&self) -> Result<Vec<LeaseRow>> {
         let conn = self.lock();
         let mut stmt = conn.prepare(
@@ -583,7 +582,7 @@ impl LeaseRepo {
         Ok(rows)
     }
 
-    /// Revoke every lease whose bounded lifetime has elapsed (S160): a lease that
+    /// Revoke every lease whose bounded lifetime has elapsed: a lease that
     /// never settled is torn down by expiry so no bundle outlives its window.
     /// Returns the number of leases expired.
     pub fn expire_elapsed(&self, now_ms: i64) -> Result<usize> {

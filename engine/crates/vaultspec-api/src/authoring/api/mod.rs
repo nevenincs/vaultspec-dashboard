@@ -1,10 +1,10 @@
-// W01.P04 defines versioned authoring DTOs and route fixtures. Later phases
-// attach these shapes to handlers, stores, event streams, and agent tools.
+// Versioned authoring DTOs and route fixtures, attached to handlers, stores,
+// event streams, and agent tools.
 
 use serde::{Deserialize, Serialize};
 // `Value` is used only by the `#[cfg(test)]` DTOs below (the untyped list-page /
-// snapshot fixtures); the typed DTOs carry concrete shapes (S18 narrowed the last
-// production `Value` field, InterruptResumeRequest.decision, to a typed enum).
+// snapshot fixtures); the typed DTOs carry concrete shapes (every production
+// `Value` field, including InterruptResumeRequest.decision, is a typed enum).
 #[cfg(test)]
 use serde_json::Value;
 
@@ -247,7 +247,7 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         idempotency_required: false,
         negative_contract_cases: &["bad_last_seq", "unknown_session"],
     },
-    // W12.P41 A2: the human decision on a queued tool-permission request.
+    // The human decision on a queued tool-permission request.
     RouteFixture {
         family: EndpointFamily::ToolPermission,
         method: "POST",
@@ -261,7 +261,7 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
             "unknown_field",
         ],
     },
-    // W12.P41 A2: resume a paused run by resolving its interrupt (P32, replay-safe).
+    // Resume a paused run by resolving its interrupt (replay-safe).
     RouteFixture {
         family: EndpointFamily::Interrupt,
         method: "POST",
@@ -275,9 +275,9 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
             "unknown_field",
         ],
     },
-    // W12.P41 A3b: the agent-tool executor run loop — a semantic tool call resolves
-    // through the P22/P32 gate and, when granted, dispatches to the mapped backend
-    // command (here `create_proposal`, the `propose_changeset`/create alias).
+    // The agent-tool executor run loop — a semantic tool call resolves
+    // through the permission/interrupt gate and, when granted, dispatches to the
+    // mapped backend command (here `create_proposal`, the `propose_changeset`/create alias).
     RouteFixture {
         family: EndpointFamily::AgentToolExecute,
         method: "POST",
@@ -287,7 +287,7 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
         idempotency_required: true,
         negative_contract_cases: &["missing_idempotency_key", "unknown_tool", "unknown_field"],
     },
-    // W14.P42a S260: explicit rebase of a conflicted changeset in place (P28).
+    // Explicit rebase of a conflicted changeset in place.
     RouteFixture {
         family: EndpointFamily::Rebase,
         method: "POST",
@@ -302,7 +302,7 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
             "unknown_field",
         ],
     },
-    // W14.P42a S260: supersede a stale-but-not-conflicted source with a fresh candidate (P28).
+    // Supersede a stale-but-not-conflicted source with a fresh candidate.
     RouteFixture {
         family: EndpointFamily::Replacement,
         method: "POST",
@@ -316,7 +316,7 @@ pub const ROUTE_FIXTURES: &[RouteFixture] = &[
             "unknown_field",
         ],
     },
-    // W14.P42a S261: advisory review-station claim (P24). The claim route represents the
+    // Advisory review-station claim. The claim route represents the
     // family; release/respond share it (mounted, floor-authorized) like the lease actions.
     RouteFixture {
         family: EndpointFamily::ReviewClaim,
@@ -409,10 +409,10 @@ pub struct StartPromptTurnRequest {
     pub prompt: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
-    /// The immutable feedback batch this turn consumes (agent-wire-gaps ADR D7 /
-    /// feedback-loop ADR D4). Verified at submit: the batch must exist and belong
-    /// to this session; the reference is recorded on the turn so every revision is
-    /// auditable to the exact batch it consumed. Opaque to a2a — only the id rides.
+    /// The immutable feedback batch this turn consumes. Verified at submit: the
+    /// batch must exist and belong to this session; the reference is recorded
+    /// on the turn so every revision is auditable to the exact batch it
+    /// consumed. Opaque to a2a — only the id rides.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub feedback_batch_id: Option<String>,
 }
@@ -461,7 +461,7 @@ pub struct CancelSessionRequest {
     pub reason: String,
 }
 
-/// Gracefully close a session (S13): the benign terminal path (`Active` → `Closed`)
+/// Gracefully close a session: the benign terminal path (`Active` → `Closed`)
 /// that never tears down work. The `reason` is optional — a close needs no
 /// justification — and, unlike `CancelSessionRequest`, closing refuses while a run is
 /// active rather than cancelling it.
@@ -546,14 +546,14 @@ pub struct TargetRevisionFence {
 pub struct DraftMutation {
     pub mode: DraftMode,
     pub body: String,
-    /// The field-level payload for `EditFrontmatter` (W02.P03): the `date`/`tags`/
+    /// The field-level payload for `EditFrontmatter`: the `date`/`tags`/
     /// `related` values the `SetFrontmatter` core capability accepts, edited
     /// individually rather than by reconstructing the whole document text.
     /// `None`/absent for every other operation kind; `body` carries no meaning for
     /// a field-level edit and must be empty (R1: no accepted-but-ignored field).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frontmatter: Option<FrontmatterEditFields>,
-    /// The field-level payload for `Rename` (W02.P04): the target stem the
+    /// The field-level payload for `Rename`: the target stem the
     /// `Rename` core capability accepts (`--to`). A bare, identity-bearing stem
     /// — never a path. `None`/absent for every other operation kind; `body`
     /// carries no meaning for a rename and must be empty (R1 discipline, same
@@ -577,8 +577,8 @@ pub struct DraftMutation {
     pub plan_step: Option<PlanStepEdit>,
 }
 
-/// The `SetPlanStepState` field-level payload (authoring-surface ADR D1): the
-/// canonical step id (`S##`) and the desired open/closed state. The plan CLI
+/// The `SetPlanStepState` field-level payload: the canonical step id (`S##`)
+/// and the desired open/closed state. The plan CLI
 /// verb is idempotent, so re-requesting the state a Step already holds is a
 /// no-op, not an error.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -672,7 +672,7 @@ pub struct SetOperationModeRequest {
 /// Wire payload for `POST /authoring/v1/direct-writes`: a human editor save
 /// routed through the authoring ledger. The actor is still middleware-resolved
 /// from the principal token; the payload names the target, the operation
-/// kind, and that kind's own payload (W02.P06 generalizes this beyond
+/// kind, and that kind's own payload (generalized beyond
 /// whole-document body replacement) — mirroring how a propose draft
 /// (`ChangesetChildOperationDraft`/`DraftMutation`) carries each kind: one
 /// discriminator field plus optional per-kind payload fields, `None`/empty for
@@ -699,8 +699,8 @@ pub struct DirectWriteRequest {
     /// `CreateDocument` payload. `None` for every other kind.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub create: Option<DirectWriteCreateParams>,
-    /// `SetPlanStepState` payload — the canonical step id + desired state
-    /// (authoring-surface ADR D1). `None` for every other kind. The plan
+    /// `SetPlanStepState` payload — the canonical step id + desired state.
+    /// `None` for every other kind. The plan
     /// document is named by `ref`, and `expected_blob_hash` fences it (the
     /// engine-side stale-base substitute for the plan CLI's absent
     /// expected-blob-hash flag).
@@ -713,7 +713,7 @@ pub struct DirectWriteRequest {
     pub expected_blob_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
-    /// The OPTIONAL scope pin (W02.P06, closing the W01.P02 review): the
+    /// The OPTIONAL scope pin: the
     /// workspace scope id (`scope_id_for_worktree`, the SAME string a client
     /// already sees served back on e.g. the `/authoring/v1/mode` response)
     /// the editor was looking at when it issued this save. When present, it
@@ -760,7 +760,7 @@ pub struct ReviewDecisionRequest {
 pub struct ApplyRequest {
     pub changeset_id: ChangesetId,
     pub approval_id: ApprovalId,
-    /// The ADVISORY fencing token (W13.P26) the applying actor presents. Optional and
+    /// The ADVISORY fencing token the applying actor presents. Optional and
     /// CONSUMED (not an accepted-but-ignored field): the apply preflight enforces it only
     /// when a live lease holds the target document's scope — a stale or absent token
     /// against a live lease is refused as a denial value.
@@ -815,7 +815,7 @@ pub struct LeaseReleaseRequest {
     pub target: DocumentRef,
 }
 
-/// Create a section-anchored comment on a document (authoring-surface ADR D2). The
+/// Create a section-anchored comment on a document. The
 /// document node id is the route path param; the worktree path is derived server-side
 /// from it through the confined `DocumentResolver` (never a client-supplied path).
 /// `selector` is the heading-section anchor + expected content hash the client
@@ -829,8 +829,7 @@ pub struct CreateCommentRequest {
 }
 
 /// Freeze the reviewer's chosen comments into an immutable, digest-addressed
-/// feedback batch (agent-wire-gaps ADR D7 / feedback-loop ADR D3+D4). The author
-/// is the middleware-resolved principal; the served receipt is
+/// feedback batch. The author is the middleware-resolved principal; the served receipt is
 /// `{batch_id, digest}` and the next turn carries `batch_id` as opaque data.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -843,7 +842,7 @@ pub struct CreateFeedbackBatchRequest {
     pub instruction: Option<String>,
 }
 
-/// Mutate an existing comment (authoring-surface ADR D2): edit the body, toggle the
+/// Mutate an existing comment: edit the body, toggle the
 /// resolved flag, or explicitly re-anchor to the current section state. Exactly one
 /// tagged operation per PATCH — re-anchor is never a silent side effect of a read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -860,7 +859,7 @@ pub enum CommentUpdateRequest {
 #[serde(deny_unknown_fields)]
 pub struct DeleteCommentRequest {}
 
-/// Claim (or idempotently re-claim) a changeset's advisory review item (W13.P24). The
+/// Claim (or idempotently re-claim) a changeset's advisory review item. The
 /// claim purpose is always `review` (set server-side); the reviewer is the middleware-
 /// resolved principal. A contended claim (a live claim by a different reviewer) rides the
 /// 200 envelope as a denial value.
@@ -888,7 +887,7 @@ pub struct ReviewRespondRequest {
     pub comment: String,
 }
 
-/// Durable after-fact acknowledgement (W10) of a system-auto-applied changeset (the
+/// Durable after-fact acknowledgement of a system-auto-applied changeset (the
 /// `AppliedUnderPolicyProjection` lane): a reviewer's advisory "seen" over an already-
 /// applied changeset. It never transitions changeset status — it only records who
 /// acknowledged which applied approval, and is idempotent per `idempotency_key`.
@@ -1043,7 +1042,7 @@ pub struct AuthoringEventDto {
     pub payload: Value,
 }
 
-/// The human decision on a queued tool-permission request (W12.P41). The reviewer is
+/// The human decision on a queued tool-permission request. The reviewer is
 /// the server-held principal (ASA-010), never a body claim.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1054,8 +1053,8 @@ pub struct ToolPermissionDecisionRequest {
 }
 
 /// Resume a paused run by resolving its interrupt with the typed decision schema
-/// (W12.P41, P32 resolve-by-id — replay-safe; narrowed from an opaque `Value` by
-/// agent-wire-gaps S18). The decision is the SAME [`InterruptResumeDecision`] the read
+/// (resolve-by-id — replay-safe; narrowed from an opaque `Value` to a typed
+/// decision). The decision is the SAME [`InterruptResumeDecision`] the read
 /// projection parses, so write and read speak one language (`tool_permission` | `steer`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

@@ -1,5 +1,4 @@
-//! Node and edge minting for the code corpus (codebase-graphing ADR D3/D4,
-//! amended by the code-graph-files-only cutover).
+//! Node and edge minting for the code corpus, amended by the code-graph-files-only cutover.
 //!
 //! Stored graph fact: FILE nodes (`code:{path}`) only — a directory never
 //! becomes a node. Package structure is carried by file→file `contains` edges

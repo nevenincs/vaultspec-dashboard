@@ -1,5 +1,4 @@
-// Session-intent freshness (dashboard-state field lifetimes ADR, global-state-review
-// 2026-07-03): a view-local, per-scope ACTIVITY STAMP that gates the stale-session-
+// Session-intent freshness: a view-local, per-scope ACTIVITY STAMP that gates the stale-session-
 // intent boot heal. Dashboard-state fields classify into durable preferences (persist
 // forever) and SESSION INTENT (the canonical selection): a boot within the freshness
 // window resumes the selection, a boot after a genuine absence clears it through the

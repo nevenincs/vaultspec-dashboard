@@ -1,12 +1,12 @@
 //! Language registry: which files we parse, with which grammar, and which
-//! import query (codebase-graphing ADR D2).
+//! import query.
 //!
 //! Adding a language is a deliberate, bounded addition: one enum variant, one
 //! grammar crate, one `.scm` query file, one resolution strategy arm.
 
 use std::path::Path;
 
-/// The pilot language set (ADR D2): Rust, TypeScript (+TSX), JavaScript
+/// The pilot language set: Rust, TypeScript (+TSX), JavaScript
 /// (+JSX via the JS grammar), Python.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {

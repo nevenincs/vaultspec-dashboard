@@ -161,10 +161,10 @@ pub(crate) fn seed_applied_source(
         .unwrap();
 }
 
-/// The `seed_applied_source` sibling with a caller-chosen time BASE
-/// (W02.P04-R1): needed to seed MULTIPLE sequential changesets with
-/// strictly increasing `created_at_ms` (the stem-lineage guard orders on
-/// it), which the hardcoded-timestamp `seed_applied_source` cannot do.
+/// The `seed_applied_source` sibling with a caller-chosen time BASE:
+/// needed to seed MULTIPLE sequential changesets with strictly increasing
+/// `created_at_ms` (the stem-lineage guard orders on it), which the
+/// hardcoded-timestamp `seed_applied_source` cannot do.
 fn seed_applied_source_at(
     store: &mut Store,
     changeset_id: &ChangesetId,
@@ -765,7 +765,7 @@ fn create_document_source_has_no_v1_inverse_and_offers_manual_repair() {
 
 #[test]
 fn rename_source_without_a_preimage_is_unavailable_with_manual_repair() {
-    // W02.P04: Rename now HAS a V1 inverse (rename-back), so eligibility no
+    // Rename now HAS a V1 inverse (rename-back), so eligibility no
     // longer denies it as unsupported — but a preimage is still required
     // uniformly (the SAME gate every invertible kind shares), and this
     // source never captured one.
@@ -797,7 +797,7 @@ fn rename_source_without_a_preimage_is_unavailable_with_manual_repair() {
 
 #[test]
 fn rename_rolls_back_by_renaming_back_to_the_original_stem() {
-    // W02.P04.S25: a Rename source is invertible by a genuine RENAME-BACK,
+    // A Rename source is invertible by a genuine RENAME-BACK,
     // never a preimage-restore ReplaceBody (which would duplicate content
     // at the stale old path while the document still lives at the new one).
     let dir = tempfile::tempdir().unwrap();
@@ -922,7 +922,7 @@ fn rename_rolls_back_by_renaming_back_to_the_original_stem() {
 
 #[test]
 fn rename_rollback_refuses_when_the_stem_was_renamed_away_and_reused() {
-    // W02.P04-R1 falsifier: node ids are STEM-DERIVED, so resolving "the
+    // Falsifier: node ids are STEM-DERIVED, so resolving "the
     // current occupant of a stem" cannot confirm it is THIS rollback's
     // document — the stem may have been vacated by a LATER rename and then
     // reoccupied by an UNRELATED document. Sequence: C1 renames A->B
@@ -1133,7 +1133,7 @@ fn rename_rollback_refuses_when_the_stem_was_renamed_away_and_reused() {
 
 #[test]
 fn stem_lineage_scan_refuses_when_the_window_is_exhausted_before_reaching_the_source() {
-    // W02.P05 fold-in (the P04 review LOW): a truncated scan must never
+    // A truncated scan must never
     // silently report `Clear` — with a TINY cap, seeding more
     // later-applied, unrelated candidates than the cap fills the window
     // before it can reach back to `since_ms`, so absence of an away-move
@@ -1238,7 +1238,7 @@ fn unapplied_source_cannot_be_rolled_back() {
 
 #[test]
 fn frontmatter_edit_rolls_back_by_restoring_the_source_preimage() {
-    // W02.P03.S18: an EditFrontmatter source is invertible exactly like a body
+    // An EditFrontmatter source is invertible exactly like a body
     // edit — the eligibility matrix (transitions.rs) already admits it, and
     // generation restores the SAME preimage-payload-as-ReplaceBody inverse
     // regardless of the source operation kind.

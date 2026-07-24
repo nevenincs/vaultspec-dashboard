@@ -678,7 +678,7 @@ fn input_schema(name: SemanticToolName) -> Value {
         // Standard, valid JSON Schema (top-level `type: object` + `properties`)
         // for the model-owned content of a propose_changeset call, so a bridged
         // agent can construct `operations` (the opaque `payload:
-        // CreateProposalRequest` type ref left it unable to - the S20 blocker).
+        // CreateProposalRequest` type ref left it unable to).
         // The a2a normalizer detects this shape and passes it through verbatim;
         // an older engine still serves the DSL fallback. create/append/replace
         // share the same model-owned surface - {summary, operations}; the

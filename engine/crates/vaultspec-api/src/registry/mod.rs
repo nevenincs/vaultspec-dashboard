@@ -1,4 +1,4 @@
-//! The warm multi-scope registry (user-state-persistence W02.P03.S10).
+//! The warm multi-scope registry.
 //!
 //! Holds N per-scope [`ScopeCell`]s concurrently, keyed by scope token, so a
 //! user can browse across the workspace's vault-bearing worktrees and switch
@@ -183,16 +183,16 @@ fn build_and_insert(
         .map_err(|e| format!("opening store for scope `{token}`: {e}"))?;
     let cell = Arc::new(ScopeCell::new(root.clone(), scope, store));
 
-    // Cold initial index (the same pipeline the one-shot CLI runs, D2.4).
+    // Cold initial index (the same pipeline the one-shot CLI runs).
     cell.rebuild_and_swap()
         .map_err(|e| format!("indexing scope `{token}`: {e}"))?;
 
     // Spawn this cell's watcher → rebuild-at-scope-granularity → swap + diff
-    // broadcast on the cell's OWN clock (W02.P04.S13). Held in the cell so
+    // broadcast on the cell's OWN clock. Held in the cell so
     // `/status` reports a dead watcher truthfully and eviction tears it down.
     spawn_watcher(&cell);
 
-    // Fold the slow declared tier in asynchronously (perf ADR D1): the cold
+    // Fold the slow declared tier in asynchronously: the cold
     // `rebuild_and_swap` above committed the STRUCTURAL graph synchronously, so
     // the scope is already servable; this defers the core subprocess off the
     // critical path. A no-op when no tokio runtime is current (unit tests),
@@ -314,7 +314,7 @@ fn spawn_watcher(cell: &Arc<ScopeCell>) {
                 // (DF-4): a contended store is a wait-and-retry on the next
                 // dirty batch, not a death. `rebuild_and_swap` commits the
                 // structural tier; the declared fold rides a separate task so a
-                // new commit re-folds declared at the new HEAD (perf ADR D1).
+                // new commit re-folds declared at the new HEAD.
                 let rebuild_cell = cell.clone();
                 match tokio::task::spawn_blocking(move || {
                     let emitted = rebuild_cell.rebuild_and_swap()?;
@@ -352,9 +352,9 @@ pub(crate) use declared::{
 /// ACTIVE WORKSPACE, returning its canonical root path. An unknown or non-vault
 /// scope is rejected (the caller maps the `Err` to an honest 400). This is the
 /// registry-side membership check; the route-side `validate_scope` wraps it in
-/// the API error envelope (W02.P04.S15).
+/// the API error envelope.
 ///
-/// Multi-workspace generalization (dashboard-workspace-registry ADR, P03.S11):
+/// Multi-workspace generalization:
 /// the worktree set a scope is resolved against is the *active workspace's*
 /// enumerable worktrees, not one frozen launch value — so switching the active
 /// workspace re-points which worktrees are selectable. The active workspace
@@ -481,7 +481,7 @@ mod tests {
 
     #[test]
     fn scope_validation_follows_the_active_workspace_and_warm_cells_span_workspaces() {
-        // P03.S11/S12: validate_scope resolves a worktree against the ACTIVE
+        // validate_scope resolves a worktree against the ACTIVE
         // WORKSPACE's enumerable worktrees, and warm cells may belong to any
         // registered workspace, each keeping its OWN delta clock.
         //
@@ -694,7 +694,7 @@ mod tests {
 
     #[tokio::test]
     async fn bounded_dirty_channel_sheds_a_flood_instead_of_queueing_it() {
-        // P01.S02 (reproduce) + B2 (fix): the watcher feeds rebuild triggers
+        // The watcher feeds rebuild triggers
         // through a capacity-1 channel with `try_send`, exactly as `spawn_watcher`
         // does. A flood (a large `git checkout` / bulk copy past the debounce)
         // must be COALESCED — at most one trigger buffered behind the in-flight

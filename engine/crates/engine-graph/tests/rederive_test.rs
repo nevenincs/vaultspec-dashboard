@@ -1,4 +1,4 @@
-//! Re-derivability (ADR D8.2, W02.P06.S29): a full index from a **deleted
+//! Re-derivability: a full index from a **deleted
 //! cache** must converge to the identical graph — persistence is cache,
 //! never truth. Byte-equal under canonical serialization.
 
@@ -54,10 +54,10 @@ fn full_index_from_deleted_cache_converges_to_the_identical_graph() {
     let (graph_c, stats_c) = index_worktree(root, &scope, &store, 0).unwrap();
     assert_eq!(stats_c.cache_hits, 0, "cache was gone");
 
-    // D8.2: identical graph, byte-equal under canonical serialization.
+    // Identical graph, byte-equal under canonical serialization.
     assert_eq!(snapshot_a, canonical_snapshot(&graph_c));
 
-    // Incremental-vs-cold convergence (audit W02P05-202): re-ingesting the
+    // Incremental-vs-cold convergence: re-ingesting the
     // same documents INTO the already-populated graph must be idempotent —
     // the maintained graph converges to the cold rebuild, never inflates.
     let mut graph_incremental = graph_c;

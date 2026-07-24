@@ -1,4 +1,4 @@
-//! Salience feasibility benchmark (graph-node-salience W05.P11.S44): proves the
+//! Salience feasibility benchmark: proves the
 //! Brandes betweenness pass and the full per-generation lens-basis precompute are
 //! affordable UNDER THE NODE CEILING (`MAX_GRAPH_NODES`, 5000).
 //!

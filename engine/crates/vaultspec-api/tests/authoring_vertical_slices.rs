@@ -1,4 +1,4 @@
-//! End-to-end vertical slices for the mounted authoring backend (W03.P39.S192/S193).
+//! End-to-end vertical slices for the mounted authoring backend.
 //!
 //! Drives the REAL app router over HTTP — through the machine `bearer_gate` and the
 //! actor-principal layer, against a real git worktree — no mocks (engine-read-and-
@@ -37,7 +37,7 @@ const BASE_BODY: &str =
     "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e plan\n\nbase body\n";
 const NEW_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e plan\n\nmaterialized body\n";
 
-// section-scoped-operations ADR: a doc with two headings so a `SectionEdit`
+// A doc with two headings so a `SectionEdit`
 // draft can target one (`Beta`) without touching the other (`Alpha`).
 const SECTION_DOC_PATH: &str = ".vault/plan/e2e-section-plan.md";
 const SECTION_BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#e2e'\ndate: '2026-07-04'\n---\n\n# e2e section plan\n\n## Alpha\n\nalpha body\n\n## Beta\n\nbeta body\n";
@@ -234,7 +234,7 @@ async fn create_session(state: &Arc<AppState>, bearer: &str, actor_token: &str) 
 }
 
 /// The target document ref. `scope` must be the SERVER-AUTHORITATIVE scope
-/// token of the served worktree (`engine_model::scope_token`) — the W14.P42a
+/// token of the served worktree (`engine_model::scope_token`) — the
 /// document-scope guard denies a target claiming any other scope.
 fn document(scope: &str, base_revision: &str) -> Value {
     json!({
@@ -821,10 +821,10 @@ async fn applying_an_unapproved_changeset_is_a_200_denial() {
     );
 }
 
-/// W14.P47 (S253/S255): the editor-save path is single-sourced through the
+/// The editor-save path is single-sourced through the
 /// ledger over the REAL router — no legacy `/ops/core` dual-write, and
 /// direct-changeset is authoritative with NO capability file present (the
-/// P47 default flip). Drives the actual `/v1/direct-writes` command, then
+/// default flip). Drives the actual `/v1/direct-writes` command, then
 /// confirms the resulting changeset is a normal, rollback-eligible ledger
 /// entry rather than a side effect only the direct-write side table knows
 /// about.
@@ -876,7 +876,7 @@ async fn direct_write_route_is_ledger_authoritative_with_no_capability_file() {
     }
 
     // No capability file was written for this worktree — direct-changeset is
-    // authoritative by default (W14.P47), so the save must not be refused.
+    // authoritative by default, so the save must not be refused.
     assert_ne!(
         body["data"]["status"], "denied",
         "the default capability state must not refuse a human direct save: {body}"
@@ -940,7 +940,7 @@ async fn direct_write_route_is_ledger_authoritative_with_no_capability_file() {
     );
 }
 
-/// section-scoped-operations ADR: the SAME exit-gate flow
+/// The SAME exit-gate flow
 /// (`exit_gate_flow_issue_create_submit_approve_apply_rollback`) driven by a
 /// `SectionEdit` draft instead of a whole-document `replace_body` — proposing
 /// a section-scoped change over the wire, submitting, approving, applying

@@ -1,9 +1,9 @@
-//! The internal `vaultspec-core` adapter (W03.P35).
+//! The internal `vaultspec-core` adapter.
 //!
 //! This is the ONLY layer in the authoring domain that knows which
 //! `vaultspec-core` verb implements a semantic authoring operation. The apply
-//! materializer (W03.P36) calls it; nothing else does. It exists to satisfy the
-//! `agentic-authoring-boundary` / `agentic-apply-materialization` ADRs:
+//! materializer calls it; nothing else does. It exists to enforce the
+//! following boundaries:
 //!
 //! - `vaultspec-core` stays HIDDEN behind an internal validation/materialization
 //!   adapter. The collaborator-facing wire vocabulary is the SEMANTIC
@@ -11,7 +11,7 @@
 //!   core verb. A capability here is chosen in Rust from a typed operation kind;
 //!   there is deliberately NO wire-string → capability path (no `Deserialize`, no
 //!   `FromStr`), so a collaborator payload can never name, address, or invoke a
-//!   core-shaped write. The disjointness is proven in the S175 tests below.
+//!   core-shaped write. The disjointness is proven in the tests below.
 //! - The invocation resolves to the PROJECT-PINNED capability set: it reuses
 //!   [`ingest_core::runner::CoreRunner::detect`], which prefers the uv-managed
 //!   core and capability-probes the write verbs before binding an invocation.
@@ -35,15 +35,15 @@
 //!   value. The sensitive detail is preserved for operator logs by
 //!   [`CoreAdapterError::log_detail`].
 //!
-//! Consumed by the apply command (W03.P36) and the authoring routes (W03.P39).
+//! Consumed by the apply command and the authoring routes.
 //!
-//! `dead_code` allow retained through W03.P39 (matching every sibling authoring
+//! `dead_code` allow retained (matching every sibling authoring
 //! module): apply consumes only the `SetBody` write path, while the rest of the
-//! P35 deliverable — the full 5-verb capability registry, `detect()`, and the
+//! deliverable — the full 5-verb capability registry, `detect()`, and the
 //! forensics API (`is_failed`/`log_detail`) — is exercised by the tests and
-//! awaits the P39 route wiring. It is dead in the LIB target until then (the
+//! awaits the route wiring. It is dead in the LIB target until then (the
 //! `-D warnings` gate builds the lib target without the test modules), so the
-//! allow drops with P39, not P36. See coder-4's note to team-lead (2026-07-04).
+//! allow drops once that route wiring lands.
 #![allow(dead_code)]
 
 use std::io::{Read, Write};
@@ -251,14 +251,14 @@ impl CoreInvocation {
         })
     }
 
-    /// Build a `vault plan step check|uncheck <plan_ref> <S##>` invocation
-    /// (authoring-surface ADR D1). `check` selects the verb (`true` closes the
+    /// Build a `vault plan step check|uncheck <plan_ref> <S##>` invocation.
+    /// `check` selects the verb (`true` closes the
     /// Step, `false` re-opens it); both are idempotent at core. The plan ref and
     /// canonical step id are validated value-only tokens, so neither can inject a
     /// flag or escape the tree.
     ///
     /// UNLIKE every other write, the plan CLI verb carries NO
-    /// `--expected-blob-hash` fence (ADR D1 constraint): apply-time optimistic
+    /// `--expected-blob-hash` fence: apply-time optimistic
     /// concurrency for a plan tick is enforced ENGINE-SIDE — a stale-base
     /// pre-check compares the held base against a fresh worktree read BEFORE this
     /// invocation runs — never by core. Because the verb is core-authoritative
@@ -356,7 +356,7 @@ pub(crate) enum CoreAdapterError {
     /// OUTCOME-INDETERMINATE: the core may have already completed (or partially
     /// completed) the vault write before the kill landed — and on Windows the
     /// killed launcher's Python grandchild can SURVIVE to finish it (no Job
-    /// Object, by design). This is NEVER "not applied." The apply caller (W03.P36)
+    /// Object, by design). This is NEVER "not applied." The apply caller
     /// MUST re-verify each target document's post-state (blob hash) before
     /// recording an apply result — see [`Self::is_outcome_indeterminate`].
     #[error("vaultspec-core produced over {cap_mib} MiB of output (capped)")]
@@ -407,7 +407,7 @@ impl CoreAdapterError {
     /// Whether this failure leaves the vault write OUTCOME UNKNOWN — the core was
     /// killed mid-flight (Timeout / OutputTooLarge), and on Windows its Python
     /// grandchild may even have survived the kill, so the target document may or
-    /// may not have changed. The apply caller (W03.P36) MUST re-verify document
+    /// may not have changed. The apply caller MUST re-verify document
     /// post-state (blob hash) before recording a result and MUST NEVER record such
     /// a failure as "not applied." A pre-spawn validation error, a failed spawn,
     /// or a core that self-terminated with no envelope did not have THIS adapter
@@ -816,7 +816,7 @@ mod tests {
         }
     }
 
-    // --- S172/S173: argument builders + validation -------------------------
+    // --- argument builders + validation -------------------------
 
     #[test]
     fn create_document_builds_value_only_argv() {
@@ -907,7 +907,7 @@ mod tests {
     #[test]
     fn set_plan_step_state_builds_positional_argv_without_a_blob_fence() {
         // check → `vault plan step check <plan> <S##>`, no `--expected-blob-hash`
-        // (the plan CLI has no such flag — ADR D1), no stdin body.
+        // (the plan CLI has no such flag), no stdin body.
         let checked =
             CoreInvocation::set_plan_step_state(true, ".vault/plan/demo-plan.md", "S01").unwrap();
         assert_eq!(checked.capability(), CoreCapability::CheckPlanStep);
@@ -953,7 +953,7 @@ mod tests {
     /// `"updated"`, an idempotent no-op emits `"unchanged"` (both success), and a
     /// business refusal — e.g. an unknown step id — emits `"failed"`. Confirmed
     /// by running `vaultspec-core vault plan step check/uncheck --json` against a
-    /// scratch fixture plan during S01 execution.
+    /// scratch fixture plan.
     #[test]
     fn plan_step_status_vocabulary_maps_onto_the_existing_success_set() {
         for status in ["updated", "unchanged"] {
@@ -1039,7 +1039,7 @@ mod tests {
         ));
     }
 
-    // --- S173: error redaction --------------------------------------------
+    // --- error redaction --------------------------------------------
 
     #[test]
     fn wire_reason_redacts_stderr_paths_and_secrets() {
@@ -1089,7 +1089,7 @@ mod tests {
         assert!(!err.wire_reason().contains("KEY=xyz"));
     }
 
-    // --- S173: bounded subprocess behaviour (cap + timeout) ----------------
+    // --- bounded subprocess behaviour (cap + timeout) ----------------
 
     #[test]
     fn invoke_returns_a_status_bearing_envelope() {
@@ -1299,7 +1299,7 @@ mod tests {
         assert_eq!(err.wire_reason(), "vaultspec-core could not be launched");
     }
 
-    // --- S175: collaborators cannot see or invoke core-shaped writes -------
+    // --- collaborators cannot see or invoke core-shaped writes -------
 
     #[test]
     fn every_capability_resolves_to_a_core_shaped_verb() {

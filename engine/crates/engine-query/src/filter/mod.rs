@@ -1,4 +1,4 @@
-//! The engine-owned filter object (contract §4, D7.2): validated,
+//! The engine-owned filter object (contract §4): validated,
 //! normalized, and echoed back; the filter vocabulary is server-enumerated
 //! — clients render it, never define it.
 
@@ -39,7 +39,7 @@ pub enum FeatureQueryMode {
     Regex,
 }
 
-/// A glob or regex search over a node's feature tags (filter-controls campaign):
+/// A glob or regex search over a node's feature tags:
 /// a node passes if ANY of its `feature_tags` matches. Distinct from the exact
 /// `feature_tags` membership facet — this is the power-search the feature field
 /// graduates to. Case-insensitive. The compiled program is size-bounded
@@ -174,16 +174,16 @@ pub struct Filter {
     pub doc_types: Vec<String>,
     /// Feature tags (exact membership).
     pub feature_tags: Vec<String>,
-    /// Glob/regex search over feature tags (filter-controls campaign): a node
+    /// Glob/regex search over feature tags: a node
     /// passes if any of its `feature_tags` matches the compiled pattern. The
     /// feature search field graduates to this for power queries.
     pub feature_query: Option<FeatureQuery>,
-    /// ADR statuses (dashboard-pipeline-wire W01.P03.S12): one of
+    /// ADR statuses: one of
     /// `proposed`/`accepted`/`rejected`/`deprecated`. A node passes if it
     /// carries a status in this set; non-ADR nodes (no status) are excluded
     /// when the facet is non-empty, the same way the kinds facet narrows.
     pub statuses: Vec<String>,
-    /// Plan tiers (dashboard-pipeline-wire W01.P03.S13): one of `L1`-`L4`. A
+    /// Plan tiers: one of `L1`-`L4`. A
     /// node passes if it carries a tier in this set.
     pub plan_tiers: Vec<String>,
     /// Plan lifecycle states to KEEP: one of `active`/`complete`. A node passes
@@ -194,7 +194,7 @@ pub struct Filter {
     /// per-facet), so it is applied in `graph_query` where the scope is in hand —
     /// the same place `health` is wired, not in the node-field `matches_node` pass.
     pub plan_states: Vec<String>,
-    /// Document health/validity conditions (filter-controls campaign): a node
+    /// Document health/validity conditions: a node
     /// passes if it carries ANY requested condition. Engine-derivable subset:
     /// `dangling` (has a broken outgoing structural edge) and `orphaned` (no
     /// incoming edge). Graph-context — applied in `graph_query`, not `matches_node`.
@@ -218,13 +218,13 @@ pub struct Filter {
 }
 
 /// The graph EDGE tiers a filter may name (declared/structural/temporal).
-/// Semantic is NOT a graph tier (D3.5) — it is never minted as a graph edge, so
+/// Semantic is NOT a graph tier — it is never minted as a graph edge, so
 /// it is not a valid edge-filter key and is not part of the served edge-tier
 /// vocabulary. (The separate `semantic` AVAILABILITY tier on the envelope
 /// `tiers` block — rag up/down — is unrelated and lives in the envelope layer.)
 const TIER_NAMES: &[&str] = &["declared", "structural", "temporal"];
 const STATE_NAMES: &[&str] = &["resolved", "stale", "broken"];
-/// The ADR H1 status enum (dashboard-pipeline-wire W01): the known status set
+/// The ADR H1 status enum: the known status set
 /// a status facet is validated against. `superseded` is a real in-corpus ADR
 /// status (an ADR retired by a later one); it is served in the `statuses`
 /// vocabulary, so the filter grammar must accept it or a Decision-status toggle
@@ -236,7 +236,7 @@ const STATUS_NAMES: &[&str] = &[
     "deprecated",
     "superseded",
 ];
-/// The plan tier enum (dashboard-pipeline-wire W01): the known tier set a
+/// The plan tier enum: the known tier set a
 /// plan-tier facet is validated against.
 const PLAN_TIER_NAMES: &[&str] = &["L1", "L2", "L3", "L4"];
 /// The plan-COMPLETION enum the engine derives from a plan's checkbox PROGRESS
@@ -265,8 +265,8 @@ pub(crate) fn plan_completion_from_progress(p: &Progress) -> Option<&'static str
         Some("in-progress")
     }
 }
-/// The document-health conditions the engine derives from its own graph
-/// (filter-controls campaign): `dangling` = a node with a broken outgoing
+/// The document-health conditions the engine derives from its own graph:
+/// `dangling` = a node with a broken outgoing
 /// structural edge; `orphaned` = a node nothing links to. The schema-dependent
 /// `invalid`/`empty-scaffold` conditions join this set with the vaultspec-core
 /// check ingestion.
@@ -468,7 +468,7 @@ impl Filter {
         {
             return false;
         }
-        // Status facet (W01.P03.S12): a non-empty facet narrows to nodes whose
+        // Status facet: a non-empty facet narrows to nodes whose
         // status is in the requested set; a node with no status (non-ADR) does
         // not match, the same exclusion the kinds facet applies.
         if !self.statuses.is_empty()
@@ -479,7 +479,7 @@ impl Filter {
         {
             return false;
         }
-        // Plan-tier facet (W01.P03.S13): narrows to nodes whose tier is in the
+        // Plan-tier facet: narrows to nodes whose tier is in the
         // requested set; a node with no tier (non-plan) does not match.
         if !self.plan_tiers.is_empty()
             && !node
@@ -622,12 +622,11 @@ pub struct Vocabulary {
     pub kinds: Vec<String>,
     pub doc_types: Vec<String>,
     pub feature_tags: Vec<String>,
-    /// ADR statuses actually present in the graph (dashboard-pipeline-wire
-    /// W01.P03.S10): the data-driven status facet a client renders, sorted and
+    /// ADR statuses actually present in the graph: the data-driven
+    /// status facet a client renders, sorted and
     /// deduped, never a hardcoded enum.
     pub statuses: Vec<String>,
-    /// Plan tiers actually present in the graph (dashboard-pipeline-wire
-    /// W01.P03.S11): the data-driven tier facet, sorted and deduped.
+    /// Plan tiers actually present in the graph: the data-driven tier facet, sorted and deduped.
     pub plan_tiers: Vec<String>,
     /// Plan COMPLETION classes actually present among PLAN nodes' facets
     /// (`not-started`/`in-progress`/`finished`), derived from checkbox progress:
@@ -637,8 +636,8 @@ pub struct Vocabulary {
     /// no plan carries progress.
     pub plan_states: Vec<String>,
     pub structural_states: Vec<&'static str>,
-    /// Document-health conditions actually present in the graph (filter-controls
-    /// campaign): the `dangling`/`orphaned` facet a client renders, sorted, never
+    /// Document-health conditions actually present in the graph:
+    /// the `dangling`/`orphaned` facet a client renders, sorted, never
     /// hardcoded — empty when the corpus is clean.
     pub health: Vec<String>,
     /// Inclusive corpus `created` date span; `null` when no node carries a created
@@ -681,7 +680,7 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     feature_tags.sort();
     feature_tags.dedup();
-    // ADR statuses + plan tiers actually present (W01.P03.S10/S11): enumerated
+    // ADR statuses + plan tiers actually present: enumerated
     // from the nodes' query-time facets, sorted and deduped — the same
     // data-driven discipline as doc_types and feature_tags.
     let mut statuses: Vec<String> = graph.nodes().filter_map(|n| n.status.clone()).collect();
@@ -741,7 +740,7 @@ pub fn vocabulary(graph: &LinkageGraph) -> Vocabulary {
         .collect();
     refs.sort();
     refs.dedup();
-    // Document-health conditions actually present (filter-controls campaign):
+    // Document-health conditions actually present:
     // scan each node's incident edges once (O(E) total) and collect the derived
     // conditions in canonical order — `null`/empty when the corpus is clean.
     let mut health_present: Vec<&'static str> = Vec::new();

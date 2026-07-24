@@ -1,8 +1,6 @@
 import type { DashboardTimelineMode } from "./engine";
 
-// TTR-005 disposition (2026-07-02, see
-// .vault/audit/2026-07-02-timeline-temporal-review-audit.md): time-travel ENTRY
-// was retired after the Issue #14 timeline rebuild removed the scrolling
+// Time-travel ENTRY was retired after the Issue #14 timeline rebuild removed the scrolling
 // playhead. This mode grammar plus the movePlayhead / patchDashboardTimelineMode
 // write seam are deliberately KEPT (not deleted) so a persisted time-travel mode
 // still heals to live on load and the capability stays reversible. RE-ENTRY

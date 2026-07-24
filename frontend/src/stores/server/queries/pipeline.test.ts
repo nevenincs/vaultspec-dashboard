@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-// Split from queries.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from queries.test.ts.
 
 import { afterEach, describe, expect, it } from "vitest";
 import { liveTransport } from "../../../testing/liveClient";
@@ -26,7 +26,7 @@ afterEach(() => {
   engineClient.useTransport(liveTransport);
 });
 
-describe("derivePipelineStatusView (Work surface degradation, W01.P03.S17)", () => {
+describe("derivePipelineStatusView (Work surface degradation)", () => {
   const structuralUp: TiersBlock = { structural: { available: true } };
   const structuralDown: TiersBlock = {
     structural: { available: false, reason: "vault index rebuilding" },
@@ -470,7 +470,7 @@ describe("derivePlanSummaryView (plan card metadata from the engine summary)", (
   });
 });
 
-describe("derivePlanInteriorView (step-tree rollup + truncation, W01.P02.S11)", () => {
+describe("derivePlanInteriorView (step-tree rollup + truncation)", () => {
   it("passes through the engine-served rollups across the L3 wave/phase shape", () => {
     const interior: PlanInterior = {
       plan_node_id: "doc:x-plan",

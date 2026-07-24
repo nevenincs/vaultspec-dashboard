@@ -1,6 +1,6 @@
 //! Retention, compaction, and backup metadata repository.
 //!
-//! W02.P08 defines how later authoring records declare retention class,
+//! This module defines how later authoring records declare retention class,
 //! protection, compaction markers, rollback limitations, and backup coverage. It
 //! deliberately does not create proposal, approval, apply, rollback, outbox,
 //! route, or LangGraph domain tables.
@@ -585,8 +585,8 @@ impl RetentionRepository<'_, '_> {
         if remaining > 0 {
             limited_count = remaining;
         }
-        // Record a durable audit row ONLY when the sweep actually did something. S262 drives
-        // this hook once per genuine prompt turn, and MOST turns are pure no-ops (nothing
+        // Record a durable audit row ONLY when the sweep actually did something. This hook drives
+        // once per genuine prompt turn, and MOST turns are pure no-ops (nothing
         // newly due); an unconditional insert would grow the run table ~one row per turn
         // forever (resource-bounds: no only-growing table without a prune). A no-op sweep
         // (nothing compacted, skipped, or still-limited) writes nothing.

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// The React chrome plane for the domain-mark family (S37): the SAME mark source
+// The React chrome plane for the domain-mark family: the SAME mark source
 // the texture seam consumes, rendered as DOM SVG. These tests prove the chrome
 // and the canvas share one silhouette source and that the chrome inherits hue
 // through currentColor (never hard-coding a color), so a mark is theme-correct

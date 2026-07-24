@@ -1,16 +1,16 @@
-// Live-wire proof for the run.completed lifecycle consumption (P01.S02).
+// Live-wire proof for the run.completed lifecycle consumption.
 //
 // Test-integrity / wire-contract: ONLINE against the real `vaultspec serve`
 // binary the global setup spawns — never a mocked wire. This is the end-to-end
-// half of S02 the offline adapter/render tests cannot reach: it drives a REAL
+// half the offline adapter/render tests cannot reach: it drives a REAL
 // run to its terminal `completed` state over the wire (the driver-reported
-// settle callback `POST /authoring/v1/runs/{run_id}/complete` that S01 added),
+// settle callback `POST /authoring/v1/runs/{run_id}/complete` that was added),
 // then proves the served snapshot the frontend reads back reconciles to the
 // non-live `completed` turn the transcript renders as Done.
 //
 // Binary dependency: the complete route + run.completed event exist only on the
-// edge-activation branch (S01). Point VAULTSPEC_TEST_ENGINE_BIN at that build to
-// run this suite; against a pre-S01 binary the settle 404s, by design.
+// edge-activation branch. Point VAULTSPEC_TEST_ENGINE_BIN at that build to
+// run this suite; against a pre-edge-activation binary the settle 404s, by design.
 //
 // Mutation safety: creates authoring-STATE entities (session/turn/run) in the
 // shared engine's mutable store — never a vault-document write. A unique

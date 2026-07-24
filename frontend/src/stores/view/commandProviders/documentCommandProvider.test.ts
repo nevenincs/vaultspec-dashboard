@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 //
-// The document command provider (authoring-surface ADR D3): copy-link is enrolled on
-// the palette ONLY when a document is open, and under the ONE shared id the vault-doc
-// context menu uses (`vault-doc:copy-link`). Importing this module self-registers the
-// provider; resolveCommands then reflects its contribution for a given context.
+// The document command provider: copy-link is enrolled on the palette ONLY when a
+// document is open, and under the ONE shared id the vault-doc context menu uses
+// (`vault-doc:copy-link`). Importing this module self-registers the provider;
+// resolveCommands then reflects its contribution for a given context.
 
 import { afterAll, describe, expect, it } from "vitest";
 

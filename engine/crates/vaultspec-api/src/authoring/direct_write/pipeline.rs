@@ -76,7 +76,7 @@ pub(super) struct DirectProposalInput {
 }
 
 /// Open the direct-changeset draft through `create_direct_proposal`, which
-/// routes into the SAME `materialize_drafts` per-kind dispatch (W02.P05a)
+/// routes into the SAME `materialize_drafts` per-kind dispatch
 /// the standard propose surface uses — a direct-write save is materialized
 /// through the IDENTICAL per-kind materializers, never a re-implementation.
 pub(super) fn ensure_proposal_created(

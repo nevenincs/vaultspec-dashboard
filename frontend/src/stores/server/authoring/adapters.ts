@@ -1,6 +1,6 @@
-// Auto-split from authoring.ts (module-decomposition mandate, 2026-07-14).
-// Tolerant adapters (anti-corruption over the served wire) + the lifecycle
-// stream-sequence helpers. Domain submodule of the authoring barrel; see ./index.ts.
+// Auto-split from authoring.ts. Tolerant adapters (anti-corruption over the served
+// wire) + the lifecycle stream-sequence helpers. Domain submodule of the authoring
+// barrel; see ./index.ts.
 
 import type { StreamChunk } from "../queries";
 import type {
@@ -138,7 +138,7 @@ export function adaptProposalProjection(raw: unknown): ProposalProjection {
       child_key: asStr(rollback.child_key),
     },
     created_at_ms: asNum(r.created_at_ms),
-    // Served agent provenance (S42): the session/run/turn the changeset came from,
+    // Served agent provenance: the session/run/turn the changeset came from,
     // when present. Only defined keys are carried so a non-agent changeset stays clean.
     ...(asStr(r.session_id) ? { session_id: asStr(r.session_id) } : {}),
     ...(asStr(r.run_id) ? { run_id: asStr(r.run_id) } : {}),
@@ -335,9 +335,9 @@ export function adaptAuthoringStreamFrame(frame: StreamChunk): AuthoringStreamFr
 /**
  * Interpret a command's flat unwrapped body into an `AuthoringCommandOutcome`.
  * The discriminator is the served `status` value — a denial (`denied`) and a
- * rollback-unavailable (`unavailable`) ride the SUCCESS envelope as VALUES
- * (denials-are-values ADR), never faults; everything else is an accepted/replayed
- * success carrying its data verbatim.
+ * rollback-unavailable (`unavailable`) ride the SUCCESS envelope as VALUES,
+ * never faults; everything else is an accepted/replayed success carrying its
+ * data verbatim.
  */
 export function interpretCommandOutcome(raw: unknown): AuthoringCommandOutcome {
   const r: Rec = isRec(raw) ? raw : {};
@@ -415,7 +415,7 @@ export function adaptDirectWriteOutcome(raw: unknown): DirectWriteOutcome {
     kind: "applied",
     changesetId: asStr(r.changeset_id) ?? "",
     // `child.document_path` is the apply receipt's resolved path — populated
-    // for EVERY kind including `create_document` (W03.P09a, re-resolved from
+    // for EVERY kind including `create_document` (re-resolved from
     // the created document's real identity); `record.document_path` stays the
     // fallback for a sparser response.
     documentPath: asStr(child.document_path) ?? asStr(record.document_path) ?? null,

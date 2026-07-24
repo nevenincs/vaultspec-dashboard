@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-// Active compact surface (mobile-responsive-layout ADR D6; mobile-unified-rail ADR).
+// Active compact surface.
 // Which single pane the compact (phone/tablet) shell shows — the bottom tab bar
 // selects it. This is transient presentation chrome, so it lives view-local (like
 // `browserMode`), orthogonal to the backend dashboard-state collapse/right_tab seam,
@@ -10,7 +10,7 @@ import { create } from "zustand";
 // scroll surface — `home`, the unified rail (Status section first, then the Browse
 // tree). The pane set is therefore `home` + `timeline`; there is no standing `browse`
 // or `status` pane. `search` stays a momentary pseudo-surface: selecting it opens the
-// full-screen command palette (ADR D3) rather than swapping the pane, so the stored
+// full-screen command palette rather than swapping the pane, so the stored
 // surface only ever settles on a real pane.
 //
 // It is device-level, not corpus-level, so — like the viewport class — it carries no
@@ -19,7 +19,7 @@ import { create } from "zustand";
 // Layer law (dashboard-layer-ownership): pure view-local state — no wire, no query
 // cache, no `tiers`. stable-selectors: the hook returns a PRIMITIVE string.
 
-// The graph is desktop-only (ADR D4: not navigable on a phone), so compact has NO
+// The graph is desktop-only (not navigable on a phone), so compact has NO
 // graph surface or tab — an "unavailable" tab is worse than no tab.
 export type CompactSurface = "home" | "timeline" | "search";
 

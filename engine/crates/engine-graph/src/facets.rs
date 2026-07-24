@@ -1,4 +1,4 @@
-//! Facet reconciliation across corpus views (engine-spec §4.2, D4.2).
+//! Facet reconciliation across corpus views.
 //!
 //! Identity lives in the key; branch variance lives in facets. Divergence
 //! between facets is not a conflict to resolve — it *is the information*:

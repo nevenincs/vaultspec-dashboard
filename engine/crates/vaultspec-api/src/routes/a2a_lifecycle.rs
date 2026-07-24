@@ -1,14 +1,14 @@
-//! The A2A component lifecycle job plane (a2a-product-provisioning W01.P03).
+//! The A2A component lifecycle job plane.
 //!
 //! A DEDICATED lifecycle surface, separate from the fixed `/ops/a2a`
-//! orchestration namespace (ADR D3: these operations "never ride `/ops/a2a`").
+//! orchestration namespace (these operations "never ride `/ops/a2a`").
 //! It serves typed lifecycle intent — install, ensure, start, stop, restart,
 //! repair, update, rollback, remove, doctor — as bounded, job-shaped work over
 //! the `vaultspec-product` lifecycle controller, and returns backend-served
 //! state through the shared `tiers` envelope. No orchestration RUN verb lives
 //! here; the five `/ops/a2a` run verbs are untouched.
 //!
-//! Admission is a HARD bound in ONE atomic critical section (ADR D3): the
+//! Admission is a HARD bound in ONE atomic critical section: the
 //! reservation checks the component single-flight AND the ceiling AND inserts
 //! under a single lock hold, so no race can over-admit. The single-flight
 //! identity is the A2A COMPONENT, not the requested operation label — only one
@@ -17,8 +17,8 @@
 //! while the component is busy. Completed records are TTL-pruned and capped.
 //!
 //! Every mutating operation composes BOTH ownership gates through the single
-//! [`LifecyclePlane::with_mutation_authority`] seam before any control-plane mutation
-//! (P02 review SHOULD-FIX 3): the discovery verdict must classify our OWNED live
+//! [`LifecyclePlane::with_mutation_authority`] seam before any control-plane mutation:
+//! the discovery verdict must classify our OWNED live
 //! gateway AND the caller must hold the receipt-bound ownership capability. The
 //! two gates cannot be satisfied decoupled.
 
@@ -52,7 +52,7 @@ type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 // --- bounds (resource-bounds: every cap explicit at creation) -----------------
 
 /// The A2A component single-flight ceiling: exactly one mutation in flight for
-/// the one installed component at a time (ADR D3).
+/// the one installed component at a time.
 const MAX_CONCURRENT: usize = 1;
 /// Retained job history cap; older completed records are evicted first.
 const MAX_RETAINED: usize = 32;
@@ -60,7 +60,7 @@ const MAX_RETAINED: usize = 32;
 const JOB_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 /// Freshness window for a gateway discovery heartbeat.
 const DISCOVERY_FRESHNESS: Duration = Duration::from_secs(30);
-/// The gateway discovery record the seated controller publishes (W02.P04). The
+/// The gateway discovery record the seated controller publishes. The
 /// lifecycle plane READS it to classify the attach verdict; it never writes it.
 const DISCOVERY_FILE: &str = "gateway-discovery.json";
 
@@ -68,7 +68,7 @@ const DISCOVERY_FILE: &str = "gateway-discovery.json";
 
 /// The bounded lifecycle operation the wire may request. serde rejects any value
 /// outside this closed set, so an unknown/misspelled op 400s at extraction — the
-/// wire selects a SEMANTIC operation, never a free-form path or argument (ADR D3).
+/// wire selects a SEMANTIC operation, never a free-form path or argument.
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum LifecycleOpArg {
@@ -175,8 +175,8 @@ enum Admission {
 }
 
 /// The bounded lifecycle job registry. Held INSIDE `AppState` (never a global
-/// static) so tests and seated instances cannot share mutation state (ADR /
-/// plan S20). All admission decisions are made in one critical section.
+/// static) so tests and seated instances cannot share mutation state.
+/// All admission decisions are made in one critical section.
 struct Registry {
     jobs: HashMap<String, Job>,
     order: VecDeque<String>,
@@ -293,7 +293,7 @@ impl Registry {
     }
 }
 
-// --- shared gateway resolution (S27/S29/S30/S31/S33) ---------------------------
+// --- shared gateway resolution ---------------------------
 
 /// The protocol/state-schema ranges the dashboard's installed release set
 /// supports. v1 gateway API today; the state-schema window is deliberately wide
@@ -408,7 +408,7 @@ fn readiness_from(release: &ReleaseObservation, verdict: Option<&Verdict>) -> Op
     }
 }
 
-/// Build the component-handshake projection (S28) from ALREADY-READ state: the
+/// Build the component-handshake projection from ALREADY-READ state: the
 /// installed release set, owned-or-foreign gateway identity, protocol and
 /// state-schema ranges, and the one readiness model. No secret is ever projected.
 fn handshake_value(
@@ -539,7 +539,7 @@ fn ownership_refusal(error: CredentialError) -> Refusal {
 }
 
 /// The honest agent-orchestration availability derived from product state under
-/// an app home, WITHOUT reading any credential secret (S29). One receipt + one
+/// an app home, WITHOUT reading any credential secret. One receipt + one
 /// discovery read, then the pure classifier. Scope-independent (a2a is one
 /// machine-global resident). Used by the seated plane's own reads.
 pub(crate) fn agent_availability_at(
@@ -554,8 +554,8 @@ pub(crate) fn agent_availability_at(
     availability_from(&release, verdict.as_ref())
 }
 
-/// The component-handshake projection for a product state under an app home
-/// (S28), reading the receipt and discovery ONCE. Used by the seated plane's own
+/// The component-handshake projection for a product state under an app home,
+/// reading the receipt and discovery ONCE. Used by the seated plane's own
 /// reads (`/status` facts); the per-response hot path goes through the memoized
 /// [`resolve_agent_snapshot`] instead.
 pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value {
@@ -670,7 +670,7 @@ fn compute_agent_snapshot() -> AgentSnapshot {
 }
 
 /// Resolve the agent-orchestration tier MACHINE-GLOBALLY for the shared tiers
-/// builder (S29): every served response overlays this honest classification onto
+/// builder: every served response overlays this honest classification onto
 /// the degraded-by-default seed, so absence can never masquerade as availability.
 /// Reads through the memoized snapshot so it shares one filesystem pass with the
 /// handshake decoration on the same response.
@@ -679,13 +679,13 @@ pub(crate) fn resolve_agent_tier() -> (bool, Option<String>) {
     (snap.available, snap.reason.clone())
 }
 
-/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration
-/// (S28), sharing the memoized read pass with [`resolve_agent_tier`].
+/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration,
+/// sharing the memoized read pass with [`resolve_agent_tier`].
 pub(crate) fn resolve_agent_handshake() -> Value {
     resolve_agent_snapshot().handshake.clone()
 }
 
-/// The resolved orchestration endpoint for the run edge (S30/S31), or the honest
+/// The resolved orchestration endpoint for the run edge, or the honest
 /// reason it is unavailable. `Available` carries the loopback endpoint and the
 /// attach-control bearer the forwarded verb calls authenticate with — the
 /// dashboard control token for our OWNED gateway, or the foreign owner's
@@ -744,9 +744,9 @@ pub struct LifecyclePlane {
     paths: ProductPaths,
     owner_id: String,
     registry: Mutex<Registry>,
-    /// The gateway process this seated dashboard OWNS after a boot start (S27).
+    /// The gateway process this seated dashboard OWNS after a boot start.
     /// Retained for the process lifetime so the child is never orphaned and the
-    /// bounded termination contract (D4) can reach its tree on shutdown. `None`
+    /// bounded termination contract can reach its tree on shutdown. `None`
     /// when nothing was started here (cold, not-installed, or attached to a
     /// gateway another process owns).
     owned_gateway: Mutex<Option<vaultspec_product::process::GatewayProcess>>,
@@ -789,20 +789,20 @@ impl LifecyclePlane {
     }
 
     /// Read and classify the current gateway discovery record, if the seated
-    /// controller has published one (W02.P04). `None` when no gateway is
+    /// controller has published one. `None` when no gateway is
     /// discoverable — so a mutation gate cannot see an owned live gateway.
     fn current_verdict(&self) -> Option<Verdict> {
         let discovery = read_gateway_discovery(&self.paths)?;
         Some(discovery.classify(&discovery_ctx(&self.owner_id)))
     }
 
-    /// The honest agent-tier availability for this plane's product state (S29):
+    /// The honest agent-tier availability for this plane's product state:
     /// no credential read, just the discovery classification.
     pub(crate) fn agent_availability(&self) -> (bool, Option<String>) {
         agent_availability_at(&self.paths, &self.owner_id)
     }
 
-    /// Resolve the authenticated run-edge endpoint (S30/S31): a usable gateway
+    /// Resolve the authenticated run-edge endpoint: a usable gateway
     /// with its attach-control bearer, or the honest unavailable reason. This is
     /// the ONE resolution the `/ops/a2a` pass-through and the run-stream relay both
     /// consume, replacing the retired token-bearing `service.json` discovery.
@@ -832,7 +832,7 @@ impl LifecyclePlane {
             Verdict::ForeignAttachable => {
                 // A compatible foreign gateway with a trusted handoff: read the
                 // foreign owner's owner-ACL attach credential from the non-secret
-                // handoff reference. Attachment is READ-ONLY (ADR D4).
+                // handoff reference. Attachment is READ-ONLY.
                 match ForeignHandoffReader::read(std::path::Path::new(&discovery.handoff_reference))
                 {
                     Ok(credential) => ResolvedGateway::Available(ResolvedEndpoint {
@@ -858,9 +858,9 @@ impl LifecyclePlane {
         }
     }
 
-    /// Reconcile the receipt-owned gateway during seated boot (S27). The seated
+    /// Reconcile the receipt-owned gateway during seated boot. The seated
     /// dashboard starts or authenticates ONLY a gateway its receipt owns, and
-    /// leaves every compatible foreign resident immutable (ADR D4):
+    /// leaves every compatible foreign resident immutable:
     ///
     /// - not installed (no receipt): nothing to own — no-op;
     /// - owned + live discovery: AUTHENTICATE via the attach-control token and
@@ -960,7 +960,7 @@ impl LifecyclePlane {
     }
 
     /// Verify a presented credential against the dashboard-created ATTACH-CONTROL
-    /// credential (a2a-product-provisioning W02.P05.S41/S153). The gateway
+    /// credential. The gateway
     /// authenticates its terminal-settlement callback with exactly this credential
     /// — never the worker-IPC secret. Constant-time compare against the stored
     /// secret; a missing/unreadable credential or any mismatch is `false`
@@ -973,7 +973,7 @@ impl LifecyclePlane {
         }
     }
 
-    /// Terminate the owned gateway process tree within a bound (D4), if this
+    /// Terminate the owned gateway process tree within a bound, if this
     /// dashboard started one. Called on seated shutdown. No-op when nothing was
     /// started here (cold, or attached to a gateway another process owns).
     pub(crate) fn terminate_owned_gateway(&self, graceful: Duration) -> Option<bool> {
@@ -985,9 +985,9 @@ impl LifecyclePlane {
         }
     }
 
-    /// The A2A product facts for the `/status` backends block (S32): installation,
+    /// The A2A product facts for the `/status` backends block: installation,
     /// gateway identity, the ONE readiness model, and lifecycle admission. A cold
-    /// worker on a live gateway reports READY, never degraded (ADR D4). The worker
+    /// worker on a live gateway reports READY, never degraded. The worker
     /// and provider processes are gateway-owned, run-scoped children — the
     /// dashboard reports the gateway's readiness and its own admission state, never
     /// a fabricated worker/provider census it does not own.
@@ -1002,8 +1002,8 @@ impl LifecyclePlane {
                     "single_flight_ceiling": MAX_CONCURRENT,
                 }),
             );
-            // Worker/provider processes are gateway-owned run-scoped children
-            // (ADR D4); the dashboard does not census them. State honestly.
+            // Worker/provider processes are gateway-owned run-scoped children;
+            // the dashboard does not census them. State honestly.
             obj.insert(
                 "worker_and_providers".into(),
                 json!("gateway-owned run-scoped children; not dashboard-tracked"),
@@ -1016,9 +1016,9 @@ impl LifecyclePlane {
     /// attach gate and the authority gate through `guard_owned_mutation` before
     /// any control-plane mutation, so no route can satisfy only one.
     ///
-    /// The discovery record is published ONLY while the gateway runs (ADR D5), so
+    /// The discovery record is published ONLY while the gateway runs, so
     /// its ABSENCE is a cleanly stopped install — a VALID precondition for a
-    /// receipt-bound mutation (ADR D4/D6 cold state), NOT a `ForeignResident`
+    /// receipt-bound mutation (cold state), NOT a `ForeignResident`
     /// refusal. Absent discovery is passed as `None` and the receipt + ownership
     /// authority governs; only a genuinely uninstalled component (no receipt) is
     /// refused `NotInstalled`.
@@ -1098,9 +1098,9 @@ impl LifecyclePlane {
         })
     }
 
-    /// Apply a lifecycle operation (the background job body). P03 wires the job
+    /// Apply a lifecycle operation (the background job body). This wires the job
     /// plane; the gateway control effect for the process-lifecycle operations
-    /// lands with the seated controller in W02.P04. Operations fully owned by the
+    /// lands with the seated controller. Operations fully owned by the
     /// product crate today are applied for real; the rest report the current
     /// authoritative state rather than a fabricated success.
     fn apply(&self, op: LifecycleOp) -> (JobState, Value) {
@@ -1131,7 +1131,7 @@ impl LifecyclePlane {
                         json!({
                             "error": "the seated gateway controller applies this operation",
                             "op": op_label(other),
-                            "pending": "W02.P04",
+                            "pending": "gateway control effect not yet wired",
                         }),
                     )
                 };
@@ -1278,26 +1278,26 @@ pub(crate) async fn a2a_lifecycle_job(
 
 #[cfg(test)]
 impl LifecyclePlane {
-    /// Build a plane over an isolated product app home (test-only): the S34
+    /// Build a plane over an isolated product app home (test-only): the
     /// runtime-identity suite drives the real reconcile against a temp home.
     pub(crate) fn testonly_new(app_home: &std::path::Path) -> Self {
         Self::new(app_home)
     }
 
     /// The stable owner id this plane classifies discovery against (test-only):
-    /// the S34 suite writes a discovery record whose `owner` must match it.
+    /// the runtime-identity suite writes a discovery record whose `owner` must match it.
     pub(crate) fn testonly_owner_id(&self) -> &str {
         &self.owner_id
     }
 
-    /// The product paths this plane roots at (test-only), so the S34 suite can
-    /// write the receipt, credentials, and discovery record the reconcile reads.
+    /// The product paths this plane roots at (test-only), so the runtime-identity
+    /// suite can write the receipt, credentials, and discovery record the reconcile reads.
     pub(crate) fn testonly_paths(&self) -> &ProductPaths {
         &self.paths
     }
 
-    /// Inject an owned gateway process (test-only), so the S34 suite can prove the
-    /// bounded owned-tree termination contract against a real capsule-interpreter
+    /// Inject an owned gateway process (test-only), so the runtime-identity suite
+    /// can prove the bounded owned-tree termination contract against a real capsule-interpreter
     /// process without the not-yet-built install layout.
     pub(crate) fn testonly_set_owned_gateway(
         &self,

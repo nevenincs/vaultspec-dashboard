@@ -1,7 +1,7 @@
-// The component compatibility handshake read (dashboard-packaging D6, P02.S10):
+// The component compatibility handshake read:
 // the ONE tiers reader exposes the engine-served per-tier component handshake
 // (floor, probed version, verdict) as advisory data for status surfaces. It is
-// deliberately NOT folded into `degraded` (P02 review): a below-floor core
+// deliberately NOT folded into `degraded`: a below-floor core
 // still reads fine — the engine's own served eligibility blocks the authoring
 // verbs it cannot honor, so the client never invents a whole-tier degradation.
 

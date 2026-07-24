@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 //
-// Cross-layer token-read verification (W01.P02.S10). The scene's
+// Cross-layer token-read verification. The scene's
 // getComputedStyle readers parse the public --color-* surface as #rrggbb. This
 // test sets the rebuilt token layer's LITERAL HEX values (the scene-read
 // subset emitted by the OKLCH token file) on documentElement and asserts the
@@ -77,7 +77,7 @@ function applyTokens(tokens: Record<string, string>): void {
 
 const hexToNum = (h: string) => parseInt(h.slice(1), 16);
 
-describe("scene getComputedStyle reads resolve from the rebuilt token layer (S10)", () => {
+describe("scene getComputedStyle reads resolve from the rebuilt token layer", () => {
   beforeEach(() => {
     document.documentElement.removeAttribute("style");
   });

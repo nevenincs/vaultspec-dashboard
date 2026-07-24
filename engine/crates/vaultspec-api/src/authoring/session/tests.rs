@@ -147,10 +147,10 @@ pub(super) fn payload_state(store: &mut Store, kind: &str, id: &str) -> PayloadS
         .unwrap()
 }
 
-/// S262: the compaction driver, exercised through the LIVE prompt-turn boundary (not a
+/// The compaction driver, exercised through the LIVE prompt-turn boundary (not a
 /// direct `compact_due` call). Starting a prompt turn runs one bounded sweep that
 /// summarizes a terminal generation transcript WHILE a co-located pending-approval
-/// protected-product-state record stays Full — the P44 invariant realized through the
+/// protected-product-state record stays Full — the invariant realized through the
 /// wiring.
 #[test]
 fn the_prompt_turn_hook_compacts_a_terminal_transcript_and_retains_a_pending_approval() {
@@ -291,7 +291,7 @@ fn second_turn_queues_behind_active_run_without_joining() {
     let run1 = started.run_id.clone().expect("run id is returned");
     assert_eq!(started.status, "started");
 
-    // A second prompt submitted mid-run is ENQUEUED (D2), never joined: it is a real
+    // A second prompt submitted mid-run is ENQUEUED, never joined: it is a real
     // second turn with no run yet, and the first run stays active.
     let queued = accepted(
         start_prompt_turn(
@@ -360,7 +360,7 @@ fn run_cancel_is_run_scoped_preserves_session_and_promotes_next_queued_turn() {
         .unwrap(),
     );
 
-    // Cancelling the run leaves the SESSION active (D2 — Stop stops the run, not the
+    // Cancelling the run leaves the SESSION active (Stop stops the run, not the
     // conversation) and atomically promotes the queued turn into a fresh run.
     let cancelled = accepted(
         cancel_run(
@@ -378,7 +378,7 @@ fn run_cancel_is_run_scoped_preserves_session_and_promotes_next_queued_turn() {
     assert_eq!(
         snap.session.status,
         SessionStatus::Active,
-        "D2: a run-scoped cancel must leave the session active"
+        "a run-scoped cancel must leave the session active"
     );
     let promoted = snap
         .active_run
@@ -1293,9 +1293,9 @@ fn a_delegator_may_complete_its_delegated_agents_run() {
     assert_eq!(snap.session.status, SessionStatus::Active);
 }
 
-/// D7 turn-consumption fence negatives (ADR verification: "turn-reference fence
-/// violations typed"): an unknown batch id and a batch frozen under ANOTHER
-/// session are both typed validation refusals, and no turn record is created.
+/// Turn-consumption fence negatives ("turn-reference fence violations typed"):
+/// an unknown batch id and a batch frozen under ANOTHER session are both typed
+/// validation refusals, and no turn record is created.
 #[test]
 fn a_turn_referencing_an_unknown_or_foreign_feedback_batch_is_refused() {
     let (_dir, _path, mut store) = temp_store();

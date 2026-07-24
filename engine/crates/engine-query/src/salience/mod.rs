@@ -1,11 +1,11 @@
-//! Node salience (graph-node-salience ADR): an engine-computed, CPU-bound,
+//! Node salience: an engine-computed, CPU-bound,
 //! per-lens Degree-of-Interest projection over the bounded graph, served as a
 //! single active-lens `salience` float node field.
 //!
 //! The governing formalism is Furnas's Degree-of-Interest:
 //! `interest = a-priori-importance - distance-from-focus`. A "lens" is a
 //! parameterization of that one model, not a separate code path. The six CPU
-//! stages (ADR Implementation):
+//! stages:
 //!
 //! 1. Build the tier-weighted backbone graph (declared >= structural >>
 //!    temporal >= semantic) so the high-precision backbone dominates topology
@@ -36,7 +36,7 @@ pub use ontology::{AuthorityClass, LifecyclePhase, authority_class, lifecycle_ph
 
 // --- The lens: a parameterization of one DOI model ------------------------------
 
-/// A viewer-intent "lens" (ADR: a lens is a *parameterization* of the one DOI
+/// A viewer-intent "lens" (a lens is a *parameterization* of the one DOI
 /// model, not a separate code path). The two launch lenses are concrete
 /// parameterizations — teleport bias, weight row, type priors — over the SAME
 /// machinery. STATUS is the default (first-load is "what is in-flight", the most
@@ -53,8 +53,7 @@ pub enum Lens {
 }
 
 impl Lens {
-    /// Parse the wire `lens` request parameter, defaulting to STATUS when omitted
-    /// (ADR wire amendment: "defaulted to the status lens when omitted").
+    /// Parse the wire `lens` request parameter, defaulting to STATUS when omitted.
     pub fn parse(raw: Option<&str>) -> Option<Lens> {
         match raw {
             None | Some("status") => Some(Lens::Status),
@@ -159,13 +158,13 @@ impl Lens {
 
 // --- Stage 1: the tier-weighted backbone graph ---------------------------------
 
-/// Per-tier topology weight (ADR stage 1; research "edge-tier weighting"). The
+/// Per-tier topology weight. The
 /// declared and structural tiers are identity-bearing high precision; temporal
 /// is correlation (medium). Headline centrality (PageRank, betweenness, k-core)
 /// runs over the declared+structural BACKBONE only (`backbone_weight` returns 0
 /// for temporal), so a soft correlation tier cannot hijack centrality; temporal
 /// enters later stages only as damped enrichment (recency, the status burst).
-/// Semantic (RAG) is never a graph tier (D3.5), so it carries no topology weight.
+/// Semantic (RAG) is never a graph tier, so it carries no topology weight.
 ///
 /// `declared >= structural >> temporal` per the research's strong
 /// recommendation.
@@ -178,10 +177,9 @@ pub fn tier_weight(tier: Tier) -> f64 {
 }
 
 /// The headline-centrality backbone admits ONLY the high-precision declared and
-/// structural tiers (ADR Rationale: "computing the headline centrality on the
-/// high-precision declared/structural backbone"). Temporal edges are excluded
+/// structural tiers. Temporal edges are excluded
 /// from the backbone topology entirely; they enter as damped enrichment in later
-/// stages. (Semantic is never a graph tier — D3.5.) Returns `None` for an
+/// stages. (Semantic is never a graph tier.) Returns `None` for an
 /// off-backbone tier.
 pub fn backbone_weight(tier: Tier) -> Option<f64> {
     match tier {
@@ -414,7 +412,7 @@ impl PartialVectorBasis {
 /// topology admission, not path length — a declared and a structural edge are
 /// both one hop). O(n*m) (research: the algorithm that makes betweenness
 /// affordable; naive all-pairs is O(n^3)). Affordable ONLY under the node
-/// ceiling (ADR Constraints; the W05 benchmark proves it).
+/// ceiling (the benchmark proves it).
 pub fn brandes_betweenness(backbone: &Backbone) -> Vec<f64> {
     let n = backbone.node_count();
     let mut centrality = vec![0.0; n];
@@ -557,8 +555,8 @@ impl StructuralRole {
     }
 }
 
-/// The aggregated-exec feature (ADR hub/fan-out mitigation; research mitigation
-/// 2): exec records are an aggregate species rolled into their parent plan as one
+/// The aggregated-exec feature (hub/fan-out mitigation):
+/// exec records are an aggregate species rolled into their parent plan as one
 /// evidential signal, so exec volume reads as evidence, not inflation. The hint
 /// is read from the node ontology (the `aggregate` semantics field, derived
 /// locally here until the semantics feature lands it natively).
@@ -575,7 +573,7 @@ pub struct AggregatedExec {
 
 /// The per-graph-generation centrality basis: the expensive measures computed
 /// ONCE in one sweep over the backbone, shared by every lens
-/// (`provenance-stable` per-generation memoization, ADR Constraints). All vectors
+/// (`provenance-stable` per-generation memoization). All vectors
 /// are indexed by backbone node order. Per-lens PPR is then a cheap `combine`
 /// over the partial-vector hubs.
 #[derive(Debug, Clone)]
@@ -1226,7 +1224,7 @@ fn compose_api_with(criteria: &NormalizedCriteria, _lens: Lens, row: WeightRow) 
 // --- Stage 5/6: focus folding + the served per-node salience map ----------------
 
 /// The served salience: per-node DOI scalar keyed by node id, plus the partial
-/// flag (ADR Constraints: a salience computed while a tier is degraded is flagged
+/// flag (a salience computed while a tier is degraded is flagged
 /// partial via the tiers block, never presented as complete). Final scores are
 /// rank-normalized to `[0,1]` so the served `salience` float is a stable,
 /// comparable per-node importance within the bounded subgraph.
@@ -1283,7 +1281,7 @@ pub fn compute_salience(
     }
 }
 
-/// A memoization key for the focus-folded score (ADR: memoize the basis per
+/// A memoization key for the focus-folded score (memoize the basis per
 /// `(graph-generation, lens)` and the focus-folded final score per
 /// `(lens, focus)`). The graph generation is the caller's responsibility (it
 /// keys the basis); this keys the focus-folded score within a fixed basis.
@@ -1304,9 +1302,9 @@ impl FocusKey {
     }
 }
 
-/// Attach the active-lens `salience` float to each served document node view
-/// (ADR Constraints: "a single `salience` float computed for the *requested*
-/// lens ... an additive node field"). Mutates each node Value in place, adding a
+/// Attach the active-lens `salience` float to each served document node view:
+/// a single `salience` float computed for the *requested*
+/// lens, an additive node field. Mutates each node Value in place, adding a
 /// `salience` key. A node not in the scored set (e.g. a feature-convergence node,
 /// which the salience model does not rank) gets no salience field — truthful
 /// absence rather than a guessed zero.
@@ -1328,8 +1326,8 @@ pub fn annotate_nodes(nodes: &mut [serde_json::Value], scores: &SalienceScores) 
 
 /// Order document node views by descending active-lens salience, so a DOI
 /// truncation under the node ceiling keeps the TOP-salience nodes for the active
-/// lens and focus (ADR: "MAX_GRAPH_NODES truncation selects the top-DOI nodes for
-/// the active lens and focus"). Nodes without a salience score sort last (their
+/// lens and focus (MAX_GRAPH_NODES truncation selects the top-DOI nodes for
+/// the active lens and focus). Nodes without a salience score sort last (their
 /// importance is unknown, so they recede under truncation), with id as the
 /// deterministic tie-break.
 pub fn order_by_salience(nodes: &mut [serde_json::Value], scores: &SalienceScores) {

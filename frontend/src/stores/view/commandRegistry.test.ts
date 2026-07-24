@@ -1,4 +1,4 @@
-// Command-provider registry units (command-palette-providers ADR, W01.P01):
+// Command-provider registry units:
 // registration + disposer, per-provider and total bounds, the central time-travel
 // gate, id de-duplication, defensive normalization, and the throwing-provider
 // degradation. The registry is the one host the palette consumes, so its gating and

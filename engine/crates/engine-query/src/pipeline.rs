@@ -1,5 +1,4 @@
-//! The bounded in-flight pipeline projection (dashboard-pipeline-wire W02,
-//! ADR `dashboard-pipeline-wire`): a projection over the existing
+//! The bounded in-flight pipeline projection: a projection over the existing
 //! `LinkageGraph` returning the active pipeline artifacts in the requested
 //! scope — active plans (by lifecycle) and in-flight ADRs (by status) — each
 //! with its progress summary, status/tier facet, pipeline phase, and stable
@@ -15,7 +14,7 @@ use engine_graph::{LinkageGraph, lifecycle_in_scope};
 use engine_model::{Node, Progress, ScopeRef};
 use serde::Serialize;
 
-/// The pipeline phase an artifact sits in (dashboard-pipeline-wire W02.P04.S19),
+/// The pipeline phase an artifact sits in,
 /// derived from doc_type and status — the research -> adr -> plan -> execute ->
 /// review arc the vaultspec pipeline runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -40,8 +39,8 @@ impl PipelinePhase {
     }
 }
 
-/// The pipeline-phase LANE a vault document sits in (dashboard-timeline ADR,
-/// W01.P01.S01), derived from its doc_type by a single deterministic mapping —
+/// The pipeline-phase LANE a vault document sits in,
+/// derived from its doc_type by a single deterministic mapping —
 /// the framework's research -> adr -> plan -> exec -> review -> codify arc the
 /// phase-lane timeline draws documents into.
 ///
@@ -78,12 +77,12 @@ impl PipelineLanePhase {
     }
 }
 
-/// The single deterministic doc-type -> pipeline-lane mapping (dashboard-timeline
-/// ADR, W01.P01.S01): research/reference -> research; adr -> adr; plan -> plan;
+/// The single deterministic doc-type -> pipeline-lane mapping:
+/// research/reference -> research; adr -> adr; plan -> plan;
 /// exec -> exec; audit -> review; rule -> codify.
 ///
 /// Returns `None` for a doc-type with no pipeline lane: a `commit` is ambient
-/// (off by default, toggle-on in the surface, per the ADR — it has no phase
+/// (off by default, toggle-on in the surface — it has no phase
 /// lane), and an unknown or absent doc-type maps to no lane so the projection
 /// never invents a phase for an artifact the pipeline does not own. The match is
 /// over the `.vault/` subdirectory vocabulary the ingest already stamps on
@@ -102,7 +101,7 @@ pub fn phase_for_doc_type(doc_type: &str) -> Option<PipelineLanePhase> {
     }
 }
 
-/// One in-flight pipeline artifact (dashboard-pipeline-wire W02.P04.S17): a
+/// One in-flight pipeline artifact: a
 /// plan or ADR currently being worked on, projected with everything the Work
 /// surface renders. All fields are derived from node facets the ingest already
 /// holds; nothing is computed beyond this projection.
@@ -132,7 +131,7 @@ pub struct PipelineArtifact {
     pub phase: PipelinePhase,
 }
 
-/// The in-flight pipeline projection (dashboard-pipeline-wire W02.P04.S18/S20):
+/// The in-flight pipeline projection:
 /// the active pipeline artifacts in `scope`, sorted by stable id for
 /// deterministic ordering. Bounded to ACTIVE artifacts — a complete plan and a
 /// rejected/deprecated ADR are excluded, never an unbounded "all artifacts ever".
@@ -142,7 +141,7 @@ pub fn in_flight(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<PipelineArtifact
         .filter(|n| n.id.0.starts_with("doc:"))
         .filter_map(|n| artifact_if_active(n, scope))
         .collect();
-    // Sort by stable id for deterministic ordering (S20): the GUI's list is
+    // Sort by stable id for deterministic ordering: the GUI's list is
     // stable across re-indexes that do not change membership.
     artifacts.sort_by(|a, b| a.node_id.cmp(&b.node_id));
     artifacts
@@ -155,7 +154,7 @@ pub fn in_flight(graph: &LinkageGraph, scope: &ScopeRef) -> Vec<PipelineArtifact
 /// - a **plan** whose lifecycle state in this scope is `active` (checkbox
 ///   progress not yet complete) — a complete plan is past, not in-flight; or
 /// - an **ADR** whose status is `proposed` or `accepted` — a rejected or
-///   deprecated ADR is settled, not in-flight (the honest read W01 enables: an
+///   deprecated ADR is settled, not in-flight (the honest read enables: an
 ///   ADR has no steps, so its in-flight-ness is its real status, never a
 ///   checkbox guess).
 ///
@@ -200,7 +199,7 @@ fn artifact_if_active(node: &Node, scope: &ScopeRef) -> Option<PipelineArtifact>
     })
 }
 
-/// Derive the phase of an active plan from its checkbox progress (S19): a plan
+/// Derive the phase of an active plan from its checkbox progress: a plan
 /// with no work checked yet is still in the `plan` phase; once any step is
 /// checked it has entered `execute`. (A complete plan is excluded upstream, so
 /// `review` is reached only by audit docs, not by a complete plan here.)
@@ -265,9 +264,9 @@ mod tests {
 
     #[test]
     fn in_flight_includes_active_plan_and_proposed_adr_excludes_complete_and_rejected() {
-        // W02.P04.S21: a complete plan and a rejected ADR are excluded while an
+        // A complete plan and a rejected ADR are excluded while an
         // active plan and a proposed ADR are included — the projection is
-        // bounded to in-flight artifacts, the honesty W01's status facet enables.
+        // bounded to in-flight artifacts, the honest status facet enables.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("a-plan", "plan", None, Some("L3"), Some(active(2, 5))));
         g.upsert_node(doc(
@@ -317,7 +316,7 @@ mod tests {
 
     #[test]
     fn an_active_plan_with_no_work_checked_is_in_the_plan_phase() {
-        // S19: phase derivation from progress — a plan whose steps are all open
+        // Phase derivation from progress — a plan whose steps are all open
         // (done == 0) is still in the `plan` phase; once any step is checked it
         // is in `execute`.
         let mut g = LinkageGraph::new();
@@ -329,7 +328,7 @@ mod tests {
 
     #[test]
     fn doc_type_maps_to_its_single_pipeline_lane_for_each_phase() {
-        // W01.P01.S07 (dashboard-timeline): the doc-type -> pipeline-lane
+        // The doc-type -> pipeline-lane
         // mapping is deterministic and total over the framework's phases —
         // research/reference -> research, adr -> adr, plan -> plan, exec ->
         // exec, audit -> review, rule -> codify. The mapping is what the

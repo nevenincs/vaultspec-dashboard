@@ -1,8 +1,8 @@
-//! Fixture-document pipeline test (W01.P04.S18): reader -> extractor, covering
+//! Fixture-document pipeline test: reader -> extractor, covering
 //! the structural mention KINDS the body extractor recognizes.
 //!
 //! Mention RESOLUTION (and the structural body-mention graph edges it fed) was
-//! retired under the strict reference-only ruling (2026-06-28): only `related:`
+//! retired under the strict reference-only ruling: only `related:`
 //! frontmatter defines the node graph. The body extractor is retained as the
 //! incremental-index change-detection telemetry source, so this test still
 //! exercises reader -> extract.

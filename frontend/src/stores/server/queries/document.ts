@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import {
@@ -23,7 +23,7 @@ import { useMemo } from "react";
 import { isAddressableNode, normalizeNodeScopedRequestIdentity } from "./graph";
 import { engineKeys } from "./internal";
 
-// --- read-only content fetch (review-rail-viewers ADR) ---------------------------
+// --- read-only content fetch -------------------------------------------------------
 //
 // The viewer backend's wire seam, consumed through these stores hooks so the
 // markdown reader and the code viewer (chrome) never fetch the engine or read the
@@ -44,8 +44,8 @@ import { engineKeys } from "./internal";
 const CONTENT_GC_TIME = 60_000;
 
 /**
- * The read-only content fetch for one document/file node (review-rail-viewers
- * ADR), the SOLE wire client of `/nodes/{id}/content`. Keyed by (scope, nodeId);
+ * The read-only content fetch for one document/file node, the SOLE wire
+ * client of `/nodes/{id}/content`. Keyed by (scope, nodeId);
  * disabled when either is null (no node open / no worktree resolved yet). Bounded:
  * an explicit `gcTime` evicts the (potentially MAX_CONTENT_BYTES) entry soon after
  * the viewer closes, so a long session does not retain every opened file's bytes.

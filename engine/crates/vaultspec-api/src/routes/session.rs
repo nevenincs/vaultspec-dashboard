@@ -1,7 +1,7 @@
-//! Top-level session and settings endpoints (user-state-persistence W03.P06).
+//! Top-level session and settings endpoints.
 //!
-//! These are the orchestration-crate surface the foundation contract reserved
-//! (§9): the durable "where am I and what am I looking at" session and the user
+//! These are the orchestration-crate surface the foundation contract reserved:
+//! the durable "where am I and what am I looking at" session and the user
 //! settings, read and written through the shared [`vaultspec_session::UserState`]
 //! handle. They persist ONLY session/settings rows in the best-effort store —
 //! never `.vault/` documents, never git refs (the read-and-infer fence the
@@ -332,7 +332,7 @@ pub async fn put_session(
     let workspace = workspace_key(&state);
     let now = crate::app::now_ms();
 
-    // Registry mutations route through the user-state CONFIG surface (P02.S09),
+    // Registry mutations route through the user-state CONFIG surface,
     // NOT the read-only graph API and NOT the /ops proxy. All are read-only over
     // repository content: register DISCOVERS a path and records a config row;
     // forget removes a config row and evicts warm cells; select records the

@@ -1,6 +1,6 @@
 [package]
 name = "engine-model"
-description = "Pure shared types for the vaultspec engine: Node, Edge, Tier, Provenance, ScopeRef. Zero I/O — the dependency sink every crate shares (engine-spec D9.1)."
+description = "Pure shared types for the vaultspec engine: Node, Edge, Tier, Provenance, ScopeRef. Zero I/O — the dependency sink every crate shares."
 version.workspace = true
 edition.workspace = true
 license.workspace = true

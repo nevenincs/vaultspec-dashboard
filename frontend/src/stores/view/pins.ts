@@ -1,8 +1,8 @@
-// Node pinning (W02.P06.S27, ADR G5.d): pinned nodes are layout-fixed and
+// Node pinning (ADR G5.d): pinned nodes are layout-fixed and
 // always-labelled on the field, and pins persist client-side per
 // workspace + scope — the engine holds no preference store. The seam's
 // `pin` event toggles; the `set-pinned` command carries the membership to
-// the renderer (locked at S04).
+// the renderer.
 
 import { create } from "zustand";
 

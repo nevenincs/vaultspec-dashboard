@@ -1,4 +1,4 @@
-// The rag-search controller (W02.P16.S32, dashboard-rag-search ADR) — the
+// The rag-search controller — the
 // stores-layer SOLE wire client for search. This is where the `/search` fetch
 // lives, where the degradation truth is READ from the §2 tiers block, where the
 // text-match fallback is decided, and where each result carries its graph node
@@ -6,15 +6,15 @@
 // honest TRUTHS it exposes so the consuming view (the Cmd-K search palette,
 // `SearchPaletteSurface`) renders correctly.
 //
-// Boundary correction (dashboard-layer-ownership / search ADR "Layer ownership"):
+// Boundary correction:
 // the rag-down fallback previously lived under `frontend/src/app/right/`, the
 // CHROME layer, yet it composed `useEngineSearch` + `useVaultTree` and decided
 // the semantic-offline truth — wire-client behaviour living in a view directory.
 // That decision is pulled back HERE into the stores slice, leaving the view a
 // dumb consumer of ONE interpreted search selector.
 //
-// Degradation is TIERS-GATED truth, never guessed (search ADR "Degradation is
-// tiers-gated truth"): semantic-offline is derived from `tiers.semantic.available`
+// Degradation is TIERS-GATED truth, never guessed: semantic-offline is derived
+// from `tiers.semantic.available`
 // the wire carries — the rag 502 error envelope OR the success-envelope tier
 // block — never from a bare transport error or timeout. The fallback to text
 // match is gated on that truth and scored in a band STRICTLY below semantic
@@ -63,7 +63,7 @@ export function pathToDocNodeId(path: string): string {
   return docNodeIdFromStem(stemFromPath(path));
 }
 
-// The rag-down TEXT FALLBACK retired here (search-providers ADR D2 fold): a
+// The rag-down TEXT FALLBACK retired here: a
 // semantic outage is no longer a mode with its own text-match results. The
 // `files(vault)` search provider — the ONE shared literal matcher over the
 // complete cached vault tree — now carries name matches whether or not rag is up,
@@ -201,8 +201,8 @@ export interface SearchControllerView {
    *  "Filter vocabulary") — the data-driven legal facets; never hardcoded. */
   filterVocabulary: FiltersVocabulary | undefined;
   /**
-   * rag's freshness block for this corpus as SERVED (rag-integration-hardening
-   * ADR D3), forwarded raw for the consumer to render staleness from — never
+   * rag's freshness block for this corpus as SERVED, forwarded raw for the
+   * consumer to render staleness from — never
    * remapped here (presentation maps the served token to a label). The reference
    * is passed through unchanged from the held `SearchResponse` so its identity is
    * stable across renders (frontend-store-selectors: no fresh reference minted).
@@ -236,7 +236,7 @@ export function searchResultSpecies(nodeId: string | null): SearchResultSpecies 
  * Interpret a search query's outcome into the controller view. Pure over the
  * inputs so the full state machine is unit-testable without a render: the tiers
  * gate decides `semantic-offline` (now a PURELY semantic phase — the text
- * fallback folded into the files(vault) search provider, ADR D2), and a
+ * fallback folded into the files(vault) search provider), and a
  * tiers-less transport fault is the `error` branch (held results stay visible
  * under the banner — a transient refetch failure must not blank a list the
  * operator was reading; TanStack retains `data` across an error and result ids
@@ -273,7 +273,7 @@ export function interpretSearch(input: {
   const transportError = !semanticOffline && isTransportError(error);
   const hasQuery = query.trim().length > 0;
 
-  // Served freshness (ADR D3), forwarded RAW from the held response — the
+  // Served freshness, forwarded RAW from the held response — the
   // `index_state` reference is passed through unchanged (never cloned) so its
   // identity is stable across renders, and the epoch is a primitive. Both ride
   // every non-idle branch; idle is not an active search, so it reports neither.
@@ -297,7 +297,7 @@ export function interpretSearch(input: {
 
   // Semantic offline (tiers-gated): rag is down per the wire's tiers block. This
   // controller now contributes NOTHING when offline (results empty) — the
-  // files(vault) provider carries name matches in the host merge (ADR D2 fold).
+  // files(vault) provider carries name matches in the host merge.
   // The exported `semanticOffline` truth is what the host gates its degraded copy
   // on; there is no per-target fallback distinction anymore.
   if (semanticOffline) {

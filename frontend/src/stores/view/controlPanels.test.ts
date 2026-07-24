@@ -1,4 +1,4 @@
-// The shared control-panel open state (activity-rail-realignment ADR D3) and its
+// The shared control-panel open state and its
 // helpers. The store drives the rail-footer chips, the command palette, and the
 // keymap; this pins the modal single-open transitions and the boundary normalizer.
 

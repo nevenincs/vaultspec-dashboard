@@ -22,7 +22,7 @@ const DEFAULT_AVAILABLE_TIERS: &[&str] = &["declared", "structural", "temporal",
 
 /// The reason the `agent` tier carries when no controller context has resolved
 /// the real A2A orchestration state. The seeded default is DEGRADED, never
-/// optimistic (a2a-product-provisioning W02.P04.S29): absence of a resolution
+/// optimistic: absence of a resolution
 /// must never masquerade as availability. A response served with a live product
 /// controller (the seated dashboard) overwrites this with the real classification.
 const AGENT_TIER_UNRESOLVED: &str = "a2a orchestration state not resolved on this response";
@@ -68,8 +68,8 @@ pub fn tiers_block(unavailable: &[(&'static str, &str)]) -> TiersBlock {
     block
 }
 
-/// The degradation block for HISTORICAL (`as_of`) views (audit
-/// W02P07-402): the semantic tier is present-only by design (D7.3), and
+/// The degradation block for HISTORICAL (`as_of`) views: the semantic
+/// tier is present-only by design, and
 /// the structural tier carries the v1 as-of bound note so the GUI renders
 /// it truthfully rather than as full-fidelity history.
 pub fn asof_tiers_block() -> TiersBlock {
@@ -167,7 +167,7 @@ mod tests {
     fn agent_tier_is_always_present_and_seeded_degraded_honest() {
         // With no explicit agent degradation, the tier is still present and
         // DEGRADED — absence of a controller resolution can never masquerade as
-        // availability (a2a-product-provisioning W02.P04.S29).
+        // availability.
         let block = tiers_block(&[]);
         let agent = &block["agent"];
         assert!(

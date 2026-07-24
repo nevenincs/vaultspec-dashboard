@@ -29,4 +29,4 @@ Verdict: the winget channel is VIABLE without signing. The only explicit signing
 
 - Budget a review cycle or a manual Defender false-positive submission for the first release; reputation accrues per binary and domain.
 - The release artifact must install and uninstall silently for admin and non-admin, one manifest version per PR; a genuine portable binary dodges `Validation-Uninstall-Error`.
-- Repo identity discrepancy flagged during research: the worktree origin is github.com/nevenincs/vaultspec-dashboard while project metadata names github.com/wgergely/vaultspec-dashboard; the manifest must point at the real public release location. Carried to the release-pipeline phase.
+- Repo identity discrepancy flagged during research: the worktree origin is github.com/nevenincs/vaultspec-dashboard while project metadata names the old repo handle's github.com path; the manifest must point at the real public release location. Carried to the release-pipeline phase.

@@ -1,12 +1,12 @@
-//! The `/vault-tree` listing and its generation-keyed delta (vault-tree-delta ADR
-//! D1/D3). Extracted from `routes/query.rs` so the full-listing handler and the
-//! delta handler live together; the row projection, the snapshot ring, and the
-//! diff live in `crate::vault_rows`.
+//! The `/vault-tree` listing and its generation-keyed delta. Extracted from
+//! `routes/query.rs` so the full-listing handler and the delta handler live
+//! together; the row projection, the snapshot ring, and the diff live in
+//! `crate::vault_rows`.
 //!
 //! `/vault-tree` serves the stem-sorted, filter-independent doc-row projection,
-//! paginated per request, additionally carrying the serving `generation` (D1) so a
+//! paginated per request, additionally carrying the serving `generation` so a
 //! client can later ask for a delta against it. `/vault-tree/delta?scope=&since=`
-//! diffs the client's held generation against the current rows (D3): a stem-keyed
+//! diffs the client's held generation against the current rows: a stem-keyed
 //! `{since, generation, changed, removed}`, an empty delta when `since` is already
 //! current, or `{generation, full_required: true}` when `since` is no longer
 //! retained (evicted, never served, or from a previous process). Both routes are
@@ -48,7 +48,7 @@ pub async fn vault_tree(
     // rows, poisoning a client's delta baseline. The handler paginates the cached
     // slice per request.
     let (generation, entries) = cell.vault_tree_rows_at();
-    // Cursor pagination on the unbounded listing (contract §2, audit N8). Clamp the
+    // Cursor pagination on the unbounded listing. Clamp the
     // page size (robustness M2): a client-supplied page_size must not defeat the
     // cursor cap and pull the whole listing in one response. 2000 is a generous
     // upper bound; the default stays 500.
@@ -123,7 +123,7 @@ mod tests {
 
     #[tokio::test]
     async fn full_route_carries_the_serving_generation() {
-        // D1: the full /vault-tree page carries the generation the rows belong to,
+        // The full /vault-tree page carries the generation the rows belong to,
         // so a client can use it as a delta baseline.
         let (_dir, state) = vault_fixture();
         let scope = active_scope(&state);
@@ -150,7 +150,7 @@ mod tests {
 
     #[tokio::test]
     async fn delta_short_circuits_when_since_is_current() {
-        // D3: since == current generation is an empty delta, never a full re-drain.
+        // since == current generation is an empty delta, never a full re-drain.
         let (_dir, state) = vault_fixture();
         let cell = state.active_cell();
         let current = cell.vault_tree_rows_at().0;
@@ -176,7 +176,7 @@ mod tests {
 
     #[tokio::test]
     async fn delta_requires_full_drain_for_an_unknown_since() {
-        // D3 + the process-local generation constraint: a `since` the ring never
+        // The process-local generation constraint means a `since` the ring never
         // held (a previous process, or evicted) is answered with full_required —
         // an honest instruction, never a fabricated patch.
         let (_dir, state) = vault_fixture();
@@ -203,8 +203,8 @@ mod tests {
 
     #[tokio::test]
     async fn delta_diffs_a_real_rebuild_by_stem() {
-        // D3 end-to-end: a doc added between generations shows up as a `changed`
-        // row keyed by its stem when diffing the prior generation against current.
+        // A doc added between generations shows up as a `changed` row keyed by
+        // its stem when diffing the prior generation against current.
         let (dir, state) = vault_fixture();
         let cell = state.active_cell();
         let baseline = cell.vault_tree_rows_at().0;

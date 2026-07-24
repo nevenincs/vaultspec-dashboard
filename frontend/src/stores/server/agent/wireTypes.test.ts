@@ -42,7 +42,7 @@ describe("queued_turn_ids adapter (S37/S39)", () => {
   });
 });
 
-describe("interrupt-list adapters (S41)", () => {
+describe("interrupt-list adapters", () => {
   it("projects a typed tool_permission decision", () => {
     const interrupt = adaptInterrupt({
       interrupt_id: "interrupt:1",
@@ -90,6 +90,6 @@ describe("interrupt-list adapters (S41)", () => {
   });
 });
 
-// The operation-mode read was consolidated into the authoring store (S43): the
+// The operation-mode read was consolidated into the authoring store: the
 // autonomy control reads it via `useReviewStationView`, so the agent slice no longer
 // carries a mode adapter.

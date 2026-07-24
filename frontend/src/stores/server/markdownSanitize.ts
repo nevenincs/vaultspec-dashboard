@@ -1,4 +1,4 @@
-// Editorial reader sanitization (document-reader hardening campaign).
+// Editorial reader sanitization.
 //
 // The "no-noise editorial simplicity" directive: the read-mode markdown reader
 // renders ONLY user-facing prose. Two transforms run on the served body before it

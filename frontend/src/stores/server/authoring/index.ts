@@ -1,4 +1,4 @@
-// Authoring wire client + review-station store (agentic plan W03.P40, Increment 1).
+// Authoring wire client + review-station store.
 //
 // The SOLE frontend wire client for the fenced authoring backend
 // (`/authoring/v1/*`): the only place that fetches the propose → review → apply →
@@ -6,7 +6,7 @@
 // `tiers` block. `scene`/`app` NEVER fetch it (architecture-boundaries); the
 // review station is a pure consumer of what this store serves.
 //
-// Contract fidelity (agentic-authoring-api-contract ADR):
+// Contract fidelity:
 //   - Every response rides the shared `{data, tiers}` envelope; degradation is
 //     read ONLY from `tiers` (+ the typed `authoring_store_unavailable` error
 //     envelope), never guessed from a bare transport fault (wire-contract).
@@ -15,9 +15,9 @@
 //     client surfaces as a `denied` OUTCOME the UI renders as "can't do that +
 //     reason" — never an error toast. A 5xx is a genuine fault; a 409 is a stale
 //     conflict.
-//   - The review station is a BACKEND-SERVED projection (agentic-review-station-
-//     state ADR): button enablement comes from the served `eligibility` entries,
-//     never a frontend derivation from events.
+//   - The review station is a BACKEND-SERVED projection: button enablement comes
+//     from the served `eligibility` entries, never a frontend derivation from
+//     events.
 //
 // The store consumes the SERVED projection shapes unchanged (no new client
 // model); it maps only presentation. Wire values stay snake_case as served.
@@ -109,9 +109,9 @@ export * from "./commentVocabulary";
 // origin and the prefix collapses — identical to the `EngineClient` base rule.
 const AUTHORING_BASE = import.meta.env.DEV ? "/api" : "";
 
-/** The per-principal actor-token header the command routes resolve identity from
- *  (ASA-010 / security-provenance ADR). The wire envelope carries NO actor; the
- *  server resolves it from this header alone. */
+/** The per-principal actor-token header the command routes resolve identity from.
+ *  The wire envelope carries NO actor; the server resolves it from this header
+ *  alone. */
 const ACTOR_TOKEN_HEADER = "x-authoring-actor-token";
 
 /** The typed error kind the engine returns when the durable authoring store
@@ -119,7 +119,7 @@ const ACTOR_TOKEN_HEADER = "x-authoring-actor-token";
  *  consumer degrades on (read from the error envelope, not guessed). */
 export const AUTHORING_STORE_UNAVAILABLE_KIND = "authoring_store_unavailable";
 
-// --- section-anchored document comments (authoring-surface ADR D2) --------------
+// --- section-anchored document comments -----------------------------------------
 //
 // The comment vocabulary + adapters live in `./authoringComments` (module-size:
 // this wire client is a grandfathered monolith that may only shrink). They are
@@ -209,8 +209,8 @@ async function authoringErrorFrom(
   return new EngineError(path, response.status, { tiers, body });
 }
 
-/** A generated idempotency key for a mutating command (changeset-ledger ADR: a
- *  mutating command is idempotent). The composed key is ascii-safe for the wire
+/** A generated idempotency key for a mutating command (a mutating command is
+ *  idempotent). The composed key is ascii-safe for the wire
  *  `IdempotencyKey` grammar; a caller may pass its own for replay control. */
 export function newIdempotencyKey(prefix = "idem"): string {
   const uuid =
@@ -355,7 +355,7 @@ export class AuthoringClient {
     };
   }
 
-  // --- direct editor save (every content kind, ledgered-edit-migration W02.P06) --
+  // --- direct editor save (every content kind) ---
 
   /** `POST /authoring/v1/direct-writes` — route a human editor save through the
    *  authoring ledger as a self-approved direct changeset, for any of the
@@ -451,7 +451,7 @@ export class AuthoringClient {
   }
 
   /** `POST /authoring/v1/proposals/{changesetId}/acknowledge` — durable after-fact
-   *  acknowledgement (W10) of a system-auto-applied changeset (the
+   *  acknowledgement of a system-auto-applied changeset (the
    *  `AppliedUnderPolicyProjection` lane's "seen" action). Non-destructive and
    *  status-preserving; idempotent per idempotency key. */
   async acknowledgeApplied(
@@ -477,9 +477,9 @@ export class AuthoringClient {
     return this.command("/authoring/v1/mode", "set_operation_mode", payload, opts);
   }
 
-  /** `GET /authoring/v1/mode` — read the active worktree operation mode
-   *  (agent-wire-gaps D5): the SERVED scope-level mode, so the autonomy control
-   *  renders pre-proposal instead of only through a proposal's policy. Reads the
+  /** `GET /authoring/v1/mode` — read the active worktree operation mode: the
+   *  SERVED scope-level mode, so the autonomy control renders pre-proposal
+   *  instead of only through a proposal's policy. Reads the
    *  same record the write round-trips (the store resolves the default when the
    *  scope was never set), so a mode is always present; falls back to `manual` only
    *  if the wire omits it. */
@@ -489,7 +489,7 @@ export class AuthoringClient {
     return typeof mode === "string" ? (mode as OperationMode) : "manual";
   }
 
-  // --- section-anchored document comments (authoring-surface ADR D2) ---
+  // --- section-anchored document comments ---
   //
   // The comment routes are NOT denials-are-values commands: a create/edit/delete
   // returns its record (or `deleted` flag) directly, and a genuine refusal
@@ -756,8 +756,8 @@ function invalidateAuthoring(): void {
 // The authoring lifecycle SSE feed is the SINGLE durable stream, and it already
 // carries the agent-conversation events (`session.created`, `run.started`, and
 // future run kinds). The agent slice (`stores/server/agent`) needs those to
-// refresh its session/run caches without a poll (agentic-authoring-ux ADR D3) —
-// but coupling this module to that slice would cycle (the agent slice already
+// refresh its session/run caches without a poll — but coupling this module to
+// that slice would cycle (the agent slice already
 // imports the ambient actor-token seam from here). So the agent slice REGISTERS a
 // listener through this seam and the stream pump fans every lifecycle event out
 // to it: one-directional at runtime, with no static import of the agent slice.
@@ -1004,7 +1004,7 @@ export const authoringKeys = {
     [...authoringKeys.all, "proposal", changesetId] as const,
   snapshot: (changesetId: string) =>
     [...authoringKeys.all, "snapshot", changesetId] as const,
-  // The per-document comment listing (authoring-surface ADR D2): keyed by
+  // The per-document comment listing: keyed by
   // (scope, node id) so a scope switch re-reads and two documents never share a
   // cache entry. Under the `authoring` prefix so the existing lifecycle-stream
   // invalidation (`invalidateAuthoring`, fired on every authoring SSE frame —
@@ -1015,8 +1015,8 @@ export const authoringKeys = {
   operationMode: () => [...authoringKeys.all, "operation-mode"] as const,
 };
 
-/** The served active-scope operation mode (agent-wire-gaps D5, S43): the one home
- *  for the mode read (consolidated from the agent slice). Feeds the autonomy
+/** The served active-scope operation mode: the one home for the mode read
+ *  (consolidated from the agent slice). Feeds the autonomy
  *  control's pre-proposal fallback via `useReviewStationView`. Bounded caches; the
  *  mode changes rarely, and a `set_operation_mode` write invalidates the queue which
  *  re-reads the effective mode. */
@@ -1085,7 +1085,7 @@ export interface ReviewStationView {
   afterFactTruncated: boolean;
   /** The active worktree operation mode: a proposal's served `policy.effective_mode`
    *  when the queue carries one (the most specific truth), else the served
-   *  scope-level `GET /v1/mode` read (S43) so the autonomy control renders
+   *  scope-level `GET /v1/mode` read so the autonomy control renders
    *  pre-proposal. Null only until the served mode read resolves. */
   operationMode: OperationMode | null;
 }
@@ -1099,7 +1099,7 @@ export interface ReviewStationView {
 export function useReviewStationView(): ReviewStationView {
   useAuthoringLifecycleSubscription();
   const query = useProposals();
-  // S43: the SERVED scope-level mode, so the autonomy control renders pre-proposal.
+  // The SERVED scope-level mode, so the autonomy control renders pre-proposal.
   const servedMode = useAuthoringOperationMode().data;
   const data = query.data;
   const error = query.error;
@@ -1110,7 +1110,7 @@ export function useReviewStationView(): ReviewStationView {
     const afterFactRows = data?.applied_under_policy.items ?? [];
     // The worktree mode: a proposal's served policy is the MOST SPECIFIC truth when
     // one exists (queue row, else after-fact row); otherwise the served scope-level
-    // `GET /v1/mode` read is the pre-proposal fallback (S43) so the control renders
+    // `GET /v1/mode` read is the pre-proposal fallback so the control renders
     // on an empty queue. Null only until the served read resolves.
     const operationMode =
       rows[0]?.policy?.effective_mode ??
@@ -1181,9 +1181,9 @@ export function useIssueActorToken() {
 
 // --- current-editor identity (shared editor + review-station bootstrap) --------
 //
-// The ledgered-edit-migration ADR chose a first-class, shared editor identity
-// over an anonymous per-edit token: the SAME human principal must be coherent
-// across a plain editing session and the review station. This generalizes what
+// This chose a first-class, shared editor identity over an anonymous per-edit
+// token: the SAME human principal must be coherent across a plain editing
+// session and the review station. This generalizes what
 // was previously the review station's private, hardcoded-actor issuance into one
 // hook both surfaces consume.
 
@@ -1281,7 +1281,7 @@ export function useEnsureCurrentEditorIdentity(enabled = true): CurrentEditorIde
  *  Used by the paths that already carry their own ambient bootstrap trigger —
  *  editing (mount-mints via `useEnsureCurrentEditorIdentity`) and commenting
  *  (thread-open bootstrap). The REVIEW path has no such trigger, so it uses the
- *  ambient `ensureActorToken` below instead (agentic-authoring-ux ADR D5). */
+ *  ambient `ensureActorToken` below instead. */
 export function requireActorToken(): string {
   const token = getActorToken();
   if (!token) {
@@ -1298,8 +1298,8 @@ export function requireActorToken(): string {
 let inflightActorMint: Promise<string> | null = null;
 
 /** Ambiently ensure a session actor token exists, minting the shared local
- *  operator principal on first use and returning it (agentic-authoring-ux ADR
- *  D5). Provenance is plumbing, not ceremony: the first mutating REVIEW intent
+ *  operator principal on first use and returning it. Provenance is plumbing,
+ *  not ceremony: the first mutating REVIEW intent
  *  (approve, reject, submit, apply, rollback) transparently bootstraps the token
  *  — no surface renders auth vocabulary, and a reviewer never hits a sign-in
  *  wall before acting. A present token is returned as-is (no re-mint); a failed
@@ -1370,7 +1370,7 @@ export function useCreateRollback() {
   });
 }
 
-/** Durable after-fact acknowledgement (W10) of a system-auto-applied changeset. */
+/** Durable after-fact acknowledgement of a system-auto-applied changeset. */
 export function useAcknowledgeApplied() {
   return useMutation({
     mutationFn: async (args: {
@@ -1393,8 +1393,8 @@ export function useCreateProposal() {
   });
 }
 
-/** Set the active worktree operation mode (the autonomy control, agentic-authoring-ux
- *  ADR D5). Ambient provenance — the mutation mints the operator token on first use;
+/** Set the active worktree operation mode (the autonomy control). Ambient
+ *  provenance — the mutation mints the operator token on first use;
  *  a switch invalidates the queue so the served `effective_mode` re-derives. */
 export function useSetOperationMode() {
   return useMutation({

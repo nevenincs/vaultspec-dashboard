@@ -1,4 +1,4 @@
-; TypeScript / TSX / JavaScript import surface (codebase-graphing ADR D2).
+; TypeScript / TSX / JavaScript import surface.
 ; The three grammars share this node vocabulary.
 
 ; import ... from "spec"  (also bare `import "spec"`)

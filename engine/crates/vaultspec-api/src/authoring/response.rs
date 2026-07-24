@@ -8,7 +8,7 @@ pub fn snapshot(state: &AppState, data: Value) -> Json<Value> {
     crate::routes::envelope(data, crate::routes::query_tiers(&state.active_cell()), None)
 }
 
-// W01.P02 establishes this shared response grammar before later route phases
+// This shared response grammar is established before later route phases
 // consume every helper.
 #[allow(dead_code)]
 pub fn degraded_snapshot(
@@ -24,14 +24,14 @@ pub fn degraded_snapshot(
     )
 }
 
-// W01.P02 establishes this shared response grammar before later command phases
+// This shared response grammar is established before later command phases
 // consume every helper.
 #[allow(dead_code)]
 pub fn command_receipt(state: &AppState, receipt: Value) -> Json<Value> {
     snapshot(state, json!({ "receipt": receipt }))
 }
 
-// W01.P02 establishes this shared response grammar before later validation and
+// This shared response grammar is established before later validation and
 // conflict phases consume every helper.
 #[allow(dead_code)]
 pub fn typed_error(
@@ -43,7 +43,7 @@ pub fn typed_error(
     crate::routes::api_error_kind(state, status, kind, message.to_string())
 }
 
-/// The ENABLED authoring status (W03.P39 mount): the domain is live now that the
+/// The ENABLED authoring status: the domain is live now that the
 /// propose → review → apply → rollback routes are mounted. Same ownership map as
 /// the disabled shell; the capability flags report exactly what V1 serves.
 pub fn enabled_status(state: &AppState) -> Json<Value> {
@@ -65,7 +65,7 @@ pub fn enabled_status_data(state: &AppState) -> Value {
             "core_routes_are_authoring_contract": false,
         },
         "capabilities": {
-            // Live in the V1 walking skeleton (W03.P39).
+            // Live in the V1 walking skeleton.
             "proposals": true,
             "review": true,
             "apply": true,
@@ -108,7 +108,7 @@ mod tests {
         assert_eq!(body["data"]["route_family"], super::super::ROUTE_FAMILY);
         assert_eq!(body["data"]["capabilities"]["proposals"], true);
         assert_eq!(body["data"]["capabilities"]["apply"], true);
-        // Direct-changeset is the sole editor-save path, on by default (W14.P47);
+        // Direct-changeset is the sole editor-save path, on by default;
         // no capability file is present in this fixture.
         assert_eq!(body["data"]["capabilities"]["direct_write"], true);
         assert!(

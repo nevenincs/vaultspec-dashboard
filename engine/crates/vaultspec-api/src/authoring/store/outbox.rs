@@ -1,6 +1,6 @@
 //! Transactional outbox repository for durable authoring lifecycle events.
 //!
-//! W02.P09 persists publication records in the same unit of work as the
+//! This module persists publication records in the same unit of work as the
 //! product-state mutation that produced them. Delivery workers and stream routes
 //! are later phases; this module only owns durable rows, sequence identity,
 //! claim/release state, restart recovery, and duplicate guards.

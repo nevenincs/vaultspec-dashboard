@@ -321,7 +321,7 @@ export function buildLeftRailCommands(
     { ...toggleFacetsAction(), family: "filters" },
     { ...collapseTreeAction(effects.collapseTree), family: "navigate" },
     { ...resetFiltersAction(effects.resetFilters), family: "filters" },
-    // The vault tree's sort plane (left-rail-tree-controls ADR D3): one command
+    // The vault tree's sort plane: one command
     // per sort option + the reset, from the SAME shared builders the rail-top
     // sort menu and the vault-section context menu consume.
     ...sortTreeActions().map((action) => ({ ...action, family: "navigate" })),
@@ -399,9 +399,9 @@ export function buildEditorCommands(intents: {
   closeAllDocs: () => void;
   reloadDoc: () => void;
   keepOpen: () => void;
-  /** Toggle the draft-vs-saved diff panel (authoring-surface ADR D4). */
+  /** Toggle the draft-vs-saved diff panel. */
   toggleDiff: () => void;
-  /** Jump to the next/previous change (editor-change-fidelity D5). These fire the
+  /** Jump to the next/previous change. These fire the
    *  SAME view-registered keymap action by shared id, so the palette entry and the
    *  Mod+Alt+Arrow chord are one verb across two planes. */
   nextChange: () => void;
@@ -453,7 +453,7 @@ export function buildEditorCommands(intents: {
 }
 
 /**
- * Document-scoped palette commands (authoring-surface ADR D3). Copy-link is enrolled
+ * Document-scoped palette commands. Copy-link is enrolled
  * ONLY when a document is open (`stem` non-null), so it is never a dead command with
  * no target. It composes the SAME shared `copyLinkAction` builder the vault-doc
  * context menu uses under one id (`vault-doc:copy-link`), so the verb is authored once
@@ -924,7 +924,7 @@ export function useCommandPaletteCommandView(): CommandPaletteCommandView {
           // Attribution law (ambient-scope-coherence audit): reload against the
           // tab's ORIGIN scope, never the ambient active scope — a cross-scope
           // tab's content key folds ITS scope, so an ambient-scope invalidation
-          // would silently miss it (review LOW).
+          // would silently miss it.
           const tab = state.openDocs.find((doc) => doc.nodeId === activeId);
           reloadDocTab(activeId, tab?.scope ?? scope);
         },

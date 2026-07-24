@@ -1,4 +1,4 @@
-//! The bounded temporal-lineage projection (dashboard-timeline ADR, W01.P01):
+//! The bounded temporal-lineage projection:
 //! for a `scope`, a `[from, to]` date range, and an optional filter, return the
 //! dated document nodes in range — the diachronic lineage the phase-lane
 //! timeline draws — with the edges among them returned ONLY on the opt-in
@@ -22,7 +22,7 @@
 //! Every read is bounded: the slice is capped at [`MAX_DOCUMENT_NODES`] with an
 //! honest [`LineageTruncated`] block, and only edges whose BOTH endpoints survive
 //! the cap are returned (self-consistent — no dangling arc). The semantic tier is
-//! present-only in history (ADR; mirrors `envelope::asof_tiers_block`): the
+//! present-only in history (mirrors `envelope::asof_tiers_block`): the
 //! lineage serves the declared, structural, and temporal tiers and reports
 //! semantic excluded.
 
@@ -35,8 +35,8 @@ use serde::Serialize;
 use crate::filter::{DateField, Filter, FilterError};
 use crate::pipeline::{PipelineLanePhase, phase_for_doc_type};
 
-/// The document node ceiling every lineage read is bounded by (W01.P01.S04,
-/// `graph-queries-are-bounded-by-default`): the SAME ceiling the graph-query
+/// The document node ceiling every lineage read is bounded by
+/// (`graph-queries-are-bounded-by-default`): the SAME ceiling the graph-query
 /// route enforces — sourced from the single [`crate::graph::MAX_GRAPH_NODES`]
 /// constant so the two bounds cannot drift — applied here so the lineage never
 /// serializes an unbounded full-corpus slice. A query that would exceed it
@@ -76,7 +76,7 @@ pub struct LineageNode {
 /// `derivation` is the additive framework-relationship label
 /// (`grounds`/`authorizes`/`generated-by`/...) read from the SHARED
 /// `ontology::derivation_label` projection — the same seam `/graph/query`'s
-/// `edge_view` uses (graph-lineage-dag ADR D4/D7: one projection, two distinct
+/// `edge_view` uses (one projection, two distinct
 /// surfaces). It is `None` only for an edge that carries no pipeline
 /// relationship (a bare structural mention), never as a blanket fallback. The
 /// label is additive and NEVER part of the edge stable key.
@@ -98,7 +98,7 @@ pub struct LineageArc {
     pub confidence: f32,
 }
 
-/// Honest truncation block (W01.P01.S04), mirroring the graph-query shape: the
+/// Honest truncation block, mirroring the graph-query shape: the
 /// original total, what was returned, and why — so the client narrows rather
 /// than receiving a partial-but-silent result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -108,10 +108,10 @@ pub struct LineageTruncated {
     pub reason: String,
 }
 
-/// Per-tier availability for the lineage slice (W01.P01.S04): declared,
+/// Per-tier availability for the lineage slice: declared,
 /// structural, and temporal serve; semantic is present-only in history and is
 /// reported excluded — the same honesty `envelope::asof_tiers_block` carries.
-/// The route layer (W01.P02) reconstructs the canonical envelope `tiers` block
+/// The route layer reconstructs the canonical envelope `tiers` block
 /// from this; the projection states the lineage-local truth.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct LineageTier {
@@ -141,7 +141,7 @@ impl LineageTiers {
             declared: available(),
             structural: available(),
             temporal: available(),
-            // Semantic is present-only by design (ADR; mirrors the as-of view):
+            // Semantic is present-only by design (mirrors the as-of view):
             // a range/historical lineage excludes it, stated honestly rather
             // than rendered as a gap or an error.
             semantic: LineageTier {
@@ -271,7 +271,7 @@ fn lineage_node(graph: &LinkageGraph, node: &Node) -> Option<LineageNode> {
     })
 }
 
-/// Project one stored edge into a lineage arc (graph-lineage-dag ADR D4/D7).
+/// Project one stored edge into a lineage arc.
 ///
 /// `derivation` is read from the SHARED [`crate::graph::derivation_for_edge`]
 /// projection — the exact seam `/graph/query`'s `edge_view` uses — so the
@@ -368,7 +368,7 @@ pub fn bound_range(
 
 /// The self-consistent arcs among a KEPT node set: only edges whose BOTH
 /// endpoints survive in `kept` ship — no dangling arc to a dropped or
-/// out-of-range node (S03/S06) — filter-applied and id-sorted. This is the
+/// out-of-range node — filter-applied and id-sorted. This is the
 /// OPT-IN edge work the default nodes-only timeline path skips entirely: the
 /// always-on surface draws dated marks only, so a scroll iterates no edges; the
 /// relation overlay (or debug inspection) is the only caller that asks for arcs.
@@ -390,13 +390,13 @@ fn collect_lineage_arcs(
     arcs
 }
 
-/// Run the bounded temporal-lineage projection (W01.P01.S02-S04). For `scope`,
+/// Run the bounded temporal-lineage projection. For `scope`,
 /// the `[from, to]` ISO date range (either bound optional/open), the validated
 /// `filter`, and `include_arcs`, return the dated document nodes in range plus —
 /// ONLY when `include_arcs` — the self-consistent edges among them, capped at
 /// [`MAX_DOCUMENT_NODES`] with an honest truncation block.
 ///
-/// `include_arcs` is the relation-overlay opt-in (dashboard-timeline ADR: the
+/// `include_arcs` is the relation-overlay opt-in (the
 /// always-on surface is dated marks ONLY; relations are an on-demand overlay).
 /// The DEFAULT timeline path passes `false` and the edge scan is skipped
 /// entirely — a scroll/zoom iterates no edges (`graph-queries-are-bounded-by-
@@ -557,7 +557,7 @@ mod tests {
 
     #[test]
     fn collects_dated_nodes_in_range_with_their_phase_and_blob_true_date() {
-        // S02: only nodes whose blob-true `created` falls within [from, to] are
+        // Only nodes whose blob-true `created` falls within [from, to] are
         // collected, each carrying its derived pipeline lane and its date.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("a-research", "research", "2026-06-10"));
@@ -625,7 +625,7 @@ mod tests {
 
     #[test]
     fn arcs_carry_relation_tier_confidence_and_the_shared_derivation_label() {
-        // S03 + graph-lineage-dag ADR D4 (S36/S49): arcs carry the shipped
+        // Arcs carry the shipped
         // relation/tier truth AND the framework derivation label read from the
         // SHARED ontology projection — the same label `/graph/query` serves. A
         // plan↔adr edge is `authorizes`.
@@ -645,7 +645,7 @@ mod tests {
         assert_eq!(
             arc.derivation.as_deref(),
             Some("authorizes"),
-            "the timeline arc carries the shared framework label (D4 timeline parity)"
+            "the timeline arc carries the shared framework label (timeline parity)"
         );
     }
 
@@ -669,7 +669,7 @@ mod tests {
 
     #[test]
     fn semantic_tier_is_present_only_declared_structural_temporal_serve() {
-        // S04: the lineage serves declared/structural/temporal and reports
+        // The lineage serves declared/structural/temporal and reports
         // semantic excluded (present-only in history), consistent with the
         // as-of tiers block.
         let g = LinkageGraph::new();
@@ -686,7 +686,7 @@ mod tests {
 
     #[test]
     fn slice_is_bounded_under_the_node_ceiling_with_an_honest_truncated_block() {
-        // S05: a query that would exceed the document node ceiling returns the
+        // A query that would exceed the document node ceiling returns the
         // capped slice plus an honest truncated block stating the original total.
         let mut g = LinkageGraph::new();
         let over = MAX_DOCUMENT_NODES + 250;
@@ -721,7 +721,7 @@ mod tests {
 
     #[test]
     fn returned_arcs_only_connect_returned_nodes_no_dangling_arc() {
-        // S06: self-consistency — an edge to an out-of-range (or dropped) node
+        // Self-consistency — an edge to an out-of-range (or dropped) node
         // is excluded; only edges among the returned nodes ship.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("a-plan", "plan", "2026-06-10")); // in range
@@ -814,7 +814,7 @@ mod tests {
 
     #[test]
     fn default_path_is_nodes_only_arcs_are_opt_in() {
-        // The hot-path contract (dashboard-timeline ADR / backend hardening): the
+        // The hot-path contract: the
         // DEFAULT timeline read draws dated marks ONLY — `include_arcs=false`
         // returns the nodes with an EMPTY arc set even when edges exist among the
         // kept nodes, so a scroll/zoom never iterates the graph's edges. The same

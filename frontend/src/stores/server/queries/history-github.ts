@@ -1,4 +1,4 @@
-// Auto-split from queries.ts (module-decomposition mandate, 2026-07-12).
+// Auto-split from queries.ts.
 // Domain submodule of the queries barrel; see ./index.ts.
 
 import { normalizeNodeId, normalizeNodeIds } from "../../nodeIds";
@@ -30,7 +30,7 @@ import {
 } from "./graph";
 import { engineKeys } from "./internal";
 
-// --- bounded recent commit history (status-overview ADR) ---------------------------
+// --- bounded recent commit history ------------------------------------------------
 //
 // The recent-commit list with subjects, consumed by the Status overview rail
 // through these stores hooks so the rail (chrome) never fetches the engine or
@@ -43,7 +43,7 @@ import { engineKeys } from "./internal";
 // block, never guessed from a transport error
 // (degradation-is-read-from-tiers-not-guessed-from-errors).
 
-/** The rail's default recent-commit count (the ADR's ~20): a short snapshot, not
+/** The rail's default recent-commit count (~20): a short snapshot, not
  *  the whole log. The engine clamps a larger value to its hard ceiling. */
 export const DEFAULT_HISTORY_LIMIT = 20;
 
@@ -80,7 +80,7 @@ export function normalizeHistoryRequestIdentity(
 }
 
 /**
- * The read-only recent-commit history fetch for one scope (status-overview ADR),
+ * The read-only recent-commit history fetch for one scope,
  * the SOLE wire client of `/history`. Keyed by (scope, limit); disabled when no
  * scope is resolved yet. Bounded: an explicit `gcTime` evicts the entry soon
  * after the tab is left, so a long session does not retain every scope's list.
@@ -152,8 +152,8 @@ export interface RecentCommitRow {
 }
 
 // The commit read is resolved by the engine's STRUCTURAL read of the worktree's
-// git object DB, so the `structural` tier gates history availability (contract §2,
-// status-overview ADR: a scope with no readable git history degrades structural).
+// git object DB, so the `structural` tier gates history availability (contract §2:
+// a scope with no readable git history degrades structural).
 const HISTORY_TIERS = ["structural"] as const;
 const HISTORY_COMMIT_NODE_IDS_CAP = 256;
 
@@ -675,15 +675,14 @@ export function deriveStatusTabSectionsView(counts: {
   return {
     openPlans: {
       id: "open-plans",
-      // Titled just "Plans" (2026-07-14 wording refinement, like COMMITS): the
+      // Titled just "Plans" (like COMMITS): the
       // count receipt stays the actionable OPEN count; the section id stays.
       title: { key: "common:finalWave.statusSections.plans" },
       count: positiveStatusCount(counts.openPlans),
     },
-    // ONE pull-request section (2026-07-12 IA simplification, user-directed):
-    // the former OPEN PRS / RECENT PRS folds collapsed into a single section —
-    // open items lead, recently merged follow. The count receipt stays the
-    // ACTIONABLE open count, never open+merged.
+    // ONE pull-request section: the former OPEN PRS / RECENT PRS folds
+    // collapsed into a single section — open items lead, recently merged
+    // follow. The count receipt stays the ACTIONABLE open count, never open+merged.
     pullRequests: {
       id: "pull-requests",
       title: { key: "common:finalWave.statusSections.pullRequests" },
@@ -694,7 +693,7 @@ export function deriveStatusTabSectionsView(counts: {
       title: { key: "common:finalWave.statusSections.issues" },
       count: positiveStatusCount(counts.openIssues),
     },
-    // Titled just "Commits" (2026-07-14 wording refinement): the recency is
+    // Titled just "Commits": the recency is
     // implicit in the list's newest-first order; the persisted section id stays.
     recentCommits: {
       id: "recent-commits",

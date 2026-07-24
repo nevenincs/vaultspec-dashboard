@@ -1,4 +1,4 @@
-// Feature-coverage stores query (feature-group-authoring ADR D2/D3).
+// Feature-coverage stores query.
 // Domain submodule of the queries barrel; see ./index.ts.
 //
 // The feature-group panel's read seam: per-feature pipeline coverage (present/
@@ -10,7 +10,7 @@
 // OR a FRESH error envelope's tiers winning over a stale held block), never guessed
 // from a bare transport error (degradation-is-read-from-tiers). Coverage is a
 // projection over the one model (views-are-projections-of-one-model); eligibility
-// is engine-served, never client-recomputed (ADR D3).
+// is engine-served, never client-recomputed.
 
 import {
   engineClient,

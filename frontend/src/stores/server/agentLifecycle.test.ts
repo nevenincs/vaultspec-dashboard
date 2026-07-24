@@ -79,7 +79,7 @@ describe("isAgentLifecycleEvent", () => {
     }
   });
 
-  it("claims the specific turn.queued kind WITHOUT widening the whole turn aggregate (S37)", () => {
+  it("claims the specific turn.queued kind WITHOUT widening the whole turn aggregate", () => {
     // turn.queued changes served queued_turn_ids, so the agent slice reacts to it.
     expect(
       isAgentLifecycleEvent(
@@ -137,7 +137,7 @@ describe("isTerminalRunLifecycleEvent", () => {
     ).toBe(false);
   });
 
-  it("claims a terminal session.cancelled so its settled snapshot lands inactive (S37)", () => {
+  it("claims a terminal session.cancelled so its settled snapshot lands inactive", () => {
     expect(
       isTerminalRunLifecycleEvent(
         lifecycleEvent({ aggregate_kind: "session", event_kind: "session.cancelled" }),
@@ -152,7 +152,7 @@ describe("isTerminalRunLifecycleEvent", () => {
   });
 });
 
-describe("turn.queued routing (S37)", () => {
+describe("turn.queued routing", () => {
   it("invalidates the agent session caches so served queued_turn_ids refresh", () => {
     seedAgentSessionCache();
     routeAgentLifecycleEvent(

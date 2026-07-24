@@ -1,10 +1,10 @@
-//! Authoring lifecycle stream and recovery surface (W11.P34, W12.P44).
+//! Authoring lifecycle stream and recovery surface.
 //!
 //! Lifecycle truth is replayed from the durable transactional outbox. Generation
 //! tokens and live progress frames remain NON-AUTHORITATIVE: clients recover truth
-//! through lifecycle replay or the tiered snapshot, never from raw frames
-//! (streaming-events-outbox ADR). W12.P44 lands the deferred generation remainder:
-//! BOUNDED generation channels (token/trace frames served under a hard per-page cap
+//! through lifecycle replay or the tiered snapshot, never from raw frames. This
+//! surface provides BOUNDED generation channels (token/trace frames served under a
+//! hard per-page cap
 //! with an explicit truncation gap) and the durable TRANSCRIPT COMPACTION hook —
 //! terminal, past-due generation transcripts summarize by retention policy WITHOUT
 //! ever touching pending approvals or rollback preimages (authoring-retention-is-
@@ -225,7 +225,7 @@ fn lifecycle_replay_events(uow: &UnitOfWork<'_>, last_seq: i64) -> Result<Vec<Ev
 }
 
 /// The bounded, NON-AUTHORITATIVE generation-channel descriptor for the recovery
-/// snapshot (W12.P44). It advertises the token + trace channels, their hard frame
+/// snapshot. It advertises the token + trace channels, their hard frame
 /// cap, the cursor a frontend restores generation subscription from (aligned to the
 /// lifecycle recovery point — generation truth is recovered through lifecycle replay,
 /// not raw frames), and a READ-ONLY summary of the durable transcript retention +
@@ -260,7 +260,7 @@ fn generation_channels_snapshot(
     }))
 }
 
-/// The TRANSCRIPT COMPACTION hook (W12.P44, driven W14.P42a S262): summarize terminal,
+/// The TRANSCRIPT COMPACTION hook: summarize terminal,
 /// past-due generation transcripts by retention policy, bounded to at most
 /// [`GENERATION_TRANSCRIPT_COMPACTION_MAX`] per sweep. It delegates to the retention engine,
 /// which by construction compacts ONLY `generation_transcript`/`review_material` records in
@@ -723,7 +723,7 @@ mod tests {
         assert!(body["tiers"]["semantic"]["available"].is_boolean());
     }
 
-    // ---- W12.P44 bounded generation channels + transcript compaction -----------------
+    // ---- bounded generation channels + transcript compaction -------------------------
 
     #[test]
     fn generation_frames_stay_bounded_at_the_cap() {

@@ -1,5 +1,5 @@
-// S200 Increment-1 demo verify — the full authoring HAPPY PATH end-to-end through
-// the frontend store against the real `vaultspec serve` (W03.P40).
+// The full authoring HAPPY PATH end-to-end through
+// the frontend store against the real `vaultspec serve`.
 //
 // Test-integrity / wire-contract: ONLINE against the real engine the global setup
 // spawns over a SCRATCH copy of the fixture vault that it makes a real vaultspec
@@ -9,7 +9,7 @@
 // live test proves the DENY path; THIS proves the acceptance path:
 //   create → submit → a distinct HUMAN reviewer APPROVES → APPLY (real core write,
 //   applied receipt) → ROLL BACK (inverse changeset generated) → HISTORY reflects
-//   the whole sequence — the propose→approve→apply→rollback→history S200 acceptance.
+//   the whole sequence — the propose→approve→apply→rollback→history acceptance.
 //
 // The real-apply leg is GATED on core availability (read from the served `/status`
 // core reachability), honest-degrading otherwise — core is NEVER faked (mirrors

@@ -1,4 +1,4 @@
-; Rust import surface (codebase-graphing ADR D2).
+; Rust import surface.
 ;
 ; `use` declarations: capture the whole argument subtree's text; the resolver
 ; parses the path text (handles `crate::`, `super::`, `self::`, grouped

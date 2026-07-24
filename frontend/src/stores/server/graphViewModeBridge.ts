@@ -1,4 +1,4 @@
-// The graph view-mode bridge (codebase-graphing ADR D7). "View mode" is one
+// The graph view-mode bridge. "View mode" is one
 // concept the user drives from the left-rail vault|code toggle — AND from the
 // keyboard cycle and the command palette, which all write the view-local
 // `browserMode` store. A view-mode change must (1) flip the rail tree (that is

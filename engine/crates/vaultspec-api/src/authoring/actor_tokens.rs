@@ -1,9 +1,8 @@
-//! Per-principal actor tokens (ASA-010): the server-held principal-identity seam.
+//! Per-principal actor tokens: the server-held principal-identity seam.
 //!
 //! Authoring actor identity MUST resolve from a server-held seam, never a request
-//! body (security-provenance ADR `actor-identity-resolves-from-a-server-held-
-//! principal-seam`). This module is that seam's PERSISTENCE: a hashed, bounded,
-//! revocable per-principal token, issued over the P19 actor REGISTRY, and
+//! body. This module is that seam's PERSISTENCE: a hashed, bounded,
+//! revocable per-principal token, issued over the actor REGISTRY, and
 //! resolved back to the registered `ActorRef` by the route-layer principal
 //! middleware. The store holds ONLY the token HASH — the raw token is returned
 //! exactly ONCE at issuance and is never logged or persisted in cleartext.
@@ -35,9 +34,9 @@ pub const MAX_ACTOR_TOKEN_ROWS: usize = 4096;
 /// SQLite value. The A2A broker's `run_id + role` keys are below 256 bytes.
 const MAX_ACTOR_TOKEN_ISSUANCE_KEY_BYTES: usize = 512;
 
-/// V1 issuance authority. The security-provenance ADR models an `administer
-/// policy` permission, but P19 delivered the actor registry + provenance, NOT a
-/// permission-enforcement module — so V1 makes the MACHINE service token the sole
+/// V1 issuance authority. The system models an `administer
+/// policy` permission, but only the actor registry + provenance were delivered,
+/// NOT a permission-enforcement module — so V1 makes the MACHINE service token the sole
 /// holder of administer-policy: the route layer gates token issuance on the
 /// machine bearer, and every issuance records its `issued_by` bootstrap principal
 /// (the audited trust root). RETURN TRIGGER: when a permission module lands
@@ -325,8 +324,8 @@ impl ActorTokenRepository<'_, '_> {
         Ok(count.max(0) as usize)
     }
 
-    /// Revoke ALL live tokens for a principal — the operator-facing admin verb
-    /// (arch-reviewer advisory): an operator can revoke a LOST token whose raw
+    /// Revoke ALL live tokens for a principal — the operator-facing admin verb:
+    /// an operator can revoke a LOST token whose raw
     /// value they no longer hold. Returns the count revoked; idempotent per row
     /// (already-revoked rows are skipped by the `revoked_at_ms IS NULL` filter).
     /// Rewrites each row's `record_json` (the resolve source of truth), not just
@@ -662,7 +661,7 @@ mod tests {
         dumped
     }
 
-    /// S43: two concurrent A2A runs for ONE role actor each mint their own bundle
+    /// Two concurrent A2A runs for ONE role actor each mint their own bundle
     /// (distinct run-scoped purpose keys). The secrets are independently random,
     /// revoking one run's exact hashed bundle leaves the concurrent same-role run
     /// authenticating, and no raw secret ever reaches a record, the debug output,

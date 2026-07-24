@@ -1,4 +1,4 @@
-// E2E smoke configuration (W03.P12.S50): runs against a LIVE
+// E2E smoke configuration: runs against a LIVE
 // `vaultspec serve` origin — single origin serving the SPA shell (with
 // the DF-6 token meta tag), the API, and SSE. Start the engine first;
 // override the origin with VAULTSPEC_SERVE_ORIGIN.

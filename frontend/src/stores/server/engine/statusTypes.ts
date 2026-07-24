@@ -1,4 +1,4 @@
-// Decomposed from engine.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from engine.ts.
 
 import type { TiersBlock } from "./tiers";
 
@@ -10,8 +10,8 @@ export interface EngineStatus {
   edges: number;
   degradations: string[];
   tiers: TiersBlock;
-  // The live `/status` git rollup (git-diff-browser ADR / mock-mirrors-live-wire-
-  // shape): `dirty` is a BOOLEAN ("is the working tree dirty?"); the per-file
+  // The live `/status` git rollup (mock-mirrors-live-wire-shape): `dirty` is a
+  // BOOLEAN ("is the working tree dirty?"); the per-file
   // changed list + diff body are served separately by the read-only `/ops/git`
   // pass-through (porcelain status / numstat / unified diff). `ahead`/`behind` are
   // OPTIONAL: absent means "no upstream configured" (NOT zero), so divergence is
@@ -39,7 +39,7 @@ export interface OpsResult {
 }
 
 /** rag's `GET /logs/json` envelope, forwarded verbatim by the brokered
- *  `/ops/rag/logs` read (rag-job-dashboard ADR D4). `lines` is an array of RAW,
+ *  `/ops/rag/logs` read. `lines` is an array of RAW,
  *  pre-formatted log-line strings — rag emits formatted text, not structured
  *  records, so a level word and a leading timestamp (when present) are parsed out
  *  of each string downstream (`parseRagLogLine` in `ragControl`). `total` is the
@@ -69,7 +69,7 @@ export interface RagLogsEnvelope {
 // Every genuine document CONTENT edit (set-body/set-frontmatter/rename/create/
 // relate-link) is ledgered instead (`stores/server/authoring.ts` `directWrite()`)
 // — the `write`/`create`/`link` verbs this seam used to carry are RETIRED
-// (ledgered-edit-migration W04.P12). Archive and autofix are DELIBERATELY
+// Archive and autofix are DELIBERATELY
 // retained here: per the ADR, a multi-document archive and a bulk no-single-
 // target autofix don't fit the per-document V1 changeset shape, so they stay
 // vault-maintenance operations, never ledgered.
@@ -94,7 +94,7 @@ export interface OpsAutofixBody {
  * `directWriteResultToOpsResult`) map their outcome onto, and the editor
  * lifecycle (`stores/view/editor.ts` `EditorWriteResult`) consumes. Predates the
  * ledger (originally interpreted from the legacy `/ops/core/{verb}/write` sibling
- * envelope by the now-retired `adaptOpsWrite`, ledgered-edit-migration W04.P12);
+ * envelope by the now-retired `adaptOpsWrite`);
  * kept as the shape itself, still live and load-bearing. Four outcomes:
  *  - `saved`    — a body/frontmatter save succeeded; the new `blobHash` is the
  *                 next optimistic-concurrency base, and `checks` carries any
@@ -134,7 +134,7 @@ export function envelopeData(envelope: unknown): {
   return { status, data };
 }
 
-// --- read-only /ops/git pass-through (dashboard-pipeline-wire W04) ---------------------
+// --- read-only /ops/git pass-through ---------------------------------------------------
 //
 // The live engine NOW serves a read-only `/ops/git/{verb}` pass-through (POST):
 // porcelain `status`, `numstat`, unified `diff` for a path, and two-rev
@@ -173,7 +173,7 @@ export interface GitChangesSummary {
   tiers: TiersBlock;
 }
 
-// --- provisioning plane wire shapes (project-provisioning ADR) -----------------
+// --- provisioning plane wire shapes ---------------------------------------------
 //
 // Backend-served truth: the engine computes every field, the panel renders it.
 // Deliberately tolerant on nested/optional fields — a new served field is
@@ -238,7 +238,7 @@ export interface ProvisionJob {
   } | null;
 }
 
-// --- A2A component lifecycle plane (a2a-product-provisioning W05.P11) ----------
+// --- A2A component lifecycle plane ----------------------------------------------
 //
 // The stores-layer view of the served `/a2a/lifecycle/*` surface (engine
 // `routes/a2a_lifecycle.rs`). Tolerant shapes: an additive wire field is absorbed,
@@ -406,7 +406,7 @@ export interface ChangedFile {
   vault: boolean;
 }
 
-// --- in-flight pipeline projection (dashboard-pipeline-wire W02) -----------------------
+// --- in-flight pipeline projection ------------------------------------------------------
 //
 // The Work pillar's data: active plans (by lifecycle) and in-flight ADRs (by
 // status) in scope, each with progress, status/tier, pipeline phase, and a
@@ -430,13 +430,13 @@ export interface PipelineArtifact {
   /** Plan checkbox progress; absent on ADRs. */
   progress?: { done: number; total: number };
   /**
-   * The artifact's feature tags (dashboard-pipeline-status W01): the ADR row's
+   * The artifact's feature tags: the ADR row's
    * feature label is read from here. Truthful absence — forwarded only when the
    * doc node carries it.
    */
   feature_tags?: string[];
   /**
-   * The doc node's created/modified dates (dashboard-pipeline-status W01): the
+   * The doc node's created/modified dates: the
    * row's freshness stamp is derived from `modified`. Truthful absence — the
    * stamp is hidden when dates are not served.
    */
@@ -450,7 +450,7 @@ export interface PipelineResponse {
   tiers: TiersBlock;
 }
 
-// --- bounded plan-container interior (dashboard-pipeline-wire W03) ---------------------
+// --- bounded plan-container interior -----------------------------------------------------
 //
 // The Work pillar's step tree: a plan node's wave → phase → step interior, each
 // step bearing completion and the bound exec record, under a node ceiling with
@@ -548,7 +548,7 @@ export interface SearchResult {
 }
 
 /**
- * rag's native per-search freshness block (rag-integration-hardening ADR D3),
+ * rag's native per-search freshness block,
  * forwarded VERBATIM by the engine on every `/search` success — the engine adds
  * no staleness semantics of its own (engine-read-and-infer). Every field is
  * optional so a sparse or older rag shape never breaks adaptation; consumers
@@ -574,7 +574,7 @@ export interface SearchIndexState {
 export interface SearchResponse {
   results: SearchResult[];
   tiers: TiersBlock;
-  /** rag's freshness block, forwarded verbatim (ADR D3). Absent when the wire
+  /** rag's freshness block, forwarded verbatim. Absent when the wire
    *  carried no `index_state` (e.g. a degraded or empty search). */
   index_state?: SearchIndexState;
   /**
@@ -588,7 +588,7 @@ export interface SearchResponse {
   semantic_epoch?: number | null;
 }
 
-// --- session / settings (user-state-persistence W04.P08.S25) -----------------------------
+// --- session / settings -------------------------------------------------------------------
 //
 // The orchestration crate's session/settings surface (the "builds beside" layer,
 // foundation contract §9). Wire shapes stay snake_case exactly as the live
@@ -698,7 +698,7 @@ export interface SettingUpdate {
   value: string;
 }
 
-// --- settings schema (dashboard-settings W01/W02) -----------------------------
+// --- settings schema -------------------------------------------------------------
 //
 // The engine-owned settings registry served by GET /settings/schema: the single
 // source of truth the client renders controls and synthesizes defaults from. The

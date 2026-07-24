@@ -1,4 +1,4 @@
-//! Backend-served review projections and action eligibility (W03.P18).
+//! Backend-served review projections and action eligibility.
 //!
 //! A projection is a PURE READ over durable authoring product state (the ledger,
 //! validation records, approval requests, preimages) plus the live worktree. It
@@ -8,18 +8,17 @@
 //! in the client (architecture-boundaries: displayed/filterable state is
 //! backend-served).
 //!
-//! V1 REVIEW PROJECTIONS (agentic plan W03.P18 + W11.P50): the proposal list,
-//! action eligibility, conflict reason, validation status, rollback availability,
-//! corpus-wide review COUNTS, and bounded per-document ACTIVITY rollups the
-//! review station needs. Counts are computed over the full durable corpus before
-//! any list cap is applied — never from the bounded proposal page — and activity
-//! pages carry their own cap/truncation metadata.
+//! V1 REVIEW PROJECTIONS: the proposal list, action eligibility, conflict reason,
+//! validation status, rollback availability, corpus-wide review COUNTS, and bounded
+//! per-document ACTIVITY rollups the review station needs. Counts are computed over
+//! the full durable corpus before any list cap is applied — never from the bounded
+//! proposal page — and activity pages carry their own cap/truncation metadata.
 //!
-//! TARGET-FENCE FRESHNESS (arch-reviewer advisory A2.1 / ASA-007): the stored
-//! approval freshness (`ReviewDecisionFreshness.target_revisions_current`) is a
+//! TARGET-FENCE FRESHNESS: the stored approval freshness
+//! (`ReviewDecisionFreshness.target_revisions_current`) is a
 //! placeholder — `approvals::invalidate_if_stale` compares only the proposal
 //! revision, validation digest, and policy version, so a target document whose
-//! base moved by an UN-LEDGERED human direct save (the ASA-007 transition window)
+//! base moved by an UN-LEDGERED human direct save (the transition window)
 //! does not stale a pending approval. This module closes that gap for the
 //! backend-served view: it re-reads each target document's CURRENT worktree
 //! revision and compares it to the reviewed base, surfacing a conflict and
@@ -179,8 +178,8 @@ pub struct ProposalProjection {
     pub approval: ApprovalStateProjection,
     /// The operation-mode approval policy decision the UI renders directly. The
     /// phase has no durable mode store yet, so the projection uses the policy
-    /// default (`manual`) and no session override; W10.P48 replaces those inputs
-    /// when mode scope is implemented without changing the served contract.
+    /// default (`manual`) and no session override; a later phase replaces those
+    /// inputs when mode scope is implemented without changing the served contract.
     pub policy: PolicyDecisionProjection,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict: Option<ConflictProjection>,
@@ -190,8 +189,8 @@ pub struct ProposalProjection {
     pub eligibility: Vec<ActionEligibility>,
     pub rollback: RollbackAvailabilityProjection,
     pub created_at_ms: i64,
-    /// Provenance naming the producing fact (agent-wire-gaps D4): the session,
-    /// run, and turn that created the changeset, read from the ORIGIN revision.
+    /// Provenance naming the producing fact: the session, run, and turn that
+    /// created the changeset, read from the ORIGIN revision.
     /// Human/direct changesets serve `None`. Never part of any stable key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_id: Option<SessionId>,
@@ -423,7 +422,7 @@ pub struct ReviewDocumentProjection {
 /// The review DETAIL projection: the proposal projection plus the per-operation
 /// base+proposed bounded texts the review diff renders over.
 ///
-/// DETAIL-ONLY BY SHAPE (arch-reviewer ASA-P40-diff-ruling, three bounds): the
+/// DETAIL-ONLY BY SHAPE (three bounds): the
 /// bounded proposal LIST (`GET /proposals`, up to [`MAX_PROJECTION_PROPOSALS`] rows)
 /// must never carry document bodies, so the texts live on THIS distinct type rather
 /// than as a permanently-empty body field on the list's [`ProposalProjection`] row.
@@ -496,7 +495,7 @@ impl ProjectionRepository<'_, '_> {
             statuses.add(row.record.status);
         }
 
-        // The `claimed` count is the review-station four-state composition (W13.P24): an
+        // The `claimed` count is the review-station four-state composition: an
         // undecided (`queued`) approval whose changeset holds an advisory claim counts as
         // `claimed`, not `queued`. The claim is a separate advisory overlay, so this reads
         // the held-claim set and reclassifies. `held` reflects durable assignment; a
@@ -744,7 +743,7 @@ impl ProjectionRepository<'_, '_> {
         }))
     }
 
-    /// The backend-served base-revision CONFLICT REPORT for one changeset (W13.P27), a
+    /// The backend-served base-revision CONFLICT REPORT for one changeset, a
     /// pure read ADDITIVE to the existing cheap `conflict` field on the proposal
     /// projection: the full deterministic detector over the CURRENT worktree, the live
     /// sibling proposals (overlap), and the held advisory leases (policy collision). `None`
@@ -793,9 +792,9 @@ impl ProjectionRepository<'_, '_> {
             ChangesetStatus::NeedsReview => {
                 let review =
                     review_decision_freshness(latest, approval, current_digest, targets_current);
-                // The three-verdict review vocabulary (approval-gates ADR, activated
-                // W13.P24): approve and reject are freshness-gated; request-changes rides
-                // the shared `edit_proposal` predicate (feedback, deliberately legal on a
+                // The three-verdict review vocabulary (approval-gates ADR): approve and
+                // reject are freshness-gated; request-changes rides the shared
+                // `edit_proposal` predicate (feedback, deliberately legal on a
                 // stale or unvalidated review) so the queue advertises exactly what the
                 // decision path accepts (review-actions-are-backend-served).
                 vec![
@@ -1333,7 +1332,7 @@ fn approval_freshness(
 /// unchanged (a missing record still blocks); only the served reason is corrected.
 /// A PRESENT-but-different digest is genuine staleness and still returns false.
 ///
-/// INVARIANT (arch-reviewer S89): the true-on-absence arm below is correct ONLY
+/// INVARIANT: the true-on-absence arm below is correct ONLY
 /// because `ValidationFreshness::blocker` checks `record_present` BEFORE the digest
 /// check (transitions.rs `blocker`). If those blocker checks are ever reordered so
 /// the digest check runs first, the actionable "validation record required" reason

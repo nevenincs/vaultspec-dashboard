@@ -162,7 +162,7 @@ export function settingsNumberControlCommitValue(
   return String(deriveSettingsNumberControlView(def, raw).current);
 }
 
-// --- keybinding control view (keyboard-action-system W02.P06) ------------------
+// --- keybinding control view ------------------
 //
 // The chord-recorder catalog derivation. The component stays thin: this builds
 // the grouped rows (label + effective keycaps + override/default state) from the

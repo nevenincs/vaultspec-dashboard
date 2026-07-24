@@ -13,7 +13,7 @@ afterEach(() => {
   engineClient.useTransport(liveTransport);
 });
 
-describe("useFsList over the live engine (single-app-runtime ADR O6)", () => {
+describe("useFsList over the live engine", () => {
   it("lists the filesystem roots when no path is given", async () => {
     const client = testQueryClient();
     const { result } = renderHook(() => useFsList(), { wrapper: wrapper(client) });
@@ -34,7 +34,7 @@ describe("useFsList over the live engine (single-app-runtime ADR O6)", () => {
       expect(typeof entry.is_registered).toBe("boolean");
     }
     expect(data.truncated).toBe(false);
-    // The roots response carries the engine-served places block (ADR D4):
+    // The roots response carries the engine-served places block:
     // at least the home directory, each entry a real absolute path.
     expect(Array.isArray(data.places)).toBe(true);
     expect(data.places.length).toBeGreaterThan(0);

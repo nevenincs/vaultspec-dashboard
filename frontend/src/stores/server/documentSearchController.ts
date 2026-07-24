@@ -1,13 +1,12 @@
-// The document-search plane controller (command-palette-planes ADR, W02.P05;
-// search-providers ADR D3). The third Cmd+K plane is a LITERAL name/title finder
+// The document-search plane controller. The third Cmd+K plane is a LITERAL name/title finder
 // over the corpus the engine already serves — the vault tree — NOT a rag query.
 // This is the deliberate split the ADR settled: semantic search answers "what is
 // about X", document search answers "where is the thing named X", and keeping the
 // finder on the structural tier means it stays fully available when the semantic
 // tier is offline (degradation-is-read-from-tiers-not-guessed-from-errors).
 //
-// It is now a THIN CONSUMER of the ONE files(vault) search provider (search-
-// providers ADR D3): the same complete cached vault tree, the same shared literal
+// It is now a THIN CONSUMER of the ONE files(vault) search provider: the same
+// complete cached vault tree, the same shared literal
 // matcher (`literalMatch`), one band policy — two surfaces (this focused finder
 // plane and the unified Search palette), zero duplicate scanners. Each match is a
 // `SearchResult` carrying the document's graph `node_id`, so the existing

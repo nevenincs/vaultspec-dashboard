@@ -1,8 +1,8 @@
-//! Pure shared types for the vaultspec engine (engine-spec §3, §4).
+//! Pure shared types for the vaultspec engine.
 //!
 //! Zero I/O. This crate is the dependency sink: every other crate in the
 //! workspace depends on it, and the future orchestration layer links against
-//! it. The edge is the atom of the engine (engine-spec §3).
+//! it. The edge is the atom of the engine.
 
 use serde::{Deserialize, Serialize};
 
@@ -43,11 +43,11 @@ pub struct NodeId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EdgeId(pub String);
 
-/// Node kinds with their identity keys (engine-spec §4.1).
+/// Node kinds with their identity keys.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum NodeKind {
-    /// Convergence point keyed by feature tag — the primary entity (D4.1).
+    /// Convergence point keyed by feature tag — the primary entity.
     Feature,
     /// Vault document keyed by stem (filename sans `.md`).
     Document,
@@ -60,14 +60,14 @@ pub enum NodeKind {
     /// represented by its entry FILE (`packages::PackageIndex`), never by a
     /// directory node.
     CodeArtifact,
-    /// A project rule keyed by its kebab-case slug (graph-node-semantics ADR):
+    /// A project rule keyed by its kebab-case slug:
     /// the codify pipeline's output, projected from the rules tree
     /// (`.vaultspec/rules/`, OUTSIDE `.vault/`). Authority class is law; it is
     /// a re-computable projection, never a vault document (read-and-infer).
     Rule,
 }
 
-/// Typed, directed relation semantics (engine-spec §3).
+/// Typed, directed relation semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RelationKind {
@@ -79,25 +79,25 @@ pub enum RelationKind {
     Mentions,
     Touches,
     Resembles,
-    /// Subordinate plan-container hierarchy (dashboard-pipeline-wire W03):
+    /// Subordinate plan-container hierarchy:
     /// plan -> wave -> phase -> step. Declared-tier confidence (the structure
     /// is authored, not inferred); the edge stable key is composed only from
     /// the endpoint container ids, never a resolution or rule outcome, so
     /// re-indexing a plan never re-keys an existing containment edge.
     Contains,
     /// Core's `derived_edges`, ingested as a distinct relation at 0.8 —
-    /// never mixed into declared (engine-spec §3).
+    /// never mixed into declared.
     CoreDerived,
-    /// A file-level import in the CODE corpus (codebase-graphing ADR D4):
+    /// A file-level import in the CODE corpus:
     /// `src` imports `dst`, extracted syntactically against the working tree at
     /// the structural tier. Never minted in the vault corpus.
     Imports,
 }
 
-/// The three provenance tiers minted as graph fact (engine-spec §3, D3.1).
+/// The three provenance tiers minted as graph fact.
 ///
 /// Semantic (RAG) matches are NOT a tier here: they are ephemeral suggestions,
-/// never graph fact (D3.5), and are rejected at ingestion. The `semantic`
+/// never graph fact, and are rejected at ingestion. The `semantic`
 /// availability tier on the wire `tiers` block (rag up/down) is a separate
 /// concept that lives in the envelope layer, not on this enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -112,7 +112,7 @@ pub enum Tier {
 }
 
 /// Structural-tier resolution state — retained and surfaced, never dropped:
-/// broken edges are signal, not garbage (D3.3).
+/// broken edges are signal, not garbage.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ResolutionState {
@@ -124,17 +124,17 @@ pub enum ResolutionState {
 /// Which corpus view (worktree or ref) an edge or facet holds in.
 ///
 /// Scope is fully stateless: every working-tree-dependent query names its
-/// scope per request (engine-spec §2.3, contract §3).
+/// scope per request (contract §3).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum ScopeRef {
-    /// A local worktree checkout path — privileged: all four tiers (D2.2).
+    /// A local worktree checkout path — privileged: all four tiers.
     Worktree { path: String },
-    /// A ref without a checkout — degraded to declared + temporal (D2.2).
+    /// A ref without a checkout — degraded to declared + temporal.
     Ref { name: String },
 }
 
-/// The one canonical scope-token form everywhere (audit E3/L2): an absolute
+/// The one canonical scope-token form everywhere: an absolute
 /// worktree path with POSIX separators and no Windows extended-length prefix
 /// (`\\?\`). Scope tokens are identity-bearing on the wire, so every front
 /// door (CLI verbs, the serve routes) MUST mint them through this single
@@ -146,7 +146,7 @@ pub fn scope_token(path: &std::path::Path) -> String {
 }
 
 /// Who said so, from what input, when. Never optional: provenance is what
-/// makes an edge auditable and re-derivable (engine-spec §3).
+/// makes an edge auditable and re-derivable.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "source")]
 pub enum Provenance {
@@ -161,7 +161,7 @@ pub enum Provenance {
         span: (usize, usize),
         target: String,
     },
-    /// Commit SHA + the named correlation rule that fired (D3.4).
+    /// Commit SHA + the named correlation rule that fired.
     CommitCorrelation { sha: String, rule: String },
     /// The rag query, result rank, and score.
     RagMatch {
@@ -169,8 +169,8 @@ pub enum Provenance {
         rank: u32,
         score: f32,
     },
-    /// The working tree's own file/module layout named this relationship
-    /// (codebase-graphing ADR D4): containment and module membership in the
+    /// The working tree's own file/module layout named this relationship:
+    /// containment and module membership in the
     /// CODE corpus. `target` is the contained child's repo-relative path.
     /// Never emitted in the vault corpus.
     TreeLayout { target: String },
@@ -193,7 +193,7 @@ pub fn now_ms() -> Timestamp {
 }
 
 /// The atom of the engine: one edge schema across all three graph tiers; tier
-/// and provenance are mandatory, never inferred from context (D3.1).
+/// and provenance are mandatory, never inferred from context.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Edge {
     pub id: EdgeId,
@@ -201,7 +201,7 @@ pub struct Edge {
     pub dst: NodeId,
     pub relation: RelationKind,
     pub tier: Tier,
-    /// Tier-calibrated, fixed bands — nothing learned or tunable in v1 (D3.2).
+    /// Tier-calibrated, fixed bands — nothing learned or tunable in v1.
     pub confidence: f32,
     /// Structural tier only.
     pub state: Option<ResolutionState>,
@@ -211,7 +211,7 @@ pub struct Edge {
 }
 
 /// Per-corpus-view facet: identity lives in the key; branch variance lives
-/// in facets. Divergence is signal, never auto-merged (D4.2).
+/// in facets. Divergence is signal, never auto-merged.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Facet {
     pub scope: ScopeRef,
@@ -220,7 +220,7 @@ pub struct Facet {
     /// one namespace across read paths (the git blob oid).
     pub content_hash: Option<String>,
     /// Lifecycle state in this view (e.g. plan 60% checked on `feature-x`,
-    /// 30% on `main` — engine-spec §4.2).
+    /// 30% on `main`).
     pub lifecycle: Option<Lifecycle>,
 }
 
@@ -246,8 +246,8 @@ pub enum Presence {
     Archived,
 }
 
-/// A node: an aggregation point with discovery capability, not a dot
-/// (engine-spec §4.3). Cross-branch identity = stable key + facets.
+/// A node: an aggregation point with discovery capability, not a dot.
+/// Cross-branch identity = stable key + facets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Node {
     pub id: NodeId,
@@ -269,20 +269,20 @@ pub struct Node {
     /// the join key for feature-convergence synthesis and meta-edge
     /// aggregation.
     pub feature_tags: Vec<String>,
-    /// ADR H1 status (contract §4 status facet, dashboard-pipeline-wire W01):
+    /// ADR H1 status (contract §4 status facet):
     /// one of `proposed`, `accepted`, `rejected`, `deprecated`. A query-time
     /// facet in the same class as `doc_type` and `dates` — present only on ADR
     /// nodes whose H1 carries a status marker, absent everywhere else. Makes
     /// "in-flight ADR" honest (real status, not checkbox-guessed).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    /// Plan frontmatter tier (contract §4 tier facet, dashboard-pipeline-wire
-    /// W01): one of `L1`-`L4`. A query-time facet alongside `doc_type` and
+    /// Plan frontmatter tier (contract §4 tier facet):
+    /// one of `L1`-`L4`. A query-time facet alongside `doc_type` and
     /// `dates` — present only on plan nodes carrying a `tier:` frontmatter key,
     /// absent everywhere else.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tier: Option<String>,
-    /// Ingest-computed document weight (left-rail-tree-controls ADR D2): byte
+    /// Ingest-computed document weight: byte
     /// length + whitespace-separated word count of the body the indexer already
     /// holds. Same truthful-absence class as `doc_type`/`dates` — present only
     /// on vault document nodes read from a live body, absent everywhere else
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn node_status_and_tier_round_trip_through_serde() {
-        // W01.P02.S09: an ADR node carries its H1 status and a plan node carries
+        // An ADR node carries its H1 status and a plan node carries
         // its tier through serialization; a node with neither omits both fields
         // (skip_serializing_if), so the wire stays clean for non-ADR/non-plan.
         let adr = Node {

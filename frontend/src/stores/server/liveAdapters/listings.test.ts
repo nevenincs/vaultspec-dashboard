@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom is NOT needed (pure adapter unit tests on captured samples).
-// Split from liveAdapters.test.ts (module-decomposition mandate, 2026-07-12).
+// Split from liveAdapters.test.ts.
 
 import { describe, expect, it } from "vitest";
 import { deriveHoverEvidenceSummary } from "../../view/hoverCardEvidence";
@@ -94,7 +94,7 @@ describe("adaptFileTree (code tree listing)", () => {
   });
 });
 
-describe("adaptCodeFiles (complete code-file listing, search-providers ADR D1)", () => {
+describe("adaptCodeFiles (complete code-file listing)", () => {
   it("normalizes entries and falls back to code:{path} when node_id is absent", () => {
     const adapted = adaptCodeFiles({
       entries: [
@@ -187,7 +187,7 @@ describe("adaptCodeFiles (complete code-file listing, search-providers ADR D1)",
   });
 });
 
-describe("adaptSearch (live flat rag HTTP envelope, rag-integration-hardening D1/D3)", () => {
+describe("adaptSearch (live flat rag HTTP envelope)", () => {
   it("reads top-level results and preserves the engine node-id annotation", () => {
     // The live `/search` now serves rag's FLAT HTTP envelope: `results` at the
     // top level (unwrapEnvelope already stripped the §2 {data,tiers} wrapper),
@@ -266,7 +266,7 @@ describe("adaptSearch (live flat rag HTTP envelope, rag-integration-hardening D1
     ]);
   });
 
-  it("forwards rag's index_state freshness block verbatim (D3)", () => {
+  it("forwards rag's index_state freshness block verbatim", () => {
     const adapted = adaptSearch({
       results: [{ source: "vault", score: 0.8, snippet: "hit", node_id: "doc:x" }],
       index_state: {
@@ -447,14 +447,14 @@ describe("adaptVaultTree (live stem entries)", () => {
     expect(docTypeFromStem("2026-06-12-x-plan")).toBe("plan");
     expect(docTypeFromStem("2026-06-12-x-research")).toBe("research");
     expect(docTypeFromStem("2026-06-12-x-P01-summary")).toBe("exec");
-    // `.index` (`.vault/index` feature-index) is a strictly-ignored metanode
-    // (index-node-exclusion ADR): no `index` doc-type, falls through to document.
+    // `.index` (`.vault/index` feature-index) is a strictly-ignored metanode:
+    // no `index` doc-type, falls through to document.
     expect(docTypeFromStem("dashboard-gui.index")).toBe("document");
     expect(docTypeFromStem("mystery")).toBe("document");
   });
 });
 
-describe("adaptVaultTree generation (vault-tree-delta ADR D1)", () => {
+describe("adaptVaultTree generation", () => {
   it("absorbs a numeric generation and omits a malformed one", () => {
     expect(
       adaptVaultTree({ entries: [], tiers: TIERS, generation: 7 }).generation,
@@ -473,7 +473,7 @@ describe("adaptVaultTree generation (vault-tree-delta ADR D1)", () => {
   });
 });
 
-describe("adaptVaultTreeDelta (vault-tree-delta ADR D3)", () => {
+describe("adaptVaultTreeDelta", () => {
   it("adapts a real diff: changed rows and removed stems", () => {
     const delta = adaptVaultTreeDelta({
       since: 3,
@@ -542,7 +542,7 @@ describe("adaptCodeFilesDelta (path-keyed delta, /code-files follow-on)", () => 
   });
 });
 
-describe("status + tier facets carried by live-shaped vault tree samples (W05.P12.S65)", () => {
+describe("status + tier facets carried by live-shaped vault tree samples", () => {
   // A live `/vault-tree` sample carrying status/tier on its ADR and plan entries
   // — the stem-keyed live shape the adapter maps, now with the new facets.
   const liveTree = {
@@ -601,8 +601,8 @@ describe("status + tier facets carried by live-shaped vault tree samples (W05.P1
   });
 });
 
-describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation S18)", () => {
-  // A sample CAPTURED from the live `/nodes/{id}/evidence` wire under the S13
+describe("enriched node-evidence consumer fidelity", () => {
+  // A sample CAPTURED from the live `/nodes/{id}/evidence` wire under this
   // enrichment: the `{data, tiers}` envelope carrying the GUI `NodeEvidence`
   // shape — documents as `{ path, doc_type }`, code locations as
   // `{ path, symbol?, line?, state? }`, and commits carrying the `subject`.
@@ -624,7 +624,7 @@ describe("enriched node-evidence consumer fidelity (figma-parity-reconciliation 
           rule: "step-id-correlation",
           // The live `CorrelatedCommit` always serializes `confidence: f32` (the
           // correlating edge's confidence); the captured sample carries it so the
-          // sample matches the live wire byte-for-byte (review LOW-1).
+          // sample matches the live wire byte-for-byte.
           confidence: 0.7,
         },
       ],

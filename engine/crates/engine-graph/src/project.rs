@@ -1,4 +1,4 @@
-//! Query-time projections (engine-spec §4.3): per-tier degree counts,
+//! Query-time projections: per-tier degree counts,
 //! lifecycle/progress summaries, and feature-level meta-edge aggregation
 //! (contract §4). Projections are derived at query time from the in-memory
 //! graph and facets — never stored node fields.
@@ -37,7 +37,7 @@ pub fn lifecycle_in_scope<'a>(node: &'a Node, scope: &ScopeRef) -> Option<&'a Li
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct MetaEdge {
     /// Feature NODE id (`feature:{tag}`) — meta-edges address the
-    /// synthesized constellation nodes, not bare tags (addendum S02).
+    /// synthesized constellation nodes, not bare tags.
     pub src: String,
     /// Feature NODE id (`feature:{tag}`).
     pub dst: String,
@@ -54,7 +54,7 @@ pub struct MetaEdge {
 type MetaAgg = (usize, BTreeMap<&'static str, usize>);
 
 /// Cross-feature meta-edges for the graph. Memoized on the immutable graph
-/// generation (perf ADR D3): the O(E · feature_tags²) aggregation runs once per
+/// generation: the O(E · feature_tags²) aggregation runs once per
 /// graph instance and every caller (the feature query, the route, the bench)
 /// shares it; a fresh graph (each commit rebuilds one) starts with an empty
 /// cache, and any structural mutation invalidates it. Returns an owned clone of
@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn meta_edges_cache_invalidates_on_mutation() {
-        // Perf ADR D3 / the riskiest part of the memoization: a projection
+        // The riskiest part of the memoization: a projection
         // cached on the graph generation MUST NOT survive a structural mutation,
         // or the incremental re-index path (`index_worktree_into` mutates an
         // existing graph) would serve a stale constellation.
@@ -226,7 +226,7 @@ mod tests {
         )
         .unwrap();
         let counts = degree_by_tier(&g, &node_id(&CanonicalKey::Document { stem: "a-plan" }));
-        // Three graph tiers: semantic is never a graph tier (D3.5), so the map
+        // Three graph tiers: semantic is never a graph tier, so the map
         // has exactly these three keys.
         assert_eq!(counts.len(), 3, "exactly three graph tiers, no semantic");
         assert_eq!(counts["declared"], 1);

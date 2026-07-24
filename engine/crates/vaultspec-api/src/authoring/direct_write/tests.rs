@@ -129,7 +129,7 @@ fn direct_save(
 fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
     let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
     let mut fx = setup();
-    // No capability file: direct-changeset is authoritative by default (W14.P47).
+    // No capability file: direct-changeset is authoritative by default.
     let human = fx.human.clone();
     let base_hash = fx.base_hash.clone();
     let outcome = direct_save(
@@ -199,7 +199,7 @@ fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
     assert_eq!(preimage.payload_text, BASE_BODY);
     assert_eq!(preimage.blob_hash, base_hash);
     assert_eq!(preimage.document_path, DOC_PATH);
-    // P49-R2: the direct save is a self-describing `kind=direct` changeset in the
+    // The direct save is a self-describing `kind=direct` changeset in the
     // ledger (no side-table join needed to know it was a human direct save).
     assert_eq!(
         ledger_kind,
@@ -207,7 +207,7 @@ fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
         "a direct save is recorded as kind=Direct in the ledger"
     );
     // Direct behaves authoring-like: it applied through the normal lifecycle and an
-    // applied direct save is a legal rollback SOURCE (arch-reviewer site a).
+    // applied direct save is a legal rollback SOURCE.
     assert!(
         projection.rollback.available,
         "applied direct save remains rollback-available: {:?}",
@@ -331,7 +331,7 @@ fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
             .is_some_and(|reason| reason.contains("agents must propose changesets")),
         "agent denial carries the direct-save provenance reason: {agent_denial:?}"
     );
-    // W05.P14: the structured discriminator is set from the actor-kind gate
+    // The structured discriminator is set from the actor-kind gate
     // ITSELF, not by re-matching the reason text above.
     assert_eq!(
         agent_denial.denial_kind,
@@ -349,7 +349,7 @@ fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
     );
 }
 
-// W05.P14: `denial_kind` is set from the STRUCTURED `ConflictKind` finding a
+// `denial_kind` is set from the STRUCTURED `ConflictKind` finding a
 // rename/create-path collision produces, never by matching the reason text —
 // proven here by two collisions whose reason WORDING is completely different
 // ("proposed stem" vs "predicted create path") yet both classify identically.
@@ -462,7 +462,7 @@ fn direct_write_denies_a_create_document_path_collision_with_a_structured_denial
     );
 }
 
-// W14.P47 (S253): the dual-run/legacy-comparison surface is fully retired, not
+// The dual-run/legacy-comparison surface is fully retired, not
 // just unused — a capability payload naming the retired fields must fail closed
 // (deny_unknown_fields), and a served record/outcome must carry no legacy key.
 // Regression guards against silently reintroducing the dual-write bridge.
@@ -576,7 +576,7 @@ fn stale_expected_blob_hash_conflicts_and_does_not_apply() {
     assert!(!serialized.contains(&*temp_dir_name));
 }
 
-/// Plan-step tick (authoring-surface ADR D1) round-trip against the REAL
+/// Plan-step tick round-trip against the REAL
 /// vaultspec-core over a canonical plan, exercising the full direct-write
 /// lifecycle end to end: materialize → self-approve → apply the
 /// `SetPlanStepState` capability → the watcher-observed served state.
@@ -779,7 +779,7 @@ mod plan_tick {
     /// success status, never a false failure; and (3) the uncheck INVERSE
     /// (exactly what `rollback.rs` generates for a plan-tick source) flips
     /// ONLY the target step, leaving a CONCURRENT sibling tick intact — the
-    /// clobber the retired W01.P01 rollback-unavailable gate guarded against
+    /// clobber the retired rollback-unavailable gate guarded against
     /// (a whole-document preimage restore would have reverted S02 too).
     #[test]
     fn plan_step_tick_round_trip_is_sibling_safe_and_idempotent() {

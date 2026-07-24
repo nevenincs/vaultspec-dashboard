@@ -1,11 +1,11 @@
-//! The transparent, whitelisted ops proxies and the search pass-through
-//! (contract §6/§8, W03.P11.S53): sibling envelopes verbatim, no engine
+//! The transparent, whitelisted ops proxies and the search pass-through:
+//! sibling envelopes verbatim, no engine
 //! semantics — the engine is only the server-side hand a browser SPA
-//! lacks (D7.5).
+//! lacks.
 //!
-//! Rag verbs run through rag's CLI with `--json` (audit N5): the CLI is
+//! Rag verbs run through rag's CLI with `--json`: the CLI is
 //! rag's documented, guaranteed control surface — its loopback HTTP routes
-//! are monitoring-only. The whitelist is R1 exactly: service lifecycle,
+//! are monitoring-only. The whitelist covers exactly: service lifecycle,
 //! reindex, watcher status/tuning.
 
 use std::collections::HashMap;
@@ -22,21 +22,21 @@ use crate::app::{AppState, ScopeCell};
 
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
-/// Sibling stdout ceiling (robustness H1, 2026-06-13): a runaway sibling that
+/// Sibling stdout ceiling: a runaway sibling that
 /// streams unbounded stdout would OOM the engine. Sibling `--json` envelopes
 /// are small; 8 MiB is orders of magnitude of headroom while bounding the
 /// pathological case. Output past the cap is a truncated read, surfaced as a
 /// 502 degraded envelope rather than buffered to exhaustion.
 pub(crate) const SIBLING_STDOUT_CAP: u64 = 8 * 1024 * 1024;
 
-/// Sibling wall-clock ceiling (robustness H1): an unbounded, untimed sibling
+/// Sibling wall-clock ceiling: an unbounded, untimed sibling
 /// subprocess is a DoS + zombie vector — a hung CLI pins an async worker
 /// forever. 120s covers a cold rag reindex while still bounding a hang; on
 /// timeout the child is killed and a 504 degraded envelope is returned.
 pub(crate) const SIBLING_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// The read-only `/ops/git` pass-through and changed-files summary reduction were
-/// extracted into `routes::git` (2026-07-12) to shrink this module; the router in
+/// extracted into `routes::git` to shrink this module; the router in
 /// `lib.rs` still resolves `routes::ops::ops_git` through this re-export so the
 /// registration line stays untouched.
 pub use super::git::ops_git;
@@ -45,13 +45,13 @@ mod sibling;
 use sibling::*;
 
 /// The `/ops/a2a/{verb}` orchestration control pass-through to the resident
-/// vaultspec-a2a gateway (a2a-orchestration-edge ADR D1/D2), the rag ops
+/// vaultspec-a2a gateway, the rag ops
 /// template retargeted at an HTTP sibling.
 mod a2a;
 pub use a2a::ops_a2a;
 
-/// The `/ops/a2a/runs/{run_id}/stream` run-progress relay (a2a-orchestration-edge
-/// ADR D3): a new engine SSE channel re-serving the a2a gateway's run-stream verb
+/// The `/ops/a2a/runs/{run_id}/stream` run-progress relay:
+/// a new engine SSE channel re-serving the a2a gateway's run-stream verb
 /// with the engine's seq + since-replay + gap contract, degrading to run-status
 /// polling when the upstream is down.
 mod a2a_stream;
@@ -65,7 +65,7 @@ pub async fn ops_core(State(state): State<Arc<AppState>>, Path(verb): Path<Strin
         return Err(super::api_error(
             &state,
             StatusCode::FORBIDDEN,
-            format!("verb `{verb}` is not whitelisted (R1)"),
+            format!("verb `{verb}` is not whitelisted (core control plane)"),
         ));
     };
     let runner = ingest_core::runner::CoreRunner::detect();
@@ -88,7 +88,7 @@ fn resolve_core_ops_cell(
     }
 }
 
-/// The typed request body for `POST /ops/core/autofix` (W04.P06.S15): the optional
+/// The typed request body for `POST /ops/core/autofix`: the optional
 /// worktree `scope` and the `feature` tag whose documents are repaired. The feature
 /// is validated/bounded BEFORE the subprocess spawns (the injection-guard surface).
 #[derive(serde::Deserialize, Default)]
@@ -231,7 +231,7 @@ fn validate_token(
     Ok(token.to_string())
 }
 
-// --- /ops/rag/* brokering (rag-control-plane ADR D1/D2) ----------------------
+// --- /ops/rag/* brokering ----------------------
 //
 // One namespace, two transports: GET reads + POST controls go over rag's HTTP
 // service through `rag_client::control` (rag owns its runtime truth, indexing is
@@ -243,7 +243,7 @@ fn validate_token(
 
 /// The optional request body for a POST `/ops/rag/{verb}` control verb. Absent
 /// for the lifecycle verbs and `quality`. Every field is validated/bounded
-/// before it reaches rag (P02.S12); the reindex/watcher `project_root`/`root`
+/// before it reaches rag; the reindex/watcher `project_root`/`root`
 /// is the ENGINE-controlled active scope root unless an explicit evict target
 /// is named, so the frontend can never point rag at an arbitrary path through
 /// reindex or the watcher.
@@ -263,7 +263,7 @@ pub struct RagControlBody {
     /// on the active scope root and ignore this.
     #[serde(default)]
     pub root: Option<String>,
-    /// `server-start` only (D5 arg pass-through): use rag's on-disk local-only
+    /// `server-start` only (arg pass-through): use rag's on-disk local-only
     /// backend (no managed Qdrant) — the only workable backend on CI/offline/
     /// air-gapped hosts. Ignored by every other verb.
     #[serde(default)]
@@ -357,7 +357,7 @@ async fn rag_offload<T: Send + 'static>(
 }
 
 /// GET `/ops/rag/collection-health?collection=<name>` — Tier-2 Qdrant-native
-/// health (rag-service-management D6 / W02.P05). Reads Qdrant's documented
+/// health. Reads Qdrant's documented
 /// `GET /collections/{name}` DIRECTLY on its loopback port, but GATED on the
 /// Qdrant version reported by rag's `/health`: an unknown/unsupported Qdrant major
 /// degrades honestly (`supported:false`, version stated) instead of risking the
@@ -404,7 +404,7 @@ async fn rag_collection_health(
         ));
     };
     let version = health.qdrant.as_ref().and_then(|q| q.version.as_deref());
-    // Capability/version gate (D6): fail closed on an unrecognized Qdrant major.
+    // Capability/version gate: fail closed on an unrecognized Qdrant major.
     if !rag_client::vectors::qdrant_collection_api_supported(version) {
         return Ok(super::envelope(
             json!({ "envelope": {
@@ -454,12 +454,12 @@ async fn rag_collection_health(
     Ok(brokered_envelope(cell, result))
 }
 
-/// GET `/ops/rag/{verb}` — the brokered rag READ verbs (rag-control-plane ADR
-/// D2): service-state, jobs, watcher, projects, readiness, logs, metrics. Each
+/// GET `/ops/rag/{verb}` — the brokered rag READ verbs:
+/// service-state, jobs, watcher, projects, readiness, logs, metrics. Each
 /// is a bounded HTTP read of rag's resident service, forwarded verbatim with the
 /// tiers block. A read against a down rag degrades the semantic tier honestly;
 /// an unknown verb 403s before any round-trip.
-/// The brokered rag GET read verbs (rag-control-plane ADR D2).
+/// The brokered rag GET read verbs.
 const RAG_READ_VERBS: &[&str] = &[
     "service-state",
     "jobs",
@@ -505,7 +505,7 @@ pub async fn ops_rag_get(
         return rag_collection_health(&state, &cell, &params).await;
     }
 
-    // Per-verb wall-clock budget (ADR honest difficulty: a fast `/jobs` poll and
+    // Per-verb wall-clock budget (honest difficulty: a fast `/jobs` poll and
     // a slow `/quality` probe need different bounds). Reads are fast — except the
     // survey-bearing aggregates: rag's `/storage/survey` walks the machine store's
     // disk footprints and takes 10s+ on a namespace-heavy store, so those two
@@ -560,7 +560,7 @@ pub async fn ops_rag_get(
 /// watcher start/stop/reconfigure, project-evict, quality) and, falling through,
 /// the PROCESS-LIFECYCLE verbs on the bounded CLI runner (server start/stop/
 /// status/doctor/install). HTTP control args are validated against rag's
-/// vocabulary and bounded before forwarding (P02.S12); rag's envelope passes
+/// vocabulary and bounded before forwarding; rag's envelope passes
 /// through verbatim with the tiers block.
 pub async fn ops_rag(
     State(state): State<Arc<AppState>>,
@@ -695,13 +695,13 @@ pub async fn ops_rag(
         return Ok(brokered_envelope(&cell, result));
     }
 
-    // Process-lifecycle verbs (a dead service cannot be reached over HTTP, ADR
-    // D1). server-start/stop carry the machine-singleton attach-never-own
+    // Process-lifecycle verbs (a dead service cannot be reached over HTTP).
+    // server-start/stop carry the machine-singleton attach-never-own
     // discipline through their dedicated capture handlers: start appends `--json`
     // VERSION-TOLERANTLY (retrying without it when an older rag exits 2 rejecting
     // the option, per `rag_rejected_json`), stop carries no `--json`.
     // status/doctor/install apply the SAME version-tolerant --json retry via
-    // `run_sibling_version_tolerant` (ADR D5 / T1-R1), closing the residual where
+    // `run_sibling_version_tolerant`, closing the residual where
     // a future rag dropping --json on these verbs would 502 loudly.
     match verb.as_str() {
         "server-start" => start_rag_service(&state, &cell, &body).await,
@@ -726,8 +726,8 @@ pub async fn ops_rag(
     }
 }
 
-/// POST `/ops/rag/storage/{verb}` — the DESTRUCTIVE rag storage broker
-/// (rag-storage-broker ADR): `storage-delete`/`storage-prune`/`storage-migrate` run
+/// POST `/ops/rag/storage/{verb}` — the DESTRUCTIVE rag storage broker:
+/// `storage-delete`/`storage-prune`/`storage-migrate` run
 /// on the bounded CLI subprocess runner (rag exposes them CLI-only), with their
 /// arguments validated before the spawn and the dry-run-default/explicit-apply gate
 /// applied. A non-whitelisted verb 403s before any subprocess; a malformed argument
@@ -865,7 +865,7 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
     let project_root = cell.root.to_string_lossy().to_string();
     let rag_body = search_body_for(&state, &body, &project_root)?;
 
-    // Build the bounded loopback transport to the resident rag service (D1).
+    // Build the bounded loopback transport to the resident rag service.
     // Discovery is the availability gate: a missing/stale service.json is the
     // honest "semantic tier down" fact — degrade to the tier block with empty
     // results, never a dead control (contract §8, degradation-is-read-from-tiers).
@@ -902,7 +902,7 @@ pub async fn search(State(state): State<Arc<AppState>>, Json(body): Json<SearchB
         }
     };
 
-    // The shared D4 freshness epoch rides the annotated envelope (D3). Served from
+    // The shared freshness epoch rides the annotated envelope. Served from
     // the short-TTL cache ONLY — never a second blocking `/jobs` round-trip on the
     // search path: a warm slot annotates the epoch, a cold/expired slot annotates
     // an honest absent marker (null). The `/graph/embeddings` poll keeps the slot
@@ -1001,9 +1001,9 @@ impl SearchShapeMiss {
     }
 }
 
-/// Annotate rag's FLAT search envelope (rag-integration-hardening D1/D3): each
+/// Annotate rag's FLAT search envelope: each
 /// hit in the top-level `results` list gains the engine's node-id value-add, and
-/// the envelope gains the shared D4 `semantic_epoch`; every other field of the
+/// the envelope gains the shared `semantic_epoch`; every other field of the
 /// flat envelope (`request_id`, `summary`, `timing`, `index_state`, ...) — rag's
 /// native freshness block `index_state` included — passes through verbatim. rag's
 /// HTTP `/search` response is already flat (no nested `{ok, command, data}`
@@ -1040,7 +1040,7 @@ fn flatten_and_annotate(
 
     let mut out = rag.clone();
     out["results"] = Value::Array(annotated);
-    // Engine value-add (D3): the shared D4 semantic epoch rides the annotated
+    // Engine value-add: the shared semantic epoch rides the annotated
     // envelope so downstream builds key one invalidation across search AND
     // embeddings. `None` (a cold/failed epoch read) annotates an explicit `null` —
     // freshness unknown — never a fabricated `0`. rag's own `index_state` and every

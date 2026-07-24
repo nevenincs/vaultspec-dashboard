@@ -1,4 +1,4 @@
-// The rag job-dashboard jobs-table derivation (rag-job-dashboard ADR D3): PURE
+// The rag job-dashboard jobs-table derivation: PURE
 // functions that project the served, bounded jobs list into a sorted, filtered,
 // phase-faceted table view. No hooks, no fetching, no view-store coupling — the
 // input is the served snapshot plus the view state (sort key, filter text, active

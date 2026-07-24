@@ -1,6 +1,6 @@
-// The ONE shared literal matcher (search-providers ADR, D2 rank bands) — every
+// The ONE shared literal matcher (rank bands) — every
 // SearchProvider that narrows by name passes through this module. Today that is
-// files(vault) and files(code); the document-finder plane (P04) adopts it next.
+// files(vault) and files(code); the document-finder plane adopts it next.
 //
 // WHY BANDS: a literal name match must never masquerade as semantic certainty
 // (scores near 1.0 signal "meaning match" to the provider host's merge), nor be
@@ -108,7 +108,7 @@ function weakScore(index: number, fieldLen: number): number {
 // ── Public API ────────────────────────────────────────────────────────────────
 
 /**
- * Match `query` against `fields` and return a score in the ADR D2 bands,
+ * Match `query` against `fields` and return a score in the literal-match bands,
  * or `null` if the query is empty or no match is found.
  *
  * Matching semantics:

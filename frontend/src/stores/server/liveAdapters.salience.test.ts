@@ -1,4 +1,4 @@
-// graph-representation W01.P03.S13: prove the consumed wire fields (salience,
+// Prove the consumed wire fields (salience,
 // derivation, status, embeddings) survive the client path the app actually uses —
 // the REAL engine's /graph/query fed through the SAME unwrapEnvelope +
 // adaptGraphSlice the EngineClient runs. No mock: a passing test proves the live
@@ -78,7 +78,7 @@ describe("graph-representation consumed wire fields survive the live client path
     ]).toContain(lineageEdge!.derivation);
   });
 
-  it("does NOT inline embeddings on /graph/query document nodes (ADR D2)", async () => {
+  it("does NOT inline embeddings on /graph/query document nodes", async () => {
     const slice = await queryLive({ granularity: "document" });
     const withEmbedding = slice.nodes.find(
       (n: EngineNode) => Array.isArray(n.embedding) && n.embedding.length > 0,
@@ -86,7 +86,7 @@ describe("graph-representation consumed wire fields survive the live client path
     expect(withEmbedding).toBeUndefined();
   });
 
-  it("serves the dedicated /graph/embeddings route in its bounded shape (ADR D2/D3)", async () => {
+  it("serves the dedicated /graph/embeddings route in its bounded shape", async () => {
     // The embeddings route returns its envelope (raw float vectors keyed by node
     // id, a generation stamp, the tiers block) on a SEPARATE route. The vector
     // count depends on whether rag has embedded the corpus; the SHAPE is the
@@ -108,7 +108,7 @@ describe("graph-representation consumed wire fields survive the live client path
   });
 
   it("status fields are honest: both present or both absent, never a fabricated half", async () => {
-    // node-visual-richness P01: status_value + status_class are an additive PAIR.
+    // status_value + status_class are an additive PAIR.
     // The live engine emits them only when the doc genuinely declares a status —
     // never a fabricated value (the old mock invented statuses, a false green this
     // migration removes). The honest invariant: the two fields move together, and

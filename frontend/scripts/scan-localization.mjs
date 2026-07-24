@@ -1287,7 +1287,7 @@ export function scanProductionSources() {
 function run() {
   // Zero user-facing source literals is structural: the localization migration is
   // complete, so ANY finding fails the scan. There is no allowlist / exemption
-  // mechanism to re-argue a literal past the gate (W06.P18.S98).
+  // mechanism to re-argue a literal past the gate.
   const findings = scanProductionSources();
 
   if (findings.length > 0) {

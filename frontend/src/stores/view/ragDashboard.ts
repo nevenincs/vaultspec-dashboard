@@ -1,4 +1,4 @@
-// The rag job-dashboard view-local presentation state (rag-job-dashboard ADR D7).
+// The rag job-dashboard view-local presentation state.
 // Sort key, phase facets, the two filter-text fields, the selected job (which
 // joins the log pane), and the log lines window — all PRESENTATION state, bounded
 // and non-persisted, in the `settingsDialog`/`controlPanels` view-store idiom.
@@ -18,9 +18,9 @@ import {
   type RagJobSortKey,
 } from "../server/ragDashboardView";
 
-/** The discrete log-window choices the lines selector offers (ADR D4). */
+/** The discrete log-window choices the lines selector offers. */
 // 500 is the engine broker's served ceiling (MAX_RAG_LOG_LINES); offering a
-// larger choice would silently under-deliver (ADR constraint amended 2026-07-14).
+// larger choice would silently under-deliver.
 export type RagLogLinesChoice = 50 | 200 | 500;
 export const RAG_LOG_LINES_CHOICES: readonly RagLogLinesChoice[] = [50, 200, 500];
 export const RAG_DASHBOARD_LINES_DEFAULT: RagLogLinesChoice = 200;

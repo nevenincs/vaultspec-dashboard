@@ -1,4 +1,4 @@
-// Localization E2E (W06.P19.S144): menus, commands, and shortcuts against the
+// Localization E2E: menus, commands, and shortcuts against the
 // live served application. Proves the one command plane (Cmd+K) and the
 // per-kind context menus render shared, canonical action wording — Title Case
 // command labels, plain-language menu verbs, accelerator legends from the one

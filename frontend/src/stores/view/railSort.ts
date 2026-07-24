@@ -1,4 +1,4 @@
-// The vault tree's sort plane (left-rail-tree-controls ADR D3): ONE view-local
+// The vault tree's sort plane: ONE view-local
 // value `{key, direction}` governing the whole Vault-tab tree — the document
 // order inside every category folder AND the feature-folder order — consumed by
 // `deriveVaultRailView` (the one projection; no per-component sort).
@@ -10,7 +10,7 @@
 // per-scope transient: reordering a listing is corpus-independent taste, and the
 // `left-rail:reset-sorting` verb is the one restore-default path.
 //
-// Files (code) mode has NO sort plane (user direction 2026-07-04): the code tree
+// Files (code) mode has NO sort plane: the code tree
 // keeps the engine's fixed directories-first alphabetical order.
 
 import { create } from "zustand";
@@ -39,7 +39,7 @@ export interface RailSortValue {
   direction: RailSortDirection;
 }
 
-/** The default = the tree's historical order, byte-for-byte (ADR D3). */
+/** The default = the tree's historical order, byte-for-byte. */
 export const DEFAULT_RAIL_SORT: RailSortValue = Object.freeze({
   key: "recency",
   direction: "desc",

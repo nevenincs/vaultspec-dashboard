@@ -1,12 +1,12 @@
 use super::*;
 
-/// The disconnected code-corpus store (codebase-graphing ADR D1/D6): its own
-/// graph, generation, source-tree fingerprint, and honest extraction stats.
+/// The disconnected code-corpus store: its own graph, generation,
+/// source-tree fingerprint, and honest extraction stats.
 /// Refresh is LAZY: a code-corpus query calls [`CodeGraphCell::ensure_fresh`]
 /// (on a blocking thread), which re-walks + fingerprints the source tree —
 /// debounced to at most one probe per [`CODE_FRESHNESS_DEBOUNCE_MS`] — and
 /// re-extracts only on a fingerprint miss. This keeps the vault watcher
-/// untouched (ADR D6 refinement: query-time freshness instead of watching the
+/// untouched (query-time freshness instead of watching the
 /// whole source tree) while an uncommitted source edit still refreshes the
 /// served graph on the next query.
 pub struct CodeGraphCell {
@@ -16,13 +16,13 @@ pub struct CodeGraphCell {
     pub generation: AtomicU64,
     fingerprint: Mutex<Option<String>>,
     last_probe_ms: std::sync::atomic::AtomicI64,
-    /// Extraction honesty counters from the last rebuild (ADR D8): the route
+    /// Extraction honesty counters from the last rebuild: the route
     /// serves these so truncation/accuracy is stated, never implied away.
     pub stats: RwLock<Option<ingest_code::ExtractionStats>>,
     rebuild_lock: Mutex<()>,
     /// The DEFAULT (un-narrowed) module-rollup slice, memoized per code
-    /// generation (review M1; `derived-projections-memoize-on-the-graph-
-    /// generation`): the default rollup poll is the code corpus's hot path and
+    /// generation (`derived-projections-memoize-on-the-graph-generation`):
+    /// the default rollup poll is the code corpus's hot path and
     /// its aggregation + per-node projection are generation-stable. A NARROWED
     /// query flows through the projection per request, exactly as a filtered
     /// vault constellation does. The recency Arc rides the key by POINTER

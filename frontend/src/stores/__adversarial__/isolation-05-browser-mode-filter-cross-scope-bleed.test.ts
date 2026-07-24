@@ -1,6 +1,6 @@
 // Adversarial — LENS: per-scope browser-mode isolation; the 022 cross-scope
-// state-corruption class, applied to the per-scope rail state the
-// dashboard-left-rail campaign introduces.
+// state-corruption class, applied to the per-scope rail state this feature
+// introduces.
 //
 // SUSPECT (PRIME): the rail's browser mode (vault | code) is PER-SCOPE
 // view-local state. The left-rail ADR is explicit that the mode is "view-local

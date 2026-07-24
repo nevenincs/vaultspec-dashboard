@@ -1,4 +1,4 @@
-// Named lenses (W02.P07.S31, ADR G3.f / G5.d): filter choice snapshots saved
+// Named lenses (ADR G3.f / G5.d): filter choice snapshots saved
 // client-side under a name and exposed to the command palette. The store owns
 // persistence only; applying a lens writes canonical dashboard-state.
 

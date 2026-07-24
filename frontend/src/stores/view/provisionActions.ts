@@ -1,5 +1,4 @@
-// Shared provisioning ActionDescriptor builders (project-provisioning ADR D7 /
-// actions-keymap-palette): the two operator-invoked provisioning verbs: the
+// Shared provisioning ActionDescriptor builders (actions-keymap-palette): the two operator-invoked provisioning verbs: the
 // served single primary affordance and the confirmation-gated replacement action,
 // authored ONCE here so the not-managed empty-state panel (the one plane this
 // verb is eligible for today: it targets a project-level state, not an entity,
@@ -48,7 +47,7 @@ const RECOMMENDATION_DEAD_END_REASON: Partial<
 
 /**
  * The primary affordance a `recommended` value maps to
- * (`recommendedRunBody`, the single served decision in ADR D2). Its label reflects
+ * (`recommendedRunBody`, the single served decision). Its label reflects
  * the current recommendation so the button reads the resulting action, like
  * `toggleGraphAction`. Disabled-with-reason on a hard dead-end or once already
  * managed (nothing left to dispatch); loading renders disabled with a neutral
@@ -100,7 +99,7 @@ export function provisionRecommendedAction(
 }
 
 /**
- * The confirmation-gated replacement verb (ADR D5) is a second lane the
+ * The confirmation-gated replacement verb is a second lane the
  * primary affordance never carries. A forced setup is destructive because it
  * prunes stale files and can overwrite user-authored content.
  * The typed confirmation explains the destructive change before dispatch, and

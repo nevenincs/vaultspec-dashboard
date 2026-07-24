@@ -1,4 +1,4 @@
-// The rag control plane (rag-control-plane ADR D6) — the stores-layer SOLE wire
+// The rag control plane — the stores-layer SOLE wire
 // client for vaultspec-rag's brokered `/ops/rag/*` management surface. This is
 // where the reads (service-state, jobs, watcher, projects, readiness) are
 // fetched, where the controls (reindex trigger, watcher start/stop/reconfigure,
@@ -12,7 +12,7 @@
 // bare transport error. The engine forwards rag's envelope VERBATIM under
 // `data.envelope`; these hooks read that shape and interpret it for the view.
 //
-// Job lifecycle is trigger-then-poll (ADR D3): a reindex mutation returns rag's
+// Job lifecycle is trigger-then-poll: a reindex mutation returns rag's
 // `{job_id, status:"queued"}` immediately; `useRagJobProgress` polls `/ops/rag/
 // jobs?job_id=` with backoff to a terminal phase, holding no connection open.
 
@@ -123,7 +123,7 @@ export interface RagReadinessEnvelope {
   [key: string]: unknown;
 }
 
-// --- rag-ops aggregated size/state (W02) ---------------------------------------
+// --- rag-ops aggregated size/state ---------------------------------------------
 //
 // The engine computes the storage size rollup in Rust and serves it (plus the
 // verbatim index/qdrant/watcher/tenant blocks) as ONE `ops-state` snapshot, with
@@ -151,7 +151,7 @@ export interface RagStorageRollup {
   total_namespaces: number;
   /** true when the survey returned fewer namespaces than `total_namespaces`
    *  (bounded at the survey limit): the totals/counts are then a LOWER BOUND over
-   *  the returned slice, not exact machine totals (RCR-002). */
+   *  the returned slice, not exact machine totals. */
   truncated: boolean;
   live_count: number;
   orphaned_count: number;
@@ -370,7 +370,7 @@ export function ragControlSemanticOffline(
   return reads.some(ragSemanticOffline);
 }
 
-// --- log tail interpreters (rag-job-dashboard ADR D4) --------------------------
+// --- log tail interpreters -----------------------------------------------------
 //
 // rag's `/logs/json` serves an array of RAW, pre-formatted log strings. The pane
 // parses each into a bounded, tone-tagged row: a level word and a leading
@@ -382,7 +382,7 @@ export function ragControlSemanticOffline(
 
 /** Default/min/max for the `lines` request window. 500 mirrors the engine's own
  *  server-side clamp (`MAX_RAG_LOG_LINES`) so a request never asks for more than
- *  the broker will serve (ADR constraint amended 2026-07-14). */
+ *  the broker will serve. */
 export const RAG_LOGS_LINES_DEFAULT = 200;
 export const RAG_LOGS_LINES_MIN = 1;
 export const RAG_LOGS_LINES_MAX = 500;
@@ -544,8 +544,8 @@ export function deriveRagControlView(
 
 // --- service lifecycle (machine-global; attach-never-own) ----------------------
 //
-// `server-start`/`server-stop` are MACHINE-GLOBAL (rag-service-management ADR
-// D1/D2): the dashboard manages whatever rag service is running on the machine
+// `server-start`/`server-stop` are MACHINE-GLOBAL: the dashboard manages
+// whatever rag service is running on the machine
 // and starts its own only when one is genuinely absent. The engine's start path
 // gates on the running-predicate and ATTACHES to an already-running / machine-
 // owned service instead of erroring, so the lifecycle envelope carries a `status`
@@ -950,7 +950,7 @@ function pollBackoff(updateCount: number): number {
 }
 
 /**
- * The jobs-progress poll hook (ADR D3): poll `/ops/rag/jobs?job_id=` with backoff
+ * The jobs-progress poll hook: poll `/ops/rag/jobs?job_id=` with backoff
  * until the job reaches a terminal phase, then stop. Polling also stops when the
  * semantic tier reports unavailable (rag went down mid-build) — read from the
  * tiers block, never a transport error. `jobId === null` disables the poll
@@ -1018,7 +1018,7 @@ export interface UseRagLogsOptions {
 }
 
 /**
- * The bounded rag log-tail hook (rag-job-dashboard ADR D4): a mount-gated read of
+ * The bounded rag log-tail hook: a mount-gated read of
  * the brokered `/ops/rag/logs` window, parsed into tone-tagged rows. Polls on a
  * bounded steady cadence ONLY while `enabled` (the open panel) and rag is up —
  * a down rag (read from the tiers block, never a transport error) stops the poll
@@ -1056,7 +1056,7 @@ export function useRagLogs(
 // --- control mutations (dispatched through the platform seam) ------------------
 //
 // Every control flows through `dispatchOps` → the platform `appDispatcher` → the
-// engine's brokered `/ops/rag/{verb}` POST (S22): logged, traced, centrally
+// engine's brokered `/ops/rag/{verb}` POST: logged, traced, centrally
 // guardable, never a direct fetch. On success the relevant read keys are
 // invalidated so the UI re-reads the authoritative state.
 
@@ -1101,8 +1101,8 @@ export function useRagReindex() {
   });
 }
 
-// The watcher-reconfigure client seam (normalizer + hook) retired 2026-07-14
-// with the console-era ops panel — its only consumers. The brokered
+// The watcher-reconfigure client seam (normalizer + hook) retired with the
+// console-era ops panel — its only consumers. The brokered
 // `watcher-reconfigure` verb remains on the wire; a future surface rebuilds
 // the seam rather than keeping a dead one (no-deprecation-bridges).
 
@@ -1158,7 +1158,7 @@ export function useRagProjectEvict() {
  * Offer this conditionally — only when rag is not already running (the running
  * state is exposed by `deriveRagStatusView`).
  */
-/** The bounded `server-start` flags the engine forwards (D5): local-only backend,
+/** The bounded `server-start` flags the engine forwards: local-only backend,
  *  an explicit port, and auto-provisioning the managed Qdrant binary. */
 export interface RagStartArgs {
   local_only?: boolean;

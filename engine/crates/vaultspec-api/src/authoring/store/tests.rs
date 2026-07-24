@@ -209,7 +209,7 @@ fn v8_migration_refuses_populated_unattributed_ledger() {
 
 #[test]
 fn v15_migration_preserves_populated_revisions_and_child_fk() {
-    // P49-R2 / arch-reviewer v15 bar 1: the changeset_kind CHECK widen recreates
+    // The changeset_kind CHECK widen recreates
     // the core ledger table AND its FK-referenced child table — so it must be
     // tested against a POPULATED store: every row (incl. the v8 actor-provenance
     // columns) survives, the child FK integrity holds, and the widened CHECK now
@@ -320,7 +320,7 @@ fn v15_migration_preserves_populated_revisions_and_child_fk() {
 
 #[test]
 fn v19_migration_sanitizes_a_populated_dual_run_era_record_and_drops_legacy_status() {
-    // W14.P47 review finding (CONFIRMED MEDIUM): a dual-run-era direct-write row's
+    // Review finding: a dual-run-era direct-write row's
     // `record_json` blob can still carry a `"legacy": {...}` key (the field WAS
     // serialized whenever dual-run recorded a comparison). `DirectWriteRecord`
     // keeps `deny_unknown_fields` deliberately, so v19 must sanitize the blob IN

@@ -1,4 +1,4 @@
-//! Workspace-registry wire surface (dashboard-workspace-registry ADR, P02).
+//! Workspace-registry wire surface.
 //!
 //! Two routes plus the `/map` workspace-resolution helper:
 //!
@@ -120,7 +120,7 @@ pub async fn list_workspaces(State(state): State<Arc<AppState>>) -> ApiResult {
 }
 
 /// Resolve the launch root path `/map` should enumerate, honouring the optional
-/// `workspace=` parameter (dashboard-workspace-registry ADR, P02.S07).
+/// `workspace=` parameter.
 ///
 /// - Absent or `"active"`: the active workspace's registered root, falling back
 ///   to the engine's launch `workspace_root` when no registry/active selection
@@ -170,8 +170,8 @@ pub fn resolve_map_workspace_root(
     }
 }
 
-/// Register a project root from an operator-supplied absolute path
-/// (dashboard-workspace-registry ADR, P02.S09). READ-ONLY: it DISCOVERS the path
+/// Register a project root from an operator-supplied absolute path.
+/// READ-ONLY: it DISCOVERS the path
 /// as a git workspace and ENUMERATES its worktrees to validate it; on success it
 /// persists ONE registry config row (the stable id is the canonical git common
 /// dir, the label defaults to the path's final component). It NEVER clones,
@@ -183,11 +183,11 @@ pub fn resolve_map_workspace_root(
 /// Re-registering an ALREADY-registered root (even via a differently-spelled
 /// alias of the same canonical id) is a dedup upsert, not a refusal — that is
 /// the frozen dashboard-workspace-registry contract this route must not
-/// tighten. `already_registered` (workspace-picker-dialog D6) is therefore an
-/// `error_kind` this route never emits: the picker's own `is_registered`
-/// marker (D4) is what keeps the operator from attempting a duplicate
-/// registration in the first place; the typed kind exists on the wire for a
-/// client that still needs an exhaustive switch over the four refusal kinds.
+/// tighten. `already_registered` is therefore an `error_kind` this route
+/// never emits: the picker's own `is_registered` marker is what keeps the
+/// operator from attempting a duplicate registration in the first place; the
+/// typed kind exists on the wire for a client that still needs an exhaustive
+/// switch over the four refusal kinds.
 pub fn register_root(state: &AppState, path: &str) -> Result<String, (StatusCode, Json<Value>)> {
     let refuse = |kind: &'static str, human: &str| {
         super::api_error_kind(
@@ -267,14 +267,14 @@ pub fn register_root(state: &AppState, path: &str) -> Result<String, (StatusCode
     Ok(id)
 }
 
-/// Forget a registered workspace by its stable id (dashboard-workspace-registry
-/// ADR, P02.S09). A CONFIG DELETE only: it removes the registry row and NEVER
+/// Forget a registered workspace by its stable id.
+/// A CONFIG DELETE only: it removes the registry row and NEVER
 /// touches the repository on disk. The launch workspace cannot be forgotten
 /// while it is the only registered root (an honest refusal). Any warm scope
 /// cells belonging to the forgotten workspace are evicted so the forgotten
 /// project's corpus does not linger warm. If the forgotten root WAS the active
 /// workspace, the active-workspace pointer is re-pointed engine-side to the
-/// launch root (review M1), so the stored selection never names a forgotten id
+/// launch root, so the stored selection never names a forgotten id
 /// and the invariant does not depend on the caller pairing the forget with an
 /// active re-select; the frontend swap still drives the wholesale UI reset.
 pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<Value>)> {
@@ -329,7 +329,7 @@ pub fn forget_root(state: &AppState, id: &str) -> Result<(), (StatusCode, Json<V
         });
     }
 
-    // Engine-side guard (review M1 + live closeout H1): if the forgotten root was
+    // Engine-side guard: if the forgotten root was
     // the active workspace, re-point BOTH the active-workspace pointer AND the
     // active scope to the launch root, so neither names a forgotten workspace and
     // the served corpus does not dangle on a forgotten project's worktree. This

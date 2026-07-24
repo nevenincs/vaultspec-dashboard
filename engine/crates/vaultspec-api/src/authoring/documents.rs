@@ -1,6 +1,6 @@
 //! Document reference resolver for authoring targets.
 //!
-//! W03.P10 resolves existing and provisional vault document identities without
+//! Resolves existing and provisional vault document identities without
 //! exposing `vaultspec-core` or materializing changes. Later phases attach
 //! snapshots, chunks, proposal operations, and routes to these primitives.
 #![allow(dead_code)]

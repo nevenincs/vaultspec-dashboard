@@ -1,15 +1,15 @@
-// Live-wire proof for the structured feedback-batch continuation (P04.S12).
+// Live-wire proof for the structured feedback-batch continuation.
 //
 // Test-integrity / wire-contract: ONLINE against the real `vaultspec serve`
 // binary the global setup spawns — never a mocked wire. This is the end-to-end
-// half of S12 the offline composer tests cannot reach: it drives the REAL
+// half the offline composer tests cannot reach: it drives the REAL
 // create-feedback-batch command (POST /authoring/v1/feedback-batches, dual auth,
-// the command S09/S10 added) and proves a turn started with the returned opaque
+// the command added) and proves a turn started with the returned opaque
 // feedback_batch_id is accepted (the engine verifies the batch exists and belongs
 // to the session before the turn starts), while a foreign/unknown id is refused.
 //
 // Binary dependency: the feedback-batches routes + CommandKind::CreateFeedbackBatch
-// exist only on the edge-activation branch (S09/S10). Point VAULTSPEC_TEST_ENGINE_BIN
+// exist only on the edge-activation branch. Point VAULTSPEC_TEST_ENGINE_BIN
 // at that build to run this suite; against a pre-edge binary the create 404s/422s,
 // by design.
 //

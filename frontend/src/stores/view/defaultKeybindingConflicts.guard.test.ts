@@ -1,5 +1,4 @@
-// Default-chord conflict guard (KAR-008, keyboard-action-correctness-review;
-// scope-aware per keyboard-shortcut-conflict-review ADR D1/D2/D8).
+// Default-chord conflict guard, scope-aware.
 //
 // The one keymap registry resolves a keystroke to at most one action, breaking a
 // same-specificity tie by id order (registry.ts `resolveKeybinding`). That tie-break
@@ -12,11 +11,11 @@
 // resolvable shadow (a focused surface outranks global, so the surface binding wins when
 // focused and the global one wins otherwise). Only pairs at EQUAL specificity — two
 // globals, or two bindings of the same surface context — are ambiguous. That narrowing
-// now lives in production (`findConflicts` applies it directly, ADR D1), so this guard no
+// now lives in production (`findConflicts` applies it directly), so this guard no
 // longer re-implements a local specificity filter; it asserts against the shared predicate
 // and additionally proves the settings recorder (`keybindingConflictPresentations`) shows
 // zero false positives on the ten previously-flagged stock rows while still warning on a
-// genuine same-specificity user-override collision (ADR D2).
+// genuine same-specificity user-override collision.
 
 import { describe, expect, it } from "vitest";
 
@@ -26,7 +25,7 @@ import { keybindingConflictPresentations } from "./settingsControls";
 
 // The five deliberate global-vs-canvas shadow pairs the recorder used to flag on a
 // stock install (ten rows). Each id below has a same-chord partner at a DIFFERENT
-// specificity, so it is a resolvable shadow, never a conflict (ADR D2).
+// specificity, so it is a resolvable shadow, never a conflict.
 const PREVIOUSLY_FLAGGED_ROW_IDS = [
   "nav:neighbor-previous", // ArrowLeft (global) vs graph:walk-backward-arrow-left (canvas)
   "nav:neighbor-next", // ArrowRight (global) vs graph:walk-forward-arrow-right (canvas)
@@ -40,7 +39,7 @@ const PREVIOUSLY_FLAGGED_ROW_IDS = [
   "graph:expand",
 ] as const;
 
-describe("default keybinding conflict guard (KAR-008)", () => {
+describe("default keybinding conflict guard", () => {
   const defaults = assembleDefaultKeybindings();
   const defById = new Map(defaults.map((b) => [b.id, b]));
 
@@ -52,7 +51,7 @@ describe("default keybinding conflict guard (KAR-008)", () => {
   });
 
   it("has no same-specificity chord collision (global-vs-surface shadows excepted)", () => {
-    // `findConflicts` now applies the ADR-D1 scope-aware definition directly: it
+    // `findConflicts` now applies the scope-aware definition directly: it
     // reports only equal-specificity collisions, so the deliberate global-vs-surface
     // shadows are already excluded. Surface any offending pair directly so a failure
     // names it.
@@ -72,7 +71,7 @@ describe("default keybinding conflict guard (KAR-008)", () => {
     expect(conflicts.some((c) => c.ids.includes("test:injected-collision"))).toBe(true);
   });
 
-  it("shows no recorder warning for the ten previously-flagged stock rows (ADR D2)", () => {
+  it("shows no recorder warning for the ten previously-flagged stock rows", () => {
     // The Settings recorder calls `keybindingConflictPresentations` on each row's
     // effective chord. On a stock install (no overrides) every one of the ten
     // global-vs-canvas shadow rows must now present ZERO conflicts.
@@ -86,7 +85,7 @@ describe("default keybinding conflict guard (KAR-008)", () => {
     }
   });
 
-  it("still warns on a same-specificity user-override collision (ADR D2)", () => {
+  it("still warns on a same-specificity user-override collision", () => {
     // Rebind one global action onto another global action's chord: two globals on one
     // chord is a genuine ambiguity the recorder must still surface. `app:document-search`
     // rebound to `Mod+K` collides with the global `app:command-palette` default.

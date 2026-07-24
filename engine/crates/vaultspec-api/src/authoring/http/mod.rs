@@ -138,8 +138,8 @@ pub async fn resolve_principal_layer(
         None => PrincipalResolution::Denied(PrincipalDenial::MissingToken),
         Some(token) => {
             // A2A run tokens resolve against the DEDICATED run-lease repository
-            // first (a2a-product-provisioning W02.P05.S38): a cheap indexed hash
-            // lookup that opens NO authoring store and carries the resolved lease
+            // first: a cheap indexed hash lookup that opens NO authoring store
+            // and carries the resolved lease
             // identity with the principal. A miss there falls back to the
             // authoring token store for authoring-session principals. The lease id
             // is server-resolved — no request field can claim it.
@@ -290,7 +290,7 @@ where
             })?;
 
         let resolved = ResolvedCommand::from_principal(principal, envelope);
-        // W14.P42a — the route-layer authorization FLOOR. Every mutating command is
+        // The route-layer authorization FLOOR. Every mutating command is
         // constructed here and NOWHERE else, so running the standing + delegation guards
         // ([`authorize_command`] with no scope/targets/origin) before returning refuses an
         // unregistered, deactivated, or stale-delegated actor on EVERY mutating route with
@@ -391,7 +391,7 @@ pub async fn project_proposal(
 }
 
 /// `GET /authoring/v1/proposals/{changeset_id}/conflicts` — the backend-served
-/// base-revision CONFLICT REPORT (W13.P27), a pure read ADDITIVE to the cheap `conflict`
+/// base-revision CONFLICT REPORT, a pure read ADDITIVE to the cheap `conflict`
 /// field on the proposal projection (its served shape is unchanged). Detects stale bases,
 /// stale whole-document drafts, overlapping-hunk siblings, anchor drift, and advisory-lease
 /// policy collisions over the current worktree + the live corpus. No principal required
@@ -528,7 +528,7 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/proposals/{changeset_id}/replace",
             post(replace_proposal_draft),
         )
-        // Explicit rebase / supersession (W13.P28, wired W14.P42a): advance a stale
+        // Explicit rebase / supersession: advance a stale
         // proposal only through a reviewed decision. Both mutating → floor-authorized.
         .route(
             "/v1/proposals/{changeset_id}/rebase",
@@ -547,7 +547,7 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/proposals/{changeset_id}/provenance",
             get(proposal_provenance),
         )
-        // Durable after-fact acknowledgement (W10) of a system-auto-applied changeset —
+        // Durable after-fact acknowledgement of a system-auto-applied changeset —
         // the `AppliedUnderPolicyProjection` lane's "seen" action. Non-destructive and
         // status-preserving; mutating → floor-authorized by the extractor.
         .route(
@@ -562,7 +562,7 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
             "/v1/reviews/{approval_id}/decisions",
             post(submit_review_decision),
         )
-        // Review-station (W13.P24, wired W14.P42a): the human review queue + advisory
+        // Review-station: the human review queue + advisory
         // claim/release/respond. The changeset id rides the body (mirroring the lease
         // action routes) to avoid a path-param clash with `/reviews/{approval_id}`.
         .route("/v1/review-queue", get(review_queue))
@@ -573,13 +573,13 @@ pub fn authoring_router(state: Arc<AppState>) -> Router<Arc<AppState>> {
         .route("/v1/rollback-proposals", post(create_rollback))
         .route("/v1/mode", post(set_operation_mode).get(get_operation_mode))
         .route("/v1/direct-writes", post(direct_write))
-        // Advisory leases (W13.P26, wired W14.P42a): acquire / renew / release a
+        // Advisory leases: acquire / renew / release a
         // per-document lease + its monotonic fencing token. Mutating → standing-authorized
         // by the extractor floor.
         .route("/v1/leases", post(acquire_lease))
         .route("/v1/leases/renew", post(renew_lease))
         .route("/v1/leases/release", post(release_lease))
-        // Section-anchored document comments (authoring-surface ADR D2). The list is a
+        // Section-anchored document comments. The list is a
         // principal-permissive read that resolves each anchor against the live worktree
         // body; create/edit/resolve/re-anchor/delete are mutating commands attributed to
         // the resolved principal, each emitting a comment event on the authoring SSE feed.

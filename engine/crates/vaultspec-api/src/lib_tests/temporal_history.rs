@@ -63,7 +63,7 @@ async fn graph_asof_echoes_the_resolved_sha_and_interpretation_for_both_token_fo
 
 #[tokio::test]
 async fn history_serves_bounded_subject_bearing_commits_newest_first() {
-    // status-overview ADR: GET /history?scope=&limit=N returns the last N
+    // GET /history?scope=&limit=N returns the last N
     // commits as {hash, short_hash, subject, ts, node_ids}, newest-first,
     // enveloped with the tiers block, bounded by a hard ceiling. The
     // subject is the one new datum — the commit message's first line — that
@@ -329,7 +329,7 @@ async fn graph_query_as_of_echoes_the_resolved_sha_and_interpretation() {
 
 #[tokio::test]
 async fn graph_lineage_carries_the_tiers_block_on_the_success_envelope() {
-    // W01.P02.S14: GET /graph/lineage returns the dated nodes + the arcs
+    // GET /graph/lineage returns the dated nodes + the arcs
     // among them through the SHARED envelope, so the per-tier tiers block
     // rides the success body. Semantic is reported present-only (excluded
     // from the range lineage) while declared stays truthful per scope.
@@ -385,7 +385,7 @@ async fn graph_lineage_carries_the_tiers_block_on_the_success_envelope() {
 
 #[tokio::test]
 async fn graph_lineage_unknown_scope_400s_with_the_tiers_block() {
-    // W01.P02.S15: the lineage ERROR path (an unknown scope) also returns
+    // The lineage ERROR path (an unknown scope) also returns
     // through the shared envelope, so the tiers block rides the error body —
     // a healthy-looking error never ships without degradation truth.
     let (_dir, state) = fixture_state();
@@ -408,7 +408,7 @@ async fn graph_lineage_unknown_scope_400s_with_the_tiers_block() {
 
 #[tokio::test]
 async fn graph_lineage_inverted_range_and_bad_filter_400_with_the_tiers_block() {
-    // W01.P02.S11/S15: a client-error on a VALID scope (inverted range or a
+    // A client-error on a VALID scope (inverted range or a
     // malformed/unknown-facet filter) also rides the shared error envelope.
     let (_dir, state) = fixture_state();
     let token = state.bearer.clone();
@@ -453,7 +453,7 @@ async fn graph_lineage_inverted_range_and_bad_filter_400_with_the_tiers_block() 
 
 #[tokio::test]
 async fn graph_lineage_asof_serves_a_bounded_slice_with_the_tiers_block_and_resolved_sha() {
-    // dashboard-timeline ADR deferred fast-follow: GET /graph/lineage with a
+    // GET /graph/lineage with a
     // `t` token serves the BLOB-TRUE lineage as of T — the historical graph
     // resolved from the git object DB, projected by the same bounded lineage
     // projection — through the SHARED envelope. The as-of tiers block rides

@@ -1,4 +1,4 @@
-// Reset-layout bridge (background-context-menus, review HIGH-2 fix). The FULL layout
+// Reset-layout bridge. The FULL layout
 // reset = resetShellLayout() PLUS the dashboard-state panel resets (left/right collapse,
 // right tab) which run through the scope-bound `useShellPanelIntent` hook — available only
 // in a React component, not in a non-hook context-menu resolver. AppShell registers the

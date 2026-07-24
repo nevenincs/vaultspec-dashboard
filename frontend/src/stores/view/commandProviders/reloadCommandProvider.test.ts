@@ -1,5 +1,5 @@
-// Reload provider unit (global-context-actions): the client-side Refresh command is a
-// pure function of the injected CommandContext, composing the SHARED refreshDataAction
+// Reload provider unit: the client-side Refresh command is a pure function of the
+// injected CommandContext, composing the SHARED refreshDataAction
 // builder under the reload family. The cross-plane id identity (palette + keymap + tail)
 // is enforced separately by actionCoverage.guard.test.ts.
 

@@ -1,5 +1,4 @@
-//! A2A runtime-identity acceptance for the SEATED reconcile
-//! (a2a-product-provisioning W02.P04.S34).
+//! A2A runtime-identity acceptance for the SEATED reconcile.
 //!
 //! These proofs drive the production seated-boot reconcile
 //! (`LifecyclePlane::reconcile_seated_boot`) and the owned-tree termination
@@ -79,7 +78,7 @@ fn locate_capsule() -> Option<PathBuf> {
 fn skip_reason(what: &str) {
     let (triple, _) = current_target();
     eprintln!(
-        "S34 {what}: no capsule available (set VAULTSPEC_PRODUCT_CAPSULE or place \
+        "{what}: no capsule available (set VAULTSPEC_PRODUCT_CAPSULE or place \
          dist/capsules/{triple}.zip); skipping the real-capsule proof."
     );
 }
@@ -308,7 +307,7 @@ fn real_capsule_manifest_resolves_the_owned_gateway_entrypoint() {
         .expect("capsule manifest verifies against the component lock");
 
     // The OWNED gateway entrypoint is the vaultspec-a2a gateway; the standalone
-    // MCP is a distinct entrypoint the dashboard lifecycle never launches (S86).
+    // MCP is a distinct entrypoint the dashboard lifecycle never launches.
     let gateway = vaultspec_product::lifecycle::owned_gateway_entrypoint(&manifest);
     let mcp = vaultspec_product::lifecycle::standalone_mcp_entrypoint(&manifest);
     assert!(

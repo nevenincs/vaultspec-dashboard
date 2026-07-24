@@ -1,6 +1,6 @@
 [package]
 name = "vaultspec-api"
-description = "The resident serve mode: single-origin loopback HTTP + JSON + SSE (axum). Serves the SPA bundle, the query API, the transparent ops proxy, and the SSE stream (engine-spec §7, contract §1)."
+description = "The resident serve mode: single-origin loopback HTTP + JSON + SSE (axum). Serves the SPA bundle, the query API, the transparent ops proxy, and the SSE stream."
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -40,15 +40,15 @@ fs4 = { version = "0.13", features = ["sync"] }
 
 [features]
 # Compile `frontend/dist` into the binary via rust-embed for release
-# packaging (dashboard-packaging ADR, embedded-first delivery). Omitted in
-# dev so `serve` keeps the disk passthrough and UI iteration needs no rebuild.
+# packaging (embedded-first delivery). Omitted in dev so `serve` keeps the
+# disk passthrough and UI iteration needs no rebuild.
 embed-spa = ["dep:rust-embed"]
 
 [lints]
 workspace = true
 
 [dev-dependencies]
-# The S34 A2A runtime-identity suite extracts a REAL built A2A desktop capsule
+# The A2A runtime-identity test suite extracts a REAL built A2A desktop capsule
 # (a DEFLATE zip) and its bundled CPython runtime (a gzip tar) to launch a real
 # owned process from the capsule's own interpreter and prove the seated-boot
 # reconcile. Dev-only; the shipped crate depends on none of these.

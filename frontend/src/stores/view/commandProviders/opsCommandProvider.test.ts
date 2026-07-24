@@ -1,5 +1,5 @@
-// Backend verb-feed provider units (command-palette-actions ADR, W03.P09): the ops
-// provider (whitelisted core/rag verbs + open-settings) and the settings provider (theme
+// Backend verb-feed provider units: the ops provider (whitelisted core/rag verbs +
+// open-settings) and the settings provider (theme
 // quick-toggles). Each is a pure function of the injected CommandContext. The reload
 // provider has its own home in reloadCommandProvider.test.ts.
 
@@ -100,7 +100,7 @@ describe("opsCommandProvider", () => {
       (c) => c.id === "app:settings",
     );
     expect(settings?.family).toBe("app");
-    // Composed from the shared `openSettingsAction` builder (unified-action-plane).
+    // Composed from the shared `openSettingsAction` builder.
     expect(settings?.label).toEqual({ key: "common:actions.openSettings" });
   });
 });

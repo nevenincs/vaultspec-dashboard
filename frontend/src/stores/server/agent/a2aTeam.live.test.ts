@@ -1,4 +1,4 @@
-// a2a Team wire slice live-wire tests (authoring-ux W05.P05 S21).
+// a2a Team wire slice live-wire tests.
 //
 // Test-integrity / wire-contract: these run ONLINE against the real `vaultspec
 // serve` binary the global setup spawns, never a mocked wire. They exercise the
@@ -7,10 +7,11 @@
 // The live harness spawns the engine WITHOUT a resident a2a gateway, so this is
 // the honest DEGRADED-path proof: the pass-through round-trips, carries the tiers
 // block on every response, and the tolerant `agent`-tier read renders the Team
-// selector disabled-with-reason — exactly the D9 posture (single-agent authoring
-// keeps working while the team plane is down). The a2a-UP path (non-empty presets,
-// a live run) needs a running a2a gateway and is proven by the a2a repo's own
-// gateway live tests + the cross-repo e2e, not spawnable from this harness.
+// selector disabled-with-reason — exactly the expected posture (single-agent
+// authoring keeps working while the team plane is down). The a2a-UP path
+// (non-empty presets, a live run) needs a running a2a gateway and is proven by
+// the a2a repo's own gateway live tests + the cross-repo e2e, not spawnable
+// from this harness.
 
 import { beforeAll, describe, expect, it } from "vitest";
 

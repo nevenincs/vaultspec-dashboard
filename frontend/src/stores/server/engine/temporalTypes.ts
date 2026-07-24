@@ -1,4 +1,4 @@
-// Decomposed from engine.ts (module-decomposition mandate, 2026-07-12).
+// Decomposed from engine.ts.
 
 import type { TiersBlock } from "./tiers";
 import type { EngineNode, EngineEdge, GraphSlice } from "./graphTypes";
@@ -28,7 +28,7 @@ export interface EventsResponse {
   tiers: TiersBlock;
 }
 
-// --- §5 recent commit history (status-overview ADR) --------------------------------
+// --- §5 recent commit history --------------------------------------------------------
 //
 // `GET /history?scope=&limit=N` is the ONE engine gap the status-overview rail
 // fills: the last N commits as `{hash, short_hash, subject, ts, node_ids}`,
@@ -72,7 +72,7 @@ export interface HistoryResponse {
   tiers: TiersBlock;
 }
 
-// --- GitHub work items (GET /prs, GET /issues; status-rail redesign) -----------------
+// --- GitHub work items (GET /prs, GET /issues) -----------------------------------------
 //
 // Read-only git-forge metadata the engine brokers through the bounded `gh` CLI
 // (engine-read-and-infer). PR/issue availability is a capability-local fact
@@ -133,7 +133,7 @@ export interface IssuesResponse {
   tiers: TiersBlock;
 }
 
-// --- §5 bounded temporal-lineage projection (dashboard-timeline ADR) ----------------
+// --- §5 bounded temporal-lineage projection ----------------------------------------
 //
 // The diachronic lineage the phase-lane timeline draws: for a scope and an
 // inclusive `[from, to]` ISO date range, the dated document nodes in range
@@ -185,8 +185,8 @@ export interface LineageNode {
  * provenance tier (the arc's tier-as-treatment styling), and the calibrated
  * confidence.
  *
- * `derivation` is the additive framework-relationship label specified by the
- * node-semantics ADR (`grounds`/`authorizes`/`generated-by`/...) — NOT yet
+ * `derivation` is the additive framework-relationship label
+ * (`grounds`/`authorizes`/`generated-by`/...) — NOT yet
  * shipped on the engine `Edge`. Until it lands the arc carries the shipped
  * `relation`/`tier` truth and `derivation` is absent; the surface draws REAL
  * lineage from day one and gains the richer label when the field arrives.
@@ -202,7 +202,7 @@ export interface LineageArc {
    *  node-semantics `derivation` field lands). */
   derivation?: string;
   /** Provenance tier wire name. The range lineage serves declared/structural/
-   *  temporal; the engine never mints a semantic graph edge (ADR D3.5). */
+   *  temporal; the engine never mints a semantic graph edge. */
   tier: "declared" | "structural" | "temporal";
   /** Tier-calibrated, fixed-band confidence. */
   confidence: number;
@@ -225,7 +225,7 @@ export interface LineageSlice {
 
 /**
  * One delta entry — the single shape shared by /graph/diff and SSE graph.
- * `granularity` is present on constellation-live-delta responses (S03) and
+ * `granularity` is present on constellation-live-delta responses and
  * discriminates document edges from feature-node/meta-edge deltas.
  */
 export interface GraphDeltaEntry {

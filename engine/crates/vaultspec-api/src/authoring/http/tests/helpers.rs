@@ -46,7 +46,7 @@ pub(super) use serde_json::{Value, json};
 pub(super) use std::path::Path;
 pub(super) use std::process::Command;
 pub(super) use tower::ServiceExt;
-// --- section-anchored comment routes (authoring-surface ADR D2) --------------
+// --- section-anchored comment routes --------------
 
 pub(super) use crate::authoring::sections::SectionSelector;
 
@@ -304,7 +304,7 @@ pub(super) async fn post_authoring(
 
 // --- mutating command handler: create proposal ----------------------------
 
-/// Register `actor` in the authoring actor registry (P19) of the state's own
+/// Register `actor` in the authoring actor registry of the state's own
 /// store — an authoring command requires a registered, active actor.
 pub(super) fn register_actor(state: &AppState, actor: &ActorRef) {
     state
@@ -565,7 +565,7 @@ pub(super) async fn create_then_submit(
     body
 }
 
-// ---- W14.P42a S260: explicit rebase / replacement routes ------------------------
+// ---- explicit rebase / replacement routes ------------------------
 
 pub(super) fn latest_changeset_revision_for_test(
     state: &AppState,

@@ -29,5 +29,5 @@ The packaged artifact demonstrably installs, runs standalone, and uninstalls cle
 
 ## Notes
 
-- CARRIED FORWARD (user decisions before the first remote release): (1) reconcile `engine/Cargo.toml` `repository` (wgergely) with the actual origin (nevenincs) — installer download URLs derive from it; (2) push a version tag from green main to exercise the full matrix on GitHub Actions.
+- CARRIED FORWARD (user decisions before the first remote release): (1) reconcile `engine/Cargo.toml` `repository` (the stale metadata handle) with the actual origin (nevenincs) — installer download URLs derive from it; (2) push a version tag from green main to exercise the full matrix on GitHub Actions.
 - The macOS/Linux targets are exercised only by the remote matrix; local verification covers x86_64 Windows.
