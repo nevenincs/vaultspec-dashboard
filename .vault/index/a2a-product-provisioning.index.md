@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#a2a-product-provisioning'
-date: '2026-07-21'
-modified: '2026-07-21'
+date: '2026-07-24'
+modified: '2026-07-24'
 related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S02]]'
@@ -29,6 +29,8 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S174]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S175]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S176]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S177]]'
+  - '[[2026-07-18-a2a-product-provisioning-W01-P01-S178]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S12]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S13]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P02-S14]]'
@@ -140,6 +142,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
   - '[[2026-07-18-a2a-product-provisioning-research]]'
   - '[[2026-07-19-a2a-product-provisioning-audit]]'
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
 # `a2a-product-provisioning` feature index
@@ -151,6 +154,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 ### adr
 
 - `2026-07-18-a2a-product-provisioning-adr` - `a2a-product-provisioning` adr: `the dashboard-owned A2A companion and composite release set` | (**status:** `accepted`)
+- `2026-07-24-a2a-product-provisioning-adr` - `a2a-product-provisioning` adr: `consume the dashboard-bundled a2a runtime: the frozen onedir replaces the fetched capsule` | (**status:** `accepted`)
 
 ### audit
 
@@ -168,7 +172,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S08` - Persist atomic complete receipts, channel provenance, bootstrap-created ownership retention, active generation, prior seat identity, consistency generation, and interruption markers
 - `2026-07-18-a2a-product-provisioning-W01-P01-S09` - Let dashboard bootstrap alone create and retain the ownership capability plus attach-control credential, permit the gateway to read attach-control for dashboard control and settlement callbacks, require the gateway to create a separate worker IPC credential used only between gateway and worker, and forbid aliases or secret-bearing discovery
 - `2026-07-18-a2a-product-provisioning-W01-P01-S10` - Bind every installation mutation to one retained transaction authority
-- `2026-07-18-a2a-product-provisioning-W01-P01-S11` - Verify manifest rejection, atomic receipt activation, dashboard-only capability creation, gateway read-only access, credential separation, permission restriction, and cross-process lock exclusion with real files, processes, and locks
+- `2026-07-18-a2a-product-provisioning-W01-P01-S11` - Verify through production APIs that one TUF-authenticated complete real generation activates only through the sealed transaction, the fixed receipt survives reopen, fallback unpublished and legacy state remain inert, dashboard credentials and bootstrap recovery preserve actor and access authority, and cross-process lock exclusion and child cleanup stay bounded
 - `2026-07-18-a2a-product-provisioning-W01-P01-S146` - Declare the explicit five-target by channel support matrix with payload type, installer authority, updater authority, downgrade path, rollback path, and unsupported reason
 - `2026-07-18-a2a-product-provisioning-W01-P01-S167` - Establish the fixed two-slot receipt journal and three non-selection logical proof replicas with two alternating subrecords each, synchronize and reopen before resolving the higher valid subrecord and two-of-three proof quorum, select the highest receipt sequence only after all logical replicas normalize to retired, reject proof ties overflow ambiguity aliases and unproved damage, validate active proof bound to the journal prior envelope target preimage next sequence and intended envelope, expose a bounded no-follow reader under the verified installation guard, and add no activation writer
 - `2026-07-18-a2a-product-provisioning-W01-P01-S168` - Extend the D9 Windows authority boundary with retained non-reparse directory handles, full-width directory identity, narrowly retained-handle child traversal, and exact retained-directory cleanup required by unpublished generation authority, with real Windows full-width identity reparse rejection substitution share-denial cleanup and error tests plus independent unsafe review
@@ -204,7 +208,7 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S171` - Extend the D9 Windows authority boundary with the sole safe same-directory first-journal installation operation backed by MoveFileExW replace-existing and write-through flags, rejecting cross-directory reparse and non-regular operands, with real certified local-NTFS tests and independent unsafe review
 - `2026-07-18-a2a-product-provisioning-W01-P01-S172` - Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain exact authority on every non-success, and durably publish through the fixed tear-safe journal
 - `2026-07-18-a2a-product-provisioning-W01-P01-S174` - Implement the isolated TUF 1.0 distribution-authority crate and bounded helper that verify an exactly six-target offline repository from embedded-root authority through pinned tough 0.24.0 filesystem transport, persist rollback freeze root-continuity and latest-known-time state, and expose only opaque non-cloneable verified release authority to linked Rust consumers
-- `2026-07-18-a2a-product-provisioning-W01-P01-S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix while refusing unavailable Windows authority, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery
+- `2026-07-18-a2a-product-provisioning-W01-P01-S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix and Windows, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery
 - `2026-07-18-a2a-product-provisioning-W01-P01-S176` - Implement sealed provisioning and active-release facades that consume TUF-verified distribution exact installation-lock and unpublished-generation authority plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery
 - `2026-07-18-a2a-product-provisioning-W02-P04-S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution
 - `2026-07-18-a2a-product-provisioning-W02-P04-S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery
@@ -287,6 +291,8 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W05-P12-S97` - Prove cold, owned, foreign, updating, rollback, degraded, and destructive-confirmation presentations using the production panel component
 - `2026-07-18-a2a-product-provisioning-W05-P12-S98` - Register the agent-service panel as a single modal identity while leaving the existing footer-chip set unchanged
 - `2026-07-18-a2a-product-provisioning-W05-P12-S99` - Define localized agent-service labels, toggle actions, and unavailable title in the canonical control-panel vocabulary
+- `2026-07-18-a2a-product-provisioning-W01-P01-S177` - Deliver Windows directory-metadata durability for the trust datastore as a BLOCKING PREREQUISITE of the Stage-4 integrated proof and the Stage-5 datastore half. No typed durability refusal may remain in the non-test Windows build. Reach the object through an already-retained handle, never a reconstructed path. Bounded and fail-closed. Acceptance removes the 8 cfg(unix) scopes so those tests pass on real NTFS and deletes the interim refusal test. If NTFS journaling makes an explicit sync unnecessary, record that as a reviewed durability argument with crash and power-loss reasoning, never assume it silently.
+- `2026-07-18-a2a-product-provisioning-W01-P01-S178` - Guard the duplicated VAULTSPEC_APP_HOME resolver with one agreement test asserting ProductPaths derive equals ProductPaths under_app_home of app_home_dir, using the process environment with no env mutation, plus a one-line comment at each site naming the other and recording that a new leaf crate is revisited only if the resolver acquires branching precedence or a third implementation appears
 
 ### plan
 
