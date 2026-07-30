@@ -1,23 +1,36 @@
-//! Windows replace-only-after-exit proof (a2a-product-provisioning W03.P07.S63 —
-//! the standalone timing property).
+//! Windows replace-only-after-exit proof.
 //!
-//! The self-install swap must replace the running dashboard and installed updater
-//! executables, and Windows refuses to delete/overwrite an executable image while
-//! a process is running it — which is exactly why the seat and updater must EXIT
-//! before replacement. This proves that OS timing property against real files: a
-//! running executable copy cannot be removed while alive, and can be once it
-//! exits.
+//! A self-install swap replaces BOTH installed executables — the dashboard and
+//! the updater that ships beside it — and Windows refuses to overwrite an
+//! executable image while a process is running it. That is precisely why the
+//! seated processes exit before replacement, and why the updater that performs
+//! the swap is a COPY taken out of the release rather than the installed one.
 //!
-//! The end-to-end swap of the actual dashboard + installed updater is the
-//! activation seam (materializer); this timing property is what makes the
-//! seat-exit-before-replacement ordering necessary and is proven standalone here.
-//! S63 is not ticked until the end-to-end replacement lands with the seam.
+//! This proves the whole ordering against real files and real processes: the
+//! copied updater, running the whole time, cannot replace either installed image
+//! while the seated processes live, and replaces both once they have exited.
 
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
-/// A hidden helper re-invoked as a REAL child from a copied executable so the copy
-/// is a running image. In a normal run (no `WINDOWS_REPL_SLEEPER` env) it is a
-/// no-op; otherwise it sleeps well past the test's replace window.
+/// Sentinel that turns the replace helper on, dropped into its working
+/// directory. An ordinary suite run has no such file, so the helper is inert.
+const REPLACE_REQUEST: &str = "replace-request.txt";
+/// The bytes the helper writes over each installed image.
+const REPLACEMENT: &str = "replacement.bin";
+/// What the helper records for its first attempt, made while the seated
+/// processes are still running.
+const FIRST_ATTEMPT: &str = "first-attempt.txt";
+/// The test drops this once the seated processes have exited.
+const PROCEED: &str = "proceed.txt";
+/// What the helper records for the post-exit attempt.
+const OUTCOME: &str = "outcome.txt";
+/// The replacement image content, distinct from the original executable bytes.
+const REPLACEMENT_BYTES: &[u8] = b"replaced-image";
+
+/// A hidden helper re-invoked as a REAL child from a copied executable so the
+/// copy is a running image. In a normal run (no `WINDOWS_REPL_SLEEPER` env) it
+/// is a no-op; otherwise it sleeps well past the test's replace window.
 #[test]
 fn windows_replacement_sleeper() {
     if std::env::var("WINDOWS_REPL_SLEEPER").is_err() {
@@ -26,17 +39,176 @@ fn windows_replacement_sleeper() {
     std::thread::sleep(Duration::from_secs(30));
 }
 
+/// The copied updater's replace drive, run as a REAL separate process from
+/// OUTSIDE the release: attempt the replacement while the seated processes are
+/// alive, wait for their exit, then replace both. Inert without the request
+/// file in its working directory.
+#[test]
+fn windows_replacement_replacer() {
+    let request = Path::new(REPLACE_REQUEST);
+    if !request.exists() {
+        return;
+    }
+    let targets: Vec<PathBuf> = std::fs::read_to_string(request)
+        .expect("read the replace request")
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(PathBuf::from)
+        .collect();
+    std::fs::write(REPLACEMENT, REPLACEMENT_BYTES).expect("stage the replacement bytes");
+
+    // While the seated processes hold their images, replacement must fail.
+    let first: Vec<String> = targets
+        .iter()
+        .map(|target| match std::fs::copy(REPLACEMENT, target) {
+            Ok(_) => format!("replaced {}", target.display()),
+            Err(_) => format!("refused {}", target.display()),
+        })
+        .collect();
+    std::fs::write(FIRST_ATTEMPT, first.join("\n")).expect("record the first attempt");
+
+    // The seat exits, and only then may the images be replaced.
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !Path::new(PROCEED).exists() {
+        if Instant::now() >= deadline {
+            std::fs::write(
+                OUTCOME,
+                "timed out waiting for the seated processes to exit",
+            )
+            .expect("record the outcome");
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    let after: Vec<String> = targets
+        .iter()
+        .map(|target| {
+            if replace_with_bounded_retry(Path::new(REPLACEMENT), target) {
+                format!("replaced {}", target.display())
+            } else {
+                format!("refused {}", target.display())
+            }
+        })
+        .collect();
+    std::fs::write(OUTCOME, after.join("\n")).expect("record the outcome");
+}
+
+/// Windows releases an executable image as its last process fully terminates;
+/// retry within a short bound so teardown timing is not mistaken for refusal.
+fn replace_with_bounded_retry(source: &Path, target: &Path) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if std::fs::copy(source, target).is_ok() {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
 #[cfg(windows)]
 #[test]
-fn windows_refuses_to_replace_a_running_executable_until_it_exits() {
-    let temp = tempfile::tempdir().unwrap();
-    let running = temp.path().join("running-image.exe");
-    std::fs::copy(std::env::current_exe().unwrap(), &running).unwrap();
+fn the_copied_updater_replaces_both_installed_images_only_after_the_seated_processes_exit() {
+    use vaultspec_product::handoff::copy_updater_out;
 
-    // Spawn the copied image so the file is a live running executable.
-    let mut child = std::process::Command::new(&running)
+    let temp = tempfile::tempdir().unwrap();
+    let release = temp.path().join("release/bin");
+    std::fs::create_dir_all(&release).unwrap();
+    let dashboard = release.join("vaultspec.exe");
+    let installed_updater = release.join("vaultspec-updater.exe");
+    let image = std::env::current_exe().unwrap();
+    std::fs::copy(&image, &dashboard).unwrap();
+    std::fs::copy(&image, &installed_updater).unwrap();
+
+    // The swap is driven from a copy taken OUT of the release: the installed
+    // updater is one of the files being replaced, so it cannot drive its own
+    // replacement.
+    let staging = temp.path().join("transaction/updater");
+    let copied = copy_updater_out(&installed_updater, &staging).expect("copy the updater out");
+    assert!(!copied.starts_with(&release));
+
+    // The seated processes: both installed images are running.
+    let mut seated_dashboard = spawn_sleeping_image(&dashboard);
+    let mut seated_updater = spawn_sleeping_image(&installed_updater);
+    for target in [&dashboard, &installed_updater] {
+        assert!(
+            std::fs::copy(&image, target).is_err(),
+            "a running installed image must not be replaceable: {}",
+            target.display()
+        );
+    }
+
+    // The copied updater runs for the whole drive, from outside the release.
+    let work = temp.path().join("work");
+    std::fs::create_dir_all(&work).unwrap();
+    std::fs::write(
+        work.join(REPLACE_REQUEST),
+        format!("{}\n{}\n", dashboard.display(), installed_updater.display()),
+    )
+    .unwrap();
+    let mut replacer = std::process::Command::new(&copied)
+        .args([
+            "windows_replacement_replacer",
+            "--exact",
+            "--nocapture",
+            "--test-threads=1",
+        ])
+        .current_dir(&work)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn the copied updater");
+
+    let first = await_file(&work.join(FIRST_ATTEMPT), Duration::from_secs(60));
+    assert_eq!(
+        first.lines().filter(|l| l.starts_with("refused")).count(),
+        2,
+        "neither installed image may be replaced while its process runs: {first}"
+    );
+    assert_eq!(
+        std::fs::read(&dashboard).unwrap(),
+        std::fs::read(&image).unwrap(),
+        "the running dashboard image must be untouched"
+    );
+
+    // The seat exits.
+    for seated in [&mut seated_dashboard, &mut seated_updater] {
+        seated.kill().unwrap();
+        seated.wait().unwrap();
+    }
+    std::fs::write(work.join(PROCEED), b"exited").unwrap();
+
+    let outcome = await_file(&work.join(OUTCOME), Duration::from_secs(60));
+    assert_eq!(
+        outcome
+            .lines()
+            .filter(|l| l.starts_with("replaced"))
+            .count(),
+        2,
+        "both installed images must be replaceable once the seat has exited: {outcome}"
+    );
+    for target in [&dashboard, &installed_updater] {
+        assert_eq!(
+            std::fs::read(target).unwrap(),
+            REPLACEMENT_BYTES,
+            "{} must carry the replacement bytes",
+            target.display()
+        );
+    }
+
+    replacer.wait().expect("reap the copied updater");
+}
+
+#[cfg(windows)]
+fn spawn_sleeping_image(image: &Path) -> std::process::Child {
+    std::process::Command::new(image)
         .args([
             "windows_replacement_sleeper",
+            "--exact",
             "--nocapture",
             "--test-threads=1",
         ])
@@ -45,33 +217,21 @@ fn windows_refuses_to_replace_a_running_executable_until_it_exits() {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .spawn()
-        .unwrap();
-
-    // While it runs, Windows refuses to remove the executable image.
-    assert!(
-        std::fs::remove_file(&running).is_err(),
-        "a running executable image must not be replaceable"
-    );
-    assert!(running.exists());
-
-    // After the process exits, the image can be replaced.
-    child.kill().unwrap();
-    child.wait().unwrap();
-    assert!(remove_with_bounded_retry(&running));
+        .expect("spawn a real running image")
 }
 
-/// Windows releases the executable image lock as the process fully terminates;
-/// retry the removal within a short bound to avoid a teardown-timing flake.
 #[cfg(windows)]
-fn remove_with_bounded_retry(path: &std::path::Path) -> bool {
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+fn await_file(path: &Path, budget: Duration) -> String {
+    let deadline = Instant::now() + budget;
     loop {
-        if std::fs::remove_file(path).is_ok() {
-            return true;
+        if let Ok(text) = std::fs::read_to_string(path) {
+            return text;
         }
-        if std::time::Instant::now() >= deadline {
-            return false;
-        }
+        assert!(
+            Instant::now() < deadline,
+            "the copied updater never wrote {}",
+            path.display()
+        );
         std::thread::sleep(Duration::from_millis(50));
     }
 }
