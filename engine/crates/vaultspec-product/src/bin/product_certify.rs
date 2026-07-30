@@ -101,7 +101,8 @@ mod network;
 use artifact::Artifact;
 use cases::{
     case_clean_install_offline, case_concurrent_ensure_single_flight, case_credential_separation,
-    case_relocation, case_runtime_singleton, case_stale_discovery_quarantine, case_token_redaction,
+    case_frozen_runtime_dispatch, case_relocation, case_runtime_singleton,
+    case_stale_discovery_quarantine, case_token_redaction,
 };
 
 // Outcomes
@@ -216,6 +217,11 @@ const CASES: &[Case] = &[
         id: "relocation",
         title: "relocation preserves onedir resolution, app-home separation, receipt authority, and dashboard launch",
         run: case_relocation,
+    },
+    Case {
+        id: "frozen-runtime-dispatch",
+        title: "the frozen runtime really dispatches its service verbs, not merely constructs them",
+        run: case_frozen_runtime_dispatch,
     },
     Case {
         id: "runtime-singleton",

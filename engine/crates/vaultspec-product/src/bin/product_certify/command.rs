@@ -26,23 +26,31 @@ pub(crate) struct CommandLimits {
     pub(crate) wall: Duration,
 }
 
-/// What an executed installed command produced, with output bounded by the cap.
+/// What an executed installed command produced, with each stream bounded by the
+/// cap.
+///
+/// The two streams are retained SEPARATELY. An installed command that reports a
+/// machine-readable projection does so on stdout, and folding stderr into it
+/// would make that projection undecodable the moment the command also logged a
+/// warning — so a case that reads a command's own report reads `stdout`, while
+/// diagnostics render both.
 #[derive(Debug)]
 pub(crate) struct CommandOutcome {
     /// The real process id the command ran as, retained so a case can reason
     /// about that exact process after it has been reaped.
     pub(crate) pid: u32,
     pub(crate) code: Option<i32>,
-    pub(crate) output: Vec<u8>,
+    pub(crate) stdout: Vec<u8>,
+    pub(crate) stderr: Vec<u8>,
 }
 
 impl CommandOutcome {
-    /// The captured output as bounded lossy text, for a diagnostic line.
+    /// Both captured streams as bounded lossy text, for a diagnostic line.
     pub(crate) fn text(&self) -> String {
-        String::from_utf8_lossy(&self.output)
-            .replace(['\r', '\n'], " ")
-            .trim()
-            .to_string()
+        let mut both = String::from_utf8_lossy(&self.stdout).into_owned();
+        both.push(' ');
+        both.push_str(&String::from_utf8_lossy(&self.stderr));
+        both.replace(['\r', '\n'], " ").trim().to_string()
     }
 }
 
@@ -138,20 +146,22 @@ pub(crate) fn run_bounded(
         std::thread::sleep(Duration::from_millis(20));
     };
 
-    let mut output = out_reader.join().unwrap_or_default();
-    output.extend(err_reader.join().unwrap_or_default());
+    let mut stdout = out_reader.join().unwrap_or_default();
+    let mut stderr = err_reader.join().unwrap_or_default();
     if let Some(breach) = breach {
         return Err(breach);
     }
     if total.load(Ordering::Acquire) > limits.output_cap {
         return Err(CommandFailure::OutputTooLarge(limits.output_cap));
     }
-    output.truncate(limits.output_cap);
+    stdout.truncate(limits.output_cap);
+    stderr.truncate(limits.output_cap);
     let status = status.expect("a status is present when no breach occurred");
     Ok(CommandOutcome {
         pid,
         code: status.code(),
-        output,
+        stdout,
+        stderr,
     })
 }
 
@@ -433,6 +443,53 @@ mod tests {
             (
                 "sh".to_string(),
                 ["-c", "yes xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"]
+                    .iter()
+                    .map(OsString::from)
+                    .collect(),
+            )
+        }
+    }
+
+    /// A real child writing to BOTH streams has them retained separately, so a
+    /// machine-readable report on stdout stays decodable even when the command
+    /// also logs to stderr.
+    #[test]
+    fn the_two_streams_are_retained_separately() {
+        let (program, args) = two_stream_writer();
+        let limits = CommandLimits {
+            output_cap: COMMAND_OUTPUT_CAP,
+            wall: Duration::from_secs(30),
+        };
+        let outcome = run_bounded(Path::new(&program), &args, &[], None, limits).unwrap();
+        let stdout = String::from_utf8_lossy(&outcome.stdout);
+        let stderr = String::from_utf8_lossy(&outcome.stderr);
+        assert!(
+            stdout.contains("report") && !stdout.contains("warning"),
+            "stdout must carry only the report: {stdout}"
+        );
+        assert!(
+            stderr.contains("warning"),
+            "stderr must carry the log: {stderr}"
+        );
+        assert!(
+            outcome.text().contains("warning"),
+            "diagnostics render both"
+        );
+    }
+
+    fn two_stream_writer() -> (String, Vec<OsString>) {
+        if cfg!(windows) {
+            (
+                "cmd.exe".to_string(),
+                ["/c", "echo report& echo warning 1>&2"]
+                    .iter()
+                    .map(OsString::from)
+                    .collect(),
+            )
+        } else {
+            (
+                "sh".to_string(),
+                ["-c", "echo report; echo warning 1>&2"]
                     .iter()
                     .map(OsString::from)
                     .collect(),

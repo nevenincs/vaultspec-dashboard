@@ -19,7 +19,7 @@ use vaultspec_product::locking::{
 use vaultspec_product::paths::ProductPaths;
 
 use crate::artifact::Artifact;
-use crate::command::{CommandLimits, require_success, run_bounded};
+use crate::command::{CommandLimits, execute_installed, require_success, run_bounded};
 use crate::network::require_network_removed;
 use crate::{
     CONCURRENT_ENSURE_CONTENDERS, CaseError, CaseResult, EXTRACT_OUTPUT_CAP, EvidenceGap,
@@ -95,25 +95,25 @@ pub(crate) fn case_relocation(artifact: &Artifact) -> CaseResult {
         }
         .into());
     }
+    // Onedir resolution is proven by a real SERVICE verb, not by `--version`.
+    // A version or help invocation only constructs the command surface; a
+    // frozen-closure defect — a missing data file, an unfrozen resource, a
+    // hidden-import miss — lives inside the service verbs and survives any
+    // construction-only check. Dispatching one after the move is what proves the
+    // relocated onedir still resolves its own interpreter and payload.
     let relocated_runtime = relocated.join(&runtime_relative);
-    let version = require_success(
-        "frozen A2A runtime",
-        &relocated_runtime,
-        &["--version"],
-        &[],
-        None,
-    )?;
-    if version.output.is_empty() {
+    let app_home = artifact.workspace.join("app-home");
+    let paths = ProductPaths::under_app_home(&app_home);
+    let observed = run_frozen_verb(&relocated_runtime, "status", &paths.app_home())?;
+    if observed.state.is_empty() {
         return Err(CaseError::failed(
-            "the relocated frozen runtime produced no output, so its onedir resolution is unproven"
+            "the relocated frozen runtime reported no state, so its onedir resolution is unproven"
                 .to_string(),
         ));
     }
 
     // The receipt authority is derived from the app home, never from the tree,
     // so relocating the tree cannot move or invalidate it.
-    let app_home = artifact.workspace.join("app-home");
-    let paths = ProductPaths::under_app_home(&app_home);
     let receipt = paths.receipt_path();
     if receipt.starts_with(&relocated) || receipt.starts_with(&artifact.tree_root) {
         return Err(CaseError::failed(format!(
@@ -128,9 +128,113 @@ pub(crate) fn case_relocation(artifact: &Artifact) -> CaseResult {
     }
 
     Ok(format!(
-        "tree relocated to {relocated_root}, re-verified, both installed commands launched, receipt authority at {}",
+        "tree relocated to {relocated_root}, re-verified, dashboard verified from its new root, frozen runtime dispatched a service verb reporting `{}`, receipt authority at {}",
+        observed.state,
         display(&receipt)
     ))
+}
+
+/// The frozen runtime really DISPATCHES its service verbs, not merely
+/// constructs them.
+///
+/// This is the case that closes the blind spot in a construction-only freeze
+/// check. A version or help invocation walks the command surface without
+/// entering any verb body, so a frozen-closure defect — an unfrozen package
+/// resource, a missing migration asset, a hidden-import miss — passes such a
+/// check cleanly and first surfaces at real product run. Here the setup and
+/// status verbs are actually executed against the installed onedir and their own
+/// reports are decoded, which is the first place such a defect shows.
+pub(crate) fn case_frozen_runtime_dispatch(artifact: &Artifact) -> CaseResult {
+    let runtime = artifact.a2a_runtime()?;
+    let app_home = artifact.product_paths()?.app_home();
+
+    let prepared = run_frozen_verb(&runtime, "setup", &app_home)?;
+    let observed = run_frozen_verb(&runtime, "status", &app_home)?;
+    if observed.state.is_empty() {
+        return Err(CaseError::failed(
+            "the frozen runtime's status verb reported no state".to_string(),
+        ));
+    }
+    // The run-state exit convention is the runtime's, not a success signal: the
+    // status verb exits non-zero for a healthy stopped service, so the decoded
+    // report is the truth and the code is only read where it carries meaning.
+    if observed.code == Some(0) && observed.state != RUNNING_STATE {
+        return Err(CaseError::failed(format!(
+            "the status verb signalled a running service while reporting `{}`",
+            observed.state
+        )));
+    }
+    Ok(format!(
+        "setup dispatched reporting `{}`, status dispatched reporting `{}`",
+        prepared.state, observed.state
+    ))
+}
+
+/// The run state the frozen runtime's service verbs signal success for.
+const RUNNING_STATE: &str = "running";
+/// A click usage error: the certifier invoked the verb wrongly, which is a
+/// defect in the certification, never evidence about the artifact.
+const USAGE_EXIT: i32 = 2;
+
+/// One frozen-runtime service verb, executed and decoded.
+#[derive(Debug)]
+pub(crate) struct FrozenVerbReport {
+    pub(crate) code: Option<i32>,
+    pub(crate) state: String,
+}
+
+/// Execute one of the frozen runtime's service verbs against an explicit app
+/// home and decode the report it prints.
+///
+/// The exit code is NOT read as success. These verbs encode run state in the
+/// code — a stopped-but-healthy service exits non-zero — so treating a non-zero
+/// exit as failure would refuse a perfectly good artifact. The machine-readable
+/// report on stdout is emitted either way and is what the case reasons about. A
+/// usage exit is the one code that means the certifier itself is wrong.
+pub(crate) fn run_frozen_verb(
+    runtime: &Path,
+    verb: &str,
+    app_home: &Path,
+) -> Result<FrozenVerbReport, CaseError> {
+    let home = display(app_home);
+    let outcome = execute_installed(
+        "frozen A2A runtime",
+        runtime,
+        &[verb, "--app-home", &home],
+        &[],
+        None,
+    )?;
+    if outcome.code == Some(USAGE_EXIT) {
+        return Err(CaseError::failed(format!(
+            "the frozen runtime refused the {verb} invocation as a usage error: {}",
+            outcome.text()
+        )));
+    }
+    let state = decode_reported_state(&outcome.stdout).ok_or_else(|| {
+        CaseError::failed(format!(
+            "the frozen runtime's {verb} verb printed no decodable report, which is how a frozen-closure defect surfaces: {}",
+            outcome.text()
+        ))
+    })?;
+    Ok(FrozenVerbReport {
+        code: outcome.code,
+        state,
+    })
+}
+
+/// Decode the `state` a frozen-runtime verb reported on stdout. The report is a
+/// single object; a leading banner or trailing newline is tolerated, anything
+/// undecodable is not.
+pub(crate) fn decode_reported_state(stdout: &[u8]) -> Option<String> {
+    let text = std::str::from_utf8(stdout).ok()?;
+    let start = text.find('{')?;
+    let end = text.rfind('}')?;
+    if end < start {
+        return None;
+    }
+    let report: serde_json::Value = serde_json::from_str(&text[start..=end]).ok()?;
+    let state = report.get("state")?.as_str()?;
+    (!state.is_empty()).then(|| state.to_string())
 }
 
 /// The runtime singleton excludes a second gateway before bind or discovery
@@ -681,6 +785,43 @@ pub(crate) fn copy_tree(from: &Path, to: &Path) -> Result<(), CaseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A verb's own report decodes to the state it named.
+    #[test]
+    fn a_reported_state_decodes() {
+        let report = br#"{"state": "stopped", "pid": null}"#;
+        assert_eq!(decode_reported_state(report).as_deref(), Some("stopped"));
+    }
+
+    /// A banner or trailing newline around the report is tolerated; the report
+    /// is still the object, not the noise.
+    #[test]
+    fn a_report_surrounded_by_noise_still_decodes() {
+        let report = b"loading
+{\"state\": \"running\"}
+";
+        assert_eq!(decode_reported_state(report).as_deref(), Some("running"));
+    }
+
+    /// Output carrying no decodable report is NOT read as a state. This is the
+    /// frozen-closure failure mode: a verb that dies inside its own body prints
+    /// a traceback rather than a report, and must never be read as healthy.
+    #[test]
+    fn a_traceback_is_not_a_state() {
+        let traceback = b"Traceback (most recent call last):
+  ModuleNotFoundError: no module named x
+";
+        assert!(decode_reported_state(traceback).is_none());
+    }
+
+    /// A report without a state, or with an empty one, decodes to nothing
+    /// rather than to a blank state that would read as success.
+    #[test]
+    fn a_stateless_or_blank_report_decodes_to_nothing() {
+        assert!(decode_reported_state(br#"{"pid": 1}"#).is_none());
+        assert!(decode_reported_state(br#"{"state": ""}"#).is_none());
+        assert!(decode_reported_state(b"").is_none());
+    }
 
     /// A real product state root on a real filesystem, for driving the runtime
     /// authority cases without any stand-in for the OS primitives they use.
