@@ -167,14 +167,29 @@ pub fn run(descriptor_path: &Path) -> Result<UpdaterRun, UpdaterError> {
 /// budget is a bounded typed refusal: nothing has been mutated and the one-time
 /// descriptor is still on disk, so the handoff can simply be retried.
 fn await_requester_exit(pid: u32) -> Result<(), UpdaterError> {
+    if wait_for_process_exit(pid, REQUESTER_EXIT_DEADLINE, REQUESTER_EXIT_POLL) {
+        Ok(())
+    } else {
+        Err(UpdaterError::RequesterAlive)
+    }
+}
+
+/// Poll a real process until it is gone, or the deadline expires. Returns
+/// whether the process ended within the deadline.
+///
+/// The deadline and interval are parameters rather than the constants above so
+/// the timing behaviour can be exercised against real live and real exited
+/// processes without a minute-long test.
+#[must_use]
+pub fn wait_for_process_exit(pid: u32, deadline: Duration, poll: Duration) -> bool {
     let begun = Instant::now();
     while process_is_alive(pid) {
-        if begun.elapsed() >= REQUESTER_EXIT_DEADLINE {
-            return Err(UpdaterError::RequesterAlive);
+        if begun.elapsed() >= deadline {
+            return false;
         }
-        std::thread::sleep(REQUESTER_EXIT_POLL);
+        std::thread::sleep(poll);
     }
-    Ok(())
+    true
 }
 
 /// Relaunch the prior seat named by the descriptor's relaunch instruction.
