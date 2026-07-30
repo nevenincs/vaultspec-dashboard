@@ -113,8 +113,8 @@ Dispatch to vaultspec-high-executor after the A2A desktop singleton and control 
 - [x] `W02.P04.S46` - Export the one-shot product lifecycle command module; `engine/crates/vaultspec-cli/src/cmd/mod.rs`.
 - [x] `W02.P04.S47` - Expose bounded A2A lifecycle status and action subcommands without free-form executable or path operands; `engine/crates/vaultspec-cli/src/main.rs`.
 - [x] `W02.P04.S48` - Make cold seat launch reconcile only the receipt-owned A2A gateway before opening the dashboard; `engine/crates/vaultspec-cli/src/cmd/launch.rs`.
-- [ ] `W02.P04.S164` - Verify the receipt-selected generation against the receipt-bound release-set and component-lock digests plus every installed file digest before starting and never trust a lock supplied only by the candidate tree; `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
-- [ ] `W02.P04.S165` - Prove unreceipted staged rolling-back substituted incomplete tampered and self-authorized generations remain inert while one active fully verified receipt can start the frozen binary's dispatch (serve or start); `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`.
+- [x] `W02.P04.S164` - Verify the receipt-selected generation against the receipt-bound release-set and component-lock digests plus every installed file digest before starting and never trust a lock supplied only by the candidate tree; `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`.
+- [x] `W02.P04.S165` - Prove unreceipted staged rolling-back substituted incomplete tampered and self-authorized generations remain inert while one active fully verified receipt can start the frozen binary's dispatch (serve or start); `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`.
 
 ### Phase `W02.P05` - admit runs before minting credentials
 
