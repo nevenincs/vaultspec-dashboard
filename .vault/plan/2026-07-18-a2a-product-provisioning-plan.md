@@ -181,14 +181,14 @@ Dispatch to vaultspec-high-executor to compose each dashboard build with the pin
 
 - [x] `W04.P08.S64` - Build and verify complete product trees inside dashboard-owned final-name unpublished generations from the tracked component lock A2A evidence dashboard binary updater licenses and software bill of materials; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
 - [x] `W04.P08.S65` - Reject unpinned or floating inputs, A2A commit or artifact mismatch, target mismatch, missing payloads, digest drift, incomplete licenses, and release-set skew with real composed trees; `engine/crates/vaultspec-product/tests/product_build.rs`.
-- [ ] `W04.P08.S66` - Acquire only build-time artifacts by exact pinned identity, stage the SPA without creating any runtime network dependency, and add a pinned A2A source checkout plus locked freeze-build inputs (uv sync --locked, in-repo PyInstaller build entry); `.github/release-build-setup.yml`.
-- [ ] `W04.P08.S67` - Compose and retain the Apple Silicon macOS dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/release.yml`.
-- [ ] `W04.P08.S69` - Compose and retain the Arm64 Linux dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/release.yml`.
-- [ ] `W04.P08.S70` - Compose and retain the x86-64 Linux dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/release.yml`.
-- [ ] `W04.P08.S71` - Compose and retain the x86-64 Windows dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/release.yml`.
+- [ ] `W04.P08.S66` - Acquire only build-time artifacts by exact pinned identity, stage the SPA without creating any runtime network dependency, and add a pinned A2A source checkout plus locked freeze-build inputs (uv sync --locked, in-repo PyInstaller build entry); `.github/release-build-setup.yml, .github/workflows/product-release.yml`.
+- [ ] `W04.P08.S67` - Compose and retain the Apple Silicon macOS dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/product-release.yml`.
+- [ ] `W04.P08.S69` - Compose and retain the Arm64 Linux dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/product-release.yml`.
+- [ ] `W04.P08.S70` - Compose and retain the x86-64 Linux dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/product-release.yml`.
+- [ ] `W04.P08.S71` - Compose and retain the x86-64 Windows dashboard, updater, and dashboard-built A2A onedir as one verified release-set artifact; `.github/workflows/product-release.yml`.
 - [ ] `W04.P08.S72` - Validate the shrunken component lock (source pin), the reshaped release-set schema, product builder, and payload inventory before release jobs may run, with no capsule pins; `.github/workflows/quality-gates.yml`.
 - [x] `W04.P08.S87` - Carry and verify the independently invokable standalone MCP entrypoint in every capsule without assigning it dashboard lifecycle ownership; `engine/crates/vaultspec-product/src/bin/product_build.rs`.
-- [ ] `W04.P08.S166` - Aggregate exactly one verified artifact for each of the four unique target triples enforce common A2A commit component-lock release-schema protocol and state identity verify every target archive manifest tree software-bill-of-materials and license evidence and emit the cohort digest that gates publication; `.github/workflows/release.yml`.
+- [ ] `W04.P08.S166` - Aggregate exactly one verified artifact for each of the four unique target triples enforce common A2A commit component-lock release-schema protocol and state identity verify every target archive manifest tree software-bill-of-materials and license evidence and emit the cohort digest that gates publication; `.github/workflows/product-release.yml`.
 - [x] `W04.P08.S185` - Reshape the a2a_component contract from the retired capsule join to the dashboard-built onedir build source, shrink the component lock to a source pin plus freeze-recipe entry identity, retire capsule_manifest and capsule_archive from the release-set schema parser and authority surface, and admit the built onedir as an ordinary digest-covered build source; `schemas/release-set-manifest.json, packaging/a2a-component.lock.json, engine/crates/vaultspec-product/src/manifest.rs, engine/crates/vaultspec-product/src/manifest/authority.rs, engine/crates/vaultspec-product/src/manifest/verification.rs, engine/crates/vaultspec-product/src/bin/product_build.rs`.
 
 ### Phase `W04.P09` - replace binary-only installer surfaces
@@ -199,7 +199,7 @@ Dispatch shell, PowerShell, and WiX work to vaultspec-high-executor so each inst
 - [ ] `W04.P09.S74` - Install, verify, receipt, update, and remove the complete macOS and Linux product tree from the product-owned shell installer; `packaging/install.sh`.
 - [ ] `W04.P09.S75` - Install, verify, receipt, update, and remove the complete Windows product tree from the product-owned PowerShell installer; `packaging/install.ps1`.
 - [ ] `W04.P09.S76` - Package every dashboard, updater, capsule, manifest, license, and SBOM file into the complete MSI with product receipt and uninstall semantics; `engine/crates/vaultspec-cli/wix/main.wxs`.
-- [ ] `W04.P09.S77` - Build the product-owned MSI and installer scripts, publish only complete artifacts, and fail on any stale binary-only installer or updater; `.github/workflows/release.yml`.
+- [ ] `W04.P09.S77` - Build the product-owned MSI and installer scripts, publish only complete artifacts, and fail on any stale binary-only installer or updater; `.github/workflows/product-release.yml`.
 - [x] `W04.P09.S78` - Withdraw crates.io publication and bare Cargo installation metadata until a Cargo channel can preserve the composite release contract; `engine/crates/vaultspec-cli/Cargo.toml`.
 - [ ] `W04.P09.S79` - Document the bundled-runtime model (the dashboard builds and bundles the A2A onedir), supported composite install and update channels, offline ownership, data preservation, and explicit cargo-install and cargo-binstall exclusion by invoking the mandatory vaultspec-documentation skill and pipeline; `README.md`.
 
@@ -212,8 +212,8 @@ Dispatch Windows channel work to vaultspec-high-executor only after distinct Sco
 - [x] `W04.P10.S82` - Declare the composite product identity and publisher for the WinGet package; `packaging/winget/vaultspec.vaultspec.yaml`.
 - [ ] `W04.P10.S83` - Point WinGet only to the complete MSI with product scope, upgrade behavior, digest, and manager-owned rollback authority; `packaging/winget/vaultspec.vaultspec.installer.yaml`.
 - [x] `W04.P10.S84` - Provide the WinGet locale metadata and supported composite install description; `packaging/winget/vaultspec.vaultspec.locale.en-US.yaml`.
-- [x] `W04.P10.S85` - Publish Scoop metadata only when its phase-zero matrix and complete real-artifact downgrade proof pass, otherwise mark Scoop unsupported and require an ADR revisit; `.github/workflows/release.yml`.
-- [x] `W04.P10.S159` - Publish WinGet metadata only when its phase-zero matrix and complete MSI downgrade proof pass, otherwise mark WinGet unsupported and require an ADR revisit; `.github/workflows/release.yml`.
+- [x] `W04.P10.S85` - Publish Scoop metadata only when its phase-zero matrix and complete real-artifact downgrade proof pass, otherwise mark Scoop unsupported and require an ADR revisit; `.github/workflows/channel-publish-gate.yml`.
+- [x] `W04.P10.S159` - Publish WinGet metadata only when its phase-zero matrix and complete MSI downgrade proof pass, otherwise mark WinGet unsupported and require an ADR revisit; `.github/workflows/channel-publish-gate.yml`.
 
 ## Wave `W05` - expose lifecycle truth and controls in the dashboard
 
@@ -296,7 +296,7 @@ Dispatch independent vaultspec-code-reviewer passes and a manual architecture-ow
 - [ ] `W06.P14.S140` - Review lifecycle routes and run admission for typed boundaries, atomic single-flight, authenticated ownership, bundle-scoped token revocation, and fixed run verbs; `engine/crates/vaultspec-api`.
 - [ ] `W06.P14.S141` - Review frontend stores and panels for sole wire ownership, backend-served truth, bounded polling, guarded deletion, localization, and action-plane parity; `frontend/src`.
 - [ ] `W06.P14.S142` - Review the source-pin component lock, four-target composition, installer completeness, channel reversibility, Cargo withdrawal, and published artifact inventory; `packaging`.
-- [ ] `W06.P14.S143` - Manually reconcile the dashboard release-set contract and certification evidence against the accepted A2A dashboard-bundled-runtime record and record the shipped cross-repository entrypoint audit; `.vault/audit/2026-07-18-a2a-product-provisioning-audit.md`.
+- [ ] `W06.P14.S143` - Manually reconcile the dashboard release-set contract and certification evidence against the accepted A2A dashboard-bundled-runtime record and record the shipped cross-repository entrypoint audit; `.vault/audit/2026-07-19-a2a-product-provisioning-audit.md`.
 - [ ] `W06.P14.S144` - Apply vaultspec-codify only to implementation and review lessons that satisfy the durable-rule criteria after the full cycle; `.codex/rules/architecture-boundaries.md`.
 
 ### Phase `W06.P15` - harden the self-hosted CI to green, bottom-up
