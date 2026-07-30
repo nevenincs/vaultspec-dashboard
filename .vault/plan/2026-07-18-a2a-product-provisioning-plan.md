@@ -276,7 +276,7 @@ Dispatch real-artifact certification to vaultspec-high-executor; no fake, mock, 
 - [ ] `W06.P13.S124` - Certify removal deletes owned generations and receipts while preserving data unless explicit typed data removal is requested; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S125` - Certify the frozen runtime's standalone MCP surface starts and stops under its caller while dashboard lifecycle leaves it untouched; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S126` - Certify token values never appear in logs, lifecycle jobs, frontend state, receipts, discovery, manifests, or retained artifacts; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S127` - Create the mandatory real-artifact certification workflow with network isolation, retained diagnostics, and no skip or expected-failure path; `.github/workflows/a2a-product-certification.yml`.
+- [x] `W06.P13.S127` - Create the mandatory real-artifact certification workflow with network isolation, retained diagnostics, and no skip or expected-failure path; `.github/workflows/a2a-product-certification.yml`.
 - [ ] `W06.P13.S128` - Run the complete product certification job on Apple Silicon macOS; `.github/workflows/a2a-product-certification.yml`.
 - [ ] `W06.P13.S130` - Run the complete product certification job on Arm64 Linux; `.github/workflows/a2a-product-certification.yml`.
 - [ ] `W06.P13.S131` - Run the complete product certification job on x86-64 Linux; `.github/workflows/a2a-product-certification.yml`.
