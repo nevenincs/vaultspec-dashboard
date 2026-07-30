@@ -36,6 +36,14 @@ related:
   unavailable (typed, with its own exit code), or failed. A case that cannot
   reach real evidence fails closed; it never passes and never skips.
 - Carry a fixed, bounded case roster with a listing verb and per-case selection.
+- Retain the two captured streams separately, so a command's machine-readable
+  report stays decodable even when that command also logs.
+- Dispatch the bundled runtime's real service verbs rather than its version or
+  help surface. A construction-only check walks the command surface without
+  entering any verb body, so a frozen-closure defect survives it and first
+  surfaces at real product run; success is read from the decoded report, because
+  those verbs encode run state in their exit code and a healthy stopped service
+  exits non-zero.
 - Split the tool along its own seams once it reached the module-size gate: the
   entry keeps the invocation, the outcome vocabulary, the roster, and the shared
   helpers, while artifact staging, bounded command execution, the
