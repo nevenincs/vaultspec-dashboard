@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-timeline'
-date: '2026-06-15'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-14-dashboard-timeline-adr]]'
   - '[[2026-06-15-dashboard-timeline-W01-P01-S01]]'
@@ -94,7 +95,7 @@ Auto-generated index of all documents tagged with `#dashboard-timeline`.
 
 ### adr
 
-- `2026-06-14-dashboard-timeline-adr` - `dashboard-timeline` adr: `timeline` | (**status:** `deprecated`)
+- `2026-06-14-dashboard-timeline-adr` - `dashboard-timeline` adr: `timeline` | (**status:** `superseded`)
 - `2026-06-15-dashboard-timeline-adr` - `dashboard-timeline` adr: `relational phase-lane timeline` | (**status:** `accepted`)
 
 ### audit

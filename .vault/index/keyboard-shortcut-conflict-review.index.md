@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#keyboard-shortcut-conflict-review'
-date: '2026-07-15'
-modified: '2026-07-15'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-15-keyboard-shortcut-conflict-review-P01-S01]]'
   - '[[2026-07-15-keyboard-shortcut-conflict-review-P01-S02]]'

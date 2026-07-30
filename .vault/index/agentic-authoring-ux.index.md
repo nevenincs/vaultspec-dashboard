@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#agentic-authoring-ux'
-date: '2026-07-16'
-modified: '2026-07-16'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-16-agentic-authoring-ux-W01-P01-S02]]'
   - '[[2026-07-16-agentic-authoring-ux-W01-P01-S03]]'
@@ -33,6 +34,7 @@ related:
   - '[[2026-07-16-agentic-authoring-ux-plan]]'
   - '[[2026-07-16-agentic-authoring-ux-reference]]'
   - '[[2026-07-16-agentic-authoring-ux-research]]'
+  - '[[2026-07-17-agentic-authoring-ux-audit]]'
 ---
 
 # `agentic-authoring-ux` feature index
@@ -48,6 +50,7 @@ Auto-generated index of all documents tagged with `#agentic-authoring-ux`.
 ### audit
 
 - `2026-07-16-agentic-authoring-ux-audit` - `agentic-authoring-ux` audit: `wave W01 detangle and unify review` | APPROVED
+- `2026-07-17-agentic-authoring-ux-audit` - `agentic-authoring-ux` audit: `team-selector wiring`
 
 ### exec
 

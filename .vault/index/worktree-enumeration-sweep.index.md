@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#worktree-enumeration-sweep'
-date: '2026-06-16'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-16-worktree-enumeration-sweep-audit]]'
   - '[[2026-06-16-worktree-enumeration-sweep-plan]]'

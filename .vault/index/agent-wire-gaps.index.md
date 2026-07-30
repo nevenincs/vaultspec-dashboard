@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#agent-wire-gaps'
-date: '2026-07-18'
-modified: '2026-07-18'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-17-agent-wire-gaps-P01-S13]]'
   - '[[2026-07-17-agent-wire-gaps-P02-S15]]'
@@ -24,6 +25,7 @@ related:
   - '[[2026-07-17-agent-wire-gaps-P04-S34]]'
   - '[[2026-07-17-agent-wire-gaps-P04-S35]]'
   - '[[2026-07-17-agent-wire-gaps-P04-S36]]'
+  - '[[2026-07-17-agent-wire-gaps-P04a-S59]]'
   - '[[2026-07-17-agent-wire-gaps-P05-S37]]'
   - '[[2026-07-17-agent-wire-gaps-P05-S39]]'
   - '[[2026-07-17-agent-wire-gaps-P05-S40]]'
@@ -75,6 +77,7 @@ Auto-generated index of all documents tagged with `#agent-wire-gaps`.
 - `2026-07-17-agent-wire-gaps-P05-S44` - [OWNED BY 2026-07-17-a2a-orchestration-edge-plan P04.S12 - do not execute from this plan unless that plan releases it] Ride the composer's staged comment batch along as a feedback_batch_id created via POST /v1/feedback-batches on submit, recorded on the turn alongside the existing serialized prompt block
 - `2026-07-17-agent-wire-gaps-P05-S48` - Route Phase P05 to the team reviewer for verification against the frontend cutover acceptance criteria
 - `2026-07-17-agent-wire-gaps-P01-S13` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review
+- `2026-07-17-agent-wire-gaps-P04a-S59` - Run the full lint gate (just dev lint all) and confirm exit 0 before routing the phase to review
 
 ### plan
 

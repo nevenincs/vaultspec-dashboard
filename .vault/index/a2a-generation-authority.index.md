@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#a2a-generation-authority'
-date: '2026-07-20'
-modified: '2026-07-20'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-20-a2a-generation-authority-adr]]'
   - '[[2026-07-20-a2a-generation-authority-audit]]'

@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#codebase-graphing'
-date: '2026-07-02'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-02-codebase-graphing-W01-P01-S01]]'
   - '[[2026-07-02-codebase-graphing-W01-P02-S02]]'

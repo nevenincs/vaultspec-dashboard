@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#section-scoped-operations'
-date: '2026-07-11'
-modified: '2026-07-11'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-11-section-scoped-operations-adr]]'
   - '[[2026-07-11-section-scoped-operations-audit]]'

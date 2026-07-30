@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#resource-hardening'
-date: '2026-06-15'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-15-resource-hardening-adr]]'
   - '[[2026-06-15-resource-hardening-plan]]'
@@ -19,7 +20,7 @@ Auto-generated index of all documents tagged with `#resource-hardening`.
 
 ### adr
 
-- `2026-06-15-resource-hardening-adr` - `resource-hardening` adr: `engine resource-safety + security hardening (performance-sweep wave)` | (**status:** `proposed`)
+- `2026-06-15-resource-hardening-adr` - `resource-hardening` adr: `engine resource-safety + security hardening (performance-sweep wave)` | (**status:** `accepted`)
 
 ### plan
 

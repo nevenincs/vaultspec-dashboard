@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-gui'
-date: '2026-06-15'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-12-dashboard-gui-W01-P01-S01]]'
   - '[[2026-06-12-dashboard-gui-W01-P01-S02]]'
@@ -79,6 +80,7 @@ related:
   - '[[2026-06-13-dashboard-gui-S05]]'
   - '[[2026-06-13-dashboard-gui-audit]]'
   - '[[2026-06-13-dashboard-gui-plan]]'
+  - '[[2026-07-18-dashboard-gui-research]]'
 ---
 
 # `dashboard-gui` feature index
@@ -174,3 +176,7 @@ Auto-generated index of all documents tagged with `#dashboard-gui`.
 ### reference
 
 - `2026-06-12-dashboard-gui-reference` - `dashboard-gui` reference: `glyph family design`
+
+### research
+
+- `2026-07-18-dashboard-gui-research` - `dashboard-gui` research: `s20-bridge-proof`

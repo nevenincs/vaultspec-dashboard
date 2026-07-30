@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#missing-backend-inventory'
-date: '2026-07-13'
-modified: '2026-07-13'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-16-missing-backend-inventory-research]]'
 ---

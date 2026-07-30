@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#a2a-product-provisioning'
-date: '2026-07-24'
-modified: '2026-07-24'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S02]]'

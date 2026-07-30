@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#feature-group-authoring'
-date: '2026-07-14'
-modified: '2026-07-14'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-14-feature-group-authoring-P01-S01]]'
   - '[[2026-07-14-feature-group-authoring-P01-S02]]'

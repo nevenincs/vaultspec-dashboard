@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#authoring-surface'
-date: '2026-07-13'
-modified: '2026-07-13'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-12-authoring-surface-W01-P01-S01]]'
   - '[[2026-07-12-authoring-surface-W01-P01-S02]]'

@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#a2a-orchestration-edge'
-date: '2026-07-19'
-modified: '2026-07-19'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-reference]]'
@@ -25,6 +26,14 @@ related:
   - '[[2026-07-17-a2a-orchestration-edge-P06-S15]]'
   - '[[2026-07-17-a2a-orchestration-edge-P06-S16]]'
   - '[[2026-07-17-a2a-orchestration-edge-P06-summary]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S17]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S18]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S19]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S20]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S21]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S22]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-S23]]'
+  - '[[2026-07-17-a2a-orchestration-edge-P07-summary]]'
   - '[[2026-07-17-a2a-orchestration-edge-audit]]'
   - '[[2026-07-17-a2a-orchestration-edge-plan]]'
   - '[[2026-07-19-a2a-orchestration-edge-active-run-recovery-audit]]'
@@ -65,6 +74,14 @@ Auto-generated index of all documents tagged with `#a2a-orchestration-edge`.
 - `2026-07-17-a2a-orchestration-edge-P06-S15` - Add the engine-scoped active-run discovery verb with fixed two-result upstream bound, optional bounded feature filter, and real-loopback contract coverage
 - `2026-07-17-a2a-orchestration-edge-P06-S16` - Recover the team-run viewing binding only from one complete active workspace result, clear cross-scope bindings, and keep run-status plus relay authoritative
 - `2026-07-17-a2a-orchestration-edge-P06-summary` - `a2a-orchestration-edge` `P06` summary
+- `2026-07-17-a2a-orchestration-edge-P07-S17` - Secure the sibling gateway with loopback-default binding and constant-time service-token authentication on every /v1 route, with real HTTP negative and positive coverage
+- `2026-07-17-a2a-orchestration-edge-P07-S18` - Replace active-run metadata scans with persisted bounded indexed selectors and prove an index-backed, stable large-history query plan
+- `2026-07-17-a2a-orchestration-edge-P07-S19` - Enforce pre-allocation HTTP and SSE byte ceilings, byte-budget replay storage, and restartable relay lifecycle with adversarial socket and churn coverage
+- `2026-07-17-a2a-orchestration-edge-P07-S20` - Move A2A discovery and health off async workers and make actor-token issuance idempotent, failure-revoked, and retention-bounded
+- `2026-07-17-a2a-orchestration-edge-P07-S21` - Make frontend relay resume cursor-aware and byte-bounded, latch authoritative reconciliation, and derive terminal controls only from confirmed run status
+- `2026-07-17-a2a-orchestration-edge-P07-S22` - Reconcile six-member edge vocabulary and record the implemented hardening in the current reference and audit trail
+- `2026-07-17-a2a-orchestration-edge-P07-S23` - Run a cross-repository adversarial code review and close the rolling audit
+- `2026-07-17-a2a-orchestration-edge-P07-summary` - `a2a-orchestration-edge` `P07` summary
 
 ### plan
 

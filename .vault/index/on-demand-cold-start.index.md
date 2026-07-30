@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#on-demand-cold-start'
-date: '2026-07-12'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-12-on-demand-cold-start-S01]]'
   - '[[2026-07-12-on-demand-cold-start-S02]]'

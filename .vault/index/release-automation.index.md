@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#release-automation'
-date: '2026-07-07'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-07-release-automation-S01]]'
   - '[[2026-07-07-release-automation-S02]]'

@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#document-editor-redesign'
-date: '2026-07-11'
-modified: '2026-07-11'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-11-document-editor-redesign-P01-S01]]'
   - '[[2026-07-11-document-editor-redesign-P01-S02]]'

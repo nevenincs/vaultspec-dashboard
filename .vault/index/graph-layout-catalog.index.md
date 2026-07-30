@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-layout-catalog'
-date: '2026-07-13'
-modified: '2026-07-13'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-16-graph-layout-catalog-adr]]'
   - '[[2026-06-16-graph-layout-catalog-research]]'
@@ -18,7 +19,7 @@ Auto-generated index of all documents tagged with `#graph-layout-catalog`.
 
 ### adr
 
-- `2026-06-16-graph-layout-catalog-adr` - graph-layout-catalog adr: hierarchical, radial, and community layouts as framework-free deterministic-seed modes
+- `2026-06-16-graph-layout-catalog-adr` - `graph-layout-catalog` adr: `hierarchical, radial, and community layouts as framework-free deterministic-seed modes` | (**status:** `deprecated`)
 
 ### research
 

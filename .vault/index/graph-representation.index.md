@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-representation'
-date: '2026-07-03'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-14-graph-representation-W01-P01-S01]]'
   - '[[2026-06-14-graph-representation-W01-P01-S02]]'
@@ -65,6 +66,7 @@ related:
   - '[[2026-06-14-graph-representation-plan]]'
   - '[[2026-06-14-graph-representation-research]]'
   - '[[2026-07-03-graph-representation-adr]]'
+  - '[[2026-07-03-graph-representation-plan]]'
 ---
 
 # `graph-representation` feature index
@@ -139,6 +141,7 @@ Auto-generated index of all documents tagged with `#graph-representation`.
 ### plan
 
 - `2026-06-14-graph-representation-plan` - `graph-representation` plan
+- `2026-07-03-graph-representation-plan` - `graph-representation` plan
 
 ### research
 

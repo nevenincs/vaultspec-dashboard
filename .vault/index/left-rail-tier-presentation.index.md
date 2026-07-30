@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#left-rail-tier-presentation'
-date: '2026-07-19'
-modified: '2026-07-19'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-07-15-left-rail-tier-presentation-adr]]'
   - '[[2026-07-15-left-rail-tier-presentation-research]]'

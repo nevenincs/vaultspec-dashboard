@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-simulation-stability'
-date: '2026-07-03'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-29-graph-simulation-stability-S01]]'
   - '[[2026-06-29-graph-simulation-stability-S02]]'
@@ -15,6 +16,7 @@ related:
   - '[[2026-06-29-graph-simulation-stability-research]]'
   - '[[2026-07-02-graph-simulation-stability-audit]]'
   - '[[2026-07-03-graph-simulation-stability-adr]]'
+  - '[[2026-07-03-graph-simulation-stability-plan]]'
   - '[[2026-07-03-graph-simulation-stability-reference]]'
   - '[[2026-07-03-graph-simulation-stability-research]]'
 ---
@@ -44,6 +46,7 @@ Auto-generated index of all documents tagged with `#graph-simulation-stability`.
 ### plan
 
 - `2026-06-29-graph-simulation-stability-plan` - `graph-simulation-stability` plan
+- `2026-07-03-graph-simulation-stability-plan` - `graph-simulation-stability` plan
 
 ### reference
 

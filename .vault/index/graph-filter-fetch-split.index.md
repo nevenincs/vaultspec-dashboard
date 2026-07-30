@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-filter-fetch-split'
-date: '2026-06-22'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-22-graph-filter-fetch-split-adr]]'
   - '[[2026-06-22-graph-filter-fetch-split-plan]]'

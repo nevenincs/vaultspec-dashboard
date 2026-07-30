@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-git-diff-browser'
-date: '2026-06-14'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-14-dashboard-git-diff-browser-adr]]'
 ---

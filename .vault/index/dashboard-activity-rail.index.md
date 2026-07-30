@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-activity-rail'
-date: '2026-06-15'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-14-dashboard-activity-rail-P01-S01]]'
   - '[[2026-06-14-dashboard-activity-rail-P01-S02]]'
@@ -39,7 +40,7 @@ Auto-generated index of all documents tagged with `#dashboard-activity-rail`.
 
 ### adr
 
-- `2026-06-14-dashboard-activity-rail-adr` - `dashboard-activity-rail` adr: `right activity rail information architecture` | (**status:** `accepted`)
+- `2026-06-14-dashboard-activity-rail-adr` - `dashboard-activity-rail` adr: `right activity rail information architecture` | (**status:** `superseded`)
 
 ### exec
 

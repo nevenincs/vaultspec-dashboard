@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-lineage-dag'
-date: '2026-07-13'
-modified: '2026-07-13'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-16-graph-lineage-dag-adr]]'
   - '[[2026-06-16-graph-lineage-dag-audit]]'
@@ -19,7 +20,7 @@ Auto-generated index of all documents tagged with `#graph-lineage-dag`.
 
 ### adr
 
-- `2026-06-16-graph-lineage-dag-adr` - graph-lineage-dag adr: rebuilding the lineage mode as a Sugiyama-layered DAG and closing the engine derivation-labeling hole that starves it
+- `2026-06-16-graph-lineage-dag-adr` - `graph-lineage-dag` adr: `rebuilding the lineage mode as a Sugiyama-layered DAG and closing the engine derivation-labeling hole that starves it` | (**status:** `accepted`)
 
 ### audit
 

@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#relative-units-migration'
-date: '2026-06-19'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-19-relative-units-migration-adr]]'
   - '[[2026-06-19-relative-units-migration-plan]]'

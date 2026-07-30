@@ -3,8 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#node-visual-richness'
-date: '2026-06-15'
-modified: '2026-07-12'
+date: '2026-07-30'
+modified: '2026-07-30'
+body_schema: 'body-v1'
 related:
   - '[[2026-06-14-node-visual-richness-P01-S01]]'
   - '[[2026-06-14-node-visual-richness-P01-S02]]'
@@ -24,12 +25,14 @@ related:
   - '[[2026-06-14-node-visual-richness-P04-S16]]'
   - '[[2026-06-14-node-visual-richness-P04-S17]]'
   - '[[2026-06-14-node-visual-richness-P04-S18]]'
+  - '[[2026-06-14-node-visual-richness-P04-S21]]'
   - '[[2026-06-14-node-visual-richness-P05-S19]]'
   - '[[2026-06-14-node-visual-richness-P05-S20]]'
   - '[[2026-06-14-node-visual-richness-adr]]'
   - '[[2026-06-14-node-visual-richness-plan]]'
   - '[[2026-06-14-node-visual-richness-reference]]'
   - '[[2026-06-14-node-visual-richness-research]]'
+  - '[[2026-06-16-node-visual-richness-audit]]'
 ---
 
 # `node-visual-richness` feature index
@@ -41,6 +44,10 @@ Auto-generated index of all documents tagged with `#node-visual-richness`.
 ### adr
 
 - `2026-06-14-node-visual-richness-adr` - `node-visual-richness` adr: `status-stamped glyph and hover-bloom card` | (**status:** `accepted`)
+
+### audit
+
+- `2026-06-16-node-visual-richness-audit` - `node-visual-richness` audit: `typed hover-card review`
 
 ### exec
 
@@ -64,6 +71,7 @@ Auto-generated index of all documents tagged with `#node-visual-richness`.
 - `2026-06-14-node-visual-richness-P04-S18` - add card render and interaction tests for bloom, dwell, reduced-motion, and the three intents
 - `2026-06-14-node-visual-richness-P05-S19` - run the full frontend and engine lint gate and test suites to exit zero
 - `2026-06-14-node-visual-richness-P05-S20` - visually inspect status stamps per type and the hover-bloom on the running canvas
+- `2026-06-14-node-visual-richness-P04-S21` - Extend the hover-bloom card with per-document-type content + category-accent strip (Figma 110:2), derived purely from the wire projection
 
 ### plan
 
