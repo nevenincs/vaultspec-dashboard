@@ -6,7 +6,7 @@ The human-facing visual workspace for a Vaultspec project.
 
 [![quality](https://img.shields.io/github/actions/workflow/status/nevenincs/vaultspec-dashboard/quality-gates.yml?branch=main&style=flat&label=quality&logo=githubactions&logoColor=white&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/actions/workflows/quality-gates.yml)
 [![release](https://img.shields.io/github/v/release/nevenincs/vaultspec-dashboard?style=flat&label=release&logo=github&logoColor=white&labelColor=24292f&color=8A72B5)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
-[![targets](https://img.shields.io/badge/targets-macOS%20arm64%2Fx64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
+[![targets](https://img.shields.io/badge/targets-macOS%20arm64%20%7C%20Linux%20arm64%2Fx64%20%7C%20Windows%20x64-3F9AA6?style=flat&labelColor=24292f)](https://github.com/nevenincs/vaultspec-dashboard/releases/latest)
 [![license](https://img.shields.io/github/license/nevenincs/vaultspec-dashboard?style=flat&label=license&logo=opensourceinitiative&logoColor=white&labelColor=24292f&color=B3823C)](LICENSE)
 
 [What it does](#what-it-does) · [Project layout](#project-layout) ·
@@ -62,9 +62,24 @@ explicit lifecycle actions.
 
 ### Installed runtime
 
-The installed dashboard is one native Rust executable named `vaultspec`. It includes the
-engine, API, live event stream, and web interface. Run `vaultspec serve` from a managed
-worktree. The command prints a local URL for the running application.
+The dashboard installs as a complete product tree, not a single file. Every supported
+channel places the same set:
+
+| Part                                      | What it is                                                                                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vaultspec`                               | The dashboard executable: engine, API, live event stream, and web interface in one native Rust binary. Run `vaultspec serve` from a managed worktree. The command prints a local URL. |
+| `vaultspec-updater`                       | A separate executable that installs a new release while the dashboard is stopped, so an update never rewrites files the running application holds open.                               |
+| The A2A runtime                           | A self-contained build of [vaultspec-a2a](https://github.com/nevenincs/vaultspec-a2a), the headless agent-to-agent orchestrator, including its own private Python interpreter.        |
+| Manifest, licenses, and bill of materials | The digest of every installed file, the pinned source identity of the A2A runtime, third-party license texts, and the software bill of materials (SBOM).                              |
+
+This project builds the A2A runtime itself: it freezes one pinned revision of the
+vaultspec-a2a source into a self-contained directory and ships that directory inside the
+release. You don't install Python, and nothing downloads on first run. The tree is
+complete on its own, so the network is needed only to fetch the release.
+
+After placing the tree, every installer checks it against the release manifest with the
+shipped verifier, `vaultspec verify-release`. A tree that fails that check is a failed
+install. A partial or binary-only install isn't supported.
 
 The dashboard uses two independently installed companions:
 
@@ -87,34 +102,50 @@ against this worktree. Its lifecycle fields may be newer than the latest release
 
 ### Prerequisites and installation
 
-vaultspec-dashboard supports macOS on Apple silicon and Intel, glibc-based Linux on arm64
-and x64, and Windows on x64.
+vaultspec-dashboard supports four platforms:
+
+- macOS on Apple silicon
+- glibc-based Linux on arm64
+- glibc-based Linux on x64
+- Windows on x64
+
+Intel macOS isn't supported.
 
 The routes below target the latest published GitHub Release. Development on `main` may
 contain lifecycle changes that haven't been released yet.
 
-Every supported channel installs the **complete product** — the `vaultspec`
-dashboard, the copied external updater, the pinned A2A companion capsule, and the
-signed release manifest, licenses, and software bill of materials — as one
-offline-complete tree, and **verifies** that tree against its own release manifest
-with the shipped bounded authority (`vaultspec verify-release`) before it is
-considered installed. A partial or binary-only install is not a supported state.
+Every channel installs the same complete tree described under
+[Installed runtime](#installed-runtime), and verifies it before the install counts as
+done.
 
-**Shell script** (macOS and Linux) — the product-owned installer:
+| Channel                           | Platforms    | Who installs and updates it                    | Status        |
+| --------------------------------- | ------------ | ---------------------------------------------- | ------------- |
+| Shell script                      | macOS, Linux | This project's installer and updater           | Supported     |
+| PowerShell script                 | Windows      | This project's installer and updater           | Supported     |
+| MSI                               | Windows      | Windows Installer, with this project's updater | Supported     |
+| Scoop                             | Windows      | Scoop                                          | Pending proof |
+| WinGet                            | Windows      | WinGet                                         | Pending proof |
+| `cargo install`, `cargo binstall` | —            | —                                              | Not supported |
+
+A channel marked *pending proof* must still prove install, upgrade, downgrade, repair,
+and uninstall on a clean machine before it counts as supported. Until it does, prefer a
+supported channel.
+
+**Shell script** (macOS and Linux). Name the release you want:
 
 ```sh
-curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | sh
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.sh | sh -s -- --version <version>
 ```
 
-**PowerShell script** (Windows) — the product-owned installer:
+**PowerShell script** (Windows):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1 | iex"
+powershell -ExecutionPolicy Bypass -c "& ([scriptblock]::Create((irm https://github.com/nevenincs/vaultspec-dashboard/releases/latest/download/install.ps1))) -Version <version>"
 ```
 
-**MSI installer** (Windows): the complete MSI packages every product file with a
-product receipt and clean uninstall; it appears as `vaultspec-<version>-x86_64-pc-windows-msvc.msi`
-under [Releases](https://github.com/nevenincs/vaultspec-dashboard/releases).
+**MSI** (Windows). Download `vaultspec-<version>-x86_64-pc-windows-msvc.msi` from
+[Releases](https://github.com/nevenincs/vaultspec-dashboard/releases) and run it. The
+package carries every product file and removes what it installed on uninstall.
 
 **Scoop** (Windows):
 
@@ -123,24 +154,44 @@ scoop bucket add vaultspec https://github.com/nevenincs/vaultspec-dashboard
 scoop install vaultspec/vaultspec
 ```
 
-The `bucket/` directory in this repository is a self-hosted Scoop bucket. Run
-`scoop update vaultspec` to upgrade after a new release lands.
+The `bucket/` directory in this repository is a self-hosted Scoop bucket.
 
-**WinGet** (Windows): `winget install vaultspec.vaultspec` points at the complete
-MSI with manager-owned upgrade and rollback.
+**WinGet** (Windows): `winget install vaultspec.vaultspec` installs the same MSI.
 
-**Update and removal.** A self-installed copy updates itself in place with
-`vaultspec update` (the copied external updater replaces the release outside the
-active seat, under the installation lock — never a partial swap); package-manager
-copies update through their manager (`scoop update vaultspec`, `winget upgrade`).
-Uninstalling removes the product tree but **preserves your data**, which lives
-outside the install directory.
+#### Updating
 
-> **Not supported: `cargo install` / `cargo-binstall`.** A bare Cargo install
-> places only the `vaultspec` binary, not the complete offline tree, so it cannot
-> preserve the release-set, receipt, verification, update, and removal guarantees
-> above. `vaultspec-cli` is withheld from crates.io until a Cargo channel can carry
-> the composite release contract. Use one of the channels above.
+How you update depends on how you installed.
+
+- **Shell or PowerShell:** run `vaultspec update`. The dashboard stops, hands the
+  replacement to `vaultspec-updater`, and starts again. No file is swapped underneath the
+  running application, and the previous release stays on disk to return to.
+- **MSI:** run `vaultspec update`. The updater applies the new package through Windows
+  Installer rather than editing installed files. To return to an earlier release, install
+  its package.
+- **Scoop or WinGet:** update through the manager — `scoop update vaultspec` or
+  `winget upgrade vaultspec.vaultspec`. `vaultspec update` refuses on a
+  manager-installed copy and names the command to run instead.
+
+#### Removing it, and what stays
+
+Uninstalling removes the installed tree and the records the product keeps about its own
+releases. It leaves your work alone.
+
+- Shell: `install.sh --uninstall`
+- PowerShell: `install.ps1 -Uninstall`
+- MSI: uninstall **vaultspec** from **Apps & features**
+- Scoop: `scoop uninstall vaultspec`
+- WinGet: `winget uninstall vaultspec.vaultspec`
+
+Your data survives because it never lives in the install directory. Vault documents stay
+in your project's Git repository, and per-user application state stays in `.vaultspec` in
+your home directory.
+
+> **Not supported: `cargo install` and `cargo binstall`.** Either would place only the
+> `vaultspec` binary, without the updater, the A2A runtime, the release manifest, or the
+> verification, update, and removal guarantees that depend on them. `vaultspec-cli` stays
+> off crates.io until a Cargo channel can carry the complete product. Use a channel from
+> the table instead.
 >
 > **Note on code signing:** the installers, MSI, and binary archives are currently
 > unsigned. macOS Gatekeeper will quarantine the binary on first run - right-click the
