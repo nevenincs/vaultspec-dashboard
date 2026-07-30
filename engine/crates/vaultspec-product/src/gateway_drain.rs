@@ -77,9 +77,11 @@ pub struct DrainDeadlines {
 }
 
 impl DrainDeadlines {
-    /// Bound the drive: `drain_call` is the I/O budget of the drain call
-    /// itself, `stop` the wall clock allowed for process exit after the
-    /// authorized shutdown, `poll` the liveness poll interval.
+    /// Bound the drive: `drain_call` is the TOTAL wall-clock budget of the drain
+    /// call itself (connect, write, and every read together — not a per-read
+    /// budget that a trickling gateway could restart indefinitely), `stop` the
+    /// wall clock allowed for process exit after the authorized shutdown, `poll`
+    /// the liveness poll interval.
     pub fn new(
         drain_call: Duration,
         stop: Duration,
@@ -215,11 +217,15 @@ fn drive_drain_stop(
     deadlines: DrainDeadlines,
 ) -> Result<StopEvidence, GatewayDrainError> {
     // Close admission and resolve in-flight runs. The drain call carries the
-    // caller's I/O budget; the gateway resolves runs/checkpoints before it
-    // acknowledges (gateway-side contract).
+    // caller's budget as a TOTAL wall-clock deadline, so the validated
+    // `MAX_DEADLINE` ceiling is a real bound: a wedged gateway trickling
+    // keep-alive bytes cannot stall this drive while the install lock is held
+    // and the transaction sits at `Draining`. The gateway resolves
+    // runs/checkpoints before it acknowledges (gateway-side contract).
     client
         .clone()
         .with_timeouts(CONNECT_TIMEOUT, deadlines.drain_call)
+        .with_total_deadline(deadlines.drain_call)
         .drain()
         .map_err(GatewayDrainError::Drain)?;
     // The receipt-bound stop: attach transport plus the ownership capability.

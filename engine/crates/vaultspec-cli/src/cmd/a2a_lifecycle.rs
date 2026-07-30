@@ -275,8 +275,12 @@ fn stop(
     let attach = store
         .read_attach_control()
         .map_err(|e| format!("attach-control credential unreadable: {e}"))?;
+    // CONTROL_TIMEOUT is the whole-call budget, not a per-read one: a per-read
+    // timeout restarts on every byte, so a gateway trickling a reply would keep
+    // this verb alive far past the ten seconds the constant promises.
     let client = ControlClient::new(discovery.endpoint.clone(), attach.secret())
-        .with_timeouts(CONTROL_TIMEOUT, CONTROL_TIMEOUT);
+        .with_timeouts(CONTROL_TIMEOUT, CONTROL_TIMEOUT)
+        .with_total_deadline(CONTROL_TIMEOUT);
     client
         .shutdown(ownership.credential())
         .map_err(|e| format!("gateway shutdown failed: {e}"))?;

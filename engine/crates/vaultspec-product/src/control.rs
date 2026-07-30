@@ -2,9 +2,14 @@
 //!
 //! The dashboard brokers liveness, readiness, drain, shutdown, and lifecycle
 //! calls to the owned gateway over its loopback endpoint. Every call
-//! here obeys the resource-bounds law: a connect timeout, a read timeout, and a
-//! hard response byte cap — a hung or flooding gateway fails typed, never hangs
-//! or exhausts memory. Transport authentication uses the dashboard control
+//! here obeys the resource-bounds law: a connect timeout, a per-read timeout, a
+//! TOTAL wall-clock deadline for the whole call, and a hard response byte cap.
+//! The total deadline is the load-bearing bound: a per-read timeout alone RESETS
+//! on every byte, so a peer trickling one byte per interval keeps a call alive
+//! for as many reads as the byte cap allows. Connect, write, and every read are
+//! therefore clamped to the remaining budget, so a hung, trickling, or flooding
+//! gateway fails typed inside the caller's budget, never hangs or exhausts
+//! memory. Transport authentication uses the dashboard control
 //! (attach-control) token; a receipt-bound operation such as shutdown ALSO
 //! carries the ownership capability, which the attach credential alone cannot
 //! stand in for.
@@ -17,7 +22,7 @@
 
 use std::io::{Read as _, Write as _};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::credentials::Credential;
 use crate::protocol::{LifecycleOp, Readiness};
@@ -26,6 +31,15 @@ use crate::protocol::{LifecycleOp, Readiness};
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 /// Default read/write timeout for a control call.
 const DEFAULT_IO_TIMEOUT: Duration = Duration::from_secs(15);
+/// Default TOTAL wall-clock budget for one control call, connect included. A
+/// call that has not completed by here fails [`ControlError::Timeout`] however
+/// steadily the peer dribbles bytes.
+const DEFAULT_TOTAL_DEADLINE: Duration = Duration::from_secs(60);
+/// Floor for any socket timeout we set. A sub-millisecond `SO_RCVTIMEO` rounds
+/// to zero on Windows, and zero means "block forever" — the exact hang this
+/// module refuses — so every socket timeout is clamped up to this floor and a
+/// remaining budget below it is treated as already expired.
+const MIN_SOCKET_TIMEOUT: Duration = Duration::from_millis(1);
 /// Default response byte ceiling (control responses are small JSON documents).
 const DEFAULT_MAX_RESPONSE_BYTES: usize = 256 * 1024;
 
@@ -81,6 +95,7 @@ pub struct ControlClient {
     attach_token: String,
     connect_timeout: Duration,
     io_timeout: Duration,
+    total_deadline: Duration,
     max_response_bytes: usize,
 }
 
@@ -95,6 +110,7 @@ impl std::fmt::Debug for ControlClient {
             .field("attach_token", &"<redacted>")
             .field("connect_timeout", &self.connect_timeout)
             .field("io_timeout", &self.io_timeout)
+            .field("total_deadline", &self.total_deadline)
             .field("max_response_bytes", &self.max_response_bytes)
             .finish()
     }
@@ -110,16 +126,30 @@ impl ControlClient {
             attach_token: attach_token.into(),
             connect_timeout: DEFAULT_CONNECT_TIMEOUT,
             io_timeout: DEFAULT_IO_TIMEOUT,
+            total_deadline: DEFAULT_TOTAL_DEADLINE,
             max_response_bytes: DEFAULT_MAX_RESPONSE_BYTES,
         }
     }
 
-    /// Override the timeouts (used by tests to trip the deadline deterministically
-    /// and by callers with a tighter budget).
+    /// Override the per-phase timeouts (used by tests to trip the deadline
+    /// deterministically and by callers with a tighter budget). These bound one
+    /// connect and one read; the whole-call bound is
+    /// [`Self::with_total_deadline`].
     #[must_use]
     pub fn with_timeouts(mut self, connect: Duration, io: Duration) -> Self {
         self.connect_timeout = connect;
         self.io_timeout = io;
+        self
+    }
+
+    /// Override the TOTAL wall-clock budget for one call — connect, write, and
+    /// every read together. This is the bound a caller with a real deadline
+    /// (an update transaction draining a gateway, a shutdown path) must set: the
+    /// per-read timeout restarts on each successful read, so it alone cannot
+    /// bound a call against a peer that keeps trickling.
+    #[must_use]
+    pub fn with_total_deadline(mut self, total: Duration) -> Self {
+        self.total_deadline = total;
         self
     }
 
@@ -183,15 +213,30 @@ impl ControlClient {
         }
     }
 
+    /// What is left of this call's total budget, or [`ControlError::Timeout`]
+    /// when the deadline has passed (or is too close to set a usable socket
+    /// timeout against).
+    fn remaining(&self, started: Instant) -> std::result::Result<Duration, ControlError> {
+        match self.total_deadline.checked_sub(started.elapsed()) {
+            Some(left) if left >= MIN_SOCKET_TIMEOUT => Ok(left),
+            _ => Err(ControlError::Timeout),
+        }
+    }
+
     /// Perform one bounded, authenticated HTTP/1.1 request over loopback. Uses
     /// `Connection: close` so the response is read to EOF under the byte cap,
     /// with no chunked-encoding handling required.
+    ///
+    /// The clock starts before the connect and every socket timeout is clamped
+    /// to the remaining total budget, so the call returns typed within
+    /// `total_deadline` no matter how the peer paces its bytes.
     fn request(
         &self,
         method: &str,
         path: &str,
         ownership: Option<&str>,
     ) -> std::result::Result<ControlResponse, ControlError> {
+        let started = Instant::now();
         let addr = self
             .endpoint
             .to_socket_addrs()
@@ -202,13 +247,16 @@ impl ControlClient {
             return Err(ControlError::NotLoopback(self.endpoint.clone()));
         }
 
+        let budget = self.remaining(started)?;
         let mut stream =
-            TcpStream::connect_timeout(&addr, self.connect_timeout).map_err(map_timeout_io)?;
+            TcpStream::connect_timeout(&addr, socket_timeout(self.connect_timeout, budget))
+                .map_err(map_timeout_io)?;
+        let budget = self.remaining(started)?;
         stream
-            .set_read_timeout(Some(self.io_timeout))
+            .set_read_timeout(Some(socket_timeout(self.io_timeout, budget)))
             .map_err(ControlError::Transport)?;
         stream
-            .set_write_timeout(Some(self.io_timeout))
+            .set_write_timeout(Some(socket_timeout(self.io_timeout, budget)))
             .map_err(ControlError::Transport)?;
 
         let mut req = format!(
@@ -226,6 +274,13 @@ impl ControlClient {
         let mut raw = Vec::new();
         let mut chunk = [0u8; 4096];
         loop {
+            // Re-clamp before EVERY read: a successful read resets the per-read
+            // timeout, so only the shrinking total budget bounds a peer that
+            // keeps dribbling bytes just inside the io timeout.
+            let budget = self.remaining(started)?;
+            stream
+                .set_read_timeout(Some(socket_timeout(self.io_timeout, budget)))
+                .map_err(ControlError::Transport)?;
             match stream.read(&mut chunk) {
                 Ok(0) => break,
                 Ok(n) => {
@@ -256,6 +311,12 @@ fn op_path(op: LifecycleOp) -> &'static str {
         LifecycleOp::Remove => "remove",
         LifecycleOp::Doctor => "doctor",
     }
+}
+
+/// Clamp one phase timeout into the remaining total budget, never below the
+/// platform-safe floor (a zero socket timeout means "no timeout").
+fn socket_timeout(phase: Duration, budget: Duration) -> Duration {
+    phase.min(budget).max(MIN_SOCKET_TIMEOUT)
 }
 
 fn is_timeout(e: &std::io::Error) -> bool {
@@ -303,6 +364,8 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::mpsc;
 
     /// A real loopback HTTP server for one connection. `handler` receives the
@@ -448,6 +511,86 @@ mod tests {
             start.elapsed() < Duration::from_secs(2),
             "returned at the deadline"
         );
+        handle.join().unwrap();
+    }
+
+    /// A REAL loopback server that answers with a valid header and then dribbles
+    /// one body byte per `interval` without ever closing — the trickling-peer
+    /// shape a per-read timeout cannot bound, because every read succeeds and
+    /// restarts it. Returns the endpoint, a stop flag, and the join handle.
+    fn serve_trickling(
+        interval: Duration,
+    ) -> (String, Arc<AtomicBool>, std::thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let handle = std::thread::spawn(move || {
+            if let Ok((mut sock, _)) = listener.accept() {
+                let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+                let mut buf = [0u8; 2048];
+                let _ = sock.read(&mut buf);
+                if sock
+                    .write_all(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n")
+                    .is_err()
+                {
+                    return;
+                }
+                // Bounded even in the failure case: the trickle never outlives
+                // this cap, so a broken assertion cannot leave a live thread.
+                let cap = Instant::now() + Duration::from_secs(30);
+                while !flag.load(Ordering::Relaxed) && Instant::now() < cap {
+                    if sock.write_all(b"x").is_err() || sock.flush().is_err() {
+                        return;
+                    }
+                    std::thread::sleep(interval);
+                }
+            }
+        });
+        (format!("127.0.0.1:{}", addr.port()), stop, handle)
+    }
+
+    #[test]
+    fn a_trickling_gateway_trips_the_total_deadline() {
+        // The per-read timeout is set far ABOVE the trickle interval, so it can
+        // never fire: only the total wall-clock deadline bounds this call. Before
+        // the deadline existed, this ran until the byte cap — hours at defaults.
+        let (endpoint, stop, handle) = serve_trickling(Duration::from_millis(20));
+        let client = ControlClient::new(endpoint, "t")
+            .with_timeouts(Duration::from_secs(2), Duration::from_secs(30))
+            .with_total_deadline(Duration::from_millis(400));
+        let start = Instant::now();
+        let outcome = client.readiness();
+        let elapsed = start.elapsed();
+        stop.store(true, Ordering::Relaxed);
+        handle.join().unwrap();
+        assert!(
+            matches!(outcome, Err(ControlError::Timeout)),
+            "a trickling peer must fail typed Timeout, got {outcome:?}"
+        );
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "the total deadline must bound the call; it took {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn the_total_deadline_bounds_the_connect_phase_too() {
+        // An already-expired budget refuses before a socket is opened, so the
+        // connect timeout can never push a call past its total deadline.
+        let (endpoint, handle) =
+            serve_once(|_| Some(b"HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_vec()));
+        let client = ControlClient::new(endpoint.clone(), "t")
+            .with_timeouts(Duration::from_secs(30), Duration::from_secs(30))
+            .with_total_deadline(Duration::from_nanos(1));
+        let start = Instant::now();
+        assert!(matches!(client.readiness(), Err(ControlError::Timeout)));
+        assert!(
+            start.elapsed() < Duration::from_secs(1),
+            "an exhausted budget must refuse immediately"
+        );
+        // Nobody connected; release the waiting acceptor with a real connection.
+        let _ = TcpStream::connect(&endpoint);
         handle.join().unwrap();
     }
 

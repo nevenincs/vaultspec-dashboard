@@ -15,14 +15,33 @@
 //!   forced is `SIGKILL`.
 //! - On Windows the child is spawned into a job object (`command-group`), so
 //!   terminating the group kills the whole tree. There is no POSIX graceful
-//!   signal, so the graceful window lets the tree exit on its own (after an
-//!   already-issued control-plane drain/shutdown) before the job is terminated.
+//!   signal, so the graceful window lets the tree exit on its own — after the
+//!   control-plane drain/shutdown — before the job is terminated.
+//!
+//! That control-plane drain/shutdown is not an assumption about the caller: it
+//! is a [`GatewayStopPlan`] attached to the owned process, which
+//! [`GatewayProcess::terminate_tree`] issues itself, bounded, before the
+//! graceful window opens. Without it the Windows window is pure delay followed
+//! by a hard job-object kill of a gateway that was never asked to stop —
+//! potentially mid-write. A control call that fails, is refused, or times out
+//! never prevents or extends the termination.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::{Duration, Instant};
 
+use crate::control::ControlClient;
+use crate::credentials::Credential;
 use crate::manifest::{CapsuleManifest, Result as ManifestResult};
+
+/// Hard ceiling on the control-plane stop a termination will wait for, whatever
+/// budget a caller asks for. Termination is a cleanup path: it must converge.
+const MAX_STOP_PLAN_BUDGET: Duration = Duration::from_secs(30);
+/// Floor for the shutdown call's budget when a slow drain consumed the plan's
+/// budget. The shutdown is the call that actually makes the tree exit, so it is
+/// never squeezed to nothing; the plan's worst case is therefore
+/// `budget + SHUTDOWN_BUDGET_FLOOR`.
+const SHUTDOWN_BUDGET_FLOOR: Duration = Duration::from_secs(1);
 
 /// A launch program path proven to have been resolved through capsule-aware
 /// validation — either the manifest's declared gateway entrypoint or an
@@ -168,12 +187,73 @@ impl GatewaySpec {
     }
 }
 
+/// The control-plane precondition of a bounded termination: the authenticated
+/// drain and the ownership-authorized shutdown that ask the gateway to stop
+/// before its process tree is taken down.
+///
+/// Attaching this to the owned process is what makes the graceful window
+/// meaningful — especially on Windows, where no POSIX signal exists and an
+/// unasked tree simply burns the window and is then hard-killed. The plan
+/// carries the ownership capability because a shutdown is receipt-bound: the
+/// attach credential alone cannot invoke it.
+#[derive(Debug)]
+pub struct GatewayStopPlan {
+    client: ControlClient,
+    ownership: Credential,
+    budget: Duration,
+}
+
+impl GatewayStopPlan {
+    /// Bind the plan to the gateway's own loopback control endpoint. `budget` is
+    /// the total wall clock the termination will spend asking, clamped to
+    /// [`MAX_STOP_PLAN_BUDGET`]; the shutdown call keeps a
+    /// [`SHUTDOWN_BUDGET_FLOOR`] of its own so a slow drain cannot swallow it.
+    #[must_use]
+    pub fn new(client: ControlClient, ownership: Credential, budget: Duration) -> Self {
+        Self {
+            client,
+            ownership,
+            budget: budget.min(MAX_STOP_PLAN_BUDGET),
+        }
+    }
+
+    /// Ask the gateway to stop, bounded. Returns whether the whole precondition
+    /// was ACCEPTED — both the drain and the ownership-authorized shutdown
+    /// succeeded. A refusal, a transport failure, or a timeout is reported, never
+    /// propagated: the caller is terminating the tree either way, and a wedged
+    /// control endpoint must not keep a stopping dashboard alive.
+    fn issue(&self) -> bool {
+        let started = Instant::now();
+        let drained = self
+            .client
+            .clone()
+            .with_total_deadline(self.budget)
+            .drain()
+            .is_ok();
+        let left = self
+            .budget
+            .checked_sub(started.elapsed())
+            .unwrap_or_default()
+            .max(SHUTDOWN_BUDGET_FLOOR);
+        let stopped = self
+            .client
+            .clone()
+            .with_total_deadline(left)
+            .shutdown(&self.ownership)
+            .is_ok();
+        drained && stopped
+    }
+}
+
 /// The outcome of a bounded termination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Termination {
     /// Whether the tree had to be force-killed after the graceful window
     /// elapsed (vs. exiting gracefully on its own).
     pub forced: bool,
+    /// Whether the control-plane stop precondition was issued AND accepted.
+    /// `None` when no [`GatewayStopPlan`] was attached, so nothing was asked.
+    pub control_stop: Option<bool>,
 }
 
 /// A spawned, owned gateway process. Holding it keeps the platform child handle
@@ -182,6 +262,9 @@ pub struct Termination {
 #[derive(Debug)]
 pub struct GatewayProcess {
     pid: u32,
+    /// The control-plane stop to issue before the graceful window. `None` until
+    /// the gateway publishes the loopback endpoint its plan binds to.
+    stop_plan: Option<GatewayStopPlan>,
     #[cfg(unix)]
     child: std::process::Child,
     #[cfg(windows)]
@@ -193,6 +276,15 @@ impl GatewayProcess {
     #[must_use]
     pub fn pid(&self) -> u32 {
         self.pid
+    }
+
+    /// Attach the control-plane stop precondition, once the gateway has
+    /// published the endpoint and the owner holds the ownership capability. A
+    /// process without a plan is still terminated within its bound — it is just
+    /// never ASKED first, which on Windows means the graceful window is pure
+    /// delay before a hard kill.
+    pub fn attach_stop_plan(&mut self, plan: GatewayStopPlan) {
+        self.stop_plan = Some(plan);
     }
 
     /// Whether the gateway process is still alive, via a scoped process probe.
@@ -211,10 +303,17 @@ impl GatewayProcess {
         self.child.wait()
     }
 
-    /// Terminate the whole owned tree within a bound: give it `graceful` to exit
-    /// (on Unix after a `SIGTERM`; on Windows after any already-issued drain), and
+    /// Terminate the whole owned tree within a bound: issue the attached
+    /// control-plane stop (drain, then the ownership-authorized shutdown), give
+    /// the tree `graceful` to exit — on Unix additionally after a `SIGTERM` — and
     /// if it is still alive at the deadline, force-kill the tree and reap it.
+    ///
+    /// The control-plane stop comes FIRST and is bounded by its own plan budget,
+    /// so the graceful window is spent on a gateway that has actually been asked
+    /// to stop. A missing, refused, or wedged control endpoint changes nothing
+    /// about the termination bound.
     pub fn terminate_tree(&mut self, graceful: Duration) -> std::io::Result<Termination> {
+        let control_stop = self.stop_plan.as_ref().map(GatewayStopPlan::issue);
         #[cfg(unix)]
         {
             use nix::sys::signal::{Signal, killpg};
@@ -224,24 +323,37 @@ impl GatewayProcess {
             let pgid = Pid::from_raw(self.pid as i32);
             let _ = killpg(pgid, Signal::SIGTERM);
             if self.wait_for_exit(graceful)? {
-                return Ok(Termination { forced: false });
+                return Ok(Termination {
+                    forced: false,
+                    control_stop,
+                });
             }
             // Still alive at the deadline: force the whole group down.
             let _ = killpg(pgid, Signal::SIGKILL);
             let _ = self.child.wait();
-            Ok(Termination { forced: true })
+            Ok(Termination {
+                forced: true,
+                control_stop,
+            })
         }
         #[cfg(windows)]
         {
             // No POSIX graceful signal on Windows: the graceful window lets the
-            // tree exit on its own after a control-plane drain/shutdown, then the
-            // job object is terminated (which cleans up every descendant).
+            // tree exit on its own after the control-plane drain/shutdown issued
+            // above, then the job object is terminated (which cleans up every
+            // descendant).
             if self.wait_for_exit(graceful)? {
-                return Ok(Termination { forced: false });
+                return Ok(Termination {
+                    forced: false,
+                    control_stop,
+                });
             }
             self.child.kill()?;
             let _ = self.child.wait();
-            Ok(Termination { forced: true })
+            Ok(Termination {
+                forced: true,
+                control_stop,
+            })
         }
     }
 
@@ -279,6 +391,7 @@ pub fn spawn_gateway(spec: &GatewaySpec) -> std::io::Result<GatewayProcess> {
         let child = cmd.spawn()?;
         Ok(GatewayProcess {
             pid: child.id(),
+            stop_plan: None,
             child,
         })
     }
@@ -288,6 +401,7 @@ pub fn spawn_gateway(spec: &GatewaySpec) -> std::io::Result<GatewayProcess> {
         let child = cmd.group_spawn()?;
         Ok(GatewayProcess {
             pid: child.id(),
+            stop_plan: None,
             child,
         })
     }
@@ -423,6 +537,139 @@ mod tests {
             !crate::locking::process_is_alive(gc_pid),
             "descendant terminated with the tree (no orphan)"
         );
+    }
+
+    /// A REAL loopback control server that answers `connections` requests with
+    /// 204 and reports every raw request line it saw. Not a mock of the wire —
+    /// the client opens real sockets against it.
+    fn serve_control(connections: usize) -> (String, std::sync::mpsc::Receiver<String>) {
+        use std::io::{Read as _, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            for _ in 0..connections {
+                let Ok((mut sock, _)) = listener.accept() else {
+                    return;
+                };
+                let _ = sock.set_read_timeout(Some(Duration::from_secs(5)));
+                let mut buf = [0u8; 2048];
+                let n = sock.read(&mut buf).unwrap_or(0);
+                if tx
+                    .send(String::from_utf8_lossy(&buf[..n]).into_owned())
+                    .is_err()
+                {
+                    return;
+                }
+                let _ = sock.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n");
+            }
+        });
+        (format!("127.0.0.1:{}", addr.port()), rx)
+    }
+
+    fn stop_plan(endpoint: String, budget: Duration) -> GatewayStopPlan {
+        GatewayStopPlan::new(
+            ControlClient::new(endpoint, "attach-secret"),
+            Credential::from_validated(
+                crate::credentials::CredentialRole::Ownership,
+                "ownership-capability".to_string(),
+            ),
+            budget,
+        )
+    }
+
+    #[test]
+    fn termination_asks_the_gateway_to_stop_before_taking_the_tree_down() {
+        let (endpoint, requests) = serve_control(2);
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut proc = spawn_gateway(&sleeper_spec(&pidfile, None)).expect("spawn real gateway");
+        assert!(
+            wait_for_file(&pidfile, Duration::from_secs(10)),
+            "child never started"
+        );
+        proc.attach_stop_plan(stop_plan(endpoint, Duration::from_secs(5)));
+
+        let termination = proc.terminate_tree(Duration::from_millis(200)).unwrap();
+
+        // The drain comes first, then the receipt-bound shutdown carrying the
+        // ownership capability — the precondition the graceful window assumes.
+        let drain = requests.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(drain.starts_with("POST /drain "), "first call was: {drain}");
+        let shutdown = requests.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(
+            shutdown.starts_with("POST /shutdown "),
+            "second call was: {shutdown}"
+        );
+        assert!(
+            shutdown.contains("X-Ownership-Capability: ownership-capability"),
+            "shutdown must be receipt-bound: {shutdown}"
+        );
+        assert_eq!(termination.control_stop, Some(true));
+
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while proc.is_alive() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(!proc.is_alive(), "the tree is still terminated");
+    }
+
+    #[test]
+    fn a_wedged_control_endpoint_never_blocks_or_delays_termination() {
+        // A listener that accepts and then never answers: the stop plan's own
+        // total deadline must bound it, and termination proceeds regardless.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let endpoint = format!("127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let accepted = std::thread::spawn(move || {
+            let mut held = Vec::new();
+            let deadline = Instant::now() + Duration::from_secs(20);
+            let _ = listener.set_nonblocking(true);
+            while Instant::now() < deadline && held.len() < 2 {
+                match listener.accept() {
+                    Ok((sock, _)) => held.push(sock),
+                    Err(_) => std::thread::sleep(Duration::from_millis(10)),
+                }
+            }
+            // Holding the sockets open until here is the wedge under test.
+        });
+
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut proc = spawn_gateway(&sleeper_spec(&pidfile, None)).expect("spawn real gateway");
+        assert!(wait_for_file(&pidfile, Duration::from_secs(10)));
+        proc.attach_stop_plan(stop_plan(endpoint, Duration::from_millis(200)));
+
+        let started = Instant::now();
+        let termination = proc.terminate_tree(Duration::from_millis(200)).unwrap();
+        let elapsed = started.elapsed();
+
+        assert_eq!(
+            termination.control_stop,
+            Some(false),
+            "a wedged endpoint is reported, not propagated"
+        );
+        // Plan worst case is budget + the shutdown floor, plus the graceful
+        // window; well inside this bound and nowhere near an unbounded wait.
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "termination must stay bounded; it took {elapsed:?}"
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while proc.is_alive() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(25));
+        }
+        assert!(!proc.is_alive(), "the tree is terminated anyway");
+        accepted.join().unwrap();
+    }
+
+    #[test]
+    fn a_process_without_a_stop_plan_reports_that_nothing_was_asked() {
+        let dir = tempfile::tempdir().unwrap();
+        let pidfile = dir.path().join("child.pid");
+        let mut proc = spawn_gateway(&sleeper_spec(&pidfile, None)).expect("spawn real gateway");
+        assert!(wait_for_file(&pidfile, Duration::from_secs(10)));
+        let termination = proc.terminate_tree(Duration::from_millis(200)).unwrap();
+        assert_eq!(termination.control_stop, None);
     }
 
     fn sample_manifest() -> CapsuleManifest {

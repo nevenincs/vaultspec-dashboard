@@ -267,12 +267,73 @@ pub fn handoff_is_owner_restricted(path: &Path) -> bool {
     false
 }
 
-/// Whether two inclusive string-bounded ranges overlap. Ranges are compared
-/// lexically on their bounds; the desktop gateway API (`v1`) and Alembic
-/// revision ids compare correctly under lexical ordering for the overlap test
-/// (a ⊇ b when a.min ≤ b.max and b.min ≤ a.max).
+/// Whether two inclusive string-bounded ranges overlap (a ⊇ b when
+/// a.min ≤ b.max and b.min ≤ a.max), ordered by [`version_cmp`].
+///
+/// The bounds are NOT compared lexically: the desktop gateway API tag (`v1`,
+/// `v2`, …) and the zero-padded state-schema ids invert under lexical ordering
+/// the moment they reach two digits — `"v2" > "v10"` and `"9999" > "10000"` —
+/// which would silently turn a genuinely compatible range into an empty
+/// interval and classify a usable gateway as incompatible.
 fn ranges_overlap(a: &RangeBounds, b: &RangeBounds) -> bool {
-    a.minimum <= b.maximum && b.minimum <= a.maximum
+    version_cmp(&a.minimum, &b.maximum) != std::cmp::Ordering::Greater
+        && version_cmp(&b.minimum, &a.maximum) != std::cmp::Ordering::Greater
+}
+
+/// Order two version-shaped identifiers numerically over their digit runs and
+/// lexically over everything else, so `v2 < v10` and `0999 < 10000` while
+/// `v1 == v1` and `0001 < 0009` keep their existing meaning.
+///
+/// Digit runs are compared by magnitude WITHOUT parsing (leading zeros stripped,
+/// then length, then digits), so an absurdly long run in a hostile record
+/// neither overflows nor allocates.
+fn version_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    let (mut i, mut j) = (0usize, 0usize);
+    loop {
+        match (a.get(i), b.get(j)) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) if x.is_ascii_digit() && y.is_ascii_digit() => {
+                let ai = digit_run(a, i);
+                let bj = digit_run(b, j);
+                match digit_run_cmp(&a[i..ai], &b[j..bj]) {
+                    Ordering::Equal => {
+                        i = ai;
+                        j = bj;
+                    }
+                    other => return other,
+                }
+            }
+            (Some(x), Some(y)) => match x.cmp(y) {
+                Ordering::Equal => {
+                    i += 1;
+                    j += 1;
+                }
+                other => return other,
+            },
+        }
+    }
+}
+
+/// The end index of the ASCII-digit run starting at `from`.
+fn digit_run(bytes: &[u8], from: usize) -> usize {
+    let mut end = from;
+    while bytes.get(end).is_some_and(u8::is_ascii_digit) {
+        end += 1;
+    }
+    end
+}
+
+/// Compare two ASCII-digit runs by numeric magnitude, allocation- and
+/// overflow-free.
+fn digit_run_cmp(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
+    let a = &a[a.iter().take_while(|d| **d == b'0').count()..];
+    let b = &b[b.iter().take_while(|d| **d == b'0').count()..];
+    a.len().cmp(&b.len()).then_with(|| a.cmp(b))
 }
 
 #[cfg(test)]
@@ -385,6 +446,66 @@ mod tests {
         v["handoff_reference"] = serde_json::json!(handoff.to_string_lossy());
         let d = GatewayDiscovery::parse(&v.to_string()).unwrap();
         assert_eq!(d.classify(&ctx(1_500)), Verdict::ForeignAttachable);
+    }
+
+    #[test]
+    fn version_bounds_order_numerically_not_lexically() {
+        use std::cmp::Ordering;
+        // The guard: every one of these is INVERTED under lexical ordering, which
+        // is what silently turned a compatible range into an empty interval.
+        assert_eq!(version_cmp("v2", "v10"), Ordering::Less);
+        assert_eq!(version_cmp("v10", "v2"), Ordering::Greater);
+        assert_eq!(version_cmp("9999", "10000"), Ordering::Less);
+        assert_eq!(version_cmp("0999", "1000"), Ordering::Less);
+        // …while the single-digit and equal cases keep their existing meaning.
+        assert_eq!(version_cmp("v1", "v1"), Ordering::Equal);
+        assert_eq!(version_cmp("v1", "v2"), Ordering::Less);
+        assert_eq!(version_cmp("0001", "0009"), Ordering::Less);
+        assert_eq!(version_cmp("0009", "0009"), Ordering::Equal);
+        // Leading zeros do not change magnitude; the non-digit prefix still leads.
+        assert_eq!(version_cmp("v007", "v7"), Ordering::Equal);
+        assert_eq!(version_cmp("a2", "b1"), Ordering::Less);
+    }
+
+    #[test]
+    fn a_two_digit_protocol_window_still_accepts_a_gateway_inside_it() {
+        // A release supporting v2..v10 must accept a v2 gateway. Lexically
+        // "v2" > "v10", so the supported window read as an EMPTY interval and a
+        // perfectly compatible gateway classified Incompatible.
+        let mut v = record();
+        v["protocol"] = serde_json::json!({ "minimum": "v2", "maximum": "v2" });
+        v["state_schema"] = serde_json::json!({ "minimum": "9999", "maximum": "9999" });
+        let d = GatewayDiscovery::parse(&v.to_string()).unwrap();
+        let mut context = ctx(1_500);
+        context.supported_protocol = RangeBounds {
+            minimum: "v2".to_string(),
+            maximum: "v10".to_string(),
+        };
+        context.supported_state_schema = RangeBounds {
+            minimum: "0001".to_string(),
+            maximum: "10000".to_string(),
+        };
+        assert_eq!(d.classify(&context), Verdict::OwnedLive);
+    }
+
+    #[test]
+    fn a_gateway_outside_a_two_digit_window_is_still_refused() {
+        // The counterpart proof: numeric ordering must not turn the overlap test
+        // into a tautology — a v11 gateway is outside a v2..v10 window.
+        let mut v = record();
+        v["protocol"] = serde_json::json!({ "minimum": "v11", "maximum": "v11" });
+        let d = GatewayDiscovery::parse(&v.to_string()).unwrap();
+        let mut context = ctx(1_500);
+        context.supported_protocol = RangeBounds {
+            minimum: "v2".to_string(),
+            maximum: "v10".to_string(),
+        };
+        assert_eq!(
+            d.classify(&context),
+            Verdict::ForeignImmutable {
+                reason: ImmutableReason::Incompatible
+            }
+        );
     }
 
     #[test]
