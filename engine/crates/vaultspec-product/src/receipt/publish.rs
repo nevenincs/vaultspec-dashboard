@@ -188,8 +188,9 @@ impl<'generation, 'product, 'lock> ActiveReceiptPublishError<'generation, 'produ
                 .collect::<Vec<_>>()
                 .join("; ");
             self.failure.kind = ActiveReceiptPublishFailureKind::RecoveryRequired;
-            self.failure.message =
-                format!("app-home authority move retry limit reached with all retained diagnostics: {summaries}");
+            self.failure.message = format!(
+                "app-home authority move retry limit reached with all retained diagnostics: {summaries}"
+            );
             self.failure.journal_error = retained_journal_error.take();
             self.verified = Some(verified);
             return Err(self);
