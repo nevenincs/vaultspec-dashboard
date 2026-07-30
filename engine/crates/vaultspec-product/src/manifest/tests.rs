@@ -44,9 +44,7 @@ impl Fixture {
         let dashboard = b"dashboard-binary".to_vec();
         let updater = b"external-updater".to_vec();
         let license = b"MIT license evidence".to_vec();
-        let sbom = b"{\"bomFormat\":\"CycloneDX\"}
-"
-        .to_vec();
+        let sbom = b"{\"bomFormat\":\"CycloneDX\"}\n".to_vec();
         let tree_file = b"bundled-runtime-file".to_vec();
         let gateway_file = b"gateway-entrypoint".to_vec();
         let standalone_file = b"standalone-mcp-entrypoint".to_vec();
@@ -288,15 +286,6 @@ impl Fixture {
         self.member_digest = hex::sha256(&self.member);
         self.descriptor = cohort_bytes(&self.member_digest);
         self.cohort_digest = cohort_descriptor_digest(&self.descriptor).unwrap();
-    }
-
-    fn set_payload(&mut self, path: &str, bytes: Vec<u8>) {
-        let slot = self
-            .payloads
-            .iter_mut()
-            .find_map(|(candidate, slot)| (candidate == path).then_some(slot))
-            .unwrap();
-        *slot = bytes;
     }
 }
 
@@ -564,8 +553,11 @@ fn missing_extra_and_same_size_wrong_bytes_are_rejected() {
         ));
     });
 
+    // A file smuggled INTO the bundled-runtime root is refused even when it is
+    // declared coherently: the runtime's declared file count no longer matches
+    // what is installed under its root.
     let mut fixture = Fixture::new();
-    let unrecorded_tree_file = b"declared release file but absent A2A tree evidence";
+    let unrecorded_tree_file = b"a file smuggled into the bundled runtime";
     fixture.mutate_member(|member| {
         member["file_digests"]["a2a/capsule/unrecorded"] =
             serde_json::json!(hex::sha256(unrecorded_tree_file));
@@ -578,7 +570,7 @@ fn missing_extra_and_same_size_wrong_bytes_are_rejected() {
         );
         assert!(matches!(
             fixture.verify(generation),
-            Err(ManifestError::ExtraFile(_))
+            Err(ManifestError::InvalidField { .. })
         ));
     });
 
@@ -611,24 +603,27 @@ fn symlink_payload_is_rejected_before_hashing() {
 }
 
 #[test]
-fn both_entrypoints_require_real_tree_evidence_and_executable_mode() {
+fn the_declared_runtime_entrypoint_must_be_installed_and_executable() {
+    // An entrypoint the manifest declares but the tree does not carry is refused:
+    // a runtime that cannot launch must not verify as installable.
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
-        std::fs::remove_file(generation.path().join("a2a/capsule/bin/vaultspec-a2a")).unwrap();
+        std::fs::remove_file(generation.path().join(RUNTIME_ENTRYPOINT_PATH)).unwrap();
         assert!(fixture.verify(generation).is_err());
     });
 
-    let fixture = Fixture::new();
-    fixture.with_generation(|generation| {
-        std::fs::remove_file(generation.path().join("a2a/capsule/bin/vaultspec-a2a-mcp")).unwrap();
-        assert!(fixture.verify(generation).is_err());
-    });
-
-    let fixture = Fixture::with_entrypoint_mode("0644");
-    assert!(matches!(
-        fixture.verify_result(),
-        Err(ManifestError::IdentityMismatch { .. })
-    ));
+    // Present but not executable is equally unusable, and equally refused. The
+    // mode is now read from the INSTALLED file rather than from a declared
+    // inventory document, so this half of the contract is only expressible where
+    // the platform records a POSIX mode.
+    #[cfg(unix)]
+    {
+        let fixture = Fixture::with_entrypoint_mode("0644");
+        assert!(matches!(
+            fixture.verify_result(),
+            Err(ManifestError::IdentityMismatch { .. })
+        ));
+    }
 }
 
 #[test]
@@ -636,7 +631,7 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
-        let relative = "a2a/component-manifest.json";
+        let relative = "a2a/capsule/runtime/tool";
         let path = generation.path().join(relative);
         let original = std::fs::read(&path).unwrap();
         let replacement = vec![b'x'; original.len()];
@@ -645,7 +640,7 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
             read_installed_bounded(
                 generation.path(),
                 relative,
-                MAX_CAPSULE_MANIFEST_BYTES,
+                MAX_COMPONENT_LOCK_BYTES as u64,
                 observed_file(&initial.files, relative).unwrap(),
             ),
             Err(ManifestError::GenerationChanged { .. })
@@ -660,7 +655,7 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
-        let relative = "a2a/component-manifest.json";
+        let relative = "a2a/capsule/runtime/tool";
         let initial_file = observed_file(&initial.files, relative).unwrap();
         let path = generation.path().join(relative);
         let mut append = std::fs::OpenOptions::new().append(true).open(path).unwrap();
@@ -675,10 +670,10 @@ fn bounded_reread_and_final_snapshot_detect_real_file_drift() {
     let fixture = Fixture::new();
     fixture.with_generation(|generation| {
         let initial = scan_generation(generation.path(), Some("release.json")).unwrap();
-        let relative = "a2a/component-manifest.json";
+        let relative = "a2a/capsule/runtime/tool";
         let initial_file = observed_file(&initial.files, relative).unwrap();
         let path = generation.path().join(relative);
-        let old = generation.path().join("a2a/component-manifest.old");
+        let old = generation.path().join("a2a/capsule/runtime/tool.old");
         let bytes = std::fs::read(&path).unwrap();
         std::fs::rename(&path, &old).unwrap();
         std::fs::write(&path, &bytes).unwrap();
@@ -1098,13 +1093,12 @@ fn candidate_cannot_self_authorize_component_lock_or_alias_paths() {
 }
 
 #[test]
-fn updater_sbom_license_archive_and_tree_joins_are_not_advisory() {
+fn updater_sbom_license_and_component_joins_are_not_advisory() {
     for pointer in [
         "/updater/digest",
         "/sbom/digest",
         "/licenses/0/digest",
-        "/a2a_component/capsule_archive/digest",
-        "/a2a_component/tree_evidence/tree_digest",
+        "/a2a_component/component_lock/digest",
     ] {
         let mut fixture = Fixture::new();
         fixture.mutate_member(|member| {
@@ -1115,6 +1109,15 @@ fn updater_sbom_license_archive_and_tree_joins_are_not_advisory() {
             "{pointer} drift must reject"
         );
     }
+
+    // The runtime declaration is held to the same standard: an entrypoint that
+    // names a file no longer in the tree is a refusal, not an advisory note.
+    let mut fixture = Fixture::new();
+    fixture.mutate_member(|member| {
+        member["a2a_component"]["runtime"]["entrypoint"] =
+            serde_json::json!("a2a/capsule/bin/absent");
+    });
+    assert!(fixture.verify_result().is_err());
 }
 
 #[test]
@@ -1127,17 +1130,54 @@ fn closed_versions_assets_and_positive_artifact_sizes_fail_closed() {
     fixture.mutate_member(|member| member["dashboard"]["size"] = serde_json::json!(0));
     assert!(fixture.verify_result().is_err());
 
-    let fixture = Fixture::new();
-    let mut capsule: serde_json::Value =
-        serde_json::from_slice(fixture.payload("a2a/component-manifest.json")).unwrap();
-    let duplicate = capsule["assets"][0].clone();
-    capsule["assets"].as_array_mut().unwrap().push(duplicate);
-    assert!(CapsuleManifest::parse(&serde_json::to_string(&capsule).unwrap()).is_err());
+    // The capsule document is no longer a release-tree payload, but the parser
+    // still serves the lifecycle plane, so its closed structure stays proven.
+    assert!(CapsuleManifest::parse(&capsule_json(|_| {})).is_ok());
 
-    let fixture = Fixture::new();
-    let mut capsule: serde_json::Value =
-        serde_json::from_slice(fixture.payload("a2a/component-manifest.json")).unwrap();
-    capsule["compatibility"]["migration_range"]["head"] = serde_json::json!("0009");
-    capsule["consistency_group"]["stores"][0]["schema_version"] = serde_json::json!("0009");
-    assert!(CapsuleManifest::parse(&serde_json::to_string(&capsule).unwrap()).is_err());
+    let raw = capsule_json(|capsule| {
+        let duplicate = capsule["assets"][0].clone();
+        capsule["assets"].as_array_mut().unwrap().push(duplicate);
+    });
+    assert!(CapsuleManifest::parse(&raw).is_err());
+
+    let raw = capsule_json(|capsule| {
+        capsule["compatibility"]["migration_range"]["head"] = serde_json::json!("0009");
+        capsule["consistency_group"]["stores"][0]["schema_version"] = serde_json::json!("0009");
+    });
+    assert!(CapsuleManifest::parse(&raw).is_err());
+}
+
+/// A structurally valid capsule document, with a hook for a single defect.
+///
+/// The bundled runtime carries no such document; this exists only because the
+/// lifecycle plane still resolves its gateway entrypoint through this parser, and
+/// a parser with no test is a parser with no contract.
+fn capsule_json(mutate: impl FnOnce(&mut serde_json::Value)) -> String {
+    let mut capsule = serde_json::json!({
+        "contract_version": "2.0",
+        "identity": {"name": "vaultspec-a2a", "version": "0.1.0"},
+        "target": TARGET.triple(),
+        "compatibility": {
+            "api_versions": {"minimum": "v1", "maximum": "v1"},
+            "migration_range": {"base": "0001", "head": "0008"}
+        },
+        "consistency_group": {"stores": [
+            {"kind": "primary-database", "derivable": false, "schema_authority": "alembic-migration-range", "schema_version": "0008"},
+            {"kind": "checkpoint-database", "derivable": false, "schema_authority": "checkpointer-schema", "schema_version": "1.0.0"}
+        ]},
+        "entrypoints": {
+            "gateway": {"kind": "gateway", "console_script": "vaultspec-a2a", "reference": "vaultspec_a2a.cli:main", "relative_command": ["bin", "vaultspec-a2a"]},
+            "standalone_mcp": {"kind": "standalone-mcp", "console_script": "vaultspec-a2a-mcp", "reference": "vaultspec_a2a.mcp:main", "relative_command": ["bin", "vaultspec-a2a-mcp"]}
+        },
+        "digest_algorithm": "sha256",
+        "assets": [
+            {"kind": "python-runtime", "version": "3.13", "license": "PSF-2.0", "digest": "a".repeat(64)},
+            {"kind": "a2a-distribution", "version": "0.1.0", "license": "MIT", "digest": "1".repeat(64)},
+            {"kind": "node-runtime", "version": "22", "license": "MIT", "digest": "b".repeat(64)},
+            {"kind": "acp-adapter", "version": "0.59.0", "license": "Apache-2.0", "digest": "d".repeat(64)}
+        ],
+        "dependency_lock": {"uv_lock_digest": "2".repeat(64), "package_lock_digest": "3".repeat(64)}
+    });
+    mutate(&mut capsule);
+    serde_json::to_string(&capsule).unwrap()
 }

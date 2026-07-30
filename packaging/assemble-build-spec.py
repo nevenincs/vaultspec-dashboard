@@ -49,9 +49,16 @@ def main() -> int:
     p.add_argument("--generation-root", required=True)
     p.add_argument("--dashboard", required=True)
     p.add_argument("--updater", required=True)
-    p.add_argument("--capsule-archive", required=True)
-    p.add_argument("--capsule-manifest", required=True)
-    p.add_argument("--tree-evidence", required=True, help="the A2A capsule's tree-evidence JSON")
+    p.add_argument(
+        "--a2a-runtime",
+        required=True,
+        help="the built A2A onedir DIRECTORY (PyInstaller dist output)",
+    )
+    p.add_argument(
+        "--a2a-entrypoint",
+        default=None,
+        help="the launchable binary's name inside the onedir (default: vaultspec-a2a[.exe])",
+    )
     p.add_argument("--lock", required=True)
     p.add_argument("--sbom", required=True)
     p.add_argument("--sbom-format", default="cyclonedx")
@@ -71,11 +78,9 @@ def main() -> int:
     updater_name = args.updater_name or (
         "vaultspec-updater.exe" if windows else "vaultspec-updater"
     )
-
-    # Carry the A2A-produced tree-evidence facts; never recompute them.
-    evidence = json.load(open(args.tree_evidence, encoding="utf-8"))
-    tree_digest = evidence["tree_digest"]
-    tree_file_count = int(evidence["file_count"])
+    a2a_entrypoint = args.a2a_entrypoint or (
+        "vaultspec-a2a.exe" if windows else "vaultspec-a2a"
+    )
 
     licenses = []
     for spec in args.license:
@@ -102,14 +107,11 @@ def main() -> int:
             "dashboard": {"source": slashed(args.dashboard), "dest_relative": f"bin/{dashboard_name}"},
             "updater_version": args.version,
             "updater": {"source": slashed(args.updater), "dest_relative": f"bin/{updater_name}"},
-            "capsule_archive": {"source": slashed(args.capsule_archive), "dest_relative": "a2a/capsule.zip"},
-            "capsule_manifest": {
-                "source": slashed(args.capsule_manifest),
-                "dest_relative": "a2a/component-manifest.json",
+            "a2a_runtime": {
+                "source_dir": slashed(args.a2a_runtime),
+                "dest_relative": "a2a",
+                "entrypoint_relative": a2a_entrypoint,
             },
-            "tree_evidence_doc": {"source": slashed(args.tree_evidence), "dest_relative": "a2a/tree.json"},
-            "tree_digest": tree_digest,
-            "tree_file_count": tree_file_count,
             "component_lock": {
                 "source": slashed(args.lock),
                 "dest_relative": "packaging/a2a-component.lock.json",
