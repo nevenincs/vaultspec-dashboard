@@ -252,6 +252,62 @@ fn a_descriptor_error_echoes_no_descriptor_content() {
     );
 }
 
+/// Redaction proven against REAL credential material, not a stand-in marker.
+///
+/// The updater runs on an install whose product credentials genuinely exist, on
+/// both a completing run and a refused one, and neither the ownership
+/// capability nor the attach-control token may appear anywhere in its output.
+#[test]
+fn no_run_ever_echoes_a_real_credential_secret() {
+    let product = installed_product();
+    let store = DashboardCredentialStore::for_product(&product.paths);
+    {
+        let guard = InstallLock::new(product.paths.install_lock_path())
+            .acquire(Actor::Installer, "bootstrap")
+            .unwrap()
+            .unwrap();
+        drop(
+            store
+                .begin_bootstrap(&guard)
+                .expect("create the real dashboard credentials"),
+        );
+        guard.release().expect("release the bootstrap lock");
+    }
+    let ownership = store
+        .read_ownership()
+        .expect("read ownership")
+        .secret()
+        .to_owned();
+    let attach = store
+        .read_attach_control()
+        .expect("read attach-control")
+        .secret()
+        .to_owned();
+    assert_eq!(ownership.len(), 64, "the fixture must hold a real token");
+    assert_ne!(ownership, attach);
+
+    // A completing run, then a refused one: both must stay secret-free.
+    product.write_owner_restricted_descriptor(&product.valid_descriptor());
+    let completed = run_updater(&product.descriptor);
+    assert_eq!(code(&completed), EXIT_OK);
+    let refused = run_updater(&product.descriptor);
+    assert_eq!(code(&refused), EXIT_DESCRIPTOR);
+
+    for output in [&completed, &refused] {
+        let combined = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        for secret in [&ownership, &attach] {
+            assert!(
+                !combined.contains(secret.as_str()),
+                "a credential secret must never reach updater output: {combined}"
+            );
+        }
+    }
+}
+
 #[test]
 fn the_updater_recovers_an_interrupted_transaction() {
     let product = installed_product();
