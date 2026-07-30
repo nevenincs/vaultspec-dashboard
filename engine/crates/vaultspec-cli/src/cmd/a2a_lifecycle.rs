@@ -295,12 +295,22 @@ fn remove(
     owner: &str,
     controller: &LifecycleController,
 ) -> Result<Value, String> {
-    let verdict = read_discovery(paths).map(|d| d.classify(&ctx(owner)));
     let lock = InstallLock::new(paths.install_lock_path());
     let guard = lock
         .acquire(Actor::Installer, owner)
         .map_err(|error| format!("install lock error: {error}"))?
         .map_err(|busy| format!("install lock busy: {busy:?}"))?;
+    // Classify discovery only AFTER the install lock is held (the same order
+    // `stop` follows): gateway spawn and discovery re-publication are
+    // serialized by this lock, so a post-acquisition read observes the settled
+    // truth, while a pre-acquisition read can carry a stale absent verdict past
+    // an update that relaunched the gateway.
+    let verdict = read_discovery(paths).map(|d| d.classify(&ctx(owner)));
+    // Removal requires the owned gateway to already be stopped; a live owned
+    // gateway is refused here rather than removed out from under itself.
+    if matches!(verdict, Some(Verdict::OwnedLive)) {
+        return Err("the owned gateway is running; stop it before remove".to_owned());
+    }
     match guarded_release_state(paths, &guard)? {
         ActiveReleaseState::Absent => return Err("a2a is not installed".to_owned()),
         ActiveReleaseState::RecoveryRequired(_) => {
