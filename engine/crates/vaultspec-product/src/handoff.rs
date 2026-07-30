@@ -55,6 +55,13 @@ pub struct UpdaterDescriptor {
     pub app_home: PathBuf,
     /// The installation-lock owner id the updater acquires under.
     pub owner: String,
+    /// The process id of the dashboard copy that wrote this handoff, when one
+    /// should be waited out. The updater holds the installation lock and waits
+    /// for that process to terminate before it mutates anything: the requesting
+    /// process runs the very executable image the swap replaces, and Windows
+    /// refuses to replace a running image.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requester_pid: Option<u32>,
     /// How to relaunch the prior seat after the run, when one should be relaunched.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relaunch: Option<RelaunchSpec>,
@@ -68,6 +75,10 @@ pub struct UpdaterDescriptor {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RelaunchSpec {
+    /// The STABLE front-door launcher to relaunch. It is the installed
+    /// dashboard path, not a generation-specific binary, so it still resolves
+    /// after the swap replaced its bytes.
+    pub launcher: PathBuf,
     /// The workspace directory to relaunch the seat in.
     pub workspace: PathBuf,
 }
@@ -472,6 +483,7 @@ mod tests {
             version: 1,
             app_home: PathBuf::from("C:\\vaultspec\\home"),
             owner: "owner-1".to_string(),
+            requester_pid: None,
             relaunch: None,
             execute: None,
         }

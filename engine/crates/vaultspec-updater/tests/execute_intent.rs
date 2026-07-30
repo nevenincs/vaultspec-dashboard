@@ -65,6 +65,7 @@ fn a_descriptor_with_an_execute_intent_round_trips_through_json() {
             "/opt/vaultspec/home"
         }),
         owner: "owner-1".to_string(),
+        requester_pid: Some(std::process::id()),
         relaunch: None,
         execute: Some(valid_intent(temp.path())),
     };

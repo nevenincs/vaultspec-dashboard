@@ -13,7 +13,25 @@ use std::time::{Duration, Instant};
 
 use rag_client::client::{LoopbackTransport, RagTransport};
 use serde_json::{Value, json};
+use vaultspec_product::handoff::{
+    RelaunchSpec, UpdaterDescriptor, copy_updater_out, write_handoff_descriptor,
+};
+use vaultspec_product::paths::ProductPaths;
 use vaultspec_session::app_home;
+
+/// The product-owned external updater's file name beside the dashboard binary
+/// in an installed release.
+const UPDATER_NAME: &str = if cfg!(windows) {
+    "vaultspec-updater.exe"
+} else {
+    "vaultspec-updater"
+};
+/// The fixed name of the one-time handoff descriptor in the transaction
+/// directory. Fixed, so a second concurrent handoff is refused by the
+/// create-new write rather than racing under a generated name.
+const HANDOFF_DESCRIPTOR: &str = "updater-handoff.json";
+/// The handoff descriptor grammar version this dashboard writes.
+const HANDOFF_VERSION: u8 = 1;
 
 /// How long `stop` waits for the seat to drain and retract discovery.
 const STOP_WAIT: Duration = Duration::from_secs(10);
@@ -196,107 +214,143 @@ pub fn restart() -> Result<Value, String> {
     }))
 }
 
-/// `vaultspec update` — receipt-gated self-update (single-app-runtime D5,
-/// packaging-ADR update-provenance unchanged): stop the seat, run the
-/// axoupdater sidecar `dist` installs beside self-installed copies, then
-/// relaunch. A copy WITHOUT the sidecar was installed by a package manager
-/// and is refused with the manager remediation instead — never auto-updated.
+/// `vaultspec update` — hand the release transaction to the product-owned
+/// copied external updater.
+///
+/// The order is the transaction contract: copy the target-specific updater OUT
+/// of the active release (so it can replace that release, including the
+/// installed updater), write the ONE-TIME owner-restricted handoff descriptor
+/// outside the release set, exit the seat, and launch the copy detached. The
+/// copy — never this process — acquires the installation lock, waits this
+/// requesting process out, resolves any interrupted transaction, and relaunches
+/// the prior seat from the descriptor's relaunch instruction.
+///
+/// This flow carries NO sealing precondition: the supported channel is the
+/// unsigned one, so nothing here is gated on a signed release root. Only the
+/// candidate EXECUTE path inside the updater authenticates a candidate, and it
+/// is reached from an execute-intent handoff, not from this recovery-and-
+/// relaunch one.
+///
+/// A copy that carries no updater beside it is not a complete product
+/// installation and is refused with its channel's own remediation.
 pub fn update() -> Result<Value, String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let updater_name = if cfg!(windows) {
-        "vaultspec-update.exe"
-    } else {
-        "vaultspec-update"
-    };
-    let updater = exe.with_file_name(updater_name);
-    if !updater.is_file() {
+    let release_updater = exe.with_file_name(UPDATER_NAME);
+    if !release_updater.is_file() {
         return Ok(json!({
-            "updated": false,
-            "reason": "this copy has no self-update receipt (installed by a \
-                       package manager); update it there instead, e.g. \
-                       `scoop update vaultspec` or `cargo binstall vaultspec`",
+            "handed_off": false,
+            "reason": "this copy ships no product updater beside it, so it \
+                       carries no update transaction authority; update it \
+                       through the channel that installed it — `scoop update \
+                       vaultspec`, `winget upgrade vaultspec`, the product \
+                       installer, or Windows Installer for an MSI copy",
         }));
     }
-    let was_running = read_seat().map(|(_, i)| seat_running(&i)).unwrap_or(false);
-    let stopped = stop()?;
-    // Bounded, output-capped sidecar run (resource-bounds subprocess law):
-    // updates download a release artifact, so the ceiling is generous.
-    let output = run_bounded(
-        std::process::Command::new(&updater),
-        Duration::from_secs(10 * 60),
-        1024 * 1024,
-    )?;
-    let relaunched = if was_running {
-        resolve_relaunch_root()
-            .and_then(|cwd| spawn_detached_serve(&cwd).ok())
-            .map(|pid| json!({"pid": pid, "seated": wait_for_seat(pid, START_WAIT)}))
-    } else {
-        None
-    };
-    Ok(json!({
-        "updated": true,
-        "stopped": stopped,
-        "updater_output": output,
-        "relaunched": relaunched,
-    }))
-}
 
-/// Run a subprocess with BOTH a wall-clock ceiling and an output byte cap,
-/// killing on breach (resource-bounds law). Returns the capped combined text.
-fn run_bounded(
-    mut cmd: std::process::Command,
-    timeout: Duration,
-    cap: usize,
-) -> Result<String, String> {
-    use std::io::Read as _;
-    let mut child = cmd
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn failed: {e}"))?;
-    // Drain BOTH streams concurrently (review nit: a sequential read can
-    // backpressure the child on a full stderr pipe while stdout is still
-    // being read); each side carries its own byte cap.
-    let mut stdout = child.stdout.take();
-    let mut stderr = child.stderr.take();
-    let err_reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(err) = stderr.as_mut() {
-            let _ = err.take(cap as u64).read_to_end(&mut buf);
+    let home = app_home::app_home_dir().ok_or("no home directory resolvable")?;
+    if !home.is_absolute() {
+        return Err("the machine app home did not resolve to an absolute path".to_string());
+    }
+    let paths = ProductPaths::under_app_home(&home);
+    paths
+        .ensure()
+        .map_err(|e| format!("product directories unavailable: {e}"))?;
+    let descriptor_path = paths.transaction_dir().join(HANDOFF_DESCRIPTOR);
+    if descriptor_path.exists() {
+        return Err(
+            "an update handoff is already pending; let the running updater finish".to_string(),
+        );
+    }
+
+    // Copy OUT first: the copy is what replaces the release, so it must not be
+    // the release's own file.
+    let copied = copy_updater_out(&release_updater, &paths.updater_dir())
+        .map_err(|e| format!("copying the updater out failed: {e}"))?;
+
+    // A seat that is up now is the seat the updater relaunches afterwards.
+    let was_running = read_seat().map(|(_, i)| seat_running(&i)).unwrap_or(false);
+    let relaunch = was_running
+        .then(resolve_relaunch_root)
+        .flatten()
+        .map(|workspace| RelaunchSpec {
+            // The STABLE front door: this same installed path, whose bytes the
+            // swap may replace.
+            launcher: exe.clone(),
+            workspace,
+        });
+
+    let descriptor = UpdaterDescriptor {
+        version: HANDOFF_VERSION,
+        app_home: home,
+        owner: paths.root().to_string_lossy().to_string(),
+        requester_pid: Some(std::process::id()),
+        relaunch: relaunch.clone(),
+        // A recovery-and-relaunch handoff: staging a candidate is the release
+        // channel's own step, and a handoff never invents one.
+        execute: None,
+    };
+    write_handoff_descriptor(&descriptor_path, &descriptor)
+        .map_err(|e| format!("writing the update handoff failed: {e}"))?;
+
+    // The seat exits BEFORE the copy runs: the swap replaces the installed
+    // executables, and a running image cannot be replaced on Windows.
+    let stopped = match stop() {
+        Ok(stopped) => stopped,
+        Err(error) => {
+            let _ = std::fs::remove_file(&descriptor_path);
+            return Err(error);
         }
-        buf
-    });
-    let reader = std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        if let Some(out) = stdout.as_mut() {
-            let _ = out.take(cap as u64).read_to_end(&mut buf);
-        }
-        buf.extend(err_reader.join().unwrap_or_default());
-        buf
-    });
-    let begun = Instant::now();
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) => {
-                let buf = reader.join().unwrap_or_default();
-                let text = String::from_utf8_lossy(&buf).to_string();
-                return if status.success() {
-                    Ok(text)
-                } else {
-                    Err(format!("updater exited {status}: {text}"))
-                };
-            }
-            Ok(None) if begun.elapsed() < timeout => {
-                std::thread::sleep(Duration::from_millis(250));
-            }
-            Ok(None) => {
-                let _ = child.kill();
-                return Err("updater timed out and was killed".to_string());
-            }
-            Err(e) => return Err(format!("updater wait failed: {e}")),
+    };
+
+    match spawn_detached_updater(&copied, &descriptor_path) {
+        Ok(pid) => Ok(json!({
+            "handed_off": true,
+            "stopped": stopped,
+            "updater": {"pid": pid, "path": copied.to_string_lossy()},
+            "relaunch": relaunch.map(|r| json!({"workspace": r.workspace.to_string_lossy()})),
+        })),
+        Err(error) => {
+            // Nothing ran: retire the one-time descriptor and put the seat back.
+            let _ = std::fs::remove_file(&descriptor_path);
+            let relaunched = was_running
+                .then(resolve_relaunch_root)
+                .flatten()
+                .and_then(|cwd| spawn_detached_serve(&cwd).ok())
+                .map(|pid| wait_for_seat(pid, START_WAIT));
+            Err(format!(
+                "launching the copied updater failed: {error}{}",
+                match relaunched {
+                    Some(true) => " (the seat was restarted)",
+                    Some(false) => " (the seat was restarted but did not come up)",
+                    None => "",
+                }
+            ))
         }
     }
+}
+
+/// Spawn the copied updater fully detached with its one operand: the path to the
+/// one-time descriptor. It outlives this process by design — it waits for this
+/// process to exit before it mutates anything.
+fn spawn_detached_updater(updater: &Path, descriptor: &Path) -> std::io::Result<u32> {
+    let mut cmd = std::process::Command::new(updater);
+    cmd.arg(descriptor)
+        .current_dir(
+            updater
+                .parent()
+                .unwrap_or_else(|| Path::new(std::path::Component::CurDir.as_os_str())),
+        )
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        // DETACHED_PROCESS (0x8) + CREATE_NO_WINDOW (0x0800_0000): the copy owns
+        // no console and outlives this process.
+        cmd.creation_flags(0x0800_0008);
+    }
+    Ok(cmd.spawn()?.id())
 }
 
 /// Prefer the cwd's workspace when it is vaultspec-managed; else the

@@ -32,7 +32,7 @@ use vaultspec_product::gateway_drain::{
     DrainContext, DrainDeadlines, GatewayDrainError, OwnedGatewayLease,
 };
 use vaultspec_product::generation::LockedProduct;
-use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard};
+use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard, process_is_alive};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::materializer::{ActivationLimits, activate_update};
 use vaultspec_product::migration::{
@@ -68,6 +68,13 @@ const MAX_DESCRIPTOR_BYTES: u64 = 64 * 1024;
 const MAX_DISCOVERY_BYTES: u64 = 64 * 1024;
 const DESCRIPTOR_VERSION: u8 = 1;
 const MAX_OWNER_BYTES: usize = 1024;
+/// How long the updater waits, under the held installation lock, for the
+/// dashboard process that wrote the descriptor to terminate. The requester runs
+/// the very executable image the swap replaces, so nothing may be mutated while
+/// it lives.
+const REQUESTER_EXIT_DEADLINE: Duration = Duration::from_secs(60);
+/// Liveness poll interval while waiting the requester out.
+const REQUESTER_EXIT_POLL: Duration = Duration::from_millis(100);
 
 /// Validate a handoff descriptor on READ (the updater side of the contract):
 /// bounded, absolute app home, non-empty control-free owner, and — when present —
@@ -130,6 +137,14 @@ pub fn run(descriptor_path: &Path) -> Result<UpdaterRun, UpdaterError> {
         Err(_busy) => return Err(UpdaterError::Busy),
     };
 
+    // The handoff writer runs the executable image this run may replace. Wait it
+    // out under the held lock BEFORE the descriptor is retired, so a requester
+    // that outlives its budget leaves a retryable handoff rather than a consumed
+    // one.
+    if let Some(pid) = descriptor.requester_pid {
+        await_requester_exit(pid)?;
+    }
+
     // The descriptor is one-time: retire it now that this run owns the lock, so a
     // replay finds nothing. In-flight state is recovered from the DURABLE
     // transaction descriptor, never from a replayed handoff.
@@ -141,6 +156,37 @@ pub fn run(descriptor_path: &Path) -> Result<UpdaterRun, UpdaterError> {
         recovery,
         relaunch: descriptor.relaunch,
     })
+}
+
+/// Wait, under the held installation lock, for the dashboard process that wrote
+/// the handoff to terminate.
+///
+/// The requester runs the installed executable image an activation replaces, and
+/// Windows refuses to replace a running image — so the ordering is a
+/// correctness precondition, not a courtesy. A requester that outlives the
+/// budget is a bounded typed refusal: nothing has been mutated and the one-time
+/// descriptor is still on disk, so the handoff can simply be retried.
+fn await_requester_exit(pid: u32) -> Result<(), UpdaterError> {
+    let begun = Instant::now();
+    while process_is_alive(pid) {
+        if begun.elapsed() >= REQUESTER_EXIT_DEADLINE {
+            return Err(UpdaterError::RequesterAlive);
+        }
+        std::thread::sleep(REQUESTER_EXIT_POLL);
+    }
+    Ok(())
+}
+
+/// Relaunch the prior seat named by the descriptor's relaunch instruction.
+///
+/// This is the plain relaunch the RECOVERY handoff carries: the stable front
+/// door is spawned detached in the recorded workspace. The post-commit
+/// health-probed relaunch ([`relaunch_and_probe`]) is the ACTIVATION path's,
+/// because only an execute-intent handoff carries the freshness and
+/// compatibility facts a truthful health verdict needs.
+pub fn relaunch_prior_seat(relaunch: &RelaunchSpec) -> Result<u32, RelaunchError> {
+    spawn_detached_front_door(&relaunch.launcher, &relaunch.workspace)
+        .map_err(|error| RelaunchError::new(format!("front-door spawn failed: {error}")))
 }
 
 /// The typed inputs the fresh-update EXECUTE drive consumes. Assembled from the
@@ -723,6 +769,10 @@ pub enum UpdaterError {
     Descriptor(&'static str),
     /// Another installer or updater already holds the installation lock.
     Busy,
+    /// The dashboard process that wrote the handoff was still running when its
+    /// exit budget expired. Nothing was mutated and the one-time descriptor was
+    /// not consumed, so the handoff remains retryable.
+    RequesterAlive,
     /// The discovered gateway could not be drained and stopped (foreign, stale,
     /// incompatible, or the stop was unproven within the deadline).
     Drain(GatewayDrainError),
@@ -754,6 +804,10 @@ impl std::fmt::Display for UpdaterError {
                 f,
                 "the installation lock is held by another installer or updater"
             ),
+            Self::RequesterAlive => write!(
+                f,
+                "the dashboard copy that requested this update did not exit within its budget"
+            ),
             Self::Drain(error) => write!(f, "gateway drain failed: {error}"),
             Self::Intent(detail) => write!(f, "execute-intent is invalid: {detail}"),
             Self::Verification(error) => write!(f, "distribution verification refused: {error}"),
@@ -774,6 +828,7 @@ impl std::error::Error for UpdaterError {
             Self::Recovery(error) => Some(error),
             Self::Descriptor(_)
             | Self::Busy
+            | Self::RequesterAlive
             | Self::Intent(_)
             | Self::Activation(_)
             | Self::Io(_) => None,

@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!--
+    Windows applies "installer detection" to any un-manifested executable whose
+    file name looks like an installer - and this one is literally named
+    `vaultspec-updater.exe`. Detection makes the process demand elevation, so a
+    detached launch from the seated dashboard fails with ERROR_ELEVATION_REQUIRED
+    instead of running. The helper replaces files the invoking user already owns
+    under the user-scoped app home; it must run as the invoking user, never
+    elevated.
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>

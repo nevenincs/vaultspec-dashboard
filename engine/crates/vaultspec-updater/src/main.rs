@@ -8,13 +8,13 @@
 //! are bounded and secret-redacted; the exit code is a stable, closed classifier.
 //!
 //! The fresh-update EXECUTE path (drain of the discovered gateway -> snapshot ->
-//! migrate -> materialize -> receipt-commit SWAP) and the prior-seat relaunch spawn
-//! are the activation-seam / relaunch-orchestration pieces (materializer + S60);
-//! this executable is the shell that parses, runs, and classifies.
+//! migrate -> materialize -> receipt-commit SWAP) is the activation seam
+//! (materializer); this executable is the shell that parses, runs, relaunches the
+//! prior seat when the handoff asked for one, and classifies.
 
 use std::path::Path;
 
-use vaultspec_updater::{UpdaterError, UpdaterRun, run};
+use vaultspec_updater::{UpdaterError, UpdaterRun, relaunch_prior_seat, run};
 
 /// Successful run.
 const EXIT_OK: i32 = 0;
@@ -26,6 +26,9 @@ const EXIT_BUSY: i32 = 3;
 const EXIT_DESCRIPTOR: i32 = 4;
 /// The transaction, recovery, or a bounded I/O operation failed.
 const EXIT_FAILED: i32 = 5;
+/// The run itself completed, but the prior seat could not be relaunched. The
+/// installed release is intact; only the front door is down.
+const EXIT_RELAUNCH: i32 = 6;
 
 fn main() {
     std::process::exit(dispatch(std::env::args_os().skip(1)));
@@ -49,7 +52,16 @@ fn dispatch(mut operands: impl Iterator<Item = std::ffi::OsString>) -> i32 {
     match run(Path::new(&descriptor)) {
         Ok(run) => {
             println!("vaultspec-updater: {}", summarize(&run));
-            EXIT_OK
+            // The prior seat is relaunched LAST, once the run has resolved the
+            // installed state — the seat must never come back onto a release
+            // that is still mid-transaction.
+            match run.relaunch.as_ref().map(relaunch_prior_seat) {
+                None | Some(Ok(_)) => EXIT_OK,
+                Some(Err(error)) => {
+                    eprintln!("vaultspec-updater: {error}");
+                    EXIT_RELAUNCH
+                }
+            }
         }
         Err(error) => {
             // The Display of every variant is bounded and secret-free (descriptor
@@ -71,7 +83,7 @@ fn summarize(run: &UpdaterRun) -> String {
 
 fn exit_code(error: &UpdaterError) -> i32 {
     match error {
-        UpdaterError::Busy => EXIT_BUSY,
+        UpdaterError::Busy | UpdaterError::RequesterAlive => EXIT_BUSY,
         UpdaterError::Descriptor(_) | UpdaterError::Intent(_) => EXIT_DESCRIPTOR,
         UpdaterError::Drain(_)
         | UpdaterError::Verification(_)
@@ -111,6 +123,9 @@ mod tests {
     #[test]
     fn exit_codes_are_a_closed_stable_classifier() {
         assert_eq!(exit_code(&UpdaterError::Busy), EXIT_BUSY);
+        // A requester that has not exited is the same retryable class as a busy
+        // lock: nothing was mutated and the handoff still stands.
+        assert_eq!(exit_code(&UpdaterError::RequesterAlive), EXIT_BUSY);
         assert_eq!(exit_code(&UpdaterError::Descriptor("x")), EXIT_DESCRIPTOR);
         assert_eq!(
             exit_code(&UpdaterError::Io("bounded".to_string())),
