@@ -1,6 +1,6 @@
 {
   "version": "0.1.2",
-  "description": "The complete vaultspec dashboard product: the dashboard, the copied external updater, the pinned A2A companion capsule, and the signed release manifest, licenses, and SBOM — installed as one offline-complete tree. Only the `vaultspec` dashboard command is shimmed onto PATH; the companion files stay in the install directory.",
+  "description": "The complete vaultspec dashboard product: the dashboard, the copied external updater, the bundled A2A runtime, and the signed release manifest, licenses, and SBOM — installed as one offline-complete tree. Only the `vaultspec` dashboard command is shimmed onto PATH; the companion files stay in the install directory.",
   "homepage": "https://github.com/nevenincs/vaultspec-dashboard",
   "license": "MIT",
   "url": "https://github.com/nevenincs/vaultspec-dashboard/releases/download/v0.1.2/vaultspec-0.1.2-x86_64-pc-windows-msvc.zip",

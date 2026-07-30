@@ -9,7 +9,7 @@ PackageName: vaultspec
 PackageUrl: https://github.com/nevenincs/vaultspec-dashboard
 License: MIT
 LicenseUrl: https://github.com/nevenincs/vaultspec-dashboard/blob/main/LICENSE
-ShortDescription: The complete vaultspec dashboard product — dashboard, copied updater, pinned A2A capsule, manifests, licenses, and SBOM as one offline-complete tree.
+ShortDescription: The complete vaultspec dashboard product — dashboard, copied updater, bundled A2A runtime, manifests, licenses, and SBOM as one offline-complete tree.
 Description: >-
   vaultspec installs the whole offline product tree via the complete MSI and
   verifies it against its release manifest with the shipped bounded authority. Only
