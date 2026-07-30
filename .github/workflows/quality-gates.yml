@@ -64,9 +64,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: engine
+      # Resolve where the build actually lands BEFORE building, so every
+      # reference to a built binary below is right in both configurations: the
+      # runners share one persistent cargo target directory outside the
+      # workspace (a checkout cleans the workspace-local one), while a plain
+      # checkout builds into `engine/target`. Read-side only — this never
+      # redirects the build, it names the directory the build used.
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
       - name: Build engine binary (live-engine test backend)
         run: cargo build --bin vaultspec
         working-directory: engine
@@ -78,6 +84,12 @@ jobs:
           echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: Unit tests (vitest)
         run: npm --prefix frontend run test
+        env:
+          # Pin the exact binary the live suite spawns. Its own fallback probes
+          # `engine/target/{release,debug}`, which does not exist when the build
+          # landed in the shared directory — the suite would then fail at global
+          # setup with "no vaultspec engine binary found" rather than running.
+          VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
       - name: Unused code (knip — advisory)
         run: npx --yes knip@5 --directory frontend
         continue-on-error: true
@@ -88,7 +100,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -112,9 +124,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: engine
+      # See the frontend job: resolve the build output directory before the
+      # build so the `serve` invocation below names the binary that was built.
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
       - name: Build engine binary
         run: cargo build --bin vaultspec
         working-directory: engine
@@ -162,7 +176,7 @@ jobs:
 
           # Start serve on an OS-assigned port; service.json carries the real
           # port + token (same pattern as conformance.rs start_serve).
-          "$GITHUB_WORKSPACE/engine/target/debug/vaultspec" serve --port 0 &
+          "$ENGINE_TARGET_DIR/debug/vaultspec" serve --port 0 &
           SERVE_PID=$!
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
 
@@ -194,7 +208,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -270,7 +284,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
@@ -295,9 +309,6 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: engine
       - name: Component lock + release-set-manifest schema are well-formed
         shell: bash
         run: |
@@ -314,7 +325,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true

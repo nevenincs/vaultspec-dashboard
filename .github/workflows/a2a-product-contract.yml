@@ -127,7 +127,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf dashboard/engine/target 2>/dev/null || true

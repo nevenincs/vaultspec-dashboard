@@ -42,9 +42,21 @@ jobs:
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: engine
+      # Build reuse on the persistent runners comes from the runner-level shared
+      # cargo target directory, NOT from an uploaded cache: a checkout cleans the
+      # workspace (ignored files included), so a workspace-local `engine/target`
+      # never survives a run, while a shared directory outside the workspace
+      # does. Report which one is in force — a "not found" or an unexpected full
+      # rebuild is otherwise undiagnosable on a runner nobody can shell into.
+      - name: Report the build output directory
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo metadata --format-version 1 --no-deps \
+            | sed -n 's/.*"target_directory":"\([^"]*\)".*/cargo builds into: \1/p'
+          if [ -z "${CARGO_TARGET_DIR:-}" ]; then
+            echo "::warning::CARGO_TARGET_DIR is unset on this runner, so builds land inside the workspace and the next checkout cleans them — every run rebuilds from scratch"
+          fi
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
@@ -70,7 +82,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true

@@ -64,9 +64,15 @@ jobs:
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: engine
+      # Name the directory the builds below land in. The runners share one
+      # persistent cargo target directory outside the workspace; a runner
+      # without that variable builds into `engine/target`. Resolving it here
+      # keeps every built-binary reference in this job correct in both cases —
+      # an unset variable would otherwise abort the composition steps (they run
+      # under `set -u`) or, worse, compose a path with an empty root.
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
       - name: Resolve version
         id: version
         shell: bash
@@ -132,13 +138,13 @@ jobs:
             --target "$target" --version "$version" \
             --commit "$(git rev-parse HEAD)" --cohort-id "release-${version}" \
             --generation-root "$gen_root" \
-            --dashboard "${CARGO_TARGET_DIR}/${target}/release/vaultspec${suffix}" \
-            --updater "${CARGO_TARGET_DIR}/${target}/release/vaultspec-updater${suffix}" \
+            --dashboard "${ENGINE_TARGET_DIR}/${target}/release/vaultspec${suffix}" \
+            --updater "${ENGINE_TARGET_DIR}/${target}/release/vaultspec-updater${suffix}" \
             --lock "${PWD}/packaging/a2a-component.lock.json" \
             --sbom "${PWD}/packaging/sbom.cdx.json" \
             --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
             > build-spec.json
-          "${CARGO_TARGET_DIR}/release/product_build" build-spec.json
+          "${ENGINE_TARGET_DIR}/release/product_build" build-spec.json
           echo "GEN_ROOT=${gen_root}" >> "$GITHUB_ENV"
       - name: Archive + checksum
         shell: bash
@@ -170,7 +176,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target out 2>/dev/null || true
@@ -231,9 +237,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ steps.toolchain.outputs.channel }}
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: engine
+      # See the compose job: name the directory the build below lands in.
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
       - uses: actions/download-artifact@v4
         with:
           path: members
@@ -247,7 +254,7 @@ jobs:
           # cohort digest — SHA-256 of the RFC 8785 JCS CohortDescriptor, produced
           # by the cohort-digest verb (serde_jcs, never hand-rolled in shell).
           cargo build --release -p vaultspec-product --bin cohort_digest --manifest-path engine/Cargo.toml
-          "${CARGO_TARGET_DIR}/release/cohort_digest" \
+          "${ENGINE_TARGET_DIR}/release/cohort_digest" \
             --lock packaging/a2a-component.lock.json \
             --member aarch64-apple-darwin=members/product-aarch64-apple-darwin/release-aarch64-apple-darwin.json \
             --member aarch64-unknown-linux-gnu=members/product-aarch64-unknown-linux-gnu/release-aarch64-unknown-linux-gnu.json \
@@ -265,7 +272,7 @@ jobs:
           set +e
           df -h . 2>/dev/null | tail -1
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
-          pkill -f 'target/debug/vaultspec' 2>/dev/null || true
+          pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target 2>/dev/null || true
