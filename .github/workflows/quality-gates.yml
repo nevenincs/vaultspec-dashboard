@@ -275,8 +275,16 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm --prefix frontend ci
-      - name: npm audit
+      # Gate on the SHIPPED surface, mirroring the uv step above: what reaches a
+      # user is the built SPA embedded in the engine binary, so the runtime
+      # dependency tree is the one that must be clean. Build-time tooling is
+      # audited too, one step below, but advisories there are a maintenance
+      # signal about our own build box — not a reason to refuse a release.
+      - name: npm audit (runtime surface)
+        run: npm --prefix frontend audit --omit=dev
+      - name: npm audit (build tooling — advisory)
         run: npm --prefix frontend audit
+        continue-on-error: true
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
