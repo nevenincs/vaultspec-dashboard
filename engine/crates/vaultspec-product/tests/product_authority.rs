@@ -41,9 +41,6 @@ const TRIPLE: &str = "x86_64-pc-windows-msvc";
 /// component lock for the Windows target. `mutate` gets the mutable value tree
 /// before serialization so a test can introduce exactly one defect.
 fn capsule_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Value)) -> String {
-    let python = lock.python_digest(TARGET).unwrap();
-    let node = lock.node_digest(TARGET).unwrap();
-    let acp = &lock.base_closure.acp.sha256;
     let a2a_version = &lock.a2a_source.release_identity.version;
     let mut v = serde_json::json!({
         "contract_version": "2.0",
@@ -88,10 +85,10 @@ fn capsule_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Va
         },
         "digest_algorithm": "sha256",
         "assets": [
-            { "kind": "python-runtime", "version": "3.13", "license": lock.base_closure.python.license, "digest": python },
+            { "kind": "python-runtime", "version": "3.13", "license": "PSF-2.0", "digest": "a".repeat(64) },
             { "kind": "a2a-distribution", "version": a2a_version, "license": "MIT", "digest": "c".repeat(64) },
-            { "kind": "node-runtime", "version": "22", "license": lock.base_closure.node.license, "digest": node },
-            { "kind": "acp-adapter", "version": lock.base_closure.acp.version, "license": lock.base_closure.acp.license, "digest": acp }
+            { "kind": "node-runtime", "version": "22", "license": "MIT", "digest": "b".repeat(64) },
+            { "kind": "acp-adapter", "version": "0.59.0", "license": "Apache-2.0", "digest": "d".repeat(64) }
         ],
         "dependency_lock": {
             "uv_lock_digest": "d".repeat(64),
@@ -105,9 +102,6 @@ fn capsule_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Va
 /// Build a release-set-manifest JSON string whose pins agree with the committed
 /// component lock for the Windows target, with a single-defect hook.
 fn release_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Value)) -> String {
-    let python = lock.python_digest(TARGET).unwrap();
-    let node = lock.node_digest(TARGET).unwrap();
-    let acp = &lock.base_closure.acp.sha256;
     let mut v = serde_json::json!({
         "schema_version": "2.0",
         "target": TRIPLE,
@@ -148,42 +142,12 @@ fn release_json(lock: &ComponentLock, mut mutate: impl FnMut(&mut serde_json::Va
                 "path": "packaging/a2a-component.lock.json",
                 "digest": "d".repeat(64)
             },
-            "capsule_manifest": {
-                "path": "a2a/component-manifest.json",
-                "digest": "e".repeat(64)
-            },
-            "capsule_archive": {
-                "path": "a2a/capsule.zip",
-                "size": 20,
-                "digest": "f".repeat(64)
-            },
-            "tree_evidence": {
-                "path": "a2a/tree.json",
-                "size": 24,
-                "digest": "1".repeat(64),
-                "tree_digest": "2".repeat(64),
+            "runtime": {
+                "root": "a2a",
+                "entrypoint": "a2a/vaultspec-a2a.exe",
                 "file_count": 3
             }
         },
-        "runtimes": {
-            "cpython": {
-                "version": lock.base_closure.python.version,
-                "license": lock.base_closure.python.license,
-                "digest": python
-            },
-            "node": {
-                "version": lock.base_closure.node.version,
-                "license": lock.base_closure.node.license,
-                "digest": node
-            },
-            "acp": {
-                "version": lock.base_closure.acp.version,
-                "license": lock.base_closure.acp.license,
-                "digest": acp
-            }
-        },
-        "protocol": { "gateway_api_version_range": { "minimum": "v1", "maximum": "v1" } },
-        "state_schema": { "migration_range": { "minimum": "0001", "maximum": "0008" } },
         "licenses": [{
             "component": "vaultspec-a2a",
             "spdx": "MIT",
@@ -216,9 +180,9 @@ fn valid_capsule_and_release_verify_against_the_real_lock() {
 #[test]
 fn manifest_rejects_unpinned_identity() {
     let lock = ComponentLock::parse(LOCK_JSON).unwrap();
-    // A floating runtime version in the release set is a hard parse rejection.
+    // A floating version in the release set is a hard parse rejection.
     let raw = release_json(&lock, |v| {
-        v["runtimes"]["cpython"]["version"] = serde_json::json!("latest");
+        v["a2a_component"]["release_identity"]["version"] = serde_json::json!("latest");
     });
     assert!(matches!(
         ReleaseSetManifest::parse(&raw),
@@ -246,34 +210,42 @@ fn manifest_rejects_target_mismatch() {
     ));
 }
 
-/// Capsule-versus-lock drift, at the layer that owns the comparison.
+/// Declaration-versus-lock drift, at the layer that owns the comparison.
 ///
-/// This is the RIGHT home for this refusal and it stays here. The manifest
-/// layer is the one that can express it directly: a capsule whose ACP digest
-/// disagrees with the lock is drift, not a read, and asserting that needs
+/// This is the RIGHT home for this refusal and it stays here. The manifest layer
+/// is the one that can express it directly: a release whose A2A identity
+/// disagrees with the trusted lock is drift, not a read, and asserting that needs
 /// nothing but the two documents.
 ///
 /// A chain case does exist and is NOT a replacement — it proves a different
 /// proposition. `provisioning::composition::
 /// a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_armed`
-/// uses this same ACP drift as its inducing input, but what it asserts is the
+/// induces a manifest-link refusal of its own, but what it asserts is the
 /// CROSSING: that the distribution authority admits such a release, because it
-/// has no view of the component lock, and that the resulting refusal leaves the
-/// fixed journal unmutated while leaving the bootstrap descriptor still armed.
-/// Layer-owns-refusal here; composition proves the consequence there. Neither
-/// discharges the other, and removing this one would leave the comparison
-/// itself asserted only as a side effect of a chain test.
+/// has no view of the component lock or the installed tree, and that the
+/// resulting refusal leaves the fixed journal unmutated while leaving the
+/// bootstrap descriptor still armed. Layer-owns-refusal here; composition proves
+/// the consequence there. Neither discharges the other, and removing this one
+/// would leave the comparison itself asserted only as a side effect of a chain
+/// test.
 #[test]
-fn manifest_rejects_digest_drift() {
+fn manifest_rejects_identity_drift() {
     let lock = ComponentLock::parse(LOCK_JSON).unwrap();
-    // A capsule whose ACP digest disagrees with the lock is drift, not a read.
-    let raw = capsule_json(&lock, |v| {
-        v["assets"][3]["digest"] = serde_json::json!("0".repeat(64));
+    // A release whose A2A version disagrees with the lock is drift, not a read.
+    let raw = release_json(&lock, |v| {
+        v["a2a_component"]["release_identity"]["version"] = serde_json::json!("9.9.9");
     });
-    let capsule = CapsuleManifest::parse(&raw).unwrap();
+    let release = ReleaseSetManifest::parse(&raw).unwrap();
     assert!(matches!(
-        capsule.verify_against_lock(&lock, TARGET),
-        Err(ManifestError::DigestDrift { .. })
+        release.verify_against_lock(&lock),
+        Err(ManifestError::IdentityMismatch { .. })
+    ));
+
+    // And a capsule declaring another target is refused by the same authority.
+    let capsule = CapsuleManifest::parse(&capsule_json(&lock, |_| {})).unwrap();
+    assert!(matches!(
+        capsule.verify_against_lock(&lock, Target::Aarch64AppleDarwin),
+        Err(ManifestError::TargetMismatch { .. })
     ));
 }
 

@@ -41,16 +41,10 @@ const COHORT_SCHEMA_VERSION: &str = "1.0";
 const DIGEST_ALGORITHM: &str = "sha256";
 const COMPONENT_LOCK_VERSION: &str = "1.0";
 const COMPONENT_LOCK_PATH: &str = "packaging/a2a-component.lock.json";
-const COMPONENT_MANIFEST_SCHEMA: &str = "schemas/desktop-capsule-manifest.json";
 const MAX_MEMBER_MANIFEST_BYTES: usize = 512 * 1024 * 1024;
 const MAX_COMPONENT_LOCK_BYTES: usize = 1024 * 1024;
 const MAX_CAPSULE_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_COHORT_BYTES: usize = 64 * 1024;
-#[allow(
-    dead_code,
-    reason = "used only by the sealed verifier, which has no production adapter authority yet"
-)]
-const MAX_TREE_EVIDENCE_BYTES: u64 = 128 * 1024 * 1024;
 const MAX_INSTALLED_FILES: usize = 100_000;
 const MAX_TREE_FILES: usize = 80_000;
 const MAX_DIRECTORIES: usize = 100_000;
@@ -180,8 +174,7 @@ pub struct ComponentLock {
     pub lock_version: String,
     pub description: String,
     pub a2a_source: A2aSource,
-    pub capsule_contract: CapsuleContract,
-    pub base_closure: BaseClosure,
+    pub freeze_recipe: FreezeRecipe,
     pub resolution_policy: ResolutionPolicy,
 }
 
@@ -200,44 +193,16 @@ pub struct ReleaseIdentity {
     pub version: String,
 }
 
+/// The in-repo freeze recipe the release pipeline invokes at the pinned commit to
+/// produce the bundled runtime: the build entry it runs and the PyInstaller spec
+/// that entry consumes. Both are repository-relative paths in the pinned source,
+/// so the recipe's identity is pinned alongside the commit rather than restated
+/// by the pipeline.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct CapsuleContract {
-    pub manifest_schema: String,
-    pub digest_algorithm: String,
-    pub targets: Vec<Target>,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct BaseClosure {
-    pub acp: AcpArtifact,
-    pub python: PerTargetArtifact,
-    pub node: PerTargetArtifact,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct AcpArtifact {
-    pub kind: String,
-    pub version: String,
-    pub license: String,
-    pub source: String,
-    pub sha256: String,
-}
-
-#[derive(Debug, Clone, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct PerTargetArtifact {
-    pub kind: String,
-    pub version: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub build: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<String>,
-    pub license: String,
-    #[serde(deserialize_with = "deserialize_target_map")]
-    pub per_target_sha256: BTreeMap<Target, String>,
+pub struct FreezeRecipe {
+    pub build_entry: String,
+    pub spec: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -247,39 +212,6 @@ pub struct ResolutionPolicy {
     pub latest_forbidden: bool,
     pub runtime_resolution_forbidden: bool,
     pub digest_required: bool,
-}
-
-fn deserialize_target_map<'de, D>(
-    deserializer: D,
-) -> std::result::Result<BTreeMap<Target, String>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    struct UniqueTargetMap;
-    impl<'de> Visitor<'de> for UniqueTargetMap {
-        type Value = BTreeMap<Target, String>;
-
-        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            formatter.write_str("a unique per-target digest map")
-        }
-
-        fn visit_map<A>(self, mut map: A) -> std::result::Result<Self::Value, A::Error>
-        where
-            A: MapAccess<'de>,
-        {
-            let mut values = BTreeMap::new();
-            while let Some((target, digest)) = map.next_entry::<Target, String>()? {
-                if values.insert(target, digest).is_some() {
-                    return Err(serde::de::Error::custom("duplicate target digest key"));
-                }
-                if values.len() > TARGETS.len() {
-                    return Err(serde::de::Error::custom("too many target digest keys"));
-                }
-            }
-            Ok(values)
-        }
-    }
-    deserializer.deserialize_map(UniqueTargetMap)
 }
 
 impl ComponentLock {
@@ -308,97 +240,17 @@ impl ComponentLock {
             "a2a_source.release_identity.version",
             &self.a2a_source.release_identity.version,
         )?;
-        expect_literal(
-            "capsule_contract.manifest_schema",
-            COMPONENT_MANIFEST_SCHEMA,
-            &self.capsule_contract.manifest_schema,
-        )?;
-        expect_literal(
-            "capsule_contract.digest_algorithm",
-            DIGEST_ALGORITHM,
-            &self.capsule_contract.digest_algorithm,
-        )?;
-        require_target_roster("capsule_contract.targets", &self.capsule_contract.targets)?;
-        expect_literal(
-            "base_closure.acp.kind",
-            "acp_adapter",
-            &self.base_closure.acp.kind,
-        )?;
-        expect_literal(
-            "base_closure.python.kind",
-            "cpython_runtime",
-            &self.base_closure.python.kind,
-        )?;
-        expect_literal(
-            "base_closure.node.kind",
-            "node_runtime",
-            &self.base_closure.node.kind,
-        )?;
-        require_exact_version("base_closure.acp.version", &self.base_closure.acp.version)?;
-        require_exact_version(
-            "base_closure.python.version",
-            &self.base_closure.python.version,
-        )?;
-        require_exact_version("base_closure.node.version", &self.base_closure.node.version)?;
-        require_bounded_text(
-            "base_closure.acp.license",
-            &self.base_closure.acp.license,
-            1,
-            128,
-        )?;
-        require_bounded_text(
-            "base_closure.python.license",
-            &self.base_closure.python.license,
-            1,
-            128,
-        )?;
-        require_bounded_text(
-            "base_closure.node.license",
-            &self.base_closure.node.license,
-            1,
-            128,
-        )?;
-        require_bounded_text(
-            "base_closure.acp.source",
-            &self.base_closure.acp.source,
-            1,
-            4096,
-        )?;
-        if let Some(build) = &self.base_closure.python.build {
-            require_bounded_text("base_closure.python.build", build, 1, 1024)?;
-        }
-        if let Some(source) = &self.base_closure.python.source {
-            require_bounded_text("base_closure.python.source", source, 1, 4096)?;
-        }
-        if let Some(build) = &self.base_closure.node.build {
-            require_bounded_text("base_closure.node.build", build, 1, 1024)?;
-        }
-        if let Some(source) = &self.base_closure.node.source {
-            require_bounded_text("base_closure.node.source", source, 1, 4096)?;
-        }
-        require_digest("base_closure.acp.sha256", &self.base_closure.acp.sha256)?;
-        for (name, artifact) in [
-            ("python", &self.base_closure.python),
-            ("node", &self.base_closure.node),
-        ] {
-            if artifact.per_target_sha256.len() != TARGETS.len() {
-                return invalid(
-                    &format!("base_closure.{name}.per_target_sha256"),
-                    "must contain exactly the four supported targets",
-                );
-            }
-            for target in TARGETS {
-                let digest = artifact.per_target_sha256.get(&target).ok_or_else(|| {
-                    ManifestError::MissingTargetPin {
-                        field: format!("base_closure.{name}.per_target_sha256"),
-                        target,
-                    }
-                })?;
-                require_digest(
-                    &format!("base_closure.{name}.per_target_sha256.{}", target.triple()),
-                    digest,
-                )?;
-            }
+        // The recipe paths are repository-relative locations in the pinned source,
+        // not literals this verifier owns: pinning them here would make the
+        // consumer, rather than the lock, the authority over where the recipe
+        // lives. They are proven to be portable relative paths and nothing more.
+        validate_portable_path("freeze_recipe.build_entry", &self.freeze_recipe.build_entry)?;
+        validate_portable_path("freeze_recipe.spec", &self.freeze_recipe.spec)?;
+        if self.freeze_recipe.build_entry == self.freeze_recipe.spec {
+            return invalid(
+                "freeze_recipe",
+                "the build entry and the PyInstaller spec must be distinct files",
+            );
         }
         if !self.resolution_policy.floating_forbidden
             || !self.resolution_policy.latest_forbidden
@@ -412,37 +264,6 @@ impl ComponentLock {
         }
         Ok(())
     }
-
-    pub fn python_digest(&self, target: Target) -> Result<&str> {
-        target_digest(
-            "base_closure.python.per_target_sha256",
-            &self.base_closure.python,
-            target,
-        )
-    }
-
-    pub fn node_digest(&self, target: Target) -> Result<&str> {
-        target_digest(
-            "base_closure.node.per_target_sha256",
-            &self.base_closure.node,
-            target,
-        )
-    }
-}
-
-fn target_digest<'a>(
-    field: &str,
-    artifact: &'a PerTargetArtifact,
-    target: Target,
-) -> Result<&'a str> {
-    artifact
-        .per_target_sha256
-        .get(&target)
-        .map(String::as_str)
-        .ok_or_else(|| ManifestError::MissingTargetPin {
-            field: field.to_string(),
-            target,
-        })
 }
 
 fn parse_component_lock(raw: &[u8]) -> Result<ComponentLock> {
@@ -581,16 +402,25 @@ impl CapsuleManifest {
         parse_capsule(raw.as_bytes()).map(|(manifest, _)| manifest)
     }
 
-    /// Legacy runtime-boundary join used by lifecycle inspection. This proves
-    /// only capsule-to-lock compatibility; it is not a complete release-set or
-    /// activation verifier. Receipt-selected start integration must consume
-    /// [`VerifiedReleaseSet`].
+    /// Runtime-boundary join used by lifecycle inspection. This proves only
+    /// target and release identity against the lock's source pin; it is not a
+    /// complete release-set or activation verifier. Receipt-selected start
+    /// integration must consume [`VerifiedReleaseSet`].
     pub fn parse_and_verify(raw: &str, lock: &ComponentLock, expected: Target) -> Result<Self> {
         let (manifest, _) = parse_capsule(raw.as_bytes())?;
         manifest.verify_against_lock(lock, expected)?;
         Ok(manifest)
     }
 
+    /// Join the declared boundary facts to the lock's source pin.
+    ///
+    /// The lock pins a2a SOURCE — a repository, a commit, a release identity, and
+    /// the freeze recipe — so target and release identity are the whole of what a
+    /// declaration can be joined to it. The per-component closure joins (a
+    /// separately-pinned CPython, Node, and ACP adapter, each with its own version,
+    /// license, and per-target digest) retired with the base closure itself: the
+    /// interpreter now lives INSIDE the bundled runtime, and every one of its files
+    /// is digest-covered by the member manifest at composition time instead.
     pub fn verify_against_lock(&self, lock: &ComponentLock, expected: Target) -> Result<()> {
         if self.target != expected {
             return Err(ManifestError::TargetMismatch {
@@ -606,59 +436,12 @@ impl CapsuleManifest {
                     .to_string(),
             });
         }
-        let python = unique_asset(&self.assets, KIND_PYTHON)?;
-        let node = unique_asset(&self.assets, KIND_NODE)?;
-        let acp = unique_asset(&self.assets, KIND_ACP)?;
         let a2a = unique_asset(&self.assets, KIND_A2A)?;
-        let python_family = version_prefix(&lock.base_closure.python.version, 2)?;
-        let node_family = version_prefix(&lock.base_closure.node.version, 1)?;
-        expect_literal(
-            "assets[python-runtime].version",
-            &python_family,
-            &python.version,
-        )?;
-        expect_literal("assets[node-runtime].version", &node_family, &node.version)?;
-        expect_literal(
-            "assets[acp-adapter].version",
-            &lock.base_closure.acp.version,
-            &acp.version,
-        )?;
         expect_literal(
             "assets[a2a-distribution].version",
             &self.identity.version,
             &a2a.version,
-        )?;
-        expect_literal(
-            "assets[python-runtime].license",
-            &lock.base_closure.python.license,
-            &python.license,
-        )?;
-        expect_literal(
-            "assets[node-runtime].license",
-            &lock.base_closure.node.license,
-            &node.license,
-        )?;
-        expect_literal(
-            "assets[acp-adapter].license",
-            &lock.base_closure.acp.license,
-            &acp.license,
-        )?;
-        expect_digest(
-            "assets[python-runtime].digest",
-            lock.python_digest(expected)?,
-            &python.digest,
-        )?;
-        expect_digest(
-            "assets[node-runtime].digest",
-            lock.node_digest(expected)?,
-            &node.digest,
-        )?;
-        expect_digest(
-            "assets[acp-adapter].digest",
-            &lock.base_closure.acp.sha256,
-            &acp.digest,
-        )?;
-        Ok(())
+        )
     }
 }
 
@@ -923,9 +706,6 @@ struct RawReleaseSetManifest {
     dashboard: DashboardBuild,
     updater: UpdaterBuild,
     a2a_component: A2aComponentPin,
-    runtimes: Runtimes,
-    protocol: Protocol,
-    state_schema: StateSchema,
     licenses: Vec<LicenseEntry>,
     sbom: Sbom,
     #[serde(deserialize_with = "deserialize_file_digests")]
@@ -971,9 +751,24 @@ struct A2aComponentPin {
     commit: String,
     release_identity: ReleaseIdentity,
     component_lock: EvidenceFile,
-    capsule_manifest: EvidenceFile,
-    capsule_archive: ArtifactFile,
-    tree_evidence: TreeEvidenceFile,
+    runtime: BundledRuntime,
+}
+
+/// The bundled a2a runtime as the member manifest declares it: the frozen onedir
+/// directory placed beside the dashboard executable.
+///
+/// The onedir carries no manifest, archive, or evidence document of its own — its
+/// files are ordinary admitted release files, so `file_digests` already binds
+/// every byte. What is declared here is what `file_digests` alone cannot say: WHICH
+/// subtree is the runtime, WHICH file in it is the launchable entrypoint, and how
+/// many files the composer placed there, so a truncated or empty onedir is a
+/// verification failure rather than a smaller inventory that still verifies.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BundledRuntime {
+    root: String,
+    entrypoint: String,
+    file_count: usize,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -981,52 +776,6 @@ struct A2aComponentPin {
 struct EvidenceFile {
     path: String,
     digest: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ArtifactFile {
-    path: String,
-    size: u64,
-    digest: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct TreeEvidenceFile {
-    path: String,
-    size: u64,
-    digest: String,
-    tree_digest: String,
-    file_count: usize,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Runtimes {
-    cpython: PinnedRuntime,
-    node: PinnedRuntime,
-    acp: PinnedRuntime,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct PinnedRuntime {
-    version: String,
-    license: String,
-    digest: String,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct Protocol {
-    gateway_api_version_range: RangeBounds,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct StateSchema {
-    migration_range: RangeBounds,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1146,63 +895,7 @@ fn validate_release(manifest: &RawReleaseSetManifest) -> Result<()> {
         COMPONENT_LOCK_PATH,
         &manifest.a2a_component.component_lock.path,
     )?;
-    validate_evidence(
-        "a2a_component.capsule_manifest",
-        &manifest.a2a_component.capsule_manifest,
-    )?;
-    validate_artifact_file(
-        "a2a_component.capsule_archive",
-        &manifest.a2a_component.capsule_archive,
-    )?;
-    validate_artifact(
-        "a2a_component.tree_evidence",
-        &manifest.a2a_component.tree_evidence.path,
-        manifest.a2a_component.tree_evidence.size,
-        &manifest.a2a_component.tree_evidence.digest,
-    )?;
-    require_digest(
-        "a2a_component.tree_evidence.tree_digest",
-        &manifest.a2a_component.tree_evidence.tree_digest,
-    )?;
-    if manifest.a2a_component.tree_evidence.file_count == 0
-        || manifest.a2a_component.tree_evidence.file_count > MAX_TREE_FILES
-    {
-        return invalid(
-            "a2a_component.tree_evidence.file_count",
-            "must be 1..=80000",
-        );
-    }
-    for (name, runtime) in [
-        ("cpython", &manifest.runtimes.cpython),
-        ("node", &manifest.runtimes.node),
-        ("acp", &manifest.runtimes.acp),
-    ] {
-        require_exact_version(&format!("runtimes.{name}.version"), &runtime.version)?;
-        require_bounded_text(
-            &format!("runtimes.{name}.license"),
-            &runtime.license,
-            1,
-            128,
-        )?;
-        require_digest(&format!("runtimes.{name}.digest"), &runtime.digest)?;
-    }
-    require_gateway_range(
-        "protocol.gateway_api_version_range",
-        &manifest.protocol.gateway_api_version_range,
-    )?;
-    require_migration(
-        "state_schema.migration_range.minimum",
-        &manifest.state_schema.migration_range.minimum,
-    )?;
-    require_migration(
-        "state_schema.migration_range.maximum",
-        &manifest.state_schema.migration_range.maximum,
-    )?;
-    expect_literal(
-        "state_schema.migration_range.maximum",
-        "0008",
-        &manifest.state_schema.migration_range.maximum,
-    )?;
+    validate_bundled_runtime("a2a_component.runtime", &manifest.a2a_component.runtime)?;
     if manifest.licenses.is_empty() || manifest.licenses.len() > 4096 {
         return invalid("licenses", "must contain 1..=4096 entries");
     }
@@ -1257,9 +950,6 @@ fn validate_release(manifest: &RawReleaseSetManifest) -> Result<()> {
         manifest.dashboard.path.as_str(),
         manifest.updater.path.as_str(),
         manifest.a2a_component.component_lock.path.as_str(),
-        manifest.a2a_component.capsule_manifest.path.as_str(),
-        manifest.a2a_component.capsule_archive.path.as_str(),
-        manifest.a2a_component.tree_evidence.path.as_str(),
         manifest.sbom.path.as_str(),
     ]);
     all_references.extend(
@@ -1283,8 +973,25 @@ fn validate_evidence(field: &str, evidence: &EvidenceFile) -> Result<()> {
     require_digest(&format!("{field}.digest"), &evidence.digest)
 }
 
-fn validate_artifact_file(field: &str, artifact: &ArtifactFile) -> Result<()> {
-    validate_artifact(field, &artifact.path, artifact.size, &artifact.digest)
+/// Structurally validate the declared bundled-runtime subtree: a portable root
+/// directory, an entrypoint that is a portable path INSIDE that root (never a
+/// sibling and never the root itself), and a placed-file count within the tree
+/// ceiling. The join to the installed bytes is the verifier's job; this is the
+/// shape check that makes that join well-formed.
+fn validate_bundled_runtime(field: &str, runtime: &BundledRuntime) -> Result<()> {
+    validate_portable_path(&format!("{field}.root"), &runtime.root)?;
+    validate_portable_path(&format!("{field}.entrypoint"), &runtime.entrypoint)?;
+    let prefix = format!("{}/", runtime.root);
+    if !runtime.entrypoint.starts_with(&prefix) || runtime.entrypoint.len() == prefix.len() {
+        return invalid(
+            &format!("{field}.entrypoint"),
+            "must name a file inside the bundled-runtime root",
+        );
+    }
+    if runtime.file_count == 0 || runtime.file_count > MAX_TREE_FILES {
+        return invalid(&format!("{field}.file_count"), "must be 1..=80000");
+    }
+    Ok(())
 }
 
 fn validate_artifact(field: &str, path: &str, size: u64, digest: &str) -> Result<()> {
@@ -1306,50 +1013,7 @@ fn verify_release_lock_joins(manifest: &RawReleaseSetManifest, lock: &ComponentL
             detail: "release member A2A identity differs from the component lock".to_string(),
         });
     }
-    for (name, runtime, locked) in [
-        (
-            "cpython",
-            &manifest.runtimes.cpython,
-            &lock.base_closure.python,
-        ),
-        ("node", &manifest.runtimes.node, &lock.base_closure.node),
-    ] {
-        expect_literal(
-            &format!("runtimes.{name}.version"),
-            &locked.version,
-            &runtime.version,
-        )?;
-        expect_literal(
-            &format!("runtimes.{name}.license"),
-            &locked.license,
-            &runtime.license,
-        )?;
-        let expected = if name == "cpython" {
-            lock.python_digest(manifest.target)?
-        } else {
-            lock.node_digest(manifest.target)?
-        };
-        expect_digest(
-            &format!("runtimes.{name}.digest"),
-            expected,
-            &runtime.digest,
-        )?;
-    }
-    expect_literal(
-        "runtimes.acp.version",
-        &lock.base_closure.acp.version,
-        &manifest.runtimes.acp.version,
-    )?;
-    expect_literal(
-        "runtimes.acp.license",
-        &lock.base_closure.acp.license,
-        &manifest.runtimes.acp.license,
-    )?;
-    expect_digest(
-        "runtimes.acp.digest",
-        &lock.base_closure.acp.sha256,
-        &manifest.runtimes.acp.digest,
-    )
+    Ok(())
 }
 
 /// Opaque, independently established release authority.
@@ -1409,7 +1073,6 @@ pub(crate) struct VerifiedReleaseSet<'generation, 'product, 'lock> {
     member_manifest_path: String,
     final_snapshot: GenerationSnapshot,
     capsule_root: String,
-    capsule_manifest: CapsuleManifest,
 }
 
 impl std::fmt::Debug for VerifiedReleaseSet<'_, '_, '_> {
@@ -1442,14 +1105,12 @@ use verification::{
     require_exact_version, require_gateway_range, require_identity, require_input_bound,
     require_migration, require_numeric_version, require_target_roster, require_unchanged_snapshot,
     scan_generation, scan_generation_locating_member, verify_artifact_joins,
-    verify_complete_inventory, verify_installed_exact_bytes, verify_release_manifest_bytes,
-    verify_tree_evidence, version_prefix,
+    verify_bundled_runtime, verify_complete_inventory, verify_installed_exact_bytes,
+    verify_release_manifest_bytes,
 };
 // The archive materializer applies the same portable-path grammar and casefold
 // key to archive entry names that the generation verifier applies to installed
 // objects, so the two boundaries can never disagree.
-#[cfg(test)]
-use verification::{ValidatedTreeRecord, tree_digest};
 pub(crate) use verification::{
     semantic_path_key, validate_portable_path, validate_portable_segment,
 };

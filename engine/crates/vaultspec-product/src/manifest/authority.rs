@@ -323,41 +323,15 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
         )?;
 
         verify_artifact_joins(&manifest, observed)?;
-        let capsule_bytes = read_installed_bounded(
-            generation.path(),
-            &manifest.a2a_component.capsule_manifest.path,
-            MAX_CAPSULE_MANIFEST_BYTES,
-            observed_file(observed, &manifest.a2a_component.capsule_manifest.path)?,
-        )?;
-        let (capsule, _) = parse_capsule(&capsule_bytes)?;
-        capsule.verify_against_lock(&lock, authority.expected_target)?;
+        // The trusted root the authority was established with must be the root the
+        // member manifest declares: the bundled runtime a consumer later launches
+        // from is then provably the subtree this verification covered.
         expect_literal(
-            "protocol gateway minimum",
-            &capsule.compatibility.api_versions.minimum,
-            &manifest.protocol.gateway_api_version_range.minimum,
-        )?;
-        expect_literal(
-            "protocol gateway maximum",
-            &capsule.compatibility.api_versions.maximum,
-            &manifest.protocol.gateway_api_version_range.maximum,
-        )?;
-        expect_literal(
-            "state migration minimum",
-            &capsule.compatibility.migration_range.base,
-            &manifest.state_schema.migration_range.minimum,
-        )?;
-        expect_literal(
-            "state migration maximum",
-            &capsule.compatibility.migration_range.head,
-            &manifest.state_schema.migration_range.maximum,
-        )?;
-        verify_tree_evidence(
-            generation.path(),
+            "a2a_component.runtime.root",
             &authority.trusted_capsule_root,
-            &manifest,
-            &capsule,
-            observed,
+            &manifest.a2a_component.runtime.root,
         )?;
+        verify_bundled_runtime(&manifest, observed)?;
 
         let final_snapshot = scan_generation(
             generation.path(),
@@ -398,7 +372,6 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
             member_manifest_path,
             final_snapshot,
             capsule_root: authority.trusted_capsule_root.clone(),
-            capsule_manifest: capsule,
         })
     }
 
@@ -543,10 +516,5 @@ impl<'generation, 'product, 'lock> VerifiedReleaseSet<'generation, 'product, 'lo
     #[must_use]
     pub fn capsule_root(&self) -> &str {
         &self.capsule_root
-    }
-
-    #[must_use]
-    pub fn capsule_manifest(&self) -> &CapsuleManifest {
-        &self.capsule_manifest
     }
 }

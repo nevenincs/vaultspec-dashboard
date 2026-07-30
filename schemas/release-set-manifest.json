@@ -22,9 +22,6 @@
     "dashboard",
     "updater",
     "a2a_component",
-    "runtimes",
-    "protocol",
-    "state_schema",
     "licenses",
     "sbom",
     "file_digests"
@@ -35,15 +32,24 @@
       "type": "string",
       "const": "2.0"
     },
-    "target": { "$ref": "#/$defs/TargetTriple" },
-    "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
+    "target": {
+      "$ref": "#/$defs/TargetTriple"
+    },
+    "digest_algorithm": {
+      "$ref": "#/$defs/DigestAlgorithm"
+    },
     "cohort": {
       "description": "The immutable member-visible identity shared by all four target manifests. Consumers verify four manifests with one common id and the closed target roster below. After all four raw member digests exist, S166 emits the external $defs/CohortDescriptor; every member cohort.id must equal descriptor.id. SHA-256 of the descriptor's RFC 8785 JCS UTF-8 bytes is the receipt-bound cohort digest and is never embedded in a member.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "targets"],
+      "required": [
+        "id",
+        "targets"
+      ],
       "properties": {
-        "id": { "$ref": "#/$defs/IdentityToken" },
+        "id": {
+          "$ref": "#/$defs/IdentityToken"
+        },
         "targets": {
           "description": "The complete cohort roster in canonical TargetTriple enum order.",
           "$ref": "#/$defs/TargetRoster"
@@ -54,9 +60,14 @@
       "description": "Identity of this member manifest in the installed tree. Its bytes cannot digest themselves: this is the sole file excluded from file_digests and is instead bound by the independently supplied member-manifest raw-byte digest in the external cohort or candidate authority and later the active receipt.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["path", "binding_mode"],
+      "required": [
+        "path",
+        "binding_mode"
+      ],
       "properties": {
-        "path": { "$ref": "#/$defs/PortableRelativePath" },
+        "path": {
+          "$ref": "#/$defs/PortableRelativePath"
+        },
         "binding_mode": {
           "type": "string",
           "const": "external-cohort-and-receipt"
@@ -67,120 +78,129 @@
       "description": "The principal dashboard executable installed by this target release set.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "commit", "path", "size", "digest"],
+      "required": [
+        "version",
+        "commit",
+        "path",
+        "size",
+        "digest"
+      ],
       "properties": {
-        "version": { "$ref": "#/$defs/ExactVersion" },
-        "commit": { "$ref": "#/$defs/GitCommit" },
-        "path": { "$ref": "#/$defs/PortableRelativePath" },
-        "size": { "$ref": "#/$defs/PositiveByteCount" },
-        "digest": { "$ref": "#/$defs/Sha256" }
+        "version": {
+          "$ref": "#/$defs/ExactVersion"
+        },
+        "commit": {
+          "$ref": "#/$defs/GitCommit"
+        },
+        "path": {
+          "$ref": "#/$defs/PortableRelativePath"
+        },
+        "size": {
+          "$ref": "#/$defs/PositiveByteCount"
+        },
+        "digest": {
+          "$ref": "#/$defs/Sha256"
+        }
       }
     },
     "updater": {
       "description": "The product-owned external updater copied for transactional activation and rollback.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["version", "path", "size", "digest"],
+      "required": [
+        "version",
+        "path",
+        "size",
+        "digest"
+      ],
       "properties": {
-        "version": { "$ref": "#/$defs/ExactVersion" },
-        "path": { "$ref": "#/$defs/PortableRelativePath" },
-        "size": { "$ref": "#/$defs/PositiveByteCount" },
-        "digest": { "$ref": "#/$defs/Sha256" }
+        "version": {
+          "$ref": "#/$defs/ExactVersion"
+        },
+        "path": {
+          "$ref": "#/$defs/PortableRelativePath"
+        },
+        "size": {
+          "$ref": "#/$defs/PositiveByteCount"
+        },
+        "digest": {
+          "$ref": "#/$defs/Sha256"
+        }
       }
     },
     "a2a_component": {
-      "description": "The pinned A2A build plus independently verifiable evidence for its component lock, emitted manifest, target capsule archive, and installed tree.",
+      "description": "The pinned A2A source build plus independently verifiable evidence for its component lock and for the bundled runtime placed in this tree.",
       "type": "object",
       "additionalProperties": false,
       "required": [
         "commit",
         "release_identity",
         "component_lock",
-        "capsule_manifest",
-        "capsule_archive",
-        "tree_evidence"
+        "runtime"
       ],
       "properties": {
-        "commit": { "$ref": "#/$defs/GitCommit" },
+        "commit": {
+          "$ref": "#/$defs/GitCommit"
+        },
         "release_identity": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["name", "version"],
+          "required": [
+            "name",
+            "version"
+          ],
           "properties": {
-            "name": { "$ref": "#/$defs/IdentityToken" },
-            "version": { "$ref": "#/$defs/ExactVersion" }
+            "name": {
+              "$ref": "#/$defs/IdentityToken"
+            },
+            "version": {
+              "$ref": "#/$defs/ExactVersion"
+            }
           }
         },
         "component_lock": {
           "description": "Identity of the dashboard-owned component lock. The digest is a join claim only; authorization comes from independently trusted lock bytes supplied by the installed product or release verifier.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["path", "digest"],
+          "required": [
+            "path",
+            "digest"
+          ],
           "properties": {
-            "path": { "const": "packaging/a2a-component.lock.json" },
-            "digest": { "$ref": "#/$defs/Sha256" }
+            "path": {
+              "const": "packaging/a2a-component.lock.json"
+            },
+            "digest": {
+              "$ref": "#/$defs/Sha256"
+            }
           }
         },
-        "capsule_manifest": {
-          "description": "The A2A-emitted component manifest instance shipped with this target capsule.",
-          "$ref": "#/$defs/EvidenceFile"
-        },
-        "capsule_archive": {
-          "description": "The immutable target-specific A2A capsule archive distributed in this release set.",
-          "$ref": "#/$defs/ArtifactFile"
-        },
-        "tree_evidence": {
-          "description": "Canonical installed-tree inventory plus the digest derived from its ordered path, mode, size, and content identities.",
+        "runtime": {
+          "description": "The frozen PyInstaller onedir the release pipeline built from the pinned source and placed beside the dashboard executable. Its files are ordinary admitted release files, so file_digests already binds every byte; this block declares which subtree is the runtime, which file in it launches, and how many files were placed, so a truncated or empty onedir cannot pass as a smaller tree that still verifies.",
           "type": "object",
           "additionalProperties": false,
-          "required": ["path", "size", "digest", "tree_digest", "file_count"],
+          "required": [
+            "root",
+            "entrypoint",
+            "file_count"
+          ],
           "properties": {
-            "path": { "$ref": "#/$defs/PortableRelativePath" },
-            "size": { "$ref": "#/$defs/PositiveByteCount" },
-            "digest": {
-              "description": "Digest of the canonical inventory document bytes.",
-              "$ref": "#/$defs/Sha256"
+            "root": {
+              "description": "App-tree-relative directory the onedir was placed under.",
+              "$ref": "#/$defs/PortableRelativePath"
             },
-            "tree_digest": {
-              "description": "Digest of the canonical installed-tree records themselves.",
-              "$ref": "#/$defs/Sha256"
+            "entrypoint": {
+              "description": "App-tree-relative path of the launchable frozen binary; must name a file inside root.",
+              "$ref": "#/$defs/PortableRelativePath"
             },
             "file_count": {
+              "description": "Number of regular files placed under root.",
               "type": "integer",
               "minimum": 1,
               "maximum": 80000
             }
           }
         }
-      }
-    },
-    "runtimes": {
-      "description": "The base-closure runtimes, each pinned to an exact version and a digest from the independently trusted component lock.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["cpython", "node", "acp"],
-      "properties": {
-        "cpython": { "$ref": "#/$defs/PinnedRuntime" },
-        "node": { "$ref": "#/$defs/PinnedRuntime" },
-        "acp": { "$ref": "#/$defs/PinnedRuntime" }
-      }
-    },
-    "protocol": {
-      "description": "The served gateway API version range this release set answers.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["gateway_api_version_range"],
-      "properties": {
-        "gateway_api_version_range": { "$ref": "#/$defs/GatewayVersionRange" }
-      }
-    },
-    "state_schema": {
-      "description": "The packaged migration range for every mutable schema-bearing store.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["migration_range"],
-      "properties": {
-        "migration_range": { "$ref": "#/$defs/MigrationVersionRange" }
       }
     },
     "licenses": {
@@ -192,12 +212,27 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["component", "spdx", "path", "digest"],
+        "required": [
+          "component",
+          "spdx",
+          "path",
+          "digest"
+        ],
         "properties": {
-          "component": { "$ref": "#/$defs/IdentityToken" },
-          "spdx": { "type": "string", "minLength": 1, "maxLength": 128 },
-          "path": { "$ref": "#/$defs/PortableRelativePath" },
-          "digest": { "$ref": "#/$defs/Sha256" }
+          "component": {
+            "$ref": "#/$defs/IdentityToken"
+          },
+          "spdx": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "path": {
+            "$ref": "#/$defs/PortableRelativePath"
+          },
+          "digest": {
+            "$ref": "#/$defs/Sha256"
+          }
         }
       }
     },
@@ -205,12 +240,29 @@
       "description": "The complete software bill of materials installed with this release set. Its path and digest must join to file_digests during complete verification.",
       "type": "object",
       "additionalProperties": false,
-      "required": ["format", "path", "size", "digest"],
+      "required": [
+        "format",
+        "path",
+        "size",
+        "digest"
+      ],
       "properties": {
-        "format": { "type": "string", "enum": ["spdx", "cyclonedx"] },
-        "path": { "$ref": "#/$defs/PortableRelativePath" },
-        "size": { "$ref": "#/$defs/PositiveByteCount" },
-        "digest": { "$ref": "#/$defs/Sha256" }
+        "format": {
+          "type": "string",
+          "enum": [
+            "spdx",
+            "cyclonedx"
+          ]
+        },
+        "path": {
+          "$ref": "#/$defs/PortableRelativePath"
+        },
+        "size": {
+          "$ref": "#/$defs/PositiveByteCount"
+        },
+        "digest": {
+          "$ref": "#/$defs/Sha256"
+        }
       }
     },
     "file_digests": {
@@ -218,8 +270,12 @@
       "type": "object",
       "minProperties": 1,
       "maxProperties": 100000,
-      "propertyNames": { "$ref": "#/$defs/PortableRelativePath" },
-      "additionalProperties": { "$ref": "#/$defs/Sha256" }
+      "propertyNames": {
+        "$ref": "#/$defs/PortableRelativePath"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/Sha256"
+      }
     }
   },
   "$defs": {
@@ -240,67 +296,20 @@
       "maxItems": 4,
       "uniqueItems": true,
       "prefixItems": [
-        { "const": "aarch64-apple-darwin" },
-        { "const": "aarch64-unknown-linux-gnu" },
-        { "const": "x86_64-unknown-linux-gnu" },
-        { "const": "x86_64-pc-windows-msvc" }
+        {
+          "const": "aarch64-apple-darwin"
+        },
+        {
+          "const": "aarch64-unknown-linux-gnu"
+        },
+        {
+          "const": "x86_64-unknown-linux-gnu"
+        },
+        {
+          "const": "x86_64-pc-windows-msvc"
+        }
       ],
       "items": false
-    },
-    "CohortDescriptor": {
-      "description": "The closed external four-member cohort contract emitted by W04.P08.S166 after every member-manifest raw-byte digest exists. Validate this object first. Its cohort-digest preimage is exactly its RFC 8785 JSON Canonicalization Scheme serialization encoded as UTF-8, with no byte-order mark and no trailing bytes; SHA-256 of exactly that JCS byte sequence is the cohort digest. The descriptor carries no digest of itself.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["schema_version", "id", "digest_algorithm", "members"],
-      "properties": {
-        "schema_version": { "type": "string", "const": "1.0" },
-        "id": { "$ref": "#/$defs/IdentityToken" },
-        "digest_algorithm": { "$ref": "#/$defs/DigestAlgorithm" },
-        "members": {
-          "type": "array",
-          "minItems": 4,
-          "maxItems": 4,
-          "prefixItems": [
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["target", "member_manifest_digest"],
-              "properties": {
-                "target": { "const": "aarch64-apple-darwin" },
-                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["target", "member_manifest_digest"],
-              "properties": {
-                "target": { "const": "aarch64-unknown-linux-gnu" },
-                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["target", "member_manifest_digest"],
-              "properties": {
-                "target": { "const": "x86_64-unknown-linux-gnu" },
-                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
-              }
-            },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["target", "member_manifest_digest"],
-              "properties": {
-                "target": { "const": "x86_64-pc-windows-msvc" },
-                "member_manifest_digest": { "$ref": "#/$defs/Sha256" }
-              }
-            }
-          ],
-          "items": false
-        }
-      }
     },
     "DigestAlgorithm": {
       "description": "The algorithm governing every digest in this manifest.",
@@ -336,72 +345,15 @@
       "minLength": 1,
       "maxLength": 4096,
       "pattern": "^[A-Za-z0-9@_+.-]{1,128}(?:/[A-Za-z0-9@_+.-]{1,128}){0,31}$",
-      "not": { "pattern": "(^|/)(\\.{1,2}|[^/]*\\.)(/|$)" }
+      "not": {
+        "pattern": "(^|/)(\\.{1,2}|[^/]*\\.)(/|$)"
+      }
     },
     "PositiveByteCount": {
       "description": "A positive exact byte count bounded to the maximum expanded release-set evidence size.",
       "type": "integer",
       "minimum": 1,
       "maximum": 8589934592
-    },
-    "EvidenceFile": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "digest"],
-      "properties": {
-        "path": { "$ref": "#/$defs/PortableRelativePath" },
-        "digest": { "$ref": "#/$defs/Sha256" }
-      }
-    },
-    "ArtifactFile": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["path", "size", "digest"],
-      "properties": {
-        "path": { "$ref": "#/$defs/PortableRelativePath" },
-        "size": { "$ref": "#/$defs/PositiveByteCount" },
-        "digest": { "$ref": "#/$defs/Sha256" }
-      }
-    },
-    "PinnedRuntime": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["version", "license", "digest"],
-      "properties": {
-        "version": { "$ref": "#/$defs/ExactVersion" },
-        "license": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "digest": { "$ref": "#/$defs/Sha256" }
-      }
-    },
-    "CanonicalGatewayVersion": {
-      "description": "A gateway protocol version emitted by the current A2A producer contract.",
-      "type": "string",
-      "enum": ["v1"]
-    },
-    "GatewayVersionRange": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["minimum", "maximum"],
-      "properties": {
-        "minimum": { "$ref": "#/$defs/CanonicalGatewayVersion" },
-        "maximum": { "$ref": "#/$defs/CanonicalGatewayVersion" }
-      }
-    },
-    "MigrationIdentifier": {
-      "description": "A bounded exact migration revision identifier, never the floating Alembic selectors head, heads, base, latest, or x.",
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 64,
-      "pattern": "^(?!(?:[Ll][Aa][Tt][Ee][Ss][Tt]|[Hh][Ee][Aa][Dd][Ss]?|[Bb][Aa][Ss][Ee]|[Xx])$)[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
-    },
-    "MigrationVersionRange": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["minimum", "maximum"],
-      "properties": {
-        "minimum": { "$ref": "#/$defs/MigrationIdentifier" },
-        "maximum": { "$ref": "#/$defs/MigrationIdentifier" }
-      }
     }
   }
 }

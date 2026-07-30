@@ -10,11 +10,12 @@
 
 use std::collections::BTreeMap;
 
-use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
+use vaultspec_product::manifest::{ComponentLock, Target};
 use vaultspec_product::product_build::{
-    A2aComponentEvidence, ComposedArtifact, ComposedMember, DashboardArtifact, EvidenceArtifact,
-    LicenseArtifact, ProductBuildError, SbomArtifact, TreeEvidenceArtifact, emit_member_manifest,
-    file_digests_from_scan, scan_composed_tree, verify_member_covers_tree,
+    A2aComponentEvidence, BundledRuntimeEvidence, ComposedArtifact, ComposedMember,
+    DashboardArtifact, EvidenceArtifact, LicenseArtifact, ProductBuildError, RuntimeSource,
+    SbomArtifact, emit_member_manifest, file_digests_from_scan, scan_composed_tree,
+    verify_member_covers_tree,
 };
 
 const LOCK_JSON: &str = include_str!("../../../../packaging/a2a-component.lock.json");
@@ -25,45 +26,6 @@ fn lock() -> ComponentLock {
     ComponentLock::parse(LOCK_JSON).unwrap()
 }
 
-/// A capsule manifest whose pins agree with the committed lock for the Windows
-/// target — the source of the protocol and state-schema ranges the emitter binds.
-fn capsule(lock: &ComponentLock) -> CapsuleManifest {
-    let python = lock.python_digest(TARGET).unwrap();
-    let node = lock.node_digest(TARGET).unwrap();
-    let acp = &lock.base_closure.acp.sha256;
-    let a2a_version = &lock.a2a_source.release_identity.version;
-    let raw = serde_json::json!({
-        "contract_version": "2.0",
-        "identity": { "name": lock.a2a_source.release_identity.name, "version": a2a_version },
-        "target": TRIPLE,
-        "compatibility": {
-            "api_versions": { "minimum": "v1", "maximum": "v1" },
-            "migration_range": { "base": "0001", "head": "0008" }
-        },
-        "consistency_group": {
-            "stores": [
-                { "kind": "primary-database", "derivable": false, "schema_authority": "alembic-migration-range", "schema_version": "0008" },
-                { "kind": "checkpoint-database", "derivable": false, "schema_authority": "checkpointer-schema", "schema_version": "1.0.0" }
-            ]
-        },
-        "entrypoints": {
-            "gateway": { "kind": "gateway", "console_script": "vaultspec-a2a", "reference": "vaultspec_a2a.cli:main", "relative_command": ["bin", "vaultspec-a2a"] },
-            "standalone_mcp": { "kind": "standalone-mcp", "console_script": "vaultspec-a2a-mcp", "reference": "vaultspec_a2a.mcp:main", "relative_command": ["bin", "vaultspec-a2a-mcp"] }
-        },
-        "digest_algorithm": "sha256",
-        "assets": [
-            { "kind": "python-runtime", "version": "3.13", "license": lock.base_closure.python.license, "digest": python },
-            { "kind": "a2a-distribution", "version": a2a_version, "license": "MIT", "digest": "c".repeat(64) },
-            { "kind": "node-runtime", "version": "22", "license": lock.base_closure.node.license, "digest": node },
-            { "kind": "acp-adapter", "version": lock.base_closure.acp.version, "license": lock.base_closure.acp.license, "digest": acp }
-        ],
-        "dependency_lock": { "uv_lock_digest": "d".repeat(64), "package_lock_digest": "e".repeat(64) }
-    });
-    CapsuleManifest::parse_and_verify(&serde_json::to_string(&raw).unwrap(), lock, TARGET).unwrap()
-}
-
-/// A composed member whose facts agree with the committed lock for Windows — the
-/// same pin set the manifest verifier accepts.
 fn composed_member() -> ComposedMember {
     ComposedMember {
         target: TARGET,
@@ -95,22 +57,9 @@ fn composed_member() -> ComposedMember {
                 path: "packaging/a2a-component.lock.json".to_string(),
                 digest: "d".repeat(64),
             },
-            capsule_manifest: EvidenceArtifact {
-                path: "a2a/component-manifest.json".to_string(),
-                digest: "e".repeat(64),
-            },
-            capsule_archive: ComposedArtifact {
-                path: "a2a/capsule.zip".to_string(),
-                size: 20,
-                digest: "f".repeat(64),
-            },
-            tree_evidence: TreeEvidenceArtifact {
-                artifact: ComposedArtifact {
-                    path: "a2a/tree.json".to_string(),
-                    size: 24,
-                    digest: "1".repeat(64),
-                },
-                tree_digest: "2".repeat(64),
+            runtime: BundledRuntimeEvidence {
+                root: "a2a".to_string(),
+                entrypoint: "a2a/vaultspec-a2a.exe".to_string(),
                 file_count: 3,
             },
         },
@@ -135,42 +84,34 @@ fn composed_member() -> ComposedMember {
 #[test]
 fn a_lock_consistent_member_emits_and_self_verifies() {
     let lock = lock();
-    let capsule = capsule(&lock);
-    let raw = emit_member_manifest(&composed_member(), &lock, &capsule)
+    let raw = emit_member_manifest(&composed_member(), &lock)
         .expect("a lock-consistent member must emit and self-verify");
     // The emitted bytes are the schema-2.0 member manifest, already proven through
     // the production verifier inside emit; confirm it is the intended shape.
     let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
     assert_eq!(value["schema_version"], "2.0");
     assert_eq!(value["target"], TRIPLE);
+    assert_eq!(value["a2a_component"]["runtime"]["root"], "a2a");
     assert_eq!(
-        value["runtimes"]["cpython"]["digest"],
-        lock.python_digest(TARGET).unwrap()
+        value["a2a_component"]["runtime"]["entrypoint"],
+        "a2a/vaultspec-a2a.exe"
     );
-    assert_eq!(
-        value["protocol"]["gateway_api_version_range"]["maximum"],
-        "v1"
-    );
-    assert_eq!(value["state_schema"]["migration_range"]["maximum"], "0008");
+    assert_eq!(value["a2a_component"]["runtime"]["file_count"], 3);
 }
 
 #[test]
-fn the_emitter_derives_runtime_pins_from_the_lock_not_the_caller() {
-    // The ComposedMember carries no runtime digests; the emitter binds them from
-    // the trusted lock. A member cannot smuggle a divergent runtime pin.
+fn the_emitter_derives_the_source_pin_from_the_lock_not_the_caller() {
+    // The ComposedMember carries no a2a commit or release identity; the emitter
+    // binds them from the trusted lock, so a member cannot smuggle a divergent
+    // source pin past a consumer that trusts the same lock.
     let lock = lock();
-    let capsule = capsule(&lock);
-    let raw = emit_member_manifest(&composed_member(), &lock, &capsule).unwrap();
+    let raw = emit_member_manifest(&composed_member(), &lock).unwrap();
     let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
-    assert_eq!(
-        value["runtimes"]["node"]["digest"],
-        lock.node_digest(TARGET).unwrap()
-    );
-    assert_eq!(
-        value["runtimes"]["acp"]["digest"],
-        lock.base_closure.acp.sha256
-    );
     assert_eq!(value["a2a_component"]["commit"], lock.a2a_source.commit);
+    assert_eq!(
+        value["a2a_component"]["release_identity"]["version"],
+        lock.a2a_source.release_identity.version
+    );
 }
 
 #[test]
@@ -180,10 +121,9 @@ fn an_incomplete_cohort_roster_fails_self_verification() {
     // never ship. The roster is a caller-supplied fact, so the verifier is the
     // authority that catches a skewed one.
     let lock = lock();
-    let capsule = capsule(&lock);
     let mut member = composed_member();
     member.cohort_targets.pop(); // three targets, not four
-    let refused = emit_member_manifest(&member, &lock, &capsule);
+    let refused = emit_member_manifest(&member, &lock);
     assert!(
         matches!(refused, Err(ProductBuildError::SelfVerify(_))),
         "an incomplete cohort roster must fail the emitter's self-verification, got {refused:?}"
@@ -337,12 +277,70 @@ fn source(
     }
 }
 
+/// Write a onedir shaped like a real PyInstaller freeze: the launchable binary at
+/// its root plus a nested `_internal` tree, so placement is exercised against a
+/// nested directory rather than one flat folder.
+fn write_onedir(dir: &std::path::Path) -> RuntimeSource {
+    let root = dir.join("onedir");
+    std::fs::create_dir_all(root.join("_internal")).unwrap();
+    std::fs::write(root.join("vaultspec-a2a.exe"), b"frozen-a2a-binary").unwrap();
+    std::fs::write(root.join("_internal/base_library.zip"), b"stdlib-bytes").unwrap();
+    std::fs::write(root.join("_internal/python313.dll"), b"interpreter").unwrap();
+    RuntimeSource {
+        source_dir: root,
+        dest_relative: "a2a".to_string(),
+        entrypoint_relative: "vaultspec-a2a.exe".to_string(),
+    }
+}
+
+/// The smallest complete source set: real dashboard, updater, lock, and SBOM
+/// payloads around the supplied bundled runtime.
+fn minimal_sources(
+    src: &std::path::Path,
+    a2a_runtime: RuntimeSource,
+) -> vaultspec_product::product_build::BuildSources {
+    vaultspec_product::product_build::BuildSources {
+        target: TARGET,
+        cohort_id: "release-2026.07.19".to_string(),
+        cohort_targets: vec![
+            Target::Aarch64AppleDarwin,
+            Target::Aarch64UnknownLinuxGnu,
+            Target::X86_64UnknownLinuxGnu,
+            Target::X86_64PcWindowsMsvc,
+        ],
+        release_manifest_path: "release.json".to_string(),
+        dashboard_version: "0.1.4".to_string(),
+        dashboard_commit: "a".repeat(40),
+        dashboard: source(
+            write_source(src, "dashboard.exe", b"dashboard-bytes"),
+            "bin/dashboard.exe",
+        ),
+        updater_version: "0.1.4".to_string(),
+        updater: source(
+            write_source(src, "updater.exe", b"updater-bytes"),
+            "bin/updater.exe",
+        ),
+        a2a_runtime,
+        component_lock: source(
+            write_source(src, "lock.json", LOCK_JSON.as_bytes()),
+            "packaging/a2a-component.lock.json",
+        ),
+        licenses: vec![vaultspec_product::product_build::LicenseSource {
+            source: write_source(src, "a2a.txt", b"MIT license text"),
+            dest_relative: "licenses/a2a.txt".to_string(),
+            component: "vaultspec-a2a".to_string(),
+            spdx: "MIT".to_string(),
+        }],
+        sbom: source(write_source(src, "sbom.json", b"{sbom}"), "sbom.cdx.json"),
+        sbom_format: "cyclonedx".to_string(),
+    }
+}
+
 #[test]
 fn compose_product_tree_places_scans_emits_and_covers() {
     use vaultspec_product::product_build::{BuildSources, LicenseSource, compose_product_tree};
 
     let lock = lock();
-    let capsule = capsule(&lock);
     let src = tempfile::tempdir().unwrap();
     let out = tempfile::tempdir().unwrap();
     let generation_root = out.path().join("generations").join("0001");
@@ -368,20 +366,7 @@ fn compose_product_tree_places_scans_emits_and_covers() {
             write_source(src.path(), "updater.exe", b"updater-bytes"),
             "bin/updater.exe",
         ),
-        capsule_archive: source(
-            write_source(src.path(), "capsule.zip", b"PK-zip-bytes"),
-            "a2a/capsule.zip",
-        ),
-        capsule_manifest: source(
-            write_source(src.path(), "cm.json", b"{capsule-manifest}"),
-            "a2a/component-manifest.json",
-        ),
-        tree_evidence_doc: source(
-            write_source(src.path(), "tree.json", b"{tree-evidence}"),
-            "a2a/tree.json",
-        ),
-        tree_digest: "2".repeat(64),
-        tree_file_count: 3,
+        a2a_runtime: write_onedir(src.path()),
         component_lock: source(
             write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
             "packaging/a2a-component.lock.json",
@@ -399,7 +384,7 @@ fn compose_product_tree_places_scans_emits_and_covers() {
         sbom_format: "cyclonedx".to_string(),
     };
 
-    let raw = compose_product_tree(&generation_root, &sources, &lock, &capsule)
+    let raw = compose_product_tree(&generation_root, &sources, &lock)
         .expect("a complete source set must compose, emit, self-verify, and cover the tree");
 
     // The manifest was written into the tree and describes the real placed files.
@@ -414,7 +399,8 @@ fn compose_product_tree_places_scans_emits_and_covers() {
     for placed in [
         "bin/dashboard.exe",
         "bin/updater.exe",
-        "a2a/capsule.zip",
+        "a2a/vaultspec-a2a.exe",
+        "a2a/_internal/base_library.zip",
         "licenses/a2a.txt",
         "sbom.cdx.json",
     ] {
@@ -427,61 +413,19 @@ fn compose_product_tree_places_scans_emits_and_covers() {
 
 #[test]
 fn compose_fails_on_a_missing_source_payload() {
-    use vaultspec_product::product_build::{BuildSources, compose_product_tree};
+    use vaultspec_product::product_build::compose_product_tree;
 
     let lock = lock();
-    let capsule = capsule(&lock);
     let src = tempfile::tempdir().unwrap();
     let out = tempfile::tempdir().unwrap();
     let generation_root = out.path().join("generations").join("0001");
 
     // Every source exists EXCEPT the updater binary — a missing payload must fail
     // the compose with a bounded I/O error, never emit a partial tree.
-    let sources = BuildSources {
-        target: TARGET,
-        cohort_id: "release-2026.07.19".to_string(),
-        cohort_targets: vec![
-            Target::Aarch64AppleDarwin,
-            Target::Aarch64UnknownLinuxGnu,
-            Target::X86_64UnknownLinuxGnu,
-            Target::X86_64PcWindowsMsvc,
-        ],
-        release_manifest_path: "release.json".to_string(),
-        dashboard_version: "0.1.4".to_string(),
-        dashboard_commit: "a".repeat(40),
-        dashboard: source(
-            write_source(src.path(), "dashboard.exe", b"dashboard"),
-            "bin/dashboard.exe",
-        ),
-        updater_version: "0.1.4".to_string(),
-        updater: source(src.path().join("does-not-exist.exe"), "bin/updater.exe"),
-        capsule_archive: source(
-            write_source(src.path(), "capsule.zip", b"zip"),
-            "a2a/capsule.zip",
-        ),
-        capsule_manifest: source(
-            write_source(src.path(), "cm.json", b"{}"),
-            "a2a/component-manifest.json",
-        ),
-        tree_evidence_doc: source(
-            write_source(src.path(), "tree.json", b"{}"),
-            "a2a/tree.json",
-        ),
-        tree_digest: "2".repeat(64),
-        tree_file_count: 3,
-        component_lock: source(
-            write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
-            "packaging/a2a-component.lock.json",
-        ),
-        licenses: Vec::new(),
-        sbom: source(
-            write_source(src.path(), "sbom.json", b"{}"),
-            "sbom.cdx.json",
-        ),
-        sbom_format: "cyclonedx".to_string(),
-    };
+    let mut sources = minimal_sources(src.path(), write_onedir(src.path()));
+    sources.updater = source(src.path().join("does-not-exist.exe"), "bin/updater.exe");
 
-    let refused = compose_product_tree(&generation_root, &sources, &lock, &capsule);
+    let refused = compose_product_tree(&generation_root, &sources, &lock);
     assert!(
         matches!(refused, Err(ProductBuildError::Io(_))),
         "a missing source payload must fail the compose with a bounded I/O error, got {refused:?}"
@@ -489,34 +433,74 @@ fn compose_fails_on_a_missing_source_payload() {
 }
 
 #[test]
-fn the_capsule_carries_a_distinct_standalone_mcp_entrypoint() {
-    use vaultspec_product::product_build::verify_standalone_mcp_carried;
+fn the_bundled_runtime_is_placed_as_a_nested_tree_of_regular_files() {
+    use vaultspec_product::product_build::compose_product_tree;
+
     let lock = lock();
-    let capsule = capsule(&lock);
-    verify_standalone_mcp_carried(&capsule)
-        .expect("the capsule must carry an independently-invocable standalone MCP entrypoint");
-    // Present, kind-tagged standalone, and distinct from the gateway entrypoint.
-    assert_eq!(capsule.entrypoints.standalone_mcp.kind, "standalone-mcp");
-    assert_ne!(
-        capsule.entrypoints.standalone_mcp.relative_command,
-        capsule.entrypoints.gateway.relative_command
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+    let sources = minimal_sources(src.path(), write_onedir(src.path()));
+
+    let raw = compose_product_tree(&generation_root, &sources, &lock)
+        .expect("a built onedir must place as ordinary regular files");
+    let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+
+    // The onedir is placed as a DIRECTORY, not an archive: its nested file is on
+    // disk at its own path and digest-covered like every other installed file.
+    let nested = generation_root.join("a2a/_internal/base_library.zip");
+    assert!(nested.is_file(), "the nested onedir file is placed on disk");
+    assert!(value["file_digests"]["a2a/_internal/base_library.zip"].is_string());
+    assert!(value["file_digests"]["a2a/vaultspec-a2a.exe"].is_string());
+    // The declared count is the real placed count, computed by the composer.
+    assert_eq!(value["a2a_component"]["runtime"]["file_count"], 3);
+    assert_eq!(
+        value["a2a_component"]["runtime"]["entrypoint"],
+        "a2a/vaultspec-a2a.exe"
     );
 }
 
 #[test]
-fn a_standalone_mcp_collapsed_onto_the_gateway_is_rejected() {
-    use vaultspec_product::product_build::verify_standalone_mcp_carried;
+fn an_entrypoint_the_freeze_recipe_did_not_emit_is_refused() {
+    use vaultspec_product::product_build::compose_product_tree;
+
     let lock = lock();
-    let mut capsule = capsule(&lock);
-    // Collapse the standalone MCP onto the gateway entrypoint: no longer an
-    // independently-invocable MCP, so carriage verification must reject it.
-    capsule.entrypoints.standalone_mcp.relative_command =
-        capsule.entrypoints.gateway.relative_command.clone();
-    let refused = verify_standalone_mcp_carried(&capsule);
-    assert!(matches!(
-        refused,
-        Err(ProductBuildError::StandaloneMcpNotCarried { .. })
-    ));
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+    let mut runtime = write_onedir(src.path());
+    // The recipe emitted a onedir, but not under the entrypoint name the build
+    // spec claims — a launch that would only fail at first run must fail here.
+    runtime.entrypoint_relative = "vaultspec-a2a-renamed.exe".to_string();
+    let sources = minimal_sources(src.path(), runtime);
+
+    let refused = compose_product_tree(&generation_root, &sources, &lock);
+    assert!(
+        matches!(refused, Err(ProductBuildError::FileDigestsMismatch { .. })),
+        "an absent entrypoint must fail the compose, got {refused:?}"
+    );
+}
+
+#[test]
+fn an_empty_directory_in_the_built_onedir_is_refused() {
+    use vaultspec_product::product_build::compose_product_tree;
+
+    let lock = lock();
+    let src = tempfile::tempdir().unwrap();
+    let out = tempfile::tempdir().unwrap();
+    let generation_root = out.path().join("generations").join("0001");
+    let runtime = write_onedir(src.path());
+    // The generation tree admits no directory that is not an ancestor of a
+    // regular file. Placing the onedir must refuse one rather than silently drop
+    // it, so the constraint is reported against the freeze recipe that emitted it.
+    std::fs::create_dir_all(runtime.source_dir.join("_internal/empty")).unwrap();
+    let sources = minimal_sources(src.path(), runtime);
+
+    let refused = compose_product_tree(&generation_root, &sources, &lock);
+    assert!(
+        matches!(refused, Err(ProductBuildError::EmptyDirectory { .. })),
+        "an empty directory in the built onedir must be refused, got {refused:?}"
+    );
 }
 
 #[test]
@@ -552,7 +536,6 @@ fn scan_rejects_a_tree_deeper_than_the_segment_ceiling() {
 fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf) {
     use vaultspec_product::product_build::{BuildSources, LicenseSource, compose_product_tree};
     let lock = lock();
-    let capsule = capsule(&lock);
     let src = tempfile::tempdir().unwrap();
     let out = tempfile::tempdir().unwrap();
     let generation_root = out.path().join("generations").join("0001");
@@ -577,20 +560,7 @@ fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf)
             write_source(src.path(), "updater.exe", b"updater-bytes"),
             "bin/updater.exe",
         ),
-        capsule_archive: source(
-            write_source(src.path(), "capsule.zip", b"PK-zip-bytes"),
-            "a2a/capsule.zip",
-        ),
-        capsule_manifest: source(
-            write_source(src.path(), "cm.json", b"{capsule-manifest}"),
-            "a2a/component-manifest.json",
-        ),
-        tree_evidence_doc: source(
-            write_source(src.path(), "tree.json", b"{tree-evidence}"),
-            "a2a/tree.json",
-        ),
-        tree_digest: "2".repeat(64),
-        tree_file_count: 3,
+        a2a_runtime: write_onedir(src.path()),
         component_lock: source(
             write_source(src.path(), "lock.json", LOCK_JSON.as_bytes()),
             "packaging/a2a-component.lock.json",
@@ -607,7 +577,7 @@ fn composed_tree() -> (tempfile::TempDir, tempfile::TempDir, std::path::PathBuf)
         ),
         sbom_format: "cyclonedx".to_string(),
     };
-    compose_product_tree(&generation_root, &sources, &lock, &capsule).unwrap();
+    compose_product_tree(&generation_root, &sources, &lock).unwrap();
     (src, out, generation_root)
 }
 

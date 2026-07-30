@@ -1,20 +1,18 @@
 //! The product-tree builder CLI.
 //!
 //! Invoked with exactly one operand: the path to a build-spec JSON that names the
-//! target, the destination generation root, and every pre-built source artifact.
-//! The CLI reads the spec, loads the trusted component lock and the A2A capsule
-//! manifest from the spec's own source paths, verifies the capsule against the
-//! lock, confirms the standalone MCP entrypoint is carried, then composes and
-//! self-verifies the complete product tree. All authority lives in the library;
-//! this shell only parses, dispatches, and classifies into a stable exit code.
+//! target, the destination generation root, and every pre-built source artifact —
+//! including the frozen a2a onedir the pipeline built at the pinned commit. The CLI
+//! reads the spec, loads the trusted component lock from the spec's own source
+//! path, then composes and self-verifies the complete product tree. All authority
+//! lives in the library; this shell only parses, dispatches, and classifies into a
+//! stable exit code.
 
 use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
-use vaultspec_product::manifest::{CapsuleManifest, ComponentLock};
-use vaultspec_product::product_build::{
-    BuildSources, compose_product_tree, verify_standalone_mcp_carried,
-};
+use vaultspec_product::manifest::ComponentLock;
+use vaultspec_product::product_build::{BuildSources, compose_product_tree};
 
 /// A composed build request: where to place the tree, and the sources to place.
 #[derive(Debug, Deserialize)]
@@ -28,9 +26,9 @@ struct BuildSpec {
 const EXIT_OK: i32 = 0;
 /// Malformed invocation (wrong operand count).
 const EXIT_USAGE: i32 = 2;
-/// The spec, component lock, or capsule manifest was absent or unparseable.
+/// The spec or the component lock was absent or unparseable.
 const EXIT_SPEC: i32 = 3;
-/// The build failed: capsule verification, MCP carriage, or tree composition.
+/// The build failed while composing or self-verifying the product tree.
 const EXIT_BUILD: i32 = 4;
 
 fn main() {
@@ -87,30 +85,12 @@ fn build(spec_path: &Path) -> Result<PathBuf, BuildFailure> {
         message: format!("component lock is invalid: {error}"),
     })?;
 
-    let capsule_raw =
-        std::fs::read_to_string(&spec.sources.capsule_manifest.source).map_err(|error| {
-            BuildFailure {
-                code: EXIT_SPEC,
-                message: format!("cannot read capsule manifest: {error}"),
-            }
-        })?;
-    let capsule = CapsuleManifest::parse_and_verify(&capsule_raw, &lock, spec.sources.target)
-        .map_err(|error| BuildFailure {
-            code: EXIT_BUILD,
-            message: format!("capsule manifest failed verification: {error}"),
-        })?;
-
-    verify_standalone_mcp_carried(&capsule).map_err(|error| BuildFailure {
-        code: EXIT_BUILD,
-        message: error.to_string(),
-    })?;
-
-    compose_product_tree(&spec.generation_root, &spec.sources, &lock, &capsule).map_err(
-        |error| BuildFailure {
+    compose_product_tree(&spec.generation_root, &spec.sources, &lock).map_err(|error| {
+        BuildFailure {
             code: EXIT_BUILD,
             message: error.to_string(),
-        },
-    )?;
+        }
+    })?;
     Ok(spec.generation_root)
 }
 

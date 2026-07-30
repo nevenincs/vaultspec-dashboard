@@ -8,9 +8,8 @@
 //! from the composed, exactly-pinned inputs and SELF-VERIFIES it by round-tripping
 //! through the production verifier — a manifest this builder emits is proven by
 //! the same authority a consumer uses, so drift fails the build rather than
-//! shipping. The runtime, protocol, and state-schema pins are derived from the
-//! trusted component lock and the verified capsule manifest, never restated by
-//! hand, so a candidate can never silently disagree with its pins.
+//! shipping. The a2a source pin is derived from the trusted component lock, never
+//! restated by hand, so a candidate can never silently disagree with its pin.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
@@ -19,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::hex;
 use crate::manifest::{
-    CapsuleManifest, ComponentLock, ManifestError, ReleaseSetManifest, Target, semantic_path_key,
+    ComponentLock, ManifestError, ReleaseSetManifest, Target, semantic_path_key,
     validate_portable_path,
 };
 
@@ -71,9 +70,10 @@ pub enum ProductBuildError {
     /// The member's `file_digests` does not describe exactly the scanned tree
     /// (a missing, extra, drifted, or self-listed manifest-path entry).
     FileDigestsMismatch { detail: String },
-    /// The capsule does not carry an independently-invocable standalone MCP
-    /// entrypoint distinct from its gateway.
-    StandaloneMcpNotCarried { detail: String },
+    /// The built onedir contains a directory holding no regular file. The
+    /// generation tree admits no empty directory, so the constraint is reported
+    /// against the freeze recipe rather than silently dropped from the tree.
+    EmptyDirectory { path: String },
 }
 
 impl std::fmt::Display for ProductBuildError {
@@ -119,43 +119,14 @@ impl std::fmt::Display for ProductBuildError {
             Self::FileDigestsMismatch { detail } => {
                 write!(f, "file_digests does not match the composed tree: {detail}")
             }
-            Self::StandaloneMcpNotCarried { detail } => {
-                write!(
-                    f,
-                    "capsule does not carry a standalone MCP entrypoint: {detail}"
-                )
+            Self::EmptyDirectory { path } => {
+                write!(f, "built runtime directory {path} holds no regular file")
             }
         }
     }
 }
 
 impl std::error::Error for ProductBuildError {}
-
-/// Verify the capsule carries an independently-invocable standalone MCP entrypoint
-/// that is DISTINCT from the gateway entrypoint, WITHOUT binding it to any
-/// dashboard lifecycle.
-///
-/// The dashboard build carries this entrypoint inside the placed capsule so an
-/// operator can invoke the MCP server directly; it is deliberately NEVER registered
-/// as a lifecycle-owned component — lifecycle ownership belongs to the gateway
-/// alone. This is a pure carriage check over the verified capsule manifest: it
-/// asserts the standalone MCP is present and separate, and by construction assigns
-/// it no lifecycle role (this module registers nothing).
-pub fn verify_standalone_mcp_carried(capsule: &CapsuleManifest) -> Result<(), ProductBuildError> {
-    let mcp = &capsule.entrypoints.standalone_mcp;
-    let gateway = &capsule.entrypoints.gateway;
-    if mcp.relative_command.is_empty() {
-        return Err(ProductBuildError::StandaloneMcpNotCarried {
-            detail: "the standalone MCP entrypoint has no relative command".to_string(),
-        });
-    }
-    if mcp.relative_command == gateway.relative_command {
-        return Err(ProductBuildError::StandaloneMcpNotCarried {
-            detail: "the standalone MCP entrypoint is not distinct from the gateway".to_string(),
-        });
-    }
-    Ok(())
-}
 
 /// Scan every regular file under `tree_root`, returning each app-tree-relative
 /// path (forward-slashed), byte size, and lowercase SHA-256 using the crate's
@@ -275,29 +246,27 @@ pub struct DashboardArtifact {
     pub artifact: ComposedArtifact,
 }
 
-/// One evidence document (component lock or capsule manifest) by path + digest.
+/// One evidence document (the component lock) by path + digest.
 #[derive(Debug, Clone)]
 pub struct EvidenceArtifact {
     pub path: String,
     pub digest: String,
 }
 
-/// The extracted-capsule tree evidence: the archive of the extracted tree plus
-/// its whole-tree digest and file count.
+/// The bundled runtime as placed: which subtree it is, which file in it launches,
+/// and how many regular files the composer placed there.
 #[derive(Debug, Clone)]
-pub struct TreeEvidenceArtifact {
-    pub artifact: ComposedArtifact,
-    pub tree_digest: String,
+pub struct BundledRuntimeEvidence {
+    pub root: String,
+    pub entrypoint: String,
     pub file_count: usize,
 }
 
-/// The pinned A2A capsule evidence composed into the tree.
+/// The pinned A2A component evidence composed into the tree.
 #[derive(Debug, Clone)]
 pub struct A2aComponentEvidence {
     pub component_lock: EvidenceArtifact,
-    pub capsule_manifest: EvidenceArtifact,
-    pub capsule_archive: ComposedArtifact,
-    pub tree_evidence: TreeEvidenceArtifact,
+    pub runtime: BundledRuntimeEvidence,
 }
 
 /// One third-party license file bound in the tree.
@@ -318,8 +287,7 @@ pub struct SbomArtifact {
 
 /// The complete, composed facts one release-set member manifest is emitted from.
 /// The caller (the tree composer) supplies the real placed-artifact facts; the
-/// runtime/protocol/state-schema pins are derived from the trusted lock and the
-/// verified capsule, not carried here.
+/// a2a source pin is derived from the trusted lock, not carried here.
 #[derive(Debug, Clone)]
 pub struct ComposedMember {
     pub target: Target,
@@ -458,15 +426,28 @@ pub struct LicenseSource {
     pub spdx: String,
 }
 
-/// The complete set of pre-built inputs one target's product tree is composed
-/// from. Binaries, the capsule archive, and evidence documents are all produced
-/// upstream (the dashboard/updater builds and the A2A capsule); the composer
-/// places them, computes the installed-byte evidence, and emits the manifest.
+/// The bundled a2a runtime source: the frozen PyInstaller onedir the release
+/// pipeline built at the pinned commit, its fixed app-tree destination directory,
+/// and the launchable entrypoint inside it (named relative to the onedir root, as
+/// the freeze recipe emits it).
 ///
-/// The capsule tree-evidence facts (`tree_digest`, `tree_file_count`) are CARRIED
-/// from the A2A-produced evidence, never recomputed — A2A owns that digest's
-/// canonical preimage; the composer places the evidence document and binds its
-/// declared facts.
+/// This is a DIRECTORY source, not an archive: the composer places its files as
+/// ordinary regular files and scans them for installed-byte evidence like every
+/// other placed file. Nothing is extracted at install, and the runtime carries no
+/// manifest, archive, or evidence document of its own.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RuntimeSource {
+    pub source_dir: std::path::PathBuf,
+    pub dest_relative: String,
+    pub entrypoint_relative: String,
+}
+
+/// The complete set of pre-built inputs one target's product tree is composed
+/// from. The binaries, the built onedir, and the component lock are all produced
+/// upstream (the dashboard/updater builds and the pipeline's freeze step); the
+/// composer places them, computes the installed-byte evidence, and emits the
+/// manifest.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildSources {
@@ -479,11 +460,7 @@ pub struct BuildSources {
     pub dashboard: SourceArtifact,
     pub updater_version: String,
     pub updater: SourceArtifact,
-    pub capsule_archive: SourceArtifact,
-    pub capsule_manifest: SourceArtifact,
-    pub tree_evidence_doc: SourceArtifact,
-    pub tree_digest: String,
-    pub tree_file_count: usize,
+    pub a2a_runtime: RuntimeSource,
     pub component_lock: SourceArtifact,
     pub licenses: Vec<LicenseSource>,
     pub sbom: SourceArtifact,
@@ -500,21 +477,18 @@ pub struct BuildSources {
 /// self-verify the manifest through the manifest verifier, and finally prove the
 /// written manifest describes exactly the tree. The generation-layout is produced
 /// directly (the installer later places it and the generation-writer adopts it);
-/// the capsule is placed as its archive plus carried tree-evidence, never
-/// extracted. Returns the emitted manifest bytes.
+/// the bundled runtime is placed as a directory of ordinary regular files, never
+/// as an archive and never extracted at install. Returns the emitted manifest
+/// bytes.
 pub fn compose_product_tree(
     generation_root: &Path,
     sources: &BuildSources,
     lock: &ComponentLock,
-    capsule: &CapsuleManifest,
 ) -> Result<String, ProductBuildError> {
     // PLACE every input at its fixed destination.
     let placements = [
         &sources.dashboard,
         &sources.updater,
-        &sources.capsule_archive,
-        &sources.capsule_manifest,
-        &sources.tree_evidence_doc,
         &sources.component_lock,
         &sources.sbom,
     ];
@@ -524,6 +498,7 @@ pub fn compose_product_tree(
     for license in &sources.licenses {
         place(generation_root, &license.source, &license.dest_relative)?;
     }
+    let runtime_files = place_runtime(generation_root, &sources.a2a_runtime)?;
 
     // SCAN the placed tree (before the manifest is written) for installed bytes.
     let scanned = scan_composed_tree(generation_root)?;
@@ -552,12 +527,12 @@ pub fn compose_product_tree(
         updater: by_path(&sources.updater.dest_relative)?,
         a2a_component: A2aComponentEvidence {
             component_lock: evidence(&by_path(&sources.component_lock.dest_relative)?),
-            capsule_manifest: evidence(&by_path(&sources.capsule_manifest.dest_relative)?),
-            capsule_archive: by_path(&sources.capsule_archive.dest_relative)?,
-            tree_evidence: TreeEvidenceArtifact {
-                artifact: by_path(&sources.tree_evidence_doc.dest_relative)?,
-                tree_digest: sources.tree_digest.clone(),
-                file_count: sources.tree_file_count,
+            runtime: BundledRuntimeEvidence {
+                root: sources.a2a_runtime.dest_relative.clone(),
+                // Proven placed by the scan, not asserted: an entrypoint the freeze
+                // recipe did not emit fails here rather than at first launch.
+                entrypoint: by_path(&runtime_entrypoint_path(&sources.a2a_runtime))?.path,
+                file_count: runtime_files,
             },
         },
         licenses: sources
@@ -580,7 +555,7 @@ pub fn compose_product_tree(
     };
 
     // EMIT + self-verify, then write the manifest into the tree.
-    let raw = emit_member_manifest(&member, lock, capsule)?;
+    let raw = emit_member_manifest(&member, lock)?;
     let manifest_path = generation_root.join(&sources.release_manifest_path);
     if let Some(parent) = manifest_path.parent() {
         std::fs::create_dir_all(parent)
@@ -607,6 +582,80 @@ fn place(root: &Path, source: &Path, dest_relative: &str) -> Result<(), ProductB
     Ok(())
 }
 
+/// The app-tree-relative path of the bundled runtime's entrypoint.
+fn runtime_entrypoint_path(runtime: &RuntimeSource) -> String {
+    format!("{}/{}", runtime.dest_relative, runtime.entrypoint_relative)
+}
+
+/// Place the built onedir as a directory of ordinary regular files under
+/// `root/dest_relative`, returning how many regular files were placed.
+///
+/// The generation tree admits regular files only, and every non-root directory
+/// must be an ancestor of at least one regular file. Both constraints flow UPSTREAM
+/// to the freeze recipe rather than downstream into a verifier exception, so a
+/// symlink, reparse object, or empty directory in the built onedir is REFUSED here
+/// — in the pipeline that produced it, where it is diagnosable — instead of being
+/// silently dereferenced by a following copy or silently dropped from the tree.
+fn place_runtime(root: &Path, runtime: &RuntimeSource) -> Result<usize, ProductBuildError> {
+    let mut placed = 0_usize;
+    place_runtime_dir(
+        &runtime.source_dir,
+        &root.join(&runtime.dest_relative),
+        &runtime.dest_relative,
+        &mut placed,
+    )?;
+    if placed == 0 {
+        return Err(ProductBuildError::EmptyDirectory {
+            path: runtime.dest_relative.clone(),
+        });
+    }
+    Ok(placed)
+}
+
+fn place_runtime_dir(
+    source: &Path,
+    dest: &Path,
+    relative: &str,
+    placed: &mut usize,
+) -> Result<(), ProductBuildError> {
+    std::fs::create_dir_all(dest).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    let entries =
+        std::fs::read_dir(source).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    let mut seen = false;
+    for entry in entries {
+        let entry = entry.map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        let path = entry.path();
+        let metadata = std::fs::symlink_metadata(&path)
+            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        let name = entry
+            .file_name()
+            .to_str()
+            .ok_or_else(|| ProductBuildError::NonUtf8Name {
+                path: entry.file_name().to_string_lossy().into_owned(),
+            })?
+            .to_owned();
+        let child_relative = format!("{relative}/{name}");
+        seen = true;
+        if metadata.file_type().is_dir() {
+            place_runtime_dir(&path, &dest.join(&name), &child_relative, placed)?;
+        } else if metadata.file_type().is_file() {
+            std::fs::copy(&path, dest.join(&name))
+                .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+            *placed += 1;
+        } else {
+            return Err(ProductBuildError::NonRegularEntry {
+                path: child_relative,
+            });
+        }
+    }
+    if !seen {
+        return Err(ProductBuildError::EmptyDirectory {
+            path: relative.to_owned(),
+        });
+    }
+    Ok(())
+}
+
 fn evidence(artifact: &ComposedArtifact) -> EvidenceArtifact {
     EvidenceArtifact {
         path: artifact.path.clone(),
@@ -615,18 +664,17 @@ fn evidence(artifact: &ComposedArtifact) -> EvidenceArtifact {
 }
 
 /// Emit a schema-2.0 release-set member manifest from the composed facts, deriving
-/// the runtime/protocol/state-schema pins from the trusted `lock` and verified
-/// `capsule`, then SELF-VERIFY the emitted bytes through the production verifier.
+/// the source pin from the trusted `lock`, then SELF-VERIFY the emitted bytes
+/// through the production verifier.
 ///
 /// The returned string is the canonical member-manifest JSON, proven valid against
-/// the same lock a consumer trusts. An emit that disagrees with the pins — or a
+/// the same lock a consumer trusts. An emit that disagrees with the pin — or a
 /// builder defect — fails here rather than shipping.
 pub fn emit_member_manifest(
     member: &ComposedMember,
     lock: &ComponentLock,
-    capsule: &CapsuleManifest,
 ) -> Result<String, ProductBuildError> {
-    let manifest = build_member(member, lock, capsule)?;
+    let manifest = build_member(member, lock);
     let raw = serde_json::to_string(&manifest)
         .map_err(|error| ProductBuildError::Serialize(error.to_string()))?;
     // Prove the emitted bytes verify under the production authority (pin-skew,
@@ -635,12 +683,8 @@ pub fn emit_member_manifest(
     Ok(raw)
 }
 
-fn build_member(
-    member: &ComposedMember,
-    lock: &ComponentLock,
-    capsule: &CapsuleManifest,
-) -> Result<Member, ProductBuildError> {
-    Ok(Member {
+fn build_member(member: &ComposedMember, lock: &ComponentLock) -> Member {
+    Member {
         schema_version: SCHEMA_VERSION,
         target: member.target.triple().to_owned(),
         digest_algorithm: DIGEST_ALGORITHM,
@@ -679,50 +723,10 @@ fn build_member(
                 path: member.a2a_component.component_lock.path.clone(),
                 digest: member.a2a_component.component_lock.digest.clone(),
             },
-            capsule_manifest: EvidenceOut {
-                path: member.a2a_component.capsule_manifest.path.clone(),
-                digest: member.a2a_component.capsule_manifest.digest.clone(),
-            },
-            capsule_archive: ArtifactOut {
-                path: member.a2a_component.capsule_archive.path.clone(),
-                size: member.a2a_component.capsule_archive.size,
-                digest: member.a2a_component.capsule_archive.digest.clone(),
-            },
-            tree_evidence: TreeEvidenceOut {
-                path: member.a2a_component.tree_evidence.artifact.path.clone(),
-                size: member.a2a_component.tree_evidence.artifact.size,
-                digest: member.a2a_component.tree_evidence.artifact.digest.clone(),
-                tree_digest: member.a2a_component.tree_evidence.tree_digest.clone(),
-                file_count: member.a2a_component.tree_evidence.file_count,
-            },
-        },
-        runtimes: RuntimesOut {
-            cpython: runtime_from_lock(
-                &lock.base_closure.python.version,
-                &lock.base_closure.python.license,
-                require_pin("cpython", lock.python_digest(member.target))?,
-            ),
-            node: runtime_from_lock(
-                &lock.base_closure.node.version,
-                &lock.base_closure.node.license,
-                require_pin("node", lock.node_digest(member.target))?,
-            ),
-            acp: runtime_from_lock(
-                &lock.base_closure.acp.version,
-                &lock.base_closure.acp.license,
-                &lock.base_closure.acp.sha256,
-            ),
-        },
-        protocol: ProtocolOut {
-            gateway_api_version_range: RangeOut {
-                minimum: capsule.compatibility.api_versions.minimum.clone(),
-                maximum: capsule.compatibility.api_versions.maximum.clone(),
-            },
-        },
-        state_schema: StateSchemaOut {
-            migration_range: RangeOut {
-                minimum: capsule.compatibility.migration_range.base.clone(),
-                maximum: capsule.compatibility.migration_range.head.clone(),
+            runtime: BundledRuntimeOut {
+                root: member.a2a_component.runtime.root.clone(),
+                entrypoint: member.a2a_component.runtime.entrypoint.clone(),
+                file_count: member.a2a_component.runtime.file_count,
             },
         },
         licenses: member
@@ -742,26 +746,7 @@ fn build_member(
             digest: member.sbom.artifact.digest.clone(),
         },
         file_digests: member.file_digests.clone(),
-    })
-}
-
-fn runtime_from_lock(version: &str, license: &str, digest: &str) -> RuntimeOut {
-    RuntimeOut {
-        version: version.to_owned(),
-        license: license.to_owned(),
-        digest: digest.to_owned(),
     }
-}
-
-/// Require a per-target runtime pin from the lock, naming the missing runtime
-/// rather than emitting an empty digest that fails opaquely downstream.
-fn require_pin<'a>(
-    name: &str,
-    digest: crate::manifest::Result<&'a str>,
-) -> Result<&'a str, ProductBuildError> {
-    digest.map_err(|error| ProductBuildError::MissingRuntimePin {
-        detail: format!("{name}: {error}"),
-    })
 }
 
 #[derive(Serialize)]
@@ -774,9 +759,6 @@ struct Member {
     dashboard: DashboardOut,
     updater: UpdaterOut,
     a2a_component: A2aComponentOut,
-    runtimes: RuntimesOut,
-    protocol: ProtocolOut,
-    state_schema: StateSchemaOut,
     licenses: Vec<LicenseOut>,
     sbom: SbomOut,
     file_digests: BTreeMap<String, String>,
@@ -816,9 +798,14 @@ struct A2aComponentOut {
     commit: String,
     release_identity: ReleaseIdentityOut,
     component_lock: EvidenceOut,
-    capsule_manifest: EvidenceOut,
-    capsule_archive: ArtifactOut,
-    tree_evidence: TreeEvidenceOut,
+    runtime: BundledRuntimeOut,
+}
+
+#[derive(Serialize)]
+struct BundledRuntimeOut {
+    root: String,
+    entrypoint: String,
+    file_count: usize,
 }
 
 #[derive(Serialize)]
@@ -831,52 +818,6 @@ struct ReleaseIdentityOut {
 struct EvidenceOut {
     path: String,
     digest: String,
-}
-
-#[derive(Serialize)]
-struct ArtifactOut {
-    path: String,
-    size: u64,
-    digest: String,
-}
-
-#[derive(Serialize)]
-struct TreeEvidenceOut {
-    path: String,
-    size: u64,
-    digest: String,
-    tree_digest: String,
-    file_count: usize,
-}
-
-#[derive(Serialize)]
-struct RuntimesOut {
-    cpython: RuntimeOut,
-    node: RuntimeOut,
-    acp: RuntimeOut,
-}
-
-#[derive(Serialize)]
-struct RuntimeOut {
-    version: String,
-    license: String,
-    digest: String,
-}
-
-#[derive(Serialize)]
-struct ProtocolOut {
-    gateway_api_version_range: RangeOut,
-}
-
-#[derive(Serialize)]
-struct StateSchemaOut {
-    migration_range: RangeOut,
-}
-
-#[derive(Serialize)]
-struct RangeOut {
-    minimum: String,
-    maximum: String,
 }
 
 #[derive(Serialize)]

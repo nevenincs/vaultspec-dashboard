@@ -651,29 +651,6 @@ pub(super) fn verify_artifact_joins(
         manifest,
         observed,
     )?;
-    verify_digest_join(
-        "capsule manifest",
-        &manifest.a2a_component.capsule_manifest.path,
-        &manifest.a2a_component.capsule_manifest.digest,
-        manifest,
-        observed,
-    )?;
-    verify_sized_join(
-        "capsule archive",
-        &manifest.a2a_component.capsule_archive.path,
-        manifest.a2a_component.capsule_archive.size,
-        &manifest.a2a_component.capsule_archive.digest,
-        manifest,
-        observed,
-    )?;
-    verify_sized_join(
-        "tree evidence",
-        &manifest.a2a_component.tree_evidence.path,
-        manifest.a2a_component.tree_evidence.size,
-        &manifest.a2a_component.tree_evidence.digest,
-        manifest,
-        observed,
-    )?;
     verify_sized_join(
         "sbom",
         &manifest.sbom.path,
@@ -816,371 +793,48 @@ pub(super) fn read_installed_bounded(
     Ok(bytes)
 }
 
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InstalledTreeInventory {
-    inventory_version: String,
-    metadata: InventoryMetadata,
-    components: Vec<InventoryComponent>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InventoryMetadata {
-    timestamp: String,
-    component: InventoryApplication,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InventoryApplication {
-    #[serde(rename = "type")]
-    kind: String,
-    name: String,
-    version: String,
-    properties: Vec<InventoryProperty>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InventoryComponent {
-    #[serde(rename = "type")]
-    kind: String,
-    name: String,
-    hashes: Vec<InventoryHash>,
-    properties: Vec<InventoryProperty>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InventoryHash {
-    alg: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct InventoryProperty {
-    name: String,
-    value: String,
-}
-
-#[derive(Debug, Serialize)]
-struct TreeDigestRecord<'a> {
-    mode: &'a str,
-    path: &'a str,
-    sha256: &'a str,
-    size: &'a str,
-}
-
-#[derive(Debug)]
-pub(super) struct ValidatedTreeRecord {
-    pub(super) path: String,
-    pub(super) mode: String,
-    pub(super) size: u64,
-    pub(super) size_text: String,
-    pub(super) digest: String,
-}
-
-pub(super) fn verify_tree_evidence(
-    root: &Path,
-    trusted_capsule_root: &str,
+/// Prove the member manifest's declared bundled-runtime subtree against the
+/// installed bytes.
+///
+/// The onedir carries no manifest, archive, or evidence document of its own, so
+/// there is nothing to cross-verify and nothing to extract: `file_digests` already
+/// binds every one of its files, and `verify_complete_inventory` already proves
+/// that inventory describes the installed tree EXACTLY. What remains — and what
+/// this proves — is that the declared runtime subtree is the one actually placed:
+/// the entrypoint is an installed file inside the declared root, it is executable
+/// where the platform records modes, and the declared file count equals the number
+/// of installed files under the root, so a truncated or empty onedir cannot pass as
+/// a smaller tree that still verifies.
+pub(super) fn verify_bundled_runtime(
     release: &RawReleaseSetManifest,
-    capsule: &CapsuleManifest,
     observed: &BTreeMap<String, ObservedFile>,
 ) -> Result<()> {
-    let evidence = read_installed_bounded(
-        root,
-        &release.a2a_component.tree_evidence.path,
-        MAX_TREE_EVIDENCE_BYTES,
-        observed_file(observed, &release.a2a_component.tree_evidence.path)?,
-    )?;
-    let inventory: InstalledTreeInventory = serde_json::from_slice(&evidence)
-        .map_err(|error| ManifestError::Parse(error.to_string()))?;
-    let parsed_value: serde_json::Value = serde_json::from_slice(&evidence)
-        .map_err(|error| ManifestError::Parse(error.to_string()))?;
-    let mut canonical_evidence = serde_json::to_vec(&parsed_value)
-        .map_err(|error| ManifestError::Parse(error.to_string()))?;
-    canonical_evidence.push(b'\n');
-    if canonical_evidence != evidence {
-        return invalid(
-            "a2a_component.tree_evidence",
-            "inventory bytes are not compact sorted-key UTF-8 JSON plus one LF",
-        );
+    let runtime = &release.a2a_component.runtime;
+    if !release.file_digests.contains_key(&runtime.entrypoint) {
+        return Err(ManifestError::MissingFile(format!(
+            "bundled-runtime entrypoint {} is absent from file_digests",
+            runtime.entrypoint
+        )));
     }
-    expect_literal(
-        "tree_evidence.inventory_version",
-        "vaultspec-installed-tree-v1",
-        &inventory.inventory_version,
-    )?;
-    require_bounded_text(
-        "tree_evidence.metadata.timestamp",
-        &inventory.metadata.timestamp,
-        1,
-        64,
-    )?;
-    expect_literal(
-        "tree_evidence.metadata.component.type",
-        "application",
-        &inventory.metadata.component.kind,
-    )?;
-    expect_literal(
-        "tree_evidence.metadata.component.name",
-        &capsule.identity.name,
-        &inventory.metadata.component.name,
-    )?;
-    expect_literal(
-        "tree_evidence.metadata.component.version",
-        &capsule.identity.version,
-        &inventory.metadata.component.version,
-    )?;
-    let metadata_properties = property_map(
-        "tree_evidence.metadata.component.properties",
-        &inventory.metadata.component.properties,
-        2,
-    )?;
-    expect_literal(
-        "tree_evidence metadata target",
-        capsule.target.triple(),
-        required_property(&metadata_properties, "vaultspec:target")?,
-    )?;
-    expect_digest(
-        "tree_evidence metadata component manifest",
-        &release.a2a_component.capsule_manifest.digest,
-        required_property(&metadata_properties, "vaultspec:component-manifest-sha256")?,
-    )?;
-
-    if inventory.components.is_empty() || inventory.components.len() > MAX_TREE_FILES {
-        return invalid("tree_evidence.components", "must contain 1..=80000 files");
+    let entrypoint = observed_file(observed, &runtime.entrypoint)?;
+    if let Some(mode) = entrypoint.normalized_mode {
+        expect_literal("a2a_component.runtime.entrypoint mode", "0755", mode)?;
     }
-    if inventory.components.len() != release.a2a_component.tree_evidence.file_count {
-        return invalid(
-            "tree_evidence.file_count",
-            "does not match inventory components",
-        );
-    }
-    let mut records = Vec::with_capacity(inventory.components.len());
-    let mut semantic = BTreeSet::new();
-    let mut installed_tree_paths = BTreeSet::new();
-    for component in &inventory.components {
-        expect_literal("tree_evidence.components.type", "file", &component.kind)?;
-        validate_portable_path("tree_evidence.components.name", &component.name)?;
-        if !semantic.insert(semantic_path_key(&component.name)) {
-            return invalid("tree_evidence.components", "duplicate semantic path");
-        }
-        if component.hashes.len() != 1 {
-            return invalid(
-                "tree_evidence.components.hashes",
-                "must contain exactly one SHA-256 hash",
-            );
-        }
-        expect_literal(
-            "tree_evidence.components.hashes.alg",
-            "SHA-256",
-            &component.hashes[0].alg,
-        )?;
-        require_digest(
-            "tree_evidence.components.hashes.content",
-            &component.hashes[0].content,
-        )?;
-        let properties = property_map(
-            "tree_evidence.components.properties",
-            &component.properties,
-            2,
-        )?;
-        let mode = required_property(&properties, "vaultspec:file-mode")?;
-        if !matches!(mode, "0644" | "0755") {
-            return invalid("tree_evidence.components.mode", "must be 0644 or 0755");
-        }
-        let size_text = required_property(&properties, "vaultspec:file-size")?;
-        if size_text.is_empty()
-            || (size_text.len() > 1 && size_text.starts_with('0'))
-            || !size_text.bytes().all(|byte| byte.is_ascii_digit())
-        {
-            return invalid(
-                "tree_evidence.components.size",
-                "must be canonical unsigned decimal",
-            );
-        }
-        let size = size_text
-            .parse::<u64>()
-            .map_err(|_| ManifestError::InvalidField {
-                field: "tree_evidence.components.size".to_string(),
-                detail: "size is outside u64".to_string(),
-            })?;
-        if size > 2 * 1024 * 1024 * 1024 {
-            return invalid("tree_evidence.components.size", "member exceeds 2 GiB");
-        }
-        let installed_path = format!("{trusted_capsule_root}/{}", component.name);
-        validate_portable_path("tree_evidence installed path", &installed_path)?;
-        let actual = observed
-            .get(&installed_path)
-            .ok_or_else(|| ManifestError::MissingFile(installed_path.clone()))?;
-        if actual.size != size {
-            return Err(ManifestError::SizeMismatch {
-                path: installed_path,
-                expected: size,
-                found: actual.size,
-            });
-        }
-        expect_digest(
-            &format!("tree evidence installed file {}", component.name),
-            &component.hashes[0].content,
-            &actual.digest,
-        )?;
-        if let Some(actual_mode) = actual.normalized_mode {
-            expect_literal(
-                &format!("tree evidence installed mode {}", component.name),
-                mode,
-                actual_mode,
-            )?;
-        }
-        installed_tree_paths.insert(installed_path);
-        records.push(ValidatedTreeRecord {
-            path: component.name.clone(),
-            mode: mode.to_string(),
-            size,
-            size_text: size_text.to_string(),
-            digest: component.hashes[0].content.clone(),
+    let prefix = format!("{}/", runtime.root);
+    let placed = observed
+        .keys()
+        .filter(|path| path.starts_with(&prefix))
+        .count();
+    if placed != runtime.file_count {
+        return Err(ManifestError::InvalidField {
+            field: "a2a_component.runtime.file_count".to_string(),
+            detail: format!(
+                "declares {} files, {placed} are installed",
+                runtime.file_count
+            ),
         });
     }
-    let tree_prefix = format!("{trusted_capsule_root}/");
-    for installed_path in observed
-        .keys()
-        .filter(|path| path.starts_with(&tree_prefix))
-    {
-        if !installed_tree_paths.contains(installed_path) {
-            return Err(ManifestError::ExtraFile(format!(
-                "{installed_path} is absent from A2A installed-tree evidence"
-            )));
-        }
-    }
-    verify_entrypoint_tree_record(
-        "gateway",
-        &capsule.entrypoints.gateway,
-        trusted_capsule_root,
-        &records,
-        observed,
-    )?;
-    verify_entrypoint_tree_record(
-        "standalone-mcp",
-        &capsule.entrypoints.standalone_mcp,
-        trusted_capsule_root,
-        &records,
-        observed,
-    )?;
-    records.sort_by(|left, right| left.path.cmp(&right.path));
-    let expanded = records.iter().try_fold(0_u64, |total, record| {
-        total
-            .checked_add(record.size)
-            .ok_or_else(|| ManifestError::InvalidField {
-                field: "tree_evidence.components".to_string(),
-                detail: "expanded size overflow".to_string(),
-            })
-    })?;
-    if expanded > MAX_EXPANDED_TREE_BYTES {
-        return invalid("tree_evidence.components", "expanded tree exceeds 8 GiB");
-    }
-    let computed = tree_digest(&records)?;
-    expect_digest(
-        "a2a_component.tree_evidence.tree_digest",
-        &release.a2a_component.tree_evidence.tree_digest,
-        &computed,
-    )
-}
-
-fn verify_entrypoint_tree_record(
-    field: &str,
-    entrypoint: &LaunchEntrypoint,
-    trusted_capsule_root: &str,
-    records: &[ValidatedTreeRecord],
-    observed: &BTreeMap<String, ObservedFile>,
-) -> Result<()> {
-    let relative = entrypoint.relative_command.join("/");
-    // The A2A producer permits bounded Unicode path segments, while the
-    // committed release inventory is deliberately ASCII. Release composition
-    // must reject an otherwise valid Unicode capsule; this verifier keeps
-    // that mismatch fail-closed rather than silently widening the inventory.
-    validate_portable_path(&format!("capsule.entrypoints.{field}"), &relative)?;
-    let record = records
-        .iter()
-        .find(|record| record.path == relative)
-        .ok_or_else(|| {
-            ManifestError::MissingFile(format!(
-                "{field} entrypoint {relative} is absent from A2A tree evidence"
-            ))
-        })?;
-    expect_literal(
-        &format!("capsule.entrypoints.{field} mode"),
-        "0755",
-        &record.mode,
-    )?;
-    let installed = format!("{trusted_capsule_root}/{relative}");
-    let actual = observed_file(observed, &installed)?;
-    if let Some(mode) = actual.normalized_mode {
-        expect_literal(
-            &format!("capsule.entrypoints.{field} installed mode"),
-            "0755",
-            mode,
-        )?;
-    }
     Ok(())
-}
-
-fn property_map<'a>(
-    field: &str,
-    properties: &'a [InventoryProperty],
-    expected: usize,
-) -> Result<BTreeMap<&'a str, &'a str>> {
-    if properties.len() != expected {
-        return invalid(
-            field,
-            &format!("must contain exactly {expected} properties"),
-        );
-    }
-    let mut values = BTreeMap::new();
-    for property in properties {
-        require_bounded_text(field, &property.name, 1, 128)?;
-        require_bounded_text(field, &property.value, 1, 4096)?;
-        if values
-            .insert(property.name.as_str(), property.value.as_str())
-            .is_some()
-        {
-            return invalid(field, "duplicate property name");
-        }
-    }
-    Ok(values)
-}
-
-fn required_property<'a>(properties: &'a BTreeMap<&str, &str>, name: &str) -> Result<&'a str> {
-    properties
-        .get(name)
-        .copied()
-        .ok_or_else(|| ManifestError::InvalidField {
-            field: "tree_evidence.properties".to_string(),
-            detail: format!("missing {name}"),
-        })
-}
-
-pub(super) fn tree_digest(records: &[ValidatedTreeRecord]) -> Result<String> {
-    let canonical: Vec<TreeDigestRecord<'_>> = records
-        .iter()
-        .map(|record| TreeDigestRecord {
-            mode: &record.mode,
-            path: &record.path,
-            sha256: &record.digest,
-            size: &record.size_text,
-        })
-        .collect();
-    // This exactly matches A2A `deterministic_tree_digest`: validated records
-    // sorted by path, lexicographic object keys, compact UTF-8 JSON, one LF.
-    // The upstream schema prose names canonical evidence but should later
-    // codify this preimage mechanically; this consumer follows the current
-    // producer.
-    let mut bytes =
-        serde_json::to_vec(&canonical).map_err(|error| ManifestError::Parse(error.to_string()))?;
-    bytes.push(b'\n');
-    Ok(hex::sha256(&bytes))
 }
 
 // ---------------------------------------------------------------------------

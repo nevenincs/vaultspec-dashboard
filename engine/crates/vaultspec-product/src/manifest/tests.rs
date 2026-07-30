@@ -43,123 +43,23 @@ impl Fixture {
         let lock = ComponentLock::parse(std::str::from_utf8(LOCK_BYTES).unwrap()).unwrap();
         let dashboard = b"dashboard-binary".to_vec();
         let updater = b"external-updater".to_vec();
-        let archive = b"real-capsule-archive".to_vec();
         let license = b"MIT license evidence".to_vec();
-        let sbom = b"{\"bomFormat\":\"CycloneDX\"}\n".to_vec();
-        let tree_file = b"capsule-runtime-file".to_vec();
+        let sbom = b"{\"bomFormat\":\"CycloneDX\"}
+"
+        .to_vec();
+        let tree_file = b"bundled-runtime-file".to_vec();
         let gateway_file = b"gateway-entrypoint".to_vec();
         let standalone_file = b"standalone-mcp-entrypoint".to_vec();
-        let capsule_value = serde_json::json!({
-            "contract_version": "2.0",
-            "identity": {"name": lock.a2a_source.release_identity.name, "version": lock.a2a_source.release_identity.version},
-            "target": TARGET.triple(),
-            "compatibility": {
-                "api_versions": {"minimum": "v1", "maximum": "v1"},
-                "migration_range": {"base": "0001", "head": "0008"}
-            },
-            "consistency_group": {"stores": [
-                {"kind": "primary-database", "derivable": false, "schema_authority": "alembic-migration-range", "schema_version": "0008"},
-                {"kind": "checkpoint-database", "derivable": false, "schema_authority": "checkpointer-schema", "schema_version": "1.0.0"}
-            ]},
-            "entrypoints": {
-                "gateway": {"kind": "gateway", "console_script": "vaultspec-a2a", "reference": "vaultspec_a2a.cli:main", "relative_command": ["bin", "vaultspec-a2a"]},
-                "standalone_mcp": {"kind": "standalone-mcp", "console_script": "vaultspec-a2a-mcp", "reference": "vaultspec_a2a.mcp:main", "relative_command": ["bin", "vaultspec-a2a-mcp"]}
-            },
-            "digest_algorithm": "sha256",
-            "assets": [
-                {"kind": "python-runtime", "version": "3.13", "license": lock.base_closure.python.license, "digest": lock.python_digest(TARGET).unwrap()},
-                {"kind": "a2a-distribution", "version": lock.a2a_source.release_identity.version, "license": "MIT", "digest": "1".repeat(64)},
-                {"kind": "node-runtime", "version": "22", "license": lock.base_closure.node.license, "digest": lock.node_digest(TARGET).unwrap()},
-                {"kind": "acp-adapter", "version": lock.base_closure.acp.version, "license": lock.base_closure.acp.license, "digest": lock.base_closure.acp.sha256}
-            ],
-            "dependency_lock": {"uv_lock_digest": "2".repeat(64), "package_lock_digest": "3".repeat(64)}
-        });
-        let capsule = serde_json::to_vec(&capsule_value).unwrap();
-        let capsule_digest = hex::sha256(&capsule);
-        let mut tree_records = vec![
-            ValidatedTreeRecord {
-                path: "bin/vaultspec-a2a".to_string(),
-                mode: entrypoint_mode.to_string(),
-                size: gateway_file.len() as u64,
-                size_text: gateway_file.len().to_string(),
-                digest: hex::sha256(&gateway_file),
-            },
-            ValidatedTreeRecord {
-                path: "bin/vaultspec-a2a-mcp".to_string(),
-                mode: entrypoint_mode.to_string(),
-                size: standalone_file.len() as u64,
-                size_text: standalone_file.len().to_string(),
-                digest: hex::sha256(&standalone_file),
-            },
-            ValidatedTreeRecord {
-                path: "runtime/tool".to_string(),
-                mode: "0644".to_string(),
-                size: tree_file.len() as u64,
-                size_text: tree_file.len().to_string(),
-                digest: hex::sha256(&tree_file),
-            },
-        ];
-        tree_records.sort_by(|left, right| left.path.cmp(&right.path));
-        let tree_digest_value = tree_digest(&tree_records).unwrap();
-        let tree_value = serde_json::json!({
-            "inventory_version": "vaultspec-installed-tree-v1",
-            "metadata": {
-                "timestamp": "2026-07-19T00:00:00Z",
-                "component": {
-                    "type": "application",
-                    "name": "vaultspec-a2a",
-                    "version": "0.1.0",
-                    "properties": [
-                        {"name": "vaultspec:target", "value": TARGET.triple()},
-                        {"name": "vaultspec:component-manifest-sha256", "value": capsule_digest}
-                    ]
-                }
-            },
-            "components": [
-                {
-                    "type": "file",
-                    "name": "bin/vaultspec-a2a",
-                    "hashes": [{"alg": "SHA-256", "content": hex::sha256(&gateway_file)}],
-                    "properties": [
-                        {"name": "vaultspec:file-mode", "value": entrypoint_mode},
-                        {"name": "vaultspec:file-size", "value": gateway_file.len().to_string()}
-                    ]
-                },
-                {
-                    "type": "file",
-                    "name": "bin/vaultspec-a2a-mcp",
-                    "hashes": [{"alg": "SHA-256", "content": hex::sha256(&standalone_file)}],
-                    "properties": [
-                        {"name": "vaultspec:file-mode", "value": entrypoint_mode},
-                        {"name": "vaultspec:file-size", "value": standalone_file.len().to_string()}
-                    ]
-                },
-                {
-                    "type": "file",
-                    "name": "runtime/tool",
-                    "hashes": [{"alg": "SHA-256", "content": hex::sha256(&tree_file)}],
-                    "properties": [
-                        {"name": "vaultspec:file-mode", "value": "0644"},
-                        {"name": "vaultspec:file-size", "value": tree_file.len().to_string()}
-                    ]
-                }
-            ]
-        });
-        let mut tree = serde_json::to_vec(&tree_value).unwrap();
-        tree.push(b'\n');
         let payloads: Vec<(String, Vec<u8>)> = vec![
             (COMPONENT_LOCK_PATH.to_string(), LOCK_BYTES.to_vec()),
             ("bin/dashboard.exe".to_string(), dashboard),
             ("bin/updater.exe".to_string(), updater),
-            ("a2a/component-manifest.json".to_string(), capsule),
-            ("a2a/capsule.zip".to_string(), archive),
-            ("a2a/capsule/bin/vaultspec-a2a".to_string(), gateway_file),
+            (RUNTIME_ENTRYPOINT_PATH.to_string(), gateway_file),
             (
                 "a2a/capsule/bin/vaultspec-a2a-mcp".to_string(),
                 standalone_file,
             ),
             ("a2a/capsule/runtime/tool".to_string(), tree_file),
-            ("a2a/tree.json".to_string(), tree),
             ("licenses/a2a.txt".to_string(), license),
             ("sbom.cdx.json".to_string(), sbom),
         ];
@@ -182,17 +82,8 @@ impl Fixture {
                 "commit": lock.a2a_source.commit,
                 "release_identity": lock.a2a_source.release_identity,
                 "component_lock": {"path": COMPONENT_LOCK_PATH, "digest": lock_digest},
-                "capsule_manifest": {"path": "a2a/component-manifest.json", "digest": digests["a2a/component-manifest.json"]},
-                "capsule_archive": {"path": "a2a/capsule.zip", "size": sizes["a2a/capsule.zip"], "digest": digests["a2a/capsule.zip"]},
-                "tree_evidence": {"path": "a2a/tree.json", "size": sizes["a2a/tree.json"], "digest": digests["a2a/tree.json"], "tree_digest": tree_digest_value, "file_count": 3}
+                "runtime": {"root": RUNTIME_ROOT, "entrypoint": RUNTIME_ENTRYPOINT_PATH, "file_count": 3}
             },
-            "runtimes": {
-                "cpython": {"version": lock.base_closure.python.version, "license": lock.base_closure.python.license, "digest": lock.python_digest(TARGET).unwrap()},
-                "node": {"version": lock.base_closure.node.version, "license": lock.base_closure.node.license, "digest": lock.node_digest(TARGET).unwrap()},
-                "acp": {"version": lock.base_closure.acp.version, "license": lock.base_closure.acp.license, "digest": lock.base_closure.acp.sha256}
-            },
-            "protocol": {"gateway_api_version_range": {"minimum": "v1", "maximum": "v1"}},
-            "state_schema": {"migration_range": {"minimum": "0001", "maximum": "0008"}},
             "licenses": [{"component": "vaultspec-a2a", "spdx": "MIT", "path": "licenses/a2a.txt", "digest": digests["licenses/a2a.txt"]}],
             "sbom": {"format": "cyclonedx", "path": "sbom.cdx.json", "size": sizes["sbom.cdx.json"], "digest": digests["sbom.cdx.json"]},
             "file_digests": serde_json::Value::Object(digests)
@@ -399,57 +290,6 @@ impl Fixture {
         self.cohort_digest = cohort_descriptor_digest(&self.descriptor).unwrap();
     }
 
-    /// Rewrite the capsule manifest and re-record EVERY digest the release
-    /// states about it, so the tree stays internally coherent.
-    ///
-    /// Coherence is the entire point. Mutating the capsule alone would be
-    /// refused as a file-digest mismatch against `release.json`, which proves
-    /// only that the digest map works — a refusal at the wrong layer, and the
-    /// exact trap a refusal matrix must avoid. Three places name this file's
-    /// digest and all three must move together: the `file_digests` map, the
-    /// `a2a_component.capsule_manifest.digest` field, and the
-    /// `vaultspec:component-manifest-sha256` property inside the tree evidence
-    /// (which is itself digested, so `a2a/tree.json` must be re-recorded too).
-    /// With all of them updated, the only disagreement left is the one the
-    /// caller introduced — against the component LOCK, which is trusted
-    /// separately and cannot be restated by the candidate.
-    pub(crate) fn mutate_capsule(&mut self, mutate: impl FnOnce(&mut serde_json::Value)) {
-        let mut capsule: serde_json::Value =
-            serde_json::from_slice(self.payload(CAPSULE_MANIFEST_PATH)).unwrap();
-        mutate(&mut capsule);
-        let capsule_bytes = serde_json::to_vec(&capsule).unwrap();
-        let capsule_digest = hex::sha256(&capsule_bytes);
-
-        // The tree evidence carries the capsule-manifest digest as a property,
-        // so it changes with the capsule and must be re-serialized identically
-        // to how the constructor built it (compact, one trailing newline).
-        let mut tree: serde_json::Value =
-            serde_json::from_slice(self.payload(TREE_EVIDENCE_PATH)).unwrap();
-        for property in tree["metadata"]["component"]["properties"]
-            .as_array_mut()
-            .unwrap()
-        {
-            if property["name"] == "vaultspec:component-manifest-sha256" {
-                property["value"] = serde_json::json!(capsule_digest);
-            }
-        }
-        let mut tree_bytes = serde_json::to_vec(&tree).unwrap();
-        tree_bytes.push(b'\n');
-        let tree_digest_hex = hex::sha256(&tree_bytes);
-        let tree_size = tree_bytes.len() as u64;
-
-        self.set_payload(CAPSULE_MANIFEST_PATH, capsule_bytes);
-        self.set_payload(TREE_EVIDENCE_PATH, tree_bytes);
-        self.mutate_member(|member| {
-            member["file_digests"][CAPSULE_MANIFEST_PATH] = serde_json::json!(capsule_digest);
-            member["file_digests"][TREE_EVIDENCE_PATH] = serde_json::json!(tree_digest_hex);
-            member["a2a_component"]["capsule_manifest"]["digest"] =
-                serde_json::json!(capsule_digest);
-            member["a2a_component"]["tree_evidence"]["digest"] = serde_json::json!(tree_digest_hex);
-            member["a2a_component"]["tree_evidence"]["size"] = serde_json::json!(tree_size);
-        });
-    }
-
     fn set_payload(&mut self, path: &str, bytes: Vec<u8>) {
         let slot = self
             .payloads
@@ -460,11 +300,11 @@ impl Fixture {
     }
 }
 
-/// The capsule manifest's path inside the release tree.
-pub(crate) const CAPSULE_MANIFEST_PATH: &str = "a2a/component-manifest.json";
+/// The bundled runtime's root inside the release tree.
+pub(crate) const RUNTIME_ROOT: &str = "a2a/capsule";
 
-/// The A2A installed-tree evidence path inside the release tree.
-pub(crate) const TREE_EVIDENCE_PATH: &str = "a2a/tree.json";
+/// The bundled runtime's launchable entrypoint inside the release tree.
+pub(crate) const RUNTIME_ENTRYPOINT_PATH: &str = "a2a/capsule/bin/vaultspec-a2a";
 
 /// A valid activation context for field-validation fixtures.
 ///
@@ -629,7 +469,7 @@ fn complete_real_generation_constructs_verified_authority() {
             verified.dashboard_digest(),
             hex::sha256(fixture.payload("bin/dashboard.exe"))
         );
-        assert_eq!(verified.capsule_manifest().contract_version, "2.0");
+        assert_eq!(verified.capsule_root(), RUNTIME_ROOT);
         let facts = verified.receipt_facts();
         assert_eq!(facts.dashboard_version(), "0.1.4");
         assert_eq!(facts.dashboard_commit(), "a".repeat(40));
@@ -1193,7 +1033,7 @@ fn verified_borrow_release_allows_real_exact_empty_discard() {
 }
 
 #[test]
-fn independent_known_vectors_pin_jcs_and_a2a_tree_preimages() {
+fn an_independent_known_vector_pins_the_jcs_cohort_preimage() {
     const COHORT_VECTOR: &str = r#"{
             "members":[
                 {"target":"aarch64-apple-darwin","member_manifest_digest":"0000000000000000000000000000000000000000000000000000000000000000"},
@@ -1208,26 +1048,6 @@ fn independent_known_vectors_pin_jcs_and_a2a_tree_preimages() {
     assert_eq!(
         cohort_descriptor_digest(COHORT_VECTOR.as_bytes()).unwrap(),
         "729a3486c5497ae66e55ec11d2a262bf84e84bf125b554592f83640924c3f6b1"
-    );
-    let records = vec![
-        ValidatedTreeRecord {
-            path: "bin/a".to_string(),
-            mode: "0755".to_string(),
-            size: 1,
-            size_text: "1".to_string(),
-            digest: "a".repeat(64),
-        },
-        ValidatedTreeRecord {
-            path: "lib/b".to_string(),
-            mode: "0644".to_string(),
-            size: 2,
-            size_text: "2".to_string(),
-            digest: "b".repeat(64),
-        },
-    ];
-    assert_eq!(
-        tree_digest(&records).unwrap(),
-        "aad0f7ef91424f0e2b4d40e4ecf96253cbda7b1679da3c7978d92cfc44a47b70"
     );
 }
 

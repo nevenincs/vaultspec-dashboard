@@ -7,10 +7,10 @@
 
 use std::collections::BTreeMap;
 use vaultspec_product::cohort::{CohortError, emit_cohort_descriptor};
-use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
+use vaultspec_product::manifest::{ComponentLock, Target};
 use vaultspec_product::product_build::{
-    A2aComponentEvidence, ComposedArtifact, ComposedMember, DashboardArtifact, EvidenceArtifact,
-    LicenseArtifact, SbomArtifact, TreeEvidenceArtifact, emit_member_manifest,
+    A2aComponentEvidence, BundledRuntimeEvidence, ComposedArtifact, ComposedMember,
+    DashboardArtifact, EvidenceArtifact, LicenseArtifact, SbomArtifact, emit_member_manifest,
 };
 
 const LOCK_JSON: &str = include_str!("../../../../packaging/a2a-component.lock.json");
@@ -26,35 +26,6 @@ const ROSTER: [Target; 4] = [
     Target::X86_64UnknownLinuxGnu,
     Target::X86_64PcWindowsMsvc,
 ];
-
-/// A lock-consistent capsule manifest for `target`.
-fn capsule(lock: &ComponentLock, target: Target) -> CapsuleManifest {
-    let triple = target.triple();
-    let python = lock.python_digest(target).unwrap();
-    let node = lock.node_digest(target).unwrap();
-    let acp = &lock.base_closure.acp.sha256;
-    let a2a_version = &lock.a2a_source.release_identity.version;
-    let raw = serde_json::json!({
-        "contract_version": "2.0",
-        "identity": { "name": lock.a2a_source.release_identity.name, "version": a2a_version },
-        "target": triple,
-        "compatibility": { "api_versions": { "minimum": "v1", "maximum": "v1" }, "migration_range": { "base": "0001", "head": "0008" } },
-        "consistency_group": { "stores": [
-            { "kind": "primary-database", "derivable": false, "schema_authority": "alembic-migration-range", "schema_version": "0008" },
-            { "kind": "checkpoint-database", "derivable": false, "schema_authority": "checkpointer-schema", "schema_version": "1.0.0" }] },
-        "entrypoints": {
-            "gateway": { "kind": "gateway", "console_script": "vaultspec-a2a", "reference": "vaultspec_a2a.cli:main", "relative_command": ["bin", "vaultspec-a2a"] },
-            "standalone_mcp": { "kind": "standalone-mcp", "console_script": "vaultspec-a2a-mcp", "reference": "vaultspec_a2a.mcp:main", "relative_command": ["bin", "vaultspec-a2a-mcp"] } },
-        "digest_algorithm": "sha256",
-        "assets": [
-            { "kind": "python-runtime", "version": "3.13", "license": lock.base_closure.python.license, "digest": python },
-            { "kind": "a2a-distribution", "version": a2a_version, "license": "MIT", "digest": "c".repeat(64) },
-            { "kind": "node-runtime", "version": "22", "license": lock.base_closure.node.license, "digest": node },
-            { "kind": "acp-adapter", "version": lock.base_closure.acp.version, "license": lock.base_closure.acp.license, "digest": acp }],
-        "dependency_lock": { "uv_lock_digest": "d".repeat(64), "package_lock_digest": "e".repeat(64) }
-    });
-    CapsuleManifest::parse_and_verify(&serde_json::to_string(&raw).unwrap(), lock, target).unwrap()
-}
 
 /// A verified member manifest for `target`, sharing the cohort identity.
 fn member(lock: &ComponentLock, target: Target) -> String {
@@ -83,22 +54,9 @@ fn member(lock: &ComponentLock, target: Target) -> String {
                 path: "packaging/a2a-component.lock.json".to_string(),
                 digest: "d".repeat(64),
             },
-            capsule_manifest: EvidenceArtifact {
-                path: "a2a/component-manifest.json".to_string(),
-                digest: "e".repeat(64),
-            },
-            capsule_archive: ComposedArtifact {
-                path: "a2a/capsule.zip".to_string(),
-                size: 20,
-                digest: "f".repeat(64),
-            },
-            tree_evidence: TreeEvidenceArtifact {
-                artifact: ComposedArtifact {
-                    path: "a2a/tree.json".to_string(),
-                    size: 24,
-                    digest: "1".repeat(64),
-                },
-                tree_digest: "2".repeat(64),
+            runtime: BundledRuntimeEvidence {
+                root: "a2a".to_string(),
+                entrypoint: "a2a/vaultspec-a2a".to_string(),
                 file_count: 3,
             },
         },
@@ -118,7 +76,7 @@ fn member(lock: &ComponentLock, target: Target) -> String {
         },
         file_digests: BTreeMap::from([("bin/dashboard".to_string(), "b".repeat(64))]),
     };
-    emit_member_manifest(&composed, lock, &capsule(lock, target)).unwrap()
+    emit_member_manifest(&composed, lock).unwrap()
 }
 
 fn all_members(lock: &ComponentLock) -> Vec<(Target, String)> {

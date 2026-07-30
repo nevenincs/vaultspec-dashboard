@@ -1086,10 +1086,11 @@ async fn an_interrupted_bootstrap_is_classified_by_phase_and_never_auto_complete
 /// If retirement ever migrated ahead of the commit, every existing test would
 /// still pass and this one would fail.
 ///
-/// The refusal is induced at the manifest link with a lock-drifted capsule —
-/// a real adversarial input that the distribution authority correctly admits,
-/// because it has no view of the component lock. Using an empty generation
-/// would refuse at the same link but for a reason no attacker could produce.
+/// The refusal is induced at the manifest link with a member manifest that
+/// under-declares the bundled runtime it ships — a real adversarial input that
+/// the distribution authority correctly admits, because it has no view of the
+/// installed tree. Using an empty generation would refuse at the same link but
+/// for a reason no attacker could produce.
 ///
 /// The negative control is the whole point of the pairing: the SAME assertions
 /// are made on the success path in `the_unmutated_harness_installs_and_settles`,
@@ -1098,14 +1099,8 @@ async fn an_interrupted_bootstrap_is_classified_by_phase_and_never_auto_complete
 #[tokio::test(flavor = "current_thread")]
 async fn a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_armed() {
     let mut chain = Chain::new().await;
-    chain.fixture.mutate_capsule(|capsule| {
-        let acp = capsule["assets"]
-            .as_array_mut()
-            .expect("capsule assets")
-            .iter_mut()
-            .find(|asset| asset["kind"] == "acp-adapter")
-            .expect("the capsule pins the ACP adapter");
-        acp["digest"] = serde_json::json!("0".repeat(64));
+    chain.fixture.mutate_member(|member| {
+        member["a2a_component"]["runtime"]["file_count"] = serde_json::json!(2);
     });
 
     let identity = chain.identity();
@@ -1119,12 +1114,12 @@ async fn a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_arm
     let mut verified = chain
         .verify(&bundle, TARGET)
         .await
-        .expect("the distribution authority admits a lock-drifted release");
+        .expect("the distribution authority admits an under-declared release");
 
     let failure = chain
         .install(&mut verified, "generation-crossing")
         .await
-        .expect_err("a lock-drifted capsule must not install");
+        .expect_err("an under-declared bundled runtime must not install");
 
     // The refusal is the MANIFEST link, named precisely — otherwise this could
     // be any later or earlier failure wearing the same outcome.
@@ -1135,7 +1130,7 @@ async fn a_manifest_link_refusal_leaves_the_journal_clean_and_the_descriptor_arm
     assert!(
         failure
             .detail
-            .contains("digest drift in assets[acp-adapter].digest"),
+            .contains("invalid a2a_component.runtime.file_count"),
         "expected the manifest-link drift refusal, got: {}",
         failure.detail
     );

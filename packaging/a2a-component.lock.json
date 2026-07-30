@@ -1,6 +1,6 @@
 {
   "lock_version": "1.0",
-  "description": "Dashboard-owned lock pinning the exact A2A source commit and release identity the release pipeline builds the frozen onedir from (2026-07-24 a2a-product-provisioning decision, D2/D3). Every value is an exact pin: no floating minor, no `latest`, and no runtime resolution. TRANSITIONAL SHAPE: the capsule_contract and base_closure blocks are retained only because the dashboard's lock parser and its compiled-in test fixtures still deserialize them; they describe a producer output that no longer exists and retire with the a2a_component BuildSources reshape, which shrinks this lock to the source pin plus the freeze-recipe entry identity (scripts/build_binary.py + packaging/pyinstaller spec).",
+  "description": "Dashboard-owned lock pinning the exact A2A source commit, release identity, and in-repo freeze recipe the release pipeline builds the bundled runtime from. Every value is an exact pin: no floating minor, no `latest`, and no runtime resolution. The dashboard builds the frozen PyInstaller onedir itself at this commit and places it as ordinary release files, so component trust is composition-time file digests in the member manifest rather than a pre-pinned base closure or a second manifest chain.",
   "a2a_source": {
     "repository": "vaultspec-a2a",
     "commit": "d59b41b6c1ac8b6e498326ea74ab32898ac9c08b",
@@ -9,48 +9,9 @@
       "version": "0.1.0"
     }
   },
-  "capsule_contract": {
-    "manifest_schema": "schemas/desktop-capsule-manifest.json",
-    "digest_algorithm": "sha256",
-    "targets": [
-      "aarch64-apple-darwin",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-unknown-linux-gnu",
-      "x86_64-pc-windows-msvc"
-    ]
-  },
-  "base_closure": {
-    "acp": {
-      "kind": "acp_adapter",
-      "version": "0.59.0",
-      "license": "Apache-2.0",
-      "source": "registry.npmjs.org/@agentclientprotocol/claude-agent-acp",
-      "sha256": "b62c8ed1deed6172abb6b1d49a4d30024efe88bba062c5458845c256e7218f61"
-    },
-    "python": {
-      "kind": "cpython_runtime",
-      "version": "3.13.5",
-      "build": "python-build-standalone 20250702 install_only",
-      "license": "PSF-2.0",
-      "per_target_sha256": {
-        "aarch64-apple-darwin": "66577414e9f4b0caa116a8e15fa50306db91bce13d49278079bb22adaeefb1fa",
-        "aarch64-unknown-linux-gnu": "272a8817921856d7ac47f44c076fb62fbaf5649aa1d97b2d67a3a6adee969ff0",
-        "x86_64-unknown-linux-gnu": "9f5d5260f333fcb5372ec681851d92ddac79a33362aa85626b6cc96ffe75eeef",
-        "x86_64-pc-windows-msvc": "f11f915437250657019c71adb81ec523d2932c2c3ea4441b592aa3bdce0e7ef7"
-      }
-    },
-    "node": {
-      "kind": "node_runtime",
-      "version": "22.17.0",
-      "source": "nodejs.org/dist/v22.17.0",
-      "license": "MIT",
-      "per_target_sha256": {
-        "aarch64-apple-darwin": "615dda58b5fb41fad2be43940b6398ca56554cbe05800953afadc724729cb09e",
-        "aarch64-unknown-linux-gnu": "3e99df8b01b27dc8b334a2a30d1cd500442b3b0877d217b308fd61a9ccfc33d4",
-        "x86_64-unknown-linux-gnu": "0fa01328a0f3d10800623f7107fbcd654a60ec178fab1ef5b9779e94e0419e1a",
-        "x86_64-pc-windows-msvc": "721ab118a3aac8584348b132767eadf51379e0616f0db802cc1e66d7f0d98f85"
-      }
-    }
+  "freeze_recipe": {
+    "build_entry": "scripts/build_binary.py",
+    "spec": "packaging/pyinstaller/vaultspec-a2a.spec"
   },
   "resolution_policy": {
     "floating_forbidden": true,
