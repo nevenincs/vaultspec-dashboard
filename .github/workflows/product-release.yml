@@ -19,13 +19,13 @@
 # VERIFICATION REALITY: authored here; the real proof is a release-CI run on a
 # clean runner (the self-verify job below), not a local green.
 #
-# FAIL-CLOSED GATE: the compose step refuses until `product_build`'s
-# BuildSources accepts the built onedir as an ordinary build source (the
-# a2a_component reshape, D2: the lock shrinks to a source pin and the capsule
-# manifest join retires). Until that lands, every run fails at the compose
-# step by design - the same fail-closed posture the retired
-# A2A_CAPSULE_BASE_URL fetch carried. PyInstaller cannot cross-compile: the
-# freeze leg requires a native-architecture runner per target.
+# The compose step admits the frozen onedir as an ordinary build source: the
+# lock is a source pin, there is no capsule manifest to cross-verify, and the
+# onedir's files are digest-covered by the member manifest exactly like every
+# other installed file. Compose still fails loudly if the freeze step left no
+# onedir behind - it will never compose a tree with no runtime in it.
+# PyInstaller cannot cross-compile: the freeze leg requires a
+# native-architecture runner per target.
 
 name: Product Release
 
@@ -126,12 +126,17 @@ jobs:
           target="${{ matrix.target }}"
           suffix=""; [ "${{ matrix.ext }}" = "zip" ] && suffix=".exe"
           gen_root="${PWD}/out/generations/0001"
-          # FAIL-CLOSED (see header): compose awaits the a2a_component
-          # BuildSources reshape - product_build still expects a capsule
-          # archive + manifest that no longer exist. Refuse loudly here
-          # rather than hand the builder a synthetic capsule.
-          echo "::error::compose is gated on the a2a_component BuildSources reshape (built onedir at a2a-src/dist/binary/vaultspec-a2a is ready to admit)" >&2
-          exit 1
+          # The onedir the freeze step above produced, admitted as an ordinary
+          # build source: a directory of regular files the builder places and
+          # scans for real installed-byte evidence, digest-covered by the member
+          # manifest like every other installed file. Fail loudly if the freeze
+          # step did not actually leave it here, rather than composing a tree
+          # with no runtime in it.
+          a2a_runtime="${PWD}/a2a-src/dist/binary/vaultspec-a2a"
+          test -d "$a2a_runtime" || {
+            echo "::error::the frozen A2A onedir is absent at ${a2a_runtime}; the freeze step did not produce it" >&2
+            exit 1
+          }
           # (SBOM + LICENSE are release inputs — an SBOM-generation step + the repo
           # LICENSE; sourced here as ${PWD}/packaging/sbom.cdx.json + ${PWD}/LICENSE.)
           python3 packaging/assemble-build-spec.py \
@@ -140,6 +145,7 @@ jobs:
             --generation-root "$gen_root" \
             --dashboard "${ENGINE_TARGET_DIR}/${target}/release/vaultspec${suffix}" \
             --updater "${ENGINE_TARGET_DIR}/${target}/release/vaultspec-updater${suffix}" \
+            --a2a-runtime "$a2a_runtime" \
             --lock "${PWD}/packaging/a2a-component.lock.json" \
             --sbom "${PWD}/packaging/sbom.cdx.json" \
             --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
