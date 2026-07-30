@@ -256,7 +256,7 @@ Exercise the real published artifacts, operating-system processes, update paths,
 
 Dispatch real-artifact certification to vaultspec-high-executor; no fake, mock, stub, patch, monkeypatch, skip, xfail, checkout interpreter, or metadata-only assertion may satisfy these gates.
 
-- [ ] `W06.P13.S107` - Create a production-artifact certifier that opens published archives, validates complete receipts and payloads, and executes installed commands; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S107` - Create a production-artifact certifier that opens published archives, validates complete receipts and payloads, and executes installed commands; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S108` - Certify clean installation from a locally staged artifact after network access is removed; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S109` - Certify relocation preserves onedir resolution, app-home separation, receipt authority, and dashboard launch; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S110` - Certify the frozen runtime's default provider path executes a real run offline with no repository node_modules or runtime acquisition; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
