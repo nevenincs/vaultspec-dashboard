@@ -205,6 +205,15 @@ impl CertifyChild {
         }
     }
 
+    pub(crate) fn take_stdin(&mut self) -> Option<std::process::ChildStdin> {
+        match self {
+            #[cfg(unix)]
+            Self::Unix { child, .. } => child.stdin.take(),
+            #[cfg(windows)]
+            Self::Windows(child) => child.inner().stdin.take(),
+        }
+    }
+
     pub(crate) fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
         match self {
             #[cfg(unix)]
@@ -283,6 +292,99 @@ pub(crate) fn drain<R: Read + Send + 'static>(
         }
         retained
     })
+}
+
+/// A deliberately long-lived installed process the certifier supervises.
+///
+/// Some properties are only observable while a real process is UP — a resident
+/// runtime that must survive a lifecycle cleanup, or a tree whose descendants
+/// must be proven dead afterwards — so those cases cannot use the
+/// run-to-completion runner. The lifetime stays bounded anyway: the supervisor
+/// force-kills the whole spawned tree on drop, so no case can leak a process
+/// even on an early return or a panic.
+///
+/// Standard input is a PIPE the supervisor holds. A stdio-protocol surface stays
+/// up exactly as long as its caller keeps that pipe open, so closing it is the
+/// caller-owned stop; the output streams are nulled because nothing reads them
+/// and an unread pipe would eventually block the child.
+pub(crate) struct SupervisedChild {
+    child: CertifyChild,
+    stdin: Option<std::process::ChildStdin>,
+    pid: u32,
+}
+
+impl SupervisedChild {
+    /// Spawn a supervised installed process in its own group/job.
+    pub(crate) fn spawn(
+        program: &Path,
+        args: &[&str],
+        envs: &[(String, String)],
+        cwd: Option<&Path>,
+    ) -> Result<Self, CommandFailure> {
+        let mut command = Command::new(program);
+        command
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        for (key, value) in envs {
+            command.env(key, value);
+        }
+        if let Some(cwd) = cwd {
+            command.current_dir(cwd);
+        }
+        let mut child = CertifyChild::spawn(&mut command).map_err(CommandFailure::Spawn)?;
+        let pid = child.pid();
+        let stdin = child.take_stdin();
+        Ok(Self { child, stdin, pid })
+    }
+
+    /// The real process id of the supervised process.
+    pub(crate) fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    /// Whether the process is still alive, read through the product's own
+    /// liveness authority rather than a second implementation of one.
+    pub(crate) fn is_alive(&self) -> bool {
+        vaultspec_product::locking::process_is_alive(self.pid)
+    }
+
+    /// Give the process `budget` to come up, returning whether it is still
+    /// alive at the end of it. A surface that dies inside its own startup is
+    /// what this distinguishes from one that really started.
+    pub(crate) fn settle(&self, budget: Duration) -> bool {
+        let deadline = Instant::now() + budget;
+        while Instant::now() < deadline {
+            if !self.is_alive() {
+                return false;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        self.is_alive()
+    }
+
+    /// The caller-owned stop: close the standard input the surface reads from
+    /// and give it `budget` to exit on its own. Returns whether it exited
+    /// without being forced.
+    pub(crate) fn stop_from_caller(&mut self, budget: Duration) -> bool {
+        self.stdin = None;
+        let deadline = Instant::now() + budget;
+        while Instant::now() < deadline {
+            if !self.is_alive() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        !self.is_alive()
+    }
+}
+
+impl Drop for SupervisedChild {
+    fn drop(&mut self) {
+        self.stdin = None;
+        self.child.kill_tree();
+    }
 }
 
 /// Execute an installed command under the standard command bounds, mapping a

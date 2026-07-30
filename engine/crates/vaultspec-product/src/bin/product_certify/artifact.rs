@@ -13,6 +13,8 @@ use vaultspec_product::manifest::ComponentLock;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::product_build::verify_installed_tree;
 
+#[cfg(windows)]
+use crate::RESTRICT_WALL;
 use crate::command::{CommandFailure, CommandLimits, run_bounded};
 use crate::{
     CaseError, DIGEST_CHUNK_BYTES, EMBEDDED_COMPONENT_LOCK, EXTRACT_OUTPUT_CAP, EXTRACT_WALL,
@@ -130,11 +132,15 @@ impl Artifact {
     /// app home that is deliberately OUTSIDE the installed tree. Every runtime
     /// case drives the installation's own authority here.
     pub(crate) fn product_paths(&self) -> Result<ProductPaths, CaseError> {
-        let paths = ProductPaths::under_app_home(&self.workspace.join("app-home"));
-        paths.ensure().map_err(|error| {
-            CaseError::failed(format!("cannot establish the product app home: {error}"))
-        })?;
-        Ok(paths)
+        establish_product_state(&self.workspace.join("app-home"), "product")
+    }
+
+    /// A product state authority under its OWN machine app home, so a case that
+    /// lays down real generations, journals, and snapshots cannot contaminate
+    /// the state another case reasons about. Every path still derives from the
+    /// product's own authority — only the app home differs.
+    pub(crate) fn product_paths_named(&self, label: &str) -> Result<ProductPaths, CaseError> {
+        establish_product_state(&self.workspace.join(format!("app-home-{label}")), label)
     }
 
     /// Prove the tree at `root` matches its own member manifest through the
@@ -226,6 +232,118 @@ impl ArchiveShape {
             ))),
         }
     }
+}
+
+/// Establish one product state root the way a product-owned installer does.
+///
+/// The product's own path authority creates the layout, and the directories its
+/// retained-generation authority requires to be owner-private are then made
+/// owner-private. That authority REFUSES a product tree an ordinary peer account
+/// could write, so a certifier that skipped this would be driving cases against a
+/// tree the product itself would never accept.
+pub(crate) fn establish_product_state(
+    app_home: &Path,
+    label: &str,
+) -> Result<ProductPaths, CaseError> {
+    let paths = ProductPaths::under_app_home(app_home);
+    paths.ensure().map_err(|error| {
+        CaseError::failed(format!(
+            "cannot establish the {label} product app home: {error}"
+        ))
+    })?;
+    for directory in [
+        paths.root().to_path_buf(),
+        paths.generations_dir(),
+        paths.app_home(),
+    ] {
+        restrict_to_owner(&directory)?;
+    }
+    Ok(paths)
+}
+
+/// Make one product directory owner-private, as a product-owned installer does.
+///
+/// On Unix that is the owner-only mode; on Windows it is the access control the
+/// product's directory authority demands — inheritance broken, the ordinary-users
+/// group removed, and full control left to this account, the system account, and
+/// the built-in administrators. The Windows path goes through a real process, so
+/// it carries both an output cap and a wall clock like every other process this
+/// tool spawns.
+fn restrict_to_owner(directory: &Path) -> Result<(), CaseError> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))
+            .map_err(|error| {
+                CaseError::failed(format!(
+                    "cannot restrict {} to its owner: {error}",
+                    display(directory)
+                ))
+            });
+    }
+    #[cfg(windows)]
+    {
+        let account = current_account()?;
+        let grant = format!("{account}:(OI)(CI)F");
+        let limits = CommandLimits {
+            output_cap: EXTRACT_OUTPUT_CAP,
+            wall: RESTRICT_WALL,
+        };
+        for args in [
+            vec![
+                directory.as_os_str().to_owned(),
+                OsString::from("/remove:g"),
+                OsString::from("*S-1-5-32-545"),
+            ],
+            vec![
+                directory.as_os_str().to_owned(),
+                OsString::from("/inheritance:r"),
+                OsString::from("/grant:r"),
+                OsString::from(grant.clone()),
+                OsString::from("/grant"),
+                OsString::from("*S-1-5-18:(OI)(CI)F"),
+                OsString::from("/grant"),
+                OsString::from("*S-1-5-32-544:(OI)(CI)F"),
+            ],
+        ] {
+            let outcome = run_bounded(Path::new("icacls.exe"), &args, &[], None, limits).map_err(
+                |failure| CaseError::failed(format!("the directory restriction {failure}")),
+            )?;
+            if outcome.code != Some(0) {
+                return Err(CaseError::failed(format!(
+                    "restricting {} exited {}: {}",
+                    display(directory),
+                    describe_code(outcome.code),
+                    outcome.text()
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The account this process runs as, read from the host rather than assumed.
+#[cfg(windows)]
+fn current_account() -> Result<String, CaseError> {
+    let limits = CommandLimits {
+        output_cap: EXTRACT_OUTPUT_CAP,
+        wall: RESTRICT_WALL,
+    };
+    let outcome = run_bounded(Path::new("whoami.exe"), &[], &[], None, limits)
+        .map_err(|failure| CaseError::failed(format!("the account probe {failure}")))?;
+    if outcome.code != Some(0) {
+        return Err(CaseError::failed(format!(
+            "the account probe exited {}",
+            describe_code(outcome.code)
+        )));
+    }
+    let account = String::from_utf8_lossy(&outcome.stdout).trim().to_string();
+    if account.is_empty() {
+        return Err(CaseError::failed(
+            "the host reported no account for this process".to_string(),
+        ));
+    }
+    Ok(account)
 }
 
 /// Digest the published archive with a bounded streaming read and prove it

@@ -67,6 +67,24 @@ const CONCURRENT_ENSURE_CONTENDERS: usize = 8;
 const PROBE_WALL: Duration = Duration::from_secs(30);
 /// The gateway-owned worker IPC credential the dashboard must never create.
 const WORKER_IPC_CREDENTIAL: &str = "worker-ipc.cred";
+/// How long a supervised resident surface is given to prove it really came up.
+const GATEWAY_SETTLE: Duration = Duration::from_secs(10);
+/// How long the caller-owned MCP surface is given to come up, and to exit once
+/// its caller closes the stream it owns.
+const MCP_SETTLE: Duration = Duration::from_secs(15);
+/// How long an owned process tree is given to record its descendant.
+const DESCENDANT_SETTLE: Duration = Duration::from_secs(30);
+/// The graceful window the owned-tree cleanup opens before it forces the tree
+/// down. Short on purpose: cleanup must converge.
+const OWNED_GRACEFUL: Duration = Duration::from_secs(10);
+/// Wall clock for one host access-control call while a product state root is
+/// established.
+#[cfg(windows)]
+const RESTRICT_WALL: Duration = Duration::from_secs(60);
+/// Captured-output byte cap for one staged-migration invocation.
+const MIGRATION_OUTPUT_CAP: usize = 256 * 1024;
+/// Wall clock for one staged-migration invocation.
+const MIGRATION_WALL: Duration = Duration::from_secs(120);
 /// Ceilings on the retained-artifact token scan.
 const MAX_SCAN_FILES: usize = 100_000;
 const MAX_SCAN_DIRECTORIES: usize = 10_000;
@@ -97,12 +115,25 @@ mod cases;
 mod command;
 #[path = "product_certify/network.rs"]
 mod network;
+#[path = "product_certify/release_cases.rs"]
+mod release_cases;
+#[path = "product_certify/runtime_cases.rs"]
+mod runtime_cases;
 
 use artifact::Artifact;
 use cases::{
     case_clean_install_offline, case_concurrent_ensure_single_flight, case_credential_separation,
     case_frozen_runtime_dispatch, case_relocation, case_runtime_singleton,
     case_stale_discovery_quarantine, case_token_redaction,
+};
+use release_cases::{
+    case_candidate_failure_rollback, case_consistency_snapshot, case_interruption_recovery,
+    case_offline_default_provider_run, case_removal_preserves_data, case_staged_migration,
+    case_tamper_detection,
+};
+use runtime_cases::{
+    case_cold_gateway_readiness, case_foreign_attachment_read_only,
+    case_lifecycle_admission_ceiling, case_owned_tree_bounded_cleanup, case_standalone_mcp_fence,
 };
 
 // Outcomes
@@ -132,6 +163,10 @@ enum EvidenceGap {
     /// The embedded trust authority itself is unusable, so nothing can be
     /// certified against it.
     TrustAuthorityInvalid { detail: String },
+    /// The property's remaining half is the activation commit, which only the
+    /// sealed release authority of a verified distribution can perform. What the
+    /// case DID prove is carried so the gap is diagnosable without re-running it.
+    SealedActivationUnavailable { proven: String },
 }
 
 impl std::fmt::Display for EvidenceGap {
@@ -159,6 +194,10 @@ impl std::fmt::Display for EvidenceGap {
             Self::NetworkReachable { endpoint } => write!(
                 f,
                 "this host still reaches {endpoint}; the case requires network access to be removed first"
+            ),
+            Self::SealedActivationUnavailable { proven } => write!(
+                f,
+                "the activation commit requires the sealed release authority of a verified distribution, which this run has no source for; proven up to that boundary: {proven}"
             ),
             Self::TrustAuthorityInvalid { detail } => {
                 write!(
@@ -247,6 +286,66 @@ const CASES: &[Case] = &[
         id: "token-redaction",
         title: "token values never appear in discovery, retained artifacts, diagnostics, or the installed tree",
         run: case_token_redaction,
+    },
+    Case {
+        id: "offline-default-provider-run",
+        title: "the default execution path runs offline with no installed dependency tree in reach and no runtime acquisition",
+        run: case_offline_default_provider_run,
+    },
+    Case {
+        id: "cold-gateway-readiness",
+        title: "a cold gateway is service-ready, demand attaches to one worker, and nothing starts eagerly",
+        run: case_cold_gateway_readiness,
+    },
+    Case {
+        id: "lifecycle-admission-ceiling",
+        title: "admission is refused at the hard retained-record ceiling when nothing is evictable, and evicts nothing",
+        run: case_lifecycle_admission_ceiling,
+    },
+    Case {
+        id: "foreign-attachment-read-only",
+        title: "a compatible foreign gateway can be run against but never stopped, repaired, migrated, updated, rolled back, removed, or adopted",
+        run: case_foreign_attachment_read_only,
+    },
+    Case {
+        id: "tamper-detection",
+        title: "digest tampering is detected, and restoring the immutable file leaves mutable state untouched",
+        run: case_tamper_detection,
+    },
+    Case {
+        id: "owned-tree-bounded-cleanup",
+        title: "admission closes only over a record-free product, and bounded cleanup terminates the owned tree and its descendants",
+        run: case_owned_tree_bounded_cleanup,
+    },
+    Case {
+        id: "staged-migration",
+        title: "a compatible staged migration runs only under proven quiescence, toward one complete release-set receipt",
+        run: case_staged_migration,
+    },
+    Case {
+        id: "candidate-failure-rollback",
+        title: "candidate failure restores the prior files, receipt journal, state snapshot, and dashboard",
+        run: case_candidate_failure_rollback,
+    },
+    Case {
+        id: "interruption-recovery",
+        title: "interruption at every declared transaction boundary recovers deterministically with no split activation",
+        run: case_interruption_recovery,
+    },
+    Case {
+        id: "consistency-snapshot-generation",
+        title: "every schema-bearing store, the receipt journal, and the prior seat restore as one snapshot generation",
+        run: case_consistency_snapshot,
+    },
+    Case {
+        id: "removal-preserves-data",
+        title: "removal deletes owned generations and receipts while preserving data unless typed data removal is requested",
+        run: case_removal_preserves_data,
+    },
+    Case {
+        id: "standalone-mcp-fence",
+        title: "the standalone MCP surface starts and stops under its caller while dashboard lifecycle leaves it untouched",
+        run: case_standalone_mcp_fence,
     },
 ];
 

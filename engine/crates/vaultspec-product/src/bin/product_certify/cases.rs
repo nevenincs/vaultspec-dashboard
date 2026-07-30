@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use vaultspec_product::credentials::DashboardCredentialStore;
 use vaultspec_product::gateway_drain::DISCOVERY_FILE;
 use vaultspec_product::locking::{
-    Actor, InstallLock, LockBusy, LockError, QuarantineRefusal, StaleState,
+    Actor, InstallLock, InstallLockGuard, LockBusy, LockError, QuarantineRefusal, StaleState,
     quarantine_owner_matched_stale,
 };
 use vaultspec_product::paths::ProductPaths;
@@ -171,7 +171,7 @@ pub(crate) fn case_frozen_runtime_dispatch(artifact: &Artifact) -> CaseResult {
 }
 
 /// The run state the frozen runtime's service verbs signal success for.
-const RUNNING_STATE: &str = "running";
+pub(crate) const RUNNING_STATE: &str = "running";
 /// A click usage error: the certifier invoked the verb wrongly, which is a
 /// defect in the certification, never evidence about the artifact.
 const USAGE_EXIT: i32 = 2;
@@ -309,6 +309,34 @@ pub(crate) fn drive_runtime_singleton(paths: &ProductPaths) -> CaseResult {
         "second runtime excluded by {}, gateway refused authority, no discovery published",
         busy_owner(&excluded)
     ))
+}
+
+/// Acquire the real installation authority every runtime case drives under.
+///
+/// Every mutation the product admits is gated on this exact lock, so a case that
+/// drives one without holding it would be certifying a path the product never
+/// takes. A product already locked by something else is a certification failure,
+/// not an evidence gap: the certifier owns the workspace it was pointed at.
+pub(crate) fn hold_installation(
+    paths: &ProductPaths,
+    owner: &str,
+) -> Result<InstallLockGuard, CaseError> {
+    InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, owner)
+        .map_err(|error| CaseError::failed(format!("acquisition failed: {error:?}")))?
+        .map_err(|busy| {
+            CaseError::failed(format!(
+                "the product is locked by {}; the case cannot be driven",
+                busy_owner(&busy)
+            ))
+        })
+}
+
+/// Release a held installation guard, mapping the failure into a case failure.
+pub(crate) fn release_installation(guard: InstallLockGuard) -> Result<(), CaseError> {
+    guard
+        .release()
+        .map_err(|error| CaseError::failed(format!("releasing the lock failed: {error}")))
 }
 
 /// The best-effort owner a busy lock recorded, normalized for a diagnostic. The
