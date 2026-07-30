@@ -36,7 +36,10 @@ use std::time::{Duration, Instant};
 
 use vaultspec_product::credentials::DashboardCredentialStore;
 use vaultspec_product::gateway_drain::DISCOVERY_FILE;
-use vaultspec_product::locking::{Actor, InstallLock, LockBusy, LockError};
+use vaultspec_product::locking::{
+    Actor, InstallLock, LockBusy, LockError, QuarantineRefusal, StaleState,
+    quarantine_owner_matched_stale,
+};
 use vaultspec_product::manifest::ComponentLock;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::product_build::verify_installed_tree;
@@ -76,6 +79,8 @@ const ISOLATION_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 /// How many real contenders race the installation authority in the
 /// single-flight case. Small, fixed, and enough that a broken exclusion shows.
 const CONCURRENT_ENSURE_CONTENDERS: usize = 8;
+/// Wall clock for the short-lived host probe process.
+const PROBE_WALL: Duration = Duration::from_secs(30);
 /// The gateway-owned worker IPC credential the dashboard must never create.
 const WORKER_IPC_CREDENTIAL: &str = "worker-ipc.cred";
 /// Ceilings on the retained-artifact token scan.
@@ -222,6 +227,11 @@ const CASES: &[Case] = &[
         id: "credential-separation",
         title: "bootstrap creates and retains distinct ownership and attach-control credentials, and creates no worker credential",
         run: case_credential_separation,
+    },
+    Case {
+        id: "stale-discovery-quarantine",
+        title: "only a matching receipt owner may quarantine stale discovery, after proving the recorded process dead",
+        run: case_stale_discovery_quarantine,
     },
     Case {
         id: "token-redaction",
@@ -620,6 +630,9 @@ struct CommandLimits {
 /// What an executed installed command produced, with output bounded by the cap.
 #[derive(Debug)]
 struct CommandOutcome {
+    /// The real process id the command ran as, retained so a case can reason
+    /// about that exact process after it has been reaped.
+    pid: u32,
     code: Option<i32>,
     output: Vec<u8>,
 }
@@ -688,6 +701,7 @@ fn run_bounded(
     }
 
     let mut child = CertifyChild::spawn(&mut command).map_err(CommandFailure::Spawn)?;
+    let pid = child.pid();
     let stdout = child
         .take_stdout()
         .ok_or_else(|| CommandFailure::Spawn(std::io::Error::other("no captured stdout")))?;
@@ -736,6 +750,7 @@ fn run_bounded(
     output.truncate(limits.output_cap);
     let status = status.expect("a status is present when no breach occurred");
     Ok(CommandOutcome {
+        pid,
         code: status.code(),
         output,
     })
@@ -768,6 +783,16 @@ impl CertifyChild {
         {
             use command_group::CommandGroup as _;
             Ok(Self::Windows(command.group_spawn()?))
+        }
+    }
+
+    /// The real process id of the spawned child.
+    fn pid(&mut self) -> u32 {
+        match self {
+            #[cfg(unix)]
+            Self::Unix { pid, .. } => *pid,
+            #[cfg(windows)]
+            Self::Windows(child) => child.inner().id(),
         }
     }
 
@@ -1213,6 +1238,110 @@ fn drive_concurrent_ensure(paths: &ProductPaths, contenders: usize) -> CaseResul
         "{contenders} contenders, one mutation, {} attached to the single holder",
         contenders - 1
     ))
+}
+
+/// Only a matching receipt owner can quarantine stale discovery, and only after
+/// proving the recorded process dead: a foreign owner's stale state is refused
+/// even when its process is genuinely dead, our own stale state naming a
+/// genuinely LIVE process is refused, and only our own stale state naming a
+/// process this certifier really started and reaped is admitted — all under the
+/// held installation lock.
+fn case_stale_discovery_quarantine(artifact: &Artifact) -> CaseResult {
+    drive_stale_discovery_quarantine(&artifact.product_paths()?)
+}
+
+fn drive_stale_discovery_quarantine(paths: &ProductPaths) -> CaseResult {
+    let owner = paths.root().to_string_lossy().to_string();
+    let dead = reap_a_real_process()?;
+    let live = std::process::id();
+
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "certify-quarantine")
+        .map_err(|error| CaseError::failed(format!("acquisition failed: {error:?}")))?
+        .map_err(|busy| {
+            CaseError::failed(format!(
+                "the product is locked by {}; quarantine cannot be certified",
+                busy_owner(&busy)
+            ))
+        })?;
+
+    let foreign = StaleState {
+        owner: format!("{owner}-another-install"),
+        pid: dead,
+    };
+    match quarantine_owner_matched_stale(&owner, &foreign) {
+        Err(QuarantineRefusal::ForeignOwner) => {}
+        other => {
+            return Err(CaseError::failed(format!(
+                "a foreign owner's stale state was not refused: {other:?}"
+            )));
+        }
+    }
+
+    let still_running = StaleState {
+        owner: owner.clone(),
+        pid: live,
+    };
+    match quarantine_owner_matched_stale(&owner, &still_running) {
+        Err(QuarantineRefusal::ProcessLive) => {}
+        other => {
+            return Err(CaseError::failed(format!(
+                "stale state naming a live process was not refused: {other:?}"
+            )));
+        }
+    }
+
+    let proven_dead = StaleState {
+        owner: owner.clone(),
+        pid: dead,
+    };
+    quarantine_owner_matched_stale(&owner, &proven_dead).map_err(|refusal| {
+        CaseError::failed(format!(
+            "the matching owner could not quarantine a proven-dead process: {refusal}"
+        ))
+    })?;
+
+    guard
+        .release()
+        .map_err(|error| CaseError::failed(format!("releasing the lock failed: {error}")))?;
+    Ok(format!(
+        "foreign owner and live process both refused, proven-dead process {dead} admitted under the installation lock"
+    ))
+}
+
+/// Start a real process, wait for it to exit, and reap it, returning its pid.
+/// The pid is then genuinely dead — the only honest way to exercise the
+/// proven-dead branch without asserting a process state that was never observed.
+fn reap_a_real_process() -> Result<u32, CaseError> {
+    let (program, args) = no_op_command();
+    let limits = CommandLimits {
+        output_cap: EXTRACT_OUTPUT_CAP,
+        wall: PROBE_WALL,
+    };
+    let outcome = run_bounded(Path::new(&program), &args, &[], None, limits)
+        .map_err(|failure| CaseError::failed(format!("the liveness probe process {failure}")))?;
+    if outcome.code != Some(0) {
+        return Err(CaseError::failed(format!(
+            "the liveness probe process exited {}",
+            describe_code(outcome.code)
+        )));
+    }
+    Ok(outcome.pid)
+}
+
+/// A host command that starts and immediately exits successfully.
+fn no_op_command() -> (String, Vec<OsString>) {
+    if cfg!(windows) {
+        (
+            "cmd.exe".to_string(),
+            ["/c", "exit 0"].iter().map(OsString::from).collect(),
+        )
+    } else {
+        (
+            "sh".to_string(),
+            ["-c", "exit 0"].iter().map(OsString::from).collect(),
+        )
+    }
 }
 
 /// Bootstrap creates and retains distinct ownership and attach-control
