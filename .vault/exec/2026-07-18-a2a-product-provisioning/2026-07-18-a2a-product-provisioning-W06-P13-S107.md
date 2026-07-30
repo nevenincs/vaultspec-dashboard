@@ -56,13 +56,15 @@ related:
 The certifier runs end to end. Driven against a real locally staged archive it
 proved the sibling digest, extracted with the host extraction tool, and reported
 every wired case as evidence-unavailable with its typed reason and exit code 3 —
-no silent pass anywhere. Twenty-two unit tests pass, including real subprocess
+no silent pass anywhere. Twenty-seven unit tests pass, including real subprocess
 breaches: a child that outruns its wall clock and a child that floods its output
-cap are both killed and reported, an absent program is classified as unavailable
-evidence rather than a failure, and the streaming digest agrees with the
-whole-file digest of the same bytes.
+cap are both killed and reported, a child writing to both streams has them
+retained separately, an absent program is classified as unavailable evidence
+rather than a failure, and the streaming digest agrees with the whole-file digest
+of the same bytes. Output that carries no decodable report — the shape a
+frozen-closure defect presents as — is proven never to read as a healthy state.
 
-The roster carries six further cases added alongside this one. Each is split
+The roster carries seven further cases added alongside this one. Each is split
 into a driver over the product state authority, so the driver is exercised
 locally against real OS locks, real concurrent contenders, real credential
 files, and a really-reaped process, while the case itself first binds to the
