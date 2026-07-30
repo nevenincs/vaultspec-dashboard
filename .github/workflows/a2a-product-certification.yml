@@ -69,8 +69,11 @@ on:
         type: string
         default: ''
 
+# `contents: write` is required, not preferred: the Scoop/WinGet leg calls the
+# phase-zero proof, which writes its verdict back to the support matrix, and a
+# called workflow may never request more permission than its caller grants.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: a2a-product-certification-${{ github.ref }}-${{ inputs.version }}
