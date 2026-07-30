@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <!--
+    Windows applies "installer detection" to any un-manifested executable whose
+    file name looks like an installer, and this crate builds test executables
+    named `update_transaction` and `product_build`. Detection makes the process
+    demand elevation, so the test binary fails to launch at all with
+    ERROR_ELEVATION_REQUIRED (os error 740) - it never executes, which reads as
+    a suite error rather than a test failure.
+
+    Nothing this crate builds is an installer. Its transaction work replaces
+    files the invoking user already owns under the user-scoped app home, so it
+    must run as the invoking user and never elevated.
+  -->
+  <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
+    <security>
+      <requestedPrivileges>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false" />
+      </requestedPrivileges>
+    </security>
+  </trustInfo>
+</assembly>
