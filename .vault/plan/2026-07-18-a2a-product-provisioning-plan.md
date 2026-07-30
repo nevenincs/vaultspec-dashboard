@@ -20,7 +20,7 @@ related:
 
 ## Description
 
-Ship the dashboard and the A2A desktop profile as one pinned, receipt-bound, offline-complete, transactionally updated product across all five targets and every supported channel.
+Ship the dashboard and the A2A desktop profile as one pinned, receipt-bound, offline-complete, transactionally updated product across all four targets and every supported channel.
 
 Implement the dashboard-owned half of the accepted A2A product provisioning architecture. The accepted ADR, research report, and reference packet authorize this plan; the accepted A2A desktop-profile ADR and its implementation plan define the producer-side capsule boundary.
 
@@ -250,7 +250,7 @@ Dispatch to vaultspec-standard-executor to mount the A2A service control panel, 
 
 ## Wave `W06` - certify every artifact and review the product boundary
 
-Exercise the real published artifacts, operating-system processes, update paths, and package-manager adapters on all five targets, then require formal manual architecture and code review before release.
+Exercise the real published artifacts, operating-system processes, update paths, and package-manager adapters on all four targets, then require formal manual architecture and code review before release.
 
 ### Phase `W06.P13` - prove target and channel behavior
 
@@ -346,7 +346,7 @@ The plan is complete only when every Step is closed and all of the following che
 
 - External-updater tests use a copied protected helper and real executables to prove the invariant: updater acquires install lock, authenticated drain closes admission and resolves active runs plus checkpoints, owner authorization stops the gateway, A2A runtime-singleton release completes, then snapshot, staged migration, and complete-generation swap proceed. The gateway never acquires or waits on the install lock, and receipt restoration, relaunch, rollback, Windows replacement, and every durable interruption boundary recover deterministically.
 
-- Product certification installs the same logical release set on Apple Silicon macOS, Intel macOS, Arm64 Linux, x86-64 Linux, and x86-64 Windows, then proves install, cold start, lazy worker, run, restart, concurrent ensure, repair, update, downgrade, rollback, relocation, failure recovery, and uninstall without network access or test doubles.
+- Product certification installs the same logical release set on Apple Silicon macOS, Arm64 Linux, x86-64 Linux, and x86-64 Windows, then proves install, cold start, lazy worker, run, restart, concurrent ensure, repair, update, downgrade, rollback, relocation, failure recovery, and uninstall without network access or test doubles. Intel macOS is deliberately absent: the platform roster dropped `x86_64-apple-darwin`, so a five-target verification clause would be unsatisfiable by any artifact this plan can produce.
 
 - Shell, PowerShell, MSI, Scoop, and WinGet are certified only where the explicit support matrix has a real complete-payload downgrade and rollback proof. A failed phase-zero package-manager proof leaves that channel unsupported and reopens the ADR rather than weakening certification.
 
