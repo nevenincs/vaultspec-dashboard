@@ -164,26 +164,13 @@ fn capsule_verifies_against_the_component_lock() {
             asset.kind
         );
     }
-    // The ACP, CPython, and Node digests the manifest carries are exactly the
-    // lock's pins (proven inside verify, re-asserted here for the record).
-    assert_eq!(
-        manifest
-            .assets
-            .iter()
-            .find(|a| a.kind == "acp-adapter")
-            .unwrap()
-            .digest,
-        lock.base_closure.acp.sha256
-    );
-    assert_eq!(
-        manifest
-            .assets
-            .iter()
-            .find(|a| a.kind == "python-runtime")
-            .unwrap()
-            .digest,
-        lock.python_digest(target).unwrap()
-    );
+    // There is deliberately no assertion here that the manifest's asset digests
+    // equal per-component lock pins. The lock no longer carries a base closure:
+    // the runtime is built from a pinned source commit rather than assembled
+    // from separately pinned ACP, CPython, and Node artifacts, so component
+    // trust is composition-time file digests in the release-set member manifest,
+    // not a second pinned chain to cross-check. The self-integrity loop above
+    // still proves every declared digest against the real asset bytes.
 }
 
 #[test]
