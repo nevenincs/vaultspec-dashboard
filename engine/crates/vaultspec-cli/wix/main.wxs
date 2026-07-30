@@ -4,8 +4,8 @@
 
   This MSI installs the COMPLETE composed product tree, never a bare binary: the
   dashboard executable, the copied external updater, every file of the bundled
-  A2A runtime (a frozen onedir this product builds and ships - not a capsule
-  fetched at install time), the release manifest, the component lock, every
+  A2A runtime (a frozen self-contained directory this product builds and ships,
+  never fetched at install time), the release manifest, the component lock, every
   license, and the SBOM. Every one of those files is carried by its own component
   so Windows Installer owns install, repair, and removal of each individually.
 
