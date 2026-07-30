@@ -1,14 +1,13 @@
-//! Real-process proof of the helper's D3 boundary: a fixed, bounded refusal.
+//! Real-process proof of the helper's boundary: a fixed, bounded refusal.
 //!
-//! Archive-materialization ADR: "The one-shot helper therefore cannot compose
-//! verification with installation and correctly remains a fixed refusal" until
-//! the sealed provisioning transaction (W01.P01.S176) is linked into this
-//! process.  The helper must therefore exit `2` with the single bounded token
-//! `REFUSED` on stderr and NOTHING on stdout — for a syntactically valid
-//! request (the embedded production root is empty until the key ceremony, so
-//! verification refuses with `ProductionRootNotProvisioned`) and for a
-//! malformed request alike.  No digest, path, or diagnostic detail may cross
-//! the process boundary.
+//! The helper cannot compose verification with installation across a process
+//! boundary, and the signed-distribution authority it fronts is retained in
+//! code but deferred — the product ships through unsigned channels and embeds
+//! no production root, so a syntactically valid request refuses with
+//! `ProductionRootNotProvisioned` before reaching a release.  The helper must
+//! therefore exit `2` with the single bounded token `REFUSED` on stderr and
+//! NOTHING on stdout, for a valid request and a malformed one alike.  No
+//! digest, path, or diagnostic detail may cross the process boundary.
 
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};

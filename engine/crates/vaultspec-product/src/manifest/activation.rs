@@ -58,10 +58,6 @@ impl BootstrapOwnership {
     /// of D5: the proof was created earlier in the transaction, and this is the
     /// activation boundary, so the files are re-proven at the moment the fact is
     /// asserted rather than at the moment it was created.
-    #[allow(
-        dead_code,
-        reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
-    )]
     pub(crate) fn proven(
         pending: &crate::credentials::PendingDashboardCredentials<'_>,
     ) -> Result<Self> {

@@ -68,10 +68,6 @@ impl MsiAuthority {
     }
 
     /// Mint the sealed provenance for the MSI channel.
-    #[allow(
-        dead_code,
-        reason = "MSI provenance is minted before the sealing transaction consumes it"
-    )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::Msi, true)
     }

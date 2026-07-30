@@ -1,9 +1,24 @@
 //! Adapter-gated release preparation and bounded active-release observation.
 //!
+//! First install is one sealed [`ProvisioningTransaction`]. It is opened by a
+//! product-owned channel adapter, borrows the exact installation guard and the
+//! exact unpublished generation, derives its manifest and receipt facts inside
+//! the private manifest boundary, and commits only through the fixed
+//! active-receipt journal. Every authority it needed to retry or to clean up
+//! survives a failure on the returned value.
+//!
+//! The adapters are the channels the product actually ships through, and they
+//! are unsigned: the self-install updater, the Windows Installer, Scoop, and
+//! WinGet. Authorization is the adapter capability, never signed distribution
+//! metadata — the TUF distribution authority is retained in code but deferred
+//! and imposes no sealing precondition on anything in this module.
+//!
 //! A settled fixed receipt is useful only as non-authorizing active-release
-//! observation and as a future update baseline. It is not install provenance.
-//! Existing-update and first-install preparation therefore remain typed-unavailable
-//! until a product-owned adapter can supply opaque provenance authority.
+//! observation and as a future update baseline. It is not install provenance,
+//! which is why existing-update preparation is a typed refusal here rather
+//! than a door: the existing-update drive belongs to the sealed materializer
+//! activation, which carries the ownership fact out of the prior settled
+//! receipt. A second update path in this facade would be a way around that.
 
 use std::convert::Infallible;
 
@@ -161,11 +176,15 @@ pub fn observe_active_release<'guard>(
     Ok(ActiveReleaseObservation { read })
 }
 
-/// Refuse existing-update preparation until an opaque update-adapter authority exists.
+/// Refuse existing-update preparation: this facade hosts no update door.
 ///
 /// `Infallible` makes the absence of a successful preparation value part of the
-/// public type. In particular, a settled receipt cannot manufacture adapter
-/// provenance or choose an install channel.
+/// public type, so the refusal cannot decay into a path. An update is driven by
+/// the sealed materializer activation under the update transaction, where the
+/// bootstrap-ownership fact is carried out of the PRIOR SETTLED RECEIPT rather
+/// than proven afresh. Preparing one here would be a second drive that could
+/// reach a receipt without that carried fact - and a settled receipt would then
+/// be able to manufacture adapter provenance and choose its own install channel.
 pub fn prepare_existing_update(
     paths: &ProductPaths,
     guard: &InstallLockGuard,
@@ -211,6 +230,33 @@ impl<'guard> ProvisioningTransaction<'guard> {
         paths: &ProductPaths,
         guard: &'guard InstallLockGuard,
         channel: &crate::channels::self_install::SelfInstallAuthority,
+    ) -> Result<Self, ProvisioningError> {
+        Self::begin(paths, guard, channel.provenance())
+    }
+
+    /// Bind a first-install transaction for the Windows Installer channel.
+    pub fn begin_msi_install(
+        paths: &ProductPaths,
+        guard: &'guard InstallLockGuard,
+        channel: &crate::channels::msi::MsiAuthority,
+    ) -> Result<Self, ProvisioningError> {
+        Self::begin(paths, guard, channel.provenance())
+    }
+
+    /// Bind a first-install transaction for the Scoop channel.
+    pub fn begin_scoop_install(
+        paths: &ProductPaths,
+        guard: &'guard InstallLockGuard,
+        channel: &crate::channels::scoop::ScoopAuthority,
+    ) -> Result<Self, ProvisioningError> {
+        Self::begin(paths, guard, channel.provenance())
+    }
+
+    /// Bind a first-install transaction for the WinGet channel.
+    pub fn begin_winget_install(
+        paths: &ProductPaths,
+        guard: &'guard InstallLockGuard,
+        channel: &crate::channels::winget::WinGetAuthority,
     ) -> Result<Self, ProvisioningError> {
         Self::begin(paths, guard, channel.provenance())
     }
@@ -346,6 +392,12 @@ impl<'guard> ProvisioningTransaction<'guard> {
                 }
             };
 
+        // The receipt's channel fact is READ OFF the sealed provenance, never
+        // named here. A literal would let a transaction opened by any adapter
+        // settle a receipt labelled with another channel - and manager
+        // ownership of file activation, which later mutation authority is gated
+        // on, is exactly what that label decides.
+        let channel = self.provenance.channel();
         let verified = match crate::manifest::update_seam::verify_install_release(
             generation,
             crate::manifest::update_seam::InstallReleaseFacts {
@@ -355,7 +407,7 @@ impl<'guard> ProvisioningTransaction<'guard> {
                 component_lock_bytes: &component_lock,
                 capsule_root,
                 provenance: self.provenance,
-                channel: crate::receipt::Channel::SelfInstall,
+                channel,
                 pending: &pending,
                 prior_seat: None,
                 consistency_generation: 0,
@@ -745,6 +797,91 @@ mod tests {
             observation.state().unwrap(),
             ActiveReleaseState::Settled(_)
         ));
+    }
+
+    /// Read the channel fact off the settled fixed journal.
+    ///
+    /// The public summary deliberately does not carry it, so the assertion goes
+    /// to the receipt the publisher actually settled rather than to anything the
+    /// transaction returned about itself.
+    fn settled_channel(fixture: &Fixture) -> crate::receipt::Channel {
+        let read = crate::receipt::read_active_receipt_journal(&fixture.paths, &fixture.guard)
+            .expect("the settled journal is readable under the exact guard");
+        match read.state().expect("settled journal state") {
+            crate::receipt::ActiveReceiptReadState::Settled(receipt) => receipt.channel(),
+            other => panic!("expected a settled receipt, found {other:?}"),
+        }
+    }
+
+    fn complete_first_install(
+        fixture: &Fixture,
+        open: impl for<'guard> FnOnce(
+            &ProductPaths,
+            &'guard InstallLockGuard,
+        )
+            -> Result<ProvisioningTransaction<'guard>, ProvisioningError>,
+    ) {
+        let mut product = LockedProduct::bind(fixture.paths.clone(), &fixture.guard).unwrap();
+        let mut generation = product.create_unpublished("generation-1").unwrap();
+        fixture.populate(generation.path());
+        open(&fixture.paths, &fixture.guard)
+            .expect("bound transaction")
+            .prepare_first_install_feed(&mut generation, fixture.first_install_feed(), 1_000_000)
+            .expect("a populated generation completes the sealed first install");
+    }
+
+    /// The receipt's channel fact comes from the ADAPTER THAT OPENED the
+    /// transaction, never from a literal inside the drive.
+    ///
+    /// This is what keeps later mutation authority honest: the channel decides
+    /// whether a package manager owns file activation, so a manager-opened
+    /// install that settled a self-install receipt would claim activation and
+    /// rollback the product does not own. Both directions are asserted, because
+    /// a hard-coded fact passes any single-channel test.
+    #[test]
+    fn the_settled_channel_fact_is_the_opening_adapters_own() {
+        let self_install = Fixture::new();
+        complete_first_install(&self_install, |paths, guard| {
+            ProvisioningTransaction::begin_self_install(
+                paths,
+                guard,
+                &crate::channels::self_install::SelfInstallAuthority::new(),
+            )
+        });
+        assert_eq!(
+            settled_channel(&self_install),
+            crate::receipt::Channel::SelfInstall
+        );
+
+        let msi = Fixture::new();
+        complete_first_install(&msi, |paths, guard| {
+            ProvisioningTransaction::begin_msi_install(
+                paths,
+                guard,
+                &crate::channels::msi::MsiAuthority::new(),
+            )
+        });
+        assert_eq!(settled_channel(&msi), crate::receipt::Channel::Msi);
+
+        let scoop = Fixture::new();
+        complete_first_install(&scoop, |paths, guard| {
+            ProvisioningTransaction::begin_scoop_install(
+                paths,
+                guard,
+                &crate::channels::scoop::ScoopAuthority::new(),
+            )
+        });
+        assert_eq!(settled_channel(&scoop), crate::receipt::Channel::Scoop);
+
+        let winget = Fixture::new();
+        complete_first_install(&winget, |paths, guard| {
+            ProvisioningTransaction::begin_winget_install(
+                paths,
+                guard,
+                &crate::channels::winget::WinGetAuthority::new(),
+            )
+        });
+        assert_eq!(settled_channel(&winget), crate::receipt::Channel::WinGet);
     }
 
     /// A failed first install RETAINS the pending credential authority.

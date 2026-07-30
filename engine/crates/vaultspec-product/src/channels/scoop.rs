@@ -58,10 +58,6 @@ impl ScoopAuthority {
     }
 
     /// Mint the sealed provenance for the Scoop channel.
-    #[allow(
-        dead_code,
-        reason = "Scoop provenance is minted before the sealing transaction consumes it"
-    )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::Scoop, true)
     }

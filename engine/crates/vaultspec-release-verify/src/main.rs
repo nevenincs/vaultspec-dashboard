@@ -11,8 +11,13 @@ const MAX_ARGUMENT_BYTES: usize = 4096;
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let _ = run().await;
-    // This leaf cannot claim success until the product provisioning consumer
-    // is linked into the same process and consumes the opaque authority.
+    // A fixed, bounded refusal. The signed-distribution authority this wrapper
+    // fronts is retained in code but DEFERRED: the product ships through
+    // unsigned channels, no production root is embedded, and verification
+    // therefore refuses before any release can be consumed. Success would also
+    // require the whole authority chain to complete IN THIS PROCESS, since no
+    // capability, digest, or path may cross the boundary - so the wrapper
+    // reports status only, and reports it identically for every outcome.
     eprintln!("REFUSED");
     std::process::exit(2);
 }

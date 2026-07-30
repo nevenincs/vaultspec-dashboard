@@ -18,6 +18,14 @@
 //! - [`credentials`] — the dashboard/gateway/worker credential separation.
 //! - [`locking`] — the installation transaction lock and stale-state quarantine.
 //!
+//! Sealed installation:
+//! - [`channels`] — the per-channel installation authority adapters that are
+//!   the only sanctioned source of install provenance.
+//! - [`generation`] — the retained unpublished-generation authority.
+//! - [`provisioning`] — the sealed first-install transaction and the bounded,
+//!   non-authorizing active-release observation every consumer reads.
+//! - [`materializer`] — the sealed archive-to-generation update activation.
+//!
 //! Control only the owned gateway:
 //! - [`protocol`] — the typed lifecycle operation, readiness, and refusal
 //!   contracts.

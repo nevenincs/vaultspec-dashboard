@@ -58,10 +58,6 @@ impl WinGetAuthority {
     }
 
     /// Mint the sealed provenance for the WinGet channel.
-    #[allow(
-        dead_code,
-        reason = "WinGet provenance is minted before the sealing transaction consumes it"
-    )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::WinGet, true)
     }

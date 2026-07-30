@@ -50,10 +50,6 @@ impl SelfInstallAuthority {
     /// Mint the sealed provenance for the self-install channel. The sealing
     /// transaction consumes this to derive the receipt channel fact; a caller can
     /// never label a self-install as a manager-owned channel.
-    #[allow(
-        dead_code,
-        reason = "self-install provenance is minted before the sealing transaction consumes it"
-    )]
     pub(crate) fn provenance(&self) -> InstallProvenanceAuthority {
         InstallProvenanceAuthority::mint(Channel::SelfInstall, false)
     }

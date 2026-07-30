@@ -91,10 +91,6 @@ pub(crate) fn verify_update_release<'generation, 'product, 'lock>(
 /// install must PROVE it. So this seam takes the live
 /// [`PendingDashboardCredentials`] proof rather than a boolean — there is no
 /// field a caller could set to assert an ownership creation that did not happen.
-#[allow(
-    dead_code,
-    reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
-)]
 pub(crate) struct InstallReleaseFacts<'a, 'guard> {
     pub(crate) target: Target,
     pub(crate) member_manifest_sha256: String,
@@ -117,10 +113,6 @@ pub(crate) struct InstallReleaseFacts<'a, 'guard> {
 
 /// Run the complete double-scan release verification for the sealed FIRST-INSTALL
 /// activation, deriving the bootstrap-ownership fact from the retained proof.
-#[allow(
-    dead_code,
-    reason = "sealed first-install substrate; a later phase wires it to the provisioning transaction"
-)]
 pub(crate) fn verify_install_release<'generation, 'product, 'lock>(
     generation: &'generation mut UnpublishedGeneration<'product, 'lock>,
     facts: InstallReleaseFacts<'_, '_>,

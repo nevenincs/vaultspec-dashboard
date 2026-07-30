@@ -234,10 +234,6 @@ impl InstallProvenanceAuthority {
     }
 
     /// The installer channel that owns activation for the bound generation.
-    #[allow(
-        dead_code,
-        reason = "consumed by the sealing transaction and receipt-fact derivation"
-    )]
     pub(crate) fn channel(&self) -> Channel {
         self.channel
     }
