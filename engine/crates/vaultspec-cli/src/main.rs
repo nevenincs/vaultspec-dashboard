@@ -114,8 +114,21 @@ enum Command {
     Stop,
     /// Stop the running app (if any) and relaunch it detached.
     Restart,
-    /// Self-update a receipt-marked install (stop, update, relaunch).
-    /// Package-manager installs are refused with their own remediation.
+    /// Update this installation through its own channel authority.
+    #[command(
+        long_about = "Hand the release transaction to the product-owned external \
+                            updater: the dashboard copies that updater out of the active \
+                            release, writes a one-time owner-restricted handoff, stops the \
+                            seat, and launches the copy. The copy — never the running \
+                            dashboard — holds the installation lock for the whole \
+                            transaction, resolves an interrupted one, and relaunches the \
+                            seat afterwards.\n\nOnly a complete product installation carries \
+                            that authority. A copy installed by a package manager updates \
+                            through the manager that owns its files — `scoop update \
+                            vaultspec`, `winget upgrade vaultspec`, or Windows Installer for \
+                            an MSI copy — and this verb refuses rather than writing files it \
+                            does not own."
+    )]
     Update,
     /// The dashboard-owned A2A companion lifecycle: bounded status and
     /// mutation subcommands over the typed product authority — no free-form
