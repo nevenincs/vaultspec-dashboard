@@ -283,7 +283,7 @@ jobs:
   # ---------------------------------------------------------------------------
   compare-inventories:
     name: Compare published inventories to one release set
-    needs: [certify-target, certify-windows-channels]
+    needs: [certify-target, certify-scoop-winget, certify-msi]
     runs-on: Linux
     steps:
       - uses: actions/checkout@v4
