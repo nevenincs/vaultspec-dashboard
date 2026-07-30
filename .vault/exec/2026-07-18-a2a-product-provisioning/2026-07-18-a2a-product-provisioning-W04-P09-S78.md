@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#a2a-product-provisioning'
 date: '2026-07-21'
-modified: '2026-07-21'
+modified: '2026-07-30'
 step_id: 'S78'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
@@ -17,12 +17,15 @@ related:
 
 ## Description
 
-- Set `publish = false` on the dashboard CLI crate to withdraw crates.io publication and bare cargo-install metadata until a Cargo channel can preserve the composite release contract.
+- Kept the publication withdrawal the earlier pass had already delivered, and restated its justification without the retired capsule language and without the plan and Step identifiers embedded in the comment.
+- Opted the crate back into distribution explicitly, because withdrawing publication had also withdrawn the crate from release-artifact production, which the retained release tooling depends on.
 
 ## Outcome
 
-The CLI crate is marked unpublishable to crates.io.
+Publication stays withheld, so neither registry install path is reachable, while the dashboard binary is planned, checksummed, and hosted for all four targets again.
 
 ## Notes
 
-RESIDUAL — config authored; its effect is a release-time property. Left UNTICKED.
+Confirming this Step exposed a live defect rather than a documentation gap. The release tool skips packages marked unpublished by default, so marking the crate unpublished had silently removed the dashboard binary, the artifact every product tree is composed around, from target planning, checksums, and release hosting. Only three helper crates were being planned. The fix was proven by re-running the planner and seeing the dashboard binary return for all four targets with its sidecar digests, and the resolved manifest was read back to confirm that publication is empty while distribution is enabled.
+
+Formatting passes across the workspace. Workspace lint cannot pass right now for reasons outside this Step: all fifty-six errors are in the product crate's manifest and builder modules, which another lane has mid-reshape in the working tree. None are in this Step's scope, and this change alters no compiled code.

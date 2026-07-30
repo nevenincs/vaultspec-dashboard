@@ -195,12 +195,12 @@ Dispatch to vaultspec-high-executor to compose each dashboard build with the pin
 
 Dispatch shell, PowerShell, and WiX work to vaultspec-high-executor so each installer verifies and records the whole product tree while stale Cargo Dist installers and bare Cargo channels are withdrawn.
 
-- [ ] `W04.P09.S73` - Retain Cargo Dist for target planning, checksums, and release hosting while disabling its binary-only shell, PowerShell, MSI, and updater outputs; `dist-workspace.toml`.
+- [x] `W04.P09.S73` - Retain Cargo Dist for target planning, checksums, and release hosting while disabling its binary-only shell, PowerShell, MSI, and updater outputs; `dist-workspace.toml`.
 - [ ] `W04.P09.S74` - Install, verify, receipt, update, and remove the complete macOS and Linux product tree from the product-owned shell installer; `packaging/install.sh`.
 - [ ] `W04.P09.S75` - Install, verify, receipt, update, and remove the complete Windows product tree from the product-owned PowerShell installer; `packaging/install.ps1`.
 - [ ] `W04.P09.S76` - Package every dashboard, updater, capsule, manifest, license, and SBOM file into the complete MSI with product receipt and uninstall semantics; `engine/crates/vaultspec-cli/wix/main.wxs`.
 - [ ] `W04.P09.S77` - Build the product-owned MSI and installer scripts, publish only complete artifacts, and fail on any stale binary-only installer or updater; `.github/workflows/release.yml`.
-- [ ] `W04.P09.S78` - Withdraw crates.io publication and bare Cargo installation metadata until a Cargo channel can preserve the composite release contract; `engine/crates/vaultspec-cli/Cargo.toml`.
+- [x] `W04.P09.S78` - Withdraw crates.io publication and bare Cargo installation metadata until a Cargo channel can preserve the composite release contract; `engine/crates/vaultspec-cli/Cargo.toml`.
 - [ ] `W04.P09.S79` - Document the bundled-runtime model (the dashboard builds and bundles the A2A onedir), supported composite install and update channels, offline ownership, data preservation, and explicit cargo-install and cargo-binstall exclusion by invoking the mandatory vaultspec-documentation skill and pipeline; `README.md`.
 
 ### Phase `W04.P10` - complete package-manager channels

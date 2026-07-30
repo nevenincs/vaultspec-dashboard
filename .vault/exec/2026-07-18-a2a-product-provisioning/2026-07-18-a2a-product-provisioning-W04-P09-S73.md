@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#a2a-product-provisioning'
 date: '2026-07-21'
-modified: '2026-07-21'
+modified: '2026-07-30'
 step_id: 'S73'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
@@ -17,12 +17,19 @@ related:
 
 ## Description
 
-- Configured Cargo Dist to retain target planning, checksums, and release hosting while disabling its binary-only shell, PowerShell, MSI, and updater installers (`installers = []`, `install-updater = false`), so the complete product artifacts come only from the separate product-release workflow.
+- Confirmed the already-authored disabling clauses against the live tool rather than by reading alone: the empty installer list, the disabled updater, the four-target roster, and GitHub hosting were all in place from the earlier pass.
+- Pinned the checksum algorithm explicitly, so the sidecar digest both product installers fetch and compare before placing anything is part of the release contract rather than an implicit tool default.
+- Corrected the retired capsule language to the bundled runtime the pipeline now builds, and noted that the pre-build hook also restores the pinned source checkout and locked freeze environment.
+- Removed the plan and Step identifiers the earlier pass had embedded in the configuration comments.
 
 ## Outcome
 
-Dist no longer emits binary-only installers; it is retained solely for planning, checksums, and release hosting.
+The release tool plans four targets, emits per-artifact checksums, and hosts releases, while emitting no binary-only installer and no updater of its own. The planning command exits 0 with a sidecar digest beside every artifact.
 
 ## Notes
 
-RESIDUAL — config authored; its effect is proven at a real release run. Left UNTICKED.
+The checksum key is genuinely validated rather than decorative: an invalid algorithm value is rejected at configuration-parse time with an enumerated list of accepted values, which was proven directly before the key was accepted.
+
+Planning without the dirty-allowance flag still fails on pre-existing drift between the checked-in release workflow and the tool's generated form. That file belongs to another lane and was left untouched.
+
+Confirming this Step surfaced a defect belonging to the Cargo metadata Step: the dashboard binary itself had dropped out of the release plan entirely. It is recorded and fixed there.
