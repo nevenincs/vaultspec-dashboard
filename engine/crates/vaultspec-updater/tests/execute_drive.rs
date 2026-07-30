@@ -254,10 +254,15 @@ fn a_stale_owned_gateway_rolls_back() {
 }
 
 #[test]
-fn an_incompatible_owned_gateway_rolls_back() {
+fn an_incompatible_owned_gateway_is_drained_not_refused() {
     let product = installed();
     let guard = product.guard();
     let capsule = product._temp.path().to_path_buf();
+    // Real product credentials, so the granted lease proceeds past the
+    // credential gate to the actual drain transport.
+    vaultspec_product::credentials::DashboardCredentialStore::for_product(&product.paths)
+        .begin_bootstrap(&guard)
+        .expect("bootstrap product credentials");
     product.write_discovery(&discovery_json(
         &product.our_owner(),
         std::process::id(),
@@ -272,10 +277,22 @@ fn an_incompatible_owned_gateway_rolls_back() {
         execute_inputs(context, unreachable_migration(&capsule)),
     )
     .unwrap_err();
-    assert!(matches!(
-        error,
-        UpdaterError::Drain(vaultspec_product::gateway_drain::GatewayDrainError::Incompatible)
-    ));
+    // Ours + live + range-incompatible now GRANTS the drain lease (the ranges
+    // fence the versioned run surface, not process ownership), so the drive
+    // enters the transaction and issues the authenticated drain call, which
+    // fails at the transport against this fixture's unreachable endpoint and
+    // rolls back. That in-transaction transport failure is the proof: the
+    // lease was granted and the drain genuinely attempted, where the old
+    // classification refused before any control call existed.
+    assert!(
+        matches!(
+            error,
+            UpdaterError::Transaction(vaultspec_product::transaction::TransactionError::Gateway(
+                vaultspec_product::gateway_drain::GatewayDrainError::Drain(_)
+            ))
+        ),
+        "expected the granted lease to fail at the drain transport, got {error:?}"
+    );
     assert_descriptor_cleared(&product.paths, &guard);
 }
 

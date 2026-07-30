@@ -362,8 +362,6 @@ pub enum GatewayDrainError {
     /// The discovered gateway is ours but dead or heartbeat-stale; the stale
     /// path is the quarantine flow, not a drain.
     NotLive,
-    /// The discovered gateway is ours but declares incompatible ranges.
-    Incompatible,
     /// A product credential could not be read or verified.
     Credential(CredentialError),
     /// The authenticated drain call failed.
@@ -402,9 +400,6 @@ impl std::fmt::Display for GatewayDrainError {
                 write!(f, "a foreign gateway holds the runtime and stays immutable")
             }
             Self::NotLive => write!(f, "the owned gateway is dead or heartbeat-stale"),
-            Self::Incompatible => {
-                write!(f, "the owned gateway declares incompatible ranges")
-            }
             Self::Credential(error) => write!(f, "product credential authority failed: {error}"),
             Self::Drain(error) => write!(f, "authenticated drain failed: {error}"),
             Self::Shutdown(error) => write!(f, "ownership-authorized shutdown failed: {error}"),
