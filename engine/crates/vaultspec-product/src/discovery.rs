@@ -133,6 +133,13 @@ pub enum Verdict {
     /// Ours but dead or stale — a quarantine candidate under the install lock
     /// (subject to the owner-matched proof-of-death in `locking`).
     OwnedStale,
+    /// Ours, live, and fresh, but declaring protocol/state-schema ranges that
+    /// do not overlap the ones we support. Ownership is a fact about the
+    /// process, not about the ranges: this gateway still verifies our
+    /// receipt-bound ownership capability, so the operations that EXIT this
+    /// state (stop, restart, update, rollback) stay available, while the
+    /// versioned run surface is never attached.
+    OwnedIncompatible,
     /// A foreign gateway that is live, fresh, compatible, and offers a trusted
     /// handoff: attachable READ-ONLY (never mutable).
     ForeignAttachable,
@@ -193,10 +200,11 @@ impl GatewayDiscovery {
             if !alive {
                 return Verdict::OwnedStale;
             }
+            // Ours never classifies as Foreign: an incompatible range fences
+            // the versioned run surface, not the ownership we hold over the
+            // process, so the verdict keeps the owned identity.
             if !self.is_compatible(ctx) {
-                return Verdict::ForeignImmutable {
-                    reason: ImmutableReason::Incompatible,
-                };
+                return Verdict::OwnedIncompatible;
             }
             return Verdict::OwnedLive;
         }
@@ -500,8 +508,27 @@ mod tests {
             minimum: "v2".to_string(),
             maximum: "v10".to_string(),
         };
+        // The record is OURS, so the out-of-window refusal keeps the owned
+        // identity rather than forfeiting it to a Foreign verdict.
+        assert_eq!(d.classify(&context), Verdict::OwnedIncompatible);
+    }
+
+    #[test]
+    fn incompatible_protocol_is_refused() {
+        // Ours + live + fresh + disjoint ranges: the owned identity is kept and
+        // the incompatibility is its own verdict.
+        let mut v = record();
+        v["protocol"] = serde_json::json!({ "minimum": "v2", "maximum": "v2" });
+        let d = GatewayDiscovery::parse(&v.to_string()).unwrap();
+        assert_eq!(d.classify(&ctx(1_500)), Verdict::OwnedIncompatible);
+
+        // A FOREIGN incompatible gateway still classifies foreign-immutable.
+        let mut foreign = record();
+        foreign["owner"] = serde_json::json!("seat-b");
+        foreign["protocol"] = serde_json::json!({ "minimum": "v2", "maximum": "v2" });
+        let d = GatewayDiscovery::parse(&foreign.to_string()).unwrap();
         assert_eq!(
-            d.classify(&context),
+            d.classify(&ctx(1_500)),
             Verdict::ForeignImmutable {
                 reason: ImmutableReason::Incompatible
             }
@@ -509,15 +536,28 @@ mod tests {
     }
 
     #[test]
-    fn incompatible_protocol_is_refused() {
-        let mut v = record();
-        v["protocol"] = serde_json::json!({ "minimum": "v2", "maximum": "v2" });
-        let d = GatewayDiscovery::parse(&v.to_string()).unwrap();
-        assert_eq!(
-            d.classify(&ctx(1_500)),
-            Verdict::ForeignImmutable {
-                reason: ImmutableReason::Incompatible
-            }
-        );
+    fn an_owned_record_never_classifies_as_foreign() {
+        // Ownership is a fact about the process; no combination of liveness,
+        // freshness, or range compatibility may map OUR OWN record onto a
+        // Foreign verdict.
+        for (heartbeat, protocol_min) in [
+            (1_000_i64, "v1"), // live + fresh + compatible
+            (1_000, "v2"),     // live + fresh + incompatible
+            (-100_000, "v1"),  // stale + compatible
+            (-100_000, "v2"),  // stale + incompatible
+        ] {
+            let mut v = record();
+            v["heartbeat_ms"] = serde_json::json!(heartbeat);
+            v["protocol"] = serde_json::json!({ "minimum": protocol_min, "maximum": protocol_min });
+            let d = GatewayDiscovery::parse(&v.to_string()).unwrap();
+            let verdict = d.classify(&ctx(1_500));
+            assert!(
+                !matches!(
+                    verdict,
+                    Verdict::ForeignAttachable | Verdict::ForeignImmutable { .. }
+                ),
+                "an owned record must never classify foreign: {verdict:?}"
+            );
+        }
     }
 }

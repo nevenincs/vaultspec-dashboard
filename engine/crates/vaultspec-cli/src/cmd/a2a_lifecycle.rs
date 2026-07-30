@@ -183,6 +183,7 @@ fn projection(
             "ownership": match verdict {
                 Some(Verdict::OwnedLive) => "owned",
                 Some(Verdict::OwnedStale) => "owned-stale",
+                Some(Verdict::OwnedIncompatible) => "owned-incompatible",
                 Some(Verdict::ForeignAttachable) => "foreign-attachable",
                 Some(Verdict::ForeignImmutable { .. }) => "foreign-immutable",
                 None => "unknown",

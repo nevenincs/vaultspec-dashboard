@@ -157,7 +157,6 @@ impl<'guard> OwnedGatewayLease<'guard> {
         let raw = read_bounded_discovery(&paths.app_home().join(DISCOVERY_FILE))?;
         let discovery = GatewayDiscovery::parse(&raw).map_err(GatewayDrainError::Discovery)?;
         let our_owner = paths.root().to_string_lossy().to_string();
-        let ours = discovery.owner == our_owner;
         let ctx = DiscoveryContext {
             our_owner,
             now_ms: context.now_ms,
@@ -166,11 +165,15 @@ impl<'guard> OwnedGatewayLease<'guard> {
             supported_state_schema: context.supported_state_schema.clone(),
         };
         match discovery.classify(&ctx) {
-            Verdict::OwnedLive => {}
+            // An owned INCOMPATIBLE gateway is drainable like an owned live
+            // one: the drain and the ownership-authorized shutdown ride the
+            // control plane, not the versioned run surface the ranges fence —
+            // so an update can stop it and swap instead of rolling back
+            // forever. This rests on the control plane staying version-stable
+            // across gateway API versions, which the dashboard cannot verify
+            // from its side of the contract.
+            Verdict::OwnedLive | Verdict::OwnedIncompatible => {}
             Verdict::OwnedStale => return Err(GatewayDrainError::NotLive),
-            Verdict::ForeignImmutable { .. } if ours => {
-                return Err(GatewayDrainError::Incompatible);
-            }
             Verdict::ForeignAttachable | Verdict::ForeignImmutable { .. } => {
                 return Err(GatewayDrainError::ForeignGateway);
             }

@@ -392,6 +392,15 @@ impl LifecycleController {
                 return Err(Refusal::GatewayRunning);
             }
             Some(Verdict::OwnedLive) => {}
+            // Ours, live, but range-incompatible: the operations whose purpose
+            // is to EXIT that state (stop, restart, update, rollback) stay
+            // available under the ownership capability — the ranges fence the
+            // versioned run surface, not the control-plane ownership contract.
+            // The same running-files precondition binds repair and removal.
+            Some(Verdict::OwnedIncompatible) if op.replaces_running_files() => {
+                return Err(Refusal::GatewayRunning);
+            }
+            Some(Verdict::OwnedIncompatible) => {}
             // (c) Ours but stale/dead: honest refusal until quarantine lands.
             Some(Verdict::OwnedStale) => return Err(Refusal::StaleUnproven),
             // (b) A live foreign gateway (attachable read-only or immutable) is
@@ -566,6 +575,13 @@ pub fn resolve_attach(
         Verdict::OwnedLive => Ok(AttachMode::Owned),
         Verdict::ForeignAttachable => Ok(AttachMode::ForeignReadOnly),
         Verdict::OwnedStale => Err(Refusal::StaleUnproven),
+        // Ours but range-incompatible: attach stays refused — the versioned run
+        // surface is outside our supported window, so forwarded verbs could be
+        // misinterpreted. Recovery is the ownership-gated lifecycle path
+        // (stop/update), never an attach.
+        Verdict::OwnedIncompatible => Err(Refusal::Incompatible {
+            detail: "owned gateway protocol/state-schema mismatch".to_string(),
+        }),
         Verdict::ForeignImmutable { reason } => Err(match reason {
             ImmutableReason::Incompatible => Refusal::Incompatible {
                 detail: "foreign gateway protocol/state-schema mismatch".to_string(),
@@ -926,6 +942,30 @@ mod tests {
             );
         }
 
+        // An owned INCOMPATIBLE gateway follows the same op split: the
+        // operations that exit the incompatible state stay available under the
+        // ownership capability, while the running-files precondition still
+        // binds repair and removal.
+        for op in [
+            LifecycleOp::Stop,
+            LifecycleOp::Restart,
+            LifecycleOp::Update,
+            LifecycleOp::Rollback,
+        ] {
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, Some(&Verdict::OwnedIncompatible)),
+                Ok(()),
+                "{op:?} is exactly how an incompatible owned gateway is recovered"
+            );
+        }
+        for op in [LifecycleOp::Repair, LifecycleOp::Remove] {
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, Some(&Verdict::OwnedIncompatible)),
+                Err(Refusal::GatewayRunning),
+                "{op:?} still replaces the files the incompatible gateway runs from"
+            );
+        }
+
         // Stale and foreign classifications are unchanged by op-sensitivity: a
         // record that is not proven dead is never quarantined implicitly, and a
         // foreign resident is never mutated whatever the operation.
@@ -1013,6 +1053,14 @@ mod tests {
         assert_eq!(
             resolve_attach(&Verdict::OwnedStale),
             Err(Refusal::StaleUnproven)
+        );
+        // Ours but range-incompatible: never attached — the run surface is
+        // outside our window; recovery is the ownership-gated lifecycle path.
+        assert_eq!(
+            resolve_attach(&Verdict::OwnedIncompatible),
+            Err(Refusal::Incompatible {
+                detail: "owned gateway protocol/state-schema mismatch".to_string()
+            })
         );
     }
 

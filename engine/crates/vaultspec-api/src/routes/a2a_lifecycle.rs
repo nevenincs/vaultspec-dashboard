@@ -383,6 +383,13 @@ fn availability_from(
                 false,
                 Some("owned a2a gateway is stale (recorded process not alive)".to_string()),
             ),
+            Some(Verdict::OwnedIncompatible) => (
+                false,
+                Some(
+                    "owned a2a gateway is incompatible with this release (stop or update to recover)"
+                        .to_string(),
+                ),
+            ),
             Some(Verdict::ForeignImmutable { reason }) => (
                 false,
                 Some(format!(
@@ -437,6 +444,7 @@ fn handshake_value(
             "ownership": match verdict {
                 Some(Verdict::OwnedLive) => "owned",
                 Some(Verdict::OwnedStale) => "owned-stale",
+                Some(Verdict::OwnedIncompatible) => "owned-incompatible",
                 Some(Verdict::ForeignAttachable) => "foreign-attachable",
                 Some(Verdict::ForeignImmutable { .. }) => "foreign-immutable",
                 None => "unknown",
@@ -877,6 +885,13 @@ impl LifecyclePlane {
             Verdict::OwnedStale => ResolvedGateway::Unavailable {
                 reason: "owned a2a gateway is stale (recorded process not alive)".to_string(),
             },
+            // Ours but range-incompatible: NEVER attached — forwarding run verbs
+            // to an API surface outside our supported window is exactly what the
+            // ranges fence. Recovery is the ownership-gated lifecycle path.
+            Verdict::OwnedIncompatible => ResolvedGateway::Unavailable {
+                reason: "owned a2a gateway is incompatible with this release (stop or update to recover)"
+                    .to_string(),
+            },
             Verdict::ForeignImmutable { reason } => ResolvedGateway::Unavailable {
                 reason: format!(
                     "a foreign a2a gateway holds the runtime and stays immutable: {}",
@@ -931,6 +946,13 @@ impl LifecyclePlane {
             Some(Verdict::OwnedStale) | None => {
                 self.start_verified_generation(&release, settlement_url)
             }
+            // Ours but range-incompatible: honestly refused for now. The
+            // recovery is the ownership-gated stop-then-start of the active
+            // generation, which is a lifecycle operation, not a boot reconcile.
+            Some(Verdict::OwnedIncompatible) => json!({
+                "action": "refused",
+                "reason": "owned gateway is incompatible with this release; ownership-gated stop/update recovers it",
+            }),
             Some(Verdict::ForeignAttachable) => json!({
                 "action": "attach-foreign",
                 "reason": "a compatible foreign gateway satisfies run demand read-only; left immutable",

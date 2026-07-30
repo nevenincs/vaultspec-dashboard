@@ -166,8 +166,16 @@ fn a_stale_owned_gateway_is_the_quarantine_flow_not_a_drain() {
 }
 
 #[test]
-fn an_incompatible_owned_gateway_is_refused_typed() {
+fn an_incompatible_owned_gateway_is_still_drainable() {
+    // Ours, live, fresh, but declaring ranges outside our supported window:
+    // the drain lease is still granted, because drain/shutdown ride the
+    // ownership-authorized control plane, not the versioned run surface the
+    // ranges fence. Refusing here left every update against an incompatible
+    // owned gateway rolling back forever with no path out.
     let fixture = Fixture::new();
+    crate::credentials::DashboardCredentialStore::for_product(&fixture.paths)
+        .begin_bootstrap(&fixture.guard)
+        .expect("bootstrap product credentials");
     fixture.write_discovery(&discovery_record(
         &fixture.our_owner(),
         "127.0.0.1:1",
@@ -176,8 +184,9 @@ fn an_incompatible_owned_gateway_is_refused_typed() {
     ));
     let mut ctx = context();
     ctx.supported_protocol = range("v2", "v2");
-    let error = OwnedGatewayLease::acquire(&fixture.paths, &fixture.guard, &ctx).unwrap_err();
-    assert!(matches!(error, GatewayDrainError::Incompatible));
+    let lease = OwnedGatewayLease::acquire(&fixture.paths, &fixture.guard, &ctx)
+        .expect("an owned incompatible gateway yields a drain lease");
+    assert_eq!(lease.pid, std::process::id());
 }
 
 #[test]
