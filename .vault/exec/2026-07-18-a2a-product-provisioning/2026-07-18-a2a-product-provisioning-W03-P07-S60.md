@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#a2a-product-provisioning'
 date: '2026-07-21'
-modified: '2026-07-21'
+modified: '2026-07-30'
 step_id: 'S60'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
@@ -17,14 +17,18 @@ related:
 
 ## Description
 
-- Built the real Windows owner-restricted descriptor write in `handoff.rs`: create the descriptor empty via `PrivateFileCreation` (carrying `WRITE_DAC`), harden it to the exact three-principal protected DACL through the retained handle BEFORE any byte is written, prove it via the shared `private_policy::validate_private_file` over one DACL snapshot, then write, synchronize, same-handle reread, and re-prove.
-- Composed the reviewed windows-authority primitive with the safe `windows-acl` mutation layer; added no unsafe and no native call. Residue cleanup is handle-scoped (create-new + exact-handle delete-on-close), so a pre-existing descriptor is refused, never clobbered.
-- The copy-out (`copy_updater_out`), detached helper launch (`spawn_detached_front_door`), and updater-observed relaunch (`relaunch_and_probe`) components were built in the updater crate.
+- Cut `vaultspec update` over from the retired Cargo Dist axoupdater sidecar to the product transaction handoff in `engine/crates/vaultspec-cli/src/cmd/lifecycle.rs`: copy the release updater out through `copy_updater_out`, write the one-time owner-restricted descriptor into the transaction directory through `write_handoff_descriptor`, stop the seat, then launch the copy detached with the descriptor as its only operand. The axoupdater path and its bounded subprocess runner are deleted, not kept alongside.
+- Grounding finding that changed the shape: the sidecar had already been withdrawn at the packaging level (`install-updater = false` in `dist-workspace.toml`), so the old flow could only ever return its package-manager refusal. The cutover restores a working verb rather than replacing one.
+- Nothing in the flow is gated on release sealing. The handoff carries no candidate, so verification is never reached; only the candidate execute path authenticates a candidate, and that is where the retained-in-code trust apparatus stays.
+- Extended the handoff contract in `engine/crates/vaultspec-product/src/handoff.rs` with the two facts the updater cannot derive from outside the release: the requesting process id (it runs the very image an activation replaces) and the stable front-door launcher for the relaunch. The updater now waits the requester out under the held lock before it retires the descriptor or mutates anything, and spawns the recorded front door after its run resolves.
+- Fixed a live Windows defect found while proving the launch: every `vaultspec-updater` executable tripped Windows installer detection and demanded elevation, so the detached launch failed with `ERROR_ELEVATION_REQUIRED` and the crate's own test binaries could not execute at all on Windows. An embedded `asInvoker` manifest, emitted from `build.rs` for the Windows targets, settles it.
 
 ## Outcome
 
-The owner-restricted descriptor write is real and PROVEN on NTFS (write → reopen read-only → validate the protected three-principal DACL → round-trip), APPROVED by independent review with no revision.
+The verb performs the real transaction handoff, the copied helper honours the relaunch instruction, and the updater's Windows test binaries execute for the first time. Commit `668715e290`. Gate at commit: `cargo fmt --check` exit 0, `cargo clippy --workspace --all-targets -D warnings` exit 0, `cargo test -p vaultspec-updater` green, `cargo test -p vaultspec-cli` green.
 
 ## Notes
 
-RESIDUAL (why the row's `lifecycle.rs` target stays behind the deliverable): the axoupdater to handoff CUTOVER in `lifecycle.rs` is deferred — axoupdater stays operative until the full `drive_fresh_update` flow is un-gated, which depends on the distribution-authority sealing (the empty production TUF root ceremony + the Windows datastore gate), a separate lane. All S60 components (owner-restricted write, copy-out, helper launch, relaunch/probe) are built and reviewed; only the final CLI-entry wiring awaits that lane.
+The prior record deferred this cutover behind release sealing. That premise does not hold: the free-open-source amendment retains the trust apparatus in code but removes it as a release gate, and a recovery-and-relaunch handoff never reaches verification at all. The deferral is discharged, not waived.
+
+Staging an update candidate stays outside this flow — no producer of an execute intent exists in production code, and a handoff never invents one.

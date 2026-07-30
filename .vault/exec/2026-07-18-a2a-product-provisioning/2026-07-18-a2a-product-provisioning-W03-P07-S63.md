@@ -3,7 +3,7 @@ tags:
   - '#exec'
   - '#a2a-product-provisioning'
 date: '2026-07-21'
-modified: '2026-07-21'
+modified: '2026-07-30'
 step_id: 'S63'
 related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
@@ -17,12 +17,15 @@ related:
 
 ## Description
 
-- Proves the Windows replace-only-after-exit timing property against real files: a running executable image cannot be removed or overwritten while a process is alive on it, and can be once that process exits — the OS property that makes the seat-and-updater-exit-before-replacement ordering necessary.
+- Rebuilt `engine/crates/vaultspec-updater/tests/windows_replacement.rs` around the real shape of the swap: BOTH installed executables — the dashboard and the updater beside it — are seated and running, and the replacement is driven by a copy taken out of the release through the production `copy_updater_out`, because the installed updater is one of the files being replaced.
+- The copied updater runs as a real separate process for the whole drive, from outside the release. Its replacement attempt is refused for both installed images while the seated processes live, and both carry the new bytes once those processes have exited.
+- The refusal is anchored by the test's own direct attempt against the running images, so a passing run cannot be an artifact of the helper's own bookkeeping.
+- The Unix divergence note is retained: a running binary can be unlinked there, so the ordering is an OS-enforced property on Windows and a receipt-consistency requirement everywhere.
 
 ## Outcome
 
-The standalone timing property is proven on Windows with real executables, tests green.
+The two-image replacement ordering is proven end to end on Windows with real processes and real files. Commit `f2498b0e2b`. Gate at commit: `cargo fmt --check` exit 0, `cargo test -p vaultspec-updater --test windows_replacement` green on three consecutive runs.
 
 ## Notes
 
-RESIDUAL — left UNTICKED: the end-to-end swap of the actual dashboard and installed updater is the activation seam (materializer) drive, whose full-production Windows run is distribution-authority-sealing-gated. This record covers the timing property only; the full swap rides the same residual as S62.
+The seated images in the proof are copies of the test binary named `vaultspec.exe` and `vaultspec-updater.exe`. They are spawnable only because the crate now embeds the `asInvoker` manifest; without it the `vaultspec-updater.exe` copy would be escalated by Windows installer detection and the proof could not run.
