@@ -447,6 +447,18 @@ impl Artifact {
         }
     }
 
+    /// Bind a case to the real published artifact before it drives anything.
+    ///
+    /// A runtime case reasons about the installation the artifact establishes,
+    /// so it must not certify a property against product state alone: without
+    /// the real installed components there is no installation to certify, and
+    /// the case reports its evidence unavailable instead.
+    fn bind_to_real_components(&self) -> Result<(), CaseError> {
+        self.dashboard()?;
+        self.a2a_runtime()?;
+        Ok(())
+    }
+
     /// The product state authority for this installation, rooted at a machine
     /// app home that is deliberately OUTSIDE the installed tree. Every runtime
     /// case drives the installation's own authority here.
@@ -1063,6 +1075,7 @@ fn case_relocation(artifact: &Artifact) -> CaseResult {
 /// at all, and the exclusion is proven to happen while no discovery record has
 /// been published — so the loser never bound a port or advertised itself.
 fn case_runtime_singleton(artifact: &Artifact) -> CaseResult {
+    artifact.bind_to_real_components()?;
     drive_runtime_singleton(&artifact.product_paths()?)
 }
 
@@ -1144,6 +1157,7 @@ fn busy_owner(busy: &LockBusy) -> String {
 /// one performs the mutation, and every other contender attaches by observing
 /// that same holder rather than proceeding.
 fn case_concurrent_ensure_single_flight(artifact: &Artifact) -> CaseResult {
+    artifact.bind_to_real_components()?;
     drive_concurrent_ensure(&artifact.product_paths()?, CONCURRENT_ENSURE_CONTENDERS)
 }
 
@@ -1247,6 +1261,7 @@ fn drive_concurrent_ensure(paths: &ProductPaths, contenders: usize) -> CaseResul
 /// process this certifier really started and reaped is admitted — all under the
 /// held installation lock.
 fn case_stale_discovery_quarantine(artifact: &Artifact) -> CaseResult {
+    artifact.bind_to_real_components()?;
     drive_stale_discovery_quarantine(&artifact.product_paths()?)
 }
 
@@ -1351,6 +1366,7 @@ fn no_op_command() -> (String, Vec<OsString>) {
 /// IPC credential is proven absent because it is the gateway's to create, never
 /// the dashboard's.
 fn case_credential_separation(artifact: &Artifact) -> CaseResult {
+    artifact.bind_to_real_components()?;
     drive_credential_separation(&artifact.product_paths()?)
 }
 
@@ -1405,6 +1421,7 @@ fn drive_credential_separation(paths: &ProductPaths) -> CaseResult {
 /// across every retained file outside the protected credential store, across the
 /// credential's own debug rendering, and across the installed tree.
 fn case_token_redaction(artifact: &Artifact) -> CaseResult {
+    artifact.bind_to_real_components()?;
     let paths = artifact.product_paths()?;
     let store = DashboardCredentialStore::for_product(&paths);
     let secrets = bootstrap_secrets(&paths, &store)?;
@@ -1879,6 +1896,31 @@ mod tests {
         assert!(
             !paths.credentials_dir().join(WORKER_IPC_CREDENTIAL).exists(),
             "worker IPC is the gateway's to create"
+        );
+    }
+
+    /// Quarantine is admitted only for our own owner and only for a process
+    /// this test really started and reaped; the foreign-owner and live-process
+    /// branches are refused with real process facts.
+    #[test]
+    fn quarantine_admits_only_a_matching_owner_over_a_reaped_process() {
+        let temp = tempfile::tempdir().unwrap();
+        let paths = real_product_paths(&temp);
+        let evidence = drive_stale_discovery_quarantine(&paths).unwrap();
+        assert!(
+            evidence.contains("admitted under the installation lock"),
+            "the proven-dead branch must be admitted: {evidence}"
+        );
+    }
+
+    /// The reaped probe really is dead: the product's own liveness authority
+    /// says so, which is what makes the quarantine branch honest.
+    #[test]
+    fn the_reaped_probe_process_is_really_dead() {
+        let pid = reap_a_real_process().unwrap();
+        assert!(
+            !vaultspec_product::locking::process_is_alive(pid),
+            "the reaped probe process {pid} must be dead"
         );
     }
 
