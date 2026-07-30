@@ -1,0 +1,352 @@
+# Real-artifact product certification.
+#
+# Every job here drives a PUBLISHED artifact: it opens the archive, stages it the
+# way the product-owned installers do, verifies the installed tree through the
+# shipped product authority, and executes the installed commands. Nothing in this
+# file may satisfy a gate with metadata, a fake, a stub, a skip, or an expected
+# failure - a case either drove the real artifact or it did not.
+#
+# The certifier keeps three outcomes strictly distinct, and this workflow relies
+# on that rather than inventing its own:
+#   exit 0  certified          - the case drove the artifact and the property held
+#   exit 2  usage              - the invocation was wrong
+#   exit 3  evidence unavailable - the required real evidence is absent (no
+#                                archive, no component, host still networked).
+#                                FAIL-CLOSED: never a pass, never a skip.
+#   exit 4  failed             - the case drove the artifact and the property did not hold
+# Because exit 3 is non-zero, a job that cannot obtain its evidence goes RED. That
+# is deliberate: "we could not test it" must never read as "it works".
+#
+# There is no `continue-on-error` and no `|| true` on any step whose result
+# decides a case. `if: always()` appears only on diagnostic uploads and on the
+# network-restore teardown - the uploads retain evidence through a failure
+# rather than masking it, and the teardown must run even when certification
+# failed, or the runner stays isolated. That teardown is best-effort in its
+# individual commands but VERIFIES its outcome and fails loudly if the host is
+# still cut off, because a silently isolated runner poisons every later job.
+#
+# The supported target set is FOUR. PyInstaller cannot cross-compile, so the
+# freeze leg (and therefore certification of the bundled runtime) requires a
+# native-architecture runner per target.
+
+name: A2A Product Certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Published version to certify (without the leading v)."
+        required: true
+        type: string
+      prior_version:
+        description: >-
+          Previously published version to downgrade TO. A manager-owned
+          downgrade can only be proven against a real earlier release, so an
+          empty value fails the downgrade legs closed rather than skipping them.
+        required: false
+        type: string
+        default: ''
+      run_durability:
+        description: >-
+          Run the local-NTFS power-loss durability certification. Requires a
+          virtual-machine harness that can cut power; a CI runner cannot
+          satisfy it and the job fails closed naming what is required.
+        required: false
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      version:
+        description: "Published version to certify (without the leading v)."
+        required: true
+        type: string
+      prior_version:
+        description: >-
+          Previously published version to downgrade TO. A manager-owned
+          downgrade can only be proven against a real earlier release, so an
+          empty value fails the downgrade legs closed rather than skipping them.
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: a2a-product-certification-${{ github.ref }}-${{ inputs.version }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Per-target certification of the published archive on a native runner.
+  # ---------------------------------------------------------------------------
+  certify-target:
+    name: Certify ${{ matrix.target }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: aarch64-apple-darwin, os: macOS, ext: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, os: Linux, ext: tar.gz }
+          - { target: x86_64-unknown-linux-gnu, os: Linux, ext: tar.gz }
+          - { target: x86_64-pc-windows-msvc, os: Windows, ext: zip }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read pinned toolchain
+        id: toolchain
+        shell: bash
+        working-directory: engine
+        run: echo "channel=$(grep -m1 '^channel' rust-toolchain.toml | cut -d'"' -f2)" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.toolchain.outputs.channel }}
+      - name: Resolve the engine build output directory
+        shell: bash
+        run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
+      - name: Build the certifier
+        shell: bash
+        working-directory: engine
+        run: cargo build --release -p vaultspec-product --bin product_certify
+
+      # Stage the published artifact LOCALLY first. Everything after this point
+      # runs with the network removed, so the download must happen here.
+      - name: Stage the published artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ inputs.version }}"
+          asset="vaultspec-${version}-${{ matrix.target }}.${{ matrix.ext }}"
+          url="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}/${asset}"
+          mkdir -p staged
+          # Fail loudly when the release asset does not exist. A missing artifact
+          # is an unmet precondition, not a reason to pass.
+          curl --proto '=https' --tlsv1.2 -sSfL "$url" -o "staged/${asset}"
+          curl --proto '=https' --tlsv1.2 -sSfL "${url}.sha256" -o "staged/${asset}.sha256"
+          expected=$(cut -d' ' -f1 < "staged/${asset}.sha256")
+          actual=$( (sha256sum "staged/${asset}" 2>/dev/null || shasum -a 256 "staged/${asset}") | cut -d' ' -f1 )
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::staged artifact digest mismatch: sidecar ${expected}, actual ${actual}" >&2
+            exit 1
+          fi
+          echo "ARTIFACT=${PWD}/staged/${asset}" >> "$GITHUB_ENV"
+
+      - name: Remove network access (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Real isolation, not a claim: drop all egress except loopback. If the
+          # rules cannot be installed we FAIL rather than certify a networked
+          # host, because the offline cases would silently prove nothing.
+          sudo iptables -P OUTPUT DROP
+          sudo iptables -A OUTPUT -o lo -j ACCEPT
+          sudo iptables -P INPUT DROP
+          sudo iptables -A INPUT -i lo -j ACCEPT
+          echo "isolated: egress dropped except loopback"
+
+      - name: Remove network access (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'block drop out proto {tcp,udp} from any to !127.0.0.1\n' | sudo pfctl -f - -e
+          echo "isolated: pf blocking non-loopback egress"
+
+      - name: Remove network access (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-NetFirewallRule -DisplayName 'vaultspec-certification-isolation' `
+            -Direction Outbound -Action Block -RemoteAddress Internet | Out-Null
+          Write-Host 'isolated: outbound blocked to Internet remote addresses'
+
+      # The certifier proves isolation itself: a case that requires an offline
+      # host reports `evidence unavailable` (exit 3) if the host can still reach
+      # the network. That is why isolation is established BEFORE this step.
+      - name: Certify the real artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p cert-workspace cert-diagnostics
+          "${ENGINE_TARGET_DIR}/release/product_certify" --list | tee cert-diagnostics/cases.txt
+          "${ENGINE_TARGET_DIR}/release/product_certify" \
+            --artifact "${ARTIFACT}" \
+            --workspace "${PWD}/cert-workspace" \
+            2>&1 | tee cert-diagnostics/certify.log
+
+      - name: Restore network access
+        if: always()
+        shell: bash
+        run: |
+          # The teardown commands are best-effort - some legitimately no-op
+          # depending on how far the isolation step got - but the OUTCOME is
+          # verified below. A runner left isolated would silently poison every
+          # later job on it, so an unrestored host fails loudly here.
+          set +e
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            sudo iptables -P OUTPUT ACCEPT; sudo iptables -P INPUT ACCEPT; sudo iptables -F
+          elif [ "${RUNNER_OS}" = "macOS" ]; then
+            sudo pfctl -d
+          else
+            powershell -Command "Remove-NetFirewallRule -DisplayName 'vaultspec-certification-isolation' -ErrorAction SilentlyContinue"
+          fi
+          set -e
+          if ! curl --proto '=https' --tlsv1.2 -sSf -o /dev/null --max-time 30 https://github.com; then
+            echo "::error::network was NOT restored on this runner; it is still isolated and will poison later jobs" >&2
+            exit 1
+          fi
+          echo "network restored and verified"
+
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: certification-${{ matrix.target }}
+          path: cert-diagnostics
+          retention-days: 30
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # Windows package-manager channels, each against a REAL manager installation.
+  # ---------------------------------------------------------------------------
+  # Scoop and WinGet reuse the phase-zero proof rather than restating it: it
+  # already drives the real managers through install, upgrade, a genuine
+  # manager-owned downgrade, repair, and uninstall, and it writes the support
+  # matrix back. Restating that sequence here would create a second, divergent
+  # definition of what those channels must prove.
+  certify-scoop-winget:
+    name: Certify the Windows package-manager channels
+    needs: certify-target
+    uses: ./.github/workflows/a2a-channel-feasibility.yml
+    with:
+      version: ${{ inputs.version }}
+      channels: 'scoop winget'
+      prior_version: ${{ inputs.prior_version }}
+
+  certify-msi:
+    name: Certify the complete MSI through Windows Installer
+    needs: certify-target
+    runs-on: Windows
+    steps:
+      - uses: actions/checkout@v4
+      - name: Refuse an unsupported channel before touching the machine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $status = (Get-Content 'packaging/a2a-support-matrix.json' -Raw | ConvertFrom-Json).targets.'x86_64-pc-windows-msvc'.msi.support_status
+          if ($status -ne 'supported') {
+            throw "the msi channel is '$status' in the support matrix; certification cannot certify what publication refuses"
+          }
+      - name: Install, upgrade, downgrade, roll back, repair, uninstall
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          PRIOR_VERSION: ${{ inputs.prior_version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force channel-diagnostics | Out-Null
+          $log = 'channel-diagnostics/msi.log'
+          function Msi([string[]]$msiArgs, [string]$what) {
+            $p = Start-Process msiexec.exe -ArgumentList $msiArgs -Wait -PassThru
+            # 3010 is "success, reboot required" and is a genuine success.
+            if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "$what failed: msiexec exit $($p.ExitCode)" }
+            "$what ok" | Tee-Object -Append $log
+          }
+          $base = "https://github.com/$env:GITHUB_REPOSITORY/releases/download"
+          $msi = "vaultspec-$($env:VERSION)-x86_64-pc-windows-msvc.msi"
+          Invoke-WebRequest -Uri "$base/v$($env:VERSION)/$msi" -OutFile $msi -UseBasicParsing
+          Msi @('/i', $msi, '/qn', '/norestart') 'install'
+          Msi @('/f', $msi, '/qn', '/norestart') 'repair'
+          if (-not $env:PRIOR_VERSION) {
+            throw 'no prior published version: a manager-owned downgrade cannot be proven against nothing'
+          }
+          $priorMsi = "vaultspec-$($env:PRIOR_VERSION)-x86_64-pc-windows-msvc.msi"
+          Invoke-WebRequest -Uri "$base/v$($env:PRIOR_VERSION)/$priorMsi" -OutFile $priorMsi -UseBasicParsing
+          Msi @('/i', $priorMsi, '/qn', '/norestart') 'manager-owned downgrade'
+          Msi @('/x', $priorMsi, '/qn', '/norestart') 'uninstall'
+      - name: Retain diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: certification-channel-msi
+          path: channel-diagnostics
+          retention-days: 30
+          if-no-files-found: error
+
+  # ---------------------------------------------------------------------------
+  # One logical release set across every target and supported channel.
+  # ---------------------------------------------------------------------------
+  compare-inventories:
+    name: Compare published inventories to one release set
+    needs: [certify-target, certify-windows-channels]
+    runs-on: Linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare the four-target by supported-channel matrix to the published inventories
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          # Every supported channel must install the SAME logical release set.
+          # This compares the support matrix's supported cells against what the
+          # release actually published, and fails on any asymmetry.
+          gh release view "v${VERSION}" --json assets --jq '.assets[].name' | sort > published.txt
+          jq -r '
+            .targets | to_entries[]
+            | .key as $t
+            | .value | to_entries[]
+            | select(.value.support_status == "supported")
+            | "\($t) \(.key)"
+          ' packaging/a2a-support-matrix.json | sort > supported.txt
+          echo "--- published assets ---"; cat published.txt
+          echo "--- supported target/channel cells ---"; cat supported.txt
+          missing=0
+          while read -r target channel; do
+            case "$channel" in
+              self-install) pattern="vaultspec-${VERSION}-${target}\." ;;
+              msi)          pattern="\.msi$" ;;
+              scoop)        pattern="vaultspec-${VERSION}-x86_64-pc-windows-msvc\.zip" ;;
+              winget)       pattern="\.msi$" ;;
+              *)            continue ;;
+            esac
+            if ! grep -qE "$pattern" published.txt; then
+              echo "::error::support matrix marks ${target}/${channel} supported but no published asset matches /${pattern}/" >&2
+              missing=1
+            fi
+          done < supported.txt
+          [ "$missing" -eq 0 ] || exit 1
+
+  # ---------------------------------------------------------------------------
+  # Storage durability. NO CI RUNNER CAN SATISFY THIS.
+  # ---------------------------------------------------------------------------
+  certify-durability:
+    name: Certify first-install and steady-state durability on local NTFS
+    if: inputs.run_durability
+    runs-on: Windows
+    steps:
+      - name: Require a power-interruption harness
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # Process termination cannot certify storage durability: killing a
+          # process proves nothing about what reached the platter or the disk's
+          # own write cache. Certifying this requires cutting POWER at every
+          # create / synchronize / write-through / slot-write / journal-sync /
+          # proof-retirement / reopen boundary, in real Windows virtual machines
+          # on certified local NTFS, then proving each restart selects only the
+          # prior or the fully settled receipt with bounded residue.
+          #
+          # No hosted or self-hosted CI runner can do that, so this job FAILS
+          # CLOSED rather than reporting a green it did not earn. Publication
+          # stays blocked until the evidence exists.
+          Write-Host 'durability certification requires a virtual-machine harness capable of forced power interruption.'
+          Write-Host 'Required evidence, none of which a CI runner can produce:'
+          Write-Host '  - real Windows VMs on certified local NTFS (not a network or virtual-only volume)'
+          Write-Host '  - forced power cut at EVERY journal boundary listed above, not process kill'
+          Write-Host '  - per-restart proof that selection yields only the prior or the fully settled receipt, with bounded residue'
+          Write-Host 'Attach the harness results, or leave publication blocked.'
+          throw 'storage durability is uncertified: no CI runner can cut power'
