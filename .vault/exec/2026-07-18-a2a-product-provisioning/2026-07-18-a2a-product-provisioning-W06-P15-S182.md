@@ -50,10 +50,18 @@ exit 0; `cargo clippy --all-targets -D warnings` over the changed crate exit 0;
 clippy run is red in a DIFFERENT crate that a parallel lane is mid-refactor on; no
 diagnostic falls in a file changed here.
 
-The Step's own acceptance clause — the frontend live-vitest suite completing with
-zero socket hang up on the runner — is NOT claimed here. That is an observation on
-CI, and this record claims only what was observed locally: the server-side mechanism
-that produced dropped connections is reproduced, fixed, and guarded.
+Claim scope, stated exactly. Two things are proven by execution, not argument. First,
+the mechanism the Step names in its parenthetical — a watcher rebuild-and-swap
+dropping sockets — is NOT a socket killer: under continuous swaps the served router
+answered every one of 480 requests across eight live keep-alive connections, and that
+held before the change as well as after. Second, the mechanism that IS real: a stop
+could not converge while a live stream was open, so it ended in the caller's kill and
+the kill reset whatever was attached. That one failed as a test before the change and
+passes after, with the stream body ending on a proper chunked terminator.
+
+What is NOT claimed: an observation of the browser test suite itself. It cannot start
+on this host, so if a further contributor to the reported symptom lives on the client
+side or in runner resource pressure, this change would not have reached it.
 
 ## Notes
 
