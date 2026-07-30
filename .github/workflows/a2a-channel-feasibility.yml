@@ -38,6 +38,15 @@ on:
         required: false
         type: string
         default: 'scoop winget'
+      prior_version:
+        description: >-
+          Previously published version (without the leading v) to downgrade TO.
+          A manager-owned downgrade can only be proven against a real earlier
+          release, so an empty value fails the downgrade leg closed rather than
+          skipping it.
+        required: false
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       version:
@@ -49,6 +58,15 @@ on:
         required: false
         type: string
         default: 'scoop winget'
+      prior_version:
+        description: >-
+          Previously published version (without the leading v) to downgrade TO.
+          A manager-owned downgrade can only be proven against a real earlier
+          release, so an empty value fails the downgrade leg closed rather than
+          skipping it.
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -72,6 +90,7 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ inputs.version }}
+          PRIOR_VERSION: ${{ inputs.prior_version }}
         run: |
           $ErrorActionPreference = 'Stop'
           function Emit($result, $reason) {
@@ -160,6 +179,7 @@ jobs:
         shell: pwsh
         env:
           VERSION: ${{ inputs.version }}
+          PRIOR_VERSION: ${{ inputs.prior_version }}
         run: |
           $ErrorActionPreference = 'Stop'
           function Emit($result, $reason) {

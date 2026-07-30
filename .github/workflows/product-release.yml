@@ -290,16 +290,34 @@ jobs:
     runs-on: Linux
     outputs:
       value: ${{ steps.v.outputs.value }}
+      prior: ${{ steps.v.outputs.prior }}
     steps:
+      - uses: actions/checkout@v4
       - id: v
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+            version="${{ github.event.inputs.version }}"
           else
-            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            version="${GITHUB_REF_NAME#v}"
           fi
+          echo "value=${version}" >> "$GITHUB_OUTPUT"
+          # The highest published release strictly below this one. A
+          # manager-owned downgrade can only be proven against a real earlier
+          # release; when there is none, this stays empty and the downgrade leg
+          # fails closed downstream rather than being skipped.
+          published=$(gh release list --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | sed 's/^v//' || true)
+          prior=$(printf '%s\n%s\n' "${published}" "${version}" \
+            | sed '/^$/d' \
+            | sort -V -u \
+            | grep -x -B1 "${version}" \
+            | head -1)
+          [ "${prior}" = "${version}" ] && prior=""
+          echo "prior=${prior}" >> "$GITHUB_OUTPUT"
+          echo "resolved version=${version} prior=${prior:-<none>}"
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
@@ -310,9 +328,10 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   channel-feasibility:
-    name: Phase-zero channel feasibility (S147/S149)
+    name: Phase-zero channel feasibility
     needs: [resolve-version, self-verify]
     uses: ./.github/workflows/a2a-channel-feasibility.yml
     with:
       version: ${{ needs.resolve-version.outputs.value }}
       channels: 'scoop winget'
+      prior_version: ${{ needs.resolve-version.outputs.prior }}
