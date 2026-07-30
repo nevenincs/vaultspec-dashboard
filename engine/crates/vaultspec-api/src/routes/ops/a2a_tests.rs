@@ -979,6 +979,127 @@ fn a_stale_gateway_never_probes_health_and_reports_down() {
     }
 }
 
+/// Drive one full run-start broker round-trip against a real loopback gateway
+/// whose prepare response is `prepare_body`, and assert the refusal fails
+/// closed: the drive surfaces a protocol error and NO lease, token, or actor
+/// was minted. The server answers exactly the three exchanges a refused drive
+/// performs — health, the absent-run preflight, then the offending prepare —
+/// so a drive that wrongly proceeded past the gate would also hang the accept
+/// loop rather than pass silently.
+fn assert_prepare_refusal_mints_nothing(run_id: &str, prepare_body: String) {
+    use std::net::TcpListener;
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let server = std::thread::spawn(move || {
+        for (status, body) in [
+            (200, r#"{"status":"ok"}"#.to_string()),
+            (404, r#"{"detail":"not found"}"#.to_string()),
+            (201, prepare_body),
+        ] {
+            let (mut stream, _) = listener.accept().unwrap();
+            let _request = read_request(&stream);
+            write_response(&mut stream, status, &body);
+        }
+    });
+    let discovery = tempfile::tempdir().unwrap();
+    let service_json = discovery.path().join("service.json");
+    write_service_record(&service_json, port);
+    let (_state_dir, state) = test_state();
+    let outcome = execute_broker_call(
+        &state,
+        run_start_call(&state, run_id),
+        Some(run_id),
+        std::slice::from_ref(&service_json),
+    );
+    assert!(
+        matches!(outcome, BrokeredRoundTrip::Answer(Err(RagError::Protocol))),
+        "a refused prepare must fail closed as a protocol error"
+    );
+    assert_eq!(
+        unresolved_lease_count(&state),
+        0,
+        "a refused prepare must mint no lease, token, or actor"
+    );
+    server.join().unwrap();
+}
+
+#[test]
+fn a_prepare_response_failing_the_admission_gate_mints_nothing() {
+    // The prepare gate is a five-way protocol check (api_version, stage,
+    // worker_state, provider_eligibility, run_admission). A response that fails
+    // it must refuse the run BEFORE any credential exists. Two distinct failing
+    // legs: a non-"prepared" stage, and a run admission that is not "ready".
+    assert_prepare_refusal_mints_nothing(
+        "run-prepare-stage-refused",
+        TEST_PREPARE_RESPONSE.replace(r#""stage":"prepared""#, r#""stage":"pending""#),
+    );
+    assert_prepare_refusal_mints_nothing(
+        "run-prepare-admission-refused",
+        TEST_PREPARE_RESPONSE.replace(
+            r#""run_admission":"ready""#,
+            r#""run_admission":"backpressure""#,
+        ),
+    );
+}
+
+#[test]
+fn invalid_prepare_role_sets_fail_closed_and_mint_nothing() {
+    // The prepare-returned role set is the only authority for which worker
+    // identities receive run credentials, so every malformed set must refuse
+    // the run with nothing minted: a duplicate role, an id outside the agent
+    // charset, an empty set, and a set over the shared 64-role ceiling.
+    let with_roles = |roles: Value| {
+        let mut response: Value = serde_json::from_str(TEST_PREPARE_RESPONSE).unwrap();
+        response["required_roles"] = roles;
+        response.to_string()
+    };
+    assert_prepare_refusal_mints_nothing(
+        "run-roles-duplicate",
+        with_roles(json!(["vaultspec-researcher", "vaultspec-researcher"])),
+    );
+    assert_prepare_refusal_mints_nothing("run-roles-bad-charset", with_roles(json!(["bad role!"])));
+    assert_prepare_refusal_mints_nothing("run-roles-empty", with_roles(json!([])));
+    let overflow: Vec<String> = (0..=MAX_A2A_REQUIRED_ROLES)
+        .map(|index| format!("role-{index}"))
+        .collect();
+    assert_prepare_refusal_mints_nothing("run-roles-overflow", with_roles(json!(overflow)));
+}
+
+#[test]
+fn the_verb_whitelist_is_exactly_five_control_verbs_plus_one_bounded_read() {
+    // The whitelist's force is its exact membership: five orchestration control
+    // verbs plus ONE bounded active-run recovery read, and nothing else. Any
+    // addition, removal, or rename is a contract change and must fail here.
+    const CONTROL_VERBS: &[&str] = &[
+        "run-start",
+        "run-status",
+        "run-cancel",
+        "presets-list",
+        "service-state",
+    ];
+    const BOUNDED_READS: &[&str] = &["active-runs"];
+    assert_eq!(
+        A2A_WHITELIST.len(),
+        CONTROL_VERBS.len() + BOUNDED_READS.len(),
+        "the whitelist holds exactly the five control verbs and the one bounded read"
+    );
+    assert_eq!(
+        A2A_WHITELIST
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        A2A_WHITELIST.len(),
+        "whitelist entries are distinct"
+    );
+    for verb in CONTROL_VERBS.iter().chain(BOUNDED_READS) {
+        assert!(
+            A2A_WHITELIST.contains(verb),
+            "expected whitelisted verb `{verb}` is missing"
+        );
+    }
+}
+
 #[test]
 fn a_timeout_is_504_and_a_crash_is_502() {
     let (_dir, state) = test_state();
