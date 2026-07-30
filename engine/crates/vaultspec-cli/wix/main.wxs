@@ -1,55 +1,49 @@
 <?xml version='1.0' encoding='windows-1252'?>
 <!--
-  Copyright (C) 2017 Christopher R. Field.
+  The product-owned Windows Installer package.
 
-  Licensed under the Apache License, Version 2.0 (the "License");
-  you may not use this file except in compliance with the License.
-  You may obtain a copy of the License at
+  This MSI installs the COMPLETE composed product tree, never a bare binary: the
+  dashboard executable, the copied external updater, every file of the bundled
+  A2A runtime (a frozen onedir this product builds and ships - not a capsule
+  fetched at install time), the release manifest, the component lock, every
+  license, and the SBOM. Every one of those files is carried by its own component
+  so Windows Installer owns install, repair, and removal of each individually.
 
-  http://www.apache.org/licenses/LICENSE-2.0
+  BUILD CONTRACT. The package is compiled against an already-composed product
+  tree, not against a cargo target directory. The build must define:
 
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
+    ProductTreeDir  The composed generation root to package (the directory that
+                    holds release.json).
+    A2aRuntimeDir   <ProductTreeDir>\a2a
+    LicensesDir     <ProductTreeDir>\licenses
+    Version         The product version for this package.
+
+  Two file sets have build-decided membership rather than a fixed roster, so they
+  arrive as harvested fragments carrying ONE COMPONENT PER FILE:
+
+    heat dir <ProductTreeDir>\a2a      -cg A2aRuntimeFiles -dr A2ARUNTIMEDIR \
+        -var var.A2aRuntimeDir -srd -sreg -scom -gg -g1 -sfrag -out a2a.wxs
+    heat dir <ProductTreeDir>\licenses -cg LicenseFiles    -dr LICENSESDIR   \
+        -var var.LicensesDir   -srd -sreg -scom -gg -g1 -sfrag -out licenses.wxs
+
+  Both fragments are compiled and linked alongside this file. A missing variable
+  or a missing file fails the build loudly; nothing here degrades to a partial
+  payload.
+
+  The link step reports ICE61 ("this product should remove only older versions of
+  itself"): that is the expected, deliberate consequence of allowing downgrades
+  below, not a defect to paper over.
+
+  Portions of this file derive from the cargo-wix template,
+  Copyright (C) 2017 Christopher R. Field, licensed under the Apache License,
+  Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0). Distributed on an
+  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND.
 -->
 
-<!--
-  The "cargo wix" subcommand provides a variety of predefined variables available
-  for customization of this template. The values for each variable are set at
-  installer creation time. The following variables are available:
+<?ifndef ProductTreeDir ?>
+    <?error The ProductTreeDir preprocessor variable must name the composed product tree to package. ?>
+<?endif ?>
 
-  TargetTriple      = The rustc target triple name.
-  TargetEnv         = The rustc target environment. This is typically either
-                      "msvc" or "gnu" depending on the toolchain downloaded and
-                      installed.
-  TargetVendor      = The rustc target vendor. This is typically "pc", but Rust
-                      does support other vendors, like "uwp".
-  CargoTargetBinDir = The complete path to the directory containing the
-                      binaries (exes) to include. The default would be
-                      "target\release\". If an explicit rustc target triple is
-                      used, i.e. cross-compiling, then the default path would
-                      be "target\<CARGO_TARGET>\<CARGO_PROFILE>",
-                      where "<CARGO_TARGET>" is replaced with the "CargoTarget"
-                      variable value and "<CARGO_PROFILE>" is replaced with the
-                      value from the "CargoProfile" variable. This can also
-                      be overridden manually with the "target-bin-dir" flag.
-  CargoTargetDir    = The path to the directory for the build artifacts, i.e.
-                      "target".
-  CargoProfile      = The cargo profile used to build the binaries
-                      (usually "debug" or "release").
-  Version           = The version for the installer. The default is the
-                      "Major.Minor.Fix" semantic versioning number of the Rust
-                      package.
--->
-
-<!--
-  Please do not remove these pre-processor If-Else blocks. These are used with
-  the `cargo wix` subcommand to automatically determine the installation
-  destination for 32-bit versus 64-bit installers. Removal of these lines will
-  cause installation errors.
--->
 <?if $(sys.BUILDARCH) = x64 or $(sys.BUILDARCH) = arm64 ?>
     <?define PlatformProgramFilesFolder = "ProgramFiles64Folder" ?>
 <?else ?>
@@ -69,7 +63,7 @@
 
         <Package Id='*'
             Keywords='Installer'
-            Description='The `vaultspec` binary: one Rust binary, two front doors — one-shot CLI verbs and the resident serve mode (engine-spec D1.1). Verbs are thin shells over engine-query (D6.1).'
+            Description='The complete vaultspec product: the dashboard, its external updater, and the bundled A2A runtime, installed offline as one verified release set.'
             Manufacturer='vaultspec contributors'
             InstallerVersion='450'
             Languages='1033'
@@ -78,42 +72,26 @@
             SummaryCodepage='1252'
             />
 
+        <!-- Windows Installer owns activation for this channel. Downgrades are
+             ALLOWED because the declared downgrade path for the MSI channel is
+             reinstalling the prior versioned product package; blocking them would
+             leave that path unimplementable. -->
         <MajorUpgrade
             Schedule='afterInstallInitialize'
-            DowngradeErrorMessage='A newer version of [ProductName] is already installed. Setup will now exit.'/>
+            AllowDowngrades='yes'/>
 
         <Media Id='1' Cabinet='media1.cab' EmbedCab='yes' DiskPrompt='CD-ROM #1'/>
         <Property Id='DiskPrompt' Value='vaultspec Installation'/>
 
         <Directory Id='TARGETDIR' Name='SourceDir'>
-            <!-- Start-Menu shortcut (single-app-runtime S22): launching the
-                 bare binary IS the application front door - it attaches to
-                 (or starts) the one machine seat and opens the browser. -->
+            <!-- Launching the bare binary IS the application front door: it
+                 attaches to (or starts) the one machine seat and opens the
+                 browser. -->
             <Directory Id='ProgramMenuFolder'>
                 <Directory Id='ApplicationProgramsFolder' Name='vaultspec'/>
             </Directory>
             <Directory Id='$(var.PlatformProgramFilesFolder)' Name='PFiles'>
                 <Directory Id='APPLICATIONFOLDER' Name='vaultspec'>
-                    
-                    <!--
-                      Enabling the license sidecar file in the installer is a four step process:
-
-                      1. Uncomment the `Component` tag and its contents.
-                      2. Change the value for the `Source` attribute in the `File` tag to a path
-                         to the file that should be included as the license sidecar file. The path
-                         can, and probably should be, relative to this file.
-                      3. Change the value for the `Name` attribute in the `File` tag to the
-                         desired name for the file when it is installed alongside the `bin` folder
-                         in the installation directory. This can be omitted if the desired name is
-                         the same as the file name.
-                      4. Uncomment the `ComponentRef` tag with the Id attribute value of "License"
-                         further down in this file.
-                    -->
-                    <!--
-                    <Component Id='License' Guid='*'>
-                        <File Id='LicenseFile' Name='ChangeMe' DiskId='1' Source='C:\Path\To\File' KeyPath='yes'/>
-                    </Component>
-                    -->
 
                     <Directory Id='Bin' Name='bin'>
                         <Component Id='Path' Guid='C3A8A117-69C2-4305-B00F-CECFF92D204F' KeyPath='yes'>
@@ -126,15 +104,83 @@
                                 Action='set'
                                 System='yes'/>
                         </Component>
-                        <Component Id='binary0' Guid='*'>
+                        <!-- The dashboard executable: also the shipped authority
+                             this package's uninstall custom actions drive. -->
+                        <Component Id='DashboardBinary' Guid='5FB34DEF-273E-4922-8DAC-6976E779A616'>
                             <File
-                                Id='exe0'
+                                Id='DashboardExe'
                                 Name='vaultspec.exe'
                                 DiskId='1'
-                                Source='$(var.CargoTargetBinDir)\vaultspec.exe'
+                                Source='$(var.ProductTreeDir)\bin\vaultspec.exe'
+                                KeyPath='yes'/>
+                        </Component>
+                        <!-- The copied external updater: it replaces the release
+                             from OUTSIDE the active seat under the installation
+                             lock, so it must be present in the installed tree. -->
+                        <Component Id='UpdaterBinary' Guid='E194CC76-BF4B-4CE9-B785-E461A93ADF85'>
+                            <File
+                                Id='UpdaterExe'
+                                Name='vaultspec-updater.exe'
+                                DiskId='1'
+                                Source='$(var.ProductTreeDir)\bin\vaultspec-updater.exe'
                                 KeyPath='yes'/>
                         </Component>
                     </Directory>
+
+                    <!-- The bundled A2A runtime onedir. Its files are ordinary
+                         product files, digest-covered by the release manifest like
+                         every other installed file; the harvested group carries one
+                         component per file. -->
+                    <Directory Id='A2ARUNTIMEDIR' Name='a2a'/>
+
+                    <!-- Third-party license texts, one component per license. -->
+                    <Directory Id='LICENSESDIR' Name='licenses'/>
+
+                    <Directory Id='PackagingDir' Name='packaging'>
+                        <Component Id='ComponentLock' Guid='DEDE50A6-FBCC-44F5-A628-2CB75261D6C0'>
+                            <File
+                                Id='ComponentLockJson'
+                                Name='a2a-component.lock.json'
+                                DiskId='1'
+                                Source='$(var.ProductTreeDir)\packaging\a2a-component.lock.json'
+                                KeyPath='yes'/>
+                        </Component>
+                    </Directory>
+
+                    <!-- The release-set member manifest: the digest evidence the
+                         shipped verifier checks the installed tree against. -->
+                    <Component Id='ReleaseManifest' Guid='53A43066-190E-4A60-AF68-3A7AB8C847D5'>
+                        <File
+                            Id='ReleaseJson'
+                            Name='release.json'
+                            DiskId='1'
+                            Source='$(var.ProductTreeDir)\release.json'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <Component Id='Sbom' Guid='C9B6A260-2026-4791-85A9-67FEAEFB5147'>
+                        <File
+                            Id='SbomJson'
+                            Name='sbom.cdx.json'
+                            DiskId='1'
+                            Source='$(var.ProductTreeDir)\sbom.cdx.json'
+                            KeyPath='yes'/>
+                    </Component>
+
+                    <!-- The durable install-provenance record: which channel owns
+                         this copy, which version it is, and where it lives. It is
+                         the component's key path, so Windows Installer removes it
+                         with the product and no stale provenance survives an
+                         uninstall. User data is NOT recorded here and NOT owned by
+                         this package - it lives outside the install directory and
+                         survives removal. -->
+                    <Component Id='InstallProvenance' Guid='6249B45E-9AE3-4418-AAC1-F991064E103D'>
+                        <RegistryKey Root='HKLM' Key='SOFTWARE\vaultspec\install'>
+                            <RegistryValue Name='channel' Type='string' Value='msi' KeyPath='yes'/>
+                            <RegistryValue Name='version' Type='string' Value='$(var.Version)'/>
+                            <RegistryValue Name='location' Type='string' Value='[APPLICATIONFOLDER]'/>
+                        </RegistryKey>
+                    </Component>
                 </Directory>
             </Directory>
         </Directory>
@@ -145,30 +191,63 @@
                     Id='ApplicationStartMenuShortcut'
                     Name='vaultspec'
                     Description='Open the vaultspec dashboard'
-                    Target='[!exe0]'
+                    Target='[!DashboardExe]'
                     WorkingDirectory='Bin'/>
                 <RemoveFolder Id='CleanUpShortcutFolder' Directory='ApplicationProgramsFolder' On='uninstall'/>
                 <RegistryValue Root='HKCU' Key='Software\vaultspec\dashboard' Name='installed' Type='integer' Value='1' KeyPath='yes'/>
             </Component>
         </DirectoryRef>
 
+        <!-- UNINSTALL SEMANTICS. Before any file is removed, the shipped binary
+             is asked to stop the running seat (otherwise open files force a
+             reboot) and then to drop the product's own owned state - generations,
+             receipt, and credentials - which it does while PRESERVING user data.
+             Both run impersonated, because that state lives in the invoking
+             user's app home rather than the machine account's.
+
+             Their return value is ignored deliberately: an uninstall must not be
+             blockable by the product's own state, and anything they leave behind
+             lives outside this package's file set where the product itself can
+             still remove it. -->
+        <CustomAction Id='StopRunningProduct'
+            FileKey='DashboardExe'
+            ExeCommand='stop'
+            Execute='deferred'
+            Impersonate='yes'
+            Return='ignore'/>
+        <CustomAction Id='DropProductReceipt'
+            FileKey='DashboardExe'
+            ExeCommand='a2a remove'
+            Execute='deferred'
+            Impersonate='yes'
+            Return='ignore'/>
+
+        <InstallExecuteSequence>
+            <Custom Action='StopRunningProduct' Before='DropProductReceipt'>REMOVE~="ALL"</Custom>
+            <Custom Action='DropProductReceipt' Before='RemoveFiles'>REMOVE~="ALL"</Custom>
+        </InstallExecuteSequence>
+
+        <!-- The payload is complete or it is nothing: the product tree cannot be
+             deselected, so no partial installation can be produced from this
+             package. Only the two conveniences are optional. -->
         <Feature
-            Id='Binaries'
-            Title='Application'
-            Description='Installs all binaries and the license.'
+            Id='ProductTree'
+            Title='vaultspec'
+            Description='The complete product: the dashboard, its external updater, the bundled A2A runtime, the release manifest, licenses, and the SBOM.'
             Level='1'
             ConfigurableDirectory='APPLICATIONFOLDER'
             AllowAdvertise='no'
             Display='expand'
             Absent='disallow'>
-            
-            <!--
-              Uncomment the following `ComponentRef` tag to add the license
-              sidecar file to the installer.
-            -->
-            <!--<ComponentRef Id='License'/>-->
 
-            <ComponentRef Id='binary0'/>
+            <ComponentRef Id='DashboardBinary'/>
+            <ComponentRef Id='UpdaterBinary'/>
+            <ComponentRef Id='ReleaseManifest'/>
+            <ComponentRef Id='ComponentLock'/>
+            <ComponentRef Id='Sbom'/>
+            <ComponentRef Id='InstallProvenance'/>
+            <ComponentGroupRef Id='A2aRuntimeFiles'/>
+            <ComponentGroupRef Id='LicenseFiles'/>
 
             <Feature
                 Id='StartMenuShortcut'
@@ -190,66 +269,13 @@
         </Feature>
 
         <SetProperty Id='ARPINSTALLLOCATION' Value='[APPLICATIONFOLDER]' After='CostFinalize'/>
-
-        
-        <!--
-          Uncomment the following `Icon` and `Property` tags to change the product icon.
-
-          The product icon is the graphic that appears in the Add/Remove
-          Programs control panel for the application.
-        -->
-        <!--<Icon Id='ProductICO' SourceFile='wix\Product.ico'/>-->
-        <!--<Property Id='ARPPRODUCTICON' Value='ProductICO' />-->
-
         <Property Id='ARPHELPLINK' Value='https://github.com/nevenincs/vaultspec-dashboard'/>
-        
+
         <UI>
             <UIRef Id='WixUI_FeatureTree'/>
-            
-            <!--
-              Enabling the EULA dialog in the installer is a three step process:
-
-                1. Comment out or remove the two `Publish` tags that follow the
-                   `WixVariable` tag.
-                2. Uncomment the `<WixVariable Id='WixUILicenseRtf' Value='Path\to\Eula.rft'>` tag further down
-                3. Replace the `Value` attribute of the `WixVariable` tag with
-                   the path to a RTF file that will be used as the EULA and
-                   displayed in the license agreement dialog.
-            -->
             <Publish Dialog='WelcomeDlg' Control='Next' Event='NewDialog' Value='CustomizeDlg' Order='99'>1</Publish>
             <Publish Dialog='CustomizeDlg' Control='Back' Event='NewDialog' Value='WelcomeDlg' Order='99'>1</Publish>
-
         </UI>
-
-        
-        <!--
-          Enabling the EULA dialog in the installer requires uncommenting
-          the following `WixUILicenseRTF` tag and changing the `Value`
-          attribute.
-        -->
-        <!-- <WixVariable Id='WixUILicenseRtf' Value='Relative\Path\to\Eula.rtf'/> -->
-
-        
-        <!--
-          Uncomment the next `WixVariable` tag to customize the installer's
-          Graphical User Interface (GUI) and add a custom banner image across
-          the top of each screen. See the WiX Toolset documentation for details
-          about customization.
-
-          The banner BMP dimensions are 493 x 58 pixels.
-        -->
-        <!--<WixVariable Id='WixUIBannerBmp' Value='wix\Banner.bmp'/>-->
-
-        
-        <!--
-          Uncomment the next `WixVariable` tag to customize the installer's
-          Graphical User Interface (GUI) and add a custom image to the first
-          dialog, or screen. See the WiX Toolset documentation for details about
-          customization.
-
-          The dialog BMP dimensions are 493 x 312 pixels.
-        -->
-        <!--<WixVariable Id='WixUIDialogBmp' Value='wix\Dialog.bmp'/>-->
 
     </Product>
 
