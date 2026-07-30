@@ -3654,6 +3654,7 @@ dependencies = [
  "flate2",
  "fs4",
  "futures-core",
+ "futures-util",
  "getrandom 0.4.2",
  "gix",
  "ingest-code",
@@ -3795,6 +3796,7 @@ dependencies = [
 name = "vaultspec-updater"
 version = "0.1.4"
 dependencies = [
+ "fs4",
  "rusqlite",
  "serde",
  "serde_json",

@@ -210,7 +210,14 @@ pub async fn stream(
     let live = BroadcastStream::new(receiver)
         .filter_map(move |item| map_live_item(item, &wanted, dedup_threshold));
 
-    let combined = tokio_stream::iter(backlog.into_iter().map(Ok)).chain(live);
+    // End the (otherwise endless) body when the process starts stopping. Without
+    // this the connection outlives the graceful drain, `axum::serve` never
+    // returns, and the stop degenerates into a force-kill that resets every
+    // in-flight connection — including unrelated requests in flight at that
+    // moment. Ending the stream closes the chunked body cleanly instead.
+    let combined = tokio_stream::iter(backlog.into_iter().map(Ok)).chain(
+        futures_util::StreamExt::take_until(live, state.shutdown.waiter()),
+    );
     Sse::new(combined).keep_alive(axum::response::sse::KeepAlive::default())
 }
 

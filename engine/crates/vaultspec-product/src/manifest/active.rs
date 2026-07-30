@@ -35,6 +35,7 @@ pub(crate) struct VerifiedActiveGeneration {
     release_set_identity: String,
     target: Target,
     a2a_identity: ReleaseIdentity,
+    runtime_entrypoint: String,
     file_count: usize,
 }
 
@@ -49,6 +50,12 @@ impl VerifiedActiveGeneration {
 
     pub(crate) fn a2a_identity(&self) -> &ReleaseIdentity {
         &self.a2a_identity
+    }
+
+    /// The generation-relative path of the frozen runtime's launchable
+    /// entrypoint, proven installed, executable, and inside the declared root.
+    pub(crate) fn runtime_entrypoint(&self) -> &str {
+        &self.runtime_entrypoint
     }
 
     /// How many installed files the complete inventory covered.
@@ -143,11 +150,17 @@ pub(crate) fn verify_active_generation(
         observed,
     )?;
     verify_complete_inventory(&manifest, observed)?;
+    // What the inventory alone cannot say: WHICH subtree is the runtime and
+    // which file in it is launchable. A start resolves its program from this,
+    // so an absent, truncated, or non-executable onedir must fail here rather
+    // than at spawn.
+    verify_bundled_runtime(&manifest, observed)?;
 
     Ok(VerifiedActiveGeneration {
         release_set_identity: manifest.cohort.id,
         target: manifest.target,
         a2a_identity: manifest.a2a_component.release_identity,
+        runtime_entrypoint: manifest.a2a_component.runtime.entrypoint.clone(),
         file_count: observed.len(),
     })
 }

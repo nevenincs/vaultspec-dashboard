@@ -121,6 +121,26 @@ impl VerifiedActiveRelease {
         self.verified.a2a_identity()
     }
 
+    /// The generation-relative, portable path of the frozen runtime's
+    /// launchable entrypoint.
+    #[must_use]
+    pub fn runtime_entrypoint(&self) -> &str {
+        self.verified.runtime_entrypoint()
+    }
+
+    /// Resolve the one program a start may launch: the frozen runtime's
+    /// entrypoint inside this proven tree.
+    ///
+    /// The path segments are re-validated against the generation root here even
+    /// though verification already proved the entrypoint is an installed file
+    /// under the declared runtime root. Belt and braces is the right posture at
+    /// a spawn seam: this is the last place a path becomes a process, and the
+    /// resolution refuses anything that could traverse out of the tree.
+    pub fn resolve_runtime_program(&self) -> ManifestResult<crate::process::ResolvedProgram> {
+        let segments: Vec<&str> = self.verified.runtime_entrypoint().split('/').collect();
+        crate::process::ResolvedProgram::from_capsule_relative(&self.root, &segments)
+    }
+
     /// How many installed files the complete inventory covered.
     #[must_use]
     pub fn verified_file_count(&self) -> usize {
@@ -335,8 +355,18 @@ impl LifecycleController {
     /// - (c) discovery present, OURS but stale/dead: refuse `StaleUnproven` — the
     ///   owner-matched quarantine dance (`locking::quarantine_owner_matched_stale`)
     ///   is wired in a later phase; until then refuse with the HONEST reason;
-    /// - (d) discovery present, OURS and live: permit the gate (the
-    ///   drain/authenticate/stop control effect lands separately).
+    /// - (d) discovery present, OURS and live: permit the gate for an operation
+    ///   that addresses a running gateway (stop, restart) or that swaps
+    ///   generations by receipt with the prior tree retained (update, rollback);
+    ///   refuse `GatewayRunning` for one that rewrites or deletes the files the
+    ///   live gateway is executing from (repair, remove). Ownership alone is not
+    ///   the question — WHICH operation is.
+    ///
+    /// The verdict must be classified under the SAME held installation guard the
+    /// effect runs under. A verdict read before acquisition can be arbitrarily
+    /// stale: gateway spawn and discovery republication are serialized by that
+    /// lock, so a pre-lock `None` can survive an entire updater swap and then
+    /// authorize a mutation against a gateway that is by then live.
     ///
     /// The authority gate (`authorize`: active receipt + verified ownership
     /// capability) is REQUIRED in every permit branch — an absent discovery never
@@ -351,7 +381,16 @@ impl LifecycleController {
         match verdict {
             // (a) No discovery: absent/dead gateway, valid cold precondition.
             None => {}
-            // (d) Ours and live: the gate passes (control effect lands separately).
+            // (d) Ours and live: whether that is a valid precondition depends on
+            // the OPERATION, not on ownership alone. Stopping, relaunching,
+            // updating, and rolling back all address a running gateway on
+            // purpose. Repair and removal replace or delete the generation files
+            // the live gateway is EXECUTING FROM - which Windows refuses outright
+            // for a running image, and which is incoherent everywhere else - so
+            // they require it to be stopped first rather than racing it.
+            Some(Verdict::OwnedLive) if op.replaces_running_files() => {
+                return Err(Refusal::GatewayRunning);
+            }
             Some(Verdict::OwnedLive) => {}
             // (c) Ours but stale/dead: honest refusal until quarantine lands.
             Some(Verdict::OwnedStale) => return Err(Refusal::StaleUnproven),
@@ -838,6 +877,85 @@ mod tests {
             controller.guard_owned_mutation(LifecycleOp::Repair, Some(&ownership), None),
             Ok(())
         );
+    }
+
+    /// A live owned gateway is a valid precondition for some mutations and a
+    /// hard failure for others, and the difference is the OPERATION.
+    ///
+    /// Repair rewrites generation files and removal deletes them, so both would
+    /// be pulling the ground out from under a process still executing it -
+    /// something Windows refuses outright for a running image. Stop and restart
+    /// address that process on purpose, and update and rollback stage a new
+    /// generation and swap by receipt with the prior tree retained.
+    #[test]
+    fn a_live_gateway_blocks_only_the_mutations_that_replace_its_running_files() {
+        use crate::discovery::{ImmutableReason, Verdict};
+
+        let fixture = crate::manifest::tests::Fixture::new();
+        let controller = settled_install(&fixture);
+        let ownership = DashboardCredentialStore::for_product(&fixture.paths)
+            .verify_ownership(&fixture.guard)
+            .expect("the settled install retained an ownership capability");
+        let ownership = Some(&ownership);
+
+        for op in [LifecycleOp::Repair, LifecycleOp::Remove] {
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, Some(&Verdict::OwnedLive)),
+                Err(Refusal::GatewayRunning),
+                "{op:?} replaces the files the live gateway runs from"
+            );
+            // The same operation against a cleanly stopped install is exactly
+            // how a cold product is repaired or removed, so it must pass.
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, None),
+                Ok(()),
+                "{op:?} must still reach a cleanly stopped install"
+            );
+        }
+
+        for op in [
+            LifecycleOp::Stop,
+            LifecycleOp::Restart,
+            LifecycleOp::Update,
+            LifecycleOp::Rollback,
+        ] {
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, Some(&Verdict::OwnedLive)),
+                Ok(()),
+                "{op:?} addresses a running gateway deliberately"
+            );
+        }
+
+        // Stale and foreign classifications are unchanged by op-sensitivity: a
+        // record that is not proven dead is never quarantined implicitly, and a
+        // foreign resident is never mutated whatever the operation.
+        for op in [
+            LifecycleOp::Stop,
+            LifecycleOp::Restart,
+            LifecycleOp::Repair,
+            LifecycleOp::Update,
+            LifecycleOp::Rollback,
+            LifecycleOp::Remove,
+        ] {
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, Some(&Verdict::OwnedStale)),
+                Err(Refusal::StaleUnproven)
+            );
+            assert_eq!(
+                controller.guard_owned_mutation(op, ownership, Some(&Verdict::ForeignAttachable)),
+                Err(Refusal::ForeignResident)
+            );
+            assert_eq!(
+                controller.guard_owned_mutation(
+                    op,
+                    ownership,
+                    Some(&Verdict::ForeignImmutable {
+                        reason: ImmutableReason::NoTrustedHandoff
+                    })
+                ),
+                Err(Refusal::ForeignResident)
+            );
+        }
     }
 
     #[test]

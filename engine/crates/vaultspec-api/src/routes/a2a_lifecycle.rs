@@ -37,7 +37,7 @@ use vaultspec_product::credentials::{
     CredentialError, DashboardCredentialStore, ForeignHandoffReader,
 };
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, ImmutableReason, Verdict};
-use vaultspec_product::lifecycle::{AttachMode, LifecycleController};
+use vaultspec_product::lifecycle::{AttachMode, LifecycleController, gateway_spawn_env};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
@@ -63,6 +63,11 @@ const DISCOVERY_FRESHNESS: Duration = Duration::from_secs(30);
 /// The gateway discovery record the seated controller publishes. The
 /// lifecycle plane READS it to classify the attach verdict; it never writes it.
 const DISCOVERY_FILE: &str = "gateway-discovery.json";
+
+/// The frozen runtime's foreground service verb. The dashboard owns the process
+/// tree it starts and terminates it on seated shutdown, so it runs the runtime
+/// in the foreground rather than asking it to daemonize and detach.
+const RUNTIME_SERVE_VERB: &str = "serve";
 
 // --- typed wire operation (bounded enum; NO free-form path/arg) ---------------
 
@@ -796,6 +801,29 @@ impl LifecyclePlane {
         Some(discovery.classify(&discovery_ctx(&self.owner_id)))
     }
 
+    /// The same classification, but only obtainable while the installation guard
+    /// is HELD.
+    ///
+    /// The guard parameter is a type-state witness and nothing else: it is the
+    /// reason a mutation gate cannot be handed a verdict read before
+    /// acquisition. That ordering is not a style preference. Gateway spawn and
+    /// discovery republication are serialized by this lock, so a verdict taken
+    /// before it can be arbitrarily stale — an updater swap relaunches the seat
+    /// and blocks until the new gateway has republished, all while holding the
+    /// lock, so a pre-lock "nothing is running" survives the entire swap and
+    /// would authorize a mutation against a gateway that is by then live. Read
+    /// after acquisition and the observation is settled truth.
+    ///
+    /// Read-only surfaces (readiness, endpoint resolution, status projections)
+    /// keep the unguarded read: they report what they saw, and none of them
+    /// authorizes anything.
+    fn current_verdict_guarded(
+        &self,
+        _guard: &vaultspec_product::locking::InstallLockGuard,
+    ) -> Option<Verdict> {
+        self.current_verdict()
+    }
+
     /// The honest agent-tier availability for this plane's product state:
     /// no credential read, just the discovery classification.
     pub(crate) fn agent_availability(&self) -> (bool, Option<String>) {
@@ -900,12 +928,9 @@ impl LifecyclePlane {
         let verdict = self.current_verdict();
         match verdict {
             Some(Verdict::OwnedLive) => self.authenticate_owned(),
-            Some(Verdict::OwnedStale) | None => json!({
-                "action": "refused",
-                "reason": "gateway start and stale recovery require sealed receipt-selected generation authority",
-                "active_generation": release.active_generation(),
-                "settlement_configured": settlement_url.is_some(),
-            }),
+            Some(Verdict::OwnedStale) | None => {
+                self.start_verified_generation(&release, settlement_url)
+            }
             Some(Verdict::ForeignAttachable) => json!({
                 "action": "attach-foreign",
                 "reason": "a compatible foreign gateway satisfies run demand read-only; left immutable",
@@ -913,6 +938,104 @@ impl LifecyclePlane {
             Some(Verdict::ForeignImmutable { reason }) => json!({
                 "action": "leave-foreign",
                 "reason": format!("foreign gateway left immutable: {}", immutable_reason(&reason)),
+            }),
+        }
+    }
+
+    /// Prove the receipt-selected generation, then start it.
+    ///
+    /// Nothing launches on the strength of a settled receipt alone. The receipt
+    /// names a generation; this re-derives whether that generation IS the one
+    /// the receipt describes, under the held installation guard, before a
+    /// program path is resolved:
+    ///
+    /// - the member manifest is located by the RECEIPT's digest, never by a path
+    ///   the installed tree declares;
+    /// - the component lock must digest to the RECEIPT's value before it is
+    ///   parsed, so a lock present only in the candidate tree cannot vouch for
+    ///   itself;
+    /// - the manifest's inventory must then cover every installed file exactly,
+    ///   with no missing and no extra member;
+    /// - and the frozen runtime's declared subtree, entrypoint, and file count
+    ///   must match what was actually placed.
+    ///
+    /// Only the resulting proof yields a program path. A staged, substituted,
+    /// incomplete, tampered, or self-authorized generation produces no proof and
+    /// therefore has nothing to launch — it stays inert without needing a
+    /// special case.
+    fn start_verified_generation(
+        &self,
+        release: &ProvisionedRelease,
+        settlement_url: Option<&str>,
+    ) -> Value {
+        use vaultspec_product::locking::{Actor, InstallLock};
+        use vaultspec_product::protocol::LifecycleOp;
+
+        let lock = InstallLock::new(self.paths.install_lock_path());
+        let guard = match lock.acquire(Actor::Installer, &self.owner_id) {
+            Ok(Ok(guard)) => guard,
+            Ok(Err(_)) => {
+                return json!({
+                    "action": "degraded",
+                    "reason": "installation authority is busy",
+                });
+            }
+            Err(_) => {
+                return json!({
+                    "action": "error",
+                    "reason": "installation authority is unavailable",
+                });
+            }
+        };
+        let verified = match self.controller.authorize_start(LifecycleOp::Start, &guard) {
+            Ok(verified) => verified,
+            Err(refusal) => {
+                return json!({
+                    "action": "refused",
+                    "reason": format!("the receipt-selected generation is unverified: {refusal}"),
+                    "active_generation": release.active_generation(),
+                    "settlement_configured": settlement_url.is_some(),
+                });
+            }
+        };
+        // The program comes out of the proof, so there is no path here a caller
+        // or a candidate tree could have chosen.
+        let program = match verified.resolve_runtime_program() {
+            Ok(program) => program,
+            Err(error) => {
+                return json!({
+                    "action": "refused",
+                    "reason": format!("the verified runtime entrypoint did not resolve: {error}"),
+                    "active_generation": verified.generation(),
+                });
+            }
+        };
+        let mut spec = vaultspec_product::process::GatewaySpec::from_resolved(
+            program,
+            vec![std::ffi::OsString::from(RUNTIME_SERVE_VERB)],
+        );
+        for (key, value) in gateway_spawn_env(&self.paths, settlement_url) {
+            spec = spec.with_env(key, value);
+        }
+        match vaultspec_product::process::spawn_gateway(&spec) {
+            Ok(process) => {
+                let pid = process.pid();
+                *self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner()) = Some(process);
+                json!({
+                    "action": "start",
+                    "reason": "the receipt-selected generation verified and its runtime was started",
+                    "active_generation": verified.generation(),
+                    "verified_files": verified.verified_file_count(),
+                    "pid": pid,
+                    "settlement_configured": settlement_url.is_some(),
+                })
+            }
+            // Best-effort: a failed start degrades the agent tier honestly
+            // rather than aborting the seat.
+            Err(error) => json!({
+                "action": "degraded",
+                "reason": format!("the verified runtime did not start: {error}"),
+                "active_generation": verified.generation(),
             }),
         }
     }
@@ -1027,7 +1150,6 @@ impl LifecyclePlane {
         op: LifecycleOp,
         effect: impl FnOnce() -> T,
     ) -> Result<T, Refusal> {
-        let verdict = self.current_verdict();
         use vaultspec_product::locking::{Actor, InstallLock};
         let lock = InstallLock::new(self.paths.install_lock_path());
         let guard = lock
@@ -1059,6 +1181,8 @@ impl LifecyclePlane {
             }
             ActiveReleaseState::Settled(_) => {}
         }
+        // Classify discovery only now, under the guard the effect runs under.
+        let verdict = self.current_verdict_guarded(&guard);
         if !op.requires_ownership() {
             return self.controller.authorize(op, None).map(|()| effect());
         }
@@ -1248,6 +1372,7 @@ fn refusal_status_kind(refusal: &Refusal) -> (StatusCode, &'static str) {
         Refusal::Unverifiable { .. } => (StatusCode::CONFLICT, "unverifiable"),
         Refusal::AtCapacity => (StatusCode::CONFLICT, "at_capacity"),
         Refusal::StaleUnproven => (StatusCode::CONFLICT, "stale_unproven"),
+        Refusal::GatewayRunning => (StatusCode::CONFLICT, "gateway_running"),
     }
 }
 

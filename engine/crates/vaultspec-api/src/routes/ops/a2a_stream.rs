@@ -1078,7 +1078,16 @@ pub async fn a2a_run_stream(
     let replay = tokio_stream::iter(frames).map(|frame| Ok(frame_event(&frame)));
     let live = BroadcastStream::new(receiver)
         .filter_map(move |item| map_live_frame(item, dedup_threshold));
-    let combined = gap_stream.chain(replay).chain(live);
+    // Terminate the live tail when the process starts stopping (mirrors
+    // `routes::stream`): an endless relay body would otherwise hold its
+    // connection past the graceful drain and force the stop to kill in-flight
+    // connections instead of finishing them.
+    let combined = gap_stream
+        .chain(replay)
+        .chain(futures_util::StreamExt::take_until(
+            live,
+            state.shutdown.waiter(),
+        ));
     Sse::new(Box::pin(combined) as EventStream).keep_alive(KeepAlive::default())
 }
 

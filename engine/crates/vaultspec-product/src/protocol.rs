@@ -52,6 +52,21 @@ impl LifecycleOp {
     /// `Install` bootstraps the receipt, so it is gated by the
     /// bootstrap descriptor rather than an existing capability; `Doctor` and a
     /// bare `Ensure`/`Start` attach are not install mutations.
+    /// Whether the operation replaces or deletes the generation files a running
+    /// gateway executes from.
+    ///
+    /// Repair rewrites immutable files inside the generation tree and removal
+    /// deletes it, so a live owned gateway is a hard precondition failure for
+    /// both: Windows refuses to replace a running image outright, and no
+    /// platform makes it coherent. Stop and restart address the running process
+    /// deliberately, while update and rollback stage a NEW generation and swap
+    /// by receipt with the prior tree retained - none of those four rewrite the
+    /// files underneath a process still executing them.
+    #[must_use]
+    pub fn replaces_running_files(self) -> bool {
+        matches!(self, LifecycleOp::Repair | LifecycleOp::Remove)
+    }
+
     #[must_use]
     pub fn requires_ownership(self) -> bool {
         matches!(
@@ -141,6 +156,9 @@ pub enum Refusal {
     /// Stale discovery exists but the recorded process was not proven dead, so
     /// quarantine is refused: prove absence first.
     StaleUnproven,
+    /// Our own gateway is live, and the requested operation replaces or removes
+    /// the very files it is executing from. Stop it first.
+    GatewayRunning,
 }
 
 impl std::fmt::Display for Refusal {
@@ -164,6 +182,12 @@ impl std::fmt::Display for Refusal {
                 write!(
                     f,
                     "stale discovery is not proven dead; refusing to quarantine"
+                )
+            }
+            Refusal::GatewayRunning => {
+                write!(
+                    f,
+                    "the owned gateway is running and executing from these files; stop it first"
                 )
             }
         }

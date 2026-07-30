@@ -515,3 +515,26 @@ fn each_scope_cell_owns_an_independent_delta_clock() {
         "an independent cell's clock is untouched by another cell's commit"
     );
 }
+
+#[tokio::test]
+async fn the_shutdown_latch_resolves_waiters_created_after_it_was_raised() {
+    let signal = ShutdownSignal::default();
+    assert!(!signal.is_signalled());
+    // A waiter taken BEFORE the raise.
+    let early = signal.waiter();
+    signal.signal();
+    assert!(signal.is_signalled());
+    tokio::time::timeout(std::time::Duration::from_secs(1), early)
+        .await
+        .expect("a waiter taken before the raise resolves");
+    // ...and one taken AFTER it. This is the property a one-shot notification
+    // lacks: its single permit is consumed by the first waiter, so a live
+    // response body that subscribes later never learns the process is stopping
+    // and holds its connection open through the whole drain.
+    tokio::time::timeout(std::time::Duration::from_secs(1), signal.waiter())
+        .await
+        .expect("a waiter taken after the raise resolves immediately");
+    // Raising again is a no-op, not a second edge.
+    signal.signal();
+    assert!(signal.is_signalled());
+}

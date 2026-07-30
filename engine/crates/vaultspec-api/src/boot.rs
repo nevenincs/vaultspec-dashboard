@@ -5,9 +5,17 @@
 //! `lib.rs` re-exports `serve` and `bootstrap_root` so the public surface is
 //! unchanged.
 
+use std::future::IntoFuture;
 use std::time::Duration;
 
 use crate::{DEFAULT_PORT, app, build_router, handshake, registry, routes, seat};
+
+/// How long a stopping serve waits for in-flight connections to finish before it
+/// exits anyway. Long enough for a normal request or a stream teardown to
+/// complete, short enough that a caller's own bounded stop-wait (the CLI `stop`
+/// verb, a supervising harness) never has to escalate to a kill — which is what
+/// resets in-flight connections and surfaces as a dropped socket client-side.
+const SHUTDOWN_DRAIN_GRACE: Duration = Duration::from_secs(5);
 
 /// Run the resident service on loopback: initial index, watcher-driven
 /// rebuild-and-swap (302/303), heartbeat on the discovery file.
@@ -418,9 +426,10 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     );
     // Graceful shutdown: ONE shared exit path for
     // ctrl-c, SIGTERM (unix), and the bearer-gated `/shutdown` route. axum
-    // stops accepting, in-flight requests and SSE streams drain (bounded by
-    // the clients' own disconnects), then discovery is retracted and the
-    // seat lock released by drop.
+    // stops accepting and in-flight requests finish; the endless SSE bodies end
+    // themselves on the same latch (raised here for the signal arms), so the
+    // drain converges instead of waiting on connections that never close. Then
+    // discovery is retracted and the seat lock released by drop.
     let shutdown_signal = {
         let state = state.clone();
         async move {
@@ -441,8 +450,11 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
             tokio::select! {
                 _ = ctrl_c => {},
                 _ = terminate => {},
-                _ = state.shutdown.notified() => {},
+                _ = state.shutdown.wait() => {},
             }
+            // Raise the latch for the signal arms too, so every exit route
+            // reaches the live stream bodies through one seam.
+            state.shutdown.signal();
             eprintln!("vaultspec serve: shutting down gracefully");
         }
     };
@@ -453,10 +465,33 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
         state.clone(),
         crate::authoring::session::JanitorConfig::default_bounds(),
     ));
-    let result = axum::serve(listener, build_router(state.clone()))
+    let serving = axum::serve(listener, build_router(state.clone()))
         .with_graceful_shutdown(shutdown_signal)
-        .await
-        .map_err(std::io::Error::other);
+        .into_future();
+    tokio::pin!(serving);
+    // The drain itself is BOUNDED (every wait carries a bound): a peer that
+    // stops reading — a wedged browser tab, a killed test worker holding a
+    // half-read response — must not keep the process alive indefinitely and
+    // hand the caller a hung `stop`. After the latch we allow one grace window
+    // for in-flight work to finish, then exit and let the remaining sockets
+    // close with the process.
+    let drain_deadline = {
+        let state = state.clone();
+        async move {
+            state.shutdown.wait().await;
+            tokio::time::sleep(SHUTDOWN_DRAIN_GRACE).await;
+        }
+    };
+    let result = tokio::select! {
+        served = &mut serving => served.map_err(std::io::Error::other),
+        () = drain_deadline => {
+            eprintln!(
+                "vaultspec serve: connections still open after {}s of drain; exiting",
+                SHUTDOWN_DRAIN_GRACE.as_secs()
+            );
+            Ok(())
+        }
+    };
     // Terminate the owned A2A gateway tree within a bound
     // BEFORE releasing the seat, so a clean
     // exit never orphans a gateway this dashboard started. A no-op when nothing
