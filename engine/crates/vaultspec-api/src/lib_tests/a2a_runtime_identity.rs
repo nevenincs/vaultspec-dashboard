@@ -25,7 +25,7 @@ use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
 use vaultspec_product::paths::ProductPaths;
 use vaultspec_product::process::{GatewaySpec, ResolvedProgram, spawn_gateway};
-use vaultspec_product::receipt::{Channel, Receipt};
+use vaultspec_product::receipt::{Channel, Receipt, ReceiptState};
 
 use crate::routes::a2a_lifecycle::LifecyclePlane;
 
@@ -181,6 +181,149 @@ fn seated_boot_on_a_not_installed_product_is_a_noop() {
         plane
             .terminate_owned_gateway(Duration::from_millis(200))
             .is_none()
+    );
+}
+
+/// Lay down a real, complete-LOOKING generation tree: a release manifest, the
+/// component lock at its fixed path, and a frozen-runtime onedir with an
+/// entrypoint. Every file is real; none of it is authority.
+fn place_generation(paths: &ProductPaths, generation: &str) -> PathBuf {
+    let root = paths.generation_dir(generation).unwrap();
+    std::fs::create_dir_all(root.join("packaging")).unwrap();
+    std::fs::create_dir_all(root.join("a2a-runtime")).unwrap();
+    std::fs::write(
+        root.join("release.json"),
+        br#"{"schema_version":"2.0","target":"x86_64-pc-windows-msvc"}"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("packaging").join("a2a-component.lock.json"),
+        LOCK_JSON.as_bytes(),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("a2a-runtime").join("vaultspec-a2a"),
+        b"#!/bin/sh\nexit 0\n",
+    )
+    .unwrap();
+    root
+}
+
+/// Persist a retired side-file receipt in a chosen activation state.
+fn write_receipt_in_state(
+    paths: &ProductPaths,
+    target: Target,
+    generation: &str,
+    state: ReceiptState,
+) {
+    let mut receipt = Receipt::bootstrap(
+        Channel::SelfInstall,
+        target,
+        vaultspec_product::manifest::ReleaseIdentity {
+            name: "vaultspec-a2a".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        generation,
+        1,
+    );
+    receipt.state = state;
+    receipt.persist(&paths.receipt_path()).unwrap();
+}
+
+/// ONLY the fixed receipt journal selects a generation to start.
+///
+/// Every row here puts a real generation on disk and then asks the production
+/// seated reconcile to start it. None of them may: an unreceipted tree, a
+/// candidate still staged, one captured mid-rollback, a receipt naming a
+/// generation other than the one placed, a truncated tree, a tree whose bytes no
+/// longer match what it declares, and a tree carrying its own receipt to vouch
+/// for itself. The last is the sharpest: a record INSIDE the generation is the
+/// tree asserting its own activation, which is exactly the self-authorization
+/// the journal exists to make impossible.
+///
+/// The assertion is not merely a refusal string — it is that NO owned process
+/// exists afterwards. A start that happened and was then disowned would still
+/// be a start.
+#[test]
+fn only_the_fixed_journal_selects_a_generation_to_start() {
+    let (_triple, target) = current_target();
+
+    // (1) Unreceipted: a complete-looking tree nobody vouched for.
+    let (_home, plane, paths) = install_home();
+    place_generation(&paths, "g0");
+    assert_inert(&plane, "unreceipted");
+
+    // (2) Staged and (3) rolling back: a candidate mid-transaction is not an
+    // activation, whatever state a retired side-file records.
+    for state in [ReceiptState::Staged, ReceiptState::RollingBack] {
+        let (_home, plane, paths) = install_home();
+        place_generation(&paths, "g0");
+        write_receipt_in_state(&paths, target, "g0", state);
+        assert_inert(&plane, "in-flight candidate");
+    }
+
+    // (4) Substituted: the record names one generation, the disk holds another.
+    let (_home, plane, paths) = install_home();
+    place_generation(&paths, "g1");
+    write_receipt_in_state(&paths, target, "g0", ReceiptState::Active);
+    assert_inert(&plane, "substituted generation");
+
+    // (5) Incomplete: the runtime entrypoint the manifest would name is absent.
+    let (_home, plane, paths) = install_home();
+    let root = place_generation(&paths, "g0");
+    std::fs::remove_file(root.join("a2a-runtime").join("vaultspec-a2a")).unwrap();
+    write_receipt_in_state(&paths, target, "g0", ReceiptState::Active);
+    assert_inert(&plane, "incomplete tree");
+
+    // (6) Tampered: installed bytes no longer match what the tree declares.
+    let (_home, plane, paths) = install_home();
+    let root = place_generation(&paths, "g0");
+    std::fs::write(
+        root.join("a2a-runtime").join("vaultspec-a2a"),
+        b"#!/bin/sh\nexfiltrate\n",
+    )
+    .unwrap();
+    write_receipt_in_state(&paths, target, "g0", ReceiptState::Active);
+    assert_inert(&plane, "tampered tree");
+
+    // (7) Self-authorized: the generation carries a receipt of its own.
+    let (_home, plane, paths) = install_home();
+    let root = place_generation(&paths, "g0");
+    Receipt::bootstrap(
+        Channel::SelfInstall,
+        target,
+        vaultspec_product::manifest::ReleaseIdentity {
+            name: "vaultspec-a2a".to_string(),
+            version: "0.1.0".to_string(),
+        },
+        "g0",
+        1,
+    )
+    .persist(&root.join("receipt.json"))
+    .unwrap();
+    assert_inert(&plane, "self-authorized generation");
+}
+
+/// The plane reports an uninstalled product and owns no process.
+fn assert_inert(plane: &LifecyclePlane, scenario: &str) {
+    let outcome = plane.reconcile_seated_boot(None);
+    assert_eq!(
+        outcome["action"], "none",
+        "{scenario} must not be startable: {outcome}"
+    );
+    assert_eq!(
+        outcome["reason"], "a2a is not installed",
+        "{scenario}: {outcome}"
+    );
+    assert!(
+        outcome.get("pid").is_none(),
+        "{scenario} must not report a started process: {outcome}"
+    );
+    assert!(
+        plane
+            .terminate_owned_gateway(Duration::from_millis(200))
+            .is_none(),
+        "{scenario} must leave no owned process behind"
     );
 }
 
