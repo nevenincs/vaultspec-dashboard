@@ -36,6 +36,12 @@ related:
   unavailable (typed, with its own exit code), or failed. A case that cannot
   reach real evidence fails closed; it never passes and never skips.
 - Carry a fixed, bounded case roster with a listing verb and per-case selection.
+- Split the tool along its own seams once it reached the module-size gate: the
+  entry keeps the invocation, the outcome vocabulary, the roster, and the shared
+  helpers, while artifact staging, bounded command execution, the
+  network-isolation precondition, and the cases each own a module with their
+  tests. The modules carry explicit paths so they stay in the tool's own
+  directory instead of becoming sibling binaries.
 
 ## Outcome
 
