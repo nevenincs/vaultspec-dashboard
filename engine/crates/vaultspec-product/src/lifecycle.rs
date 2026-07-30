@@ -18,7 +18,7 @@
 //! up ONLY the gateway ([`owned_gateway_entrypoint`]). No path in this module
 //! ever resolves or spawns the standalone MCP.
 
-#[cfg(all(test, unix))]
+#[cfg(test)]
 use crate::credentials::DashboardCredentialStore;
 use crate::credentials::VerifiedOwnershipCredential;
 use crate::manifest::{
@@ -76,6 +76,66 @@ pub enum AttachMode {
     /// A compatible foreign gateway with a trusted handoff — READ-ONLY attach;
     /// no lifecycle mutation.
     ForeignReadOnly,
+}
+
+/// One receipt-selected generation proven complete, here and now.
+///
+/// Non-`Clone` and non-serializable on purpose: it is evidence that a scan
+/// happened, so a copy or a stored one would be a claim about a tree nobody
+/// looked at. A caller that holds it may resolve the generation root; a caller
+/// that could not obtain one has nothing to start.
+pub struct VerifiedActiveRelease {
+    generation: String,
+    root: std::path::PathBuf,
+    verified: crate::manifest::VerifiedActiveGeneration,
+}
+
+impl VerifiedActiveRelease {
+    /// The receipt-selected generation identifier.
+    #[must_use]
+    pub fn generation(&self) -> &str {
+        &self.generation
+    }
+
+    /// The proven generation root - the only tree a start may launch from.
+    #[must_use]
+    pub fn root(&self) -> &std::path::Path {
+        &self.root
+    }
+
+    /// The release-set identity the receipt and the tree agree on.
+    #[must_use]
+    pub fn release_set_id(&self) -> &str {
+        self.verified.release_set_identity()
+    }
+
+    /// The release target.
+    #[must_use]
+    pub fn target(&self) -> Target {
+        self.verified.target()
+    }
+
+    /// The bound component identity.
+    #[must_use]
+    pub fn a2a_identity(&self) -> &crate::manifest::ReleaseIdentity {
+        self.verified.a2a_identity()
+    }
+
+    /// How many installed files the complete inventory covered.
+    #[must_use]
+    pub fn verified_file_count(&self) -> usize {
+        self.verified.file_count()
+    }
+}
+
+impl std::fmt::Debug for VerifiedActiveRelease {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("VerifiedActiveRelease")
+            .field("generation", &self.generation)
+            .field("files", &self.verified.file_count())
+            .finish_non_exhaustive()
+    }
 }
 
 /// The dashboard-owned lifecycle controller, rooted at the product paths.
@@ -170,6 +230,83 @@ impl LifecycleController {
         Ok(())
     }
 
+    /// Prove the receipt-selected generation before anything starts or mutates
+    /// it.
+    ///
+    /// The settled fixed journal is the only selector, and its receipt is the
+    /// only source of expectation: the member manifest is located by the
+    /// receipt's digest, the component lock must digest to the receipt's value
+    /// before it is parsed, and every installed file is then covered by that
+    /// manifest's inventory. A generation the receipt does not describe - staged,
+    /// substituted, incomplete, tampered, or self-authorized - cannot satisfy
+    /// this, which is what keeps it inert.
+    pub fn verify_active_release(
+        &self,
+        guard: &crate::locking::InstallLockGuard,
+    ) -> std::result::Result<VerifiedActiveRelease, Refusal> {
+        let read =
+            crate::receipt::read_active_receipt_journal(&self.paths, guard).map_err(|_| {
+                Refusal::Unverifiable {
+                    detail: "fixed active-receipt authority is unverifiable".to_owned(),
+                }
+            })?;
+        let receipt = match read.state().map_err(|_| Refusal::Unverifiable {
+            detail: "fixed active-receipt authority is unverifiable".to_owned(),
+        })? {
+            crate::receipt::ActiveReceiptReadState::Absent => return Err(Refusal::NotInstalled),
+            crate::receipt::ActiveReceiptReadState::RecoveryRequired(_) => {
+                return Err(Refusal::Unverifiable {
+                    detail: "fixed active-receipt recovery is required".to_owned(),
+                });
+            }
+            crate::receipt::ActiveReceiptReadState::Settled(receipt) => receipt,
+        };
+        let generation = receipt.active_generation().to_owned();
+        let root = self
+            .paths
+            .generation_dir(&generation)
+            .map_err(|_| Refusal::Unverifiable {
+                detail: "the receipt names an unusable generation".to_owned(),
+            })?;
+        let verified = crate::manifest::verify_active_generation(
+            &root,
+            &crate::manifest::ActiveReleaseExpectation {
+                member_manifest_digest: receipt.release_set_member_digest(),
+                component_lock_digest: receipt.component_lock_digest(),
+                release_set_identity: receipt.release_set_identity(),
+                target: receipt.target(),
+            },
+        )
+        .map_err(|error| Refusal::Unverifiable {
+            detail: format!("the receipt-selected generation does not verify: {error}"),
+        })?;
+        Ok(VerifiedActiveRelease {
+            generation,
+            root,
+            verified,
+        })
+    }
+
+    /// Authorize a START (or attach-and-start) against the verified complete
+    /// release set.
+    ///
+    /// Start is not an ownership mutation - a cold install may be started by the
+    /// seat that finds it - so what binds it is the release itself: the proof is
+    /// the return value, and a caller that cannot obtain one has nothing to
+    /// spawn from.
+    pub fn authorize_start(
+        &self,
+        op: LifecycleOp,
+        guard: &crate::locking::InstallLockGuard,
+    ) -> std::result::Result<VerifiedActiveRelease, Refusal> {
+        if !matches!(op, LifecycleOp::Start | LifecycleOp::Ensure) {
+            return Err(Refusal::Unverifiable {
+                detail: "only start and ensure are authorized as a start".to_owned(),
+            });
+        }
+        self.verify_active_release(guard)
+    }
+
     /// Guard a MUTATING control call before it reaches the gateway. Both gates
     /// must hold, composed here so no mutation path can satisfy only one —
     /// previously `resolve_attach` and `authorize` were decoupled pure
@@ -233,7 +370,16 @@ impl LifecycleController {
             }
         }
         // Authority gate ALWAYS required: active receipt + ownership capability.
-        self.authorize(op, ownership)
+        self.authorize(op, ownership)?;
+        // A relaunch runs the release's own code again, so it carries the same
+        // proof obligation a start does. Repair and removal deliberately do not:
+        // they exist FOR a tree that no longer verifies, and gating them on a
+        // clean verification would strand exactly the install that needs them.
+        if op == LifecycleOp::Restart {
+            let presented = ownership.ok_or(Refusal::NotOwner)?;
+            self.verify_active_release(presented.guard())?;
+        }
+        Ok(())
     }
 
     /// Load and verify the capsule manifest in one step, so a lifecycle consumer
@@ -564,6 +710,133 @@ mod tests {
         assert_eq!(
             ctrl.authorize(LifecycleOp::Update, Some(&ownership)),
             Err(Refusal::NotInstalled)
+        );
+    }
+
+    /// Install one real generation and settle the fixed receipt over it.
+    fn settled_install(fixture: &crate::manifest::tests::Fixture) -> LifecycleController {
+        let mut product =
+            crate::generation::LockedProduct::bind(fixture.paths.clone(), &fixture.guard).unwrap();
+        let mut generation = product.create_unpublished("generation-1").unwrap();
+        fixture.populate(generation.path());
+        let verified = fixture.verify(&mut generation).unwrap();
+        drop(crate::receipt::publish_active_receipt(verified).unwrap());
+        drop(generation);
+        drop(product);
+        LifecycleController::new(fixture.paths.clone())
+    }
+
+    /// A start is authorized only by the receipt-selected generation, proven
+    /// complete at the moment of the start.
+    #[test]
+    fn a_start_is_authorized_by_the_verified_receipt_selected_generation() {
+        let fixture = crate::manifest::tests::Fixture::new();
+        let controller = LifecycleController::new(fixture.paths.clone());
+
+        // Nothing installed: there is no generation to prove, so no start.
+        assert_eq!(
+            controller
+                .authorize_start(LifecycleOp::Start, &fixture.guard)
+                .err(),
+            Some(Refusal::NotInstalled)
+        );
+
+        let controller = settled_install(&fixture);
+        let verified = controller
+            .authorize_start(LifecycleOp::Start, &fixture.guard)
+            .expect("a settled receipt over a complete generation authorizes a start");
+        assert_eq!(verified.generation(), "generation-1");
+        assert_eq!(
+            verified.root(),
+            fixture.paths.generation_dir("generation-1").unwrap()
+        );
+        assert!(
+            verified.verified_file_count() > 0,
+            "the inventory must have covered real installed files"
+        );
+        // Only a start is a start; a mutation cannot enter through this door.
+        assert!(
+            controller
+                .authorize_start(LifecycleOp::Update, &fixture.guard)
+                .is_err()
+        );
+    }
+
+    /// An extra file nobody declared makes the generation inert.
+    #[test]
+    fn an_installed_file_the_manifest_does_not_declare_refuses_the_start() {
+        let fixture = crate::manifest::tests::Fixture::new();
+        let controller = settled_install(&fixture);
+        let root = fixture.paths.generation_dir("generation-1").unwrap();
+        std::fs::write(root.join("payload.bin"), b"not in the inventory").unwrap();
+
+        assert!(matches!(
+            controller.authorize_start(LifecycleOp::Start, &fixture.guard),
+            Err(Refusal::Unverifiable { .. })
+        ));
+    }
+
+    /// The component lock is believed only because the RECEIPT vouches for its
+    /// bytes. A lock the installed tree supplies on its own terms - the same
+    /// tree, verified against any other expectation - cannot authorize itself.
+    #[test]
+    fn a_lock_the_receipt_does_not_vouch_for_refuses_the_start() {
+        let fixture = crate::manifest::tests::Fixture::new();
+        drop(settled_install(&fixture));
+        let root = fixture.paths.generation_dir("generation-1").unwrap();
+        let identity = fixture.first_install_feed().release_identity;
+        let true_lock_digest = crate::hex::sha256(fixture.lock_bytes());
+
+        // Positive control: with the receipt's own digests the same tree
+        // verifies, so the refusal below is attributable to the lock alone.
+        crate::manifest::verify_active_generation(
+            &root,
+            &crate::manifest::ActiveReleaseExpectation {
+                member_manifest_digest: fixture.member_digest_hex(),
+                component_lock_digest: &true_lock_digest,
+                release_set_identity: &identity,
+                target: Target::X86_64PcWindowsMsvc,
+            },
+        )
+        .expect("the receipt's own digests verify the installed tree");
+
+        let foreign_lock_digest = crate::hex::sha256(b"a lock this receipt never vouched for");
+        assert!(
+            crate::manifest::verify_active_generation(
+                &root,
+                &crate::manifest::ActiveReleaseExpectation {
+                    member_manifest_digest: fixture.member_digest_hex(),
+                    component_lock_digest: &foreign_lock_digest,
+                    release_set_identity: &identity,
+                    target: Target::X86_64PcWindowsMsvc,
+                },
+            )
+            .is_err(),
+            "the installed lock must satisfy the receipt, not itself"
+        );
+    }
+
+    /// A relaunch carries a start's proof obligation; repair and removal, which
+    /// exist for a tree that no longer verifies, deliberately do not.
+    #[test]
+    fn a_restart_over_an_unverifiable_tree_is_refused_while_repair_is_not() {
+        let fixture = crate::manifest::tests::Fixture::new();
+        let controller = settled_install(&fixture);
+        // The install itself established the ownership credential; the caller
+        // presents that same retained capability.
+        let ownership = DashboardCredentialStore::for_product(&fixture.paths)
+            .verify_ownership(&fixture.guard)
+            .expect("the settled install retained an ownership capability");
+        let root = fixture.paths.generation_dir("generation-1").unwrap();
+        std::fs::write(root.join("payload.bin"), b"not in the inventory").unwrap();
+
+        assert!(matches!(
+            controller.guard_owned_mutation(LifecycleOp::Restart, Some(&ownership), None),
+            Err(Refusal::Unverifiable { .. })
+        ));
+        assert_eq!(
+            controller.guard_owned_mutation(LifecycleOp::Repair, Some(&ownership), None),
+            Ok(())
         );
     }
 

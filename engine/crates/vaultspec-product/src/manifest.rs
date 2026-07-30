@@ -1420,6 +1420,12 @@ impl std::fmt::Debug for VerifiedReleaseSet<'_, '_, '_> {
     }
 }
 
+#[path = "manifest/active.rs"]
+pub(crate) mod active;
+pub(crate) use active::{
+    ActiveReleaseExpectation, VerifiedActiveGeneration, verify_active_generation,
+};
+
 #[path = "manifest/update_seam.rs"]
 pub(crate) mod update_seam;
 pub(crate) use update_seam::{UpdateReleaseFacts, preflight_inventory, verify_update_release};
