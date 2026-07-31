@@ -897,7 +897,25 @@ fn provision_actor_token_bundle(
     }
 
     Ok(ProvisionedActorTokenBundle {
-        wire: json!({ "tokens": Value::Object(wire_tokens), "engine_bearer": Value::Null }),
+        // Forward the machine bearer. This slot used to be null on the premise
+        // that "the worker self-resolves it" from the engine's discovery
+        // record — and that premise holds only for a LEGACY record carrying an
+        // inline `service_token`, which is what a dev serve happens to publish.
+        // A versioned desktop record is secret-free by design, so on the
+        // shipped product the worker resolves nothing and every authoring
+        // submission fails closed with no credential. a2a's own contract names
+        // this field "the machine bearer minted at engine boot, forwarded so a
+        // worker's authoring bridge can reach the engine", so the dispatcher is
+        // the intended producer; its own acceptance harness supplies the field
+        // because the real dispatcher is absent there.
+        //
+        // This grants a2a nothing it cannot already reach: the same secret is
+        // what a legacy record hands any reader, and the bearer travels only
+        // over loopback to a gateway this engine just admitted a run to.
+        wire: json!({
+            "tokens": Value::Object(wire_tokens),
+            "engine_bearer": Value::String(state.bearer.clone()),
+        }),
         lease_id,
     })
 }
