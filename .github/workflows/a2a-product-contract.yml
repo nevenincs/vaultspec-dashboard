@@ -49,15 +49,35 @@ jobs:
           - target: aarch64-apple-darwin
             os: macOS
             arch: ARM64
+            host: apple-silicon
           - target: aarch64-unknown-linux-gnu
             os: Linux
             arch: ARM64
+            host: apple-silicon
           - target: x86_64-unknown-linux-gnu
             os: Linux
             arch: X64
+            host: linux-x64
           - target: x86_64-pc-windows-msvc
             os: Windows
             arch: X64
+            host: windows-x64
+    # The two ARM legs are two runners on ONE physical machine: the macOS runner
+    # and a colima Linux VM on the same Apple Silicon laptop. Nothing in the
+    # matrix would otherwise know that, so both would be scheduled at the same
+    # moment — a native darwin freeze alongside a second freeze inside a VM that
+    # reserves 6 GiB of that host's 8 GiB of RAM, on a machine measured at 7.0 of
+    # 8.2 GB of swap already in use while completely idle. They are serialised
+    # here so the second waits for the first instead of both thrashing.
+    #
+    # `host` is the physical machine, not the runner. Only the shared one takes a
+    # common group; every other leg gets a per-run, per-target group so it never
+    # waits on anything. The shared group name is deliberately not scoped to this
+    # workflow — two different workflows reaching that laptop at once contend for
+    # exactly the same RAM.
+    concurrency:
+      group: ${{ matrix.host == 'apple-silicon' && 'fleet-apple-silicon-host' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
+      cancel-in-progress: false
     # Both Linux runners carry the auto-assigned `Linux` label, so the
     # architecture label is what actually distinguishes them. This job freezes
     # the A2A runtime, which PyInstaller can only do for the architecture it is

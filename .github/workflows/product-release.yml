@@ -49,10 +49,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-pc-windows-msvc, os: Windows, arch: X64, ext: zip }
-          - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, ext: tar.gz }
-          - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, ext: tar.gz }
-          - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, ext: tar.gz }
+          - { target: x86_64-pc-windows-msvc, os: Windows, arch: X64, host: windows-x64, ext: zip }
+          - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, host: linux-x64, ext: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, host: apple-silicon, ext: tar.gz }
+          - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, host: apple-silicon, ext: tar.gz }
     # Selection is by OS *and* architecture. Two Linux runners are registered
     # and both carry the auto-assigned `Linux` label, so an OS-only selection
     # would send the two Linux targets to machines nondeterministically. The
@@ -60,6 +60,19 @@ jobs:
     # that fires on every other release is not a working pipeline, and the
     # correct fix is to schedule onto the right machine in the first place.
     runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
+    # The two ARM legs share one physical machine — the macOS runner and a colima
+    # Linux VM on the same Apple Silicon laptop — so scheduling them together
+    # runs two native freezes against 8 GiB of RAM, 6 GiB of which is reserved by
+    # the VM, on a host measured at 7.0 of 8.2 GB of swap in use while idle. This
+    # is the heaviest of the four-target matrices; serialise that pair.
+    #
+    # `host` is the physical machine, not the runner. Only the shared one takes a
+    # common group; the other legs get a per-run, per-target group so they never
+    # wait. The group name is not scoped to this workflow on purpose: a release
+    # and a contract proof reaching that laptop together contend for the same RAM.
+    concurrency:
+      group: ${{ matrix.host == 'apple-silicon' && 'fleet-apple-silicon-host' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
