@@ -496,13 +496,26 @@ pub async fn serve(port: Option<u16>, scope: Option<String>, no_seat: bool) -> s
     // BEFORE releasing the seat, so a clean
     // exit never orphans a gateway this dashboard started. A no-op when nothing
     // was started here (cold install, or attached to a foreign-owned gateway).
-    if let Some(forced) = state
+    if let Some(termination) = state
         .a2a_lifecycle
         .terminate_owned_gateway(Duration::from_secs(10))
     {
+        // Report whether the gateway was ASKED to stop, not only how it died.
+        // On Windows there is no graceful signal, so "graceful" alone cannot
+        // distinguish a tree that shut itself down from one that merely exited
+        // inside the window before a hard job-object kill.
+        let asked = match termination.control_stop {
+            Some(true) => "asked+accepted",
+            Some(false) => "asked+refused",
+            None => "not asked",
+        };
         eprintln!(
-            "vaultspec serve: owned a2a gateway terminated ({})",
-            if forced { "forced" } else { "graceful" }
+            "vaultspec serve: owned a2a gateway terminated ({}, {asked})",
+            if termination.forced {
+                "forced"
+            } else {
+                "graceful"
+            }
         );
     }
     // Retract discovery (owner-checked) so no stale port/token survives a

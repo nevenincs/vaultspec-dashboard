@@ -47,7 +47,7 @@ use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, Immutable
 use vaultspec_product::lifecycle::{AttachMode, LifecycleController, gateway_spawn_env};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
-use vaultspec_product::process::GatewayStopPlan;
+use vaultspec_product::process::{GatewayStopPlan, Termination};
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
 use vaultspec_product::provisioning::{
     ActiveReleaseState, ProvisionedRelease, ProvisioningErrorKind, observe_active_release,
@@ -1129,7 +1129,7 @@ impl LifecyclePlane {
     /// Terminate the owned gateway process tree within a bound, if this
     /// dashboard started one. Called on seated shutdown. No-op when nothing was
     /// started here (cold, or attached to a gateway another process owns).
-    pub(crate) fn terminate_owned_gateway(&self, graceful: Duration) -> Option<bool> {
+    pub(crate) fn terminate_owned_gateway(&self, graceful: Duration) -> Option<Termination> {
         let mut slot = self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner());
         let mut process = slot.take()?;
         // Ask before killing. The plan is attached HERE rather than at spawn
@@ -1140,8 +1140,13 @@ impl LifecyclePlane {
             process.attach_stop_plan(plan);
         }
         match process.terminate_tree(graceful) {
-            Ok(t) => Some(t.forced),
-            Err(_) => Some(true),
+            Ok(termination) => Some(termination),
+            // A termination that could not even be observed is reported as
+            // forced and un-asked: the honest reading of an unknown outcome.
+            Err(_) => Some(Termination {
+                forced: true,
+                control_stop: None,
+            }),
         }
     }
 

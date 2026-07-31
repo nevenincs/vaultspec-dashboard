@@ -526,7 +526,31 @@ fn real_capsule_owned_gateway_terminates_cleanly() {
         skip_reason("owned-tree termination");
         return;
     };
-    let (_home, plane, _paths) = install_home();
+    let (_home, plane, paths) = install_home();
+
+    // Bootstrap the credentials and publish an owned discovery record, so the
+    // shutdown path can resolve a control-plane stop plan. Without this the
+    // termination below would silently be the un-asked hard kill this test
+    // exists to rule out.
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "owned-tree-termination-test")
+        .unwrap()
+        .unwrap();
+    DashboardCredentialStore::for_product(&paths)
+        .begin_bootstrap(&guard)
+        .expect("credential bootstrap");
+    drop(guard);
+    write_discovery(
+        &paths,
+        plane.testonly_owner_id(),
+        std::process::id(),
+        // A closed loopback port: the ask is REFUSED fast, which is the point —
+        // a wedged or absent control endpoint must never change the termination
+        // bound, only whether the gateway was asked.
+        "127.0.0.1:1",
+        "",
+        now_ms(),
+    );
 
     // Launch a real owned process from the capsule's OWN bundled interpreter — a
     // capsule-derived "gateway" that just sleeps — and put it under the plane's
@@ -550,8 +574,18 @@ fn real_capsule_owned_gateway_terminates_cleanly() {
     plane.testonly_set_owned_gateway(process);
 
     // Seated shutdown terminates the owned tree within a bound.
-    let forced = plane.terminate_owned_gateway(Duration::from_millis(500));
-    assert!(forced.is_some(), "the owned gateway was terminated");
+    let termination = plane.terminate_owned_gateway(Duration::from_millis(500));
+    let termination = termination.expect("the owned gateway was terminated");
+    // The gateway was ASKED before its tree came down. `control_stop` is None
+    // only when no stop plan was attached at all — which is precisely the
+    // production defect this proves closed, and on Windows the difference
+    // between a shutdown and a hard job-object kill of every descendant. The
+    // ask is refused here (nothing listens on that port), and refusal is a
+    // legitimate outcome: what must never happen is not asking.
+    assert!(
+        termination.control_stop.is_some(),
+        "a control-plane stop plan must be attached before the tree is taken down"
+    );
 
     // The real process is gone (no orphan) within a short bound.
     let deadline = Instant::now() + Duration::from_secs(6);
