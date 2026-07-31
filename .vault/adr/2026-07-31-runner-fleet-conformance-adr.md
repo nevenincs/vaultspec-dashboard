@@ -239,27 +239,45 @@ piece is a per-user agent in the GUI domain, and automatic login is confirmed
 absent rather than assumed. The three runners already on that host share this
 exact ceiling, so the fleet gains no new class of fragility.
 
-**Capacity is now the live risk, and it is the cost this option was wrongly
-credited with.** Measured on the host at idle, with neither leg building: 8.0GiB
-RAM total, of which the VM reserves 6GiB; 7,012MB of 8,192MB swap ALREADY in use
-with 11.3 million pageouts; 20GiB host free disk; the sparse VM image already
-20G of its 40G cap. The binding constraint is RAM, not disk — roughly 2GiB of
-practical headroom for a native darwin release build plus a PyInstaller freeze,
-on a machine that is swapping hard before anything starts. Disk is real but
-second. Both ARM legs are therefore SERIALIZED across all three four-target
-matrices through a job-level concurrency group keyed on the physical host; the
-cohort is not shrunk, the two legs take turns.
+**Capacity: measured at idle, then measured again under load, and the second
+measurement overturned the first.** At idle the host reads 8.0GiB RAM with 6GiB
+reserved by the VM, 7,012MB of 8,192MB swap in use, 11.3 million cumulative
+pageouts, 20GiB free disk, and a sparse VM image at 20G of its 40G cap. That
+was read as a machine with roughly 2GiB of headroom, swapping hard before
+anything starts, and both ARM legs were SERIALIZED on the strength of it.
 
-**What this does NOT establish.** The darwin leg has never run a real build.
-Its evidence is a probe that runs `cargo --version` and freezes nothing, so what
-is proven is that the runner executes, not that a release build completes there.
-Serializing removes contention between the two ARM legs; it does not answer
-whether either fits ALONE on a host with that much headroom. Do not read "four
-proven runners" as "four producible targets" — an earlier draft of this
-amendment did exactly that, which is the same conflation the rejected option
-above made between "no tooling installed" and "nobody checked". The first
-serialized four-target dispatch, sampling host RAM and swap per leg, is what
-replaces the claim with evidence.
+Under actual load it does not hold. Sampling every 15s across a real
+four-target dispatch: the darwin leg added 225MB of swap over idle with
+pageouts indistinguishable from noise (633/15s against a 563 baseline); the
+aarch64-linux leg peaked at 11,935 pageouts/15s and grew the guest filesystem
+by 566MB; available memory never fell below 985MB and actually ROSE during the
+Linux leg; host free disk did not move at all. **Each ARM leg alone is
+comfortable, with room to spare.** The high swap figure is this machine's
+permanent steady state, not a machine on the edge — a static reading was
+mistaken for a behavioural one.
+
+The error is worth naming because it is this record's own defect inverted. The
+rejected option above inferred "no virtualization tooling is installed" from
+nobody having looked; the serialization inferred "no headroom" from a number
+nobody had put under load. Same failure, opposite direction, in the same
+document.
+
+**What the load measurement establishes, and what it does not.** The
+aarch64-linux target has now been BUILT, successfully, for the first time, with
+the architecture guard passing truthfully in production; the darwin leg ran a
+real PyInstaller freeze rather than a version probe. Both are genuine, verified
+step-by-step rather than inferred from a fast green. Still unproven: the two
+legs have never run CONCURRENTLY, because the serialization prevented exactly
+that — their footprints sum to something unthreatening, but that is arithmetic,
+not measurement. And this was the LIGHT proof (`a2a-product-contract`);
+`product-release` adds a full cargo release build, the SPA bundle and
+composition, so a light proof fitting does not establish that the heavy one
+does. Serialization is therefore retained on `product-release` and
+`a2a-product-certification` and dropped from `a2a-product-contract`: the
+evidence covers the light path only.
+
+Do not read "four proven runners" as "four producible targets" — an earlier
+draft of this amendment did exactly that.
 
 **Consequences that this closes.** All four targets now have a proven RUNNER, so
 a complete four-target cohort is dispatchable for the first time — producible
@@ -270,12 +288,13 @@ distribution configuration's stale cross-compile claim is corrected. What
 remains open: whether either ARM leg fits alone, host RAM and disk, the
 unattended-reboot ceiling, and the tag decision.
 
-**A live option this evidence reopens.** The record originally recommended
-moving the aarch64-linux leg to a GitHub-hosted ARM64 runner, free on a public
-repository, and that was set aside in favour of the self-hosted VM once the
-sibling pattern was shown to work. The pattern does work. The capacity evidence
-above is NEW and postdates that choice: hosting that one leg externally would
-take the 6GiB reservation off the laptop entirely and materially improve the
-darwin leg's odds, at the cost of the every-build-is-self-hosted property. This
-is a decision for the record's owner, not a correction, and it is stated here so
-it is not rediscovered from scratch.
+**An option this evidence briefly reopened and then closed.** The record
+originally recommended moving the aarch64-linux leg to a GitHub-hosted ARM64
+runner, free on a public repository; that was set aside in favour of the
+self-hosted VM once the sibling pattern was shown to work. The idle capacity
+reading appeared to reopen it, on the argument that taking the 6GiB reservation
+off the laptop would improve the darwin leg's odds. The load measurement closes
+it again: the darwin leg fits comfortably WITH the reservation in place, so the
+reservation demonstrably costs it nothing, and the premise for moving evaporates.
+The self-hosted choice is affordable on the evidence. Recorded as settled rather
+than deleted, so the same argument is not re-run from the same starting point.
