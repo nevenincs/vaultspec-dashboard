@@ -103,6 +103,30 @@ jobs:
         working-directory: producer
         run: uv sync --locked --no-default-groups --group freeze
 
+      # PyInstaller freezes for the architecture it RUNS on and has no target
+      # flag. This matrix maps aarch64-unknown-linux-gnu onto the x86_64 Linux
+      # runner, so without this the proof would smoke an x86_64 onedir while
+      # claiming to prove the aarch64 one — a green that certifies the wrong
+      # binary. Refuse instead; the same guard already fences the release build.
+      - name: Refuse to freeze for an architecture this runner is not
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            aarch64-*) want=arm64 ;;
+            x86_64-*)  want=x64 ;;
+            *) echo "::error::unhandled target ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          case "$(uname -m)" in
+            aarch64|arm64) have=arm64 ;;
+            x86_64|amd64)  have=x64 ;;
+            *) have="$(uname -m)" ;;
+          esac
+          if [ "$want" != "$have" ]; then
+            echo "::error::${{ matrix.target }} needs a $want runner; this one is $have. The frozen runtime cannot be cross-compiled, so this proof would smoke a $have binary while claiming $want." >&2
+            exit 1
+          fi
+          echo "runner architecture $have matches ${{ matrix.target }}"
       - name: Build + smoke the frozen onedir
         shell: bash
         working-directory: producer

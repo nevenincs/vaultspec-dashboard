@@ -42,48 +42,36 @@ jobs:
     # set of labels the fleet can actually schedule onto is enumerated in
     # .github/actionlint.yaml, which actionlint picks up automatically.
     #
-    # Installed as the pinned upstream release binary rather than the
-    # `docker://rhysd/actionlint` container action the sibling repos use. Docker
-    # is present and the daemon does respond on this runner, but the fleet has
-    # already been bitten here once: the Docker-based cargo-deny action failed on
-    # the self-hosted runner's credential helper and was replaced with a native
-    # install (see the supply-chain job below). That helper is `desktop.exe`,
-    # which only resolves while Docker Desktop is running on the Windows host —
-    # a dependency a lint gate should not carry. A tarball plus a checksum needs
-    # no daemon, no registry auth, and no Docker Desktop.
+    # Run as the PINNED CONTAINER, not a locally installed actionlint binary,
+    # and the distinction is not cosmetic. The image bundles shellcheck at
+    # /usr/local/bin/shellcheck; actionlint auto-enables shellcheck only when it
+    # finds it on PATH, so a bare binary on a box without shellcheck SILENTLY
+    # SKIPS every `run:` script check and reports a green that the container
+    # does not. That gap is not theoretical — it hid eight real findings in
+    # these workflows. The container is therefore the authoritative gate, and a
+    # local `actionlint` run is a weaker pre-check, never proof.
     #
-    # shellcheck and pyflakes integration is disabled EXPLICITLY. actionlint
-    # auto-enables each whenever the binary happens to be on PATH, so leaving it
-    # implicit means installing shellcheck on this runner for any unrelated
-    # reason silently turns this gate red across every large `run:` block in the
-    # tree. Enabling it is a deliberate change, not an accident of provisioning.
+    # Pinned to an exact version rather than `latest` for the usual reason a
+    # linter is pinned: a new upstream release adds checks, and a gate that can
+    # go red without anything in this repository changing is a gate people learn
+    # to ignore. Bump deliberately, fixing whatever the new version finds in the
+    # same commit.
+    #
+    # One coordination note: release.yml is hand-managed (dist-workspace.toml
+    # sets `allow-dirty = ["ci"]`), and some of the findings this gate caught
+    # were fixed there. If `dist generate-ci` ever regenerates that file, those
+    # shellcheck fixes must be re-applied along with the fleet `runs-on` labels.
     name: Workflow lint (actionlint)
     runs-on: Linux
     steps:
       - uses: actions/checkout@v4
-      - name: Run actionlint
-        shell: bash
-        env:
-          # Pinned by version AND digest: this step downloads an executable and
-          # runs it, so the release archive is verified before it is unpacked.
-          # The digest is the one published in the upstream checksums file for
-          # this exact version; bump both together.
-          ACTIONLINT_VERSION: 1.7.12
-          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-        run: |
-          set -euo pipefail
-          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
-          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
-            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
-          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
-          tar xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
-          "$RUNNER_TEMP/actionlint" -no-color -shellcheck= -pyflakes= .github/workflows/*.yml
+      - name: actionlint (pinned container — bundles shellcheck)
+        uses: docker://rhysd/actionlint:1.7.12
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
         run: |
           set +e
-          rm -rf "${RUNNER_TEMP:-/tmp}"/actionlint "${RUNNER_TEMP:-/tmp}"/actionlint_*.tar.gz 2>/dev/null || true
           df -h . 2>/dev/null | tail -1
 
   frontend:
@@ -134,7 +122,7 @@ jobs:
         shell: bash
         run: |
           uv tool install vaultspec-core
-          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+          uv tool dir --bin >> "$GITHUB_PATH"
       - name: Unit tests (vitest)
         run: npm --prefix frontend run test
         env:
@@ -199,7 +187,7 @@ jobs:
         shell: bash
         run: |
           uv tool install vaultspec-core
-          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+          uv tool dir --bin >> "$GITHUB_PATH"
       - name: Create fixture and start serve
         shell: bash
         run: |
@@ -234,7 +222,7 @@ jobs:
           echo "SERVE_PID=$SERVE_PID" >> "$GITHUB_ENV"
 
           SERVICE_JSON="$FIXTURE/.vault/data/engine-data/service.json"
-          for i in $(seq 30); do
+          for _ in $(seq 30); do
             if [ -f "$SERVICE_JSON" ]; then
               PORT=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['port'])" "$SERVICE_JSON")
               TOKEN=$(python3 -c "import json,sys; d=json.load(open(sys.argv[1])); print(d['service_token'])" "$SERVICE_JSON")

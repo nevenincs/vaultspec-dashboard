@@ -139,7 +139,7 @@ jobs:
         run: |
           if ! command -v cargo > /dev/null 2>&1; then
             curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-            echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           fi
       - name: "Ensure WiX Toolset is on PATH (MSI build, Windows only)"
         if: "runner.os == 'Windows'"
@@ -206,9 +206,11 @@ jobs:
         shell: bash
         run: |
           # Parse out what we just built and upload it to scratch storage
-          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
-          dist print-upload-files-from-manifest --manifest dist-manifest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "paths<<EOF"
+            dist print-upload-files-from-manifest --manifest dist-manifest.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
@@ -280,9 +282,11 @@ jobs:
           echo "dist ran successfully"
 
           # Parse out what we just built and upload it to scratch storage
-          echo "paths<<EOF" >> "$GITHUB_OUTPUT"
-          jq --raw-output ".upload_files[]" dist-manifest.json >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          {
+            echo "paths<<EOF"
+            jq --raw-output ".upload_files[]" dist-manifest.json
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
           cp dist-manifest.json "$BUILD_MANIFEST_NAME"
       - name: "Upload artifacts"
@@ -368,6 +372,12 @@ jobs:
           # If we're editing a release in place, we need to upload things ahead of time
           gh release upload "${{ needs.plan.outputs.tag }}" artifacts/*
 
+          # PRERELEASE_FLAG is deliberately UNQUOTED. It holds either
+          # `--prerelease` or the empty string, and the empty case must expand to
+          # NO argument at all; quoting it would hand `gh release edit` a literal
+          # empty argument and break every stable (non-prerelease) release. This
+          # is intentional word-removal, not an oversight — do not "fix" it.
+          # shellcheck disable=SC2086
           gh release edit "${{ needs.plan.outputs.tag }}" --target "$RELEASE_COMMIT" $PRERELEASE_FLAG --draft=false
       # Hand-set for the self-hosted fleet; re-apply if `dist generate-ci` regenerates this file.
       - name: Reclaim runner disk (always)

@@ -107,6 +107,31 @@ jobs:
       - name: Resolve the engine build output directory
         shell: bash
         run: echo "ENGINE_TARGET_DIR=${CARGO_TARGET_DIR:-$GITHUB_WORKSPACE/engine/target}" >> "$GITHUB_ENV"
+      # Certifying an artifact on the wrong architecture proves nothing about
+      # the artifact: the bundled runtime is frozen per-architecture, so an
+      # aarch64 archive staged on an x86_64 runner either refuses to execute or
+      # — worse — exercises a runtime that is not the one shipped. This matrix
+      # maps aarch64-unknown-linux-gnu onto the x86_64 Linux runner, so refuse
+      # rather than emit certification evidence for a target we did not run.
+      - name: Refuse to certify on an architecture this runner is not
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            aarch64-*) want=arm64 ;;
+            x86_64-*)  want=x64 ;;
+            *) echo "::error::unhandled target ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          case "$(uname -m)" in
+            aarch64|arm64) have=arm64 ;;
+            x86_64|amd64)  have=x64 ;;
+            *) have="$(uname -m)" ;;
+          esac
+          if [ "$want" != "$have" ]; then
+            echo "::error::${{ matrix.target }} must be certified on a $want runner; this one is $have. Certification evidence from the wrong architecture is not evidence." >&2
+            exit 1
+          fi
+          echo "runner architecture $have matches ${{ matrix.target }}"
       - name: Build the certifier
         shell: bash
         working-directory: engine

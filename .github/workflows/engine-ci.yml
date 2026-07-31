@@ -121,7 +121,7 @@ jobs:
         shell: bash
         run: |
           uv tool install vaultspec-core
-          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+          uv tool dir --bin >> "$GITHUB_PATH"
       - name: Test (unit + integration + e2e + bench)
         run: cargo test --workspace
       - name: Reclaim runner disk (always · unix)
