@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visual review</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!--
+      ABSOLUTE, not `./main.tsx`, and this is a correctness requirement.
+
+      The desk is served at the pretty URL `/visual-review/`, which a dev-server
+      middleware rewrites to `/dev/visual-review/`. A RELATIVE src resolves in the
+      browser against the pretty URL, so the module is fetched as
+      `/visual-review/main.tsx` — while Vite's own module graph knows the very same
+      file as `/dev/visual-review/main.tsx`. Two URLs for one file are two separate ES
+      module instances, so the module body runs TWICE and calls `createRoot()` on the
+      same `#root` twice. The second root tears out the first one's nodes, React throws
+      `NotFoundError: removeChild`, the tree unmounts, and every cell renders BLANK.
+
+      Naming the canonical path gives the module exactly one identity.
+    -->
+    <script type="module" src="/dev/visual-review/main.tsx"></script>
+  </body>
+</html>
