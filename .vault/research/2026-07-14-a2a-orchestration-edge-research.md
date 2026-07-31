@@ -4,6 +4,7 @@ tags:
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:296938338b97120eab2e86ebf8ad26b467a8d2bd52bf6f2021c21b98ebf705a7'
 related:
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
   - '[[2026-06-29-agentic-langgraph-integration-adr]]'

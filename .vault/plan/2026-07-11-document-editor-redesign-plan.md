@@ -4,6 +4,7 @@ tags:
   - '#document-editor-redesign'
 date: '2026-07-11'
 modified: '2026-07-12'
+body_hash: 'sha256:955b9f7a45083995ca38e3d62d9d950b722e36e224b41dd3f9815e51c0a9e37a'
 tier: L2
 related:
   - '[[2026-07-11-document-editor-redesign-adr]]'

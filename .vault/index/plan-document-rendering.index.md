@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:a0efbf2c53d59af12ce9a6f03757125f468dae38b036c1c20f7c9ee48a236592'
 related:
   - '[[2026-06-29-plan-document-rendering-adr]]'
   - '[[2026-06-29-plan-document-rendering-audit]]'

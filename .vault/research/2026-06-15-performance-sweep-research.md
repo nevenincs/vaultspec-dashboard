@@ -4,6 +4,7 @@ tags:
   - '#performance-sweep'
 date: '2026-06-15'
 modified: '2026-06-15'
+body_hash: 'sha256:e55256761ede91baedfccf1abea63efad9c7093d048a96d7a549d4670085712f'
 related:
   - "[[2026-06-13-graph-scale-hardening-adr]]"
 ---

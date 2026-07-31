@@ -4,6 +4,7 @@ tags:
   - '#document-edit-hardening'
 date: '2026-06-18'
 modified: '2026-07-12'
+body_hash: 'sha256:8d59efbb07babc159865ccd0795562bc9733bae4ffcb6ff8e5bbc35db5c38604'
 related: []
 ---
 

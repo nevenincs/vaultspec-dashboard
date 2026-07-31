@@ -4,6 +4,7 @@ tags:
   - '#graph-node-semantics'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:e84e0c15b27039fff3e89a32b6159927e2d7bea6983b4d766d9c3cc6cf247b80'
 related:
   - "[[2026-06-14-graph-node-semantics-research]]"
   - "[[2026-06-14-graph-node-salience-adr]]"

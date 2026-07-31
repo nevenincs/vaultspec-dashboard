@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:e56e308b836da1c62ee9bb8a70c3883c6427c54f06b018941689e6073f94b25d'
 related:
   - '[[2026-06-24-left-rail-feature-filter-adr]]'
   - '[[2026-06-24-left-rail-feature-filter-research]]'

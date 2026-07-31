@@ -4,6 +4,7 @@ tags:
   - '#keyboard-action-system'
 date: '2026-06-19'
 modified: '2026-07-17'
+body_hash: 'sha256:7fc89fb529289515ad38413419767999276c87f071f64909a45da3dbfe14dcc7'
 related:
   - "[[2026-06-19-keyboard-action-system-research]]"
 ---

@@ -4,6 +4,7 @@ tags:
   - '#rag-schema-gate'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:6e737aa8f36655a1d5b8432e103d2894ab002f94e9375e31b3330c62cf4cdbeb'
 tier: L2
 related:
   - '[[2026-06-27-rag-schema-gate-adr]]'

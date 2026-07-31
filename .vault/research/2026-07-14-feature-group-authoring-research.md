@@ -4,6 +4,7 @@ tags:
   - '#feature-group-authoring'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:dab3bec73b707cb6190d7137d5c33db4941f59056105f8a100362e93f8f0b408'
 related:
   - "[[2026-07-12-authoring-surface-research]]"
   - "[[2026-07-12-authoring-surface-adr]]"

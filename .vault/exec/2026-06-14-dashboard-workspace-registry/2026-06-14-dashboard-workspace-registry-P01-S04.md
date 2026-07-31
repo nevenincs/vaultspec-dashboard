@@ -4,6 +4,7 @@ tags:
   - '#dashboard-workspace-registry'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:b78ec95d1f62b77866359c60168a94d856fca7d7c2309dff73ca89b852475bf0'
 step_id: 'S04'
 related:
   - "[[2026-06-14-dashboard-workspace-registry-plan]]"

@@ -4,6 +4,7 @@ tags:
   - '#touch-selectability'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:7a597fd3cfe3edace1de74194358be52532d77da29a9f860c2f4d82ed41d417c'
 related: []
 ---
 

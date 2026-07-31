@@ -4,6 +4,7 @@ tags:
   - '#agentic-authoring-ux'
 date: '2026-07-16'
 modified: '2026-07-17'
+body_hash: 'sha256:6c4c0ad8e8e6251f49c301944a6ba14d217e54c2b3946347705f4bfcbfa7d953'
 related:
   - "[[2026-07-16-agentic-authoring-ux-adr]]"
 ---

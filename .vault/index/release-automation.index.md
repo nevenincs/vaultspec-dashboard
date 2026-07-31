@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:8e73c06d720c091550e527772ec80da18bec135cb04ce1e0bd9323cad93e0f27'
 related:
   - '[[2026-07-07-release-automation-S01]]'
   - '[[2026-07-07-release-automation-S02]]'

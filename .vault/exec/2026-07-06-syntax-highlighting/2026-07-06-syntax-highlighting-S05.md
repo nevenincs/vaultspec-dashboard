@@ -4,6 +4,7 @@ tags:
   - '#syntax-highlighting'
 date: '2026-07-06'
 modified: '2026-07-06'
+body_hash: 'sha256:713989ae8d16e8b56959780ccc430f956d4a0bd64a47bf5ccac29802d589a572'
 step_id: 'S05'
 related:
   - "[[2026-07-06-syntax-highlighting-plan]]"

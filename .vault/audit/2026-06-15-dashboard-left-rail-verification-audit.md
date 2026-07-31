@@ -4,6 +4,7 @@ tags:
   - '#dashboard-left-rail-verification'
 date: '2026-06-15'
 modified: '2026-06-15'
+body_hash: 'sha256:2faac15bf640c41066b09b73dc004a028aac4024160a7c122e031ea62770da90'
 related:
   - "[[2026-06-14-dashboard-left-rail-adr]]"
   - "[[2026-06-14-dashboard-workspace-registry-adr]]"

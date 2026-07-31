@@ -4,6 +4,7 @@ tags:
   - '#distribution-channels'
 date: '2026-07-08'
 modified: '2026-07-12'
+body_hash: 'sha256:53a7b496fe839b91ba2df606473eb4dc17b01c256f28cb0393829938ee439548'
 tier: L2
 related:
   - '[[2026-07-08-distribution-channels-adr]]'

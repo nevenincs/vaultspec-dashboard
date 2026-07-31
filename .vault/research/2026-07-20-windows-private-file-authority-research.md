@@ -4,6 +4,7 @@ tags:
   - '#windows-private-file-authority'
 date: '2026-07-20'
 modified: '2026-07-20'
+body_hash: 'sha256:0f6e7601ac32ae25205cfa36898a428d10343dae8f7fde842256ebafe929372a'
 related: []
 ---
 

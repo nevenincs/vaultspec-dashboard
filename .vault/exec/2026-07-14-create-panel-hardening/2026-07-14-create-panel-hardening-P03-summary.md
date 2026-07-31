@@ -4,6 +4,7 @@ tags:
   - '#create-panel-hardening'
 date: '2026-07-14'
 modified: '2026-07-17'
+body_hash: 'sha256:e5209de29beded52c5608c9d54a58642decbf4923e5c4b9157ba9d8311fc6866'
 related:
   - "[[2026-07-14-create-panel-hardening-plan]]"
 ---

@@ -4,6 +4,7 @@ tags:
   - '#frontend-state-system'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:7a0931e4f0a4bb1fc74e078637eb19021044d7bc84b094490527e43ea4cb0da1'
 related:
   - "[[2026-06-13-frontend-state-system-reference]]"
   - "[[2026-06-13-dashboard-live-state-adr]]"

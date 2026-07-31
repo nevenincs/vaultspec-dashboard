@@ -4,6 +4,7 @@ tags:
   - '#dashboard-gui'
 date: '2026-06-12'
 modified: '2026-07-12'
+body_hash: 'sha256:df3e79a4943973ba5aa73221f407700524968db2e0bd1bff0d62d414dea06543'
 tier: L3
 related:
   - '[[2026-06-12-dashboard-gui-adr]]'

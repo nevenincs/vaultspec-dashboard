@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:5acfc793c95ec9feac07022ef6fd6bc89a5afbf398b229d3e68afc1ea5f65d9d'
 related:
   - '[[2026-07-06-syntax-highlighting-S01]]'
   - '[[2026-07-06-syntax-highlighting-S02]]'

@@ -4,6 +4,7 @@ tags:
   - '#create-panel-hardening'
 date: '2026-07-14'
 modified: '2026-07-17'
+body_hash: 'sha256:ca41d5c749b4836dbc64ba1178aef14b18d10f91d69c51093f58077a977cd9cc'
 tier: L2
 related:
   - '[[2026-07-14-create-panel-hardening-audit]]'

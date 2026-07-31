@@ -4,6 +4,7 @@ tags:
   - '#dashboard-git-diff-browser'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:b3a2be5c783d4d82655ca6622cb63ef1c72118e36d4f630ff2775bc00a55868a'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

@@ -4,6 +4,7 @@ tags:
   - '#dashboard-design-adoption'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:3b4c72706abcb0c2cd4e6c8e3d49ab4bd87bc7c8804d1bf8c1745b3c7ba59181'
 step_id: 'S22'
 related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"

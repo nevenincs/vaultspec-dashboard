@@ -4,6 +4,7 @@ tags:
   - '#graph-slice-delta'
 date: '2026-07-13'
 modified: '2026-07-17'
+body_hash: 'sha256:4b54186dcaa27f1b229cffb56845399194a90112451544d8206a171d21721149'
 related:
   - '[[2026-07-12-vault-tree-delta-adr]]'
 ---

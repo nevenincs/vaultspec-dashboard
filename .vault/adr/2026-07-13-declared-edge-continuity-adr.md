@@ -4,6 +4,7 @@ tags:
   - '#declared-edge-continuity'
 date: '2026-07-13'
 modified: '2026-07-13'
+body_hash: 'sha256:16b4634263905b1c2a66f6dd56c1e31efe5cd10b31ba1dafc8b921ba6ec46bf2'
 related:
   - '[[2026-07-13-graph-slice-delta-adr]]'
 ---

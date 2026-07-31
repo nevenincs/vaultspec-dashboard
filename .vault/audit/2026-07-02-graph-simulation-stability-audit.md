@@ -4,6 +4,7 @@ tags:
   - '#graph-simulation-stability'
 date: '2026-07-02'
 modified: '2026-07-12'
+body_hash: 'sha256:ebe426669c391769181fe4b357a573df76f95cc079f6660afd32e18e807dda93'
 related:
   - "[[2026-07-02-graph-implementation-review-adr]]"
   - "[[2026-06-16-graph-force-stability-adr]]"

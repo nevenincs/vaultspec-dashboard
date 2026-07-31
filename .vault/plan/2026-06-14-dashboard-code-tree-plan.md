@@ -4,6 +4,7 @@ tags:
   - '#dashboard-code-tree'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:a3b81914b0d5c2f046fda65e94b804b99a72db26b6c1746028b20772847cf876'
 tier: L2
 related:
   - '[[2026-06-14-dashboard-code-tree-adr]]'

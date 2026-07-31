@@ -4,6 +4,7 @@ tags:
   - '#authoring-surface'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:0ce894b6585152eac7fe578d0dfb7a8b237db79fe814c024b511f181681b3052'
 step_id: 'S10'
 related:
   - "[[2026-07-12-authoring-surface-plan]]"

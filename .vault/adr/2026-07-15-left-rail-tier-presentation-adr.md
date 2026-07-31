@@ -4,6 +4,7 @@ tags:
   - '#left-rail-tier-presentation'
 date: '2026-07-15'
 modified: '2026-07-15'
+body_hash: 'sha256:7494adeba34638cf9c63da211d9eef6e9e496a341dd5e449105ada3a30853c58'
 related:
   - "[[2026-07-15-left-rail-tier-presentation-research]]"
   - "[[2026-07-14-frontend-localization-adr]]"

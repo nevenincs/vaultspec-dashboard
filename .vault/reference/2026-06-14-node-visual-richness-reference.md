@@ -4,6 +4,7 @@ tags:
   - '#node-visual-richness'
 date: '2026-06-14'
 modified: '2026-06-15'
+body_hash: 'sha256:8a5beaa5d64d3dda131afe95d68a882a3b496803568dbadf0adf6cec7d3719cb'
 related:
   - '[[2026-06-14-node-visual-richness-adr]]'
   - '[[2026-06-14-node-visual-richness-research]]'

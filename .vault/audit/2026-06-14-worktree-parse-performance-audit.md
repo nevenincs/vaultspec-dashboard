@@ -4,6 +4,7 @@ tags:
   - '#worktree-parse-performance'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:3d5f65a2b5c02ecd527d0cc7a0d31b62a4c26071ffa7f3691afde2f87b2f124c'
 related:
   - '[[2026-06-14-worktree-parse-performance-adr]]'
   - '[[2026-06-14-user-state-persistence-audit]]'

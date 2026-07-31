@@ -6,6 +6,7 @@ date: '2026-07-02'
 promoted_to:
   - 'rule:graph-layout-is-pin-authoritative-not-force-converged'
 modified: '2026-07-02'
+body_hash: 'sha256:d8c41a77458667430a5622e41676c883f104318ba9a891ba14d299f79a7364c6'
 related:
   - '[[2026-07-02-global-state-review-audit]]'
 ---

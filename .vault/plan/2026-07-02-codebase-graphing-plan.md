@@ -4,6 +4,7 @@ tags:
   - '#codebase-graphing'
 date: '2026-07-02'
 modified: '2026-07-02'
+body_hash: 'sha256:2ea495f7be1e4c44b868b34152af18c1c2bf8203b05b59562d3fd6f3cf974ce5'
 tier: L3
 related:
   - '[[2026-07-02-codebase-graphing-adr]]'

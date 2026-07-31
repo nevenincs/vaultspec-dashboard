@@ -4,6 +4,7 @@ tags:
   - '#dashboard-settings'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:feb485aaae788516cc3a586a01d8817b3ef4dbb74dbf32123a981190cfbe0086'
 step_id: 'S17'
 related:
   - "[[2026-06-15-dashboard-settings-plan]]"

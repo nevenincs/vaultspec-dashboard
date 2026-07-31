@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:180fe798658b7d31a39449a6376f7e2f7bfc0ae3605e1fa730eeb2ea5cb6659b'
 related:
   - '[[2026-06-17-node-graph-rework-P01-summary]]'
   - '[[2026-06-17-node-graph-rework-P02-summary]]'

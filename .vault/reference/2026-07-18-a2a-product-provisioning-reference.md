@@ -4,6 +4,7 @@ tags:
   - '#a2a-product-provisioning'
 date: '2026-07-18'
 modified: '2026-07-18'
+body_hash: 'sha256:742dd09cfcfffa5e32c7656955fa262f12235c05031f28836a7709c7d7e25dce'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - "[[2026-07-14-a2a-orchestration-edge-reference]]"

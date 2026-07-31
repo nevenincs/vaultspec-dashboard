@@ -4,6 +4,7 @@ tags:
   - '#rag-affordance-adoption'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:5177ff28758f9d120808c0177283fd8f38ac4f1f8c83b8cb407cc0b465ed05f2'
 tier: L2
 related:
   - '[[2026-06-27-rag-affordance-adoption-adr]]'

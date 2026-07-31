@@ -4,6 +4,7 @@ tags:
   - '#dashboard-gui'
 date: '2026-06-12'
 modified: '2026-07-12'
+body_hash: 'sha256:37a2918b0f78c2e4c6d7b4d1b9f174f169f7907d6da8b6190d007f0263ace630'
 step_id: 'S50'
 related:
   - "[[2026-06-12-dashboard-gui-plan]]"

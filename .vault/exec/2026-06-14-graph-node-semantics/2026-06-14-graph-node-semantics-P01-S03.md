@@ -4,6 +4,7 @@ tags:
   - '#graph-node-semantics'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:9de7a10949851499b25471e893544979b2da02c02d9a4ef6a38241dcafa7dd1c'
 step_id: 'S03'
 related:
   - "[[2026-06-14-graph-node-semantics-plan]]"

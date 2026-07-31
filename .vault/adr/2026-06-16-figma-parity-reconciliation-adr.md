@@ -8,6 +8,7 @@ related:
 supersedes:
   - '2026-06-14-dashboard-activity-rail-adr'
 modified: '2026-07-12'
+body_hash: 'sha256:a77e0e9e9461be57df6c0e8bda1efc4eee0bba1fd37ea636dcae5fe9e2190d49'
 ---
 
 # `figma-parity-reconciliation` adr: `Figma-binding frontend rewrite and reconciliation` | (**status:** `accepted`)

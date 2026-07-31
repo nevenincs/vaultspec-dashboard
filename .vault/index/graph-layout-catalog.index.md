@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:6c724737553afce8121a803c6507995be917325e8edc311ade15849d5ade026f'
 related:
   - '[[2026-06-16-graph-layout-catalog-adr]]'
   - '[[2026-06-16-graph-layout-catalog-research]]'

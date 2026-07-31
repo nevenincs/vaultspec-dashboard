@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:6043dfb2fa90e0ab529bf011f725a79c35adc4e62ed9474555e5f7f432759dcc'
 related:
   - '[[2026-07-13-ambient-scope-coherence-audit]]'
 ---

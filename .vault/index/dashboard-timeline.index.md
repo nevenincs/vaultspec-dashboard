@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:027f14acc6331ebf901123069b9ac360fe2a5ea24f89997f1c615a9de8f7f1d8'
 related:
   - '[[2026-06-14-dashboard-timeline-adr]]'
   - '[[2026-06-15-dashboard-timeline-W01-P01-S01]]'

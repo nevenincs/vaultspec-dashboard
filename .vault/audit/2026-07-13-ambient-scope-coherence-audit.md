@@ -4,6 +4,7 @@ tags:
   - '#ambient-scope-coherence'
 date: '2026-07-13'
 modified: '2026-07-13'
+body_hash: 'sha256:5a37f3186c9414a4be811b4f19bff67d92143e364769f35f1e3e5bf74e3c5831'
 related:
   - '[[2026-07-13-declared-edge-continuity-adr]]'
   - '[[2026-07-13-graph-slice-delta-adr]]'

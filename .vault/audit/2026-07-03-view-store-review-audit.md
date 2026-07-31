@@ -4,6 +4,7 @@ tags:
   - '#view-store-review'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:79dde4bdafcb223ad747a42485d7e1c3ea9fc6f5a79dcea56a5cba058986071c'
 related:
   - "[[2026-07-03-dashboard-state-centralization-audit]]"
   - "[[2026-07-02-global-state-review-audit]]"

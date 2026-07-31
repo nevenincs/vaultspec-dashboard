@@ -4,6 +4,7 @@ tags:
   - '#rag-affordance-adoption'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:0eb3e587e0d4328637a24598d279887de5652b96a0acf1a86e4497ec978af87a'
 related:
   - "[[2026-06-27-rag-affordance-adoption-plan]]"
 ---

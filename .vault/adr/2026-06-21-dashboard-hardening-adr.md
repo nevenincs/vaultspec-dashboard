@@ -4,6 +4,7 @@ tags:
   - '#dashboard-hardening'
 date: '2026-06-21'
 modified: '2026-07-17'
+body_hash: 'sha256:aa7bac0c199906056235c8d3d38ca59f010df7fdeca297d4476c422f125b865a'
 related:
   - "[[2026-06-21-dashboard-hardening-audit]]"
   - "[[2026-06-15-resource-hardening-research]]"

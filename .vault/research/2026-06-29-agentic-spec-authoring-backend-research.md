@@ -4,6 +4,7 @@ tags:
   - '#agentic-spec-authoring-backend'
 date: '2026-06-29'
 modified: '2026-07-12'
+body_hash: 'sha256:956f08950250d95636cd853d896639b9505ee40d23a327227a0021eca29db78a'
 related: []
 ---
 

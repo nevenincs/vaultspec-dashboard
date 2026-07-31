@@ -4,6 +4,7 @@ tags:
   - '#terminology-standardization'
 date: '2026-06-20'
 modified: '2026-06-20'
+body_hash: 'sha256:882a794628acbb7aec3702799f5cdcb0f59806ce4cf24d7356ae0ac3f06a0acb'
 related:
   - "[[2026-06-20-terminology-standardization-research]]"
 ---

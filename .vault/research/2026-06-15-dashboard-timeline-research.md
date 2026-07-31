@@ -4,6 +4,7 @@ tags:
   - '#dashboard-timeline'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:1a059d772afc65fd7765c8c6f79662ff2dd7c2cada492f7e2abfcc5f315cfeb5'
 related:
   - "[[2026-06-14-dashboard-timeline-adr]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

@@ -4,6 +4,7 @@ tags:
   - '#filter-controls'
 date: '2026-06-19'
 modified: '2026-07-12'
+body_hash: 'sha256:ec8e10af70fa22ec4e66424c1fd498ef08865c63ce2d1416919b9f6c53c8b1f6'
 related:
   - '[[2026-06-19-filter-controls-research]]'
 ---

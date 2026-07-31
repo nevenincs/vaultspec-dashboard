@@ -4,6 +4,7 @@ tags:
   - '#global-state-review'
 date: '2026-07-02'
 modified: '2026-07-02'
+body_hash: 'sha256:722d26fba4ec721333a540d4efdcf9024948180672aa1c42d3c47d206103b134'
 related:
   - "[[2026-07-02-graph-implementation-review-audit]]"
 ---

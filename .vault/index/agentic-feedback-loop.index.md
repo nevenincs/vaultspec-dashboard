@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:2baf48fb13d836aae4a20abe777a8e0460f89e197d9fd49a73f5643412b394f5'
 related:
   - '[[2026-07-14-agentic-feedback-loop-adr]]'
   - '[[2026-07-14-agentic-feedback-loop-research]]'

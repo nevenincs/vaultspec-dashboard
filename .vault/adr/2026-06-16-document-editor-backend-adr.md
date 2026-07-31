@@ -4,6 +4,7 @@ tags:
   - '#document-editor-backend'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:fda413331af14391eaa26c4c70a27f5cbddfd993f7785d3c047970777fd6ec8b'
 related:
   - "[[2026-06-16-document-editor-backend-research]]"
 ---

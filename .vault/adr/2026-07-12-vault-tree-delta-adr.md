@@ -4,6 +4,7 @@ tags:
   - '#vault-tree-delta'
 date: '2026-07-12'
 modified: '2026-07-17'
+body_hash: 'sha256:0a4d3885763241b72bdd159032995239951166f29788a5bb566ce55a79851b33'
 related:
   - '[[2026-07-11-universal-data-loading-adr]]'
   - '[[2026-07-12-on-demand-cold-start-adr]]'

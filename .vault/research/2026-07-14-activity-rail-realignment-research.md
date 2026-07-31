@@ -4,6 +4,7 @@ tags:
   - '#activity-rail-realignment'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:8e9dbdc10306fb71dbd5a6fbdef8c4d885ff7e701c22d5c5d12a263a903deb51'
 related:
   - '[[2026-06-16-status-overview-adr]]'
   - '[[2026-06-26-rag-service-management-adr]]'

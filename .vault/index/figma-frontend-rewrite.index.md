@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:684317e7c21fd6c4fbb0ef56eea7418b84069a237f9246f7fd5682046587b84d'
 related:
   - '[[2026-06-16-figma-frontend-rewrite-W05-P13-S19]]'
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'

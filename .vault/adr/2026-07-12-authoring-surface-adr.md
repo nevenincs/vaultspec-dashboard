@@ -4,6 +4,7 @@ tags:
   - '#authoring-surface'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:b2b20f893258c6ad9dbf1054aed89616e4939726606b432f2a77a5faca369660'
 related:
   - "[[2026-07-12-authoring-surface-research]]"
   - '[[2026-07-09-ledgered-edit-migration-adr]]'

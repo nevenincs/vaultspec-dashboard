@@ -4,6 +4,7 @@ tags:
   - '#global-state-review'
 date: '2026-07-02'
 modified: '2026-07-12'
+body_hash: 'sha256:ff35f20ac5a417fbbecf938580add8c7ef8801fb6183d4ba7dbe46610cd6abae'
 tier: L2
 related:
   - '[[2026-07-02-global-state-review-audit]]'

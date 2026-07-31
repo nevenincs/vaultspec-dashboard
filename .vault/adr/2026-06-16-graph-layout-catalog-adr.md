@@ -4,6 +4,7 @@ tags:
   - '#graph-layout-catalog'
 date: '2026-06-16'
 modified: '2026-07-13'
+body_hash: 'sha256:db27c262c601f54d24bb8105611ea9d336ebe593b99e48e90407c4c54a95eb62'
 related:
   - "[[2026-06-16-graph-layout-catalog-research]]"
   - "[[2026-06-14-graph-representation-adr]]"

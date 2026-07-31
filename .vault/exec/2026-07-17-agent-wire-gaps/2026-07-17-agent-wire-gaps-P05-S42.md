@@ -4,6 +4,7 @@ tags:
   - '#agent-wire-gaps'
 date: '2026-07-17'
 modified: '2026-07-17'
+body_hash: 'sha256:1aa5b3ff01073fef23c1c41687263165929bd66879b4bd885618221b4ace6e80'
 step_id: 'S42'
 related:
   - "[[2026-07-17-agent-wire-gaps-plan]]"

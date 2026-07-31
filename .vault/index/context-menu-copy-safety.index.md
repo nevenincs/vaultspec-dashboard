@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:010571abe5177e7bff7480821603b0cb106daa3b50495f26b48e000677cfb2f2'
 related:
   - '[[2026-07-15-context-menu-copy-safety-adr]]'
   - '[[2026-07-15-context-menu-copy-safety-audit]]'

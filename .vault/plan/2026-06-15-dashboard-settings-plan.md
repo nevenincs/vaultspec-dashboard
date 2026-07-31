@@ -4,6 +4,7 @@ tags:
   - '#dashboard-settings'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:86bacd951942165e6727c2c21436a73bb5cb1185fe82dd3e0405b0aa4d50168e'
 tier: L3
 related:
   - '[[2026-06-15-dashboard-settings-adr]]'

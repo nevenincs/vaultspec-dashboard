@@ -4,6 +4,7 @@ tags:
   - '#graph-worktree-edge-consistency'
 date: '2026-06-30'
 modified: '2026-06-30'
+body_hash: 'sha256:e691f233b1014402c4cd965752314894dbe40b2944befbf1ad250c81980515a8'
 related:
   - "[[2026-06-30-graph-worktree-edge-consistency-research]]"
 ---

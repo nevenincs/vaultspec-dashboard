@@ -4,6 +4,7 @@ tags:
   - '#dashboard-rag-search'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:3751e0d144b7a06a469b4d7d0dd05b274a3b872e2e2095aa322b13aed3b59350'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

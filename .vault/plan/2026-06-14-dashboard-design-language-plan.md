@@ -4,6 +4,7 @@ tags:
   - '#dashboard-design-language'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:e68338fad14c8c2ed00581d14fbd0e7b12b861ba040d0be551fe7836ecccef4a'
 tier: L2
 related:
   - '[[2026-06-14-dashboard-design-language-adr]]'

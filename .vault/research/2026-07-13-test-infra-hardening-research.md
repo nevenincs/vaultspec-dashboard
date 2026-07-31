@@ -4,6 +4,7 @@ tags:
   - '#test-infra-hardening'
 date: '2026-07-13'
 modified: '2026-07-17'
+body_hash: 'sha256:fbb829ae4496717de1d18ae2208f36394dbf5b91d5a5deb3e9a9697bd741fead'
 related:
   - "[[2026-07-02-test-infra-hardening-audit]]"
   - "[[2026-07-02-test-infra-hardening-plan]]"

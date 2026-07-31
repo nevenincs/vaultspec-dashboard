@@ -4,6 +4,7 @@ tags:
   - '#dashboard-pipeline-status'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:8bfe6558a8845f87901bdeee7b619658819fe7fbc627ab1c5f927a096155e379'
 related:
   - "[[2026-06-14-dashboard-pipeline-status-adr]]"
   - "[[2026-06-14-dashboard-pipeline-wire-adr]]"

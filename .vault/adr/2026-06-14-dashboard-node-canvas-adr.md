@@ -4,6 +4,7 @@ tags:
   - '#dashboard-node-canvas'
 date: '2026-06-14'
 modified: '2026-06-15'
+body_hash: 'sha256:0111b67037ed2d52205a16912576a7ea4b6657b6dc7e9bfc3402138a4796d9e7'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

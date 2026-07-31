@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:d4d9706b15a4514a0cd34289116a5a966f791f35548c20e31d10f419611c2727'
 related:
   - '[[2026-06-18-cosmos-pixi-graph-performance-audit]]'
   - '[[2026-06-18-cosmos-pixi-graph-performance-reference]]'

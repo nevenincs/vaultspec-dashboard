@@ -4,6 +4,7 @@ tags:
   - '#live-ui-testing'
 date: '2026-07-18'
 modified: '2026-07-18'
+body_hash: 'sha256:d159766423aa5b56c86602ee4c190688f8d287a70a710c29334070864c27b280'
 related:
   - '[[2026-07-17-editor-change-fidelity-adr]]'
   - '[[2026-07-16-agentic-authoring-ux-adr]]'

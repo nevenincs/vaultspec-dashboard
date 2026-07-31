@@ -7,6 +7,7 @@ related:
   - "[[2026-06-16-missing-backend-inventory-research]]"
 superseded_by: '2026-07-02-codebase-graphing-adr'
 modified: '2026-07-13'
+body_hash: 'sha256:f1593f3fe34864612a71509a4000cd1ae19a0b752a5bd27889ccece8ecefe2c6'
 ---
 # `code-artifact-nodes` adr: `mint inferred code/symbol nodes so structural mentions bridge to navigable graph nodes` | (**status:** `superseded`)
 

@@ -4,6 +4,7 @@ tags:
   - '#dashboard-node-graph-stability'
 date: '2026-06-15'
 modified: '2026-06-15'
+body_hash: 'sha256:fc5fe9f0da3aaa5be88a8f08533a29070157d5a95c702c166d0b8ee0d498947b'
 related:
   - '[[2026-06-14-graph-representation-adr]]'
   - '[[2026-06-14-graph-representation-research]]'

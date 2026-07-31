@@ -4,6 +4,7 @@ tags:
   - '#graph-viz-quality'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:fca90280446fb31ac60645d986f0b9766f99f4a0c28a51535a25d4b8d3facf69'
 related:
   - '[[2026-06-16-graph-semantic-embeddings-adr]]'
   - '[[2026-06-16-graph-layout-catalog-adr]]'

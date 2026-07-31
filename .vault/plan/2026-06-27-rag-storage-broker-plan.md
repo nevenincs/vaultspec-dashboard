@@ -4,6 +4,7 @@ tags:
   - '#rag-storage-broker'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:814d6e14f6ed3dd534d77b75191ce7d6738b2ac050f9db2bb899ce4360715a24'
 tier: L2
 related:
   - '[[2026-06-27-rag-storage-broker-adr]]'

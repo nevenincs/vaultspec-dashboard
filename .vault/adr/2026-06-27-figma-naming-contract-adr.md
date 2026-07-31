@@ -4,6 +4,7 @@ tags:
   - '#figma-naming-contract'
 date: '2026-06-27'
 modified: '2026-07-13'
+body_hash: 'sha256:5e221b7ec0446a719bd1f7b990c8480dea42dc60d2d7a28e33e4c939d61aaa82'
 related:
   - '[[2026-06-16-figma-parity-reconciliation-adr]]'
   - '[[2026-06-16-figma-parity-reconciliation-research]]'

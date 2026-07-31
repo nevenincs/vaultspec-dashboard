@@ -4,6 +4,7 @@ tags:
   - '#codebase-graphing-review'
 date: '2026-07-02'
 modified: '2026-07-17'
+body_hash: 'sha256:2c2d8796272116db914e122ebcf9f678de47b2235c3470a2af6d7512e35d34c8'
 tier: L2
 related:
   - '[[2026-07-02-codebase-graphing-review-audit]]'

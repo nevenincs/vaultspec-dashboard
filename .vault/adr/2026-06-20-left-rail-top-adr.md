@@ -4,6 +4,7 @@ tags:
   - '#left-rail-top'
 date: '2026-06-20'
 modified: '2026-07-12'
+body_hash: 'sha256:5dc0d325d5730401d63b1ff474c78c333a8be270ece1b68aa01127a232c27409'
 related:
   - '[[2026-06-20-left-rail-top-research]]'
   - '[[2026-06-14-dashboard-workspace-registry-adr]]'

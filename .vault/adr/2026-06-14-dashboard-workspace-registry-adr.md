@@ -4,6 +4,7 @@ tags:
   - '#dashboard-workspace-registry'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:6363b8393e4b61d39f54d6cd18ce8089f110a69ef7a7a7d70fe2375062f9c4b5'
 related:
   - "[[2026-06-14-dashboard-left-rail-research]]"
   - "[[2026-06-14-user-state-persistence-adr]]"

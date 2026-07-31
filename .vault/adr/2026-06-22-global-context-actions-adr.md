@@ -4,6 +4,7 @@ tags:
   - '#global-context-actions'
 date: '2026-06-22'
 modified: '2026-07-12'
+body_hash: 'sha256:6ba48c44b1b87868d59cf4cb75fcfd1e2a19461271339c7f546eb190c6776f3d'
 related:
   - "[[2026-06-22-global-context-actions-research]]"
 ---

@@ -4,6 +4,7 @@ tags:
   - '#constellation-live-delta'
 date: '2026-06-13'
 modified: '2026-06-13'
+body_hash: 'sha256:d75701b83dc3450b1efcc2a3bf124ef94234b0bdca1965d8f30c1e2d112fa2f8'
 related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
   - "[[2026-06-13-dashboard-live-state-adr]]"

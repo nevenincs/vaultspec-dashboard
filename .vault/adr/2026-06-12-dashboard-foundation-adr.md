@@ -4,6 +4,7 @@ tags:
   - '#dashboard-foundation'
 date: '2026-06-12'
 modified: '2026-07-21'
+body_hash: 'sha256:5f5deabf2d985dbcd2168216cd415834f819c4772e39a7e73d4e04d299377329'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
   - "[[2026-06-12-vaultspec-engine-adr]]"

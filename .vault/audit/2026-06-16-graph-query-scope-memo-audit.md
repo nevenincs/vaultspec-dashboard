@@ -4,6 +4,7 @@ tags:
   - '#graph-query-scope-memo'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:538029213865b8aef1139bc7d06b78722d21ed2a6c5f35ba0d544daa1eeb83f6'
 related:
   - "[[2026-06-16-graph-query-scope-memo-plan]]"
 ---

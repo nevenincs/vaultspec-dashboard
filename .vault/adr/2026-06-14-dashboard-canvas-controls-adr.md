@@ -4,6 +4,7 @@ tags:
   - '#dashboard-canvas-controls'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:252a3cbe57dc72ec14b47d24f1c4551e6de9b3664183ad55ee42a04fa4e94af7'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

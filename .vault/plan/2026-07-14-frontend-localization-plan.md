@@ -4,6 +4,7 @@ tags:
   - '#frontend-localization'
 date: '2026-07-14'
 modified: '2026-07-18'
+body_hash: 'sha256:2055c48e4409eeb2ff67a99a077f7e2e4f2c9a44d5499551217cf89237405728'
 tier: L3
 related:
   - '[[2026-07-14-frontend-localization-adr]]'

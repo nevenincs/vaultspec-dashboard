@@ -4,6 +4,7 @@ tags:
   - '#dashboard-design-language'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:a2a2907250befdf4f34b428fcdb264f9527f0de6f6c680bd043d1a4b0f9430ec'
 related:
   - "[[2026-06-12-dashboard-gui-adr]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

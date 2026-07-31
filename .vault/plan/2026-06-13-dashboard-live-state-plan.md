@@ -4,6 +4,7 @@ tags:
   - '#dashboard-live-state'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:a55eec03b6500b3756dfed90dc1507aa0405a3ae8b332eface0adc2e511a4b9a'
 tier: L2
 related:
   - '[[2026-06-13-dashboard-live-state-adr]]'

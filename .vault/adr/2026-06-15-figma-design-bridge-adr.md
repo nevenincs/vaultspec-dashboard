@@ -4,6 +4,7 @@ tags:
   - '#figma-design-bridge'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:6ffcbe32291ebf75e732e89954986741c2a380deb3a7be66889f36b0ab795769'
 related:
   - "[[2026-06-15-figma-design-bridge-research]]"
 ---

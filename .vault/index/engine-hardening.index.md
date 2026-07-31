@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:65ede02836843f542c085524600928f91cc897593924430416915b94e4a29e9a'
 related:
   - '[[2026-06-13-engine-hardening-adr]]'
   - '[[2026-06-13-engine-hardening-plan]]'

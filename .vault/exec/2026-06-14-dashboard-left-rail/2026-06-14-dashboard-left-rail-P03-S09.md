@@ -4,6 +4,7 @@ tags:
   - '#dashboard-left-rail'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:c399e6ee4447418d86bbc292c2412701a5274658224d2b0f8f55e09d534858f5'
 step_id: 'S09'
 related:
   - "[[2026-06-14-dashboard-left-rail-plan]]"

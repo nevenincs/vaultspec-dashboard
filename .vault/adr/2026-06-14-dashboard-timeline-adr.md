@@ -10,6 +10,7 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 superseded_by: '2026-06-15-dashboard-timeline-adr'
 modified: '2026-07-13'
+body_hash: 'sha256:0133525ebbf4078a6c1593d1a80d22d0e8b6f97a1546ded9d8a3b3b7e536d6c3'
 ---
 # `dashboard-timeline` adr: `timeline` | (**status:** `superseded`)
 

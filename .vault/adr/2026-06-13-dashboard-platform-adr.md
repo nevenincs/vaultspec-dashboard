@@ -4,6 +4,7 @@ tags:
   - '#dashboard-platform'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:8b576f642a0c0babaad45c8ac37b1171ce87f5a481a4eab2c9732e507abf316d'
 related:
   - "[[2026-06-13-dashboard-platform-research]]"
   - "[[2026-06-12-dashboard-gui-adr]]"

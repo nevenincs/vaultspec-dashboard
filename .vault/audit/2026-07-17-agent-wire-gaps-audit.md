@@ -4,6 +4,7 @@ tags:
   - '#agent-wire-gaps'
 date: '2026-07-17'
 modified: '2026-07-17'
+body_hash: 'sha256:52fc773245fa09228d293340299a138a713770e7c478c5767196de7f801764ad'
 related:
   - '[[2026-07-17-agent-wire-gaps-adr]]'
   - '[[2026-07-17-agent-wire-gaps-plan]]'

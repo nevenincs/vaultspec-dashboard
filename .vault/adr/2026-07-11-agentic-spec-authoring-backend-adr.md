@@ -4,6 +4,7 @@ tags:
   - '#agentic-spec-authoring-backend'
 date: '2026-07-11'
 modified: '2026-07-12'
+body_hash: 'sha256:73fd13528db1fd54e015ccf88fb5e04cfb3d1d8bc9b271fd4ba70557b0046957'
 related:
   - "[[2026-06-29-agentic-change-format-and-chunking-adr]]"
   - "[[2026-06-29-agentic-rollback-history-adr]]"

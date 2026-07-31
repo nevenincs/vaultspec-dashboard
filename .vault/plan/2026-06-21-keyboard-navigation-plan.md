@@ -4,6 +4,7 @@ tags:
   - '#keyboard-navigation'
 date: '2026-06-21'
 modified: '2026-07-12'
+body_hash: 'sha256:a16f834d3e00aa781c2208e4ce7b99ff2be552b7b705ffb2464ee9550c445bee'
 tier: L3
 related:
   - '[[2026-06-21-keyboard-navigation-adr]]'

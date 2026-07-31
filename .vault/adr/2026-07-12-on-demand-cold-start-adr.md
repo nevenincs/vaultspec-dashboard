@@ -4,6 +4,7 @@ tags:
   - '#on-demand-cold-start'
 date: '2026-07-12'
 modified: '2026-07-17'
+body_hash: 'sha256:0ab055d6ddd7e17f15fd02c40e28b6d032353d6499a187bffdc95ce92903be9b'
 related:
   - "[[2026-07-12-on-demand-cold-start-reference]]"
   - "[[2026-07-11-universal-data-loading-adr]]"

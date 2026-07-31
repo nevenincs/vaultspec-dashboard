@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:24fe5db6d901b55188b16099cc7f5d6383d1888fffb90a85fdb68a55d13dcbbe'
 related:
   - '[[2026-07-02-global-state-review-audit]]'
   - '[[2026-07-02-global-state-review-plan]]'

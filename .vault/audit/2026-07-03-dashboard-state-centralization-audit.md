@@ -4,6 +4,7 @@ tags:
   - '#dashboard-state-centralization'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:ce39591dd852de6656144016a33ac347668bf24b96ecd742bfd277aa5ca8a630'
 related:
   - "[[2026-06-17-dashboard-state-centralization-audit]]"
   - "[[2026-07-03-global-state-review-adr]]"

@@ -4,6 +4,7 @@ tags:
   - '#workspace-picker-dialog'
 date: '2026-07-14'
 modified: '2026-07-17'
+body_hash: 'sha256:147370e6da68f54acfe85b3b688294b4860faea5e744ca9d1ae20af8b757a989'
 related:
   - "[[2026-07-14-workspace-picker-dialog-research]]"
   - "[[2026-07-12-single-app-runtime-adr]]"

@@ -4,6 +4,7 @@ tags:
   - '#create-panel-hardening'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:1977c124b2e2996323e0b122757e67d082381b8f41dd3a3121fca12a0c0ef814'
 related:
   - "[[2026-07-14-feature-group-authoring-adr]]"
   - "[[2026-07-14-feature-group-authoring-audit]]"

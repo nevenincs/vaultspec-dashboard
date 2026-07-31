@@ -4,6 +4,7 @@ tags:
   - '#distribution-channels'
 date: '2026-07-08'
 modified: '2026-07-21'
+body_hash: 'sha256:b8d35701bc3eb81fd2d476f46fab5ef12e36965ab13ed0372a000746743a687e'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-04-dashboard-packaging-research]]"

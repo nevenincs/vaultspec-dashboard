@@ -4,6 +4,7 @@ tags:
   - '#distribution-channels'
 date: '2026-07-08'
 modified: '2026-07-08'
+body_hash: 'sha256:7ee44e18654051087782c15e1e3566a795754b3b154ee32ce1271130ddd6d25c'
 step_id: 'S04'
 related:
   - "[[2026-07-08-distribution-channels-plan]]"

@@ -4,6 +4,7 @@ tags:
   - '#graph-scale-hardening'
 date: '2026-06-13'
 modified: '2026-06-13'
+body_hash: 'sha256:1290ef2bbddeae7c118892c866c1f93665bc3fd3ca327c96b0193e8fe27011ee'
 step_id: 'S04'
 related:
   - "[[2026-06-13-graph-scale-hardening-plan]]"

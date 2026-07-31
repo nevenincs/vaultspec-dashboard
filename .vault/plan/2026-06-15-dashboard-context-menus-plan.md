@@ -4,6 +4,7 @@ tags:
   - '#dashboard-context-menus'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:eb0bb51fda2769a4e3af10209b4bf1d7fd9aca9f42e8bee80760dbce845f10cf'
 tier: L3
 related:
   - '[[2026-06-15-dashboard-context-menus-adr]]'

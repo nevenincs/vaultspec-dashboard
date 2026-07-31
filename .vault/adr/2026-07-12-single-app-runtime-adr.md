@@ -4,6 +4,7 @@ tags:
   - '#single-app-runtime'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:f35d035b156aade9d11db8dfd9a63e3a8a6304b09ed89a2479b2c97129eeb8dc'
 related:
   - '[[2026-07-12-single-app-runtime-research]]'
   - '[[2026-07-04-dashboard-packaging-adr]]'

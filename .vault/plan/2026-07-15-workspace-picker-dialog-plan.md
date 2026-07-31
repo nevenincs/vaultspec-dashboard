@@ -4,6 +4,7 @@ tags:
   - '#workspace-picker-dialog'
 date: '2026-07-15'
 modified: '2026-07-17'
+body_hash: 'sha256:75c014143aa28547a752b0ba2b33e43e4b5e46cd110f25984fa8913116b27cda'
 tier: L2
 related:
   - '[[2026-07-14-workspace-picker-dialog-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#graph-backend-unification'
 date: '2026-06-19'
 modified: '2026-07-17'
+body_hash: 'sha256:ba04253acc89caeb44317cf2a05dafa8f64b010f36df9a58d27ad00767e6af07'
 related:
   - '[[2026-06-16-graph-force-stability-research]]'
 ---

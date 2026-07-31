@@ -4,6 +4,7 @@ tags:
   - '#dashboard-state-centralization'
 date: '2026-06-17'
 modified: '2026-06-17'
+body_hash: 'sha256:c6109a9c31a5b7dc637bca03993daf4dbe2adf5d2b87e6c3f54aef23375d7771'
 related: []
 ---
 

@@ -4,6 +4,7 @@ tags:
   - '#a2a-product-provisioning'
 date: '2026-07-18'
 modified: '2026-07-22'
+body_hash: 'sha256:c3e218202e4ec041faead13084107d6640b0baef686967770dbe6bae3f16001d'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - "[[2026-07-18-a2a-product-provisioning-reference]]"

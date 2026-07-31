@@ -4,6 +4,7 @@ tags:
   - '#touch-selectability'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:c0c9f8caf9e2e4169e3f3abdd4cef7048fa3516a4c3d36ee26a7bcf2ca727be3'
 step_id: 'S11'
 related:
   - "[[2026-07-12-touch-selectability-plan]]"

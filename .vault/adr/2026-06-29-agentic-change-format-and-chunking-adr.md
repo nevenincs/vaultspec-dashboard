@@ -28,6 +28,7 @@ related:
 supersedes:
   - '2026-06-29-agentic-document-chunk-management-adr'
 modified: '2026-07-02'
+body_hash: 'sha256:45c7e4a48566280f0551b730e2e60c80cc4b5699688241ebb411bbd201d9b5a9'
 ---
 # `agentic-change-format-and-chunking` adr: `hybrid proposal changes with section-scoped snapshots` | (**status:** `accepted`)
 

@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:fafb3c4c82c693f8b7b487394eade8b8510acb215ad09386802da64316ae84df'
 related:
   - '[[2026-07-20-a2a-provisioning-authority-adr]]'
   - '[[2026-07-20-a2a-provisioning-authority-research]]'

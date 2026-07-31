@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:121dcd9426f57155c8da02184bb566b7d1c91166f71b0f841f59a5c8d280fd91'
 related:
   - '[[2026-06-13-dashboard-live-state-P01-S01]]'
   - '[[2026-06-13-dashboard-live-state-P01-S02]]'

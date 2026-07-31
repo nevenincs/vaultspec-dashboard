@@ -4,6 +4,7 @@ tags:
   - '#background-context-menus'
 date: '2026-06-23'
 modified: '2026-07-12'
+body_hash: 'sha256:19d40730a0522a6b1dfca77ca0677acfa726b62cf22ac253345cd0f6206dc549'
 related:
   - "[[2026-06-23-background-context-menus-research]]"
   - "[[2026-06-22-global-context-actions-adr]]"

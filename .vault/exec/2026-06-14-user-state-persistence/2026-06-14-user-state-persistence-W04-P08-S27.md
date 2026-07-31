@@ -4,6 +4,7 @@ tags:
   - '#user-state-persistence'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:94a042509487a39e532d948c4bb4c28ef4011653eddc2b3581d1cc154942dfb6'
 step_id: 'S27'
 related:
   - "[[2026-06-14-user-state-persistence-plan]]"

@@ -8,6 +8,7 @@ related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
 superseded_by: '2026-06-16-figma-parity-reconciliation-adr'
 modified: '2026-07-12'
+body_hash: 'sha256:f3d2939581dc0f58fb13dda597ef96b2a3ecf4da1fa25980afc952a1fabcbc2b'
 ---
 # `dashboard-activity-rail` adr: `right activity rail information architecture` | (**status:** `superseded`)
 

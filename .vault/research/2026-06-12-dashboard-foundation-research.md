@@ -4,6 +4,7 @@ tags:
   - '#dashboard-foundation'
 date: '2026-06-12'
 modified: '2026-06-15'
+body_hash: 'sha256:77d6d542a7b8a424df2c9050aba07ea75b200ef75f77253937f7f95a7e9aeb8e'
 related: []
 ---
 

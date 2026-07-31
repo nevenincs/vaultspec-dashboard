@@ -4,6 +4,7 @@ tags:
   - '#agent-wire-gaps'
 date: '2026-07-17'
 modified: '2026-07-17'
+body_hash: 'sha256:15bda2ad723e1677c71ff424bd03c69c4b56a3f1d9d2f648fba1be8941443de8'
 related:
   - '[[2026-07-16-agentic-authoring-ux-research]]'
   - '[[2026-07-16-agentic-authoring-ux-adr]]'

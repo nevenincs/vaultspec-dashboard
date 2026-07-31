@@ -4,6 +4,7 @@ tags:
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
 modified: '2026-07-17'
+body_hash: 'sha256:1b5c9405dba300010cf642dc402fc56e8ddfbc3ee0f8b701bc42122850157139'
 step_id: 'S02'
 related:
   - "[[2026-07-15-keyboard-shortcut-conflict-review-plan]]"

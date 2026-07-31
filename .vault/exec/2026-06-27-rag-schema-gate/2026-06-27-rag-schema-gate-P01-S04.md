@@ -4,6 +4,7 @@ tags:
   - '#rag-schema-gate'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:33a0a5be94b682b282dab152c5d3fe3d25a94c8cfac3b195b233672b41a25f2c'
 step_id: 'S04'
 related:
   - "[[2026-06-27-rag-schema-gate-plan]]"

@@ -4,6 +4,7 @@ tags:
   - '#left-rail-feature-filter'
 date: '2026-06-24'
 modified: '2026-06-26'
+body_hash: 'sha256:489214ea2916f3755a638aa6c6207c9ae0e03f579f954c1013a23410c1567c16'
 related:
   - '[[2026-06-24-left-rail-feature-filter-research]]'
   - '[[2026-06-19-filter-controls-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#section-scoped-operations'
 date: '2026-07-11'
 modified: '2026-07-17'
+body_hash: 'sha256:5accc66bc97ed11f78ac4d37aaafc119a6e61f1ed75cd1ce2763b0634cce99e1'
 related:
   - "[[2026-06-29-agentic-change-format-and-chunking-adr]]"
   - "[[2026-06-29-agentic-document-chunk-management-adr]]"

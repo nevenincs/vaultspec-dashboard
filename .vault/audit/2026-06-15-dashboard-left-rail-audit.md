@@ -4,6 +4,7 @@ tags:
   - '#dashboard-left-rail'
 date: '2026-06-15'
 modified: '2026-06-15'
+body_hash: 'sha256:4dc3ec1fa50a01b91f04dd3e1e4d92b529e1d83024aa3ccfd3f90d2e99ebeafc'
 related:
   - "[[2026-06-14-dashboard-left-rail-adr]]"
   - "[[2026-06-14-dashboard-workspace-registry-adr]]"

@@ -4,6 +4,7 @@ tags:
   - '#vaultspec-engine'
 date: '2026-06-12'
 modified: '2026-06-15'
+body_hash: 'sha256:40f715e37394f965f5ab4798a33208051bccf50766ed2d0e677a430381e73d5d'
 related:
   - '[[2026-06-12-vaultspec-engine-plan]]'
 ---

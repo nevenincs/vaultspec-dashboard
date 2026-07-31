@@ -4,6 +4,7 @@ tags:
   - '#figma-parity-reconciliation'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:9e04bca722c0ca0dada9af034d3e6b0911c9fb4fb335b3158d0ebf49b1ca02c5'
 step_id: 'S01'
 related:
   - "[[2026-06-16-figma-parity-reconciliation-plan]]"

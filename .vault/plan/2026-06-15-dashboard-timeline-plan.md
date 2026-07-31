@@ -4,6 +4,7 @@ tags:
   - '#dashboard-timeline'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:ed9ced4f7499e5f6fabb96ef9408fc95ba1f2eb7d8f9a236a2e67bc8975f22cd'
 tier: L3
 related:
   - '[[2026-06-15-dashboard-timeline-adr]]'

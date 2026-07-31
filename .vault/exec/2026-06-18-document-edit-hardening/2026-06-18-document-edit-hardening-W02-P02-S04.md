@@ -4,6 +4,7 @@ tags:
   - '#document-edit-hardening'
 date: '2026-06-18'
 modified: '2026-07-12'
+body_hash: 'sha256:b642f7e37d5f9db82af6c590b1fd218c3865b5e355039ae0939d72eed75fe9bf'
 step_id: 'S04'
 related:
   - "[[2026-06-18-document-edit-hardening-plan]]"

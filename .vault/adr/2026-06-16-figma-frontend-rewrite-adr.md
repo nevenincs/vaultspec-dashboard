@@ -4,6 +4,7 @@ tags:
   - '#figma-frontend-rewrite'
 date: '2026-06-16'
 modified: '2026-07-13'
+body_hash: 'sha256:e489ee479b716825567a73f22d90d95279337c86c29614622ad568749d20ed47'
 related:
   - '[[2026-06-16-figma-frontend-rewrite-reference]]'
   - '[[2026-06-16-figma-parity-reconciliation-research]]'

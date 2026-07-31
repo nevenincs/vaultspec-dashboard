@@ -4,6 +4,7 @@ tags:
   - '#windows-private-file-authority'
 date: '2026-07-20'
 modified: '2026-07-22'
+body_hash: 'sha256:570cb7dc5c237114207ea61734605fa99d6e48bba892d3b818a1eb2265ec6d0a'
 related:
   - "[[2026-07-20-windows-private-file-authority-research]]"
   - '[[2026-07-21-windows-private-file-authority-ntfs-directory-durability-research]]'

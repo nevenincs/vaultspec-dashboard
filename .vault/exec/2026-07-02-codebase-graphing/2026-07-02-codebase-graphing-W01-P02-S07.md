@@ -4,6 +4,7 @@ tags:
   - '#codebase-graphing'
 date: '2026-07-02'
 modified: '2026-07-02'
+body_hash: 'sha256:09d8ca3c2d873ac80c713b777c8b719f376981b643c3d0229e63026a7ed90907'
 step_id: 'S07'
 related:
   - "[[2026-07-02-codebase-graphing-plan]]"

@@ -4,6 +4,7 @@ tags:
   - '#dashboard-state-centralization'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:fc3d2dde85c8fb4a8197590c9fa2684638e39b2523513f5c30b4aff0f8802bd0'
 tier: L3
 related:
   - '[[2026-06-17-dashboard-state-centralization-adr]]'

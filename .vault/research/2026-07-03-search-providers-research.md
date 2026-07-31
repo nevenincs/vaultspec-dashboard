@@ -4,6 +4,7 @@ tags:
   - '#search-providers'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:c376a54578a04ae56c65d90af16595d71282c8059847a1d131bd90597966c1af'
 related:
   - '[[2026-07-03-rag-integration-hardening-adr]]'
   - '[[2026-07-03-rag-integration-hardening-research]]'

@@ -4,6 +4,7 @@ tags:
   - '#temporal-graph-layout'
 date: '2026-06-17'
 modified: '2026-06-17'
+body_hash: 'sha256:e491857eb66c3b2a42ed7fcea82886fe98360d6c697d6821a5f80952a9ffd8cd'
 related:
   - "[[2026-06-17-temporal-graph-layout-research]]"
 ---

@@ -4,6 +4,7 @@ tags:
   - '#dashboard-hardening'
 date: '2026-06-21'
 modified: '2026-06-21'
+body_hash: 'sha256:b3563329709c32525b40aa5dc6cfc613910a5796b31157f310f7141deaff5f87'
 tier: L3
 related:
   - "[[2026-06-21-dashboard-hardening-adr]]"

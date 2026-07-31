@@ -4,6 +4,7 @@ tags:
   - '#activity-rail-realignment'
 date: '2026-07-14'
 modified: '2026-07-17'
+body_hash: 'sha256:f1b94aacf6d7706d10548cf2f18f6a0c5af70f4ed1f46a99b8949cae1733d027'
 tier: L2
 related:
   - '[[2026-07-14-activity-rail-realignment-adr]]'

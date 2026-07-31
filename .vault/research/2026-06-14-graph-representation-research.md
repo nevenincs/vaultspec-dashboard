@@ -4,6 +4,7 @@ tags:
   - '#graph-representation'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:1bf70846812dd1a76a7f77c6fd9155e0740efc2b3ef57c9af9430a69a0a2f222'
 related:
   - "[[2026-06-14-graph-node-salience-research]]"
   - "[[2026-06-14-graph-node-semantics-research]]"

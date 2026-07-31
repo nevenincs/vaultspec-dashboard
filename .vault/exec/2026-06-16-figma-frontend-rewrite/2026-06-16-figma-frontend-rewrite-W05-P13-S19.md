@@ -4,6 +4,7 @@ tags:
   - '#figma-frontend-rewrite'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:588167c22248b55074f1e6d40fb005282cc094acc78098ea2c00a1c9f76b77b2'
 step_id: 'S19'
 related:
   - "[[2026-06-16-figma-frontend-rewrite-plan]]"

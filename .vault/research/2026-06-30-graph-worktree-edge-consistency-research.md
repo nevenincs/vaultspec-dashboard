@@ -4,6 +4,7 @@ tags:
   - '#graph-worktree-edge-consistency'
 date: '2026-06-30'
 modified: '2026-06-30'
+body_hash: 'sha256:a92d2a45bd77ec68ae4ea07cad8fadba1363858f86ae974bf4f8f48a340d3c9d'
 related:
   - '[[2026-06-12-vaultspec-engine-adr]]'
   - '[[2026-06-12-dashboard-foundation-reference]]'

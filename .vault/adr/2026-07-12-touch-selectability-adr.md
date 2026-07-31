@@ -4,6 +4,7 @@ tags:
   - '#touch-selectability'
 date: '2026-07-12'
 modified: '2026-07-17'
+body_hash: 'sha256:05bc04878ae44ee65c6818d660120f39bea5fe8dda9ab1981825114d64aef781'
 related:
   - "[[2026-07-12-touch-selectability-audit]]"
   - "[[2026-06-15-dashboard-context-menus-adr]]"

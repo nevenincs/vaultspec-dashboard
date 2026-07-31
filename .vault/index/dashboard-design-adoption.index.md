@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:80f27146c02e1565f6b83e0ccd9aabe19f0dc08558c3736027cafbef2664c568'
 related:
   - '[[2026-06-14-dashboard-design-adoption-W01-P01-S01]]'
   - '[[2026-06-14-dashboard-design-adoption-W01-P01-S02]]'

@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:07a41578651df5c60163373c28c28de976f0863acf9f1339ac5f5f034ad55507'
 related:
   - '[[2026-06-23-background-context-menus-adr]]'
   - '[[2026-06-23-background-context-menus-plan]]'

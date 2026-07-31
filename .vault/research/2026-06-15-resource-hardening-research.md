@@ -4,6 +4,7 @@ tags:
   - '#resource-hardening'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:0d93319fa5d12002676af76e9ce05793b23f5864137b66438ee3fc0118dabec6'
 related:
   - '[[2026-06-13-dashboard-optimization-research]]'
   - '[[2026-06-13-dashboard-optimization-adr]]'

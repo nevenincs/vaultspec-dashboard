@@ -4,6 +4,7 @@ tags:
   - '#status-overview'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:679d72e89d13ec8a835295420d36c6c1b32ec6f8baa0f138b9546beb247b58b5'
 related:
   - "[[2026-06-16-status-overview-adr]]"
 ---

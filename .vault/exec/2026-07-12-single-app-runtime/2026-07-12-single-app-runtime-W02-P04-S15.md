@@ -4,6 +4,7 @@ tags:
   - '#single-app-runtime'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:0fe5be2dd74c3c6964ea9783de8c100dc418739fb56903e1a894d3f27fec73b4'
 step_id: 'S15'
 related:
   - "[[2026-07-12-single-app-runtime-plan]]"

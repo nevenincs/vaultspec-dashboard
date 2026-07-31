@@ -4,6 +4,7 @@ tags:
   - '#dashboard-packaging'
 date: '2026-07-04'
 modified: '2026-07-04'
+body_hash: 'sha256:6448d3f07838a88d29256790aa88f5e7e6deb7f77590c3d0bb30ff9f29cc6dc3'
 related:
   - "[[2026-07-04-dashboard-packaging-plan]]"
 ---

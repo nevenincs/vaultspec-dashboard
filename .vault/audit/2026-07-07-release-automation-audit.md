@@ -4,6 +4,7 @@ tags:
   - '#release-automation'
 date: '2026-07-07'
 modified: '2026-07-07'
+body_hash: 'sha256:2f2bf57ea0704578227dc26f7ea4b404770ee278e0d5ebbcf48b68b71a0e21e3'
 related:
   - "[[2026-07-07-release-automation-plan]]"
   - "[[2026-07-07-release-automation-adr]]"

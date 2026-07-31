@@ -4,6 +4,7 @@ tags:
   - '#on-demand-cold-start'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:47d932325ef1271e25d6b8abb422e0b382e6211a6d2cf7f1fff51f54235aef2c'
 step_id: 'S08'
 related:
   - "[[2026-07-12-on-demand-cold-start-plan]]"

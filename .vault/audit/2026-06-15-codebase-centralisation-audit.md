@@ -4,6 +4,7 @@ tags:
   - '#codebase-centralisation'
 date: '2026-06-15'
 modified: '2026-07-13'
+body_hash: 'sha256:8322f0e1bb135d61cd261200cc09d4f47cdc384ffebaa58a0e778002e381b2ca'
 related:
   - '[[2026-06-17-dashboard-state-centralization-adr]]'
 ---

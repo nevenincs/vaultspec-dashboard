@@ -4,6 +4,7 @@ tags:
   - '#node-graph-rework'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:4372be04103e040b02fa55ed5c9d811d232364dee7c70fd41b62457433ff9dc4'
 related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
   - '[[2026-06-16-graph-layout-catalog-adr]]'

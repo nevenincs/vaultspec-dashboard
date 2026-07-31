@@ -4,6 +4,7 @@ tags:
   - '#dashboard-platform'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:c5970c96e1da9fac9116abaef4bf94db46b47bbaa528e353fe19a37c79244e64'
 tier: L2
 related:
   - '[[2026-06-13-dashboard-platform-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#keyboard-navigation'
 date: '2026-06-23'
 modified: '2026-07-12'
+body_hash: 'sha256:664372d9f0363d23c575c5013a2dcead012347ac3b78b9eda0a64def6dd19959'
 step_id: 'S21'
 related:
   - "[[2026-06-21-keyboard-navigation-plan]]"

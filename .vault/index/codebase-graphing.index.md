@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:02e8e1076ea702c081e1b17ed8d665c286aa213628673db5c5ed01b4b50f39c2'
 related:
   - '[[2026-07-02-codebase-graphing-W01-P01-S01]]'
   - '[[2026-07-02-codebase-graphing-W01-P02-S02]]'

@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:912e7d6a03c081a1012365541f866963ec20a64a55a4e31917ede87eeb88ec62'
 related:
   - '[[2026-06-21-command-palette-actions-adr]]'
 ---

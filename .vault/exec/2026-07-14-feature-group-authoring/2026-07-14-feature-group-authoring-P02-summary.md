@@ -4,6 +4,7 @@ tags:
   - '#feature-group-authoring'
 date: '2026-07-14'
 modified: '2026-07-17'
+body_hash: 'sha256:20e85cd98667fa031b2673d6ccd651aa9b3ee3a4ef21ac474734f57f1b79bdba'
 related:
   - "[[2026-07-14-feature-group-authoring-plan]]"
 ---

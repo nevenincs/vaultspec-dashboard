@@ -4,6 +4,7 @@ tags:
   - '#node-visual-richness'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:1315f35af1fc32d8c6a2c2d1ff82b5858770b9963ff7f8fbea83278bf6cb1089'
 step_id: 'S13'
 related:
   - "[[2026-06-14-node-visual-richness-plan]]"

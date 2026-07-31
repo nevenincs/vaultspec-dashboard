@@ -4,6 +4,7 @@ tags:
   - '#document-edit-hardening'
 date: '2026-06-18'
 modified: '2026-07-12'
+body_hash: 'sha256:c02f2dee1bce98d0230d348eaecc324151033d0db50a38aefbb0ca32184eb735'
 tier: L3
 related:
   - '[[2026-06-18-document-edit-hardening-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#single-app-runtime'
 date: '2026-07-12'
 modified: '2026-07-13'
+body_hash: 'sha256:10b91af7cbff3d5dd097c8d9e34b46de7b5765ef30b404663e372128c4e9e147'
 tier: L3
 related:
   - '[[2026-07-12-single-app-runtime-adr]]'

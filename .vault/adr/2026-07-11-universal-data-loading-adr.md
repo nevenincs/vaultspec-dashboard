@@ -4,6 +4,7 @@ tags:
   - '#universal-data-loading'
 date: '2026-07-11'
 modified: '2026-07-17'
+body_hash: 'sha256:1196dc3129c5e536abb9d19795e01276c218a071fca3f861185f0bae89bf3e2f'
 related:
   - '[[2026-07-11-universal-data-loading-reference]]'
   - '[[2026-06-22-graph-filter-fetch-split-adr]]'

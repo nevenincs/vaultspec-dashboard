@@ -4,6 +4,7 @@ tags:
   - '#worktree-switcher-identity'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:f8fa1b813d0acf985ad02b8020e6beb574cf054f8272af627d9435cd4a38c03e'
 step_id: 'S06'
 related:
   - "[[2026-07-03-worktree-switcher-identity-plan]]"

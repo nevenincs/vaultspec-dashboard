@@ -4,6 +4,7 @@ tags:
   - '#syntax-highlighting'
 date: '2026-07-06'
 modified: '2026-07-06'
+body_hash: 'sha256:10fa902714b3040ad0f08e9b66f9bf6e7e38a427d510cdac7a1d66a02a6a4533'
 related:
   - "[[2026-07-06-syntax-highlighting-plan]]"
   - "[[2026-07-06-syntax-highlighting-adr]]"

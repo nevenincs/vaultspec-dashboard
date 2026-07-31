@@ -4,6 +4,7 @@ tags:
   - '#agentic-document-offering'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:3ae57c68aab04afb603974b6a582aae404f96923650327857d998abaa5b1d687'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-12-authoring-surface-adr]]"

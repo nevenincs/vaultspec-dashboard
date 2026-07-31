@@ -4,6 +4,7 @@ tags:
   - '#graph-representation'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:03f7f7ce149ac75c2f4520204c4f475a8979bdfd9684f714b8d32fa6aaa136e2'
 step_id: 'S45'
 related:
   - "[[2026-06-14-graph-representation-plan]]"

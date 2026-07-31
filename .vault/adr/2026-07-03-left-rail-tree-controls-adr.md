@@ -4,6 +4,7 @@ tags:
   - '#left-rail-tree-controls'
 date: '2026-07-03'
 modified: '2026-07-12'
+body_hash: 'sha256:8f14d9806c09f8eadb85c24d5ce0c9c8430373672fa213cb1c536df646e1ebea'
 related:
   - "[[2026-07-03-left-rail-tree-controls-research]]"
   - '[[2026-06-14-dashboard-sidebar-adr]]'

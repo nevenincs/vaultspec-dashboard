@@ -4,6 +4,7 @@ tags:
   - '#release-automation'
 date: '2026-07-07'
 modified: '2026-07-07'
+body_hash: 'sha256:75c17543e724a71456600924892980a37b5025f4d836602d91d585c5cc5fdad0'
 step_id: 'S02'
 related:
   - "[[2026-07-07-release-automation-plan]]"

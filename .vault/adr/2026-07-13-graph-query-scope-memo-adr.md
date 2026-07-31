@@ -4,6 +4,7 @@ tags:
   - '#graph-query-scope-memo'
 date: '2026-07-13'
 modified: '2026-07-17'
+body_hash: 'sha256:d594bc5785c75f9cdce9cb7caafee634dc1b0734e593f1247280250caa9ae8be'
 related:
   - "[[2026-06-16-backend-hotpath-hardening-research]]"
   - "[[2026-06-16-graph-query-scope-memo-plan]]"

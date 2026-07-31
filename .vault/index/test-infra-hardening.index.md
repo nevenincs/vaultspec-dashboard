@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:b886b118f88dd44b638fa17b987d943111b3816cca5430302d90be7320efec7a'
 related:
   - '[[2026-07-02-test-infra-hardening-audit]]'
   - '[[2026-07-02-test-infra-hardening-plan]]'

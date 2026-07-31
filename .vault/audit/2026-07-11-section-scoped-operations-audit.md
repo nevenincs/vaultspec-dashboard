@@ -4,6 +4,7 @@ tags:
   - '#section-scoped-operations'
 date: '2026-07-11'
 modified: '2026-07-12'
+body_hash: 'sha256:2e8f35af0671d57bb6f1b891a1abc4ca757f9f00c2af81fb6e4569bb5aa5304a'
 related:
   - "[[2026-07-11-section-scoped-operations-plan]]"
   - "[[2026-07-11-section-scoped-operations-adr]]"

@@ -12,6 +12,7 @@ related:
 supersedes:
   - '2026-06-14-dashboard-timeline-adr'
 modified: '2026-07-13'
+body_hash: 'sha256:75ee1674154b48d8de9a5d54297fc6b3f163ad4ec46fb718cb92263dbe76cf40'
 ---
 # `dashboard-timeline` adr: `relational phase-lane timeline` | (**status:** `accepted`)
 

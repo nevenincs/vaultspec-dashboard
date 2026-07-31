@@ -4,6 +4,7 @@ tags:
   - '#keyboard-action-correctness-review'
 date: '2026-07-02'
 modified: '2026-07-17'
+body_hash: 'sha256:77faa029200e845737659ebdfd85242c46904dd2f6e3e3b3a0a9f73f8e5e04c9'
 tier: L2
 related:
   - '[[2026-07-02-keyboard-action-correctness-review-audit]]'

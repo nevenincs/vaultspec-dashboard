@@ -4,6 +4,7 @@ tags:
   - '#dashboard-node-graph-stability'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:ae99a59520e24fe861275368e973d3f911a7990f3d87ca65cdfa60cf43c5b159'
 tier: L2
 related:
   - '[[2026-06-15-dashboard-node-graph-stability-adr]]'

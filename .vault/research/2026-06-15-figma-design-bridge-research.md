@@ -4,6 +4,7 @@ tags:
   - '#figma-design-bridge'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:74036cf724d4849db3fbae3900cb2502af671c8262b527a5da7c91b5a3017d58'
 related:
   - '[[2026-06-14-dashboard-design-language-adr]]'
   - '[[2026-06-14-dashboard-design-adoption-adr]]'

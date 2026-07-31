@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:96f8db04d825780830d8ef74f4ad6ca13a8dca467c951034b9a2bb8c42e5e737'
 related:
   - '[[2026-06-14-dashboard-iconography-adr]]'
   - '[[2026-06-14-dashboard-iconography-research]]'

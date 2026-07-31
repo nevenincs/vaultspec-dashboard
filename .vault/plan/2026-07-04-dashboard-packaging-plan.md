@@ -4,6 +4,7 @@ tags:
   - '#dashboard-packaging'
 date: '2026-07-04'
 modified: '2026-07-04'
+body_hash: 'sha256:825d10bba625a9ee555f7d2003b37bf6d46a2323159d6b4802b12a674dfe3798'
 tier: L2
 related:
   - '[[2026-07-04-dashboard-packaging-adr]]'

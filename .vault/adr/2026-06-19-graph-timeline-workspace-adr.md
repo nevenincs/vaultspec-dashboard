@@ -4,6 +4,7 @@ tags:
   - '#graph-timeline-workspace'
 date: '2026-06-19'
 modified: '2026-07-12'
+body_hash: 'sha256:27425056705bf753e17b1d7d19f9beb883516e2fbc3f8bdc7c11a1c39b3f7dc7'
 related:
   - "[[2026-06-19-graph-timeline-workspace-research]]"
   - "[[2026-06-18-editor-dock-workspace-adr]]"

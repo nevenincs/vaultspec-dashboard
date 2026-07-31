@@ -4,6 +4,7 @@ tags:
   - '#section-scoped-operations'
 date: '2026-07-11'
 modified: '2026-07-12'
+body_hash: 'sha256:c72cea8184880e4b469d2a5496f75fbec9739d0ca0f36af5aebd8c6d6624ce94'
 tier: L2
 related:
   - '[[2026-07-11-section-scoped-operations-adr]]'

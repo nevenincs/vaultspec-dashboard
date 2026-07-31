@@ -4,6 +4,7 @@ tags:
   - '#dashboard-rag-manager'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:e78397e050db1d7aef9733399df44a9f6c7890bef0333e85294c8f4f8cf56689'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

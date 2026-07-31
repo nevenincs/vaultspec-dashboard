@@ -4,6 +4,7 @@ tags:
   - '#dashboard-activity-rail'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:19fedbae40cab889db914b39a2860cb659c621f77a4c2c049070067efc1d531a'
 step_id: 'S04'
 related:
   - "[[2026-06-14-dashboard-activity-rail-plan]]"

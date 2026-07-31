@@ -4,6 +4,7 @@ tags:
   - '#syntax-highlighting'
 date: '2026-07-06'
 modified: '2026-07-06'
+body_hash: 'sha256:9d50c5e090d5520df6712e695a9753d6bc4afb5de80da5fb2ad5292193fd50d4'
 related:
   - "[[2026-07-06-syntax-highlighting-research]]"
   - "[[2026-06-16-review-rail-viewers-adr]]"

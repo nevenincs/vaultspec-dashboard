@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:4a1ee6fff3bf16b190a1d7ca1e5648fb3c42229970be95eec185b4c17f5ba47b'
 related:
   - '[[2026-07-16-pw7-acceptance-human-1784174266-research]]'
 ---

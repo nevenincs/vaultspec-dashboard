@@ -4,6 +4,7 @@ tags:
   - '#feature-group-authoring'
 date: '2026-07-14'
 modified: '2026-07-17'
+body_hash: 'sha256:db23c3404a8f5861a7aab29f080a09ff2a546828b4bc2be4874d202dae6dc9ff'
 tier: L2
 related:
   - '[[2026-07-14-feature-group-authoring-adr]]'

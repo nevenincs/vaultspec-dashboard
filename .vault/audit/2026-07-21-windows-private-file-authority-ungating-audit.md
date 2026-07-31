@@ -4,6 +4,7 @@ tags:
   - '#windows-private-file-authority'
 date: '2026-07-21'
 modified: '2026-07-21'
+body_hash: 'sha256:affc9a22fbfaefed9c97e1c130e82dcb63a9946448e81451df2a6f447de613cf'
 related:
   - '[[2026-07-20-windows-private-file-authority-adr]]'
   - '[[2026-07-20-a2a-provisioning-authority-adr]]'

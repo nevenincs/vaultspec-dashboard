@@ -4,6 +4,7 @@ tags:
   - '#universal-data-loading'
 date: '2026-07-11'
 modified: '2026-07-12'
+body_hash: 'sha256:9a3d853e88eb0efd3863b787f01f749039ec42cc261d9bcdf84fe2462195c060'
 tier: L2
 related:
   - '[[2026-07-11-universal-data-loading-adr]]'

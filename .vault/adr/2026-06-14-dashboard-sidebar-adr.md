@@ -4,6 +4,7 @@ tags:
   - '#dashboard-sidebar'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:dc34894e8829360943b27bfb4f510f042096616a9f49451f0d4a043d21a4f1f7'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

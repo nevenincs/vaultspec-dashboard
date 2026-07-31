@@ -4,6 +4,7 @@ tags:
   - '#action-surface-mapping'
 date: '2026-06-22'
 modified: '2026-07-12'
+body_hash: 'sha256:46417c512015ead937688e6f7324fda6d4ce150e58a468125061fcd8e0fb3cab'
 tier: L2
 related:
   - '[[2026-06-22-action-surface-mapping-adr]]'

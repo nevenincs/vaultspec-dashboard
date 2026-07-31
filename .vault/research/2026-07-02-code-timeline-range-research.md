@@ -4,6 +4,7 @@ tags:
   - '#code-timeline-range'
 date: '2026-07-02'
 modified: '2026-07-12'
+body_hash: 'sha256:05f8dc041ae5b8b1350635d0ac6b9bc1ee43cf5a7933c27e3065fbf30e5ee894'
 related:
   - "[[2026-07-02-codebase-graphing-adr]]"
 ---

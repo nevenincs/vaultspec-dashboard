@@ -4,6 +4,7 @@ tags:
   - '#context-menu-copy-safety'
 date: '2026-07-15'
 modified: '2026-07-15'
+body_hash: 'sha256:77853076001af3840e67c0f6dfccfd0a2550627508504f47acf2f515bb93a01b'
 related:
   - "[[2026-07-15-context-menu-copy-safety-research]]"
   - "[[2026-06-15-dashboard-context-menus-adr]]"

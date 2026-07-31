@@ -4,6 +4,7 @@ tags:
   - '#dashboard-state-centralization'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:4bee9cf7fd6c5c2cf9672545240bdeae48eaee086a48fef92fa853e9390e89b8'
 step_id: 'S18'
 related:
   - "[[2026-06-17-dashboard-state-centralization-plan]]"

@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:fae6697c801df2b4d623cff06d9b6a5a5bea2f240fa1718cbd15688b6ed0624b'
 related:
   - '[[2026-06-25-state-mode-uniformity-adr]]'
   - '[[2026-06-25-state-mode-uniformity-research]]'

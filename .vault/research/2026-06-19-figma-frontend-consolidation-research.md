@@ -4,6 +4,7 @@ tags:
   - '#figma-frontend-consolidation'
 date: '2026-06-19'
 modified: '2026-07-13'
+body_hash: 'sha256:969ac673ffebbd73cb00d6f25257373b6885a58486a65ac77c3e968684956ee9'
 related:
   - '[[2026-06-16-figma-frontend-rewrite-adr]]'
 ---

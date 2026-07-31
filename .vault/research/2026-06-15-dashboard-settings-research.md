@@ -4,6 +4,7 @@ tags:
   - '#dashboard-settings'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:f637df9fd6bf9f79eda7ff5ae7f5f9223f5a2fa6ec2e4cd1f5eba1073790587c'
 related:
   - "[[2026-06-14-user-state-persistence-adr]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

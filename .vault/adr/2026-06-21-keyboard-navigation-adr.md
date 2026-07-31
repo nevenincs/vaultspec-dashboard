@@ -4,6 +4,7 @@ tags:
   - '#keyboard-navigation'
 date: '2026-06-21'
 modified: '2026-07-12'
+body_hash: 'sha256:b43d691981cc968c11e38f657aa8afc4363ada6da3e47ec67cf0340743cb9fbf'
 related:
   - "[[2026-06-21-keyboard-navigation-research]]"
 ---

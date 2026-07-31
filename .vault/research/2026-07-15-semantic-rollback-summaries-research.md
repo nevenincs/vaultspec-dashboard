@@ -4,6 +4,7 @@ tags:
   - '#semantic-rollback-summaries'
 date: '2026-07-15'
 modified: '2026-07-15'
+body_hash: 'sha256:e852d4b76b63e3c609a7567934015dc0e5ab18d1a4c1d762e770bd3e895af263'
 related:
   - '[[2026-07-14-frontend-localization-adr]]'
   - '[[2026-06-29-agentic-authoring-api-contract-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#ledgered-edit-migration'
 date: '2026-07-09'
 modified: '2026-07-12'
+body_hash: 'sha256:97a41a2562f8ea233614289b3153ffcb76d2e1e79fab87d550e3296353b65db5'
 related:
   - "[[2026-07-09-ledgered-edit-migration-adr]]"
 ---

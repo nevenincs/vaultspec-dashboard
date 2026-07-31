@@ -4,6 +4,7 @@ tags:
   - '#dashboard-optimization'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:b5d139a21975e4caa8b9c80b0851ea366ab248768f87b9b6c74250a12018138f'
 related:
   - "[[2026-06-13-dashboard-optimization-research]]"
   - "[[2026-06-13-frontend-state-system-reference]]"

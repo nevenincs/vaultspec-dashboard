@@ -4,6 +4,7 @@ tags:
   - '#dashboard-design-adoption'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:568babb384f881cd06ba7db46a2e9d2d10e626001112b43b2460b209d94261b9'
 related:
   - "[[2026-06-14-dashboard-design-adoption-plan]]"
   - "[[2026-06-14-dashboard-design-language-adr]]"

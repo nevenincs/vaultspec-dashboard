@@ -4,6 +4,7 @@ tags:
   - '#mobile-enrichment'
 date: '2026-07-09'
 modified: '2026-07-09'
+body_hash: 'sha256:730a24616383b491541b7141e4fb4a8316a50fefc51217a3bf3045c7386011de'
 step_id: 'S02'
 related:
   - "[[2026-07-08-mobile-enrichment-plan]]"

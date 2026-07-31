@@ -9,6 +9,7 @@ related:
 promoted_to:
   - 'rule:graph-canvas-is-portal-pinned-never-reparented'
 modified: '2026-07-12'
+body_hash: 'sha256:e13c760e207c66ea795bd483300ab39b07acb8448488d9b328b6604e5adde06e'
 ---
 
 # `editor-dock-workspace` audit: `dockable tabbed editor workspace review`

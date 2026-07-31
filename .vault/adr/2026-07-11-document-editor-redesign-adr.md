@@ -4,6 +4,7 @@ tags:
   - '#document-editor-redesign'
 date: '2026-07-11'
 modified: '2026-07-17'
+body_hash: 'sha256:2d4b976da6221306cf8692ce6d07e24474e7e97027497fad815c044ecfe0fbbf'
 related:
   - '[[2026-06-18-editor-dock-workspace-research]]'
 ---

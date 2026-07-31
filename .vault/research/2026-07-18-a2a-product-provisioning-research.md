@@ -4,6 +4,7 @@ tags:
   - '#a2a-product-provisioning'
 date: '2026-07-18'
 modified: '2026-07-21'
+body_hash: 'sha256:7fabe6aa177852217b2b32deb7aaeb97edd8ef03b6ae09d93063233dd106d690'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-08-distribution-channels-adr]]"

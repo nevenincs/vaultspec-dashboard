@@ -4,6 +4,7 @@ tags:
   - '#scene-render-review'
 date: '2026-07-02'
 modified: '2026-07-17'
+body_hash: 'sha256:08b025a696afc1168625e2bbcfd4615e5854c7c207848ea3ff5ae522da73b203'
 tier: L2
 related:
   - '[[2026-07-02-scene-render-review-audit]]'

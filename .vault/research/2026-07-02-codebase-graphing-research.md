@@ -4,6 +4,7 @@ tags:
   - '#codebase-graphing'
 date: '2026-07-02'
 modified: '2026-07-02'
+body_hash: 'sha256:21aaef5234073a32ff94ead93dca7ca50d6a53728b8fddac2747760389b7ae07'
 related:
   - '[[2026-06-16-code-artifact-nodes-adr]]'
   - '[[2026-06-14-dashboard-code-tree-adr]]'

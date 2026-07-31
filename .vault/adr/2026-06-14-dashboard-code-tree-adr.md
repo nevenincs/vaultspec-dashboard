@@ -4,6 +4,7 @@ tags:
   - '#dashboard-code-tree'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:20b3e2a0d13cef14007f97c776b674f490387f4047aadb7807068c29bd7f5cb7'
 related:
   - "[[2026-06-14-dashboard-left-rail-research]]"
   - "[[2026-06-14-dashboard-sidebar-adr]]"

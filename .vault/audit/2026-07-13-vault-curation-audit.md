@@ -4,6 +4,7 @@ tags:
   - '#vault-curation'
 date: '2026-07-13'
 modified: '2026-07-13'
+body_hash: 'sha256:21716ddba311d89748ac52ecfeb359d3201f447642c7f21f8b528e331ab48a63'
 related:
   - '[[2026-06-16-code-artifact-nodes-adr]]'
   - '[[2026-06-16-graph-force-stability-adr]]'

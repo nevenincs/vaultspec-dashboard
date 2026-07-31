@@ -4,6 +4,7 @@ tags:
   - '#ledgered-edit-migration'
 date: '2026-07-09'
 modified: '2026-07-13'
+body_hash: 'sha256:4abf7684ed7746bc5bc1d18e39baf43d8dda3acc45cc48170a55457b07343a9e'
 related:
   - "[[2026-07-02-agentic-operation-modes-adr]]"
   - "[[2026-06-29-agentic-security-provenance-adr]]"

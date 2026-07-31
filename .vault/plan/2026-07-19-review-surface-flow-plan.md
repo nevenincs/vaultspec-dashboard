@@ -4,6 +4,7 @@ tags:
   - '#review-surface-flow'
 date: '2026-07-19'
 modified: '2026-07-21'
+body_hash: 'sha256:46b34aebc8315fa4b5803eeae2120b9f5a116d89e06479208cb56d4e08133f5b'
 tier: L2
 related:
   - '[[2026-07-19-review-surface-flow-adr]]'

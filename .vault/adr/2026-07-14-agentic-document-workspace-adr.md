@@ -4,6 +4,7 @@ tags:
   - '#agentic-document-workspace'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:9373db43851f67544eb27ae2b39b809dbea27a1f254baa3ae320aad75a001a27'
 related:
   - "[[2026-07-14-agentic-document-workspace-research]]"
   - "[[2026-07-14-agentic-document-offering-research]]"

@@ -4,6 +4,7 @@ tags:
   - '#universal-data-loading'
 date: '2026-07-11'
 modified: '2026-07-11'
+body_hash: 'sha256:fed0a5870c5d0e484731afbb86e158229e2af96f17cef4e23000358f5d2ea25e'
 step_id: 'S01'
 related:
   - "[[2026-07-11-universal-data-loading-plan]]"

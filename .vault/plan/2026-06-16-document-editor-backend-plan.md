@@ -4,6 +4,7 @@ tags:
   - '#document-editor-backend'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:fb511778d8829e1e38ae97a72fbe0107a7ff53ebc3261cd894ef5d833166b4fd'
 tier: L3
 related:
   - '[[2026-06-16-document-editor-backend-adr]]'

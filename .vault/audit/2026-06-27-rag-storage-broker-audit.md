@@ -4,6 +4,7 @@ tags:
   - '#rag-storage-broker'
 date: '2026-06-27'
 modified: '2026-07-12'
+body_hash: 'sha256:746d92b9e72a3ed075064b372b84713ff2b56515805536a92aacf771d1bfe2f5'
 related:
   - "[[2026-06-27-rag-storage-broker-plan]]"
 ---

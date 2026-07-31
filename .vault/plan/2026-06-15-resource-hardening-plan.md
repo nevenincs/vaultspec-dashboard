@@ -4,6 +4,7 @@ tags:
   - '#resource-hardening'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:e45a63cc05b11f04a5b1d752bb544313a7f62f607ff03c500cf2b441d9b1471d'
 tier: L2
 related:
   - '[[2026-06-15-resource-hardening-adr]]'

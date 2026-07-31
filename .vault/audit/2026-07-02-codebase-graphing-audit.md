@@ -4,6 +4,7 @@ tags:
   - '#codebase-graphing'
 date: '2026-07-02'
 modified: '2026-07-02'
+body_hash: 'sha256:7b6d3330b2969e6f4009133549a43994c4c65943015511f8d901382bace54b37'
 related:
   - "[[2026-07-02-codebase-graphing-plan]]"
   - "[[2026-07-02-codebase-graphing-adr]]"

@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:3e2bd67776a35b11c70c178804759cfa603724307ed39f2dc571797dcf5c3cea'
 related:
   - '[[2026-07-16-sse-reconnection-auto-adr]]'
   - '[[2026-07-16-sse-reconnection-auto-research]]'

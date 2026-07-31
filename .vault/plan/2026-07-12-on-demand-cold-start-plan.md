@@ -4,6 +4,7 @@ tags:
   - '#on-demand-cold-start'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:32c9c2a1bd93ff7f078207077401da794babdc218252902d749da2a67a0d04bb'
 tier: L1
 related:
   - '[[2026-07-12-on-demand-cold-start-adr]]'

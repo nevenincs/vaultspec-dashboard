@@ -9,6 +9,7 @@ related:
 promoted_to:
   - 'rule:default-chord-selection-vetting'
 modified: '2026-07-15'
+body_hash: 'sha256:540fe44510e6d3b82c0e1931414851531d4ddc9c161f4f269c85c53f53c8a5a2'
 ---
 # `keyboard-shortcut-conflict-review` audit: `conflict definition, denylist, and re-chords review` | APPROVED
 

@@ -4,6 +4,7 @@ tags:
   - '#graph-representation'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:ef7dd1c8190d41e4d83999fb4649bead756669a3c0a29c559d408905d9faa360'
 related:
   - "[[2026-06-14-graph-representation-research]]"
   - "[[2026-06-14-graph-representation-adr]]"

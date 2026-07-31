@@ -4,6 +4,7 @@ tags:
   - '#dashboard-live-state'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:3fb8cf8fb18c207a9173411b76019c1d4eb099107a3cd41d198026ffdefe8fdf'
 related:
   - "[[2026-06-12-dashboard-gui-adr]]"
   - "[[2026-06-13-dashboard-platform-adr]]"

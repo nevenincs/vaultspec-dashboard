@@ -4,6 +4,7 @@ tags:
   - '#mobile-unified-rail'
 date: '2026-07-12'
 modified: '2026-07-12'
+body_hash: 'sha256:88389f9c1dd5a9a6a8fd1e0851781bc777fb820deb7a591308b4059c5c05bee0'
 related:
   - "[[2026-06-22-mobile-responsive-layout-adr]]"
   - "[[2026-07-08-mobile-enrichment-adr]]"

@@ -4,6 +4,7 @@ tags:
   - '#filter-consolidation'
 date: '2026-06-19'
 modified: '2026-06-19'
+body_hash: 'sha256:3da0119a3824ba5c7e932b9c75c42fb9d863a2464b16c736459336ec1e36d439'
 related:
   - '[[2026-06-19-filter-controls-research]]'
   - '[[2026-06-14-dashboard-left-rail-research]]'

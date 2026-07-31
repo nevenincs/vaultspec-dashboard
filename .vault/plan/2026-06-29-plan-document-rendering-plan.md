@@ -4,6 +4,7 @@ tags:
   - '#plan-document-rendering'
 date: '2026-06-29'
 modified: '2026-06-29'
+body_hash: 'sha256:1d8a18d68b8205e913e79642bbf4438f6b3e2717f31026ef26b9d6d194e789de'
 tier: L2
 related:
   - "[[2026-06-29-plan-document-rendering-adr]]"

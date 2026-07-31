@@ -4,6 +4,7 @@ tags:
   - '#dashboard-code-tree'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:a101f4b62c248122cf0a7d6b7e19e7a2a288bee047cc1bc8c2ff30789874b5e9'
 step_id: 'S05'
 related:
   - "[[2026-06-14-dashboard-code-tree-plan]]"

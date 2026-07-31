@@ -4,6 +4,7 @@ tags:
   - '#graph-viz-quality'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:ff5a8abc19f7c6fbcfaa6e54888c7cdf1fba611e106158a5edbf2f931423a06d'
 tier: L3
 related:
   - '[[2026-06-16-graph-viz-scorecard-adr]]'

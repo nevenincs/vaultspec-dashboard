@@ -4,6 +4,7 @@ tags:
   - '#release-automation'
 date: '2026-07-07'
 modified: '2026-07-08'
+body_hash: 'sha256:497e6134f0fcb35c5804aa0c6041393550756bfbbf8de31fb9ce4ccaa9e2386a'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-04-dashboard-packaging-research]]"

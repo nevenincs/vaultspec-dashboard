@@ -4,6 +4,7 @@ tags:
   - '#resource-hardening'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:f7013186d899b606c7d9630b5e94a6112fa73630a75167547f63c89772c40caf'
 related:
   - "[[2026-06-15-resource-hardening-research]]"
   - "[[2026-06-15-performance-sweep-research]]"

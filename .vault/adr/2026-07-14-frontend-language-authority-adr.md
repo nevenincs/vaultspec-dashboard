@@ -4,6 +4,7 @@ tags:
   - '#frontend-language-authority'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:b574e804e555ce8d669fe2a51c3b0a0acf80615c2f171336e2e8949f7514c9ff'
 related:
   - "[[2026-07-14-frontend-localization-research]]"
 ---

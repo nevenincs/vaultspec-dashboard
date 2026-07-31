@@ -4,6 +4,7 @@ tags:
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
 modified: '2026-07-15'
+body_hash: 'sha256:54c68557a9fca89675b380ee46b4d63761d2690c6e0d98298b99b60fac546c41'
 related:
   - '[[2026-06-19-keyboard-action-system-adr]]'
   - '[[2026-06-21-keyboard-navigation-adr]]'

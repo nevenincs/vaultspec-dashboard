@@ -4,6 +4,7 @@ tags:
   - '#dashboard-left-rail'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:7750d5243c123f9088f1095af4e9b45a650171a13925c14ce465124c1c94086b'
 tier: L2
 related:
   - '[[2026-06-14-dashboard-left-rail-adr]]'

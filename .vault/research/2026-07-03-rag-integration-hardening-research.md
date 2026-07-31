@@ -4,6 +4,7 @@ tags:
   - '#rag-integration-hardening'
 date: '2026-07-03'
 modified: '2026-07-12'
+body_hash: 'sha256:e50ca1c99d69c970698f37a74dc3fc199ee215209071ec8d2d509a3062f1e7f9'
 related:
   - '[[2026-06-14-dashboard-rag-search-adr]]'
   - '[[2026-06-16-rag-control-plane-adr]]'

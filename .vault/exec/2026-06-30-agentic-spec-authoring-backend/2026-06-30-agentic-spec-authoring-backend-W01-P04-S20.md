@@ -4,6 +4,7 @@ tags:
   - '#agentic-spec-authoring-backend'
 date: '2026-07-01'
 modified: '2026-07-01'
+body_hash: 'sha256:6bc2c1e72b33127001463fccae758ca763470065ce84e22834e02fb960f5ef3b'
 step_id: 'S20'
 related:
   - "[[2026-06-30-agentic-spec-authoring-backend-plan]]"

@@ -8,6 +8,7 @@ related:
 supersedes:
   - '2026-06-16-code-artifact-nodes-adr'
 modified: '2026-07-13'
+body_hash: 'sha256:1ee89512030d34997ac81869c2131a048d11b6ecd29ca0fcea2aedf012fceffe'
 ---
 # `codebase-graphing` adr: `a disconnected code graph corpus served beside the vault LinkageGraph` | (**status:** `accepted`)
 

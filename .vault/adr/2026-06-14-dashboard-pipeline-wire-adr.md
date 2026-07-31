@@ -4,6 +4,7 @@ tags:
   - '#dashboard-pipeline-wire'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:2feeb2b741b6037f53e3b1051993c5bd703bb7c51ea6b5b34e5db2fb342d7836'
 related:
   - "[[2026-06-14-dashboard-activity-rail-research]]"
   - "[[2026-06-14-dashboard-pipeline-status-adr]]"

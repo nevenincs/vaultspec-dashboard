@@ -4,6 +4,7 @@ tags:
   - '#graph-scale-hardening'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:5dfc0dea6939528f7df3e041538949044e23c0ddc380d9967cd8160ee1336ca1'
 tier: L2
 related:
   - '[[2026-06-13-graph-scale-hardening-adr]]'

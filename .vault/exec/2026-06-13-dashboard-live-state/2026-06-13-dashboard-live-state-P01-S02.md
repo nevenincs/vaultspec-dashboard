@@ -4,6 +4,7 @@ tags:
   - '#dashboard-live-state'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:f17cfe809ad0aeb371e08e2046b1747c7f8be337629528f3350a9b99b376b6ec'
 step_id: 'S02'
 related:
   - "[[2026-06-13-dashboard-live-state-plan]]"

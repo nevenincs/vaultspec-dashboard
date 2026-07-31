@@ -4,6 +4,7 @@ tags:
   - '#mobile-enrichment'
 date: '2026-07-09'
 modified: '2026-07-12'
+body_hash: 'sha256:137423f443bafcda2281d69a515e899c331cd586a3011835ff27e9f85c726513'
 related:
   - '[[2026-07-08-mobile-enrichment-adr]]'
   - '[[2026-07-08-mobile-enrichment-plan]]'

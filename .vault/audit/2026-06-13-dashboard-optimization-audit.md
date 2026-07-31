@@ -4,6 +4,7 @@ tags:
   - '#dashboard-optimization'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:d24f96abfdfd4f4752760bfcd76df5c0f628770af88997dacd5ada491b2b80ed'
 related:
   - '[[2026-06-13-dashboard-optimization-plan]]'
   - '[[2026-06-13-dashboard-optimization-adr]]'

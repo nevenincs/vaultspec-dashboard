@@ -4,6 +4,7 @@ tags:
   - '#dashboard-design-language'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:7d25b9f005f4a391b5fb8cce414aac72e7bd3b53afe45d6520618c195d7319f8'
 related:
   - "[[2026-06-14-dashboard-design-language-research]]"
 ---

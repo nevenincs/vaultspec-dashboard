@@ -4,6 +4,7 @@ tags:
   - '#plan-structure-tolerance'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:a8580bc77cfa3c76169b5dbe39ae9ef514d6542516e02c6f8dff72fafbd503a3'
 related:
   - "[[2026-06-14-dashboard-pipeline-wire-adr]]"
   - "[[2026-06-15-dashboard-pipeline-status-audit]]"

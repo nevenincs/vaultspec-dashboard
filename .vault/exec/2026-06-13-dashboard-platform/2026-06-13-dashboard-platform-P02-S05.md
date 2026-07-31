@@ -4,6 +4,7 @@ tags:
   - '#dashboard-platform'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:d00b3270e687abda6ec6e200fae96808ee83127c0c995be09494fe4fb8d0c987'
 step_id: 'S05'
 related:
   - "[[2026-06-13-dashboard-platform-plan]]"

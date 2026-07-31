@@ -4,6 +4,7 @@ tags:
   - '#engine-hardening'
 date: '2026-06-13'
 modified: '2026-06-15'
+body_hash: 'sha256:696567df56c367593b904383cfe8a9201c30e1dd5432f38435231b88f52658a6'
 related:
   - "[[2026-06-13-engine-hardening-research]]"
   - "[[2026-06-12-vaultspec-engine-adr]]"

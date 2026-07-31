@@ -4,6 +4,7 @@ tags:
   - '#status-worktree-latency'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:9af637f6b6022f863f167fc142c1026c6632b29f2a43e5b03579742a99502999'
 tier: L2
 related:
   - '[[2026-06-16-status-worktree-latency-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#syntax-highlighting'
 date: '2026-07-06'
 modified: '2026-07-06'
+body_hash: 'sha256:f62162efda4db8ce6ac575c0aad4c246c3a8671de6c0d3e227514885e70898ce'
 related:
   - "[[2026-06-16-review-rail-viewers-adr]]"
   - "[[2026-06-18-editor-dock-workspace-plan]]"

@@ -9,6 +9,7 @@ related:
 promoted_to:
   - 'rule:settings-are-schema-driven-from-one-registry'
 modified: '2026-07-12'
+body_hash: 'sha256:2c87a4695c2b8350cfd747c88e208114f782f711cd4ecccc67de36334ee3a56c'
 ---
 
 # `dashboard-settings` audit: `code review and revision`

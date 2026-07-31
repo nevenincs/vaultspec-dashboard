@@ -4,6 +4,7 @@ tags:
   - '#dashboard-command-palette'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:901d81021935c7ec9430d162cb8412b166b3ec8bb7d2cac2182f9993ce050a0b'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

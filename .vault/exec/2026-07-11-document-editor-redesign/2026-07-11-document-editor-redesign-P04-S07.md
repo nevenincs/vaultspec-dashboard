@@ -4,6 +4,7 @@ tags:
   - '#document-editor-redesign'
 date: '2026-07-11'
 modified: '2026-07-12'
+body_hash: 'sha256:f1758abb9abef70e507debed8aeec19ec185ec7f508b098e4e9f108e3d3dd948'
 step_id: 'S07'
 related:
   - "[[2026-07-11-document-editor-redesign-plan]]"

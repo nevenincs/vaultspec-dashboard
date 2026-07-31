@@ -4,6 +4,7 @@ tags:
   - '#search-providers'
 date: '2026-07-03'
 modified: '2026-07-12'
+body_hash: 'sha256:aafcc5a113c718ff8dfdc314e70349b45370982da45b87aaef80c74a29be73b9'
 tier: L2
 related:
   - '[[2026-07-03-search-providers-adr]]'

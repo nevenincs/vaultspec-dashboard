@@ -8,6 +8,7 @@ related:
 promoted_to:
   - 'rule:one-filter-authority-every-corpus-view-consumes-it'
 modified: '2026-07-12'
+body_hash: 'sha256:3f42d525f10b41541e39deedb1a210d17bda7ec24002b3b48988ce0becc663dd'
 ---
 # `unified-filter-plane` audit: `unified filter plane review`
 

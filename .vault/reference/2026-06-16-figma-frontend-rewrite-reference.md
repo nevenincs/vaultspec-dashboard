@@ -4,6 +4,7 @@ tags:
   - '#figma-frontend-rewrite'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:68dd4f62ae17b3063aa407e4cf4b42ae3320b6c38926a219a42ae1891a8490b2'
 related: []
 ---
 

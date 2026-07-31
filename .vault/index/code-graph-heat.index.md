@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:6f208fa0a1fc75ea55fb2f562008d0e94833155c24b353952235b2c687f12cb8'
 related:
   - '[[2026-07-02-code-graph-heat-adr]]'
   - '[[2026-07-02-code-graph-heat-research]]'

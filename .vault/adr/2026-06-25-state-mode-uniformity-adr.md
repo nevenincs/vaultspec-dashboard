@@ -4,6 +4,7 @@ tags:
   - '#state-mode-uniformity'
 date: '2026-06-25'
 modified: '2026-07-12'
+body_hash: 'sha256:4a7d152ddb8c34d20ec22e3a3bcfbb66fd6409dae0d53db43238107b093f3277'
 related:
   - "[[2026-06-25-state-mode-uniformity-research]]"
 ---

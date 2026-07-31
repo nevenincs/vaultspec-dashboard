@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:154952658f4df3c13ee6b146bee1fe7653bfacf88709ddcc1484eb302fdb599a'
 related:
   - '[[2026-06-27-rag-schema-gate-P01-S01]]'
   - '[[2026-06-27-rag-schema-gate-P01-S02]]'

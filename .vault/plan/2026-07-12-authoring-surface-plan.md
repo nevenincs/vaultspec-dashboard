@@ -4,6 +4,7 @@ tags:
   - '#authoring-surface'
 date: '2026-07-12'
 modified: '2026-07-13'
+body_hash: 'sha256:980ee4e7f2ad97d2e10876047ee80c4608ae713bf337ea7019aa51d8bd6885ef'
 tier: L3
 related:
   - '[[2026-07-12-authoring-surface-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#worktree-enumeration-sweep'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:6a47f8db2b89e27fa014af36ee5a79f75f16c55983d846ef04ff13e4db3b5fb5'
 tier: L2
 related:
   - '[[2026-06-16-status-worktree-latency-adr]]'

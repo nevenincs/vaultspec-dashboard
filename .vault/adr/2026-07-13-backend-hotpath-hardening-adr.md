@@ -4,6 +4,7 @@ tags:
   - '#backend-hotpath-hardening'
 date: '2026-07-13'
 modified: '2026-07-17'
+body_hash: 'sha256:c8ea8ef8297b643d52523a5259061a320b175a5b054801ee5be3e5b112552964'
 related:
   - "[[2026-06-16-backend-hotpath-hardening-research]]"
   - "[[2026-06-16-backend-hotpath-hardening-plan]]"

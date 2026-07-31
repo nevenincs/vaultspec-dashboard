@@ -4,6 +4,7 @@ tags:
   - '#graph-quality'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:731276066463424b4a8fea00efba44e197c23dc4fc64930bcac6662b6919dd0d'
 tier: L2
 related:
   - '[[2026-06-13-dashboard-optimization-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#temporal-graph-layout'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:126ee27daab4101732724f2eaed9ee3c652c01f78e4d5cdc530216d7528ff65b'
 step_id: 'S12'
 related:
   - "[[2026-06-17-temporal-graph-layout-plan]]"

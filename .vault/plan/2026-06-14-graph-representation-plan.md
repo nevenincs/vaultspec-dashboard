@@ -4,6 +4,7 @@ tags:
   - '#graph-representation'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:dfc370549fd67aa64959439225590bb00b35fe8d4b5d0cc6180a91ee7b3b8600'
 tier: L3
 related:
   - '[[2026-06-14-graph-representation-adr]]'

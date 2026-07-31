@@ -4,6 +4,7 @@ tags:
   - '#rag-console-review'
 date: '2026-07-02'
 modified: '2026-07-02'
+body_hash: 'sha256:0c4da8a52d52a1a3efa3af874152f1810961b316aea1c0dff29aa5a54d1849cf'
 related:
   - '[[2026-06-26-rag-service-management-adr]]'
   - '[[2026-06-26-rag-service-management-research]]'

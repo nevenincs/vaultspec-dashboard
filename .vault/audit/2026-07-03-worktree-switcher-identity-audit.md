@@ -4,6 +4,7 @@ tags:
   - '#worktree-switcher-identity'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:e0d7bc8a4aea7415afdfb2ee4a4aa4eedf1b1f7a7feaa1e1ea59002dd689d2ea'
 related: []
 ---
 

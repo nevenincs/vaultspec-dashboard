@@ -4,6 +4,7 @@ tags:
   - '#keyboard-shortcut-conflict-review'
 date: '2026-07-15'
 modified: '2026-07-17'
+body_hash: 'sha256:a5e3c05d8ab3752729374682881808c1b43f727364479a782fa8494f8b44d084'
 tier: L2
 related:
   - '[[2026-07-15-keyboard-shortcut-conflict-review-adr]]'

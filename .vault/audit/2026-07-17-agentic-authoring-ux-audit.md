@@ -4,6 +4,7 @@ tags:
   - '#agentic-authoring-ux'
 date: '2026-07-17'
 modified: '2026-07-17'
+body_hash: 'sha256:72162cbddf78f0f6048c8e3289ee63fe35986e6e1edc8cfd88a114d498875f3a'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-16-agentic-authoring-ux-plan]]"

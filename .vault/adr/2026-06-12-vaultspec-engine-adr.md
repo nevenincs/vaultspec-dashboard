@@ -4,6 +4,7 @@ tags:
   - '#vaultspec-engine'
 date: '2026-06-12'
 modified: '2026-06-15'
+body_hash: 'sha256:cc953c5c2a7a49b38a3524d4476741bad84a264bcc16632fd0c941d595fa9cfc'
 related:
   - "[[2026-06-12-dashboard-foundation-research]]"
 ---

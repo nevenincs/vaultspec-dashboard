@@ -4,6 +4,7 @@ tags:
   - '#node-graph-rework'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:df4857e9d614492639af5133cacc5ad870e2b8e66af6ae33cc599729228bda44'
 tier: L2
 related:
   - '[[2026-06-17-node-graph-rework-adr]]'

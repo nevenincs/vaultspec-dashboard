@@ -4,6 +4,7 @@ tags:
   - '#rag-integration-hardening'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:b6c4d72326409fc18eafc75b05809aab5cb526636901ee4c8837c3bf7f5fa9d0'
 step_id: 'S13'
 related:
   - "[[2026-07-03-rag-integration-hardening-plan]]"

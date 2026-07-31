@@ -4,6 +4,7 @@ tags:
   - '#dashboard-left-rail'
 date: '2026-06-14'
 modified: '2026-06-22'
+body_hash: 'sha256:24e664355892c8135de600bab25e4a8e237e6b71e4658ad9d37c9ef91bed97b4'
 related:
   - "[[2026-06-12-dashboard-foundation-reference]]"
   - "[[2026-06-14-dashboard-sidebar-adr]]"

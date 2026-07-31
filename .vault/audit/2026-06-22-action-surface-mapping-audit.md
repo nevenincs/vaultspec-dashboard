@@ -4,6 +4,7 @@ tags:
   - '#action-surface-mapping'
 date: '2026-06-22'
 modified: '2026-07-12'
+body_hash: 'sha256:7a053296ff0d912cd0924d9500e7fd33511cee8e6fefa6cdcfc66324cf98afa1'
 related:
   - "[[2026-06-22-action-surface-mapping-plan]]"
   - "[[2026-06-21-command-palette-actions-adr]]"

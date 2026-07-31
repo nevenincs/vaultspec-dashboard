@@ -4,6 +4,7 @@ tags:
   - '#rag-integration-hardening'
 date: '2026-07-03'
 modified: '2026-07-12'
+body_hash: 'sha256:ac7b32a1e34bc172157924e859edb3b531f1cbf63411c25c6d41ce15d5f3855d'
 tier: L2
 related:
   - '[[2026-07-03-rag-integration-hardening-adr]]'

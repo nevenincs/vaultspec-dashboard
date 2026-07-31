@@ -4,6 +4,7 @@ tags:
   - '#worktree-switcher-identity'
 date: '2026-07-03'
 modified: '2026-07-17'
+body_hash: 'sha256:63121c8f224b365b8e0ac7ee1b085be7eac58631f075bb8f9b15fab4a9a832f0'
 related:
   - '[[2026-07-03-worktree-switcher-identity-audit]]'
   - '[[2026-06-14-dashboard-worktree-switcher-adr]]'

@@ -4,6 +4,7 @@ tags:
   - '#mobile-enrichment'
 date: '2026-07-08'
 modified: '2026-07-12'
+body_hash: 'sha256:268d5a4d9c8966fc5846804b6ab1b264f7e442977a0335874a957a3e9588015d'
 related:
   - '[[2026-06-22-mobile-responsive-layout-research]]'
   - '[[2026-06-22-mobile-responsive-layout-adr]]'

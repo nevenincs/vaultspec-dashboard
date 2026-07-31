@@ -4,6 +4,7 @@ tags:
   - '#dashboard-pipeline-status'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:ecfcdaae4f38f0f38f7ca7a22de4d6956961eb085e5c254b09c3badb7871d063'
 tier: L3
 related:
   - '[[2026-06-14-dashboard-pipeline-status-adr]]'

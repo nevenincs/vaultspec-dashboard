@@ -4,6 +4,7 @@ tags:
   - '#graph-scale-hardening'
 date: '2026-06-13'
 modified: '2026-06-13'
+body_hash: 'sha256:494f9341a6f64e3bdef3aa445bd1c86bfcbdf76e7a70a27ea38c54da5b5c8710'
 related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
   - '[[2026-06-12-vaultspec-engine-adr]]'

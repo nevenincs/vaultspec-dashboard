@@ -4,6 +4,7 @@ tags:
   - '#management-engine-optimization'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:5444ae0d65e9f5275997826d42e3806839a6609360528d3011407ce2aebd395c'
 tier: L3
 related:
   - '[[2026-06-17-management-engine-optimization-adr]]'

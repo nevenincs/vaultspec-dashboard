@@ -4,6 +4,7 @@ tags:
   - '#dashboard-context-menus'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:1604b858c514d804b6504ab6b9f6e71e60251f21007b6f25a34fad8133e55615'
 related:
   - "[[2026-06-14-dashboard-command-palette-adr]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

@@ -4,6 +4,7 @@ tags:
   - '#dashboard-gui'
 date: '2026-06-12'
 modified: '2026-06-15'
+body_hash: 'sha256:556b62ddb2f17706d62a12c6302bb4f16fa534054d08825884e343b6493eba9d'
 related:
   - '[[2026-06-12-dashboard-gui-plan]]'
 ---

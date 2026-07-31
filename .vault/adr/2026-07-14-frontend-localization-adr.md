@@ -4,6 +4,7 @@ tags:
   - '#frontend-localization'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:96878986619216b6d6cd51306d3a6ee850e94738697749b5869b939c4951d26a'
 related:
   - "[[2026-07-14-frontend-localization-research]]"
 ---

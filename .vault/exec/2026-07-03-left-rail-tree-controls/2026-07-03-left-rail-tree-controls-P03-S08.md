@@ -4,6 +4,7 @@ tags:
   - '#left-rail-tree-controls'
 date: '2026-07-04'
 modified: '2026-07-12'
+body_hash: 'sha256:aace189c760d34f0e4923f62486ae86a702f80f029507fdd99d10ce499b1f73c'
 step_id: 'S08'
 related:
   - "[[2026-07-03-left-rail-tree-controls-plan]]"

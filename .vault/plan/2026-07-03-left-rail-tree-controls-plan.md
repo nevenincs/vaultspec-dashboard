@@ -4,6 +4,7 @@ tags:
   - '#left-rail-tree-controls'
 date: '2026-07-03'
 modified: '2026-07-12'
+body_hash: 'sha256:827394cf172cc07c8545d97e06e97e30fa2ee65e443326fd4ad586a3ba38d646'
 tier: L2
 related:
   - '[[2026-07-03-left-rail-tree-controls-adr]]'

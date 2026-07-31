@@ -4,6 +4,7 @@ tags:
   - '#review-rail-viewers'
 date: '2026-06-16'
 modified: '2026-06-16'
+body_hash: 'sha256:bb89d42fbaf630e3285935b7fa52b91eaec88b7f4bc0bdfc6df2c8b6af497dd3'
 related:
   - "[[2026-06-16-review-rail-viewers-research]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

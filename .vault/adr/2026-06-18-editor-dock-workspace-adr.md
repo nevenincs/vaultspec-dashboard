@@ -4,6 +4,7 @@ tags:
   - '#editor-dock-workspace'
 date: '2026-06-18'
 modified: '2026-07-12'
+body_hash: 'sha256:407b373dab3566550318f590b3e375442812b8912a52ccf181f54e08e738e349'
 related:
   - '[[2026-06-18-editor-dock-workspace-research]]'
   - '[[2026-06-16-document-editor-backend-adr]]'

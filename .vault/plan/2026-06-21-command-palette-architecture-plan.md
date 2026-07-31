@@ -4,6 +4,7 @@ tags:
   - '#command-palette-architecture'
 date: '2026-06-21'
 modified: '2026-07-12'
+body_hash: 'sha256:df645104eaad6063110540adf7133cb831cdad19cd61bed6b8bbdcec13e62d0a'
 tier: L3
 related:
   - '[[2026-06-21-command-palette-architecture-research]]'

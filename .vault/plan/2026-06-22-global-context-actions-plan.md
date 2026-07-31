@@ -4,6 +4,7 @@ tags:
   - '#global-context-actions'
 date: '2026-06-22'
 modified: '2026-07-12'
+body_hash: 'sha256:0a271e5f44a5ca59af0e08325fd634d540347a99b5192df7aecd7a4bf6ef4937'
 tier: L2
 related:
   - '[[2026-06-22-global-context-actions-adr]]'

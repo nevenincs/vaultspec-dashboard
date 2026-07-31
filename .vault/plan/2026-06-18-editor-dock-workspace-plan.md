@@ -4,6 +4,7 @@ tags:
   - '#editor-dock-workspace'
 date: '2026-06-18'
 modified: '2026-07-12'
+body_hash: 'sha256:cd4fe04420b020aefd692b621889cc555ba3178c2afa48b046d04772906c2aef'
 tier: L2
 related:
   - '[[2026-06-18-editor-dock-workspace-adr]]'

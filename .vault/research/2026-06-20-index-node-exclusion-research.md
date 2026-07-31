@@ -4,6 +4,7 @@ tags:
   - '#index-node-exclusion'
 date: '2026-06-20'
 modified: '2026-06-20'
+body_hash: 'sha256:9f70fb97b13663468ac785c7c19957cab4bd4d6dd56190bbb70c413e38f9eb0d'
 related:
   - '[[2026-06-20-terminology-standardization-adr]]'
   - '[[2026-06-20-terminology-standardization-research]]'

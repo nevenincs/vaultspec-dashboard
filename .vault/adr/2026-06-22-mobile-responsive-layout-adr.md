@@ -4,6 +4,7 @@ tags:
   - '#mobile-responsive-layout'
 date: '2026-06-22'
 modified: '2026-07-12'
+body_hash: 'sha256:6e87883f6ad077e81aba6f46c8dbc57301d060b12bbfa5ba3d44e9685c7746c3'
 related:
   - '[[2026-06-22-mobile-responsive-layout-research]]'
 ---

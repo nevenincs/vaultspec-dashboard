@@ -4,6 +4,7 @@ tags:
   - '#semantic-rollback-summaries'
 date: '2026-07-15'
 modified: '2026-07-15'
+body_hash: 'sha256:476c1a05a6aff4424dbb704b286777fa191e9babe3ba932c4dd00e77d1cd5104'
 related:
   - "[[2026-07-15-semantic-rollback-summaries-research]]"
   - "[[2026-07-14-frontend-localization-adr]]"

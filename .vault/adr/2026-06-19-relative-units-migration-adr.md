@@ -4,6 +4,7 @@ tags:
   - '#relative-units-migration'
 date: '2026-06-19'
 modified: '2026-07-12'
+body_hash: 'sha256:ac62daf15e99a2554614a96e937dd53d2825bddb7a0d3d52ff9323bf1f31fbec'
 related:
   - "[[2026-06-19-relative-units-migration-research]]"
 ---

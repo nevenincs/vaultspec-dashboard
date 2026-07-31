@@ -4,6 +4,7 @@ tags:
   - '#command-palette-architecture'
 date: '2026-06-21'
 modified: '2026-07-12'
+body_hash: 'sha256:299b16ae6de9c19198824e01b30f2c7fd43713ba0479620df97b0723e1084772'
 related:
   - "[[2026-06-21-command-palette-planes-adr]]"
 ---

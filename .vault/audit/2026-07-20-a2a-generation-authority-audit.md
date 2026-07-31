@@ -4,6 +4,7 @@ tags:
   - '#a2a-generation-authority'
 date: '2026-07-20'
 modified: '2026-07-20'
+body_hash: 'sha256:46013d0d3da3f0a65dd6bb7ad3a39697cff6b2c545d60810b9d3d232330e1294'
 related:
   - "[[2026-07-20-a2a-generation-authority-adr]]"
 ---

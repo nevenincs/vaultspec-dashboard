@@ -4,6 +4,7 @@ tags:
   - '#a2a-orchestration-edge'
 date: '2026-07-19'
 modified: '2026-07-19'
+body_hash: 'sha256:b7ef339f124c9036295d0c75f4ce9d19879d723e01aac60b0262aafbccba3bf3'
 step_id: 'S21'
 related:
   - "[[2026-07-17-a2a-orchestration-edge-plan]]"

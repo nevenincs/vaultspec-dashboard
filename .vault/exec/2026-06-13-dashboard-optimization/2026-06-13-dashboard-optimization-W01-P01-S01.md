@@ -4,6 +4,7 @@ tags:
   - '#dashboard-optimization'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:f27433a1e2e490a7975dd91e80ff133e88588f6a27aea7228c8237506d528b81'
 step_id: 'S01'
 related:
   - "[[2026-06-13-dashboard-optimization-plan]]"

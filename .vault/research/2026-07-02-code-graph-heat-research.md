@@ -4,6 +4,7 @@ tags:
   - '#code-graph-heat'
 date: '2026-07-02'
 modified: '2026-07-12'
+body_hash: 'sha256:94540f9b2e51f203aa18139597d05ccb2b14ac3dcad87bd94b513b8d8ef225e5'
 related:
   - "[[2026-07-02-code-timeline-range-adr]]"
 ---

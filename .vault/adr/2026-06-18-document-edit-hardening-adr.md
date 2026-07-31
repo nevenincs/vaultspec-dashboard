@@ -4,6 +4,7 @@ tags:
   - '#document-edit-hardening'
 date: '2026-06-18'
 modified: '2026-07-12'
+body_hash: 'sha256:b07e685c594b482a22e8d793ce1968fd7ee7acba2d3809fd4d265a1fe53e8907'
 related:
   - "[[2026-06-18-document-edit-hardening-research]]"
   - "[[2026-06-16-document-editor-backend-adr]]"

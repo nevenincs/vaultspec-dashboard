@@ -4,6 +4,7 @@ tags:
   - '#frontend-localization'
 date: '2026-07-17'
 modified: '2026-07-17'
+body_hash: 'sha256:db4599f747248e17af85f00832a96d0b8ff719fd7939157cd86bcf286cb1871a'
 step_id: 'S99'
 related:
   - "[[2026-07-14-frontend-localization-plan]]"

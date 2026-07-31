@@ -4,6 +4,7 @@ tags:
   - '#workspace-picker-dialog'
 date: '2026-07-15'
 modified: '2026-07-17'
+body_hash: 'sha256:6a12ede2865427715f9e0014195e453be0477c640086d9f884c50dc7b3f7e9f1'
 step_id: 'S06'
 related:
   - "[[2026-07-15-workspace-picker-dialog-plan]]"

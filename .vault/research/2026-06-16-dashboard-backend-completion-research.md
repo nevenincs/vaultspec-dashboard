@@ -4,6 +4,7 @@ tags:
   - '#dashboard-backend-completion'
 date: '2026-06-16'
 modified: '2026-07-13'
+body_hash: 'sha256:c8cacd15cca58ee336c6d0fea24caa1f6624bd89c345f0f795f4b79baaf9286e'
 related:
   - '[[2026-06-16-missing-backend-inventory-research]]'
 ---

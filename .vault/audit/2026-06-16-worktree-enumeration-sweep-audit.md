@@ -4,6 +4,7 @@ tags:
   - '#worktree-enumeration-sweep'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:3eb1ac536e2e8350f70e8c61d3c5fb96eab3b7dae2063a56bab3ea4c0dc2329c'
 related:
   - "[[2026-06-16-worktree-enumeration-sweep-plan]]"
 ---

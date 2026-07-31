@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:91273dcc4d1b4a737448abd9f8802f4272602eb84adb57d61a323f80b8398625'
 related:
   - '[[2026-06-16-document-editor-backend-adr]]'
   - '[[2026-06-16-document-editor-backend-audit]]'

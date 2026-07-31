@@ -4,6 +4,7 @@ tags:
   - '#agentic-authoring-ux'
 date: '2026-07-16'
 modified: '2026-07-17'
+body_hash: 'sha256:1781e63d5cf461bb403e71c395543fa5a155ba04f11f505019c08e21ce9f473d'
 step_id: 'S07'
 related:
   - "[[2026-07-16-agentic-authoring-ux-plan]]"

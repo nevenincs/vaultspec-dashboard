@@ -25,6 +25,7 @@ related:
   - "[[2026-06-29-agentic-document-identity-adr]]"
 superseded_by: '2026-06-29-agentic-change-format-and-chunking-adr'
 modified: '2026-07-02'
+body_hash: 'sha256:92df89f912bf47c2996396abec1ea018b137a52da4befffe589730553f034014'
 ---
 # `agentic-document-chunk-management` adr: `revision scoped document chunk management` | (**status:** `superseded`)
 

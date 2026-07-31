@@ -4,6 +4,7 @@ tags:
   - '#dashboard-nav-controls'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:4f1896b49441347269691ec2aa69361241f50bc8fb64ee6b9fa89687a312be2b'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

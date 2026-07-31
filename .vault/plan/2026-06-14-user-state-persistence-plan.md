@@ -4,6 +4,7 @@ tags:
   - '#user-state-persistence'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:dbcd952bf0a4b39cb0742a98e83110b876a33cf6c1585b2cad0e7fb8f6e5dd84'
 tier: L3
 related:
   - '[[2026-06-14-user-state-persistence-adr]]'

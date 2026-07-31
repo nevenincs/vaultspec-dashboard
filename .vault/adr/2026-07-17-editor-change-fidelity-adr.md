@@ -4,6 +4,7 @@ tags:
   - '#editor-change-fidelity'
 date: '2026-07-17'
 modified: '2026-07-21'
+body_hash: 'sha256:451ec1829c80253c88250896c6eb3f9c7dbb3dd46f3d6a917620fff3aae046b4'
 related:
   - '[[2026-07-12-authoring-surface-research]]'
   - '[[2026-07-16-agentic-authoring-ux-research]]'

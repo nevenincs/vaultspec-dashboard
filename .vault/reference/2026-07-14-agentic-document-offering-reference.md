@@ -4,6 +4,7 @@ tags:
   - '#agentic-document-offering'
 date: '2026-07-14'
 modified: '2026-07-14'
+body_hash: 'sha256:e702f1bdae635b33727f426262e4053ebb73627ac96c9e112d4d269deef5be3d'
 related:
   - "[[2026-07-14-agentic-document-offering-research]]"
   - "[[2026-07-13-authoring-surface-reference]]"

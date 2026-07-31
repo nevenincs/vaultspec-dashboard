@@ -4,6 +4,7 @@ tags:
   - '#plan-document-rendering'
 date: '2026-06-29'
 modified: '2026-06-29'
+body_hash: 'sha256:356f2012dc26aa82f2e8f2d314a72fbc66e5338ba0782be5b966f409d307cc78'
 related:
   - "[[2026-06-29-plan-document-rendering-plan]]"
 ---

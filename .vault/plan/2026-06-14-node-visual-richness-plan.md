@@ -4,6 +4,7 @@ tags:
   - '#node-visual-richness'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:4671af7366b618a6115dca98be0259e30b7cbd92962817bdf22c7676645250d7'
 tier: L2
 related:
   - '[[2026-06-14-node-visual-richness-adr]]'

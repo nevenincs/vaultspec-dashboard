@@ -4,6 +4,7 @@ tags:
   - '#graph-semantic-embeddings'
 date: '2026-06-16'
 modified: '2026-07-13'
+body_hash: 'sha256:c98876150fafd7a25203ce5df50d20cba0991eddd407ff663c799d7e94785ce9'
 related:
   - "[[2026-06-16-graph-semantic-embeddings-research]]"
   - "[[2026-06-14-graph-representation-adr]]"

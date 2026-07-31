@@ -4,6 +4,7 @@ tags:
   - '#figma-design-bridge'
 date: '2026-06-15'
 modified: '2026-07-12'
+body_hash: 'sha256:bbe5b9c7459b710a14e8ee68fd8c598d2646e58dc11d1960875ab8c5931dc069'
 tier: L3
 related:
   - '[[2026-06-15-figma-design-bridge-adr]]'

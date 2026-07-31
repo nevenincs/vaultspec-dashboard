@@ -4,6 +4,7 @@ tags:
   - '#graph-viz-framework'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:3a1bd577e3e0709597a2488f0e45c4fb46107704c3217d3bfc6b28f408c2465c'
 tier: L3
 related:
   - '[[2026-06-16-graph-force-stability-adr]]'

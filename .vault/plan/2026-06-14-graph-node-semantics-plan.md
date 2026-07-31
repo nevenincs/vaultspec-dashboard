@@ -4,6 +4,7 @@ tags:
   - '#graph-node-semantics'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:ecf46a4438228c82b9ecb5c082f491aeee6757e0a3879c01a1e7a6362d7e23df'
 tier: L2
 related:
   - '[[2026-06-14-graph-node-semantics-adr]]'

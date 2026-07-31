@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:96612a1f26581e227e98570d27121381df403d64370b42a061a8dec549c8e59a'
 related:
   - '[[2026-06-14-dashboard-workspace-registry-P01-S01]]'
   - '[[2026-06-14-dashboard-workspace-registry-P01-S02]]'

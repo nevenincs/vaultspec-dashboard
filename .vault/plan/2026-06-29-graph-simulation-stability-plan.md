@@ -4,6 +4,7 @@ tags:
   - '#graph-simulation-stability'
 date: '2026-06-29'
 modified: '2026-06-29'
+body_hash: 'sha256:78b7735082d06d7a8c1b1f5ee3537ef6f1cfc72002c9800c19945a8e9d2e1b69'
 tier: L1
 related:
   - '[[2026-06-29-graph-simulation-stability-adr]]'

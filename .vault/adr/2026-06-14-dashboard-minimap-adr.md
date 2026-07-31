@@ -4,6 +4,7 @@ tags:
   - '#dashboard-minimap'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:b210f81f50487a01ca21307ce0644adaccbfdbc1b865f3a560fc77387f53f7ef'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

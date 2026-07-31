@@ -4,6 +4,7 @@ tags:
   - '#graph-node-representation'
 date: '2026-06-16'
 modified: '2026-07-12'
+body_hash: 'sha256:c95e10967ffc1d79f7fafc8f0e284397d5f826180d8839805ad8c1cfdd544f0a'
 related:
   - "[[2026-06-16-graph-viz-quality-research]]"
   - "[[2026-06-16-graph-viz-scorecard-adr]]"

@@ -4,6 +4,7 @@ tags:
   - '#dashboard-platform'
 date: '2026-06-13'
 modified: '2026-07-12'
+body_hash: 'sha256:c689c5bad228cdf5b836a84334665a5a3ffd5daca31fe9de819b00339872ac7e'
 related:
   - "[[2026-06-12-dashboard-gui-audit]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

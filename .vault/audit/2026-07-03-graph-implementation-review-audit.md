@@ -4,6 +4,7 @@ tags:
   - '#graph-implementation-review'
 date: '2026-07-03'
 modified: '2026-07-03'
+body_hash: 'sha256:85410cd36f84d89d42486c1bed07602fc5c341c42691a0564a78b06a0bc4446b'
 related:
   - "[[2026-07-03-graph-representation-adr]]"
   - "[[2026-07-03-graph-simulation-stability-reference]]"

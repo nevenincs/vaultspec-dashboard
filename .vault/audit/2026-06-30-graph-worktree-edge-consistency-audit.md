@@ -8,6 +8,7 @@ related:
 promoted_to:
   - 'rule:present-view-graph-reads-one-corpus-snapshot'
 modified: '2026-06-30'
+body_hash: 'sha256:c78b21a0096dba546dd29efa4a7630b397eceb003703302dd3ee865116dde799'
 ---
 # `graph-worktree-edge-consistency` audit: `review: present-view declared edges read the working tree`
 

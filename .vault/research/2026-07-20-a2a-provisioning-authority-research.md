@@ -4,6 +4,7 @@ tags:
   - '#a2a-provisioning-authority'
 date: '2026-07-20'
 modified: '2026-07-20'
+body_hash: 'sha256:d27a6547c8827fd355cbda04a3cf7c0e1897c2160dc3f3e11e0fdd12bd0120c6'
 related:
   - "[[2026-07-18-a2a-product-provisioning-adr]]"
   - "[[2026-07-20-a2a-generation-authority-adr]]"

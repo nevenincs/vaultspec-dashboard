@@ -4,6 +4,7 @@ tags:
   - '#graph-scale-hardening'
 date: '2026-06-13'
 modified: '2026-06-13'
+body_hash: 'sha256:938a92c8893f7985d5c3afa64544fb01fe91e64ff0dbeb2ca5ed669254e3d76d'
 related:
   - "[[2026-06-13-graph-scale-hardening-research]]"
   - "[[2026-06-12-dashboard-foundation-reference]]"

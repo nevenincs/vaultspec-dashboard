@@ -4,6 +4,7 @@ tags:
   - '#user-state-persistence'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:953173dc14d6bd1b623bbae04dc32ef96e314940981d60d89825f39c805da807'
 related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
   - '[[2026-06-12-dashboard-foundation-adr]]'

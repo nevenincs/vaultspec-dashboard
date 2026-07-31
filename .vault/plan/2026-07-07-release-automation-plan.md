@@ -4,6 +4,7 @@ tags:
   - '#release-automation'
 date: '2026-07-07'
 modified: '2026-07-07'
+body_hash: 'sha256:a972c78dc453e4aa6c91034eebe2bb0e18c88cbd5d67ff1297f0447b6c6a77bb'
 tier: L1
 related:
   - '[[2026-07-07-release-automation-adr]]'

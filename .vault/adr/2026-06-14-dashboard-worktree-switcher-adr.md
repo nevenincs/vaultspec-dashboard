@@ -4,6 +4,7 @@ tags:
   - '#dashboard-worktree-switcher'
 date: '2026-06-14'
 modified: '2026-06-14'
+body_hash: 'sha256:b91bed1fefd1a0a56d3ca7b9fdf50114c224a6f5a721323087d4035023d4d099'
 related:
   - "[[2026-06-14-dashboard-design-language-adr]]"
   - "[[2026-06-14-dashboard-iconography-adr]]"

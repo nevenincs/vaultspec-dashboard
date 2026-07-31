@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:f4ad35bd6ddede1edb36ca27a840356303ab371100dce333ce64a533453755d4'
 related:
   - '[[2026-06-18-document-edit-hardening-W01-P01-S01]]'
   - '[[2026-06-18-document-edit-hardening-W01-P01-S02]]'

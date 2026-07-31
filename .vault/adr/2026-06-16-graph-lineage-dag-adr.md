@@ -4,6 +4,7 @@ tags:
   - '#graph-lineage-dag'
 date: '2026-06-16'
 modified: '2026-07-13'
+body_hash: 'sha256:7a1c2191bc9adac7b15d2918eee6371097936fa1fbeb1dc18bf680f87ad9c022'
 related:
   - "[[2026-06-16-graph-lineage-dag-research]]"
   - "[[2026-06-14-graph-node-semantics-adr]]"

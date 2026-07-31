@@ -4,6 +4,7 @@ tags:
   - '#management-engine-optimization'
 date: '2026-06-17'
 modified: '2026-07-12'
+body_hash: 'sha256:c869fd479deec95c01fab07f8b52d5f06b2105586eda24049b7d3fe2e6591d93'
 related:
   - "[[2026-06-17-management-engine-optimization-plan]]"
 ---

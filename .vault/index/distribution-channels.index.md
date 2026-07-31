@@ -6,6 +6,7 @@ tags:
 date: '2026-07-30'
 modified: '2026-07-30'
 body_schema: 'body-v1'
+body_hash: 'sha256:9072f97b71959cc71fbe0331ed4d4d7dd4b96b51bed5bcaea528e74a9a6015e4'
 related:
   - '[[2026-07-08-distribution-channels-P01-S01]]'
   - '[[2026-07-08-distribution-channels-P01-S02]]'

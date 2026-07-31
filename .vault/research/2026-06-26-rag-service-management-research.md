@@ -4,6 +4,7 @@ tags:
   - '#rag-service-management'
 date: '2026-06-26'
 modified: '2026-07-12'
+body_hash: 'sha256:2531adda660b4c4dfff255473e569966b7b3c35deb3b507451c2ff74e12012a5'
 related:
   - '[[2026-06-12-dashboard-foundation-reference]]'
 ---

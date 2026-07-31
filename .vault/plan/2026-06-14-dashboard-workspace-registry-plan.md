@@ -4,6 +4,7 @@ tags:
   - '#dashboard-workspace-registry'
 date: '2026-06-14'
 modified: '2026-07-12'
+body_hash: 'sha256:862388c2b73388d7ed8f2baaa0d892f6a5663f7579ab09c1653c8b6efa843aa6'
 tier: L2
 related:
   - '[[2026-06-14-dashboard-workspace-registry-adr]]'

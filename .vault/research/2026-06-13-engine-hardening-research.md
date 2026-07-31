@@ -4,6 +4,7 @@ tags:
   - '#engine-hardening'
 date: '2026-06-13'
 modified: '2026-06-15'
+body_hash: 'sha256:18b81cf4eb70457eec31329701c0e4f18daf3dce6f5a419cded1a1da294b7f31'
 related: []
 ---
 
