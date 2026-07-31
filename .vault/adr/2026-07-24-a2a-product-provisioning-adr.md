@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-product-provisioning'
 date: '2026-07-24'
-modified: '2026-07-30'
+modified: '2026-07-31'
 related:
   - '[[2026-07-18-a2a-product-provisioning-research]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -83,6 +83,13 @@ is retired.
   publishes product artifacts; the a2a record assigns target-matrix and
   bundling ownership to the dashboard. A cross-repo binary fetch would recreate
   the never-wired capsule fetch under another name.
+  **THIS REJECTION'S PREMISE IS DISCHARGED — see Amendment. It rested on "a2a
+  no longer publishes product artifacts", which was true when written and is
+  now being changed at the product owner's direction: a2a will publish a
+  per-target binary. The rejection is not overruled; its premise no longer
+  holds. Its ONE substantive concern — that a cross-repo fetch recreates the
+  never-wired capsule fetch — is answered in the Amendment and is the thing to
+  hold the new design against.**
 
 ## Constraints
 
@@ -207,3 +214,60 @@ composition-time file digests instead of a second manifest chain.
 - If a2a's freeze recipe ever emits empty directories or links, generation
   verification refuses the tree — by design. The constraint flows upstream to
   the recipe, not downstream into a verifier exception.
+
+## Amendment: a2a publishes the binary; the dashboard consumes it
+
+Directed by the product owner, 2026-07-31: **"a2a must provide an artefact we
+can start stop and use its api."** There is to be no source coupling between the
+repositories.
+
+**What this reverses.** D1 and the chosen option both assign the FREEZE to the
+dashboard: our release pipeline checks out `nevenincs/vaultspec-a2a`, runs THEIR
+PyInstaller recipe on OUR runners, and pins their commit in
+`packaging/a2a-component.lock.json`. That commit pin was never a hash handshake
+between the products — it is the unavoidable consequence of building from
+source, since a checkout must name a revision. Under this amendment the pin
+disappears rather than loosens: we reference a released VERSION.
+
+**Why the original rejection no longer binds.** "Fetch pre-frozen binaries from
+an a2a release" was rejected on the factual premise that "a2a no longer
+publishes product artifacts". That was true and is verified still true today —
+`v0.1.0` and `v0.2.0` exist as releases with ZERO assets, and a2a has no build
+or publish workflow at all. The premise is being changed at the owner's
+direction, not argued away.
+
+**The concern that rejection raised is the real one, and the design must answer
+it.** It warned that a cross-repo binary fetch "would recreate the never-wired
+capsule fetch under another name" — and it was right that the capsule fetch
+failed as a fail-closed placeholder against a producer that never published.
+The difference is not optimism, it is the producer: a2a gains an actual release
+workflow, and the artifact contract is deterministic (fixed per-target archive
+names, a `.sha256` sidecar per archive, attached to the release for the tag).
+The fetch is only as good as the thing publishing, so the producer workflow
+lands FIRST and the consume path is written against a real artifact, never
+against a promise.
+
+**What the dashboard gains by giving up the build.** The source checkout, the
+freeze step, the PyInstaller dependency in our pipeline, the 60-minute build
+timeout and the component lock's commit pin all delete. Our release stops
+depending on a2a's build recipe not drifting under us, and our self-hosted fleet
+stops spending most of each release leg freezing someone else's code. a2a is
+PUBLIC, so its four targets build free on GitHub-hosted runners
+(`ubuntu-24.04`, `ubuntu-24.04-arm`, `macos-14`, `windows-2022`), each native —
+PyInstaller still cannot cross-compile, and that rule now binds on their side.
+
+**A requirement this amendment adds, which neither record previously carried.**
+The published artifact must be proven to START, STOP, and SERVE ITS API before
+it is published — not merely to print its version. a2a's current build smoke
+checks `--version`, the help tree, and the run-module allowlist, and never
+executes a lifecycle verb, so "build+smoke green" has been weak evidence about
+precisely the surface the dashboard depends on. The producer's release gate must
+start the gateway, reach `/health` and `/readiness`, stop it, and assert the
+process is gone.
+
+**Consequences.** D1's "dashboard-built" clause and D2's retirement list are
+superseded for the a2a component only; everything about the composite tree,
+generation authority, receipts, journal and lifecycle wiring stands unchanged —
+what changes is the PROVENANCE of one member, exactly as the 2026-07-24 pivot
+changed its SHAPE. `a2a-component.lock.json` becomes a version reference, and
+the plan's compose steps rewrite from build-then-bundle to fetch-verify-bundle.
