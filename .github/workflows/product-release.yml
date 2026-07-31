@@ -398,7 +398,28 @@ jobs:
           # manager-owned downgrade can only be proven against a real earlier
           # release; when there is none, this stays empty and the downgrade leg
           # fails closed downstream rather than being skipped.
-          published=$(gh release list --limit 50 --json tagName --jq '.[].tagName' 2>/dev/null | sed 's/^v//' || true)
+          #
+          # `gh` is REQUIRED here rather than optional, and its absence is a hard
+          # error rather than an empty list. This previously read
+          # `... 2>/dev/null | sed 's/^v//' || true`, which swallowed everything:
+          # `gh` was not installed on this runner, the failure was discarded, and
+          # `published` came back empty. The arithmetic below then resolved
+          # `prior` to the version itself, the guard blanked it, and the job
+          # cheerfully reported `prior=<none>` — while five releases (v0.1.0
+          # through v0.1.4) were in fact published. Downstream, the downgrade leg
+          # fails closed citing a reason that is simply untrue, sending the next
+          # reader to hunt a downgrade bug that does not exist.
+          #
+          # That is worse than a check that silently passes: it MANUFACTURES A
+          # FALSE FACT. The missing binary was never the real defect — the defect
+          # was that its absence was unreportable. So no `|| true`, no fallback
+          # default, and a refusal by name so the cause is legible rather than
+          # inferred from an arithmetic result.
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "::error::gh is required to resolve the prior published release; it is not on PATH for this runner" >&2
+            exit 1
+          fi
+          published=$(gh release list --limit 50 --json tagName --jq '.[].tagName' | sed 's/^v//')
           prior=$(printf '%s\n%s\n' "${published}" "${version}" \
             | sed '/^$/d' \
             | sort -V -u \

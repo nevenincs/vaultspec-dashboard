@@ -43,6 +43,24 @@ jobs:
       - name: third-party bash-using action
         uses: dtolnay/rust-toolchain@stable
       - run: cargo --version
+      - name: release prerequisites the service must see
+        # This machine carries the publish path: `gh release upload` and
+        # `gh release edit` in release.yml both run here, as does the step that
+        # resolves the prior published release. `gh` was absent from this runner
+        # and nothing reported it — the resolve step swallowed the failure and
+        # published `prior=<none>` while five releases existed.
+        #
+        # Proving it here rather than in an interactive shell is the whole point:
+        # the runner service does not inherit a login PATH, so an install
+        # confirmed over SSH says nothing about whether a JOB can see it. Same
+        # reasoning as the macOS and ARM64 legs below.
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PATH=$PATH"
+          gh --version
+          uv --version
+          jq --version
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
