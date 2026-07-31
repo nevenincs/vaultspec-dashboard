@@ -39,6 +39,19 @@ features = ["embed-spa"]
 # source checkout and locked freeze environment the bundled runtime is built
 # from, so composition needs no network at install time.
 github-build-setup = "../release-build-setup.yml"
+# release.yml is hand-managed and dist must not re-verify it. Two things live in
+# that file which dist cannot express and would therefore delete on regeneration:
+# the `runs-on` labels for the non-target jobs (plan, host, announce — they have
+# no target, so dist emits ubuntu-22.04, and this fleet has no such runner), and
+# the per-job disk-reclaim steps this shared workstation needs (dist's only build
+# hook, github-build-setup, runs BEFORE the build, not after it).
+#
+# Without this, `dist plan` fails the whole Release workflow at its first job with
+# "release.yml has out of date contents and needs to be regenerated" — which is
+# what it did. The trade is real and deliberate: dist no longer checks this file,
+# so a dist upgrade can silently diverge from what it would generate. Re-diff
+# release.yml against `dist generate-ci` output whenever cargo-dist-version moves.
+allow-dirty = ["ci"]
 # Which actions to run on pull requests
 pr-run-mode = "plan"
 # Whether dist should create a Github Release or use an existing draft
