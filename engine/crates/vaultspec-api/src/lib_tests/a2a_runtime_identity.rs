@@ -18,9 +18,11 @@ use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-#[cfg(windows)]
+// NOT `#[cfg(windows)]`: these were Windows-gated when the only consumer was the
+// Windows credential-bootstrap test. The gateway-stop-plan proofs need them on
+// every platform, and the gate made the crate fail to COMPILE on Linux while
+// passing on Windows — a break invisible to a Windows-only gate run.
 use vaultspec_product::credentials::DashboardCredentialStore;
-#[cfg(windows)]
 use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::manifest::{CapsuleManifest, ComponentLock, Target};
 use vaultspec_product::paths::ProductPaths;
