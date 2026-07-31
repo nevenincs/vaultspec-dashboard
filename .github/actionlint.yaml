@@ -25,17 +25,40 @@
 #      uses it; do not suppress the check.
 #
 # THE FLEET. Every job in this repository runs on the shared self-hosted fleet;
-# there are no GitHub-hosted runners in the budget (see the rationale on
-# `[dist.github-custom-runners]` in dist-workspace.toml). The labels below are
-# the AUTO-ASSIGNED labels the Actions runner application applies to each
-# registered machine, so the mapping is:
+# no workflow currently schedules onto a GitHub-hosted runner. That is a
+# standing choice, not a constraint: this repository is PUBLIC, so hosted
+# runners — including the native `ubuntu-24.04-arm` image — are free for it. The
+# `[dist.github-custom-runners]` comment in dist-workspace.toml claiming hosted
+# multiplatform runners are "cost-prohibitive" is wrong on that point.
+#
+# The labels below are the AUTO-ASSIGNED labels the Actions runner application
+# applies to each registered machine, so the mapping is:
 #
 #   Windows  →  gw-workstation-win-vaultspec   (self-hosted, X64,   Windows)
 #   Linux    →  gw-workstation-wsl-vaultspec   (self-hosted, X64,   Linux)
 #   macOS    →  macbook-neo-mac-vaultspec      (self-hosted, ARM64, macOS)
+#              NOT YET REGISTERED. The machine exists and is provisioned, but
+#              the runner is not installed, so every `macOS` leg queues rather
+#              than runs. Enumerating the label here is deliberate: it is the
+#              label the workflows already select, and the gap is the runner.
 #
-# aarch64-unknown-linux-gnu has no native machine: it cross-compiles on the WSL
-# runner, which is why `Linux` serves two targets in the release matrices.
+# aarch64-unknown-linux-gnu does NOT cross-compile on the WSL runner, and an
+# earlier version of this comment said it did. The cargo half would, given a
+# cross linker (none is provisioned — `aarch64-linux-gnu-gcc` is absent and only
+# the x86_64 target is installed), but the shipped product tree also contains the
+# PyInstaller-frozen A2A runtime, and PyInstaller freezes only for the
+# architecture it runs on. The arch guard in product-release.yml therefore
+# REFUSES that leg on an x86_64 runner rather than emit an x86_64 runtime inside
+# an artifact labelled aarch64. `Linux` remains the mapped label for the target
+# in dist-workspace.toml, but the leg stays refused until a native ARM64 Linux
+# runner exists.
+#
+# One consequence to keep in view when that runner is added: `runs-on: Linux`
+# matches the bare `Linux` label, which an arm64 self-hosted Linux machine
+# carries too. Registering one without arch-explicit selection (e.g.
+# `[self-hosted, Linux, ARM64]`) would dispatch the two Linux targets to runners
+# nondeterministically; the arch guard turns that into a loud failure rather than
+# a silent mislabel, but the correct fix is explicit labels, not the guard.
 #
 # WHERE EACH LABEL IS REACHED FROM. Several jobs schedule through
 # `runs-on: ${{ matrix.os }}` / `${{ matrix.runner }}`, so a grep for literal
