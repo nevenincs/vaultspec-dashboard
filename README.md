@@ -428,26 +428,26 @@ development servers:
 
 ```console
 mise install
-just dev deps sync
-just dev serve
+just deps sync
+just serve
 ```
 
 Run the relevant quality checks before submitting changes:
 
 ```console
-just dev lint all
-just dev test all
-just dev test e2e
+just lint all
+just test all
+just test e2e
 just ci
 ```
 
-`just dev test all` runs the Rust and Vitest suites. End-to-end tests run separately with
-`just dev test e2e`.
+`just test all` runs the Rust and Vitest suites. End-to-end tests run separately with
+`just test e2e`.
 
 Build the embedded, single-binary product with:
 
 ```console
-just dev build package
+just build package
 ```
 
 Use [`mise.toml`](mise.toml) and the [`justfile`](justfile) as the authoritative task
@@ -469,10 +469,10 @@ Release Please update the [engine changelog](engine/CHANGELOG.md).
 Regenerate terminal README assets with:
 
 ```console
-uv run --no-sync python scripts/render_readme_assets.py
+just docs readme-assets
 ```
 
-To regenerate application captures, keep `just dev serve` running in one terminal. Run the
+To regenerate application captures, keep `just serve` running in one terminal. Run the
 capture task in another:
 
 ```console

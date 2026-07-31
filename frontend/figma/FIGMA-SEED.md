@@ -27,7 +27,7 @@ authored to match that file.
   marks (doc-type / event / tier / lifecycle-state / status-severity / status-tier)
   imported as **true vectors** from `src/scene/field/marks.ts`, plus the type scale.
 - **Colour foundations** (node `5:2`) — the public token surface as variable-bound swatches.
-- **Lucide + Phosphor chrome glyphs** — extracted by `scripts/figma-icons.mjs` →
+- **Lucide + Phosphor chrome glyphs** — extracted by `dev/tooling/figma-icons.mjs` →
   `figma/icons.json` (the durable icon artifact; re-run to refresh/extend).
 
 **Components** — ~47 surfaces, each a faithful, variable-bound, theme-aware frame named
@@ -52,7 +52,7 @@ Surfaces that render over the canvas show a neutral `canvas-bg` ground with a
 
 ## Re-seeding / extending
 
-- Re-extract icons: `node scripts/figma-icons.mjs` (from `frontend/`) — add an
+- Re-extract icons: `node dev/tooling/figma-icons.mjs` (from `frontend/`) — add an
   import-name → kebab/def entry to the `LUCIDE`/`PHOSPHOR` maps for a new glyph.
 - For current work, use `FIGMA-WORKFLOW.md`; this file is not the active runbook.
 - See `FIGMA-WORKFLOW.md` for the day-to-day code ↔ Figma workflow.

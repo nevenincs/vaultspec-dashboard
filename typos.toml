@@ -1,6 +1,6 @@
 # typos — repo-wide source spell check (Rust-based, fast).
 # Run:   typos            (check)   /   typos -w   (fix)
-# Front: just dev lint typos
+# Front: just lint typos
 #
 # Checks code, config, and prose. Generated artefacts, lockfiles, binary assets,
 # and the engine/rag data dirs are excluded; domain terms that read as typos are
@@ -42,21 +42,21 @@ extend-ignore-identifiers-re = ["\\b[0-9a-f]{7,64}\\b"]
   [default.extend-words]
   # Domain / tool vocabulary that is correct in this project (enumerated from the
   # first full run, 2026-06-13). Extend deliberately as real domain terms surface.
+  ND = "ND"                   # Myers O(ND) diff-algorithm complexity class (diffLines.ts)
+  alls = "alls"               # vitest beforeAll pluralized in prose ("beforeAlls")
+  gir = "gir"                 # audit finding prefix (graph-implementation-review GIR-xxx)
   gix = "gix"                 # the pure-Rust git implementation
+  grap = "grap"               # truncated draft fixture ("graph"->"grap", max-len-4 control draft test)
   lod = "lod"                 # graphics: Level Of Detail (LOD sprites/edges)
   mis = "mis"                 # abbrev in the ops typed-miss handling
-  unparseable = "unparseable" # intentional spelling in engine ingest/index
-  grap = "grap"               # truncated draft fixture ("graph"->"grap", max-len-4 control draft test)
-  gir = "gir"                 # audit finding prefix (graph-implementation-review GIR-xxx)
-  alls = "alls"               # vitest beforeAll pluralized in prose ("beforeAlls")
-  ND = "ND"                   # Myers O(ND) diff-algorithm complexity class (diffLines.ts)
   styl = "styl"               # the Stylus stylesheet file extension (languages.ts)
+  unparseable = "unparseable" # intentional spelling in engine ingest/index
   # French pseudo-locale assertions embedded in general test files (the dedicated
   # locale fixtures are path-excluded above; these words appear inline in mixed
   # English tests asserting translated output verbatim).
   commandes = "commandes"
   commentaires = "commentaires"
-  sur = "sur"
-  fixe = "fixe"
   complet = "complet"
   espace = "espace"
+  fixe = "fixe"
+  sur = "sur"

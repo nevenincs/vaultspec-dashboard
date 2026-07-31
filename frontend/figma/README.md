@@ -70,7 +70,7 @@ lands on the file; the MCP `search_design_system` by symbol name resolves the re
 ## What is automated vs. by-name
 
 - **Tokens & icons are automated** (and keep parallel naming on purpose): `tokens:figma`
-  (`scripts/figma-export.ts`), `tokens:check` (`scripts/token-drift-check.ts`),
+  (`dev/tooling/figma-export.ts`), `tokens:check` (`dev/tooling/token-drift-check.ts`),
   `figma-icons.mjs`. See `../tokens/FIGMA-SYNC.md`. Do not apply the name-contract to
   tokens — their join is a generated pipeline.
 - **Components are by-name** (this document) because they have no such automation, so the
@@ -83,4 +83,4 @@ lands on the file; the MCP `search_design_system` by symbol name resolves the re
 - `FRAMES.md` — the live top-level frame inventory (current vs. study vs. scaffolding).
 - `DESIGN-SYSTEM.md` — the per-element build contract / definition-of-done.
 - `FIGMA-SEED.md` — retired seed-buildout history (not the active runbook).
-- `icons.json` — the durable Lucide/Phosphor glyph artifact (`scripts/figma-icons.mjs`).
+- `icons.json` — the durable Lucide/Phosphor glyph artifact (`dev/tooling/figma-icons.mjs`).

@@ -1,346 +1,161 @@
+# ===========================================================================
+#  vaultspec-dashboard development harness
+#
+#  Every entry point is a top-level verb; behaviour within a verb is selected
+#  by a `target` argument - `just lint frontend`, `just test rust`, `just fix
+#  markdown`. Run `just` for the annotated recipe list, and `just <verb> help`
+#  (or any unrecognised target) for that verb's targets with descriptions.
+#
+#  THIS FILE IS DEV-ONLY IN ITS ENTIRETY. That is why no verb carries a `dev`
+#  prefix: there is no production half to distinguish it from. What this
+#  repository SHIPS is the Rust engine (`engine/`) and the TypeScript SPA
+#  (`frontend/src/`); everything reachable from here exists to build, check, or
+#  measure those, and nothing here is packaged.
+#
+#  PLATFORM AGNOSTIC BY CONSTRUCTION. Every recipe body below is a single
+#  command with no shell branching, no pipes, no conditionals, and no `sh`
+#  versus PowerShell dialect. All of the logic - target dispatch, step
+#  chaining, tool-or-Docker fallback, environment overlay - lives in the
+#  stdlib-only modules under `dev/`, which therefore behave identically on
+#  every platform. There is no shell script backing this file. To change what a
+#  target runs, edit `dev/toolchain.py`, which is the single declarative source
+#  of truth for the whole toolchain. `dev/guards` asserts both properties, so a
+#  branch reintroduced here fails the build rather than quietly working on one
+#  machine.
+#
+#  Help text is DERIVED from that same table rather than written here, so a
+#  target cannot exist undocumented.
+#
+#  The verbs split by CONSEQUENCE, not by tool:
+#
+#    lint   GATES.    Read-only, and a finding fails the build.
+#    fix    MUTATES.  Everything automatically repairable, in one pass.
+#    audit  GATES.    A published advisory against a pinned version is a
+#                     verdict, not a lead.
+#    test   GATES.
+#
+#  NO TOOL IS MIRRORED HERE. `vaultspec-core` and `vaultspec-rag` are finished
+#  products with their own CLIs and their own MCP servers; wrapping either one
+#  only adds a layer that can drift out of step with it. Invoke them directly
+#  (`uv run --no-sync vaultspec-core ...`) or through the MCP tools. The one
+#  exception is the `vault` verb, which operates on THIS repository's own
+#  `.vault/` corpus - a development action on this checkout rather than product
+#  usage.
+# ===========================================================================
+
 set positional-arguments := false
-set shell := ["sh", "-cu"]
-set windows-shell := ["pwsh.exe", "-NoProfile", "-c"]
+set quiet := true
 
+# just defaults to `sh -cu` on every platform, which on Windows means a Git Bash
+# `sh.exe` that is only on PATH for some Git for Windows install options. This
+# names the one interpreter every Windows machine is guaranteed to have. It is a
+# shell DECLARATION, not platform-specific logic: because each recipe body below
+# is a single command with no shell syntax, `cmd` and `sh` execute all of them
+# identically, and there is no second dialect of anything to maintain.
+set windows-shell := ["cmd.exe", "/c"]
 
+# Every recipe that merely *uses* the environment goes through `uv run
+# --no-sync`. Skipping the sync keeps `uv run` from re-resolving and rebuilding
+# the project into `.venv`, which fails on Windows whenever a resident process
+# - an MCP server, an editor, another agent's session - holds one of the
+# console-script executables open. The recipes whose purpose IS to change the
+# environment call `uv` directly, inside `dev/`.
+dev := "uv run --no-sync python -m dev"
 
+# List available recipes.
 default:
-  @echo "Available commands:"
-  @echo "  dev <target>      Development toolchain (deps, lint, fix, audit, test, build, etc.)"
-  @echo "  ci                Full CI pipeline: lint → vault check → test"
-  @echo ""
-  @echo "Run 'just <command> --help' for more details."
+    @just --list
 
 # ===========================================================================
-#  dev  - development toolchain (linters, formatters, tests, builds)
+#  Bootstrap
 # ===========================================================================
 
-dev target='--help' *args='':
-  @{{ if target == "--help" { "just _dev-help" } else if target == "-h" { "just _dev-help" } else if target == "help" { "just _dev-help" } else { "just _dev-" + target + " " + args } }}
+# The literal `uv sync` here is deliberate, and is the one recipe that does NOT
+# route through `{{dev}}`: it is the only step that must work before a virtual
+# environment exists, and `{{dev}}` presumes one. Every other recipe may assume
+# this has run. `dev/guards` records the exemption by name, so a second
+# non-dispatching recipe still fails the build.
 
-_dev-help:
-  @echo "Usage: just dev <target> [args...]"
-  @echo ""
-  @echo "Targets:"
-  @echo "  deps      dependency management (sync, upgrade, lock)"
-  @echo "  lint      read-only static analysis (taplo, markdownlint, clippy, eslint, ...)"
-  @echo "  fix       auto-fix everything fixable (toml, markdown, vault, rust, frontend)"
-  @echo "  audit     supply-chain / security checks (uv audit, cargo-deny, npm audit)"
-  @echo "  test      rust + frontend (vitest)"
-  @echo "  build     rust + frontend"
-  @echo "  serve     live dev survey: engine + Vite HMR, auto-rebuild + auto-refresh"
-  @echo "  clean     reclaim dev artifact sprawl (cargo target, dead worktrees, tmp)"
-  @echo "  tokens    regenerate the DTCG color CSS and check parity/drift"
-  @echo "  precommit pre-commit hook management (install, upgrade, run)"
+# Provision a fresh clone or worktree: install the locked dev toolchain.
+bootstrap:
+    uv sync --locked --group dev
 
 # ===========================================================================
-#  ci  - full pipeline: lint → vault check → test
+#  Toolchain verbs
 # ===========================================================================
 
-ci *args='':
-  @{{ if args == "--help" { "just _ci-help" } else if args == "-h" { "just _ci-help" } else if args == "help" { "just _ci-help" } else { "just _ci-run" } }}
+# Manage the uv-provided dev toolchain and its lockfile.
+deps target='sync':
+    {{dev}} deps {{target}}
 
-_ci-help:
-  @echo "Usage: just ci"
-  @echo ""
-  @echo "Runs the full CI pipeline: lint → vault check → test"
+# Run gating static analysis: lints, formatting, types, tokens, and guards.
+lint target='all':
+    {{dev}} lint {{target}}
 
-_ci-run:
-  just dev lint all
-  uv run --no-sync vaultspec-core vault check all
-  just dev test all
+# Apply every available formatter and automatic fix.
+fix target='all':
+    {{dev}} fix {{target}}
 
-# ---------------------------------------------------------------------------
-#  Internal recipes (prefixed with _ to hide from --list)
-# ---------------------------------------------------------------------------
-# clean - reclaim Class-A dev artifact sprawl (resource-hardening). Each line is
-# a single cross-shell command (sh + pwsh). `cargo clean` drops the multi-GB
-# engine target; `git worktree prune` clears administrative entries for removed
-# worktrees; `git clean -fdX -- tmp` drops gitignored scratch under tmp/. NOTE:
-# this does NOT delete the shared HuggingFace model cache (~/.cache/huggingface)
-# — it belongs to other tools; scope it per-project with HF_HOME if needed. And
-# it does NOT remove live agent worktrees under .claude/worktrees/ — remove
-# those with `git worktree remove --force <path>` once their work is merged
-# (the worktree teardown half of the policy).
+# Audit the supply chain across Python, Rust, and Node.
+audit target='all':
+    {{dev}} audit {{target}}
 
-_dev-clean:
-  cargo clean --manifest-path engine/Cargo.toml
-  git worktree prune -v
-  git clean -fdX -- tmp
-  @echo "reclaimed: engine/target, pruned worktree admin entries, tmp/ scratch"
-  @echo "note: shared HF model cache and live agent worktrees are left intact (see recipe comment)"
+# Run the project test suites.
+test target='all':
+    {{dev}} test {{target}}
 
-# ---------------------------------------------------------------------------
+# Build the project's artifacts.
+build target='all':
+    {{dev}} build {{target}}
 
-_dev-deps target='--help':
-  @{{ if target == "--help" { "just _dev-deps-help" } else if target == "-h" { "just _dev-deps-help" } else if target == "help" { "just _dev-deps-help" } else { "just _dev-deps-" + target } }}
+# ===========================================================================
+#  This checkout's own records and generated assets
+# ===========================================================================
 
-_dev-deps-help:
-  @echo "Usage: just dev deps <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  sync          Sync dependencies"
-  @echo "  upgrade       Upgrade all dependencies"
-  @echo "  lock          Lock dependencies"
-  @echo "  lock-upgrade  Upgrade and lock dependencies"
+# Operate on this repository's own .vault/ development corpus.
+vault target='check':
+    {{dev}} vault {{target}}
 
-_dev-deps-sync:
-  uv sync --locked --group dev
+# Regenerate the committed documentation assets under docs/assets/.
+docs target='all':
+    {{dev}} docs {{target}}
 
-_dev-deps-upgrade:
-  uv sync --upgrade --all-groups
+# Regenerate the DTCG colour CSS and verify no drift.
+tokens:
+    {{dev}} tokens
 
-_dev-deps-lock:
-  uv lock
+# ===========================================================================
+#  Long-running surfaces
+# ===========================================================================
 
-_dev-deps-lock-upgrade:
-  uv lock --upgrade
+# Start the live development survey: engine plus Vite HMR.
+serve:
+    {{dev}} serve
 
-# ---------------------------------------------------------------------------
+# Open the visual review desk: every surface x state x theme x viewport.
+review:
+    {{dev}} review
 
-_dev-lint target='--help':
-  @{{ if target == "--help" { "just _dev-lint-help" } else if target == "-h" { "just _dev-lint-help" } else if target == "help" { "just _dev-lint-help" } else { "just _dev-lint-" + target } }}
+# ===========================================================================
+#  Housekeeping
+# ===========================================================================
 
-_dev-lint-help:
-  @echo "Usage: just dev lint <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  toml      Run Taplo TOML linter"
-  @echo "  markdown  Run Markdown linting and formatting checks"
-  @echo "  rust      Run cargo fmt --check and clippy on the engine workspace"
-  @echo "  frontend  Run eslint, prettier --check, and tsc on the SPA"
-  @echo "  typos     Run repo-wide source spell check (typos)"
-  @echo "  knip      Scan the SPA for unused files/exports/deps (advisory)"
-  @echo "  all       Run all blocking linters (typos included; knip is advisory)"
+# Reclaim dev artifact sprawl: engine target, dead worktrees, tmp scratch.
+clean:
+    {{dev}} clean
 
-_dev-lint-toml:
-  @{{ if os() == "windows" { \
-    "if (Get-Command taplo -ErrorAction SilentlyContinue) { taplo lint *.toml } elseif (Get-Command docker -ErrorAction SilentlyContinue) { docker run --rm -v '${PWD}:/repo' -w /repo tamasfe/taplo:0.9 lint *.toml } else { Write-Error 'taplo not found and docker is unavailable'; exit 127 }" \
-  } else { \
-    "if command -v taplo >/dev/null 2>&1; then taplo lint *.toml; elif command -v docker >/dev/null 2>&1; then docker run --rm -v \"$PWD:/repo\" -w /repo tamasfe/taplo:0.9 lint *.toml; else echo 'taplo not found and docker is unavailable' >&2; exit 127; fi" \
-  } }}
+# Manage the git pre-commit hooks.
+precommit target='run':
+    {{dev}} precommit {{target}}
 
-_dev-lint-markdown:
-  uv run mdformat --check README.md
-  uv run pymarkdown --config .pymarkdown.json scan README.md
+# ===========================================================================
+#  Aggregate pipeline
+# ===========================================================================
 
-_dev-lint-rust:
-  cargo fmt --manifest-path engine/Cargo.toml --all -- --check
-  cargo clippy --manifest-path engine/Cargo.toml --workspace --all-targets -- -D warnings
-  node frontend/scripts/scan-module-size.mjs
+# This composes the gates rather than restating them, so the pipeline and the
+# gates it claims to run cannot disagree. It mirrors what CI proves, so a green
+# run here means what a green CI run means.
 
-_dev-lint-frontend:
-  npm --prefix frontend run lint
-  npm --prefix frontend run lint:localization
-  npm --prefix frontend run lint:px
-  npm --prefix frontend run lint:modules
-  npm --prefix frontend run format:check
-  npm --prefix frontend run typecheck
-  npm --prefix frontend run tokens:check
-  npm --prefix frontend run figma:names
-
-# Regenerate the DTCG-derived color regions in styles.css and verify no drift.
-_dev-tokens:
-  npm --prefix frontend run tokens:build
-  npm --prefix frontend run tokens:check
-
-_dev-lint-typos:
-  @{{ if os() == "windows" { \
-    "if (Get-Command typos -ErrorAction SilentlyContinue) { typos } else { Write-Error 'typos not found - install with: cargo install typos-cli (or: mise install)'; exit 127 }" \
-  } else { \
-    "if command -v typos >/dev/null 2>&1; then typos; else echo 'typos not found - install with: cargo install typos-cli (or: mise install)' >&2; exit 127; fi" \
-  } }}
-
-# Advisory: reports unused files/exports/deps; not part of the blocking gate
-# because just-built-but-not-yet-adopted exports are expected mid-build.
-_dev-lint-knip:
-  npx --yes knip@5 --directory frontend
-
-_dev-lint-all:
-  just _dev-lint-toml
-  just _dev-lint-markdown
-  just _dev-lint-rust
-  just _dev-lint-frontend
-  just _dev-lint-typos
-
-# ---------------------------------------------------------------------------
-
-_dev-fix target='--help':
-  @{{ if target == "--help" { "just _dev-fix-help" } else if target == "-h" { "just _dev-fix-help" } else if target == "help" { "just _dev-fix-help" } else { "just _dev-fix-" + target } }}
-
-_dev-fix-help:
-  @echo "Usage: just dev fix <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  toml      Auto-format TOML files"
-  @echo "  markdown  Auto-format Markdown files"
-  @echo "  vault     Auto-fix vault issues"
-  @echo "  rust      Auto-format the engine workspace (cargo fmt)"
-  @echo "  frontend  Auto-format the SPA (prettier)"
-  @echo "  all       Run all fixers"
-
-_dev-fix-toml:
-  @{{ if os() == "windows" { \
-    "if (Get-Command taplo -ErrorAction SilentlyContinue) { taplo fmt *.toml } elseif (Get-Command docker -ErrorAction SilentlyContinue) { docker run --rm -v '${PWD}:/repo' -w /repo tamasfe/taplo:0.9 fmt *.toml } else { Write-Error 'taplo not found and docker is unavailable'; exit 127 }" \
-  } else { \
-    "if command -v taplo >/dev/null 2>&1; then taplo fmt *.toml; elif command -v docker >/dev/null 2>&1; then docker run --rm -v \"$PWD:/repo\" -w /repo tamasfe/taplo:0.9 fmt *.toml; else echo 'taplo not found and docker is unavailable' >&2; exit 127; fi" \
-  } }}
-
-_dev-fix-markdown:
-  uv run mdformat README.md
-  uv run pymarkdown --config .pymarkdown.json fix README.md
-
-_dev-fix-vault:
-  uv run vaultspec-core vault check all --fix
-  uv run vaultspec-core vault sanitize annotations
-
-_dev-fix-rust:
-  cargo fmt --manifest-path engine/Cargo.toml --all
-
-_dev-fix-frontend:
-  npm --prefix frontend run format
-
-_dev-fix-all:
-  just _dev-fix-toml
-  just _dev-fix-markdown
-  just _dev-fix-vault
-  just _dev-fix-rust
-  just _dev-fix-frontend
-
-# ---------------------------------------------------------------------------
-
-_dev-audit target='--help':
-  @{{ if target == "--help" { "just _dev-audit-help" } else if target == "-h" { "just _dev-audit-help" } else if target == "help" { "just _dev-audit-help" } else { "just _dev-audit-" + target } }}
-
-_dev-audit-help:
-  @echo "Usage: just dev audit <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  python    Run uv audit on locked Python dependencies"
-  @echo "  rust      Run cargo-deny (advisories/licenses/bans/sources)"
-  @echo "  node      Run npm audit on the SPA dependencies"
-  @echo "  all       Run all supply-chain audits"
-
-# The runtime (published-wheel) surface is the hard gate. Dev-group advisories
-# are excluded because torch/vaultspec-rag are dev-only (published-wheel-purity)
-# — torch is never imported or shipped (rag is consumed over loopback HTTP), so
-# a torch.jit advisory cannot reach the wheel. Run plain `uv audit` to inspect
-# the dev surface too.
-_dev-audit-python:
-  uv audit --no-dev --preview-features audit
-
-_dev-audit-rust:
-  @{{ if os() == "windows" { \
-    "if (Get-Command cargo-deny -ErrorAction SilentlyContinue) { cargo deny --manifest-path engine/Cargo.toml check } else { Write-Error 'cargo-deny not found - install with: cargo install cargo-deny (or: mise install)'; exit 127 }" \
-  } else { \
-    "if command -v cargo-deny >/dev/null 2>&1; then cargo deny --manifest-path engine/Cargo.toml check; else echo 'cargo-deny not found - install with: cargo install cargo-deny (or: mise install)' >&2; exit 127; fi" \
-  } }}
-
-_dev-audit-node:
-  npm --prefix frontend audit
-
-_dev-audit-all:
-  just _dev-audit-python
-  just _dev-audit-rust
-  just _dev-audit-node
-
-# ---------------------------------------------------------------------------
-
-_dev-test target='--help':
-  @{{ if target == "--help" { "just _dev-test-help" } else if target == "-h" { "just _dev-test-help" } else if target == "help" { "just _dev-test-help" } else { "just _dev-test-" + target } }}
-
-_dev-test-help:
-  @echo "Usage: just dev test <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  rust      Run cargo test on the engine workspace (incl. e2e)"
-  @echo "  bench     Run the cold-index benchmark with baseline output"
-  @echo "  frontend  Run vitest on the SPA"
-  @echo "  e2e       Install the browser + run Playwright e2e (needs the engine)"
-  @echo "  all       Run all tests"
-
-_dev-test-rust:
-  cargo test --manifest-path engine/Cargo.toml --workspace
-
-_dev-test-bench:
-  @{{ if os() == "windows" { "$env:VAULTSPEC_BENCH_STRICT='1'; cargo test --manifest-path engine/Cargo.toml -p engine-e2e --test bench -- --nocapture" } else { "VAULTSPEC_BENCH_STRICT=1 cargo test --manifest-path engine/Cargo.toml -p engine-e2e --test bench -- --nocapture" } }}
-
-_dev-test-frontend:
-  npm --prefix frontend run test
-
-# Browser e2e: provisions the Chromium binary (idempotent), then runs the
-# Playwright smoke. Separate from `all` because it drives a live `vaultspec
-# serve` origin and a real browser.
-_dev-test-e2e:
-  npm --prefix frontend exec -- playwright install chromium
-  npm --prefix frontend run e2e
-
-_dev-test-all:
-  just _dev-test-rust
-  just _dev-test-frontend
-
-# ---------------------------------------------------------------------------
-
-# Live development survey: one command starts the Vite SPA dev server, which in
-# turn supervises the `vaultspec serve` engine. Chrome edits hot-reload (Vite
-# HMR), `.vault/` corpus edits stream live (engine SSE), and engine source edits
-# rebuild + restart the engine and force a browser refresh. Stale caches are
-# cleared on boot. Override the engine port with VAULTSPEC_DEV_PORT and the
-# engine handling with VAULTSPEC_DEV_ENGINE=manage|adopt|off.
-_dev-serve:
-  npm --prefix frontend run dev
-
-# ---------------------------------------------------------------------------
-
-_dev-build target='--help':
-  @{{ if target == "--help" { "just _dev-build-help" } else if target == "-h" { "just _dev-build-help" } else if target == "help" { "just _dev-build-help" } else { "just _dev-build-" + target } }}
-
-_dev-build-help:
-  @echo "Usage: just dev build <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  rust      Build the engine workspace (release)"
-  @echo "  frontend  Build the SPA production bundle"
-  @echo "  package   Build the installable single binary (SPA embedded)"
-  @echo "  all       Run all builds"
-
-_dev-build-rust:
-  cargo build --manifest-path engine/Cargo.toml --workspace --release
-
-_dev-build-frontend:
-  npm --prefix frontend run build
-
-# The packaged artifact (dashboard-packaging ADR): the SPA bundle is built,
-# staged INSIDE the api crate (distribution-channels ADR: boundary-clean
-# embed), then baked into the release `vaultspec` binary via the embed-spa
-# feature, so the result serves standalone with no frontend/dist on disk.
-_dev-build-package:
-  npm --prefix frontend run build
-  uv run --no-sync python -c "import shutil; shutil.rmtree('engine/crates/vaultspec-api/assets/spa', ignore_errors=True); shutil.copytree('frontend/dist', 'engine/crates/vaultspec-api/assets/spa')"
-  cargo build --manifest-path engine/Cargo.toml --release -p vaultspec-cli --features embed-spa
-
-_dev-build-all:
-  just _dev-build-rust
-  just _dev-build-frontend
-
-# ---------------------------------------------------------------------------
-
-_dev-precommit target='--help':
-  @{{ if target == "--help" { "just _dev-precommit-help" } else if target == "-h" { "just _dev-precommit-help" } else if target == "help" { "just _dev-precommit-help" } else { "just _dev-precommit-" + target } }}
-
-_dev-precommit-help:
-  @echo "Usage: just dev precommit <target>"
-  @echo ""
-  @echo "Targets:"
-  @echo "  install   Install pre-commit hooks"
-  @echo "  upgrade   Upgrade pre-commit hooks"
-  @echo "  run       Run pre-commit hooks on all files"
-
-_dev-precommit-install:
-  uv run prek install
-
-_dev-precommit-upgrade:
-  uv run prek auto-update
-
-_dev-precommit-run:
-  uv run prek run --all-files
+# Run the full local gate: lint, vault check, tests.
+ci:
+    {{dev}} ci

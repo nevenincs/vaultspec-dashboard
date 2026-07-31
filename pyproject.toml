@@ -1,17 +1,8 @@
 [project]
 authors = [{ name = "Neve Nincs", email = "hello@neve.md" }]
-dependencies = [
-  "vaultspec-core>=0.1.36",
-]
+dependencies = ["vaultspec-core>=0.1.36"]
 description = "Unified dashboard UI for the vaultspec ecosystem"
-keywords = [
-  "dashboard",
-  "mcp",
-  "observability",
-  "rag",
-  "ui",
-  "vaultspec",
-]
+keywords = ["dashboard", "mcp", "observability", "rag", "ui", "vaultspec"]
 license = { file = "LICENSE" }
 name = "vaultspec-dashboard"
 readme = "README.md"
@@ -44,16 +35,26 @@ dev = [
   "mdformat-gfm>=1.0.0",
   "prek>=0.3.2",
   "pymarkdownlnt>=0.9.0",
+  "pytest>=9.1.1",
+  "rich>=15.0.0",
   "torch>=2.4",
   "vaultspec-rag[mcp]>=0.3.8",
 ]
 
-[[tool.uv.index]]
-name = "pytorch-cu130"
-url = "https://download.pytorch.org/whl/cu130"
-explicit = true
+# The only Python tests in this repository are the repository-health guards in
+# `dev/guards`, whose subject is this checkout's own configuration rather than a
+# product. `testpaths` names the harness so a bare `pytest` finds them. The cache
+# provider is disabled outright: a root `.pytest_cache` has been created
+# read-only by another process in this shared worktree, after which every run
+# emitted access-denied warnings, and the guards gain nothing from a cache.
+[tool.pytest.ini_options]
+addopts = "-q -p no:cacheprovider"
+testpaths = ["dev"]
 
-[tool.uv.sources]
-torch = [
-  { index = "pytorch-cu130" },
-]
+  [[tool.uv.index]]
+  explicit = true
+  name = "pytorch-cu130"
+  url = "https://download.pytorch.org/whl/cu130"
+
+  [tool.uv.sources]
+  torch = [{ index = "pytorch-cu130" }]

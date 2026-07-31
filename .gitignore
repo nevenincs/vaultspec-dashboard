@@ -168,3 +168,6 @@ playwright-report/
 *.log.err
 .engine.log
 .vite.log
+
+# Generated empty demo corpus backing the review desk `empty` condition.
+frontend/dev/.demo-vault-empty/
