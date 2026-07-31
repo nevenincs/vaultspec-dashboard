@@ -327,6 +327,63 @@ fn assert_inert(plane: &LifecyclePlane, scenario: &str) {
     );
 }
 
+/// The gateway must be ASKED to stop before its tree is taken down. The plan
+/// that asks is bound at shutdown rather than at spawn, because the gateway
+/// publishes its loopback control endpoint only once it is up. This proves the
+/// WIRING: `process.rs` already proves the mechanism, but the plan had no
+/// production caller at all, so on Windows — where there is no graceful signal —
+/// every clean shutdown was a timed wait followed by a hard job-object kill of
+/// a gateway that was never asked, and every descendant under it.
+#[test]
+fn shutdown_binds_a_control_stop_plan_only_for_the_gateway_we_own() {
+    let (_home, plane, paths) = install_home();
+
+    // Nothing discovered: there is no endpoint to ask, and termination must
+    // remain free to proceed unchanged.
+    assert!(
+        plane.owned_gateway_stop_plan().is_none(),
+        "no discovery record means nothing to ask"
+    );
+
+    let guard = InstallLock::new(paths.install_lock_path())
+        .acquire(Actor::Installer, "gateway-stop-plan-test")
+        .unwrap()
+        .unwrap();
+    DashboardCredentialStore::for_product(&paths)
+        .begin_bootstrap(&guard)
+        .expect("credential bootstrap");
+    drop(guard);
+
+    // Our own live gateway: the stop precondition binds.
+    write_discovery(
+        &paths,
+        plane.testonly_owner_id(),
+        std::process::id(),
+        "127.0.0.1:1",
+        "",
+        now_ms(),
+    );
+    assert!(
+        plane.owned_gateway_stop_plan().is_some(),
+        "an owned live gateway must be asked to stop before its tree is killed"
+    );
+
+    // A gateway that is not ours is never asked: a foreign attach is read-only
+    // by contract, and stopping it is exactly the mutation that fence refuses.
+    write_discovery(
+        &paths,
+        "a-different-owner",
+        std::process::id(),
+        "127.0.0.1:1",
+        "",
+        now_ms(),
+    );
+    assert!(
+        plane.owned_gateway_stop_plan().is_none(),
+        "a gateway we do not own must never be asked to stop"
+    );
+}
+
 #[test]
 fn retired_receipt_cannot_make_a_live_owned_gateway_authoritative() {
     let (_home, plane, paths) = install_home();

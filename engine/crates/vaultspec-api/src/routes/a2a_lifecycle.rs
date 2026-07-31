@@ -27,12 +27,19 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
+/// Wall clock the shutdown path may spend ASKING the owned gateway to stop
+/// before the graceful window opens. It is additive to that window, not carved
+/// out of it, so a slow drain cannot shorten the time the tree gets to exit on
+/// its own. `GatewayStopPlan` clamps this to its own `MAX_STOP_PLAN_BUDGET`.
+const GATEWAY_STOP_PLAN_BUDGET: Duration = Duration::from_secs(5);
+
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use vaultspec_product::control::ControlClient;
 use vaultspec_product::credentials::{
     CredentialError, DashboardCredentialStore, ForeignHandoffReader,
 };
@@ -40,6 +47,7 @@ use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, Immutable
 use vaultspec_product::lifecycle::{AttachMode, LifecycleController, gateway_spawn_env};
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_product::paths::ProductPaths;
+use vaultspec_product::process::GatewayStopPlan;
 use vaultspec_product::protocol::{LifecycleOp, Readiness, Refusal, WorkerState};
 use vaultspec_product::provisioning::{
     ActiveReleaseState, ProvisionedRelease, ProvisioningErrorKind, observe_active_release,
@@ -1124,10 +1132,52 @@ impl LifecyclePlane {
     pub(crate) fn terminate_owned_gateway(&self, graceful: Duration) -> Option<bool> {
         let mut slot = self.owned_gateway.lock().unwrap_or_else(|e| e.into_inner());
         let mut process = slot.take()?;
+        // Ask before killing. The plan is attached HERE rather than at spawn
+        // because the endpoint does not exist yet at spawn — the gateway
+        // publishes its loopback control address in its discovery record only
+        // once it is up, so there is nothing to bind a client to until now.
+        if let Some(plan) = self.owned_gateway_stop_plan() {
+            process.attach_stop_plan(plan);
+        }
         match process.terminate_tree(graceful) {
             Ok(t) => Some(t.forced),
             Err(_) => Some(true),
         }
+    }
+
+    /// The control-plane stop precondition for the gateway we own.
+    ///
+    /// Without this, `terminate_tree`'s graceful window is spent on a gateway
+    /// that was never asked to stop. On Unix that is merely impolite — the
+    /// process group still gets a `SIGTERM`. On WINDOWS there is no graceful
+    /// signal at all, so the window is pure delay followed by a hard job-object
+    /// kill of the gateway and every worker, provider and MCP descendant under
+    /// it, potentially mid-write. Windows is a primary release target.
+    ///
+    /// Returns `None` — and termination proceeds unchanged — whenever the stop
+    /// cannot be authorized: no discovery record, a gateway that is not ours,
+    /// or an unreadable ownership credential. Asking is a courtesy the bound
+    /// does not depend on; `GatewayStopPlan::issue` likewise reports a refusal
+    /// or timeout rather than propagating it, so a wedged control endpoint can
+    /// never keep a stopping dashboard alive.
+    pub(crate) fn owned_gateway_stop_plan(&self) -> Option<GatewayStopPlan> {
+        let ResolvedGateway::Available(resolved) = self.resolve_gateway() else {
+            return None;
+        };
+        // Only a gateway WE own may be asked to shut down; a foreign attach is
+        // read-only by contract and stopping it is exactly the mutation the
+        // read-only fence exists to refuse.
+        if resolved.mode != AttachMode::Owned {
+            return None;
+        }
+        let ownership = DashboardCredentialStore::for_product(&self.paths)
+            .read_ownership()
+            .ok()?;
+        Some(GatewayStopPlan::new(
+            ControlClient::new(resolved.endpoint, resolved.attach_token),
+            ownership,
+            GATEWAY_STOP_PLAN_BUDGET,
+        ))
     }
 
     /// The A2A product facts for the `/status` backends block: installation,
