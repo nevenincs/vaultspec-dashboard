@@ -384,7 +384,25 @@ fn the_drain_precedes_the_authorized_stop_and_the_singleton_release_precedes_the
             .expect("create the real dashboard credentials"),
     );
 
-    let mut gateway = spawn_gateway_helper(product.app_home());
+    let gateway = spawn_gateway_helper(product.app_home());
+    let gateway_pid = gateway.id();
+    // Reap the helper the instant it exits, because here it is OUR child and in
+    // production it never is: the updater drains a gateway it did not spawn
+    // (it runs post-seat-exit), so that process is reaped by its own parent and
+    // its pid vanishes from the process table the moment it dies.
+    //
+    // On Unix an exited-but-unreaped child stays a ZOMBIE, and a zombie keeps a
+    // live `/proc/<pid>` entry, so the exit proof in `drive_drain_stop` reads it
+    // as still running and can only time out. Reaping concurrently is what makes
+    // the polled pid behave the way production's does; it is also exactly what
+    // the sibling `drive_drain_stop` proof does when it honours the shutdown by
+    // terminating (and thereby waiting on) the child it owns. Without this the
+    // test asserts the ordering invariant against a process state production
+    // never produces.
+    let reaped = std::thread::spawn(move || {
+        let mut gateway = gateway;
+        gateway.wait()
+    });
     let journal = product.paths.app_home().join(GATEWAY_JOURNAL);
     await_journal_entry(&journal, "published", Duration::from_secs(30));
 
@@ -425,8 +443,7 @@ fn the_drain_precedes_the_authorized_stop_and_the_singleton_release_precedes_the
         .drain_and_stop_discovered(lease, deadlines)
         .expect("the owned gateway must drain and stop");
     assert_eq!(
-        evidence.pid,
-        gateway.id(),
+        evidence.pid, gateway_pid,
         "the stop evidence must name the real gateway process"
     );
 
@@ -462,7 +479,10 @@ fn the_drain_precedes_the_authorized_stop_and_the_singleton_release_precedes_the
         .rollback()
         .expect("clean rollback from the activation boundary");
 
-    let status = gateway.wait().expect("reap the gateway helper");
+    let status = reaped
+        .join()
+        .expect("join the gateway reaper")
+        .expect("reap the gateway helper");
     assert!(
         status.success(),
         "the gateway must exit cleanly after the authorized stop"
