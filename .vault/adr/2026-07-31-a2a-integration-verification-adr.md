@@ -5,7 +5,7 @@ tags:
 date: '2026-07-31'
 modified: '2026-07-31'
 body_schema: 'body-v1'
-body_hash: 'sha256:9b73c91f7dee92c92cf508d766758792625c7d26099a57fd07955b9167177934'
+body_hash: 'sha256:fa873d927bd3d8e5a5dd7fb14b400cd3a25aa58a652e00eeb23dcee471ed3bbf'
 related:
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
   - '[[2026-07-24-a2a-product-provisioning-adr]]'
@@ -37,11 +37,19 @@ exist:
 - a2a's graph tests do execute graphs, but inject a fake chat model through the
   provider protocol, bypassing the real factory chain.
 
-The consequence is a production path that no test in either repository executes:
-gateway, to worker process, to compiled graph, to the real provider factory, to
-the mock chat model, and through the model-wrapping seams. A live defect sits
-exactly there, a worker resolving its effective model to a tuple, and the first
-manual run ever attempted surfaced it immediately.
+A fourth layer sharpens rather than closes this. a2a does own real-process
+certification harnesses that spawn the production gateway armed to own and spawn
+its own worker, one of them wiring the tape server too. But those harnesses state
+their own scope: their scenarios are deliberately provider-independent, holding
+whether a run ultimately completes or fails. So the precise hole is not that no
+test spawns the real chain. It is that NO TEST ON EITHER SIDE REQUIRES A RUN TO
+COMPLETE THROUGH THE MODEL CHAIN.
+
+That is exactly where the live defect sits. A worker resolved its effective model
+to a tuple, which is a type fault upstream of any network call: an absent tape
+server would have produced a connection error against a named model class, not a
+tuple. The first manual run ever attempted surfaced it immediately because it was
+the first attempt that required completion.
 
 This is not a coverage shortfall. It is three green suites, each substituting the
 seam the next one needed, which is the failure this project has met repeatedly: a
@@ -62,13 +70,21 @@ check that passes while structurally unable to observe the thing it names.
   is resident through that service's own discovery record. Eight of ten typed
   lifecycle operations are honest stubs that report a pending gateway-control
   effect rather than fabricating success.
-- a2a already exposes a mock provider as a first-class citizen through its real
-  factory, and ships at least one bundled mock preset served with an explicit
-  mock marker. A model-only double therefore needs no new machinery on the happy
-  path.
-- a2a's mock chat model already carries a permission-callback field and the worker
-  already applies a mock permission gate, so scripted approval scenarios are
-  partially modelled rather than absent.
+- a2a exposes a mock provider as a first-class citizen through its real factory
+  and ships bundled mock presets with an explicit mock marker. That mock is NOT
+  self-contained: it proxies over HTTP to an external tape server on a fixed
+  loopback port, provisioned by container compose. A double built on it needs a
+  third process, which narrows the lane to hosts where that container runs.
+- a2a also ships an in-process deterministic provider for authoring runs. Its
+  own documentation contrasts it with the tape-proxying mock: it runs entirely
+  in-process, needs no container and no provider credential, and returns
+  role-keyed content that the writers can propose and the reviewer can pass.
+  Scripted determinism therefore has two candidate substrates, and the choice
+  between them is a portability decision rather than a capability one.
+- Scripted scenario content largely exists already as tapes covering tool
+  failure, a human-in-the-loop pause, a loop case, an invalid case and the happy
+  path. The scenario work is substrate selection and wiring rather than authoring
+  behaviour from nothing.
 - The owner has directed that a2a publish a consumable per-target binary and that
   the dashboard consume it. That producer does not yet publish, and one of its
   four targets currently builds and cannot start.
@@ -118,15 +134,26 @@ check that passes while structurally unable to observe the thing it names.
 
 ## Implementation
 
-**D1: The cross-repository end-to-end lives in the dashboard as a browser-driven
-project whose harness spawns both processes.** a2a starts against a scratch
-application home; the engine is pointed at that home and reached back through its
-own service record, reproducing the production attach path. The harness owns both
-lifetimes and tears both down.
+**D1: The cross-repository end-to-end lives in the dashboard as ONE two-process
+harness feeding TWO lanes.** a2a starts against a scratch application home; the
+engine is pointed at that home and reached back through its own service record,
+reproducing the production attach path. The harness owns both lifetimes and tears
+both down. Above it sit two lanes: a wire lane asserting attach, streaming and
+tool-call frames over HTTP and server-sent events plus the pure reducers, which
+needs no browser; and a product lane driving a real browser only where the
+browser IS the subject, namely the inline permission prompt, stop and retry, a
+literal reload, and the proposal card. A browser test that could have been an
+HTTP test is slower and flakier for no gain, and the transcript reducers are pure
+by design precisely so they can be driven directly.
 
 **D2: The test double is the model and only the model.** Determinism comes from
-scripted mock models resolved through a2a's real provider factory. No lane may
-inject the provider protocol, stub the worker, or fake the transport.
+scripted models resolved through a2a's real provider factory. No lane may inject
+the provider protocol, stub the worker, or fake the transport. A tape server
+reached over loopback is still a model double and remains admissible, but the
+in-process deterministic provider is preferred where it covers the scenario,
+because a container dependency silently narrows the lane on the hosts least able
+to run one. That preference is a portability judgement to be settled against the
+actual fleet, not a correctness claim.
 
 **D3: The a2a substrate is staged.** Stage one spawns a2a from pinned source
 behind an environment gate. Stage two consumes the published per-target binary
