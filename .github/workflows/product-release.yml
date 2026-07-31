@@ -108,6 +108,34 @@ jobs:
         uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
+      # PyInstaller freezes for the architecture it RUNS on; it cannot
+      # cross-compile. The dashboard and updater are cargo cross-builds and will
+      # happily produce aarch64 binaries on an x86_64 box, but the runtime frozen
+      # beside them would be x86_64. That composes cleanly and verifies cleanly —
+      # the digests are honest about the bytes present — and then fails on real
+      # hardware. A mislabelled artifact is worse than an absent one, because
+      # nothing downstream catches it: every check verifies the tree against
+      # itself. So refuse here rather than ship a tree that lies about what it
+      # contains.
+      - name: Refuse to freeze for an architecture this runner is not
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ matrix.target }}" in
+            aarch64-*) want=arm64 ;;
+            x86_64-*)  want=x64 ;;
+            *) echo "::error::unhandled target ${{ matrix.target }}" >&2; exit 1 ;;
+          esac
+          case "$(uname -m)" in
+            aarch64|arm64) have=arm64 ;;
+            x86_64|amd64)  have=x64 ;;
+            *) have="$(uname -m)" ;;
+          esac
+          if [ "$want" != "$have" ]; then
+            echo "::error::${{ matrix.target }} needs a $want runner; this one is $have. The frozen runtime cannot be cross-compiled, so continuing would bundle a $have runtime inside an artifact labelled $want." >&2
+            exit 1
+          fi
+          echo "runner architecture $have matches ${{ matrix.target }}"
       - name: Build + smoke the pinned A2A onedir
         shell: bash
         working-directory: a2a-src
