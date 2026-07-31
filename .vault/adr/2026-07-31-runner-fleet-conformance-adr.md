@@ -8,7 +8,7 @@ body_schema: 'body-v1'
 related: []
 ---
 
-# `runner-fleet-conformance` adr: `Fleet topology for the four-target cohort: a macOS runner, an enumerated label set, and an unserved aarch64-linux leg` | (**status:** `accepted`)
+# `runner-fleet-conformance` adr: `Fleet topology for the four-target cohort: a macOS runner, an enumerated label set, and an aarch64-linux leg refused then served (amended)` | (**status:** `accepted`)
 
 ## Problem Statement
 
@@ -72,6 +72,11 @@ fails loudly, and what to do about the one target for which no hardware exists.
   machine cannot carry it: no virtualization tooling is installed, memory is
   modest, and free disk is in single-digit percent while that same machine is
   about to take on the darwin build. Rejected on capacity.
+  **This rejection rested on a false premise and is reversed — see Amendment.**
+  Virtualization tooling WAS installed and running on that machine when this was
+  written, serving a sibling project. The premise was never checked on the host;
+  it was inferred. Capacity is a real cost and is recorded in the Amendment, but
+  it was not what this option was rejected on.
 - **Move the one aarch64-linux leg to a GitHub-hosted ARM64 runner
   (recommended, not yet ratified).** A native aarch64 surface, free on a public
   repository, so the frozen runtime is genuine and the arch guard passes
@@ -106,7 +111,8 @@ directory outside every repository tree, with its own work directory and its own
 service, leaving the existing runners on both hosts untouched. Its registration
 token is minted on demand and used transiently. It takes the auto-assigned
 labels, which already satisfy both the release matrices and the target-to-label
-table, so no workflow or distribution configuration changes. Rather than
+table, so no workflow or distribution configuration changes *for the darwin leg*
+— the Amendment's second Linux runner did require both. Rather than
 overriding the machine's sleep behaviour, the runner conforms to the existing
 operator power policy: it is enrolled in the same AC-gated supervisor as the
 other runners on that host, so it stops on battery and returns on AC while jobs
@@ -123,7 +129,9 @@ grepped for, so the next fleet change has one reviewed place to update.
 
 The aarch64 Linux leg stays refused. The arch guard is retained unchanged, and
 the target-to-label mapping is left alone, because changing that mapping is the
-same act as choosing the runner that will serve it.
+same act as choosing the runner that will serve it. **Superseded the same day —
+see Amendment; the leg is served, and both the guard's premise and the mapping
+changed with it.**
 
 ## Rationale
 
@@ -185,3 +193,63 @@ tool.
 - The configuration comment asserting that the aarch64 Linux leg cross-compiles
   on the x86_64 runner was false and has been corrected where it appeared; the
   equivalent claim in the distribution configuration remains to be corrected.
+
+## Amendment: the aarch64 Linux leg is served (same day)
+
+The refusal above is reversed on evidence, and the reversal is recorded here
+rather than by editing the deliberation, because what the record got wrong is
+worth more than a clean read.
+
+**Why it reverses.** The option was rejected on "no virtualization tooling is
+installed". That was checked by inference, not on the host. Colima 0.10.3 was
+installed and running on that laptop at the time, serving a sibling project's
+Linux/ARM64 runner. The sibling's entry script was read in full and reused —
+official runner image, script bind-mounted as entrypoint, runner home on a named
+volume — changed only in repository, runner name, labels, and prerequisites
+(dropped two sibling-specific tools; added the build headers and `uv`, since
+these workflows REQUIRE `uv` rather than installing it). Caches point at the
+persistent volume, per the fleet's reuse-not-duplicate practice.
+
+**Proven, not asserted.** A dispatched probe leg reports `uname -m` = `aarch64`,
+a rustup host triple of `aarch64-unknown-linux-gnu`, and `uv` and `jq` resolving
+INSIDE a real job rather than only in an interactive shell — the same
+service-PATH distinction that bit the darwin leg. The arch guard now passes
+truthfully on this leg; it was not touched, and is retained across all three
+workflows as the backstop on scheduling, which is the part that drifts.
+
+**What this cost in configuration, contradicting the Implementation section.**
+Two Linux runners share the auto-assigned `Linux` label, so `Linux` identifies
+neither. Every `runs-on:` now names an architecture: 19 literal sites became
+label lists, and four matrices gained an `arch:` key. The distribution
+configuration needed a change the fleet had not needed before: `dist` holds ONE
+label string per target and emits it verbatim, and a TOML array there does not
+error — it silently keeps only the first element, verified against the pinned
+binary, where `["self-hosted", "Linux", "X64"]` planned as `self-hosted`, a label
+every machine carries. Two custom labels, `linux-x64` and `linux-arm64`, exist
+only to express one architecture in one string. They are registration state, not
+machine state: re-running `config.sh` without them drops them, and a label no
+runner carries queues a release silently rather than failing it.
+
+**Durability, at the same ceiling as the rest of that host.** Container crash is
+covered by a restart policy and was proven by killing the container and watching
+the runner return unaided. The VM is restored by a per-user agent at load. The
+container is enrolled in the same AC-gated supervisor, so it stops on battery
+when idle and returns on AC. It does NOT survive an unattended reboot: every
+piece is a per-user agent in the GUI domain, and automatic login is confirmed
+absent rather than assumed. The three runners already on that host share this
+exact ceiling, so the fleet gains no new class of fragility.
+
+**Capacity is now the live risk, and it is the cost this option was wrongly
+credited with.** The VM holds 4 CPUs and 6GiB, and two runner containers now
+share that memory. Host free disk is roughly twenty gigabytes and the VM disk is
+sparse, so the VM can only grow into space the host also needs for the darwin
+release build. This is a capacity question, not a correctness one, and it lands
+on the same host the Consequences section already flags.
+
+**Consequences that this closes.** All four targets now have a proven runner, so
+a complete four-target cohort is producible for the first time. The two further
+workflows that mapped aarch64 onto the x86_64 runner are corrected, and their
+comments — which asserted that mapping as intended — no longer contradict the
+matrices. The distribution configuration's stale cross-compile claim is
+corrected. What remains open is unchanged by this amendment: host disk, the
+unattended-reboot ceiling, and the tag decision.
