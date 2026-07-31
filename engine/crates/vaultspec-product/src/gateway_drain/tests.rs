@@ -276,7 +276,13 @@ fn the_drive_drains_stops_and_proves_exit_through_the_real_control_plane() {
                 b"HTTP/1.1 200 OK\r\nConnection: close\r\nContent-Length: 0\r\n\r\n".to_vec()
             }
             _ => {
-                assert!(request.starts_with("POST /shutdown "), "second call stops");
+                assert!(
+                    request.starts_with(&format!(
+                        "POST {} ",
+                        crate::a2a_contract::GATEWAY_SHUTDOWN_PATH
+                    )),
+                    "second call stops"
+                );
                 // Honor the authorized shutdown: terminate the real child the
                 // way a cooperating gateway would exit.
                 let mut child = killed_rx.recv().expect("child handle");

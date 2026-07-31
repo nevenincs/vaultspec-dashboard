@@ -700,7 +700,10 @@ fn answer(stream: &mut TcpStream, attach: &str, ownership: &str, journal: &Path)
         record(journal, "drain-acknowledged");
         respond(stream, 200);
         true
-    } else if line.starts_with("POST /shutdown") {
+    } else if line.starts_with(&format!(
+        "POST {}",
+        vaultspec_product::a2a_contract::GATEWAY_SHUTDOWN_PATH
+    )) {
         if header(&request, "x-ownership-capability").as_deref() != Some(ownership) {
             record(journal, "shutdown-unauthorized");
             respond(stream, 403);

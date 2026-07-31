@@ -378,7 +378,8 @@ fn wait_for(path: &Path, budget: Duration) -> bool {
     false
 }
 
-/// Stand up a real loopback HTTP gateway stub that answers `/shutdown` 204 only
+/// Stand up a real loopback HTTP gateway stub that answers the gateway's root
+/// admin shutdown route 204 only
 /// when the ownership-capability header is present, else 401. Returns the bound
 /// endpoint. Serves one connection. (Not capsule-gated; runs everywhere.)
 #[cfg(unix)]
@@ -395,7 +396,16 @@ fn spawn_shutdown_stub(ownership_secret: String) -> String {
             let req = String::from_utf8_lossy(&buf[..n]);
             let has_ownership =
                 req.contains(&format!("X-Ownership-Capability: {ownership_secret}"));
-            let resp = if has_ownership {
+            // Route like the real gateway: only the root admin shutdown path
+            // exists, so a call to the retired `/api`-mounted spelling 404s here
+            // instead of being silently accepted.
+            let on_shutdown_route = req.starts_with(&format!(
+                "POST {} ",
+                vaultspec_product::a2a_contract::GATEWAY_SHUTDOWN_PATH
+            ));
+            let resp = if !on_shutdown_route {
+                "HTTP/1.1 404 Not Found\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+            } else if has_ownership {
                 "HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n"
             } else {
                 "HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n"

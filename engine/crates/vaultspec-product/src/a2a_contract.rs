@@ -61,6 +61,14 @@ pub const A2A_HOME_DIR: &str = ".vaultspec-a2a";
 /// [`A2A_HOME_DIR`]. a2a honours this for its own state and discovery.
 pub const A2A_HOME_ENV: &str = "VAULTSPEC_A2A_HOME";
 
+/// The gateway's administrative shutdown route, absolute from the service root.
+///
+/// This is a2a's own contract. Its handler has always been declared at
+/// `/admin/shutdown`, but it was historically REACHED through the legacy `/api`
+/// mount as `/api/admin/shutdown`. With that mount deleted the declared path is
+/// the served path, and root is the only correct spelling.
+pub const GATEWAY_SHUTDOWN_PATH: &str = "/admin/shutdown";
+
 /// The dashboard-owned component lock, repository-relative.
 ///
 /// Dashboard-owned rather than shared: a2a never reads it. It is declared here

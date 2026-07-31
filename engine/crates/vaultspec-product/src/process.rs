@@ -598,7 +598,10 @@ mod tests {
         assert!(drain.starts_with("POST /drain "), "first call was: {drain}");
         let shutdown = requests.recv_timeout(Duration::from_secs(5)).unwrap();
         assert!(
-            shutdown.starts_with("POST /shutdown "),
+            shutdown.starts_with(&format!(
+                "POST {} ",
+                crate::a2a_contract::GATEWAY_SHUTDOWN_PATH
+            )),
             "second call was: {shutdown}"
         );
         assert!(

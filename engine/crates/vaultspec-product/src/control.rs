@@ -24,6 +24,7 @@ use std::io::{Read as _, Write as _};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::{Duration, Instant};
 
+use crate::a2a_contract::GATEWAY_SHUTDOWN_PATH;
 use crate::credentials::Credential;
 use crate::protocol::{LifecycleOp, Readiness};
 
@@ -187,8 +188,11 @@ impl ControlClient {
     /// Shut the gateway down. This receipt-bound operation carries the ownership
     /// capability in addition to the attach token; the attach credential alone
     /// cannot invoke it.
+    ///
+    /// Administrative shutdown is served at [`GATEWAY_SHUTDOWN_PATH`] — the
+    /// gateway's own root-level admin namespace, not the retired `/api` mount.
     pub fn shutdown(&self, ownership: &Credential) -> std::result::Result<(), ControlError> {
-        let resp = self.request("POST", "/shutdown", Some(ownership.secret()))?;
+        let resp = self.request("POST", GATEWAY_SHUTDOWN_PATH, Some(ownership.secret()))?;
         Self::expect_ok(&resp).map(|_| ())
     }
 
@@ -449,7 +453,11 @@ mod tests {
         client.shutdown(creds.ownership()).unwrap();
         handle.join().unwrap();
         let req = captured_rx.recv().unwrap();
-        assert!(req.starts_with("POST /shutdown "));
+        assert!(
+            req.starts_with(&format!("POST {GATEWAY_SHUTDOWN_PATH} ")),
+            "shutdown must target the gateway's root admin route, not the retired \
+             `/api` mount; got: {req}"
+        );
         assert!(
             req.contains(&format!(
                 "X-Ownership-Capability: {}",
