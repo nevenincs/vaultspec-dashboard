@@ -95,4 +95,38 @@ mod tests {
         assert_ne!(HANDOFF_CREDENTIAL_FILE, RESIDENT_DISCOVERY_FILE);
         assert_ne!(HANDOFF_CREDENTIAL_FILE, GATEWAY_DISCOVERY_FILE);
     }
+
+    /// PIN the shutdown route to the literal byte string the sibling serves.
+    ///
+    /// This assertion looks redundant and is not. Every other check of this
+    /// route - the control client's own test, and the four loopback gateway
+    /// stubs - now derives BOTH the request and the expectation from
+    /// [`GATEWAY_SHUTDOWN_PATH`], so they agree with each other whatever it
+    /// says. Centralising the name bought single ownership at the cost of the
+    /// tests' ability to detect a wrong VALUE: set this constant to `/shutdown`
+    /// and the entire suite still passes, because client and stub drift
+    /// together.
+    ///
+    /// So exactly one assertion holds the value against the outside world. The
+    /// source of truth is a2a's `api/routes/admin.py`, which declares
+    /// `@router.post("/admin/shutdown")` at the service root now that the
+    /// legacy `/api` mount is gone. If a2a moves that route, this is the test
+    /// that fails, and it fails with the reason attached.
+    #[test]
+    fn the_shutdown_route_is_pinned_to_the_route_a2a_actually_serves() {
+        assert_eq!(
+            GATEWAY_SHUTDOWN_PATH, "/admin/shutdown",
+            "a2a serves administrative shutdown at the service root; the retired \
+             `/api` mount spelling (`/api/admin/shutdown`) and the never-served \
+             root `/shutdown` are both wrong"
+        );
+        assert!(
+            GATEWAY_SHUTDOWN_PATH.starts_with('/'),
+            "the route is absolute from the service root, not relative"
+        );
+        assert!(
+            !GATEWAY_SHUTDOWN_PATH.starts_with("/api/"),
+            "the legacy `/api` mount is deleted; no contract path may sit under it"
+        );
+    }
 }
