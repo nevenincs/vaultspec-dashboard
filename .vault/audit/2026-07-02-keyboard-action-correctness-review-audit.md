@@ -57,7 +57,7 @@ ONLY in secure contexts (https, `localhost`, `127.0.0.1`). The project's
 canonical serving origins are neither: the dev SPA is deliberately
 network-exposed over plain HTTP (`vite.config.ts` `host: true`, "accessible
 from other machines on the same Tailscale network"; the codified canonical
-origin is `http://gw-workstation:8770`), and the engine-served production SPA
+origin is `http://<dev-host>:8770`), and the engine-served production SPA
 (`vaultspec serve` on 8767, `routes/spa.rs`) is likewise plain HTTP. On any
 non-localhost hostname `navigator.clipboard` is `undefined`, so the optional
 chain at `clipboardActions.ts:71` short-circuits: `writeClipboard` returns

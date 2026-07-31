@@ -41,6 +41,16 @@ export const DEV_PORTS = {
   adverse: port("VAULTSPEC_DEV_ADVERSE_PORT", 8774),
   /** Perf Playwright SPA. */
   perf: port("VAULTSPEC_DEV_PERF_PORT", 8776),
+  /**
+   * Engine backing the visual review desk. SEPARATE from the developer's own engine
+   * (`engine`, 8767) on purpose: the desk's engine runs with demo-condition
+   * simulation enabled and points at the committed demo corpus, so pointing the desk
+   * at the working engine would both contaminate the review with live data and put
+   * simulated outages in front of someone trying to use the app.
+   */
+  demoEngine: port("VAULTSPEC_DEV_DEMO_ENGINE_PORT", 8778),
+  /** Visual review surface — `npm run dev:visual-review`, served from frontend/dev/. */
+  visualReview: port("VAULTSPEC_DEV_VISUAL_REVIEW_PORT", 8777),
 } as const;
 
 // Vite's dev server validates the request `Host` header as a DNS-rebinding guard
@@ -52,7 +62,7 @@ export const DEV_PORTS = {
 // per-machine via VAULTSPEC_DEV_ALLOWED_HOSTS (comma-separated) without editing
 // this file.
 function allowedHosts(): string[] {
-  const base = ["gw-workstation", ".ts.net"];
+  const base = [".ts.net"];
   const extra = (process.env.VAULTSPEC_DEV_ALLOWED_HOSTS ?? "")
     .split(",")
     .map((host) => host.trim())

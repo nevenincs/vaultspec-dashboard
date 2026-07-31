@@ -34,9 +34,9 @@
 # The labels below are the AUTO-ASSIGNED labels the Actions runner application
 # applies to each registered machine, so the mapping is:
 #
-#   Windows  →  gw-workstation-win-vaultspec   (self-hosted, X64,   Windows)
-#   Linux    →  gw-workstation-wsl-vaultspec   (self-hosted, X64,   Linux)
-#   macOS    →  macbook-neo-mac-vaultspec      (self-hosted, ARM64, macOS)
+#   Windows  →  the x86-64 Windows runner      (self-hosted, X64,   Windows)
+#   Linux    →  the x86-64 Linux runner        (self-hosted, X64,   Linux)
+#   macOS    →  the ARM64 macOS runner         (self-hosted, ARM64, macOS)
 #              NOT YET REGISTERED. The machine exists and is provisioned, but
 #              the runner is not installed, so every `macOS` leg queues rather
 #              than runs. Enumerating the label here is deliberate: it is the
