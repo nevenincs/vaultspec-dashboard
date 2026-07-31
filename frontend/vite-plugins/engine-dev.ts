@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 import type { Plugin, ViteDevServer } from "vite";
 
-import { DEV_PORTS } from "../dev-ports";
+import { DEV_PORTS } from "../dev/dev-ports";
 
 // Robust local dev orchestrator for the live UX survey.
 //
@@ -51,7 +51,7 @@ function warn(message: string): void {
 }
 
 function resolvePort(): number {
-  // Canonical engine dev port (./dev-ports.ts honours VAULTSPEC_DEV_PORT).
+  // Canonical engine dev port (./dev/dev-ports.ts honours VAULTSPEC_DEV_PORT).
   return DEV_PORTS.engine;
 }
 

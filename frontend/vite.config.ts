@@ -5,12 +5,12 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-import { DEV_ALLOWED_HOSTS, DEV_PORTS } from "./dev-ports";
+import { DEV_ALLOWED_HOSTS, DEV_PORTS } from "./dev/dev-ports";
 import { engineDevPlugin } from "./vite-plugins/engine-dev";
 
 // The dev orchestrator (engineDevPlugin) may serve the engine on a non-default
 // port; the proxy target tracks the same canonical value so the two never
-// disagree. All dev/test ports live in ./dev-ports.ts (exact, non-default,
+// disagree. All dev/test ports live in ./dev/dev-ports.ts (exact, non-default,
 // fail-fast).
 const enginePort = DEV_PORTS.engine;
 
@@ -83,12 +83,12 @@ export default defineConfig(({ command }) => ({
     host: process.env.VAULTSPEC_DEV_HOST ?? true,
     // Accept the Host header from machines reaching the dev server over the
     // Tailscale network by hostname (DNS-rebinding guard). localhost is always
-    // allowed by Vite; the network hostnames live in ./dev-ports.ts and are
+    // allowed by Vite; the network hostnames live in ./dev/dev-ports.ts and are
     // env-extendable via VAULTSPEC_DEV_ALLOWED_HOSTS.
     allowedHosts: DEV_ALLOWED_HOSTS,
     // Pin the SPA dev server to an exact, non-default port and FAIL FAST if it
     // is taken (strictPort) rather than silently drifting to the next free port
-    // and colliding with another project's server. See ./dev-ports.ts.
+    // and colliding with another project's server. See ./dev/dev-ports.ts.
     port: DEV_PORTS.spa,
     strictPort: true,
     // Engine API proxy during development; in production the SPA and API
