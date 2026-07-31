@@ -57,6 +57,38 @@ jobs:
           if [ -z "${CARGO_TARGET_DIR:-}" ]; then
             echo "::warning::CARGO_TARGET_DIR is unset on this runner, so builds land inside the workspace and the next checkout cleans them — every run rebuilds from scratch"
           fi
+      # A compile cache must never be able to block the gate. sccache is wired in
+      # as a RUSTC_WRAPPER at the runner level, so cargo routes even its
+      # `rustc -vV` probe through it: if the sccache server is unreachable the
+      # FIRST cargo invocation dies and nothing compiles. Not hypothetical — on
+      # 2026-07-31 WSL's localhost relay (wslrelay.exe) held sccache's default
+      # port 4226 on the Windows runner, and every Rust step failed with
+      # "failed to fill whole buffer" before a single crate was checked. The
+      # server port is now pinned away from the contended range in the runner
+      # environment; this step is the backstop. Probe the wrapper exactly the way
+      # cargo does, and if it cannot answer, drop the wrapper for the rest of the
+      # job so the gate still runs — uncached and loudly warned, never skipped.
+      #
+      # `sccache --show-stats` is NOT a usable health check: against a squatted
+      # port it exits 0 and prints default-valued stats without ever reaching a
+      # server. Only the real wrapper invocation distinguishes the two.
+      - name: Verify the compile cache cannot block the gate
+        shell: bash
+        run: |
+          set +e
+          if [ -z "${RUSTC_WRAPPER:-}" ]; then
+            echo "No RUSTC_WRAPPER on this runner — nothing to verify."
+            exit 0
+          fi
+          probe=$("$RUSTC_WRAPPER" "$(rustup which rustc)" -vV 2>&1)
+          rc=$?
+          if [ "$rc" -ne 0 ]; then
+            echo "$probe"
+            echo "::warning::Compile cache unreachable on port ${SCCACHE_SERVER_PORT:-4226} (exit $rc) — continuing WITHOUT it. Builds are slower; clippy and the tests still run in full."
+            echo "RUSTC_WRAPPER=" >> "$GITHUB_ENV"
+          else
+            echo "Compile cache reachable on port ${SCCACHE_SERVER_PORT:-4226} via $RUSTC_WRAPPER"
+          fi
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
