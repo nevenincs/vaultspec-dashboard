@@ -47,6 +47,7 @@
 use std::ffi::OsString;
 use std::path::Path;
 use std::time::Duration;
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 
 use vaultspec_product::gateway_drain::{DrainContext, DrainDeadlines};
 use vaultspec_product::locking::{Actor, InstallLock, InstallLockGuard};
@@ -88,7 +89,7 @@ impl Installed {
     }
 
     fn write_discovery(&self, json: &str) {
-        std::fs::write(self.paths.app_home().join("gateway-discovery.json"), json).unwrap();
+        std::fs::write(self.paths.app_home().join(GATEWAY_DISCOVERY_FILE), json).unwrap();
     }
 }
 

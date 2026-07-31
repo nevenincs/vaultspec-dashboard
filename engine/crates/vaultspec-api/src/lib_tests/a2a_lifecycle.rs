@@ -10,6 +10,7 @@
 
 use super::*;
 use std::time::{SystemTime, UNIX_EPOCH};
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 
 use vaultspec_product::locking::{Actor, InstallLock};
 use vaultspec_product::manifest::{ReleaseIdentity, Target};
@@ -80,7 +81,7 @@ fn write_legacy_receipt_and_discovery(
         "heartbeat_ms": now_ms
     });
     std::fs::write(
-        paths.app_home().join("gateway-discovery.json"),
+        paths.app_home().join(GATEWAY_DISCOVERY_FILE),
         discovery.to_string(),
     )
     .unwrap();

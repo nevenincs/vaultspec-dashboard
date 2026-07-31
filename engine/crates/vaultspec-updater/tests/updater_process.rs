@@ -23,6 +23,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::{Duration, Instant, SystemTime};
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 
 use fs4::fs_std::FileExt;
 use rusqlite::Connection;
@@ -647,7 +648,7 @@ fn serve_as_gateway(app_home: &Path) -> ! {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let endpoint = format!("127.0.0.1:{}", listener.local_addr().unwrap().port());
     std::fs::write(
-        paths.app_home().join("gateway-discovery.json"),
+        paths.app_home().join(GATEWAY_DISCOVERY_FILE),
         discovery_json(
             &paths.root().to_string_lossy(),
             std::process::id(),

@@ -1,4 +1,5 @@
 use super::*;
+use vaultspec_product::a2a_contract::HANDOFF_CREDENTIAL_FILE;
 
 const TEST_REQUIRED_ROLES: &[&str] = &[
     "vaultspec-researcher",
@@ -102,7 +103,7 @@ fn write_response(stream: &mut std::net::TcpStream, status: u16, body: &str) {
 }
 
 fn write_service_record(path: &std::path::Path, port: u16) {
-    let handoff = path.with_file_name("service.token");
+    let handoff = path.with_file_name(HANDOFF_CREDENTIAL_FILE);
     std::fs::write(&handoff, "tok").unwrap();
     restrict_test_handoff(&handoff);
     std::fs::write(
@@ -582,7 +583,7 @@ fn discovery_classifies_absent_stale_and_fresh() {
 
     // Fresh heartbeat: a live service.
     let now = now_ms();
-    let handoff = path.with_file_name("service.token");
+    let handoff = path.with_file_name(HANDOFF_CREDENTIAL_FILE);
     std::fs::write(&handoff, "tok").unwrap();
     restrict_test_handoff(&handoff);
     std::fs::write(

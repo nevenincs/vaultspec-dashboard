@@ -17,6 +17,7 @@
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 
 // NOT `#[cfg(windows)]`: these were Windows-gated when the only consumer was the
 // Windows credential-bootstrap test. The gateway-stop-plan proofs need them on
@@ -167,7 +168,7 @@ fn write_discovery(
         "heartbeat_ms": heartbeat_ms
     })
     .to_string();
-    std::fs::write(paths.app_home().join("gateway-discovery.json"), raw).unwrap();
+    std::fs::write(paths.app_home().join(GATEWAY_DISCOVERY_FILE), raw).unwrap();
 }
 
 // --- socket / file / pid proofs (no capsule needed) ---------------------------
@@ -460,7 +461,7 @@ fn retired_receipt_cannot_authorize_stale_discovery_quarantine_or_start() {
         "",
         now_ms(),
     );
-    let discovery_path = paths.app_home().join("gateway-discovery.json");
+    let discovery_path = paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     assert!(discovery_path.exists());
 
     let outcome = plane.reconcile_seated_boot(None);

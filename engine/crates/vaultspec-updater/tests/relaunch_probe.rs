@@ -7,6 +7,7 @@
 
 use std::path::Path;
 use std::time::Duration;
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 
 use vaultspec_product::manifest::RangeBounds;
 use vaultspec_updater::{ProbeConfig, probe_seat_republished, relaunch_and_probe};
@@ -59,7 +60,7 @@ fn write(path: &Path, json: &str) {
 #[test]
 fn probe_succeeds_when_the_seat_republishes_owned_live() {
     let temp = tempfile::tempdir().unwrap();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     let owner = "probe-owner";
     let watermark = now_ms();
     // Ours, our own LIVE pid, fresh heartbeat published at/after the watermark:
@@ -80,7 +81,7 @@ fn probe_succeeds_when_the_seat_republishes_owned_live() {
 #[test]
 fn probe_times_out_when_no_record_appears() {
     let temp = tempfile::tempdir().unwrap();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     // No discovery file is ever written: the seat did not come back.
     let refused = probe_seat_republished(
         &discovery,
@@ -96,7 +97,7 @@ fn probe_times_out_when_no_record_appears() {
 #[test]
 fn probe_rejects_a_stale_leftover_record() {
     let temp = tempfile::tempdir().unwrap();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     let owner = "probe-owner";
     // A record with a heartbeat far outside the freshness window — the leftover
     // of a seat that stopped before the update. It must NOT satisfy the probe.
@@ -116,7 +117,7 @@ fn probe_rejects_a_stale_leftover_record() {
 #[test]
 fn probe_rejects_a_foreign_owner() {
     let temp = tempfile::tempdir().unwrap();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     let watermark = now_ms();
     // Fresh + live, but published by a DIFFERENT owner: not our relaunched seat.
     write(
@@ -138,7 +139,7 @@ fn probe_rejects_a_foreign_owner() {
 #[test]
 fn probe_rejects_a_record_published_before_the_watermark() {
     let temp = tempfile::tempdir().unwrap();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     let owner = "probe-owner";
     let watermark = now_ms();
     // Owned + live + still within the freshness window, but its heartbeat PREDATES
@@ -163,7 +164,7 @@ fn probe_rejects_a_record_published_before_the_watermark() {
 #[test]
 fn probe_refuses_an_oversized_discovery_file() {
     let temp = tempfile::tempdir().unwrap();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     let owner = "probe-owner";
     // A record padded beyond the 64 KiB bound — otherwise owned+live+fresh — must
     // be refused by the bounded read, never allocated or parsed, so the probe
@@ -187,7 +188,7 @@ fn probe_refuses_an_oversized_discovery_file() {
 fn relaunch_and_probe_gates_on_a_post_relaunch_record() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = temp.path();
-    let discovery = temp.path().join("gateway-discovery.json");
+    let discovery = temp.path().join(GATEWAY_DISCOVERY_FILE);
     let owner = "probe-owner";
     // A record published BEFORE the relaunch (owned + live, and still inside the
     // 60 s freshness window — a heartbeat from 5 s ago, the pid-recycle scenario)
