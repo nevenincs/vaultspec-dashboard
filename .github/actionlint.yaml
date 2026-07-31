@@ -1,0 +1,83 @@
+# actionlint configuration — the enumerated set of runner labels this repository
+# schedules onto.
+#
+# WHAT THIS FILE DOES, PRECISELY. actionlint's `runner-label` check already
+# rejects an unrecognised `runs-on:` out of the box: it ships knowledge of
+# `self-hosted`, `linux`, `macos`, `windows`, `x64`, `arm`, `arm64` and the
+# hosted `*-latest`/dated images, compares case-insensitively, and errors on
+# anything else. This file does not make that check stricter — it ADMITS labels
+# actionlint could not otherwise know about, by appending them to the known set.
+# Verified against actionlint 1.7.12: with this config loaded, the reported
+# "available labels" list grows by exactly the six entries below.
+#
+# So the value here is twofold, and worth being honest about which is which:
+#
+#   1. Documentary, today. Every label below except none is already recognised
+#      natively (the fleet deliberately schedules on auto-assigned OS labels
+#      rather than minting bespoke ones), so removing this file would not turn
+#      any current workflow red. What the file buys today is a single reviewed
+#      place that states which machines this pipeline can reach, resolved out of
+#      the matrices rather than grepped for.
+#   2. Load-bearing, on the next fleet change. The moment a machine-specific or
+#      capability label is introduced — the sibling repos already carry
+#      `dev-runner`, `build`, `gpu`, `cuda` — a workflow using it FAILS the lint
+#      gate until it is listed here. Add the label in the same commit that first
+#      uses it; do not suppress the check.
+#
+# THE FLEET. Every job in this repository runs on the shared self-hosted fleet;
+# there are no GitHub-hosted runners in the budget (see the rationale on
+# `[dist.github-custom-runners]` in dist-workspace.toml). The labels below are
+# the AUTO-ASSIGNED labels the Actions runner application applies to each
+# registered machine, so the mapping is:
+#
+#   Windows  →  gw-workstation-win-vaultspec   (self-hosted, X64,   Windows)
+#   Linux    →  gw-workstation-wsl-vaultspec   (self-hosted, X64,   Linux)
+#   macOS    →  macbook-neo-mac-vaultspec      (self-hosted, ARM64, macOS)
+#
+# aarch64-unknown-linux-gnu has no native machine: it cross-compiles on the WSL
+# runner, which is why `Linux` serves two targets in the release matrices.
+#
+# WHERE EACH LABEL IS REACHED FROM. Several jobs schedule through
+# `runs-on: ${{ matrix.os }}` / `${{ matrix.runner }}`, so a grep for literal
+# labels under-reports; the matrix `include:` blocks are part of the enumeration:
+#
+#   Windows  literal  a2a-channel-feasibility, a2a-product-certification,
+#                     ci-runner-probe, product-release, winget-publish
+#            matrix   engine-ci (matrix.os), a2a-product-certification and
+#                     product-release (include.os), a2a-product-contract
+#                     (include.runner), release (dist-planned matrix.runner)
+#   Linux    literal  a2a-channel-feasibility, a2a-product-certification,
+#                     channel-publish-gate, ci-runner-probe, product-release,
+#                     quality-gates, release-please, release, scoop-bump
+#            matrix   the same five matrices as above
+#   macOS    matrix   ONLY — a2a-product-certification and product-release
+#                     (include.os, aarch64-apple-darwin), a2a-product-contract
+#                     (include.runner), release (dist-planned matrix.runner).
+#                     It is reached by no literal `runs-on:` anywhere, which is
+#                     exactly why it has to be resolved out of the matrices
+#                     rather than grepped for.
+#
+# release.yml's matrix is computed by dist at plan time from
+# `[dist.github-custom-runners]` in dist-workspace.toml; that table maps all four
+# shipped targets onto macOS/Linux/Windows and MUST stay in agreement with this
+# list. Changing one without the other schedules a build at a label no machine
+# carries — a job that queues silently rather than failing.
+#
+# `.github/release-build-setup.yml` is deliberately absent from this accounting:
+# it is a bare step-list fragment injected into dist's generated build jobs, not
+# a workflow and not a composite action. It declares no `runs-on:`, and
+# actionlint cannot parse it standalone (it has no `on:`/`jobs:` sections), so it
+# is neither linted nor a source of labels.
+self-hosted-runner:
+  labels:
+    # OS labels — the ones the workflows actually schedule on.
+    - Windows
+    - Linux
+    - macOS
+    # Remaining auto-assigned fleet labels. Carried by the registered runners
+    # and therefore legal in a `runs-on:` list (e.g. `[self-hosted, ARM64]` to
+    # pin the Apple Silicon machine specifically), even though no workflow
+    # composes them that way today.
+    - self-hosted
+    - X64
+    - ARM64

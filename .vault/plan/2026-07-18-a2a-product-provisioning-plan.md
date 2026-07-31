@@ -3,7 +3,7 @@ tags:
   - '#plan'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-30'
+modified: '2026-07-31'
 tier: L3
 related:
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
@@ -305,9 +305,9 @@ Every downstream certification (W06.P13 target/channel proofs, W06.P14 release r
 
 - [x] `W06.P15.S179` - L0 runner foundation. Make each self-hosted runner (Linux, Windows, macOS) stable, durable, and correctly based: run it as a service that survives reboot and reconnects cleanly with no stale-session block, and place Git Bash ahead of WSL bash on Windows so shell bash steps and third-party actions resolve. Verify with a probe workflow exercising a bash step, a pwsh step, and a third-party bash-using action on each OS, and prove each runner survives a restart; `.github/workflows/ci-runner-probe.yml`.
 - [x] `W06.P15.S180` - L1 tool availability on the runners. Remove GitHub-hosted assumptions: replace the Docker-based cargo-deny-action with a native cargo-deny install and run, and confirm uv audit and npm audit prerequisites exist on the runner. Verify the Supply chain job passes on the self-hosted runner; `.github/workflows/quality-gates.yml`.
-- [ ] `W06.P15.S181` - L2 build and path correctness over the shared cache. Confirm every built-binary reference resolves under the shared CARGO_TARGET_DIR and that cargo build and test reuse it with no rebuild or not-found error. Verify engine-ci build plus a cargo test pass on both Linux and Windows reusing the shared target; `.github/workflows/engine-ci.yml`.
+- [x] `W06.P15.S181` - L2 build and path correctness over the shared cache. Confirm every built-binary reference resolves under the shared CARGO_TARGET_DIR and that cargo build and test reuse it with no rebuild or not-found error. Verify engine-ci build plus a cargo test pass on both Linux and Windows reusing the shared target; `.github/workflows/engine-ci.yml`.
 - [x] `W06.P15.S182` - L3a engine-serve socket stability. Resolve the defect where live serve drops in-flight connections under the loaded frontend live-vitest suite (watcher rebuild-swap dropping sockets) so the suite sees no socket hang up. Verify the frontend live-vitest suite completes with zero socket hang up on the runner; `engine/crates/vaultspec-api/src/app.rs`.
-- [ ] `W06.P15.S183` - L3b clear the S11-lane blockers. Fix the vaultspec-product and vaultspec-api clippy violations and the generation scope-coexistence and provisioning composition test failures that fail engine-ci and Release inputs on Linux. Verify engine-ci clippy and the Release inputs cargo test pass; `engine/crates/vaultspec-product/src`.
+- [x] `W06.P15.S183` - L3b clear the S11-lane blockers. Fix the vaultspec-product and vaultspec-api clippy violations and the generation scope-coexistence and provisioning composition test failures that fail engine-ci and Release inputs on Linux. Verify engine-ci clippy and the Release inputs cargo test pass; `engine/crates/vaultspec-product/src`.
 - [ ] `W06.P15.S184` - L4 whole CI green gate. Prove quality-gates, engine-ci, and release-please all succeed on a clean push to main, which unblocks the W06 target and channel certification. Verify one push brings all three workflows to green; `.github/workflows`.
 
 ## Parallelization

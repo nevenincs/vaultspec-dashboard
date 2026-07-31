@@ -33,6 +33,59 @@ jobs:
           rm -rf "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
           df -h . 2>/dev/null | tail -1
 
+  workflow-lint:
+    # actionlint over .github/workflows — the only thing that reads these files
+    # before GitHub itself does. It exists mainly for one failure class this
+    # fleet is uniquely exposed to: a `runs-on:` label no registered runner
+    # carries. That does not error at dispatch, it queues forever, producing no
+    # logs and no failure — the most expensive way this pipeline can break. The
+    # set of labels the fleet can actually schedule onto is enumerated in
+    # .github/actionlint.yaml, which actionlint picks up automatically.
+    #
+    # Installed as the pinned upstream release binary rather than the
+    # `docker://rhysd/actionlint` container action the sibling repos use. Docker
+    # is present and the daemon does respond on this runner, but the fleet has
+    # already been bitten here once: the Docker-based cargo-deny action failed on
+    # the self-hosted runner's credential helper and was replaced with a native
+    # install (see the supply-chain job below). That helper is `desktop.exe`,
+    # which only resolves while Docker Desktop is running on the Windows host —
+    # a dependency a lint gate should not carry. A tarball plus a checksum needs
+    # no daemon, no registry auth, and no Docker Desktop.
+    #
+    # shellcheck and pyflakes integration is disabled EXPLICITLY. actionlint
+    # auto-enables each whenever the binary happens to be on PATH, so leaving it
+    # implicit means installing shellcheck on this runner for any unrelated
+    # reason silently turns this gate red across every large `run:` block in the
+    # tree. Enabling it is a deliberate change, not an accident of provisioning.
+    name: Workflow lint (actionlint)
+    runs-on: Linux
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run actionlint
+        shell: bash
+        env:
+          # Pinned by version AND digest: this step downloads an executable and
+          # runs it, so the release archive is verified before it is unpacked.
+          # The digest is the one published in the upstream checksums file for
+          # this exact version; bump both together.
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          tar xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -no-color -shellcheck= -pyflakes= .github/workflows/*.yml
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          rm -rf "${RUNNER_TEMP:-/tmp}"/actionlint "${RUNNER_TEMP:-/tmp}"/actionlint_*.tar.gz 2>/dev/null || true
+          df -h . 2>/dev/null | tail -1
+
   frontend:
     name: Frontend (eslint · prettier · tsc · vitest)
     runs-on: Linux
