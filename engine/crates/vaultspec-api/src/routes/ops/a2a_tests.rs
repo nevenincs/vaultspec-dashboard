@@ -68,7 +68,7 @@ fn read_request(stream: &std::net::TcpStream) -> ObservedRequest {
 }
 
 fn write_response(stream: &mut std::net::TcpStream, status: u16, body: &str) {
-    use std::io::Write;
+    use std::io::{Read, Write};
 
     let reason = match status {
         200 => "OK",
@@ -83,6 +83,22 @@ fn write_response(stream: &mut std::net::TcpStream, status: u16, body: &str) {
         body.len()
     )
     .unwrap();
+    stream.flush().unwrap();
+    // Close gracefully rather than by dropping the socket. We announce
+    // `Connection: close`, so the client reads until EOF — and on Windows a
+    // socket closed while ANY unread inbound bytes remain is reset rather than
+    // finished, which discards the response the client has not read yet. The
+    // client then reports a transport failure instead of the refusal under
+    // test, so a harness shortcut here would read as a product defect.
+    // Half-close to send FIN, then drain whatever the peer already sent so the
+    // final drop has nothing left to turn into an RST.
+    let _ = stream.shutdown(std::net::Shutdown::Write);
+    let mut discard = [0u8; 1024];
+    while let Ok(read) = stream.read(&mut discard) {
+        if read == 0 {
+            break;
+        }
+    }
 }
 
 fn write_service_record(path: &std::path::Path, port: u16) {
