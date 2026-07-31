@@ -577,6 +577,57 @@ fn legacy_receipt_json_never_selects_a_generation() {
 /// order-symmetric and the fix must be shown symmetric — and then asserts,
 /// rather than argues, that the exclusivity being touched still holds.
 ///
+/// Dropping the root lock releases it even while a duplicate descriptor for the
+/// same open file description is still open.
+///
+/// Unix-only, and not hypothetical plumbing. An `flock` lives on the open file
+/// DESCRIPTION, not on the descriptor, and every `Command::spawn` duplicates
+/// this process's whole descriptor table into the forked child — `O_CLOEXEC`
+/// takes effect only at `exec`. So any unrelated spawn anywhere in the process
+/// briefly holds a second reference to this lock's description. While release
+/// was a bare close, that close dropped one reference and left the lock
+/// asserted through the survivor, so the next `bind` on the SAME product root
+/// was refused `RootAuthorityBusy` for the whole fork-to-exec window. That is
+/// not a test artifact: the engine spawns the gateway, the updater, and
+/// migration children from the process that also verifies and binds.
+///
+/// `dup` reproduces exactly the relationship a fork creates — a second
+/// descriptor over one description — which makes the proof deterministic
+/// instead of a race that needs a loaded machine to show itself. Real
+/// descriptors, real locks, no fake.
+///
+/// The refusal asserted while the guard is alive is the negative control: it
+/// proves the exclusion is genuinely in force, so the release below means
+/// something rather than passing vacuously.
+#[cfg(unix)]
+#[test]
+fn a_root_lock_releases_even_while_a_duplicate_descriptor_survives() {
+    let temp = tempfile::tempdir().expect("temporary product root");
+    let root = DirectoryAuthority::open_root(temp.path()).expect("root authority");
+
+    let lock = RootDirectoryLock::acquire_exclusive(&root).expect("the free root locks");
+    let inherited = lock
+        .descriptor
+        .try_clone()
+        .expect("duplicate the locked description, exactly as a fork would");
+
+    assert!(
+        matches!(
+            RootDirectoryLock::acquire_exclusive(&root),
+            Err(GenerationError::RootAuthorityBusy)
+        ),
+        "a live root lock must exclude a second acquire"
+    );
+
+    drop(lock);
+
+    drop(RootDirectoryLock::acquire_exclusive(&root).expect(
+        "dropping the guard must release the lock even while a duplicate \
+             descriptor for the same description survives",
+    ));
+    drop(inherited);
+}
+
 /// Windows-only. The excluding mechanism is cap-std's share-mode delete
 /// denial, which exists solely on Windows; on Unix a capability handle carries
 /// no share-mode, so two opens of one root never exclude each other and the

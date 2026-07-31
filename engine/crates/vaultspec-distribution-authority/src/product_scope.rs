@@ -144,13 +144,37 @@ impl ProductRootScope {
 }
 
 /// Advisory shared lock held on a fresh, independent open-file-description for
-/// the product-root directory inode. Dropping the guard closes the descriptor,
-/// which releases the `flock`; it is held only for verification's
+/// the product-root directory inode. Dropping the guard unlocks that
+/// description, which releases the `flock`; it is held only for verification's
 /// datastore-writing work and released before the verified value exists.
 #[cfg(unix)]
 #[derive(Debug)]
 pub(crate) struct DatastoreDirectoryLock {
-    _descriptor: rustix::fd::OwnedFd,
+    pub(crate) descriptor: rustix::fd::OwnedFd,
+}
+
+/// Release is an explicit unlock, never merely a close.
+///
+/// A `flock` lives on the open file DESCRIPTION, not on the descriptor. Any
+/// `Command::spawn` anywhere in this process duplicates the whole descriptor
+/// table into the forked child, and `O_CLOEXEC` only takes effect at `exec` —
+/// so for the fork-to-exec window an unrelated child holds a second reference
+/// to this very description. Closing our descriptor would then drop one
+/// reference while the lock stayed asserted through the child's, which would
+/// keep verification's work-scoped lock alive past the verified value's
+/// construction and spuriously refuse the `bind` that is supposed to follow it.
+/// Unlocking clears the lock from the description itself, so release owes
+/// nothing to who else happens to hold a reference.
+///
+/// This narrows release to exactly the intended instant; it loosens no
+/// exclusion. The lock is held in full for the guard's whole lifetime, and each
+/// guard owns a private description, so this can never release another guard's
+/// lock on the same inode.
+#[cfg(unix)]
+impl Drop for DatastoreDirectoryLock {
+    fn drop(&mut self) {
+        let _ = rustix::fs::flock(&self.descriptor, rustix::fs::FlockOperation::Unlock);
+    }
 }
 
 #[cfg(unix)]
@@ -174,9 +198,7 @@ impl DatastoreDirectoryLock {
             &descriptor,
             rustix::fs::FlockOperation::NonBlockingLockShared,
         ) {
-            Ok(()) => Ok(Self {
-                _descriptor: descriptor,
-            }),
+            Ok(()) => Ok(Self { descriptor }),
             Err(_) => Err(VerificationError::DatastoreUnavailable),
         }
     }

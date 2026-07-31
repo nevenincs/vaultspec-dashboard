@@ -60,7 +60,7 @@ pub struct LockedProduct<'lock> {
 
 /// Advisory exclusive lock on the product-root directory inode, held on a fresh
 /// independent open-file-description for the full lifetime of a bound product.
-/// Dropping the guard closes the descriptor, which releases the `flock`.
+/// Dropping the guard unlocks that description, which releases the `flock`.
 ///
 /// It serializes the engine's own generation-mutation flows against a
 /// concurrent distribution verification's datastore write (which takes a shared
@@ -70,7 +70,30 @@ pub struct LockedProduct<'lock> {
 #[cfg(unix)]
 #[derive(Debug)]
 struct RootDirectoryLock {
-    _descriptor: rustix::fd::OwnedFd,
+    descriptor: rustix::fd::OwnedFd,
+}
+
+/// Release is an explicit unlock, never merely a close.
+///
+/// A `flock` lives on the open file DESCRIPTION, not on the descriptor. Any
+/// `Command::spawn` anywhere in this process duplicates the whole descriptor
+/// table into the forked child, and `O_CLOEXEC` only takes effect at `exec` —
+/// so for the fork-to-exec window an unrelated child holds a second reference
+/// to this very description. Closing our descriptor would then drop one
+/// reference while the lock stayed asserted through the child's, and the next
+/// acquirer on this inode would be refused for a window measured in
+/// milliseconds under load. Unlocking clears the lock from the description
+/// itself, so release owes nothing to who else happens to hold a reference.
+///
+/// This narrows release to exactly the intended instant; it loosens no
+/// exclusion. The lock is held in full for the guard's whole lifetime, and each
+/// guard owns a private description, so this can never release another guard's
+/// lock on the same inode.
+#[cfg(unix)]
+impl Drop for RootDirectoryLock {
+    fn drop(&mut self) {
+        let _ = rustix::fs::flock(&self.descriptor, rustix::fs::FlockOperation::Unlock);
+    }
 }
 
 #[cfg(unix)]
@@ -93,9 +116,7 @@ impl RootDirectoryLock {
             &descriptor,
             rustix::fs::FlockOperation::NonBlockingLockExclusive,
         ) {
-            Ok(()) => Ok(Self {
-                _descriptor: descriptor,
-            }),
+            Ok(()) => Ok(Self { descriptor }),
             Err(error) if error == rustix::io::Errno::WOULDBLOCK => {
                 Err(GenerationError::RootAuthorityBusy)
             }

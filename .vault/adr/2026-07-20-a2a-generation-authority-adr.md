@@ -134,6 +134,21 @@ superseding that ADR or changing its status.
   remains inode-identity detection at every trust boundary. The verified VALUE still
   coexists with the bound product in both orders; only the verification WORK is excluded,
   mirroring the Windows lease exactly.
+- Recorded 2026-07-31 (how a Unix advisory lock is RELEASED): both guards release by
+  explicitly unlocking their description, never by merely closing their descriptor. An
+  `flock` lives on the open file DESCRIPTION, and every `Command::spawn` duplicates the
+  process's whole descriptor table into the forked child, with `O_CLOEXEC` taking effect
+  only at `exec`. So any unrelated spawn — the gateway, the updater, a migration child —
+  briefly holds a second reference to whichever lock descriptions are live at that
+  instant. A close-only release therefore dropped one reference while the lock stayed
+  asserted through the child's, extending the exclusion past its intended end by the
+  fork-to-exec window: measured at 1.8-35ms under load, and observed as the verification
+  lock outliving the verified value's construction so the `bind` that production performs
+  next was refused `RootAuthorityBusy`. Unlocking narrows release to exactly the intended
+  instant and loosens NO exclusion — each guard owns a private description, holds its lock
+  in full for its whole lifetime, and can never release another guard's. Generalizing:
+  on Unix a lock's lifetime is the description's, not the descriptor's, so any advisory
+  lock in a process that spawns children must be released by an explicit unlock.
 
 ## Implementation
 

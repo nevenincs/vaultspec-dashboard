@@ -1375,3 +1375,69 @@ fn a_sharing_violation_on_the_root_is_not_reported_as_a_mismatch() {
         other => panic!("expected ProductRootUnavailable, got {other:?}"),
     }
 }
+
+/// The verification datastore lock releases on drop even while a duplicate
+/// descriptor for the same open file description survives.
+///
+/// Unix-only, and it guards the ordering the generation-authority ADR's Unix
+/// corollary makes load-bearing: this lock covers verification's datastore
+/// WORK, and it must be gone before the verified value is constructed, so the
+/// `bind` that production performs next can take the product root.
+///
+/// An `flock` lives on the open file DESCRIPTION, not on the descriptor, and
+/// every `Command::spawn` duplicates this process's whole descriptor table into
+/// the forked child — `O_CLOEXEC` takes effect only at `exec`. So an unrelated
+/// spawn anywhere in the process briefly holds a second reference to this
+/// lock's description. While release was a bare close, that close dropped one
+/// reference and left the shared lock asserted through the survivor, which held
+/// verification's work-scoped exclusion open past the verified value and made
+/// the following `bind` fail. `dup` reproduces exactly that relationship,
+/// turning a load-dependent race into a deterministic proof.
+///
+/// The refusal asserted while the guard is alive is the negative control: it
+/// shows the exclusion is genuinely in force, so the release below is not
+/// vacuous.
+#[cfg(unix)]
+#[test]
+fn a_datastore_lock_releases_even_while_a_duplicate_descriptor_survives() {
+    use crate::product_scope::ProductRootScope;
+
+    let temp = TempDir::new().expect("temporary product root");
+    let scope = ProductRootScope::retain(temp.path()).expect("retain the product root");
+
+    let lock = scope.lock_datastore_shared().expect("the free root locks");
+    let inherited = lock
+        .descriptor
+        .try_clone()
+        .expect("duplicate the locked description, exactly as a fork would");
+
+    // An exclusive acquire is what a bound product takes, and it must be
+    // refused while this shared lock is genuinely held.
+    let contender = rustix::fs::openat(
+        &inherited,
+        c".",
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .expect("open a contending description");
+    assert!(
+        rustix::fs::flock(
+            &contender,
+            rustix::fs::FlockOperation::NonBlockingLockExclusive,
+        )
+        .is_err(),
+        "a live shared datastore lock must exclude an exclusive acquire"
+    );
+
+    drop(lock);
+
+    rustix::fs::flock(
+        &contender,
+        rustix::fs::FlockOperation::NonBlockingLockExclusive,
+    )
+    .expect(
+        "dropping the datastore guard must release the lock even while a \
+         duplicate descriptor for the same description survives",
+    );
+    drop(inherited);
+}
