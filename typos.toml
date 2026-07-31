@@ -26,6 +26,13 @@ extend-exclude = [
   "frontend/src/locales/**",
   "frontend/src/localization/testing/**",
   "**/*.localization.*",
+  # The same category on the dev side of the production/dev fence: the visual
+  # harness carries its own alt-locale resource so a lab can be reviewed in a
+  # non-English catalog. The three entries above cover only `frontend/src`, so
+  # this one arrived spell-checked and made the gate red on French prose that is
+  # correct. Matched by name rather than by path so a future alt-locale resource
+  # is covered wherever it lands.
+  "**/*LocaleResources.ts",
 ]
 
 [default]
