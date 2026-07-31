@@ -110,6 +110,22 @@ jobs:
     # common group; the other legs get a per-run, per-target group so they never
     # wait. The group is shared across workflows deliberately — the contention is
     # the machine, not the pipeline.
+    #
+    # WHAT WOULD RETIRE THIS CONSTRAINT. It guards an UNMEASURED risk. The light
+    # proof (a2a-product-contract) runs the same two runners on the same host and
+    # does NOT serialise, because it was measured: under load the darwin leg
+    # added 225 MB of swap over idle and the ARM Linux leg peaked at 11,935
+    # pageouts/15s transiently, available memory never fell below 985 MB, and
+    # host free disk did not move. The alarming idle state (~7 of 8 GB swap used,
+    # 6 GiB of 8 GiB reserved by the VM) is this machine's steady state, not its
+    # limit.
+    #
+    # This job is heavier in a way that matters: it EXECUTES the artifact it
+    # certifies, so resource starvation shows up as a flaky verdict rather than a
+    # clean failure — the one outcome worth paying wall-clock to avoid. To retire
+    # this: dispatch four-wide without the group, sample the host, and confirm
+    # the overlapping ARM legs keep available memory off the floor and pageouts
+    # non-degrading. Do not retire it on the contract-proof numbers alone.
     concurrency:
       group: ${{ matrix.host == 'apple-silicon' && 'fleet-apple-silicon-host' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
       cancel-in-progress: false

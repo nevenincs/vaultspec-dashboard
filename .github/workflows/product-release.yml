@@ -69,7 +69,26 @@ jobs:
     # `host` is the physical machine, not the runner. Only the shared one takes a
     # common group; the other legs get a per-run, per-target group so they never
     # wait. The group name is not scoped to this workflow on purpose: a release
-    # and a contract proof reaching that laptop together contend for the same RAM.
+    # and a certification run reaching that laptop together contend for the same
+    # RAM.
+    #
+    # WHAT WOULD RETIRE THIS CONSTRAINT. It is insurance against an UNMEASURED
+    # risk, not a measured one, and it should be dropped once that stops being
+    # true rather than kept out of habit. a2a-product-contract — the light proof,
+    # same two runners, same host — was measured and does NOT serialise: under
+    # load its darwin leg added 225 MB of swap over idle and its ARM Linux leg
+    # peaked at 11,935 pageouts/15s transiently, with available memory never
+    # below 985 MB and host free disk flat. The alarming-looking idle state
+    # (~7 of 8 GB swap in use, 6 GiB of 8 GiB reserved by the VM) turned out to
+    # be this machine's steady state rather than a machine near its limit.
+    #
+    # This workflow is heavier — a full cargo release build, the SPA bundle and
+    # composition — so that result does not transfer. To retire this: run a
+    # four-target dispatch WITHOUT the group, sample the host through it, and
+    # confirm the two ARM legs overlapping keep available memory off the floor
+    # and pageouts non-degrading. If they do, delete this block and the `host:`
+    # matrix keys. Do not delete it on the strength of the contract-proof numbers
+    # alone; that is the extrapolation this comment exists to prevent.
     concurrency:
       group: ${{ matrix.host == 'apple-silicon' && 'fleet-apple-silicon-host' || format('{0}-{1}-{2}', github.workflow, github.run_id, matrix.target) }}
       cancel-in-progress: false
