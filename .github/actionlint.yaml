@@ -7,84 +7,90 @@
 # hosted `*-latest`/dated images, compares case-insensitively, and errors on
 # anything else. This file does not make that check stricter — it ADMITS labels
 # actionlint could not otherwise know about, by appending them to the known set.
-# Verified against actionlint 1.7.12: with this config loaded, the reported
-# "available labels" list grows by exactly the six entries below.
 #
-# So the value here is twofold, and worth being honest about which is which:
+# Two of the labels below are in that category and are genuinely load-bearing:
+# `linux-x64` and `linux-arm64` are custom labels this repository mints, and a
+# workflow naming one would fail the lint gate if it were not listed here. The
+# rest are auto-assigned labels actionlint already recognises, listed so that
+# one reviewed file states which machines this pipeline can reach, resolved out
+# of the matrices rather than grepped for.
 #
-#   1. Documentary, today. Every label below except none is already recognised
-#      natively (the fleet deliberately schedules on auto-assigned OS labels
-#      rather than minting bespoke ones), so removing this file would not turn
-#      any current workflow red. What the file buys today is a single reviewed
-#      place that states which machines this pipeline can reach, resolved out of
-#      the matrices rather than grepped for.
-#   2. Load-bearing, on the next fleet change. The moment a machine-specific or
-#      capability label is introduced — the sibling repos already carry
-#      `dev-runner`, `build`, `gpu`, `cuda` — a workflow using it FAILS the lint
-#      gate until it is listed here. Add the label in the same commit that first
-#      uses it; do not suppress the check.
+# THE FLEET. Four machines, one per shipped target:
 #
-# THE FLEET. Every job in this repository runs on the shared self-hosted fleet;
-# no workflow currently schedules onto a GitHub-hosted runner. That is a
-# standing choice, not a constraint: this repository is PUBLIC, so hosted
-# runners — including the native `ubuntu-24.04-arm` image — are free for it. The
-# `[dist.github-custom-runners]` comment in dist-workspace.toml claiming hosted
-# multiplatform runners are "cost-prohibitive" is wrong on that point.
+#   self-hosted, Windows, X64                →  x86_64-pc-windows-msvc
+#   self-hosted, Linux,   X64,   linux-x64   →  x86_64-unknown-linux-gnu
+#   self-hosted, Linux,   ARM64, linux-arm64 →  aarch64-unknown-linux-gnu
+#   self-hosted, macOS,   ARM64              →  aarch64-apple-darwin
 #
-# The labels below are the AUTO-ASSIGNED labels the Actions runner application
-# applies to each registered machine, so the mapping is:
+# Every job in this repository runs on that self-hosted fleet; no workflow
+# schedules onto a GitHub-hosted runner. That is a standing choice, not a
+# constraint: this repository is PUBLIC, so hosted runners — including the
+# native `ubuntu-24.04-arm` image — would be free for it.
 #
-#   Windows  →  the x86-64 Windows runner      (self-hosted, X64,   Windows)
-#   Linux    →  the x86-64 Linux runner        (self-hosted, X64,   Linux)
-#   macOS    →  the ARM64 macOS runner         (self-hosted, ARM64, macOS)
-#              NOT YET REGISTERED. The machine exists and is provisioned, but
-#              the runner is not installed, so every `macOS` leg queues rather
-#              than runs. Enumerating the label here is deliberate: it is the
-#              label the workflows already select, and the gap is the runner.
+# WHY EVERY LINUX JOB SELECTS ON ARCHITECTURE. The Actions runner gives every
+# self-hosted Linux machine the auto-assigned label `Linux` regardless of its
+# instruction set. Two Linux runners are registered, one x86-64 and one ARM64,
+# so a bare `runs-on: Linux` names BOTH and the scheduler is free to pick
+# either. That is not a style problem. A shipped product tree contains a
+# PyInstaller-frozen runtime, and PyInstaller freezes only for the architecture
+# it runs on — it has no target flag — so `aarch64-unknown-linux-gnu` built on
+# the x86-64 machine would carry an x86_64 runtime inside an artifact labelled
+# aarch64. Nothing downstream catches that: the manifest is truthful about bytes
+# and silent about instruction set, and every later check verifies the tree
+# against itself. It fails on a user's machine and nowhere earlier.
 #
-# aarch64-unknown-linux-gnu does NOT cross-compile on the WSL runner, and an
-# earlier version of this comment said it did. The cargo half would, given a
-# cross linker (none is provisioned — `aarch64-linux-gnu-gcc` is absent and only
-# the x86_64 target is installed), but the shipped product tree also contains the
-# PyInstaller-frozen A2A runtime, and PyInstaller freezes only for the
-# architecture it runs on. The arch guard in product-release.yml therefore
-# REFUSES that leg on an x86_64 runner rather than emit an x86_64 runtime inside
-# an artifact labelled aarch64. `Linux` remains the mapped label for the target
-# in dist-workspace.toml, but the leg stays refused until a native ARM64 Linux
-# runner exists.
+# So every `runs-on:` here names an architecture, written as a label list —
+# `[self-hosted, Linux, X64]`, `[self-hosted, Linux, ARM64]` — and the
+# matrix-driven jobs carry an `arch:` key alongside `os:` and compose
+# `[self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]`. A bare `Linux` left
+# anywhere is a latent wrong-architecture landing, and putting one back is the
+# single easiest way to reintroduce the defect the arch guards exist to refuse.
 #
-# One consequence to keep in view when that runner is added: `runs-on: Linux`
-# matches the bare `Linux` label, which an arm64 self-hosted Linux machine
-# carries too. Registering one without arch-explicit selection (e.g.
-# `[self-hosted, Linux, ARM64]`) would dispatch the two Linux targets to runners
-# nondeterministically; the arch guard turns that into a loud failure rather than
-# a silent mislabel, but the correct fix is explicit labels, not the guard.
+# The three arch guards — in product-release.yml, a2a-product-contract.yml and
+# a2a-product-certification.yml — compare `uname -m` against the target triple
+# and are retained. With the labels above they now pass truthfully on every leg
+# rather than refusing one; they are kept as the backstop on the SCHEDULING,
+# which is the part that drifts.
+#
+# WHY TWO OF THESE LABELS ARE CUSTOM. `dist` holds one label STRING per target
+# in `[dist.github-custom-runners]` and emits it verbatim into
+# `runs-on: ${{ matrix.runner }}` in the generated release workflow. It cannot
+# express a label list — a TOML array there does not error, it silently keeps
+# only the first element — so the two Linux targets need a label that is
+# architecture-specific on its own. `linux-x64` and `linux-arm64` are carried by
+# the respective runners in ADDITION to their auto-assigned labels; the
+# hand-written workflows do not use them, preferring the auto-assigned list
+# form. dist-workspace.toml MUST stay in agreement with this list: a label no
+# machine carries schedules a build that queues silently rather than failing.
 #
 # WHERE EACH LABEL IS REACHED FROM. Several jobs schedule through
-# `runs-on: ${{ matrix.os }}` / `${{ matrix.runner }}`, so a grep for literal
-# labels under-reports; the matrix `include:` blocks are part of the enumeration:
+# `[self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]`, so a grep for
+# literal labels under-reports; the matrix `include:` blocks are part of the
+# enumeration:
 #
-#   Windows  literal  a2a-channel-feasibility, a2a-product-certification,
-#                     ci-runner-probe, product-release, winget-publish
-#            matrix   engine-ci (matrix.os), a2a-product-certification and
-#                     product-release (include.os), a2a-product-contract
-#                     (include.runner), release (dist-planned matrix.runner)
-#   Linux    literal  a2a-channel-feasibility, a2a-product-certification,
-#                     channel-publish-gate, ci-runner-probe, product-release,
-#                     quality-gates, release-please, release, scoop-bump
-#            matrix   the same five matrices as above
-#   macOS    matrix   ONLY — a2a-product-certification and product-release
-#                     (include.os, aarch64-apple-darwin), a2a-product-contract
-#                     (include.runner), release (dist-planned matrix.runner).
-#                     It is reached by no literal `runs-on:` anywhere, which is
-#                     exactly why it has to be resolved out of the matrices
-#                     rather than grepped for.
+#   Windows / X64    literal  a2a-channel-feasibility, a2a-product-certification,
+#                             ci-runner-probe, product-release, winget-publish
+#                    matrix   engine-ci, a2a-product-certification,
+#                             a2a-product-contract, product-release,
+#                             release (dist-planned matrix.runner)
+#   Linux / X64      literal  a2a-channel-feasibility, a2a-product-certification,
+#                             channel-publish-gate, ci-runner-probe,
+#                             product-release, quality-gates, release-please,
+#                             release, scoop-bump
+#                    matrix   the same five matrices as above
+#   Linux / ARM64    literal  ci-runner-probe ONLY
+#                    matrix   a2a-product-certification, a2a-product-contract,
+#                             product-release, release
+#   macOS / ARM64    literal  ci-runner-probe ONLY
+#                    matrix   a2a-product-certification, a2a-product-contract,
+#                             product-release, release
 #
-# release.yml's matrix is computed by dist at plan time from
-# `[dist.github-custom-runners]` in dist-workspace.toml; that table maps all four
-# shipped targets onto macOS/Linux/Windows and MUST stay in agreement with this
-# list. Changing one without the other schedules a build at a label no machine
-# carries — a job that queues silently rather than failing.
+# The two ARM legs are reached by no literal `runs-on:` outside the probe, which
+# is exactly why the probe exists: an absent or mislabelled runner on those legs
+# presents as a job that queues forever rather than one that fails — no log, no
+# annotation, no conclusion. `ci-runner-probe.yml` is dispatch-only and asserts
+# `uname -m` on each leg, so the label-to-machine mapping is proven rather than
+# assumed.
 #
 # `.github/release-build-setup.yml` is deliberately absent from this accounting:
 # it is a bare step-list fragment injected into dist's generated build jobs, not
@@ -93,14 +99,17 @@
 # is neither linted nor a source of labels.
 self-hosted-runner:
   labels:
-    # OS labels — the ones the workflows actually schedule on.
+    # OS labels — auto-assigned by the runner application.
     - Windows
     - Linux
     - macOS
-    # Remaining auto-assigned fleet labels. Carried by the registered runners
-    # and therefore legal in a `runs-on:` list (e.g. `[self-hosted, ARM64]` to
-    # pin the Apple Silicon machine specifically), even though no workflow
-    # composes them that way today.
-    - self-hosted
+    # Architecture labels — auto-assigned, and part of every `runs-on:` here.
     - X64
     - ARM64
+    # Auto-assigned to every self-hosted machine.
+    - self-hosted
+    # Custom labels, minted only because dist's per-target runner value is a
+    # single string and the two Linux machines share the `Linux` label. Carried
+    # in addition to the auto-assigned labels above; see dist-workspace.toml.
+    - linux-x64
+    - linux-arm64

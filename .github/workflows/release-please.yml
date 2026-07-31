@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   release-please:
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: googleapis/release-please-action@v4
         with:

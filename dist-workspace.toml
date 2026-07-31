@@ -59,13 +59,37 @@ create-release = false
 # Post-announce jobs to run in CI
 post-announce-jobs = ["./scoop-bump"]
 
-# Artifact builds run on the shared self-hosted fleet. The labels below are the
-# auto-assigned OS labels the Actions runner applies, so each target selects the
-# runner whose operating system matches it. Note the freeze step RUNS the
-# interpreter it bundles, so a target is only buildable on a runner of its own
-# architecture — there is no cross-compile path for the bundled runtime.
+# Artifact builds run on the shared self-hosted fleet. Each target selects a
+# runner of its OWN architecture, which is not a preference: the freeze step
+# RUNS the interpreter it bundles, so there is no cross-compile path for the
+# bundled runtime and a target built elsewhere would be mislabelled rather than
+# merely slow.
+#
+# Two of these are auto-assigned OS labels, and two are custom labels, which is
+# an asymmetry worth explaining rather than tidying away. The fleet registers ONE
+# Windows machine and ONE macOS machine, so `Windows` and `macOS` each identify
+# exactly one runner. It registers TWO Linux machines — one x86-64, one ARM64 —
+# and the Actions runner gives both the auto-assigned `Linux` label, so `Linux`
+# identifies neither. Architecture has to be part of the selection.
+#
+# Everywhere else in this repository that is written as a label LIST, e.g.
+# `runs-on: [self-hosted, Linux, ARM64]`, using only auto-assigned labels. That
+# is not available here: dist's value for a target is a single label string
+# (`GithubRunner`, a String newtype, in both the short and the expanded table
+# form), and it is emitted verbatim into `runs-on: ${{ matrix.runner }}` in the
+# generated release workflow. A TOML array here does not error — dist accepts it
+# and silently keeps only the FIRST element, which was verified against the
+# pinned 0.32.0 binary: `= ["self-hosted", "Linux", "X64"]` planned as
+# `runner: "self-hosted"`, a label every machine in the fleet carries. So the
+# only way to express one architecture in one string is a custom label, and the
+# two Linux runners carry `linux-x64` and `linux-arm64` in addition to their
+# auto-assigned labels.
+#
+# Those two labels must exist on the runners before this file names them. A
+# label no registered runner carries does not fail the release — it queues it,
+# silently and forever.
 [dist.github-custom-runners]
 aarch64-apple-darwin = "macOS"
-aarch64-unknown-linux-gnu = "Linux"
-x86_64-unknown-linux-gnu = "Linux"
+aarch64-unknown-linux-gnu = "linux-arm64"
+x86_64-unknown-linux-gnu = "linux-x64"
 x86_64-pc-windows-msvc = "Windows"

@@ -79,7 +79,7 @@ jobs:
   scoop:
     name: Phase-zero Scoop proof
     if: contains(inputs.channels, 'scoop')
-    runs-on: Windows
+    runs-on: [self-hosted, Windows, X64]
     outputs:
       result: ${{ steps.proof.outputs.result }}
       reason: ${{ steps.proof.outputs.reason }}
@@ -168,7 +168,7 @@ jobs:
   winget:
     name: Phase-zero WinGet proof
     if: contains(inputs.channels, 'winget')
-    runs-on: Windows
+    runs-on: [self-hosted, Windows, X64]
     outputs:
       result: ${{ steps.proof.outputs.result }}
       reason: ${{ steps.proof.outputs.reason }}
@@ -235,7 +235,7 @@ jobs:
     name: Record channel outcomes into the support matrix
     needs: [scoop, winget]
     if: always()
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v6
         with:

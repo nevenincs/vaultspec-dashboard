@@ -89,11 +89,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: aarch64-apple-darwin, os: macOS, ext: tar.gz }
-          - { target: aarch64-unknown-linux-gnu, os: Linux, ext: tar.gz }
-          - { target: x86_64-unknown-linux-gnu, os: Linux, ext: tar.gz }
-          - { target: x86_64-pc-windows-msvc, os: Windows, ext: zip }
-    runs-on: ${{ matrix.os }}
+          - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, ext: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, ext: tar.gz }
+          - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, ext: tar.gz }
+          - { target: x86_64-pc-windows-msvc, os: Windows, arch: X64, ext: zip }
+    # The architecture label is part of the selection, not a decoration: both
+    # Linux runners carry the auto-assigned `Linux` label, so selecting on the
+    # OS alone would let the aarch64 leg land on the x86-64 machine. This job
+    # certifies a real per-target artifact, so a wrong-architecture landing
+    # would certify the wrong thing.
+    runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
@@ -110,9 +115,16 @@ jobs:
       # Certifying an artifact on the wrong architecture proves nothing about
       # the artifact: the bundled runtime is frozen per-architecture, so an
       # aarch64 archive staged on an x86_64 runner either refuses to execute or
-      # — worse — exercises a runtime that is not the one shipped. This matrix
-      # maps aarch64-unknown-linux-gnu onto the x86_64 Linux runner, so refuse
-      # rather than emit certification evidence for a target we did not run.
+      # — worse — exercises a runtime that is not the one shipped.
+      #
+      # The matrix above now schedules each target onto a runner of its own
+      # architecture, so in the normal case this guard passes and says so. It
+      # is kept because scheduling is the thing most likely to drift: both
+      # Linux runners answer to the auto-assigned `Linux` label, so dropping
+      # the architecture label from one `runs-on:` — or registering a third
+      # Linux machine — silently re-opens the wrong-architecture landing. This
+      # step turns that into a loud failure instead of certification evidence
+      # for a target we did not actually run.
       - name: Refuse to certify on an architecture this runner is not
         shell: bash
         run: |
@@ -256,7 +268,7 @@ jobs:
   certify-msi:
     name: Certify the complete MSI through Windows Installer
     needs: certify-target
-    runs-on: Windows
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/checkout@v4
       - name: Refuse an unsupported channel before touching the machine
@@ -309,7 +321,7 @@ jobs:
   compare-inventories:
     name: Compare published inventories to one release set
     needs: [certify-target, certify-scoop-winget, certify-msi]
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - name: Compare the four-target by supported-channel matrix to the published inventories
@@ -354,7 +366,7 @@ jobs:
   certify-durability:
     name: Certify first-install and steady-state durability on local NTFS
     if: inputs.run_durability
-    runs-on: Windows
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - name: Require a power-interruption harness
         shell: pwsh

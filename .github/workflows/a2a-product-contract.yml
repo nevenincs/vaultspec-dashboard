@@ -47,14 +47,23 @@ jobs:
       matrix:
         include:
           - target: aarch64-apple-darwin
-            runner: macOS
+            os: macOS
+            arch: ARM64
           - target: aarch64-unknown-linux-gnu
-            runner: Linux
+            os: Linux
+            arch: ARM64
           - target: x86_64-unknown-linux-gnu
-            runner: Linux
+            os: Linux
+            arch: X64
           - target: x86_64-pc-windows-msvc
-            runner: Windows
-    runs-on: ${{ matrix.runner }}
+            os: Windows
+            arch: X64
+    # Both Linux runners carry the auto-assigned `Linux` label, so the
+    # architecture label is what actually distinguishes them. This job freezes
+    # the A2A runtime, which PyInstaller can only do for the architecture it is
+    # running on, so landing on the wrong machine would produce an artifact
+    # whose contents contradict its name.
+    runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     timeout-minutes: 60
     steps:
       - name: Checkout dashboard
@@ -104,10 +113,14 @@ jobs:
         run: uv sync --locked --no-default-groups --group freeze
 
       # PyInstaller freezes for the architecture it RUNS on and has no target
-      # flag. This matrix maps aarch64-unknown-linux-gnu onto the x86_64 Linux
-      # runner, so without this the proof would smoke an x86_64 onedir while
-      # claiming to prove the aarch64 one — a green that certifies the wrong
-      # binary. Refuse instead; the same guard already fences the release build.
+      # flag, so this proof is only worth anything when it runs on a machine of
+      # the target's own architecture. The matrix above selects one — including
+      # a native ARM64 Linux runner for aarch64-unknown-linux-gnu — so this
+      # guard normally passes. It stays as the backstop on the scheduling: both
+      # Linux runners carry the auto-assigned `Linux` label, so an architecture
+      # label dropped from a `runs-on:` would put this job on the wrong machine
+      # and it would smoke an x86_64 onedir while claiming to prove the aarch64
+      # one. The same guard fences the release build and the certifier.
       - name: Refuse to freeze for an architecture this runner is not
         shell: bash
         run: |

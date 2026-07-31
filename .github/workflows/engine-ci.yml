@@ -20,11 +20,18 @@ concurrency:
 
 jobs:
   engine:
-    runs-on: ${{ matrix.os }}
+    # Architecture is selected explicitly, not left to the OS label. Two Linux
+    # runners are registered — one x86-64, one ARM64 — and both carry the
+    # auto-assigned `Linux` label, so a bare `runs-on: Linux` would dispatch to
+    # either one nondeterministically. This job is not architecture-specific,
+    # but it must still land somewhere predictable.
+    runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     strategy:
       fail-fast: false
       matrix:
-        os: [Linux, Windows]
+        include:
+          - { os: Linux, arch: X64 }
+          - { os: Windows, arch: X64 }
     defaults:
       run:
         working-directory: engine

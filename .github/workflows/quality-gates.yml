@@ -20,7 +20,7 @@ concurrency:
 jobs:
   spellcheck:
     name: Spell check (typos)
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - uses: crate-ci/typos@master
@@ -76,7 +76,7 @@ jobs:
     # were fixed there. If `dist generate-ci` ever regenerates that file, those
     # shellcheck fixes must be re-applied along with the fleet `runs-on` labels.
     name: Workflow lint (actionlint)
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - name: Run actionlint
@@ -106,7 +106,7 @@ jobs:
 
   frontend:
     name: Frontend (eslint · prettier · tsc · vitest)
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -184,7 +184,7 @@ jobs:
     # EngineClient against it so wire-vs-TypeScript-type drift fails CI.
     # This closes the seam the Rust conformance.rs cannot reach (c812371).
     name: Engine TS conformance (live serve · EngineClient)
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       # Pin to the repo toolchain (see the frontend job's note).
@@ -288,7 +288,7 @@ jobs:
 
   scoop-bucket-guard:
     name: Scoop bucket version guard
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     if: github.event_name == 'pull_request'
     steps:
       - uses: actions/checkout@v4
@@ -322,7 +322,7 @@ jobs:
 
   supply-chain:
     name: Supply chain (cargo-deny · uv audit · npm audit)
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -378,7 +378,7 @@ jobs:
     # and exercises the lock/capsule/release-manifest verifiers, so a drift between
     # the pins, the schema, and the builder fails here rather than at release.
     name: Release inputs (lock · schema · product builder)
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain

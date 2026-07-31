@@ -16,9 +16,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  probe-linux:
-    name: probe (Linux)
-    runs-on: Linux
+  probe-linux-x64:
+    name: probe (Linux x86-64)
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: bash resolves + a bash temp-script runs
         shell: bash
@@ -26,9 +26,75 @@ jobs:
           echo "bash at: $(command -v bash)"
           echo "uname: $(uname -sm)"
           bash -c 'echo "nested-bash-ok cwd=$PWD"'
+      - name: runner is genuinely x86-64
+        # Two Linux runners are registered and both carry the auto-assigned
+        # `Linux` label; only the architecture label separates them. Asserting
+        # here proves the label actually selected the machine we meant, rather
+        # than the selection happening to work on the day it was written.
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "uname -m: $arch"
+          if [ "$arch" != "x86_64" ] && [ "$arch" != "amd64" ]; then
+            echo "::error::the [self-hosted, Linux, X64] selection landed on a $arch machine" >&2
+            exit 1
+          fi
       - name: third-party bash-using action
         uses: dtolnay/rust-toolchain@stable
       - run: cargo --version
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: df -h . 2>/dev/null | tail -1 || true
+
+  probe-linux-arm64:
+    # The ARM64 Linux runner is the fourth and last leg of the shipped target
+    # cohort, and the one whose absence used to make `aarch64-unknown-linux-gnu`
+    # unbuildable: PyInstaller freezes only for the architecture it runs on, so
+    # that target cannot be produced anywhere else. Like the macOS leg it is
+    # reached by no literal `runs-on:` outside this probe — only through release
+    # matrix `include:` blocks — so a missing runner presents as a job that
+    # queues forever rather than one that fails.
+    #
+    # The architecture assertion is the point of this job, not a formality. This
+    # runner shares the `Linux` label with the x86-64 one, so an architecture
+    # label dropped from a `runs-on:` list anywhere would land aarch64 work on
+    # the x86-64 box. Proving the selection resolves correctly here is what
+    # makes the release arch guards a backstop rather than the only defence.
+    name: probe (Linux ARM64)
+    runs-on: [self-hosted, Linux, ARM64]
+    steps:
+      - name: bash resolves + a bash temp-script runs
+        shell: bash
+        run: |
+          echo "bash at: $(command -v bash)"
+          echo "uname: $(uname -sm)"
+          bash -c 'echo "nested-bash-ok cwd=$PWD"'
+      - name: runner is genuinely aarch64
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "uname -m: $arch"
+          if [ "$arch" != "aarch64" ] && [ "$arch" != "arm64" ]; then
+            echo "::error::the [self-hosted, Linux, ARM64] selection landed on a $arch machine; aarch64-unknown-linux-gnu cannot be frozen there" >&2
+            exit 1
+          fi
+      - name: third-party bash-using action
+        uses: dtolnay/rust-toolchain@stable
+      - run: cargo --version
+      - name: release prerequisites the service must see
+        # Same reasoning as the macOS leg: the release workflow REQUIRES uv and
+        # jq rather than installing them, and the runner service does not
+        # inherit an interactive login PATH. Proving them inside a real job is
+        # the only check that matches how the release will actually run.
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PATH=$PATH"
+          uv --version
+          jq --version
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
@@ -48,7 +114,7 @@ jobs:
     # would be refused by the release arch guard. Better to learn that from a
     # dispatch than from a release.
     name: probe (macOS)
-    runs-on: macOS
+    runs-on: [self-hosted, macOS, ARM64]
     steps:
       - name: bash resolves + a bash temp-script runs
         shell: bash
@@ -87,7 +153,7 @@ jobs:
 
   probe-windows:
     name: probe (Windows)
-    runs-on: Windows
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - name: bash resolves to Git Bash and a temp-script runs
         shell: bash

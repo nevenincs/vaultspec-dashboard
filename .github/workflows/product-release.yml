@@ -49,11 +49,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: x86_64-pc-windows-msvc, os: Windows, ext: zip }
-          - { target: x86_64-unknown-linux-gnu, os: Linux, ext: tar.gz }
-          - { target: aarch64-unknown-linux-gnu, os: Linux, ext: tar.gz }
-          - { target: aarch64-apple-darwin, os: macOS, ext: tar.gz }
-    runs-on: ${{ matrix.os }}
+          - { target: x86_64-pc-windows-msvc, os: Windows, arch: X64, ext: zip }
+          - { target: x86_64-unknown-linux-gnu, os: Linux, arch: X64, ext: tar.gz }
+          - { target: aarch64-unknown-linux-gnu, os: Linux, arch: ARM64, ext: tar.gz }
+          - { target: aarch64-apple-darwin, os: macOS, arch: ARM64, ext: tar.gz }
+    # Selection is by OS *and* architecture. Two Linux runners are registered
+    # and both carry the auto-assigned `Linux` label, so an OS-only selection
+    # would send the two Linux targets to machines nondeterministically. The
+    # arch guard below would catch that and fail the job loudly — but a guard
+    # that fires on every other release is not a working pipeline, and the
+    # correct fix is to schedule onto the right machine in the first place.
+    runs-on: [self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
@@ -127,6 +133,13 @@ jobs:
       # nothing downstream catches it: every check verifies the tree against
       # itself. So refuse here rather than ship a tree that lies about what it
       # contains.
+      #
+      # The matrix above schedules every target onto a runner of its own
+      # architecture, so this guard passes on all four legs and prints the
+      # match. Keep it anyway: it is a check on the SCHEDULING, which is the
+      # part that drifts. Both Linux runners answer to the auto-assigned
+      # `Linux` label, so a single dropped architecture label is enough to
+      # re-open the mislabelling this step exists to prevent.
       - name: Refuse to freeze for an architecture this runner is not
         shell: bash
         run: |
@@ -241,7 +254,7 @@ jobs:
   self-verify:
     name: Clean-runner self-verify
     needs: build-product-tree
-    runs-on: Windows
+    runs-on: [self-hosted, Windows, X64]
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -271,7 +284,7 @@ jobs:
   cohort-digest:
     name: Cohort digest (S166)
     needs: build-product-tree
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
       - name: Read pinned toolchain
@@ -331,7 +344,7 @@ jobs:
   # release assets + capsule (#1) + MSI (S76) make a real proof possible.
   resolve-version:
     name: Resolve release version
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     outputs:
       value: ${{ steps.v.outputs.value }}
       prior: ${{ steps.v.outputs.prior }}

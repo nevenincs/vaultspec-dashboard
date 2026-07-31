@@ -47,7 +47,7 @@ concurrency:
 jobs:
   gate:
     name: Gate ${{ inputs.channel }} publication
-    runs-on: Linux
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v6
       - name: Prove the channel earned publication
