@@ -334,6 +334,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // and the response amplification a huge filter would drive. Applied
         // INNER to the tiers guard so a 413 still gets the envelope.
         .layer(DefaultBodyLimit::max(MAX_REQUEST_BODY))
+        // Demo-condition simulation (visual review desk). A no-op unless the serve
+        // set VAULTSPEC_DEMO_CONDITIONS=1, so a production serve never enters it.
+        // Placed INNER to the tiers guard so a simulated outage still rides the
+        // standard envelope guarantee like any other error.
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            app::demo_condition,
+        ))
         // OUTERMOST: wraps the gate AND the body-limit, so the tiers block
         // rides EVERY error response — extractor rejections, the bare
         // auth/Host 401/403, and a 413 included (contract §2, codified

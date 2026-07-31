@@ -1,3 +1,5 @@
+import { hostname } from "node:os";
+
 // Single source of truth for every vaultspec-dashboard dev/test server port.
 //
 // Other projects on this machine run their own dev/test servers, so a port left
@@ -31,7 +33,7 @@ function port(envVar: string, fallback: number): number {
 }
 
 export const DEV_PORTS = {
-  /** Main SPA dev server — `npm run dev` / `just dev serve`. */
+  /** Main SPA dev server — `npm run dev` / `just serve`. */
   spa: port("VAULTSPEC_DEV_SPA_PORT", 8770),
   /** Rust engine (`vaultspec serve`) the SPA dev server proxies `/api` to. */
   engine: port("VAULTSPEC_DEV_PORT", 8767),
@@ -49,6 +51,16 @@ export const DEV_PORTS = {
    * simulated outages in front of someone trying to use the app.
    */
   demoEngine: port("VAULTSPEC_DEV_DEMO_ENGINE_PORT", 8778),
+  /**
+   * Second demo engine, serving the EMPTY corpus that backs the review desk's `empty`
+   * condition. It is a separate engine rather than a flag because "empty" is a
+   * property of the CORPUS, not of a request: the honest way to render an empty state
+   * is to let the engine genuinely compute one over a vault with no documents. The
+   * alternative — blanking collections in a response — produces incoherent payloads
+   * (engine-computed counts disagreeing with the emptied arrays they summarise) and
+   * would be exactly the faked wire the wire-contract rule forbids.
+   */
+  demoEngineEmpty: port("VAULTSPEC_DEV_DEMO_ENGINE_EMPTY_PORT", 8779),
   /** Visual review surface — `npm run dev:visual-review`, served from frontend/dev/. */
   visualReview: port("VAULTSPEC_DEV_VISUAL_REVIEW_PORT", 8777),
 } as const;
@@ -61,13 +73,25 @@ export const DEV_PORTS = {
 // of its subdomains, so ".ts.net" covers every Tailscale MagicDNS FQDN. Extend
 // per-machine via VAULTSPEC_DEV_ALLOWED_HOSTS (comma-separated) without editing
 // this file.
+//
+// ".ts.net" alone is NOT enough, because MagicDNS resolves a peer by its BARE name
+// as well as its FQDN. Reaching the desk as `http://gw-workstation:8777/` sends
+// `Host: gw-workstation`, which no suffix rule matches — the request is refused
+// with Vite's "add it to server.allowedHosts" message even though the machine is
+// plainly on the tailnet. This machine's own hostname is therefore always allowed:
+// it names THIS host, so permitting it grants no reach a rebinding attack could use
+// that the FQDN rule does not already grant. Host headers are compared verbatim and
+// browsers lower-case the URL authority, so the Windows upper-case form is folded.
 function allowedHosts(): string[] {
-  const base = [".ts.net"];
+  const self = hostname().toLowerCase();
+  const base = [".ts.net", self, self.split(".")[0]];
   const extra = (process.env.VAULTSPEC_DEV_ALLOWED_HOSTS ?? "")
     .split(",")
     .map((host) => host.trim())
     .filter((host) => host.length > 0);
-  return [...base, ...extra];
+  // A bare hostname equals its own first label, so the two derived entries collapse
+  // on the common case. Deduplicate rather than emit the same host twice.
+  return [...new Set([...base, ...extra])];
 }
 
 /** Hostnames the SPA/lab dev servers accept in the `Host` header (Tailscale network). */
