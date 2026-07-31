@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-generation-authority'
 date: '2026-07-20'
-modified: '2026-07-22'
+modified: '2026-07-31'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - '[[2026-07-18-a2a-product-provisioning-adr]]'

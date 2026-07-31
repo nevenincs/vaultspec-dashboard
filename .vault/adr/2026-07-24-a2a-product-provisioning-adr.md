@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-product-provisioning'
 date: '2026-07-24'
-modified: '2026-07-24'
+modified: '2026-07-30'
 related:
   - '[[2026-07-18-a2a-product-provisioning-research]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'

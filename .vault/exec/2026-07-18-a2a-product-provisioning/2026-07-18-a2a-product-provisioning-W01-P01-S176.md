@@ -10,45 +10,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace a2a-product-provisioning with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S176 and 2026-07-18-a2a-product-provisioning-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Implement sealed provisioning and active-release facades that consume the verified release under the unsigned-channel authority (TUF retained-in-code, deferred, not a release gate), exact installation-lock and unpublished-generation authority, plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery and ## Scope
-
-- `engine/crates/vaultspec-product/src/provisioning.rs`
-- `engine/crates/vaultspec-product/src/lib.rs`
-- `engine/crates/vaultspec-product/src/manifest.rs`
-- `engine/crates/vaultspec-product/src/manifest/authority.rs`
-- `engine/crates/vaultspec-product/src/receipt.rs`
-- `engine/crates/vaultspec-product/src/receipt/publish.rs`
-- `engine/crates/vaultspec-release-verify` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Implement sealed provisioning and active-release facades that consume the verified release under the unsigned-channel authority (TUF retained-in-code, deferred, not a release gate), exact installation-lock and unpublished-generation authority, plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery
 
 ## Scope
@@ -62,8 +23,6 @@ related:
 - `engine/crates/vaultspec-release-verify`
 
 ## Description
-
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
 
 - Derive the settled receipt's channel fact from the sealed install provenance the
   transaction carries, replacing the self-install literal in the first-install drive.
@@ -110,8 +69,6 @@ revalidates at the activation boundary, and an update can only carry the fact ou
 prior settled receipt.
 
 ## Notes
-
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
 
 - Shared-tree collision: a concurrent agent committed while these files were staged, so
   this Step's eleven files landed inside that agent's packaging commit rather than under

@@ -10,39 +10,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace a2a-product-provisioning with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S164 and 2026-07-18-a2a-product-provisioning-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Verify the receipt-selected generation against the receipt-bound release-set and component-lock digests plus every installed file digest before starting and never trust a lock supplied only by the candidate tree and ## Scope
-
-- `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Verify the receipt-selected generation against the receipt-bound release-set and component-lock digests plus every installed file digest before starting and never trust a lock supplied only by the candidate tree
 
 ## Scope
@@ -50,8 +17,6 @@ related:
 - `engine/crates/vaultspec-api/src/routes/a2a_lifecycle.rs`
 
 ## Description
-
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
 
 - Replace the seated reconcile's flat cold-start refusal with a proof-then-start path
   that runs under the held installation guard.
@@ -92,8 +57,6 @@ with a new typed refusal while stop, restart, update, and rollback continue to a
 running gateway deliberately.
 
 ## Notes
-
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
 
 - WIRE-CONTRACT EVENT, called out rather than smuggled: the closed refusal set gains one
   member, surfaced as a conflict with its own kind token. It is a closed-set addition, so

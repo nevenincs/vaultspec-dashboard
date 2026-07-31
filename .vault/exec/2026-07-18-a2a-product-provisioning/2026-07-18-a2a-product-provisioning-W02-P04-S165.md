@@ -10,39 +10,6 @@ related:
   - "[[2026-07-18-a2a-product-provisioning-plan]]"
 ---
 
-<!-- FRONTMATTER RULES:
-     tags: one directory tag (hardcoded #exec) and one feature tag.
-     Replace a2a-product-provisioning with a kebab-case feature tag, e.g. #foo-bar.
-     Additional tags may be appended below the required pair.
-
-     modified: CLI-maintained last-modified stamp; set at scaffold time,
-     refreshed by mutating CLI verbs and vault check fix; never hand-edit.
-
-     step_id is the originating Step's canonical identifier, e.g. S01.
-     The S165 and 2026-07-18-a2a-product-provisioning-plan placeholders are machine-filled by
-     `vaultspec-core vault add exec`; do not fill them by hand.
-
-     Related: use wiki-links as '[[yyyy-mm-dd-foo-bar-plan]]' and link the
-     parent plan.
-
-     DO NOT add fields beyond those scaffolded; metadata lives
-     only in the frontmatter. -->
-
-<!-- LINK RULES:
-     - [[wiki-links]] are ONLY for .vault/ documents in the related: field above.
-     - NEVER use [[wiki-links]] or markdown links in the document body.
-     - NEVER reference file paths in the body. If you must name a source file,
-       class, or function, use inline backtick code: `src/module.py`. -->
-
-<!-- STEP RECORD:
-     This file represents one Step from the originating plan. Identified
-     by its canonical leaf identifier (S##) and ancestor display path.
-     The Prove unreceipted staged rolling-back substituted incomplete tampered and self-authorized generations remain inert while one active fully verified receipt can start the frozen binary's dispatch (serve or start) and ## Scope
-
-- `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs` placeholders below are machine-filled
-     by `vaultspec-core vault add exec` from the originating Step row;
-     do not fill them by hand. -->
-
 # Prove unreceipted staged rolling-back substituted incomplete tampered and self-authorized generations remain inert while one active fully verified receipt can start the frozen binary's dispatch (serve or start)
 
 ## Scope
@@ -50,8 +17,6 @@ related:
 - `engine/crates/vaultspec-api/src/lib_tests/a2a_runtime_identity.rs`
 
 ## Description
-
-<!-- Succinct line-by-line list of steps executed. Use imperative language, mirroring git commit summary lines. -->
 
 - Place real generation trees on disk - release manifest, component lock at its fixed
   path, and a frozen-runtime directory with an entrypoint - and drive the production
@@ -84,8 +49,6 @@ remains unproven anywhere is the exec of a genuine frozen runtime; that needs a 
 built onedir and belongs with the certification lane, which already boots one.
 
 ## Notes
-
-<!-- Incidents. Data loss. Difficulties; persistent failures. Skipped work. Scaffolds left in code. Failures. -->
 
 - No conditional skip was added. The pre-existing convention in this file gates
   artifact-dependent proofs on an environment variable and returns with a printed reason;
