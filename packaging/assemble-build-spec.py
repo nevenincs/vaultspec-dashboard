@@ -26,6 +26,7 @@ Usage:
 """
 import argparse
 import json
+import os
 import sys
 
 ROSTER = [
@@ -121,6 +122,39 @@ def main() -> int:
             "sbom_format": args.sbom_format,
         },
     }
+    # Refuse a spec that cannot build. `required=True` proves only that a FLAG
+    # was passed, never that the path behind it exists, so a missing declared
+    # input used to travel all the way into `product_build`, which died on a
+    # bare "No such file or directory (os error 2)" naming nothing. That is
+    # exactly how the first four-target release build failed: `--sbom` pointed
+    # at `packaging/sbom.cdx.json`, which nothing in the repository generates,
+    # and the failure surfaced one stage later with no path attached.
+    #
+    # Checked HERE because this is the last point that still knows which FLAG a
+    # path came from; downstream only sees an anonymous source string.
+    missing = [
+        (flag, path)
+        for flag, path in (
+            ("--dashboard", args.dashboard),
+            ("--updater", args.updater),
+            ("--lock", args.lock),
+            ("--sbom", args.sbom),
+            *((f"--license {spec_str.split(':', 2)[0]}", spec_str.split(":", 2)[2])
+              for spec_str in args.license if spec_str.count(":") >= 2),
+        )
+        if not os.path.isfile(path)
+    ]
+    if not os.path.isdir(args.a2a_runtime):
+        missing.append(("--a2a-runtime", args.a2a_runtime))
+    if missing:
+        for flag, path in missing:
+            print(f"{p.prog}: {flag} does not exist: {path}", file=sys.stderr)
+        print(
+            f"{p.prog}: refusing to emit a build spec that cannot compose",
+            file=sys.stderr,
+        )
+        return 2
+
     json.dump(spec, sys.stdout, indent=2)
     print()
     return 0

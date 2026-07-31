@@ -155,13 +155,12 @@ fn scan_dir(
     if depth > MAX_TREE_DEPTH {
         return Err(ProductBuildError::TreeTooDeep);
     }
-    let entries =
-        std::fs::read_dir(dir).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    let entries = std::fs::read_dir(dir).map_err(|error| io("read_dir", dir, &error))?;
     for entry in entries {
-        let entry = entry.map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        let entry = entry.map_err(|error| io("read_dir entry under", dir, &error))?;
         let path = entry.path();
         let metadata = std::fs::symlink_metadata(&path)
-            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+            .map_err(|error| io("symlink_metadata", &path, &error))?;
         let file_type = metadata.file_type();
         if file_type.is_dir() {
             scan_dir(root, &path, depth + 1, out, keys)?;
@@ -186,8 +185,7 @@ fn scan_dir(
             if metadata.len() > MAX_TREE_FILE_BYTES {
                 return Err(ProductBuildError::FileTooLarge { path: relative });
             }
-            let bytes =
-                std::fs::read(&path).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+            let bytes = std::fs::read(&path).map_err(|error| io("read", &path, &error))?;
             out.push(ComposedArtifact {
                 path: relative,
                 size: metadata.len(),
@@ -353,8 +351,9 @@ pub fn verify_installed_tree(
     manifest_relative: &str,
     lock: &ComponentLock,
 ) -> Result<(), ProductBuildError> {
-    let raw = std::fs::read_to_string(tree_root.join(manifest_relative))
-        .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    let manifest_source = tree_root.join(manifest_relative);
+    let raw = std::fs::read_to_string(&manifest_source)
+        .map_err(|error| io("read", &manifest_source, &error))?;
     let manifest =
         ReleaseSetManifest::parse_and_verify(&raw, lock).map_err(ProductBuildError::SelfVerify)?;
     let scanned = scan_composed_tree(tree_root)?;
@@ -558,11 +557,10 @@ pub fn compose_product_tree(
     let raw = emit_member_manifest(&member, lock)?;
     let manifest_path = generation_root.join(&sources.release_manifest_path);
     if let Some(parent) = manifest_path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        std::fs::create_dir_all(parent).map_err(|error| io("create_dir_all", parent, &error))?;
     }
     std::fs::write(&manifest_path, raw.as_bytes())
-        .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        .map_err(|error| io("write", &manifest_path, &error))?;
 
     // PROVE the written manifest describes exactly the final tree (now including
     // the manifest itself, which the completeness law excludes by its own path).
@@ -571,14 +569,27 @@ pub fn compose_product_tree(
     Ok(raw)
 }
 
+/// An I/O failure that names WHAT it was operating on.
+///
+/// `std::io::Error`'s Display carries only the errno text — "No such file or
+/// directory (os error 2)" — with no path. Every I/O site in this file used to
+/// discard the context, so a build that died on a missing declared input could
+/// not say WHICH input, and all fourteen sites became candidates. That was not
+/// hypothetical: the first four-target release build failed here, and the
+/// offending path had to be identified by elimination against the build spec
+/// rather than simply read out of the error.
+fn io(operation: &str, path: &Path, error: &std::io::Error) -> ProductBuildError {
+    ProductBuildError::Io(format!("{operation} {}: {error}", path.display()))
+}
+
 /// Copy one source file to `root/dest_relative`, creating parent directories.
 fn place(root: &Path, source: &Path, dest_relative: &str) -> Result<(), ProductBuildError> {
     let dest = root.join(dest_relative);
     if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        std::fs::create_dir_all(parent).map_err(|error| io("create_dir_all", parent, &error))?;
     }
-    std::fs::copy(source, &dest).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    // Names the SOURCE: a missing declared input is the failure this reports.
+    std::fs::copy(source, &dest).map_err(|error| io("copy", source, &error))?;
     Ok(())
 }
 
@@ -618,15 +629,14 @@ fn place_runtime_dir(
     relative: &str,
     placed: &mut usize,
 ) -> Result<(), ProductBuildError> {
-    std::fs::create_dir_all(dest).map_err(|error| ProductBuildError::Io(error.to_string()))?;
-    let entries =
-        std::fs::read_dir(source).map_err(|error| ProductBuildError::Io(error.to_string()))?;
+    std::fs::create_dir_all(dest).map_err(|error| io("create_dir_all", dest, &error))?;
+    let entries = std::fs::read_dir(source).map_err(|error| io("read_dir", source, &error))?;
     let mut seen = false;
     for entry in entries {
-        let entry = entry.map_err(|error| ProductBuildError::Io(error.to_string()))?;
+        let entry = entry.map_err(|error| io("read_dir entry under", source, &error))?;
         let path = entry.path();
         let metadata = std::fs::symlink_metadata(&path)
-            .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+            .map_err(|error| io("symlink_metadata", &path, &error))?;
         let name = entry
             .file_name()
             .to_str()
@@ -639,8 +649,7 @@ fn place_runtime_dir(
         if metadata.file_type().is_dir() {
             place_runtime_dir(&path, &dest.join(&name), &child_relative, placed)?;
         } else if metadata.file_type().is_file() {
-            std::fs::copy(&path, dest.join(&name))
-                .map_err(|error| ProductBuildError::Io(error.to_string()))?;
+            std::fs::copy(&path, dest.join(&name)).map_err(|error| io("copy", &path, &error))?;
             *placed += 1;
         } else {
             return Err(ProductBuildError::NonRegularEntry {
