@@ -104,10 +104,20 @@ jobs:
           ref: ${{ steps.a2a.outputs.commit }}
           path: a2a-src
           persist-credentials: false
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
+      # Not `astral-sh/setup-uv`: that Node action aborts during teardown on the
+      # Windows runner with a libuv assertion AFTER reporting success, failing
+      # the job it just did the work for. This matrix has a Windows leg, so it
+      # would hit that on every release. uv is provisioned on the fleet; require
+      # it rather than installing it, and fail loudly if a runner lacks it.
+      - name: Require uv on the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "::error::uv is not on PATH for this runner; the frozen runtime cannot be built without it" >&2
+            exit 1
+          fi
+          uv --version
       # PyInstaller freezes for the architecture it RUNS on; it cannot
       # cross-compile. The dashboard and updater are cargo cross-builds and will
       # happily produce aarch64 binaries on an x86_64 box, but the runtime frozen

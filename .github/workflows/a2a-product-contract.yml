@@ -81,10 +81,19 @@ jobs:
           path: producer
           persist-credentials: false
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
+      # Not `astral-sh/setup-uv`: that Node action aborts during teardown on the
+      # Windows runner with a libuv assertion AFTER reporting success. This
+      # matrix includes a Windows target, so it would fail there having already
+      # done its job. uv is provisioned on the fleet; require it instead.
+      - name: Require uv on the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "::error::uv is not on PATH for this runner; the frozen onedir cannot be built without it" >&2
+            exit 1
+          fi
+          uv --version
 
       - name: Install Python
         working-directory: producer

@@ -98,7 +98,25 @@ jobs:
       # The e2e + declared-tier integration tests spawn `vaultspec-core` from
       # PATH (the engine shells out to it for the declared tier); install it so
       # those tests run for real instead of failing with "program not found".
-      - uses: astral-sh/setup-uv@v6
+      # `astral-sh/setup-uv` is a Node action, and on the Windows runner it
+      # aborts during TEARDOWN with a libuv assertion
+      # (!(handle->flags & UV_HANDLE_CLOSING), src\win\async.c:94) AFTER it has
+      # logged "Successfully installed uv". The step therefore fails having done
+      # its job, and takes the whole gate with it — observed on 2 of 3 runs, so
+      # frequent rather than rare. Both runners are provisioned with uv already
+      # (Windows 0.12.0, Linux 0.11.29), so the action bought nothing and cost
+      # the gate. Assert the tool instead of installing it, and fail loudly if a
+      # runner is ever missing it rather than silently skipping the e2e
+      # dependency below.
+      - name: Require uv on the runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! command -v uv >/dev/null 2>&1; then
+            echo "::error::uv is not on PATH for this runner. It is expected to be provisioned on the fleet; this workflow deliberately no longer installs it via a Node action that crashes on teardown." >&2
+            exit 1
+          fi
+          uv --version
       - name: Install vaultspec-core (e2e + declared-tier dependency)
         shell: bash
         run: |
