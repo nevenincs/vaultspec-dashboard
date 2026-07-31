@@ -386,10 +386,10 @@ function Desk() {
   }, [notes]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-paper-sunken text-ink md:flex-row">
+    <div className="flex min-h-screen flex-col bg-paper-sunken text-ink lg:flex-row">
       {/* Phone picker bar — the sidebar collapses into selects so states and notes
           flow full-width on a small screen. */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-fg-2 border-b border-rule bg-paper p-fg-2 md:hidden">
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-fg-2 border-b border-rule bg-paper p-fg-2 lg:hidden">
         <select
           value={selectedId}
           onChange={(event) => setSelectedId(event.target.value)}
@@ -424,7 +424,7 @@ function Desk() {
         </select>
       </div>
 
-      <nav className="hidden w-[14rem] shrink-0 overflow-y-auto border-r border-rule bg-paper p-fg-3 md:block">
+      <nav className="hidden w-[14rem] shrink-0 overflow-y-auto border-r border-rule bg-paper p-fg-3 lg:block">
         <h1 className="text-label font-medium">Visual review</h1>
         <p className="mb-fg-3 text-meta text-ink-faint">
           {REGISTRY.length} components · {REVIEW_STATES.length} states · authored props,
@@ -485,9 +485,9 @@ function Desk() {
         ))}
       </nav>
 
-      <main className="min-w-0 flex-1 overflow-y-auto p-fg-3 md:p-fg-4">
+      <main className="min-w-0 flex-1 overflow-y-auto p-fg-3 lg:p-fg-4">
         <div className="mb-fg-4 flex flex-wrap items-center gap-fg-3 text-meta">
-          <span className="hidden items-center gap-fg-2 md:flex">
+          <span className="hidden items-center gap-fg-2 lg:flex">
             <span className="text-ink-muted">Theme</span>
             {ROOT_THEMES.map((t) => (
               <button
