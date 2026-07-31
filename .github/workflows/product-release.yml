@@ -220,8 +220,22 @@ jobs:
             echo "::error::the frozen A2A onedir is absent at ${a2a_runtime}; the freeze step did not produce it" >&2
             exit 1
           }
-          # (SBOM + LICENSE are release inputs — an SBOM-generation step + the repo
-          # LICENSE; sourced here as ${PWD}/packaging/sbom.cdx.json + ${PWD}/LICENSE.)
+          # The full-tree SBOM, generated here from the three lockfiles that
+          # define this build: the engine's Cargo.lock, the frontend's
+          # package-lock.json, and the a2a checkout's uv.lock. It is emitted per
+          # target but is byte-identical across all four by construction (no
+          # wall clock, sorted output), so `cohort-digest` still agrees. It
+          # lands under out/ beside the generation root rather than in the
+          # tracked packaging/ tree: it is a build product, and a generated file
+          # sitting in a source directory is one `git add -A` from being committed.
+          python3 packaging/gen-sbom.py \
+            --version "$version" --commit "$(git rev-parse HEAD)" \
+            --cargo-lock "${PWD}/engine/Cargo.lock" \
+            --npm-lock "${PWD}/frontend/package-lock.json" \
+            --uv-lock "${PWD}/a2a-src/uv.lock" \
+            --out "${PWD}/out/sbom.cdx.json"
+          # (LICENSE is a release input — the repo LICENSE, sourced here as
+          # ${PWD}/LICENSE. The SBOM is the file generated immediately above.)
           python3 packaging/assemble-build-spec.py \
             --target "$target" --version "$version" \
             --commit "$(git rev-parse HEAD)" --cohort-id "release-${version}" \
@@ -230,7 +244,7 @@ jobs:
             --updater "${ENGINE_TARGET_DIR}/${target}/release/vaultspec-updater${suffix}" \
             --a2a-runtime "$a2a_runtime" \
             --lock "${PWD}/packaging/a2a-component.lock.json" \
-            --sbom "${PWD}/packaging/sbom.cdx.json" \
+            --sbom "${PWD}/out/sbom.cdx.json" \
             --license "vaultspec-a2a:MIT:${PWD}/LICENSE" \
             > build-spec.json
           "${ENGINE_TARGET_DIR}/release/product_build" build-spec.json

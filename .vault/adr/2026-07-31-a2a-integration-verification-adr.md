@@ -5,13 +5,13 @@ tags:
 date: '2026-07-31'
 modified: '2026-07-31'
 body_schema: 'body-v1'
-body_hash: 'sha256:fa873d927bd3d8e5a5dd7fb14b400cd3a25aa58a652e00eeb23dcee471ed3bbf'
+body_hash: 'sha256:d87bd2249fe65bc4529a50b911c137d497ebd9628ab1a6468b46979eb38f4927'
 related:
   - '[[2026-07-31-a2a-integration-verification-verification-surface-inventory-reference]]'
   - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
-# `a2a-integration-verification` adr: `prove the agentic loop against a real a2a: harness placement, a model-only double, and a staged substrate` | (**status:** `proposed`)
+# `a2a-integration-verification` adr: `prove the agentic loop against a real a2a: harness placement, a model-only double, and a staged substrate` | (**status:** `accepted`)
 
 ## Problem Statement
 
