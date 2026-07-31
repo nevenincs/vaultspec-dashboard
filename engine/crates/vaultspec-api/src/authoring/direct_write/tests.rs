@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 use super::*;
 use crate::authoring::actors::{ActorDisplayMetadata, ActorRecordInput};
@@ -12,6 +12,19 @@ const BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#direct-save'\ndate: '202
 const NEW_BODY: &str = "# direct save\n\nmaterialized body\n";
 const CONCURRENT_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#direct-save'\ndate: '2026-07-06'\n---\n\n# direct save\n\nconcurrent body\n";
 static REAL_CORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Acquires the real-core serialization lock, tolerating poisoning.
+///
+/// The mutex guards `()` — it exists only to stop two tests driving the
+/// real `vaultspec-core` subprocess at once, and protects no invariant a
+/// panic could leave broken. Without this, one genuinely failing test
+/// poisons the lock and every other test using it dies on `PoisonError`,
+/// reporting one root cause as a dozen unrelated failures.
+fn real_core_lock() -> std::sync::MutexGuard<'static, ()> {
+    REAL_CORE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 struct Fx {
     _dir: tempfile::TempDir,
@@ -127,7 +140,7 @@ fn direct_save(
 
 #[test]
 fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup();
     // No capability file: direct-changeset is authoritative by default.
     let human = fx.human.clone();
@@ -356,7 +369,7 @@ fn human_direct_save_self_approves_captures_preimage_and_ledgers_kind_direct() {
 
 #[test]
 fn direct_write_denies_a_rename_target_collision_with_a_structured_denial_kind() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup();
     // A different document already occupies the stem the rename targets.
     std::fs::write(
@@ -406,7 +419,7 @@ fn direct_write_denies_a_rename_target_collision_with_a_structured_denial_kind()
 
 #[test]
 fn direct_write_denies_a_create_document_path_collision_with_a_structured_denial_kind() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup();
     // now_ms=100 falls on the 1970-01-01 UTC calendar day (`ms_to_date_key`),
     // which is the deterministic create date threaded through materialization —
@@ -486,7 +499,7 @@ fn direct_write_capabilities_reject_the_retired_dual_run_and_authority_fields() 
 
 #[test]
 fn direct_write_outcome_carries_no_legacy_key_on_the_wire() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup();
     let human = fx.human.clone();
     let base_hash = fx.base_hash.clone();
@@ -513,7 +526,7 @@ fn direct_write_outcome_carries_no_legacy_key_on_the_wire() {
 
 #[test]
 fn stale_expected_blob_hash_conflicts_and_does_not_apply() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup();
     let human = fx.human.clone();
     let base_hash = fx.base_hash.clone();
@@ -783,7 +796,7 @@ mod plan_tick {
     /// (a whole-document preimage restore would have reverted S02 too).
     #[test]
     fn plan_step_tick_round_trip_is_sibling_safe_and_idempotent() {
-        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let _guard = real_core_lock();
         let mut fx = setup_plan();
         let human = fx.human.clone();
         let base_hash = fx.base_hash.clone();
@@ -897,7 +910,7 @@ mod plan_tick {
 
     #[test]
     fn plan_step_tick_stale_base_refuses_without_mutating_the_plan() {
-        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let _guard = real_core_lock();
         let mut fx = setup_plan();
         let human = fx.human.clone();
         let adapter = CoreAdapter::detect();
@@ -938,7 +951,7 @@ mod plan_tick {
         // + display-path recompute), so a blob-hash compare is unsound.
         // A mid-flight kill after the REAL write landed must still be
         // recognized Applied via the step-state re-read.
-        let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+        let _guard = real_core_lock();
         let mut fx = setup_plan();
         let human = fx.human.clone();
         let base_hash = fx.base_hash.clone();

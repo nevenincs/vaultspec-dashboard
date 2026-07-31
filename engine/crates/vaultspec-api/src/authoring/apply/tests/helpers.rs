@@ -22,7 +22,7 @@ pub(super) use crate::authoring::validation::{
     CurrentRevisionObservation, validate_changeset_material,
 };
 pub(super) use std::process::Command;
-pub(super) use std::sync::Mutex;
+pub(super) use std::sync::{Mutex, PoisonError};
 pub(super) use std::time::Duration;
 
 pub(super) const BASE_BODY: &str = "---\ntags:\n  - '#plan'\n  - '#agentic-spec-authoring-backend'\n---\n\n# apply demo\n\nbase content\n";
@@ -459,6 +459,19 @@ pub(super) fn setup_frontmatter(approve: bool) -> Fx {
 /// Serializes the tests that spawn the REAL `vaultspec-core` subprocess
 /// (mirrors `direct_write::tests::REAL_CORE_TEST_LOCK`).
 pub(super) static REAL_CORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Acquires the real-core serialization lock, tolerating poisoning.
+///
+/// The mutex guards `()` — it exists only to stop two tests driving the
+/// real `vaultspec-core` subprocess at once, and protects no invariant a
+/// panic could leave broken. Without this, one genuinely failing test
+/// poisons the lock and every other test using it dies on `PoisonError`,
+/// reporting one root cause as a dozen unrelated failures.
+pub(super) fn real_core_lock() -> std::sync::MutexGuard<'static, ()> {
+    REAL_CORE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 pub(super) const LIVE_FRONTMATTER_DOC_PATH: &str = ".vault/plan/apply-frontmatter-live-demo.md";
 

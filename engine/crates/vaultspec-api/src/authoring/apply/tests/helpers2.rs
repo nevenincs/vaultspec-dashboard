@@ -13,7 +13,7 @@ pub(super) fn landing_rename_timeout_adapter(doc_ref: &str, new_stem: &str) -> C
             "-Command".into(),
             format!(
                 "& {{ uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to \
-                 '{new_stem}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                 '{new_stem}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
             ),
         ]
     } else {
@@ -22,11 +22,11 @@ pub(super) fn landing_rename_timeout_adapter(doc_ref: &str, new_stem: &str) -> C
             "-c".into(),
             format!(
                 "uv run --no-sync vaultspec-core vault rename '{doc_ref}' --to '{new_stem}' \
-                 --json >/dev/null 2>&1; sleep 30"
+                 --json >/dev/null 2>&1; sleep 120"
             ),
         ]
     };
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
 // --- section-scoped-operations: SectionEdit against the REAL core -------
@@ -526,7 +526,7 @@ pub(super) fn landing_create_timeout_adapter(
             format!(
                 "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
                  '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
-                 Start-Sleep -Seconds 30 }}"
+                 Start-Sleep -Seconds 120 }}"
             ),
         ]
     } else {
@@ -536,11 +536,11 @@ pub(super) fn landing_create_timeout_adapter(
             format!(
                 "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
                  '{feature}' --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
-                 sleep 30"
+                 sleep 120"
             ),
         ]
     };
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
 /// A REAL two-step `CreateDocument`-with-body materialization, wrapped to LAND
@@ -570,7 +570,7 @@ pub(super) fn landing_create_two_step_timeout_adapter(
                 "& {{ uv run --no-sync vaultspec-core vault add '{doc_type}' --feature \
                  '{feature}' --title '{title}' --date '{date}' --json | Out-Null; \
                  uv run --no-sync vaultspec-core vault set-body '{stem}' --body-file \
-                 '{body_file}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                 '{body_file}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
             ),
         ]
     } else {
@@ -581,13 +581,22 @@ pub(super) fn landing_create_two_step_timeout_adapter(
                 "uv run --no-sync vaultspec-core vault add '{doc_type}' --feature '{feature}' \
                  --title '{title}' --date '{date}' --json >/dev/null 2>&1; \
                  uv run --no-sync vaultspec-core vault set-body '{stem}' --body-file \
-                 '{body_file}' --json >/dev/null 2>&1; sleep 30"
+                 '{body_file}' --json >/dev/null 2>&1; sleep 120"
             ),
         ]
     };
-    // A generous deadline: TWO real `uv run` core subprocesses must complete
-    // before the kill, so the apply-level adapter still observes a Timeout.
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(20))
+    // This fixture is a two-sided race and BOTH sides are load-sensitive, so the
+    // deadline is a fixture parameter rather than anything under test:
+    //   lower bound - both real `uv run` core subprocesses must COMPLETE first,
+    //     or the kill lands between them and the body never lands;
+    //   upper bound - the trailing sleep must still be running at the deadline,
+    //     so the adapter observes a Timeout rather than a clean exit.
+    // 20s violated the lower bound on a contended CI runner: two cold `uv run`
+    // starts exceeded it, only the scaffold landed, and the test read the
+    // resulting honest fail-closed as a failure. Widened with real headroom on
+    // both sides. Do not tighten either value to make the suite faster - the
+    // sleep must stay comfortably above the deadline.
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(45))
 }
 
 /// A REAL `vaultspec-core` `set-frontmatter` invocation, wrapped to LAND the
@@ -609,7 +618,7 @@ pub(super) fn landing_frontmatter_timeout_adapter(doc_ref: &str, date: &str) -> 
             "-Command".into(),
             format!(
                 "& {{ uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
-                 --date '{date}' --json | Out-Null; Start-Sleep -Seconds 30 }}"
+                 --date '{date}' --json | Out-Null; Start-Sleep -Seconds 120 }}"
             ),
         ]
     } else {
@@ -618,14 +627,14 @@ pub(super) fn landing_frontmatter_timeout_adapter(doc_ref: &str, date: &str) -> 
             "-c".into(),
             format!(
                 "uv run --no-sync vaultspec-core vault set-frontmatter '{doc_ref}' \
-                 --date '{date}' --json >/dev/null 2>&1; sleep 30"
+                 --date '{date}' --json >/dev/null 2>&1; sleep 120"
             ),
         ]
     };
     // A generous deadline: the wrapped command is a REAL `uv run` subprocess
     // (venv resolution + Python startup), not a synthetic file mutation, so it
     // needs materially more slack than `landing_timeout_adapter`'s 2.5s.
-    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(10))
+    CoreAdapter::from_invocation(invocation).with_timeout(Duration::from_secs(30))
 }
 
 pub(super) fn envelope_adapter(status: &str) -> CoreAdapter {

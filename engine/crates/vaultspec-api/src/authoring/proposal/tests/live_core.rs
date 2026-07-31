@@ -1,3 +1,5 @@
+use std::sync::PoisonError;
+
 use super::helpers::*;
 
 // --- propose-side operation-kind generalization --------------
@@ -5,6 +7,19 @@ use super::helpers::*;
 /// Serializes the tests that spawn the REAL `vaultspec-core` subprocess
 /// (mirrors `apply::tests::REAL_CORE_TEST_LOCK` / `direct_write::tests::REAL_CORE_TEST_LOCK`).
 static REAL_CORE_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// Acquires the real-core serialization lock, tolerating poisoning.
+///
+/// The mutex guards `()` — it exists only to stop two tests driving the
+/// real `vaultspec-core` subprocess at once, and protects no invariant a
+/// panic could leave broken. Without this, one genuinely failing test
+/// poisons the lock and every other test using it dies on `PoisonError`,
+/// reporting one root cause as a dozen unrelated failures.
+fn real_core_lock() -> std::sync::MutexGuard<'static, ()> {
+    REAL_CORE_TEST_LOCK
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+}
 
 fn git(root: &Path, args: &[&str]) {
     let output = Command::new("git")
@@ -256,7 +271,7 @@ fn standard_flow_to_applied(
 
 #[test]
 fn frontmatter_proposal_through_the_standard_flow_applies_and_is_rollback_eligible() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let (dir, mut store) = temp_live_store();
     let root = dir.path();
     let cs_id = changeset_id("changeset_standard_frontmatter");
@@ -316,7 +331,7 @@ fn frontmatter_proposal_through_the_standard_flow_applies_and_is_rollback_eligib
 
 #[test]
 fn rename_proposal_through_the_standard_flow_applies_and_is_rollback_eligible() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let (dir, mut store) = temp_live_store();
     let root = dir.path();
     let cs_id = changeset_id("changeset_standard_rename");

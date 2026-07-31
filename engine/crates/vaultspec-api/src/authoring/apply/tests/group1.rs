@@ -10,7 +10,7 @@ fn edit_frontmatter_tags_order_is_preserved_by_the_real_core_write() {
     // `_serialise_block_list`/`resolve_related_inputs` confirmed order is
     // preserved (never sorted/deduped-out-of-order), but that was never
     // exercised against the REAL binary — this falsifier closes the gap.
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path().to_path_buf();
     git(&root, &["init", "-b", "main", "."]);
@@ -108,7 +108,7 @@ fn edit_frontmatter_a_mismatched_or_not_landed_write_fails_closed() {
 
 #[test]
 fn rename_apply_against_the_real_core_is_recognized_applied() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_rename();
     let applier = fx.applier.clone();
     let adapter = CoreAdapter::detect();
@@ -146,7 +146,7 @@ fn rename_indeterminate_kill_after_a_real_landed_rename_is_recognized_applied() 
     // preview-hash-shaped verify would check carries the OLD (now-stale)
     // path. Semantic post-verify (re-resolve by stem) must recognize a REAL,
     // landed rename regardless.
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_rename();
     let applier = fx.applier.clone();
     let adapter = landing_rename_timeout_adapter(LIVE_RENAME_DOC_PATH, LIVE_RENAME_NEW_STEM);
@@ -175,7 +175,7 @@ fn rename_indeterminate_kill_after_a_real_landed_rename_is_recognized_applied() 
 
 #[test]
 fn section_edit_apply_against_the_real_core_is_recognized_applied() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_section_edit();
     let applier = fx.applier.clone();
     let adapter = CoreAdapter::detect();
@@ -213,7 +213,7 @@ fn section_edit_apply_against_the_real_core_is_recognized_applied() {
 
 #[test]
 fn section_edit_indeterminate_kill_after_a_real_landed_write_is_recognized_applied() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_section_edit();
     let applier = fx.applier.clone();
     let spliced_body = LIVE_SECTION_EDIT_BASE_BODY
@@ -244,7 +244,7 @@ fn section_edit_indeterminate_kill_after_a_real_landed_write_is_recognized_appli
 
 #[test]
 fn create_document_apply_against_the_real_core_is_recognized_applied() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_create();
     let applier = fx.applier.clone();
     let adapter = CoreAdapter::detect();
@@ -318,7 +318,7 @@ fn create_document_indeterminate_kill_after_both_steps_landed_is_recognized_appl
     // presence) must recognize a REAL, landed two-step create regardless of the
     // reclaim recomputing everything from the SAME durable
     // `materialized_operation`.
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_create();
     let applier = fx.applier.clone();
     let adapter = landing_create_two_step_timeout_adapter(
@@ -378,7 +378,7 @@ fn create_document_indeterminate_kill_after_only_the_scaffold_fails_closed() {
     // forge that hollow scaffold as Applied — exactly the empty-document defect
     // this fix closes. With the authored body now required, the post-state
     // re-verify records `Failed`, fail-closed, never a forged success.
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_create();
     let applier = fx.applier.clone();
     // `landing_create_timeout_adapter` runs ONLY `vault add` (the scaffold) and
@@ -421,7 +421,7 @@ fn create_document_indeterminate_kill_after_only_the_scaffold_fails_closed() {
 
 #[test]
 fn edit_frontmatter_apply_against_the_real_core_is_recognized_applied() {
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_frontmatter();
     let applier = fx.applier.clone();
     let adapter = CoreAdapter::detect();
@@ -458,7 +458,7 @@ fn edit_frontmatter_indeterminate_kill_after_a_real_landed_write_is_recognized_a
     // core's real bytes need not match the preview's byte-for-byte guess.
     // The semantic post-verify (`operations::frontmatter_fields_match`) must
     // recognize it Applied regardless.
-    let _guard = REAL_CORE_TEST_LOCK.lock().unwrap();
+    let _guard = real_core_lock();
     let mut fx = setup_live_frontmatter();
     let applier = fx.applier.clone();
     let adapter =
