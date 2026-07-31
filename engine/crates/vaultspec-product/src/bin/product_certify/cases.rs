@@ -10,8 +10,8 @@ use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 use vaultspec_product::credentials::DashboardCredentialStore;
-use vaultspec_product::gateway_drain::DISCOVERY_FILE;
 use vaultspec_product::locking::{
     Actor, InstallLock, InstallLockGuard, LockBusy, LockError, QuarantineRefusal, StaleState,
     quarantine_owner_matched_stale,
@@ -295,7 +295,7 @@ pub(crate) fn drive_runtime_singleton(paths: &ProductPaths) -> CaseResult {
     // The exclusion must land BEFORE any bind or discovery publication: a
     // discovery record present here would mean the excluded runtime advertised
     // itself before it was refused.
-    let discovery = paths.app_home().join(DISCOVERY_FILE);
+    let discovery = paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     if discovery.exists() {
         return Err(CaseError::failed(format!(
             "a discovery record was published at {} despite the exclusion",
@@ -877,7 +877,7 @@ mod tests {
     fn a_published_discovery_record_fails_the_singleton_case() {
         let temp = tempfile::tempdir().unwrap();
         let paths = real_product_paths(&temp);
-        std::fs::write(paths.app_home().join(DISCOVERY_FILE), b"{}").unwrap();
+        std::fs::write(paths.app_home().join(GATEWAY_DISCOVERY_FILE), b"{}").unwrap();
         assert!(matches!(
             drive_runtime_singleton(&paths),
             Err(CaseError::Failed(_))

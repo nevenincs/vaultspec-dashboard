@@ -39,6 +39,7 @@ use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 use vaultspec_product::control::ControlClient;
 use vaultspec_product::credentials::{
     CredentialError, DashboardCredentialStore, ForeignHandoffReader,
@@ -68,9 +69,6 @@ const MAX_RETAINED: usize = 32;
 const JOB_TTL: Duration = Duration::from_secs(2 * 60 * 60);
 /// Freshness window for a gateway discovery heartbeat.
 const DISCOVERY_FRESHNESS: Duration = Duration::from_secs(30);
-/// The gateway discovery record the seated controller publishes. The
-/// lifecycle plane READS it to classify the attach verdict; it never writes it.
-const DISCOVERY_FILE: &str = "gateway-discovery.json";
 
 /// The frozen runtime's foreground service verb. The dashboard owns the process
 /// tree it starts and terminates it on seated shutdown, so it runs the runtime
@@ -331,7 +329,7 @@ fn supported_state_schema() -> RangeBounds {
 /// rejects any secret-bearing key at parse). `None` on absent or malformed —
 /// both are "no discoverable gateway", never an optimistic assumption of one.
 fn read_gateway_discovery(paths: &ProductPaths) -> Option<GatewayDiscovery> {
-    let raw = std::fs::read_to_string(paths.app_home().join(DISCOVERY_FILE)).ok()?;
+    let raw = std::fs::read_to_string(paths.app_home().join(GATEWAY_DISCOVERY_FILE)).ok()?;
     GatewayDiscovery::parse(&raw).ok()
 }
 

@@ -40,7 +40,7 @@ const CAPSULE_CONTRACT_VERSION: &str = "2.0";
 const COHORT_SCHEMA_VERSION: &str = "1.0";
 const DIGEST_ALGORITHM: &str = "sha256";
 const COMPONENT_LOCK_VERSION: &str = "1.0";
-const COMPONENT_LOCK_PATH: &str = "packaging/a2a-component.lock.json";
+use crate::a2a_contract::COMPONENT_LOCK_PATH;
 const MAX_MEMBER_MANIFEST_BYTES: usize = 512 * 1024 * 1024;
 const MAX_COMPONENT_LOCK_BYTES: usize = 1024 * 1024;
 const MAX_CAPSULE_MANIFEST_BYTES: u64 = 4 * 1024 * 1024;

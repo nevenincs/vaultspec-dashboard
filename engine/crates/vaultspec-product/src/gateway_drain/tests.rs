@@ -38,7 +38,7 @@ impl Fixture {
     }
 
     fn write_discovery(&self, raw: &str) {
-        std::fs::write(self.paths.app_home().join(DISCOVERY_FILE), raw)
+        std::fs::write(self.paths.app_home().join(GATEWAY_DISCOVERY_FILE), raw)
             .expect("write discovery record");
     }
 }
@@ -457,7 +457,7 @@ fn plant_file_symlink(target: &Path, link: &Path) {
 #[test]
 fn bounded_discovery_read_accepts_a_regular_record_and_reports_absence() {
     let fixture = Fixture::new();
-    let path = fixture.paths.app_home().join(DISCOVERY_FILE);
+    let path = fixture.paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     assert!(matches!(
         read_bounded_discovery(&path),
         Err(GatewayDrainError::DiscoveryAbsent)
@@ -472,7 +472,7 @@ fn bounded_discovery_read_refuses_a_planted_reparse_point() {
     // A real record the traversal would have reached had the read followed.
     let target = fixture.paths.app_home().join("planted-discovery.json");
     std::fs::write(&target, "{\"planted\":true}").unwrap();
-    let path = fixture.paths.app_home().join(DISCOVERY_FILE);
+    let path = fixture.paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     plant_file_symlink(&target, &path);
     // The planted link IS traversable: a following read reaches the attacker's
     // record. That is exactly what the no-follow read must refuse to do.
@@ -495,7 +495,7 @@ fn bounded_discovery_read_refuses_a_planted_reparse_point() {
 #[test]
 fn bounded_discovery_read_refuses_one_byte_over_the_cap() {
     let fixture = Fixture::new();
-    let path = fixture.paths.app_home().join(DISCOVERY_FILE);
+    let path = fixture.paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     std::fs::write(
         &path,
         vec![b'x'; usize::try_from(MAX_DISCOVERY_BYTES).unwrap() + 1],

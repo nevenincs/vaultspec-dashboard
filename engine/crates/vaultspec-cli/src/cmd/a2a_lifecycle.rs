@@ -19,6 +19,7 @@
 use std::time::Duration;
 
 use serde_json::{Value, json};
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 use vaultspec_product::control::ControlClient;
 use vaultspec_product::credentials::{CredentialError, DashboardCredentialStore};
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, Verdict};
@@ -31,8 +32,6 @@ use vaultspec_product::provisioning::{
     ActiveReleaseState, ProvisioningErrorKind, observe_active_release,
 };
 
-/// The published gateway discovery filename under the product app home.
-const DISCOVERY_FILE: &str = "gateway-discovery.json";
 /// Freshness window for a discovery heartbeat (matches the seated plane).
 const DISCOVERY_FRESHNESS_MS: i64 = 30_000;
 /// Bounded loopback control budget for the `stop` shutdown call.
@@ -68,7 +67,7 @@ fn resolve() -> Result<(ProductPaths, String), String> {
 
 /// Read and parse the secret-free gateway discovery record, if one is published.
 fn read_discovery(paths: &ProductPaths) -> Option<GatewayDiscovery> {
-    let raw = std::fs::read_to_string(paths.app_home().join(DISCOVERY_FILE)).ok()?;
+    let raw = std::fs::read_to_string(paths.app_home().join(GATEWAY_DISCOVERY_FILE)).ok()?;
     GatewayDiscovery::parse(&raw).ok()
 }
 

@@ -10,9 +10,10 @@
 use std::path::Path;
 use std::time::Duration;
 
+use vaultspec_product::a2a_contract::GATEWAY_DISCOVERY_FILE;
 use vaultspec_product::credentials::DashboardCredentialStore;
 use vaultspec_product::discovery::{DiscoveryContext, GatewayDiscovery, ReleaseSetRef, Verdict};
-use vaultspec_product::gateway_drain::{DISCOVERY_FILE, DrainContext, GatewayDrainError};
+use vaultspec_product::gateway_drain::{DrainContext, GatewayDrainError};
 use vaultspec_product::generation::{
     CreateUnpublishedError, DiscardOutcome, GenerationError, LockedProduct,
     MAX_ABANDONED_GENERATIONS,
@@ -87,7 +88,7 @@ pub(crate) fn case_cold_gateway_readiness(artifact: &Artifact) -> CaseResult {
         ));
     }
 
-    let discovery = app_home.join(DISCOVERY_FILE);
+    let discovery = app_home.join(GATEWAY_DISCOVERY_FILE);
     if discovery.exists() {
         return Err(CaseError::failed(format!(
             "preparation advertised a gateway at {}; nothing may start eagerly",
@@ -382,7 +383,7 @@ fn drive_foreign_attachment_under(
     let record = foreign_discovery_record(&ours, handoff);
     let raw = serde_json::to_string(&record)
         .map_err(|error| CaseError::failed(format!("cannot render a discovery record: {error}")))?;
-    let discovery_path = paths.app_home().join(DISCOVERY_FILE);
+    let discovery_path = paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     std::fs::write(&discovery_path, raw.as_bytes()).map_err(|error| {
         CaseError::failed(format!("cannot publish the discovery record: {error}"))
     })?;
@@ -591,7 +592,7 @@ fn drive_admission_close(paths: &ProductPaths) -> Result<String, CaseError> {
     use vaultspec_product::receipt::Channel;
     use vaultspec_product::transaction::{UpdatePlan, UpdateTransaction};
 
-    let discovery_path = paths.app_home().join(DISCOVERY_FILE);
+    let discovery_path = paths.app_home().join(GATEWAY_DISCOVERY_FILE);
     let handoff = DashboardCredentialStore::for_product(paths).attach_control_reference();
     let record = foreign_discovery_record(&paths.root().to_string_lossy(), &handoff);
     let raw = serde_json::to_string(&record)

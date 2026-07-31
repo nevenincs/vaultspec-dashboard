@@ -32,6 +32,7 @@ use std::io::Read as _;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
+use crate::a2a_contract::GATEWAY_DISCOVERY_FILE;
 use crate::control::{ControlClient, ControlError};
 use crate::credentials::{
     Credential, CredentialError, DashboardCredentialStore, VerifiedOwnershipCredential,
@@ -41,9 +42,6 @@ use crate::locking::{InstallLockGuard, LockAuthorityError, process_is_alive};
 use crate::manifest::RangeBounds;
 use crate::paths::ProductPaths;
 
-/// The secret-free discovery record the desktop gateway publishes in the
-/// product app home.
-pub const DISCOVERY_FILE: &str = "gateway-discovery.json";
 /// Discovery records are small JSON documents; a larger file is malformed.
 const MAX_DISCOVERY_BYTES: u64 = 64 * 1024;
 /// Connect budget for each bounded control call.
@@ -154,7 +152,7 @@ impl<'guard> OwnedGatewayLease<'guard> {
         context: &DrainContext,
     ) -> Result<Self, GatewayDrainError> {
         guard.verify_for_product(paths)?;
-        let raw = read_bounded_discovery(&paths.app_home().join(DISCOVERY_FILE))?;
+        let raw = read_bounded_discovery(&paths.app_home().join(GATEWAY_DISCOVERY_FILE))?;
         let discovery = GatewayDiscovery::parse(&raw).map_err(GatewayDrainError::Discovery)?;
         let our_owner = paths.root().to_string_lossy().to_string();
         let ctx = DiscoveryContext {
@@ -265,7 +263,7 @@ fn drive_drain_stop(
 /// quiescence mint typed; the caller adjudicates through the drain or
 /// quarantine flows instead. Only a provably record-free product is cold.
 pub(crate) fn require_discovery_absent(paths: &ProductPaths) -> Result<(), GatewayDrainError> {
-    match read_bounded_discovery(&paths.app_home().join(DISCOVERY_FILE)) {
+    match read_bounded_discovery(&paths.app_home().join(GATEWAY_DISCOVERY_FILE)) {
         Err(GatewayDrainError::DiscoveryAbsent) => Ok(()),
         Ok(_) => Err(GatewayDrainError::GatewayDiscoverable),
         Err(error) => Err(error),

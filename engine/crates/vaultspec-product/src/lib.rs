@@ -38,6 +38,7 @@
 //! Later modules add transactional update and build/certify tools behind
 //! this same boundary.
 
+pub mod a2a_contract;
 pub mod bootstrap;
 pub mod channels;
 pub mod cohort;

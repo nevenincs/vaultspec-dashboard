@@ -38,6 +38,9 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use rag_client::client::{LoopbackTransport, RagError, RagTransport};
 use serde_json::{Value, json};
+use vaultspec_product::a2a_contract::{
+    A2A_HOME_DIR, A2A_HOME_ENV, HANDOFF_CREDENTIAL_FILE, RESIDENT_DISCOVERY_FILE,
+};
 
 use crate::a2a_run_leases::{LeaseReservation, LeaseToken};
 use crate::app::{AppState, ScopeCell, now_ms};
@@ -206,15 +209,15 @@ enum A2aDiscovery {
 /// machine, so there is no per-scope candidate.
 fn a2a_service_json_candidates() -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    if let Some(home) = std::env::var_os("VAULTSPEC_A2A_HOME") {
-        candidates.push(PathBuf::from(home).join("service.json"));
+    if let Some(home) = std::env::var_os(A2A_HOME_ENV) {
+        candidates.push(PathBuf::from(home).join(RESIDENT_DISCOVERY_FILE));
     }
     let user_home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
     if let Some(user_home) = user_home {
         candidates.push(
             PathBuf::from(user_home)
-                .join(".vaultspec-a2a")
-                .join("service.json"),
+                .join(A2A_HOME_DIR)
+                .join(RESIDENT_DISCOVERY_FILE),
         );
     }
     candidates
@@ -269,7 +272,7 @@ fn discover_a2a_at(candidates: &[PathBuf]) -> A2aDiscovery {
 }
 
 fn read_a2a_handoff(discovery_path: &std::path::Path, reference: &str) -> Result<String, String> {
-    let expected = discovery_path.with_file_name("service.token");
+    let expected = discovery_path.with_file_name(HANDOFF_CREDENTIAL_FILE);
     let expected = expected
         .canonicalize()
         .map_err(|_| "a2a handoff credential is absent".to_string())?;
