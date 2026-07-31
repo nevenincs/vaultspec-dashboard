@@ -34,6 +34,57 @@ jobs:
         shell: bash
         run: df -h . 2>/dev/null | tail -1 || true
 
+  probe-macos:
+    # The macOS leg is reached by no literal `runs-on:` anywhere else in the
+    # tree — only through release matrix `include:` blocks — so an absent or
+    # mislabelled runner shows up as a job that queues forever rather than one
+    # that fails. This probe is the cheapest way to prove the machine is really
+    # there and really executing, without cutting a tag to find out.
+    #
+    # It also asserts the architecture, which matters more here than on the
+    # other two legs: `aarch64-apple-darwin` is the one target whose frozen
+    # runtime cannot be cross-compiled, so a darwin runner that turned out to be
+    # x86_64 (or an Apple Silicon machine running the runner under Rosetta)
+    # would be refused by the release arch guard. Better to learn that from a
+    # dispatch than from a release.
+    name: probe (macOS)
+    runs-on: macOS
+    steps:
+      - name: bash resolves + a bash temp-script runs
+        shell: bash
+        run: |
+          echo "bash at: $(command -v bash)"
+          echo "uname: $(uname -sm)"
+          bash -c 'echo "nested-bash-ok cwd=$PWD"'
+      - name: runner is genuinely arm64, not Rosetta
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch="$(uname -m)"
+          echo "uname -m: $arch"
+          if [ "$arch" != "arm64" ] && [ "$arch" != "aarch64" ]; then
+            echo "::error::macOS runner reports $arch; aarch64-apple-darwin needs an arm64 runner because the frozen runtime cannot be cross-compiled" >&2
+            exit 1
+          fi
+      - name: third-party bash-using action
+        uses: dtolnay/rust-toolchain@stable
+      - run: cargo --version
+      - name: release prerequisites the service must see
+        # The release workflow REQUIRES uv rather than installing it, and fails
+        # loudly when it is absent. The runner service does not inherit an
+        # interactive login PATH, so proving uv here — inside a real job — is
+        # the only check that matches how the release will actually run.
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "PATH=$PATH"
+          uv --version
+          jq --version
+      - name: Reclaim runner disk (always)
+        if: always()
+        shell: bash
+        run: df -h . 2>/dev/null | tail -1 || true
+
   probe-windows:
     name: probe (Windows)
     runs-on: Windows
