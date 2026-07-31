@@ -8,7 +8,7 @@ body_schema: 'body-v1'
 related: []
 ---
 
-# `runner-fleet-conformance` adr: `Fleet topology for the four-target cohort: a macOS runner, an enumerated label set, and an unserved aarch64-linux leg` | (**status:** `proposed`)
+# `runner-fleet-conformance` adr: `Fleet topology for the four-target cohort: a macOS runner, an enumerated label set, and an unserved aarch64-linux leg` | (**status:** `accepted`)
 
 ## Problem Statement
 
@@ -151,17 +151,29 @@ tool.
 
 ## Consequences
 
-- The darwin leg becomes producible once the machine is on AC power and the
-  runner is registered, which is the single remaining gate on a complete cohort
-  other than the aarch64 Linux leg.
+- The darwin leg is now producible. The runner is registered with the
+  auto-assigned labels the matrices already select, and a dispatched probe
+  proved it executes on genuinely arm64 hardware with the release
+  prerequisites resolving inside a real job rather than merely in an
+  interactive shell — the distinction that matters, because a service does not
+  inherit a login environment. Three of the four targets now have a proven
+  runner.
 - That runner's availability is intermittent by design. A release started while
   the laptop is on battery queues rather than fails, which is the intended
   behaviour but will read as a hang to anyone who does not know the policy.
-- Durability is bounded by automatic login on that machine, matching the three
-  runners already there. This is a real ceiling, not a proven guarantee, and it
-  should be stated as such rather than reported as reboot-safe.
+- The darwin runner is durable across service restarts, sleep/wake, and
+  battery/AC cycles, and its agent is registered to run at load. It is NOT
+  durable across an unattended reboot, and this is measured rather than
+  suspected: automatic login is not configured on that machine and the disk is
+  not encrypted, so a reboot with nobody present yields no login session, and a
+  per-user agent without a session does not load. The three runners already on
+  that host share the ceiling. Closing it needs a person at the machine's
+  automatic-login setting; it cannot be done from off-machine, and raising it
+  by installing a system-wide daemon instead was rejected as needing rights the
+  automation does not hold.
 - Free disk on that host is a live risk to the first release run and is not yet
-  resolved.
+  resolved: a release build, a frozen runtime, and a composed product tree must
+  all fit in roughly twenty gigabytes.
 - No complete four-target cohort is possible until the aarch64 Linux leg is
   given a native surface. The pipeline cannot currently emit a partial cohort
   either, because the digest step requires all four members, so a three-of-four
