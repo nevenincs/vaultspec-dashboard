@@ -257,13 +257,13 @@ Exercise the real published artifacts, operating-system processes, update paths,
 Dispatch real-artifact certification to vaultspec-high-executor; no fake, mock, stub, patch, monkeypatch, skip, xfail, checkout interpreter, or metadata-only assertion may satisfy these gates.
 
 - [x] `W06.P13.S107` - Create a production-artifact certifier that opens published archives, validates complete receipts and payloads, and executes installed commands; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S108` - Certify clean installation from a locally staged artifact after network access is removed; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S109` - Certify relocation preserves onedir resolution, app-home separation, receipt authority, and dashboard launch; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S108` - Certify clean installation from a locally staged artifact after network access is removed; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S109` - Certify relocation preserves onedir resolution, app-home separation, receipt authority, and dashboard launch; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S110` - Certify the frozen runtime's default provider path executes a real run offline with no repository node_modules or runtime acquisition; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S111` - Certify cold gateway readiness and first-demand single-flight worker startup with no eager worker; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S112` - Certify the runtime singleton excludes a second gateway before bind or discovery publication; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S113` - Certify concurrent ensure operations attach to one component job and never spawn a second mutation; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S114` - Certify lifecycle admission rejects new work at the hard registry ceiling when no completed record is evictable; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S114` - Certify lifecycle admission rejects new work at the hard registry ceiling when no completed record is evictable; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S115` - Certify dashboard bootstrap creates and retains ownership plus attach-control credentials, the gateway uses attach-control for dashboard control and settlement callbacks, worker IPC remains gateway-created and confined to gateway-worker traffic, and no credential alias or secret enters discovery or output; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S116` - Certify compatible foreign attachment can run but cannot stop, repair, migrate, update, roll back, remove, or adopt the service; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S117` - Certify digest tampering is detected and repair replaces immutable files without overwriting mutable state; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
@@ -271,10 +271,10 @@ Dispatch real-artifact certification to vaultspec-high-executor; no fake, mock, 
 - [ ] `W06.P13.S119` - Certify compatible staged migration activates one complete dashboard and A2A release-set receipt; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S120` - Certify candidate process or readiness failure restores prior files, complete receipt, state snapshot, dashboard, and gateway; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S121` - Certify interruption at every declared external-updater transaction boundary recovers deterministically under the installation lock without split activation; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S122` - Certify only a matching receipt owner can quarantine stale discovery after proving the recorded process dead; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S123` - Certify primary, checkpoint, other schema-bearing stores, complete receipt generation, and prior seat restore as one consistent snapshot generation; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S122` - Certify only a matching receipt owner can quarantine stale discovery after proving the recorded process dead; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S123` - Certify primary, checkpoint, other schema-bearing stores, complete receipt generation, and prior seat restore as one consistent snapshot generation; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S124` - Certify removal deletes owned generations and receipts while preserving data unless explicit typed data removal is requested; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
-- [ ] `W06.P13.S125` - Certify the frozen runtime's standalone MCP surface starts and stops under its caller while dashboard lifecycle leaves it untouched; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
+- [x] `W06.P13.S125` - Certify the frozen runtime's standalone MCP surface starts and stops under its caller while dashboard lifecycle leaves it untouched; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [ ] `W06.P13.S126` - Certify token values never appear in logs, lifecycle jobs, frontend state, receipts, discovery, manifests, or retained artifacts; `engine/crates/vaultspec-product/src/bin/product_certify.rs`.
 - [x] `W06.P13.S127` - Create the mandatory real-artifact certification workflow with network isolation, retained diagnostics, and no skip or expected-failure path; `.github/workflows/a2a-product-certification.yml`.
 - [ ] `W06.P13.S128` - Run the complete product certification job on Apple Silicon macOS; `.github/workflows/a2a-product-certification.yml`.
@@ -291,8 +291,8 @@ Dispatch real-artifact certification to vaultspec-high-executor; no fake, mock, 
 
 Dispatch independent vaultspec-code-reviewer passes and a manual architecture-owner review over lifecycle security, updater recovery, frontend boundaries, and release evidence before completion.
 
-- [ ] `W06.P14.S138` - Review product manifest, receipt, credentials, locks, process ownership, hard bounds, migration, snapshot, and transaction code for safety and ADR intent; `engine/crates/vaultspec-product`.
-- [ ] `W06.P14.S139` - Review copied-updater descriptors, replacement ordering, channel authority, rollback, recovery, redaction, and Windows behavior; `engine/crates/vaultspec-updater`.
+- [x] `W06.P14.S138` - Review product manifest, receipt, credentials, locks, process ownership, hard bounds, migration, snapshot, and transaction code for safety and ADR intent; `engine/crates/vaultspec-product`.
+- [x] `W06.P14.S139` - Review copied-updater descriptors, replacement ordering, channel authority, rollback, recovery, redaction, and Windows behavior; `engine/crates/vaultspec-updater`.
 - [ ] `W06.P14.S140` - Review lifecycle routes and run admission for typed boundaries, atomic single-flight, authenticated ownership, bundle-scoped token revocation, and fixed run verbs; `engine/crates/vaultspec-api`.
 - [ ] `W06.P14.S141` - Review frontend stores and panels for sole wire ownership, backend-served truth, bounded polling, guarded deletion, localization, and action-plane parity; `frontend/src`.
 - [ ] `W06.P14.S142` - Review the source-pin component lock, four-target composition, installer completeness, channel reversibility, Cargo withdrawal, and published artifact inventory; `packaging`.
