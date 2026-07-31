@@ -269,19 +269,19 @@ pub(crate) fn establish_product_state(
 /// the built-in administrators. The Windows path goes through a real process, so
 /// it carries both an output cap and a wall clock like every other process this
 /// tool spawns.
+#[cfg(unix)]
 fn restrict_to_owner(directory: &Path) -> Result<(), CaseError> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        return std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700))
-            .map_err(|error| {
-                CaseError::failed(format!(
-                    "cannot restrict {} to its owner: {error}",
-                    display(directory)
-                ))
-            });
-    }
-    #[cfg(windows)]
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o700)).map_err(|error| {
+        CaseError::failed(format!(
+            "cannot restrict {} to its owner: {error}",
+            display(directory)
+        ))
+    })
+}
+
+#[cfg(windows)]
+fn restrict_to_owner(directory: &Path) -> Result<(), CaseError> {
     {
         let account = current_account()?;
         let grant = format!("{account}:(OI)(CI)F");
