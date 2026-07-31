@@ -42,14 +42,28 @@ jobs:
     # set of labels the fleet can actually schedule onto is enumerated in
     # .github/actionlint.yaml, which actionlint picks up automatically.
     #
-    # Run as the PINNED CONTAINER, not a locally installed actionlint binary,
-    # and the distinction is not cosmetic. The image bundles shellcheck at
-    # /usr/local/bin/shellcheck; actionlint auto-enables shellcheck only when it
-    # finds it on PATH, so a bare binary on a box without shellcheck SILENTLY
-    # SKIPS every `run:` script check and reports a green that the container
-    # does not. That gap is not theoretical — it hid eight real findings in
-    # these workflows. The container is therefore the authoritative gate, and a
-    # local `actionlint` run is a weaker pre-check, never proof.
+    # Installed as the pinned upstream release binary rather than the
+    # `docker://rhysd/actionlint` container action the sibling repos use. The
+    # container is the stronger linter — it bundles shellcheck, and a bare binary
+    # on a box without shellcheck silently skips every `run:` script check. But
+    # this runner cannot carry that dependency: Docker here is Docker Desktop's
+    # WSL integration, so the daemon exists only while a GUI application on the
+    # Windows host happens to be running, and the credential helper is
+    # `desktop.exe`. The fleet has already been bitten by exactly this — the
+    # Docker-based cargo-deny action failed on that helper and was replaced with
+    # a native install (see the supply-chain job below). "Docker responds right
+    # now" is not the same property as "this gate runs on every push", and a lint
+    # gate that goes red because nobody opened Docker Desktop is a gate people
+    # learn to ignore. A tarball plus a checksum needs no daemon, no registry
+    # auth, and no Docker Desktop.
+    #
+    # The cost of that choice is paid honestly rather than hidden: shellcheck and
+    # pyflakes are disabled EXPLICITLY below. Leaving them implicit would mean
+    # that installing shellcheck on this runner for any unrelated reason silently
+    # turns this gate red. The eight shellcheck findings the container did surface
+    # have all been fixed in the tree, so enabling shellcheck here is a
+    # provisioning task (put shellcheck on the runner, drop the `-shellcheck=`
+    # flag) and not a cleanup one.
     #
     # Pinned to an exact version rather than `latest` for the usual reason a
     # linter is pinned: a new upstream release adds checks, and a gate that can
@@ -65,13 +79,29 @@ jobs:
     runs-on: Linux
     steps:
       - uses: actions/checkout@v4
-      - name: actionlint (pinned container — bundles shellcheck)
-        uses: docker://rhysd/actionlint:1.7.12
+      - name: Run actionlint
+        shell: bash
+        env:
+          # Pinned by version AND digest: this step downloads an executable and
+          # runs it, so the release archive is verified before it is unpacked.
+          # The digest is the one published in the upstream checksums file for
+          # this exact version; bump both together.
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          curl -fsSL -o "$RUNNER_TEMP/$tarball" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
+          echo "${ACTIONLINT_SHA256}  $RUNNER_TEMP/$tarball" | sha256sum --check --strict
+          tar xzf "$RUNNER_TEMP/$tarball" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -no-color -shellcheck= -pyflakes= .github/workflows/*.yml
       - name: Reclaim runner disk (always)
         if: always()
         shell: bash
         run: |
           set +e
+          rm -rf "${RUNNER_TEMP:-/tmp}"/actionlint "${RUNNER_TEMP:-/tmp}"/actionlint_*.tar.gz 2>/dev/null || true
           df -h . 2>/dev/null | tail -1
 
   frontend:
