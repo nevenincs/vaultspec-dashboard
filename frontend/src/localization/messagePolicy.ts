@@ -6,7 +6,6 @@ import { HOVER_MESSAGE_POLICY } from "./messagePolicy.hover";
 import { GRAPH_CONTROLS_MESSAGE_POLICY } from "./messagePolicy.graphControls";
 import { LANGUAGE_DISPLAY_MESSAGE_POLICY } from "./messagePolicy.languageDisplay";
 import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMaintenance";
-import { THREE_LAB_MESSAGE_POLICY } from "./messagePolicy.threeLab";
 import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
 import { AGENT_MESSAGE_POLICY } from "./messagePolicy.agent";
 import { AGENT_SERVICE_MESSAGE_POLICY } from "./messagePolicy.agentService";
@@ -314,7 +313,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:editor.statuses.conflict": { role: "status" },
   ...DOCUMENT_VIEWER_MESSAGE_POLICY,
   ...GRAPH_CONTROLS_MESSAGE_POLICY,
-  ...THREE_LAB_MESSAGE_POLICY,
   ...LANGUAGE_DISPLAY_MESSAGE_POLICY,
   "documents:actions.addComment": { role: "action" },
   "documents:actions.addToFeature": { role: "action" },

@@ -1,5 +1,4 @@
 import { ltrCanvasResources, rtlCanvasResources } from "./canvasStateResources";
-import { ltrThreeLabResources, rtlThreeLabResources } from "./threeLabResources";
 
 export const ltrGraphResources = {
   accessibility: {
@@ -153,7 +152,6 @@ export const ltrGraphResources = {
     compactTitle: "Filtres",
     title: "Filtrer les documents",
   },
-  lab: ltrThreeLabResources,
   disabledReasons: {
     chooseConnectionWithSummary: "Choisissez une connexion avec un résumé à copier.",
     chooseItemWithTitle: "Choisissez un élément avec un titre à copier.",
@@ -379,7 +377,6 @@ export const rtlGraphResources = {
     compactTitle: "عوامل التصفية",
     title: "تصفية المستندات",
   },
-  lab: rtlThreeLabResources,
   disabledReasons: {
     chooseConnectionWithSummary: "اختر اتصالًا له ملخص لنسخه.",
     chooseItemWithTitle: "اختر عنصرًا له عنوان لنسخه.",

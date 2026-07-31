@@ -20,7 +20,6 @@ import { EXPECTED_LANGUAGE_DISPLAY_KEYS } from "./catalogLanguageDisplayKeys";
 import { EXPECTED_FILTER_KEYS } from "./catalogFilterKeys";
 import { EXPECTED_NODE_INTERIOR_KEYS } from "./catalogNodeInteriorKeys";
 import { EXPECTED_HOVER_KEYS } from "./catalogHoverKeys";
-import { EXPECTED_THREE_LAB_KEYS } from "./catalogThreeLabKeys";
 import { EXPECTED_AGENT_KEYS } from "./catalogAgentKeys";
 import { EXPECTED_SEARCH_MAINTENANCE_KEYS } from "./catalogSearchMaintenanceKeys";
 import { EXPECTED_SHELL_KEYS } from "./catalogShellKeys";
@@ -94,7 +93,6 @@ const EXPECTED_CATALOG_KEYS = [
   ...EXPECTED_FILTER_KEYS,
   ...EXPECTED_NODE_INTERIOR_KEYS,
   ...EXPECTED_HOVER_KEYS,
-  ...EXPECTED_THREE_LAB_KEYS,
   ...EXPECTED_SEARCH_MAINTENANCE_KEYS,
   "common:accessibility.actionsForItem",
   "common:accessibility.actionsMenu",
@@ -1143,7 +1141,6 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "graph:hover.evidence.codeLocations",
   "graph:hover.evidence.commits",
   "graph:hover.evidence.documents",
-  "graph:lab.actions.loadGenerated",
   "projects:workspaceIdentity.counts.ahead",
   "projects:workspaceIdentity.counts.behind",
   "projects:provisioning.result.itemCount",
@@ -1239,7 +1236,6 @@ describe("shipped localization catalog keys", () => {
       "graph:hover.evidence.codeLocations",
       "graph:hover.evidence.commits",
       "graph:hover.evidence.documents",
-      "graph:lab.actions.loadGenerated",
       "operations:searchMaintenance.jobs.count",
       "operations:searchMaintenance.jobs.partial",
       "operations:searchMaintenance.projects.live",

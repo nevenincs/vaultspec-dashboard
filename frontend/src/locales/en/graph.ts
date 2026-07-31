@@ -1,5 +1,3 @@
-import { threeLab } from "./threeLab";
-
 export const graph = {
   accessibility: {
     canvas: "Graph canvas. Use the arrow keys to move, enter to open, and E to expand.",
@@ -246,5 +244,4 @@ export const graph = {
     graph: "Graph",
     item: "Item",
   },
-  lab: threeLab,
 } as const;
