@@ -132,7 +132,6 @@ describe("plural catalog manifest", () => {
       "graph:hover.evidence.codeLocations",
       "graph:hover.evidence.commits",
       "graph:hover.evidence.documents",
-      "graph:lab.actions.loadGenerated",
       "operations:searchMaintenance.jobs.count",
       "operations:searchMaintenance.jobs.partial",
       "operations:searchMaintenance.projects.live",

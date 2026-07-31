@@ -36,6 +36,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.transcript.empty": { role: "status" },
   "common:agent.transcript.noSession": { role: "status" },
   "common:agent.transcript.error": { role: "error-message" },
+  "common:agent.transcript.unavailable": { role: "error-message" },
   "common:agent.transcript.showingRecent": { role: "status" },
   "common:agent.transcript.toolCalls": { role: "accessibility" },
   "common:agent.transcript.thinking": { role: "label" },

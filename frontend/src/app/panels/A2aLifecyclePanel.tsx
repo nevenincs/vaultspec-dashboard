@@ -15,7 +15,7 @@
 import { useMemo, useState } from "react";
 import { Check, TriangleAlert } from "lucide-react";
 
-import { Button, SectionLabel, Skeleton, SkeletonBar } from "../kit";
+import { Button, SectionLabel, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import type { ButtonVariant } from "../kit";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import type {
@@ -201,6 +201,13 @@ export interface A2aLifecyclePanelBodyProps {
   job: A2aLifecycleJob | undefined;
   busy: boolean;
   runError: boolean;
+  /** True before the FIRST served status read resolves (state-mode-uniformity
+   *  ADR D2): the panel renders a UI-only skeleton, never the "Checking" install-
+   *  state word standing in for loading text. */
+  loading?: boolean;
+  /** The status read itself faulted (distinct from a served `degraded` install
+   *  state, which the eligible-op/tone derivation already renders honestly). */
+  statusUnavailable?: boolean;
   onRun: (op: A2aLifecycleOp) => void;
 }
 
@@ -212,16 +219,54 @@ export function A2aLifecyclePanelBody({
   job,
   busy,
   runError,
+  loading = false,
+  statusUnavailable = false,
   onRun,
 }: A2aLifecyclePanelBodyProps) {
   const resolveMessage = useLocalizedMessageResolver();
   const [confirmOp, setConfirmOp] = useState<A2aLifecycleOp | null>(null);
 
+  const description = resolveMessage({ key: "common:agentService.description" });
+  const statusHeading = resolveMessage({ key: "common:agentService.sections.status" });
+
+  // Loading is UI-ONLY (ADR D2): a shimmer skeleton stands in for the status row,
+  // never the "Checking" word (which is a genuine install-state label ONLY once a
+  // status has actually been served).
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-fg-3 px-fg-4 py-fg-3" data-a2a-lifecycle-panel>
+        <p className="text-meta text-ink-muted">{description.message}</p>
+        <div className="flex flex-col gap-fg-1">
+          <SectionLabel>{statusHeading.message}</SectionLabel>
+          <Skeleton
+            label={resolveMessage(INSTALL_STATE_LABEL.unknown).message}
+            className="gap-fg-1-5"
+          >
+            <SkeletonBar width="w-1/3" height="h-3" />
+            <SkeletonBar width="w-1/2" height="h-2" />
+          </Skeleton>
+        </div>
+      </div>
+    );
+  }
+  // A status-read fault renders the shared degraded treatment (never the install-
+  // level "unknown" tone, which would misrepresent a wire failure as a genuine
+  // business state).
+  if (statusUnavailable) {
+    const unavailable = resolveMessage({
+      key: "common:agentService.statusUnavailable",
+    });
+    return (
+      <div className="flex flex-col gap-fg-3 px-fg-4 py-fg-3" data-a2a-lifecycle-panel>
+        <p className="text-meta text-ink-muted">{description.message}</p>
+        <StateBlock mode="degraded" message={unavailable.message} />
+      </div>
+    );
+  }
+
   const status = statusPresentation(view);
   const statusWord = resolveMessage(status.word);
   const statusLabel = resolveMessage({ key: "common:agentService.statusLabel" });
-  const description = resolveMessage({ key: "common:agentService.description" });
-  const statusHeading = resolveMessage({ key: "common:agentService.sections.status" });
   const orchestrationHeading = resolveMessage({
     key: "common:agentService.sections.orchestration",
   });
@@ -414,6 +459,8 @@ export function A2aLifecyclePanel() {
       job={job.data}
       busy={busy}
       runError={run.isError}
+      loading={status.isLoading}
+      statusUnavailable={status.isError}
       onRun={onRun}
     />
   );

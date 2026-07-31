@@ -293,6 +293,11 @@ export function ChangesOverview({
   const changes = useChangesSummary(scope);
   const open = useStatusSectionOpen(CHANGES_SECTION_ID, CHANGES_DEFAULT_OPEN);
   const chrome = deriveStatusSectionChromeView(CHANGES_SECTION_ID, open);
+  // Called unconditionally, ABOVE the noScope early return: a scope resolving from
+  // null to non-null while this fold stays mounted must never change the hook count
+  // across renders (rules of hooks) — a conditional call here previously crashed the
+  // surface the moment the active scope resolved.
+  const resolveMessage = useLocalizedMessageResolver();
 
   if (changes.noScope) {
     return <p className={changes.noScopeClassName}>{changes.noScopeLabel}</p>;
@@ -312,7 +317,6 @@ export function ChangesOverview({
       </span>
     </span>
   ) : undefined;
-  const resolveMessage = useLocalizedMessageResolver();
   const label = (
     <span className={changes.summaryPrimaryClassName}>
       {changesHeadLabel(changes, resolveMessage)}

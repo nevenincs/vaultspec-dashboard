@@ -17,6 +17,7 @@ import {
   normalizeDashboardGraphCorpus,
 } from "../dashboardState";
 import {
+  EngineError,
   engineClient,
   readTierAvailability,
   tiersFromQuery,
@@ -1016,12 +1017,24 @@ export interface FiltersVocabularyView {
   /** Per-criterion corpus spans (Issue #14): the timeline's edges for each date
    *  field. Present only on an engine that serves it (the Modified/Stamped gate). */
   dateBoundsByField: FiltersVocabulary["date_bounds_by_field"];
+  /** Degraded on either signal (state-mode-uniformity ADR D1/D3): a structural-
+   *  tier down/absent on the served vocabulary (the facet lists ride the SAME
+   *  structural read as the vault tree, `VAULT_TREE_CONTENT_TIERS`) OR the
+   *  vocabulary query itself hard-failing with no held data at all — a capability
+   *  failure the served envelope may name a DIFFERENT tier for (or none), but
+   *  that leaves this consumer with nothing usable either way, so it reads the
+   *  same degraded treatment as a structural-tier outage (never the empty "none
+   *  in corpus" sentence, which implies the read succeeded). Non-terminal when
+   *  stale data is still held. */
+  degraded: boolean;
 }
 
 export function deriveFiltersVocabularyView(
   vocabulary: FiltersVocabulary | undefined,
   loading: boolean,
   awaitingScope: boolean,
+  tiers?: TiersBlock,
+  hardError = false,
 ): FiltersVocabularyView {
   return {
     vocabulary,
@@ -1034,13 +1047,19 @@ export function deriveFiltersVocabularyView(
     health: vocabulary?.health ?? [],
     dateBounds: vocabulary?.date_bounds,
     dateBoundsByField: vocabulary?.date_bounds_by_field,
+    degraded:
+      readTierAvailability(tiers, VAULT_TREE_CONTENT_TIERS).degraded || hardError,
   };
 }
 
 /**
  * Stores selector for filter-vocabulary UI consumers. It prepares the data-driven
  * facet lists and loading semantics once so palette/sidebar chrome does not
- * branch on raw query flags or repeat optional field fallbacks.
+ * branch on raw query flags or repeat optional field fallbacks. Degradation is
+ * read from the served `tiers_block` (a fresh error envelope's tiers winning over
+ * a stale held-success block) OR the query's own `isError`-with-no-data truth —
+ * both stores-derived, never guessed from a bare transport error
+ * (degradation-is-read-from-tiers-not-guessed-from-errors).
  */
 export function useFiltersVocabularyView(
   scope: unknown,
@@ -1050,8 +1069,12 @@ export function useFiltersVocabularyView(
   const query = useFiltersVocabulary(scope, corpus);
   const loading = request.scope !== null && query.isPending;
   const awaitingScope = request.scope === null;
+  const errorTiers = query.error instanceof EngineError ? query.error.tiers : undefined;
+  const tiers = errorTiers ?? query.data?.tiers_block;
+  const hardError = query.isError && query.data === undefined;
   return useMemo(
-    () => deriveFiltersVocabularyView(query.data, loading, awaitingScope),
-    [query.data, loading, awaitingScope],
+    () =>
+      deriveFiltersVocabularyView(query.data, loading, awaitingScope, tiers, hardError),
+    [query.data, loading, awaitingScope, tiers, hardError],
   );
 }

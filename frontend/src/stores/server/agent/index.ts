@@ -22,6 +22,7 @@
 // Done turn status — lands durably rather than sitting stale behind a collapsed
 // panel.
 
+import { useMemo } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -29,7 +30,15 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 
-import { bearerToken, EngineError, type FetchLike, type TiersBlock } from "../engine";
+import {
+  bearerToken,
+  CANONICAL_TIERS,
+  EngineError,
+  readTierAvailability,
+  tiersFromQuery,
+  type FetchLike,
+  type TiersBlock,
+} from "../engine";
 import { unwrapEnvelope } from "../liveAdapters";
 import { queryClient as defaultQueryClient } from "../queryClient";
 import {
@@ -482,6 +491,29 @@ export function useSessionList(
     staleTime: 2_000,
     gcTime: 60_000,
   });
+}
+
+/** Whether the agent DATA PLANE (the session listing this panel always reads,
+ *  session-bound or not) is degraded — a FRESH error envelope's tiers win over a
+ *  stale held-success block, mirroring the sibling authoring reader
+ *  (`readAuthoringDegradation`). Never inferred from a bare transport fault: a
+ *  tiers-less error contributes nothing and this stays `false`, matching
+ *  `tiersFromQuery`'s documented precedence. Exported so the panel derives it in
+ *  one `useMemo` over the raw query fields (frontend-store-selectors), never
+ *  reading `tiers` itself. */
+export function deriveAgentSessionsDegraded(query: {
+  data?: { tiers?: TiersBlock } | undefined;
+  error?: unknown;
+}): boolean {
+  return readTierAvailability(tiersFromQuery(query), CANONICAL_TIERS).degraded;
+}
+
+/** The session listing's degradation, for a caller that only needs the boolean
+ *  (the panel's empty-vs-degraded branch when no session is open yet). */
+export function useAgentSessionsDegraded(
+  list: Pick<UseQueryResult<SessionListPage, Error>, "data" | "error">,
+): boolean {
+  return useMemo(() => deriveAgentSessionsDegraded(list), [list.data, list.error]);
 }
 
 /** One session snapshot, enabled only for a non-empty id. */

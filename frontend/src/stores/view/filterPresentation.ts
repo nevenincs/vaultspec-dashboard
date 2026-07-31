@@ -40,6 +40,7 @@ type FilterMessageKey =
   | "graph:filters.sections.health"
   | "graph:filters.sections.kind"
   | "graph:filters.sections.planStatus"
+  | "graph:filters.states.degraded"
   | "graph:filters.states.empty"
   | "graph:filters.states.loading"
   | "graph:filters.statuses.accepted"
@@ -66,6 +67,7 @@ export const FILTER_MESSAGES = Object.freeze({
   showResults: message("graph:filters.actions.showResults"),
   loading: message("graph:filters.states.loading"),
   empty: message("graph:filters.states.empty"),
+  degraded: message("graph:filters.states.degraded"),
   compactTitle: message("graph:filters.compactTitle"),
   title: message("graph:filters.title"),
   sections: Object.freeze({

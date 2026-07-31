@@ -742,7 +742,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
  * Resolve which of the four binding rail states (node 599:2099) the body shows.
  * Mutually exclusive, in priority order: still loading core work → the skeletons;
  * the pipeline view degraded (structural tier down) → the degraded notice; nothing
- * open across plans / PRs / issues → the empty medallion; otherwise the populated
+ * open across plans / PRs / issues → the empty medallion; otherwise the typical
  * stack. Derived purely from the interpreted stores views — never a raw transport
  * error (degradation-is-read-from-tiers-not-guessed-from-errors).
  */
@@ -759,10 +759,37 @@ export function deriveRailState(
     openIssues.issues.length === 0
   )
     return "empty";
-  return "populated";
+  return "typical";
 }
 
-export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {}) {
+/**
+ * The rail's MODE presentation — a wire-free view over an already-resolved state
+ * (visual-review-harness ADR D2). It fetches nothing and derives nothing: the four
+ * canonical modes are chosen by the `railState` prop, and the typical body arrives
+ * as children.
+ *
+ * The split is what lets the review harness render every mode by simply passing one,
+ * with no engine, no fixture, and no seeded wire — and it is why this component
+ * carries no preview/override affordance. A container derives; a view renders.
+ */
+export function StatusTabView({
+  railState,
+  children,
+}: {
+  railState: RailState;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
+      {railState === "loading" && <RailLoading />}
+      {railState === "degraded" && <RailDegraded />}
+      {railState === "empty" && <RailEmpty />}
+      {railState === "typical" && children}
+    </div>
+  );
+}
+
+export function StatusTab() {
   const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   // Section-header counts mirror the binding board ("OPEN PLANS — N"). They read
@@ -777,9 +804,7 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
     openPrs: openPrs.prs.length,
     openIssues: openIssues.issues.length,
   });
-  // `stateOverride` is a test-only seam (the /status.html parity harness drives each
-  // designed state); production always derives the state from live data.
-  const railState = stateOverride ?? deriveRailState(plansView, openPrs, openIssues);
+  const railState = deriveRailState(plansView, openPrs, openIssues);
   // The rail's five fold headers are ONE tab stop: arrows rove between sections via
   // the shared FocusZone, Enter/Space toggles the focused fold (the native button)
   // (keyboard-navigation W04.P07.S21). Each section's body rows remain reachable by
@@ -803,50 +828,43 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
     };
   };
   return (
-    <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
-      {railState === "loading" && <RailLoading />}
-      {railState === "degraded" && <RailDegraded />}
-      {railState === "empty" && <RailEmpty />}
-      {railState === "populated" && (
-        <>
-          <ChangesOverview {...headerNav("changes")} />
-          <SectionCard
-            {...headerNav(sections.openPlans.id)}
-            id={sections.openPlans.id}
-            title={resolveMessage(sections.openPlans.title).message}
-            count={sections.openPlans.count}
-          >
-            <OpenPlansBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.pullRequests.id)}
-            id={sections.pullRequests.id}
-            title={resolveMessage(sections.pullRequests.title).message}
-            count={sections.pullRequests.count}
-          >
-            <PullRequestsBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.openIssues.id)}
-            id={sections.openIssues.id}
-            title={resolveMessage(sections.openIssues.title).message}
-            count={sections.openIssues.count}
-          >
-            <OpenIssuesBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.recentCommits.id)}
-            id={sections.recentCommits.id}
-            title={resolveMessage(sections.recentCommits.title).message}
-          >
-            <RecentCommitsBody scope={scope} />
-          </SectionCard>
-        </>
-      )}
+    <StatusTabView railState={railState}>
+      <ChangesOverview {...headerNav("changes")} />
+      <SectionCard
+        {...headerNav(sections.openPlans.id)}
+        id={sections.openPlans.id}
+        title={resolveMessage(sections.openPlans.title).message}
+        count={sections.openPlans.count}
+      >
+        <OpenPlansBody scope={scope} />
+      </SectionCard>
+      <SectionCard
+        {...headerNav(sections.pullRequests.id)}
+        id={sections.pullRequests.id}
+        title={resolveMessage(sections.pullRequests.title).message}
+        count={sections.pullRequests.count}
+      >
+        <PullRequestsBody scope={scope} />
+      </SectionCard>
+      <SectionCard
+        {...headerNav(sections.openIssues.id)}
+        id={sections.openIssues.id}
+        title={resolveMessage(sections.openIssues.title).message}
+        count={sections.openIssues.count}
+      >
+        <OpenIssuesBody scope={scope} />
+      </SectionCard>
+      <SectionCard
+        {...headerNav(sections.recentCommits.id)}
+        id={sections.recentCommits.id}
+        title={resolveMessage(sections.recentCommits.title).message}
+      >
+        <RecentCommitsBody scope={scope} />
+      </SectionCard>
       {/* The two admin consoles (Search service, Approvals) were evicted from the
           rail into modal control panels (activity-rail-realignment ADR D1/D3);
           the rail is status-only. They are reached from the rail-footer framework
           status cluster now. */}
-    </div>
+    </StatusTabView>
   );
 }

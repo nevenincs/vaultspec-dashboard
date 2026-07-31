@@ -11,7 +11,10 @@
 import { Check, Skeleton, SkeletonBar, SkeletonRow, StateBlock } from "../kit";
 import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 
-export type RailState = "populated" | "empty" | "degraded" | "loading";
+/** The four canonical modes (state-mode-uniformity ADR D1). `typical` — NOT
+ *  "populated": the ADR fixes one vocabulary used identically in Figma and code, and
+ *  a second spelling for the same mode is how the two drift apart. */
+export type RailState = "typical" | "empty" | "degraded" | "loading";
 
 /** Empty — "Nothing in flight": the positive settled state, shared glyph + one sentence. */
 export function RailEmpty() {

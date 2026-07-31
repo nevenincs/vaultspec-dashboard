@@ -35,7 +35,14 @@ import { useTranslation } from "react-i18next";
 
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
 
-import { categoryColorVar, categoryToken, IconButton, type Category } from "../kit";
+import {
+  Button,
+  categoryColorVar,
+  categoryToken,
+  IconButton,
+  StateBlock,
+  type Category,
+} from "../kit";
 import { RailSection } from "../chrome/RailSection";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import { DocTypeMark } from "../../scene/field/markComponents";
@@ -53,6 +60,7 @@ import {
   useDashboardSelectedNodeId,
   useVaultRailFacets,
   useVaultTreeSurface,
+  useWorkspaceMapSurface,
   type VaultDocTypeGroup,
   type VaultTreeFeatureGroup,
 } from "../../stores/server/queries";
@@ -386,6 +394,16 @@ export function TreeBrowser({
   const resolveMessage = useLocalizedMessageResolver();
   const activeLocale = useActiveLocale();
   const scope = useActiveScope();
+  // Scope resolution itself can fail (the workspace map/session read that names the
+  // active project is down) — distinct from `state === "error"` below, which reads
+  // this tree's OWN query. When resolution itself has failed the vault-tree read
+  // never even gets to run (its query stays disabled on a scope that will never
+  // arrive), so without this check the tree is stuck honestly reporting "loading"
+  // forever instead of the shared degraded treatment (Stage/TimelineRangeSelector
+  // read this same surface truth; degradation is read from tiers, never guessed).
+  const workspaceMapSurface = useWorkspaceMapSurface();
+  const scopeResolutionFailed =
+    workspaceMapSurface.state === "error" || workspaceMapSurface.availability.degraded;
   const { tree, availability, state, complete } = useVaultTreeSurface(scope);
   const facets = useVaultRailFacets(scope);
   const dashboardSelection = useDashboardBrowserSelection(scope);
@@ -567,6 +585,15 @@ export function TreeBrowser({
     publishVaultBrowserTreeKeys(scope, allTreeKeys);
   }, [scope, allTreeKeys]);
 
+  if (scopeResolutionFailed) {
+    return (
+      <RailMessage
+        tone="degraded"
+        label={resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
+      />
+    );
+  }
+
   if (state === "loading") {
     // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton.
     return (
@@ -575,23 +602,21 @@ export function TreeBrowser({
   }
 
   if (state === "error") {
+    // Uniform degraded treatment (state-mode-uniformity ADR D1/D3/D4): the shared
+    // caution glyph + one plain sentence, exactly as the code tree's read failure —
+    // never a bespoke color/copy pairing for the same underlying condition.
     return (
-      <div
-        className="space-y-fg-1 px-fg-1 py-fg-0-5"
-        role="status"
-        aria-live="polite"
-        data-tree-error
-      >
-        <p className="text-label text-state-broken">
-          {resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
-        </p>
-        <button
-          type="button"
-          onClick={tree.retry}
-          className="rounded-fg-xs text-label text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-        >
-          {resolveMessage(TREE_BROWSER_MESSAGES.retry).message}
-        </button>
+      <div data-tree-error>
+        <StateBlock
+          mode="degraded"
+          layout="block"
+          message={resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
+        />
+        <div className="flex justify-center px-fg-3 pb-fg-6">
+          <Button variant="ghost" onClick={tree.retry}>
+            {resolveMessage(TREE_BROWSER_MESSAGES.retry).message}
+          </Button>
+        </div>
       </div>
     );
   }

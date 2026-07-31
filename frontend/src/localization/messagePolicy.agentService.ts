@@ -44,6 +44,7 @@ export const AGENT_SERVICE_MESSAGE_POLICY = {
   "common:agentService.ops.doctor": { role: "action" },
   "common:agentService.activeGeneration": { role: "status" },
   "common:agentService.progress": { role: "status" },
+  "common:agentService.statusUnavailable": { role: "error-message" },
   "common:agentService.runFailed": { role: "error-message" },
   "common:agentService.dataPreserved": { role: "description" },
   "common:agentService.outcome.succeeded": { role: "status" },

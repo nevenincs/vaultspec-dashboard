@@ -332,6 +332,7 @@ export const common = {
     },
     activeGeneration: "Active version {{generation}}",
     progress: "Working…",
+    statusUnavailable: "Agent status is unavailable. Reload the page and try again.",
     runFailed: "The last action could not be started. Try again.",
     dataPreserved: "Your documents and data are preserved.",
     outcome: {
@@ -387,6 +388,8 @@ export const common = {
       noSession: "Message the agent to start a conversation.",
       error:
         "This conversation couldn’t be loaded. It may have expired. Open a new session.",
+      unavailable:
+        "Agent data is unavailable right now. Reload the page and try again.",
       showingRecent: "Showing the most recent messages.",
       toolCalls: "Tool calls",
       thinking: "Thinking",

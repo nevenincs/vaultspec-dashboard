@@ -20,6 +20,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   useAgentLifecycleSubscription,
+  useAgentSessionsDegraded,
   useSession,
   useSessionList,
 } from "../../stores/server/agent";
@@ -88,6 +89,7 @@ const AGENT = {
   empty: "common:agent.transcript.empty",
   noSession: "common:agent.transcript.noSession",
   error: "common:agent.transcript.error",
+  unavailable: "common:agent.transcript.unavailable",
 } as const;
 
 function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | null }) {
@@ -207,6 +209,12 @@ function AgentTranscriptContainer({
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const session = useSession(currentSessionId);
+  // The panel's own header ALSO reads this listing (same params → the same cached
+  // query, no duplicate fetch); read here too so the "no session yet" empty prompt
+  // can distinguish itself from a genuinely degraded agent data plane instead of
+  // always claiming "message the agent to start" when that would just fail.
+  const sessionList = useSessionList({ cap: 20 });
+  const sessionsDegraded = useAgentSessionsDegraded(sessionList);
   // A team run renders independently of a single-agent session (the two planes are
   // distinct); it may be active with no session at all. So the session branching
   // only decides the SESSION body, and the team-run block mounts alongside it.
@@ -217,14 +225,23 @@ function AgentTranscriptContainer({
 
   let body: ReactNode;
   if (currentSessionId === null) {
-    // No session: the empty prompt shows ONLY when no team run is carrying the
-    // panel; otherwise the team-run block below is the content.
+    // No session: the empty/degraded prompt shows ONLY when no team run is
+    // carrying the panel; otherwise the team-run block below is the content. A
+    // degraded data plane reads distinctly from "no session yet" — never the same
+    // "message the agent" invitation when starting one would just fail.
     body =
       teamRunId === null ? (
-        <StateBlock
-          mode="empty"
-          message={resolveMessage({ key: AGENT.noSession }).message}
-        />
+        sessionsDegraded ? (
+          <StateBlock
+            mode="degraded"
+            message={resolveMessage({ key: AGENT.unavailable }).message}
+          />
+        ) : (
+          <StateBlock
+            mode="empty"
+            message={resolveMessage({ key: AGENT.noSession }).message}
+          />
+        )
       ) : null;
   } else if (session.isLoading) {
     body = (

@@ -73,6 +73,7 @@ const EXPECTED_AGENT_SERVICE_KEYS = [
   "common:agentService.ops.doctor",
   "common:agentService.activeGeneration",
   "common:agentService.progress",
+  "common:agentService.statusUnavailable",
   "common:agentService.runFailed",
   "common:agentService.dataPreserved",
   "common:agentService.outcome.succeeded",

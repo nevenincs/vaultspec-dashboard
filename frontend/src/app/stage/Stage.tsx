@@ -22,6 +22,7 @@ import {
   useHealStaleSessionIntentOnBoot,
   useHealTimelineModeToLiveOnBoot,
   useNodeNeighborsBulk,
+  useWorkspaceMapSurface,
 } from "../../stores/server/queries";
 import {
   useRestoreSessionScope,
@@ -191,6 +192,13 @@ export function Stage() {
   const renderCapability = useRenderCapability();
   const availability = useGraphSliceAvailability(slice, graphScope !== null);
   const surfaces = useSurfaceStates();
+  // Distinguishes "no scope yet" (still resolving) from "scope can never resolve
+  // because the workspace map genuinely failed" (isError, or a served tiers block
+  // reporting structural down) — read from the stores-owned surface truth, never
+  // guessed from a bare transport error (degradation-is-read-from-tiers).
+  const workspaceMapSurface = useWorkspaceMapSurface();
+  const scopeResolutionFailed =
+    workspaceMapSurface.state === "error" || workspaceMapSurface.availability.degraded;
   const workingSet = useWorkingSet();
   const sceneSelectionOriginatedRef = useRef(false);
   useSceneSelectionBridge(scope, sceneSelectionOriginatedRef);
@@ -428,6 +436,7 @@ export function Stage() {
     queriedScope: graphScope,
     availability,
     renderCapability,
+    scopeResolutionFailed,
   });
   // The SAME resolved state `ProvisionPanel` renders from (project-provisioning
   // ADR D7, HIGH review finding): a genuinely unmanaged root never resolves a

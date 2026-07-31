@@ -155,6 +155,7 @@ export const graph = {
       planStatus: "Plan status",
     },
     states: {
+      degraded: "Some filter choices may be unavailable. Refresh data, then try again.",
       empty: "No filter choices available.",
       loading: "Loading filter choices…",
     },

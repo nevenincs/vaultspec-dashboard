@@ -139,6 +139,18 @@ export function deriveCoreStatusView(
       vaultHealth: data.core.vault_health,
     };
   }
+  // No core payload. A served response (success data OR a tiers-bearing error
+  // envelope, i.e. the engine answered) reports core as unreachable per the
+  // engine's own truth — designed degradation, not a transport fault. A
+  // tiers-less error (the engine never answered at all) is the genuine errored
+  // branch; otherwise the snapshot is still in flight
+  // (degradation-is-read-from-tiers-not-guessed-from-errors — mirrors
+  // `deriveGitStatusView`, which already drew this line correctly).
+  const answered =
+    data !== undefined || (error instanceof EngineError && error.tiers !== undefined);
+  if (answered) {
+    return { loading: false, errored: false, reachable: false };
+  }
   if (error) {
     return { loading: false, errored: true, reachable: false };
   }

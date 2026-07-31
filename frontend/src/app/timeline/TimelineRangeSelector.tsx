@@ -11,6 +11,7 @@ import {
   useFiltersVocabularyView,
   useTimelineAvailability,
   useTimelineDateCriterion,
+  useWorkspaceMapSurface,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
 import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
@@ -59,6 +60,18 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   const isCode = corpus === "code";
   const vocabulary = useFiltersVocabularyView(scope, corpus);
   const availability = useTimelineAvailability(scope, corpus);
+  // A null `scope` disables the vocabulary/availability queries above outright,
+  // so a workspace resolution failure (the `/map` read errored, or its tiers
+  // report structural down) would otherwise fall straight through to the empty
+  // branch below — reporting "no dated documents" during a genuine backend
+  // outage instead of the degraded treatment (state-mode-uniformity ADR D1).
+  // Read from the stores-owned workspace-map surface truth, never guessed from a
+  // bare transport error.
+  const workspaceMapSurface = useWorkspaceMapSurface();
+  const scopeResolutionFailed =
+    scope === null &&
+    (workspaceMapSurface.state === "error" ||
+      workspaceMapSurface.availability.degraded);
   const { criterion: vaultCriterion, served } = useTimelineDateCriterion(scope);
   const criterion = isCode ? "modified" : vaultCriterion;
   const dateFieldLabel = resolveMessage(TIMELINE_DATE_CRITERION_MESSAGES.dateField);
@@ -98,7 +111,7 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
       </div>
     );
   }
-  if (availability.degraded) {
+  if (availability.degraded || scopeResolutionFailed) {
     const unavailable = resolveMessage(TIMELINE_RANGE_MESSAGES.unavailable);
     if (unavailable.usedFallback) return null;
     return (

@@ -69,6 +69,17 @@ export interface CanvasStateInputs {
   queriedScope: string | null;
   availability: GraphSliceAvailability;
   renderCapability: RenderCapability;
+  /** True when `scope` is null BECAUSE the workspace resolution itself failed
+   *  (the `/map` read errored, or its served tiers report the structural tier
+   *  down) — read from the stores-owned `useWorkspaceMapSurface` truth, never
+   *  guessed from a bare transport error. A scope that is merely still resolving
+   *  (the map query is in flight, or genuinely has no default) stays the existing
+   *  `awaiting-scope` loading treatment; only a confirmed resolution failure
+   *  upgrades to the degraded `unavailable` card — otherwise the canvas sat in an
+   *  infinite loading spinner during a full backend outage instead of reporting
+   *  it (state-mode-uniformity ADR D1: a transport/capability failure maps to the
+   *  same degraded treatment as a tiers-reported outage). */
+  scopeResolutionFailed: boolean;
 }
 
 /** Preserve blocking-state precedence before considering the held data. */
@@ -81,9 +92,12 @@ function resolvePrimary(inputs: CanvasStateInputs): CanvasPrimary {
     queriedScope,
     availability,
     renderCapability,
+    scopeResolutionFailed,
   } = inputs;
   if (stageSurface === "empty-invitation") return { kind: "empty" };
-  if (scope === null) return { kind: "awaiting-scope" };
+  if (scope === null) {
+    return scopeResolutionFailed ? { kind: "unavailable" } : { kind: "awaiting-scope" };
+  }
   if (renderCapability.status === "unavailable") return { kind: "gpu-unavailable" };
   if (renderCapability.status === "context-lost") return { kind: "context-lost" };
   if (!slice) {
@@ -387,17 +401,17 @@ function PrimaryCard({
           </p>
         </StateCard>
       );
-    case "context-lost": {
-      const message = resolveMessage(CANVAS_STATE_MESSAGES.restoring).message;
+    case "context-lost":
+      // Loading is UI-ONLY (state-mode-uniformity ADR D2): the same text-free
+      // centered spinner as the other transient blocking states, the human label
+      // only in the Spinner's own `sr-only` text — never a spinner PLUS a visible
+      // caption for the same condition.
       return (
-        <StateCard testid="context-lost">
-          <span aria-hidden>
-            <Spinner label={message} />
-          </span>
-          <p className="text-label text-ink-muted">{message}</p>
-        </StateCard>
+        <CenteredLoader
+          testid="context-lost"
+          label={resolveMessage(CANVAS_STATE_MESSAGES.restoring).message}
+        />
       );
-    }
   }
 }
 

@@ -210,6 +210,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       key={visualStateKey}
       title={FILTER_MESSAGES.title}
       anyActive={filterView.anyActive}
+      degraded={vocabulary.degraded}
       onClearAll={() => {
         // Clears only the facet filters; the date window is the timeline's to own
         // (filtering-has-one-canonical-surface: one date writer).
@@ -229,6 +230,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
         <FilterMenu
           title={FILTER_MESSAGES.compactTitle}
           anyActive={filterView.anyActive}
+          degraded={vocabulary.degraded}
           onClearAll={() => void filterIntent.clearFilters()}
           sections={sections}
           chips

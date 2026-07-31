@@ -25,7 +25,7 @@ import { CornerDownLeft, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 
-import { DecorativeGlyph, Kbd, Skeleton, SkeletonRow } from "../kit";
+import { DecorativeGlyph, Kbd, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageResolutionResult } from "../../platform/localization/fallback";
 import { createCountMessageDescriptor } from "../../platform/localization/message";
@@ -410,11 +410,10 @@ function CommandPaletteSurface() {
               className="max-h-80 overflow-y-auto py-fg-1 text-body"
             >
               {presentation.noMatch && !presentation.navLoading && (
-                <li
-                  role="presentation"
-                  className="px-fg-4 py-fg-3 text-center text-ink-muted"
-                >
-                  {noMatches.message}
+                // Empty is the shared glyph + one plain sentence (state-mode-uniformity
+                // ADR D3), matching the sibling search-palette surfaces.
+                <li role="presentation">
+                  <StateBlock mode="empty" message={noMatches.message} />
                 </li>
               )}
               {presentation.rowGroups.map((group) => {

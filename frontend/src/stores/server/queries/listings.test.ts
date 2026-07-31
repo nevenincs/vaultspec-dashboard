@@ -66,6 +66,7 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       planStates: [],
       health: [],
       dateBounds: { from: "2026-06-01", to: "2026-06-30" },
+      degraded: false,
     });
   });
 
@@ -80,6 +81,7 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       planStates: [],
       health: [],
       dateBounds: undefined,
+      degraded: false,
     });
   });
 
@@ -90,6 +92,34 @@ describe("deriveFiltersVocabularyView (filter UI vocabulary)", () => {
       docTypes: [],
       featureTags: [],
     });
+  });
+
+  it("reads a degraded structural tier from the served tiers block, not a guess (contract §2)", () => {
+    const down: TiersBlock = { structural: { available: false, reason: "rebuilding" } };
+    expect(deriveFiltersVocabularyView(vocabulary, false, false, down)).toMatchObject({
+      degraded: true,
+    });
+    const up: TiersBlock = { structural: { available: true } };
+    expect(deriveFiltersVocabularyView(vocabulary, false, false, up)).toMatchObject({
+      degraded: false,
+    });
+  });
+
+  it("also degrades on a hard query failure even when the served envelope names a DIFFERENT tier down (never guessed, but never blind to a failure this consumer's own tier escaped)", () => {
+    // Only `declared`/`semantic` reported down — `structural` reads available —
+    // yet the query itself never held any vocabulary at all.
+    const otherTierDown: TiersBlock = {
+      declared: { available: false, reason: "demo: simulated backend outage" },
+      structural: { available: true },
+    };
+    expect(
+      deriveFiltersVocabularyView(undefined, false, false, otherTierDown, true),
+    ).toMatchObject({ degraded: true });
+    // The same tiers block with a held (stale) vocabulary and no hard error stays
+    // a plain structural read — this consumer's tier is up, so not degraded.
+    expect(
+      deriveFiltersVocabularyView(vocabulary, false, false, otherTierDown, false),
+    ).toMatchObject({ degraded: false });
   });
 });
 
