@@ -526,9 +526,29 @@ impl LeaseRepo {
     ) -> Result<SettleOutcome> {
         let mut conn = self.lock();
         let tx = conn.transaction()?;
+        // A `run_id` is NOT unique across all rows: `idx_a2a_run_leases_unresolved_run`
+        // is PARTIAL, so it constrains only `reserved`/`active`. A revoked row keeps
+        // its `run_id` forever, and the ordinary idempotent-retry path produces
+        // exactly that — a dispatch failure revokes the first bundle, the client
+        // retries with the same stable id, and a second row is admitted. An
+        // unqualified lookup here returned whichever row the `run_id` index reached
+        // first (the OLDEST by rowid), so terminal settlement read the revoked row,
+        // mismatched on its stale bound lease id, and revoked NOTHING — leaving the
+        // LIVE run's per-role actor tokens resolvable until their 24h expiry, against
+        // this module's own invariant that they die the instant the run terminates.
+        //
+        // Prefer the unresolved row, of which the partial index guarantees at most
+        // one. The terminal fallback is deliberate rather than incidental: without
+        // it a repeated callback for an already-settled run would find no row and
+        // report `Unknown` instead of `AlreadyTerminal`, turning a benign duplicate
+        // into a phantom missing lease.
         let existing: Option<(String, String, Option<String>)> = tx
             .query_row(
-                "SELECT lease_id, state, gateway_lease_id FROM a2a_run_leases WHERE run_id = ?1",
+                "SELECT lease_id, state, gateway_lease_id
+                   FROM a2a_run_leases
+                  WHERE run_id = ?1
+                  ORDER BY (state IN ('reserved','active')) DESC, rowid DESC
+                  LIMIT 1",
                 [run_id],
                 |r| {
                     Ok((
@@ -806,6 +826,70 @@ mod tests {
         );
         assert_eq!(
             repo.settle_terminal("run-abc", "gw-abc", 5_000).unwrap(),
+            SettleOutcome::AlreadyTerminal
+        );
+    }
+
+    /// The idempotent-retry path leaves TWO rows carrying one `run_id`: the
+    /// partial unresolved-run index does not constrain a revoked row, so a
+    /// dispatch failure that revokes the first bundle does not stop the client's
+    /// retry (same stable run id) from being admitted. Terminal settlement must
+    /// resolve the LIVE lease. It previously read the oldest row — the revoked
+    /// one — mismatched on its stale gateway lease id, and revoked nothing,
+    /// leaving the live run's actor tokens resolvable until their 24h expiry.
+    #[test]
+    fn terminal_settlement_resolves_the_live_lease_not_a_revoked_retry_predecessor() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = LeaseRepo::open_at(&super::db_path(dir.path())).unwrap();
+
+        // First attempt: admitted, bound, then revoked as a failed dispatch would.
+        let (res_old, raws_old) = reservation("lease-old", "run-req-1", &["researcher"], 10_000);
+        repo.reserve(&res_old, 1_000).unwrap();
+        assert!(
+            repo.commit("lease-old", "run-abc", None, "gw-old", 1_100)
+                .unwrap()
+        );
+        assert!(repo.revoke_lease("lease-old", 1_200).unwrap());
+
+        // The client retries with the SAME stable run id; a fresh bundle is bound.
+        let (res_new, raws_new) = reservation("lease-new", "run-req-2", &["researcher"], 10_000);
+        repo.reserve(&res_new, 2_000).unwrap();
+        assert!(
+            repo.commit("lease-new", "run-abc", None, "gw-new", 2_100)
+                .unwrap()
+        );
+        assert!(
+            repo.resolve_token(&raws_new[0], 2_200).unwrap().is_some(),
+            "the retry's bundle is live before settlement"
+        );
+        assert!(
+            repo.resolve_token(&raws_old[0], 2_200).unwrap().is_none(),
+            "the revoked predecessor's bundle is already dead"
+        );
+
+        // Terminal callback for the LIVE lease must settle it, not the predecessor.
+        assert_eq!(
+            repo.settle_terminal("run-abc", "gw-new", 3_000).unwrap(),
+            SettleOutcome::Settled { revoked: 1 },
+            "settlement must select the unresolved row, not the oldest by rowid"
+        );
+        assert!(
+            repo.resolve_token(&raws_new[0], 3_100).unwrap().is_none(),
+            "the live run's actor tokens die at terminal, not at expiry"
+        );
+        assert_eq!(
+            repo.lease_state("lease-new").unwrap(),
+            Some(LeaseState::Settled)
+        );
+        // The predecessor is untouched by the successor's settlement.
+        assert_eq!(
+            repo.lease_state("lease-old").unwrap(),
+            Some(LeaseState::Revoked)
+        );
+        // And a duplicate callback for the now-settled run is still a benign no-op
+        // rather than a phantom missing lease.
+        assert_eq!(
+            repo.settle_terminal("run-abc", "gw-new", 3_500).unwrap(),
             SettleOutcome::AlreadyTerminal
         );
     }
