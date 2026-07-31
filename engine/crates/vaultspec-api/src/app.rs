@@ -959,125 +959,12 @@ impl ScopeCell {
     }
 }
 
+use crate::semantic_epoch::SemanticEpochCache;
+use crate::shutdown::ShutdownSignal;
+
 /// Workspace-level serve state: the warm scope registry, the single shared
 /// user-state handle, the bearer token, and the active scope. Per-scope serve
 /// state lives in [`ScopeCell`], resolved through the registry.
-/// The freshness window for the cached semantic epoch.
-/// rag's index epoch only advances when a
-/// reindex COMPLETES — a minutes-long operation — so serving an epoch up to a
-/// few seconds stale is negligible against the build it tracks, while the window
-/// collapses a burst of `/search` freshness annotations and `/graph/embeddings`
-/// polls onto a single `/jobs` round-trip.
-const SEMANTIC_EPOCH_TTL: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// The value + read instant of a cached semantic epoch.
-struct CachedEpoch {
-    epoch: u64,
-    read_at: std::time::Instant,
-}
-
-/// A bounded, single-value, short-TTL cache of rag's machine-global semantic
-/// freshness epoch. The epoch is ONE fact for the
-/// resident service — the newest terminal reindex timestamp across its `/jobs`,
-/// derived by [`rag_client::control::semantic_epoch`] — so the whole cache is a
-/// single `(epoch, read_at)` slot, never a growing per-scope map
-/// (`every-accumulator-is-bounded`: one value plus a TTL bound). Both the
-/// `/graph/embeddings` vector-cache key and the `/search` freshness annotation
-/// read the epoch through this one seam, so the derivation lives in exactly one
-/// place and a warm read costs no round-trip.
-#[derive(Default)]
-pub struct SemanticEpochCache {
-    slot: Mutex<Option<CachedEpoch>>,
-}
-
-impl SemanticEpochCache {
-    /// The cached epoch IF it was read within [`SEMANTIC_EPOCH_TTL`], else `None`
-    /// (a cold or expired slot). A `None` is each caller's cue to refresh on its
-    /// own terms: `/graph/embeddings` does the one bounded `/jobs` read and
-    /// [`SemanticEpochCache::store`]s it; `/search` annotates an honest absent
-    /// marker rather than adding a second blocking round-trip on the search path.
-    pub fn fresh(&self) -> Option<u64> {
-        // Poison recovery (robustness H2): see `graph_arc`.
-        let slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        slot.as_ref()
-            .filter(|c| c.read_at.elapsed() < SEMANTIC_EPOCH_TTL)
-            .map(|c| c.epoch)
-    }
-
-    /// Store a freshly-read epoch, opening a new TTL window. Only a genuinely
-    /// read epoch is stored — a legitimate `0` ("nothing reindexed yet") included;
-    /// a FAILED read is never stored, so a rag flake leaves the slot cold and
-    /// `/search` reports absent rather than a fabricated `0`.
-    pub fn store(&self, epoch: u64) {
-        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        *slot = Some(CachedEpoch {
-            epoch,
-            read_at: std::time::Instant::now(),
-        });
-    }
-}
-
-/// The process-wide graceful-shutdown latch.
-///
-/// A LATCH, not a notification: once raised it stays raised, and a waiter that
-/// subscribes AFTER the raise resolves immediately. That property is what makes
-/// the drain finish. An endless response body (the graph SSE stream, the A2A run
-/// relay) is opened at an arbitrary moment and must end when the process is
-/// stopping; with a one-shot notification the permit is consumed by whoever
-/// waits first — every stream opened before the signal (or subscribing after it)
-/// would keep its connection open forever, so `axum::serve`'s graceful shutdown
-/// never completes, the caller's bounded wait expires, and the process is
-/// force-killed WITH IN-FLIGHT CONNECTIONS ATTACHED — client-visible as a
-/// dropped socket on requests that had nothing to do with the stop.
-///
-/// Backed by a `watch` channel because it keeps the raised value for late
-/// subscribers and never fails on a send (`send_replace` ignores the
-/// receiver count), so raising the latch cannot depend on who is listening.
-pub struct ShutdownSignal {
-    tx: tokio::sync::watch::Sender<bool>,
-}
-
-impl Default for ShutdownSignal {
-    fn default() -> Self {
-        Self {
-            tx: tokio::sync::watch::channel(false).0,
-        }
-    }
-}
-
-impl ShutdownSignal {
-    /// Raise the latch. Idempotent: a repeated raise while draining is a no-op
-    /// beyond re-publishing the same value.
-    pub fn signal(&self) {
-        self.tx.send_replace(true);
-    }
-
-    /// Whether the latch is raised (a cheap, non-blocking read).
-    pub fn is_signalled(&self) -> bool {
-        *self.tx.borrow()
-    }
-
-    /// Await the latch, resolving immediately when it is ALREADY raised.
-    pub async fn wait(&self) {
-        self.waiter().await;
-    }
-
-    /// An OWNED future that resolves when the latch is raised — the form a
-    /// response body needs, since a streaming body outlives the handler's
-    /// borrow of the state. Used to terminate endless SSE bodies at shutdown.
-    // `use<>`: capture NOTHING from `&self` (edition 2024 would otherwise infer
-    // the borrow into the opaque type), so the returned future is genuinely
-    // owned and can ride a response body that outlives this borrow.
-    pub fn waiter(&self) -> impl std::future::Future<Output = ()> + Send + 'static + use<> {
-        let mut rx = self.tx.subscribe();
-        async move {
-            // `wait_for` checks the CURRENT value first, so a waiter created
-            // after the raise returns without awaiting anything.
-            let _ = rx.wait_for(|raised| *raised).await;
-        }
-    }
-}
-
 pub struct AppState {
     /// The launch root of the workspace — used for worktree discovery so any
     /// vault-bearing worktree in this workspace is a selectable scope.

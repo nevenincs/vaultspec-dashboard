@@ -19,6 +19,8 @@ pub mod routes;
 mod row_delta;
 mod search_bounds;
 pub mod seat;
+pub mod semantic_epoch;
+pub mod shutdown;
 
 use std::sync::Arc;
 
