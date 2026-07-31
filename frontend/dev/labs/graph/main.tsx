@@ -2,23 +2,24 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, useEffect, useMemo, useRef } from "react";
 import { createRoot } from "react-dom/client";
 
-import { CanvasStateOverlay, type CanvasState } from "../app/stage/CanvasStateOverlay";
-import { CategoryLegend } from "../app/stage/CategoryLegend";
-import { GraphNavControls, GraphSettingsPanel } from "../app/stage/GraphControls";
-import { MinimapWidget } from "../app/stage/MinimapWidget";
-import { getScene } from "../app/stage/Stage";
-import { bindDocumentLanguage } from "../platform/localization/documentLanguage";
 import {
-  LocalizationProvider,
-  useLocalizedMessageResolver,
-} from "../platform/localization/LocalizationProvider";
-import { getThemeController } from "../platform/theme/themeController";
-import { sliceToScene } from "../scene/sceneMapping";
-import { queryClient } from "../stores/server/queryClient";
-import { setGraphControlsSettingsOpen } from "../stores/view/graphControlsChrome";
-import { sampleTitleMessage } from "../stores/view/threeLabVocabulary";
-import { createGraphLabSampleSlice } from "../three-lab/sampleGraph";
-import "../styles.css";
+  CanvasStateOverlay,
+  type CanvasState,
+} from "@app/app/stage/CanvasStateOverlay";
+import { CategoryLegend } from "@app/app/stage/CategoryLegend";
+import { GraphNavControls, GraphSettingsPanel } from "@app/app/stage/GraphControls";
+import { MinimapWidget } from "@app/app/stage/MinimapWidget";
+import { getScene } from "@app/app/stage/Stage";
+import { bindDocumentLanguage } from "@app/platform/localization/documentLanguage";
+import { LocalizationProvider } from "@app/platform/localization/LocalizationProvider";
+import { getThemeController } from "@app/platform/theme/themeController";
+import { sliceToScene } from "@app/scene/sceneMapping";
+import { queryClient } from "@app/stores/server/queryClient";
+import { setGraphControlsSettingsOpen } from "@app/stores/view/graphControlsChrome";
+import { useLabMessageResolver } from "../three/labMessage";
+import { sampleTitleMessage } from "../three/threeLabVocabulary";
+import { createGraphLabSampleSlice } from "../three/sampleGraph";
+import "@app/styles.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("missing #root element");
@@ -66,10 +67,10 @@ function resolveHarnessState(name: string): CanvasState {
 
 function GraphVisualHarness() {
   const hostRef = useRef<HTMLDivElement>(null);
-  const resolveMessage = useLocalizedMessageResolver();
+  const resolveMessage = useLabMessageResolver();
   const sampleScene = useMemo(() => {
     const message = (name: Parameters<typeof sampleTitleMessage>[0]) =>
-      resolveMessage(sampleTitleMessage(name)).message;
+      resolveMessage(sampleTitleMessage(name));
     return sliceToScene(
       createGraphLabSampleSlice({
         planning: message("planning"),

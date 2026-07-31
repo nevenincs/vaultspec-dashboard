@@ -17,7 +17,7 @@ const PORT = DEV_PORTS.adverse;
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "../e2e",
   testMatch: /localization-(layout|errors)\.spec\.ts$/,
   timeout: 60_000,
   use: {

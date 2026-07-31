@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const repoRoot = resolve(scriptDir, "../../..");
 const outputDir = resolve(repoRoot, "docs/assets");
 const origin = process.env.VAULTSPEC_README_ORIGIN ?? "http://127.0.0.1:8770";
 const outputs = {

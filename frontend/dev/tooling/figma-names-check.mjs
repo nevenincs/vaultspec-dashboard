@@ -15,15 +15,15 @@
 //   - the nodeId is well-formed (\d+:\d+);
 //   - no two non-alias headers cite the same nodeId.
 //
-// Usage: node scripts/figma-names-check.mjs
+// Usage: node dev/tooling/figma-names-check.mjs
 
 import { readdirSync, statSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const srcRoot = join(here, "..", "src");
-const repoRoot = join(here, "..", "..");
+const srcRoot = join(here, "..", "..", "src");
+const repoRoot = join(here, "..", "..", "..");
 
 const BINDING_FILE_KEY = "SlhonORmySdoSMTQgDWw3w";
 // Canonical: `@figma <Name> · <fileKey> · <nodeId>` with optional ` · alias-of <Symbol>`.

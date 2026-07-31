@@ -13,15 +13,15 @@
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { FilterMenu, type FilterMenuSection } from "../app/stage/FilterMenu";
-import { bindDocumentLanguage } from "../platform/localization/documentLanguage";
-import { LocalizationProvider } from "../platform/localization/LocalizationProvider";
+import { FilterMenu, type FilterMenuSection } from "@app/app/stage/FilterMenu";
+import { bindDocumentLanguage } from "@app/platform/localization/documentLanguage";
+import { LocalizationProvider } from "@app/platform/localization/LocalizationProvider";
 import {
   FILTER_MESSAGES,
   authoredFilterLabel,
   filterMessageLabel,
-} from "../stores/view/filterPresentation";
-import "../styles.css";
+} from "@app/stores/view/filterPresentation";
+import "@app/styles.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {

@@ -10,13 +10,13 @@
 // Phosphor: each def module default-exports a Map<weight, ReactElement>; we read
 //   the "regular" weight and serialize its shape elements on the 256 grid (filled).
 //
-// Run: node scripts/figma-icons.mjs   (from frontend/)
+// Run: node dev/tooling/figma-icons.mjs   (from frontend/)
 
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-const ROOT = path.resolve(import.meta.dirname, "..");
+const ROOT = path.resolve(import.meta.dirname, "..", "..");
 const NM = path.join(ROOT, "node_modules");
 
 // --- the used icon inventory (kept in sync with `git grep` of imports) --------

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 // Extensionless imports: the test runs under Vite (vitest), which resolves the .ts files;
 // the runtime scripts keep explicit .ts extensions for Node's type stripping.
-import { generateFoundation, generateRegions } from "../style-dictionary.config";
+import { generateFoundation, generateRegions } from "../../style-dictionary.config";
 import { compareDecls, parseScopedDecls } from "./token-css-diff";
 
 describe("token drift check", () => {

@@ -3,19 +3,21 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { I18nextProvider } from "react-i18next";
+
+import { threeLab } from "./labMessages";
+import { registerLabMessages } from "./registerLabMessages";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { en } from "../locales/en";
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
   rtlTestLocale,
-} from "../localization/testing";
-import type { AnyMessageDescriptor } from "../platform/localization/message";
-import { APPEARANCE_CONTROL_DEFAULTS } from "../scene/three/appearanceControls";
-import type { AppearanceParams } from "../scene/three/appearance";
-import { FORCE_CONTROL_DEFAULTS } from "../scene/three/forceControls";
-import { THREE_LAB_MESSAGES } from "../stores/view/threeLabVocabulary";
+} from "@app/localization/testing";
+import type { AnyLabDescriptor } from "./labMessage";
+import { APPEARANCE_CONTROL_DEFAULTS } from "@app/scene/three/appearanceControls";
+import type { AppearanceParams } from "@app/scene/three/appearance";
+import { FORCE_CONTROL_DEFAULTS } from "@app/scene/three/forceControls";
+import { THREE_LAB_MESSAGES } from "./threeLabVocabulary";
 import { AppearanceControlsPanel } from "./AppearancePanel";
 import {
   DEFAULT_PRESET_NAME,
@@ -35,7 +37,7 @@ function PanelHarness() {
     [AUTHORED_PRESET]: { ...FORCE_CONTROL_DEFAULTS },
   });
   const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_NAME);
-  const [feedback, setFeedback] = useState<AnyMessageDescriptor | null>(null);
+  const [feedback, setFeedback] = useState<AnyLabDescriptor | null>(null);
   const [appearance, setAppearance] = useState<AppearanceParams>({
     ...APPEARANCE_CONTROL_DEFAULTS,
   });
@@ -86,6 +88,10 @@ afterEach(cleanup);
 describe("Three Lab panel localization", () => {
   it("updates the mounted production panels across writing directions", async () => {
     const runtime = createTestLocalizationRuntime();
+    // The lab's copy is no longer in the catalog a fresh runtime starts from, so the
+    // test performs the same registration the app entry does. This keeps the test on
+    // the REAL delivery path rather than one that silently already had the keys.
+    registerLabMessages(runtime);
     render(
       <I18nextProvider i18n={runtime}>
         <PanelHarness />
@@ -93,10 +99,10 @@ describe("Three Lab panel localization", () => {
     );
 
     const simulationPanel = screen.getByRole("region", {
-      name: en.graph.lab.accessibility.simulationPanel,
+      name: threeLab.accessibility.simulationPanel,
     });
     const appearancePanel = screen.getByRole("region", {
-      name: en.graph.lab.accessibility.appearancePanel,
+      name: threeLab.accessibility.appearancePanel,
     });
     expect(screen.getByText(AUTHORED_PRESET)).toBeTruthy();
 

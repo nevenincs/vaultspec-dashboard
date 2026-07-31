@@ -27,7 +27,7 @@ const expandedAuthoredCaseTransformFiles = [
 const excludedAuthoredCaseFiles = [
   resolve(fixtureRoot, "valid/authored-case-excluded.test.tsx"),
   resolve(fixtureRoot, "valid/authored-case-excluded.test.css"),
-  resolve(import.meta.dirname, "../src/locales/en/common.ts"),
+  resolve(import.meta.dirname, "../../src/locales/en/common.ts"),
 ];
 const generatedCommentFile = resolve(fixtureRoot, "invalid/generated-comment.tsx");
 const rawKeybindingPresentationFile = resolve(
@@ -96,7 +96,7 @@ describe("localization source scanner", () => {
     ]) {
       expect(
         scanFiles([
-          resolve(import.meta.dirname, `../src/localization/testing/${fixture}`),
+          resolve(import.meta.dirname, `../../src/localization/testing/${fixture}`),
         ]),
       ).toEqual([]);
     }
@@ -272,22 +272,22 @@ describe("localization source scanner", () => {
     const first = scanFiles([allRulesFile]);
     expect(scanFiles([allRulesFile])).toEqual(first);
     expect(first.map(({ id }) => id)).toEqual([
-      "ddfbbbc3451009e6e64c94cd",
-      "4a2e7fcfb8b325a010bd3f59",
-      "e7b02641ec4724af326880b3",
-      "4f17b6c0fdb8e62299b28f6c",
-      "dd0f8dd99a7b822ec52c7ada",
-      "adcb46be250028eebb8a951c",
-      "4e27205c6418d45e05347497",
-      "8fcc76ca0fde37f2ae260173",
-      "f8668aef113cb459b9c3fbe3",
-      "28e67bf40758439e28cf5076",
-      "b8b455ed03729d27e63a6594",
-      "ba833345be016286229ce2ed",
-      "e0c9e9e892a51c91f2be815c",
-      "0ce0163dfdc76fb7f3a1cde7",
-      "befb64a7b32ef58615b03c31",
-      "efd39eb35f00920207a45041",
+      "aa5d22af00aad125e62c6cea",
+      "e007de56276abd1c12b99bd2",
+      "f3d43dc995a12d987249740e",
+      "58632697b1e6b06dd139b4be",
+      "05057ce68bdf37141663031e",
+      "94898dad67d26ac5e565397f",
+      "64a22551245c6bd4ef8e0325",
+      "bdd8a56bff428fcc1acc8785",
+      "f230e252ed0dc85518405fd1",
+      "6a46424784da90f401615ba8",
+      "b79a4f3a36772e77553f71a2",
+      "1cd6763cd4da3fb736a4980a",
+      "8fa01beb2d7e6e524014b66c",
+      "49c3f79de3bd96869c897a70",
+      "5482505aa74c309a21e03ce8",
+      "ca543b1a0ead2c67b4243bb1",
     ]);
   });
 

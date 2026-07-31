@@ -1,24 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import {
-  useActiveLocale,
-  useLocalizedMessageResolver,
-} from "../platform/localization/LocalizationProvider";
-import type { AnyMessageDescriptor } from "../platform/localization/message";
-import { createDashboardScene } from "../scene/field/fieldAssembly";
+import { useActiveLocale } from "@app/platform/localization/LocalizationProvider";
+import type { AnyLabDescriptor } from "./labMessage";
+import { useLabMessageResolver } from "./labMessage";
+import { createDashboardScene } from "@app/scene/field/fieldAssembly";
 import type {
   SceneController,
   SceneEdgeData,
   SceneNodeData,
-} from "../scene/sceneController";
-import { sliceToScene } from "../scene/sceneMapping";
-import type { D3ForceParams } from "../scene/three/d3ForceSolver";
+} from "@app/scene/sceneController";
+import { sliceToScene } from "@app/scene/sceneMapping";
+import type { D3ForceParams } from "@app/scene/three/d3ForceSolver";
 import {
   FORCE_CONTROLS,
   FORCE_CONTROL_DEFAULTS,
   FORCE_CONTROL_GROUPS,
-} from "../scene/three/forceControls";
-import type { ThreeField } from "../scene/three/threeField";
+} from "@app/scene/three/forceControls";
+import type { ThreeField } from "@app/scene/three/threeField";
 import {
   FORCE_CONTROL_SECTION_MESSAGES,
   LAB_GRAPH_CONTROL_MESSAGES,
@@ -27,7 +25,7 @@ import {
   loadGeneratedMessage,
   presetFeedbackMessage,
   sampleTitleMessage,
-} from "../stores/view/threeLabVocabulary";
+} from "./threeLabVocabulary";
 import { AppearancePanel } from "./AppearancePanel";
 import {
   DEFAULT_PRESET_NAME,
@@ -53,7 +51,7 @@ const EDGE_TIERS = ["declared", "structural", "temporal", "semantic"] as const;
 
 function generateGraph(
   nodeCount: number,
-  resolveMessage: (descriptor: AnyMessageDescriptor) => string,
+  resolveMessage: (descriptor: AnyLabDescriptor) => string,
 ): GeneratedGraph {
   const nodes: SceneNodeData[] = [];
   const edges: SceneEdgeData[] = [];
@@ -114,7 +112,7 @@ interface SimulationPanelProps {
   presets: ForcePresets;
   selectedPreset: string;
   presetDraft: string;
-  feedback: AnyMessageDescriptor | null;
+  feedback: AnyLabDescriptor | null;
   onParamChange: (key: keyof D3ForceParams, value: number) => void;
   onReset: () => void;
   onLoadPreset: (name: string) => void;
@@ -138,10 +136,10 @@ export function SimulationPanel({
   onSavePreset,
   onCopyLink,
 }: SimulationPanelProps) {
-  const resolveMessageResult = useLocalizedMessageResolver();
+  const resolveLabMessage = useLabMessageResolver();
   const resolveMessage = useCallback(
-    (descriptor: AnyMessageDescriptor) => resolveMessageResult(descriptor).message,
-    [resolveMessageResult],
+    (descriptor: AnyLabDescriptor) => resolveLabMessage(descriptor),
+    [resolveLabMessage],
   );
   const locale = useActiveLocale();
   const [open, setOpen] = useState(true);
@@ -325,10 +323,10 @@ export function SimulationPanel({
 }
 
 export function ThreeLab() {
-  const resolveMessageResult = useLocalizedMessageResolver();
+  const resolveLabMessage = useLabMessageResolver();
   const resolveMessage = useCallback(
-    (descriptor: AnyMessageDescriptor) => resolveMessageResult(descriptor).message,
-    [resolveMessageResult],
+    (descriptor: AnyLabDescriptor) => resolveLabMessage(descriptor),
+    [resolveLabMessage],
   );
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<{ controller: SceneController; field: ThreeField } | null>(
@@ -341,7 +339,7 @@ export function ThreeLab() {
   const [presets, setPresets] = useState<ForcePresets>(() => readPresets());
   const [selectedPreset, setSelectedPreset] = useState(DEFAULT_PRESET_NAME);
   const [presetDraft, setPresetDraft] = useState("");
-  const [feedback, setFeedback] = useState<AnyMessageDescriptor | null>(null);
+  const [feedback, setFeedback] = useState<AnyLabDescriptor | null>(null);
   const showingSample = useRef(true);
 
   const sampleTitles = useMemo<GraphLabSampleTitles>(

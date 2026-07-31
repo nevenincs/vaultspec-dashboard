@@ -8,7 +8,7 @@
 import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "../e2e",
   testMatch: /editor\.spec\.ts/,
   // One serial browser session over one spawned engine: the scenarios build on
   // each other (open → edit → agent applies land under the open editor).
@@ -29,6 +29,6 @@ export default defineConfig({
       ],
     },
   },
-  outputDir: "./test-results/editor",
+  outputDir: "../test-results/editor",
   reporter: [["list"]],
 });

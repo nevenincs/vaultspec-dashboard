@@ -3,9 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   APPEARANCE_CONTROLS,
   APPEARANCE_CONTROL_GROUPS,
-} from "../../scene/three/appearanceControls";
-import { FORCE_CONTROLS, FORCE_CONTROL_GROUPS } from "../../scene/three/forceControls";
-import { controlsFor } from "../../scene/three/graphControlSchema";
+} from "@app/scene/three/appearanceControls";
+import { FORCE_CONTROLS, FORCE_CONTROL_GROUPS } from "@app/scene/three/forceControls";
+import { controlsFor } from "@app/scene/three/graphControlSchema";
 import {
   APPEARANCE_CONTROL_SECTION_MESSAGES,
   FORCE_CONTROL_SECTION_MESSAGES,

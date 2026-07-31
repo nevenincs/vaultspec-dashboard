@@ -21,7 +21,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import StyleDictionary from "style-dictionary";
-import { cssValue, defaultCssVar, type DtcgColorValue } from "./scripts/sd-transforms.ts";
+import {
+  cssValue,
+  defaultCssVar,
+  type DtcgColorValue,
+} from "./dev/tooling/sd-transforms.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokensDir = join(here, "tokens");
@@ -54,7 +58,11 @@ export const MARKERS = {
   },
 };
 
-function leafPaths(obj: any, prefix: string[] = [], acc = new Set<string>()): Set<string> {
+function leafPaths(
+  obj: any,
+  prefix: string[] = [],
+  acc = new Set<string>(),
+): Set<string> {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
     const v = obj[k];
@@ -107,7 +115,11 @@ async function tokensFor(sources: string[]): Promise<Leaf[]> {
 }
 
 /** Emit `name: value;` declaration lines for tokens kept by the predicate, at `indent`. */
-function declLines(tokens: Leaf[], keep: (path: string) => boolean, indent: string): string {
+function declLines(
+  tokens: Leaf[],
+  keep: (path: string) => boolean,
+  indent: string,
+): string {
   const out: string[] = [];
   for (const t of tokens) {
     const path = t.path.join(".");
@@ -162,7 +174,11 @@ export async function generateRegions(): Promise<{ colors: string; themes: strin
 type NonColorLeaf = { path: string[]; value: string | number };
 
 /** Flatten a DTCG file to leaves carrying the raw $value (non-color: scalar). */
-function flatLeaves(obj: any, prefix: string[] = [], acc: NonColorLeaf[] = []): NonColorLeaf[] {
+function flatLeaves(
+  obj: any,
+  prefix: string[] = [],
+  acc: NonColorLeaf[] = [],
+): NonColorLeaf[] {
   for (const k of Object.keys(obj)) {
     if (k.startsWith("$")) continue;
     const v = obj[k];
@@ -182,7 +198,8 @@ function readJson(path: string): any {
 /** Build the foundation region body (declaration lines, no markers), at 2-space indent. */
 export function generateFoundation(): string {
   const out: string[] = [];
-  const push = (name: string, value: string | number) => out.push(`  ${name}: ${value};`);
+  const push = (name: string, value: string | number) =>
+    out.push(`  ${name}: ${value};`);
 
   // -- type: families, then per-role size / line-height / weight ----------------
   const type = readJson(TYPE).type;

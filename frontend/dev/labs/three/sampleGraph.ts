@@ -4,7 +4,7 @@ import type {
   GraphSlice,
   TiersBlock,
   WireMetaEdge,
-} from "../stores/server/engine";
+} from "@app/stores/server/engine";
 
 const tiers: TiersBlock = {
   declared: { available: true },
