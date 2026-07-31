@@ -1,10 +1,121 @@
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
+import type { IncomingMessage, ServerResponse } from "node:http";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 import { DEV_ALLOWED_HOSTS, DEV_PORTS } from "./dev/dev-ports";
+
+// ---- review feedback persistence -------------------------------------------------
+//
+// The desk's feedback pane stores per-component review notes in a FILE, not the
+// browser: a reviewer annotates from any machine on the network, and the notes land
+// where a coding session can read and act on them. The dev server that already
+// serves the page is the only carrier — this adds no availability dependency the
+// desk does not have, and the page itself stays hermetic toward the engine.
+//
+// The store is a self-ignored directory (its own `.gitignore`), because review
+// notes are transient working data, never a tracked artifact.
+
+const FEEDBACK_DIR = resolve(import.meta.dirname, "dev/visual-review/.feedback");
+const FEEDBACK_FILE = resolve(FEEDBACK_DIR, "notes.json");
+// Bounds: a review pass produces tens of notes; these caps only stop runaway input.
+const FEEDBACK_MAX_NOTES = 500;
+const FEEDBACK_MAX_TEXT = 4000;
+
+interface FeedbackNote {
+  id: string;
+  surface: string;
+  state: string | null;
+  text: string;
+  created: string;
+  resolved: boolean;
+}
+
+function readNotes(): FeedbackNote[] {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(FEEDBACK_FILE, "utf8"));
+    return Array.isArray(parsed) ? (parsed as FeedbackNote[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeNotes(notes: FeedbackNote[]): void {
+  mkdirSync(FEEDBACK_DIR, { recursive: true });
+  // Keep the directory self-ignored so transient review data never enters git.
+  writeFileSync(resolve(FEEDBACK_DIR, ".gitignore"), "*\n");
+  const tmp = `${FEEDBACK_FILE}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(notes, null, 2)}\n`);
+  renameSync(tmp, FEEDBACK_FILE);
+}
+
+function applyFeedbackOp(op: Record<string, unknown>): FeedbackNote[] {
+  const notes = readNotes();
+  switch (op.action) {
+    case "add": {
+      const text = String(op.text ?? "")
+        .slice(0, FEEDBACK_MAX_TEXT)
+        .trim();
+      if (!text) return notes;
+      notes.push({
+        id: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+        surface: String(op.surface ?? ""),
+        state: typeof op.state === "string" ? op.state : null,
+        text,
+        created: new Date().toISOString(),
+        resolved: false,
+      });
+      return notes.slice(-FEEDBACK_MAX_NOTES);
+    }
+    case "resolve": {
+      const note = notes.find((n) => n.id === op.id);
+      if (note) note.resolved = Boolean(op.resolved);
+      return notes;
+    }
+    case "remove":
+      return notes.filter((n) => n.id !== op.id);
+    case "clear-resolved":
+      return notes.filter((n) => !n.resolved);
+    case "clear-all":
+      return [];
+    default:
+      return notes;
+  }
+}
+
+function handleFeedback(req: IncomingMessage, res: ServerResponse): void {
+  if (req.method === "GET") {
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify(readNotes()));
+    return;
+  }
+  if (req.method === "POST") {
+    let body = "";
+    req.on("data", (chunk: Buffer) => {
+      // Bounded body: an op is a short note, never a payload.
+      if (body.length < FEEDBACK_MAX_TEXT * 2) body += chunk.toString("utf8");
+    });
+    req.on("end", () => {
+      let updated: FeedbackNote[];
+      try {
+        updated = applyFeedbackOp(JSON.parse(body) as Record<string, unknown>);
+      } catch {
+        res.statusCode = 400;
+        res.end(JSON.stringify({ error: "malformed feedback op" }));
+        return;
+      }
+      writeNotes(updated);
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(updated));
+    });
+    return;
+  }
+  res.statusCode = 405;
+  res.end();
+}
 
 // The DEV-DOMAIN Vite config. `vite.config.ts` is strictly production; this one serves
 // the visual review desk and the per-surface labs. It proxies NOTHING: the review desk
@@ -49,6 +160,10 @@ export default defineConfig({
       name: "dev-domain-routes",
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
+          if ((req.url ?? "").startsWith("/visual-review-feedback")) {
+            handleFeedback(req, res);
+            return;
+          }
           if (req.url) {
             req.url = req.url.replace(/^\/visual-review(\/|$)/, "/dev/visual-review/");
             req.url = req.url.replace(/^\/labs(\/|$)/, "/dev/labs/");

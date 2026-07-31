@@ -15,6 +15,14 @@
 //
 // Vite's HMR client uses a WebSocket, which is deliberately left alone.
 
+/**
+ * The REAL fetch, captured before the stub replaces it — for the DESK'S OWN
+ * chrome only (the feedback pane talking to the dev server that already serves
+ * this page). Never handed to a specimen: production components see only the
+ * inert binding below, so the hermetic guarantee for the review cells stands.
+ */
+export const deskFetch: typeof window.fetch = window.fetch.bind(window);
+
 const pendingForever = (input: RequestInfo | URL): Promise<Response> => {
   console.debug(
     `[visual-review] fetch intercepted (the desk is hermetic): ${String(input)}`,

@@ -1,10 +1,13 @@
-// Visual review desk — every principal surface, four authored states, both themes.
+// Visual review desk — every principal surface, four authored states, themed at root.
 //
-// One page, one URL. The left nav lists every discovered surface; selecting one
-// renders the REAL production component across normal / loading / empty / degraded,
-// light beside dark. State comes from authored inputs supplied per component
-// (`specimens/`), never from a backend condition: the page is hermetic
-// (`hermetic.ts`), so nothing on it can wait on — or be blanked by — an engine.
+// One page, one URL, phone-friendly. The nav (a sidebar; a picker bar on small
+// screens) lists every discovered surface; selecting one renders the REAL production
+// component across Default / Loading / Empty / Degraded under the desk theme. State
+// comes from authored inputs supplied per component (`specimens/`), never from a
+// backend condition: the page is hermetic (`hermetic.ts`), so nothing on it can wait
+// on — or be blanked by — an engine. Review notes attach to any (component, state)
+// slot and persist through the dev server into a repo file (`feedback.ts`), so
+// feedback written on one machine is actionable from another.
 
 import "./hermetic";
 
@@ -23,6 +26,15 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { LocalizationProvider } from "@app/platform/localization/LocalizationProvider";
 import { useViewStore } from "@app/stores/view/viewStore";
 
+import {
+  addNote,
+  clearResolvedNotes,
+  feedbackAsMarkdown,
+  loadFeedback,
+  removeNote,
+  setNoteResolved,
+  useFeedbackNotes,
+} from "./feedback";
 import {
   ORPHANED_SPECIMEN_IDS,
   REGISTRY,
@@ -72,6 +84,160 @@ class CellBoundary extends Component<
   }
 }
 
+/** A compact composer: collapsed behind "Add note", saves through the file store. */
+function NoteComposer({
+  surface,
+  state,
+}: {
+  surface: string;
+  state: ReviewState | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="self-start rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-meta text-ink-muted hover:bg-paper"
+      >
+        Add note
+      </button>
+    );
+  }
+  const save = () => {
+    const trimmed = text.trim();
+    if (trimmed) void addNote(surface, state, trimmed);
+    setText("");
+    setOpen(false);
+  };
+  return (
+    <div className="flex flex-col gap-fg-1">
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) save();
+          if (event.key === "Escape") setOpen(false);
+        }}
+        rows={3}
+        placeholder="What should change here?"
+        className="w-full rounded-fg-xs border border-rule bg-paper p-fg-2 text-label text-ink"
+      />
+      <div className="flex gap-fg-2">
+        <button
+          type="button"
+          onClick={save}
+          className="rounded-fg-xs border border-rule bg-paper-sunken px-fg-2 py-fg-1 text-meta text-ink hover:bg-paper"
+        >
+          Save note
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-fg-xs px-fg-2 py-fg-1 text-meta text-ink-muted hover:bg-paper"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The notes attached to one (component, state) slot, with resolve/delete. */
+function CellNotes({ surface, state }: { surface: string; state: ReviewState | null }) {
+  const all = useFeedbackNotes();
+  const mine = useMemo(
+    () => all.filter((n) => n.surface === surface && n.state === state),
+    [all, surface, state],
+  );
+  return (
+    <div className="mt-fg-1 flex flex-col gap-fg-1">
+      {mine.map((note) => (
+        <div
+          key={note.id}
+          className={`flex items-start gap-fg-2 rounded-fg-xs border border-rule bg-paper p-fg-2 text-label ${
+            note.resolved ? "opacity-60" : ""
+          }`}
+        >
+          <input
+            type="checkbox"
+            checked={note.resolved}
+            onChange={(event) => void setNoteResolved(note.id, event.target.checked)}
+            title="Resolved"
+            className="mt-fg-0-5"
+          />
+          <span
+            className={`min-w-0 flex-1 whitespace-pre-wrap ${
+              note.resolved ? "text-ink-faint line-through" : "text-ink"
+            }`}
+          >
+            {note.text}
+          </span>
+          <button
+            type="button"
+            onClick={() => void removeNote(note.id)}
+            title="Delete note"
+            className="text-meta text-ink-faint hover:text-ink"
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <NoteComposer surface={surface} state={state} />
+    </div>
+  );
+}
+
+/** The review-pane header controls: open count, markdown export, resolved cleanup. */
+function FeedbackControls() {
+  const all = useFeedbackNotes();
+  const [copied, setCopied] = useState<"idle" | "copied" | "blocked">("idle");
+  const openCount = useMemo(() => all.filter((n) => !n.resolved).length, [all]);
+  const resolvedCount = all.length - openCount;
+  const copy = async () => {
+    const markdown = feedbackAsMarkdown(all);
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setCopied("copied");
+    } catch {
+      // Plain http on a network host has no clipboard access — the file is the
+      // durable channel either way.
+      setCopied("blocked");
+    }
+  };
+  return (
+    <span className="flex items-center gap-fg-2">
+      <span className="text-ink-muted">
+        {openCount} open {openCount === 1 ? "note" : "notes"}
+      </span>
+      <button
+        type="button"
+        onClick={() => void copy()}
+        className="rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-ink-muted hover:bg-paper"
+      >
+        Copy feedback
+      </button>
+      {resolvedCount > 0 ? (
+        <button
+          type="button"
+          onClick={() => void clearResolvedNotes()}
+          className="rounded-fg-xs border border-rule px-fg-2 py-fg-1 text-ink-muted hover:bg-paper"
+        >
+          Clear {resolvedCount} resolved
+        </button>
+      ) : null}
+      {copied === "copied" ? <span className="text-ink-faint">Copied.</span> : null}
+      {copied === "blocked" ? (
+        <span className="text-ink-faint">
+          Clipboard blocked here — notes live in dev/visual-review/.feedback/notes.json
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 /**
  * One mounted specimen cell: its OWN QueryClient (seeded per state), so four states
  * of one container coexist on one page while every unseeded read pends hermetically.
@@ -115,6 +281,7 @@ function StateGrid({
               </div>
             </CellBoundary>
           </div>
+          <CellNotes surface={surface.id} state={state} />
         </section>
       ))}
     </div>
@@ -165,6 +332,9 @@ function SoloStage({
           <SpecimenMount specimen={specimen} state={state} />
         </div>
       </CellBoundary>
+      <div className="mt-fg-3 max-w-[36rem]">
+        <CellNotes surface={surface.id} state={state} />
+      </div>
     </>
   );
 }
@@ -192,6 +362,7 @@ function Desk() {
     );
   }, [selectedId]);
 
+  const notes = useFeedbackNotes();
   const entry = useMemo(
     () => REGISTRY.find((e) => e.surface.id === selectedId),
     [selectedId],
@@ -206,9 +377,54 @@ function Desk() {
     return grouped;
   }, []);
 
+  const openBySurface = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const note of notes) {
+      if (!note.resolved) counts.set(note.surface, (counts.get(note.surface) ?? 0) + 1);
+    }
+    return counts;
+  }, [notes]);
+
   return (
-    <div className="flex min-h-screen bg-paper-sunken text-ink">
-      <nav className="w-[14rem] shrink-0 overflow-y-auto border-r border-rule bg-paper p-fg-3">
+    <div className="flex min-h-screen flex-col bg-paper-sunken text-ink md:flex-row">
+      {/* Phone picker bar — the sidebar collapses into selects so states and notes
+          flow full-width on a small screen. */}
+      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-fg-2 border-b border-rule bg-paper p-fg-2 md:hidden">
+        <select
+          value={selectedId}
+          onChange={(event) => setSelectedId(event.target.value)}
+          aria-label="Component"
+          className="min-w-0 flex-1 rounded-fg-xs border border-rule bg-canvas px-fg-2 py-fg-1 text-label text-ink"
+        >
+          {[...byArea].map(([area, entries]) => (
+            <optgroup key={area} label={area}>
+              {entries.map(({ surface }) => {
+                const open = openBySurface.get(surface.id) ?? 0;
+                return (
+                  <option key={surface.id} value={surface.id}>
+                    {surface.name}
+                    {open > 0 ? ` (${open})` : ""}
+                  </option>
+                );
+              })}
+            </optgroup>
+          ))}
+        </select>
+        <select
+          value={rootTheme}
+          onChange={(event) => setRootTheme(event.target.value as RootTheme)}
+          aria-label="Theme"
+          className="rounded-fg-xs border border-rule bg-canvas px-fg-2 py-fg-1 text-label text-ink"
+        >
+          {ROOT_THEMES.map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <nav className="hidden w-[14rem] shrink-0 overflow-y-auto border-r border-rule bg-paper p-fg-3 md:block">
         <h1 className="text-label font-medium">Visual review</h1>
         <p className="mb-fg-3 text-meta text-ink-faint">
           {REGISTRY.length} components · {REVIEW_STATES.length} states · authored props,
@@ -230,50 +446,65 @@ function Desk() {
               {area}
             </div>
             <ul className="m-0 flex list-none flex-col p-0">
-              {entries.map(({ surface, specimen }) => (
-                <li key={surface.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(surface.id)}
-                    className={`w-full rounded-fg-xs px-fg-2 py-fg-1 text-left text-meta ${
-                      surface.id === selectedId
-                        ? "bg-paper-sunken text-ink"
-                        : "text-ink-muted hover:bg-paper-sunken"
-                    }`}
-                  >
-                    {surface.name}
-                    {specimen === null ? (
-                      <span className="text-state-stale" title="No authored states yet">
-                        {" "}
-                        ·
-                      </span>
-                    ) : null}
-                  </button>
-                </li>
-              ))}
+              {entries.map(({ surface, specimen }) => {
+                const open = openBySurface.get(surface.id) ?? 0;
+                return (
+                  <li key={surface.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(surface.id)}
+                      className={`flex w-full items-center gap-fg-1 rounded-fg-xs px-fg-2 py-fg-1 text-left text-meta ${
+                        surface.id === selectedId
+                          ? "bg-paper-sunken text-ink"
+                          : "text-ink-muted hover:bg-paper-sunken"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate">{surface.name}</span>
+                      {open > 0 ? (
+                        <span
+                          title={`${open} open ${open === 1 ? "note" : "notes"}`}
+                          className="rounded-fg-pill bg-paper-sunken px-fg-1-5 text-meta text-state-stale"
+                        >
+                          {open}
+                        </span>
+                      ) : null}
+                      {specimen === null ? (
+                        <span
+                          className="text-state-stale"
+                          title="No authored states yet"
+                        >
+                          ·
+                        </span>
+                      ) : null}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}
       </nav>
 
-      <main className="min-w-0 flex-1 overflow-y-auto p-fg-4">
+      <main className="min-w-0 flex-1 overflow-y-auto p-fg-3 md:p-fg-4">
         <div className="mb-fg-4 flex flex-wrap items-center gap-fg-3 text-meta">
-          <span className="text-ink-muted">Theme</span>
-          {ROOT_THEMES.map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setRootTheme(t)}
-              className={`rounded-fg-xs border border-rule px-fg-2 py-fg-1 ${
-                t === rootTheme ? "bg-paper text-ink" : "text-ink-muted hover:bg-paper"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-          <span className="text-ink-faint">
-            Themes the whole desk — review each state under light and dark in turn.
+          <span className="hidden items-center gap-fg-2 md:flex">
+            <span className="text-ink-muted">Theme</span>
+            {ROOT_THEMES.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setRootTheme(t)}
+                className={`rounded-fg-xs border border-rule px-fg-2 py-fg-1 ${
+                  t === rootTheme
+                    ? "bg-paper text-ink"
+                    : "text-ink-muted hover:bg-paper"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
           </span>
+          <FeedbackControls />
         </div>
 
         {!entry ? (
@@ -290,6 +521,10 @@ function Desk() {
                   {entry.specimen.note}
                 </p>
               ) : null}
+              {/* Component-level notes — feedback that isn't about one state. */}
+              <div className="mt-fg-2 max-w-[36rem]">
+                <CellNotes surface={entry.surface.id} state={null} />
+              </div>
             </header>
             {entry.specimen === null ? (
               <p className="text-label text-state-stale">
@@ -323,6 +558,9 @@ applyRootTheme("light");
 // Pin the client-local active scope so `useActiveScope()` — and every specimen's
 // seeded query key — resolves to the one authored review scope, engine-free.
 useViewStore.getState().setScope(REVIEW_SCOPE);
+
+// Pull existing review notes from the dev server's file store.
+void loadFeedback();
 
 createRoot(rootElement).render(
   <StrictMode>

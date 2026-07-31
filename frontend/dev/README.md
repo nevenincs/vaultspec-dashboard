@@ -72,6 +72,17 @@ Authored inputs are a KNOWING, owner-approved departure from the
 proves what a state LOOKS like; only the live app (and the online test suites) prove a
 state is genuinely REACHED over the wire.
 
+### Review notes are a file, not a browser
+
+Every state cell (and each component header) carries an **Add note** affordance;
+notes support resolve, delete, and a markdown export, and the nav badges components
+with open notes. They persist through the dev server into
+`dev/visual-review/.feedback/notes.json` — a self-gitignored file — so feedback
+written from any reviewing machine (the desk is phone-friendly and
+Tailscale-reachable) is readable by the coding session that acts on it. The page
+itself stays hermetic: only the desk's own chrome talks to the dev server, through a
+fetch captured before the stub.
+
 ### Surfaces are extracted, not enrolled
 
 `visual-review/surfaces.ts` walks the module graph and keeps the DATA-BEARING
