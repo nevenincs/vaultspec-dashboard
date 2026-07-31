@@ -63,6 +63,15 @@
 # form. dist-workspace.toml MUST stay in agreement with this list: a label no
 # machine carries schedules a build that queues silently rather than failing.
 #
+# A custom label is registration state, not machine state: it is held against
+# the runner's registration, so re-running `config.sh` for either Linux runner
+# WITHOUT passing it drops the label, and the next release queues forever with
+# no error anywhere. If a Linux runner is ever re-registered, pass its custom
+# label in `--labels` — or re-add it afterwards through
+# `POST /repos/{owner}/{repo}/actions/runners/{id}/labels`. The auto-assigned
+# labels in the `runs-on:` lists need no such care; the runner application
+# derives those from the machine every time it registers.
+#
 # WHERE EACH LABEL IS REACHED FROM. Several jobs schedule through
 # `[self-hosted, "${{ matrix.os }}", "${{ matrix.arch }}"]`, so a grep for
 # literal labels under-reports; the matrix `include:` blocks are part of the
