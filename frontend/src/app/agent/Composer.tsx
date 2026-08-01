@@ -109,6 +109,14 @@ import { AgentAutonomyControl } from "./AgentAutonomyControl";
 import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
 import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
 import { ComposerModelPicker } from "./ComposerModelPicker";
+import { ComposerFeatureChip } from "./ComposerFeatureChip";
+import {
+  featureStartBlocked,
+  presetRequiresFeatureTag,
+  resolveFeatureBinding,
+  type FeatureBinding,
+} from "./agentFeature";
+import { useActiveDocId } from "../../stores/view/tabs";
 import { clearComposerDraft, useComposerSeed } from "./composerDraft";
 
 const MSG = {
@@ -118,6 +126,7 @@ const MSG = {
   stop: "common:agent.actions.stopRun",
   sendFailed: "common:agent.composer.sendFailed",
   attachedContext: "common:agent.composer.attachedContext",
+  featureUnbound: "common:agent.composer.featureUnbound",
   queuedChip: "common:agent.composer.queuedChip",
   removeQueued: "common:agent.composer.removeQueued",
   mentionPlaceholder: "common:agent.composer.mentionPlaceholder",
@@ -570,9 +579,12 @@ function ComposerThinkingControls({
 function ComposerScopeControls({
   onAttach,
   attachDisabled,
+  featureChip,
 }: {
   onAttach: () => void;
   attachDisabled: boolean;
+  /** The standing feature chip (S44), or null for a lane that needs no feature. */
+  featureChip: ReactNode;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const attach = resolveMessage({ key: MSG.attachContext });
@@ -591,6 +603,7 @@ function ComposerScopeControls({
           <Plus size={14} aria-hidden />
         </button>
       )}
+      {featureChip}
       <AgentAutonomyControl />
     </div>
   );
@@ -675,6 +688,32 @@ export function Composer() {
     profiles.some((profile) => profile.id === selectedProfileId && profile.eligible)
       ? selectedProfileId
       : null;
+
+  // S44 — the CORNERSTONE feature binding. Which presets need one is SERVED
+  // (`authoring_capability`), the default comes from the open document, and the
+  // explicit choice clears with the preset for the same reason the profile choice
+  // does: it belongs to the lane that asked for it.
+  const composerLocale = useActiveLocale();
+  const corpus = useEditorLinkingCorpus(scope, composerLocale);
+  const activeDocId = useActiveDocId();
+  const [chosenFeature, setChosenFeature] = useState<string | null>(null);
+  useEffect(() => {
+    setChosenFeature(null);
+  }, [selectedTeamPreset]);
+  const featureBinding: FeatureBinding = useMemo(
+    () =>
+      resolveFeatureBinding({
+        chosen: chosenFeature,
+        activeDocId,
+        documents: corpus.documents,
+      }),
+    [chosenFeature, activeDocId, corpus.documents],
+  );
+  const featureRequired = presetRequiresFeatureTag(activePreset);
+  const featureBlocked = featureStartBlocked(activePreset, featureBinding);
+  // Only a lane that ASKS for a feature sends one. A coding preset that received a
+  // `feature_tag` would be carrying a field the sibling neither needs nor validates.
+  const runFeatureTag = featureRequired ? featureBinding.tag : null;
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
@@ -858,6 +897,10 @@ export function Composer() {
   const startTeam = async () => {
     const prompt = buildAgentPrompt(text, mentions);
     if (prompt.length === 0 || selectedTeamPreset === null || scope === null) return;
+    // A document-authoring run without its cornerstone feature is a run the sibling
+    // will refuse. Hold it here and say so, rather than spending a round trip to be
+    // told something the served capability already told us.
+    if (featureBlocked) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSendFailed(false);
@@ -870,6 +913,7 @@ export function Composer() {
         expected_scope: scope,
         title: sessionTitleFromPrompt(prompt),
         ...(runProfileId === null ? {} : { profile_id: runProfileId }),
+        ...(runFeatureTag === null ? {} : { feature_tag: runFeatureTag }),
       });
       if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
         setAgentTeamRun({ runId: result.run_id, prompt, scope });
@@ -965,6 +1009,7 @@ export function Composer() {
   const teamStartDisabled =
     buildAgentPrompt(text, mentions).length === 0 ||
     slashMode ||
+    featureBlocked ||
     startTeamRun.isPending;
   // The served run phase, rendered verbatim (never client-classified). Falls back
   // to an ellipsis before the first status snapshot lands.
@@ -1053,6 +1098,13 @@ export function Composer() {
             : resolveMessage({ key: MSG.sendFailed }).message}
         </p>
       )}
+      {/* S44: a held start says what is missing. The button being disabled is not an
+          explanation, and the sibling's refusal would arrive too late to be one. */}
+      {featureBlocked && !teamRunActive && (
+        <p className="text-meta text-ink-muted" role="status" data-composer-feature-hint>
+          {resolveMessage({ key: MSG.featureUnbound }).message}
+        </p>
+      )}
       {teamRunActive && (
         <div
           className="flex items-center gap-fg-2 text-meta text-ink-muted"
@@ -1077,6 +1129,16 @@ export function Composer() {
         <ComposerScopeControls
           onAttach={() => setMentionOpen(true)}
           attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
+          featureChip={
+            featureRequired ? (
+              <ComposerFeatureChip
+                binding={featureBinding}
+                featureTags={corpus.featureTags}
+                onSelectFeature={setChosenFeature}
+                locked={teamRunActive || startTeamRun.isPending}
+              />
+            ) : null
+          }
         />
         <div className="flex min-w-0 items-center gap-fg-2">
           <ComposerThinkingControls
