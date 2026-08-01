@@ -1,14 +1,17 @@
 //! Bounded, ignore-aware source-tree walk.
 //!
-//! Mirrors the `/file-tree` listing's ignore discipline (`ingest-git`
-//! `file_tree.rs`): dot-directories, the always-ignored
-//! build/dependency trees, plus simple directory-name and `dir/` entries from
-//! `.gitignore` files — applied from the directory that declares them down
-//! through its subtree. Glob and negation patterns stay out of scope (no second
-//! ignore engine). Unlike the file tree's one-level listing this walks the
-//! whole tree, so it is bounded at creation: a max file count (the walk STOPS
-//! and reports truncation) and a max per-file byte size (oversized files are
-//! counted, never read).
+//! Ignore handling here is the bounded subset: dot-directories, the
+//! always-ignored build/dependency trees, plus simple directory-name and `dir/`
+//! entries from `.gitignore` files — applied from the directory that declares
+//! them down through its subtree. Glob and negation patterns stay out of scope.
+//! This walk feeds the code CORPUS (what gets parsed), a different question
+//! from what the `/file-tree` listing SHOWS: that listing adopted gix's full
+//! exclude machinery and now reports ignore provenance instead of hiding
+//! entries (code-tree-legibility ADR D4), so the two no longer mirror each
+//! other. Unlike the file tree's one-level listing this walks the whole tree,
+//! so it is bounded at creation: a max file count (the walk STOPS and reports
+//! truncation) and a max per-file byte size (oversized files are counted, never
+//! read).
 //!
 //! One deliberate delta from the file-tree set: `.vault` is ALSO ignored here.
 //! The vault corpus owns `.vault/`; the code corpus is the source tree, and the

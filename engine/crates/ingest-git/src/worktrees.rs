@@ -188,28 +188,15 @@ fn inspect_path(path: &Path, is_main: bool) -> Result<WorktreeInfo> {
 /// skipped rather than fatal, and the result is sorted + deduplicated for
 /// deterministic cache-key hashing. Same status configuration as `inspect`
 /// (untracked included, B5b-bounded diff parallelism).
+///
+/// This is the path-set VIEW of the one status walk in [`crate::status`] — the
+/// same snapshot the code file tree's `git_status` join reads, so the engine
+/// keeps a single status implementation rather than one per consumer.
 pub fn dirty_paths(root: &Path, cap: usize) -> Result<Vec<String>> {
-    let repo = gix::open(root).map_err(|e| GitError::Other(e.to_string()))?;
-    let status = repo
-        .status(gix::progress::Discard)
-        .map_err(|e| GitError::Other(e.to_string()))?
-        .index_worktree_options_mut(|opts| {
-            opts.thread_limit = git_status_thread_limit();
-        });
-    let iter = status
-        .into_iter(None)
-        .map_err(|e| GitError::Other(e.to_string()))?;
-    let mut paths: Vec<String> = Vec::new();
-    for item in iter {
-        let Ok(item) = item else { continue };
-        paths.push(item.location().to_string());
-        if paths.len() >= cap {
-            break;
-        }
-    }
-    paths.sort_unstable();
-    paths.dedup();
-    Ok(paths)
+    Ok(crate::status::snapshot(root, cap)?
+        .reported_paths()
+        .map(str::to_string)
+        .collect())
 }
 
 fn canonical(p: &Path) -> PathBuf {
@@ -220,7 +207,7 @@ fn canonical(p: &Path) -> PathBuf {
 /// `None` and `Some(0)` as "one thread per logical core"; any `Some(n>0)` caps
 /// at `n`. Default to 2 (enough to overlap I/O without the per-core memory
 /// fan-out), overridable via `VAULTSPEC_GIT_STATUS_THREADS` (0 = gix default).
-fn git_status_thread_limit() -> Option<usize> {
+pub(crate) fn git_status_thread_limit() -> Option<usize> {
     match std::env::var("VAULTSPEC_GIT_STATUS_THREADS")
         .ok()
         .and_then(|v| v.trim().parse::<usize>().ok())

@@ -106,10 +106,10 @@ The walk adopts gix-based ignore evaluation and the memoized git-status join, se
 
 <!-- One-line headline summary plan. -->
 
-- [ ] `P01.S01` - Adopt gix-based ignore evaluation in the file-tree walk, serving ignored (git | rag via .vaultspecragignore through the same matcher) and showing ignored entries instead of hiding, retiring the directory-name pattern collection; `engine/crates/ingest-git/src/file_tree.rs, engine/crates/vaultspec-api`.
-- [ ] `P01.S02` - Serve git_status per entry from a per-scope status snapshot memoized on the git rollup, invalidated by the existing git SSE channel, never spawning a subprocess per level; `engine/crates/ingest-git, engine/crates/vaultspec-api`.
-- [ ] `P01.S03` - Declare the code_tree.file_icons setting (default on) in the settings registry; `engine/crates/vaultspec-session/src/settings_schema.rs`.
-- [ ] `P01.S04` - Cover the walk with fixtures for ignored (git and rag), status join, pagination and ceilings unchanged, and run cargo fmt plus clippy plus the crate tests green; `engine/crates/ingest-git, engine/crates/vaultspec-api`.
+- [x] `P01.S01` - Adopt gix-based ignore evaluation in the file-tree walk, serving ignored (git | rag via .vaultspecragignore through the same matcher) and showing ignored entries instead of hiding, retiring the directory-name pattern collection; `engine/crates/ingest-git/src/file_tree.rs, engine/crates/vaultspec-api`.
+- [x] `P01.S02` - Serve git_status per entry from a per-scope status snapshot memoized on the git rollup, invalidated by the existing git SSE channel, never spawning a subprocess per level; `engine/crates/ingest-git, engine/crates/vaultspec-api`.
+- [x] `P01.S03` - Declare the code_tree.file_icons setting (default on) in the settings registry; `engine/crates/vaultspec-session/src/settings_schema.rs`.
+- [x] `P01.S04` - Cover the walk with fixtures for ignored (git and rag), status join, pagination and ceilings unchanged, and run cargo fmt plus clippy plus the crate tests green; `engine/crates/ingest-git, engine/crates/vaultspec-api`.
 
 ### Phase `P02` - Frontend: three-channel rows behind the setting
 

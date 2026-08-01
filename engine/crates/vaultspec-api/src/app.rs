@@ -258,12 +258,19 @@ pub struct ScopeCell {
     /// no node or edge; the frontend switches which corpus the graph surface
     /// renders.
     pub code: CodeGraphCell,
+    /// The memoized working-tree status snapshot the `/file-tree` levels join
+    /// their `git_status` against — one walk per expansion, never one per
+    /// level (code-tree-legibility ADR D5).
+    pub git_status: GitStatusCell,
 }
 
 mod code_graph;
 pub use code_graph::{
     CODE_DIRTY_PATHS_CAP, CODE_FRESHNESS_DEBOUNCE_MS, CODE_RECENCY_MAX_COMMITS, CodeGraphCell,
 };
+
+mod git_status;
+pub use git_status::{GIT_STATUS_FRESHNESS_MS, GIT_STATUS_PATHS_CAP, GitStatusCell};
 
 pub const RING_CAP: usize = 4096;
 
@@ -311,6 +318,7 @@ impl ScopeCell {
             declared_fold_pending: AtomicBool::new(false),
             declared_edges: RwLock::new(None),
             code: CodeGraphCell::new(),
+            git_status: GitStatusCell::new(),
         }
     }
 
@@ -493,7 +501,10 @@ impl ScopeCell {
         {
             return cached.clone();
         }
-        let fresh = Arc::new(engine_query::features::coverage_map(&self.graph_arc()));
+        let fresh = Arc::new(engine_query::features::coverage_map(
+            &self.graph_arc(),
+            &self.scope,
+        ));
         *cache = Some((generation, fresh.clone()));
         fresh
     }

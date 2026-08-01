@@ -201,18 +201,21 @@ async fn file_tree_caps_a_pathological_level_and_cursor_paginates() {
 }
 
 #[tokio::test]
-async fn file_tree_honors_gitignore_and_excludes_build_noise() {
-    // The listing honors the repository ignore rules — `.git`, build
-    // output, vendored trees, and `.gitignore` directory entries do not appear,
-    // while `.vault` (the corpus) and real source do.
+async fn file_tree_serves_ignore_provenance_instead_of_hiding_entries() {
+    // An ignored entry is SERVED AND SHOWN with the ignore file that claims it
+    // (code-tree-legibility ADR D4): git-ignored paths carry `ignored: "git"`,
+    // `.vaultspecragignore` paths carry `ignored: "rag"`, and glob patterns —
+    // which the retired directory-name collector silently dropped — now match.
+    // The one withheld entry is `.git`, the repository's own storage.
     let (dir, state, scope) = worktree_state();
     let root = dir.path();
-    std::fs::write(root.join(".gitignore"), "build\nvendored/\n").unwrap();
+    std::fs::write(root.join(".gitignore"), "build\nvendored/\n*.log\n").unwrap();
+    std::fs::write(root.join(".vaultspecragignore"), "fixtures/\n").unwrap();
     touch(&root.join("src/main.rs"), "fn main() {}\n");
-    touch(&root.join("node_modules/dep/index.js"), "x\n");
-    touch(&root.join("target/debug/app"), "x\n");
     touch(&root.join("build/out.o"), "x\n");
     touch(&root.join("vendored/lib.rs"), "x\n");
+    touch(&root.join("debug.log"), "x\n");
+    touch(&root.join("fixtures/big.json"), "{}\n");
     let token = state.bearer.clone();
     let router = build_router(state);
 
@@ -223,19 +226,147 @@ async fn file_tree_honors_gitignore_and_excludes_build_noise() {
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{body}");
-    let paths: Vec<&str> = body["data"]["entries"]
-        .as_array()
-        .unwrap()
+    let entries = body["data"]["entries"].as_array().unwrap();
+    let paths: Vec<&str> = entries
         .iter()
         .map(|e| e["path"].as_str().unwrap())
         .collect();
+    let ignored_of = |path: &str| -> Option<String> {
+        entries
+            .iter()
+            .find(|e| e["path"] == path)
+            .unwrap_or_else(|| panic!("`{path}` is listed, not hidden: {paths:?}"))["ignored"]
+            .as_str()
+            .map(str::to_string)
+    };
+
     assert!(paths.contains(&"src"), "real source listed");
     assert!(paths.contains(&".vault"), "the corpus dot-dir is listed");
-    assert!(!paths.contains(&".git"), ".git excluded");
-    assert!(!paths.contains(&"node_modules"), "node_modules excluded");
-    assert!(!paths.contains(&"target"), "target excluded");
-    assert!(!paths.contains(&"build"), "gitignored build excluded");
-    assert!(!paths.contains(&"vendored"), "gitignored vendored excluded");
+    assert!(
+        !paths.contains(&".git"),
+        ".git is git's storage, not content"
+    );
+
+    assert_eq!(ignored_of("build").as_deref(), Some("git"));
+    assert_eq!(ignored_of("vendored").as_deref(), Some("git"));
+    assert_eq!(
+        ignored_of("debug.log").as_deref(),
+        Some("git"),
+        "a glob pattern is evaluated now, not skipped"
+    );
+    assert_eq!(ignored_of("fixtures").as_deref(), Some("rag"));
+    assert_eq!(
+        ignored_of("src"),
+        None,
+        "an un-ignored entry carries no ignored key at all"
+    );
+}
+
+#[tokio::test]
+async fn file_tree_serves_git_status_per_entry_with_clean_absent() {
+    // Displayed state is backend-served (wire contract; ADR D3): each entry
+    // carries the working-tree state it is in, and a CLEAN path carries no
+    // `git_status` key at all rather than a `"clean"` token.
+    let (dir, state, scope) = worktree_state();
+    let root = dir.path();
+    // Commit a baseline so modification and deletion have something to diverge
+    // from, then produce one path in each state.
+    touch(&root.join("src/main.rs"), "fn main() {}\n");
+    touch(&root.join("src/keep.rs"), "// keep\n");
+    touch(&root.join("src/gone.rs"), "// gone\n");
+    touch(&root.join("src/clean.rs"), "// untouched\n");
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "baseline"]);
+
+    std::fs::write(root.join("src/main.rs"), "fn main() { changed(); }\n").unwrap();
+    // Staged for deletion but still on disk: the tree lists what EXISTS, so this
+    // is the shape in which a row can carry `deleted` at all. A file removed
+    // from disk simply has no row (asserted below) — the tree is not a changes
+    // view and never invents a row for an absent path.
+    git(root, &["rm", "--cached", "src/gone.rs"]);
+    std::fs::remove_file(root.join("src/keep.rs")).unwrap();
+    touch(&root.join("src/fresh.rs"), "// brand new\n");
+    touch(&root.join("src/staged.rs"), "// staged\n");
+    git(root, &["add", "src/staged.rs"]);
+
+    let token = state.bearer.clone();
+    let router = build_router(state);
+    let (status, body) = get(
+        router,
+        &format!("/file-tree?scope={}&path=src", urlencode(&scope)),
+        &token,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let entries = body["data"]["entries"].as_array().unwrap();
+    let state_of = |path: &str| -> Option<String> {
+        entries
+            .iter()
+            .find(|e| e["path"] == path)
+            .unwrap_or_else(|| panic!("`{path}` listed"))["git_status"]
+            .as_str()
+            .map(str::to_string)
+    };
+
+    assert_eq!(state_of("src/main.rs").as_deref(), Some("modified"));
+    assert_eq!(state_of("src/gone.rs").as_deref(), Some("deleted"));
+    assert_eq!(state_of("src/fresh.rs").as_deref(), Some("untracked"));
+    assert_eq!(state_of("src/staged.rs").as_deref(), Some("added"));
+    assert_eq!(
+        state_of("src/clean.rs"),
+        None,
+        "a clean path carries no status token"
+    );
+    assert!(
+        !entries.iter().any(|e| e["path"] == "src/keep.rs"),
+        "a path deleted from disk has no row; the tree lists what exists"
+    );
+    assert_eq!(
+        body["data"]["status_truncated"], false,
+        "a complete status join says so, so a capped one can be believed"
+    );
+}
+
+#[tokio::test]
+async fn file_tree_status_snapshot_is_reused_across_levels() {
+    // ADR D5: the per-level join reads ONE memoized per-scope snapshot. Two
+    // levels served back to back inside the freshness window must agree — and
+    // must agree with the snapshot the cell holds, proving the second level
+    // consulted the memo rather than walking status again with a different
+    // answer.
+    let (dir, state, scope) = worktree_state();
+    let root = dir.path();
+    touch(&root.join("src/main.rs"), "fn main() {}\n");
+    touch(&root.join("docs/guide.md"), "# guide\n");
+    git(root, &["add", "."]);
+    git(root, &["commit", "-m", "baseline"]);
+    std::fs::write(root.join("src/main.rs"), "fn main() { changed(); }\n").unwrap();
+    std::fs::write(root.join("docs/guide.md"), "# guide, revised\n").unwrap();
+
+    let token = state.bearer.clone();
+    let router = build_router(state);
+    for (path, entry) in [("src", "src/main.rs"), ("docs", "docs/guide.md")] {
+        let (status, body) = get(
+            router.clone(),
+            &format!("/file-tree?scope={}&path={path}", urlencode(&scope)),
+            &token,
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let found = body["data"]["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["path"] == entry)
+            .unwrap_or_else(|| panic!("`{entry}` listed"))["git_status"]
+            .as_str()
+            .map(str::to_string);
+        assert_eq!(
+            found.as_deref(),
+            Some("modified"),
+            "every level joins the same status truth"
+        );
+    }
 }
 
 #[tokio::test]

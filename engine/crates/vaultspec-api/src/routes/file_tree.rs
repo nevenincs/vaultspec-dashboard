@@ -8,6 +8,17 @@
 //! private identity convention, so a file row joins the graph exactly as the
 //! vault browser's `doc:<stem>` row does.
 //!
+//! Two optional decorations ride each entry, both BACKEND-SERVED because the
+//! tree displays them (displayed-state-is-served; code-tree-legibility ADR D3):
+//! `ignored` (`git` | `rag`, absent = not ignored) says which ignore file
+//! claims the path, and `git_status` (`modified` | `added` | `deleted` |
+//! `renamed` | `untracked` | `conflicted`, absent = clean) says how it diverges
+//! from HEAD. The frontend maps these tokens to presentation and derives
+//! nothing. The status join reads ONE memoized per-scope snapshot
+//! (`ScopeCell::git_status`), so expanding a deep tree walks status once, not
+//! once per level. That snapshot is itself capped, and the level reports
+//! `status_truncated` when it was — a partial join never reads as clean truth.
+//!
 //! It mirrors the `/vault-tree` shape (scope-keyed, metadata-only, `tiers`-
 //! bearing, cursor-paginated through the shared `envelope`/`paginate` helpers)
 //! with two ADR-mandated deltas: it is a DIRECTORY HIERARCHY (one level per call,
@@ -69,12 +80,15 @@ pub struct FileTreeParams {
 /// convention. The interlink id is the path-only `CodeArtifact` key
 /// (`code:<path>`); a symbol-qualified `code:<path>#<symbol>` is a future
 /// per-file outline facet, not this listing.
-fn child_to_wire(child: &ingest_git::file_tree::ChildEntry) -> Value {
+fn child_to_wire(
+    child: &ingest_git::file_tree::ChildEntry,
+    status: Option<&ingest_git::status::StatusSnapshot>,
+) -> Value {
     let id = node_id(&CanonicalKey::CodeArtifact {
         path: &child.path,
         symbol: None,
     });
-    json!({
+    let mut entry = json!({
         "path": child.path,
         "kind": if child.is_dir { "dir" } else { "file" },
         "has_children": child.has_children,
@@ -83,7 +97,18 @@ fn child_to_wire(child: &ingest_git::file_tree::ChildEntry) -> Value {
         // (unindexed / below the structural tier's reach) — the frontend renders
         // a quiet absent-interlink state for those, never an error.
         "node_id": id.0,
-    })
+    });
+    let object = entry.as_object_mut().expect("entry is a json object");
+    // Both decorations are OMITTED in their unremarkable state — a clean,
+    // un-ignored file (the overwhelming majority) carries neither key, so the
+    // level body does not grow for the common case.
+    if let Some(source) = child.ignored {
+        object.insert("ignored".to_string(), json!(source.as_str()));
+    }
+    if let Some(state) = status.and_then(|snapshot| snapshot.get(&child.path, child.is_dir)) {
+        object.insert("git_status".to_string(), json!(state.as_str()));
+    }
+    entry
 }
 
 /// `GET /file-tree?scope=&path=&cursor=&page_size=` — one directory level,
@@ -96,15 +121,39 @@ pub async fn file_tree(
     // unknown or non-worktree (e.g. remote-ref) scope 400s honestly with the
     // tiers block attached, via the shared validate_scope/api_error path.
     let cell = super::query::validate_scope(&state, &params.scope)?;
-    let rel = params.path.as_deref().unwrap_or("");
+    let rel = params.path.as_deref().unwrap_or("").to_string();
 
-    // List one level under the worktree root, ignore-aware. A worktree whose
-    // working tree cannot be listed (the structural-tier substrate is absent)
-    // degrades honestly: the `structural` tier is marked unavailable with the
-    // reason, the listing is empty, and the response is NOT an error — the code
-    // mode renders a designed degraded state, never a healthy-looking empty.
-    let children = match ingest_git::file_tree::list_dir(&cell.root, rel) {
-        Ok(children) => children,
+    // List one level under the worktree root, ignore-aware, and take the
+    // memoized status snapshot for the join. Both BLOCK — the listing walks the
+    // directory and opens the repository for gix's exclude machinery, and a
+    // cold snapshot runs an index-vs-worktree diff — so they run together off
+    // the async executor, consulting the per-scope memo exactly once per level.
+    //
+    // A worktree whose working tree cannot be listed (the structural-tier
+    // substrate is absent) degrades honestly: the `structural` tier is marked
+    // unavailable with the reason, the listing is empty, and the response is NOT
+    // an error — the code mode renders a designed degraded state, never a
+    // healthy-looking empty.
+    let listed = {
+        let cell = cell.clone();
+        let rel = rel.clone();
+        tokio::task::spawn_blocking(move || {
+            let children = ingest_git::file_tree::list_dir(&cell.root, &rel)?;
+            // `None` when this worktree has no readable git state: entries then
+            // carry no status token at all rather than an invented clean one.
+            let status = cell.git_status.ensure(&cell.root);
+            Ok::<_, ingest_git::file_tree::ListError>((children, status))
+        })
+        .await
+        .unwrap_or_else(|join| {
+            Err(ingest_git::file_tree::ListError::Io(std::io::Error::other(
+                join.to_string(),
+            )))
+        })
+    };
+
+    let (children, status) = match listed {
+        Ok(listed) => listed,
         Err(ingest_git::file_tree::ListError::Escapes(p)) => {
             // A traversal/absolute path is a malformed REQUEST (the client asked
             // to escape the root), distinct from degradation: a tiered 400.
@@ -164,13 +213,28 @@ pub async fn file_tree(
         params.cursor.as_deref(),
         page_size,
     );
-    let entries: Vec<Value> = page.iter().map(|c| child_to_wire(c)).collect();
+    // The status join runs over the PAGE only — bounded by the page size, never
+    // by the directory's size.
+    let entries: Vec<Value> = page
+        .iter()
+        .map(|c| child_to_wire(c, status.as_deref()))
+        .collect();
+
+    // The status snapshot is itself capped. When it truncated, some entries on
+    // this level may carry no `git_status` for want of a snapshot row rather
+    // than because they are clean — the level SAYS so instead of letting a
+    // partial join read as truth (a repo with more than the cap in changed
+    // paths). Absent = the join was complete.
+    let status_truncated = status
+        .as_deref()
+        .is_some_and(ingest_git::status::StatusSnapshot::truncated);
 
     Ok(super::envelope(
         json!({
             "entries": entries,
             "path": rel,
             "truncated": truncated,
+            "status_truncated": status_truncated,
         }),
         super::query_tiers(&cell),
         next_cursor,

@@ -11,6 +11,7 @@ use engine_model::ScopeRef;
 pub mod branches;
 pub mod file_tree;
 pub mod log;
+pub mod status;
 pub mod workspace;
 pub mod worktrees;
 

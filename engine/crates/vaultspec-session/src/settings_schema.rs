@@ -576,6 +576,23 @@ fn build_registry() -> Vec<SettingDef> {
             step: None,
             unit: None,
         },
+        // File-type icons on code file-tree rows (code-tree-legibility ADR D7).
+        // Default ON: type recognition at a glance is the point of the row
+        // treatment, and off falls back to the single generic mark. The setting
+        // governs the ICONS only — ignore dimming and git-status tones are
+        // served truth, never a preference. Global, like the other appearance
+        // choices: an icon vocabulary is not a per-project decision.
+        SettingDef {
+            key: "code_tree.file_icons".to_string(),
+            value_type: SettingType::Bool,
+            default: "true".to_string(),
+            scope_eligible: false,
+            control: ControlKind::Switch,
+            display: display("appearance.codeTreeFileIcons", "appearance"),
+            order: 5,
+            step: None,
+            unit: None,
+        },
         SettingDef {
             key: "default_granularity".to_string(),
             value_type: SettingType::Enum {
@@ -830,6 +847,33 @@ mod tests {
         }
         assert_eq!(
             validate("language", "en", true).unwrap_err().kind(),
+            "scope_not_allowed"
+        );
+    }
+
+    #[test]
+    fn code_tree_file_icons_is_a_global_appearance_switch_defaulting_on() {
+        let def = find("code_tree.file_icons").expect("the icon setting is declared");
+        assert_eq!(def.value_type, SettingType::Bool);
+        assert_eq!(def.default, "true", "type recognition is on by default");
+        assert!(
+            !def.scope_eligible,
+            "an icon vocabulary is not a per-project decision"
+        );
+        assert_eq!(def.control, ControlKind::Switch);
+        assert_eq!(def.display.id, "appearance.codeTreeFileIcons");
+        assert_eq!(def.display.group, "appearance");
+        assert!(validate("code_tree.file_icons", "false", false).is_ok());
+        assert_eq!(
+            validate("code_tree.file_icons", "sometimes", false)
+                .unwrap_err()
+                .kind(),
+            "invalid_value"
+        );
+        assert_eq!(
+            validate("code_tree.file_icons", "true", true)
+                .unwrap_err()
+                .kind(),
             "scope_not_allowed"
         );
     }
