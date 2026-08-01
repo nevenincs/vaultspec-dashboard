@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-01'
-body_hash: 'sha256:84093e92e817432c12e4333b23aae162052b7c53811a025c938162a090975d40'
+body_hash: 'sha256:fd08421c64125b9409c2f02673a35615a3e29ed271181b2e90354f8295621c5d'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -34,7 +34,7 @@ There is no live seam left to name: the instrumentation has been run and every s
 Because the defect is already gone, this phase can no longer demonstrate its own red by reproducing it. The lock earns its place by being proven against a deliberate fault instead: the test must be shown failing on an injected non-model resolution before it is trusted.
 
 - [x] `W01.P01.S01` - Record the completed instrumentation finding as the phase's grounding: a real-worker dispatch logged a chat model at the inbound point and at every wrapping seam that ran, and an AST sweep found only two tuple-returning resolvers, both correctly annotated and correctly unpacked at every call site, so no seam yields a tuple; `src/vaultspec_a2a/graph/nodes/worker.py`.
-- [ ] `W01.P01.S02` - Close the fix step against the recorded finding rather than editing code: there is no seam to repair, so this Step is satisfied by the S01 evidence and reopens ONLY if the S03 lock goes red against a real resolution; `src/vaultspec_a2a/graph/nodes/worker.py`.
+- [x] `W01.P01.S02` - Close the fix step against the recorded finding rather than editing code: there is no seam to repair, so this Step is satisfied by the S01 evidence and reopens ONLY if the S03 lock goes red against a real resolution; `src/vaultspec_a2a/graph/nodes/worker.py`.
 - [ ] `W01.P01.S03` - Add a regression test resolving every bundled preset worker model through the REAL provider factory with no protocol injection and asserting a chat-model instance each time, demonstrated red against a deliberately injected non-model resolution since the original defect can no longer supply the red; `src/vaultspec_a2a/graph/tests/test_compiler.py`.
 
 ### Phase `W01.P02` - the completion proof
