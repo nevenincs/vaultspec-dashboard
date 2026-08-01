@@ -16,8 +16,11 @@
 
 use std::collections::BTreeMap;
 
-use engine_graph::LinkageGraph;
+use engine_graph::{LinkageGraph, lifecycle_in_scope};
+use engine_model::{Node, ScopeRef};
 use serde::Serialize;
+
+use crate::filter::plan_completion_from_progress;
 
 /// The pipeline document types this projection reports coverage for, in pipeline
 /// order (research/reference are the parallel entry points → adr → plan → exec →
@@ -83,9 +86,25 @@ pub struct FeatureCoverage {
     pub next_step: Option<&'static str>,
 }
 
+/// The ISO date span over a feature's binding ADRs — the DEFINED meaning of a
+/// feature row's date (the decisions that bind the feature, not its corpus
+/// span). `first == last` when the feature has one dated ADR, or several sharing
+/// a date; the presentation plane renders one date in that case and a span
+/// otherwise. Both are `yyyy-mm-dd`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AdrDates {
+    /// The earliest ADR date in the feature group.
+    pub first: String,
+    /// The latest ADR date in the feature group.
+    pub last: String,
+}
+
 /// A compact per-feature roster entry (all-features variant): the feature
-/// tag, its document counts, and the advised next step — enough for the panel's
-/// feature combobox to show group progress without a per-feature round trip.
+/// tag, its document counts, the advised next step, and the served metadata the
+/// feature rows render — enough for every feature surface without a per-feature
+/// round trip. Every displayed value here is ENGINE-computed over the full
+/// corpus; a client may never re-derive one over a capped listing
+/// (`displayed-state-is-backend-served`).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct FeatureRosterEntry {
     /// The feature tag.
@@ -98,6 +117,40 @@ pub struct FeatureRosterEntry {
     /// satisfied.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_step: Option<&'static str>,
+    /// Per-doc-type document counts over the FULL corpus for this feature — the
+    /// feature's composition, the input to the rendered composition line.
+    /// A type with no document carries NO entry: absent IS zero, so the served
+    /// map is the present-types breakdown and nothing is spent on the empty
+    /// ones. Keys are the canonical `PIPELINE_DOC_TYPES` tokens; `BTreeMap`
+    /// keeps the serialized order deterministic.
+    pub type_counts: BTreeMap<&'static str, u32>,
+    /// The feature's plan-state rollup: `finished` when every plan is finished,
+    /// `in-progress` when any is in progress, else `not-started`. Absent when the
+    /// feature has no plan whose state the engine can read (no plan at all, a
+    /// plan with no steps, or a plan whose lifecycle lives in another scope) —
+    /// the row then shows the plain feature glyph rather than a guessed status.
+    ///
+    /// The tokens are the engine's ONE plan-completion vocabulary
+    /// (`filter::plan_completion_from_progress`), the same values the
+    /// `plan_states` filter facet validates and the plan-interior summary
+    /// serves — a rollup of that state, never a second spelling of it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_state: Option<&'static str>,
+    /// The ISO date span over the feature's ADRs; absent when the feature has no
+    /// dated ADR.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adr_dates: Option<AdrDates>,
+}
+
+/// One retained feature in the coverage map: its full pipeline coverage (the
+/// per-feature read) plus the roster-only metadata, computed together in the one
+/// corpus scan so `roster()` stays a projection of already-computed values
+/// rather than a second pass.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+struct FeatureEntry {
+    coverage: FeatureCoverage,
+    plan_state: Option<&'static str>,
+    adr_dates: Option<AdrDates>,
 }
 
 /// The generation-stable coverage map over the whole corpus. Holds full
@@ -106,7 +159,7 @@ pub struct FeatureRosterEntry {
 /// roster. Memoized on graph `generation` by the cell.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct CoverageMap {
-    features: BTreeMap<String, FeatureCoverage>,
+    features: BTreeMap<String, FeatureEntry>,
 }
 
 impl CoverageMap {
@@ -117,7 +170,7 @@ impl CoverageMap {
     pub fn coverage_for(&self, feature: &str) -> FeatureCoverage {
         self.features
             .get(feature)
-            .cloned()
+            .map(|entry| entry.coverage.clone())
             .unwrap_or_else(|| empty_coverage(feature))
     }
 
@@ -126,14 +179,24 @@ impl CoverageMap {
     pub fn roster(&self) -> Vec<FeatureRosterEntry> {
         self.features
             .values()
-            .map(|coverage| {
+            .map(|entry| {
+                let coverage = &entry.coverage;
                 let doc_count = coverage.types.iter().map(|t| t.count).sum();
                 let types_present = coverage.types.iter().filter(|t| t.present).count() as u32;
+                let type_counts = coverage
+                    .types
+                    .iter()
+                    .filter(|t| t.count > 0)
+                    .map(|t| (t.doc_type, t.count))
+                    .collect();
                 FeatureRosterEntry {
                     feature: coverage.feature.clone(),
                     doc_count,
                     types_present,
                     next_step: coverage.next_step,
+                    type_counts,
+                    plan_state: entry.plan_state,
+                    adr_dates: entry.adr_dates.clone(),
                 }
             })
             .collect()
@@ -147,20 +210,37 @@ impl CoverageMap {
 /// they are shaped like an ISO date, else an empty prefix (an unconventional stem
 /// sorts oldest, then ties break on the full stem).
 fn date_prefix(stem: &str) -> &str {
-    let bytes = stem.as_bytes();
-    if bytes.len() >= 10
+    iso_date_prefix(stem).unwrap_or("")
+}
+
+/// The leading `yyyy-mm-dd` of a string when it is shaped like an ISO date, else
+/// `None`. ISO dates compare lexically, so a validated prefix is directly
+/// orderable — that is what makes the min/max ADR span a string compare.
+fn iso_date_prefix(value: &str) -> Option<&str> {
+    let bytes = value.as_bytes();
+    let iso_shaped = bytes.len() >= 10
         && bytes[..10].iter().enumerate().all(|(i, b)| {
             if i == 4 || i == 7 {
                 *b == b'-'
             } else {
                 b.is_ascii_digit()
             }
-        })
-    {
-        &stem[..10]
-    } else {
-        ""
-    }
+        });
+    iso_shaped.then(|| &value[..10])
+}
+
+/// A document's authored date: the frontmatter `date:` the ingest stamps, and
+/// failing that the stem's date prefix — vault stems are
+/// `{date}-{feature}-{doc_type}`, so the filename carries the same authored date
+/// the frontmatter does (the same signal `newest_stem` already orders by).
+/// `None` only when neither is ISO-shaped, in which case the document
+/// contributes no date rather than a guessed one.
+fn authored_date(node: &Node) -> Option<&str> {
+    node.dates
+        .as_ref()
+        .and_then(|dates| dates.created.as_deref())
+        .and_then(iso_date_prefix)
+        .or_else(|| iso_date_prefix(node.key.as_str()))
 }
 
 /// Is `candidate` newer than `current` (newest by date prefix; ties by stem
@@ -181,6 +261,56 @@ fn empty_coverage(feature: &str) -> FeatureCoverage {
 struct TypeAcc {
     count: u32,
     newest_stem: Option<String>,
+}
+
+/// Per-feature accumulator during the corpus scan. Every field is a FOLD, never
+/// a retained list: the per-type map is bounded by the pipeline type count, the
+/// plan rollup by three flags, the ADR span by two dates
+/// (`bounded-by-default-for-every-accumulator`).
+#[derive(Default)]
+struct FeatureAcc {
+    per_type: BTreeMap<&'static str, TypeAcc>,
+    plans: PlanRollupAcc,
+    adr_first: Option<String>,
+    adr_last: Option<String>,
+}
+
+/// The rollup fold over a feature's plans. Only plans with a READABLE state
+/// (checkbox progress in this scope) are counted; a stepless plan or one whose
+/// lifecycle lives in another scope tells us nothing about the feature's
+/// progress, so it neither contributes nor suppresses a rollup.
+#[derive(Default)]
+struct PlanRollupAcc {
+    counted: u32,
+    all_finished: bool,
+    any_in_progress: bool,
+}
+
+impl PlanRollupAcc {
+    fn observe(&mut self, completion: &'static str) {
+        if self.counted == 0 {
+            self.all_finished = true;
+        }
+        self.counted += 1;
+        self.all_finished &= completion == "finished";
+        self.any_in_progress |= completion == "in-progress";
+    }
+
+    /// The feature's rollup, exactly as decided: `finished` iff EVERY counted
+    /// plan is finished, `in-progress` iff ANY is in progress, else
+    /// `not-started`; absent when no plan carried a readable state. The tokens
+    /// are the one plan-completion vocabulary, unchanged by the rollup.
+    fn rollup(&self) -> Option<&'static str> {
+        if self.counted == 0 {
+            None
+        } else if self.all_finished {
+            Some("finished")
+        } else if self.any_in_progress {
+            Some("in-progress")
+        } else {
+            Some("not-started")
+        }
+    }
 }
 
 /// Build one feature's coverage from its per-type accumulators (or an empty map
@@ -288,18 +418,23 @@ fn next_step(entry_present: bool, adr_present: bool, plan_present: bool) -> Opti
 
 /// Build the whole-corpus coverage map. One pass over the document nodes
 /// groups each pipeline document under every feature tag it carries, tracking the
-/// newest stem and count per type; the map is then capped at
+/// newest stem and count per type, folding each plan's state into the feature's
+/// rollup and each ADR's date into the feature's span; the map is then capped at
 /// `FEATURE_COVERAGE_ROSTER_CAP` (lexicographically-first features) and each
 /// retained feature's coverage is derived. Computed over the full corpus — no
-/// node ceiling, because coverage must not lie about what exists.
-pub fn coverage_map(graph: &LinkageGraph) -> CoverageMap {
-    // feature tag → (doc_type → accumulator). BTreeMap keeps the feature order
+/// node ceiling, because coverage and counts must not lie about what exists.
+///
+/// `scope` is the scope whose plan lifecycles are read, exactly as the in-flight
+/// pipeline projection reads them: progress is a per-scope facet, so a plan's
+/// state is the state IN THIS SCOPE.
+pub fn coverage_map(graph: &LinkageGraph, scope: &ScopeRef) -> CoverageMap {
+    // feature tag → accumulator. BTreeMap keeps the feature order
     // deterministic so the roster cap retains a stable, lexicographically-first
     // slice. The accumulator is inherently corpus-bounded (one entry per
-    // feature/type pair actually present), the same unbounded-but-corpus-bounded
-    // discipline `filter::vocabulary` uses for feature_tags; the SERVED map is
-    // hard-capped below.
-    let mut by_feature: BTreeMap<String, BTreeMap<&'static str, TypeAcc>> = BTreeMap::new();
+    // feature actually present, each holding a bounded fold), the same
+    // unbounded-but-corpus-bounded discipline `filter::vocabulary` uses for
+    // feature_tags; the SERVED map is hard-capped below.
+    let mut by_feature: BTreeMap<String, FeatureAcc> = BTreeMap::new();
 
     for node in graph.nodes() {
         let Some(doc_type) = node.doc_type.as_deref() else {
@@ -309,9 +444,21 @@ pub fn coverage_map(graph: &LinkageGraph) -> CoverageMap {
             continue;
         };
         let stem = node.key.as_str();
+        // Read the plan state / ADR date once per node, not once per tag: a
+        // document carrying several feature tags contributes the same fact to
+        // each group.
+        let completion = (canonical == "plan")
+            .then(|| {
+                lifecycle_in_scope(node, scope)
+                    .and_then(|l| l.progress.as_ref())
+                    .and_then(plan_completion_from_progress)
+            })
+            .flatten();
+        let adr_date = (canonical == "adr").then(|| authored_date(node)).flatten();
+
         for feature in &node.feature_tags {
-            let per_type = by_feature.entry(feature.clone()).or_default();
-            let acc = per_type.entry(canonical).or_default();
+            let entry = by_feature.entry(feature.clone()).or_default();
+            let acc = entry.per_type.entry(canonical).or_default();
             acc.count += 1;
             let replace = acc
                 .newest_stem
@@ -321,15 +468,37 @@ pub fn coverage_map(graph: &LinkageGraph) -> CoverageMap {
             if replace {
                 acc.newest_stem = Some(stem.to_string());
             }
+            if let Some(completion) = completion {
+                entry.plans.observe(completion);
+            }
+            if let Some(date) = adr_date {
+                if entry.adr_first.as_deref().is_none_or(|first| date < first) {
+                    entry.adr_first = Some(date.to_string());
+                }
+                if entry.adr_last.as_deref().is_none_or(|last| date > last) {
+                    entry.adr_last = Some(date.to_string());
+                }
+            }
         }
     }
 
-    let features: BTreeMap<String, FeatureCoverage> = by_feature
+    let features: BTreeMap<String, FeatureEntry> = by_feature
         .into_iter()
         .take(FEATURE_COVERAGE_ROSTER_CAP)
-        .map(|(feature, per_type)| {
-            let coverage = build_coverage(&feature, &per_type);
-            (feature, coverage)
+        .map(|(feature, acc)| {
+            let coverage = build_coverage(&feature, &acc.per_type);
+            // first and last are set together, so the span is present exactly
+            // when the feature has at least one dated ADR.
+            let adr_dates = acc
+                .adr_first
+                .zip(acc.adr_last)
+                .map(|(first, last)| AdrDates { first, last });
+            let entry = FeatureEntry {
+                coverage,
+                plan_state: acc.plans.rollup(),
+                adr_dates,
+            };
+            (feature, entry)
         })
         .collect();
 
@@ -339,14 +508,20 @@ pub fn coverage_map(graph: &LinkageGraph) -> CoverageMap {
 /// Convenience: the coverage for a single feature over a graph (unmemoized). The
 /// route reads through the cell's memoized `coverage_map`; this is the direct
 /// path for tests and any caller that already holds the graph.
-pub fn feature_coverage(graph: &LinkageGraph, feature: &str) -> FeatureCoverage {
-    coverage_map(graph).coverage_for(feature)
+pub fn feature_coverage(graph: &LinkageGraph, scope: &ScopeRef, feature: &str) -> FeatureCoverage {
+    coverage_map(graph, scope).coverage_for(feature)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use engine_model::{CanonicalKey, NodeKind, node_id};
+    use engine_model::{CanonicalKey, Dates, Facet, Lifecycle, NodeKind, Presence, node_id};
+
+    fn scope() -> ScopeRef {
+        ScopeRef::Ref {
+            name: "main".into(),
+        }
+    }
 
     fn doc(stem: &str, doc_type: &str, features: &[&str]) -> engine_model::Node {
         engine_model::Node {
@@ -364,6 +539,51 @@ mod tests {
         }
     }
 
+    /// A plan document whose checkbox progress lives on `scope()`.
+    fn plan(stem: &str, features: &[&str], done: u32, total: u32) -> engine_model::Node {
+        plan_in(stem, features, done, total, scope())
+    }
+
+    /// A plan document whose checkbox progress lives on an arbitrary scope.
+    fn plan_in(
+        stem: &str,
+        features: &[&str],
+        done: u32,
+        total: u32,
+        on: ScopeRef,
+    ) -> engine_model::Node {
+        let mut node = doc(stem, "plan", features);
+        node.facets = vec![Facet {
+            scope: on,
+            presence: Presence::Exists,
+            content_hash: None,
+            lifecycle: Some(Lifecycle {
+                state: "L1".into(),
+                progress: Some(engine_model::Progress { done, total }),
+            }),
+        }];
+        node
+    }
+
+    /// An ADR document carrying a frontmatter `date:`.
+    fn adr_dated(stem: &str, features: &[&str], created: &str) -> engine_model::Node {
+        let mut node = doc(stem, "adr", features);
+        node.dates = Some(Dates {
+            created: Some(created.into()),
+            modified: None,
+            stamped: None,
+        });
+        node
+    }
+
+    fn roster_of(g: &LinkageGraph, feature: &str) -> FeatureRosterEntry {
+        coverage_map(g, &scope())
+            .roster()
+            .into_iter()
+            .find(|e| e.feature == feature)
+            .expect("feature in roster")
+    }
+
     fn type_of<'a>(cov: &'a FeatureCoverage, dt: &str) -> &'a TypeCoverage {
         cov.types
             .iter()
@@ -376,7 +596,7 @@ mod tests {
         // The panel's "start a new feature" state: nothing exists, every type is
         // absent, and the advised next step is the primary entry point.
         let g = LinkageGraph::new();
-        let cov = feature_coverage(&g, "brand-new");
+        let cov = feature_coverage(&g, &scope(), "brand-new");
         assert_eq!(cov.feature, "brand-new");
         assert!(cov.types.iter().all(|t| !t.present && t.count == 0));
         assert_eq!(cov.missing, PIPELINE_DOC_TYPES.to_vec());
@@ -403,7 +623,7 @@ mod tests {
         // now exists).
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("2026-07-14-x-research", "research", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         assert!(type_of(&cov, "research").present);
         assert_eq!(cov.next_step, Some("adr"));
         assert!(type_of(&cov, "adr").eligible);
@@ -422,7 +642,7 @@ mod tests {
         // research and reference are parallel entry points — either unlocks adr.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("2026-07-14-x-reference", "reference", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         assert!(type_of(&cov, "adr").eligible);
         assert_eq!(cov.next_step, Some("adr"));
     }
@@ -432,7 +652,7 @@ mod tests {
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("2026-07-14-x-research", "research", &["x"]));
         g.upsert_node(doc("2026-07-14-x-adr", "adr", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         assert!(type_of(&cov, "plan").eligible);
         assert_eq!(type_of(&cov, "plan").note, None);
         assert_eq!(cov.next_step, Some("plan"));
@@ -444,7 +664,7 @@ mod tests {
         g.upsert_node(doc("2026-07-14-x-research", "research", &["x"]));
         g.upsert_node(doc("2026-07-14-x-adr", "adr", &["x"]));
         g.upsert_node(doc("2026-07-14-x-plan", "plan", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         assert_eq!(cov.next_step, None, "chain satisfied through plan");
     }
 
@@ -456,7 +676,7 @@ mod tests {
         g.upsert_node(doc("2026-07-14-x-research", "research", &["x"]));
         g.upsert_node(doc("2026-07-14-x-adr", "adr", &["x"]));
         g.upsert_node(doc("2026-07-14-x-plan", "plan", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         let exec = type_of(&cov, "exec");
         assert!(!exec.eligible);
         assert_eq!(exec.note, Some("plan-derived"));
@@ -473,7 +693,7 @@ mod tests {
         // ordering (lexical max) breaks it.
         g.upsert_node(doc("2026-07-14-x-alpha-audit", "audit", &["x"]));
         g.upsert_node(doc("2026-07-14-x-beta-audit", "audit", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         let research = type_of(&cov, "research");
         assert_eq!(research.count, 2);
         assert_eq!(
@@ -495,8 +715,8 @@ mod tests {
         // A document with two feature tags contributes to both groups' coverage.
         let mut g = LinkageGraph::new();
         g.upsert_node(doc("2026-07-14-shared-research", "research", &["a", "b"]));
-        assert!(type_of(&feature_coverage(&g, "a"), "research").present);
-        assert!(type_of(&feature_coverage(&g, "b"), "research").present);
+        assert!(type_of(&feature_coverage(&g, &scope(), "a"), "research").present);
+        assert!(type_of(&feature_coverage(&g, &scope(), "b"), "research").present);
     }
 
     #[test]
@@ -518,7 +738,7 @@ mod tests {
             facets: vec![],
         });
         g.upsert_node(doc("2026-07-14-x-rule", "rule", &["x"]));
-        let cov = feature_coverage(&g, "x");
+        let cov = feature_coverage(&g, &scope(), "x");
         assert!(
             cov.types.iter().all(|t| !t.present),
             "nothing pipeline-typed"
@@ -531,7 +751,7 @@ mod tests {
         g.upsert_node(doc("2026-07-14-a-research", "research", &["a"]));
         g.upsert_node(doc("2026-07-14-a-adr", "adr", &["a"]));
         g.upsert_node(doc("2026-07-14-b-research", "research", &["b"]));
-        let roster = coverage_map(&g).roster();
+        let roster = coverage_map(&g, &scope()).roster();
         let a = roster.iter().find(|e| e.feature == "a").unwrap();
         assert_eq!(a.doc_count, 2);
         assert_eq!(a.types_present, 2);
@@ -540,6 +760,242 @@ mod tests {
         assert_eq!(b.doc_count, 1);
         assert_eq!(b.types_present, 1);
         assert_eq!(b.next_step, Some("adr"));
+    }
+
+    #[test]
+    fn the_roster_plan_state_rollup_truth_table() {
+        // The decided rollup, exhaustively: absent with no plan, `finished` iff
+        // EVERY plan is finished, `in-progress` iff ANY is in progress, else
+        // `not-started`. The tokens are the one plan-completion vocabulary, so a
+        // rollup never invents a spelling the filter facet would not accept. Each
+        // row is its own corpus so the rollups cannot bleed.
+        let rollup = |plans: &[(u32, u32)]| {
+            let mut g = LinkageGraph::new();
+            // An ADR keeps the feature in the roster even when it has no plan.
+            g.upsert_node(doc("2026-07-14-f-adr", "adr", &["f"]));
+            for (i, &(done, total)) in plans.iter().enumerate() {
+                g.upsert_node(plan(&format!("2026-07-1{i}-f-plan"), &["f"], done, total));
+            }
+            roster_of(&g, "f").plan_state
+        };
+
+        assert_eq!(rollup(&[]), None, "no plan: no state, never a guess");
+        assert_eq!(rollup(&[(0, 3)]), Some("not-started"), "one unstarted");
+        assert_eq!(
+            rollup(&[(1, 3)]),
+            Some("in-progress"),
+            "one unfinished but started"
+        );
+        assert_eq!(rollup(&[(3, 3)]), Some("finished"), "the only plan");
+        assert_eq!(
+            rollup(&[(3, 3), (2, 2)]),
+            Some("finished"),
+            "every plan finished"
+        );
+        assert_eq!(
+            rollup(&[(3, 3), (1, 2)]),
+            Some("in-progress"),
+            "mixed finished + in progress: any in progress wins"
+        );
+        assert_eq!(
+            rollup(&[(3, 3), (0, 2)]),
+            Some("not-started"),
+            "mixed finished + unstarted: not all finished, none in progress"
+        );
+        assert_eq!(
+            rollup(&[(0, 2), (1, 2)]),
+            Some("in-progress"),
+            "mixed unstarted + in progress"
+        );
+        assert_eq!(
+            rollup(&[(0, 2), (3, 3), (1, 2)]),
+            Some("in-progress"),
+            "all three states at once"
+        );
+
+        // Anti-drift: over a SINGLE plan the rollup is exactly what the one
+        // plan-completion authority says, token for token. A rollup that grew its
+        // own vocabulary would serve a value the `plan_states` facet rejects.
+        for (done, total) in [(0, 3), (1, 3), (3, 3), (0, 0)] {
+            assert_eq!(
+                rollup(&[(done, total)]),
+                plan_completion_from_progress(&engine_model::Progress { done, total }),
+                "single-plan rollup is the authority's own classification ({done}/{total})"
+            );
+        }
+    }
+
+    #[test]
+    fn a_plan_with_no_readable_state_neither_contributes_nor_suppresses_the_rollup() {
+        // A stepless plan is not a work unit (the pipeline projection's read), and
+        // a plan whose lifecycle lives in ANOTHER scope has no state here. Neither
+        // invents a rollup, and neither drags a real one down.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(plan("2026-07-14-a-plan", &["a"], 0, 0));
+        assert_eq!(
+            roster_of(&g, "a").plan_state,
+            None,
+            "a stepless plan reports no state"
+        );
+
+        let other = ScopeRef::Ref {
+            name: "feature-x".into(),
+        };
+        let mut g = LinkageGraph::new();
+        g.upsert_node(plan_in("2026-07-14-b-plan", &["b"], 1, 2, other));
+        assert_eq!(
+            roster_of(&g, "b").plan_state,
+            None,
+            "a plan in another scope has no state in this one"
+        );
+
+        // With one readable plan alongside them, the rollup is that plan's state.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(plan("2026-07-14-c-plan", &["c"], 0, 0));
+        g.upsert_node(plan("2026-07-15-c-plan", &["c"], 2, 2));
+        assert_eq!(
+            roster_of(&g, "c").plan_state,
+            Some("finished"),
+            "the stepless plan does not block `finished`"
+        );
+    }
+
+    #[test]
+    fn the_roster_type_counts_break_the_composition_down_and_omit_the_empty_types() {
+        // The composition line's input: one entry per doc type the feature
+        // actually has, counted over the FULL corpus. A type with no document
+        // carries NO entry — absent IS zero — and the totals stay consistent with
+        // doc_count / types_present.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("2026-07-10-a-research", "research", &["a"]));
+        g.upsert_node(doc("2026-07-14-a-research", "research", &["a"]));
+        g.upsert_node(doc("2026-07-14-a-adr", "adr", &["a"]));
+        g.upsert_node(plan("2026-07-14-a-plan", &["a"], 1, 2));
+        let a = roster_of(&g, "a");
+        assert_eq!(
+            a.type_counts,
+            BTreeMap::from([("research", 2), ("adr", 1), ("plan", 1)]),
+            "present types only, counted in full"
+        );
+        assert!(
+            !a.type_counts.contains_key("exec") && !a.type_counts.contains_key("audit"),
+            "zero-count types are omitted, never served as 0"
+        );
+        assert_eq!(a.doc_count, 4, "the counts sum to the total");
+        assert_eq!(a.type_counts.values().sum::<u32>(), a.doc_count);
+        assert_eq!(a.types_present as usize, a.type_counts.len());
+
+        // A document counting toward two features counts fully in BOTH.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("2026-07-14-shared-research", "research", &["x", "y"]));
+        assert_eq!(
+            roster_of(&g, "x").type_counts,
+            BTreeMap::from([("research", 1)])
+        );
+        assert_eq!(
+            roster_of(&g, "y").type_counts,
+            BTreeMap::from([("research", 1)])
+        );
+    }
+
+    #[test]
+    fn the_roster_adr_dates_span_the_binding_decisions_and_are_absent_without_one() {
+        // The DEFINED date meaning: the span over the feature's ADRs. One ADR
+        // collapses the span (first == last); several span first..last; a feature
+        // with no ADR carries no date at all.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(adr_dated("2026-07-14-one-adr", &["one"], "2026-07-14"));
+        assert_eq!(
+            roster_of(&g, "one").adr_dates,
+            Some(AdrDates {
+                first: "2026-07-14".into(),
+                last: "2026-07-14".into()
+            }),
+            "a single ADR collapses the span onto itself"
+        );
+
+        let mut g = LinkageGraph::new();
+        // Inserted out of order: the span is a min/max, not first-seen/last-seen.
+        g.upsert_node(adr_dated("2026-07-20-many-adr", &["many"], "2026-07-20"));
+        g.upsert_node(adr_dated("2026-03-02-many-adr", &["many"], "2026-03-02"));
+        g.upsert_node(adr_dated("2026-05-09-many-adr", &["many"], "2026-05-09"));
+        // Non-ADR documents outside the span never widen it.
+        g.upsert_node(doc("2020-01-01-many-research", "research", &["many"]));
+        g.upsert_node(doc("2030-12-31-many-audit", "audit", &["many"]));
+        assert_eq!(
+            roster_of(&g, "many").adr_dates,
+            Some(AdrDates {
+                first: "2026-03-02".into(),
+                last: "2026-07-20".into()
+            }),
+            "earliest..latest ADR only — the binding decisions, not the corpus"
+        );
+
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("2026-07-14-none-research", "research", &["none"]));
+        assert_eq!(
+            roster_of(&g, "none").adr_dates,
+            None,
+            "no ADR: no date, never a substituted one"
+        );
+    }
+
+    #[test]
+    fn an_adr_date_falls_back_to_the_stem_when_the_frontmatter_carries_none() {
+        // The authored `date:` is the source; a document without one still carries
+        // its date in the stem by the vault's naming law. An unconventional stem
+        // with neither contributes nothing rather than a guess.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("2026-04-05-s-adr", "adr", &["s"]));
+        assert_eq!(
+            roster_of(&g, "s").adr_dates,
+            Some(AdrDates {
+                first: "2026-04-05".into(),
+                last: "2026-04-05".into()
+            }),
+            "the stem's date prefix stands in for an absent frontmatter date"
+        );
+
+        // Frontmatter wins where the two disagree.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(adr_dated("2026-04-05-t-adr", &["t"], "2026-01-02"));
+        assert_eq!(
+            roster_of(&g, "t").adr_dates,
+            Some(AdrDates {
+                first: "2026-01-02".into(),
+                last: "2026-01-02".into()
+            }),
+            "the authored date is the truth, not the filename"
+        );
+
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("undated-adr", "adr", &["u"]));
+        assert_eq!(
+            roster_of(&g, "u").adr_dates,
+            None,
+            "neither source ISO-shaped: no date rather than a guessed one"
+        );
+    }
+
+    #[test]
+    fn the_metadata_fields_are_absent_from_the_wire_when_they_have_nothing_to_say() {
+        // Additive and OPTIONAL: a feature with no plan and no ADR serializes
+        // neither key, so a client reads honest absence rather than a zero value.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(doc("2026-07-14-bare-research", "research", &["bare"]));
+        let json = serde_json::to_value(roster_of(&g, "bare")).unwrap();
+        assert!(json.get("plan_state").is_none(), "{json}");
+        assert!(json.get("adr_dates").is_none(), "{json}");
+        assert_eq!(json["type_counts"], serde_json::json!({ "research": 1 }));
+
+        // And present in their snake_case wire form when they do.
+        let mut g = LinkageGraph::new();
+        g.upsert_node(adr_dated("2026-07-14-full-adr", &["full"], "2026-07-14"));
+        g.upsert_node(plan("2026-07-15-full-plan", &["full"], 1, 4));
+        let json = serde_json::to_value(roster_of(&g, "full")).unwrap();
+        assert_eq!(json["plan_state"], "in-progress");
+        assert_eq!(json["adr_dates"]["first"], "2026-07-14");
+        assert_eq!(json["adr_dates"]["last"], "2026-07-14");
     }
 
     #[test]
@@ -556,7 +1012,7 @@ mod tests {
                 &[tag.as_str()],
             ));
         }
-        let map = coverage_map(&g);
+        let map = coverage_map(&g, &scope());
         let roster = map.roster();
         assert_eq!(roster.len(), FEATURE_COVERAGE_ROSTER_CAP);
         // The lexicographically-first feature is retained; one past the cap is

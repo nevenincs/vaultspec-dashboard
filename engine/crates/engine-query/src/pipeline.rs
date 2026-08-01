@@ -14,6 +14,8 @@ use engine_graph::{LinkageGraph, lifecycle_in_scope};
 use engine_model::{Node, Progress, ScopeRef};
 use serde::Serialize;
 
+use crate::filter::plan_completion_from_progress;
+
 /// The pipeline phase an artifact sits in,
 /// derived from doc_type and status — the research -> adr -> plan -> execute ->
 /// review arc the vaultspec pipeline runs.
@@ -171,10 +173,14 @@ fn artifact_if_active(node: &Node, scope: &ScopeRef) -> Option<PipelineArtifact>
             // Active plan: incomplete checkbox progress. Post graph-node-semantics
             // a plan's lifecycle.state carries its TIER (L1-L4), so in-flight-ness
             // is read from progress, not the state string — a plan with steps still
-            // open (done < total) is active; a fully-checked plan is complete
-            // (past); a plan with no checkboxes (no progress) is not a work unit.
-            let active = progress.is_some_and(|p| p.done < p.total);
-            (active, plan_phase(progress))
+            // open is active; a fully-checked plan is complete (past); a plan with
+            // no checkboxes (no progress) is not a work unit. The classification
+            // comes from the ONE plan-completion authority the `plan_states` filter
+            // facet and the plan-interior summary already serve, never a second
+            // reading of the same progress.
+            let completion = progress.as_ref().and_then(plan_completion_from_progress);
+            let active = matches!(completion, Some("not-started") | Some("in-progress"));
+            (active, plan_phase(completion))
         }
         "adr" => {
             // In-flight ADR: proposed or accepted. Rejected/deprecated are
@@ -199,13 +205,13 @@ fn artifact_if_active(node: &Node, scope: &ScopeRef) -> Option<PipelineArtifact>
     })
 }
 
-/// Derive the phase of an active plan from its checkbox progress: a plan
-/// with no work checked yet is still in the `plan` phase; once any step is
-/// checked it has entered `execute`. (A complete plan is excluded upstream, so
-/// `review` is reached only by audit docs, not by a complete plan here.)
-fn plan_phase(progress: Option<Progress>) -> PipelinePhase {
-    match progress {
-        Some(p) if p.done > 0 => PipelinePhase::Execute,
+/// Derive the phase of an active plan from its completion class: a plan with no
+/// work checked yet is still in the `plan` phase; once any step is checked it has
+/// entered `execute`. (A complete plan is excluded upstream, so `review` is
+/// reached only by audit docs, not by a complete plan here.)
+fn plan_phase(completion: Option<&'static str>) -> PipelinePhase {
+    match completion {
+        Some("in-progress") | Some("finished") => PipelinePhase::Execute,
         _ => PipelinePhase::Plan,
     }
 }
@@ -324,6 +330,60 @@ mod tests {
         let result = in_flight(&g, &scope());
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].phase, PipelinePhase::Plan);
+    }
+
+    #[test]
+    fn in_flight_ness_and_phase_come_from_the_one_plan_completion_authority() {
+        // The Work surface classifies a plan through the SAME
+        // `plan_completion_from_progress` the `plan_states` filter facet and the
+        // plan-interior summary serve — one derivation of "where is this plan",
+        // not a second reading of the same checkbox progress.
+        let phase_of = |done, total| {
+            let mut g = LinkageGraph::new();
+            g.upsert_node(doc(
+                "p",
+                "plan",
+                None,
+                Some("L1"),
+                Some(Lifecycle {
+                    state: "L1".into(),
+                    progress: Some(Progress { done, total }),
+                }),
+            ));
+            in_flight(&g, &scope()).first().map(|a| a.phase)
+        };
+
+        // not-started -> in-flight, still the plan phase.
+        assert_eq!(
+            plan_completion_from_progress(&Progress { done: 0, total: 3 }),
+            Some("not-started")
+        );
+        assert_eq!(phase_of(0, 3), Some(PipelinePhase::Plan));
+
+        // in-progress -> in-flight, execute phase.
+        assert_eq!(
+            plan_completion_from_progress(&Progress { done: 1, total: 3 }),
+            Some("in-progress")
+        );
+        assert_eq!(phase_of(1, 3), Some(PipelinePhase::Execute));
+
+        // finished -> not in-flight at all.
+        assert_eq!(
+            plan_completion_from_progress(&Progress { done: 3, total: 3 }),
+            Some("finished")
+        );
+        assert_eq!(
+            phase_of(3, 3),
+            None,
+            "a finished plan is past, not in-flight"
+        );
+
+        // No checkboxes -> no completion class, so not a work unit.
+        assert_eq!(
+            plan_completion_from_progress(&Progress { done: 0, total: 0 }),
+            None
+        );
+        assert_eq!(phase_of(0, 0), None, "a stepless plan is not a work unit");
     }
 
     #[test]

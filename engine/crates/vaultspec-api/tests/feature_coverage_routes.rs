@@ -139,6 +139,118 @@ async fn features_without_a_feature_serves_the_roster() {
     assert_eq!(beta["next_step"], "adr");
 }
 
+/// A vault whose features exercise the served roster metadata: `many` has two
+/// ADRs a span apart plus two plans (one finished, one part-done), `solo` has a
+/// single ADR and a single untouched plan, `bare` has research only.
+fn metadata_fixture_state() -> (tempfile::TempDir, Arc<AppState>) {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    for sub in ["research", "adr", "plan"] {
+        std::fs::create_dir_all(root.join(".vault").join(sub)).unwrap();
+    }
+    let write = |sub: &str, stem: &str, front: &str, body: &str| {
+        std::fs::write(
+            root.join(".vault").join(sub).join(format!("{stem}.md")),
+            format!("---\n{front}---\n\n{body}"),
+        )
+        .unwrap();
+    };
+    let adr = |stem: &str, feature: &str, date: &str| {
+        write(
+            "adr",
+            stem,
+            &format!("tags:\n  - '#adr'\n  - '#{feature}'\ndate: '{date}'\n"),
+            "# `f` adr: `t` | (**status:** `accepted`)\n\nbody\n",
+        )
+    };
+    let plan = |stem: &str, feature: &str, steps: &str| {
+        write(
+            "plan",
+            stem,
+            &format!("tags:\n  - '#plan'\n  - '#{feature}'\ntier: L1\n"),
+            steps,
+        )
+    };
+    adr("2026-03-02-many-adr", "many", "2026-03-02");
+    adr("2026-07-20-many-adr", "many", "2026-07-20");
+    plan(
+        "2026-07-21-many-plan",
+        "many",
+        "- [x] `S01` - done.\n- [x] `S02` - done.\n",
+    );
+    plan(
+        "2026-07-22-many-plan",
+        "many",
+        "- [x] `S01` - done.\n- [ ] `S02` - open.\n",
+    );
+    adr("2026-05-05-solo-adr", "solo", "2026-05-05");
+    plan(
+        "2026-05-06-solo-plan",
+        "solo",
+        "- [ ] `S01` - open.\n- [ ] `S02` - open.\n",
+    );
+    write(
+        "research",
+        "2026-07-14-bare-research",
+        "tags:\n  - '#research'\n  - '#bare'\n",
+        "Body.\n",
+    );
+    let state = app::build_state(root.to_path_buf());
+    (dir, state)
+}
+
+#[tokio::test]
+async fn the_roster_serves_type_counts_plan_state_and_adr_dates_per_feature() {
+    // The three metadata fields ride the roster end-to-end through the real
+    // router over a real vault: per-type composition counted over the full
+    // corpus, the plan-state rollup, and the binding-ADR date span.
+    let (_dir, state) = metadata_fixture_state();
+    let token = state.bearer.clone();
+    let scope = served_scope(&state);
+    let router = build_router(state);
+
+    let (status, body) = get(router, &format!("/features?scope={scope}"), &token).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let roster = body["data"]["roster"].as_array().expect("roster array");
+    let entry = |feature: &str| {
+        roster
+            .iter()
+            .find(|e| e["feature"] == feature)
+            .unwrap_or_else(|| panic!("{feature} in roster: {body}"))
+            .clone()
+    };
+
+    // `many`: composition counted per type, the span across BOTH ADRs, and a
+    // rollup of `in-progress` — one plan is finished but another is not.
+    let many = entry("many");
+    assert_eq!(
+        many["type_counts"],
+        serde_json::json!({"adr": 2, "plan": 2})
+    );
+    assert_eq!(many["doc_count"], 4);
+    assert_eq!(many["adr_dates"]["first"], "2026-03-02");
+    assert_eq!(many["adr_dates"]["last"], "2026-07-20");
+    assert_eq!(many["plan_state"], "in-progress");
+
+    // `solo`: one ADR collapses the span; its only plan has nothing checked.
+    let solo = entry("solo");
+    assert_eq!(solo["adr_dates"]["first"], "2026-05-05");
+    assert_eq!(solo["adr_dates"]["last"], "2026-05-05");
+    assert_eq!(solo["plan_state"], "not-started");
+
+    // `bare`: no plan and no ADR, so neither key is on the wire at all —
+    // honest absence, never a zero or a guessed status.
+    let bare = entry("bare");
+    assert_eq!(bare["type_counts"], serde_json::json!({"research": 1}));
+    assert!(bare.get("plan_state").is_none(), "{bare}");
+    assert!(bare.get("adr_dates").is_none(), "{bare}");
+
+    // The fields are additive: everything the roster served before is unchanged.
+    assert_eq!(bare["doc_count"], 1);
+    assert_eq!(bare["types_present"], 1);
+    assert_eq!(bare["next_step"], "adr");
+}
+
 #[tokio::test]
 async fn features_for_an_unknown_feature_is_all_missing_never_a_404() {
     // Starting a brand-new feature in the panel reads as all-missing coverage —
