@@ -6,7 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:d80a8f66142612135ae4ab26600763eff51f5b38cc7008ead054823f1e0ec98f'
+body_hash: 'sha256:64a0f9f4df281c93617131e08ab89639e793e99cb39bc7e00dd07a49b1a143df'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'
@@ -51,6 +51,7 @@ related:
   - '[[2026-08-01-agent-panel-P10-S39]]'
   - '[[2026-08-01-agent-panel-P10-S44]]'
   - '[[2026-08-01-agent-panel-P10-S45]]'
+  - '[[2026-08-01-agent-panel-P10-S50]]'
   - '[[2026-08-01-agent-panel-P11-S46]]'
   - '[[2026-08-01-agent-panel-dead-capability-audit]]'
   - '[[2026-08-01-agent-panel-plan]]'
@@ -115,6 +116,7 @@ Auto-generated index of all documents tagged with `#agent-panel`.
 - `2026-08-01-agent-panel-P10-S39` - Repair the dev-tooling scanner roots (localization, px, tokens, figma-names, module-size) and the justfile invocation path so every frontend gate command actually runs, grandfathering pre-existing module-size violators explicitly
 - `2026-08-01-agent-panel-P10-S44` - Amend the shell-integration ADR composer decision with the owner's feature-first mandate: document-authoring runs bind a first-class feature context chip on the composer, defaulted from the open document, required before run-start for tag-requiring presets
 - `2026-08-01-agent-panel-P10-S45` - Collapse the autonomy control into a composer pill consistent with the row-of-pills grammar and the reference-verified C6 anatomy, fixing the row-2 overlap at split width
+- `2026-08-01-agent-panel-P10-S50` - House main's unhoused degraded-intent in the begin idiom: the begin state must not invite a prompt when the data plane is degraded and starting would fail, using the parked common:agent.transcript.unavailable vocabulary
 - `2026-08-01-agent-panel-P11-S46` - Amend the agent-flow ADR: teams are provider-free (shape and personality only), the user chooses provider and model at team start, the free-form selection contract event is un-deferred and specified, test-variant presets stay pinned to the deterministic provider as harness infrastructure
 
 ### plan
