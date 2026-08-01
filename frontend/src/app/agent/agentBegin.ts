@@ -42,6 +42,35 @@ export function agentComposerPosture({
   return hasTurns ? "continue" : "begin";
 }
 
+/** What the begin state OFFERS, once the composer posture has already said "begin".
+ *  `invite` is the normal idiom — a headline that asks the user something and starter
+ *  verbs beneath it. `unavailable` is the honest posture for a degraded agent plane:
+ *  the composer stays (G10 — status never blocks) but the invitation is withheld,
+ *  because asking for a prompt that cannot start is the panel lying about what will
+ *  work. */
+export type AgentBeginPosture = "invite" | "unavailable";
+
+export interface AgentBeginPostureInput {
+  /** Whether the served agent tier reports the plane usable. The SAME verdict the
+   *  Team selector's disabled-with-reason state reads, so the two controls in this
+   *  view can never disagree about whether starting would work. */
+  agentPlaneAvailable: boolean;
+  /** True while that verdict is still unknown — the first availability read in
+   *  flight, with nothing cached behind it. */
+  availabilityUnsettled?: boolean;
+}
+
+export function agentBeginPosture({
+  agentPlaneAvailable,
+  availabilityUnsettled = false,
+}: AgentBeginPostureInput): AgentBeginPosture {
+  // Unknown is not degraded. Withholding the invitation on an unsettled read would
+  // announce a failure that has not happened, which is the louder of the two lies —
+  // an invitation that corrects itself the moment the verdict lands is the quieter.
+  if (availabilityUnsettled) return "invite";
+  return agentPlaneAvailable ? "invite" : "unavailable";
+}
+
 /** The begin headline, personalized from the bound scope (G2 — the surface asks the
  *  user something and names the real context where it has any). With no resolved
  *  scope there is no context to name, so the unbound wording is used rather than an
