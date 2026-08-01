@@ -1,10 +1,13 @@
-// A non-modal, docked, resizable Agent panel beside the work surface.
+// A non-modal Agent panel beside the work surface.
 //
-// It is
-// mounted once in `AppShell` (like `CreateDocDialog`/`ControlPanels`) as a normal
-// in-flow grid child, so the stage's `1fr` column reflows to make room and the
-// panel never overlays or modal-blocks the editor. It does not re-parent the
-// pinned canvas (it is a sibling region, not inside the dock).
+// It is the center dock's reserved `__agent__` panel
+// (agent-panel-shell-integration D1): the same slot, and the same
+// shell-verb-reconciled treatment, the graph already had. So it reflows beside the
+// open documents inside the one dock row — the owner's default [document | agent]
+// split — instead of taking a fourth shell column, and it never overlays or
+// modal-blocks the editor. The body is plain React (no portal): its state lives in
+// external stores, so dockview may mount and unmount it freely. The panel is
+// mounted ONLY while it holds the slot, so nothing app-lifetime may live here.
 //
 // Layer ownership (architecture-boundaries): a DUMB app-chrome view. It renders
 // the `stores/server/agent` slice (session list + one session snapshot) and emits
@@ -41,13 +44,11 @@ import {
   scopedTeamRunId,
   teamRunScopeAction,
   useAgentCurrentSessionId,
-  useAgentPanelOpen,
   useAgentPanelView,
   useAgentTeamRunId,
   useAgentTeamRunPrompt,
   useAgentTeamRunScope,
 } from "../../stores/view/agentPanel";
-import { useAgentPanelWidth } from "../../stores/view/shellLayout";
 import {
   agentNewSessionAction,
   endActiveAgentSession,
@@ -65,7 +66,6 @@ import {
   StateBlock,
 } from "../kit";
 import { AutonomyControl } from "../authoring/ReviewStation";
-import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import { Composer } from "./Composer";
 import { PendingChangesBridge } from "./PendingChangesBridge";
 import { PendingChangesView } from "./PendingChangesView";
@@ -360,38 +360,43 @@ function AgentComposerSlot() {
 }
 
 /**
- * The docked Agent panel. Renders nothing when collapsed (its only trace is the
- * footer `AgentChip`). Open, it occupies its OWN explicit right-most grid track
- * (the shell frame's `agentPanelClassName` pins it to `col-start-4`), so the
- * stage's `1fr` reflows beside it — it never overlays or wraps to a new row. The
- * column width IS the grid track (from the canonical shell-layout store); the
- * shared `ShellResizeHandle` on the panel's left edge drives it.
+ * The shared durable lifecycle connection for the agent surface. It must outlive
+ * the panel — the footer `AgentChip` traces a streaming run precisely while the
+ * panel does NOT hold the center slot — so it is mounted by the shell, not by the
+ * panel body, which now unmounts whenever the graph takes the slot back.
  */
-export function AgentPanel({ className }: { className: string }) {
+export function AgentLifecycleHost() {
   useAgentLifecycleSubscription();
-  const open = useAgentPanelOpen();
+  return null;
+}
+
+/**
+ * The Agent panel body, hosted by the center dock's reserved `__agent__` panel. It
+ * fills its dock panel (the dock owns the geometry — there is no panel-owned width
+ * or resize handle any more; the dock sash between the documents and the slot is
+ * the one size control). It renders only while it holds the slot: `centerSlot`
+ * decides that, and the header's close control hands the slot back.
+ */
+export function AgentPanel() {
   const panelView = useAgentPanelView();
   useReconcileTeamRunScope();
   const scope = useActiveScope();
   const teamRunId = useAgentTeamRunId();
   const teamRunScope = useAgentTeamRunScope();
   const scopedRunId = scopedTeamRunId(teamRunId, teamRunScope, scope);
-  const width = useAgentPanelWidth();
   const currentSessionId = useAgentCurrentSessionId();
   const resolveMessage = useLocalizedMessageResolver();
-  if (!open) return null;
   return (
-    <aside
-      className={className}
+    <section
+      className="flex h-full min-h-0 min-w-0 flex-col bg-paper"
       data-agent-panel
-      role="complementary"
+      role="region"
       aria-label={resolveMessage({ key: AGENT.region }).message}
     >
       <TeamRunProgressProvider runId={scopedRunId}>
         {panelView === "transcript" && teamRunId === null && scope !== null ? (
           <ActiveTeamRunRecovery scope={scope} />
         ) : null}
-        <ShellResizeHandle side="agent" axis="agent" current={width} />
         <AgentPanelHeader currentSessionId={currentSessionId} />
         <AgentViewSwitcher panelView={panelView} />
         {panelView === "pending" ? (
@@ -408,6 +413,6 @@ export function AgentPanel({ className }: { className: string }) {
           </>
         )}
       </TeamRunProgressProvider>
-    </aside>
+    </section>
   );
 }

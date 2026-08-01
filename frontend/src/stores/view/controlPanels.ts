@@ -4,7 +4,7 @@
 // tiny shared view-store flag, mirroring `settingsDialog`, so the chip, the
 // command palette, and the keymap all drive the same panel.
 //
-// Review is NOT a modal panel: its queue folded into
+// Pending changes is NOT a modal panel: its queue folded into
 // the Agent panel as a "Pending changes" view, so it lives on the footer cluster
 // as a first-class chip (`FooterChipId`) whose action opens that view — never a
 // `ControlPanelId`. The two spaces are deliberately decoupled here.
@@ -33,20 +33,20 @@ export const CONTROL_PANEL_IDS: readonly ControlPanelId[] = [
 
 /** The rail-footer status chips. A standalone
  *  union — NOT derived from `ControlPanelId` — because two of the three chips open
- *  modal panels while `approvals` opens the Agent panel's pending-changes view.
+ *  modal panels while `pending` opens the Agent panel's pending-changes view.
  *  Backend health has no chip: its engine-status read
  *  unclearly, so it was pulled from the footer; the
  *  Cmd+K palette is its only surfacing path. */
-export type FooterChipId = "search-service" | "approvals" | "vault-health";
+export type FooterChipId = "search-service" | "pending" | "vault-health";
 export const FOOTER_CHIP_IDS: readonly FooterChipId[] = [
   "search-service",
-  "approvals",
+  "pending",
   "vault-health",
 ];
 
-/** Every named control surface — the modal panels plus the footer review chip —
- *  the shared vocabulary carries labels for. The review chip (`approvals`) is a
- *  `FooterChipId` only, never a modal `ControlPanelId`. */
+/** Every named control surface — the modal panels plus the footer pending-changes
+ *  chip — the shared vocabulary carries labels for. The pending chip (`pending`) is
+ *  a `FooterChipId` only, never a modal `ControlPanelId`. */
 export type ControlSurfaceId = ControlPanelId | FooterChipId;
 
 /** Validate unknown input at the boundary (a persisted blob, a palette id, a wire

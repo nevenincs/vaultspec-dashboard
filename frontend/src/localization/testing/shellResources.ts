@@ -109,6 +109,11 @@ export const ltrCS = {
       search: "Rechercher",
       status: "État",
     },
+    centerSlot: {
+      agent: "Assistant",
+      graph: "Graphe",
+      switcher: "Panneau central",
+    },
     regions: {
       activity: "Activité",
       fileBrowser: "Navigateur de fichiers",
@@ -281,6 +286,11 @@ export const rtlCS = {
       home: "الرئيسية",
       search: "بحث",
       status: "الحالة",
+    },
+    centerSlot: {
+      agent: "المساعد",
+      graph: "الرسم البياني",
+      switcher: "اللوحة الوسطى",
     },
     regions: {
       activity: "النشاط",

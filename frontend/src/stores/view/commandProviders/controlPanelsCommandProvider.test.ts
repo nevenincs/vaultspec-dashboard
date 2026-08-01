@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { ActionDescriptor } from "../../../platform/actions/action";
 import { closeControlPanel, useControlPanels } from "../controlPanels";
 import { useAgentPanel } from "../agentPanel";
+import { getShellCenterSlot, setShellCenterSlot } from "../shellLayout";
 import type { CommandContext } from "../commandRegistry";
 import { controlPanelsCommandProvider } from "./controlPanelsCommandProvider";
 
@@ -14,12 +15,13 @@ function commands(openControlPanel: CommandContext["openControlPanel"]) {
 
 afterEach(() => {
   closeControlPanel();
-  useAgentPanel.setState({ open: false, panelView: "transcript" });
+  setShellCenterSlot("graph");
+  useAgentPanel.setState({ panelView: "transcript" });
 });
 
 describe("controlPanelsCommandProvider", () => {
-  it("surfaces the four modal panels plus the review inbox, under the app family", () => {
-    // The four modal panels' labels track the open-panel snapshot; the review
+  it("surfaces the four modal panels plus the pending inbox, under the app family", () => {
+    // The four modal panels' labels track the open-panel snapshot; the pending
     // inbox opens the Agent pending view, so its label is snapshot-independent and
     // it sits last. The agent-service panel is the fourth modal, in cluster order.
     const closed = commands(null);
@@ -28,14 +30,14 @@ describe("controlPanelsCommandProvider", () => {
       { key: "common:controlPanels.actions.showSystemStatus" },
       { key: "common:controlPanels.actions.showProjectHealth" },
       { key: "common:controlPanels.actions.showAgentService" },
-      { key: "common:controlPanels.actions.showApprovals" },
+      { key: "common:agent.pending.show" },
     ]);
     expect(closed.map((command) => command.id)).toEqual([
       "panel:search-service",
       "panel:backend-health",
       "panel:vault-health",
       "panel:agent-service",
-      "panel:approvals",
+      "agent:pending-changes",
     ]);
 
     // Exactly ONE agent-service toggle is exposed, under the shared action id.
@@ -63,8 +65,8 @@ describe("controlPanelsCommandProvider", () => {
       { key: "common:controlPanels.actions.showSystemStatus" },
       { key: "common:controlPanels.actions.showProjectHealth" },
       { key: "common:controlPanels.actions.showAgentService" },
-      // The review inbox never flips to a hide label — it is an open, not a toggle.
-      { key: "common:controlPanels.actions.showApprovals" },
+      // The pending inbox never flips to a hide label — it is an open, not a toggle.
+      { key: "common:agent.pending.show" },
     ]);
     expect(
       searchOpen.every(
@@ -74,17 +76,17 @@ describe("controlPanelsCommandProvider", () => {
     ).toBe(true);
   });
 
-  it("runs the modal toggle for a panel and the pending-view open for the review inbox", () => {
+  it("runs the modal toggle for a panel and the pending-view open for the inbox", () => {
     commands(null)
       .find((command) => command.id === "panel:search-service")
       ?.run?.();
     expect(useControlPanels.getState().open).toBe("search-service");
 
     commands(null)
-      .find((command) => command.id === "panel:approvals")
+      .find((command) => command.id === "agent:pending-changes")
       ?.run?.();
-    // The review inbox opens the Agent panel's pending view — never a modal.
-    expect(useAgentPanel.getState().open).toBe(true);
+    // The pending inbox gives the center slot to the Agent panel — never a modal.
+    expect(getShellCenterSlot()).toBe("agent");
     expect(useAgentPanel.getState().panelView).toBe("pending");
     expect(useControlPanels.getState().open).toBe("search-service");
   });

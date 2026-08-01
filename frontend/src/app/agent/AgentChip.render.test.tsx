@@ -17,12 +17,16 @@ import { liveScope, liveTransport } from "../../testing/liveClient";
 import { AuthoringClient, newIdempotencyKey } from "../../stores/server/authoring";
 import { AgentClient } from "../../stores/server/agent";
 import { useAgentPanel } from "../../stores/view/agentPanel";
+import { setShellCenterSlot } from "../../stores/view/shellLayout";
 import { AgentChip, useAgentChipView } from "./AgentChip";
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 function resetStore(): void {
-  useAgentPanel.setState({ open: false, currentSessionId: null });
+  // The chip's visibility gate is the CENTER SLOT: it traces a live run precisely
+  // while the Agent panel does NOT hold the slot (agent-panel-shell-integration D1).
+  setShellCenterSlot("none");
+  useAgentPanel.setState({ currentSessionId: null });
 }
 
 beforeEach(resetStore);
@@ -89,13 +93,16 @@ beforeAll(async () => {
 
 describe("AgentChip visibility gating", () => {
   it("renders nothing when no session is current", () => {
-    useAgentPanel.setState({ open: false, currentSessionId: null });
+    useAgentPanel.setState({ currentSessionId: null });
     renderChip();
     expect(document.querySelector("[data-agent-chip]")).toBeNull();
   });
 
-  it("shows 'Agent working' while a run streams with the panel collapsed", async () => {
-    useAgentPanel.setState({ open: false, currentSessionId: streamingSessionId });
+  it("shows 'Agent working' while a run streams and the GRAPH holds the slot", async () => {
+    // The panel does not have to be merely closed — the graph occupying the slot is
+    // the ordinary way it is absent now, and the chip must still trace the run.
+    setShellCenterSlot("graph");
+    useAgentPanel.setState({ currentSessionId: streamingSessionId });
     renderChip();
     await waitFor(
       () => expect(document.querySelector("[data-agent-chip]")).not.toBeNull(),
@@ -104,8 +111,9 @@ describe("AgentChip visibility gating", () => {
     expect(screen.getByText("Agent working")).toBeTruthy();
   });
 
-  it("renders nothing while the panel is open, even with a streaming run", async () => {
-    useAgentPanel.setState({ open: true, currentSessionId: streamingSessionId });
+  it("renders nothing while the panel holds the slot, even with a streaming run", async () => {
+    setShellCenterSlot("agent");
+    useAgentPanel.setState({ currentSessionId: streamingSessionId });
     renderChip();
     // Give the session query time to resolve; the chip must still stay hidden
     // because the panel (its expanded form) is already open.

@@ -1129,13 +1129,14 @@
   overflow: hidden;
 }
 
-/* Collapse the graph group's empty placeholder tab. The graph is the canvas, not a
-   named document, so its tab carries no label (GraphTab renders an empty span) — but
-   dockview still paints the `.dv-tab` chrome (a lighter `paper` rectangle + the tab
-   surface) which reads as a stray separator between the legend and the void. Zero it
-   out so the graph header is a seamless toolbar. Scoped to the graph tab only (via
-   the `[data-graph-tab]` marker), so real document tabs are untouched. */
-.dockview-theme-vaultspec .dv-tab:has([data-graph-tab]) {
+/* Collapse the reserved center-slot group's empty placeholder tab. The slot holds the
+   graph or the Agent panel, neither of which is a named document, so its tab carries
+   no label (ReservedSlotTab renders an empty span) — but dockview still paints the
+   `.dv-tab` chrome (a lighter `paper` rectangle + the tab surface) which reads as a
+   stray separator between the legend and the void. Zero it out so the slot header is a
+   seamless toolbar. Scoped to the reserved tab only (via the `[data-reserved-tab]`
+   marker), so real document tabs are untouched. */
+.dockview-theme-vaultspec .dv-tab:has([data-reserved-tab]) {
   width: 0;
   min-width: 0;
   padding: 0;

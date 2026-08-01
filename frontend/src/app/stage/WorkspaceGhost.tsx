@@ -9,7 +9,7 @@
 // plane). Tokens + kit only (design-system-is-centralized / ui-labels-are-user-facing).
 
 import { Button, StateBlock } from "../kit";
-import { setShellGraphVisible } from "../../stores/view/shellLayout";
+import { setShellCenterSlot } from "../../stores/view/shellLayout";
 import { newDocumentAction } from "../../stores/view/leftRailKeybindings";
 import { resolveActionPresentation } from "../../platform/actions/action";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
@@ -28,7 +28,7 @@ export function WorkspaceGhost() {
         message={resolveMessage({ key: "common:shell.workspace.emptyMessage" }).message}
       />
       <div className="flex items-center gap-fg-2">
-        <Button variant="primary" onClick={() => setShellGraphVisible(true)}>
+        <Button variant="primary" onClick={() => setShellCenterSlot("graph")}>
           {resolveMessage({ key: "common:actions.showGraph" }).message}
         </Button>
         <Button variant="secondary" onClick={() => newDocument.run?.()}>

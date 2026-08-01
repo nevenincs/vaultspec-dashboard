@@ -113,30 +113,40 @@ export function dockTabTitle(nodeId: string): string {
   return nodeId;
 }
 
+/**
+ * Reconcile dockview's document panels to the open-tab slice.
+ *
+ * `reservedPanelIds` are the center slot's occupants (the graph placeholder and the
+ * Agent panel — agent-panel-shell-integration D1). They are never documents: they
+ * are excluded from the remove pass and are only ever used as the dock REFERENCE a
+ * first document splits to the left of. At most one is present at a time, but the
+ * plan does not depend on that.
+ */
 export function deriveDockWorkspaceSyncPlan(
   openDocs: readonly OpenDoc[],
   activeDocId: string | null,
   panelIds: readonly string[],
-  graphPanelId: string,
+  reservedPanelIds: readonly string[],
 ): DockWorkspaceSyncPlan {
   const normalizedOpenDocs = normalizeOpenDocs(openDocs);
   const normalizedActiveDocId = normalizeActiveDocId(normalizedOpenDocs, activeDocId);
   const wanted = new Set(normalizedOpenDocs.map((doc) => doc.nodeId));
-  const docPanelIds = panelIds.filter((id) => id !== graphPanelId);
+  const reserved = new Set(reservedPanelIds);
+  const docPanelIds = panelIds.filter((id) => !reserved.has(id));
   const removeIds = docPanelIds.filter((id) => !wanted.has(id));
   const removed = new Set(removeIds);
   const present = new Set(panelIds.filter((id) => !removed.has(id)));
   const availableDocPanels = docPanelIds.filter((id) => !removed.has(id));
+  const presentReservedId = reservedPanelIds.find((id) => present.has(id)) ?? null;
   const addPanels: DockWorkspacePanelSpec[] = [];
 
   for (const doc of normalizedOpenDocs) {
     if (present.has(doc.nodeId)) continue;
-    // Dock the first document to the LEFT of the graph; further documents tab into
-    // the existing document group. When the graph is hidden and no document is open
+    // Dock the first document to the LEFT of the slot occupant; further documents tab
+    // into the existing document group. When the slot is empty and no document is open
     // yet, there is nothing to reference — the panel seeds the empty workspace at
-    // the root and takes the full center width (graph-hidden ⇒ docs full spread).
-    const referencePanel =
-      availableDocPanels[0] ?? (present.has(graphPanelId) ? graphPanelId : null);
+    // the root and takes the full center width (empty slot ⇒ docs full spread).
+    const referencePanel = availableDocPanels[0] ?? presentReservedId;
     addPanels.push({
       id: doc.nodeId,
       component: "doc",
@@ -147,7 +157,7 @@ export function deriveDockWorkspaceSyncPlan(
         : {
             position: {
               referencePanel,
-              direction: referencePanel === graphPanelId ? "left" : "within",
+              direction: reserved.has(referencePanel) ? "left" : "within",
             },
           }),
     });

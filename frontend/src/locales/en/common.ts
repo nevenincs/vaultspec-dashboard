@@ -30,7 +30,6 @@ export const common = {
     confirmAction: "Confirm {{action}}?",
     recordShortcut: "Record a shortcut for {{action}}",
     resizeActivityPanel: "Resize activity panel",
-    resizeAgentPanel: "Resize agent panel",
     resizeNavigationPanel: "Resize navigation panel",
     resizeTimeline: "Resize timeline",
     resetShortcut: "Reset the shortcut for {{action}}",
@@ -63,7 +62,6 @@ export const common = {
     goToDestinationNode: "Open destination",
     highlightOnStage: "Show on stage",
     hideActivityPanel: "Hide activity panel",
-    hideApprovals: "Hide approvals",
     hideGraph: "Hide graph",
     hideProjectHealth: "Hide project health",
     hideSearchStatus: "Hide search status",
@@ -83,7 +81,6 @@ export const common = {
     retry: "Retry",
     searchDocumentsAndCode: "Search documents and code…",
     showActivityPanel: "Show activity panel",
-    showApprovals: "Show approvals",
     showChanges: "Show changes",
     showGraph: "Show graph",
     showOrHideGraph: "Show or hide graph",
@@ -148,6 +145,11 @@ export const common = {
       home: "Home",
       search: "Search",
       status: "Status",
+    },
+    centerSlot: {
+      agent: "Agent",
+      graph: "Graph",
+      switcher: "Center panel",
     },
     regions: {
       activity: "Activity",
@@ -253,7 +255,6 @@ export const common = {
       search: "Search",
       projectHealth: "Project health",
       systemStatus: "System status",
-      approvals: "Review",
       agentService: "Agents",
     },
     actions: {
@@ -263,8 +264,6 @@ export const common = {
       hideProjectHealth: "Hide project health",
       showSystemStatus: "Show system status",
       hideSystemStatus: "Hide system status",
-      showApprovals: "Show review",
-      hideApprovals: "Hide review",
       showAgentService: "Show agents",
       hideAgentService: "Hide agents",
     },
@@ -272,7 +271,6 @@ export const common = {
       search: "Search unavailable",
       projectHealth: "Project health unavailable",
       systemStatus: "System status unavailable",
-      approvals: "Review unavailable",
       agentService: "Agents unavailable",
     },
     accessibility: {
@@ -366,6 +364,12 @@ export const common = {
       togglePanel: "Open or close the agent panel",
       stopRun: "Stop run",
       newSession: "Start new agent session",
+    },
+    pending: {
+      hide: "Hide pending changes",
+      label: "Pending changes",
+      show: "Show pending changes",
+      unavailable: "Pending changes unavailable",
     },
     panel: {
       region: "Agent",

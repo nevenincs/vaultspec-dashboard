@@ -3,7 +3,7 @@ import type { ControlSurfaceId } from "./controlPanels";
 
 type ControlPanelLabelKey =
   | "common:controlPanels.labels.search"
-  | "common:controlPanels.labels.approvals"
+  | "common:agent.pending.label"
   | "common:controlPanels.labels.systemStatus"
   | "common:controlPanels.labels.projectHealth"
   | "common:controlPanels.labels.agentService";
@@ -11,8 +11,8 @@ type ControlPanelLabelKey =
 type ControlPanelActionKey =
   | "common:controlPanels.actions.showSearch"
   | "common:controlPanels.actions.hideSearch"
-  | "common:controlPanels.actions.showApprovals"
-  | "common:controlPanels.actions.hideApprovals"
+  | "common:agent.pending.show"
+  | "common:agent.pending.hide"
   | "common:controlPanels.actions.showSystemStatus"
   | "common:controlPanels.actions.hideSystemStatus"
   | "common:controlPanels.actions.showProjectHealth"
@@ -22,7 +22,7 @@ type ControlPanelActionKey =
 
 type ControlPanelUnavailableTitleKey =
   | "common:controlPanels.unavailableTitles.search"
-  | "common:controlPanels.unavailableTitles.approvals"
+  | "common:agent.pending.unavailable"
   | "common:controlPanels.unavailableTitles.systemStatus"
   | "common:controlPanels.unavailableTitles.projectHealth"
   | "common:controlPanels.unavailableTitles.agentService";
@@ -50,11 +50,11 @@ export type ControlPanelVocabulary =
       "common:controlPanels.unavailableTitles.search"
     >
   | ControlPanelVocabularyEntry<
-      "approvals",
-      "common:controlPanels.labels.approvals",
-      "common:controlPanels.actions.showApprovals",
-      "common:controlPanels.actions.hideApprovals",
-      "common:controlPanels.unavailableTitles.approvals"
+      "pending",
+      "common:agent.pending.label",
+      "common:agent.pending.show",
+      "common:agent.pending.hide",
+      "common:agent.pending.unavailable"
     >
   | ControlPanelVocabularyEntry<
       "backend-health",
@@ -94,12 +94,12 @@ export const CONTROL_PANEL_VOCABULARY = Object.freeze({
     hideLabel: descriptor("common:controlPanels.actions.hideSearch"),
     unavailableTitle: descriptor("common:controlPanels.unavailableTitles.search"),
   }),
-  approvals: Object.freeze({
-    id: "approvals",
-    label: descriptor("common:controlPanels.labels.approvals"),
-    showLabel: descriptor("common:controlPanels.actions.showApprovals"),
-    hideLabel: descriptor("common:controlPanels.actions.hideApprovals"),
-    unavailableTitle: descriptor("common:controlPanels.unavailableTitles.approvals"),
+  pending: Object.freeze({
+    id: "pending",
+    label: descriptor("common:agent.pending.label"),
+    showLabel: descriptor("common:agent.pending.show"),
+    hideLabel: descriptor("common:agent.pending.hide"),
+    unavailableTitle: descriptor("common:agent.pending.unavailable"),
   }),
   "backend-health": Object.freeze({
     id: "backend-health",
@@ -128,7 +128,7 @@ export const CONTROL_PANEL_VOCABULARY = Object.freeze({
 
 export function controlPanelVocabulary(value: unknown): ControlPanelVocabulary | null {
   return value === "search-service" ||
-    value === "approvals" ||
+    value === "pending" ||
     value === "backend-health" ||
     value === "vault-health" ||
     value === "agent-service"

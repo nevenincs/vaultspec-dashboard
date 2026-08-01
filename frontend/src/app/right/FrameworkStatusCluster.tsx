@@ -1,9 +1,10 @@
 // The rail-footer framework status cluster (activity-rail-realignment ADR D2). A
 // slim strip pinned to the activity rail's bottom edge — OUTSIDE the scroll region
-// — with one chip per FOOTER surface: Search service, Review, Vault health. Each
+// — with one chip per FOOTER surface: Search service, Pending changes, Vault health. Each
 // chip shows only a served health tone (the standard status-dot vocabulary) plus
 // at most one served count. Search service and Vault health toggle their modal
-// panel; Review opens the Agent panel's pending-changes view (review-surface-flow
+// panel; Pending changes gives the slot to the Agent panel's pending-changes view
+// (review-surface-flow
 // ADR F1). Backend health is NOT a footer chip — its engine-status read unclearly,
 // so it was pulled from the strip (user UX decision); the Cmd+K palette is its only
 // surfacing path.
@@ -67,10 +68,10 @@ export interface StatusChipProps {
   id: FooterChipId;
   chip: FrameworkStatusChip;
   /** Whether this chip's surface is the open one (its modal panel, or — for the
-   *  review chip — the Agent panel's pending-changes view). */
+   *  pending chip — the Agent panel's pending-changes view). */
   open: boolean;
   /** Activate this chip's surface — toggle its modal panel, or open the Agent
-   *  pending view for the review chip (the shared descriptor's run). */
+   *  pending view for the pending chip (the shared descriptor's run). */
   onToggle: () => void;
   /** FocusZone item ref registering the button in the roving order. */
   chipRef: (el: HTMLElement | null) => void;
@@ -153,8 +154,8 @@ export function FrameworkStatusCluster() {
   // The panels are MODAL (single-open), so one selector yields the open id and
   // each chip's open flag is a value compare — no per-chip store hook in a loop.
   const openPanel = useOpenControlPanel();
-  // The review chip's pressed state tracks the Agent panel's pending view (its
-  // surface is that view, not a modal), so read the panel's open + view flags once.
+  // The pending chip's pressed state tracks the Agent panel's pending view (its
+  // surface is that view, not a modal), so read the slot + view flags once.
   const agentOpen = useAgentPanelOpen();
   const agentView = useAgentPanelView();
   // On touch-first devices the chips grow to the 2.75rem tap floor (the compact
@@ -184,11 +185,11 @@ export function FrameworkStatusCluster() {
         const item = zone.rove(id);
         // The ONE shared descriptor for this chip — composed here exactly as the
         // command palette and keymap compose it, so the chip cannot drift. Panel
-        // chips toggle their modal; the review chip opens the Agent pending view.
+        // chips toggle their modal; the pending chip opens the Agent pending view.
         const action = footerChipAction(id, openPanel);
         if (action.run === undefined) return null;
         const open =
-          id === "approvals" ? agentOpen && agentView === "pending" : openPanel === id;
+          id === "pending" ? agentOpen && agentView === "pending" : openPanel === id;
         return (
           <StatusChip
             key={id}

@@ -159,7 +159,6 @@ export const ltrTestResources = {
         search: "Recherche",
         projectHealth: "Santé du projet",
         systemStatus: "État du système",
-        approvals: "Révision",
         agentService: "Agents locaux",
       },
       actions: {
@@ -169,8 +168,6 @@ export const ltrTestResources = {
         hideProjectHealth: "Masquer la santé du projet",
         showSystemStatus: "Afficher l’état du système",
         hideSystemStatus: "Masquer l’état du système",
-        showApprovals: "Afficher la révision",
-        hideApprovals: "Masquer la révision",
         showAgentService: "Afficher les agents",
         hideAgentService: "Masquer les agents",
       },
@@ -178,7 +175,6 @@ export const ltrTestResources = {
         search: "Recherche indisponible",
         projectHealth: "Santé du projet indisponible",
         systemStatus: "État du système indisponible",
-        approvals: "Révision indisponible",
         agentService: "Agents indisponibles",
       },
       accessibility: {
@@ -833,7 +829,6 @@ export const rtlTestResources = {
         search: "البحث",
         projectHealth: "سلامة المشروع",
         systemStatus: "حالة النظام",
-        approvals: "المراجعة",
         agentService: "الوكلاء",
       },
       actions: {
@@ -843,8 +838,6 @@ export const rtlTestResources = {
         hideProjectHealth: "إخفاء سلامة المشروع",
         showSystemStatus: "إظهار حالة النظام",
         hideSystemStatus: "إخفاء حالة النظام",
-        showApprovals: "إظهار المراجعة",
-        hideApprovals: "إخفاء المراجعة",
         showAgentService: "إظهار الوكلاء",
         hideAgentService: "إخفاء الوكلاء",
       },
@@ -852,7 +845,6 @@ export const rtlTestResources = {
         search: "البحث غير متاح",
         projectHealth: "سلامة المشروع غير متاحة",
         systemStatus: "حالة النظام غير متاحة",
-        approvals: "المراجعة غير متاحة",
         agentService: "الوكلاء غير متاحين",
       },
       accessibility: {

@@ -14,8 +14,8 @@ import {
   controlPanelActions,
   controlPanelToggleAction,
   footerChipAction,
+  agentPendingChangesAction,
   openCommandPaletteAction,
-  reviewInboxAction,
   showKeyboardShortcutsAction,
   toggleFollowModeAction,
   toggleGraphAction,
@@ -29,14 +29,14 @@ import {
 import { useAgentPanel } from "./agentPanel";
 import { KEYBOARD_SHORTCUTS_TOGGLE_BINDING } from "./keyboardShortcuts";
 import { setFollowMode } from "./selection";
-import { setShellGraphVisible } from "./shellLayout";
+import { getShellCenterSlot, setShellCenterSlot } from "./shellLayout";
 
 afterEach(() => {
   resetKeybindings();
   closeControlPanel();
-  useAgentPanel.setState({ open: false, panelView: "transcript" });
+  useAgentPanel.setState({ panelView: "transcript" });
   setFollowMode(true);
-  setShellGraphVisible(true);
+  setShellCenterSlot("graph");
 });
 
 describe("chromeEscapeHatchActions", () => {
@@ -68,10 +68,14 @@ describe("chromeEscapeHatchActions", () => {
 
 describe("state-aware chrome toggles", () => {
   it("projects graph and follow-mode labels from their current state", () => {
-    setShellGraphVisible(false);
+    setShellCenterSlot("none");
     expect(toggleGraphAction().label).toEqual({ key: "common:actions.showGraph" });
-    setShellGraphVisible(true);
+    setShellCenterSlot("graph");
     expect(toggleGraphAction().label).toEqual({ key: "common:actions.hideGraph" });
+    // The agent panel holding the slot means the graph is NOT shown, so the graph
+    // verb offers to show it — the label reads the slot, not a stale boolean.
+    setShellCenterSlot("agent");
+    expect(toggleGraphAction().label).toEqual({ key: "common:actions.showGraph" });
 
     setFollowMode(false);
     expect(toggleFollowModeAction().label).toEqual({
@@ -106,22 +110,23 @@ describe("state-aware chrome toggles", () => {
     expect(useControlPanels.getState().open).toBeNull();
   });
 
-  it("routes the review chip to the Agent pending view under the preserved id", () => {
-    const review = reviewInboxAction();
-    // The action id is preserved from the retired Approvals modal so keymap/palette
-    // enrollment carries over unchanged (one descriptor, one id).
-    expect(review.id).toBe("panel:approvals");
-    expect(review.label).toEqual({ key: "common:controlPanels.actions.showApprovals" });
+  it("routes the pending chip to the Agent pending view on the agent plane", () => {
+    const pending = agentPendingChangesAction();
+    // The retired Approvals modal's id and vocabulary are GONE: the verb is enrolled
+    // where it acts, and its label lives under common:agent.*.
+    expect(pending.id).toBe("agent:pending-changes");
+    expect(pending.label).toEqual({ key: "common:agent.pending.show" });
 
-    // footerChipAction dispatches the review chip to that descriptor and the panel
+    // footerChipAction dispatches the pending chip to that descriptor and the panel
     // chips to their modal toggle.
-    expect(footerChipAction("approvals", null).id).toBe("panel:approvals");
+    expect(footerChipAction("pending", null).id).toBe("agent:pending-changes");
     expect(footerChipAction("search-service", null).id).toBe("panel:search-service");
 
-    review.run?.();
-    expect(useAgentPanel.getState().open).toBe(true);
+    setShellCenterSlot("graph");
+    pending.run?.();
+    // It gives the center slot to the Agent panel, never opens a modal control panel.
+    expect(getShellCenterSlot()).toBe("agent");
     expect(useAgentPanel.getState().panelView).toBe("pending");
-    // It opens the Agent panel, never a modal control panel.
     expect(useControlPanels.getState().open).toBeNull();
   });
 
@@ -137,12 +142,12 @@ describe("state-aware chrome toggles", () => {
       controlPanelToggleAction("vault-health", "vault-health"),
       controlPanelToggleAction("agent-service", null),
       controlPanelToggleAction("agent-service", "agent-service"),
-      reviewInboxAction(),
+      agentPendingChangesAction(),
     ];
 
-    setShellGraphVisible(false);
+    setShellCenterSlot("none");
     actions.push(toggleGraphAction());
-    setShellGraphVisible(true);
+    setShellCenterSlot("graph");
     actions.push(toggleGraphAction());
     setFollowMode(false);
     actions.push(toggleFollowModeAction());

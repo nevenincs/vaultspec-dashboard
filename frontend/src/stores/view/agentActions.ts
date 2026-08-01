@@ -35,6 +35,7 @@ import {
   toggleAgentPanel,
   useAgentPanel,
 } from "./agentPanel";
+import { getShellCenterSlot } from "./shellLayout";
 
 export const AGENT_TOGGLE_PANEL_ACTION_ID = "agent:toggle-panel";
 export const AGENT_STOP_RUN_ACTION_ID = "agent:stop-run";
@@ -152,15 +153,17 @@ export function startNewAgentSession(): void {
 
 // --- descriptor builders (one per verb, across eligible planes) -----------------
 
-/** Open/close the docked Agent panel. The label reflects the resulting action so
+/** Give the center slot to the Agent panel, or empty it when the panel already holds
+ *  it (agent-panel-shell-integration D1). The label reflects the resulting action so
  *  the current state reads from the verb (the `toggleGraphAction` precedent). */
 export function agentTogglePanelAction(): ActionDescriptor {
   return withAccelerator({
     id: AGENT_TOGGLE_PANEL_ACTION_ID,
     label: {
-      key: useAgentPanel.getState().open
-        ? "common:agent.actions.closePanel"
-        : "common:agent.actions.openPanel",
+      key:
+        getShellCenterSlot() === "agent"
+          ? "common:agent.actions.closePanel"
+          : "common:agent.actions.openPanel",
     },
     section: "navigate",
     icon: Bot,

@@ -169,7 +169,7 @@ describe("ControlPanels", () => {
     ).toBe(true);
   });
 
-  it("no longer hosts an approvals modal (review folded into the Agent panel)", () => {
+  it("no longer hosts a review modal (the queue folded into the Agent panel)", () => {
     // The retired approvals id is not a modal ControlPanelId: opening it is a no-op
     // at the boundary, so no dialog can be summoned and the review station never
     // mounts in this host (review-surface-flow ADR F1).

@@ -56,13 +56,16 @@ describe("useControlPanels store", () => {
     expect(useControlPanels.getState().open).toBe("backend-health");
   });
 
-  it("no longer treats the retired approvals id as a modal panel", () => {
-    // Review folded into the Agent panel (review-surface-flow ADR F1): `approvals`
-    // is a footer-chip id only, so it can never open a modal here.
-    openControlPanel("approvals");
-    expect(useControlPanels.getState().open).toBeNull();
-    toggleControlPanel("approvals");
-    expect(useControlPanels.getState().open).toBeNull();
+  it("never treats the pending-changes chip id as a modal panel", () => {
+    // The queue folded into the Agent panel (review-surface-flow ADR F1): `pending`
+    // is a footer-chip id only, so it can never open a modal here. The retired
+    // Approvals id is gone entirely and is equally inert.
+    for (const id of ["pending", "approvals"]) {
+      openControlPanel(id);
+      expect(useControlPanels.getState().open).toBeNull();
+      toggleControlPanel(id);
+      expect(useControlPanels.getState().open).toBeNull();
+    }
   });
 });
 

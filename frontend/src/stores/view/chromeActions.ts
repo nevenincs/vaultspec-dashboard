@@ -33,7 +33,7 @@ import { chordToKeycaps } from "../../platform/keymap/chord";
 import { effectiveChord, getKeybinding } from "../../platform/keymap/registry";
 import { COMMAND_PALETTE_ACTION_ID, openCommandPalette } from "./commandPalette";
 import { followModeEnabled, toggleFollowMode } from "./selection";
-import { getShellGraphVisible, toggleShellGraphVisible } from "./shellLayout";
+import { getShellCenterSlot, toggleShellGraphSlot } from "./shellLayout";
 import {
   KEYBOARD_SHORTCUTS_TOGGLE_ACTION_ID,
   openKeyboardShortcuts,
@@ -109,9 +109,10 @@ export function resetLayoutAction(): ActionDescriptor {
 
 export const GRAPH_TOGGLE_ACTION_ID = "window:graph";
 
-/** Toggle the GRAPH (with its tethered timeline) in the center (appshell-reframe
- *  #11). ONE shared builder composed by the keymap, the command palette
- *  (`buildWindowCommands`), and the background context menu under the single id
+/** Give the center slot to the GRAPH (with its tethered timeline), or empty it when
+ *  the graph already holds it (agent-panel-shell-integration D1). ONE shared builder
+ *  composed by the keymap, the command palette (`buildWindowCommands`), the dock
+ *  header's segmented switch, and the background context menu under the single id
  *  `window:graph` (unified-action-plane), so the chord, the legend, and the menu
  *  entry cannot drift; the label reflects the resulting action so it reads the
  *  current state. A layout toggle, not a mutation — not time-travel gated. */
@@ -119,13 +120,14 @@ export function toggleGraphAction(): ActionDescriptor {
   return withAccelerator({
     id: GRAPH_TOGGLE_ACTION_ID,
     label: {
-      key: getShellGraphVisible()
-        ? "common:actions.hideGraph"
-        : "common:actions.showGraph",
+      key:
+        getShellCenterSlot() === "graph"
+          ? "common:actions.hideGraph"
+          : "common:actions.showGraph",
     },
     section: "transform",
     icon: Network,
-    run: toggleShellGraphVisible,
+    run: toggleShellGraphSlot,
   });
 }
 
@@ -167,11 +169,11 @@ const CONTROL_PANEL_ACTION_ICONS: Record<ControlPanelId, ActionIcon> = {
   "agent-service": Bot,
 };
 
-/** The review chip's stable action id (review-surface-flow ADR F1). PRESERVED from
- *  the retired Approvals modal so keymap + command-palette enrollment carries over
- *  unchanged — one descriptor, one id — even though the verb now opens the Agent
- *  panel's pending-changes view rather than a modal. */
-export const REVIEW_INBOX_ACTION_ID = "panel:approvals";
+/** The pending-changes chip's stable action id. The verb opens the Agent panel's
+ *  pending-changes view, so it is enrolled on the AGENT plane
+ *  (agent-panel-shell-integration D1) — the last trace of the retired Approvals
+ *  modal, `panel:approvals`, is retired with the "Review" vocabulary it carried. */
+export const AGENT_PENDING_CHANGES_ACTION_ID = "agent:pending-changes";
 
 /** Toggle one framework control panel (activity-rail-realignment D4): ONE shared
  *  descriptor per panel under a single id, composed by the rail-footer chip, the
@@ -199,15 +201,14 @@ export function controlPanelActions(
   return CONTROL_PANEL_IDS.map((id) => controlPanelToggleAction(id, openControlPanel));
 }
 
-/** Open the review inbox (review-surface-flow ADR F1): the SHARED descriptor for the
- *  footer Review chip and its Cmd+K command, under the preserved `panel:approvals`
- *  id. It opens the Agent panel's pending-changes view — not a modal — so the queue
- *  opens beside the work, never blocking it. Its label + count source stay the
- *  retired panel's vocabulary (the chip's identity is preserved, its host is not). */
-export function reviewInboxAction(): ActionDescriptor {
+/** Open the pending-changes inbox (review-surface-flow ADR F1): the SHARED
+ *  descriptor for the footer chip and its Cmd+K command. It gives the center slot
+ *  to the Agent panel in its pending-changes view — not a modal — so the queue
+ *  opens beside the work, never blocking it. */
+export function agentPendingChangesAction(): ActionDescriptor {
   return withAccelerator({
-    id: REVIEW_INBOX_ACTION_ID,
-    label: CONTROL_PANEL_VOCABULARY.approvals.showLabel,
+    id: AGENT_PENDING_CHANGES_ACTION_ID,
+    label: { key: "common:agent.pending.show" },
     section: "navigate",
     icon: ClipboardCheck,
     run: () => openAgentPanel({ view: "pending" }),
@@ -215,15 +216,15 @@ export function reviewInboxAction(): ActionDescriptor {
 }
 
 /** The ONE shared descriptor for a rail-footer status chip, dispatched by id: the
- *  two panel-backed chips fire their modal toggle; the review chip opens the Agent
+ *  two panel-backed chips fire their modal toggle; the pending chip opens the Agent
  *  panel's pending view. Composed identically by the footer cluster and the command
  *  palette so no chip can drift (actions-keymap-palette). */
 export function footerChipAction(
   id: FooterChipId,
   openControlPanel: ControlPanelId | null,
 ): ActionDescriptor {
-  return id === "approvals"
-    ? reviewInboxAction()
+  return id === "pending"
+    ? agentPendingChangesAction()
     : controlPanelToggleAction(id, openControlPanel);
 }
 

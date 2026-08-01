@@ -37,7 +37,7 @@ const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const liveAgent = new AgentClient({ baseUrl: "", fetchImpl: liveTransport });
 
 function resetStores(): void {
-  useAgentPanel.setState({ open: true, currentSessionId: null });
+  useAgentPanel.setState({ currentSessionId: null });
   useAgentComposer.setState({
     mentions: [],
     commentBatch: null,
@@ -164,7 +164,7 @@ describe("Composer keyboard contract", () => {
 
   it("starts the next turn in the existing current session", async () => {
     const sessionId = await createLiveSession(`Composer existing ${run}`);
-    useAgentPanel.setState({ open: true, currentSessionId: sessionId });
+    useAgentPanel.setState({ currentSessionId: sessionId });
     renderComposer();
     fireEvent.change(input(), { target: { value: "second prompt" } });
     fireEvent.keyDown(input(), { key: "Enter" });
@@ -287,7 +287,7 @@ describe("Composer mention chips", () => {
 describe("Composer mid-run behavior (D4/S39)", () => {
   it("replaces Send with Stop while a real run streams, and a mid-run submit ENQUEUES server-side", async () => {
     const sessionId = await createLiveSession(`Composer mid-run ${run}`);
-    useAgentPanel.setState({ open: true, currentSessionId: sessionId });
+    useAgentPanel.setState({ currentSessionId: sessionId });
     renderComposer();
 
     // First submit starts a REAL run; the Send slot becomes Stop.
@@ -372,7 +372,7 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     )) as Record<string, unknown>;
     expect(executed.disposition).toBe("awaiting_permission");
 
-    useAgentPanel.setState({ open: true, currentSessionId: sessionId });
+    useAgentPanel.setState({ currentSessionId: sessionId });
     renderComposer();
 
     // The SAME input flips to the steer placeholder once the served pending-interrupt

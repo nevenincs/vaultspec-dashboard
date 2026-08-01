@@ -12,6 +12,12 @@ export const ltrAgentResources = {
     stopRun: "Terminer la conversation",
     newSession: "Démarrer une nouvelle session de l’assistant",
   },
+  pending: {
+    hide: "Masquer les modifications en attente",
+    label: "Modifications en attente",
+    show: "Afficher les modifications en attente",
+    unavailable: "Modifications en attente indisponibles",
+  },
   panel: {
     region: "Assistant",
     sessionsMenu: "Sessions",
@@ -117,6 +123,12 @@ export const rtlAgentResources = {
     togglePanel: "فتح أو إغلاق لوحة المساعد",
     stopRun: "إنهاء المحادثة",
     newSession: "بدء جلسة مساعد جديدة",
+  },
+  pending: {
+    hide: "إخفاء التغييرات المعلقة",
+    label: "التغييرات المعلقة",
+    show: "إظهار التغييرات المعلقة",
+    unavailable: "التغييرات المعلقة غير متاحة",
   },
   panel: {
     region: "المساعد",

@@ -18,6 +18,12 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.actions.togglePanel": { role: "action" },
   "common:agent.actions.stopRun": { role: "action" },
   "common:agent.actions.newSession": { role: "action" },
+  // The rail-footer pending-changes chip, retired out of the "Approvals"/
+  // `panel:approvals` vocabulary onto the agent plane it actually opens.
+  "common:agent.pending.label": { role: "label" },
+  "common:agent.pending.show": { role: "action" },
+  "common:agent.pending.hide": { role: "action" },
+  "common:agent.pending.unavailable": { role: "error-title" },
   "common:agent.panel.region": { role: "label" },
   "common:agent.panel.sessionsMenu": { role: "accessibility" },
   // "New session" is the Figma-bound noun-phrase menu name (like "New document"),

@@ -104,7 +104,7 @@ describe("CompactUnifiedRail composition (live engine, ADR D6)", () => {
     renderRail();
     await screen.findByRole("navigation", { name: "Home" }, ENGINE_WAIT);
 
-    // Three footer chips: Search service, Approvals, Vault health. Backend health was
+    // Three footer chips: Search service, Pending changes, Vault health. Backend health was
     // pulled from the footer (user UX decision); it surfaces via the Cmd+K palette.
     const chips = document.querySelectorAll("[data-framework-chip]");
     expect(chips.length).toBe(3);
