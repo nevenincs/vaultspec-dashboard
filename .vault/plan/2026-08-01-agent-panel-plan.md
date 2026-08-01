@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:ab94800bbc11c33048da818f764f5bdc4742cd081ca07de645f5b27a8de6311f'
+body_hash: 'sha256:22099147a0099c9b56c54cbdeb949047b6f3969e5c0b621b50a628d24444cd73'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -38,10 +38,10 @@ Extend research_adr with Plan → Gate 3 after ADR acceptance, reusing the doc-r
 
 The mid-run structured question: new interrupt node + authoritative disclosure + typed resume, sibling of the proven permissions-respond shape (agent-flow D5).
 
-- [ ] `P03.S07` - Add the clarification graph node raising interrupt() with the bounded payload (max 4 questions, choice or text kinds, required flags, capped strings), callable from Ground and Diverge; `src/vaultspec_a2a/graph/nodes/`.
-- [ ] `P03.S08` - Disclose the pending clarification (request id plus payload) on the run-status response and emit the clarification-pending relay frame; `src/vaultspec_a2a/api/`.
-- [ ] `P03.S09` - Add the POST clarification respond gateway route mapping answers to Command resume of the parked node, mirroring the permissions respond route; `src/vaultspec_a2a/api/routes/gateway.py`.
-- [ ] `P03.S10` - Test the park, disclose, respond, resume round trip over the real graph plus reload-recovery from status disclosure alone; `src/vaultspec_a2a/api/tests/`.
+- [x] `P03.S07` - Add the clarification graph node raising interrupt() with the bounded payload (max 4 questions, choice or text kinds, required flags, capped strings), callable from Ground and Diverge; `src/vaultspec_a2a/graph/nodes/`.
+- [x] `P03.S08` - Disclose the pending clarification (request id plus payload) on the run-status response and emit the clarification-pending relay frame; `src/vaultspec_a2a/api/`.
+- [x] `P03.S09` - Add the POST clarification respond gateway route mapping answers to Command resume of the parked node, mirroring the permissions respond route; `src/vaultspec_a2a/api/routes/gateway.py`.
+- [x] `P03.S10` - Test the park, disclose, respond, resume round trip over the real graph plus reload-recovery from status disclosure alone; `src/vaultspec_a2a/api/tests/`.
 - [ ] `P03.S40` - Consume the already-served presets-list profile summaries (id, display name, default flag, eligibility with reasons, per-role assignments carrying provider ids) in the frontend preset adapter and render the model picker from them, labeling mixed-provider profiles honestly and disabling ineligible ones with their served reasons; `frontend/src/stores/server/agent/a2aTeam.ts`.
 - [ ] `P03.S41` - Wire the clarification node into the research_adr topology as a pre-diverge ground decision point - the researcher role either emits a structured clarify sentinel (parking the run on the questionnaire) or proceeds to fan-out, with a deterministic-profile test forcing the ask; `src/vaultspec_a2a/graph/`.
 
