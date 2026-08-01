@@ -3,6 +3,7 @@ tags:
   - '#research'
   - '#agent-panel'
 date: '2026-07-31'
+modified: '2026-07-31'
 related:
   - '[[2026-07-19-review-surface-flow-research]]'
   - '[[2026-07-19-review-surface-flow-adr]]'
@@ -26,7 +27,7 @@ serves. Grounds the same-feature `agent-panel` ADR: one canonical,
 consolidated home for agent flow, with the a2a orchestrator as backend and
 the dashboard as the sole product surface (edge ADR D7a).
 
-The prior [[2026-07-19-review-surface-flow-research]] benchmarked the REVIEW
+The prior `2026-07-19-review-surface-flow-research` benchmarked the REVIEW
 slice of this plane against seven agentic-dev products and produced an
 accepted ADR (de-modalize the station into the Agent panel, relocate
 autonomy composer-adjacent). This record widens the benchmark from the
@@ -215,7 +216,7 @@ Structural findings the ADR must name:
 ### Binding map: target UX element → operation the frozen edge serves
 
 Every element of the target panel binds to an operation that already exists
-on the ratified cross-repo edge ([[2026-07-14-a2a-orchestration-edge-adr]])
+on the ratified cross-repo edge (`2026-07-14-a2a-orchestration-edge-adr`)
 or to a named, filed gap. Nothing below requires a new wire contract except
 where marked GAP.
 
@@ -227,12 +228,12 @@ where marked GAP.
 | Run transcript / live progress | per-run SSE `GET /ops/a2a/runs/{run_id}/stream` (non-authoritative relay; truth re-read from `run-status` + durable events) | edge D3 |
 | Run header status / stop | `/ops/a2a/run-status`, `/ops/a2a/run-cancel` | edge D1 |
 | Reload/recovery — rebind the one active run (G11) | `/ops/a2a/active-runs` (single-unambiguous-result rule) | edge D1 amendment |
-| Inline proposal review card, in-transcript (review grammar) | `/authoring/v1` proposal lifecycle + three-verdict decisions (`approve`/`reject`/`request_changes` wire verdict `edit`, required comment) | edge D3 amendment; [[2026-07-19-review-surface-flow-adr]] |
+| Inline proposal review card, in-transcript (review grammar) | `/authoring/v1` proposal lifecycle + three-verdict decisions (`approve`/`reject`/`request_changes` wire verdict `edit`, required comment) | edge D3 amendment; `2026-07-19-review-surface-flow-adr` |
 | Cross-run "Pending changes" inbox view | served review-station projection, served eligibility | review-surface-flow F1 |
 | Autonomy control, composer-adjacent (G6 row-2 left: permission scope) | `GET|POST /authoring/v1/mode` — scope-level read + set, shipped; control hidden when no served mode | review-surface-flow F2 (landed) |
 | Comment→agent feedback (review grammar: "do it differently" is composer-shaped) | feedback-batch create/read + `feedback_batch_id` turn field | edge D3 amendment (shipped `d5bfbac932`) |
 | Service health / degradation strip (G10 non-blocking) | `/ops/a2a/service-state`; `agent` tier degradation, never inferred from transport | edge D1, amendment (3) |
-| Sidebar "Agents" lifecycle (start/stop/repair the sibling) | `/a2a/lifecycle/*` client (attach-never-own, machine-global discovery) | [[2026-07-18-a2a-product-provisioning-adr]] W05 |
+| Sidebar "Agents" lifecycle (start/stop/repair the sibling) | `/a2a/lifecycle/*` client (attach-never-own, machine-global discovery) | `2026-07-18-a2a-product-provisioning-adr` W05 |
 | Run↔proposal correlation (inline card exact bind) | served proposal `run_id` where present; actor-identity correlation otherwise — full link is a filed cross-team GAP | review-surface research; wire-gaps record |
 | Scheduled surface (G7 sidebar noun) | a2a persistent task queue exists sibling-side; dashboard surface is FUTURE — no frozen verb yet (GAP, deliberate) | edge D7e |
 | Voice / mic (G6 far right) | deliberately EXCLUDED — no speech seam exists in the product; the grammar slot stays empty rather than faked | this record |
@@ -312,5 +313,5 @@ it canonical and finish the consolidation with these bounded moves:
    frozen verb yet — edge D7e); voice stays an empty grammar slot.
 8. **Sequence.** The ADR extends the accepted review-surface-flow record
    (F1/F2 landed, not re-litigated) and builds strictly on the frozen edge
-   ([[2026-07-14-a2a-orchestration-edge-adr]] D1–D8); nothing here is a
+   (`2026-07-14-a2a-orchestration-edge-adr` D1–D8); nothing here is a
    wire-contract event except what it explicitly defers.

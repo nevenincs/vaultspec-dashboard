@@ -3,10 +3,10 @@ generated: true
 tags:
   - '#index'
   - '#a2a-product-provisioning'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:1e30c0f5bd4f09835adb7a72c96517c225b1d529134400633bc38abf606cb4b2'
+body_hash: 'sha256:823bffabc93065f4736ca990689570ad5c96dd592a6e050e237b6ab302ab4d69'
 related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S01]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P01-S02]]'
@@ -49,6 +49,8 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W01-P03-S24]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P03-S25]]'
   - '[[2026-07-18-a2a-product-provisioning-W01-P03-S26]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S164]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P04-S165]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P04-S27]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P04-S28]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P04-S29]]'
@@ -78,6 +80,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S41]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S42]]'
   - '[[2026-07-18-a2a-product-provisioning-W02-P05-S43]]'
+  - '[[2026-07-18-a2a-product-provisioning-W02-P05-S44]]'
   - '[[2026-07-18-a2a-product-provisioning-W03-P06-S156]]'
   - '[[2026-07-18-a2a-product-provisioning-W03-P06-S157]]'
   - '[[2026-07-18-a2a-product-provisioning-W03-P06-S158]]'
@@ -97,6 +100,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W03-P07-S62]]'
   - '[[2026-07-18-a2a-product-provisioning-W03-P07-S63]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P08-S166]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P08-S185]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P08-S64]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P08-S65]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P08-S66]]'
@@ -110,6 +114,7 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W04-P09-S73]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P09-S74]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P09-S75]]'
+  - '[[2026-07-18-a2a-product-provisioning-W04-P09-S76]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P09-S77]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P09-S78]]'
   - '[[2026-07-18-a2a-product-provisioning-W04-P09-S79]]'
@@ -139,6 +144,9 @@ related:
   - '[[2026-07-18-a2a-product-provisioning-W05-P12-S97]]'
   - '[[2026-07-18-a2a-product-provisioning-W05-P12-S98]]'
   - '[[2026-07-18-a2a-product-provisioning-W05-P12-S99]]'
+  - '[[2026-07-18-a2a-product-provisioning-W06-P13-S107]]'
+  - '[[2026-07-18-a2a-product-provisioning-W06-P13-S127]]'
+  - '[[2026-07-18-a2a-product-provisioning-W06-P15-S182]]'
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-plan]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
@@ -182,7 +190,6 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P02-S13` - Validate secret-free versioned A2A discovery, live process identity, owner handoff reference, freshness, compatibility, and foreign immutability
 - `2026-07-18-a2a-product-provisioning-W01-P02-S14` - Broker bounded authenticated liveness, readiness, drain, shutdown, and lifecycle-entrypoint calls through the capsule contract
 - `2026-07-18-a2a-product-provisioning-W01-P02-S15` - Spawn only the manifest-declared gateway entrypoint and contain the owned process tree through bounded graceful and forced cleanup
-- `2026-07-18-a2a-product-provisioning-W01-P02-S16` - Implement receipt-gated lifecycle transitions while preserving cold installed state, foreign attach, mutable data, and complete release-set authority
 - `2026-07-18-a2a-product-provisioning-W01-P02-S17` - Prove owner attach, foreign conflict, stale-owner recovery, credential separation, and lifecycle refusal with real processes, files, and sockets
 - `2026-07-18-a2a-product-provisioning-W01-P02-S18` - Prove stop, repair, remove, data preservation, descendant cleanup, and bounded timeout outcomes against the real A2A desktop capsule
 - `2026-07-18-a2a-product-provisioning-W01-P02-S86` - Keep the manifest-declared standalone MCP entrypoint inspectable but outside every dashboard start, adopt, stop, drain, and cleanup path
@@ -211,7 +218,6 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S172` - Construct an opaque active receipt only from a consuming unique-borrow lifetime-bound verified release set, retain exact authority on every non-success, and durably publish through the fixed tear-safe journal
 - `2026-07-18-a2a-product-provisioning-W01-P01-S174` - Implement the isolated TUF 1.0 distribution-authority crate and bounded helper that verify an exactly six-target offline repository from embedded-root authority through pinned tough 0.24.0 filesystem transport, persist rollback freeze root-continuity and latest-known-time state, and expose only opaque non-cloneable verified release authority to linked Rust consumers
 - `2026-07-18-a2a-product-provisioning-W01-P01-S175` - Replace generic arbitrary-path credential access with ProductPaths-derived dashboard-only authority and a creation-free bounded foreign handoff reader, securely create retained ownership and attach-control files before secret bytes on Unix and Windows, remove Rust worker-IPC minting, and retain pending or existing ownership proof through durable bootstrap recovery
-- `2026-07-18-a2a-product-provisioning-W01-P01-S176` - Implement sealed provisioning and active-release facades that consume TUF-verified distribution exact installation-lock and unpublished-generation authority plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery
 - `2026-07-18-a2a-product-provisioning-W02-P04-S30` - Replace token-bearing discovery and unauthenticated health attachment with the product controller's versioned authenticated endpoint resolution
 - `2026-07-18-a2a-product-provisioning-W02-P04-S31` - Resolve run streams through the same authenticated product endpoint and reject stale, incompatible, or untrusted discovery
 - `2026-07-18-a2a-product-provisioning-W02-P05-S150` - Export the crate-private dedicated A2A run-token lease repository module without coupling it to authoring-session storage
@@ -295,6 +301,16 @@ Auto-generated index of all documents tagged with `#a2a-product-provisioning`.
 - `2026-07-18-a2a-product-provisioning-W05-P12-S99` - Define localized agent-service labels, toggle actions, and unavailable title in the canonical control-panel vocabulary
 - `2026-07-18-a2a-product-provisioning-W01-P01-S177` - Deliver Windows directory-metadata durability for the trust datastore as a BLOCKING PREREQUISITE of the Stage-4 integrated proof and the Stage-5 datastore half. No typed durability refusal may remain in the non-test Windows build. Reach the object through an already-retained handle, never a reconstructed path. Bounded and fail-closed. Acceptance removes the 8 cfg(unix) scopes so those tests pass on real NTFS and deletes the interim refusal test. If NTFS journaling makes an explicit sync unnecessary, record that as a reviewed durability argument with crash and power-loss reasoning, never assume it silently.
 - `2026-07-18-a2a-product-provisioning-W01-P01-S178` - Guard the duplicated VAULTSPEC_APP_HOME resolver with one agreement test asserting ProductPaths derive equals ProductPaths under_app_home of app_home_dir, using the process environment with no env mutation, plus a one-line comment at each site naming the other and recording that a new leaf crate is revisited only if the resolver acquires branching precedence or a third implementation appears
+- `2026-07-18-a2a-product-provisioning-W01-P01-S176` - Implement sealed provisioning and active-release facades that consume the verified release under the unsigned-channel authority (TUF retained-in-code, deferred, not a release gate), exact installation-lock and unpublished-generation authority, plus pending or existing ownership proof, derive private manifest and receipt facts, publish only through the fixed journal, expose non-authorizing settled observation, and preserve every exact authority across bounded retry or recovery
+- `2026-07-18-a2a-product-provisioning-W01-P02-S16` - Implement active-receipt-only lifecycle transitions that reject candidate or rolling-back records bind every start and mutation to the verified complete release set and preserve cold state foreign attach mutable data and standalone-MCP ownership
+- `2026-07-18-a2a-product-provisioning-W02-P04-S164` - Verify the receipt-selected generation against the receipt-bound release-set and component-lock digests plus every installed file digest before starting and never trust a lock supplied only by the candidate tree
+- `2026-07-18-a2a-product-provisioning-W02-P04-S165` - Prove unreceipted staged rolling-back substituted incomplete tampered and self-authorized generations remain inert while one active fully verified receipt can start the frozen binary's dispatch (serve or start)
+- `2026-07-18-a2a-product-provisioning-W02-P05-S44` - Prove dashboard run-start remains one of five public verbs, downstream prepare refusal mints nothing, invalid roles fail closed, commit failure cancels and revokes, attach-control-authenticated terminal callbacks settle once after durable A2A state, INPUT_REQUIRED retains the lease, and restart or expiry reconciliation revokes the exact bundle
+- `2026-07-18-a2a-product-provisioning-W04-P08-S185` - Reshape the a2a_component contract from the retired capsule join to the dashboard-built onedir build source, shrink the component lock to a source pin plus freeze-recipe entry identity, retire capsule_manifest and capsule_archive from the release-set schema parser and authority surface, and admit the built onedir as an ordinary digest-covered build source
+- `2026-07-18-a2a-product-provisioning-W04-P09-S76` - Package every dashboard, updater, capsule, manifest, license, and SBOM file into the complete MSI with product receipt and uninstall semantics
+- `2026-07-18-a2a-product-provisioning-W06-P13-S107` - Create a production-artifact certifier that opens published archives, validates complete receipts and payloads, and executes installed commands
+- `2026-07-18-a2a-product-provisioning-W06-P13-S127` - Create the mandatory real-artifact certification workflow with network isolation, retained diagnostics, and no skip or expected-failure path
+- `2026-07-18-a2a-product-provisioning-W06-P15-S182` - L3a engine-serve socket stability. Resolve the defect where live serve drops in-flight connections under the loaded frontend live-vitest suite (watcher rebuild-swap dropping sockets) so the suite sees no socket hang up. Verify the frontend live-vitest suite completes with zero socket hang up on the runner
 
 ### plan
 

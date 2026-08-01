@@ -3,8 +3,8 @@ generated: true
 tags:
   - '#index'
   - '#a2a-orchestration-edge'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
 body_hash: 'sha256:b5347fe5d835ba1049d20b2351771e94f7b7500700e0435a7ee1161cede6d5e4'
 related:

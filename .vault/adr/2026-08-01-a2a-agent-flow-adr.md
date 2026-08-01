@@ -1,8 +1,10 @@
 ---
 tags:
   - '#adr'
-  - '#a2a-agent-flow'
+  - '#agent-panel'
 date: '2026-08-01'
+modified: '2026-08-01'
+body_hash: 'sha256:c271a95e0676456fa143c7ad9df0a06d30c99fe52f4f9c41dfc1a38215a7c965'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
@@ -18,7 +20,7 @@ related:
 
 The AgentPanel forwards a user's natural-language query to a team or a
 single agent, with the user choosing model, provider, and team at the
-composer. The frozen cross-repo edge ([[2026-07-14-a2a-orchestration-edge-adr]]
+composer. The frozen cross-repo edge (`2026-07-14-a2a-orchestration-edge-adr`
 D1–D8) fixes HOW the dashboard reaches a2a; nothing yet fixes WHAT a2a
 serves when the query arrives. A source-verified inventory (2026-08-01,
 read-only, both repos) establishes an honest baseline: a2a is NOT a stub at
@@ -92,7 +94,7 @@ review, per the owner's mandate.
   front of a frozen edge; misclassification silently spends a team run on
   a one-line edit or starves a feature request of research. The user's
   explicit selection is already the composer grammar
-  ([[2026-07-31-agent-panel-ux-research]] G5/G6).
+  (`2026-07-31-agent-panel-ux-research` G5/G6).
 - **Route by explicit preset selection at the composer (CHOSEN).** The
   team/agent selector IS the router: presets are served (`presets-list`),
   the user picks solo or pipeline, defaulting sensibly by context
@@ -256,7 +258,7 @@ point of the pipeline.
   profiles only, and profiles admit only live-proven providers.
 - The clarification surface gives the dashboard its first structured
   question-rendering obligation — the questionnaire UI decided in
-  [[2026-08-01-agent-panel-shell-integration-adr]] binds to exactly the
+  `2026-08-01-agent-panel-shell-integration-adr` binds to exactly the
   D5 payload shape.
 - Two repos change in lockstep for D5; per the edge ADR, the verb
   whitelist change is documented once and mutually referenced, and lands

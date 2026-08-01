@@ -3,10 +3,10 @@ generated: true
 tags:
   - '#index'
   - '#a2a-integration-verification'
-date: '2026-07-31'
-modified: '2026-07-31'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:7884745013b669c18be10c2794df6e1f603cc8bfb41f58c81da07db3adf39085'
+body_hash: 'sha256:8f93fa70c596a0b7add973702bd72b2b8d5d1854b7200395637cd37c5aab5570'
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'
@@ -21,7 +21,7 @@ Auto-generated index of all documents tagged with `#a2a-integration-verification
 
 ### adr
 
-- `2026-07-31-a2a-integration-verification-adr` - `a2a-integration-verification` adr: `prove the agentic loop against a real a2a: harness placement, a model-only double, and a staged substrate` | (**status:** `proposed`)
+- `2026-07-31-a2a-integration-verification-adr` - `a2a-integration-verification` adr: `prove the agentic loop against a real a2a: harness placement, a model-only double, and a staged substrate` | (**status:** `accepted`)
 
 ### plan
 

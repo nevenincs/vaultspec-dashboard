@@ -4,7 +4,6 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:ad855d1b10b75df2b89b87836a6c872a8c4abaa7d7c038791702190f5de48853'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -30,9 +29,9 @@ Add the single-agent document-editing lane: new persona + preset cloned from sol
 
 Extend research_adr with Plan → Gate 3 after ADR acceptance, reusing the doc-reviewer loop and phase-gate pattern; wire or delete the orphaned persona TOMLs (agent-flow D4).
 
-- [ ] `P02.S04` - Extend the research_adr compiler with the Plan phase (plan-author role, doc-reviewer inner loop, phase-gate interrupt at Gate 3) and extend supported_capabilities with plan_document; `src/vaultspec_a2a/graph/`.
-- [ ] `P02.S05` - Adapt the orphaned vaultspec-planner persona to the vault Plan-document mandate and wire or delete vaultspec-reviewer and vaultspec-analyst in the same change; `src/vaultspec_a2a/team/presets/agents/`.
-- [ ] `P02.S06` - Test a full three-phase deterministic run parking at Gate 3 with a plan proposal, where approve completes and request_changes revises; `src/vaultspec_a2a/graph/tests/nodes/`.
+- [x] `P02.S04` - Extend the research_adr compiler with the Plan phase (plan-author role, doc-reviewer inner loop, phase-gate interrupt at Gate 3) and extend supported_capabilities with plan_document; `src/vaultspec_a2a/graph/`.
+- [x] `P02.S05` - Adapt the orphaned vaultspec-planner persona to the vault Plan-document mandate and wire or delete vaultspec-reviewer and vaultspec-analyst in the same change; `src/vaultspec_a2a/team/presets/agents/`.
+- [x] `P02.S06` - Test a full three-phase deterministic run parking at Gate 3 with a plan proposal, where approve completes and request_changes revises; `src/vaultspec_a2a/graph/tests/nodes/`.
 
 ### Phase `P03` - Clarification interrupt (a2a side)
 
@@ -42,13 +41,14 @@ The mid-run structured question: new interrupt node + authoritative disclosure +
 - [ ] `P03.S08` - Disclose the pending clarification (request id plus payload) on the run-status response and emit the clarification-pending relay frame; `src/vaultspec_a2a/api/`.
 - [ ] `P03.S09` - Add the POST clarification respond gateway route mapping answers to Command resume of the parked node, mirroring the permissions respond route; `src/vaultspec_a2a/api/routes/gateway.py`.
 - [ ] `P03.S10` - Test the park, disclose, respond, resume round trip over the real graph plus reload-recovery from status disclosure alone; `src/vaultspec_a2a/api/tests/`.
+- [ ] `P03.S40` - Serve each preset's declared model profiles (profile id plus resolved provider) on the presets-list summary so the composer's model picker can render exactly the served list per agent-flow ADR D3; `src/vaultspec_a2a/api/`.
 
 ### Phase `P04` - Clarification contract events (engine)
 
 The three reviewed contract events crossing the frozen edge: verb whitelist, relay frame acceptance, boundary validation (agent-flow D5; edge ADR amendment discipline).
 
-- [ ] `P04.S11` - Add clarification-respond to the ops a2a verb whitelist with boundary-validated bounded args (run id, request id, answers keyed by question id); `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
-- [ ] `P04.S12` - Accept and relay the clarification-pending frame kind within existing frame caps, with a conformance test that the relay stays non-authoritative; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
+- [x] `P04.S11` - Add clarification-respond to the ops a2a verb whitelist with boundary-validated bounded args (run id, request id, answers keyed by question id); `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [x] `P04.S12` - Accept and relay the clarification-pending frame kind within existing frame caps, with a conformance test that the relay stays non-authoritative; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
 - [ ] `P04.S13` - Record the whitelist change as a reviewed contract event mutually referenced in both repos per the edge ADR consequence; `.vault/adr/2026-07-14-a2a-orchestration-edge-adr.md`.
 
 ### Phase `P05` - Center-slot rehome (frontend shell)
@@ -78,7 +78,7 @@ The conversation grammar: bubbles, one-disclosure work stretches, stat cards, do
 
 - [ ] `P07.S25` - Render user turns as right-aligned accent bubbles and assistant turns as full-width open markdown; `frontend/src/app/agent/Transcript.tsx`.
 - [ ] `P07.S26` - Group tool calls and thinking under one collapsed elapsed-labeled disclosure per work stretch expanding to the flat icon-label timeline, preserving the inline permission prompt; `frontend/src/app/agent/ToolCallEntry.tsx`.
-- [ ] `P07.S27` - Add the served aggregate and per-file diffstat to the proposal card with terminal-right actions; `frontend/src/app/authoring/ReviewStation.tsx`.
+- [ ] `P07.S27` - Add an aggregate and per-file diffstat to the proposal card, client-computed from the served proposal-detail bodies (the wire deliberately serves no diff), with terminal-right actions; `frontend/src/app/authoring/ReviewStation.tsx`.
 - [ ] `P07.S28` - Rehome run metadata (phase, roster with per-role model, sources, elapsed) into the collapsible docked run header region; `frontend/src/app/agent/TeamRunProgressContext.tsx`.
 - [ ] `P07.S29` - Add render tests over authored states for each C-rule surface; `frontend/src/app/agent/`.
 
@@ -104,6 +104,7 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 
 - [ ] `P10.S36` - Live-drive Archetype A: open document, attach @-evidence, solo run, inline three-verdict review, applied change visible in the split, with screenshots persisted; `frontend/src/testing/`.
 - [ ] `P10.S37` - Live-drive Archetype B: team run through research, clarification questionnaire answer, ADR proposal acceptance with one request_changes loop, plan proposal, with screenshots persisted; `frontend/src/testing/`.
+- [ ] `P10.S39` - Repair the dev-tooling scanner roots (localization, px, tokens, figma-names, module-size) and the justfile invocation path so every frontend gate command actually runs, grandfathering pre-existing module-size violators explicitly; `frontend/dev/tooling/`.
 - [ ] `P10.S38` - Run full lint and live-wire gates in both repos and record Figma frame debt plus the compact read-only run-status affordance as named follow-ons; `frontend/package.json`.
 
 ## Parallelization

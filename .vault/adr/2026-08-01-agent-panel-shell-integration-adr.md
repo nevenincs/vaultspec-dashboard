@@ -1,8 +1,10 @@
 ---
 tags:
   - '#adr'
-  - '#agent-panel-shell-integration'
+  - '#agent-panel'
 date: '2026-08-01'
+modified: '2026-08-01'
+body_hash: 'sha256:bbf596b58119bbfa358076816ee2b7500a9adeaf566e28c71e0dce41c2de5de2'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'
@@ -28,9 +30,9 @@ the interface where the user enters a query forwarded to a team or a
 single agent, selects model and team, and attaches evidence with
 `@rel/path` autocomplete. Its conversation rendering must follow what the
 reference products actually do — verified live this pass
-([[2026-07-31-agent-panel-ux-research]] C1–C8), not guessed — and it must
+(`2026-07-31-agent-panel-ux-research` C1–C8), not guessed — and it must
 render the mid-run clarification questionnaire the companion
-[[2026-08-01-a2a-agent-flow-adr]] D5 defines. This record decides the
+`2026-08-01-a2a-agent-flow-adr` D5 defines. This record decides the
 shell topology, the composer specification, and the conversation grammar.
 
 ## Considerations
@@ -41,7 +43,7 @@ shell topology, the composer specification, and the conversation grammar.
   WebGL Stage portal-pinned over the placeholder rect
   (`GraphCanvasHost`) precisely so docking/toggling never re-parents the
   canvas (an app-lifetime singleton,
-  [[2026-07-31-visual-review-authored-states-adr]] constraints). The
+  `2026-07-31-visual-review-authored-states-adr` constraints). The
   visibility toggle already rides the dock's top-right header action
   cluster. When the graph is hidden, documents take the full width; with
   nothing open, the dock shows a ghost empty state.
@@ -95,7 +97,7 @@ shell topology, the composer specification, and the conversation grammar.
 - Non-modal law: no agent operation ever opens a modal host
   (review-surface-flow); the questionnaire renders in-transcript.
 - No new wire: this record consumes the frozen edge and the three
-  contract events named in [[2026-08-01-a2a-agent-flow-adr]] D5 — nothing
+  contract events named in `2026-08-01-a2a-agent-flow-adr` D5 — nothing
   else. Relay frames stay non-authoritative (edge D3).
 - Localization catalog law: every retired or added vocabulary key walks
   the four registered touch points; the module-size gate (1500) applies
@@ -143,7 +145,7 @@ evidence, / for commands"). Row 2 LEFT (what the agent works on): `+`
 attach, the `@`-evidence chips, and the autonomy pill (which is the
 approval-mode selector the references converge on, C6). Row 2 RIGHT (how
 it thinks): the team/preset selector and the model picker rendering ONLY
-served profiles ([[2026-08-01-a2a-agent-flow-adr]] D3), then send —
+served profiles (`2026-08-01-a2a-agent-flow-adr` D3), then send —
 which swaps to a stop square while a run streams (C6). Enter sends;
 there is no oversized send button. `@foobar` evidence attach: typing `@`
 opens rel-path autocomplete riding the existing search-provider seam
