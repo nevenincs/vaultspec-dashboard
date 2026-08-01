@@ -13,6 +13,10 @@
 use axum::Json;
 use axum::http::StatusCode;
 use serde_json::{Value, json};
+use vaultspec_product::a2a_contract::{
+    A2A_MAX_CLARIFICATION_ANSWER_CHARS, A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS,
+    A2A_MAX_CLARIFICATION_QUESTIONS, A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS,
+};
 
 use super::{
     A2A_CONTROL_BUDGET, A2aVerbBody, ForwardedCall, Method, validate_bounded_text,
@@ -20,18 +24,27 @@ use super::{
 };
 use crate::app::AppState;
 
-/// The clarification caps, mirroring the interrupt payload the a2a node raises
-/// (agent-flow D5: at most four questions per request, four options per choice,
-/// capped strings). The engine bounds the ANSWER side of that same shape: at
-/// most one answer per question, each a bounded string.
-pub(super) const MAX_A2A_CLARIFICATION_ANSWERS: usize = 4;
-/// 64, not the 128 a run id gets: this is an interrupt id the sibling mints,
-/// never a caller-chosen slug, and it matches the landed
-/// `PathSafeClarificationRequestId` bound exactly — so an overlong id is
-/// refused HERE rather than forwarded for the sibling to reject, the same
-/// reasoning that pins the run-start message cap to the sibling's own ceiling.
-pub(super) const MAX_A2A_REQUEST_ID_CHARS: usize = 64;
-pub(super) const MAX_A2A_QUESTION_ID_CHARS: usize = 64;
+// Every cap below is a2a's, imported from the one contract declaration rather
+// than restated here. A boundary that refuses MORE than the sibling strands a
+// questionnaire the sibling issued; one that admits more buys the user an
+// unexplained 422 on a run that stays parked. Neither direction is a safe
+// default, so the engine holds no independent opinion about these numbers.
+
+/// At most one answer per question a bounded request could have asked
+/// (agent-flow D5; a2a's `MAX_QUESTIONS_PER_REQUEST`, which bounds the answer
+/// map as well as the question set).
+pub(super) const MAX_A2A_CLARIFICATION_ANSWERS: usize = A2A_MAX_CLARIFICATION_QUESTIONS;
+
+/// 128, the same ceiling a run id gets, because that is what the id CONTAINS:
+/// a2a mints it as `clarify-{thread_id}` truncated to its own
+/// `MAX_REQUEST_ID_CHARS`. A tighter bound here refuses handles the sibling
+/// legitimately issued and would accept, which leaves the run unanswerable from
+/// this boundary — it was 64 until that was found.
+pub(super) const MAX_A2A_REQUEST_ID_CHARS: usize = A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS;
+
+/// A question id is the key of the forwarded `answers` map, which a2a types as
+/// `QuestionId` — so it takes the identifier cap, not the request-id cap.
+pub(super) const MAX_A2A_QUESTION_ID_CHARS: usize = A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS;
 
 /// An answer value is EITHER a choice option id OR free text; which one a given
 /// question admits is the parked node's authority, not the engine's, so the
@@ -39,7 +52,7 @@ pub(super) const MAX_A2A_QUESTION_ID_CHARS: usize = 64;
 /// characters are refused exactly as they are for every other bounded text
 /// field, so a text answer is one line — the questionnaire renders an input,
 /// never a textarea.
-pub(super) const MAX_A2A_ANSWER_CHARS: usize = 4096;
+pub(super) const MAX_A2A_ANSWER_CHARS: usize = A2A_MAX_CLARIFICATION_ANSWER_CHARS;
 
 /// The sibling route this verb forwards to, named ONCE: this spelling and the
 /// `{"answers": {question_id: answer}}` body key below are the whole

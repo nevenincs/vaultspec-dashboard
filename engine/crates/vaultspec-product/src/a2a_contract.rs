@@ -75,6 +75,72 @@ pub const GATEWAY_SHUTDOWN_PATH: &str = "/admin/shutdown";
 /// because it NAMES the a2a component and moves with this contract.
 pub const COMPONENT_LOCK_PATH: &str = "packaging/a2a-component.lock.json";
 
+// ---------------------------------------------------------------------------
+// Clarification bounds
+// ---------------------------------------------------------------------------
+//
+// These are a2a's numbers, not the dashboard's. Every one is a hard refusal in
+// a2a's Pydantic wire models (`src/vaultspec_a2a/thread/clarification.py`),
+// enforced BEFORE any run state is read - so a value the dashboard admits and
+// a2a does not is not a lenient boundary, it is a 422 the user cannot act on
+// and a run that stays parked.
+//
+// They live here for the reason the whole module exists: previously the engine
+// declared its own literals and the frontend declared a second set, each
+// internally consistent and neither reconciled with a2a. Two of the four had
+// drifted - the answer cap sat at 4096 against a2a's 2048, and the request-id
+// cap at 64 against a2a's 128 - and the tests that existed to catch exactly
+// that were sized FROM the constants they were checking, so they stayed green
+// through both. One declaration, pinned once against the sibling, is the repair.
+
+/// The most questions one clarification request may carry.
+///
+/// a2a: `MAX_QUESTIONS_PER_REQUEST`, enforced on
+/// `ClarificationRequest.questions` and again on `ClarificationAnswers.answers`,
+/// so it bounds the ANSWER side the engine forwards as well as the question set.
+pub const A2A_MAX_CLARIFICATION_QUESTIONS: usize = 4;
+
+/// The most options one `choice` question may declare.
+///
+/// a2a: `MAX_OPTIONS_PER_QUESTION`, enforced on `ClarificationQuestion.options`.
+pub const A2A_MAX_CLARIFICATION_OPTIONS: usize = 4;
+
+/// The longest a single answer may be.
+///
+/// a2a: `MAX_ANSWER_CHARS`, carried by `AnswerText` and applied to every value
+/// of `ClarificationAnswers.answers`.
+pub const A2A_MAX_CLARIFICATION_ANSWER_CHARS: usize = 2048;
+
+/// The longest a clarification request id may be.
+///
+/// a2a: `MAX_REQUEST_ID_CHARS`, carried by `ClarificationRequestId`. Larger than
+/// the identifier cap below because a2a mints the id as `clarify-{thread_id}`
+/// truncated to this bound, so it must accommodate a whole run id plus a prefix.
+pub const A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS: usize = 128;
+
+/// The longest a question id may be.
+///
+/// a2a: `MAX_IDENTIFIER_CHARS`, carried by `QuestionId` - which is also the key
+/// type of the `answers` map the engine forwards.
+pub const A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS: usize = 64;
+
+// The request id CONTAINS a run id, so its cap must clear one plus a2a's
+// `clarify-` prefix. Enforced at build time rather than in a test because it is
+// a relationship between two constants: a violation is not a behaviour that
+// might go unexercised, it is an arithmetic impossibility that should stop the
+// build. The two caps were once conflated at 64, which is exactly what made the
+// engine refuse handles a2a had legitimately minted.
+const _: () = assert!(
+    A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS > A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS,
+    "a clarification request id carries a whole run id plus a prefix; a question \
+     id does not, so the two caps are not interchangeable"
+);
+const _: () = assert!(
+    A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS >= "clarify-".len() + 64,
+    "a2a mints the request id as `clarify-` + the thread id; a cap that does not \
+     clear the prefix plus a run id refuses the sibling's own handles"
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,6 +193,56 @@ mod tests {
         assert!(
             !GATEWAY_SHUTDOWN_PATH.starts_with("/api/"),
             "the legacy `/api` mount is deleted; no contract path may sit under it"
+        );
+    }
+
+    /// PIN every clarification bound to the number a2a actually enforces.
+    ///
+    /// This is the ONLY place in the repository where these values are stated
+    /// as literals, and that is deliberate. Every other check of them - the
+    /// engine's boundary tests, the card's cap test - now derives BOTH its
+    /// fixture and its expectation from the constant, which is correct for
+    /// proving BEHAVIOUR at the boundary and worthless for proving the VALUE:
+    /// set the answer cap to a million and every one of those tests still
+    /// passes, because input and expectation drift together. That is precisely
+    /// how a 4096-char answer cap survived against a sibling that refuses at
+    /// 2048.
+    ///
+    /// So exactly one assertion holds each value against the outside world. The
+    /// source of truth is a2a's `src/vaultspec_a2a/thread/clarification.py`,
+    /// which declares all five as module constants and applies them through the
+    /// Pydantic types listed beside each below. If a2a moves one, this is the
+    /// test that fails, and it fails with the sibling symbol named.
+    ///
+    /// What this test CANNOT do, stated so nobody over-trusts it: it does not
+    /// read a2a. A simultaneous change on both sides goes unnoticed here and is
+    /// caught only by a round-trip against a running sibling.
+    #[test]
+    fn the_clarification_bounds_are_pinned_to_the_numbers_a2a_enforces() {
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_QUESTIONS, 4,
+            "a2a's MAX_QUESTIONS_PER_REQUEST bounds ClarificationRequest.questions \
+             and ClarificationAnswers.answers at 4"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_OPTIONS, 4,
+            "a2a's MAX_OPTIONS_PER_QUESTION bounds ClarificationQuestion.options at 4"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_ANSWER_CHARS, 2048,
+            "a2a's MAX_ANSWER_CHARS bounds AnswerText at 2048; a longer answer is \
+             refused by the wire model before any run state is read, so admitting \
+             one here buys the user an unexplained 422 on a run that stays parked"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS, 128,
+            "a2a's MAX_REQUEST_ID_CHARS bounds ClarificationRequestId at 128, and \
+             a2a mints the id as `clarify-{{thread_id}}` truncated to it; refusing \
+             short of 128 strands a questionnaire the sibling issued and will accept"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS, 64,
+            "a2a's MAX_IDENTIFIER_CHARS bounds QuestionId at 64"
         );
     }
 }

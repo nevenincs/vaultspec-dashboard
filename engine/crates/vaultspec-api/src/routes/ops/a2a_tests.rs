@@ -3,7 +3,11 @@ use super::clarification::{
     MAX_A2A_REQUEST_ID_CHARS,
 };
 use super::*;
-use vaultspec_product::a2a_contract::HANDOFF_CREDENTIAL_FILE;
+use vaultspec_product::a2a_contract::{
+    A2A_MAX_CLARIFICATION_ANSWER_CHARS, A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS,
+    A2A_MAX_CLARIFICATION_QUESTIONS, A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS,
+    HANDOFF_CREDENTIAL_FILE,
+};
 
 const TEST_REQUIRED_ROLES: &[&str] = &[
     "vaultspec-researcher",
@@ -1214,37 +1218,80 @@ fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
             "a request_id outside the path-safe grammar is refused",
         );
     }
-    // The request-id ceiling is the sibling's landed bound, pinned as a literal
-    // rather than derived from the constant: a fixture sized FROM the constant
-    // would follow a drifting cap instead of catching the drift. a2a's
-    // PathSafeClarificationRequestId is min 1 / max 64, tighter than a run id,
-    // so 65 chars must be refused HERE rather than forwarded for a 422.
-    assert_eq!(
-        MAX_A2A_REQUEST_ID_CHARS, 64,
-        "the request-id cap tracks a2a's PathSafeClarificationRequestId (64)"
-    );
+    // The two sides of the request-id ceiling, one char apart, both sized from
+    // the boundary's own constant. This proves the REFUSAL BEHAVIOUR and
+    // deliberately says nothing about the VALUE - the value is pinned to a2a in
+    // exactly one place (`a2a_contract::the_clarification_bounds_are_pinned_to_
+    // the_numbers_a2a_enforces`), because a literal restated here would be a
+    // second opinion about a number the engine does not own. The predecessor of
+    // this test asserted `== 64` against a a2a symbol that does not exist, at
+    // half the real bound, and so would have failed the correction.
     refuse(
         A2aVerbBody {
             run_id: Some("run-7".to_string()),
-            request_id: Some("a".repeat(65)),
+            request_id: Some("a".repeat(MAX_A2A_REQUEST_ID_CHARS + 1)),
             answers: json!({ "q1": "a" }).as_object().cloned(),
             ..Default::default()
         },
         "an overlength request_id is refused",
     );
-    // 64 is the boundary itself, and it passes.
+    // The ceiling itself passes: a2a mints ids up to exactly this length, so
+    // refusing at the boundary would strand its own questionnaire.
     build_forwarded_call(
         &state,
         "clarification-respond",
         &cell,
         &A2aVerbBody {
             run_id: Some("run-7".to_string()),
-            request_id: Some("a".repeat(64)),
+            request_id: Some("a".repeat(MAX_A2A_REQUEST_ID_CHARS)),
             answers: json!({ "q1": "a" }).as_object().cloned(),
             ..Default::default()
         },
     )
-    .expect("a 64-char request id sits at the ceiling, not over it");
+    .expect("a request id at the ceiling sits on it, not over it");
+    // The concrete handle a2a really mints for a dashboard-shaped run must pass.
+    // `createTeamRunId()` emits `run-` + 32 hex (36 chars) and a2a prefixes
+    // `clarify-`, so this is the exact id a live panel submits - captured from a
+    // real parked run rather than imagined. It is 43 chars, which the retired
+    // 64-char cap happened to clear; a 57-char run id, which the engine's own
+    // `MAX_A2A_RUN_ID_CHARS` declares legal, did not.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-19b53e071e8baf92b20a029c1308828c".to_string()),
+            request_id: Some("clarify-run-19b53e071e8baf92b20a029c1308828c".to_string()),
+            answers: json!({ "scope": "frontend" }).as_object().cloned(),
+            ..Default::default()
+        },
+    )
+    .expect("the request id a2a mints for a dashboard run id must be answerable");
+    // And the worst case the engine itself admits: a run id at the engine's own
+    // run-id ceiling. a2a mints `clarify-{thread_id}` TRUNCATED to its request-id
+    // cap, so the handle for such a run is exactly cap-length - the case the
+    // retired 64-char cap made permanently unanswerable, and the reason the two
+    // caps must each track a2a rather than each other's intuition.
+    let longest_run_id = "r".repeat(MAX_A2A_RUN_ID_CHARS);
+    let minted: String = format!("clarify-{longest_run_id}")
+        .chars()
+        .take(MAX_A2A_REQUEST_ID_CHARS)
+        .collect();
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some(longest_run_id),
+            request_id: Some(minted),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+    )
+    .expect(
+        "a run id the engine declares legal must still yield an answerable \
+         clarification handle",
+    );
 
     // The answers map is required, non-empty, and capped at the D5 question
     // ceiling — a fifth answer cannot correspond to any question the node asked.
@@ -1257,14 +1304,6 @@ fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
         "absent answers are refused",
     );
     refuse(clarification_body(json!({})), "empty answers are refused");
-    // The ceiling is the ADR's number, not whatever the constant currently says:
-    // D5 bounds a request at four questions, so a fifth answer is refused. Pinned
-    // as a literal on both sides — a fixture sized FROM the constant would follow
-    // a widened cap instead of catching it.
-    assert_eq!(
-        MAX_A2A_CLARIFICATION_ANSWERS, 4,
-        "agent-flow D5 caps a clarification request at four questions"
-    );
     refuse(
         clarification_body(json!({ "q1": "a", "q2": "a", "q3": "a", "q4": "a", "q5": "a" })),
         "a fifth answer exceeds the four-question ceiling and is refused",
@@ -1302,9 +1341,53 @@ fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
         clarification_body(json!({ "q1": "a".repeat(MAX_A2A_ANSWER_CHARS + 1) })),
         "an overlength answer is refused",
     );
+    // The ceiling itself passes. Asserted alongside the refusal because a cap is
+    // two behaviours, and a boundary that refused AT the cap would be invisible
+    // to an over-length test alone.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &clarification_body(json!({ "q1": "a".repeat(MAX_A2A_ANSWER_CHARS) })),
+    )
+    .expect("an answer at the ceiling sits on it, not over it");
     refuse(
         clarification_body(json!({ "q1": "line one\nline two" })),
         "a control character in an answer is refused",
+    );
+}
+
+/// The boundary holds NO independent opinion about a2a's numbers.
+///
+/// This is the seam the two cap defects came through. Both caps were declared
+/// as local literals here, each defensible on its own terms and neither
+/// reconciled with the sibling, and the tests around them sized their fixtures
+/// FROM those literals - so the answer cap sat at double a2a's and the
+/// request-id cap at half it, both green.
+///
+/// The repair is structural: the values live once in `a2a_contract`, pinned
+/// there against a2a, and this test fails the moment anyone re-declares one
+/// here. It is deliberately an identity check, not a value check - restating a
+/// number the engine does not own is the mistake, not the fix.
+#[test]
+fn the_clarification_caps_are_the_contract_values_not_the_boundarys_own() {
+    assert_eq!(
+        MAX_A2A_ANSWER_CHARS, A2A_MAX_CLARIFICATION_ANSWER_CHARS,
+        "the answer cap is a2a's MAX_ANSWER_CHARS; a wider one forwards an \
+         answer the sibling's wire model refuses at 422"
+    );
+    assert_eq!(
+        MAX_A2A_REQUEST_ID_CHARS, A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS,
+        "the request-id cap is a2a's MAX_REQUEST_ID_CHARS; a tighter one \
+         refuses handles a2a minted and leaves the run unanswerable"
+    );
+    assert_eq!(
+        MAX_A2A_QUESTION_ID_CHARS, A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS,
+        "an answers key is a2a's QuestionId, which takes the identifier cap"
+    );
+    assert_eq!(
+        MAX_A2A_CLARIFICATION_ANSWERS, A2A_MAX_CLARIFICATION_QUESTIONS,
+        "one answer per question a bounded request could have asked"
     );
 }
 

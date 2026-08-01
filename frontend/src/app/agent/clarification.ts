@@ -8,18 +8,29 @@
 // content this module will read — so a reloaded panel recovers the questionnaire
 // from authoritative status alone, with no relay memory involved.
 //
-// Bounds are the engine's, mirrored here so the card refuses locally what the
-// boundary would refuse anyway: at most four questions, four options per choice,
-// and a single-line capped answer. Control characters are rejected at the
-// boundary, which is exactly why a text answer renders as an input and never a
-// textarea.
+// Bounds are a2a's, carried through the engine and mirrored here so the card
+// refuses locally what the far end would refuse anyway: at most four questions,
+// four options per choice, and a single-line capped answer. Control characters
+// are rejected at the engine boundary, which is exactly why a text answer
+// renders as an input and never a textarea.
+//
+// "a2a's, not the engine's" is the whole point and was once got wrong: this file
+// mirrored an engine answer cap of 4096 against a sibling that refuses at 2048,
+// so a pasted paragraph passed the card, passed the engine, and came back a 422
+// the user saw only as an unexplained submit failure on a run that stayed parked.
+// The engine no longer holds an opinion either — it imports these numbers from
+// the shared contract declaration, which is where they are pinned to a2a.
 //
 // Layer law: no wire, no React — plain functions over an already-read snapshot.
 
-/** The engine's clarification caps (`routes/ops/a2a/clarification.rs`). */
+/**
+ * The clarification caps a2a enforces, reconciled against the engine's shared
+ * contract declaration by `clarification.contract.test.ts`. Changing one here
+ * without changing it there fails that test; neither may be changed without a2a.
+ */
 export const CLARIFICATION_MAX_QUESTIONS = 4;
 export const CLARIFICATION_MAX_OPTIONS = 4;
-export const CLARIFICATION_MAX_ANSWER_CHARS = 4096;
+export const CLARIFICATION_MAX_ANSWER_CHARS = 2048;
 
 export type ClarificationKind = "choice" | "text";
 
@@ -121,8 +132,8 @@ export function normalizePendingClarification(
 /** A draft answer per question id, as the card holds it while the user works. */
 export type ClarificationDraft = Readonly<Record<string, string>>;
 
-/** One answer's submittable form: trimmed, and capped at the boundary's ceiling so
- *  the card never posts something the engine will refuse. */
+/** One answer's submittable form: trimmed, and capped at a2a's own ceiling so the
+ *  card never posts something the engine or the sibling behind it will refuse. */
 export function boundedAnswer(value: string): string {
   return value.trim().slice(0, CLARIFICATION_MAX_ANSWER_CHARS);
 }
