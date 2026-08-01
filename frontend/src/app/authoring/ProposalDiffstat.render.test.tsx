@@ -14,7 +14,8 @@
 // would pass just as happily while the component itself was broken.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -53,7 +54,7 @@ function doc(
 }
 
 /** Render the real component with its served detail already in cache. */
-async function renderStats(documents: ReviewDocumentProjection[]) {
+async function renderStats(documents: ReviewDocumentProjection[], action?: ReactNode) {
   const changesetId = "changeset-diffstat";
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   client.setQueryData(authoringKeys.proposal(changesetId), {
@@ -64,12 +65,20 @@ async function renderStats(documents: ReviewDocumentProjection[]) {
   const view = render(
     <I18nextProvider i18n={runtime}>
       <QueryClientProvider client={client}>
-        <ProposalDiffstat changesetId={changesetId} />
+        <ProposalDiffstat changesetId={changesetId} action={action} />
       </QueryClientProvider>
     </I18nextProvider>,
   );
+  // With no documents there is no card to wait for — that absence is itself what
+  // the action-hosting cases assert, so settle on the render instead.
   await waitFor(() =>
-    expect(document.querySelector("[data-proposal-diffstat]")).not.toBeNull(),
+    expect(
+      document.querySelector(
+        documents.length === 0
+          ? "[data-testid-root], body"
+          : "[data-proposal-diffstat]",
+      ),
+    ).not.toBeNull(),
   );
   return view;
 }
@@ -94,9 +103,62 @@ describe("ProposalDiffstat", () => {
     expect(pair?.textContent).toContain("−");
   });
 
-  it("names each changed file", async () => {
+  it("names each changed file, splitting the directory from the filename", async () => {
+    // The captured reference grammar renders the directory muted and the filename
+    // dark, which is what makes a column of long paths scannable \u2014 the eye lands on
+    // the part that identifies the file. Asserting the SPLIT (not merely that the
+    // path appears somewhere) is what stops a well-meaning simplification back to
+    // one flat string from silently undoing it.
     await renderStats([doc("docs/a.md", "one\n", "one\ntwo\n")]);
-    expect(screen.getByText("docs/a.md")).toBeTruthy();
+    const row = document.querySelector("[data-diffstat-file='docs/a.md']");
+    expect(row).not.toBeNull();
+    expect(row?.querySelector("[data-diffstat-directory]")?.textContent).toBe("docs/");
+    expect(row?.querySelector("[data-diffstat-name]")?.textContent).toBe("a.md");
+    // Still one readable path when the two halves are read together.
+    expect(row?.textContent).toContain("docs/a.md");
+  });
+
+  it("gives a bare filename no directory half at all", async () => {
+    // A root-level file must not render an empty muted span before its name.
+    await renderStats([doc("README.md", "one\n", "one\ntwo\n")]);
+    const row = document.querySelector("[data-diffstat-file='README.md']");
+    expect(row?.querySelector("[data-diffstat-directory]")).toBeNull();
+    expect(row?.querySelector("[data-diffstat-name]")?.textContent).toBe("README.md");
+  });
+
+  it("titles the card with the number of files the run edited", async () => {
+    await renderStats([
+      doc("a.md", "one\n", "one\ntwo\n"),
+      doc("b.md", "one\n", "one\ntwo\n"),
+    ]);
+    expect(document.querySelector("[data-diffstat-title]")?.textContent).toBe(
+      "Edited 2 files",
+    );
+  });
+
+  it("says one file in the singular", async () => {
+    await renderStats([doc("a.md", "one\n", "one\ntwo\n")]);
+    expect(document.querySelector("[data-diffstat-title]")?.textContent).toBe(
+      "Edited 1 file",
+    );
+  });
+});
+
+describe("ProposalDiffstat action hosting", () => {
+  it("still renders the hosted action when there is no tally yet", async () => {
+    // The action opens the diff, which exists whether or not the tally has been
+    // computed. Letting it vanish with the stat cost a reviewer on a slow detail
+    // read the only way to see what they were approving — so its presence is
+    // pinned independently of the card's.
+    await renderStats([], <button data-test-action>Review changes</button>);
+    expect(document.querySelector("[data-proposal-diffstat]")).toBeNull();
+    expect(document.querySelector("[data-test-action]")).not.toBeNull();
+  });
+
+  it("renders nothing at all when there is neither a tally nor an action", async () => {
+    await renderStats([]);
+    expect(document.querySelector("[data-proposal-diffstat]")).toBeNull();
+    expect(document.querySelector("[data-diffstat-action-only]")).toBeNull();
   });
 });
 

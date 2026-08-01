@@ -685,7 +685,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       !/^operations:searchMaintenance\.(?:jobs\.(?:count|partial)|projects\.(?:live|partial|summary))_(?:zero|one|two|few|many|other)$/u.test(
         key,
       ) &&
-      !/^(?:common:(?:changes\.filesChanged|palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:featureAuditCount|featureDecisionCount|featurePlanCount|featureReferenceCount|featureResearchCount|featureStepCount|partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
+      !/^(?:common:(?:changes\.filesChanged|palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.(?:counts\.(?:acknowledgements|changes)|diffstat\.editedFiles)|tree\.(?:featureAuditCount|featureDecisionCount|featurePlanCount|featureReferenceCount|featureResearchCount|featureStepCount|partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
         key,
       ),
   ),
@@ -699,6 +699,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "common:freshness.hours",
   "common:freshness.days",
   "common:freshness.weeks",
+  "documents:reviewStation.diffstat.editedFiles",
   "documents:localizationWave.plan.completion",
   "documents:localizationWave.plan.phaseCount",
   "documents:localizationWave.plan.stepCount",
@@ -813,6 +814,7 @@ describe("shipped localization catalog keys", () => {
       "documents:localizationWave.plan.stepCount",
       "documents:localizationWave.plan.waveCount",
       "documents:documentSearch.counts.documents",
+      "documents:reviewStation.diffstat.editedFiles",
       "documents:reviewStation.counts.acknowledgements",
       "documents:reviewStation.counts.changes",
       "documents:viewer.codeViewer.footer.summary",

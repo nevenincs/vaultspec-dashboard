@@ -107,6 +107,7 @@ describe("plural catalog manifest", () => {
       "documents:localizationWave.plan.stepCount",
       "documents:localizationWave.plan.waveCount",
       "documents:documentSearch.counts.documents",
+      "documents:reviewStation.diffstat.editedFiles",
       "documents:reviewStation.counts.acknowledgements",
       "documents:reviewStation.counts.changes",
       "documents:viewer.codeViewer.footer.summary",

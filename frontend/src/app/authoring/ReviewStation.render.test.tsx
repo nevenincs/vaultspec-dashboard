@@ -527,11 +527,40 @@ describe("ProposalCard", () => {
       </I18nextProvider>,
     );
 
-    const toggle = screen.getByRole("button", { name: "Show changes" });
+    const toggle = screen.getByRole("button", { name: "Review changes" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(screen.getByRole("button", { name: "Hide changes" })).toBeTruthy();
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("hosts the change disclosure INSIDE the stat card when one is supplied", () => {
+    // The captured reference grammar puts the affordance that opens a change
+    // terminal-right inside the card that describes it, not trailing the verdict
+    // buttons where it read as a fourth decision. This pins the placement, since
+    // the slot is the only thing that decides it.
+    const counts = emptyCounts();
+    const runtime = createTestLocalizationRuntime();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <ProposalCard
+            proposal={needsReviewProposal()}
+            actions={actionCallbacks(counts)}
+            diffstat={(action) => <div data-test-stat-slot>{action}</div>}
+          />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const slot = document.querySelector("[data-test-stat-slot]");
+    expect(slot).not.toBeNull();
+    expect(slot?.querySelector("[data-toggle-diff]")).not.toBeNull();
+    // Exactly one disclosure in the card: the fallback row must not double up.
+    expect(document.querySelectorAll("[data-toggle-diff]").length).toBe(1);
   });
 });
 
@@ -547,7 +576,7 @@ describe("AutonomyControl", () => {
         }}
       />,
     );
-    const group = screen.getByRole("radiogroup", { name: "Autonomy" });
+    const group = screen.getByRole("radiogroup", { name: "Approvals" });
     const reviewEach = within(group).getByRole("radio", {
       name: "Review each change",
     });
@@ -578,7 +607,7 @@ describe("AutonomyControl", () => {
       <AutonomyControl mode="assisted" onSelect={() => Promise.resolve(accepted)} />,
     );
     const radios = within(
-      screen.getByRole("radiogroup", { name: "Autonomy" }),
+      screen.getByRole("radiogroup", { name: "Approvals" }),
     ).getAllByRole("radio");
     for (const radio of radios) {
       expect(radio.getAttribute("aria-checked")).toBe("false");

@@ -27,6 +27,11 @@ import {
   ReviewStationBody,
   type ReviewActions,
 } from "@app/app/authoring/ReviewStation";
+import {
+  ProposalDiffstatCard,
+  type ProposalDiffstatView,
+} from "@app/app/authoring/ProposalDiffstat";
+import { Button } from "@app/app/kit";
 import { Skeleton, SkeletonRow } from "@app/app/kit";
 
 import type { SpecimenDef } from "../registry";
@@ -320,6 +325,79 @@ const REVIEW_STATION_VIEWS: Record<ReviewState, ReviewStationView> = {
 
 // --- registry ------------------------------------------------------------------------
 
+// --- authoring-proposaldiffstat ------------------------------------------------
+//
+// The outcome card, on the captured reference grammar (see
+// `.tmp/ui-captures/chatgpt-composer.png` and `chatgpt-desktop.png`). It is the
+// object a finished run PRODUCES, so the states worth reviewing are about what the
+// tally can HONESTLY say:
+//   - normal: several files across different directories, so the muted-directory /
+//     dark-filename split is actually exercised rather than asserted;
+//   - loading: a single file still resolving, the smallest real card;
+//   - degraded: a byte-capped file, where the counts are a FLOOR and the card must
+//     say so rather than present a truncated tally as exact;
+//   - empty: no files, where the card renders NOTHING at all — a proposal that
+//     changes nothing must not draw a card claiming it did.
+//
+// Authored as a derived view, not raw documents: the derivation is unit-tested
+// beside the component, so the cell reviews the SHAPE rather than re-running the fold.
+
+const DIFFSTAT_ACTION = (
+  <Button variant="ghost" aria-expanded={false}>
+    Review changes
+  </Button>
+);
+
+const DIFFSTAT_VIEWS: Readonly<Record<ReviewState, ProposalDiffstatView>> = {
+  normal: {
+    files: [
+      {
+        label: "engine/crates/vaultspec-api/src/routes/graph.rs",
+        added: 84,
+        removed: 12,
+      },
+      { label: "frontend/src/stores/server/systemPrograms.ts", added: 41, removed: 3 },
+      {
+        label: "frontend/src/app/panels/BackendHealthPanel.tsx",
+        added: 22,
+        removed: 96,
+      },
+      { label: "README.md", added: 8, removed: 0 },
+    ].map((f) => ({ ...f, truncated: false })),
+    added: 155,
+    removed: 111,
+    truncated: false,
+  },
+  loading: {
+    files: [
+      {
+        label: "frontend/src/app/authoring/ProposalDiffstat.tsx",
+        added: 3,
+        removed: 1,
+        truncated: false,
+      },
+    ],
+    added: 3,
+    removed: 1,
+    truncated: false,
+  },
+  degraded: {
+    files: [
+      {
+        label: "engine/crates/engine-graph/src/linkage.rs",
+        added: 1204,
+        removed: 880,
+        truncated: true,
+      },
+      { label: "docs/architecture.md", added: 12, removed: 4, truncated: false },
+    ],
+    added: 1216,
+    removed: 884,
+    truncated: true,
+  },
+  empty: { files: [], added: 0, removed: 0, truncated: false },
+};
+
 export const authoringSpecimens: Readonly<Record<string, SpecimenDef>> = {
   "authoring-diffview": {
     note: "Pure view: DiffView takes two served BoundedDocumentTexts directly and never mounts during an in-flight fetch (its host, DiffPanel, shows a Skeleton in its place) — 'loading' therefore renders that sibling Skeleton (identical message key) as the honest equivalent, never a fabricated diff. 'degraded' authors the base side's own truncated marker, DiffView's real bounded-preview affordance.",
@@ -354,6 +432,13 @@ export const authoringSpecimens: Readonly<Record<string, SpecimenDef>> = {
         />
       );
     },
+  },
+
+  "authoring-proposaldiffstat": {
+    note: "Mounts the wire-free ProposalDiffstatCard directly with an authored derived view — the outcome card on the captured reference grammar (icon tile, bold 'Edited N files', aggregate beneath, muted directory + dark filename per row, action terminal-right). Normal spreads files across directories so the path split is exercised; degraded is a byte-capped file where the counts are a FLOOR and the card says so; empty renders NOTHING, because a proposal that changes nothing must not draw a card claiming it did.",
+    render: (state) => (
+      <ProposalDiffstatCard view={DIFFSTAT_VIEWS[state]} action={DIFFSTAT_ACTION} />
+    ),
   },
 
   "authoring-reviewstation": {

@@ -221,8 +221,14 @@ export function ProposalCard({
   /** The C4 stat block, supplied by the HOST rather than read here. The card is a
    *  prop-driven export with three consumers and no provider of its own; giving it
    *  a query would make it un-renderable outside one. `ProposalDiffstat` is that
-   *  block, and `proposalDiffstatSlot` is the one place hosts build it. */
-  diffstat?: ReactNode;
+   *  block, and `proposalDiffstatSlot` is the one place hosts build it.
+   *
+   *  It is a FUNCTION of the action rather than a plain node because the captured
+   *  reference grammar puts the open-the-change affordance terminal-right INSIDE
+   *  the stat card, and only this card knows the disclosure state that affordance
+   *  toggles. The host still owns what the stat block IS; the card supplies the
+   *  one control that belongs to it. */
+  diffstat?: (action: ReactNode) => ReactNode;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const [busy, setBusy] = useState(false);
@@ -249,7 +255,13 @@ export function ProposalCard({
     resolveMessage,
     REVIEW_STATION_MESSAGES.untitledProposal,
   );
-  const showChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.showChanges);
+  // The closed state carries the captured reference label ("Review changes"); the
+  // open state stays "Hide changes", because a disclosure that is already open
+  // must say what closing it does. The reference only ever shows the closed state.
+  const reviewChanges = safeMessage(
+    resolveMessage,
+    REVIEW_STATION_MESSAGES.reviewChanges,
+  );
   const hideChanges = safeMessage(resolveMessage, REVIEW_STATION_MESSAGES.hideChanges);
   const acknowledgeLabel = safeMessage(
     resolveMessage,
@@ -297,7 +309,7 @@ export function ProposalCard({
     !author ||
     !changes ||
     !untitled ||
-    !showChanges ||
+    !reviewChanges ||
     !hideChanges ||
     (proposal.policy && !policy) ||
     (proposal.validation.present && proposal.validation.status && !validation) ||
@@ -379,6 +391,19 @@ export function ProposalCard({
     : null;
   if (pending && !confirmation) return null;
 
+  // Built once and placed by the branch below, so the control is identical
+  // whether the stat card hosts it or it stands on its own row.
+  const reviewChangesToggle = (
+    <Button
+      variant="ghost"
+      onClick={() => setShowDiff((open) => !open)}
+      aria-expanded={showDiff}
+      data-toggle-diff
+    >
+      {showDiff ? hideChanges : reviewChanges}
+    </Button>
+  );
+
   return (
     <li
       className="flex flex-col gap-fg-2 rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-fg-2"
@@ -414,10 +439,22 @@ export function ProposalCard({
 
       {conflict && <StateBlock mode="degraded" layout="inline" message={conflict} />}
 
-      {/* C4: the change renders as a STAT card — an aggregate plus a per-file
-          breakdown — with the full diff still deferred to the expansion below.
-          Actions stay terminal-right, after the stat. */}
-      {diffstat}
+      {/* C4: the change renders as a STAT card — a title, an aggregate, and a
+          per-file breakdown — with the full diff still deferred to the expansion
+          below. Per the captured reference grammar the affordance that opens the
+          change sits terminal-right INSIDE that card, beside what it opens,
+          rather than trailing the verdict buttons where it read as a fourth
+          decision. The verdict actions stay in their own row underneath.
+
+          The disclosure is UNCONDITIONAL: when a host supplies no stat slot the
+          card still has a diff to open, so the control falls back to its own row
+          rather than disappearing with the slot. Hosting it is the stat card's
+          job; existing is not. */}
+      {diffstat === undefined ? (
+        <div className="flex justify-end">{reviewChangesToggle}</div>
+      ) : (
+        diffstat(reviewChangesToggle)
+      )}
 
       <div className="flex flex-wrap items-center justify-end gap-fg-2">
         {eligibilityForRender.map(({ entry, command, label, presentation }) => (
@@ -478,14 +515,6 @@ export function ProposalCard({
             {acknowledgeLabel}
           </Button>
         )}
-        <Button
-          variant="ghost"
-          onClick={() => setShowDiff((open) => !open)}
-          aria-expanded={showDiff}
-          data-toggle-diff
-        >
-          {showDiff ? hideChanges : showChanges}
-        </Button>
       </div>
 
       {composing && (
@@ -635,8 +664,12 @@ function RequestChangesComposer({
 
 /** Build the C4 stat block for a proposal. The ONE place a host mounts it, so the
  *  three card consumers cannot drift into three different stat treatments. */
-export function proposalDiffstatSlot(proposal: ProposalProjection): ReactNode {
-  return <ProposalDiffstat changesetId={proposal.changeset_id} />;
+export function proposalDiffstatSlot(
+  proposal: ProposalProjection,
+): (action: ReactNode) => ReactNode {
+  return (action) => (
+    <ProposalDiffstat changesetId={proposal.changeset_id} action={action} />
+  );
 }
 
 export function AppliedUnderPolicyLane({
