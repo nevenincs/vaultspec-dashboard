@@ -19,6 +19,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import { liveScope, liveTransport } from "../../testing/liveClient";
 import { AuthoringClient, ensureActorToken } from "../../stores/server/authoring";
@@ -390,7 +391,7 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     // The SAME input flips to the steer placeholder once the served pending-interrupt
     // list lands — no client staging, no new chrome.
     await waitFor(
-      () => expect(input().placeholder).toBe("Reply to guide the running agent"),
+      () => expect(input().placeholder).toBe(en.common.agent.composer.steerPlaceholder),
       { timeout: 15_000 },
     );
 
@@ -403,9 +404,10 @@ describe("Composer mid-run behavior (D4/S39)", () => {
     await waitFor(() => expect(input().value).toBe(""), { timeout: 15_000 });
     const resolved = await liveAgent.listRunInterrupts(runId!);
     expect(resolved.items.every((i) => i.resume_state === "resolved")).toBe(true);
-    await waitFor(() => expect(input().placeholder).toBe("Message the agent"), {
-      timeout: 15_000,
-    });
+    await waitFor(
+      () => expect(input().placeholder).toBe(en.common.agent.composer.placeholder),
+      { timeout: 15_000 },
+    );
   }, 45_000);
 });
 
