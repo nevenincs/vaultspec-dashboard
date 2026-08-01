@@ -576,7 +576,7 @@ export const agentSpecimens: Readonly<Record<string, SpecimenDef>> = {
 
   "agent-composer": {
     host: "h-[18rem] w-[26rem]",
-    note: "Container: the composer reads the current session, the served team presets, and the panel team-run slot. Seeds session + dashboard state (useActiveScope) and a2aKeys.presets() so the Team selector resolves engine-free. Normal binds a settled session, the resting composer with Send; loading binds the session whose latest run is still ACTIVE, which is the composer's real busy posture (Stop run replaces Send) rather than an unresolved query; empty binds NO session, the first-prompt composer a user meets before a session exists; degraded seeds a tiers-down presets payload, the served verdict the Team selector disables itself from and states as its reason.",
+    note: "Container: the composer reads the current session, the served team presets, and the panel team-run slot. Seeds session + dashboard state (useActiveScope) and a2aKeys.presets() so the Team selector resolves engine-free. Normal binds a settled session — the resting ONE-CARD composer (D11): no send button (Enter sends; the input carries the accessible hint); loading binds the session whose latest run is still ACTIVE, the real busy posture — the square Stop occupies the run slot (C6); empty binds NO session, the first-prompt composer a user meets before a session exists; degraded seeds a tiers-down presets payload, the served verdict the Team selector disables itself from and states as its reason.",
     seed: (client, state) => {
       seedSessionAndDashboardState(client);
       if (state === "degraded") {

@@ -111,7 +111,12 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.placeholder": { role: "label" },
   "common:agent.composer.clarificationParked": { role: "label" },
   "common:agent.composer.steerPlaceholder": { role: "label" },
-  "common:agent.composer.send": { role: "action" },
+  // No send button exists (D11 — Enter is the send, per every captured
+  // composer); the hint names the verb for assistive tech, and the workspace
+  // chip's accessible name states the binding the wire already enforces.
+  "common:agent.composer.enterHint": { role: "accessibility" },
+  "common:agent.composer.attach": { role: "accessibility" },
+  "common:agent.composer.workspace": { role: "accessibility" },
   "common:agent.composer.sendFailed": { role: "error-message" },
   "common:agent.composer.attachContext": { role: "action" },
   "common:agent.composer.attachedContext": { role: "accessibility" },
@@ -131,7 +136,6 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.selectorValue": { role: "label" },
   "common:agent.composer.selectorDisabled": { role: "accessibility" },
   "common:agent.composer.model": { role: "label" },
-  "common:agent.composer.modelDefault": { role: "label" },
   // Non-actionable unavailability reasons ride the `status` role, mirroring the
   // `common:disabledReasons.*` precedent (nothing the operator can do yet).
   "common:agent.composer.modelUnavailable": { role: "status" },
@@ -149,7 +153,6 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.modelMenuAria": { role: "accessibility" },
   "common:agent.composer.teamMenuAria": { role: "accessibility" },
   "common:agent.composer.teamPresetUnavailable": { role: "status" },
-  "common:agent.composer.startTeamRun": { role: "action" },
   "common:agent.composer.cancelTeamRun": { role: "action" },
   "common:agent.composer.teamRunPhase": { role: "status" },
   "common:agent.composer.teamRunRefused": { role: "error-message" },

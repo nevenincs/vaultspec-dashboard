@@ -316,7 +316,7 @@ export const common = {
   agent: {
     sendComment: "Send to agent",
     autonomy: {
-      label: "Autonomy",
+      label: "Approvals",
       reviewEach: "Review each change",
       applyAutomatically: "Apply automatically",
       menuAria: "Select how changes are applied",
@@ -329,7 +329,7 @@ export const common = {
       newSession: "Start new agent session",
     },
     autonomyBanner: {
-      dismiss: "Hide the autonomy warning",
+      dismiss: "Hide the approvals warning",
       warning: "Apply automatically is on. Changes land without your review.",
     },
     begin: {
@@ -428,8 +428,10 @@ export const common = {
       placeholder: "Ask anything, @ to mention, / for commands",
       clarificationParked: "Answer the question above to continue the run",
       steerPlaceholder: "Reply to guide the running agent",
-      send: "Send",
+      enterHint: "Press enter to send. Press shift and enter for a new line.",
       sendFailed: "The message couldn’t be sent. Try again.",
+      attach: "Attach",
+      workspace: "Workspace",
       attachContext: "Add a feature or document",
       attachedContext: "Attached context",
       evidenceAria: "Attach a file as evidence",
@@ -449,7 +451,6 @@ export const common = {
       selectorValue: "{{selector}}: {{value}}",
       selectorDisabled: "{{selector}}: {{value}}. {{reason}}",
       model: "Model",
-      modelDefault: "Default",
       modelUnavailable: "Using the default model.",
       team: "Team",
       teamDefault: "Single agent",
@@ -464,7 +465,6 @@ export const common = {
       modelMenuAria: "Select a model profile",
       teamMenuAria: "Select an agent team",
       teamPresetUnavailable: "This team can’t be loaded.",
-      startTeamRun: "Start team",
       cancelTeamRun: "Stop team run",
       teamRunPhase: "Team run: {{phase}}",
       teamRunRefused:

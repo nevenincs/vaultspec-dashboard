@@ -1,7 +1,7 @@
 export const ltrAgentResources = {
   sendComment: "Envoyer à l’assistant",
   autonomy: {
-    label: "Autonomie",
+    label: "Approbations",
     reviewEach: "Vérifier chaque modification",
     applyAutomatically: "Appliquer automatiquement",
     menuAria: "Choisir le mode d’application des modifications",
@@ -100,7 +100,6 @@ export const ltrAgentResources = {
     placeholder: "Écrire à l’assistant",
     clarificationParked: "Répondez à la question ci-dessus pour continuer",
     steerPlaceholder: "Répondez pour orienter l’assistant en cours",
-    send: "Envoyer",
     sendFailed: "Le message n’a pas pu être envoyé. Réessayez.",
     attachContext: "Ajouter une fonctionnalité ou un document",
     attachedContext: "Contexte joint",
@@ -122,7 +121,6 @@ export const ltrAgentResources = {
     selectorValue: "{{selector}} : {{value}}",
     selectorDisabled: "{{selector}} : {{value}}. {{reason}}",
     model: "Modèle",
-    modelDefault: "Par défaut",
     modelUnavailable: "Utilisation du modèle par défaut.",
     team: "Équipe",
     teamDefault: "Assistant seul",
@@ -137,7 +135,6 @@ export const ltrAgentResources = {
     modelMenuAria: "Sélectionner un profil de modèle",
     teamMenuAria: "Sélectionner une équipe d’assistants",
     teamPresetUnavailable: "Cette équipe ne peut pas être chargée.",
-    startTeamRun: "Démarrer l’équipe",
     cancelTeamRun: "Arrêter l’exécution de l’équipe",
     teamRunPhase: "Exécution de l’équipe : {{phase}}",
     teamRunRefused:
@@ -165,7 +162,7 @@ export const ltrAgentResources = {
 export const rtlAgentResources = {
   sendComment: "إرسال إلى المساعد",
   autonomy: {
-    label: "الاستقلالية",
+    label: "الموافقات",
     reviewEach: "مراجعة كل تغيير",
     applyAutomatically: "تطبيق تلقائي",
     menuAria: "اختر كيفية تطبيق التغييرات",
@@ -265,7 +262,6 @@ export const rtlAgentResources = {
     placeholder: "راسل المساعد",
     clarificationParked: "أجب عن السؤال أعلاه لمتابعة التشغيل",
     steerPlaceholder: "أجب لتوجيه المساعد أثناء عمله",
-    send: "إرسال",
     sendFailed: "تعذّر إرسال الرسالة. حاول مرة أخرى.",
     attachContext: "إضافة ميزة أو مستند",
     attachedContext: "السياق المرفق",
@@ -290,7 +286,6 @@ export const rtlAgentResources = {
     selectorValue: "{{selector}}: {{value}}",
     selectorDisabled: "{{selector}}: {{value}}. {{reason}}",
     model: "النموذج",
-    modelDefault: "افتراضي",
     modelUnavailable: "استخدام النموذج الافتراضي.",
     team: "الفريق",
     teamDefault: "مساعد واحد",
@@ -305,7 +300,6 @@ export const rtlAgentResources = {
     modelMenuAria: "اختر ملف نموذج",
     teamMenuAria: "اختر فريق مساعدين",
     teamPresetUnavailable: "تعذّر تحميل هذا الفريق.",
-    startTeamRun: "بدء الفريق",
     cancelTeamRun: "إيقاف تشغيل الفريق",
     teamRunPhase: "تشغيل الفريق: {{phase}}",
     teamRunRefused: "تعذّر بدء تشغيل الفريق. تحقّق من حالة الفريق ثم أعد المحاولة.",

@@ -68,7 +68,11 @@ export function AgentAutonomyControl() {
     valueKey === null
       ? authoredDisplayText(mode)
       : resolveMessage({ key: valueKey }).message;
-  const pill = resolveMessage({
+  // The pill shows the VALUE alone ("Review each change"), exactly like the
+  // captured permission chips ("Full access") — no reference app prefixes a
+  // selector noun, and "autonomy" in particular appears in none of them. The
+  // approvals noun survives only in the ACCESSIBLE name.
+  const pillAria = resolveMessage({
     key: MSG.selectorValue,
     values: { selector, value },
   }).message;
@@ -78,10 +82,10 @@ export function AgentAutonomyControl() {
     <div className="relative" data-agent-autonomy data-autonomy-mode={mode}>
       <span ref={triggerRef} data-agent-autonomy-trigger>
         <DropdownButton
-          label={pill}
+          label={value}
           open={open}
           onClick={() => setOpen((current) => !current)}
-          ariaLabel={pill}
+          ariaLabel={pillAria}
         />
       </span>
       {open && !menuAria.usedFallback && (

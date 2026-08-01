@@ -31,7 +31,6 @@ import { DropdownButton, Popover } from "../kit";
 
 const MSG = {
   model: "common:agent.composer.model",
-  modelDefault: "common:agent.composer.modelDefault",
   modelUnavailable: "common:agent.composer.modelUnavailable",
   selectorValue: "common:agent.composer.selectorValue",
   selectorDisabled: "common:agent.composer.selectorDisabled",
@@ -159,12 +158,17 @@ export function ComposerModelPicker({
     profiles.find((profile) => profile.is_default) ??
     null;
 
+  // D8: the pill labels by a SERVED value or does not render. With no served
+  // profiles there is nothing to choose and nothing truthful to name — an
+  // invented "Default" word is exactly the drift the references forbid.
+  if (profiles.length === 0) return null;
+
   const value =
     selected !== null
       ? authoredDisplayText(profileLabel(selected))
       : defaultProfileId !== null && defaultProfileId.length > 0
         ? authoredDisplayText(defaultProfileId)
-        : resolveMessage({ key: MSG.modelDefault }).message;
+        : authoredDisplayText(profileLabel(profiles[0]!));
 
   // Nothing to choose between: no served profiles, or every one of them ineligible.
   const selectable = profiles.some((profile) => profile.eligible);

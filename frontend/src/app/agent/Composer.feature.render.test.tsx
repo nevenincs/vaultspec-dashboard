@@ -142,10 +142,22 @@ function chip(): HTMLElement | null {
   return document.querySelector("[data-composer-feature]");
 }
 
-function startButton(): HTMLButtonElement {
-  const el = document.querySelector("[data-composer-team-start]");
+/** Enter on the input is the team start now (D11 — the Start button is deleted
+ *  with the send arrow; no captured composer has either). */
+function pressEnterToStart(): void {
+  const el = document.querySelector("[data-composer-input]") as HTMLTextAreaElement;
   expect(el).not.toBeNull();
-  return el as HTMLButtonElement;
+  fireEvent.keyDown(el, { key: "Enter" });
+}
+
+/** The selected preset's name on the team pill — the settle signal that team
+ *  mode is armed (the former Start button's presence played this role). */
+function teamPillNames(id: string): void {
+  const trigger = document.querySelector(
+    "[data-composer-team-trigger] button",
+  ) as HTMLButtonElement;
+  expect(trigger).not.toBeNull();
+  expect(trigger.textContent ?? "").toContain(id);
 }
 
 describe("the standing feature chip", () => {
@@ -153,7 +165,7 @@ describe("the standing feature chip", () => {
     seed([servedPreset("vaultspec-doc-editor", "coding")], `doc:${DOC_STEM}`);
     renderComposer();
     await pickPreset("vaultspec-doc-editor");
-    await waitFor(() => expect(startButton()).not.toBeNull());
+    await waitFor(() => teamPillNames("vaultspec-doc-editor"));
     expect(chip()).toBeNull();
   });
 
@@ -203,8 +215,7 @@ describe("what actually reaches the wire", () => {
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
-    await waitFor(() => expect(startButton().disabled).toBe(false));
-    fireEvent.click(startButton());
+    pressEnterToStart();
 
     await waitFor(() => {
       expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(true);
@@ -223,8 +234,7 @@ describe("what actually reaches the wire", () => {
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Tidy this document." } });
-    await waitFor(() => expect(startButton().disabled).toBe(false));
-    fireEvent.click(startButton());
+    pressEnterToStart();
 
     await waitFor(() => {
       expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(true);
@@ -243,11 +253,10 @@ describe("what actually reaches the wire", () => {
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
-    // The start is held, and the composer says what is missing rather than leaving
-    // a dead button to be interpreted.
-    expect(startButton().disabled).toBe(true);
+    // The start is HELD: Enter is a no-op, and the composer says what is missing
+    // rather than silently swallowing the keystroke.
     expect(document.querySelector("[data-composer-feature-hint]")).not.toBeNull();
-    fireEvent.click(startButton());
+    pressEnterToStart();
     expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(false);
   });
 
@@ -276,8 +285,7 @@ describe("what actually reaches the wire", () => {
       "[data-composer-input]",
     ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
-    await waitFor(() => expect(startButton().disabled).toBe(false));
-    fireEvent.click(startButton());
+    pressEnterToStart();
 
     await waitFor(() => {
       expect(fetchCalls.some((call) => call.url.includes("run-start"))).toBe(true);
