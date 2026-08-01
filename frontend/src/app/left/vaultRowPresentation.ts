@@ -24,11 +24,8 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { featureTagDisplayName } from "../../stores/featureQuery";
-import {
-  DOCUMENT_TYPE_MESSAGES,
-  docTypePresentation,
-} from "../../stores/server/docTypeVocabulary";
 import type { Category } from "../kit";
 import { freshness, freshnessToneClass } from "../presentation/freshness";
 
@@ -75,9 +72,28 @@ export function docMark(docType: string): Icon {
   return DOC_MARKS[docType] ?? FileDashed;
 }
 
-/** The canonical localized group label, failing closed to the generic document noun. */
-export function docGroupMessage(docType: string) {
-  return docTypePresentation(docType)?.label ?? DOCUMENT_TYPE_MESSAGES.document;
+/** The display label for a doc-type group header (binding Figma `LeftRail` 244:750
+ *  group headers: RESEARCH / DECISIONS / PLANS / STEPS / AUDITS / REFERENCES). The
+ *  human plural vocabulary is the ONE canonical doc-type schema (terminology-
+ *  standardization ADR D1) — this delegates to it so the rail headers can never
+ *  drift from the filter facets and search pills. The label text keeps catalog casing
+ *  so the kit `SectionLabel` renders it verbatim. Kept exported here for the VAULT
+ *  and TREE browser headers. */
+const DOC_GROUP_MESSAGES = {
+  adr: { key: "documents:documentTypes.adr" },
+  audit: { key: "documents:documentTypes.audit" },
+  exec: { key: "documents:documentTypes.exec" },
+  plan: { key: "documents:documentTypes.plan" },
+  reference: { key: "documents:documentTypes.reference" },
+  research: { key: "documents:documentTypes.research" },
+} as const satisfies Record<string, MessageDescriptor>;
+
+export function docGroupMessage(docType: string): MessageDescriptor {
+  return (
+    DOC_GROUP_MESSAGES[docType as keyof typeof DOC_GROUP_MESSAGES] ?? {
+      key: "documents:browserModes.documents",
+    }
+  );
 }
 
 // Doc-type → kit category token (binding board 135:2 StatusDot/Chip category set).
@@ -86,10 +102,19 @@ export function docGroupMessage(docType: string) {
 // leading StatusDot and its node always agree. `reference` now has its own bound
 // `scene/category-reference` color (terminology-standardization ADR D3). `index` is
 // never a displayed row (ADR D5), so it carries no category here.
+const DOC_TYPE_CATEGORY: Record<string, Category> = {
+  research: "research",
+  adr: "adr",
+  plan: "plan",
+  exec: "exec",
+  audit: "audit",
+  reference: "reference",
+};
+
 /** The kit category whose bound scene color tints a doc row's leading StatusDot,
  *  or null for a doc type with no bound category color. */
 export function docTypeCategory(docType: string): Category | null {
-  return docTypePresentation(docType)?.id ?? null;
+  return DOC_TYPE_CATEGORY[docType] ?? null;
 }
 
 /**

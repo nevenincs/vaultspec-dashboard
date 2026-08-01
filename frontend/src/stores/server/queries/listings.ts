@@ -16,7 +16,6 @@ import {
   dashboardLineageFilterArg,
   normalizeDashboardGraphCorpus,
 } from "../dashboardState";
-import { DOC_TYPE_ORDER } from "../docTypeVocabulary";
 import {
   EngineError,
   engineClient,
@@ -208,9 +207,21 @@ export interface VaultTreeBrowserView {
   filteredToNothing: boolean;
 }
 
+// Pipeline reading order; `index` is never a
+// displayed group, so it is omitted here and the feature projection skips
+// index entries outright.
+const VAULT_TREE_DOC_TYPE_ORDER = [
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
+] as const;
+
 function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
   const presentSet = new Set(present);
-  const order: string[] = [...DOC_TYPE_ORDER];
+  const order: string[] = [...VAULT_TREE_DOC_TYPE_ORDER];
   for (const extra of [...presentSet].sort()) {
     if (!order.includes(extra)) order.push(extra);
   }
@@ -367,6 +378,19 @@ export function useEditorLinkingCorpus(
 // No engine work and no new wire field: `status`, `dates`, `doc_type`,
 // and `feature_tags` are already on the `VaultTreeEntry` the projection reads.
 
+/** Doc-type-first display order for the Documents section — the pipeline reading
+ *  order: Research · Decisions · Plans · Steps
+ *  · Audits · References. `index` is hidden (the rail mirrors `.vault/` EXCEPT the
+ *  generated index); unknown types append alphabetically. */
+const VAULT_RAIL_DOC_TYPE_ORDER = [
+  "research",
+  "adr",
+  "plan",
+  "exec",
+  "audit",
+  "reference",
+] as const;
+
 export interface VaultDocTypeGroup {
   docType: string;
   count: number;
@@ -464,9 +488,7 @@ export function projectVaultDocTypeGroups(
     list.push(entry);
     byType.set(entry.doc_type, list);
   }
-  // The shared pipeline identity order is canonical; this projection alone keeps
-  // `index` hidden and appends unknown served types alphabetically.
-  const order: string[] = [...DOC_TYPE_ORDER];
+  const order: string[] = [...VAULT_RAIL_DOC_TYPE_ORDER];
   for (const extra of [...byType.keys()].sort()) {
     if (extra !== "index" && !order.includes(extra)) order.push(extra);
   }

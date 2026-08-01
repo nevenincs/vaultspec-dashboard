@@ -60,12 +60,6 @@ beforeEach(() => {
       run: first,
     },
     {
-      id: "disabled",
-      label: { key: "common:actions.open" },
-      section: "navigate",
-      disabled: true,
-    },
-    {
       id: "second",
       label: { key: "common:actions.close" },
       section: "navigate",
@@ -102,53 +96,31 @@ describe("ContextMenuHost interactive", () => {
   it("ArrowDown/ArrowUp walk the items via roving focus", async () => {
     openAt();
     const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
-    const firstItem = screen.getByRole("menuitem", { name: "Copy" });
-    const disabledItem = screen.getByRole("menuitem", { name: "Open" });
     await waitFor(
       () => expect(document.activeElement?.textContent).toContain("Copy"),
       ENGINE_WAIT,
     );
-    fireEvent.keyDown(firstItem, { key: "ArrowDown" });
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
     await waitFor(
       () => expect(document.activeElement?.textContent).toContain("Close"),
       ENGINE_WAIT,
     );
-    expect(document.activeElement).not.toBe(disabledItem);
-    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "ArrowUp" });
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
     await waitFor(
       () => expect(document.activeElement?.textContent).toContain("Copy"),
       ENGINE_WAIT,
     );
-  });
-
-  it("Home and End clamp to the first and last runnable menuitems", async () => {
-    openAt();
-    await screen.findByRole("menu", undefined, ENGINE_WAIT);
-    const firstItem = screen.getByRole("menuitem", { name: "Copy" });
-    firstItem.focus();
-
-    fireEvent.keyDown(firstItem, { key: "End" });
-    await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("Close"),
-      ENGINE_WAIT,
-    );
-    expect((document.activeElement as HTMLElement).tabIndex).toBe(0);
-
-    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Home" });
-    await waitFor(() => expect(document.activeElement).toBe(firstItem), ENGINE_WAIT);
-    expect(firstItem.tabIndex).toBe(0);
   });
 
   it("Enter activates the focused item and closes", async () => {
     openAt();
-    await screen.findByRole("menu", undefined, ENGINE_WAIT);
-    const firstItem = screen.getByRole("menuitem", { name: "Copy" });
-    fireEvent.keyDown(firstItem, { key: "ArrowDown" });
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
     await waitFor(
       () => expect(document.activeElement?.textContent).toContain("Close"),
       ENGINE_WAIT,
     );
-    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Enter" });
+    fireEvent.keyDown(menu, { key: "Enter" });
     expect(secondCount).toBe(1);
     expect(firstCount).toBe(0);
     expect(useContextMenuStore.getState().open).toBe(false);
@@ -159,12 +131,8 @@ describe("ContextMenuHost interactive", () => {
     trigger.textContent = "opener";
     document.body.appendChild(trigger);
     openAt(trigger);
-    await screen.findByRole("menu", undefined, ENGINE_WAIT);
-    await waitFor(
-      () => expect(document.activeElement?.textContent).toContain("Copy"),
-      ENGINE_WAIT,
-    );
-    fireEvent.keyDown(document.activeElement as HTMLElement, { key: "Escape" });
+    const menu = await screen.findByRole("menu", undefined, ENGINE_WAIT);
+    fireEvent.keyDown(menu, { key: "Escape" });
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
   });

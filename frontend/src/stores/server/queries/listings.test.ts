@@ -4,7 +4,6 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { liveScope, liveTransport } from "../../../testing/liveClient";
 import { engineClient } from "../engine";
-import { DOC_TYPE_ORDER } from "../docTypeVocabulary";
 import type {
   FiltersVocabulary,
   MapWorktree,
@@ -31,7 +30,6 @@ import {
   normalizeFiltersVocabularyRequestIdentity,
   normalizeVaultTreeRequestIdentity,
   orderWorkspaceMapWorktrees,
-  projectVaultDocTypeGroups,
   useCodeFiles,
   useFileTree,
   useFiltersVocabulary,
@@ -550,39 +548,6 @@ describe("left-rail root surface states", () => {
     expect(
       allGroups.flatMap((group) => group.docTypes).map((sub) => sub.docType),
     ).not.toContain("index");
-  });
-
-  it("shares canonical document-type order while projections retain their own index and unknown policies", () => {
-    const entry = (docType: string, featureTags: string[]): VaultTreeEntry => ({
-      path: `.vault/${docType}/2026-01-08-grid-${docType}.md`,
-      doc_type: docType,
-      feature_tags: featureTags,
-      dates: {},
-    });
-    const entries = [
-      ...DOC_TYPE_ORDER.map((docType) => entry(docType, ["grid"])),
-      entry("custom", ["grid"]),
-      entry("index", ["grid"]),
-      entry("adr", []),
-    ];
-
-    const featureTypes = deriveVaultTreeBrowserView(
-      entries,
-      "",
-    ).groups[0]!.docTypes.map((group) => group.docType);
-    const documentGroups = projectVaultDocTypeGroups(entries);
-
-    expect(featureTypes).toEqual([...DOC_TYPE_ORDER, "custom"]);
-    expect(documentGroups.map((group) => group.docType)).toEqual([
-      ...DOC_TYPE_ORDER,
-      "custom",
-    ]);
-    expect(documentGroups.find((group) => group.docType === "adr")?.count).toBe(2);
-    expect(deriveVaultTreeBrowserView(entries, "").groups.at(-1)?.feature).toBe(
-      "(untagged)",
-    );
-    expect(featureTypes).not.toContain("index");
-    expect(documentGroups.map((group) => group.docType)).not.toContain("index");
   });
 
   it("does not expose cached vault-tree data when no scope is selected", () => {

@@ -1,6 +1,7 @@
 // Canonical localized presentation for supported vault document types. Unknown
 // wire values are rejected instead of being converted into user-facing copy.
 
+import { documents as sourceDocuments } from "../../locales/en/documents";
 import type { MessageDescriptor } from "../../platform/localization/message";
 
 export type VaultDocumentType =
@@ -105,4 +106,14 @@ export function docTypePresentation(value: unknown): DocumentTypePresentation | 
     value === "reference"
     ? DOC_TYPE_PRESENTATION[value]
     : null;
+}
+
+/**
+ * @deprecated Use docTypePresentation with localized message resolution.
+ */
+export function docTypeLabel(docType: string): string {
+  const presentation = docTypePresentation(docType);
+  return presentation === null
+    ? sourceDocuments.labels.document
+    : sourceDocuments.documentTypes[presentation.id];
 }

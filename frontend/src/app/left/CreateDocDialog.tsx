@@ -36,10 +36,6 @@ import {
 } from "../../stores/server/queries";
 import type { FeatureTypeCoverage } from "../../stores/server/engine";
 import {
-  DOCUMENT_TYPE_MESSAGES,
-  docTypePresentation,
-} from "../../stores/server/docTypeVocabulary";
-import {
   closeCreateDocDialog,
   consumeCreateDocFocusFeature,
   type CreateDocIssue,
@@ -64,8 +60,6 @@ import { openDocTab } from "../../stores/view/tabs";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Dialog } from "../chrome/Dialog";
 import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
-import { useFocusZone } from "../chrome/useFocusZone";
-import type { UseFocusZone } from "../chrome/useFocusZone";
 import { Button, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { DocTypeMark } from "../../scene/field/markComponents";
 
@@ -74,6 +68,29 @@ import { DocTypeMark } from "../../scene/field/markComponents";
 // tree's `DocTypeMark`/Lucide sizes — the px scanner reads style/class values, not
 // numeric icon props).
 const DOC_GLYPH_SIZE = 15;
+
+// Plain-language SINGULAR labels for a creation act ("Add a Decision record"),
+// distinct from the rail's plural GROUP headers ("Decisions"). Design-system law:
+// never render a `doc_type` token raw.
+const CREATE_DOC_TYPE_MESSAGE: Record<CreateDocType, MessageDescriptor> = {
+  research: { key: "documents:createDialog.documentTypes.research" },
+  reference: { key: "documents:createDialog.documentTypes.reference" },
+  adr: { key: "documents:createDialog.documentTypes.adr" },
+  plan: { key: "documents:createDialog.documentTypes.plan" },
+  audit: { key: "documents:createDialog.documentTypes.audit" },
+};
+
+// The coverage card iterates the FULL served pipeline (including `exec`, which the
+// read-only card honestly shows even though it is never a creation affordance),
+// so it carries its own complete label map.
+const COVERAGE_TYPE_MESSAGE: Record<string, MessageDescriptor> = {
+  research: { key: "documents:createDialog.documentTypes.research" },
+  reference: { key: "documents:createDialog.documentTypes.reference" },
+  adr: { key: "documents:createDialog.documentTypes.adr" },
+  plan: { key: "documents:createDialog.documentTypes.plan" },
+  exec: { key: "documents:createDialog.documentTypes.exec" },
+  audit: { key: "documents:createDialog.documentTypes.audit" },
+};
 
 // The advisory purpose line an ELIGIBLE type row reads (its pipeline role in plain
 // language). An INELIGIBLE row overrides this with its served-note reason below.
@@ -107,7 +124,11 @@ function typeRowHint(row: {
 }
 
 function coverageTypeMessage(docType: string): MessageDescriptor {
-  return docTypePresentation(docType)?.detailLabel ?? DOCUMENT_TYPE_MESSAGES.document;
+  return (
+    COVERAGE_TYPE_MESSAGE[docType] ?? {
+      key: "documents:createDialog.documentTypes.document",
+    }
+  );
 }
 
 const CREATE_DOC_ISSUE_MESSAGE: Record<CreateDocIssue, MessageDescriptor> = {
@@ -158,29 +179,8 @@ export function CreateDocDialog() {
     [corpus.featureTags],
   );
   const featureFieldRef = useRef<HTMLDivElement>(null);
-  const radioGroupRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const backRef = useRef<HTMLButtonElement>(null);
-  const offered = useMemo(() => deriveOfferedCreateDocTypes(coverage), [coverage]);
-  const selectedEligible = isCreateDocTypeEligible(docType, coverage);
-  const focusZone = useFocusZone({
-    orientation: "both",
-    wrap: true,
-    activeKey: docType,
-    // Unavailable rows remain roving targets so their served prerequisite reasons
-    // are reachable, but only eligible rows change the creation selection.
-    onActiveKeyChange: (key) => {
-      const row = offered.find((candidate) => candidate.docType === key);
-      if (row?.eligible) setCreateDocType(row.docType);
-    },
-  });
-
-  const focusDocumentRow = (type: CreateDocType) => {
-    if (offered.some((row) => row.docType === type)) {
-      focusZone.focusItem(type);
-    } else {
-      backRef.current?.focus();
-    }
-  };
 
   const focusFeatureCombobox = () =>
     featureFieldRef.current
@@ -199,7 +199,7 @@ export function CreateDocDialog() {
     if (draft.stage === "feature") {
       focusFeatureCombobox();
     } else {
-      focusDocumentRow(draft.docType);
+      (optionRefs.current[draft.docType] ?? backRef.current)?.focus();
     }
     // Open-only by design: stage transitions are handled below.
   }, [open]);
@@ -218,7 +218,7 @@ export function CreateDocDialog() {
     prevStageRef.current = stage;
     if (stage === "document") {
       const draft = useCreateDocChromeStore.getState();
-      focusDocumentRow(draft.docType);
+      (optionRefs.current[draft.docType] ?? backRef.current)?.focus();
     } else {
       focusFeatureCombobox();
     }
@@ -233,9 +233,11 @@ export function CreateDocDialog() {
     if (!open) return;
     const reconciled = reconcileCreateDocType(docType, coverage);
     if (reconciled !== docType) {
-      const groupOwnsFocus = radioGroupRef.current?.contains(document.activeElement);
+      const groupOwnsFocus = Object.values(optionRefs.current).some(
+        (node) => node !== null && node === document.activeElement,
+      );
       setCreateDocType(reconciled);
-      if (groupOwnsFocus) focusDocumentRow(reconciled);
+      if (groupOwnsFocus) optionRefs.current[reconciled]?.focus();
     }
   }, [open, coverage, docType]);
 
@@ -254,6 +256,9 @@ export function CreateDocDialog() {
     seedKeyRef.current = key;
     setCreateDocRelated(seedRelatedFromCoverage(docType, coverage));
   }, [open, feature, docType, coverage]);
+
+  const offered = useMemo(() => deriveOfferedCreateDocTypes(coverage), [coverage]);
+  const selectedEligible = isCreateDocTypeEligible(docType, coverage);
 
   const featureTrimmed = feature.trim();
 
@@ -330,12 +335,15 @@ export function CreateDocDialog() {
     }
   };
 
-  // Unavailable rows are aria-disabled (focusable, inert) so keyboard and
-  // screen-reader users can REACH them and hear their served reason (audit
-  // disabled-type-reason-unreachable HIGH). FocusZone traverses every row; this
-  // local policy only commits selection when the row is eligible.
+  // Roving arrow-key traversal across ALL type radios — ineligible rows are
+  // aria-disabled (focusable, inert) so keyboard and screen-reader users can REACH
+  // them and hear their served reason (audit disabled-type-reason-unreachable HIGH);
+  // arrows move focus through every row but selection only lands on an eligible one
+  // (APG radio-with-disabled pattern). Class-B widget-intrinsic keys stay
+  // in-component, and the composite stopPropagations the consumed keys so they never
+  // reach the global keymap dispatcher (actions-keymap-palette law).
   const focusOfferedRow = (row: { docType: CreateDocType; eligible: boolean }) => {
-    focusZone.focusItem(row.docType);
+    optionRefs.current[row.docType]?.focus();
     if (row.eligible) setCreateDocType(row.docType);
   };
 
@@ -367,6 +375,42 @@ export function CreateDocDialog() {
   const addRelated = (stem: string) => {
     // The store normalization dedupes and caps the list (CREATE_DOC_RELATED_MAX).
     setCreateDocRelated([...related, stem]);
+  };
+
+  const moveSelection = (dir: 1 | -1) => {
+    if (offered.length === 0) return;
+    const focusedIndex = offered.findIndex(
+      (o) => optionRefs.current[o.docType] === document.activeElement,
+    );
+    const currentIndex =
+      focusedIndex >= 0
+        ? focusedIndex
+        : offered.findIndex((o) => o.docType === docType);
+    const base = currentIndex < 0 ? (dir === 1 ? -1 : 0) : currentIndex;
+    const next = offered[(base + dir + offered.length) % offered.length]!;
+    focusOfferedRow(next);
+  };
+
+  const onRadiogroupKeyDown = (event: React.KeyboardEvent) => {
+    // Bare Arrow{Up,Down,Left,Right} are GLOBAL keybindings (feature/neighbor
+    // navigation); the radios are buttons so the dispatcher's text gate does not
+    // suppress them, and the Dialog traps only Tab. Stop the consumed keys here so
+    // roving between type radios never also mutates the graph selection. Home/End
+    // go first/last per the APG radiogroup pattern.
+    if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+      event.preventDefault();
+      event.stopPropagation();
+      moveSelection(1);
+    } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+      event.preventDefault();
+      event.stopPropagation();
+      moveSelection(-1);
+    } else if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      const row = event.key === "Home" ? offered[0] : offered[offered.length - 1];
+      if (row) focusOfferedRow(row);
+    }
   };
 
   const removeRelated = (stem: string) => {
@@ -440,9 +484,9 @@ export function CreateDocDialog() {
             feature={feature}
             offered={offered}
             selectedType={docType}
-            focusZone={focusZone}
-            radioGroupRef={radioGroupRef}
+            optionRefs={optionRefs}
             backRef={backRef}
+            onRadiogroupKeyDown={onRadiogroupKeyDown}
             onActivateRow={activateOfferedRow}
             title={title}
             related={related}
@@ -641,9 +685,9 @@ interface DocumentStageProps {
   feature: string;
   offered: ReturnType<typeof deriveOfferedCreateDocTypes>;
   selectedType: CreateDocType;
-  focusZone: UseFocusZone;
-  radioGroupRef: React.RefObject<HTMLDivElement | null>;
+  optionRefs: React.MutableRefObject<Record<string, HTMLButtonElement | null>>;
   backRef: React.RefObject<HTMLButtonElement | null>;
+  onRadiogroupKeyDown: (event: React.KeyboardEvent) => void;
   onActivateRow: (row: {
     docType: CreateDocType;
     eligible: boolean;
@@ -661,9 +705,9 @@ function DocumentStage({
   feature,
   offered,
   selectedType,
-  focusZone,
-  radioGroupRef,
+  optionRefs,
   backRef,
+  onRadiogroupKeyDown,
   onActivateRow,
   title,
   related,
@@ -714,22 +758,23 @@ function DocumentStage({
             key: "documents:createDialog.accessibility.documentType",
           })}
           className="flex flex-col gap-fg-1"
-          ref={radioGroupRef}
+          onKeyDown={onRadiogroupKeyDown}
         >
           {offered.map((row) => {
             const selected = row.docType === selectedType;
-            const focusProps = focusZone.rove(row.docType);
             const hint = message(typeRowHint(row));
             const hintId = `${hintIdBase}-${row.docType}`;
             const describedBy = { "aria-describedby": hintId } as const;
             return (
               <button
                 key={row.docType}
-                ref={focusProps.ref}
+                ref={(node) => {
+                  optionRefs.current[row.docType] = node;
+                }}
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                aria-label={message(coverageTypeMessage(row.docType))}
+                aria-label={message(CREATE_DOC_TYPE_MESSAGE[row.docType])}
                 // aria-disabled, NOT disabled (audit disabled-type-reason-unreachable
                 // HIGH): the row stays focusable and roving-reachable so keyboard and
                 // screen-reader users can reach it and hear WHY it is unavailable —
@@ -737,12 +782,11 @@ function DocumentStage({
                 // is a no-op on an ineligible row.
                 aria-disabled={row.eligible ? undefined : true}
                 {...describedBy}
-                tabIndex={focusProps.tabIndex}
+                tabIndex={selected ? 0 : -1}
                 // Eligible: select. Ineligible: the one-click path to the
                 // prerequisite (ADR D3) — activation walks the reason chain and
                 // selects the first eligible upstream type instead of a dead no-op.
                 onClick={() => onActivateRow(row)}
-                onKeyDown={focusProps.onKeyDown}
                 className={`flex items-start gap-fg-2 rounded-fg-sm border px-fg-2 py-fg-2 text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                   selected
                     ? "border-accent bg-accent-subtle"
@@ -756,7 +800,7 @@ function DocumentStage({
                 </span>
                 <span className="flex min-w-0 flex-col gap-fg-0-5">
                   <span className="text-body text-ink">
-                    {message(coverageTypeMessage(row.docType))}
+                    {message(CREATE_DOC_TYPE_MESSAGE[row.docType])}
                   </span>
                   <span {...{ id: hintId }} className="text-meta text-ink-muted">
                     {hint}

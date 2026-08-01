@@ -10,6 +10,7 @@ import {
   DOC_TYPE_ORDER,
   DOC_TYPE_PRESENTATION,
   DOCUMENT_TYPE_MESSAGES,
+  docTypeLabel,
   docTypePresentation,
 } from "./docTypeVocabulary";
 
@@ -127,5 +128,21 @@ describe("canonical document-type vocabulary", () => {
       message: "مستند",
       usedFallback: false,
     });
+  });
+
+  it("keeps the source-locale compatibility fallback safe", () => {
+    expect(DOC_TYPE_ORDER.map((id) => docTypeLabel(id))).toEqual([
+      "Research",
+      "Decisions",
+      "Plans",
+      "Steps",
+      "Audits",
+      "References",
+    ]);
+    expect(
+      ["index", "code", "summary", "arbitrary-internal-type", "   "].map((id) =>
+        docTypeLabel(id),
+      ),
+    ).toEqual(["Document", "Document", "Document", "Document", "Document"]);
   });
 });

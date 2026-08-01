@@ -22,18 +22,14 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  bearerToken,
   CANONICAL_TIERS,
   EngineError,
-  type TiersBlock,
-  tiersFromQuery,
-} from "../engine/tiers";
-import {
-  engineErrorFromResponse,
-  machineBearerFetch,
-  machineBearerToken,
   type FetchLike,
-} from "../httpTransport";
-import { unwrapEnvelope } from "../liveAdapters/internal";
+  type TiersBlock,
+} from "../engine";
+import { tiersFromQuery } from "../engine/tiers";
+import { unwrapEnvelope } from "../liveAdapters";
 import {
   adaptRelayFrame,
   EMPTY_RELAY_TRANSCRIPT,
@@ -51,6 +47,17 @@ import { asBool, asStr, asTiers, isRec, type Rec } from "../authoring";
 
 // Dev proxies `/api` → engine; production shares the engine origin.
 const A2A_BASE = import.meta.env.DEV ? "/api" : "";
+
+/** The machine-bearer transport (the `/ops/a2a/*` pass-through is machine-bearer-
+ *  gated, NOT actor-token-gated — it carries no authoring identity). Mirrors the
+ *  engine client's default transport. */
+const defaultBearerTransport: FetchLike = (input, init) => {
+  const bearer = bearerToken();
+  if (!bearer) return fetch(input, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has("authorization")) headers.set("Authorization", `Bearer ${bearer}`);
+  return fetch(input, { ...init, headers });
+};
 
 // --- served shapes (tolerant, wire values pass through snake_case) --------------
 
@@ -411,7 +418,7 @@ export class A2aTeamClient {
 
   constructor(options: A2aTeamClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? A2A_BASE;
-    this.baseFetch = options.fetchImpl ?? machineBearerFetch(machineBearerToken);
+    this.baseFetch = options.fetchImpl ?? defaultBearerTransport;
   }
 
   /** Rebind the transport (the live-wire harness injects the spawned engine's). */
@@ -435,10 +442,15 @@ export class A2aTeamClient {
       body: JSON.stringify(body ?? {}),
       signal,
     });
-    if (!response.ok) {
-      throw await engineErrorFromResponse(`/ops/a2a/${verb}`, response);
-    }
     const json = (await response.json()) as unknown;
+    if (!response.ok) {
+      const flat = unwrapEnvelope(json);
+      const tiers = isRec(flat) ? asTiers(flat.tiers) : undefined;
+      throw new EngineError(`/ops/a2a/${verb}`, response.status, {
+        tiers,
+        body: flat,
+      });
+    }
     const flat = unwrapEnvelope(json);
     if (!isRec(flat)) return { envelope: undefined };
     return {

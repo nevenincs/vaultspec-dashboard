@@ -31,21 +31,16 @@ import {
   type UseQueryResult,
 } from "@tanstack/react-query";
 import {
+  bearerToken,
   CANONICAL_TIERS,
   EngineError,
   readTierAvailability,
   tiersFromQuery,
+  type FetchLike,
   type TierAvailability,
   type TiersBlock,
-} from "../engine/tiers";
-import {
-  authoringActorFetch,
-  engineErrorFromResponse,
-  machineBearerFetch,
-  machineBearerToken,
-  type FetchLike,
-} from "../httpTransport";
-import { unwrapEnvelope } from "../liveAdapters/internal";
+} from "../engine";
+import { unwrapEnvelope } from "../liveAdapters";
 import {
   adaptCommentList,
   adaptCommentRecord,
@@ -114,6 +109,11 @@ export * from "./commentVocabulary";
 // origin and the prefix collapses — identical to the `EngineClient` base rule.
 const AUTHORING_BASE = import.meta.env.DEV ? "/api" : "";
 
+/** The per-principal actor-token header the command routes resolve identity from.
+ *  The wire envelope carries NO actor; the server resolves it from this header
+ *  alone. */
+const ACTOR_TOKEN_HEADER = "x-authoring-actor-token";
+
 /** The typed error kind the engine returns when the durable authoring store
  *  cannot be opened/read — the honest "authoring backend unavailable" signal a
  *  consumer degrades on (read from the error envelope, not guessed). */
@@ -173,6 +173,42 @@ export function readAuthoringDegradation(query: {
 
 // --- the wire client ------------------------------------------------------------
 
+/** The production base transport: the machine bearer from the injected meta tag
+ *  (identical to `EngineClient`'s default). A command layers the per-principal
+ *  actor-token header on top of this (see `AuthoringClient.withActor`). The test
+ *  harness swaps this for the live transport that carries the spawned engine's
+ *  bearer, so the SAME client code runs against the real wire. */
+const defaultBearerTransport: FetchLike = (input, init) => {
+  const bearer = bearerToken();
+  if (!bearer) return fetch(input, init);
+  const headers = new Headers(init?.headers);
+  if (!headers.has("authorization")) {
+    headers.set("Authorization", `Bearer ${bearer}`);
+  }
+  return fetch(input, { ...init, headers });
+};
+
+/** Build an `EngineError` from a non-ok authoring response, PRESERVING the tiers
+ *  block + typed `error_kind` the engine attaches to its error envelope so a
+ *  denied-store 503 or a 409 conflict reaches the consumer as degradation truth,
+ *  never a tiers-less bare failure (wire-contract). */
+async function authoringErrorFrom(
+  path: string,
+  response: Response,
+): Promise<EngineError> {
+  let body: unknown;
+  let tiers: TiersBlock | undefined;
+  try {
+    body = unwrapEnvelope(await response.json());
+    if (isRec(body) && "tiers" in body && isRec(body.tiers)) {
+      tiers = body.tiers as TiersBlock;
+    }
+  } catch {
+    // No structured JSON body — nothing to preserve.
+  }
+  return new EngineError(path, response.status, { tiers, body });
+}
+
 /** A generated idempotency key for a mutating command (a mutating command is
  *  idempotent). The composed key is ascii-safe for the wire
  *  `IdempotencyKey` grammar; a caller may pass its own for replay control. */
@@ -196,7 +232,7 @@ export interface AuthoringClientOptions {
   baseUrl?: string;
   /** The base transport (bearer-carrying). Defaults to the meta-tag bearer
    *  transport; the test harness injects the live transport. The actor-token
-   *  header is layered on top per command by `authoringActorFetch`. */
+   *  header is layered on top per command by `withActor`. */
   fetchImpl?: FetchLike;
 }
 
@@ -211,7 +247,7 @@ export class AuthoringClient {
 
   constructor(options: AuthoringClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? AUTHORING_BASE;
-    this.baseFetch = options.fetchImpl ?? machineBearerFetch(machineBearerToken);
+    this.baseFetch = options.fetchImpl ?? defaultBearerTransport;
   }
 
   /** Rebind the base transport at runtime. Mirrors {@link EngineClient.useTransport}:
@@ -219,6 +255,17 @@ export class AuthoringClient {
    *  through {@link usePlanStepTick} speak to the real engine (testing/liveSetup). */
   useTransport(fetchImpl: FetchLike): void {
     this.baseFetch = fetchImpl;
+  }
+
+  /** Layer the per-principal actor-token header onto the base (bearer) transport.
+   *  Reads pass no token; a command passes the resolved actor token. */
+  private withActor(actorToken?: string): FetchLike {
+    return (input, init) => {
+      if (!actorToken) return this.baseFetch(input, init);
+      const headers = new Headers(init?.headers);
+      headers.set(ACTOR_TOKEN_HEADER, actorToken);
+      return this.baseFetch(input, { ...init, headers });
+    };
   }
 
   // --- reads (principal-permissive) ---
@@ -272,11 +319,11 @@ export class AuthoringClient {
   async openEventStream(lastSeq: unknown, signal?: AbortSignal): Promise<Response> {
     const cursor = normalizeAuthoringStreamSeq(lastSeq) ?? 0;
     const path = `/authoring/v1/events?last_seq=${cursor}`;
-    const response = await authoringActorFetch(this.baseFetch)(
+    const response = await this.withActor()(
       `${this.baseUrl}${path}`,
       signal ? { signal } : undefined,
     );
-    if (!response.ok) throw await engineErrorFromResponse(path, response);
+    if (!response.ok) throw await authoringErrorFrom(path, response);
     return response;
   }
 
@@ -298,7 +345,7 @@ export class AuthoringClient {
     const body = await this.postJson(
       "/authoring/v1/actor-tokens",
       payload,
-      authoringActorFetch(this.baseFetch),
+      this.withActor(),
     );
     const r: Rec = isRec(body) ? body : {};
     return {
@@ -329,7 +376,7 @@ export class AuthoringClient {
     const body = await this.postJson(
       "/authoring/v1/direct-writes",
       envelope,
-      authoringActorFetch(this.baseFetch, opts.actorToken),
+      this.withActor(opts.actorToken),
     );
     return adaptDirectWriteOutcome(body);
   }
@@ -485,7 +532,7 @@ export class AuthoringClient {
         idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
         payload,
       },
-      authoringActorFetch(this.baseFetch, opts.actorToken),
+      this.withActor(opts.actorToken),
     );
     return adaptCommentRecord(isRec(body) ? body.comment : undefined);
   }
@@ -506,7 +553,7 @@ export class AuthoringClient {
         idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
         payload: commentUpdateWirePayload(update),
       },
-      authoringActorFetch(this.baseFetch, opts.actorToken),
+      this.withActor(opts.actorToken),
     );
     return adaptCommentRecord(isRec(body) ? body.comment : undefined);
   }
@@ -523,7 +570,7 @@ export class AuthoringClient {
         idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("comment"),
         payload: {},
       },
-      authoringActorFetch(this.baseFetch, opts.actorToken),
+      this.withActor(opts.actorToken),
     );
     return isRec(body) && body.deleted === true;
   }
@@ -531,11 +578,11 @@ export class AuthoringClient {
   // --- transport ---
 
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
-    const response = await authoringActorFetch(this.baseFetch)(
+    const response = await this.withActor()(
       `${this.baseUrl}${path}`,
       signal ? { signal } : undefined,
     );
-    if (!response.ok) throw await engineErrorFromResponse(path, response);
+    if (!response.ok) throw await authoringErrorFrom(path, response);
     return unwrapEnvelope(await response.json());
   }
 
@@ -554,11 +601,7 @@ export class AuthoringClient {
       idempotency_key: opts.idempotencyKey ?? newIdempotencyKey(),
       payload,
     };
-    const body = await this.postJson(
-      path,
-      envelope,
-      authoringActorFetch(this.baseFetch, opts.actorToken),
-    );
+    const body = await this.postJson(path, envelope, this.withActor(opts.actorToken));
     return interpretCommandOutcome(body);
   }
 
@@ -585,7 +628,7 @@ export class AuthoringClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw await engineErrorFromResponse(path, response);
+    if (!response.ok) throw await authoringErrorFrom(path, response);
     return unwrapEnvelope(await response.json());
   }
 }

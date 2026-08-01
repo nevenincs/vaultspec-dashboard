@@ -18,9 +18,7 @@
 import { beforeAll, describe, expect, test } from "vitest";
 
 import { EngineClient } from "../stores/server/engine";
-import type { MapResponse } from "../stores/server/engine/graphTypes";
-import type { TiersBlock } from "../stores/server/engine/tiers";
-import type { FetchLike } from "../stores/server/httpTransport";
+import type { FetchLike, MapResponse, TiersBlock } from "../stores/server/engine";
 
 const BASE_URL = process.env["ENGINE_BASE_URL"];
 const TOKEN = process.env["ENGINE_TOKEN"];
