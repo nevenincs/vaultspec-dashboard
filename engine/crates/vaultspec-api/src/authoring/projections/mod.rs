@@ -1257,7 +1257,7 @@ fn policy_decision(
         .iter()
         .map(|child| child.operation)
         .collect::<Vec<_>>();
-    decide_changeset_approval(scope_mode, None, latest.kind, &operations)
+    decide_changeset_approval(scope_mode, latest.kind, &operations)
 }
 
 /// Build the validation freshness tuple. `digest_matches_reviewed` is true when no

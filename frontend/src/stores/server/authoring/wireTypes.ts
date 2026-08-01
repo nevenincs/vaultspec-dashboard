@@ -43,8 +43,16 @@ export type OperationMode = "manual" | "assisted" | "autonomous";
 /** Changeset risk class served by the approval policy matrix. */
 export type RiskClass = "non_destructive" | "destructive";
 
-/** What approval the backend policy requires for the projected changeset. */
-export type ApprovalRequirement = "human_approval_required" | "system_auto_approvable";
+/** What approval the backend policy requires for the projected changeset
+ *  (engine `ApprovalRequirement`): `human_approval_required` is now the
+ *  destructive floor ONLY, enforced at the decision seam in every mode;
+ *  `reviewer_approval_required` is the `manual`-mode non-destructive case — a
+ *  decision by an authorized actor distinct from the proposer, the system
+ *  actor may not auto-approve. */
+export type ApprovalRequirement =
+  | "human_approval_required"
+  | "reviewer_approval_required"
+  | "system_auto_approvable";
 
 /** The V1 approval queue state: FOUR states collapsed to the single-reviewer
  *  reality. */
@@ -71,9 +79,7 @@ export interface ActionEligibility {
 export interface PolicyDecisionProjection {
   policy_version: string;
   scope_mode: OperationMode;
-  session_override?: OperationMode;
   effective_mode: OperationMode;
-  session_override_ignored: boolean;
   risk: RiskClass;
   requirement: ApprovalRequirement;
   reason: string;

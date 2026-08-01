@@ -66,6 +66,7 @@ const modes = Object.freeze([
 
 const requirements = Object.freeze([
   "human_approval_required",
+  "reviewer_approval_required",
   "system_auto_approvable",
 ] as const satisfies readonly ApprovalRequirement[]);
 
@@ -192,7 +193,7 @@ describe("review station presentation vocabulary", () => {
         expectTranslatedWithoutFallback(descriptor);
       }
     }
-    expect(keys.size).toBe(6);
+    expect(keys.size).toBe(9);
 
     const safe = reviewPolicyDescriptor("private_mode", "private_requirement");
     expect(safe.key).toBe("documents:reviewStation.policy.unavailable");

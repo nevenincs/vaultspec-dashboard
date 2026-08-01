@@ -222,6 +222,9 @@ const POLICY_DESCRIPTORS = Object.freeze({
     human_approval_required: descriptor(
       "documents:reviewStation.policy.manualHumanApproval",
     ),
+    reviewer_approval_required: descriptor(
+      "documents:reviewStation.policy.manualReviewerApproval",
+    ),
     system_auto_approvable: descriptor(
       "documents:reviewStation.policy.manualSystemApproval",
     ),
@@ -230,6 +233,9 @@ const POLICY_DESCRIPTORS = Object.freeze({
     human_approval_required: descriptor(
       "documents:reviewStation.policy.assistedHumanApproval",
     ),
+    reviewer_approval_required: descriptor(
+      "documents:reviewStation.policy.assistedReviewerApproval",
+    ),
     system_auto_approvable: descriptor(
       "documents:reviewStation.policy.assistedSystemApproval",
     ),
@@ -237,6 +243,9 @@ const POLICY_DESCRIPTORS = Object.freeze({
   autonomous: Object.freeze({
     human_approval_required: descriptor(
       "documents:reviewStation.policy.autonomousHumanApproval",
+    ),
+    reviewer_approval_required: descriptor(
+      "documents:reviewStation.policy.autonomousReviewerApproval",
     ),
     system_auto_approvable: descriptor(
       "documents:reviewStation.policy.autonomousSystemApproval",

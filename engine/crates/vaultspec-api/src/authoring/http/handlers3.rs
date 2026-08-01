@@ -602,7 +602,6 @@ pub async fn execute_agent_tool_call(
                     requester: actor.clone(),
                     scope_id: scope_id.clone(),
                     scope_mode,
-                    session_override: None,
                     idempotency_key: tool_call_id.as_str().to_string(),
                     now_ms: now,
                     ttl_ms: None,

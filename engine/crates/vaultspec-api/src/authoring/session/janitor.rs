@@ -466,7 +466,6 @@ mod tests {
                             scope_id: "worktree".to_string(),
                             requester: owner.clone(),
                             scope_mode: OperationMode::Manual,
-                            session_override: None,
                             idempotency_key: key.to_string(),
                             created_at_ms: 100,
                             ttl_ms: Some(50),
