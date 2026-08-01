@@ -51,14 +51,26 @@ function optionLabel(label: string, id: string): string {
   return label.length > 0 ? label : id;
 }
 
-/** Normalize one served option. An option without an id cannot be answered with,
- *  so it is dropped rather than rendered as an unselectable button. */
+/** Normalize one served option.
+ *
+ *  The wire form is a PLAIN STRING: a2a's `_ClarificationQuestionSnapshot.options`
+ *  is `list[str]`, and that string is both the id the answer carries and the label
+ *  the button shows. An earlier revision required an `{id, label}` object and so
+ *  dropped every option — which silently degraded every `choice` question into a
+ *  free-text input. The object form is still accepted defensively. An option with
+ *  no id cannot be answered with, so it is dropped rather than rendered as an
+ *  unselectable button. */
 function normalizeOption(raw: unknown): ClarificationOption | null {
+  if (typeof raw === "string") {
+    const id = raw.trim();
+    return id.length === 0 ? null : { id, label: optionLabel("", id) };
+  }
   if (raw === null || typeof raw !== "object") return null;
   const rec = raw as Record<string, unknown>;
-  const id = asText(rec.id).trim();
+  const id = (asText(rec.id) || asText(rec.option_id)).trim();
   if (id.length === 0) return null;
-  return { id, label: optionLabel(asText(rec.label).trim(), id) };
+  const label = (asText(rec.label) || asText(rec.name)).trim();
+  return { id, label: optionLabel(label, id) };
 }
 
 /** Normalize one served question. A question with no id or no prompt is dropped:

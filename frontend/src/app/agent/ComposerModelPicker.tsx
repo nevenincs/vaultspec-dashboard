@@ -105,15 +105,15 @@ function ProfileRow({
           <span className="flex flex-col gap-fg-0-5" data-model-assignments>
             {profile.assignments.map((assignment) => (
               <span
-                key={assignment.role}
+                key={assignment.role_id}
                 className="flex min-w-0 items-baseline justify-between gap-fg-2 text-caption text-ink-faint"
               >
                 <span className="min-w-0 truncate">
-                  {authoredDisplayText(assignment.role)}
+                  {authoredDisplayText(assignment.role_id)}
                 </span>
                 <span className="shrink-0">
                   {authoredDisplayText(
-                    [assignment.provider_id, assignment.model]
+                    [assignment.provider_id, assignment.model_name]
                       .filter((part): part is string => !!part && part.length > 0)
                       .join(" · "),
                   )}

@@ -83,12 +83,19 @@ export interface TeamPreset {
   readonly profiles: TeamProfile[];
 }
 
-/** One role's provider binding inside a profile. A profile may route DIFFERENT
- *  roles to different providers, which is why this is a list and not one label. */
+/** One role's provider binding inside a profile or a run. A profile may route
+ *  DIFFERENT roles to different providers, which is why this is a list and not one
+ *  label. Field names mirror the SERVED ones exactly (`role_id`, `agent_id`,
+ *  `provider_id`, `model_name`) — an earlier revision invented `role`/`model` and
+ *  silently dropped every assignment against the real wire. */
 export interface TeamRoleAssignment {
-  readonly role: string;
+  readonly role_id: string;
+  readonly agent_id?: string;
   readonly provider_id?: string;
-  readonly model?: string;
+  readonly model_name?: string;
+  /** The sibling's per-role readiness verdict — what actually explains an
+   *  ineligible profile, role by role. */
+  readonly provider_ready?: boolean;
 }
 
 /** One selectable model profile (the a2a `ProfileSummary`). `eligible` is the
@@ -140,9 +147,12 @@ export interface TeamRunStatus {
   readonly profile_id?: string;
   /** Per-role provider/model for the frozen profile (a2a `RoleAssignmentSummary`). */
   readonly assignments: TeamRoleAssignment[];
-  /** Epoch milliseconds the run started, when the sibling serves one. Absent means
-   *  elapsed is NOT computable — the header omits it rather than measuring from
-   *  when this panel happened to start watching. */
+  /** Epoch milliseconds the run started, IF a future run-status ever serves one.
+   *  It does not today — `RunStatusResponse` carries no start time (the history
+   *  record's `created_at` is a different projection) — so this is undefined in
+   *  practice and the run header omits elapsed entirely. Kept because the reader
+   *  is free either way and the alternative, measuring from when this panel
+   *  started watching, would be a visible lie on a reloaded panel. */
   readonly started_at_ms?: number;
   /** The mid-run clarification the run is PARKED on, passed through verbatim
    *  (agent-flow D5). This disclosure is the questionnaire's ONLY authority: the
@@ -152,10 +162,14 @@ export interface TeamRunStatus {
   readonly tiers?: TiersBlock;
 }
 
-/** One role's served lifecycle state within a run. */
+/** One role's served lifecycle state within a run (a2a `RoleState`). `agent_id` is
+ *  the REQUIRED identity; `role` and `display_name` both default to empty
+ *  server-side, so keying on `role` drops most rows. */
 export interface TeamRoleState {
-  readonly role: string;
+  readonly agent_id: string;
+  readonly role?: string;
   readonly state?: string;
+  readonly display_name?: string;
 }
 
 /** The a2a service readiness snapshot (`service-state`). */
@@ -229,12 +243,15 @@ const strArr = (v: unknown): string[] =>
  *  rather than rendered as an anonymous binding. */
 function adaptRoleAssignment(raw: unknown): TeamRoleAssignment | null {
   if (!isRec(raw)) return null;
-  const role = asStr(raw.role);
-  if (!role) return null;
+  const roleId = asStr(raw.role_id);
+  if (!roleId) return null;
   return {
-    role,
+    role_id: roleId,
+    agent_id: asStr(raw.agent_id),
     provider_id: asStr(raw.provider_id),
-    model: asStr(raw.model),
+    model_name: asStr(raw.model_name),
+    provider_ready:
+      raw.provider_ready === undefined ? undefined : asBool(raw.provider_ready),
   };
 }
 
@@ -339,17 +356,23 @@ export function adaptRunStart(pass: PassThrough): TeamRunStartResult {
   };
 }
 
-/** Adapt the served role roster. An entry without a role name is dropped rather
- *  than rendered as an anonymous row. */
+/** Adapt the served role roster, keyed on the REQUIRED `agent_id`. An entry with no
+ *  agent id is dropped rather than rendered as an anonymous row; `role`,
+ *  `display_name`, and `state` are all optional server-side and pass through as
+ *  given. */
 function adaptRoleStates(raw: unknown): TeamRoleState[] {
   if (!Array.isArray(raw)) return [];
   const states: TeamRoleState[] = [];
   for (const entry of raw) {
     if (!isRec(entry)) continue;
-    const role = asStr(entry.role);
-    if (!role) continue;
-    const state = asStr(entry.state);
-    states.push(state === undefined ? { role } : { role, state });
+    const agentId = asStr(entry.agent_id);
+    if (!agentId) continue;
+    states.push({
+      agent_id: agentId,
+      role: asStr(entry.role),
+      state: asStr(entry.state),
+      display_name: asStr(entry.display_name),
+    });
   }
   return states;
 }

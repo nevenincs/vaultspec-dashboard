@@ -24,7 +24,10 @@ import {
   relayToolTitle,
   type RelayTranscriptFrame,
 } from "../../stores/server/liveAdapters/a2aRelay";
-import type { TeamRunStatus } from "../../stores/server/agent/a2aTeam";
+import type {
+  TeamRoleAssignment,
+  TeamRunStatus,
+} from "../../stores/server/agent/a2aTeam";
 
 /** Hard cap on rendered team-run entries (bounded-by-default; the relay frame
  *  buffer is itself capped, so this is a defensive ceiling on the derived view). */
@@ -123,7 +126,7 @@ export function deriveTeamRoster(
   // never introduce a role the status did not disclose... except when the status
   // serves none at all (an older run), where the relay is the only roster there is.
   for (const role of status?.roles ?? []) {
-    agentState.set(role.role, role.state ?? "");
+    agentState.set(role.agent_id, role.state ?? "");
   }
   for (const frame of frames) {
     if (frame.kind !== "status") continue;
@@ -145,16 +148,21 @@ export function deriveTeamRoster(
 
   // Per-role provider/model comes from the FROZEN profile's assignments — what the
   // run is actually using, not what the composer has selected now.
-  const assignment = new Map(
-    (status?.assignments ?? []).map((entry) => [entry.role, entry]),
-  );
+  // Indexed by BOTH identities the wire uses: run-status names roles by `role_id`
+  // while the relay's roster names them by `agent_id`, and a roster row may arrive
+  // under either. Looking up only one of them silently loses the binding.
+  const assignment = new Map<string, TeamRoleAssignment>();
+  for (const entry of status?.assignments ?? []) {
+    assignment.set(entry.role_id, entry);
+    if (entry.agent_id) assignment.set(entry.agent_id, entry);
+  }
   return [...agentState.entries()].map(([agentId, state]) => {
     const bound = assignment.get(agentId);
     return {
       agentId,
       state,
       ...(bound?.provider_id === undefined ? {} : { providerId: bound.provider_id }),
-      ...(bound?.model === undefined ? {} : { model: bound.model }),
+      ...(bound?.model_name === undefined ? {} : { model: bound.model_name }),
     };
   });
 }

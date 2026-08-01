@@ -44,13 +44,17 @@ describe("adaptPresetsList profiles", () => {
                 display_name: "Balanced",
                 is_default: true,
                 eligible: true,
-                assignments: [{ role: "researcher", provider_id: "claude" }],
+                assignments: [
+                  { role_id: "researcher", agent_id: "r", provider_id: "claude" },
+                ],
               },
               {
                 id: "cheap",
                 eligible: false,
                 unavailable_reasons: ["no api key for zhipu"],
-                assignments: [{ role: "researcher", provider_id: "zhipu" }],
+                assignments: [
+                  { role_id: "researcher", agent_id: "r", provider_id: "zhipu" },
+                ],
               },
             ],
           },
@@ -65,7 +69,13 @@ describe("adaptPresetsList profiles", () => {
       "no api key for zhipu",
     ]);
     expect(presets[0]?.profiles[0]?.assignments).toEqual([
-      { role: "researcher", provider_id: "claude", model: undefined },
+      {
+        role_id: "researcher",
+        agent_id: "r",
+        provider_id: "claude",
+        model_name: undefined,
+        provider_ready: undefined,
+      },
     ]);
   });
 
@@ -88,8 +98,8 @@ describe("provider labelling", () => {
   it("names one provider plainly", () => {
     const single = profile({
       assignments: [
-        { role: "a", provider_id: "claude" },
-        { role: "b", provider_id: "claude" },
+        { role_id: "a", provider_id: "claude" },
+        { role_id: "b", provider_id: "claude" },
       ],
     });
     expect(profileProviderIds(single)).toEqual(["claude"]);
@@ -103,8 +113,8 @@ describe("provider labelling", () => {
     // sibling never said.
     const mixed = profile({
       assignments: [
-        { role: "a", provider_id: "claude" },
-        { role: "b", provider_id: "kimi" },
+        { role_id: "a", provider_id: "claude" },
+        { role_id: "b", provider_id: "kimi" },
       ],
     });
     expect(profileProviderIds(mixed)).toEqual(["claude", "kimi"]);
@@ -130,20 +140,31 @@ describe("adaptRunStatus roster fields", () => {
         status: "running",
         profile_id: "balanced",
         roles: [
-          { role: "researcher", state: "working" },
-          { role: "reviewer", state: "idle" },
+          { agent_id: "researcher", role: "researcher", state: "working" },
+          { agent_id: "reviewer", role: "reviewer", state: "idle" },
         ],
         assignments: [
-          { role: "researcher", provider_id: "claude", model: "opus" },
-          { role: "reviewer", provider_id: "kimi", model: "k2" },
+          {
+            role_id: "researcher",
+            agent_id: "researcher",
+            provider_id: "claude",
+            model_name: "opus",
+          },
+          {
+            role_id: "reviewer",
+            agent_id: "reviewer",
+            provider_id: "kimi",
+            model_name: "k2",
+          },
         ],
       },
     });
     expect(status.profile_id).toBe("balanced");
-    expect(status.roles).toEqual([
-      { role: "researcher", state: "working" },
-      { role: "reviewer", state: "idle" },
+    expect(status.roles.map((role) => role.agent_id)).toEqual([
+      "researcher",
+      "reviewer",
     ]);
+    expect(status.roles[0]?.state).toBe("working");
     expect(status.assignments).toHaveLength(2);
   });
 
@@ -183,8 +204,15 @@ describe("deriveTeamRoster with authoritative status", () => {
       envelope: {
         run_id: "run-1",
         status: "running",
-        roles: [{ role: "researcher", state: "working" }],
-        assignments: [{ role: "researcher", provider_id: "claude", model: "opus" }],
+        roles: [{ agent_id: "researcher", role: "researcher", state: "working" }],
+        assignments: [
+          {
+            role_id: "researcher",
+            agent_id: "researcher",
+            provider_id: "claude",
+            model_name: "opus",
+          },
+        ],
       },
     });
     expect(deriveTeamRoster([], status)).toEqual([
@@ -195,7 +223,11 @@ describe("deriveTeamRoster with authoritative status", () => {
   it("survives a reload with no relay frames at all", () => {
     // The point of seeding from status: frames are lost on reload, the roster is not.
     const status = adaptRunStatus({
-      envelope: { run_id: "r", status: "running", roles: [{ role: "planner" }] },
+      envelope: {
+        run_id: "r",
+        status: "running",
+        roles: [{ agent_id: "planner" }],
+      },
     });
     expect(deriveTeamRoster([], status).map((m) => m.agentId)).toEqual(["planner"]);
   });
