@@ -156,8 +156,21 @@ describe("autonomy control (live wire)", () => {
 
     renderAutonomyControl();
 
-    // The control appears once the queue serves a proposal, reflecting the default
-    // worktree mode (manual → "Review each change" active).
+    // The pill appears once the queue serves a proposal, naming the default worktree
+    // mode. Since S45 the two-option control lives behind it, so the round-trip below
+    // drives the same real seam through one extra click — the wire path is unchanged.
+    const trigger = await waitFor(
+      () => {
+        const el = document.querySelector<HTMLElement>(
+          "[data-agent-autonomy] button",
+        );
+        expect(el).not.toBeNull();
+        return el!;
+      },
+      { timeout: 15_000 },
+    );
+    expect(trigger.textContent).toContain("Review each change");
+    fireEvent.click(trigger);
     const control = await waitFor(
       () => {
         const el = document.querySelector<HTMLElement>("[data-autonomy-control]");

@@ -13,6 +13,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.autonomy.label": { role: "label" },
   "common:agent.autonomy.reviewEach": { role: "label" },
   "common:agent.autonomy.applyAutomatically": { role: "label" },
+  "common:agent.autonomy.menuAria": { role: "accessibility" },
   "common:agent.actions.openPanel": { role: "action" },
   "common:agent.actions.closePanel": { role: "action" },
   "common:agent.actions.togglePanel": { role: "action" },

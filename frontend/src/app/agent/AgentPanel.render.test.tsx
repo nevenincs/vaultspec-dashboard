@@ -408,14 +408,21 @@ describe("AgentPanel autonomy + bridge", () => {
     // control renders even with an empty queue. D3 relocated it from a panel band
     // into the composer's row-2 LEFT group — the "what the agent may touch" side —
     // so composer-ADJACENT became composer-RESIDENT.
+    //
+    // Since S45 what RESIDES in the row is the pill; the two-option control lives
+    // behind it. The placement law this guards is unchanged, so the selector moves
+    // to the pill and the expansion is asserted separately below.
     const control = await waitFor(
       () => {
-        const el = document.querySelector<HTMLElement>("[data-autonomy-control]");
+        const el = document.querySelector<HTMLElement>("[data-agent-autonomy]");
         expect(el).not.toBeNull();
         return el!;
       },
       { timeout: 15_000 },
     );
+    // The row holds ONE control, not the expanded pair (S45 — the pair overlapped
+    // the row's right-hand cluster at panel width).
+    expect(document.querySelector("[data-autonomy-control]")).toBeNull();
     const scopeControls = document.querySelector("[data-composer-scope]");
     expect(scopeControls).not.toBeNull();
     expect(scopeControls?.contains(control)).toBe(true);

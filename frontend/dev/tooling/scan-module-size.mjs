@@ -16,9 +16,9 @@
 // are excluded.
 //
 // Usage:
-//   node scripts/scan-module-size.mjs             scan and exit non-zero on violation
-//   node scripts/scan-module-size.mjs --init      (re)seed the baseline from violators
-//   node scripts/scan-module-size.mjs --ratchet   tighten baseline entries downward
+//   node frontend/dev/tooling/scan-module-size.mjs            scan; non-zero on violation
+//   node frontend/dev/tooling/scan-module-size.mjs --init     (re)seed from violators
+//   node frontend/dev/tooling/scan-module-size.mjs --ratchet  tighten baseline downward
 
 import { readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -163,7 +163,8 @@ if (failed) {
   console.error(
     `\nmodule-size FAILED. Split the module into constrained, well-scoped ` +
       `submodules (each under ${LIMIT} lines); run --ratchet after a partial ` +
-      `decomposition to lock the gains in scripts/module-size-baseline.json.\n`,
+      `decomposition to lock the gains in ` +
+      `frontend/dev/tooling/module-size-baseline.json.\n`,
   );
   process.exit(1);
 }

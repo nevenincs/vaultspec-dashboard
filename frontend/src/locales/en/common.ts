@@ -357,6 +357,7 @@ export const common = {
       label: "Autonomy",
       reviewEach: "Review each change",
       applyAutomatically: "Apply automatically",
+      menuAria: "Select how changes are applied",
     },
     actions: {
       openPanel: "Open agent panel",

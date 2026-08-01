@@ -9,6 +9,7 @@ export const EXPECTED_AGENT_KEYS = [
   "common:agent.autonomy.label",
   "common:agent.autonomy.reviewEach",
   "common:agent.autonomy.applyAutomatically",
+  "common:agent.autonomy.menuAria",
   "common:agent.actions.openPanel",
   "common:agent.actions.closePanel",
   "common:agent.actions.togglePanel",

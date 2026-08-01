@@ -4,6 +4,7 @@ export const ltrAgentResources = {
     label: "Autonomie",
     reviewEach: "Vérifier chaque modification",
     applyAutomatically: "Appliquer automatiquement",
+    menuAria: "Choisir le mode d’application des modifications",
   },
   actions: {
     openPanel: "Ouvrir le panneau de l’assistant",
@@ -169,6 +170,7 @@ export const rtlAgentResources = {
     label: "الاستقلالية",
     reviewEach: "مراجعة كل تغيير",
     applyAutomatically: "تطبيق تلقائي",
+    menuAria: "اختر كيفية تطبيق التغييرات",
   },
   actions: {
     openPanel: "فتح لوحة المساعد",

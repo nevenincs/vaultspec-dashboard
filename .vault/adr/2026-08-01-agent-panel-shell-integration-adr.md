@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:bbf596b58119bbfa358076816ee2b7500a9adeaf566e28c71e0dce41c2de5de2'
+body_hash: 'sha256:9d2d16e3ffbb456b8f1811cec34eb8682c7c5817025a05dfe32de5412e479f2c'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'
@@ -155,6 +155,31 @@ and travel inside the message/prompt as structured rel-path references —
 the a2a context harness already performs context-ref discovery; no new
 wire. When autonomy is set to apply-automatically, a standing dismissible
 warning banner renders above the composer (C7) — never a modal.
+
+> **Amendment (2026-08-01, owner cornerstone mandate — the feature is
+> first-class bound context):** the first live-drive found the composer
+> never sent `feature_tag`, so no document-authoring preset could start
+> from the panel at all — the sibling refused every run 422. The owner's
+> ruling elevates the fix beyond an attachment mechanism: features are
+> the cornerstone binding of the document-authoring lanes AND set the
+> agents' grounding context (the a2a context harness assembles
+> feature-scoped corpus context from the tag — binding the feature IS
+> setting the agent's context). D3's row-2 LEFT therefore gains a
+> FIRST-CLASS standing feature chip for document-authoring lanes:
+> visible whenever the selected preset's served `authoring_capability`
+> is `document_authoring`, defaulted from the open document, rebindable
+> through a picker over the feature vocabulary, REQUIRED before
+> run-start (unbound keeps the run unstarted with an actionable
+> reason), and riding run-start as `feature_tag`. Coding lanes show no
+> chip and send no field. An absent capability fails OPEN — the sibling
+> stays the enforcer, because a client that guesses which lanes need a
+> feature can only be wrong in the direction that blocks runs the
+> sibling would accept, and a blocked run has no honest error to show.
+> Shipped at `911c6e97f2` and live-verified against the running sibling
+> (the 422 cleared); the deciding fact was itself the campaign's fourth
+> served-but-unconsumed discovery — `authoring_capability` rode
+> presets-list and sat in the adapter since the profiles work, read by
+> nothing.
 
 **D4 — Conversation rendering adopts C1–C8 as the transcript law.**
 (a) User turns: right-aligned accent bubbles (settling the Figma
