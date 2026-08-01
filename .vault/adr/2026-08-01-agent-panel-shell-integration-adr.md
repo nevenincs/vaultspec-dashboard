@@ -303,6 +303,22 @@ attempted. Tracked in the plan; not part of this record's acceptance.
 > status metadata stays at the meta tier — the references render
 > metadata smaller than content too. No ad-hoc values.
 
+> **Correction (2026-08-02, C6 vs C7):** the D10-amendment reasoning for
+> deleting the composer's permission pill was WRONG. C6 attests an
+> approval/autonomy pill beside the model+effort selector in both
+> reference apps; C7's elevated-autonomy banner is a SEPARATE object that
+> coexists with it, not a replacement. What was rightly removed is only
+> the SHAPE we had (a standalone prefix-labelled pill); the capability
+> belongs in the composer. The permanent home is the consolidated
+> control the captures show in Claude desktop — ONE trigger with a model
+> section and a permission-mode section — to be built from a hand
+> capture of that trigger (`.tmp/ui-captures/`, pending), restoring what
+> C6 attests and filling the composer's control row. No interim
+> standalone pill ships in the meantime (a third shape would just be
+> removed later); the review queue's mode control is the acknowledged
+> interim home and retires when the consolidated control lands. C7's
+> banner is unchanged throughout.
+
 ## Rationale
 
 The owner's toggle proposal lands on the exact mechanism the codebase
