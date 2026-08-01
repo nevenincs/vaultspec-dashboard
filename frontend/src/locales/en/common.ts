@@ -451,7 +451,7 @@ export const common = {
       },
     },
     composer: {
-      placeholder: "Ask anything. @ to mention, / for commands",
+      placeholder: "Ask anything, @ to mention, / for commands",
       clarificationParked: "Answer the question above to continue the run",
       steerPlaceholder: "Reply to guide the running agent",
       send: "Send",

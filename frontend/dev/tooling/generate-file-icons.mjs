@@ -212,9 +212,15 @@ function readIcon(id) {
   if (!viewBox) throw new Error(`${id}.svg has no viewBox`);
   if (!raw.endsWith("</svg>")) throw new Error(`${id}.svg does not close cleanly`);
   const body = raw.slice(open[0].length, -"</svg>".length).trim();
+  // Some upstream sources open with a FILL-LESS full-canvas rectangle - a layout
+  // spacer in the authoring tool. SVG defaults a missing `fill` to black, so that
+  // spacer renders as an opaque square covering the whole mark (`readme.md` shipped
+  // as a black box). It carries no ink by intent, so it is dropped here rather than
+  // hand-patched in the generated table.
+  const inked = body.replace(/<path\s+d="M0 0h\d+v\d+H0z"\s*\/>/g, "").trim();
   return {
     viewBox: viewBox[1],
-    svgBody: namespaceIds(body, id).replace(/\s+/g, " "),
+    svgBody: namespaceIds(inked, id).replace(/\s+/g, " "),
   };
 }
 

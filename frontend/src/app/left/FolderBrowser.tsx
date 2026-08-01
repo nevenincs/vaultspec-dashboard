@@ -432,7 +432,11 @@ export function FolderBrowser({
                 title={row.path}
                 className={`flex w-full items-center gap-fg-2 rounded-fg-xs px-fg-2 py-fg-1-5 text-left text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
                   isSelected
-                    ? "bg-accent-subtle text-ink"
+                    ? // The same selected treatment the browser tree rows carry
+                      // (`browserTreeExpansion`): one accent-subtle fill at one
+                      // weight, so selection reads identically across every
+                      // browsing surface.
+                      "bg-accent-subtle font-medium text-ink"
                     : "text-ink hover:bg-paper-sunken"
                 } ${row.isHidden || row.isRegistered ? "text-ink-faint" : ""}`}
               >
