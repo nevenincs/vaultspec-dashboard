@@ -106,11 +106,13 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
   });
 
   it("hosts every operational console in Settings ▸ Advanced, none in the rail", () => {
-    // advanced-service-console ADR D1/D2: the four modal control panels retired
-    // into ONE Advanced section, in rendered order. The rail footer keeps only the
+    // advanced-service-console ADR D1/D2: the modal control panels retired into ONE
+    // Advanced section, in rendered order. The agent lifecycle console that briefly
+    // joined them is gone entirely (ADR D5 retirement) — service CONTROL left the
+    // product, service MONITORING stayed. The rail footer keeps only the
     // pending-changes affordance (ADR D3), which is not a console at all — so no
     // console id may ever name a rail chip again.
-    expect(ADVANCED_CONSOLE_IDS).toEqual(["index", "system", "project", "agent"]);
+    expect(ADVANCED_CONSOLE_IDS).toEqual(["index", "system", "project"]);
   });
 });
 

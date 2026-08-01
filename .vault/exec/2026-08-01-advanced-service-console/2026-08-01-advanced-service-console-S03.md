@@ -32,3 +32,7 @@ The three status surfaces and the agent lifecycle console sit under one section,
 ## Notes
 
 The lifecycle plane was left entirely alone - only its mounting moved, which is what keeps a future supersession cheap.
+
+
+SUPERSEDED IN PART, same day. The agent lifecycle console this Step relocated under Advanced was afterwards RETIRED outright by owner ruling, recorded as the D5 retirement amendment on the governing decision record. D5 had anticipated it - "if the agent-panel campaign later supersedes it, it retires from ONE place" - and relocating it first is what made the retirement a single deletion rather than a hunt. The rest of this Step stands: the system-status and project-health blocks remain under Advanced, because the ruling removed service CONTROL from the product and kept service MONITORING.
+
