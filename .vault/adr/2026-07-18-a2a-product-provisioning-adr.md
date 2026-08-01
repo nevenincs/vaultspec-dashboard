@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-product-provisioning'
 date: '2026-07-18'
-modified: '2026-07-22'
+modified: '2026-08-01'
 body_hash: 'sha256:c3e218202e4ec041faead13084107d6640b0baef686967770dbe6bae3f16001d'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
@@ -15,6 +15,7 @@ related:
   - "[[2026-07-14-a2a-orchestration-edge-adr]]"
   - "[[2026-07-20-a2a-archive-materialization-adr]]"
   - "[[2026-07-20-a2a-distribution-trust-adr]]"
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
 # `a2a-product-provisioning` adr: `the dashboard-owned A2A companion and composite release set` | (**status:** `accepted`)
@@ -571,3 +572,12 @@ remain unchanged. No related ADR is superseded as a whole.
   adoption, or server-profile installers without changing `/ops/a2a`, provided
   they preserve the same ownership, compatibility, receipt, rollback, and
   certification contracts.
+
+**Amendment note (2026-08-01), recording the clause-level amendments made by `2026-07-24-a2a-product-provisioning-adr` (accepted):** that record AMENDS this one and deliberately records no whole-document supersession (its D6); every clause not named below stands unchanged.
+
+- **D1's capsule composition clause is replaced.** The adjacent immutable A2A capsule containing a private CPython 3.13 runtime, the locked desktop A2A distribution, migrations, presets, Node.js 22, and ACP 0.59.0 is no longer the a2a component. The a2a component is a frozen PyInstaller onedir whose files are ordinary digest-covered release files in the member manifest; no separate CPython, Node, or ACP component pins remain at the dashboard's component-lock level. Under that record's own 2026-07-31 amendment, the onedir is built and published per target by the a2a repository and the dashboard fetch-verifies-and-bundles the released artifact; `packaging/a2a-component.lock.json` becomes a version reference rather than a base-closure digest set.
+- **The "Freeze A2A into a Python single executable — rejected for this release" option is discharged, not overruled.** Its stated premise — worker and provider contracts re-exec `sys.executable` with module and snippet arguments — is resolved on the a2a side by a single frozen-aware command authority.
+- **D2's WiX clause narrows in wording:** "a generated WiX component fragment for every capsule file" reads "for every bundled file".
+- **D8's capsule-contract certification rows retire;** the artifact-level certification gate itself stands.
+- **The "capsule is opaque to dashboard business logic" constraint is re-homed unchanged onto the onedir:** the dashboard invokes the frozen binary's CLI verbs and reads the frozen runtime contract; it never imports Python packages or interprets the onedir's internal layout.
+- Everywhere else this record says "capsule" as the name of the a2a component (D6's independent generation staging, the mutable-state exclusion, and similar), the decided semantics survive with the bundled onedir as the referent; only the composition and provenance clauses above changed.

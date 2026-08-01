@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#a2a-archive-materialization'
 date: '2026-07-20'
-modified: '2026-07-21'
+modified: '2026-08-01'
 body_hash: 'sha256:315c9ead92b2ae0c809b13e2f4ddabbb9f48d6b12ce47060f9f505b5c68e3b7b'
 related:
   - "[[2026-07-20-a2a-archive-materialization-research]]"
@@ -11,6 +11,7 @@ related:
   - "[[2026-07-20-a2a-generation-authority-adr]]"
   - "[[2026-07-20-a2a-provisioning-authority-adr]]"
   - "[[2026-07-18-a2a-product-provisioning-adr]]"
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
 # `a2a-archive-materialization` adr: `capability-bound verified archive materialization` | (**status:** `accepted`)
@@ -222,3 +223,5 @@ separately reviewable.
   authenticated release and never weakens rollback protection.
 - S174 can remain byte authority, but helper success, first install, S176 integration, and
   S11 remain gated until this decision is approved and implemented.
+
+**Amendment note (2026-08-01), recording the narrowing made by `2026-07-24-a2a-product-provisioning-adr` (its D5):** D2's note that "the nested A2A capsule ZIP remains one opaque regular product file" narrows to: the a2a component is a frozen onedir whose files are ordinary admitted release files, with no nested-archive special case. Nothing else in this record is narrowed — the canonical ZIP profile, plan-not-effects parsing, the sealed materialization transaction, the retained generation writer, the durability boundaries, descriptor recovery, and the acceptance refinements are consumed unchanged by that record.

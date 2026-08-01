@@ -3,13 +3,14 @@ tags:
   - '#adr'
   - '#a2a-provisioning-authority'
 date: '2026-07-20'
-modified: '2026-07-20'
+modified: '2026-08-01'
 body_hash: 'sha256:066418b3eda684c7226e8bbfe989c497820483c65e44439decda5e5be8f65f4c'
 related:
   - "[[2026-07-20-a2a-provisioning-authority-research]]"
   - "[[2026-07-20-a2a-distribution-trust-adr]]"
   - "[[2026-07-18-a2a-product-provisioning-adr]]"
   - "[[2026-07-20-a2a-generation-authority-adr]]"
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
 # `a2a-provisioning-authority` adr: `sealed activation and dashboard credential authority` | (**status:** `accepted`)
@@ -239,3 +240,5 @@ is necessary because the operating-system lock disappears on process death.
 - S11's scope expands beyond one integration test to production provisioning,
   credentials, receipt integration, active selection, platform authority use, and real
   process evidence. The system step remains open until all of that passes formal review.
+
+**Amendment note (2026-08-01):** the accepted `2026-07-24-a2a-product-provisioning-adr` does not name this record and narrows none of its clauses; the sealed provisioning transaction, credential, and receipt authorities are shape-independent and survive unchanged (that record's D5). One referent changed: "the real A2A capsule" and "the real capsule gateway" in D3 and the Consequences, and the "capsule root" entry in the caller-field prohibition, now denote the bundled frozen a2a onedir and its gateway (published per target by the a2a repository under that record's 2026-07-31 amendment).
