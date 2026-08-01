@@ -43,6 +43,11 @@ import {
   type TeamPreset,
 } from "@app/stores/server/agent/a2aTeam";
 import { setAgentTeamRun } from "@app/stores/view/agentPanel";
+import {
+  clearAgentTranscriptAnnex,
+  recordAgentThinking,
+  recordAgentToolCall,
+} from "@app/stores/view/agentTranscript";
 import { AgentPanel } from "@app/app/agent/AgentPanel";
 import { AgentBeginView } from "@app/app/agent/AgentBeginView";
 import { AGENT_BEGIN_RECENTS_CAP } from "@app/app/agent/agentBegin";
@@ -128,6 +133,7 @@ function turnRecord(
   sessionId: string,
   index: number,
   prompt: string,
+  summary: string | null = null,
 ): PromptTurnRecord {
   return {
     schema_version: "1",
@@ -137,11 +143,81 @@ function turnRecord(
     prompt_digest: "digest",
     prompt_text: prompt,
     prompt_bytes: prompt.length,
-    summary: null,
+    summary,
     actor: { id: "human:reviewer-fixture", kind: "human" },
     langgraph: null,
     created_at_ms: 1_753_800_000_000 + index,
   };
+}
+
+/** Seed the CLIENT-HELD transcript annex (`stores/view/agentTranscript`) for the
+ *  single-agent cells: recorded tool calls and a reasoning segment, shaped
+ *  exactly as the store holds them when the client dispatches real execute
+ *  envelopes. Without this the work-stretch disclosure — most of what the
+ *  transcript IS — never renders on the desk, because no single-agent wire
+ *  surface serves this content (it is annex-only by the honesty contract).
+ *  Authored inputs only; no wire is faked. */
+function seedTranscriptAnnex(sessionId: string): void {
+  clearAgentTranscriptAnnex();
+  recordAgentThinking({
+    runId: `${sessionId}-r1`,
+    text: "Weighing which review-harness cells still need authored states, and which states the components genuinely carry.",
+    durationMs: 4_200,
+  });
+  recordAgentToolCall({
+    toolCallId: "call-annex-1",
+    runId: `${sessionId}-r1`,
+    tool: "search_corpus",
+    disposition: "dispatched",
+    interruptId: null,
+    permission: null,
+    input: { query: "review harness specimen states" },
+    result: { matches: 3 },
+    detail: null,
+    recordedAtMs: 1_753_800_005_000,
+  });
+  recordAgentToolCall({
+    toolCallId: "call-annex-2",
+    runId: `${sessionId}-r1`,
+    tool: "edit_document",
+    disposition: "dispatched",
+    interruptId: null,
+    permission: "granted",
+    input: { section: "Findings" },
+    result: { ok: true },
+    detail: "Review harness plan",
+    recordedAtMs: 1_753_800_010_000,
+  });
+  // The LIVE second run: one tool call still in flight, so the loading cell's
+  // stretch reads as working rather than settled.
+  recordAgentToolCall({
+    toolCallId: "call-annex-3",
+    runId: `${sessionId}-r2`,
+    tool: "edit_document",
+    disposition: "dispatched",
+    interruptId: null,
+    permission: null,
+    input: { section: "Clarification" },
+    result: null,
+    detail: null,
+    recordedAtMs: 1_753_800_020_000,
+  });
+}
+
+/** Mount-scoped annex seeding for a specimen cell (cleared on unmount so no
+ *  other cell inherits it). */
+function WithTranscriptAnnex({
+  sessionId,
+  children,
+}: {
+  sessionId: string;
+  children: ReactNode;
+}) {
+  useEffect(() => {
+    seedTranscriptAnnex(sessionId);
+    return () => clearAgentTranscriptAnnex();
+  }, [sessionId]);
+  return <>{children}</>;
 }
 
 function runRecord(
@@ -171,7 +247,13 @@ function runRecord(
  *  for `Transcript`'s fixed-order assembly (prompt → final run status) to render
  *  real content. */
 function sessionSnapshot(id: string, title: string): SessionSnapshot {
-  const turn = turnRecord(`${id}-t1`, id, 0, "Draft the review-harness specimens");
+  const turn = turnRecord(
+    `${id}-t1`,
+    id,
+    0,
+    "Draft the review-harness specimens",
+    "Drafted the two specimen cells and wired their authored states; the degraded branch still needs a fixture.",
+  );
   const run = runRecord(`${id}-r1`, id, turn.turn_id, "completed");
   return {
     session: sessionRecord(id, title, {
@@ -208,7 +290,9 @@ function AgentPanelSpecimen({ state }: { state: ReviewState }) {
   }, [currentSessionId]);
   return (
     <div className="relative h-full w-full min-h-0 min-w-0 border-l border-rule">
-      <AgentPanel />
+      <WithTranscriptAnnex sessionId={SESSION_ID_NORMAL}>
+        <AgentPanel />
+      </WithTranscriptAnnex>
     </div>
   );
 }
@@ -219,7 +303,13 @@ function AgentPanelSpecimen({ state }: { state: ReviewState }) {
  *  running — the C1 speaker-cue pair (bubble vs open) with a live run under it. */
 function conversationSnapshot(): SessionSnapshot {
   const id = SESSION_ID_NORMAL;
-  const first = turnRecord(`${id}-t1`, id, 0, "Draft the review-harness specimens");
+  const first = turnRecord(
+    `${id}-t1`,
+    id,
+    0,
+    "Draft the review-harness specimens",
+    "Drafted the two specimen cells and wired their authored states; the degraded branch still needs a fixture.",
+  );
   const second = turnRecord(
     `${id}-t2`,
     id,
@@ -556,21 +646,29 @@ export const agentSpecimens: Readonly<Record<string, SpecimenDef>> = {
 
   "agent-transcript": {
     host: "h-[30rem] w-[26rem] overflow-y-auto",
-    note: "Wire-free by construction: Transcript takes the durable SessionSnapshot as a normal prop, so every cell is authored data with no seeding at all. It renders the C1 speaker cue (right-aligned user bubbles vs full-width assistant text) and the C2/C3 work-stretch disclosure that groups reasoning and tool steps one level deep. Normal is a two-turn conversation whose second run is still active; loading is that same conversation with the active run mid-flight and nothing streamed back yet; empty is a real session created but never prompted; degraded serves the snapshot with the structural tier down, the only degraded branch this read carries.",
+    note: "Transcript takes the durable SessionSnapshot as a prop, plus the CLIENT-HELD annex (stores/view/agentTranscript) seeded with authored tool calls and a reasoning segment — the single-agent wire serves neither, so without the annex the work-stretch disclosure (most of the transcript's grammar) never renders. It shows the ONE kit's C1 speaker cue (right-aligned user bubble vs full-width open answer) and the C2/C3 work-stretch disclosure grouping reasoning and tool steps one level deep. Normal is a two-turn conversation whose second run is still active; loading is that same conversation with the active run mid-flight; empty is a real session created but never prompted (the honest empty state); degraded serves the snapshot with the structural tier down, the only degraded branch this read carries.",
     render: (state) => {
       if (state === "empty") return <Transcript snapshot={emptySnapshot()} />;
       const snapshot = conversationSnapshot();
       if (state === "degraded") {
         return (
-          <Transcript snapshot={{ ...snapshot, tiers: tiersDown(["structural"]) }} />
+          <WithTranscriptAnnex sessionId={SESSION_ID_NORMAL}>
+            <Transcript snapshot={{ ...snapshot, tiers: tiersDown(["structural"]) }} />
+          </WithTranscriptAnnex>
         );
       }
       if (state === "loading") {
         return (
-          <Transcript snapshot={{ ...snapshot, turns: snapshot.turns.slice(0, 1) }} />
+          <WithTranscriptAnnex sessionId={SESSION_ID_NORMAL}>
+            <Transcript snapshot={{ ...snapshot, turns: snapshot.turns.slice(0, 1) }} />
+          </WithTranscriptAnnex>
         );
       }
-      return <Transcript snapshot={snapshot} />;
+      return (
+        <WithTranscriptAnnex sessionId={SESSION_ID_NORMAL}>
+          <Transcript snapshot={snapshot} />
+        </WithTranscriptAnnex>
+      );
     },
   },
 

@@ -38,7 +38,7 @@ import {
   type AgentThinkingSegment,
   type AgentToolCallRecord,
 } from "../../stores/view/agentTranscript";
-import { Spinner } from "../kit";
+import { Spinner, StateBlock } from "../kit";
 import { AgentTurnProposal } from "./ProposalCard";
 import { AgentMessageBlock, UserTurnBubble } from "./transcriptKit";
 import { WorkStretchDisclosure } from "./WorkStretchDisclosure";
@@ -46,6 +46,7 @@ import { deriveWorkStretch } from "./workStretch";
 
 const MSG = {
   showingRecent: "common:agent.transcript.showingRecent",
+  empty: "common:agent.transcript.empty",
 } as const;
 
 /** The rendered turn window FALLBACK. The render cap is taken from the snapshot's
@@ -235,6 +236,13 @@ export function Transcript({ snapshot }: { snapshot: SessionSnapshot }) {
     () => assembleTranscript(snapshot, toolCalls, thinking),
     [snapshot, toolCalls, thinking],
   );
+  // A session that exists but has said nothing renders an honest empty state —
+  // every captured application says SOMETHING in that space, never a bare box.
+  if (view.turns.length === 0) {
+    return (
+      <StateBlock mode="empty" message={resolveMessage({ key: MSG.empty }).message} />
+    );
+  }
   return (
     <div className="flex flex-col gap-fg-2">
       {view.windowFull && (
