@@ -12,7 +12,11 @@ import {
   FILE_ICON_DEFS,
   GENERIC_FILE_ICON,
 } from "./fileIcons.generated";
-import { resolveFileIconDef, resolveFileIconId } from "./fileIcons";
+import {
+  FILE_MARK_CHROMA_STYLE,
+  resolveFileIconDef,
+  resolveFileIconId,
+} from "./fileIcons";
 
 describe("resolveFileIconId", () => {
   it("resolves a known extension to its own mark, case-insensitively", () => {
@@ -77,6 +81,43 @@ describe("the generated icon subset", () => {
         expect(local[1], `${id} has an unscoped id`).toMatch(/^mit-/);
       }
     }
+  });
+
+  it("renders every mark through the one chroma dial, never a baked-in value", () => {
+    // The owner's overload note is answered by LOWERING intensity, not by
+    // rewriting the library's palette: each mark keeps its own hue so the file
+    // type stays recognisable. Two properties matter and both are pinned here.
+    //
+    // First, the reduction goes through the `--file-mark-chroma` token rather
+    // than a literal. That is what lets the high-contrast theme opt back out to
+    // the full palette, and what makes retuning one number in `styles.css`
+    // instead of a hunt through components.
+    expect(FILE_MARK_CHROMA_STYLE.filter).toBe("saturate(var(--file-mark-chroma))");
+
+    // Second, it is SATURATE alone. A grayscale or hue-rotate would destroy the
+    // hue identity the marks exist for, and an opacity would fade the mark
+    // against the row rather than calm its colour.
+    expect(FILE_MARK_CHROMA_STYLE.filter).not.toMatch(
+      /grayscale|hue-rotate|opacity|brightness|invert/,
+    );
+
+    // And it is one shared frozen object, so a long tree does not mint a fresh
+    // style per row.
+    expect(Object.isFrozen(FILE_MARK_CHROMA_STYLE)).toBe(true);
+  });
+
+  it("applies the dial to every file type, with no per-type exemption", () => {
+    // The alternative considered was colouring a landmark set and neutralising
+    // the long tail. It was rejected because two files of ONE type could then
+    // diverge (README.md coloured, notes.md grey). Nothing here may reintroduce
+    // that: the mark style cannot depend on the path.
+    const paths = ["README.md", "notes.md", "package.json", "deep/x.rs", "u.unknown"];
+    for (const path of paths) {
+      expect(resolveFileIconDef(path).svgBody.length).toBeGreaterThan(0);
+    }
+    // `FileTypeIcon` takes the style from the module constant, so there is no
+    // path-keyed branch to test — this asserts the constant is the only source.
+    expect(Object.keys(FILE_MARK_CHROMA_STYLE)).toEqual(["filter"]);
   });
 
   it("resolves every path to a renderable definition", () => {

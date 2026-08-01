@@ -240,6 +240,27 @@
   --spacing-fg-1-5: 0.375rem;
   /* vaultspec:generated:foundation:end */
 
+  /* == FILE-TYPE MARK CHROMA (code-tree-legibility ADR D1/D2) ===============
+     THE DIAL. How much of the imported file-icon family's own saturation the
+     code file-tree marks keep. 1 is the library's palette untouched; lower
+     values keep every hue distinguishable while stopping the marks out-shouting
+     the filenames beside them.
+
+     The owner reviewed the tree at full saturation and reported visual overload
+     from the many colours, so this is set below 1 deliberately: colour reads as
+     a HINT to the file type rather than a demand for attention. Every mark
+     keeps its own hue, so type recognition — the thing the ADR admitted these
+     icons for — survives; only the intensity changes.
+
+     Move this ONE number to retune. It is not derived from anything and nothing
+     else depends on it. This is the whole control; there is no per-type policy
+     and no allowlist to curate, which is why a file type added to the subset
+     later needs no further decision.
+
+     Hand-authored, not generated: it is a rendering intensity, not a color
+     token, so it has no DTCG source and is out of the token-drift scope. */
+  --file-mark-chroma: 0.45;
+
   /* == TAILWIND FONT/TEXT NAMESPACE BINDING (figma-parity-reconciliation S07/S10)
      Tailwind v4 reads --font-* / --text-* to generate the font-/text-utilities.
      Bind the Tailwind namespace to the generated Figma-binding foundation so
@@ -514,6 +535,11 @@
     --shadow-fg-raised: 0 0 0 0.0625rem oklch(0.7 0.01 75);
     --shadow-fg-overlay: 0 0 0 0.0625rem oklch(0.7 0.01 75);
     --shadow-fg-popover: 0 0 0 0.0625rem oklch(0.7 0.01 75);
+    /* The file-mark dial goes back to the library's full palette here. Lowering
+       chroma is a calm-down for the default themes; in the theme whose whole
+       purpose is maximum separation it would work against the user, so this
+       theme opts out rather than inheriting the reduction. */
+    --file-mark-chroma: 1;
   }
 
   body {

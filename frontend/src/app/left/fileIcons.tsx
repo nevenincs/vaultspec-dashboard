@@ -16,6 +16,18 @@
 //
 // Resolution is pure and total: an unmapped path falls back to the library's own
 // generic file mark, so a row is never mark-less and the caller never branches.
+//
+// CHROMA. The marks render below the library's own saturation, through the one
+// `--file-mark-chroma` dial in `styles.css`. The owner reviewed the tree at full
+// saturation and reported visual overload from the many colours; the fix keeps
+// every hue (so a type is still recognisable at a glance, which is the whole
+// reason these icons were admitted) and lowers only the intensity, so colour
+// reads as a hint rather than a demand. It is applied here, at the ONE place a
+// mark is drawn, rather than per-type: there is no allowlist to curate and a
+// type added to the subset later inherits it with no further decision. The
+// high-contrast theme sets the dial back to 1 — see the token's own comment.
+
+import type { CSSProperties } from "react";
 
 import {
   FILE_ICON_BY_EXTENSION,
@@ -55,6 +67,14 @@ export function resolveFileIconDef(path: string): FileIconDef {
   return FILE_ICON_DEFS[resolveFileIconId(path)] ?? FILE_ICON_DEFS[GENERIC_FILE_ICON];
 }
 
+/** The chroma dial applied to every mark, read from the one token so a theme can
+ *  remap it (high-contrast sets it back to the library's full palette). Hoisted
+ *  to a module constant so the style object keeps a stable identity per render
+ *  rather than minting a fresh one on every row of a long tree. */
+export const FILE_MARK_CHROMA_STYLE: Readonly<CSSProperties> = Object.freeze({
+  filter: "saturate(var(--file-mark-chroma))",
+});
+
 export interface FileTypeIconProps {
   /** Repo-relative path of the row this mark belongs to. */
   path: string;
@@ -82,6 +102,7 @@ export function FileTypeIcon({ path, size, className }: FileTypeIconProps) {
       aria-hidden
       focusable="false"
       className={className}
+      style={FILE_MARK_CHROMA_STYLE}
       dangerouslySetInnerHTML={{ __html: def.svgBody }}
     />
   );
