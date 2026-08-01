@@ -80,9 +80,7 @@ function adaptPolicyDecision(raw: unknown): PolicyDecisionProjection | undefined
   return {
     policy_version: asStr(r.policy_version) ?? "",
     scope_mode: asStr(r.scope_mode) as OperationMode,
-    session_override: asStr(r.session_override) as OperationMode | undefined,
     effective_mode: asStr(r.effective_mode) as OperationMode,
-    session_override_ignored: asBool(r.session_override_ignored),
     risk: asStr(r.risk) as RiskClass,
     requirement: asStr(r.requirement) as ApprovalRequirement,
     reason: asStr(r.reason) ?? "",

@@ -74,7 +74,6 @@ function needsReviewProposal(
       policy_version: "private.policy.v1",
       scope_mode: "manual",
       effective_mode: "manual",
-      session_override_ignored: false,
       risk: "non_destructive",
       requirement: "human_approval_required",
       reason: "private-policy-reason",

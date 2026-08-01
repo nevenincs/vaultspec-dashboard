@@ -79,9 +79,7 @@ export interface ActionEligibility {
 export interface PolicyDecisionProjection {
   policy_version: string;
   scope_mode: OperationMode;
-  session_override?: OperationMode;
   effective_mode: OperationMode;
-  session_override_ignored: boolean;
   risk: RiskClass;
   requirement: ApprovalRequirement;
   reason: string;
