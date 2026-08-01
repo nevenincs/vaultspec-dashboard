@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-01'
-body_hash: 'sha256:91155bd3c800f08d9b97e62caa18ee7472641b99126db14d4ed03417870949f8'
+body_hash: 'sha256:3b85d3572849fa1bba7e949fd64cc92e1eb47e6f9b146b7de0baf86f1fdc22c3'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -43,7 +43,7 @@ Land the permanent proof that a bundled-preset run reaches a terminal completed 
 
 The completion this proves has already happened once, by hand. The Step is red anyway, and that is the point: the manual run left nothing behind that fails when the chain breaks again.
 
-- [ ] `W01.P02.S04` - Settle where the completion proof runs by checking whether the deterministic service-test stack is container-gated on the current fleet and whether its tests are among the capsule-gated set that passes without executing, delivering a written verdict; `src/vaultspec_a2a/service_tests/`.
+- [x] `W01.P02.S04` - Settle where the completion proof runs by checking whether the deterministic service-test stack is container-gated on the current fleet and whether its tests are among the capsule-gated set that passes without executing, delivering a written verdict; `src/vaultspec_a2a/service_tests/`.
 - [ ] `W01.P02.S05` - Land the permanent completion proof driving a bundled preset run to a completed terminal state through the real gateway and real worker with run history carrying the scripted message content, red today because completion has only ever been shown by a manual run and no test requires it, and red if an absent substrate is silently tolerated; `src/vaultspec_a2a/acceptance/tests/`.
 
 ### Phase `W01.P03` - the scenario substrate
