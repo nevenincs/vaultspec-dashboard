@@ -4,7 +4,6 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:39ad43e27ff1b149121ffc8a73e307380a32eecd669a8effe34e4f047013a27f'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -110,6 +109,7 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 - [x] `P10.S39` - Repair the dev-tooling scanner roots (localization, px, tokens, figma-names, module-size) and the justfile invocation path so every frontend gate command actually runs, grandfathering pre-existing module-size violators explicitly; `frontend/dev/tooling/`.
 - [ ] `P10.S38` - Run full lint and live-wire gates in both repos and record Figma frame debt plus the compact read-only run-status affordance as named follow-ons; `frontend/package.json`.
 - [ ] `P10.S43` - Amend the agent-flow ADR D3 with the serving-versus-eligibility reconciliation and the provider set actually witnessed completing turns in the live-drives; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
+- [ ] `P10.S44` - Amend the shell-integration ADR composer decision with the owner's feature-first mandate: document-authoring runs bind a first-class feature context chip on the composer, defaulted from the open document, required before run-start for tag-requiring presets; `.vault/adr/2026-08-01-agent-panel-shell-integration-adr.md`.
 
 ## Parallelization
 
