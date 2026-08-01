@@ -30,7 +30,7 @@ import {
   addNote,
   clearResolvedNotes,
   feedbackAsMarkdown,
-  loadFeedback,
+  initFeedback,
   removeNote,
   setNoteResolved,
   useFeedbackNotes,
@@ -559,8 +559,9 @@ applyRootTheme("light");
 // seeded query key — resolves to the one authored review scope, engine-free.
 useViewStore.getState().setScope(REVIEW_SCOPE);
 
-// Pull existing review notes from the dev server's file store.
-void loadFeedback();
+// Pull existing review notes from the dev server's file store (with retry +
+// visibility re-sync, so a reviewer never mistakes a failed load for zero notes).
+initFeedback();
 
 createRoot(rootElement).render(
   <StrictMode>
