@@ -218,6 +218,16 @@ jobs:
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
           pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          # The live fixture vault's derived state, which git does NOT reset: it is
+          # untracked, so a checkout leaves it exactly as the previous run left it,
+          # and this runner reuses its workspace. The authoring suites tear their
+          # proposals down BEST-EFFORT (their teardown never asserts, so it cannot
+          # mask the arc under test) — so one interrupted run can strand a LIVE
+          # draft over the shared fixture document, and every later run's apply is
+          # then refused by the shared-base rule. That failure is permanent until
+          # the state is cleared, which is what makes it look like a code red.
+          # Fully re-derivable, and nothing under it is tracked.
+          rm -rf frontend/src/testing/fixtures/live-vault/.vault/data 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
           fi
@@ -326,6 +336,16 @@ jobs:
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
           pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          # The live fixture vault's derived state, which git does NOT reset: it is
+          # untracked, so a checkout leaves it exactly as the previous run left it,
+          # and this runner reuses its workspace. The authoring suites tear their
+          # proposals down BEST-EFFORT (their teardown never asserts, so it cannot
+          # mask the arc under test) — so one interrupted run can strand a LIVE
+          # draft over the shared fixture document, and every later run's apply is
+          # then refused by the shared-base rule. That failure is permanent until
+          # the state is cleared, which is what makes it look like a code red.
+          # Fully re-derivable, and nothing under it is tracked.
+          rm -rf frontend/src/testing/fixtures/live-vault/.vault/data 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
           fi
@@ -410,6 +430,16 @@ jobs:
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
           pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          # The live fixture vault's derived state, which git does NOT reset: it is
+          # untracked, so a checkout leaves it exactly as the previous run left it,
+          # and this runner reuses its workspace. The authoring suites tear their
+          # proposals down BEST-EFFORT (their teardown never asserts, so it cannot
+          # mask the arc under test) — so one interrupted run can strand a LIVE
+          # draft over the shared fixture document, and every later run's apply is
+          # then refused by the shared-base rule. That failure is permanent until
+          # the state is cleared, which is what makes it look like a code red.
+          # Fully re-derivable, and nothing under it is tracked.
+          rm -rf frontend/src/testing/fixtures/live-vault/.vault/data 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
           fi
@@ -451,6 +481,16 @@ jobs:
           pkill -f 'vaultspec .*serve' 2>/dev/null || true
           pkill -f '/debug/vaultspec' 2>/dev/null || true
           rm -rf "${TMPDIR:-/tmp}"/vaultspec-livetest-* "${RUNNER_TEMP:-/tmp}"/vaultspec-* 2>/dev/null || true
+          # The live fixture vault's derived state, which git does NOT reset: it is
+          # untracked, so a checkout leaves it exactly as the previous run left it,
+          # and this runner reuses its workspace. The authoring suites tear their
+          # proposals down BEST-EFFORT (their teardown never asserts, so it cannot
+          # mask the arc under test) — so one interrupted run can strand a LIVE
+          # draft over the shared fixture document, and every later run's apply is
+          # then refused by the shared-base rule. That failure is permanent until
+          # the state is cleared, which is what makes it look like a code red.
+          # Fully re-derivable, and nothing under it is tracked.
+          rm -rf frontend/src/testing/fixtures/live-vault/.vault/data 2>/dev/null || true
           if [ "${{ job.status }}" = "failure" ]; then
             rm -rf engine/target frontend/node_modules 2>/dev/null || true
           fi
