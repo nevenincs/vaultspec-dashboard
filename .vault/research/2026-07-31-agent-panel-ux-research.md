@@ -4,6 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-07-31'
 modified: '2026-07-31'
+body_hash: 'sha256:e709f786dc45e6ef5d8d294347292899d8fdc7d0be39beabb2e9859ae7851c91'
 related:
   - '[[2026-07-19-review-surface-flow-research]]'
   - '[[2026-07-19-review-surface-flow-adr]]'

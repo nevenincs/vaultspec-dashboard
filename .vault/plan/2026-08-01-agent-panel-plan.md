@@ -4,6 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
+body_hash: 'sha256:ab94800bbc11c33048da818f764f5bdc4742cd081ca07de645f5b27a8de6311f'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -41,7 +42,8 @@ The mid-run structured question: new interrupt node + authoritative disclosure +
 - [ ] `P03.S08` - Disclose the pending clarification (request id plus payload) on the run-status response and emit the clarification-pending relay frame; `src/vaultspec_a2a/api/`.
 - [ ] `P03.S09` - Add the POST clarification respond gateway route mapping answers to Command resume of the parked node, mirroring the permissions respond route; `src/vaultspec_a2a/api/routes/gateway.py`.
 - [ ] `P03.S10` - Test the park, disclose, respond, resume round trip over the real graph plus reload-recovery from status disclosure alone; `src/vaultspec_a2a/api/tests/`.
-- [ ] `P03.S40` - Serve each preset's declared model profiles (profile id plus resolved provider) on the presets-list summary so the composer's model picker can render exactly the served list per agent-flow ADR D3; `src/vaultspec_a2a/api/`.
+- [ ] `P03.S40` - Consume the already-served presets-list profile summaries (id, display name, default flag, eligibility with reasons, per-role assignments carrying provider ids) in the frontend preset adapter and render the model picker from them, labeling mixed-provider profiles honestly and disabling ineligible ones with their served reasons; `frontend/src/stores/server/agent/a2aTeam.ts`.
+- [ ] `P03.S41` - Wire the clarification node into the research_adr topology as a pre-diverge ground decision point - the researcher role either emits a structured clarify sentinel (parking the run on the questionnaire) or proceeds to fan-out, with a deterministic-profile test forcing the ask; `src/vaultspec_a2a/graph/`.
 
 ### Phase `P04` - Clarification contract events (engine)
 
@@ -55,22 +57,22 @@ The three reviewed contract events crossing the frozen edge: verb whitelist, rel
 
 The {graph | agent} toggle: tri-state center slot, reserved __agent__ panel, 4th grid track deleted, every entry point re-routed, vocabulary retired (shell-integration D1).
 
-- [ ] `P05.S14` - Generalize graphVisible to the tri-state centerSlot (graph, agent, none) with migration of persisted layout state; `frontend/src/stores/view/shellLayout.ts`.
-- [ ] `P05.S15` - Add the reserved __agent__ panel reconciliation beside __graph__ and host the AgentPanel body in it; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `P05.S16` - Replace the dock-header graph toggle with the segmented graph-or-agent switch plus the hide affordance; `frontend/src/app/stage/DockWorkspace.tsx`.
-- [ ] `P05.S17` - Delete the 4th grid track (agentPanelWidth, resize seam, agentPanelClassName) and re-route every entry point (AgentChip, keybinding, palette, background menu, comment bridge, Review chip) to the slot; `frontend/src/app/AppShell.tsx`.
-- [ ] `P05.S18` - Retire panel:approvals and Review-chip vocabulary into common:agent.* across the four catalog touch points; `frontend/src/localization/catalogAgentKeys.ts`.
-- [ ] `P05.S19` - Add reconciliation tests mirroring the graph panel: slot flips never re-parent the canvas, restore races pinned, chip fallback renders when the slot shows graph during a live run; `frontend/src/app/stage/`.
+- [x] `P05.S14` - Generalize graphVisible to the tri-state centerSlot (graph, agent, none) with migration of persisted layout state; `frontend/src/stores/view/shellLayout.ts`.
+- [x] `P05.S15` - Add the reserved __agent__ panel reconciliation beside __graph__ and host the AgentPanel body in it; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P05.S16` - Replace the dock-header graph toggle with the segmented graph-or-agent switch plus the hide affordance; `frontend/src/app/stage/DockWorkspace.tsx`.
+- [x] `P05.S17` - Delete the 4th grid track (agentPanelWidth, resize seam, agentPanelClassName) and re-route every entry point (AgentChip, keybinding, palette, background menu, comment bridge, Review chip) to the slot; `frontend/src/app/AppShell.tsx`.
+- [x] `P05.S18` - Retire panel:approvals and Review-chip vocabulary into common:agent.* across the four catalog touch points; `frontend/src/localization/catalogAgentKeys.ts`.
+- [x] `P05.S19` - Add reconciliation tests mirroring the graph panel: slot flips never re-parent the canvas, restore races pinned, chip fallback renders when the slot shows graph during a live run; `frontend/src/app/stage/`.
 
 ### Phase `P06` - Begin idiom and composer (frontend)
 
 The empty-state composer with scope-named headline, evidence autocomplete, served-profile picker, autonomy banner, stop swap (shell-integration D2/D3).
 
-- [ ] `P06.S20` - Build the begin-idiom empty state (centered composer, scope-personalized headline, recents-yielding starter affordances) with the composer bottom-docked when a transcript exists; `frontend/src/app/agent/AgentPanel.tsx`.
-- [ ] `P06.S21` - Add @-evidence rel-path autocomplete riding the files-code and files-vault provider seam, feeding the existing mention-chip store; `frontend/src/app/agent/Composer.tsx`.
-- [ ] `P06.S22` - Render the model picker from the served profile list only and codify the two-row left-right composer law; `frontend/src/app/agent/Composer.tsx`.
-- [ ] `P06.S23` - Add the send-to-stop swap during streaming runs and the standing apply-automatically warning banner above the composer; `frontend/src/app/agent/Composer.tsx`.
-- [ ] `P06.S24` - Add render and unit tests for begin and continue posture, autocomplete provider scoping, and banner presence rules; `frontend/src/app/agent/`.
+- [x] `P06.S20` - Build the begin-idiom empty state (centered composer, scope-personalized headline, recents-yielding starter affordances) with the composer bottom-docked when a transcript exists; `frontend/src/app/agent/AgentPanel.tsx`.
+- [x] `P06.S21` - Add @-evidence rel-path autocomplete riding the files-code and files-vault provider seam, feeding the existing mention-chip store; `frontend/src/app/agent/Composer.tsx`.
+- [x] `P06.S22` - Codify the two-row left-right composer law and render the model pill from the served preset default profile, disabled with a reason when none is served (full served-profile-list consumption rides S40); `frontend/src/app/agent/Composer.tsx`.
+- [x] `P06.S23` - Add the send-to-stop swap during streaming runs and the standing apply-automatically warning banner above the composer; `frontend/src/app/agent/Composer.tsx`.
+- [x] `P06.S24` - Add render and unit tests for begin and continue posture, autocomplete provider scoping, and banner presence rules; `frontend/src/app/agent/`.
 
 ### Phase `P07` - Transcript C-rules conformance (frontend)
 
