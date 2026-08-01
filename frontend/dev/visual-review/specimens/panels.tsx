@@ -8,14 +8,9 @@
 // directly as props (no seed, no QueryClient involvement). The retired
 // `panels-ragjobdashboard` container cell went with `RagJobDashboard` itself: its
 // header is now `IndexConsoleHeader`, reviewed here from authored identity props
-// rather than from a seeded engine status.
-
-import {
-  deriveA2aLifecycleView,
-  type A2aLifecycleJob,
-  type A2aLifecycleStatus,
-} from "@app/stores/server/a2aLifecycle";
-import { A2aLifecyclePanelBody } from "@app/app/panels/A2aLifecyclePanel";
+// rather than from a seeded engine status. The `panels-a2alifecyclepanel` cell went
+// the same way, with the agent lifecycle console itself — a development metastate
+// the owner ruled off the product surface entirely.
 
 import {
   type RagJob,
@@ -46,39 +41,6 @@ import {
 } from "@app/stores/server/queries";
 
 import type { SpecimenDef } from "../registry";
-
-// --- panels-a2alifecyclepanel --------------------------------------------------
-
-const A2A_STATUS_NORMAL: A2aLifecycleStatus = {
-  installed: true,
-  installed_known: true,
-  install_state: "settled",
-  recovery_required: false,
-  degraded: false,
-  readiness: { state: "gateway-ready", worker: "ready" },
-  ownership: { owner: "review-workspace", retained: true },
-  active_generation: "generation-042",
-  tiers: {},
-};
-
-const A2A_STATUS_EMPTY: A2aLifecycleStatus = {
-  installed: false,
-  installed_known: true,
-  install_state: "absent",
-  recovery_required: false,
-  degraded: false,
-  readiness: null,
-  ownership: { owner: "", retained: false },
-  active_generation: null,
-  tiers: {},
-};
-
-const A2A_JOB_NORMAL: A2aLifecycleJob = {
-  id: "job-771",
-  op: "restart",
-  state: "succeeded",
-  outcome: {},
-};
 
 // --- panels-ragdashboardfooter --------------------------------------------------
 
@@ -292,56 +254,6 @@ const HEALTH_ROWS_DEGRADED = deriveSystemStatusRows(
 );
 
 export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
-  "panels-a2alifecyclepanel": {
-    note: "Mounts the exported wire-free A2aLifecyclePanelBody directly; the four states are authored props (loading→loading, degraded→statusUnavailable, empty→an absent install), not a seeded query.",
-    render: (state) => {
-      if (state === "loading") {
-        return (
-          <A2aLifecyclePanelBody
-            view={deriveA2aLifecycleView(undefined)}
-            job={undefined}
-            busy={false}
-            runError={false}
-            loading
-            onRun={() => {}}
-          />
-        );
-      }
-      if (state === "degraded") {
-        return (
-          <A2aLifecyclePanelBody
-            view={deriveA2aLifecycleView(undefined)}
-            job={undefined}
-            busy={false}
-            runError={false}
-            statusUnavailable
-            onRun={() => {}}
-          />
-        );
-      }
-      if (state === "empty") {
-        return (
-          <A2aLifecyclePanelBody
-            view={deriveA2aLifecycleView(A2A_STATUS_EMPTY)}
-            job={undefined}
-            busy={false}
-            runError={false}
-            onRun={() => {}}
-          />
-        );
-      }
-      return (
-        <A2aLifecyclePanelBody
-          view={deriveA2aLifecycleView(A2A_STATUS_NORMAL)}
-          job={A2A_JOB_NORMAL}
-          busy={false}
-          runError={false}
-          onRun={() => {}}
-        />
-      );
-    },
-  },
-
   "panels-ragdashboardfooter": {
     note: "Mounts the exported wire-free RagDashboardFooterBody directly; the four states are authored props (pending→loading, offline→degraded, storage undefined→the honest 'never surveyed' empty caption), not a seeded query.",
     render: (state) => {

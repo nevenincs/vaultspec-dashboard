@@ -162,7 +162,6 @@ export const ltrTestResources = {
       labels: {
         projectHealth: "Santé du projet",
         systemStatus: "État du système",
-        agentService: "Agents locaux",
       },
       accessibility: {
         group: "Travaux en attente",
@@ -877,7 +876,6 @@ export const rtlTestResources = {
       labels: {
         projectHealth: "سلامة المشروع",
         systemStatus: "حالة النظام",
-        agentService: "الوكلاء",
       },
       accessibility: {
         group: "الأعمال المعلقة",

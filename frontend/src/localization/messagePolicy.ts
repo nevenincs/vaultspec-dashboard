@@ -8,7 +8,6 @@ import { LANGUAGE_DISPLAY_MESSAGE_POLICY } from "./messagePolicy.languageDisplay
 import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMaintenance";
 import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
 import { AGENT_MESSAGE_POLICY } from "./messagePolicy.agent";
-import { AGENT_SERVICE_MESSAGE_POLICY } from "./messagePolicy.agentService";
 import { CODE_TREE_MESSAGE_POLICY } from "./messagePolicy.codeTree";
 
 export type MessageRole =
@@ -51,7 +50,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   ...HOVER_MESSAGE_POLICY,
   ...SEARCH_MAINTENANCE_MESSAGE_POLICY,
   ...AGENT_MESSAGE_POLICY,
-  ...AGENT_SERVICE_MESSAGE_POLICY,
   ...CODE_TREE_MESSAGE_POLICY,
   "common:accessibility.actionsForItem": { role: "accessibility" },
   "common:accessibility.actionsMenu": { role: "accessibility" },
