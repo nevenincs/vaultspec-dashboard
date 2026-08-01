@@ -1,0 +1,18 @@
+{
+  "request_id": "clarification-deterministic-1",
+  "questions": [
+    {
+      "id": "provider",
+      "prompt": "Which provider should author the plan?",
+      "kind": "choice",
+      "options": ["codex", "zai", "claude"],
+      "required": true
+    },
+    {
+      "id": "scope",
+      "prompt": "Which module should this research target?",
+      "kind": "text",
+      "required": false
+    }
+  ]
+}
