@@ -293,6 +293,12 @@ export interface A2aLifecycleStatus {
   readiness: A2aReadiness | null;
   ownership: { owner: string; retained: boolean };
   active_generation: string | null;
+  /** The operations the engine says a client may offer, served — never derived.
+   *  Eligibility is the intersection of what the state permits and what is
+   *  actually implemented, and only the engine knows the second half. Optional
+   *  because an older engine will not send it; consumers fail CLOSED on absence
+   *  rather than falling back to guessing. */
+  eligible_ops?: readonly string[];
   tiers?: TiersBlock;
 }
 

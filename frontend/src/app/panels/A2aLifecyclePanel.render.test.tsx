@@ -26,6 +26,20 @@ function status(overrides: Partial<A2aLifecycleStatus>): A2aLifecycleStatus {
     ownership: { owner: "root", retained: true },
     active_generation: "g3",
     tiers: { agent: { available: true } },
+    // Eligibility is SERVED, so a presentation fixture has to state it. The
+    // default is the full settled-install set these cases were written against;
+    // a case that cares about a narrower offer overrides it. A fixture that
+    // omits it renders no controls at all, which is the fail-closed contract.
+    eligible_ops: [
+      "doctor",
+      "ensure",
+      "stop",
+      "restart",
+      "repair",
+      "update",
+      "rollback",
+      "remove",
+    ],
     ...overrides,
   };
 }
@@ -150,6 +164,10 @@ describe("A2aLifecyclePanel presentations", () => {
         recovery_required: true,
         degraded: true,
         readiness: null,
+        // A degraded install is exactly the case where the engine narrows the
+        // offer, so the fixture states the narrowed set rather than inheriting
+        // the settled-install default.
+        eligible_ops: ["doctor", "repair"],
       }),
     );
     const { container } = renderBody(view);

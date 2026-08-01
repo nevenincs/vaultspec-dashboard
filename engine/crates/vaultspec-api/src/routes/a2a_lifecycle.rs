@@ -132,7 +132,9 @@ fn op_label(op: LifecycleOp) -> &'static str {
     }
 }
 
+mod eligibility;
 mod jobs;
+use eligibility::{OpEffect, eligible_ops, op_effect};
 use jobs::{Admission, JobState, Registry};
 
 // --- shared gateway resolution ---------------------------
@@ -1125,6 +1127,11 @@ impl LifecyclePlane {
                     .unwrap_or(false),
             },
             "active_generation": settled.map(ProvisionedRelease::active_generation),
+            // Which operations a client may OFFER. Served, never derived: the
+            // browser can reason about readiness but cannot know what is wired,
+            // which is exactly how the panel came to advertise controls that
+            // always failed.
+            "eligible_ops": eligible_ops(readiness),
         })
     }
 
@@ -1133,6 +1140,10 @@ impl LifecyclePlane {
     /// lands with the seated controller. Operations fully owned by the
     /// product crate today are applied for real; the rest report the current
     /// authoritative state rather than a fabricated success.
+    ///
+    /// Which of those two an operation gets is decided ONCE, by [`op_effect`],
+    /// which the served eligibility reads too — so an operation cannot be
+    /// advertised as available and then refuse.
     fn apply(&self, op: LifecycleOp) -> (JobState, Value) {
         match op {
             LifecycleOp::Doctor => (JobState::Succeeded, {
@@ -1155,6 +1166,12 @@ impl LifecyclePlane {
                 }
             }
             other => {
+                debug_assert_eq!(
+                    op_effect(other),
+                    OpEffect::PendingImplementation,
+                    "an operation applied for real must not fall into the pending arm; \
+                     op_effect and apply have diverged"
+                );
                 let outcome = || {
                     (
                         JobState::Failed,
