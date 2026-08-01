@@ -4,7 +4,7 @@ tags:
   - '#a2a-distribution-trust'
 date: '2026-07-20'
 modified: '2026-08-01'
-body_hash: 'sha256:b537ae751338a31f8c7a6f529572a51c68822ddf4c7e308996e96f37cbde4b56'
+body_hash: 'sha256:fcaabb5ee3ebe123ab0b16b3f94c431ae11dc23251973b7aa660db17f948259c'
 related:
   - "[[2026-07-20-a2a-distribution-trust-research]]"
   - "[[2026-07-18-a2a-product-provisioning-adr]]"

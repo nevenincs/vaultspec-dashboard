@@ -4,7 +4,7 @@ tags:
   - '#a2a-archive-materialization'
 date: '2026-07-20'
 modified: '2026-08-01'
-body_hash: 'sha256:315c9ead92b2ae0c809b13e2f4ddabbb9f48d6b12ce47060f9f505b5c68e3b7b'
+body_hash: 'sha256:b20cd7897d3be0e547c898581af22de847ba8cd4ef34a00b49a35225aae4e43f'
 related:
   - "[[2026-07-20-a2a-archive-materialization-research]]"
   - "[[2026-07-20-a2a-distribution-trust-adr]]"
