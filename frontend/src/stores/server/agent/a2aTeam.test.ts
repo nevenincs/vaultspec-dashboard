@@ -6,7 +6,6 @@ import {
   adaptPresetsList,
   adaptRunStart,
   adaptRunStatus,
-  adaptServiceState,
   createTeamRunId,
   isTeamRunTerminalStatus,
   latestRelayReconciliationSignal,
@@ -372,24 +371,6 @@ describe("adaptRunStatus", () => {
     const status = adaptRunStatus({ envelope: {} });
     expect(status.status).toBe("unknown");
     expect(status.proposal_ids).toEqual([]);
-  });
-});
-
-describe("adaptServiceState", () => {
-  it("adapts the readiness snapshot", () => {
-    const state = adaptServiceState({
-      envelope: {
-        status: "ready",
-        alive: true,
-        ready: true,
-        can_accept_run: true,
-        service_version: "1.2.3",
-        degraded_reasons: [],
-      },
-    });
-    expect(state.status).toBe("ready");
-    expect(state.can_accept_run).toBe(true);
-    expect(state.service_version).toBe("1.2.3");
   });
 });
 

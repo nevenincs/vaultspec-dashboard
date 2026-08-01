@@ -168,6 +168,29 @@ async fn an_unknown_verb_403s_before_any_discovery() {
     );
 }
 
+/// The retired `service-state` verb is refused like any other unlisted verb.
+///
+/// Asserted by NAME rather than left to the membership count, because the
+/// failure this guards against is a re-add: the verb had a complete, working,
+/// live-tested client stack behind it and no product consumer at all, and a
+/// stack that still compiles is exactly the thing someone re-whitelists to
+/// "unbreak". The dashboard reads a2a availability from the `agent` tier on
+/// `presets-list`; if a real readiness surface is ever wanted, it arrives with
+/// its consumer, not ahead of one.
+#[tokio::test]
+async fn the_retired_service_state_verb_is_no_longer_brokered() {
+    let (_dir, state) = test_state();
+    let err = ops_a2a(State(state), Path("service-state".to_string()), None)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.0,
+        StatusCode::FORBIDDEN,
+        "an unlisted verb is refused before any discovery or round-trip"
+    );
+    assert!(err.1.0["error"].as_str().unwrap().contains("service-state"));
+}
+
 #[test]
 fn run_id_guard_accepts_path_safe_and_rejects_everything_else() {
     let (_dir, state) = test_state();
@@ -233,11 +256,6 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
     let (_dir, state) = test_state();
     let cell = state.active_cell();
     let expected_scope = crate::routes::scope_token(&cell.root);
-
-    let service =
-        build_forwarded_call(&state, "service-state", &cell, &A2aVerbBody::default()).unwrap();
-    assert_eq!(service.path, "/v1/service");
-    assert!(service.body.is_none());
 
     // presets-list carries the engine-controlled workspace_root, percent-encoded.
     let presets =
@@ -966,9 +984,11 @@ async fn stalled_health_probe_yields_the_async_worker() {
     let service_json = discovery.path().join("service.json");
     write_service_record(&service_json, port);
     let (_state_dir, state) = test_state();
+    // Any read verb exercises the stalled-probe path; `presets-list` is the
+    // cheapest one that survives the whitelist.
     let call = build_forwarded_call(
         &state,
-        "service-state",
+        "presets-list",
         &state.active_cell(),
         &A2aVerbBody::default(),
     )
@@ -1093,23 +1113,25 @@ fn invalid_prepare_role_sets_fail_closed_and_mint_nothing() {
 
 #[test]
 fn the_verb_whitelist_is_exactly_the_reviewed_contract_surface() {
-    // The whitelist's force is its exact membership: five orchestration control
+    // The whitelist's force is its exact membership: four orchestration control
     // verbs, ONE bounded active-run recovery read, and ONE typed interrupt-resume
     // (agent-flow D5(c)), and nothing else. Any addition, removal, or rename is a
     // contract change and must fail here.
-    const CONTROL_VERBS: &[&str] = &[
-        "run-start",
-        "run-status",
-        "run-cancel",
-        "presets-list",
-        "service-state",
-    ];
+    //
+    // It was five control verbs until `service-state` was removed. That entry
+    // bought the engine a discovery and `/health` round-trip for a verb no
+    // product surface had ever called: the dashboard reads a2a's availability
+    // from the `agent` tier on `presets-list`, not from this. Its only caller
+    // was the live test asserting it round-tripped - which proved the broker
+    // worked and said nothing about the product needing it. Brokered authority
+    // is granted for a consumer, so an entry with no consumer is revoked.
+    const CONTROL_VERBS: &[&str] = &["run-start", "run-status", "run-cancel", "presets-list"];
     const BOUNDED_READS: &[&str] = &["active-runs"];
     const RESUME_VERBS: &[&str] = &["clarification-respond"];
     assert_eq!(
         A2A_WHITELIST.len(),
         CONTROL_VERBS.len() + BOUNDED_READS.len() + RESUME_VERBS.len(),
-        "the whitelist holds exactly the five control verbs, the one bounded read, \
+        "the whitelist holds exactly the four control verbs, the one bounded read, \
          and the one typed resume"
     );
     assert_eq!(

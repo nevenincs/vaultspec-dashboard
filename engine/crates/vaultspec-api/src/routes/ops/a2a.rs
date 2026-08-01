@@ -60,7 +60,6 @@ const A2A_WHITELIST: &[&str] = &[
     "run-status",
     "run-cancel",
     "presets-list",
-    "service-state",
     "active-runs",
     "clarification-respond",
 ];
@@ -80,7 +79,7 @@ const A2A_HEARTBEAT_STALE_MS: i64 = 120_000;
 const A2A_HEALTH_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// Wall-clock budget for a brokered READ verb (run-status, presets-list,
-/// service-state): a fast recovery-snapshot / listing read.
+/// active-runs): a fast recovery-snapshot / listing read.
 const A2A_READ_BUDGET: Duration = Duration::from_secs(15);
 
 /// Wall-clock budget for a brokered CONTROL verb (run-start, run-cancel):
@@ -573,12 +572,6 @@ fn build_forwarded_call(
     body: &A2aVerbBody,
 ) -> Result<ForwardedCall, (StatusCode, Json<Value>)> {
     match verb {
-        "service-state" => Ok(ForwardedCall {
-            method: Method::Get,
-            path: "/v1/service".to_string(),
-            body: None,
-            budget: A2A_READ_BUDGET,
-        }),
         "presets-list" => {
             // The workspace_root is the ENGINE-controlled active scope root, never
             // a client field, so the caller can never point preset discovery at an

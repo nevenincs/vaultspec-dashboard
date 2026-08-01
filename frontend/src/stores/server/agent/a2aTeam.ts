@@ -1,12 +1,17 @@
 // The SOLE frontend client for a2a TEAM runs. The frontend NEVER calls the a2a
 // gateway directly — every team operation transits the engine's whitelisted
 // `/ops/a2a/{verb}` pass-through (`presets-list` feeds the Team selector,
-// `run-start`/`run-status`/`run-cancel` bind team runs, `service-state` feeds
-// degradation) and the per-run progress relay (`/ops/a2a/runs/{id}/stream`).
+// `run-start`/`run-status`/`run-cancel` bind team runs, `active-runs` recovers a
+// lost binding, `clarification-respond` resumes a parked run) and the per-run
+// progress relay (`/ops/a2a/runs/{id}/stream`).
 //
 // Degradation is read from `tiers` ONLY (never a transport error): a2a-down
 // renders the Team selector disabled-with-reason while single-agent authoring
-// keeps working. Relay frames are non-authoritative — truth is recovered
+// keeps working. It is read from the tiers block on the PRESETS query, via
+// `useTeamSelectorState` — this header used to credit a `service-state` verb
+// instead, which was wrong and was the cover under which that verb kept a full
+// client stack and a whitelist entry while rendering nothing anywhere. It is
+// deleted; the Team selector's degradation never came from it. Relay frames are non-authoritative — truth is recovered
 // by re-reading `run-status`, never reconstructed from a relay frame; when the
 // relay signals a gap or degrades, the consumer falls back to bounded run-status
 // polling with honest state, never faked liveness.
@@ -170,17 +175,6 @@ export interface TeamRoleState {
   readonly role?: string;
   readonly state?: string;
   readonly display_name?: string;
-}
-
-/** The a2a service readiness snapshot (`service-state`). */
-export interface A2aServiceState {
-  readonly status?: string;
-  readonly alive?: boolean;
-  readonly ready?: boolean;
-  readonly can_accept_run?: boolean;
-  readonly service_version?: string;
-  readonly degraded_reasons: string[];
-  readonly tiers?: TiersBlock;
 }
 
 /** The engine pass-through envelope, unwrapped: the sibling body under `envelope`,
@@ -529,20 +523,6 @@ export function recoverableActiveRunId(
   return result.runs[0]?.run_id ?? null;
 }
 
-export function adaptServiceState(pass: PassThrough): A2aServiceState {
-  const env: Rec = isRec(pass.envelope) ? pass.envelope : {};
-  return {
-    status: asStr(env.status),
-    alive: env.alive === undefined ? undefined : asBool(env.alive),
-    ready: env.ready === undefined ? undefined : asBool(env.ready),
-    can_accept_run:
-      env.can_accept_run === undefined ? undefined : asBool(env.can_accept_run),
-    service_version: asStr(env.service_version),
-    degraded_reasons: strArr(env.degraded_reasons),
-    tiers: pass.tiers,
-  };
-}
-
 /** The interpreted availability of the a2a orchestration plane. */
 export interface AgentAvailability {
   readonly available: boolean;
@@ -635,10 +615,6 @@ export class A2aTeamClient {
     return adaptPresetsList(await this.passThrough("presets-list", {}, signal));
   }
 
-  async serviceState(signal?: AbortSignal): Promise<A2aServiceState> {
-    return adaptServiceState(await this.passThrough("service-state", {}, signal));
-  }
-
   async startRun(payload: TeamRunStartPayload): Promise<TeamRunStartResult> {
     // `run-start` is idempotent by its caller-supplied run_id. Retry one transport
     // failure with the EXACT same payload object; never retry an engine response
@@ -727,7 +703,6 @@ export const a2aTeamClient = new A2aTeamClient();
 export const a2aKeys = {
   all: ["a2a"] as const,
   presets: () => [...a2aKeys.all, "presets"] as const,
-  serviceState: () => [...a2aKeys.all, "service-state"] as const,
   runStatus: (runId: string) => [...a2aKeys.all, "run-status", runId] as const,
   runRelay: (runId: string) => [...a2aKeys.all, "run-relay", runId] as const,
   activeRuns: (scope: string, featureTag?: string) =>
@@ -792,17 +767,6 @@ export function useTeamSelectorState(): TeamSelectorState {
       isError: query.isError,
     };
   }, [query]);
-}
-
-/** The a2a service readiness snapshot. */
-export function useA2aServiceState(): UseQueryResult<A2aServiceState, Error> {
-  return useQuery({
-    queryKey: a2aKeys.serviceState(),
-    queryFn: ({ signal }) => a2aTeamClient.serviceState(signal),
-    staleTime: 10_000,
-    gcTime: 60_000,
-    retry: false,
-  });
 }
 
 /** The workspace's live team runs, for reload-recovery of a lost viewing binding.
