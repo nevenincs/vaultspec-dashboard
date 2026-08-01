@@ -1,17 +1,19 @@
 {
-  "request_id": "clarification-deterministic-1",
+  "type": "clarification_request",
+  "request_id": "clarify-run-19b53e071e8baf92b20a029c1308828c",
   "questions": [
     {
-      "id": "provider",
-      "prompt": "Which provider should author the plan?",
+      "id": "scope",
+      "prompt": "Which surface should this cover?",
       "kind": "choice",
-      "options": ["codex", "zai", "claude"],
+      "options": ["frontend", "backend", "both"],
       "required": true
     },
     {
-      "id": "scope",
-      "prompt": "Which module should this research target?",
+      "id": "constraints",
+      "prompt": "Any constraint the work must respect?",
       "kind": "text",
+      "options": null,
       "required": false
     }
   ]
