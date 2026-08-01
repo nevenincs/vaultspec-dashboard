@@ -86,7 +86,6 @@ const AGENT = {
   viewPending: "common:agent.panel.view.pending",
   loading: "common:agent.transcript.loading",
   empty: "common:agent.transcript.empty",
-  noSession: "common:agent.transcript.noSession",
   error: "common:agent.transcript.error",
 } as const;
 
@@ -217,15 +216,12 @@ function AgentTranscriptContainer({
 
   let body: ReactNode;
   if (currentSessionId === null) {
-    // No session: the empty prompt shows ONLY when no team run is carrying the
-    // panel; otherwise the team-run block below is the content.
-    body =
-      teamRunId === null ? (
-        <StateBlock
-          mode="empty"
-          message={resolveMessage({ key: AGENT.noSession }).message}
-        />
-      ) : null;
+    // No session AND this container mounted means a team run is carrying the panel
+    // (the begin idiom owns the no-session case now — D2). So there is no
+    // single-agent body to render, and the team-run block below is the content. The
+    // former "Message the agent to start a conversation" empty block is RETIRED with
+    // its key: it became unreachable the moment the begin state took that state over.
+    body = null;
   } else if (session.isLoading) {
     body = (
       <Skeleton label={resolveMessage({ key: AGENT.loading }).message}>
@@ -336,7 +332,10 @@ function ActiveTeamRunRecovery({ scope }: { scope: string }) {
 function AgentRunHeaderSlot() {
   const progress = useTeamRunProgress();
   const frames = progress.frames;
-  const roster = useMemo(() => deriveTeamRoster(frames), [frames]);
+  // The AUTHORITATIVE status seeds the roster (it survives a reload; relay frames do
+  // not), and the frozen profile's assignments bind each role to its provider/model.
+  const status = progress.status;
+  const roster = useMemo(() => deriveTeamRoster(frames, status), [frames, status]);
   return <TeamRunHeader roster={roster} />;
 }
 

@@ -386,6 +386,8 @@ export const common = {
       startersLabel: "Ways to start",
     },
     runHeader: {
+      elapsed: "Elapsed {{elapsed}}",
+      mixedProvider: "Mixed providers",
       phase: "Phase: {{phase}}",
       region: "Run status",
       roster: "AGENTS",
@@ -413,7 +415,6 @@ export const common = {
     transcript: {
       loading: "Loading the conversation…",
       empty: "No messages yet.",
-      noSession: "Message the agent to start a conversation.",
       error:
         "This conversation couldn’t be loaded. It may have expired. Open a new session.",
       showingRecent: "Showing the most recent messages.",
@@ -483,6 +484,7 @@ export const common = {
       team: "Team",
       teamDefault: "Single agent",
       teamUnavailable: "Using one agent.",
+      modelMenuAria: "Select a model profile",
       teamMenuAria: "Select an agent team",
       teamPresetUnavailable: "This team can’t be loaded.",
       startTeamRun: "Start team",

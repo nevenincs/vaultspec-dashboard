@@ -77,6 +77,7 @@ import {
   useTeamSelectorState,
 } from "../../stores/server/agent";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
+import type { TeamProfile } from "../../stores/server/agent/a2aTeam";
 import {
   setAgentCurrentSession,
   setAgentTeamRun,
@@ -106,6 +107,7 @@ import { Button, DropdownButton, Popover, Spinner } from "../kit";
 import { AgentAutonomyControl } from "./AgentAutonomyControl";
 import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
 import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
+import { ComposerModelPicker } from "./ComposerModelPicker";
 import { clearComposerDraft, useComposerSeed } from "./composerDraft";
 
 const MSG = {
@@ -521,46 +523,6 @@ function ComposerTeamSelector({
   );
 }
 
-/** The model pill, rendered from the SERVED profile only
- *  (agent-panel-shell-integration D3; a2a-agent-flow D3). The wire serves no list
- *  of selectable models — a preset carries exactly one `default_profile_id` — so
- *  this renders that served id when the chosen preset has one and stays
- *  disabled-with-reason otherwise. It never invents a menu of profiles the sibling
- *  has not admitted, and never shows a model the run would not actually use. */
-function ComposerModelPill({ profileId }: { profileId: string | null }) {
-  const resolveMessage = useLocalizedMessageResolver();
-  const modelLabel = resolveMessage({ key: MSG.model }).message;
-  const served = profileId !== null && profileId.length > 0;
-  const modelValue = served
-    ? authoredDisplayText(profileId)
-    : resolveMessage({ key: MSG.modelDefault }).message;
-  const modelReason = resolveMessage({ key: MSG.modelUnavailable }).message;
-  const modelPill = resolveMessage({
-    key: MSG.selectorValue,
-    values: { selector: modelLabel, value: modelValue },
-  }).message;
-  const modelAria = served
-    ? modelPill
-    : resolveMessage({
-        key: MSG.selectorDisabled,
-        values: { selector: modelLabel, value: modelValue, reason: modelReason },
-      }).message;
-  return (
-    <span
-      title={served ? undefined : modelReason}
-      data-composer-model
-      data-model-profile={served ? profileId : undefined}
-    >
-      <DropdownButton
-        label={modelPill}
-        onClick={() => undefined}
-        disabled
-        ariaLabel={modelAria}
-      />
-    </span>
-  );
-}
-
 /** Row 2 RIGHT — how it thinks (research G6, codified by D3): the team/preset
  *  selector and the served model profile. The send control sits to their right,
  *  rendered by the composer itself since it changes shape with the run. */
@@ -568,12 +530,18 @@ function ComposerThinkingControls({
   selectedTeamPreset,
   onSelectTeam,
   locked,
-  profileId,
+  profiles,
+  selectedProfileId,
+  defaultProfileId,
+  onSelectProfile,
 }: {
   selectedTeamPreset: string | null;
   onSelectTeam: (id: string | null) => void;
   locked: boolean;
-  profileId: string | null;
+  profiles: readonly TeamProfile[];
+  selectedProfileId: string | null;
+  defaultProfileId: string | null;
+  onSelectProfile: (profileId: string | null) => void;
 }) {
   return (
     <div className="flex min-w-0 items-center gap-fg-1" data-composer-thinking>
@@ -582,7 +550,13 @@ function ComposerThinkingControls({
         onSelectPreset={onSelectTeam}
         locked={locked}
       />
-      <ComposerModelPill profileId={profileId} />
+      <ComposerModelPicker
+        profiles={profiles}
+        selectedProfileId={selectedProfileId}
+        defaultProfileId={defaultProfileId}
+        onSelectProfile={onSelectProfile}
+        locked={locked}
+      />
     </div>
   );
 }
@@ -672,11 +646,27 @@ export function Composer() {
   // carries one `default_profile_id`. No preset (or none served) means no profile to
   // name, and the pill says so rather than showing a model the run would not use.
   const teamSelector = useTeamSelectorState();
-  const selectedProfileId =
+  const activePreset =
     selectedTeamPreset === null
       ? null
-      : (teamSelector.presets.find((preset) => preset.id === selectedTeamPreset)
-          ?.default_profile_id ?? null);
+      : (teamSelector.presets.find((preset) => preset.id === selectedTeamPreset) ??
+        null);
+  const profiles = activePreset?.profiles ?? [];
+  const defaultProfileId = activePreset?.default_profile_id ?? null;
+  // The user's explicit model choice, cleared whenever the preset changes — a
+  // profile belongs to the preset that serves it, so carrying one across would send
+  // an id the new preset never offered.
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedProfileId(null);
+  }, [selectedTeamPreset]);
+  // What run-start will actually be sent: the explicit choice when it is still on
+  // offer, else nothing (the sibling then applies the preset's own default).
+  const runProfileId =
+    selectedProfileId !== null &&
+    profiles.some((profile) => profile.id === selectedProfileId && profile.eligible)
+      ? selectedProfileId
+      : null;
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
@@ -871,6 +861,7 @@ export function Composer() {
         message: prompt,
         expected_scope: scope,
         title: sessionTitleFromPrompt(prompt),
+        ...(runProfileId === null ? {} : { profile_id: runProfileId }),
       });
       if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
         setAgentTeamRun({ runId: result.run_id, prompt, scope });
@@ -1079,7 +1070,10 @@ export function Composer() {
             selectedTeamPreset={selectedTeamPreset}
             onSelectTeam={setSelectedTeamPreset}
             locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
-            profileId={selectedProfileId}
+            profiles={profiles}
+            selectedProfileId={selectedProfileId}
+            defaultProfileId={defaultProfileId}
+            onSelectProfile={setSelectedProfileId}
           />
           {teamRunActive && !teamTerminal ? (
             <Button

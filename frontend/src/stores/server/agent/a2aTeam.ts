@@ -77,6 +77,31 @@ export interface TeamPreset {
   readonly is_mock: boolean;
   readonly origin?: string;
   readonly default_profile_id?: string;
+  /** The SERVED selectable model profiles for this preset. The sibling populates
+   *  this on `presets-list`; an older/sparse body simply yields an empty list, and
+   *  the picker falls back to naming `default_profile_id` alone. */
+  readonly profiles: TeamProfile[];
+}
+
+/** One role's provider binding inside a profile. A profile may route DIFFERENT
+ *  roles to different providers, which is why this is a list and not one label. */
+export interface TeamRoleAssignment {
+  readonly role: string;
+  readonly provider_id?: string;
+  readonly model?: string;
+}
+
+/** One selectable model profile (the a2a `ProfileSummary`). `eligible` is the
+ *  sibling's own verdict; `unavailable_reasons` are its words for why not — both
+ *  render verbatim, never re-derived here. */
+export interface TeamProfile {
+  readonly id: string;
+  readonly display_name?: string;
+  readonly description?: string;
+  readonly is_default: boolean;
+  readonly eligible: boolean;
+  readonly unavailable_reasons: string[];
+  readonly assignments: TeamRoleAssignment[];
 }
 
 /** The a2a run-start acknowledgement (the `RunStartResponse`), or a business
@@ -106,7 +131,26 @@ export interface TeamRunStatus {
   readonly proposal_ids: string[];
   readonly changeset_ids: string[];
   readonly last_sequence?: number;
+  /** The run's roster with each role's SERVED state (a2a `RoleState`). Additive-v1:
+   *  a run started before the field existed simply serves none, and the run header
+   *  falls back to the roster the relay's status frames disclose. */
+  readonly roles: TeamRoleState[];
+  /** The profile FROZEN at run start — what the run is actually using, not what is
+   *  selected in the composer now. */
+  readonly profile_id?: string;
+  /** Per-role provider/model for the frozen profile (a2a `RoleAssignmentSummary`). */
+  readonly assignments: TeamRoleAssignment[];
+  /** Epoch milliseconds the run started, when the sibling serves one. Absent means
+   *  elapsed is NOT computable — the header omits it rather than measuring from
+   *  when this panel happened to start watching. */
+  readonly started_at_ms?: number;
   readonly tiers?: TiersBlock;
+}
+
+/** One role's served lifecycle state within a run. */
+export interface TeamRoleState {
+  readonly role: string;
+  readonly state?: string;
 }
 
 /** The a2a service readiness snapshot (`service-state`). */
@@ -176,6 +220,62 @@ export function scopedTeamRunStatus(
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+/** Adapt one role assignment. Tolerant: an entry without a role name is dropped
+ *  rather than rendered as an anonymous binding. */
+function adaptRoleAssignment(raw: unknown): TeamRoleAssignment | null {
+  if (!isRec(raw)) return null;
+  const role = asStr(raw.role);
+  if (!role) return null;
+  return {
+    role,
+    provider_id: asStr(raw.provider_id),
+    model: asStr(raw.model),
+  };
+}
+
+function adaptRoleAssignments(raw: unknown): TeamRoleAssignment[] {
+  return Array.isArray(raw)
+    ? raw
+        .map(adaptRoleAssignment)
+        .filter((entry): entry is TeamRoleAssignment => entry !== null)
+    : [];
+}
+
+/** Adapt one served profile. `eligible` defaults TRUE when the sibling omits it:
+ *  the absence of a verdict is not a refusal, and disabling a profile the sibling
+ *  never objected to would hide a working choice. */
+function adaptProfile(raw: unknown): TeamProfile | null {
+  if (!isRec(raw)) return null;
+  const id = asStr(raw.id);
+  if (!id) return null;
+  return {
+    id,
+    display_name: asStr(raw.display_name),
+    description: asStr(raw.description),
+    is_default: asBool(raw.is_default),
+    eligible: raw.eligible === undefined ? true : asBool(raw.eligible),
+    unavailable_reasons: strArr(raw.unavailable_reasons),
+    assignments: adaptRoleAssignments(raw.assignments),
+  };
+}
+
+/** The DISTINCT provider ids a profile routes its roles to, in first-seen order.
+ *  More than one means the profile is MIXED — the picker must say so per role
+ *  rather than collapse it to a single invented provider label. */
+export function profileProviderIds(profile: TeamProfile): string[] {
+  const seen: string[] = [];
+  for (const assignment of profile.assignments) {
+    const provider = assignment.provider_id;
+    if (provider && !seen.includes(provider)) seen.push(provider);
+  }
+  return seen;
+}
+
+/** Whether a profile routes its roles across more than one provider. */
+export function profileIsMixedProvider(profile: TeamProfile): boolean {
+  return profileProviderIds(profile).length > 1;
+}
+
 function adaptPreset(raw: unknown): TeamPreset | null {
   if (!isRec(raw)) return null;
   const id = asStr(raw.id);
@@ -193,6 +293,9 @@ function adaptPreset(raw: unknown): TeamPreset | null {
     is_mock: asBool(raw.is_mock),
     origin: asStr(raw.origin),
     default_profile_id: asStr(raw.default_profile_id),
+    profiles: Array.isArray(raw.profiles)
+      ? raw.profiles.map(adaptProfile).filter((p): p is TeamProfile => p !== null)
+      : [],
   };
 }
 
@@ -231,6 +334,38 @@ export function adaptRunStart(pass: PassThrough): TeamRunStartResult {
   };
 }
 
+/** Adapt the served role roster. An entry without a role name is dropped rather
+ *  than rendered as an anonymous row. */
+function adaptRoleStates(raw: unknown): TeamRoleState[] {
+  if (!Array.isArray(raw)) return [];
+  const states: TeamRoleState[] = [];
+  for (const entry of raw) {
+    if (!isRec(entry)) continue;
+    const role = asStr(entry.role);
+    if (!role) continue;
+    const state = asStr(entry.state);
+    states.push(state === undefined ? { role } : { role, state });
+  }
+  return states;
+}
+
+/** The run's start time in epoch ms, from whichever field the sibling serves — a
+ *  numeric epoch (ms or seconds) or an ISO timestamp. Returns undefined when none
+ *  is served, which is what keeps the header from inventing an elapsed time. */
+export function startedAtMs(env: Rec): number | undefined {
+  const raw = env.started_at_ms ?? env.started_at ?? env.created_at;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    // Seconds vs milliseconds: anything below this threshold is far too small to
+    // be a millisecond epoch, so it is a seconds epoch.
+    return raw < 1e11 ? Math.round(raw * 1000) : Math.round(raw);
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    const parsed = Date.parse(raw);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+  return undefined;
+}
+
 export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
   const env: Rec = isRec(pass.envelope) ? pass.envelope : {};
   return {
@@ -243,6 +378,10 @@ export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
     changeset_ids: strArr(env.changeset_ids),
     last_sequence:
       typeof env.last_sequence === "number" ? env.last_sequence : undefined,
+    roles: adaptRoleStates(env.roles),
+    profile_id: asStr(env.profile_id),
+    assignments: adaptRoleAssignments(env.assignments),
+    started_at_ms: startedAtMs(env),
     tiers: pass.tiers,
   };
 }

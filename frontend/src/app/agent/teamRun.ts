@@ -24,6 +24,7 @@ import {
   relayToolTitle,
   type RelayTranscriptFrame,
 } from "../../stores/server/liveAdapters/a2aRelay";
+import type { TeamRunStatus } from "../../stores/server/agent/a2aTeam";
 
 /** Hard cap on rendered team-run entries (bounded-by-default; the relay frame
  *  buffer is itself capped, so this is a defensive ceiling on the derived view). */
@@ -92,11 +93,15 @@ export interface TeamRunView {
   readonly error: string | null;
 }
 
-/** One roster row: an agent the run disclosed, and the last served state token for
- *  it. The token passes through verbatim — the header never classifies it. */
+/** One roster row: an agent/role the run disclosed, its last served state token,
+ *  and — when the frozen profile's assignments name them — the provider and model
+ *  serving that role. Every token passes through verbatim; the header classifies
+ *  nothing. */
 export interface TeamRosterMember {
   readonly agentId: string;
   readonly state: string;
+  readonly providerId?: string;
+  readonly model?: string;
 }
 
 /**
@@ -109,8 +114,17 @@ export interface TeamRosterMember {
  */
 export function deriveTeamRoster(
   frames: readonly RelayTranscriptFrame[],
+  status?: TeamRunStatus,
 ): TeamRosterMember[] {
   const agentState = new Map<string, string>();
+  // The AUTHORITATIVE roster first: `run-status.roles` survives a reload, where the
+  // relay's frames do not. Relay frames then refresh the states they carry — they
+  // are non-authoritative by contract (edge D3), so they may update a state but
+  // never introduce a role the status did not disclose... except when the status
+  // serves none at all (an older run), where the relay is the only roster there is.
+  for (const role of status?.roles ?? []) {
+    agentState.set(role.role, role.state ?? "");
+  }
   for (const frame of frames) {
     if (frame.kind !== "status") continue;
     const rosterRaw = frame.payload.agents;
@@ -128,7 +142,21 @@ export function deriveTeamRoster(
     const state = relayAgentState(frame);
     if (id && state) agentState.set(id, state);
   }
-  return [...agentState.entries()].map(([agentId, state]) => ({ agentId, state }));
+
+  // Per-role provider/model comes from the FROZEN profile's assignments — what the
+  // run is actually using, not what the composer has selected now.
+  const assignment = new Map(
+    (status?.assignments ?? []).map((entry) => [entry.role, entry]),
+  );
+  return [...agentState.entries()].map(([agentId, state]) => {
+    const bound = assignment.get(agentId);
+    return {
+      agentId,
+      state,
+      ...(bound?.provider_id === undefined ? {} : { providerId: bound.provider_id }),
+      ...(bound?.model === undefined ? {} : { model: bound.model }),
+    };
+  });
 }
 
 /** A mutable accumulator entry (internal; frozen into the readonly view at end). */

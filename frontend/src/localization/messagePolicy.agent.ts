@@ -44,6 +44,8 @@ export const AGENT_MESSAGE_POLICY = {
   // and the roster eyebrow.
   "common:agent.runHeader.region": { role: "accessibility" },
   "common:agent.runHeader.phase": { role: "label" },
+  "common:agent.runHeader.elapsed": { role: "label" },
+  "common:agent.runHeader.mixedProvider": { role: "label" },
   "common:agent.runHeader.roster": { role: "label" },
   "common:agent.pending.label": { role: "label" },
   "common:agent.pending.show": { role: "action" },
@@ -65,7 +67,6 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.panel.view.pending": { role: "label" },
   "common:agent.transcript.loading": { role: "status" },
   "common:agent.transcript.empty": { role: "status" },
-  "common:agent.transcript.noSession": { role: "status" },
   "common:agent.transcript.error": { role: "error-message" },
   "common:agent.transcript.showingRecent": { role: "status" },
   // The one work-stretch disclosure (C2/C3): its label reports elapsed time or the
@@ -128,6 +129,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.team": { role: "label" },
   "common:agent.composer.teamDefault": { role: "label" },
   "common:agent.composer.teamUnavailable": { role: "status" },
+  "common:agent.composer.modelMenuAria": { role: "accessibility" },
   "common:agent.composer.teamMenuAria": { role: "accessibility" },
   "common:agent.composer.teamPresetUnavailable": { role: "status" },
   "common:agent.composer.startTeamRun": { role: "action" },

@@ -34,6 +34,8 @@ export const ltrAgentResources = {
     startersLabel: "Manières de commencer",
   },
   runHeader: {
+    elapsed: "Écoulé {{elapsed}}",
+    mixedProvider: "Fournisseurs mixtes",
     phase: "Phase : {{phase}}",
     region: "État de l’exécution",
     roster: "AGENTS",
@@ -55,7 +57,6 @@ export const ltrAgentResources = {
   transcript: {
     loading: "Chargement de la conversation…",
     empty: "Aucun message pour l’instant.",
-    noSession: "Écrivez à l’assistant pour démarrer une conversation.",
     error:
       "Cette conversation n’a pas pu être chargée. Elle a peut-être expiré. Ouvrez une nouvelle session.",
     showingRecent: "Affichage des messages les plus récents.",
@@ -117,6 +118,7 @@ export const ltrAgentResources = {
     team: "Équipe",
     teamDefault: "Assistant seul",
     teamUnavailable: "Utilisation d’un seul assistant.",
+    modelMenuAria: "Sélectionner un profil de modèle",
     teamMenuAria: "Sélectionner une équipe d’assistants",
     teamPresetUnavailable: "Cette équipe ne peut pas être chargée.",
     startTeamRun: "Démarrer l’équipe",
@@ -179,6 +181,8 @@ export const rtlAgentResources = {
     startersLabel: "طرق البدء",
   },
   runHeader: {
+    elapsed: "المنقضي {{elapsed}}",
+    mixedProvider: "مزودون مختلطون",
     phase: "المرحلة: {{phase}}",
     region: "حالة التشغيل",
     roster: "الوكلاء",
@@ -200,7 +204,6 @@ export const rtlAgentResources = {
   transcript: {
     loading: "جارٍ تحميل المحادثة…",
     empty: "لا توجد رسائل بعد.",
-    noSession: "راسل المساعد لبدء محادثة.",
     error: "تعذّر تحميل هذه المحادثة. ربما انتهت صلاحيتها. افتح جلسة جديدة.",
     showingRecent: "عرض أحدث الرسائل.",
     timeline: "الجدول الزمني للعمل",
@@ -267,6 +270,7 @@ export const rtlAgentResources = {
     team: "الفريق",
     teamDefault: "مساعد واحد",
     teamUnavailable: "استخدام مساعد واحد.",
+    modelMenuAria: "اختر ملف نموذج",
     teamMenuAria: "اختر فريق مساعدين",
     teamPresetUnavailable: "تعذّر تحميل هذا الفريق.",
     startTeamRun: "بدء الفريق",
