@@ -35,10 +35,11 @@ use crate::app::AppState;
 /// map as well as the question set).
 pub(super) const MAX_A2A_CLARIFICATION_ANSWERS: usize = A2A_MAX_CLARIFICATION_QUESTIONS;
 
-/// 64 — the bound the served respond route puts on its `request_id` PATH
-/// parameter. The run id is the parameter that takes 128; these are two
-/// parameters on one route and not interchangeable, so admitting a longer
-/// request id here would only defer the refusal to a2a's path validation.
+/// The ceiling on the handle a2a MINTS. The served respond route puts no bound
+/// on its `request_id` path parameter at all, so there is no a2a-side refusal
+/// to defer to and nothing is gained by being strict here - while being
+/// stricter than a2a's minting ceiling refuses a handle a2a issued and leaves
+/// the run parked with no way to answer it through this edge.
 pub(super) const MAX_A2A_REQUEST_ID_CHARS: usize = A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS;
 
 /// A question id is the key of the forwarded `answers` map, which a2a types as
