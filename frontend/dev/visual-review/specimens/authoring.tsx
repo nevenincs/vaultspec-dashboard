@@ -99,7 +99,6 @@ export function proposalRow(
       policy_version: "policy-3",
       scope_mode: "manual",
       effective_mode: "manual",
-      session_override_ignored: false,
       risk: "non_destructive",
       requirement: "human_approval_required",
       reason: "Manual mode requires reviewer sign-off.",
