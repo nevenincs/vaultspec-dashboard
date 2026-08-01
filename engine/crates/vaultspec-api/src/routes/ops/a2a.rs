@@ -67,11 +67,25 @@ const A2A_WHITELIST: &[&str] = &[
 /// The sibling caps a prepared/preset role set at 64. The dashboard applies the
 /// same ceiling before minting so an authenticated but drifted response cannot
 /// create unbounded actors or credentials.
+///
+/// Deliberately an independent bound, not a value read from the sibling: we must
+/// limit what we accept without trusting a number the other side supplies. That
+/// independence is why "the same ceiling" needs checking rather than assuming —
+/// the sibling's `MAX_ROLES_PER_RUN` (a2a `thread/actor_tokens.py`) is gated
+/// against this constant BY NAME from its
+/// `api/tests/test_engine_edge_bounds_agreement.py`, so lowering this without
+/// lowering that turns every over-limit preset into a prepare refusal before any
+/// dispatch — no run, and nothing downstream able to observe why.
 const MAX_A2A_REQUIRED_ROLES: usize = 64;
 
 /// Heartbeat staleness threshold for the a2a discovery file: the resident
 /// gateway refreshes every 15s and a consumer treats a heartbeat older than
 /// 120s as a crash (mirrors the a2a `HEARTBEAT_STALE_MS` and rag's own bound).
+///
+/// That mirroring is now gated by name from the sibling's
+/// `api/tests/test_engine_edge_bounds_agreement.py`. Disagreement is silent and
+/// blames the wrong side: a shorter threshold here treats a live gateway as
+/// crashed and refuses to attach, a longer one attaches to one already gone.
 const A2A_HEARTBEAT_STALE_MS: i64 = 120_000;
 
 /// The ungated `/health` liveness budget for the attach-never-own predicate: a
