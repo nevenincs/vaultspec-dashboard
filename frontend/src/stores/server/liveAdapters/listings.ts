@@ -10,6 +10,8 @@ import type {
   ContentTruncated,
   EngineNode,
   FileTreeEntry,
+  FileTreeGitStatus,
+  FileTreeIgnoreSource,
   FileTreeResponse,
   FileTreeTruncated,
   FsListEntry,
@@ -502,22 +504,62 @@ function normalizeFileTreeCount(value: unknown): number | undefined {
   return Math.floor(value);
 }
 
+/** The git-state vocabulary the engine serves (code-tree-legibility ADR D3). A
+ *  token outside this set is a shape the client does not yet understand, and is
+ *  dropped to ABSENT rather than rendered — an unknown decoration must degrade to
+ *  the unremarkable state, never to an invented one. */
+const FILE_TREE_GIT_STATUSES = [
+  "modified",
+  "added",
+  "deleted",
+  "renamed",
+  "untracked",
+  "conflicted",
+] as const satisfies readonly FileTreeGitStatus[];
+
+const FILE_TREE_IGNORE_SOURCES = [
+  "git",
+  "rag",
+] as const satisfies readonly FileTreeIgnoreSource[];
+
+function normalizeFileTreeGitStatus(value: unknown): FileTreeGitStatus | undefined {
+  const token = normalizeFileTreeString(value);
+  return FILE_TREE_GIT_STATUSES.find((state) => state === token);
+}
+
+function normalizeFileTreeIgnoreSource(
+  value: unknown,
+): FileTreeIgnoreSource | undefined {
+  const token = normalizeFileTreeString(value);
+  return FILE_TREE_IGNORE_SOURCES.find((source) => source === token);
+}
+
 /** Default one child wire row, tolerating an absent or partial object: a missing
  *  path is malformed and dropped; an unknown/absent `kind` defaults to `file`
  *  (never wrongly shown expandable); `has_children` is true only for directories;
- *  and a missing `node_id` is derived from the canonical `code:{path}` rule. */
+ *  and a missing `node_id` is derived from the canonical `code:{path}` rule.
+ *
+ *  The two decorations are ABSENT-HONEST: the engine omits them in their
+ *  unremarkable state (clean / not ignored), so an absent — or unrecognized —
+ *  field stays `undefined` on the internal shape and the row renders no status
+ *  and no dimming. Neither is ever defaulted to a token. */
 function adaptFileTreeEntry(value: unknown): FileTreeEntry | null {
   if (!isRec(value)) return null;
   const path = normalizeFileTreeString(value.path);
   if (path === undefined) return null;
   const kind = value.kind === "dir" ? "dir" : "file";
   const nodeId = normalizeNodeId(value.node_id) ?? codeNodeIdFromPath(path);
-  return {
+  const entry: FileTreeEntry = {
     path,
     kind,
     has_children: kind === "dir" && value.has_children === true,
     node_id: nodeId,
   };
+  const gitStatus = normalizeFileTreeGitStatus(value.git_status);
+  if (gitStatus !== undefined) entry.git_status = gitStatus;
+  const ignored = normalizeFileTreeIgnoreSource(value.ignored);
+  if (ignored !== undefined) entry.ignored = ignored;
+  return entry;
 }
 
 /** Default the truncated honesty block: forwarded only when the engine capped the
@@ -550,7 +592,13 @@ function adaptFileTreeTruncated(value: unknown): FileTreeTruncated | null {
  *  null/undefined. */
 export function adaptFileTree(body: unknown): FileTreeResponse {
   if (!isRec(body)) {
-    return { entries: [], path: "", truncated: null, tiers: {} };
+    return {
+      entries: [],
+      path: "",
+      truncated: null,
+      status_truncated: false,
+      tiers: {},
+    };
   }
   return {
     entries: Array.isArray(body.entries)
@@ -560,6 +608,10 @@ export function adaptFileTree(body: unknown): FileTreeResponse {
       : [],
     path: normalizeFileTreeString(body.path) ?? "",
     truncated: adaptFileTreeTruncated(body.truncated),
+    // Only an explicit `true` claims a capped status join. An older shape that
+    // does not serve the field reads as a COMPLETE join, which is what it was
+    // before the cap existed — never an unexplained caveat on every level.
+    status_truncated: body.status_truncated === true,
     next_cursor: normalizeFileTreeString(body.next_cursor),
     tiers: (body.tiers ?? {}) as TiersBlock,
   };

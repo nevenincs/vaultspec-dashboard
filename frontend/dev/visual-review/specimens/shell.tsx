@@ -195,6 +195,7 @@ function railFileTree(state: ReviewState): FileTreeResponse {
       entries: [],
       path: "",
       truncated: null,
+      status_truncated: false,
       tiers: tiersHealthy("structural"),
     };
   }
@@ -202,6 +203,7 @@ function railFileTree(state: ReviewState): FileTreeResponse {
     entries: RAIL_CODE_ENTRIES,
     path: "",
     truncated: null,
+    status_truncated: false,
     tiers:
       state === "degraded" ? tiersDown(["structural"]) : tiersHealthy("structural"),
   };

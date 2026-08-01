@@ -752,6 +752,7 @@ export type SettingDisplayId =
   | "appearance.theme"
   | "appearance.reduceMotion"
   | "appearance.activitySectionFolds"
+  | "appearance.codeTreeFileIcons"
   | "appearance.language"
   | "graph.defaultGranularity"
   | "graph.corpus"

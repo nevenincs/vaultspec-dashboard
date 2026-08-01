@@ -173,13 +173,36 @@ export const documents = {
       childUnavailable: "This folder could not be loaded. Try again.",
       unavailable: "Project files could not be loaded. Try again.",
     },
+    ignored: {
+      git: "Ignored by Git",
+      rag: "Excluded from search",
+    },
     states: {
       childLoading: "Loading folder…",
       degraded: "Project files are unavailable. Browse documents instead.",
       empty: "No project files found.",
       loading: "Loading project files…",
+      statusTruncated: "Too many changes to mark them all here.",
       truncated: "Loaded {{shown, number}} of {{total, number}} files and folders.",
       truncatedUnknown: "More files and folders are available here.",
+    },
+    status: {
+      badge: {
+        added: "A",
+        conflicted: "C",
+        deleted: "D",
+        modified: "M",
+        renamed: "R",
+        untracked: "U",
+      },
+      label: {
+        added: "Added",
+        conflicted: "Has conflicts",
+        deleted: "Deleted",
+        modified: "Modified",
+        renamed: "Renamed",
+        untracked: "Not tracked yet",
+      },
     },
   },
   confirmations: {

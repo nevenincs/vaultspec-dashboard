@@ -42,6 +42,7 @@ export const CONSUMED_SETTING_KEYS = {
   keybindings: "keybindings",
   graphControls: "graph_controls",
   timelineDateCriterion: "timeline_date_criterion",
+  codeTreeFileIcons: "code_tree.file_icons",
 } as const;
 
 export type ConsumedSettingKey =
@@ -159,6 +160,27 @@ export function resolveReduceMotionSetting(
     settings,
     null,
     CONSUMED_SETTING_KEYS.reduceMotion,
+  );
+  return setting ? decodeBool(setting.value) : false;
+}
+
+/**
+ * Resolve the code-tree file-icon setting through the served schema
+ * (code-tree-legibility ADR D7). The engine declares it global and default-on;
+ * this reads whatever the registry actually serves rather than restating that
+ * default, so `false` here also covers "the schema has not resolved yet" and the
+ * rows render their generic mark until it does. The setting governs the ICONS
+ * only — ignore dimming and git-status tones are served truth, not preferences.
+ */
+export function resolveCodeTreeFileIconsSetting(
+  schema: SettingsSchema | undefined,
+  settings: SettingsState | undefined,
+): boolean {
+  const setting = resolveEffectiveSetting(
+    schema,
+    settings,
+    null,
+    CONSUMED_SETTING_KEYS.codeTreeFileIcons,
   );
   return setting ? decodeBool(setting.value) : false;
 }

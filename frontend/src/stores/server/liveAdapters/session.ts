@@ -283,6 +283,20 @@ const DISPLAY_BY_SETTING_KEY: Readonly<Record<string, DisplaySpec>> = Object.fre
     order: 2,
     legacy: ["Reduce motion", "Minimise animation and transitions.", "Appearance"],
   },
+  "code_tree.file_icons": {
+    id: "appearance.codeTreeFileIcons",
+    group: "appearance",
+    control: "switch",
+    valueType: "bool",
+    defaultValue: "true",
+    scopeEligible: false,
+    order: 5,
+    legacy: [
+      "File type icons",
+      "Show colored icons for file types in the project files list.",
+      "Appearance",
+    ],
+  },
   right_rail_section_folds: {
     id: "appearance.activitySectionFolds",
     group: "appearance",

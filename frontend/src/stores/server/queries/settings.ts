@@ -17,6 +17,7 @@ import {
   CONSUMED_SETTING_KEYS,
   normalizeSettingsScope,
   resolveEffectiveSetting,
+  resolveCodeTreeFileIconsSetting,
   resolveGraphSettingsDefaults,
   resolveKeybindingOverrides,
   resolveLanguageAuthority,
@@ -218,6 +219,23 @@ export function useSettingsEffectsView(activeScope: unknown): SettingsEffectsVie
     normalizedScope,
     schema.isPending,
     settings.isPending,
+  );
+}
+
+/**
+ * Stores selector for the code-tree file-icon setting (code-tree-legibility ADR
+ * D7). The code browser consumes ONE boolean and never looks up the schema,
+ * decodes a value, or composes precedence itself. It is deliberately its own
+ * hook rather than a field on the effects view: the effects view drives document
+ * attributes and one-time defaults at the shell top, while this is read by a rail
+ * surface that may not be mounted at all.
+ */
+export function useCodeTreeFileIcons(): boolean {
+  const schema = useSettingsSchema();
+  const settings = useSettings();
+  return resolveCodeTreeFileIconsSetting(
+    schema.isPending ? undefined : schema.data,
+    settings.isPending ? undefined : settings.data,
   );
 }
 

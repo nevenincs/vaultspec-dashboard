@@ -16,6 +16,11 @@ export const ltrSettingsResources = {
       label: "Réduire les animations",
       description: "Utilisez moins d’animations dans l’interface.",
     },
+    codeTreeFileIcons: {
+      label: "Icônes de type de fichier",
+      description:
+        "Affichez une icône colorée pour chaque type de fichier dans la liste des fichiers du projet.",
+    },
     activitySectionFolds: {
       label: "Sections d’activité",
       description: "Mémorisez les sections d’activité ouvertes.",
@@ -80,6 +85,10 @@ export const rtlSettingsResources = {
     reduceMotion: {
       label: "تقليل الحركة",
       description: "استخدم رسومًا متحركة أقل في الواجهة.",
+    },
+    codeTreeFileIcons: {
+      label: "أيقونات أنواع الملفات",
+      description: "اعرض أيقونة ملونة لكل نوع ملف في قائمة ملفات المشروع.",
     },
     activitySectionFolds: {
       label: "أقسام النشاط",

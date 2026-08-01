@@ -4,6 +4,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { liveScope, liveTransport } from "../../../testing/liveClient";
 import { engineClient } from "../engine";
+import { DOC_TYPE_ORDER } from "../docTypeVocabulary";
 import type {
   FiltersVocabulary,
   MapWorktree,
@@ -30,6 +31,7 @@ import {
   normalizeFiltersVocabularyRequestIdentity,
   normalizeVaultTreeRequestIdentity,
   orderWorkspaceMapWorktrees,
+  projectVaultDocTypeGroups,
   useCodeFiles,
   useFileTree,
   useFiltersVocabulary,
@@ -550,6 +552,39 @@ describe("left-rail root surface states", () => {
     ).not.toContain("index");
   });
 
+  it("shares canonical document-type order while projections retain their own index and unknown policies", () => {
+    const entry = (docType: string, featureTags: string[]): VaultTreeEntry => ({
+      path: `.vault/${docType}/2026-01-08-grid-${docType}.md`,
+      doc_type: docType,
+      feature_tags: featureTags,
+      dates: {},
+    });
+    const entries = [
+      ...DOC_TYPE_ORDER.map((docType) => entry(docType, ["grid"])),
+      entry("custom", ["grid"]),
+      entry("index", ["grid"]),
+      entry("adr", []),
+    ];
+
+    const featureTypes = deriveVaultTreeBrowserView(
+      entries,
+      "",
+    ).groups[0]!.docTypes.map((group) => group.docType);
+    const documentGroups = projectVaultDocTypeGroups(entries);
+
+    expect(featureTypes).toEqual([...DOC_TYPE_ORDER, "custom"]);
+    expect(documentGroups.map((group) => group.docType)).toEqual([
+      ...DOC_TYPE_ORDER,
+      "custom",
+    ]);
+    expect(documentGroups.find((group) => group.docType === "adr")?.count).toBe(2);
+    expect(deriveVaultTreeBrowserView(entries, "").groups.at(-1)?.feature).toBe(
+      "(untagged)",
+    );
+    expect(featureTypes).not.toContain("index");
+    expect(documentGroups.map((group) => group.docType)).not.toContain("index");
+  });
+
   it("does not expose cached vault-tree data when no scope is selected", () => {
     const client = testQueryClient();
     client.setQueryData(engineKeys.vaultTree(""), { entries: [], tiers: {} });
@@ -809,7 +844,7 @@ describe("left-rail root surface states", () => {
   it("contains file-tree availability reasons inside the store boundary", () => {
     const hostileReason = "PRIVATE_STRUCTURAL_DIAGNOSTIC_9F2A";
     const view = deriveFileTreeRootSurfaceView(
-      { path: "", entries: [], truncated: null, tiers: {} },
+      { path: "", entries: [], truncated: null, status_truncated: false, tiers: {} },
       false,
       false,
       () => undefined,
@@ -828,6 +863,7 @@ describe("left-rail root surface states", () => {
       entries: [],
       rows: [],
       truncated: null,
+      statusTruncated: false,
       retry,
     });
     expect(deriveFileTreeLevelView(undefined, false, true, retry)).toEqual({
@@ -835,11 +871,12 @@ describe("left-rail root surface states", () => {
       entries: [],
       rows: [],
       truncated: null,
+      statusTruncated: false,
       retry,
     });
     expect(
       deriveFileTreeLevelView(
-        { path: "", entries: [], truncated: null, tiers: {} },
+        { path: "", entries: [], truncated: null, status_truncated: false, tiers: {} },
         false,
         false,
         retry,
@@ -849,6 +886,7 @@ describe("left-rail root surface states", () => {
       entries: [],
       rows: [],
       truncated: null,
+      statusTruncated: false,
       retry,
     });
     const entry = {
@@ -864,7 +902,13 @@ describe("left-rail root surface states", () => {
     };
     expect(
       deriveFileTreeLevelView(
-        { path: "src", entries: [entry], truncated, tiers: {} },
+        {
+          path: "src",
+          entries: [entry],
+          truncated,
+          status_truncated: false,
+          tiers: {},
+        },
         false,
         false,
         retry,
@@ -874,9 +918,65 @@ describe("left-rail root surface states", () => {
       entries: [entry],
       rows: [{ entry, displayName: "main.ts" }],
       truncated,
+      statusTruncated: false,
       retry,
     });
     expect(fileTreeChildStatusStyle(2)).toEqual({ paddingLeft: "1.75rem" });
+  });
+
+  it("carries a capped status join onto the level view instead of reading clean", () => {
+    // A level whose snapshot was capped states it: an entry here with no
+    // `git_status` may be unjoined rather than clean (ADR D3, amended).
+    const entry = {
+      path: "src/main.ts",
+      kind: "file" as const,
+      has_children: false,
+      node_id: "code:src/main.ts",
+    };
+    const level = deriveFileTreeLevelView(
+      {
+        path: "src",
+        entries: [entry],
+        truncated: null,
+        status_truncated: true,
+        tiers: {},
+      },
+      false,
+      false,
+    );
+
+    expect(level.statusTruncated).toBe(true);
+    expect(level.entries[0].git_status).toBeUndefined();
+  });
+
+  it("keeps served status and ignore decorations on the projected level entries", () => {
+    // The level view is a pass-through for the two decorations: presentation
+    // mapping belongs to the row, not to this projection.
+    const entries = [
+      {
+        path: "src/changed.ts",
+        kind: "file" as const,
+        has_children: false,
+        node_id: "code:src/changed.ts",
+        git_status: "modified" as const,
+      },
+      {
+        path: "target/",
+        kind: "dir" as const,
+        has_children: true,
+        node_id: "code:target",
+        ignored: "git" as const,
+      },
+    ];
+
+    const level = deriveFileTreeLevelView(
+      { path: "", entries, truncated: null, status_truncated: false, tiers: {} },
+      false,
+      false,
+    );
+
+    expect(level.entries.map((e) => e.git_status)).toEqual(["modified", undefined]);
+    expect(level.entries.map((e) => e.ignored)).toEqual([undefined, "git"]);
   });
 
   it("derives file-tree row display names in the stores level view", () => {
@@ -897,7 +997,7 @@ describe("left-rail root surface states", () => {
 
     expect(
       deriveFileTreeLevelView(
-        { path: "src", entries, truncated: null, tiers: {} },
+        { path: "src", entries, truncated: null, status_truncated: false, tiers: {} },
         false,
         false,
       ).rows.map((row) => row.displayName),

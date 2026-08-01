@@ -36,6 +36,10 @@ export const SETTING_MESSAGES = Object.freeze({
     label: descriptor("settings:fields.activitySectionFolds.label"),
     description: descriptor("settings:fields.activitySectionFolds.description"),
   },
+  "appearance.codeTreeFileIcons": {
+    label: descriptor("settings:fields.codeTreeFileIcons.label"),
+    description: descriptor("settings:fields.codeTreeFileIcons.description"),
+  },
   "appearance.language": {
     label: descriptor("settings:fields.language.label"),
     description: descriptor("settings:fields.language.description"),

@@ -35,7 +35,13 @@
       "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.12, 160] } },
       "diff-add": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 150] } },
       "diff-remove": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.17, 28] } },
-      "diff-modified": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 250] } }
+      "diff-modified": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 250] } },
+      "status-modified": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 250] } },
+      "status-added": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.15, 150] } },
+      "status-deleted": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.7, 0.17, 28] } },
+      "status-renamed": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.82, 0.13, 200] } },
+      "status-untracked": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.85, 0.14, 120] } },
+      "status-conflicted": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.8, 0.16, 55] } }
     },
     "scene": {
       "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#050403" } },

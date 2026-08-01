@@ -16,6 +16,7 @@ import {
   dashboardLineageFilterArg,
   normalizeDashboardGraphCorpus,
 } from "../dashboardState";
+import { DOC_TYPE_ORDER } from "../docTypeVocabulary";
 import {
   EngineError,
   engineClient,
@@ -207,21 +208,9 @@ export interface VaultTreeBrowserView {
   filteredToNothing: boolean;
 }
 
-// Pipeline reading order; `index` is never a
-// displayed group, so it is omitted here and the feature projection skips
-// index entries outright.
-const VAULT_TREE_DOC_TYPE_ORDER = [
-  "research",
-  "adr",
-  "plan",
-  "exec",
-  "audit",
-  "reference",
-] as const;
-
 function vaultTreeDocTypeOrder(present: Iterable<string>): string[] {
   const presentSet = new Set(present);
-  const order: string[] = [...VAULT_TREE_DOC_TYPE_ORDER];
+  const order: string[] = [...DOC_TYPE_ORDER];
   for (const extra of [...presentSet].sort()) {
     if (!order.includes(extra)) order.push(extra);
   }
@@ -378,19 +367,6 @@ export function useEditorLinkingCorpus(
 // No engine work and no new wire field: `status`, `dates`, `doc_type`,
 // and `feature_tags` are already on the `VaultTreeEntry` the projection reads.
 
-/** Doc-type-first display order for the Documents section — the pipeline reading
- *  order: Research · Decisions · Plans · Steps
- *  · Audits · References. `index` is hidden (the rail mirrors `.vault/` EXCEPT the
- *  generated index); unknown types append alphabetically. */
-const VAULT_RAIL_DOC_TYPE_ORDER = [
-  "research",
-  "adr",
-  "plan",
-  "exec",
-  "audit",
-  "reference",
-] as const;
-
 export interface VaultDocTypeGroup {
   docType: string;
   count: number;
@@ -488,7 +464,9 @@ export function projectVaultDocTypeGroups(
     list.push(entry);
     byType.set(entry.doc_type, list);
   }
-  const order: string[] = [...VAULT_RAIL_DOC_TYPE_ORDER];
+  // The shared pipeline identity order is canonical; this projection alone keeps
+  // `index` hidden and appends unknown served types alphabetically.
+  const order: string[] = [...DOC_TYPE_ORDER];
   for (const extra of [...byType.keys()].sort()) {
     if (extra !== "index" && !order.includes(extra)) order.push(extra);
   }
@@ -876,6 +854,11 @@ export interface FileTreeLevelView {
   /** Render-ready rows so app chrome does not parse file paths. */
   rows: FileTreeRowView[];
   truncated: FileTreeResponse["truncated"];
+  /** The status join's honesty flag for THIS level (code-tree-legibility ADR D3):
+   *  true when the engine's status snapshot was capped, so an entry here without
+   *  a `git_status` may be unjoined rather than clean. The code mode states it;
+   *  it never silently reads as clean. */
+  statusTruncated: boolean;
   retry: () => void;
 }
 
@@ -894,10 +877,24 @@ export function deriveFileTreeLevelView(
   retry: () => void = noopRetry,
 ): FileTreeLevelView {
   if (loading) {
-    return { state: "loading", entries: [], rows: [], truncated: null, retry };
+    return {
+      state: "loading",
+      entries: [],
+      rows: [],
+      truncated: null,
+      statusTruncated: false,
+      retry,
+    };
   }
   if (errored) {
-    return { state: "error", entries: [], rows: [], truncated: null, retry };
+    return {
+      state: "error",
+      entries: [],
+      rows: [],
+      truncated: null,
+      statusTruncated: false,
+      retry,
+    };
   }
   const entries = data?.entries ?? [];
   const rows = entries.map((entry) => ({
@@ -909,6 +906,7 @@ export function deriveFileTreeLevelView(
     entries,
     rows,
     truncated: data?.truncated ?? null,
+    statusTruncated: data?.status_truncated === true,
     retry,
   };
 }

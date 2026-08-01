@@ -87,4 +87,58 @@ describe("rendered CodeTree localization", () => {
       /documents:codeTree|PRIVATE_STRUCTURAL_DIAGNOSTIC|—/u,
     );
   });
+
+  it("renders the three row channels against the live worktree read", async () => {
+    // Against the REAL engine: the served icon setting, ignore provenance, and
+    // git status all arrive over the wire. The fixture worktree's git state is
+    // not ours to pin, so this asserts the INVARIANTS the row treatment must hold
+    // whatever the engine reports, rather than a specific decorated file.
+    const runtime = createTestLocalizationRuntime();
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={client}>
+          <CodeTree />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const navigation = await screen.findByRole(
+      "navigation",
+      { name: "Project files" },
+      ENGINE_WAIT,
+    );
+    const rows = Array.from(
+      navigation.querySelectorAll<HTMLElement>("[data-code-row]"),
+    );
+    expect(rows.length).toBeGreaterThan(0);
+
+    // Channel 1: the setting is engine-declared default-on, so every FILE row
+    // carries an inline type mark. A broken settings seam shows up here as zero
+    // inline marks across the whole tree.
+    const fileRows = rows.filter((row) => !row.hasAttribute("data-code-dir"));
+    for (const row of fileRows) {
+      expect(row.querySelector("svg")).not.toBeNull();
+    }
+
+    // Channel 2: a badge appears if and only if the entry carries a served
+    // status, and it is never letter-only for a screen reader.
+    for (const row of rows) {
+      const badge = row.querySelector<HTMLElement>("[data-code-status-badge]");
+      const served = row.getAttribute("data-code-status");
+      expect(badge === null).toBe(served === null);
+      if (badge !== null) {
+        expect(badge.textContent?.trim().length).toBeGreaterThan(0);
+        expect(badge.getAttribute("aria-label")?.length).toBeGreaterThan(0);
+      }
+    }
+
+    // Channel 3: an ignored row is dimmed and still listed - the retired hide
+    // behaviour must not creep back as invisibility.
+    for (const row of rows) {
+      if (row.getAttribute("data-code-ignored") !== null) {
+        expect(row.className).toContain("opacity-60");
+        expect(row.textContent?.trim().length).toBeGreaterThan(0);
+      }
+    }
+  });
 });

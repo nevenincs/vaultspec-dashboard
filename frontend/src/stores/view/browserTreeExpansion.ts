@@ -33,6 +33,49 @@ export interface BrowserTreeCodeEntryShape {
   path: string;
   kind: "dir" | "file";
   node_id: string;
+  /** Served git state; ABSENT is the clean state (code-tree-legibility ADR D3). */
+  git_status?: CodeRowGitStatus;
+  /** Served ignore provenance; ABSENT means not ignored. */
+  ignored?: CodeRowIgnoreSource;
+}
+
+/** The served vocabulary this row treatment maps to presentation. Structurally
+ *  the engine's `FileTreeEntry` tokens; restated locally because this view module
+ *  maps tokens and must not import the wire client. */
+export type CodeRowGitStatus =
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked"
+  | "conflicted";
+
+export type CodeRowIgnoreSource = "git" | "rag";
+
+/**
+ * The git channel's presentation, mapped from the served token and nothing else
+ * (code-tree-legibility ADR D6). Each state gets a label TONE from the semantic
+ * `status` token family and a one-letter trailing BADGE, so the signal survives
+ * grayscale and color-blindness — tone alone would not.
+ */
+const CODE_ROW_STATUS_PRESENTATION = Object.freeze({
+  modified: { toneClassName: "text-status-modified", messageKey: "modified" },
+  added: { toneClassName: "text-status-added", messageKey: "added" },
+  deleted: { toneClassName: "text-status-deleted", messageKey: "deleted" },
+  renamed: { toneClassName: "text-status-renamed", messageKey: "renamed" },
+  untracked: { toneClassName: "text-status-untracked", messageKey: "untracked" },
+  conflicted: { toneClassName: "text-status-conflicted", messageKey: "conflicted" },
+} satisfies Readonly<
+  Record<CodeRowGitStatus, { toneClassName: string; messageKey: CodeRowGitStatus }>
+>);
+
+/** The git channel resolved for one row, or null when the entry is clean. */
+export interface BrowserTreeCodeRowStatusView {
+  /** The served token, echoed for test and data attributes. */
+  state: CodeRowGitStatus;
+  /** Catalog leaf under `documents:codeTree.status.badge` / `.label`. */
+  messageKey: CodeRowGitStatus;
+  badgeClassName: string;
 }
 
 export function deriveCodeBrowserTreeNavKey(entry: BrowserTreeCodeEntryShape): string {
@@ -54,6 +97,16 @@ export interface BrowserTreeCodeRowView {
   markClassName: string;
   labelClassName: string;
   linkedCueClassName: string;
+  /** Render the colored file-TYPE mark instead of the generic one: a FILE row,
+   *  with the engine-served icon setting on (ADR D7). Directories always keep the
+   *  shared folder mark — the sanctioned exception covers file-type marks only. */
+  typeIcon: boolean;
+  /** The git channel, or null for a clean entry. */
+  status: BrowserTreeCodeRowStatusView | null;
+  /** The ignore channel: which ignore file claims the path, or null. Ignored rows
+   *  are SHOWN dimmed, never hidden (ADR D4), and the dimming composes over both
+   *  the type mark and any status tone rather than replacing them. */
+  ignored: CodeRowIgnoreSource | null;
 }
 
 export interface BrowserTreeCodeRowOptions {
@@ -63,6 +116,10 @@ export interface BrowserTreeCodeRowOptions {
   expanded: ReadonlySet<string>;
   linkedNodeIds?: ReadonlySet<string>;
   chevronPx: number;
+  /** The engine-served `code_tree.file_icons` effective value. Absent = off, so a
+   *  caller that has not resolved the setting yet gets the generic mark rather
+   *  than a flash of icons the user may have turned off. */
+  fileIcons?: boolean;
 }
 
 export const normalizeBrowserTreeScope = normalizeViewStoreSessionString;
@@ -182,6 +239,19 @@ export function deriveCodeBrowserTreeRowView(
   const highlighted = entry.path === options.highlightPath;
   const linked = !isDir && (options.linkedNodeIds?.has(entry.node_id) ?? false);
   const rowExpansion = deriveBrowserTreeExpansionItem(entry.path, options.expanded);
+  const statusTone =
+    entry.git_status === undefined
+      ? null
+      : CODE_ROW_STATUS_PRESENTATION[entry.git_status].toneClassName;
+  const status: BrowserTreeCodeRowStatusView | null =
+    entry.git_status === undefined || statusTone === null
+      ? null
+      : {
+          state: entry.git_status,
+          messageKey: CODE_ROW_STATUS_PRESENTATION[entry.git_status].messageKey,
+          badgeClassName: `ml-auto shrink-0 font-mono text-caption tabular-nums ${statusTone}`,
+        };
+  const ignored = entry.ignored ?? null;
   return {
     navKey: deriveCodeBrowserTreeNavKey(entry),
     isDir,
@@ -193,19 +263,32 @@ export function deriveCodeBrowserTreeRowView(
       isDir ||
       entry.path.toLowerCase().includes(normalizedFilter),
     rowStyle: { paddingLeft: "0.25rem" },
+    // The ignore channel dims the WHOLE row rather than recoloring the label, so
+    // it composes with the type mark and any status tone instead of overwriting
+    // them: an ignored-but-modified file still reads as modified, quietly.
     rowClassName: `flex h-[1.875rem] w-full select-text items-center gap-fg-1 truncate rounded-fg-xs pr-fg-1 text-meta text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
       highlighted
         ? "bg-accent-subtle font-medium text-ink"
         : "text-ink-muted hover:bg-paper-sunken hover:text-ink"
-    }`,
+    }${ignored === null ? "" : " opacity-60"}`,
     selectionCueClassName: `h-3 w-0.5 shrink-0 rounded-full ${
       highlighted ? "bg-accent" : "bg-transparent"
     }`,
     chevronClassName: "shrink-0 text-ink-faint",
     chevronSpacerStyle: { display: "inline-block", width: options.chevronPx },
     markClassName: "shrink-0 text-ink-faint",
-    labelClassName: "min-w-0 truncate font-mono",
-    linkedCueClassName: "ml-auto h-1.5 w-1.5 shrink-0 rounded-full bg-accent/70",
+    labelClassName: `min-w-0 truncate font-mono${
+      statusTone === null ? "" : ` ${statusTone}`
+    }`,
+    // The badge already claims the free space when present, so the linkage cue
+    // must not claim it a second time — two `ml-auto` siblings would split the
+    // gap and strand the badge mid-row.
+    linkedCueClassName: `${
+      status === null ? "ml-auto " : ""
+    }h-1.5 w-1.5 shrink-0 rounded-full bg-accent/70`,
+    typeIcon: !isDir && options.fileIcons === true,
+    status,
+    ignored,
   };
 }
 

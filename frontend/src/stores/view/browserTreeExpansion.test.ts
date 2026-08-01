@@ -493,6 +493,115 @@ describe("browser tree expansion store", () => {
     });
   });
 
+  it("maps every served git token to a tone and a one-letter badge", () => {
+    // The presentation mapping is token-driven and exhaustive: a served state the
+    // row cannot tone would be a silent hole in the git channel.
+    const tokens = [
+      "modified",
+      "added",
+      "deleted",
+      "renamed",
+      "untracked",
+      "conflicted",
+    ] as const;
+
+    for (const token of tokens) {
+      const view = deriveCodeBrowserTreeRowView(
+        {
+          path: `src/${token}.ts`,
+          kind: "file",
+          node_id: `code:src/${token}.ts`,
+          git_status: token,
+        },
+        {
+          depth: 0,
+          filter: "",
+          highlightPath: null,
+          expanded: new Set(),
+          chevronPx: 12,
+        },
+      );
+
+      expect(view.status).toEqual({
+        state: token,
+        messageKey: token,
+        badgeClassName: `ml-auto shrink-0 font-mono text-caption tabular-nums text-status-${token}`,
+      });
+      expect(view.labelClassName).toBe(
+        `min-w-0 truncate font-mono text-status-${token}`,
+      );
+      // The badge owns the trailing space, so the linkage cue must not also
+      // claim it — two `ml-auto` siblings would strand the badge mid-row.
+      expect(view.linkedCueClassName).not.toContain("ml-auto");
+    }
+  });
+
+  it("leaves a clean entry untoned, unbadged, and undimmed", () => {
+    // Absence of the served field IS the clean state; it must produce no
+    // decoration at all rather than a neutral-looking one.
+    const view = deriveCodeBrowserTreeRowView(
+      { path: "src/clean.ts", kind: "file", node_id: "code:src/clean.ts" },
+      { depth: 0, filter: "", highlightPath: null, expanded: new Set(), chevronPx: 12 },
+    );
+
+    expect(view.status).toBeNull();
+    expect(view.ignored).toBeNull();
+    expect(view.labelClassName).toBe("min-w-0 truncate font-mono");
+    expect(view.rowClassName).not.toContain("opacity-");
+    expect(view.linkedCueClassName).toContain("ml-auto");
+  });
+
+  it("dims an ignored row without discarding its status tone", () => {
+    // The three channels COMPOSE: a rag-ignored file that is also modified still
+    // reads as modified, quietly. Dimming the whole row (rather than recoloring
+    // the label) is what makes that composition possible.
+    const view = deriveCodeBrowserTreeRowView(
+      {
+        path: "notes.md",
+        kind: "file",
+        node_id: "code:notes.md",
+        ignored: "rag",
+        git_status: "modified",
+      },
+      { depth: 0, filter: "", highlightPath: null, expanded: new Set(), chevronPx: 12 },
+    );
+
+    expect(view.ignored).toBe("rag");
+    expect(view.rowClassName).toContain("opacity-60");
+    expect(view.labelClassName).toContain("text-status-modified");
+    expect(view.status?.state).toBe("modified");
+  });
+
+  it("gates the colored type mark on the served setting and never applies it to a directory", () => {
+    const file = {
+      path: "src/main.ts",
+      kind: "file" as const,
+      node_id: "code:src/main.ts",
+    };
+    const dir = { path: "src", kind: "dir" as const, node_id: "code:src" };
+    const options = {
+      depth: 0,
+      filter: "",
+      highlightPath: null,
+      expanded: new Set<string>(),
+      chevronPx: 12,
+    };
+
+    expect(
+      deriveCodeBrowserTreeRowView(file, { ...options, fileIcons: true }).typeIcon,
+    ).toBe(true);
+    expect(
+      deriveCodeBrowserTreeRowView(file, { ...options, fileIcons: false }).typeIcon,
+    ).toBe(false);
+    // Unresolved setting reads as off, so the row never flashes icons the user
+    // may have turned off.
+    expect(deriveCodeBrowserTreeRowView(file, options).typeIcon).toBe(false);
+    // The sanctioned exception covers file-TYPE marks; a folder is not a type.
+    expect(
+      deriveCodeBrowserTreeRowView(dir, { ...options, fileIcons: true }).typeIcon,
+    ).toBe(false);
+  });
+
   it("keeps directories visible while filtering and derives expansion state", () => {
     const dir = {
       path: "src/components",

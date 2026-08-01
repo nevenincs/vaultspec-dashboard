@@ -336,15 +336,38 @@ export const ltrTestResources = {
         childUnavailable: "Impossible de charger ce dossier. Réessayez.",
         unavailable: "Impossible de charger les fichiers du projet. Réessayez.",
       },
+      ignored: {
+        git: "Ignoré par Git",
+        rag: "Exclu de la recherche",
+      },
       states: {
         childLoading: "Chargement du dossier…",
         degraded:
           "Les fichiers du projet sont indisponibles. Parcourez plutôt les documents.",
         empty: "Aucun fichier de projet trouvé.",
         loading: "Chargement des fichiers du projet…",
+        statusTruncated: "Trop de modifications pour toutes les signaler ici.",
         truncated:
           "{{shown, number}} fichiers et dossiers chargés sur {{total, number}}.",
         truncatedUnknown: "D’autres fichiers et dossiers sont disponibles ici.",
+      },
+      status: {
+        badge: {
+          added: "A",
+          conflicted: "C",
+          deleted: "S",
+          modified: "M",
+          renamed: "R",
+          untracked: "N",
+        },
+        label: {
+          added: "Ajouté",
+          conflicted: "Comporte des conflits",
+          deleted: "Supprimé",
+          modified: "Modifié",
+          renamed: "Renommé",
+          untracked: "Pas encore suivi",
+        },
       },
     },
     confirmations: {
@@ -1004,14 +1027,37 @@ export const rtlTestResources = {
         childUnavailable: "تعذر تحميل هذا المجلد. حاول مرة أخرى.",
         unavailable: "تعذر تحميل ملفات المشروع. حاول مرة أخرى.",
       },
+      ignored: {
+        git: "متجاهَل من Git",
+        rag: "مستبعَد من البحث",
+      },
       states: {
         childLoading: "جارٍ تحميل المجلد…",
         degraded: "ملفات المشروع غير متاحة. تصفح المستندات بدلاً من ذلك.",
         empty: "لم يتم العثور على ملفات مشروع.",
         loading: "جارٍ تحميل ملفات المشروع…",
+        statusTruncated: "التغييرات أكثر من أن تُعلَّم جميعها هنا.",
         truncated:
           "تم تحميل {{shown, number}} من أصل {{total, number}} من الملفات والمجلدات.",
         truncatedUnknown: "تتوفر ملفات ومجلدات إضافية هنا.",
+      },
+      status: {
+        badge: {
+          added: "ض",
+          conflicted: "ت",
+          deleted: "ح",
+          modified: "ع",
+          renamed: "ي",
+          untracked: "ج",
+        },
+        label: {
+          added: "مضاف",
+          conflicted: "به تعارضات",
+          deleted: "محذوف",
+          modified: "معدَّل",
+          renamed: "أعيدت تسميته",
+          untracked: "غير متتبَّع بعد",
+        },
       },
     },
     confirmations: {

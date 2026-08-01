@@ -9,6 +9,7 @@ import { SEARCH_MAINTENANCE_MESSAGE_POLICY } from "./messagePolicy.searchMainten
 import { SHELL_MESSAGE_POLICY } from "./messagePolicy.shell";
 import { AGENT_MESSAGE_POLICY } from "./messagePolicy.agent";
 import { AGENT_SERVICE_MESSAGE_POLICY } from "./messagePolicy.agentService";
+import { CODE_TREE_MESSAGE_POLICY } from "./messagePolicy.codeTree";
 
 export type MessageRole =
   | "action"
@@ -51,6 +52,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   ...SEARCH_MAINTENANCE_MESSAGE_POLICY,
   ...AGENT_MESSAGE_POLICY,
   ...AGENT_SERVICE_MESSAGE_POLICY,
+  ...CODE_TREE_MESSAGE_POLICY,
   "common:accessibility.actionsForItem": { role: "accessibility" },
   "common:accessibility.actionsMenu": { role: "accessibility" },
   "common:accessibility.back": { role: "accessibility" },
@@ -170,8 +172,8 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:searchPalette.states.incomplete": { role: "status" },
   "common:searchPalette.states.noMatches": { role: "status" },
   "common:searchPalette.states.searching": { role: "status" },
-  "common:controlPanels.labels.search": { role: "label" },
   "common:controlPanels.labels.projectHealth": { role: "label" },
+  "common:controlPanels.labels.search": { role: "label" },
   "common:controlPanels.labels.systemStatus": { role: "label" },
   "common:controlPanels.actions.showSearch": { role: "action" },
   "common:controlPanels.actions.hideSearch": { role: "action" },
@@ -268,16 +270,6 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:accessibility.treeOptionsSortedByWorkspaceShare": {
     role: "accessibility",
   },
-  "documents:codeTree.accessibility.browser": { role: "accessibility" },
-  "documents:codeTree.accessibility.linkedToMap": { role: "accessibility" },
-  "documents:codeTree.errors.childUnavailable": { role: "error-message" },
-  "documents:codeTree.errors.unavailable": { role: "error-message" },
-  "documents:codeTree.states.childLoading": { role: "status" },
-  "documents:codeTree.states.degraded": { role: "status" },
-  "documents:codeTree.states.empty": { role: "status" },
-  "documents:codeTree.states.loading": { role: "status" },
-  "documents:codeTree.states.truncated": { role: "status" },
-  "documents:codeTree.states.truncatedUnknown": { role: "status" },
   "documents:documentSearch.accessibility.dialog": { role: "accessibility" },
   "documents:documentSearch.accessibility.results": { role: "accessibility" },
   "documents:documentSearch.counts.documents": { role: "status" },
@@ -944,6 +936,8 @@ export const ENGLISH_MESSAGE_POLICY = {
   "settings:fields.theme.description": { role: "description" },
   "settings:fields.reduceMotion.label": { role: "label" },
   "settings:fields.reduceMotion.description": { role: "description" },
+  "settings:fields.codeTreeFileIcons.label": { role: "label" },
+  "settings:fields.codeTreeFileIcons.description": { role: "description" },
   "settings:fields.activitySectionFolds.label": { role: "label" },
   "settings:fields.activitySectionFolds.description": { role: "description" },
   "settings:fields.language.label": { role: "label" },

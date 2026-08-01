@@ -12,6 +12,7 @@ import type { MessageDescriptor } from "../../platform/localization/message";
 import type { FileTreeEntry, FileTreeTruncated } from "../../stores/server/engine";
 import {
   useActiveScope,
+  useCodeTreeFileIcons,
   useFileTreeLevel,
   useFileTreeRootSurface,
   fileTreeChildStatusStyle,
@@ -20,7 +21,10 @@ import {
 import {
   deriveCodeBrowserTreeRowView,
   useBrowserTreeExpansion,
+  type CodeRowGitStatus,
+  type CodeRowIgnoreSource,
 } from "../../stores/view/browserTreeExpansion";
+import { FileTypeIcon } from "./fileIcons";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
@@ -75,12 +79,54 @@ export const CODE_TREE_MESSAGES = {
   childUnavailable: { key: "documents:codeTree.errors.childUnavailable" },
   degraded: { key: "documents:codeTree.states.degraded" },
   empty: { key: "documents:codeTree.states.empty" },
+  ignoredGit: { key: "documents:codeTree.ignored.git" },
+  ignoredRag: { key: "documents:codeTree.ignored.rag" },
   linkedToMap: { key: "documents:codeTree.accessibility.linkedToMap" },
   loading: { key: "documents:codeTree.states.loading" },
   retry: { key: "common:actions.retry" },
+  statusTruncated: { key: "documents:codeTree.states.statusTruncated" },
   truncatedUnknown: { key: "documents:codeTree.states.truncatedUnknown" },
   unavailable: { key: "documents:codeTree.errors.unavailable" },
 } as const satisfies Record<string, MessageDescriptor>;
+
+/** The git channel's copy, keyed by the SERVED token. The badge is the one-letter
+ *  mark drawn on the row; the label is its spelled-out accessible name, so the
+ *  signal is never letter-only for a screen reader. */
+export const CODE_TREE_STATUS_MESSAGES = {
+  added: {
+    badge: { key: "documents:codeTree.status.badge.added" },
+    label: { key: "documents:codeTree.status.label.added" },
+  },
+  conflicted: {
+    badge: { key: "documents:codeTree.status.badge.conflicted" },
+    label: { key: "documents:codeTree.status.label.conflicted" },
+  },
+  deleted: {
+    badge: { key: "documents:codeTree.status.badge.deleted" },
+    label: { key: "documents:codeTree.status.label.deleted" },
+  },
+  modified: {
+    badge: { key: "documents:codeTree.status.badge.modified" },
+    label: { key: "documents:codeTree.status.label.modified" },
+  },
+  renamed: {
+    badge: { key: "documents:codeTree.status.badge.renamed" },
+    label: { key: "documents:codeTree.status.label.renamed" },
+  },
+  untracked: {
+    badge: { key: "documents:codeTree.status.badge.untracked" },
+    label: { key: "documents:codeTree.status.label.untracked" },
+  },
+} as const satisfies Record<
+  CodeRowGitStatus,
+  { badge: MessageDescriptor; label: MessageDescriptor }
+>;
+
+export function codeTreeIgnoredMessage(source: CodeRowIgnoreSource): MessageDescriptor {
+  return source === "rag"
+    ? CODE_TREE_MESSAGES.ignoredRag
+    : CODE_TREE_MESSAGES.ignoredGit;
+}
 
 export function codeTreeRowActionsMessage(name: string): MessageDescriptor {
   return { key: "common:accessibility.actionsForItem", values: { item: name } };
@@ -138,6 +184,9 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
   const scope = useActiveScope();
   const rootSurface = useFileTreeRootSurface(scope);
   const { rootLevel, state } = rootSurface;
+  // One read of the served icon setting for the whole tree; rows receive the
+  // resolved boolean and never consult the settings schema themselves.
+  const fileIcons = useCodeTreeFileIcons();
   const dashboardSelection = useDashboardBrowserSelection(scope);
   const clickHandler = onEntryClick ?? dashboardSelection.handleCodeEntryClick;
   const { expanded, activeKey, toggle, setActiveKey } = useBrowserTreeExpansion(
@@ -219,6 +268,7 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
             truncated={rootLevel.truncated}
             expansion={expansion}
             navigation={navigation}
+            fileIcons={fileIcons}
           />
         ))}
       </ul>
@@ -230,6 +280,12 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
           className={CODE_TREE_TRUNCATION_CLASS}
         />
       )}
+      {/* The status join has its own cap. When it bit, an unmarked row may be
+          unjoined rather than clean — the level says so instead of letting a
+          partial join read as truth. */}
+      {rootLevel.statusTruncated && (
+        <StatusTruncatedNote message={message(CODE_TREE_MESSAGES.statusTruncated)} />
+      )}
     </nav>
   );
 }
@@ -238,6 +294,16 @@ export function CodeTree({ onEntryClick, linkedNodeIds, filter }: CodeTreeProps)
 function TruncatedNote({ message, className }: { message: string; className: string }) {
   return (
     <p className={className} role="status" data-code-truncated>
+      {message}
+    </p>
+  );
+}
+
+/** The capped-status-join note: distinct from the capped-LEVEL note above, since
+ *  the two caps are independent and a level can hit either alone. */
+function StatusTruncatedNote({ message }: { message: string }) {
+  return (
+    <p className={CODE_TREE_TRUNCATION_CLASS} role="status" data-code-status-truncated>
       {message}
     </p>
   );
@@ -253,6 +319,8 @@ interface RowProps {
   truncated: { total_children: number } | null;
   expansion: { expanded: ReadonlySet<string>; toggle: (id: string) => void };
   navigation: CodeTreeNavigation;
+  /** The resolved `code_tree.file_icons` value, read once at the tree root. */
+  fileIcons: boolean;
 }
 
 interface CodeTreeNavigation {
@@ -281,6 +349,7 @@ function DirectoryRow({
   filter,
   expansion,
   navigation,
+  fileIcons,
 }: RowProps) {
   const resolveMessage = useLocalizedMessageResolver();
   const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
@@ -293,6 +362,7 @@ function DirectoryRow({
     expanded: expansion.expanded,
     linkedNodeIds,
     chevronPx: CHEVRON_PX,
+    fileIcons,
   });
 
   if (!rowView.visible) {
@@ -331,6 +401,8 @@ function DirectoryRow({
           data-code-row
           data-code-dir={rowView.isDir ? "" : undefined}
           data-code-linked={rowView.linked ? "" : undefined}
+          data-code-status={rowView.status?.state}
+          data-code-ignored={rowView.ignored ?? undefined}
           onFocus={() => navigation.setActiveKey(rowView.navKey)}
           onClick={() => {
             if (rowView.isDir) {
@@ -372,10 +444,38 @@ function DirectoryRow({
               <span style={rowView.chevronSpacerStyle} />
             )}
           </span>
+          {/* Channel 1 — TYPE. The colored file-type mark when the served setting
+              is on; otherwise the generic shape mark, which is also what every
+              directory keeps. */}
           <span className={rowView.markClassName}>
-            <Mark size={ROW_MARK_PX} />
+            {rowView.typeIcon ? (
+              <FileTypeIcon path={entry.path} size={ROW_MARK_PX} />
+            ) : (
+              <Mark size={ROW_MARK_PX} />
+            )}
           </span>
+          {/* Channel 3 — IGNORED rides the row's dimming (rowClassName); only its
+              accessible name is rendered, so the cue is not color-only. */}
           <span className={rowView.labelClassName}>{row.displayName}</span>
+          {rowView.ignored && (
+            <span className="sr-only">
+              {message(codeTreeIgnoredMessage(rowView.ignored))}
+            </span>
+          )}
+          {/* Channel 2 — GIT STATE: label tone plus this one-letter badge, with
+              the spelled-out state as its accessible name. */}
+          {rowView.status && (
+            <span
+              className={rowView.status.badgeClassName}
+              title={message(CODE_TREE_STATUS_MESSAGES[rowView.status.state].label)}
+              aria-label={message(
+                CODE_TREE_STATUS_MESSAGES[rowView.status.state].label,
+              )}
+              data-code-status-badge
+            >
+              {message(CODE_TREE_STATUS_MESSAGES[rowView.status.state].badge)}
+            </span>
+          )}
           {rowView.linked && (
             <span
               aria-label={message(CODE_TREE_MESSAGES.linkedToMap)}
@@ -401,6 +501,7 @@ function DirectoryRow({
           filter={filter}
           expansion={expansion}
           navigation={navigation}
+          fileIcons={fileIcons}
         />
       )}
     </li>
@@ -437,6 +538,7 @@ interface ChildLevelProps {
   filter: string;
   expansion: { expanded: ReadonlySet<string>; toggle: (id: string) => void };
   navigation: CodeTreeNavigation;
+  fileIcons: boolean;
 }
 
 /**
@@ -456,6 +558,7 @@ function ChildLevel({
   filter,
   expansion,
   navigation,
+  fileIcons,
 }: ChildLevelProps) {
   const resolveMessage = useLocalizedMessageResolver();
   const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
@@ -508,6 +611,7 @@ function ChildLevel({
           truncated={level.truncated}
           expansion={expansion}
           navigation={navigation}
+          fileIcons={fileIcons}
         />
       ))}
       {level.truncated && (
@@ -515,6 +619,9 @@ function ChildLevel({
           message={message(codeTreeTruncationMessage(level.truncated))}
           className={CODE_TREE_TRUNCATION_CLASS}
         />
+      )}
+      {level.statusTruncated && (
+        <StatusTruncatedNote message={message(CODE_TREE_MESSAGES.statusTruncated)} />
       )}
     </ul>
   );

@@ -16,6 +16,10 @@ export const settings = {
       label: "Reduce motion",
       description: "Use fewer interface animations.",
     },
+    codeTreeFileIcons: {
+      label: "File type icons",
+      description: "Show a colored icon for each file type in the project files list.",
+    },
     activitySectionFolds: {
       label: "Activity sections",
       description: "Remember which activity sections are open.",

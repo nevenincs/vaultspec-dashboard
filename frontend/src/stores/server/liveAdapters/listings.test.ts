@@ -92,6 +92,87 @@ describe("adaptFileTree (code tree listing)", () => {
     expect(adapted.truncated).toBeNull();
     expect(adapted.next_cursor).toBeUndefined();
   });
+
+  it("carries served git-status and ignore decorations onto the entries", () => {
+    const adapted = adaptFileTree({
+      path: "",
+      entries: [
+        {
+          path: "src/a.ts",
+          kind: "file",
+          node_id: "code:src/a.ts",
+          git_status: " modified ",
+        },
+        {
+          path: "src/b.ts",
+          kind: "file",
+          node_id: "code:src/b.ts",
+          git_status: "conflicted",
+        },
+        { path: "target", kind: "dir", node_id: "code:target", ignored: "git" },
+        {
+          path: "notes.md",
+          kind: "file",
+          node_id: "code:notes.md",
+          ignored: "rag",
+          git_status: "untracked",
+        },
+      ],
+      truncated: null,
+      status_truncated: true,
+      tiers: TIERS,
+    });
+
+    expect(adapted.entries.map((entry) => entry.git_status)).toEqual([
+      "modified",
+      "conflicted",
+      undefined,
+      "untracked",
+    ]);
+    expect(adapted.entries.map((entry) => entry.ignored)).toEqual([
+      undefined,
+      undefined,
+      "git",
+      "rag",
+    ]);
+    expect(adapted.status_truncated).toBe(true);
+  });
+
+  it("keeps an absent or unrecognized decoration absent rather than inventing one", () => {
+    // Absence IS the clean / not-ignored state on this wire, and a token the
+    // client does not know must degrade to that same unremarkable state — never
+    // to a rendered decoration the engine never claimed.
+    const adapted = adaptFileTree({
+      path: "",
+      entries: [
+        { path: "clean.ts", kind: "file", node_id: "code:clean.ts" },
+        {
+          path: "future.ts",
+          kind: "file",
+          node_id: "code:future.ts",
+          git_status: "resurrected",
+          ignored: "npm",
+        },
+        { path: "empty.ts", kind: "file", node_id: "code:empty.ts", git_status: "  " },
+      ],
+      truncated: null,
+      tiers: TIERS,
+    });
+
+    for (const entry of adapted.entries) {
+      expect(entry.git_status).toBeUndefined();
+      expect(entry.ignored).toBeUndefined();
+      expect("git_status" in entry).toBe(false);
+      expect("ignored" in entry).toBe(false);
+    }
+    // An older shape that omits the field reads as a COMPLETE join.
+    expect(adapted.status_truncated).toBe(false);
+  });
+
+  it("defaults the status-join marker to complete on a malformed body", () => {
+    expect(adaptFileTree("not a body").status_truncated).toBe(false);
+    expect(adaptFileTree({ status_truncated: "yes" }).status_truncated).toBe(false);
+  });
 });
 
 describe("adaptCodeFiles (complete code-file listing)", () => {

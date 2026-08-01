@@ -36,6 +36,9 @@ import type {
   FsListEntry,
   FsListResponse,
   MapResponse,
+  SettingDef,
+  SettingsSchema,
+  SettingsState,
   VaultTreeEntry,
   VaultTreeResponse,
 } from "@app/stores/server/engine";
@@ -129,15 +132,79 @@ function seedVaultTree(client: QueryClient, state: ReviewState): void {
   client.setQueryData(engineKeys.vaultTree(REVIEW_SCOPE), vaultTreeResponse(state));
 }
 
+// The code-tree row treatment composes THREE channels (code-tree-legibility ADR
+// D6): a colored type icon, a git-state label tone plus one-letter badge, and
+// ignored dimming. These entries author every one of them, and their
+// combinations, so the desk proves what each state LOOKS like: a clean file, one
+// file per served git token, an ignored directory, an ignored file that is ALSO
+// modified (the composition case), and an unmapped extension falling back to the
+// generic mark.
 const CODE_TREE_ROOT_ENTRIES: FileTreeEntry[] = [
   { path: "src", kind: "dir", has_children: true, node_id: "code:src" },
   { path: "engine", kind: "dir", has_children: true, node_id: "code:engine" },
+  {
+    path: "target",
+    kind: "dir",
+    has_children: true,
+    node_id: "code:target",
+    ignored: "git",
+  },
   { path: "README.md", kind: "file", has_children: false, node_id: "code:README.md" },
   {
     path: "package.json",
     kind: "file",
     has_children: false,
     node_id: "code:package.json",
+    git_status: "modified",
+  },
+  {
+    path: "Cargo.toml",
+    kind: "file",
+    has_children: false,
+    node_id: "code:Cargo.toml",
+    git_status: "added",
+  },
+  {
+    path: "legacy.py",
+    kind: "file",
+    has_children: false,
+    node_id: "code:legacy.py",
+    git_status: "deleted",
+  },
+  {
+    path: "styles.css",
+    kind: "file",
+    has_children: false,
+    node_id: "code:styles.css",
+    git_status: "renamed",
+  },
+  {
+    path: "scratch.ts",
+    kind: "file",
+    has_children: false,
+    node_id: "code:scratch.ts",
+    git_status: "untracked",
+  },
+  {
+    path: "merge.rs",
+    kind: "file",
+    has_children: false,
+    node_id: "code:merge.rs",
+    git_status: "conflicted",
+  },
+  {
+    path: "notes.md",
+    kind: "file",
+    has_children: false,
+    node_id: "code:notes.md",
+    ignored: "rag",
+    git_status: "modified",
+  },
+  {
+    path: "fixture.unknownext",
+    kind: "file",
+    has_children: false,
+    node_id: "code:fixture.unknownext",
   },
 ];
 
@@ -147,6 +214,7 @@ function fileTreeRootResponse(state: ReviewState): FileTreeResponse {
       entries: [],
       path: "",
       truncated: null,
+      status_truncated: false,
       tiers: tiersHealthy("structural"),
     };
   }
@@ -154,13 +222,49 @@ function fileTreeRootResponse(state: ReviewState): FileTreeResponse {
     entries: CODE_TREE_ROOT_ENTRIES,
     path: "",
     truncated: null,
+    // The normal state also shows the capped-status-join note, since that
+    // honesty line is otherwise unreachable on a static specimen.
+    status_truncated: state === "normal",
     tiers:
       state === "degraded" ? tiersDown(["structural"]) : tiersHealthy("structural"),
   };
 }
 
+/** The engine-served icon setting (ADR D7) resolved for the desk. The rows read
+ *  ONE boolean through the stores seam, so the specimen seeds the two real
+ *  queries that seam reads rather than overriding anything on the component. */
+const CODE_TREE_ICON_SETTING: SettingDef = {
+  key: "code_tree.file_icons",
+  value_type: { type: "bool" },
+  default: "true",
+  scope_eligible: false,
+  control: "switch",
+  display: {
+    id: "appearance.codeTreeFileIcons",
+    group: "appearance",
+    enum_members: [],
+  },
+  order: 5,
+};
+
+function seedCodeTreeIconSetting(client: QueryClient): void {
+  client.setQueryData(engineKeys.settingsSchema(), {
+    settings: [CODE_TREE_ICON_SETTING],
+    groups: ["appearance"],
+    tiers: tiersHealthy("structural"),
+  } satisfies SettingsSchema);
+  // No persisted row: the effective value resolves from the schema default, which
+  // is the state a fresh install is actually in.
+  client.setQueryData(engineKeys.settings(), {
+    global: {},
+    scoped: {},
+    tiers: tiersHealthy("structural"),
+  } satisfies SettingsState);
+}
+
 function seedFileTree(client: QueryClient, state: ReviewState): void {
   if (state === "loading") return;
+  seedCodeTreeIconSetting(client);
   client.setQueryData(engineKeys.fileTree(REVIEW_SCOPE), fileTreeRootResponse(state));
 }
 
@@ -395,7 +499,7 @@ export const leftSpecimens: Readonly<Record<string, SpecimenDef>> = {
   },
 
   "left-codetree": {
-    note: "Container: seeds the root file-tree level only (a static specimen never expands a directory, so deeper levels are never fetched). Loading/empty/degraded read the same root-level tiers/entries the real worktree read would report.",
+    note: "Container: seeds the root file-tree level and the served file-icon setting (schema default on). A static specimen never expands a directory, so deeper levels are never fetched. The authored entries cover all three row channels and their combinations: every git token with its tone and one-letter badge, a git-ignored directory and a rag-ignored file that is ALSO modified (dimming composes over the tone rather than replacing it), and an unmapped extension falling back to the generic mark. Normal also carries the capped-status-join note. Loading/empty/degraded read the same root-level tiers/entries the real worktree read would report.",
     seed: (client, state) => {
       seedSessionAndDashboardState(client);
       seedFileTree(client, state);

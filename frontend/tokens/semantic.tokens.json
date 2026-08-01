@@ -44,7 +44,14 @@
       "state-live": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.55, 0.11, 160] }, "$extensions": { "com.vaultspec.css": { "var": "--color-state-live", "emit": "raw" } } },
       "diff-add": { "$type": "color", "$value": "{primitive.diff.add-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-add", "emit": "alias" } } },
       "diff-remove": { "$type": "color", "$value": "{primitive.diff.remove-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-remove", "emit": "alias" } } },
-      "diff-modified": { "$type": "color", "$value": "{primitive.diff.modified-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-modified", "emit": "alias" } } }
+      "diff-modified": { "$type": "color", "$value": "{primitive.diff.modified-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-diff-modified", "emit": "alias" } } },
+      "status-modified": { "$type": "color", "$value": "{primitive.diff.modified-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-status-modified", "emit": "alias" } } },
+      "status-added": { "$type": "color", "$value": "{primitive.diff.add-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-status-added", "emit": "alias" } } },
+      "status-deleted": { "$type": "color", "$value": "{primitive.diff.remove-l}", "$extensions": { "com.vaultspec.css": { "var": "--color-status-deleted", "emit": "alias" } } },
+      "status-renamed": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.5, 0.1, 200] }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-renamed", "emit": "raw" } } },
+      "status-untracked": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.52, 0.1, 120] }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-untracked", "emit": "raw" } } },
+      "status-conflicted": { "$type": "color", "$value": { "colorSpace": "oklch", "components": [0.53, 0.16, 55] }, "$extensions": { "com.vaultspec.css": { "var": "--color-status-conflicted", "emit": "raw" } } },
+      "status-ignored": { "$type": "color", "$value": "{semantic.ink.faint}", "$extensions": { "com.vaultspec.css": { "var": "--color-status-ignored", "emit": "alias" } } }
     },
     "scene": {
       "canvas-bg": { "$type": "color", "$value": { "colorSpace": "srgb", "hex": "#fdfaf6" }, "$extensions": { "com.vaultspec.css": { "var": "--color-canvas-bg", "emit": "hex" } } },
