@@ -46,8 +46,6 @@ export const RAG_IDENTITY_TEXT_MAX_CHARS = 512;
  *  `null` when the wire did not carry it; the view never substitutes one fact for
  *  another. */
 export interface RagServiceIdentityView {
-  /** The tool's own served name (the component handshake). */
-  name: string | null;
   /** The running version the handshake reports, or `null` when it reports none. */
   version: string | null;
   /** The installed version the provisioning projection reports. */
@@ -104,7 +102,6 @@ export function deriveRagServiceIdentity(
   const index = block(envelope?.index);
   const qdrant = block(envelope?.qdrant);
   const view: RagServiceIdentityView = {
-    name: identityText(component?.name),
     version: identityText(component?.version),
     installedVersion: identityText(installedVersion),
     requiredVersion: identityText(component?.floor),
@@ -118,7 +115,6 @@ export function deriveRagServiceIdentity(
     empty: false,
   };
   const carried =
-    view.name !== null ||
     view.version !== null ||
     view.installedVersion !== null ||
     view.requiredVersion !== null ||

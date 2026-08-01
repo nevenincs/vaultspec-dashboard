@@ -40,8 +40,16 @@ function HealthRow({ row }: { row: SystemStatusRow }) {
   );
 }
 
-export function BackendHealthPanel() {
-  const rows = deriveSystemStatusRows(useStatusRollup());
+export interface BackendHealthPanelBodyProps {
+  /** The derived status rows, already resolved from the served rollup. */
+  rows: readonly SystemStatusRow[];
+}
+
+/** The wire-free body: the compact system-status block Settings ▸ Advanced hosts
+ *  (advanced-service-console ADR D6). It receives resolved rows as a normal
+ *  required prop, so the review desk renders every tone without the panel ever
+ *  growing a harness affordance (production-dev-separation). */
+export function BackendHealthPanelBody({ rows }: BackendHealthPanelBodyProps) {
   return (
     <div className="flex flex-col gap-fg-3 px-fg-4 py-fg-3" data-backend-health-panel>
       <div className="flex flex-col gap-fg-2">
@@ -51,4 +59,9 @@ export function BackendHealthPanel() {
       </div>
     </div>
   );
+}
+
+/** The container: derives the rows from the served rollup and renders the body. */
+export function BackendHealthPanel() {
+  return <BackendHealthPanelBody rows={deriveSystemStatusRows(useStatusRollup())} />;
 }

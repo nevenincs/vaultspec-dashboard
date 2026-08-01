@@ -8,7 +8,7 @@ import type { MessageKey } from "../platform/localization/message";
 import type { MessagePolicyEntry } from "./messagePolicy";
 
 export const AGENT_SERVICE_MESSAGE_POLICY = {
-  "common:controlPanels.labels.agentService": { role: "label" },
+  "common:advanced.labels.agentService": { role: "label" },
   "common:agentService.description": { role: "description" },
   "common:agentService.statusLabel": { role: "accessibility" },
   "common:agentService.sections.status": { role: "label" },

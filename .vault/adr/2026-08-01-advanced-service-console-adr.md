@@ -5,7 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:64a79dd5407bcd81816fe58c7ca42fc5e3fe3f151e6d6db930ca626f5f9499c5'
+body_hash: 'sha256:7d35199496b5f83ae6adfa4a098cfb8dfe73a440c074b0b5fccca7aed763ea2f'
 related:
   - "[[2026-08-01-advanced-service-console-research]]"
 ---
@@ -37,6 +37,12 @@ Dev and service surfaces leak into the user chrome: framework status chips sit i
 - D5 — A2A lifecycle relocates as a dev console subsection under Advanced, served by the existing `/a2a/lifecycle/*` plane unchanged; if the agent-panel campaign later supersedes it, it retires from ONE place.
 - D6 — Engine status (the former Project-health chip's truth) renders as a compact status block inside Advanced from the existing status/tiers reads; degradation surfacing in the user chrome remains whatever the degradation matrix already renders on affected surfaces — this record moves the DASHBOARD of statuses, not the honest per-surface degradation.
 - D7 — Access path: Settings opens from existing chrome; the Advanced section is one click inside (plus a palette command "Open service console"). No new keybinding by default (chord vetting applies if one is ever added).
+
+Amendments recorded at execution (2026-08-01), from the closing audit of this record's own plan:
+
+- D4 premise correction - the service's OWN host, port, and pid are NOT on any route the frontend reads. The considerations above say identity facts "are all already served", which traced true only for the tier component handshake (name, floor, running version) and the brokered ops-state blocks. The machine discovery record that carries the tool's port and pid is read by the engine, never forwarded, so a browser client cannot reach it. The delivered header therefore states the STORE's address, process, and version - each labelled as the store's, never as the tool's - and says nothing about a running port or pid. Facts are served or absent; nothing is substituted under a neighbour's label. Serving the tool's own listening identity is a future engine ask, not a gap to paper over here.
+- D7 label refinement - the shipped palette command reads "Open advanced settings", not the literal "Open service console" this record names. The destination is unchanged (Settings, Advanced, primary console expanded) and there is still exactly one command with no alias. The label was chosen because the section hosts FOUR consoles, so a singular "service console" would name the destination wrongly, and because "advanced settings" is the plainer user-facing wording the labels law asks for. Recorded here rather than left as silent drift; renaming the command back is a one-line change if the owner prefers the literal.
+- D4 naming correction (closing review) - the console does NOT render the served tool name. D4 says "named for the SERVICE", and the first implementation resolved the component handshake's `name` into the console heading; that value is the backend package identifier, which `PROHIBITED_UI_TERMS` bans from screen and the labels law keeps in source only. The record and the labels law were in direct conflict, and the labels law wins: the console names itself from the catalog ("Index") on every path, the unread `name` field is gone from the identity view, and the control vocabulary beneath it was retitled from "search" to index terms in the same pass so the fold name and its verbs agree. D4's real intent - never call this thing "Search" - is met; naming it after the package was the part that could not ship.
 
 ## Implementation
 

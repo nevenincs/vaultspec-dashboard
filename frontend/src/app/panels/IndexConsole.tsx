@@ -76,7 +76,10 @@ const M = {
   stopTitle: { key: "operations:searchMaintenance.confirmations.stop.title" },
   stopBody: { key: "operations:searchMaintenance.confirmations.stop.body" },
   stopConfirm: { key: "operations:searchMaintenance.destructiveActions.stop" },
-  fallbackName: { key: "operations:searchMaintenance.identity.title" },
+  // The console names itself from the catalog, never from the served component
+  // handshake: that value is the backend package identifier, which the labels
+  // law keeps off screen no matter which tool is attached.
+  title: { key: "operations:searchMaintenance.identity.title" },
   version: { key: "operations:searchMaintenance.identity.version" },
   installedVersion: { key: "operations:searchMaintenance.identity.installedVersion" },
   requiredVersion: { key: "operations:searchMaintenance.identity.requiredVersion" },
@@ -161,11 +164,6 @@ export function IndexConsoleHeader({
   const startFailed =
     startOutcome !== undefined && !startOutcome.attached && !needsInstall;
   const tone = errored ? "broken" : healthTone;
-  // The tool's own name is SERVED (the component handshake), so it renders as
-  // authored display text rather than a catalog label — the console must name
-  // whatever tool is actually attached, not a name we hard-coded.
-  const servedName =
-    identity.name === null ? null : (authoredDisplayText(identity.name) as string);
   const number = (value: number | null) =>
     value === null ? null : (formatNumber(locale, value) ?? null);
   const rows: Array<[string, string | null]> = [
@@ -196,7 +194,7 @@ export function IndexConsoleHeader({
             className={`size-fg-2 shrink-0 rounded-full ${HEALTH_DOT[tone]}`}
           />
           <span className="min-w-0 truncate text-body font-medium text-ink">
-            {servedName ?? resolve(M.fallbackName).message}
+            {resolve(M.title).message}
           </span>
           <span
             className={`shrink-0 text-meta ${HEALTH_INK[tone]}`}

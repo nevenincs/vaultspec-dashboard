@@ -34,16 +34,16 @@ export const ADVANCED_CONSOLE_IDS: readonly AdvancedConsoleId[] = [
 export const PRIMARY_ADVANCED_CONSOLE: AdvancedConsoleId = "index";
 
 /** The plain-language name of each console, resolved at the render boundary. The
- *  index console's label is a FALLBACK only: when the wire carries the tool's own
- *  served name, the header renders that instead (ADR D4 — name the tool, never
- *  "Search"). */
+ *  index console names itself from this catalog label alone: the served component
+ *  handshake carries the backend package identifier, which the labels law keeps
+ *  off screen (ADR D4 as amended — never "Search", and never the package name). */
 export const ADVANCED_CONSOLE_LABELS: Readonly<
   Record<AdvancedConsoleId, MessageDescriptor>
 > = Object.freeze({
   index: Object.freeze({ key: "operations:searchMaintenance.identity.title" }),
-  system: Object.freeze({ key: "common:controlPanels.labels.systemStatus" }),
-  project: Object.freeze({ key: "common:controlPanels.labels.projectHealth" }),
-  agent: Object.freeze({ key: "common:controlPanels.labels.agentService" }),
+  system: Object.freeze({ key: "common:advanced.labels.systemStatus" }),
+  project: Object.freeze({ key: "common:advanced.labels.projectHealth" }),
+  agent: Object.freeze({ key: "common:advanced.labels.agentService" }),
 } as const);
 
 /** Validate unknown input at the boundary (a palette id, a persisted blob). */

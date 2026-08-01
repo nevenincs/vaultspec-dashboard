@@ -49,15 +49,15 @@ const TONE_DOT_CLASS: Record<FrameworkStatusTone, string> = {
 };
 
 const TONE_MESSAGES: Readonly<Record<FrameworkStatusTone, MessageDescriptor>> = {
-  ok: { key: "common:controlPanels.tones.workingNormally" },
-  attention: { key: "common:controlPanels.tones.needsAttention" },
-  down: { key: "common:controlPanels.tones.unavailable" },
-  unknown: { key: "common:controlPanels.tones.checking" },
+  ok: { key: "common:advanced.tones.workingNormally" },
+  attention: { key: "common:advanced.tones.needsAttention" },
+  down: { key: "common:advanced.tones.unavailable" },
+  unknown: { key: "common:advanced.tones.checking" },
 };
 
-const GROUP_MESSAGE = { key: "common:controlPanels.accessibility.group" } as const;
+const GROUP_MESSAGE = { key: "common:advanced.accessibility.group" } as const;
 const PANEL_STATUS_MESSAGE = {
-  key: "common:controlPanels.accessibility.panelStatus",
+  key: "common:advanced.accessibility.panelStatus",
 } as const;
 const PENDING_LABEL_MESSAGE = { key: "common:agent.pending.label" } as const;
 

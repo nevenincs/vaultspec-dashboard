@@ -2,28 +2,28 @@ export const operations = {
   searchMaintenance: {
     accessibility: {
       filterByStatus: "Filter by status",
-      filterUpdates: "Filter search updates",
-      progress: "Search update progress",
-      sortUpdates: "Sort search updates",
-      updateStatus: "Search update: {{status}}",
+      filterUpdates: "Filter index updates",
+      progress: "Index update progress",
+      sortUpdates: "Sort index updates",
+      updateStatus: "Index update: {{status}}",
     },
     actions: {
-      checkHealth: "Check search",
+      checkHealth: "Check index",
       refresh: "Refresh",
-      restart: "Restart search",
+      restart: "Restart index",
       retrySetup: "Set up and retry",
-      start: "Start search",
-      stop: "Stop search",
-      update: "Update search",
+      start: "Start index",
+      stop: "Stop index",
+      update: "Rebuild index",
     },
     confirmations: {
       stop: {
-        body: "Stopping search affects every open project until search is started again.",
-        title: "Stop search?",
+        body: "Stopping the index affects every open project until it is started again.",
+        title: "Stop the index?",
       },
     },
     destructiveActions: {
-      stop: "Stop search",
+      stop: "Stop index",
     },
     filters: {
       placeholder: "Filter updates…",
@@ -54,12 +54,12 @@ export const operations = {
     jobs: {
       count_one: "{{count, number}} update",
       count_other: "{{count, number}} updates",
-      empty: "No search updates yet.",
+      empty: "No index updates yet.",
       noMatches: "No updates match this filter.",
       partial_one: "Loaded {{shown, number}} of {{count, number}} update.",
       partial_other: "Loaded {{shown, number}} of {{count, number}} updates.",
-      title: "Search updates",
-      update: "Search update",
+      title: "Index updates",
+      update: "Index update",
     },
     labels: {
       duration: "Duration",
@@ -74,7 +74,7 @@ export const operations = {
       update: "Update",
     },
     progress: {
-      working: "Updating search…",
+      working: "Updating the index…",
     },
     projects: {
       live_one: "{{count, number}} active",
@@ -88,10 +88,10 @@ export const operations = {
     },
     service: {
       shared: "Shared across projects",
-      unavailable: "Search status is unavailable. Reload the page and try again.",
-      setupRequired: "Search needs setup. Set it up, then try again.",
-      startFailed: "Search could not start. Try again.",
-      updateUnavailable: "Start search, then try again.",
+      unavailable: "Index status is unavailable. Reload the page and try again.",
+      setupRequired: "The index needs setup. Set it up, then try again.",
+      startFailed: "The index could not start. Try again.",
+      updateUnavailable: "Start the index, then try again.",
     },
     states: {
       completed: "Completed",
@@ -113,7 +113,7 @@ export const operations = {
       disabled: "Not watching",
       enabled: "Watching for changes",
       label: "Watch for changes",
-      unavailable: "Start search, then try again.",
+      unavailable: "Start the index, then try again.",
     },
   },
   actions: {

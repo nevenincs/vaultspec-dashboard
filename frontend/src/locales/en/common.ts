@@ -250,15 +250,13 @@ export const common = {
     title: "Advanced",
     description:
       "Status and controls for the tools this app runs on. Everything here is for troubleshooting.",
-  },
-  controlPanels: {
     labels: {
       projectHealth: "Project health",
       systemStatus: "System status",
       agentService: "Agents",
     },
     accessibility: {
-      group: "Project status",
+      group: "Pending work",
       panelStatus: "{{panel}}: {{status}}",
     },
     tones: {
@@ -453,7 +451,7 @@ export const common = {
       },
     },
     composer: {
-      placeholder: "Message the agent",
+      placeholder: "Ask anything. @ to mention, / for commands",
       clarificationParked: "Answer the question above to continue the run",
       steerPlaceholder: "Reply to guide the running agent",
       send: "Send",

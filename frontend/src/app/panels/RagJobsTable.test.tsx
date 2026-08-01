@@ -3,6 +3,7 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
 import {
   createTestLocalizationRuntime,
   ltrTestLocale,
@@ -55,7 +56,9 @@ function setup() {
 describe("RagJobsTableBody", () => {
   it("renders only closed localized job presentation", () => {
     setup();
-    expect(screen.getByText("Search update")).toBeTruthy();
+    // Sourced from the catalog, not retyped: this row label is plain copy that the
+    // console rename moves, and a hardcoded assertion goes red on wording alone.
+    expect(screen.getByText(en.operations.searchMaintenance.jobs.update)).toBeTruthy();
     expect(screen.getAllByText("Status unavailable").length).toBeGreaterThan(0);
     expect(document.body.textContent).not.toContain(hostile);
     expect(document.body.innerHTML).not.toContain(hostile);

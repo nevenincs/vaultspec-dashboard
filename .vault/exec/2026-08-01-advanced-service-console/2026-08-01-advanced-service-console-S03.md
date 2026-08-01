@@ -1,0 +1,34 @@
+---
+tags:
+  - '#exec'
+  - '#advanced-service-console'
+date: '2026-08-01'
+modified: '2026-08-01'
+body_schema: 'body-v1'
+body_hash: 'sha256:5ea7384441e439a217cd56ac019032880930e011b4769c38ee48e49d6d51ad22'
+step_id: 'S03'
+related:
+  - "[[2026-08-01-advanced-service-console-plan]]"
+---
+
+# Relocate the A2A lifecycle panel as a dev subsection under Advanced and add the compact engine-status block from existing status reads
+
+## Scope
+
+- `frontend/src/app/settings`
+- `frontend/src/app/panels`
+
+## Description
+
+- Mount the agent lifecycle panel as the fourth Advanced fold, served by its existing lifecycle plane unchanged - no new route, no new client model.
+- Mount the backend-health panel as the system-status fold, deriving degraded and offline only from the served tiers block.
+- Mount the project-health panel as the third fold, so the health dashboard the rail footer used to reach now lives beside the others.
+- Leave the per-surface degradation treatments elsewhere in the chrome untouched: this Step moves the DASHBOARD of statuses, not the honest degradation each surface renders for itself.
+
+## Outcome
+
+The three status surfaces and the agent lifecycle console sit under one section, each mount-gated behind its own fold. Operational status is one click deeper than the retired rail chips and no longer occupies user chrome. If the agent campaign later supersedes the lifecycle console, it retires from exactly one place.
+
+## Notes
+
+The lifecycle plane was left entirely alone - only its mounting moved, which is what keeps a future supersession cheap.

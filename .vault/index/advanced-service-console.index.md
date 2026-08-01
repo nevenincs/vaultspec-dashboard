@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:84678f1ae885e77fadd79809149b5ed94f08800f6588a64b0b8f3e9bcb0931bd'
 related:
   - '[[2026-08-01-advanced-service-console-S01]]'
   - '[[2026-08-01-advanced-service-console-S02]]'

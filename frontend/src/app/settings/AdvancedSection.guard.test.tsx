@@ -137,18 +137,18 @@ describe("Settings ▸ Advanced", () => {
   it("localizes the section and its console labels in place", async () => {
     const { runtime } = renderSection();
     const title = screen.getByText(en.common.advanced.title);
-    const systemLabel = screen.getByText(en.common.controlPanels.labels.systemStatus);
+    const systemLabel = screen.getByText(en.common.advanced.labels.systemStatus);
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
     expect(screen.getByText(ltrTestResources.common.advanced.title)).toBe(title);
-    expect(
-      screen.getByText(ltrTestResources.common.controlPanels.labels.systemStatus),
-    ).toBe(systemLabel);
+    expect(screen.getByText(ltrTestResources.common.advanced.labels.systemStatus)).toBe(
+      systemLabel,
+    );
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
     expect(screen.getByText(rtlTestResources.common.advanced.title)).toBe(title);
-    expect(
-      screen.getByText(rtlTestResources.common.controlPanels.labels.systemStatus),
-    ).toBe(systemLabel);
+    expect(screen.getByText(rtlTestResources.common.advanced.labels.systemStatus)).toBe(
+      systemLabel,
+    );
   });
 });

@@ -13,12 +13,15 @@
 // Layer law: leaf chrome. Every console below reads its own stores hooks; this
 // frame owns nothing but the disclosure state and the labels.
 
+import { useEffect } from "react";
+
 import { SectionLabel } from "../kit";
 import { FoldSection } from "../kit/FoldSection";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   ADVANCED_CONSOLE_IDS,
   ADVANCED_CONSOLE_LABELS,
+  collapseAdvancedConsoles,
   toggleAdvancedConsole,
   useExpandedAdvancedConsole,
   type AdvancedConsoleId,
@@ -47,6 +50,11 @@ function ConsoleBody({ console: consoleId }: { console: AdvancedConsoleId }) {
 export function AdvancedSection() {
   const resolve = useLocalizedMessageResolver();
   const expanded = useExpandedAdvancedConsole();
+  // Closing Settings collapses the accordion, so the mount gate holds on the
+  // SECOND open too: without this, one use of the deep-link command would leave
+  // the index console expanded forever and restart its polls every time someone
+  // opened Settings to change a theme.
+  useEffect(() => collapseAdvancedConsoles, []);
   const title = resolve(SECTION_TITLE);
   if (title.usedFallback) return null;
 

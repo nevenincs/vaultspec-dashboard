@@ -4,6 +4,7 @@ tags:
   - '#advanced-service-console'
 date: '2026-08-01'
 modified: '2026-08-01'
+body_hash: 'sha256:e86acad03e7dd53823ab335cc3ee7acbf86daf0c47201800c743740c85f4f70a'
 tier: L1
 related:
   - '[[2026-08-01-advanced-service-console-adr]]'

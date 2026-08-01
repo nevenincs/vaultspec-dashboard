@@ -33,6 +33,17 @@ import { RagJobsTableBody } from "@app/app/panels/RagJobsTable";
 import { IndexConsoleHeader } from "@app/app/panels/IndexConsole";
 import { IndexLogTailBody } from "@app/app/panels/IndexLogTail";
 import type { RagServiceIdentityView } from "@app/stores/server/ragServiceIdentity";
+import { BackendHealthPanelBody } from "@app/app/panels/BackendHealthPanel";
+import {
+  VaultHealthPanelBody,
+  deriveVaultHealthView,
+} from "@app/app/panels/VaultHealthPanel";
+import {
+  deriveSystemStatusRows,
+  type CoreStatusView,
+  type RagStatusView,
+  type StatusRollupView,
+} from "@app/stores/server/queries";
 
 import type { SpecimenDef } from "../registry";
 
@@ -169,7 +180,6 @@ const RAG_JOBS_VIEW_STATE: RagJobsTableViewState = {
 // "reachable but nothing served" case the header renders as an empty state.
 
 const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
-  name: "vaultspec-rag",
   version: null,
   installedVersion: "0.2.25",
   requiredVersion: "0.2.20",
@@ -184,7 +194,6 @@ const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
 };
 
 const INDEX_IDENTITY_EMPTY: RagServiceIdentityView = {
-  name: null,
   version: null,
   installedVersion: null,
   requiredVersion: null,
@@ -224,6 +233,63 @@ function logsView(over: Partial<RagLogsHookView>): RagLogsHookView {
     ...over,
   };
 }
+
+// --- panels-backendhealthpanel / panels-vaulthealthpanel -----------------------
+//
+// Authored rows and project-status inputs. Every row mirrors one the real
+// `deriveSystemStatusRows` emits from the served rollup, and the project cells run
+// the REAL `deriveVaultHealthView` over authored inputs so the closed status
+// vocabulary is exercised rather than restated.
+
+/** The slice `deriveVaultHealthView` actually reads, authored per cell. */
+const coreStatus = (over: Partial<CoreStatusView> = {}): CoreStatusView => ({
+  loading: false,
+  errored: false,
+  reachable: true,
+  ...over,
+});
+
+const ragStatus = (over: Partial<RagStatusView> = {}): RagStatusView => ({
+  loading: false,
+  errored: false,
+  degraded: false,
+  running: true,
+  ready: true,
+  presentation: { key: "operations:searchMaintenance.progress.working" },
+  ...over,
+});
+
+/** An authored rollup fed to the REAL `deriveSystemStatusRows`, so the cells prove
+ *  the shipped projection's tones rather than restating them. */
+const statusRollup = (over: Partial<StatusRollupView> = {}): StatusRollupView => ({
+  engineUnreachable: false,
+  degradations: [],
+  git: {
+    loading: false,
+    errored: false,
+    degraded: false,
+    dirty: false,
+    retry: () => {},
+  },
+  core: coreStatus(),
+  rag: ragStatus(),
+  ...over,
+});
+
+const HEALTH_ROWS_NORMAL = deriveSystemStatusRows(statusRollup());
+
+const HEALTH_ROWS_LOADING = deriveSystemStatusRows(
+  statusRollup({
+    core: coreStatus({ loading: true }),
+    rag: ragStatus({ loading: true, running: false, ready: false }),
+  }),
+);
+
+// The engine itself is unreachable, so every dependent row falls to `down` — the
+// honest cascade the projection already encodes.
+const HEALTH_ROWS_DEGRADED = deriveSystemStatusRows(
+  statusRollup({ engineUnreachable: true }),
+);
 
 export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
   "panels-a2alifecyclepanel": {
@@ -488,6 +554,66 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
         <IndexLogTailBody
           view={logsView({ lines: INDEX_LOG_LINES })}
           scopedToSelection
+        />
+      );
+    },
+  },
+
+  "panels-backendhealthpanel": {
+    note: "Mounts the exported wire-free BackendHealthPanelBody directly — the compact system-status block (advanced-service-console ADR D6) that replaced the retired Project-health rail chip's dashboard. The four states are authored SystemStatusRow props: loading is the pre-resolution 'unknown' tone on every row, degraded is the engine unreachable with its dependents unknown, empty is the honest no-rows case.",
+    render: (state) => {
+      if (state === "loading")
+        return <BackendHealthPanelBody rows={HEALTH_ROWS_LOADING} />;
+      if (state === "degraded")
+        return <BackendHealthPanelBody rows={HEALTH_ROWS_DEGRADED} />;
+      if (state === "empty") return <BackendHealthPanelBody rows={[]} />;
+      return <BackendHealthPanelBody rows={HEALTH_ROWS_NORMAL} />;
+    },
+  },
+
+  "panels-vaulthealthpanel": {
+    note: "Mounts the exported wire-free VaultHealthPanelBody directly — the project-health fold, moved out of the retired modal host. States are authored props over the real deriveVaultHealthView: loading is the checking tone, degraded is the engine unreachable, empty is healthy with no receipt yet, and the normal cell shows the needs-attention tone beside the receipt its own check produced.",
+    render: (state) => {
+      if (state === "loading") {
+        return (
+          <VaultHealthPanelBody
+            view={deriveVaultHealthView(coreStatus({ loading: true }))}
+            checking
+            receipt={null}
+            onCheck={() => {}}
+          />
+        );
+      }
+      if (state === "degraded") {
+        return (
+          <VaultHealthPanelBody
+            view={deriveVaultHealthView(coreStatus({ errored: true }))}
+            checking={false}
+            receipt={{
+              verb: "vault-check",
+              tone: "down",
+              text: "Project is unreachable.",
+            }}
+            onCheck={() => {}}
+          />
+        );
+      }
+      if (state === "empty") {
+        return (
+          <VaultHealthPanelBody
+            view={deriveVaultHealthView(coreStatus({}))}
+            checking={false}
+            receipt={null}
+            onCheck={() => {}}
+          />
+        );
+      }
+      return (
+        <VaultHealthPanelBody
+          view={deriveVaultHealthView(coreStatus({ vaultHealth: "warnings" }))}
+          checking={false}
+          receipt={{ verb: "vault-check", tone: "ok", text: "Checked 128 documents." }}
+          onCheck={() => {}}
         />
       );
     },

@@ -59,7 +59,7 @@ function expectedPanelStatus(
   panel: string,
   status: string,
 ): string {
-  return runtime.t("controlPanels.accessibility.panelStatus", {
+  return runtime.t("advanced.accessibility.panelStatus", {
     ns: "common",
     panel,
     status,
@@ -72,7 +72,7 @@ describe.sequential("StatusChip", () => {
     const englishName = expectedPanelStatus(
       rendered.runtime,
       en.common.agent.pending.label,
-      en.common.controlPanels.tones.needsAttention,
+      en.common.advanced.tones.needsAttention,
     );
     const button = screen.getByRole("button", { name: englishName });
     expect(screen.getByText("3")).toBeTruthy();
@@ -83,7 +83,7 @@ describe.sequential("StatusChip", () => {
     const frenchName = expectedPanelStatus(
       rendered.runtime,
       ltrTestResources.common.agent.pending.label,
-      ltrTestResources.common.controlPanels.tones.needsAttention,
+      ltrTestResources.common.advanced.tones.needsAttention,
     );
     expect(screen.getByRole("button", { name: frenchName })).toBe(button);
     expect(screen.getByText(ltrTestResources.common.agent.pending.label)).toBe(
@@ -96,7 +96,7 @@ describe.sequential("StatusChip", () => {
     const arabicName = expectedPanelStatus(
       rendered.runtime,
       rtlTestResources.common.agent.pending.label,
-      rtlTestResources.common.controlPanels.tones.needsAttention,
+      rtlTestResources.common.advanced.tones.needsAttention,
     );
     expect(screen.getByRole("button", { name: arabicName })).toBe(button);
     expect(screen.getByText(rtlTestResources.common.agent.pending.label)).toBe(
