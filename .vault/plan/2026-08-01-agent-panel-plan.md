@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:fd08188d3f1b9efbbd6a3258e36f15f33f2d64f0b3ff5265baf2dd45804a73fe'
+body_hash: 'sha256:dfe4f98d091be109435bb02b21e916101e8bf7318c80006cdf3b74b12aaedcb7'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -42,8 +42,8 @@ The mid-run structured question: new interrupt node + authoritative disclosure +
 - [x] `P03.S08` - Disclose the pending clarification (request id plus payload) on the run-status response and emit the clarification-pending relay frame; `src/vaultspec_a2a/api/`.
 - [x] `P03.S09` - Add the POST clarification respond gateway route mapping answers to Command resume of the parked node, mirroring the permissions respond route; `src/vaultspec_a2a/api/routes/gateway.py`.
 - [x] `P03.S10` - Test the park, disclose, respond, resume round trip over the real graph plus reload-recovery from status disclosure alone; `src/vaultspec_a2a/api/tests/`.
-- [ ] `P03.S40` - Consume the already-served presets-list profile summaries (id, display name, default flag, eligibility with reasons, per-role assignments carrying provider ids) in the frontend preset adapter and render the model picker from them, labeling mixed-provider profiles honestly and disabling ineligible ones with their served reasons; `frontend/src/stores/server/agent/a2aTeam.ts`.
-- [ ] `P03.S41` - Wire the clarification node into the research_adr topology as a pre-diverge ground decision point - the researcher role either emits a structured clarify sentinel (parking the run on the questionnaire) or proceeds to fan-out, with a deterministic-profile test forcing the ask; `src/vaultspec_a2a/graph/`.
+- [x] `P03.S40` - Consume the already-served presets-list profile summaries (id, display name, default flag, eligibility with reasons, per-role assignments carrying provider ids) in the frontend preset adapter and render the model picker from them, labeling mixed-provider profiles honestly and disabling ineligible ones with their served reasons; `frontend/src/stores/server/agent/a2aTeam.ts`.
+- [x] `P03.S41` - Wire the clarification node into the research_adr topology as a pre-diverge ground decision point - the researcher role either emits a structured clarify sentinel (parking the run on the questionnaire) or proceeds to fan-out, with a deterministic-profile test forcing the ask; `src/vaultspec_a2a/graph/`.
 
 ### Phase `P04` - Clarification contract events (engine)
 
@@ -83,7 +83,7 @@ The conversation grammar: bubbles, one-disclosure work stretches, stat cards, do
 - [x] `P07.S27` - Add an aggregate and per-file diffstat to the proposal card, client-computed from the served proposal-detail bodies (the wire deliberately serves no diff), with terminal-right actions; `frontend/src/app/authoring/ReviewStation.tsx`.
 - [x] `P07.S28` - Rehome run metadata (phase, roster with per-role model, sources, elapsed) into the collapsible docked run header region; `frontend/src/app/agent/TeamRunProgressContext.tsx`.
 - [x] `P07.S29` - Add render tests over authored states for each C-rule surface; `frontend/src/app/agent/`.
-- [ ] `P07.S42` - Consume the already-served run-status roles, frozen profile id, and per-role assignments in the team-run adapter and complete the run-header roster with per-role model (sources stay honestly absent - genuinely unserved); `frontend/src/stores/server/agent/a2aTeam.ts`.
+- [x] `P07.S42` - Consume the already-served run-status roles, frozen profile id, and per-role assignments in the team-run adapter and complete the run-header roster with per-role model (sources stay honestly absent - genuinely unserved); `frontend/src/stores/server/agent/a2aTeam.ts`.
 
 ### Phase `P08` - Questionnaire surface (frontend)
 
@@ -97,9 +97,9 @@ ClarificationCard bound to the D5 payload: in-transcript answer surface, authori
 
 Web research becomes real; providers earn their profiles; the two stitched end-to-end loops (agent-flow D6/D8).
 
-- [ ] `P09.S33` - Add the web-search and fetch MCP tool to the researcher and analyst harness with cited-evidence entry into the context package; `src/vaultspec_a2a/context/`.
-- [ ] `P09.S34` - Add live completed-turn tests for claude and kimi (spend-gated) admitting their profiles, with gemini, openai, and zhipu remaining unserved until theirs exist; `src/vaultspec_a2a/providers/tests/`.
-- [ ] `P09.S35` - Stitch the full cross-process verdict loop test (engine verdict, subscriber, worker HTTP, graph resume) and its clarification-loop sibling; `src/vaultspec_a2a/service_tests/`.
+- [x] `P09.S33` - Add the web-search and fetch MCP tool to the researcher and analyst harness with cited-evidence entry into the context package; `src/vaultspec_a2a/context/`.
+- [x] `P09.S34` - Add live completed-turn tests for claude and kimi (spend-gated) admitting their profiles, with gemini, openai, and zhipu remaining unserved until theirs exist; `src/vaultspec_a2a/providers/tests/`.
+- [x] `P09.S35` - Stitch the full cross-process verdict loop test (engine verdict, subscriber, worker HTTP, graph resume) and its clarification-loop sibling; `src/vaultspec_a2a/service_tests/`.
 
 ### Phase `P10` - Assembled verification and closeout
 
@@ -107,8 +107,9 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 
 - [ ] `P10.S36` - Live-drive Archetype A: open document, attach @-evidence, solo run, inline three-verdict review, applied change visible in the split, with screenshots persisted; `frontend/src/testing/`.
 - [ ] `P10.S37` - Live-drive Archetype B: team run through research, clarification questionnaire answer, ADR proposal acceptance with one request_changes loop, plan proposal, with screenshots persisted; `frontend/src/testing/`.
-- [ ] `P10.S39` - Repair the dev-tooling scanner roots (localization, px, tokens, figma-names, module-size) and the justfile invocation path so every frontend gate command actually runs, grandfathering pre-existing module-size violators explicitly; `frontend/dev/tooling/`.
+- [x] `P10.S39` - Repair the dev-tooling scanner roots (localization, px, tokens, figma-names, module-size) and the justfile invocation path so every frontend gate command actually runs, grandfathering pre-existing module-size violators explicitly; `frontend/dev/tooling/`.
 - [ ] `P10.S38` - Run full lint and live-wire gates in both repos and record Figma frame debt plus the compact read-only run-status affordance as named follow-ons; `frontend/package.json`.
+- [ ] `P10.S43` - Amend the agent-flow ADR D3 with the serving-versus-eligibility reconciliation and the provider set actually witnessed completing turns in the live-drives; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
 
 ## Parallelization
 
