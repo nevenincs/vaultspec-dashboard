@@ -180,7 +180,21 @@ const VERDICT_MARK_REM = "0.875rem";
  *
  *  These are Lucide, the structural family, so the icon law holds. They are
  *  PRESENTATION only: the wire verdict is unchanged and the label remains the
- *  accessible name, so the mark is `aria-hidden` and a reader hears the verb. */
+ *  accessible name, so the mark is `aria-hidden` and a reader hears the verb.
+ *
+ *  ATTESTATION, stated because the rule here is "follow the captures where they
+ *  show something, keep what we serve where they do not". NO capture contains an
+ *  approve/reject/request-changes moment — the four in `.tmp/ui-captures/` show a
+ *  composer, two navigation chromes, and a finished-run outcome card. So:
+ *    - ATTESTED: "Review changes" as the label on the affordance that opens a
+ *      finished change (`chatgpt-desktop.png`).
+ *    - UNATTESTED: every verdict label and every mark below. The labels are the
+ *      vocabulary we already served, shortened to drop a restated object
+ *      ("Approve proposal" → "Approve"); no verb here is coined, and the served
+ *      verdict set is untouched. The marks are the plainest reading of each verb
+ *      rather than a copied glyph.
+ *  If the owner has a view on the unattested half, it is a relabel and a swap of
+ *  this table — not a redesign. */
 const VERDICT_MARK: Readonly<
   Record<ReviewCommand, (props: { size: string }) => ReactNode>
 > = Object.freeze({
@@ -831,13 +845,22 @@ export function ReviewStationBody({
   );
 }
 
-/** The autonomy / operation-mode control (agentic-authoring-ux ADR D5, Figma
- *  `AutonomyControl` 1226:4520): a compact two-mode segmented control under an
- *  "Autonomy" eyebrow reflecting the SERVED worktree mode. Manual → "Review each
- *  change" (human approval required); autonomous → "Apply automatically". Plain
- *  labels mapped from the served mode token; the segments write via the mode seam
- *  with ambient provenance. A served "assisted" mode (not one of the two segments)
- *  shows neither active — honest, never a fabricated selection. */
+/** The approval-mode control (agentic-authoring-ux ADR D5, Figma `AutonomyControl`
+ *  1226:4520): a two-mode segmented control reflecting the SERVED worktree mode.
+ *  Manual → "Review each change" (human approval required); autonomous → "Apply
+ *  automatically". Plain labels mapped from the served mode token; the segments
+ *  write via the mode seam with ambient provenance. A served "assisted" mode (not
+ *  one of the two segments) shows neither active — honest, never a fabricated
+ *  selection.
+ *
+ *  THIS IS NOW THE ONLY PLACE A USER CHANGES APPROVAL MODE. The composer's
+ *  permission pill was deleted, so what was one entry point among two is the
+ *  single one, and a control buried as a queue detail no longer matches its
+ *  importance. It therefore states its CONSEQUENCE rather than only its options:
+ *  choosing "Apply automatically" means an agent's changes land without anyone
+ *  reading them, and that sentence belongs beside the switch that does it, not
+ *  discovered afterwards. The line is read from the active served mode, so it
+ *  describes what IS true right now — never a warning about a state nobody is in. */
 export function AutonomyControl({
   mode,
   onSelect,
@@ -882,6 +905,16 @@ export function AutonomyControl({
     ? safeMessage(resolveMessage, feedback.descriptor)
     : null;
 
+  // What the ACTIVE mode means, in one sentence. Only the automatic mode carries a
+  // consequence worth stating: manual review is the safe default and needs no
+  // caveat, and a served "assisted" mode is neither, so it says nothing rather
+  // than guessing. This is a statement of the current state, not a warning about
+  // a hypothetical one.
+  const consequence =
+    mode === "autonomous"
+      ? safeMessage(resolveMessage, { key: "common:agent.autonomyBanner.warning" })
+      : null;
+
   return (
     <div className="flex flex-col gap-fg-1" data-autonomy-control data-mode={mode}>
       <SectionLabel>{eyebrow}</SectionLabel>
@@ -896,6 +929,11 @@ export function AutonomyControl({
         <Segment value="manual">{reviewEach}</Segment>
         <Segment value="autonomous">{applyAutomatically}</Segment>
       </SegmentedToggle>
+      {consequence && (
+        <p className="text-meta text-state-stale" data-autonomy-consequence>
+          {consequence}
+        </p>
+      )}
       {feedbackMessage && feedback && (
         <p
           className={`text-meta ${feedback.tone === "error" ? "text-diff-remove" : "text-ink-muted"}`}

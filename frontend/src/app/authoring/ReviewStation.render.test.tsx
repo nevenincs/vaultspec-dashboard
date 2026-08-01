@@ -618,6 +618,28 @@ describe("verdict vocabulary and marks", () => {
   });
 });
 
+describe("AutonomyControl consequence", () => {
+  it("states what applying automatically means, beside the switch that does it", () => {
+    // This is the only place approval mode changes now that the composer's
+    // permission pill is gone. A user turning off review must read what that costs
+    // at the moment they do it, not discover it afterwards.
+    localized(<AutonomyControl mode="autonomous" onSelect={async () => accepted} />);
+    const line = document.querySelector("[data-autonomy-consequence]");
+    expect(line).not.toBeNull();
+    expect(line?.textContent).toContain("without your review");
+  });
+
+  it("says nothing when review is on, and nothing when the mode is neither", () => {
+    // Manual review is the safe default and needs no caveat; a served "assisted"
+    // mode is neither segment, so the control must not guess a consequence for it.
+    localized(<AutonomyControl mode="manual" onSelect={async () => accepted} />);
+    expect(document.querySelector("[data-autonomy-consequence]")).toBeNull();
+    cleanup();
+    localized(<AutonomyControl mode="assisted" onSelect={async () => accepted} />);
+    expect(document.querySelector("[data-autonomy-consequence]")).toBeNull();
+  });
+});
+
 describe("AutonomyControl", () => {
   it("renders plain labels, marks the served mode active, and emits the served token in three locales", async () => {
     const selected: OperationMode[] = [];
