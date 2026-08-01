@@ -1101,7 +1101,11 @@ export function Composer() {
       {/* S44: a held start says what is missing. The button being disabled is not an
           explanation, and the sibling's refusal would arrive too late to be one. */}
       {featureBlocked && !teamRunActive && (
-        <p className="text-meta text-ink-muted" role="status" data-composer-feature-hint>
+        <p
+          className="text-meta text-ink-muted"
+          role="status"
+          data-composer-feature-hint
+        >
           {resolveMessage({ key: MSG.featureUnbound }).message}
         </p>
       )}

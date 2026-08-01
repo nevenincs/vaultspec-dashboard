@@ -45,7 +45,11 @@ const ROSTER: readonly TeamRosterMember[] = [
 function recordIntervals() {
   const real = globalThis.setInterval;
   const delays: number[] = [];
-  globalThis.setInterval = ((handler: TimerHandler, timeout?: number, ...rest: unknown[]) => {
+  globalThis.setInterval = ((
+    handler: TimerHandler,
+    timeout?: number,
+    ...rest: unknown[]
+  ) => {
     delays.push(timeout ?? 0);
     return real(handler, timeout, ...(rest as []));
   }) as typeof globalThis.setInterval;

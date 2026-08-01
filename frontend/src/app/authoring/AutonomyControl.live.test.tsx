@@ -161,9 +161,7 @@ describe("autonomy control (live wire)", () => {
     // drives the same real seam through one extra click — the wire path is unchanged.
     const trigger = await waitFor(
       () => {
-        const el = document.querySelector<HTMLElement>(
-          "[data-agent-autonomy] button",
-        );
+        const el = document.querySelector<HTMLElement>("[data-agent-autonomy] button");
         expect(el).not.toBeNull();
         return el!;
       },

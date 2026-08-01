@@ -38,11 +38,13 @@ function seed(mode: string): void {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("fetch", async () =>
-    new Response(JSON.stringify({ data: {} }), {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }),
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response(JSON.stringify({ data: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
   );
 });
 
@@ -99,7 +101,9 @@ describe("the autonomy pill", () => {
       expect(trigger?.textContent).toContain("Review each change");
     });
     expect(
-      document.querySelector("[data-agent-autonomy]")?.getAttribute("data-autonomy-mode"),
+      document
+        .querySelector("[data-agent-autonomy]")
+        ?.getAttribute("data-autonomy-mode"),
     ).toBe("manual");
   });
 
@@ -109,7 +113,9 @@ describe("the autonomy pill", () => {
     await waitFor(() => {
       expect(document.querySelector("[data-agent-autonomy] button")).not.toBeNull();
     });
-    fireEvent.click(document.querySelector("[data-agent-autonomy] button") as HTMLElement);
+    fireEvent.click(
+      document.querySelector("[data-agent-autonomy] button") as HTMLElement,
+    );
     await waitFor(() => {
       expect(document.querySelector("[data-agent-autonomy-menu]")).not.toBeNull();
     });
@@ -123,7 +129,9 @@ describe("the autonomy pill", () => {
   it("renders nothing at all when no mode is observable", () => {
     // Unchanged from before S45: an unobservable mode yields no control rather
     // than a fabricated selection.
-    client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
     useViewStore.setState({ scope: SCOPE } as never);
     renderControl();
     expect(document.querySelector("[data-agent-autonomy]")).toBeNull();

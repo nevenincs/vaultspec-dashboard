@@ -82,7 +82,11 @@ function seed(presets: TeamPreset[], activeDocId: string | null): void {
         : [{ nodeId: activeDocId, provisional: false, scope: SCOPE }],
     activeDocId,
   } as never);
-  useAgentPanel.setState({ currentSessionId: null, teamRunId: null, teamRunScope: null });
+  useAgentPanel.setState({
+    currentSessionId: null,
+    teamRunId: null,
+    teamRunScope: null,
+  });
   useAgentComposer.setState({ mentions: [], commentBatch: null });
 }
 
@@ -154,7 +158,10 @@ describe("the standing feature chip", () => {
   });
 
   it("defaults the feature from the OPEN document and marks it as defaulted", async () => {
-    seed([servedPreset("vaultspec-adr-research", "document_authoring")], `doc:${DOC_STEM}`);
+    seed(
+      [servedPreset("vaultspec-adr-research", "document_authoring")],
+      `doc:${DOC_STEM}`,
+    );
     renderComposer();
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
@@ -184,12 +191,17 @@ describe("the standing feature chip", () => {
 
 describe("what actually reaches the wire", () => {
   it("puts the bound feature on run-start as feature_tag", async () => {
-    seed([servedPreset("vaultspec-adr-research", "document_authoring")], `doc:${DOC_STEM}`);
+    seed(
+      [servedPreset("vaultspec-adr-research", "document_authoring")],
+      `doc:${DOC_STEM}`,
+    );
     renderComposer();
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
 
-    const input = document.querySelector("[data-composer-input]") as HTMLTextAreaElement;
+    const input = document.querySelector(
+      "[data-composer-input]",
+    ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
     await waitFor(() => expect(startButton().disabled).toBe(false));
     fireEvent.click(startButton());
@@ -207,7 +219,9 @@ describe("what actually reaches the wire", () => {
     renderComposer();
     await pickPreset("vaultspec-doc-editor");
 
-    const input = document.querySelector("[data-composer-input]") as HTMLTextAreaElement;
+    const input = document.querySelector(
+      "[data-composer-input]",
+    ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Tidy this document." } });
     await waitFor(() => expect(startButton().disabled).toBe(false));
     fireEvent.click(startButton());
@@ -225,7 +239,9 @@ describe("what actually reaches the wire", () => {
     await pickPreset("vaultspec-adr-research");
     await waitFor(() => expect(chip()).not.toBeNull());
 
-    const input = document.querySelector("[data-composer-input]") as HTMLTextAreaElement;
+    const input = document.querySelector(
+      "[data-composer-input]",
+    ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
     // The start is held, and the composer says what is missing rather than leaving
     // a dead button to be interpreted.
@@ -256,7 +272,9 @@ describe("what actually reaches the wire", () => {
     await waitFor(() => {
       expect(chip()!.getAttribute("data-feature-tag")).toBe("agent-panel");
     });
-    const input = document.querySelector("[data-composer-input]") as HTMLTextAreaElement;
+    const input = document.querySelector(
+      "[data-composer-input]",
+    ) as HTMLTextAreaElement;
     fireEvent.change(input, { target: { value: "Draft the decision record." } });
     await waitFor(() => expect(startButton().disabled).toBe(false));
     fireEvent.click(startButton());

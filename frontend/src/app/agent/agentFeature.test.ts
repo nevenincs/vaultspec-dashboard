@@ -25,7 +25,11 @@ const preset = (capability?: string): TeamPreset => ({
 });
 
 const documents = [
-  { stem: "2026-08-01-agent-panel-plan", title: "Agent panel plan", feature: "agent-panel" },
+  {
+    stem: "2026-08-01-agent-panel-plan",
+    title: "Agent panel plan",
+    feature: "agent-panel",
+  },
   { stem: "2026-07-31-orphan-research", title: "Orphan", feature: null },
 ];
 
@@ -48,9 +52,9 @@ describe("presetRequiresFeatureTag", () => {
 
 describe("featureFromOpenDocument", () => {
   it("reads the open document's feature", () => {
-    expect(
-      featureFromOpenDocument("doc:2026-08-01-agent-panel-plan", documents),
-    ).toBe("agent-panel");
+    expect(featureFromOpenDocument("doc:2026-08-01-agent-panel-plan", documents)).toBe(
+      "agent-panel",
+    );
   });
 
   it("is null for a document filed under no feature", () => {
