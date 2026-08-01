@@ -423,7 +423,16 @@ export function refreshAfterAcceptedWorkspaceSwitch(queryClient: QueryClient): v
 export function useEngineStatus() {
   return useQuery({
     queryKey: engineKeys.status(),
-    queryFn: () => engineClient.status(),
+    // The round trip is timed HERE, in the sole wire client, because it is the
+    // one identity fact about the app's own server that no route can serve: the
+    // engine cannot observe a browser's latency to it. It rides on the snapshot
+    // rather than a module-level counter so a change re-renders its reader
+    // normally. Everything else the status console shows is served.
+    queryFn: async () => {
+      const startedAt = performance.now();
+      const status = await engineClient.status();
+      return { ...status, observedRoundTripMs: performance.now() - startedAt };
+    },
     refetchInterval: errorRecoveryRefetchInterval,
   });
 }

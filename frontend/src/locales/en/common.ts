@@ -1,5 +1,11 @@
 export const common = {
   systemStatus: {
+    description:
+      "What each program reports about itself. Anything a program does not report is named as unreported rather than filled in.",
+    sections: {
+      programs: "Programs",
+      data: "Available data",
+    },
     labels: {
       application: "Application",
       documents: "Documents",
@@ -8,9 +14,51 @@ export const common = {
       projectTools: "Project tools",
       search: "Search",
     },
+    programs: {
+      app: {
+        name: "Application",
+        summary:
+          "Reads your project and answers everything this window shows. Runs on your machine.",
+      },
+      projectTools: {
+        name: "Project tools",
+        summary:
+          "Run whenever the app needs to read or write the documents in your project.",
+      },
+      index: {
+        name: "Index",
+        summary:
+          "Keeps the search index up to date and answers lookups by meaning. Runs on its own.",
+      },
+      agents: {
+        name: "Agents",
+        summary: "Runs the writing agents. Installed and updated separately.",
+      },
+    },
+    facts: {
+      address: "Address",
+      managedBy: "Managed by",
+      port: "Port",
+      process: "Process",
+      requires: "Requires",
+      responseTime: "Response time (ms)",
+      version: "Version",
+    },
+    ownership: {
+      elsewhere: "Another app",
+      thisApp: "This app",
+    },
+    gaps: {
+      app: "Reports no version, no address, and no running time.",
+      projectTools:
+        "Started only when needed, so it reports no address and no running time.",
+      index: "Reports no running time.",
+      agents: "Reports no running time.",
+    },
     states: {
       available: "Available",
       checking: "Checking…",
+      notInstalled: "Not installed",
       reachable: "Available",
       statusUnavailable: "Status unavailable",
       unavailable: "Unavailable",

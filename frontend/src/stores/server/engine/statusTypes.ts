@@ -29,7 +29,19 @@ export interface EngineStatus {
     watcher?: string;
     index?: string;
     jobs?: number;
+    // The indexing program's OWN listening port and process id, served verbatim
+    // under `/status` `backends.rag`. These are the only per-program address
+    // facts on the whole status surface, and they identify a real process on the
+    // machine — which is why the system-status console renders them. OPTIONAL:
+    // absent means the engine did not report one, never zero and never "unknown".
+    port?: number;
+    pid?: number;
   };
+  // Round-trip time in milliseconds for the status read that produced THIS
+  // snapshot, MEASURED by this client — the engine cannot observe a browser's own
+  // round trip, so this is never a served value and is always labelled as this
+  // window's own timing where it is shown. Absent until the first read settles.
+  observedRoundTripMs?: number;
 }
 
 export interface OpsResult {

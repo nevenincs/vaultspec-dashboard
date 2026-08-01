@@ -33,12 +33,11 @@ import {
   VaultHealthPanelBody,
   deriveVaultHealthView,
 } from "@app/app/panels/VaultHealthPanel";
+import { type CoreStatusView } from "@app/stores/server/queries";
 import {
-  deriveSystemStatusRows,
-  type CoreStatusView,
-  type RagStatusView,
-  type StatusRollupView,
-} from "@app/stores/server/queries";
+  deriveSystemPrograms,
+  type SystemProgramsInput,
+} from "@app/stores/server/systemPrograms";
 
 import type { SpecimenDef } from "../registry";
 
@@ -198,10 +197,13 @@ function logsView(over: Partial<RagLogsHookView>): RagLogsHookView {
 
 // --- panels-backendhealthpanel / panels-vaulthealthpanel -----------------------
 //
-// Authored rows and project-status inputs. Every row mirrors one the real
-// `deriveSystemStatusRows` emits from the served rollup, and the project cells run
-// the REAL `deriveVaultHealthView` over authored inputs so the closed status
-// vocabulary is exercised rather than restated.
+// Authored inputs fed to the REAL projections, so the cells prove what the shipped
+// code emits rather than restating it. The system-status cells exercise
+// `deriveSystemPrograms`, whose whole point is that a program row states the
+// identity facts the wire carried and NAMES the ones it did not — so the normal
+// cell authors a fully-reporting machine (a port, a process, versions, a
+// discovered agent gateway) and the empty cell authors the opposite: everything
+// reachable, nothing identifying reported. Both are states the real wire produces.
 
 /** The slice `deriveVaultHealthView` actually reads, authored per cell. */
 const coreStatus = (over: Partial<CoreStatusView> = {}): CoreStatusView => ({
@@ -211,46 +213,97 @@ const coreStatus = (over: Partial<CoreStatusView> = {}): CoreStatusView => ({
   ...over,
 });
 
-const ragStatus = (over: Partial<RagStatusView> = {}): RagStatusView => ({
-  loading: false,
-  errored: false,
-  degraded: false,
-  running: true,
-  ready: true,
-  presentation: { key: "operations:searchMaintenance.progress.working" },
-  ...over,
-});
-
-/** An authored rollup fed to the REAL `deriveSystemStatusRows`, so the cells prove
- *  the shipped projection's tones rather than restating them. */
-const statusRollup = (over: Partial<StatusRollupView> = {}): StatusRollupView => ({
+/** A fully-reporting machine: every fact the status envelope can carry is
+ *  present, which is what a healthy installed setup actually serves. */
+const programsInput = (
+  over: Partial<SystemProgramsInput> = {},
+): SystemProgramsInput => ({
   engineUnreachable: false,
+  observedRoundTripMs: 7.4,
   degradations: [],
-  git: {
-    loading: false,
-    errored: false,
-    degraded: false,
-    dirty: false,
-    retry: () => {},
+  coreLoading: false,
+  coreErrored: false,
+  coreReachable: true,
+  ragLoading: false,
+  ragDegraded: false,
+  ragErrored: false,
+  ragPort: 8766,
+  ragPid: 75828,
+  ragInstalledVersion: "vaultspec-rag v0.4.1",
+  declaredComponent: {
+    name: "core",
+    floor: "0.1.36",
+    version: "0.1.55",
+    meets_floor: true,
   },
-  core: coreStatus(),
-  rag: ragStatus(),
+  agentComponent: {
+    name: "agent",
+    floor: "v1",
+    version: null,
+    ...{
+      installed: true,
+      gateway: {
+        endpoint: "127.0.0.1:8823",
+        pid: 41288,
+        ownership: "owned",
+      },
+      release_set: { version: "0.3.2", active_generation: "generation-042" },
+    },
+  } as SystemProgramsInput["declaredComponent"],
+  agentAvailable: true,
   ...over,
 });
 
-const HEALTH_ROWS_NORMAL = deriveSystemStatusRows(statusRollup());
+const PROGRAMS_NORMAL = deriveSystemPrograms(programsInput());
 
-const HEALTH_ROWS_LOADING = deriveSystemStatusRows(
-  statusRollup({
-    core: coreStatus({ loading: true }),
-    rag: ragStatus({ loading: true, running: false, ready: false }),
+const PROGRAMS_LOADING = deriveSystemPrograms(
+  programsInput({
+    observedRoundTripMs: null,
+    coreLoading: true,
+    ragLoading: true,
+    ragPort: undefined,
+    ragPid: undefined,
+    ragInstalledVersion: null,
+    declaredComponent: undefined,
+    agentComponent: undefined,
+    agentAvailable: false,
   }),
 );
 
-// The engine itself is unreachable, so every dependent row falls to `down` — the
-// honest cascade the projection already encodes.
-const HEALTH_ROWS_DEGRADED = deriveSystemStatusRows(
-  statusRollup({ engineUnreachable: true }),
+// The app's own server is unreachable, so every dependent row falls to `down` —
+// the honest cascade the projection already encodes. There is also no snapshot to
+// read identity from when the read itself failed, so NO facts survive: authoring
+// a port beside "Unavailable" would review a state the app cannot reach.
+const PROGRAMS_DEGRADED = deriveSystemPrograms(
+  programsInput({
+    engineUnreachable: true,
+    observedRoundTripMs: null,
+    ragPort: undefined,
+    ragPid: undefined,
+    ragInstalledVersion: null,
+    declaredComponent: undefined,
+    agentComponent: undefined,
+    agentAvailable: false,
+  }),
+);
+
+// Everything reachable, nothing identifying reported: no port, no process, no
+// versions, no agent install. This is the state the gap lines exist for.
+const PROGRAMS_EMPTY = deriveSystemPrograms(
+  programsInput({
+    observedRoundTripMs: null,
+    ragPort: undefined,
+    ragPid: undefined,
+    ragInstalledVersion: null,
+    declaredComponent: undefined,
+    agentComponent: {
+      name: "agent",
+      floor: "v1",
+      version: null,
+      ...{ installed: false },
+    } as SystemProgramsInput["declaredComponent"],
+    agentAvailable: false,
+  }),
 );
 
 export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
@@ -472,14 +525,14 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
   },
 
   "panels-backendhealthpanel": {
-    note: "Mounts the exported wire-free BackendHealthPanelBody directly — the compact system-status block (advanced-service-console ADR D6) that replaced the retired Project-health rail chip's dashboard. The four states are authored SystemStatusRow props: loading is the pre-resolution 'unknown' tone on every row, degraded is the engine unreachable with its dependents unknown, empty is the honest no-rows case.",
+    note: "Mounts the exported wire-free BackendHealthPanelBody directly — the system-status console (advanced-service-console ADR D6) as rebuilt for the owner's \"cryptic / unrelatable\" note. States are authored SystemProgramsInput run through the real deriveSystemPrograms: normal is a fully-reporting machine (port, process, versions, a discovered agent gateway), loading is the pre-resolution unknown tone, degraded is the app's own server unreachable cascading to every dependent, and empty is everything reachable but nothing identifying reported — the state the gap lines exist for.",
     render: (state) => {
       if (state === "loading")
-        return <BackendHealthPanelBody rows={HEALTH_ROWS_LOADING} />;
+        return <BackendHealthPanelBody view={PROGRAMS_LOADING} />;
       if (state === "degraded")
-        return <BackendHealthPanelBody rows={HEALTH_ROWS_DEGRADED} />;
-      if (state === "empty") return <BackendHealthPanelBody rows={[]} />;
-      return <BackendHealthPanelBody rows={HEALTH_ROWS_NORMAL} />;
+        return <BackendHealthPanelBody view={PROGRAMS_DEGRADED} />;
+      if (state === "empty") return <BackendHealthPanelBody view={PROGRAMS_EMPTY} />;
+      return <BackendHealthPanelBody view={PROGRAMS_NORMAL} />;
     },
   },
 
