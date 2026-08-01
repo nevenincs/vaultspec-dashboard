@@ -34,6 +34,13 @@
 //     chevron instead. The label follows the reference; the glyph follows the
 //     behaviour.
 //
+// SCALE. This card renders INSIDE the agent transcript, so it is built at the
+// transcript's own scale rather than at panel-chrome scale: the title is
+// `text-body-strong` and the aggregate and file rows are `text-body`, matching the
+// conversation text around them. A card set in `text-meta` reads correct in
+// isolation and visibly wrong in place — it is content in the conversation, not
+// chrome beside it. If the transcript's scale moves, this moves with it.
+//
 // Layer ownership: dumb app chrome over `useProposalDetail`. No wire, no raw tiers.
 // The CARD itself is wire-free and prop-driven so the review desk can render it.
 
@@ -169,7 +176,7 @@ function StatPair({
   const floorTitle = truncated && !atLeast.usedFallback ? atLeast.message : undefined;
   return (
     <span
-      className="flex shrink-0 items-center gap-fg-1 text-caption tabular-nums"
+      className="flex shrink-0 items-center gap-fg-1 text-body tabular-nums"
       data-diffstat-pair
       data-diffstat-truncated={truncated ? "" : undefined}
       title={floorTitle}
@@ -214,7 +221,7 @@ export function ProposalDiffstatCard({ view, action }: ProposalDiffstatCardProps
       className="flex flex-col overflow-hidden rounded-fg-sm border border-rule bg-paper-raised"
       data-proposal-diffstat
     >
-      <div className="flex items-start gap-fg-2 px-fg-2 py-fg-2">
+      <div className="flex items-start gap-fg-3 px-fg-3 py-fg-3">
         {/* The rounded-square tile: a quiet container that gives the card a
             fixed left edge, so a stack of these aligns down the page. */}
         <span
@@ -225,7 +232,7 @@ export function ProposalDiffstatCard({ view, action }: ProposalDiffstatCardProps
           <FileDiff size={TILE_GLYPH_REM} />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-fg-0-5">
-          <span className="truncate text-body font-medium text-ink" data-diffstat-title>
+          <span className="truncate text-body-strong text-ink" data-diffstat-title>
             {title.message}
           </span>
           <StatPair
@@ -246,15 +253,12 @@ export function ProposalDiffstatCard({ view, action }: ProposalDiffstatCardProps
           return (
             <li
               key={file.label}
-              className="flex items-center justify-between gap-fg-2 px-fg-2 py-fg-1-5"
+              className="flex items-center justify-between gap-fg-3 px-fg-3 py-fg-2"
               data-diffstat-file={file.label}
             >
               {/* Directory muted, filename dark: the row is one string, so it
                   truncates as one, but the eye lands on the name. */}
-              <span
-                className="min-w-0 truncate font-mono text-caption"
-                title={file.label}
-              >
+              <span className="min-w-0 truncate font-mono text-body" title={file.label}>
                 {path.directory && (
                   <span className="text-ink-faint" data-diffstat-directory>
                     {authoredDisplayText(path.directory)}

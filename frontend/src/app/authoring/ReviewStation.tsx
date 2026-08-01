@@ -40,6 +40,8 @@ import {
   StateBlock,
 } from "../kit";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
+import { Check, MessageSquareReply, Send, Undo2, X } from "lucide-react";
+
 import { DiffPanel } from "./DiffPanel";
 import { ProposalDiffstat } from "./ProposalDiffstat";
 import type { ReactNode } from "react";
@@ -163,6 +165,40 @@ function outcomeFeedback(
     : { tone: "refused", descriptor: REVIEW_STATION_MESSAGES.actionNotAllowed };
 }
 
+/** Rendered edge length of a verdict mark, sized to sit on the button's text
+ *  baseline rather than dominate the label beside it. */
+const VERDICT_MARK_REM = "0.875rem";
+
+/** The mark for each verdict.
+ *
+ *  The owner's note asks the approval vocabulary AND its iconography to follow
+ *  the reference desktop agents, whose verdict marks are the plainest possible
+ *  reading of the act: a tick accepts, a cross declines, a reply-arrow sends it
+ *  back with a message, an upward send commits it, and a return-arrow undoes it.
+ *  Nothing here is decorative and nothing is a brand mark — each one restates its
+ *  label so the row is readable at a glance without reading every word.
+ *
+ *  These are Lucide, the structural family, so the icon law holds. They are
+ *  PRESENTATION only: the wire verdict is unchanged and the label remains the
+ *  accessible name, so the mark is `aria-hidden` and a reader hears the verb. */
+const VERDICT_MARK: Readonly<
+  Record<ReviewCommand, (props: { size: string }) => ReactNode>
+> = Object.freeze({
+  approve: ({ size }) => <Check size={size} aria-hidden />,
+  reject: ({ size }) => <X size={size} aria-hidden />,
+  edit_proposal: ({ size }) => <MessageSquareReply size={size} aria-hidden />,
+  request_apply: ({ size }) => <Send size={size} aria-hidden />,
+  submit_for_review: ({ size }) => <Send size={size} aria-hidden />,
+  create_rollback: ({ size }) => <Undo2 size={size} aria-hidden />,
+});
+
+/** The mark for a command, or nothing when the command is outside the closed set
+ *  (a newer engine must never make this client draw an unmarked guess). */
+function VerdictMark({ command }: { command: ReviewCommand }) {
+  const Mark = VERDICT_MARK[command];
+  return Mark === undefined ? null : <Mark size={VERDICT_MARK_REM} />;
+}
+
 function ActionButton({
   eligibility,
   command,
@@ -204,6 +240,7 @@ function ActionButton({
       data-action={command}
       data-allowed={eligibility.allowed}
     >
+      <VerdictMark command={command} />
       {label}
     </Button>
   );
@@ -493,6 +530,7 @@ export function ProposalCard({
                 onClick={() => setPending({ command: "create_rollback", proposal })}
                 data-action="create_rollback"
               >
+                <VerdictMark command="create_rollback" />
                 {label}
               </Button>
             );

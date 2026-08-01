@@ -263,7 +263,7 @@ describe("ProposalCard", () => {
       expect(text).not.toContain(privateValue);
     }
     expect(screen.queryByRole("button", { name: "Action unavailable" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Approve proposal" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
   });
 
   it("requests changes via an INLINE in-card composer (no modal) and submits the edit verdict", async () => {
@@ -335,7 +335,7 @@ describe("ProposalCard", () => {
         actions={actionCallbacks(counts)}
       />,
     );
-    const approve = screen.getByRole("button", { name: "Approve proposal" });
+    const approve = screen.getByRole("button", { name: "Approve" });
     expect(approve.getAttribute("disabled")).not.toBeNull();
     expect(approve.getAttribute("title")).toBe("Refresh the proposal and try again.");
 
@@ -349,8 +349,8 @@ describe("ProposalCard", () => {
         />
       </I18nextProvider>,
     );
-    expect(screen.queryByRole("button", { name: "Approve proposal" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Reject proposal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
   });
 
   it("reaches every review action with zero prior editing (ambient provenance)", () => {
@@ -364,9 +364,9 @@ describe("ProposalCard", () => {
         actions={actionCallbacks(counts)}
       />,
     );
-    const reject = screen.getByRole("button", { name: "Reject proposal" });
+    const reject = screen.getByRole("button", { name: "Reject" });
     expect(reject.getAttribute("disabled")).toBeNull();
-    const approve = screen.getByRole("button", { name: "Approve proposal" });
+    const approve = screen.getByRole("button", { name: "Approve" });
     expect(approve.getAttribute("disabled")).toBeNull();
   });
 
@@ -394,16 +394,16 @@ describe("ProposalCard", () => {
       proposal: needsReviewProposal({
         eligibility: [{ command: "approve", allowed: true }],
       }),
-      trigger: "Approve proposal",
-      confirm: "Approve proposal",
+      trigger: "Approve",
+      confirm: "Approve",
     },
     {
       name: "reject",
       proposal: needsReviewProposal({
         eligibility: [{ command: "reject", allowed: true }],
       }),
-      trigger: "Reject proposal",
-      confirm: "Reject proposal",
+      trigger: "Reject",
+      confirm: "Reject",
     },
     {
       name: "apply",
@@ -411,8 +411,8 @@ describe("ProposalCard", () => {
         status: "approved",
         eligibility: [{ command: "request_apply", allowed: true }],
       }),
-      trigger: "Apply changes",
-      confirm: "Apply changes",
+      trigger: "Apply",
+      confirm: "Apply",
     },
     {
       name: "rollback",
@@ -421,8 +421,8 @@ describe("ProposalCard", () => {
         eligibility: [],
         rollback: { available: true, child_key: "child_1" },
       }),
-      trigger: "Prepare rollback",
-      confirm: "Prepare rollback",
+      trigger: "Revert",
+      confirm: "Revert",
     },
   ] as const;
 
@@ -466,10 +466,10 @@ describe("ProposalCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve proposal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
-        name: "Approve proposal",
+        name: "Approve",
       }),
     );
     const feedback = await screen.findByText(
@@ -496,10 +496,10 @@ describe("ProposalCard", () => {
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve proposal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
-        name: "Approve proposal",
+        name: "Approve",
       }),
     );
     const feedback = await screen.findByText(
@@ -561,6 +561,60 @@ describe("ProposalCard", () => {
     expect(slot?.querySelector("[data-toggle-diff]")).not.toBeNull();
     // Exactly one disclosure in the card: the fallback row must not double up.
     expect(document.querySelectorAll("[data-toggle-diff]").length).toBe(1);
+  });
+});
+
+describe("verdict vocabulary and marks", () => {
+  it("names each verdict by the act alone, without restating the object", () => {
+    // The captured reference agents label a verdict with the verb only — the card
+    // you are looking at IS the proposal, so "Approve proposal" restates it. This
+    // pins the shortening so a later well-meaning "be more explicit" pass cannot
+    // quietly drift back to the longer form.
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    expect(screen.getByRole("button", { name: "Approve" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reject" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Approve proposal" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject proposal" })).toBeNull();
+  });
+
+  it("marks each verdict without stealing its accessible name", () => {
+    // The mark restates the label for the eye; a screen reader must still hear the
+    // verb and nothing else, so every mark is aria-hidden and the name is the word.
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    const approve = screen.getByRole("button", { name: "Approve" });
+    const mark = approve.querySelector("svg");
+    expect(mark).not.toBeNull();
+    expect(mark?.getAttribute("aria-hidden")).toBe("true");
+    expect(approve.textContent).toBe("Approve");
+  });
+
+  it("sends the unchanged wire verdict behind the new label", () => {
+    // Re-labelling and re-iconing is presentation. The engine-side verdict set is a
+    // contract, so the shortened label must still dispatch `approve`.
+    const counts = emptyCounts();
+    localized(
+      <ProposalCard
+        proposal={needsReviewProposal()}
+        actions={actionCallbacks(counts)}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Approve" }),
+    );
+    expect(counts.approve).toBe(1);
   });
 });
 

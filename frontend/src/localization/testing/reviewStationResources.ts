@@ -140,8 +140,8 @@ export const ltrReviewStationResources = {
 } as const;
 
 export const ltrReviewStationGuardedActions = {
-  reviewStationApproveProposal: "Approuver la proposition",
-  reviewStationApplyChanges: "Appliquer les modifications",
+  reviewStationApproveProposal: "Approuver",
+  reviewStationApplyChanges: "Appliquer",
   reviewStationPrepareRollback: "Préparer l’annulation",
 } as const;
 

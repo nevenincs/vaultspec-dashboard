@@ -152,13 +152,13 @@ export const documents = {
   },
   guardedActions: {
     moveCommentToThisSection: "Move comment to this section",
-    reviewStationApproveProposal: "Approve proposal",
-    reviewStationApplyChanges: "Apply changes",
-    reviewStationPrepareRollback: "Prepare rollback",
+    reviewStationApproveProposal: "Approve",
+    reviewStationApplyChanges: "Apply",
+    reviewStationPrepareRollback: "Revert",
   },
   destructiveActions: {
     deleteComment: "Delete comment",
-    reviewStationRejectProposal: "Reject proposal",
+    reviewStationRejectProposal: "Reject",
   },
   browserModes: {
     documents: "Documents",
