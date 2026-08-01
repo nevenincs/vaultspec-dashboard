@@ -4,7 +4,7 @@ tags:
   - '#approval-shape-reconciliation'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:a505ad3cbaf3e26891630987eb6877f611f8f7ef8618fc0a09750e33d4d0ce02'
+body_hash: 'sha256:b5d6a04d42d2cff2dc07be5b7e5eb8b701fdbfbed3fd81b29afb474989d1c82c'
 tier: L3
 related:
   - '[[2026-08-01-approval-shape-reconciliation-adr]]'
@@ -51,15 +51,15 @@ Add the ReviewerApprovalRequired variant so the manual non-destructive case stop
 
 Remove the modelled-but-unreachable session_override parameter from the executor and permission-input request types, the served policy projection fields, and the mode-resolution helpers that only ever received None in production, then amend the operation-modes ADR to state the layer is rescinded until a real consumer exists.
 
-- [ ] `W01.P03.S09` - Delete resolve_effective_mode and session_override_is_narrowing, remove session_override and session_override_ignored from PolicyDecisionProjection, and simplify decide_changeset_approval and decision_reason to drop the removed parameter; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
-- [ ] `W01.P03.S10` - Remove the session_override field from ExecuteToolCallRequest and its plumb through into the tool permission input construction; `engine/crates/vaultspec-api/src/authoring/executor.rs`.
-- [ ] `W01.P03.S11` - Remove the session_override field from ToolPermissionRequestInput and use scope_mode directly instead of the deleted mode resolution helper; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
-- [ ] `W01.P03.S12` - Update the decide_changeset_approval call to drop the removed session_override argument; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
-- [ ] `W01.P03.S13` - Update the served policy projection call to decide_changeset_approval to drop the removed session_override argument; `engine/crates/vaultspec-api/src/authoring/projections/mod.rs`.
-- [ ] `W01.P03.S14` - Remove the session_override None line from the ExecuteToolCallRequest construction in the agent tool execute route; `engine/crates/vaultspec-api/src/authoring/http/handlers3.rs`.
-- [ ] `W01.P03.S15` - Remove the session_override None line from the tool permission request fixture; `engine/crates/vaultspec-api/src/authoring/session/janitor.rs`.
-- [ ] `W01.P03.S16` - Remove the session_override None line from the HTTP test helper tool permission request construction; `engine/crates/vaultspec-api/src/authoring/http/tests/helpers2.rs`.
-- [ ] `W01.P03.S17` - Add a forward amendment note stating the per session override layer is rescinded until a real consumer exists, leaving the original clause intact per the clause level amendment convention; `.vault/adr/2026-07-02-agentic-operation-modes-adr.md`.
+- [x] `W01.P03.S09` - Delete resolve_effective_mode and session_override_is_narrowing, remove session_override and session_override_ignored from PolicyDecisionProjection, and simplify decide_changeset_approval and decision_reason to drop the removed parameter; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [x] `W01.P03.S10` - Remove the session_override field from ExecuteToolCallRequest and its plumb through into the tool permission input construction; `engine/crates/vaultspec-api/src/authoring/executor.rs`.
+- [x] `W01.P03.S11` - Remove the session_override field from ToolPermissionRequestInput and use scope_mode directly instead of the deleted mode resolution helper; `engine/crates/vaultspec-api/src/authoring/permissions.rs`.
+- [x] `W01.P03.S12` - Update the decide_changeset_approval call to drop the removed session_override argument; `engine/crates/vaultspec-api/src/authoring/modes.rs`.
+- [x] `W01.P03.S13` - Update the served policy projection call to decide_changeset_approval to drop the removed session_override argument; `engine/crates/vaultspec-api/src/authoring/projections/mod.rs`.
+- [x] `W01.P03.S14` - Remove the session_override None line from the ExecuteToolCallRequest construction in the agent tool execute route; `engine/crates/vaultspec-api/src/authoring/http/handlers3.rs`.
+- [x] `W01.P03.S15` - Remove the session_override None line from the tool permission request fixture; `engine/crates/vaultspec-api/src/authoring/session/janitor.rs`.
+- [x] `W01.P03.S16` - Remove the session_override None line from the HTTP test helper tool permission request construction; `engine/crates/vaultspec-api/src/authoring/http/tests/helpers2.rs`.
+- [x] `W01.P03.S17` - Add a forward amendment note stating the per session override layer is rescinded until a real consumer exists, leaving the original clause intact per the clause level amendment convention; `.vault/adr/2026-07-02-agentic-operation-modes-adr.md`.
 
 ## Wave `W02` - Dashboard frontend mirror
 
@@ -69,10 +69,10 @@ Adopt the split approval-requirement token in the served policy vocabulary and s
 
 Widen the served ApprovalRequirement union, add the reviewer-approval label set, and correct the manual-mode human-approval label now that it denotes the destructive floor rather than the general manual gate.
 
-- [ ] `W02.P04.S18` - Widen the ApprovalRequirement union to include reviewer_approval_required; `frontend/src/stores/server/authoring/wireTypes.ts`.
-- [ ] `W02.P04.S19` - Add reviewer approval descriptor entries to POLICY_DESCRIPTORS for all three modes and repoint the manual human approval entry at the destructive floor wording; `frontend/src/stores/server/authoring/reviewStationVocabulary.ts`.
-- [ ] `W02.P04.S20` - Add the three reviewer approval policy copy strings and reword the manual human approval string off its former reviewer approval phrasing; `frontend/src/locales/en/documents.ts`.
-- [ ] `W02.P04.S21` - Extend the exhaustive ApprovalRequirement coverage test to include the new reviewer approval required token; `frontend/src/stores/server/authoring/reviewStationVocabulary.test.ts`.
+- [x] `W02.P04.S18` - Widen the ApprovalRequirement union to include reviewer_approval_required; `frontend/src/stores/server/authoring/wireTypes.ts`.
+- [x] `W02.P04.S19` - Add reviewer approval descriptor entries to POLICY_DESCRIPTORS for all three modes and repoint the manual human approval entry at the destructive floor wording; `frontend/src/stores/server/authoring/reviewStationVocabulary.ts`.
+- [x] `W02.P04.S20` - Add the three reviewer approval policy copy strings and reword the manual human approval string off its former reviewer approval phrasing; `frontend/src/locales/en/documents.ts`.
+- [x] `W02.P04.S21` - Extend the exhaustive ApprovalRequirement coverage test to include the new reviewer approval required token; `frontend/src/stores/server/authoring/reviewStationVocabulary.test.ts`.
 
 ### Phase `W02.P05` - Strip session_override from the served projection
 
