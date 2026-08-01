@@ -184,7 +184,7 @@ function ToolPermissionPrompt({ record }: { record: AgentToolCallRecord }) {
       data-transcript-permission={record.toolCallId}
       className="flex flex-col gap-fg-1-5 rounded-fg-md border border-rule bg-paper-raised px-fg-2 py-fg-1-5"
     >
-      <p className="flex items-center gap-fg-1 text-label text-ink">
+      <p className="flex items-center gap-fg-1 text-body text-ink">
         <span aria-hidden className="size-fg-2 shrink-0 rounded-full bg-state-stale" />
         {
           resolveMessage({
@@ -247,7 +247,7 @@ export function ToolCallEntry({
         onToggle={() => setOpen((value) => !value)}
         leading={<Wrench size={12} aria-hidden className="shrink-0 text-ink-faint" />}
         label={
-          <span className="truncate text-label text-ink">
+          <span className="truncate text-body text-ink">
             {authoredDisplayText(record.tool)}
           </span>
         }
@@ -271,7 +271,7 @@ export function ToolCallEntry({
             <SectionLabel>
               {resolveMessage({ key: MSG.toolInput }).message}
             </SectionLabel>
-            <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-caption text-ink-muted">
+            <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-meta text-ink-muted">
               {input}
             </pre>
           </div>
@@ -281,7 +281,7 @@ export function ToolCallEntry({
             <SectionLabel>
               {resolveMessage({ key: MSG.toolResult }).message}
             </SectionLabel>
-            <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-caption text-ink-muted">
+            <pre className="overflow-x-auto rounded-fg-sm bg-paper-sunken p-fg-2 text-meta text-ink-muted">
               {result}
             </pre>
           </div>

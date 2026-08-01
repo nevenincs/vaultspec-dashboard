@@ -167,6 +167,54 @@ export function deriveTeamRoster(
   });
 }
 
+/** One C2 work stretch: a consecutive RUN of thinking/tool activity between
+ *  visible answers, collapsed to ONE disclosure row in the transcript. */
+export interface TeamWorkStretchGroup {
+  readonly kind: "stretch";
+  readonly key: string;
+  readonly entries: readonly (TeamThinkingEntry | TeamToolEntry)[];
+  /** True while any grouped entry is still live (drives the pulsing label). */
+  readonly live: boolean;
+  /** The grouped TOOL count (the collapsed label's "Used N tools" figure). */
+  readonly toolCount: number;
+}
+
+export type TeamTranscriptBlock = TeamWorkStretchGroup | TeamMessageEntry;
+
+/**
+ * Group the flat activity entries into C2/C3 transcript blocks: consecutive
+ * thinking/tool entries fold into ONE work stretch (reasoning interleaves with
+ * tool steps inside it — no lane of its own), and each agent answer stands
+ * alone between stretches. Pure, so the reducer tests drive it directly.
+ */
+export function groupTeamEntries(
+  entries: readonly TeamActivityEntry[],
+): TeamTranscriptBlock[] {
+  const blocks: TeamTranscriptBlock[] = [];
+  let current: (TeamThinkingEntry | TeamToolEntry)[] = [];
+  const flush = () => {
+    if (current.length === 0) return;
+    blocks.push({
+      kind: "stretch",
+      key: `stretch:${current[0]!.key}`,
+      entries: current,
+      live: current.some((entry) => entry.live),
+      toolCount: current.filter((entry) => entry.kind === "tool").length,
+    });
+    current = [];
+  };
+  for (const entry of entries) {
+    if (entry.kind === "message") {
+      flush();
+      blocks.push(entry);
+    } else {
+      current.push(entry);
+    }
+  }
+  flush();
+  return blocks;
+}
+
 /** A mutable accumulator entry (internal; frozen into the readonly view at end). */
 type MutableEntry =
   | {

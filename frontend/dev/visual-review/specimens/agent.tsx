@@ -651,7 +651,7 @@ export const agentSpecimens: Readonly<Record<string, SpecimenDef>> = {
 
   "agent-teamruntranscript": {
     host: "h-[30rem] w-[26rem] overflow-y-auto",
-    note: "Container over the panel team-run slot: it renders nothing without a bound run, so the cell binds one through the real setAgentTeamRun() store action and clears it on unmount. Progress arrives through TeamRunProgressContext, the same context the production provider fills from the relay, supplied here with authored frames so no stream is faked. Normal is a terminal run carrying all three entry kinds assembleTeamRun groups (reasoning, one completed tool call, a streamed answer); loading is the same run two frames in and not terminal; empty is a bound run that has emitted nothing yet; degraded appends the engine degraded status frame, the sticky poll-fallback lane.",
+    note: "Container over the panel team-run slot: it renders nothing without a bound run, so the cell binds one through the real setAgentTeamRun() store action and clears it on unmount. Progress arrives through TeamRunProgressContext, the same context the production provider fills from the relay, supplied here with authored frames so no stream is faked. Renders the ONE transcript kit (user bubble via UserTurnBubble, answers via AgentMessageBlock) with C2/C3 grouping: consecutive reasoning/tool activity folds into one work-stretch disclosure per run of work. Normal is a terminal run carrying all three entry kinds; loading is the same run two frames in and not terminal; empty is a bound run that has emitted nothing yet; degraded appends the engine degraded status frame, the sticky poll-fallback lane.",
     render: (state) => <TeamRunSpecimen state={state} />,
   },
 

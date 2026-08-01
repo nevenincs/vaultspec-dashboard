@@ -40,6 +40,7 @@ import {
 } from "../../stores/view/agentTranscript";
 import { Spinner } from "../kit";
 import { AgentTurnProposal } from "./ProposalCard";
+import { AgentMessageBlock, UserTurnBubble } from "./transcriptKit";
 import { WorkStretchDisclosure } from "./WorkStretchDisclosure";
 import { deriveWorkStretch } from "./workStretch";
 
@@ -187,20 +188,18 @@ function TranscriptTurn({ view }: { view: TranscriptTurnView }) {
       data-transcript-turn={view.turnId}
       data-transcript-live={view.live ? "" : undefined}
     >
-      {/* C1: the USER turn is a right-aligned accent bubble. Bubble-vs-open text
-          plus alignment is the ONLY speaker cue — there are no name labels. */}
-      <div className="flex justify-end" data-transcript-prompt>
-        <p className="max-w-[85%] rounded-fg-md bg-accent/12 px-fg-3 py-fg-2 text-body text-ink">
-          {view.prompt}
-        </p>
-      </div>
-      {/* C1: the ASSISTANT side is full-width, unbubbled, open text. The served
-          turn summary is the only assistant-authored text this plane carries; the
-          final-message position below stays honestly empty until a wire serves one. */}
+      {/* C1 via the ONE kit (msatvw0t/msatwk38): the same user bubble and open
+          agent text the team transcript renders — the two transcripts share
+          their primitives and cannot drift apart. */}
+      <UserTurnBubble text={view.prompt} />
+      {/* The served turn summary is the only assistant-authored text this plane
+          carries; the final-message position below stays honestly empty until a
+          wire serves one. */}
       {view.summary !== null && view.summary.length > 0 && (
-        <p className="text-body text-ink" data-transcript-assistant>
-          {view.summary}
-        </p>
+        <AgentMessageBlock
+          text={view.summary}
+          data={{ attribute: "data-transcript-assistant" }}
+        />
       )}
       <WorkStretchDisclosure stretch={stretch} live={view.live} />
       {/* Final text: no wire surface serves the agent's message yet (a2a relay
@@ -239,7 +238,7 @@ export function Transcript({ snapshot }: { snapshot: SessionSnapshot }) {
   return (
     <div className="flex flex-col gap-fg-2">
       {view.windowFull && (
-        <p className="px-fg-2 text-caption text-ink-faint" data-transcript-window>
+        <p className="px-fg-2 text-meta text-ink-faint" data-transcript-window>
           {resolveMessage({ key: MSG.showingRecent }).message}
         </p>
       )}
