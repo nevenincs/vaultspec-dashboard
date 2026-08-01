@@ -80,14 +80,25 @@ export function TeamRunHeader({ roster }: { roster: readonly TeamRosterMember[] 
   const progress = useTeamRunProgress();
   const terminal = progress.terminal;
   const [open, setOpen] = useState(true);
-  // A ticking clock only while the run is live, so an in-flight elapsed reading is
-  // not frozen at first paint. It stops the moment the run settles.
+  // A ticking clock only while the run is live AND the sibling has actually served
+  // a start time, so an in-flight elapsed reading is not frozen at first paint. It
+  // stops the moment the run settles.
+  //
+  // The second condition is not defensive padding. a2a's `RunStatusResponse` serves
+  // no start time at all — no `started_at_ms`, no `started_at`, no `created_at` —
+  // so `startedAtMs` is undefined on every real response and the elapsed branch
+  // below is never taken. Gated only on `terminal`, this interval re-rendered the
+  // header, and therefore the whole roster, once a second for the entire life of
+  // every active run, to recompute a value nothing could read. Gating on the value
+  // that DRIVES the clock means the timer exists only once there is a clock to
+  // drive it.
+  const startedAtMs = progress.status?.started_at_ms;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    if (terminal) return;
+    if (terminal || startedAtMs === undefined) return;
     const timer = setInterval(() => setNowMs(Date.now()), 1_000);
     return () => clearInterval(timer);
-  }, [terminal]);
+  }, [terminal, startedAtMs]);
 
   // Collapse when the run settles: a finished run's metadata is reference, and the
   // transcript should get the room back.
@@ -100,9 +111,11 @@ export function TeamRunHeader({ roster }: { roster: readonly TeamRosterMember[] 
   const phase = progress.status?.semantic_phase ?? progress.status?.status ?? null;
   if (phase === null && roster.length === 0) return null;
 
-  // Elapsed is real or absent. `started_at_ms` is served by the sibling; without it
-  // there is no run clock to read, and the header simply says nothing about time.
-  const startedAtMs = progress.status?.started_at_ms;
+  // Elapsed is real or absent. a2a does NOT serve a start time today, so this is
+  // undefined in practice and the header says nothing about time — the honest
+  // reading, kept ready for a sibling that starts serving one. The alternative,
+  // measuring from when the panel began watching, would report the age of the
+  // subscription and call it the age of the run.
   const elapsed =
     startedAtMs === undefined
       ? null
