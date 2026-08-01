@@ -316,9 +316,11 @@ export const documents = {
   },
   reviewStation: {
     diffstat: {
-      added: "+{{count, number}}",
+      added: "+{{lines, number}}",
       aggregate: "Changed lines",
-      removed: "−{{count, number}}",
+      atLeast: "At least this many. The file was too large to read in full.",
+      floorMarker: "Or more",
+      removed: "−{{lines, number}}",
     },
     accessibility: {
       loadingQueue: "Loading approvals",

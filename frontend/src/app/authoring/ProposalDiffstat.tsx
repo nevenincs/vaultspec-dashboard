@@ -30,6 +30,8 @@ const MSG = {
   aggregate: "documents:reviewStation.diffstat.aggregate",
   added: "documents:reviewStation.diffstat.added",
   removed: "documents:reviewStation.diffstat.removed",
+  atLeast: "documents:reviewStation.diffstat.atLeast",
+  floorMarker: "documents:reviewStation.diffstat.floorMarker",
 } as const;
 
 export interface FileDiffstat {
@@ -81,6 +83,15 @@ export function deriveProposalDiffstat(
   };
 }
 
+/**
+ * One `+X −Y` pair.
+ *
+ * When either served body was byte-capped the counts are a FLOOR, not a
+ * measurement — and that has to be legible to a HUMAN deciding whether to approve,
+ * not just present as a data attribute. So a truncated pair carries a visible
+ * trailing marker AND a tooltip saying what the marker means; the attribute stays
+ * for tests.
+ */
 function StatPair({
   added,
   removed,
@@ -91,17 +102,29 @@ function StatPair({
   truncated: boolean;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
-  const addedLabel = resolveMessage({ key: MSG.added, values: { count: added } });
-  const removedLabel = resolveMessage({ key: MSG.removed, values: { count: removed } });
+  const addedLabel = resolveMessage({ key: MSG.added, values: { lines: added } });
+  const removedLabel = resolveMessage({
+    key: MSG.removed,
+    values: { lines: removed },
+  });
+  const atLeast = resolveMessage({ key: MSG.atLeast });
+  const floorMarker = resolveMessage({ key: MSG.floorMarker });
   if (addedLabel.usedFallback || removedLabel.usedFallback) return null;
+  const floorTitle = truncated && !atLeast.usedFallback ? atLeast.message : undefined;
   return (
     <span
       className="flex shrink-0 items-center gap-fg-1 text-caption tabular-nums"
       data-diffstat-pair
       data-diffstat-truncated={truncated ? "" : undefined}
+      title={floorTitle}
     >
       <span className="text-state-complete">{addedLabel.message}</span>
       <span className="text-state-broken">{removedLabel.message}</span>
+      {floorTitle !== undefined && !floorMarker.usedFallback && (
+        <span className="text-ink-faint" title={floorTitle} data-diffstat-floor>
+          {floorMarker.message}
+        </span>
+      )}
     </span>
   );
 }

@@ -509,6 +509,8 @@ export const ENGLISH_MESSAGE_POLICY = {
   // C4 stat card: the aggregate eyebrow and the two signed line tallies. The
   // tallies are numbers with a sign, not sentences, so they carry no verb.
   "documents:reviewStation.diffstat.aggregate": { role: "label" },
+  "documents:reviewStation.diffstat.atLeast": { role: "description" },
+  "documents:reviewStation.diffstat.floorMarker": { role: "label" },
   "documents:reviewStation.diffstat.added": { role: "label" },
   "documents:reviewStation.diffstat.removed": { role: "label" },
   "documents:reviewStation.statuses.failed": { role: "status" },

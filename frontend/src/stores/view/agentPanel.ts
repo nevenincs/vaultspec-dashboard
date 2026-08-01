@@ -20,6 +20,7 @@ import {
   toggleShellAgentSlot,
   useShellCenterSlot,
 } from "./shellLayout";
+import { clearClarificationRecaps } from "./clarificationRecaps";
 
 /** The two panel views: the running conversation and
  *  the folded-in cross-run "Pending changes" inbox. Local chrome — the transcript
@@ -162,9 +163,13 @@ export function setAgentCurrentSession(sessionId: string | null): void {
   useAgentPanel.getState().setCurrentSession(sessionId);
 }
 
-/** Bind (or clear, with `null`) the active a2a team run the panel renders. */
+/** Bind (or clear, with `null`) the active a2a team run the panel renders. Leaving a
+ *  run drops the clarification recaps captured while viewing it: they are scoped to
+ *  that viewing, and a new binding must never inherit another run's decisions. */
 export function setAgentTeamRun(
   run: { runId: string; prompt: string | null; scope: string } | null,
 ): void {
+  const previous = useAgentPanel.getState().teamRunId;
+  if (previous !== null && previous !== run?.runId) clearClarificationRecaps(previous);
   useAgentPanel.getState().setTeamRun(run);
 }

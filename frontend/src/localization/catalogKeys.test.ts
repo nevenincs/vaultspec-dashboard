@@ -688,6 +688,8 @@ const EXPECTED_CATALOG_KEYS = [
   "documents:reviewStation.statuses.conflicted",
   "documents:reviewStation.statuses.draft",
   "documents:reviewStation.diffstat.aggregate",
+  "documents:reviewStation.diffstat.atLeast",
+  "documents:reviewStation.diffstat.floorMarker",
   "documents:reviewStation.diffstat.added",
   "documents:reviewStation.diffstat.removed",
   "documents:reviewStation.statuses.failed",

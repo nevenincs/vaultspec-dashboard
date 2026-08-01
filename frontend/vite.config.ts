@@ -134,6 +134,14 @@ export default defineConfig(({ command }) => ({
     // round-trips deterministic — a parallel file can't overwrite the global a
     // sibling just wrote and is about to read back.
     fileParallelism: false,
+    // Bound the worker POOL as well as file parallelism. Observed, not theorised: an
+    // unbounded whole-suite run repeatedly killed the shared engine partway through
+    // — hundreds of ECONNREFUSED/socket-hang-up failures across surfaces the run had
+    // not touched — while the same suite under `maxWorkers: 4` completed, and faster
+    // (1722s vs 2697s). Pinned here rather than left as a flag someone has to
+    // remember: a suite that only passes when invoked correctly is the same defect
+    // class as a gate that cannot go red.
+    maxWorkers: 4,
     // The engine cold-indexes the fixture on boot; give startup-bound suites room.
     testTimeout: 15_000,
     hookTimeout: 35_000,

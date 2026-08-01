@@ -4,9 +4,12 @@ const body = "body" as const;
 export const ltrReviewStationResources = {
   accessibility: { loadingQueue: "Chargement des approbations" },
   diffstat: {
-    added: "+{{count, number}}",
+    added: "+{{lines, number}}",
     aggregate: "Lignes modifiées",
-    removed: "−{{count, number}}",
+    atLeast:
+      "Au moins autant. Le fichier était trop volumineux pour être lu en entier.",
+    floorMarker: "Ou plus",
+    removed: "−{{lines, number}}",
   },
   actions: {
     hideChanges: "Masquer les modifications",
@@ -145,9 +148,11 @@ export const ltrReviewStationDestructiveActions = {
 export const rtlReviewStationResources = {
   accessibility: { loadingQueue: "جارٍ تحميل الموافقات" },
   diffstat: {
-    added: "+{{count, number}}",
+    added: "+{{lines, number}}",
     aggregate: "الأسطر المعدّلة",
-    removed: "−{{count, number}}",
+    atLeast: "على الأقل هذا العدد. الملف أكبر من أن يُقرأ بالكامل.",
+    floorMarker: "أو أكثر",
+    removed: "−{{lines, number}}",
   },
   actions: {
     hideChanges: "إخفاء التغييرات",

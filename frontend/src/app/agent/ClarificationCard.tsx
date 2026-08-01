@@ -16,6 +16,13 @@
 //     with no relay memory involved. The relay's `clarification-pending` frame only
 //     forces the re-read.
 //
+// The C8 recap is deliberately NOT held here. This card's mount condition is the
+// pending disclosure, and answering successfully invalidates run-status — whose
+// refetch clears that disclosure and unmounts the card. A recap in local state would
+// be destroyed by the very success it records. It is written to
+// `stores/view/clarificationRecaps` instead, which outlives this component; see that
+// module for the honest durability bar.
+//
 // Layer ownership: dumb app chrome over the run-progress context plus the one
 // clarification mutation. It reads no raw `tiers` and holds no wire state.
 
@@ -24,6 +31,7 @@ import { useState } from "react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import { useRespondToClarification } from "../../stores/server/agent/a2aTeam";
+import { recordClarificationRecap } from "../../stores/view/clarificationRecaps";
 import { Button } from "../kit";
 import {
   CLARIFICATION_MAX_ANSWER_CHARS,
@@ -98,7 +106,6 @@ export function ClarificationCard({
   const resolveMessage = useLocalizedMessageResolver();
   const respond = useRespondToClarification();
   const [draft, setDraft] = useState<ClarificationDraft>({});
-  const [recap, setRecap] = useState<ClarificationRecapEntry[] | null>(null);
   const [failed, setFailed] = useState(false);
 
   const region = resolveMessage({ key: MSG.region });
@@ -107,9 +114,6 @@ export function ClarificationCard({
   const requiredLabel = resolveMessage({ key: MSG.required });
   const placeholder = resolveMessage({ key: MSG.answerPlaceholder });
 
-  // Once answered, the card IS the recap — the questions do not linger beside their
-  // own answers.
-  if (recap !== null) return <ClarificationRecap entries={recap} />;
   if (region.usedFallback || heading.usedFallback || submitLabel.usedFallback) {
     return null;
   }
@@ -138,7 +142,14 @@ export function ClarificationCard({
         setFailed(true);
         return;
       }
-      setRecap(clarificationRecap(pending.questions, body));
+      // Hand the recap to the store BEFORE the invalidated status refetch lands and
+      // unmounts this card. The transcript renders it from there, so the record
+      // outlives the component that captured it.
+      recordClarificationRecap(
+        runId,
+        pending.requestId,
+        clarificationRecap(pending.questions, body),
+      );
     } catch {
       setFailed(true);
     }
