@@ -29,6 +29,7 @@ import { create } from "zustand";
 import {
   engineClient,
   readTierAvailability,
+  tiersFromQuery,
   type OpsResult,
   type RagLogsEnvelope,
   type TiersBlock,
@@ -361,6 +362,22 @@ export function requestedJob(
 /** The semantic tier is unavailable in a brokered rag response. */
 export function ragSemanticOffline(data: BrokeredResult<unknown> | undefined): boolean {
   return data !== undefined && readTierAvailability(data.tiers, ["semantic"]).degraded;
+}
+
+/** The semantic tier is unavailable, reading BOTH a successful envelope's tiers AND
+ *  a fresh error envelope's tiers — never a bare transport fault (this module's own
+ *  documented contract: "success OR a fresh error envelope", never guessed). A
+ *  component holding a LIVE query result (not just its settled `.data`) must read
+ *  through this, not `ragSemanticOffline(query.data)` alone: `query.data` goes
+ *  `undefined` on a genuine fetch failure, so a query-error-only check for the tier
+ *  is invisible to that call and the surface silently falls through to "empty"
+ *  instead of degraded (`tiersFromQuery` is the shared precedence: a fresh error's
+ *  tiers win over a stale held-success block). */
+export function ragQuerySemanticOffline(query: {
+  data?: BrokeredResult<unknown> | undefined;
+  error?: unknown;
+}): boolean {
+  return readTierAvailability(tiersFromQuery(query), ["semantic"]).degraded;
 }
 
 /** Whether any brokered rag control read reports the semantic tier unavailable. */

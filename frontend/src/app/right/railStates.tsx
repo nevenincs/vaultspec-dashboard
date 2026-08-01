@@ -11,7 +11,10 @@
 import { Check, Skeleton, SkeletonBar, SkeletonRow, StateBlock } from "../kit";
 import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 
-export type RailState = "populated" | "empty" | "degraded" | "loading";
+/** The four canonical modes (state-mode-uniformity ADR D1). `typical` — NOT
+ *  "populated": the ADR fixes one vocabulary used identically in Figma and code, and
+ *  a second spelling for the same mode is how the two drift apart. */
+export type RailState = "typical" | "empty" | "degraded" | "loading";
 
 /** Empty — "Nothing in flight": the positive settled state, shared glyph + one sentence. */
 export function RailEmpty() {
@@ -20,28 +23,38 @@ export function RailEmpty() {
   return <StateBlock mode="empty" icon={Check} title={title} message={message} />;
 }
 
-/** Degraded — the shared caution mark (TriangleAlert, stale tone) + title + one sentence,
- *  uniform with every other surface (was a bespoke caution dot). */
+/** Degraded — the shared caution mark (TriangleAlert, stale tone) centered over ONE
+ *  sentence, at the SAME glyph size every other warning message uses. No title above
+ *  it: a heading plus a sentence saying the same thing reads as two failures. */
 export function RailDegraded() {
-  const title = useLocalizedMessage({ key: "common:rail.states.degradedTitle" });
   const message = useLocalizedMessage({ key: "common:rail.states.degradedMessage" });
-  return <StateBlock mode="degraded" title={title} message={message} />;
+  return <StateBlock mode="degraded" message={message} />;
 }
 
-/** Loading — UI-only skeleton mimicking the two card sections; no spinner, no copy. */
+/** Loading — UI-only skeleton mimicking the two card sections; no spinner, no copy.
+ *
+ *  The ghost sits on the SAME grid the settled rail does: the eyebrow bar takes the
+ *  section header's `px-fg-1` inset and the rows take that plus the body's own
+ *  `px-fg-1` (RAIL_SECTION_HEADER_CLASS / RAIL_SECTION_BODY_CLASS), so nothing steps
+ *  sideways when the data lands. The rows carry the card FOOTPRINT with no fill —
+ *  a raised plate under a shimmer would read as settled content. */
 export function RailLoading() {
   const label = useLocalizedMessage({ key: "common:rail.states.loadingActivity" });
   return (
-    <Skeleton label={label} className="gap-[1.125rem] pb-fg-2 pt-fg-4">
+    <Skeleton label={label} className="gap-[1.125rem] px-fg-1 pb-fg-2 pt-fg-4">
       <div className="flex flex-col gap-fg-2">
         <SkeletonBar width="w-[5.25rem]" height="h-[0.5625rem]" />
-        <SkeletonRow boxed />
-        <SkeletonRow boxed />
+        <div className="flex flex-col gap-fg-2 px-fg-1 pt-fg-0-5">
+          <SkeletonRow boxed />
+          <SkeletonRow boxed />
+        </div>
       </div>
       <div className="flex flex-col gap-fg-2">
         <SkeletonBar width="w-[4.125rem]" height="h-[0.5625rem]" />
-        <SkeletonRow boxed />
-        <SkeletonRow boxed />
+        <div className="flex flex-col gap-fg-2 px-fg-1 pt-fg-0-5">
+          <SkeletonRow boxed />
+          <SkeletonRow boxed />
+        </div>
       </div>
     </Skeleton>
   );

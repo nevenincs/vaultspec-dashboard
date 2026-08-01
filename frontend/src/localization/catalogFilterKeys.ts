@@ -25,6 +25,7 @@ export const EXPECTED_FILTER_KEYS = [
   "graph:filters.sections.health",
   "graph:filters.sections.kind",
   "graph:filters.sections.planStatus",
+  "graph:filters.states.degraded",
   "graph:filters.states.empty",
   "graph:filters.states.loading",
   "graph:filters.statuses.accepted",

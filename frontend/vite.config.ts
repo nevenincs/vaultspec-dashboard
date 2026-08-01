@@ -115,8 +115,23 @@ export default defineConfig(({ command }) => ({
     },
   },
   test: {
+    // The dev domain resolves production code through the `@app` alias. That alias
+    // is declared in tsconfig (for the type-checker) and in vite.dev.config.ts (for
+    // the dev server); vitest reads THIS file, so it needs its own copy or every
+    // dev-domain test fails to resolve. Scoped to `test` deliberately: the
+    // production `resolve` stays untouched, so no shipped bundle gains an alias it
+    // does not need.
+    alias: { "@app": resolve(import.meta.dirname, "src") },
     environment: "node",
-    include: ["src/**/*.test.{ts,tsx}", "spike/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: [
+      "src/**/*.test.{ts,tsx}",
+      "dev/**/*.test.{ts,tsx}",
+      "dev/**/*.guard.test.ts",
+    ],
+    // The localization scanner's fixtures include files DELIBERATELY named
+    // `*.test.tsx` — they exist to prove the scanner excludes test files. They are
+    // scanner INPUT, not suites, so the dev glob above must not collect them.
+    exclude: ["**/node_modules/**", "**/dist/**", "dev/tooling/fixtures/**"],
     // happy-dom enforces the Same-Origin Policy on fetch; the DOM-bearing tests
     // call the live engine on a loopback port (a different origin), so SOP is
     // disabled for the test environment. Only affects happy-dom-env files.

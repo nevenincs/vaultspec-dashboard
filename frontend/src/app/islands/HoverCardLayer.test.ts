@@ -96,9 +96,6 @@ describe("cardModelFromEvidence — binding identity+evidence projection (S50)",
 
   const evidence: NodeEvidence = {
     documents: [{ path: ".vault/research/2026-foo-research.md", doc_type: "research" }],
-    code_locations: [
-      { path: "src/lib.rs", symbol: "build", line: 42, state: "resolved" },
-    ],
     commits: [{ sha: "abcdef1234", subject: "land it" }],
     tiers,
   };
@@ -116,7 +113,6 @@ describe("cardModelFromEvidence — binding identity+evidence projection (S50)",
     const model = cardModelFromEvidence(adr, evidence)!;
     expect(model.evidence).toEqual({
       documentCount: 1,
-      codeLocationCount: 1,
       commitCount: 1,
       commitSubjects: ["land it"],
     });
@@ -128,17 +124,15 @@ describe("cardModelFromEvidence — binding identity+evidence projection (S50)",
   it("uses zero semantic counts when evidence is absent or empty", () => {
     expect(cardModelFromEvidence(adr, undefined)!.evidence).toMatchObject({
       documentCount: 0,
-      codeLocationCount: 0,
       commitCount: 0,
     });
     expect(
       cardModelFromEvidence(adr, {
         documents: [],
-        code_locations: [],
         commits: [],
         tiers,
       })!.evidence,
-    ).toMatchObject({ documentCount: 0, codeLocationCount: 0, commitCount: 0 });
+    ).toMatchObject({ documentCount: 0, commitCount: 0 });
   });
 
   it("fails closed instead of falling back to the id for a missing title", () => {

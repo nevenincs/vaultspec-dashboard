@@ -60,7 +60,7 @@ import { openDocTab } from "../../stores/view/tabs";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Dialog } from "../chrome/Dialog";
 import { usePointerCoarse } from "../chrome/RowMenuDisclosure";
-import { Button } from "../kit";
+import { Button, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { DocTypeMark } from "../../scene/field/markComponents";
 
 // The doc-type glyph reads one step down from the reader ink at a compact list
@@ -588,19 +588,32 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
       </p>
 
       {!hasFeature ? (
-        <p className="text-label text-ink-muted">
-          {message({
+        // Nothing chosen yet — the shared empty treatment (state-mode-uniformity
+        // ADR D3/D4): glyph + one plain sentence, never ad-hoc text.
+        <StateBlock
+          mode="empty"
+          layout="inline"
+          message={message({
             key: "documents:createDialog.states.chooseFeatureForCoverage",
           })}
-        </p>
+        />
       ) : degraded ? (
-        <p className="text-label text-ink-muted">
-          {message({ key: "documents:createDialog.states.coverageUnavailable" })}
-        </p>
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message={message({
+            key: "documents:createDialog.states.coverageUnavailable",
+          })}
+        />
       ) : loading && !coverage ? (
-        <p className="text-label text-ink-muted">
-          {message({ key: "documents:createDialog.states.checkingCoverage" })}
-        </p>
+        // Loading is UI-only (ADR D2): a skeleton mimicking the coverage rows, no
+        // "Checking…" copy on screen — the label is screen-reader-only.
+        <Skeleton
+          label={message({ key: "documents:createDialog.states.checkingCoverage" })}
+        >
+          <SkeletonRow width="w-2/3" />
+          <SkeletonRow width="w-1/2" />
+        </Skeleton>
       ) : coverage && anyPresent ? (
         <ul className="flex flex-col gap-fg-1">
           {coverage.types.map((entry) => (
@@ -612,9 +625,11 @@ export function CoverageCard({ feature, coverageView }: CoverageCardProps) {
           ))}
         </ul>
       ) : (
-        <p className="text-label text-ink-muted">
-          {message({ key: "documents:createDialog.states.emptyFeature" })}
-        </p>
+        <StateBlock
+          mode="empty"
+          layout="inline"
+          message={message({ key: "documents:createDialog.states.emptyFeature" })}
+        />
       )}
     </section>
   );

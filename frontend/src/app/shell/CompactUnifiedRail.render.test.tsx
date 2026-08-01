@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
 //
-// Compact unified-rail composition guard (activity-rail-realignment ADR D6). On the
-// compact shell the SAME `FrameworkStatusCluster` the desktop rail pins joins the
-// unified rail as its FOOTER: a shrink-0 sibling BELOW the scrolling content region,
-// never inside it, so it stays fixed at the rail's bottom edge while the Status/Browse
-// stack scrolls. The footer chips grow to the 2.75rem touch floor on coarse pointers.
-// Rendered against the REAL engine over the fixture vault (no mocked wire); only
-// `matchMedia` is stubbed to force the compact viewport class + a coarse pointer.
+// Compact unified-rail composition guard. The Home pane is the Status + Browse scroll
+// and NOTHING else: the framework status cluster (Search service / Review / Vault
+// health) was pulled from compact by owner review — it reports development-framework
+// health, not the corpus state a phone-sized Home pane exists to show. These tests pin
+// that removal so the strip cannot drift back in, and pin the scroll region that
+// remains. Rendered against the REAL engine over the fixture vault (no mocked wire);
+// only `matchMedia` is stubbed to force the compact viewport class + a coarse pointer.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -44,7 +44,7 @@ function matched(media: string): MediaQueryList {
   } as unknown as MediaQueryList;
 }
 
-describe("CompactUnifiedRail composition (live engine, ADR D6)", () => {
+describe("CompactUnifiedRail composition (live engine)", () => {
   let scope: string;
   const realMatchMedia = window.matchMedia;
   beforeAll(async () => {
@@ -80,37 +80,22 @@ describe("CompactUnifiedRail composition (live engine, ADR D6)", () => {
     window.matchMedia = realMatchMedia;
   });
 
-  it("pins the framework status cluster as the rail FOOTER, outside the scroll region", async () => {
+  it("owns the Status/Browse scroll region", async () => {
     renderRail();
     const nav = await screen.findByRole("navigation", { name: "Home" }, ENGINE_WAIT);
 
     const scrollRegion = nav.querySelector("[data-compact-rail-scroll]");
-    const cluster = nav.querySelector("[data-framework-status-cluster]");
     expect(scrollRegion).toBeTruthy();
-    expect(cluster).toBeTruthy();
-
-    // The cluster is a DIRECT child of the rail (the pinned footer), NOT nested inside
-    // the scrolling content region — so it never scrolls with the Status/Browse stack.
-    expect(cluster!.parentElement).toBe(nav);
-    expect(scrollRegion!.contains(cluster)).toBe(false);
-    // Ordered after the scroll region (footer position).
-    expect(
-      scrollRegion!.compareDocumentPosition(cluster!) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(scrollRegion!.parentElement).toBe(nav);
   });
 
-  it("renders the framework footer chips at the coarse-pointer touch floor", async () => {
+  it("carries NO framework status cluster — the strip is desktop-only", async () => {
     renderRail();
     await screen.findByRole("navigation", { name: "Home" }, ENGINE_WAIT);
 
-    // Three footer chips: Search service, Pending changes, Vault health. Backend health was
-    // pulled from the footer (user UX decision); it surfaces via the Cmd+K palette.
-    const chips = document.querySelectorAll("[data-framework-chip]");
-    expect(chips.length).toBe(3);
-    // On a coarse primary pointer every chip carries the 2.75rem tap-target floor.
-    for (const chip of chips) {
-      expect(chip.className).toContain("min-h-[2.75rem]");
-    }
+    // Neither the cluster nor any of its chips (Search service, Review, Vault health)
+    // may reappear on compact; their panels stay reachable through the palette.
+    expect(document.querySelector("[data-framework-status-cluster]")).toBeNull();
+    expect(document.querySelectorAll("[data-framework-chip]").length).toBe(0);
   });
 });

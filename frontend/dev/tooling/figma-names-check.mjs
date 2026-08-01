@@ -15,7 +15,7 @@
 //   - the nodeId is well-formed (\d+:\d+);
 //   - no two non-alias headers cite the same nodeId.
 //
-// Usage: node scripts/figma-names-check.mjs
+// Usage: node dev/tooling/figma-names-check.mjs
 
 import { readdirSync, statSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

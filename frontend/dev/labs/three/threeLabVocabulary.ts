@@ -1,18 +1,16 @@
-import type { AppearanceControlSection } from "../../scene/three/appearanceControls";
-import type { ForceControlSection } from "../../scene/three/forceControls";
-import type { LabGraphControlId } from "../../scene/three/graphControlSchema";
-import type {
-  CountMessageDescriptor,
-  MessageDescriptor,
-} from "../../platform/localization/message";
+import type { AppearanceControlSection } from "@app/scene/three/appearanceControls";
+import type { ForceControlSection } from "@app/scene/three/forceControls";
+import type { LabGraphControlId } from "@app/scene/three/graphControlSchema";
+import type { MessageDescriptor } from "@app/platform/localization/message";
+import type { LabCountMessageDescriptor, LabMessageDescriptor } from "./labMessage";
 import {
   GRAPH_CONTROLS_MESSAGES,
   UI_GRAPH_CONTROL_MESSAGES,
-} from "./graphControlsVocabulary";
+} from "@app/stores/view/graphControlsVocabulary";
 
 interface GraphControlMessages {
-  readonly label: MessageDescriptor;
-  readonly description: MessageDescriptor;
+  readonly label: MessageDescriptor | LabMessageDescriptor;
+  readonly description: MessageDescriptor | LabMessageDescriptor;
 }
 
 export const LAB_GRAPH_CONTROL_MESSAGES = {
@@ -99,12 +97,12 @@ export const FORCE_CONTROL_SECTION_MESSAGES = {
   collision: { key: "graph:lab.sections.collision" },
   cooling: { key: "graph:lab.sections.cooling" },
   dragAndSleep: { key: "graph:lab.sections.dragAndSleep" },
-} as const satisfies Record<ForceControlSection, MessageDescriptor>;
+} as const satisfies Record<ForceControlSection, LabMessageDescriptor>;
 
 export const APPEARANCE_CONTROL_SECTION_MESSAGES = {
   nodes: { key: "graph:lab.sections.nodes" },
   edges: { key: "graph:lab.sections.edges" },
-} as const satisfies Record<AppearanceControlSection, MessageDescriptor>;
+} as const satisfies Record<AppearanceControlSection, LabMessageDescriptor>;
 
 export type LabGraphControlOption = "solid" | "gradient" | "category" | "recency";
 
@@ -113,7 +111,10 @@ export const LAB_GRAPH_CONTROL_OPTION_MESSAGES = {
   gradient: GRAPH_CONTROLS_MESSAGES.options.blended,
   category: GRAPH_CONTROLS_MESSAGES.options.category,
   recency: GRAPH_CONTROLS_MESSAGES.options.recency,
-} as const satisfies Record<LabGraphControlOption, MessageDescriptor>;
+} as const satisfies Record<
+  LabGraphControlOption,
+  MessageDescriptor | MessageDescriptor
+>;
 
 export const THREE_LAB_MESSAGES = {
   title: { key: "graph:lab.title" },
@@ -155,14 +156,14 @@ export const THREE_LAB_MESSAGES = {
   values: { automatic: { key: "graph:lab.values.automatic" } },
 } as const;
 
-export function loadGeneratedMessage(count: number): CountMessageDescriptor {
+export function loadGeneratedMessage(count: number): LabCountMessageDescriptor {
   return { key: "graph:lab.actions.loadGenerated", values: { count } };
 }
 
 export function presetFeedbackMessage(
   action: "presetLoaded" | "presetSaved" | "presetDeleted",
   preset: string,
-): MessageDescriptor {
+): LabMessageDescriptor {
   return { key: PRESET_FEEDBACK_KEYS[action], values: { preset } };
 }
 
@@ -197,7 +198,7 @@ export function sampleTitleMessage(
     | "qualitySummary"
     | "projectGuidance"
     | "workGroup",
-): MessageDescriptor {
+): LabMessageDescriptor {
   return SAMPLE_TITLE_MESSAGES[title];
 }
 
@@ -209,6 +210,6 @@ const GENERATED_TITLE_KEYS = {
 export function generatedTitleMessage(
   kind: "generatedGroup" | "generatedItem",
   number: number,
-): MessageDescriptor {
+): LabMessageDescriptor {
   return { key: GENERATED_TITLE_KEYS[kind], values: { number } };
 }

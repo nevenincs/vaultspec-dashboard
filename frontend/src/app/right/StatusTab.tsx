@@ -14,6 +14,14 @@
 //   • RECENT COMMITS — expandable commit rows that reveal the full message body,
 //     with a "Show more" control.
 //
+// EMPTY IS EMPTY: a section whose content is SERVED and known to be zero is not
+// rendered at all — no fold header offering a disclosure onto nothing. The
+// predicate is the stores layer's (`deriveStatusTabSectionVisibility`) and is
+// bounded to the reads the rail already holds: a loading, degraded, or
+// gh-unavailable section always renders, because an absent section must read as
+// "there are none", never as "we could not look", and a section whose content is
+// unknown until its body mounts (Commits) is never judged at all.
+//
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
 // DUMB app-chrome view. It consumes stores selectors EXCLUSIVELY
 // (`usePipelineStatusView`, `usePlanInteriorView`,
@@ -33,7 +41,7 @@
 import { useState } from "react";
 import type { ButtonHTMLAttributes, Ref, ReactNode } from "react";
 
-import { CircleDot, GitMerge, GitPullRequest } from "lucide-react";
+import { CircleDot, ExternalLink, GitMerge, GitPullRequest } from "lucide-react";
 
 import { useFocusZone } from "../chrome/useFocusZone";
 
@@ -41,6 +49,7 @@ import {
   DEFAULT_HISTORY_LIMIT,
   derivePullRequestsSectionView,
   deriveStatusTabSectionsView,
+  deriveStatusTabSectionVisibility,
   type IssueRowView,
   type PipelinePlanRowView,
   type PullRequestRowView,
@@ -163,7 +172,7 @@ interface PlanPillProps {
   nav?: RowNav;
 }
 
-function PlanPill({
+export function PlanPill({
   row,
   now,
   expanded,
@@ -195,14 +204,17 @@ function PlanPill({
     );
   };
 
-  // The plan list is ONE tab stop: the open (title) button roves, ArrowUp/Down
-  // move between plans, and cross-axis ArrowRight/ArrowLeft expand/collapse the
-  // step tree (the disclosure-row model, like the vault tree). The chevron toggle
-  // is reachable by pointer but drops out of the tab ring (tabIndex -1)
+  // The plan list is ONE tab stop: the pill's own disclosure row roves, ArrowUp/Down
+  // move between plans, and cross-axis ArrowRight/ArrowLeft expand/collapse the step
+  // tree (the disclosure-row model, like the vault tree). ArrowRight on an ALREADY
+  // expanded row opens the plan — the same cross-axis "descend into the thing" the
+  // step rows use to open an exec record, so opening stays reachable from the
+  // keyboard now that the row itself toggles
   // (keyboard-navigation; every-composite-navigates-through-the-one-focuszone).
   const item = nav?.rove(row.nodeId, {
     onCrossNext: () => {
-      if (!expanded) onToggle();
+      if (expanded) openPlan();
+      else onToggle();
     },
     onCrossPrev: () => {
       if (expanded) onToggle();
@@ -218,39 +230,49 @@ function PlanPill({
     >
       <div className="flex flex-col gap-fg-1-5 px-fg-2 py-fg-2">
         <div className="flex items-center gap-fg-2">
-          <button
-            type="button"
-            onClick={onToggle}
-            // Reachable by pointer + by ArrowRight/Left on the roving row; not its
-            // own tab stop (the row is one stop — the open button below holds it).
-            tabIndex={-1}
-            aria-expanded={expanded}
-            aria-controls={treeId}
-            aria-label={toggleAriaLabel}
-            data-open-plan-toggle
-            className="flex shrink-0 items-center rounded-fg-xs text-ink-faint transition-colors duration-ui-fast hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
-            <Chevron size={TWISTY_PX} aria-hidden />
-          </button>
+          {/* The WHOLE pill row is the disclosure: twisty + title in one button, so a
+              click anywhere along the row opens or closes the step tree rather than
+              hunting a chevron the size of a full stop. It holds the row's single tab
+              stop and carries the disclosure semantics (aria-expanded/-controls);
+              opening the plan moved to the explicit affordance beside it. */}
           <button
             type="button"
             ref={item?.ref}
             tabIndex={item ? item.tabIndex : undefined}
             onKeyDown={item?.onKeyDown}
             onFocus={() => nav?.setActive(row.nodeId)}
-            onClick={openPlan}
+            onClick={onToggle}
+            aria-expanded={expanded}
+            aria-controls={treeId}
+            aria-label={toggleAriaLabel}
+            data-open-plan-toggle
             data-open-plan-row
-            aria-label={openAriaLabel}
-            className="min-w-0 flex-1 select-text truncate text-left text-body font-medium text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            className="flex min-w-0 flex-1 items-center gap-fg-2 rounded-fg-xs text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
             title={row.titleLabel}
           >
-            {row.titleLabel}
+            <Chevron size={TWISTY_PX} aria-hidden className="shrink-0 text-ink-faint" />
+            <span className="min-w-0 flex-1 truncate text-body font-medium text-ink">
+              {row.titleLabel}
+            </span>
           </button>
           {row.tierLabel && tierAriaLabel && (
             <span data-plan-tier aria-label={tierAriaLabel}>
               <Badge>{row.tierLabel}</Badge>
             </span>
           )}
+          {/* Open the plan in the reader (and centre the graph on it). Pointer-reachable
+              and named; it drops out of the tab ring because the row is ONE tab stop —
+              the keyboard reaches it through the roving cross-axis ArrowRight above. */}
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={openPlan}
+            aria-label={openAriaLabel}
+            data-open-plan-open
+            className="flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-faint transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            <ExternalLink size={ICON_PX} aria-hidden />
+          </button>
         </div>
         {row.showProgress && (
           <div className="flex items-center gap-fg-2">
@@ -432,6 +454,25 @@ function PrRow({ row, nav }: { row: PullRequestRowView; nav?: RowNav }) {
           {row.titleLabel}
         </span>
         <Badge tone={row.stateTone}>{row.stateLabel}</Badge>
+        {/* Go to the pull request on its remote. The href is the engine-SERVED
+            `url` — never composed here — and the affordance simply disappears when
+            the wire carries none. It leaves the tab ring because the row is ONE tab
+            stop; the keyboard reaches the same navigation through the row menu. */}
+        {pr.url && (
+          <a
+            href={pr.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            tabIndex={-1}
+            aria-label={
+              resolveMessage({ key: "projects:actions.openPullRequest" }).message
+            }
+            data-pr-link
+            className="flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-faint transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            <ExternalLink size={ICON_PX} aria-hidden />
+          </a>
+        )}
         <RowMenuDisclosure
           entity={prEntity}
           label={
@@ -504,6 +545,7 @@ function PullRequestsBody({ scope }: { scope: unknown }) {
 }
 
 function IssueRow({ row }: { row: IssueRowView }) {
+  const resolveMessage = useLocalizedMessageResolver();
   const { issue } = row;
   return (
     <li
@@ -522,6 +564,21 @@ function IssueRow({ row }: { row: IssueRowView }) {
         >
           {row.titleLabel}
         </span>
+        {/* Go to the issue on its remote — the engine-SERVED `url`, never composed
+            here, and absent entirely when the wire carries none. An issue row is not
+            enrolled in a roving zone, so this stays an ordinary tab stop. */}
+        {issue.url && (
+          <a
+            href={issue.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={resolveMessage({ key: "projects:actions.openIssue" }).message}
+            data-issue-link
+            className="flex shrink-0 items-center rounded-fg-xs p-fg-0-5 text-ink-faint transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+          >
+            <ExternalLink size={ICON_PX} aria-hidden />
+          </a>
+        )}
       </div>
       {(row.labels.length > 0 || row.authorLabel) && (
         <div className="flex flex-wrap items-center gap-fg-1 pl-fg-4 text-meta text-ink-muted">
@@ -742,7 +799,7 @@ function RecentCommitsBody({ scope }: { scope: unknown }) {
  * Resolve which of the four binding rail states (node 599:2099) the body shows.
  * Mutually exclusive, in priority order: still loading core work → the skeletons;
  * the pipeline view degraded (structural tier down) → the degraded notice; nothing
- * open across plans / PRs / issues → the empty medallion; otherwise the populated
+ * open across plans / PRs / issues → the empty medallion; otherwise the typical
  * stack. Derived purely from the interpreted stores views — never a raw transport
  * error (degradation-is-read-from-tiers-not-guessed-from-errors).
  */
@@ -759,10 +816,37 @@ export function deriveRailState(
     openIssues.issues.length === 0
   )
     return "empty";
-  return "populated";
+  return "typical";
 }
 
-export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {}) {
+/**
+ * The rail's MODE presentation — a wire-free view over an already-resolved state
+ * (visual-review-harness ADR D2). It fetches nothing and derives nothing: the four
+ * canonical modes are chosen by the `railState` prop, and the typical body arrives
+ * as children.
+ *
+ * The split is what lets the review harness render every mode by simply passing one,
+ * with no engine, no fixture, and no seeded wire — and it is why this component
+ * carries no preview/override affordance. A container derives; a view renders.
+ */
+export function StatusTabView({
+  railState,
+  children,
+}: {
+  railState: RailState;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
+      {railState === "loading" && <RailLoading />}
+      {railState === "degraded" && <RailDegraded />}
+      {railState === "empty" && <RailEmpty />}
+      {railState === "typical" && children}
+    </div>
+  );
+}
+
+export function StatusTab() {
   const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
   // Section-header counts mirror the binding board ("OPEN PLANS — N"). They read
@@ -772,14 +856,31 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
   const plansView = usePipelineStatusView(scope, timeline.asOf);
   const openPrs = usePRsView(scope, "open");
   const openIssues = useIssuesView(scope, "open");
+  // The merged read rides along at rail level for ONE reason: whether the pull-request
+  // section exists at all is the SECTION's emptiness (both lists settled empty), and
+  // the stores layer owns that predicate. Judging it on the open count alone would
+  // hide a settled recently-merged list behind a repository with no open PRs. It is
+  // the same bounded gh-brokered list the open count already reads, and TanStack
+  // dedupes the key with the section body's own call, so expanding costs nothing more.
+  const mergedPrs = usePRsView(scope, "merged");
   const sections = deriveStatusTabSectionsView({
     openPlans: plansView.plans.length,
     openPrs: openPrs.prs.length,
     openIssues: openIssues.issues.length,
   });
-  // `stateOverride` is a test-only seam (the /status.html parity harness drives each
-  // designed state); production always derives the state from live data.
-  const railState = stateOverride ?? deriveRailState(plansView, openPrs, openIssues);
+  // Empty is empty: a section whose content is served and known-zero is not rendered
+  // at all. Loading / degraded / gh-unavailable sections always render — an absent
+  // section must mean "there are none", never "the read failed".
+  const visible = deriveStatusTabSectionVisibility({
+    openPlans: {
+      loading: plansView.loading,
+      degraded: plansView.degraded,
+      count: plansView.plans.length,
+    },
+    pullRequests: derivePullRequestsSectionView(openPrs, mergedPrs),
+    openIssues,
+  });
+  const railState = deriveRailState(plansView, openPrs, openIssues);
   // The rail's five fold headers are ONE tab stop: arrows rove between sections via
   // the shared FocusZone, Enter/Space toggles the focused fold (the native button)
   // (keyboard-navigation W04.P07.S21). Each section's body rows remain reachable by
@@ -803,50 +904,52 @@ export function StatusTab({ stateOverride }: { stateOverride?: RailState } = {})
     };
   };
   return (
-    <div className="space-y-fg-4 text-body" data-status-tab data-rail-state={railState}>
-      {railState === "loading" && <RailLoading />}
-      {railState === "degraded" && <RailDegraded />}
-      {railState === "empty" && <RailEmpty />}
-      {railState === "populated" && (
-        <>
-          <ChangesOverview {...headerNav("changes")} />
-          <SectionCard
-            {...headerNav(sections.openPlans.id)}
-            id={sections.openPlans.id}
-            title={resolveMessage(sections.openPlans.title).message}
-            count={sections.openPlans.count}
-          >
-            <OpenPlansBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.pullRequests.id)}
-            id={sections.pullRequests.id}
-            title={resolveMessage(sections.pullRequests.title).message}
-            count={sections.pullRequests.count}
-          >
-            <PullRequestsBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.openIssues.id)}
-            id={sections.openIssues.id}
-            title={resolveMessage(sections.openIssues.title).message}
-            count={sections.openIssues.count}
-          >
-            <OpenIssuesBody scope={scope} />
-          </SectionCard>
-          <SectionCard
-            {...headerNav(sections.recentCommits.id)}
-            id={sections.recentCommits.id}
-            title={resolveMessage(sections.recentCommits.title).message}
-          >
-            <RecentCommitsBody scope={scope} />
-          </SectionCard>
-        </>
+    <StatusTabView railState={railState}>
+      <ChangesOverview {...headerNav("changes")} />
+      {/* A suppressed section calls no `headerNav`, so it leaves the rail's roving
+          header order entirely — the FocusZone rebuilds that order from the rove
+          calls each render makes, exactly as a collapsed tree node does. */}
+      {visible.openPlans && (
+        <SectionCard
+          {...headerNav(sections.openPlans.id)}
+          id={sections.openPlans.id}
+          title={resolveMessage(sections.openPlans.title).message}
+          count={sections.openPlans.count}
+        >
+          <OpenPlansBody scope={scope} />
+        </SectionCard>
       )}
+      {visible.pullRequests && (
+        <SectionCard
+          {...headerNav(sections.pullRequests.id)}
+          id={sections.pullRequests.id}
+          title={resolveMessage(sections.pullRequests.title).message}
+          count={sections.pullRequests.count}
+        >
+          <PullRequestsBody scope={scope} />
+        </SectionCard>
+      )}
+      {visible.openIssues && (
+        <SectionCard
+          {...headerNav(sections.openIssues.id)}
+          id={sections.openIssues.id}
+          title={resolveMessage(sections.openIssues.title).message}
+          count={sections.openIssues.count}
+        >
+          <OpenIssuesBody scope={scope} />
+        </SectionCard>
+      )}
+      <SectionCard
+        {...headerNav(sections.recentCommits.id)}
+        id={sections.recentCommits.id}
+        title={resolveMessage(sections.recentCommits.title).message}
+      >
+        <RecentCommitsBody scope={scope} />
+      </SectionCard>
       {/* The two admin consoles (Search service, Pending changes) were evicted from the
           rail into modal control panels (activity-rail-realignment ADR D1/D3);
           the rail is status-only. They are reached from the rail-footer framework
           status cluster now. */}
-    </div>
+    </StatusTabView>
   );
 }

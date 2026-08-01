@@ -702,6 +702,48 @@ export function deriveStatusTabSectionsView(counts: {
   };
 }
 
+/** Which of the rail's item sections render AT ALL.
+ *
+ *  Empty is empty: a section whose content is SERVED and known to be zero renders
+ *  nothing — not even its fold header, because a twisty that opens onto "none"
+ *  offers a disclosure the state cannot honour. The suppression is deliberately
+ *  BOUNDED to what the rail already knows without expanding anything:
+ *
+ *  • Loading, tier-degraded, and capability-unavailable are NEVER suppressed. An
+ *    absent section must read as "there are none", never as "we could not look" —
+ *    a missing section is not a place to hide a failed read.
+ *  • A section whose content stays unknown until its body mounts (Commits, and the
+ *    Changes fold, which states its own summary in its header) is never suppressed.
+ *  • The pull-request section is judged by the SECTION's own emptiness — both the
+ *    open and the recently-merged list settled empty — never by the open count
+ *    alone, which would hide a settled merged list behind a zero-open repository.
+ */
+export interface StatusTabSectionVisibilityView {
+  openPlans: boolean;
+  pullRequests: boolean;
+  openIssues: boolean;
+}
+
+export function deriveStatusTabSectionVisibility(input: {
+  /** The plan read: served means neither in flight nor structurally degraded. */
+  openPlans: { loading: boolean; degraded: boolean; count: number };
+  /** The ONE pull-request section — `showEmpty` already means both lists settled
+   *  empty, and is false while either is loading or gh is unavailable. */
+  pullRequests: { showEmpty: boolean };
+  /** The open-issue read — `showEmpty` already means "gh answered and served none". */
+  openIssues: { showEmpty: boolean };
+}): StatusTabSectionVisibilityView {
+  const plansServedEmpty =
+    !input.openPlans.loading &&
+    !input.openPlans.degraded &&
+    input.openPlans.count === 0;
+  return {
+    openPlans: !plansServedEmpty,
+    pullRequests: !input.pullRequests.showEmpty,
+    openIssues: !input.openIssues.showEmpty,
+  };
+}
+
 /** The one Pull requests section body view: open rows lead, recently-merged rows
  *  follow under a quiet sub-label. Availability is capability-local and shared
  *  (both reads ride the same gh broker): the open view's states lead so open

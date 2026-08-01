@@ -120,6 +120,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "common:changeBuckets.modified": { role: "label" },
   "common:changeBuckets.deleted": { role: "label" },
   "common:changeBuckets.new": { role: "label" },
+  "common:changes.couldNotLoad": { role: "status" },
   "common:changes.filesChanged": { role: "status" },
   "common:commandFamilies.editing": { role: "label" },
   "common:commandFamilies.filters": { role: "label" },
@@ -612,7 +613,11 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:tree.partialCount": { role: "status" },
   "documents:tree.planProgress": { role: "status" },
   "documents:tree.sizeSummary": { role: "label" },
-  "documents:tree.unavailable": { role: "error-message" },
+  // A plain statement of what the rail could not show, not an actionable error
+  // message: the recovery affordance is the real Retry button beside it (and the
+  // whole-rail degraded variant offers no copy-level recovery at all), so this
+  // carries the same `status` role as its sibling `tree.degraded` sentence.
+  "documents:tree.unavailable": { role: "status" },
   "documents:tree.updated": { role: "label" },
   "documents:tree.vaultBrowser": { role: "accessibility" },
   "documents:tree.wordCount": { role: "label" },
@@ -748,6 +753,7 @@ export const ENGLISH_MESSAGE_POLICY = {
   "projects:actions.add": { role: "action" },
   "projects:actions.checkProjectStatus": { role: "action" },
   "projects:actions.clearHistory": { role: "action" },
+  "projects:actions.openIssue": { role: "action" },
   "projects:actions.openPullRequest": { role: "action" },
   "projects:actions.prepareProjectTools": { role: "action" },
   "projects:actions.setUpProject": { role: "action" },

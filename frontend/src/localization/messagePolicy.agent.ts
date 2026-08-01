@@ -78,6 +78,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.transcript.loading": { role: "status" },
   "common:agent.transcript.empty": { role: "status" },
   "common:agent.transcript.error": { role: "error-message" },
+  "common:agent.transcript.unavailable": { role: "error-message" },
   "common:agent.transcript.showingRecent": { role: "status" },
   // The one work-stretch disclosure (C2/C3): its label reports elapsed time or the
   // served tool count, and the expanded flat list is named for screen readers.

@@ -41,7 +41,7 @@ function status(overrides: Partial<A2aLifecycleStatus>): A2aLifecycleStatus {
 }
 
 describe("deriveA2aLifecycleView (status interpretation)", () => {
-  it("an absent install offers only install (plus the read-only doctor)", () => {
+  it("renders exactly the SERVED eligible set, never a locally derived one", () => {
     const view = deriveA2aLifecycleView(
       status({
         installed: false,
@@ -50,6 +50,7 @@ describe("deriveA2aLifecycleView (status interpretation)", () => {
         ownership: { owner: "root", retained: false },
         active_generation: null,
         tiers: { agent: { available: false, reason: "not installed" } },
+        eligible_ops: ["doctor", "install"],
       }),
     );
     expect(view.installState).toBe("absent");
@@ -59,44 +60,74 @@ describe("deriveA2aLifecycleView (status interpretation)", () => {
     expect(view.destructiveOps.size).toBe(0);
   });
 
-  it("a live gateway with a COLD worker is still service-ready and offers process control", () => {
+  it("a live gateway with a COLD worker is still service-ready", () => {
     const view = deriveA2aLifecycleView(
       status({ readiness: { state: "gateway-ready", worker: "cold" } }),
     );
     // A cold worker does not collapse readiness to a degradation.
     expect(view.readiness).toEqual({ state: "gateway-ready", worker: "cold" });
     expect(view.degraded).toBe(false);
-    expect(view.eligibleOps.has("stop")).toBe(true);
-    expect(view.eligibleOps.has("restart")).toBe(true);
-    expect(view.eligibleOps.has("start")).toBe(false);
-    expect(view.eligibleOps.has("install")).toBe(false);
-    // Destructive ops are surfaced for the confirm affordance.
-    expect([...view.destructiveOps].sort()).toEqual(["remove", "rollback"]);
   });
 
-  it("an installed-but-stopped generation offers start, not stop/restart", () => {
+  it("does NOT offer process control the engine withheld, however ready it looks", () => {
+    // The defect this replaced: a gateway-ready readiness made the panel offer
+    // stop and restart locally, against a plane that refused both. Readiness is
+    // only half the answer and the client cannot see the other half, so a served
+    // set that omits them is final.
     const view = deriveA2aLifecycleView(
-      status({ readiness: { state: "installed-stopped" } }),
+      status({
+        readiness: { state: "gateway-ready", worker: "ready" },
+        eligible_ops: ["doctor"],
+      }),
     );
-    expect(view.eligibleOps.has("start")).toBe(true);
     expect(view.eligibleOps.has("stop")).toBe(false);
     expect(view.eligibleOps.has("restart")).toBe(false);
+    expect([...view.eligibleOps]).toEqual(["doctor"]);
+  });
+
+  it("fails CLOSED when the engine serves no eligible set", () => {
+    // Offering nothing is recoverable; offering a control that refuses is not.
+    const view = deriveA2aLifecycleView(
+      status({ readiness: { state: "gateway-ready", worker: "ready" } }),
+    );
+    expect(view.eligibleOps.size).toBe(0);
+    expect(view.destructiveOps.size).toBe(0);
+  });
+
+  it("drops a served token this client cannot render", () => {
+    const view = deriveA2aLifecycleView(
+      status({
+        readiness: { state: "installed-stopped" },
+        eligible_ops: ["start", "quantum-defrag"],
+      }),
+    );
+    expect([...view.eligibleOps]).toEqual(["start"]);
+  });
+
+  it("surfaces destructive ops for the confirm affordance only when offered", () => {
+    const view = deriveA2aLifecycleView(
+      status({ eligible_ops: ["doctor", "remove", "rollback"] }),
+    );
+    expect([...view.destructiveOps].sort()).toEqual(["remove", "rollback"]);
   });
 
   it("a FOREIGN-immutable gateway reads unavailable from the tiers block, not a guess", () => {
     const reason =
       "a foreign a2a gateway holds the runtime and stays immutable: protocol or state-schema mismatch";
     const view = deriveA2aLifecycleView(
-      status({ tiers: { agent: { available: false, reason } } }),
+      status({
+        tiers: { agent: { available: false, reason } },
+        eligible_ops: ["doctor"],
+      }),
     );
     // Orchestration availability is read from tiers.agent (canonical reader).
     expect(view.orchestration).toEqual({ available: false, reason });
-    // The install itself is settled and still offers maintenance ops.
+    // The install itself is settled and still offers what the engine serves.
     expect(view.installState).toBe("settled");
     expect(view.eligibleOps.has("doctor")).toBe(true);
   });
 
-  it("a recovery-required install is degraded and offers only repair + doctor", () => {
+  it("a recovery-required install is degraded and offers what the engine serves", () => {
     const view = deriveA2aLifecycleView(
       status({
         installed: null,
@@ -104,6 +135,7 @@ describe("deriveA2aLifecycleView (status interpretation)", () => {
         recovery_required: true,
         degraded: true,
         readiness: null,
+        eligible_ops: ["doctor", "repair"],
       }),
     );
     expect(view.degraded).toBe(true);
@@ -118,17 +150,20 @@ describe("deriveA2aLifecycleView (status interpretation)", () => {
         install_state: "busy",
         degraded: true,
         readiness: null,
+        eligible_ops: ["doctor"],
       }),
     );
     expect(view.degraded).toBe(true);
     expect([...view.eligibleOps]).toEqual(["doctor"]);
   });
 
-  it("an unread status is unknown, offers doctor, and reads orchestration as available", () => {
+  it("an unread status is unknown and offers NOTHING until the engine answers", () => {
     const view = deriveA2aLifecycleView(undefined);
     expect(view.installState).toBe("unknown");
     expect(view.installed).toBeNull();
-    expect([...view.eligibleOps]).toEqual(["doctor"]);
+    // Before the first read there is no served set, so there is nothing honest
+    // to offer — not even doctor, which this used to assume locally.
+    expect([...view.eligibleOps]).toEqual([]);
     // readAgentTierAvailability(undefined) is tolerant-available (no served block).
     expect(view.orchestration).toEqual({ available: true });
   });

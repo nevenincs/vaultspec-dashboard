@@ -155,6 +155,7 @@ export const graph = {
       planStatus: "Plan status",
     },
     states: {
+      degraded: "Some filter choices may be unavailable. Refresh data, then try again.",
       empty: "No filter choices available.",
       loading: "Loading filter choices…",
     },
@@ -226,8 +227,6 @@ export const graph = {
       open: "Open {{title}}",
     },
     evidence: {
-      codeLocations_one: "{{count, number}} code location",
-      codeLocations_other: "{{count, number}} code locations",
       commits_one: "{{count, number}} related change",
       commits_other: "{{count, number}} related changes",
       documents_one: "{{count, number}} related document",

@@ -11,6 +11,7 @@ import {
   useFiltersVocabularyView,
   useTimelineAvailability,
   useTimelineDateCriterion,
+  useWorkspaceMapSurface,
 } from "../../stores/server/queries";
 import { useDashboardStateMutations } from "../../stores/server/dashboardState";
 import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
@@ -46,6 +47,45 @@ const TIMELINE_RANGE_MESSAGES = Object.freeze({
 
 export type TimelineRangeVariant = "desktop" | "compact";
 
+/** The handle footprint, shared by the live selector and its ghost so the two
+ *  non-populated modes mirror the real geometry exactly. Compact grows the handle
+ *  to the touch target. */
+function handleFootprint(variant: TimelineRangeVariant): string {
+  return variant === "compact" ? "size-[1.25rem]" : "size-[0.875rem]";
+}
+
+/** The GHOST timeline: the default mode's own geometry — the selected-range
+ *  summary, the range track with both handles, and the date-basis control — drawn
+ *  in the neutral skeleton gray instead of the accent. Loading pulses it under the
+ *  shared `Skeleton` (loading is UI-only: no on-screen copy, state-mode-uniformity
+ *  ADR D2); empty renders it static and inert with both handles pinned to the span
+ *  ends, so an undated corpus shows a locked, obviously-disabled timeline rather
+ *  than a bare sentence. Decorative in both: the human sentence lives in the
+ *  `Skeleton`'s sr-only label (loading) or the empty branch's own sr-only text. */
+export function TimelineGhost({ variant }: { variant: TimelineRangeVariant }) {
+  const handleClassName = `absolute top-1/2 ${handleFootprint(
+    variant,
+  )} -translate-x-1/2 -translate-y-1/2 rounded-fg-pill border-2 border-paper bg-rule-strong`;
+  return (
+    <div aria-hidden data-timeline-ghost className="flex w-full items-center gap-fg-4">
+      <SkeletonBar width="w-[6rem]" height="h-3" />
+      <div className="flex h-fg-5 flex-1 items-center" data-timeline-track-row>
+        <div
+          className="relative h-1 w-full rounded-fg-pill bg-paper-sunken"
+          data-timeline-range-track
+        >
+          {/* The locked full span: the selection covers the whole track, so the
+              range reads as bounded and un-narrowable rather than absent. */}
+          <div className="absolute inset-0 rounded-fg-pill bg-rule-strong" />
+          <span className={handleClassName} style={{ left: "0%" }} />
+          <span className={handleClassName} style={{ left: "100%" }} />
+        </div>
+      </div>
+      <SkeletonBar width="w-[7rem]" height="h-fg-5" />
+    </div>
+  );
+}
+
 export interface TimelineRangeProps {
   scope: unknown;
   variant?: TimelineRangeVariant;
@@ -59,6 +99,18 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   const isCode = corpus === "code";
   const vocabulary = useFiltersVocabularyView(scope, corpus);
   const availability = useTimelineAvailability(scope, corpus);
+  // A null `scope` disables the vocabulary/availability queries above outright,
+  // so a workspace resolution failure (the `/map` read errored, or its tiers
+  // report structural down) would otherwise fall straight through to the empty
+  // branch below — reporting "no dated documents" during a genuine backend
+  // outage instead of the degraded treatment (state-mode-uniformity ADR D1).
+  // Read from the stores-owned workspace-map surface truth, never guessed from a
+  // bare transport error.
+  const workspaceMapSurface = useWorkspaceMapSurface();
+  const scopeResolutionFailed =
+    scope === null &&
+    (workspaceMapSurface.state === "error" ||
+      workspaceMapSurface.availability.degraded);
   const { criterion: vaultCriterion, served } = useTimelineDateCriterion(scope);
   const criterion = isCode ? "modified" : vaultCriterion;
   const dateFieldLabel = resolveMessage(TIMELINE_DATE_CRITERION_MESSAGES.dateField);
@@ -90,20 +142,22 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
     if (loading.usedFallback) return null;
     return (
       <div className={containerClassName} data-timeline data-timeline-loading>
-        <Skeleton label={loading.message} className="flex w-full items-center gap-fg-4">
-          <SkeletonBar width="w-16" height="h-3" />
-          <SkeletonBar height="h-1" className="flex-1" />
-          <SkeletonBar width="w-12" height="h-3" />
+        {/* One ghost child, not three loose bars laid out by an overridden wrapper:
+            the kit `Skeleton` is a COLUMN, so its own row is what shapes the ghost. */}
+        <Skeleton label={loading.message} className="w-full">
+          <TimelineGhost variant={variant} />
         </Skeleton>
       </div>
     );
   }
-  if (availability.degraded) {
+  if (availability.degraded || scopeResolutionFailed) {
     const unavailable = resolveMessage(TIMELINE_RANGE_MESSAGES.unavailable);
     if (unavailable.usedFallback) return null;
     return (
+      // The timeline strip is already its own framed footer surface, so the notice
+      // renders BARE — a nested sunken plate reads as a second floating card.
       <div className={containerClassName} data-timeline data-timeline-degraded>
-        <StateBlock mode="degraded" layout="inline" message={unavailable.message} />
+        <StateBlock mode="degraded" layout="bare" message={unavailable.message} />
       </div>
     );
   }
@@ -115,8 +169,17 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
     );
     if (empty.usedFallback) return null;
     return (
-      <div className={containerClassName} data-timeline data-timeline-empty>
-        <StateBlock mode="empty" layout="inline" message={empty.message} />
+      // Empty renders the SAME ghost geometry, inert and locked to the full span,
+      // with the plain sentence carried for assistive tech only.
+      <div
+        role="group"
+        aria-disabled="true"
+        className={containerClassName}
+        data-timeline
+        data-timeline-empty
+      >
+        <p className="sr-only">{empty.message}</p>
+        <TimelineGhost variant={variant} />
       </div>
     );
   }
@@ -134,7 +197,7 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
 
   const resetRange = () => void mutations.setDateRange({});
 
-  const handleSize = variant === "compact" ? "size-[1.25rem]" : "size-[0.875rem]";
+  const handleSize = handleFootprint(variant);
 
   const startLabel = resolveMessage(TIMELINE_RANGE_MESSAGES.start);
   const endLabel = resolveMessage(TIMELINE_RANGE_MESSAGES.end);

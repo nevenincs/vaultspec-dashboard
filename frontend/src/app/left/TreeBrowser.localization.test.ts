@@ -6,11 +6,10 @@ import {
   rtlTestLocale,
 } from "../../localization/testing";
 import { resolveMessageResult } from "../../platform/localization/fallback";
+import { docTooltipLabel, formatTreeDate } from "./TreeBrowser";
 import {
   TREE_BROWSER_MESSAGES,
-  docTooltipLabel,
   formatTreeWeight,
-  formatTreeDate,
   treeDecisionStatusMessage,
   treeDecisionStatusLabelMessage,
   treePartialCountMessage,
@@ -18,7 +17,7 @@ import {
   treeRowActionsMessage,
   treeSizeSummaryMessage,
   treeWordCountMessage,
-} from "./TreeBrowser";
+} from "./treeBrowserMessages";
 import {
   docDateTimestamp,
   docDisplayTitle,

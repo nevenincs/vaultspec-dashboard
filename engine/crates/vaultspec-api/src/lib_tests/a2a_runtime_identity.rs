@@ -78,12 +78,27 @@ fn locate_capsule() -> Option<PathBuf> {
     conventional.is_file().then_some(conventional)
 }
 
+/// Report an absent capsule — loudly where one was promised.
+///
+/// See the twin in `vaultspec-product/tests/lifecycle_ownership.rs`: since the
+/// a2a component became a onedir, nothing produces `dist/capsules/{triple}.zip`,
+/// so these proofs have been passing WITHOUT EXECUTING. `cargo test` hides a
+/// passing test's stderr, so the skip line was never seen.
+///
+/// `VAULTSPEC_REQUIRE_PRODUCT_CAPSULE=1` turns absence into a failure for any
+/// lane that promised a real artifact; unset, a developer machine still skips.
 fn skip_reason(what: &str) {
     let (triple, _) = current_target();
-    eprintln!(
+    let message = format!(
         "{what}: no capsule available (set VAULTSPEC_PRODUCT_CAPSULE or place \
          dist/capsules/{triple}.zip); skipping the real-capsule proof."
     );
+    if std::env::var_os("VAULTSPEC_REQUIRE_PRODUCT_CAPSULE").is_some() {
+        panic!(
+            "{message} VAULTSPEC_REQUIRE_PRODUCT_CAPSULE is set: this lane promised a real artifact and has none."
+        );
+    }
+    eprintln!("{message}");
 }
 
 fn read_zip_entry(zip_path: &Path, name: &str) -> Vec<u8> {

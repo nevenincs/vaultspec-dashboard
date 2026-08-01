@@ -1,9 +1,9 @@
-import { type D3ForceParams } from "../scene/three/d3ForceSolver";
-import { FORCE_CONTROL_DEFAULTS, FORCE_CONTROLS } from "../scene/three/forceControls";
+import { type D3ForceParams } from "@app/scene/three/d3ForceSolver";
+import { FORCE_CONTROL_DEFAULTS, FORCE_CONTROLS } from "@app/scene/three/forceControls";
 import {
   authoredDisplayText,
   compareAuthoredDisplayText,
-} from "../platform/localization/displayText";
+} from "@app/platform/localization/displayText";
 
 export const FORCE_PARAMS_STORAGE_KEY = "vaultspec.threeLab.forceParams";
 export const FORCE_PRESETS_STORAGE_KEY = "vaultspec.threeLab.forcePresets";

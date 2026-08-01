@@ -56,6 +56,7 @@ export const EXPECTED_AGENT_KEYS = [
   "common:agent.transcript.loading",
   "common:agent.transcript.empty",
   "common:agent.transcript.error",
+  "common:agent.transcript.unavailable",
   "common:agent.transcript.showingRecent",
   "common:agent.transcript.timeline",
   "common:agent.transcript.usedTools_one",

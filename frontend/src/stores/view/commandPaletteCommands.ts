@@ -820,7 +820,11 @@ export function deriveCommandPalettePresentationView(
       label: commandPaletteRowLabel(command, armed),
       disabled,
       disabledReason: command.disabledReason,
-      rowClassName: `flex h-[1.875rem] w-full items-center justify-between rounded-fg-md px-fg-4 text-left transition-colors duration-ui-fast ease-settle ${
+      // The row's own padding is HALF the surface gutter: the listbox insets the
+      // remaining half, so the rounded selection rectangle floats clear of the
+      // palette's edges instead of touching them, while the label still lands on
+      // the same x as the query input and the family headings.
+      rowClassName: `flex h-[1.875rem] w-full items-center justify-between rounded-fg-md px-fg-2 text-left transition-colors duration-ui-fast ease-settle ${
         disabled
           ? "cursor-not-allowed text-ink-faint opacity-60"
           : selected

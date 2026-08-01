@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Button, StateBlock, Switch } from "../kit";
+import { Button, Skeleton, SkeletonBar, StateBlock, Switch } from "../kit";
 import {
   useActiveLocale,
   useLocalizedMessageResolver,
@@ -10,7 +10,7 @@ import { formatBytes, formatNumber } from "../../platform/localization/formatter
 import { engineKeys, useActiveScope } from "../../stores/server/queries";
 import {
   ragControlKeys,
-  ragSemanticOffline,
+  ragQuerySemanticOffline,
   useRagOpsState,
   useRagWatcherStart,
   useRagWatcherStop,
@@ -116,9 +116,22 @@ export function RagDashboardFooterBody({
               </p>
             )}
           </>
+        ) : pending ? (
+          // Loading is UI-ONLY (state-mode-uniformity ADR D2): a shimmer standing in
+          // for the stat cells, the human label only in the kit Skeleton's sr-only.
+          <Skeleton label={resolve(M.loading).message}>
+            <div className="flex items-center gap-fg-4">
+              <SkeletonBar width="w-16" height="h-3" />
+              <SkeletonBar width="w-20" height="h-3" />
+              <SkeletonBar width="w-24" height="h-3" />
+            </div>
+          </Skeleton>
         ) : (
+          // Distinct from `offline` (a degraded semantic tier): the service is up but
+          // simply never surveyed a rollup — a quiet informational sentence, not the
+          // bold degraded card (every other control, including the watcher, stays live).
           <span className="text-caption text-ink-faint">
-            {resolve(pending ? M.loading : M.unavailable).message}
+            {resolve(M.unavailable).message}
           </span>
         )}
       </div>
@@ -164,7 +177,7 @@ export function RagDashboardFooter() {
     <RagDashboardFooterBody
       storage={env?.storage}
       watching={record(env?.watcher)?.running === true}
-      offline={ragSemanticOffline(opsState.data)}
+      offline={ragQuerySemanticOffline(opsState)}
       pending={opsState.isPending}
       watcherPending={watcherStart.isPending || watcherStop.isPending}
       onToggleWatcher={onToggleWatcher}

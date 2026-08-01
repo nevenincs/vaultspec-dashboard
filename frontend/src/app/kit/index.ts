@@ -37,6 +37,7 @@ export { FacetRow, facetDotColor } from "./FacetRow";
 export type { FacetRowProps, FacetDotTone } from "./FacetRow";
 
 // Containers and misc (S05)
+export { BrandMark } from "./BrandMark";
 export { Card } from "./Card";
 export type { CardProps, CardElevation } from "./Card";
 export { Popover } from "./Popover";

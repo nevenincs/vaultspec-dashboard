@@ -24,8 +24,10 @@ import {
 export const A2A_LIFECYCLE_RUN_ACTION = "a2a-lifecycle:run";
 
 /** The closed lifecycle op set (engine `LifecycleOpArg`). Kept beside the
- *  validator so a wire-contract change is one edit. */
-const A2A_LIFECYCLE_OPS: ReadonlySet<A2aLifecycleOp> = new Set<A2aLifecycleOp>([
+ *  validator so a wire-contract change is one edit, and exported so the served
+ *  eligible-op reader narrows against this ONE list rather than a second copy
+ *  that would silently drift from it. */
+export const A2A_LIFECYCLE_OPS: ReadonlySet<A2aLifecycleOp> = new Set<A2aLifecycleOp>([
   "install",
   "ensure",
   "start",

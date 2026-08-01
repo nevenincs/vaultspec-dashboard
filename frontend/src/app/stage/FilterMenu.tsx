@@ -22,7 +22,7 @@ import {
   type FilterOptionLabel,
 } from "../../stores/view/filterPresentation";
 import { type FacetDotTone, FacetRow } from "../kit/FacetRow";
-import { SearchField, SectionLabel, Skeleton, SkeletonRow } from "../kit";
+import { SearchField, SectionLabel, Skeleton, SkeletonRow, StateBlock } from "../kit";
 
 export interface FilterFacetOption {
   /** Stable facet value sent to the wire (e.g. "research", "dangling"). */
@@ -71,6 +71,11 @@ export interface FilterMenuProps {
   anyActive?: boolean;
   /** Clear every active filter. */
   onClearAll?: () => void;
+  /** The served facet vocabulary is degraded (state-mode-uniformity ADR D1/D3):
+   *  the caller has already read this from the `tiers` block, never inferred
+   *  here. Non-terminal — the held (possibly stale) sections still render below
+   *  the shared caution notice, mirroring the vault tree's degraded banner. */
+  degraded?: boolean;
   /** The ordered filter sections. */
   sections: FilterMenuSection[];
   /** Fixed panel width in px (binding = 252). */
@@ -124,12 +129,30 @@ function localizedText(
   return resolved.usedFallback ? null : resolved.message;
 }
 
+/** Non-terminal degraded notice (state-mode-uniformity ADR D1/D3): the shared
+ *  caution glyph + one plain sentence, mirroring the vault tree's degraded
+ *  banner — the held (possibly stale) sections still render below it. */
+function DegradedNotice({
+  resolveMessage,
+}: {
+  resolveMessage: LocalizedMessageResolver;
+}) {
+  return (
+    <StateBlock
+      mode="degraded"
+      layout="inline"
+      message={resolveMessage(FILTER_MESSAGES.degraded).message}
+    />
+  );
+}
+
 /** Compact chip body: each checkbox section becomes a wrapped chip group; the date
  *  (radio) section is omitted (the timeline owns the date window). */
 function ChipsBody({
   sections,
   title,
   anyActive,
+  degraded,
   onClearAll,
   onApply,
   resolveMessage,
@@ -137,6 +160,7 @@ function ChipsBody({
   sections: FilterMenuSection[];
   title: string;
   anyActive: boolean;
+  degraded: boolean;
   onClearAll?: () => void;
   onApply?: () => void;
   resolveMessage: LocalizedMessageResolver;
@@ -158,6 +182,7 @@ function ChipsBody({
           </button>
         )}
       </div>
+      {degraded && <DegradedNotice resolveMessage={resolveMessage} />}
       {facetSections.map((section) => {
         const selected = new Set(section.selected);
         return (
@@ -289,6 +314,7 @@ function RadioBody({
 export function FilterMenu({
   title = FILTER_MESSAGES.title,
   anyActive = false,
+  degraded = false,
   onClearAll,
   sections,
   width = 252,
@@ -305,6 +331,7 @@ export function FilterMenu({
         sections={sections}
         title={resolvedTitle}
         anyActive={anyActive}
+        degraded={degraded}
         onClearAll={onClearAll}
         onApply={onApply}
         resolveMessage={resolveMessage}
@@ -348,6 +375,8 @@ export function FilterMenu({
           </button>
         )}
       </div>
+
+      {degraded && <DegradedNotice resolveMessage={resolveMessage} />}
 
       {/* When capped, the sections scroll inside the bordered card (the binding
           popover is compact; a large live vocabulary must not overflow). The

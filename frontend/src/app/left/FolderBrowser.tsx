@@ -370,12 +370,18 @@ export function FolderBrowser({
             </p>
           </div>
         )}
+        {/* The empty notice reads with the SAME centered treatment as the read
+            failure above it: one wrapper, one inline state block, so a level with
+            nothing to show and a level that could not be read are composed
+            identically instead of one being centered and the other flush left. */}
         {view.state === "ready" && view.emptyMessage !== null && (
-          <StateBlock
-            mode="empty"
-            layout="inline"
-            message={message(view.emptyMessage)}
-          />
+          <div className="flex flex-col items-center gap-fg-1 py-fg-4">
+            <StateBlock
+              mode="empty"
+              layout="inline"
+              message={message(view.emptyMessage)}
+            />
+          </div>
         )}
         {view.state === "ready" &&
           view.rows.map((row) => {

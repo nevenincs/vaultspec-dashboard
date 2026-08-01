@@ -43,13 +43,33 @@ async function send(op: Record<string, unknown>): Promise<void> {
   }
 }
 
-export async function loadFeedback(): Promise<void> {
+export async function loadFeedback(): Promise<boolean> {
   try {
     const response = await deskFetch(ENDPOINT);
-    if (response.ok) publish((await response.json()) as FeedbackNote[]);
+    if (!response.ok) return false;
+    publish((await response.json()) as FeedbackNote[]);
+    return true;
   } catch (error) {
     console.debug("[visual-review] feedback load failed", error);
+    return false;
   }
+}
+
+/**
+ * Boot-time initialisation: load with a short retry ladder (an HMR reload can race
+ * the dev server and silently leave the pane at zero notes), then re-sync whenever
+ * the tab regains visibility — a reviewer returning to the desk sees current truth.
+ */
+export function initFeedback(): void {
+  void (async () => {
+    for (const delay of [0, 500, 2000]) {
+      if (delay > 0) await new Promise((r) => setTimeout(r, delay));
+      if (await loadFeedback()) break;
+    }
+  })();
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void loadFeedback();
+  });
 }
 
 /** Raw, referentially-stable note list; derive per-surface views in useMemo. */

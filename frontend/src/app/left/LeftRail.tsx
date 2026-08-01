@@ -25,17 +25,32 @@
 // behaviour.
 
 import { openContextMenu } from "../../stores/view/contextMenu";
-import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
+import {
+  useLocalizedMessage,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
+import { useWorkspaceMapSurface } from "../../stores/server/queries";
 import { backgroundContextMenuHandler } from "../menus/backgroundContextMenu";
 import { Divider } from "../kit";
 import { BrowserRegion } from "./BrowserRegion";
 import { RailFilterField } from "./RailFilterField";
+import { RailMessage } from "./railStates";
 import { WorktreePicker } from "./WorktreePicker";
 
 export function LeftRail() {
   const navigationLabel = useLocalizedMessage({
     key: "common:rail.accessibility.scopeNavigation",
   });
+  const resolveMessage = useLocalizedMessageResolver();
+  // Scope resolution itself can fail (the workspace map/session read that names
+  // the active project is down), not just the corpus reads the browser makes with
+  // a resolved scope. Read from the same sanctioned surface truth `Stage`/
+  // `TimelineRangeSelector` use (degradation-is-read-from-tiers-not-guessed): when
+  // it has, the vault/code trees can never resolve either, so the browser slot
+  // shows the shared degraded treatment instead of an honest-but-endless skeleton.
+  const workspaceMapSurface = useWorkspaceMapSurface();
+  const scopeResolutionFailed =
+    workspaceMapSurface.state === "error" || workspaceMapSurface.availability.degraded;
   return (
     // ONE labelled navigation landmark for the whole rail content. The flex column
     // gives the browser region the remaining height so it dominates the rail (the
@@ -62,7 +77,14 @@ export function LeftRail() {
       {/* Vault/Files tabs + the active tab's tree. Fills the remaining height so the
           browser dominates the rail. */}
       <div className="flex min-h-0 flex-1 flex-col gap-fg-3" data-rail-slot="browser">
-        <BrowserRegion />
+        {scopeResolutionFailed ? (
+          <RailMessage
+            tone="degraded"
+            label={resolveMessage({ key: "documents:tree.unavailable" }).message}
+          />
+        ) : (
+          <BrowserRegion />
+        )}
       </div>
     </nav>
   );

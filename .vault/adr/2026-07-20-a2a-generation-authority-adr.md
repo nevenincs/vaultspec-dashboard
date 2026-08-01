@@ -3,12 +3,13 @@ tags:
   - '#adr'
   - '#a2a-generation-authority'
 date: '2026-07-20'
-modified: '2026-07-31'
-body_hash: 'sha256:b4607fd5630ea24db88b29f62ba98f0e43d57db55ba6238f11259ce5b754dec8'
+modified: '2026-08-01'
+body_hash: 'sha256:e116cc9dad85a6eed152bf85efcf61023a4a351f11331f2cc07554f903941af1'
 related:
   - "[[2026-07-18-a2a-product-provisioning-research]]"
   - '[[2026-07-18-a2a-product-provisioning-adr]]'
   - '[[2026-07-18-a2a-product-provisioning-reference]]'
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 # `a2a-generation-authority` adr: `exact generation-root authority with semantic immutable release topology` | (**status:** `accepted`)
 
@@ -208,3 +209,5 @@ rule to failure recovery.
   instead of risking deletion of a substituted object.
 - Documentation and tests that claim cross-time identity for every nested directory must
   be corrected to distinguish exact root authority from scan-local child identity.
+
+**Amendment note (2026-08-01):** the accepted `2026-07-24-a2a-product-provisioning-adr` declares this record untouched (its D6): no clause here is narrowed. One referent changed: the a2a component is a frozen PyInstaller onedir rather than a fetched capsule, so the consequence "capsules that currently contain empty directory placeholders must remove them or represent required state outside the immutable generation" now binds on the a2a freeze recipe — that record's stated constraint is that onedir output must satisfy exactly this record's tree rules: every non-root directory an ancestor of at least one regular file, no links or reparse objects, no empty directories inside the immutable generation.

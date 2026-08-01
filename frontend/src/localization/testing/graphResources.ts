@@ -205,9 +205,6 @@ export const ltrGraphResources = {
       open: "Ouvrir {{title}}",
     },
     evidence: {
-      codeLocations_many: "{{count, number}} emplacements de code",
-      codeLocations_one: "{{count, number}} emplacement de code",
-      codeLocations_other: "{{count, number}} emplacements de code",
       commits_many: "{{count, number}} modifications associées",
       commits_one: "{{count, number}} modification associée",
       commits_other: "{{count, number}} modifications associées",
@@ -430,12 +427,6 @@ export const rtlGraphResources = {
       open: "فتح {{title}}",
     },
     evidence: {
-      codeLocations_zero: "{{count, number}} موقع تعليمات برمجية",
-      codeLocations_one: "{{count, number}} موقع تعليمات برمجية",
-      codeLocations_two: "{{count, number}} موقعا تعليمات برمجية",
-      codeLocations_few: "{{count, number}} مواقع تعليمات برمجية",
-      codeLocations_many: "{{count, number}} موقع تعليمات برمجية",
-      codeLocations_other: "{{count, number}} موقع تعليمات برمجية",
       commits_zero: "{{count, number}} تغيير مرتبط",
       commits_one: "{{count, number}} تغيير مرتبط",
       commits_two: "{{count, number}} تغييران مرتبطان",

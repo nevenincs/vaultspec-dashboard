@@ -3,13 +3,14 @@ tags:
   - '#adr'
   - '#distribution-channels'
 date: '2026-07-08'
-modified: '2026-07-21'
-body_hash: 'sha256:b8d35701bc3eb81fd2d476f46fab5ef12e36965ab13ed0372a000746743a687e'
+modified: '2026-08-01'
+body_hash: 'sha256:06a1c9a442e3f7b6f8a0aecf817be9984fb7638139c64f3cdae6aa55661ca642'
 related:
   - "[[2026-07-04-dashboard-packaging-adr]]"
   - "[[2026-07-04-dashboard-packaging-research]]"
   - "[[2026-07-07-release-automation-adr]]"
   - "[[2026-07-18-a2a-product-provisioning-adr]]"
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
 # `distribution-channels` adr: `scoop, cargo-binstall, and winget over the shipped artifacts - and a boundary-clean embed` | (**status:** `accepted`)
@@ -65,3 +66,5 @@ Every channel rides the artifacts the pipeline already publishes - no second bui
 - crates.io remains deliberately unserved; if user demand ever materializes, the recorded path is the staged-assets `include` plus a twelve-crate publish chain - a conscious future project, not drift.
 - The winget identifier and the bucket become small public contracts to maintain (renames are breaking for users).
 - **Partially amended (2026-07-18) by `2026-07-18-a2a-product-provisioning-adr`:** Scoop now installs the complete Windows ZIP (dashboard plus A2A capsule) rather than the binary-only zip recorded here, WinGet moves from the portable-ZIP manifest decided here to the complete product MSI, and the documented Cargo `binstall`/`cargo install` channel is withdrawn until composite receipts are supported. Each change is gated on that ADR's own phase-zero artifact-level certification proofs before it ships; the manifest-governance and staged-SPA decisions recorded here stand.
+
+**Amendment note (2026-08-01):** in the 2026-07-18 partial-amendment bullet above, the complete Windows ZIP's a2a component is no longer a capsule: per the accepted `2026-07-24-a2a-product-provisioning-adr`, the fetched A2A capsule is replaced by a frozen a2a onedir bundled as ordinary release files (published per target by the a2a repository under that record's 2026-07-31 amendment). No channel decision recorded here — the scoop bucket and bump automation, the winget path, the cargo posture, the boundary-clean embed, or manifest governance — is narrowed by that record.

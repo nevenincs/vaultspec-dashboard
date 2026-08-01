@@ -16,7 +16,7 @@ import {
   useProposalDetail,
   type ReviewDocumentProjection,
 } from "../../stores/server/authoring";
-import { Skeleton, SkeletonRow, StateBlock } from "../kit";
+import { Check, Skeleton, SkeletonRow, StateBlock } from "../kit";
 import { DiffView } from "./DiffView";
 
 /** A human label for a review document's target — its path/stem when the served
@@ -79,9 +79,13 @@ export function DiffPanel({ changesetId }: { changesetId: string }) {
   const documents = detail.data?.review_documents ?? [];
   if (documents.length === 0) {
     return (
+      // A diff context has no folders in it: the empty mode carries the shared
+      // settled mark (`Check`), the SAME override `DiffView` uses for its own
+      // no-change empty, never the kit's default corpus-folder glyph.
       <StateBlock
         mode="empty"
         layout="inline"
+        icon={Check}
         message={
           resolveMessage({
             key: "documents:localizationWave.authoring.previewUnavailable",

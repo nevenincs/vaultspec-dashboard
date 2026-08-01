@@ -21,14 +21,13 @@
 
 import { useMemo } from "react";
 
-import { FolderPlus } from "lucide-react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import type { WorkspacesState } from "../../stores/server/engine";
 import { useWorkspaces } from "../../stores/server/queries";
 import { openProjectAction } from "../../stores/view/projectActions";
 import { AddProjectDialog } from "../left/AddProjectDialog";
-import { Button } from "../kit";
+import { BrandMark, Button } from "../kit";
 
 export type FirstRunOnboardingState = { kind: "hidden" } | { kind: "onboarding" };
 
@@ -62,13 +61,16 @@ export function useFirstRunOnboardingState(): FirstRunOnboardingState {
 
 /** Dumb, props-driven presentation (unit-tested wire-free): the welcome card
  *  that explains no project is connected yet and hands off to the shared
- *  add-project affordance. */
+ *  add-project affordance. The card is headed by the product's OWN mark (the kit
+ *  `BrandMark`), not a generic family folder glyph — this is the first surface a
+ *  fresh install shows, so it identifies the app rather than the file-picking
+ *  verb the button below already names. */
 export function FirstRunOnboardingBody({ onAddProject }: { onAddProject: () => void }) {
   const resolveMessage = useLocalizedMessageResolver();
   return (
     <div className="flex h-screen min-h-0 w-screen items-center justify-center bg-paper px-fg-4 text-center">
       <div className="flex max-w-[28rem] flex-col items-center gap-fg-3">
-        <FolderPlus aria-hidden size={32} className="shrink-0 text-ink-faint" />
+        <BrandMark size={40} />
         <h1 className="text-title font-medium text-ink">
           {resolveMessage({ key: "common:finalWave.onboarding.title" }).message}
         </h1>

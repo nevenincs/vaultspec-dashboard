@@ -1,8 +1,15 @@
-# Quality gates — the polyglot verification pipeline that mirrors `just dev lint`
-# and `just dev audit`. Rust build/clippy/test live in engine-ci.yml; this
-# workflow covers Python, the frontend SPA, repo-wide spell check, and the
-# cross-language supply-chain audits. Each job is independent so one failure
-# does not mask the others.
+# Quality gates — the polyglot verification pipeline. Rust build/clippy/test
+# live in engine-ci.yml; this workflow covers Python, the frontend SPA, repo-wide
+# spell check, and the cross-language supply-chain audits. Each job is
+# independent so one failure does not mask the others.
+#
+# Where a gate exists as a `just` verb, this workflow INVOKES it rather than
+# restating its steps. It previously described itself as "mirroring" the local
+# gate and re-listed the steps by hand, and the mirror was not faithful: three
+# of nine frontend gates ran here, so localization, px, domain-fence, module
+# size, token drift and figma-name checks never ran on a pull request. A gate
+# reimplemented in YAML cannot be verified to match the gate it claims to
+# mirror; calling the same entry point is the only thing that can.
 name: quality-gates
 
 on:
@@ -139,7 +146,7 @@ jobs:
           df -h . 2>/dev/null | tail -1
 
   frontend:
-    name: Frontend (eslint · prettier · tsc · vitest)
+    name: Frontend (just lint frontend · vitest)
     runs-on: [self-hosted, Linux, X64]
     steps:
       - uses: actions/checkout@v4
@@ -149,12 +156,17 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - run: npm --prefix frontend ci
-      - name: ESLint
-        run: npm --prefix frontend run lint
-      - name: Prettier check
-        run: npm --prefix frontend run format:check
-      - name: Type check (tsc)
-        run: npm --prefix frontend run typecheck
+      # The gate is INVOKED, never re-listed. This job previously named three
+      # npm scripts by hand while `just lint frontend` ran nine, so six gates —
+      # localization, px, domains, module size, token drift, and figma names —
+      # never ran on a pull request at all. A gate reimplemented in YAML cannot
+      # be verified to match the gate; only calling the same entry point can.
+      - uses: extractions/setup-just@v2
+      - uses: astral-sh/setup-uv@v6
+      - name: Provision the dev toolchain
+        run: just bootstrap
+      - name: Lint (just lint frontend)
+        run: just lint frontend
       # The frontend suite is online-live by design (no in-memory doubles): its
       # vitest global setup spawns a REAL `vaultspec serve` and runs
       # `vaultspec-core install` against a scratch vault. Provision both — the
@@ -181,22 +193,21 @@ jobs:
       - name: Build engine binary (live-engine test backend)
         run: cargo build --bin vaultspec
         working-directory: engine
-      - uses: astral-sh/setup-uv@v6
       - name: Install vaultspec-core (live-engine declared-tier dependency)
         shell: bash
         run: |
           uv tool install vaultspec-core
           uv tool dir --bin >> "$GITHUB_PATH"
-      - name: Unit tests (vitest)
-        run: npm --prefix frontend run test
+      - name: Unit tests (just test frontend)
+        run: just test frontend
         env:
           # Pin the exact binary the live suite spawns. Its own fallback probes
           # `engine/target/{release,debug}`, which does not exist when the build
           # landed in the shared directory — the suite would then fail at global
           # setup with "no vaultspec engine binary found" rather than running.
           VAULTSPEC_TEST_ENGINE_BIN: ${{ env.ENGINE_TARGET_DIR }}/debug/vaultspec
-      - name: Unused code (knip — advisory)
-        run: npx --yes knip@5 --directory frontend
+      - name: Unused code (just lint knip — advisory)
+        run: just lint knip
         continue-on-error: true
       - name: Reclaim runner disk (always)
         if: always()

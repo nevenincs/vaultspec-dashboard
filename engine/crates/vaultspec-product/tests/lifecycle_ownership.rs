@@ -9,9 +9,15 @@
 //!
 //! Capsule availability gates the suite: it reads `VAULTSPEC_PRODUCT_CAPSULE`
 //! (or the conventional `dist/capsules/<target>.zip`). When no capsule is
-//! present (e.g. a CI job that did not build one) each test prints a clear reason
-//! and returns — it never silently passes on faked data and never asserts a
-//! fabricated outcome. It MUST run and pass wherever a real capsule exists.
+//! present each test prints a clear reason and returns — it never silently
+//! passes on faked data and never asserts a fabricated outcome.
+//!
+//! That skip is honest locally and DISHONEST in a lane that promised an
+//! artifact: nothing has produced `dist/capsules/<target>.zip` since the a2a
+//! component became a onedir, so these proofs reported success without
+//! executing. Any lane that builds a real artifact must set
+//! `VAULTSPEC_REQUIRE_PRODUCT_CAPSULE=1`, which turns absence into a failure.
+//! It MUST run and pass wherever a real capsule exists.
 
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
@@ -74,14 +80,31 @@ fn locate_capsule() -> Option<PathBuf> {
     conventional.is_file().then_some(conventional)
 }
 
-/// The absence message printed when no capsule is available. Kept explicit so a
-/// skipped run is visible and reasoned, never silent.
+/// Report an absent capsule — loudly where one was promised.
+///
+/// A silent skip here is not a neutral default. Since the a2a component was
+/// reshaped from a capsule ZIP to a onedir, NOTHING in this repository produces
+/// `dist/capsules/{triple}.zip`, so every real-capsule proof has been reporting
+/// success without executing: `cargo test` hides a passing test's stderr, so the
+/// skip line never surfaced. Five proofs across two crates degraded to green
+/// no-ops and no signal marked the day it happened.
+///
+/// So absence is now a decision the caller must own. Anywhere the artifact is
+/// expected — the certification lane — set `VAULTSPEC_REQUIRE_PRODUCT_CAPSULE=1`
+/// and a missing capsule FAILS instead of passing quietly. A developer machine
+/// leaves it unset and still gets the skip, which is the honest local answer.
 fn skip_reason(what: &str) {
     let (triple, _) = current_target();
-    eprintln!(
+    let message = format!(
         "{what}: no capsule available (set VAULTSPEC_PRODUCT_CAPSULE or place \
          dist/capsules/{triple}.zip); skipping the real-capsule proof."
     );
+    if std::env::var_os("VAULTSPEC_REQUIRE_PRODUCT_CAPSULE").is_some() {
+        panic!(
+            "{message} VAULTSPEC_REQUIRE_PRODUCT_CAPSULE is set: this lane promised a real artifact and has none."
+        );
+    }
+    eprintln!("{message}");
 }
 
 /// Read one entry from the capsule ZIP as bytes.

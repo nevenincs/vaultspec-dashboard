@@ -25,6 +25,7 @@ export const FILTER_MESSAGE_POLICY = {
   "graph:filters.sections.health": { role: "label" },
   "graph:filters.sections.kind": { role: "label" },
   "graph:filters.sections.planStatus": { role: "label" },
+  "graph:filters.states.degraded": { role: "description" },
   "graph:filters.states.empty": { role: "status" },
   "graph:filters.states.loading": { role: "status" },
   "graph:filters.statuses.accepted": { role: "status" },

@@ -18,14 +18,14 @@ import { createRoot } from "react-dom/client";
 import {
   LocalizationProvider,
   useLocalizedMessageResolver,
-} from "../platform/localization/LocalizationProvider";
+} from "@app/platform/localization/LocalizationProvider";
 
-import { DocChrome } from "../app/viewer/DocChrome";
-import { MarkdownReader } from "../app/viewer/MarkdownReader";
-import type { ContentResponse } from "../stores/server/engine";
-import { deriveContentView } from "../stores/server/queries";
-import { queryClient } from "../stores/server/queryClient";
-import "../styles.css";
+import { DocChrome } from "@app/app/viewer/DocChrome";
+import { MarkdownReader } from "@app/app/viewer/MarkdownReader";
+import type { ContentResponse } from "@app/stores/server/engine";
+import { deriveContentView } from "@app/stores/server/queries";
+import { queryClient } from "@app/stores/server/queryClient";
+import "@app/styles.css";
 import {
   READER_FIXTURE_MARKDOWN,
   READER_FIXTURE_PATH,

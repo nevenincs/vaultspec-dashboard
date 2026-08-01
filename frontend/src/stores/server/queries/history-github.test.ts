@@ -6,8 +6,10 @@ import { liveTransport } from "../../../testing/liveClient";
 import { EngineError, engineClient } from "../engine";
 import type {
   HistoryResponse,
+  Issue,
   IssuesResponse,
   PRsResponse,
+  PullRequest,
   TiersBlock,
 } from "../engine";
 import {
@@ -21,6 +23,7 @@ import {
   derivePRsView,
   derivePullRequestsSectionView,
   deriveStatusTabSectionsView,
+  deriveStatusTabSectionVisibility,
   engineKeys,
   normalizeEngineEventsRequestIdentity,
   normalizeGraphDiffRequestIdentity,
@@ -1181,5 +1184,93 @@ describe("derivePRsView and deriveIssuesView", () => {
       openRows: [],
       mergedRows: [],
     });
+  });
+
+  it("hides a rail section only when its content is SERVED and known-zero", () => {
+    const prsFrom = (prs: PullRequest[], state: "open" | "merged") =>
+      derivePRsView(
+        { prs, available: true, reason: null, tiers: {} },
+        null,
+        false,
+        state,
+      );
+    const openEmpty = prsFrom([], "open");
+    const openWithRows = prsFrom([pr()], "open");
+    const mergedEmpty = prsFrom([], "merged");
+    const mergedWithRows = prsFrom(
+      [pr({ merged_at: "2026-06-18T01:00:00Z", checks: null })],
+      "merged",
+    );
+    const prsUnavailable = derivePRsView(
+      { prs: [], available: false, reason: "gh auth missing", tiers: {} },
+      null,
+      false,
+      "open",
+    );
+    const issues = (available: boolean, items: Issue[]) =>
+      deriveIssuesView(
+        { issues: items, available, reason: null, tiers: {} },
+        null,
+        false,
+      );
+    const servedPlans = { loading: false, degraded: false, count: 0 };
+
+    // Nothing served anywhere → every judged section disappears.
+    expect(
+      deriveStatusTabSectionVisibility({
+        openPlans: servedPlans,
+        pullRequests: derivePullRequestsSectionView(openEmpty, mergedEmpty),
+        openIssues: issues(true, []),
+      }),
+    ).toEqual({ openPlans: false, pullRequests: false, openIssues: false });
+
+    // Anything served non-zero keeps its own section — and nothing else's.
+    expect(
+      deriveStatusTabSectionVisibility({
+        openPlans: { ...servedPlans, count: 2 },
+        pullRequests: derivePullRequestsSectionView(openWithRows, mergedEmpty),
+        openIssues: issues(true, [
+          {
+            number: 405,
+            title: "Right rail loses focus on refresh",
+            author: "octocat",
+            state: "open",
+            url: "https://example.invalid/issues/405",
+            created_at: null,
+            updated_at: null,
+            labels: [],
+          },
+        ]),
+      }),
+    ).toEqual({ openPlans: true, pullRequests: true, openIssues: true });
+
+    // A repository with NO open PRs but a settled merged list keeps the section:
+    // the section's emptiness is both lanes, never the open count alone.
+    expect(
+      deriveStatusTabSectionVisibility({
+        openPlans: servedPlans,
+        pullRequests: derivePullRequestsSectionView(openEmpty, mergedWithRows),
+        openIssues: issues(true, []),
+      }).pullRequests,
+    ).toBe(true);
+
+    // An unread section is never hidden: an absent section must mean "there are
+    // none", never "we could not look".
+    expect(
+      deriveStatusTabSectionVisibility({
+        openPlans: { loading: true, degraded: false, count: 0 },
+        pullRequests: derivePullRequestsSectionView(prsUnavailable, mergedEmpty),
+        openIssues: issues(false, []),
+      }),
+    ).toEqual({ openPlans: true, pullRequests: true, openIssues: true });
+
+    // Structurally degraded plans hold their section open too.
+    expect(
+      deriveStatusTabSectionVisibility({
+        openPlans: { loading: false, degraded: true, count: 0 },
+        pullRequests: derivePullRequestsSectionView(openEmpty, mergedEmpty),
+        openIssues: issues(true, []),
+      }).openPlans,
+    ).toBe(true);
   });
 });

@@ -7,10 +7,10 @@
 // exceptions.
 //
 // Usage:
-//   node scripts/scan-px.mjs            scan and exit non-zero on any violation
-//   node scripts/scan-px.mjs --init     (re)seed the allowlist from current violators
+//   node dev/tooling/scan-px.mjs            scan and exit non-zero on any violation
+//   node dev/tooling/scan-px.mjs --init     (re)seed the allowlist from current violators
 //
-// The allowlist (scripts/px-allowlist.json) is a SHRINKING set of files still pending
+// The allowlist (dev/tooling/px-allowlist.json) is a SHRINKING set of files still pending
 // conversion. Each converted surface is removed from it; an allowlisted file that no
 // longer contains px is reported as stale and fails the gate, so the list cannot rot.
 
@@ -107,7 +107,7 @@ if (init) {
   process.exit(0);
 }
 
-let allow = [];
+let allow;
 try {
   allow = JSON.parse(readFileSync(allowlistPath, "utf8"));
 } catch {
@@ -140,7 +140,7 @@ if (failed) {
   console.error(
     `\npx-scan FAILED. Pending (allowlisted): ${allowSet.size - staleAllow.length}. ` +
       `Convert px to rem (16px basis) or em (font-relative), routed through the ` +
-      `--*-fg-* token scale, then drop the file from scripts/px-allowlist.json.\n`,
+      `--*-fg-* token scale, then drop the file from dev/tooling/px-allowlist.json.\n`,
   );
   process.exit(1);
 }

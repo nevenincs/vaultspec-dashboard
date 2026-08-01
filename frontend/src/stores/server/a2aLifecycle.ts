@@ -27,7 +27,7 @@ import {
   type A2aReadiness,
 } from "./engine";
 import { readAgentTierAvailability, type AgentAvailability } from "./agent/a2aTeam";
-import { dispatchA2aLifecycleRun } from "./a2aLifecycleActions";
+import { A2A_LIFECYCLE_OPS, dispatchA2aLifecycleRun } from "./a2aLifecycleActions";
 import {
   JOB_POLL_GC_MS,
   OPERATOR_STATUS_GC_MS,
@@ -127,52 +127,38 @@ export interface A2aLifecycleView {
   /** The agent ORCHESTRATION availability read from `tiers.agent` (canonical
    *  reader), never re-derived from a transport error. */
   orchestration: AgentAvailability;
-  /** The ops the current state makes eligible — a UX hint that greys clearly
-   *  illegal affordances; the engine refuses authoritatively regardless. */
+  /** The ops the ENGINE says may be offered — served truth, not a local hint.
+   *  Both halves of that answer (what the state permits, and what is actually
+   *  implemented) live engine-side, and the second is invisible from here. */
   eligibleOps: ReadonlySet<A2aLifecycleOp>;
   /** The eligible ops that are destructive and need a confirm affordance. */
   destructiveOps: ReadonlySet<A2aLifecycleOp>;
 }
 
-/** Derive which ops the current install-state / readiness makes eligible. Doctor
- *  is always offered (a pure read). Install only when nothing is installed; the
- *  receipt-bound mutations only once a settled install exists; start / stop gate on
- *  readiness. A degraded install offers only the recovery-oriented ops. */
-function deriveEligibleOps(
-  installState: A2aInstallState | "unknown",
-  readiness: A2aReadiness | null,
+/** Read the SERVED eligible-op set, keeping only tokens this client can render.
+ *
+ *  This used to be derived here, from install state and readiness. That was
+ *  wrong in a way no amount of care in the derivation could fix: eligibility is
+ *  the intersection of what the state permits and what is actually implemented,
+ *  and a browser cannot see the second half. So the panel offered stop and
+ *  restart against a plane that refused them — a control that exists only to
+ *  fail. The engine knows both halves and now serves the answer.
+ *
+ *  Fails CLOSED. An engine that sends nothing yields no operations rather than a
+ *  locally-guessed set: offering nothing is recoverable and honest, offering a
+ *  control that refuses is neither. An unrecognised token is dropped rather than
+ *  rendered, so a newer engine cannot make this client draw a button it has no
+ *  copy or handler for. */
+function readEligibleOps(
+  served: readonly string[] | undefined,
 ): ReadonlySet<A2aLifecycleOp> {
-  const ops = new Set<A2aLifecycleOp>(["doctor"]);
-  switch (installState) {
-    case "absent":
-      ops.add("install");
-      return ops;
-    case "recovery-required":
-    case "unverifiable":
-      ops.add("repair");
-      return ops;
-    case "busy":
-      // A mutation authority is held elsewhere; only the read is safe to offer.
-      return ops;
-    case "settled": {
-      // A settled install: the receipt-bound maintenance ops are eligible, plus
-      // the readiness-gated process control.
-      ops.add("repair");
-      ops.add("update");
-      ops.add("rollback");
-      ops.add("remove");
-      ops.add("ensure");
-      if (readiness?.state === "gateway-ready") {
-        ops.add("stop");
-        ops.add("restart");
-      } else if (readiness?.state === "installed-stopped") {
-        ops.add("start");
-      }
-      return ops;
+  const ops = new Set<A2aLifecycleOp>();
+  for (const token of served ?? []) {
+    if (A2A_LIFECYCLE_OPS.has(token as A2aLifecycleOp)) {
+      ops.add(token as A2aLifecycleOp);
     }
-    case "unknown":
-      return ops;
   }
+  return ops;
 }
 
 /** Build the panel's presentation projection from the served status. Pure — the
@@ -182,7 +168,7 @@ export function deriveA2aLifecycleView(
 ): A2aLifecycleView {
   const installState: A2aInstallState | "unknown" = status?.install_state ?? "unknown";
   const readiness = status?.readiness ?? null;
-  const eligibleOps = deriveEligibleOps(installState, readiness);
+  const eligibleOps = readEligibleOps(status?.eligible_ops);
   const destructiveOps = new Set<A2aLifecycleOp>(
     [...eligibleOps].filter((op) => A2A_DESTRUCTIVE_OPS.has(op)),
   );

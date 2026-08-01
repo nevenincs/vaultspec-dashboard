@@ -52,10 +52,14 @@ import { useSession } from "./settings";
 const TIMELINE_CONTENT_TIERS = ["structural", "temporal"] as const;
 
 export interface TimelineAvailability {
-  /** A structural/temporal tier is unavailable on the served filters vocabulary, so
-   *  the timeline renders the uniform degraded state. Read from the tiers block (a
-   *  fresh error envelope's tiers winning over a stale held-success block), never
-   *  guessed from a transport error (degradation-is-read-from-tiers). */
+  /** A structural/temporal tier is unavailable on the served filters vocabulary, OR
+   *  the vocabulary query itself hard-failed with no bounds held at all (a capability
+   *  failure the served envelope may name a different tier for, or none — this
+   *  consumer still has nothing usable either way), so the timeline renders the
+   *  uniform degraded state. Read from the tiers block (a fresh error envelope's
+   *  tiers winning over a stale held-success block) and the query's own
+   *  `isError`-with-no-data truth — never guessed from a bare transport error
+   *  (degradation-is-read-from-tiers). */
   degraded: boolean;
 }
 
@@ -63,7 +67,9 @@ export interface TimelineAvailability {
  *  The corpus date bounds the timeline scrubs ride the `/filters` envelope, which
  *  carries the per-tier availability block; when the structural/temporal tier is
  *  down the bounds are unreliable, which is DEGRADED — distinct from a loaded-but-
- *  empty corpus (no dated documents), which is EMPTY. */
+ *  empty corpus (no dated documents), which is EMPTY. A hard query failure with no
+ *  held bounds at all degrades the same way even if the envelope names a different
+ *  tier down, since this consumer is left with nothing usable either way. */
 export function useTimelineAvailability(
   scope: unknown,
   corpus?: unknown,
@@ -71,11 +77,13 @@ export function useTimelineAvailability(
   const query = useFiltersVocabulary(scope, corpus);
   const errorTiers = query.error instanceof EngineError ? query.error.tiers : undefined;
   const tiers = errorTiers ?? query.data?.tiers_block;
+  const hardError = query.isError && query.data === undefined;
   return useMemo(
     () => ({
-      degraded: readTierAvailability(tiers, TIMELINE_CONTENT_TIERS).degraded,
+      degraded:
+        readTierAvailability(tiers, TIMELINE_CONTENT_TIERS).degraded || hardError,
     }),
-    [tiers],
+    [tiers, hardError],
   );
 }
 

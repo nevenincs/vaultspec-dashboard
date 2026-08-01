@@ -25,7 +25,7 @@ import {
 import { useActiveScope } from "../../stores/server/queries";
 import {
   RAG_JOBS_LIMIT_CAP,
-  ragSemanticOffline,
+  ragQuerySemanticOffline,
   useRagJobs,
 } from "../../stores/server/ragControl";
 import {
@@ -344,7 +344,7 @@ export function RagJobsTable() {
     <RagJobsTableBody
       table={table}
       selectedJobId={selectedJobId}
-      offline={ragSemanticOffline(jobsQuery.data)}
+      offline={ragQuerySemanticOffline(jobsQuery)}
       pending={jobsQuery.isPending}
     />
   );

@@ -52,6 +52,41 @@ pub(crate) fn query_tiers(cell: &ScopeCell) -> serde_json::Value {
     tiers_value(&unavailable)
 }
 
+/// Tiers block for the DEMO `error` condition: every backing tier reported down
+/// with a stated reason.
+///
+/// The review desk needs the application's real degraded rendering, and the wire
+/// contract is explicit that a client derives degradation from the `tiers` block and
+/// NEVER from a bare transport failure. So a simulated outage has to arrive as a
+/// truthful-shaped envelope with tiers actually marked down — not as a naked 5xx the
+/// client is required to ignore.
+pub(crate) fn demo_degraded_tiers() -> serde_json::Value {
+    tiers_value(&[
+        ("declared", "demo: simulated backend outage".to_string()),
+        ("semantic", "demo: simulated backend outage".to_string()),
+    ])
+}
+
+/// Tiers block for the DEMO `normal` condition: every tier reported available.
+///
+/// A demo host rarely has rag running or the a2a authority verifiable, so the truthful
+/// block reports those down and every surface renders degraded — leaving the review
+/// desk unable to show a healthy state at all. `normal` therefore asserts health as
+/// deliberately as `error` asserts failure.
+pub(crate) fn demo_healthy_tiers() -> serde_json::Value {
+    let mut tiers = tiers_value(&[]);
+    // `tiers_value` overlays the REAL agent-orchestration state after building, so an
+    // empty unavailable-list still reports `agent` down on a host with no gateway.
+    // Force it available here — otherwise the "healthy" condition ships one tier that
+    // is still degraded, which is precisely the confusion this condition exists to
+    // remove.
+    if let Some(agent) = tiers.get_mut("agent").and_then(|v| v.as_object_mut()) {
+        agent.insert("available".to_string(), serde_json::Value::Bool(true));
+        agent.insert("reason".to_string(), serde_json::Value::Null);
+    }
+    tiers
+}
+
 /// Serialize a tiers block and decorate it with the component compatibility
 /// handshake: every served tiers block — success and
 /// error, all three degradation builders — carries the declared floors and

@@ -1,22 +1,22 @@
 import { useCallback, useState } from "react";
 
-import { useLocalizedMessageResolver } from "../platform/localization/LocalizationProvider";
-import type { AnyMessageDescriptor } from "../platform/localization/message";
-import type { AppearanceParams } from "../scene/three/appearance";
+import type { AnyLabDescriptor } from "./labMessage";
+import { useLabMessageResolver } from "./labMessage";
+import type { AppearanceParams } from "@app/scene/three/appearance";
 import {
   APPEARANCE_CONTROLS,
   APPEARANCE_CONTROL_DEFAULTS,
   APPEARANCE_CONTROL_GROUPS,
   type AppearanceControl,
-} from "../scene/three/appearanceControls";
-import type { ThreeField } from "../scene/three/threeField";
+} from "@app/scene/three/appearanceControls";
+import type { ThreeField } from "@app/scene/three/threeField";
 import {
   APPEARANCE_CONTROL_SECTION_MESSAGES,
   LAB_GRAPH_CONTROL_MESSAGES,
   LAB_GRAPH_CONTROL_OPTION_MESSAGES,
   THREE_LAB_MESSAGES,
   type LabGraphControlOption,
-} from "../stores/view/threeLabVocabulary";
+} from "./threeLabVocabulary";
 
 interface AppearanceControlsPanelProps {
   params: AppearanceParams;
@@ -32,10 +32,10 @@ export function AppearanceControlsPanel({
   onParamChange,
   onReset,
 }: AppearanceControlsPanelProps) {
-  const resolveMessageResult = useLocalizedMessageResolver();
+  const resolveLabMessage = useLabMessageResolver();
   const resolveMessage = useCallback(
-    (descriptor: AnyMessageDescriptor) => resolveMessageResult(descriptor).message,
-    [resolveMessageResult],
+    (descriptor: AnyLabDescriptor) => resolveLabMessage(descriptor),
+    [resolveLabMessage],
   );
   const [open, setOpen] = useState(true);
 

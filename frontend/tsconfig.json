@@ -14,7 +14,18 @@
     "isolatedModules": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "types": ["vite/client"]
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client"],
+    "paths": {
+      "@app/*": ["./src/*"]
+    }
   },
-  "include": ["src", "spike", "e2e", "vite.config.ts", "playwright.config.ts"]
+  "exclude": ["dev/tooling/fixtures"],
+  "include": [
+    "src",
+    "e2e",
+    "dev",
+    "vite.config.ts",
+    "vite.dev.config.ts"
+  ]
 }

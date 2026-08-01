@@ -166,8 +166,8 @@ const SESSION_LIST_PARAMS = { cap: 20 } as const;
  *  action (the exact action the footer chip dispatches) and binds the authored
  *  current session; resets the (module-singleton) view store on unmount so a
  *  state switch never leaks an open panel into the next specimen visited. Sized
- *  via a local host div — `AgentPanel` normally sizes off its shell-owned grid
- *  track (`col-start-4`), which does not exist standalone here. */
+ *  via a local host div — `AgentPanel` normally fills the center dock's reserved
+ *  `__agent__` panel, whose geometry does not exist standalone here. */
 function AgentPanelSpecimen({ state }: { state: ReviewState }) {
   const currentSessionId =
     state === "empty" || state === "degraded" ? null : SESSION_ID_NORMAL;
@@ -180,7 +180,9 @@ function AgentPanelSpecimen({ state }: { state: ReviewState }) {
     };
   }, [currentSessionId]);
   return (
-    <AgentPanel className="relative flex h-full w-full min-h-0 min-w-0 flex-col border-l border-rule bg-paper" />
+    <div className="relative h-full w-full min-h-0 min-w-0 border-l border-rule">
+      <AgentPanel />
+    </div>
   );
 }
 

@@ -6,10 +6,10 @@
  * spacing foundation) no longer match a fresh regeneration from the DTCG source under
  * `tokens/` — i.e. someone edited the tokens without running `npm run tokens:build`, or
  * hand-edited inside the markers. Runs as part of the frontend lint gate
- * (`just dev lint frontend`).
+ * (`just lint frontend`).
  *
  * Comparison is on parsed declaration values, so prettier's formatting of styles.css is
- * not drift. Run: `node scripts/token-drift-check.ts` (exit 0 = in sync; 1 = drift).
+ * not drift. Run: `node dev/tooling/token-drift-check.ts` (exit 0 = in sync; 1 = drift).
  */
 
 import { fileURLToPath } from "node:url";
@@ -54,7 +54,9 @@ async function main(): Promise<void> {
     );
     return;
   }
-  console.error("token-drift: DRIFT — run `npm run tokens:build` and commit styles.css.");
+  console.error(
+    "token-drift: DRIFT — run `npm run tokens:build` and commit styles.css.",
+  );
   console.error(diffs.join("\n"));
   process.exit(1);
 }

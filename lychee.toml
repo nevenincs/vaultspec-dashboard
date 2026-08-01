@@ -1,10 +1,6 @@
 # Lychee configuration
 accept = [200, 403, 410, 429, 502, 503]
-exclude = [
-  '\[\[.*\]\]',
-  "^/[A-Z]:/",
-  "https://github.com/.*",
-]
+exclude = ['\[\[.*\]\]', "^/[A-Z]:/", "https://github.com/.*"]
 exclude_path = [
   "README.md",
   ".vault/audit/",

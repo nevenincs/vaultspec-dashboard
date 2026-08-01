@@ -49,6 +49,7 @@ const base = {
   queriedScope: "wt-1",
   renderCapability: { status: "ok" as const, recoverable: false },
   availability: availabilityWith([]),
+  scopeResolutionFailed: false,
 };
 
 /** The kinds of the resolved annotations, in order. */
@@ -60,6 +61,13 @@ describe("resolveCanvasState primary states", () => {
     expect(resolveCanvasState({ ...base, scope: null }).primary.kind).toBe(
       "awaiting-scope",
     );
+  });
+
+  it("renders the degraded card, not an infinite spinner, when scope can never resolve because the workspace map failed (contract §2)", () => {
+    expect(
+      resolveCanvasState({ ...base, scope: null, scopeResolutionFailed: true }).primary
+        .kind,
+    ).toBe("unavailable");
   });
 
   it("is a scope-appropriate loading state while the first keyframe is in flight", () => {

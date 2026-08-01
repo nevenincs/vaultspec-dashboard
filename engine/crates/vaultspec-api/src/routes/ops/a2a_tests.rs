@@ -462,7 +462,7 @@ fn build_run_start_validates_and_omits_actor_tokens() {
 }
 
 #[test]
-fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_no_bearer() {
+fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_forwards_the_bearer() {
     let (_dir, state) = test_state();
     let prepared = PreparedRun {
         reservation_id: "resv-bundle-1".to_string(),
@@ -474,8 +474,18 @@ fn provisioned_bundle_covers_every_role_with_distinct_tokens_and_no_bearer() {
     };
     let bundle = provision_actor_token_bundle(&state, &prepared, "run-provision-test").unwrap();
 
-    // engine_bearer is absent (null): the worker self-resolves it.
-    assert_eq!(bundle.wire["engine_bearer"], Value::Null);
+    // The machine bearer is FORWARDED, and is the engine's own. A null here
+    // shipped a product whose every authoring submission failed closed: the
+    // worker can only self-resolve a bearer from a LEGACY discovery record, and
+    // the desktop record is secret-free by design. Asserting the exact value
+    // (not merely "not null") is what keeps a future refactor from forwarding
+    // some other token that happens to be non-empty.
+    assert_eq!(
+        bundle.wire["engine_bearer"],
+        Value::String(state.bearer.clone()),
+        "the run must carry the engine's machine bearer, not a null the worker \
+         can only resolve from a legacy discovery record"
+    );
 
     let tokens = bundle.wire["tokens"].as_object().unwrap();
     assert_eq!(

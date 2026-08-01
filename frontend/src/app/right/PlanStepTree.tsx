@@ -22,7 +22,13 @@ import {
   type PlanInteriorView,
 } from "../../stores/server/queries";
 import { useDashboardNodeSelection } from "../../stores/view/selection";
-import { DecorativeGlyph, Skeleton, SkeletonRow, StepCheckMark } from "../kit";
+import {
+  DecorativeGlyph,
+  Skeleton,
+  SkeletonRow,
+  StateBlock,
+  StepCheckMark,
+} from "../kit";
 import {
   useFocusZone,
   type FocusZoneItemOptions,
@@ -330,22 +336,31 @@ export function PlanStepTree({
     );
   }
 
+  // Shared empty treatment (state-mode-uniformity ADR D3/D4): ONE sentence, centered
+  // like every other settled empty body. No glyph — the tree is nested inside a plan
+  // pill that already carries its own marks, so a folder mark here names a second
+  // subject and reads as a filesystem the plan does not have.
   if (!view.served) {
     return (
-      <p
-        className="px-fg-2 py-fg-1 text-label text-ink-muted"
-        data-step-tree-placeholder
-      >
-        {resolveMessage(view.placeholderMessage).message}
-      </p>
+      <div data-step-tree-placeholder>
+        <StateBlock
+          mode="empty"
+          icon={null}
+          message={resolveMessage(view.placeholderMessage).message}
+        />
+      </div>
     );
   }
 
   if (view.empty) {
     return (
-      <p className="px-fg-2 py-fg-1 text-label text-ink-muted" data-step-tree-empty>
-        {resolveMessage(view.emptyMessage).message}
-      </p>
+      <div data-step-tree-empty>
+        <StateBlock
+          mode="empty"
+          icon={null}
+          message={resolveMessage(view.emptyMessage).message}
+        />
+      </div>
     );
   }
 

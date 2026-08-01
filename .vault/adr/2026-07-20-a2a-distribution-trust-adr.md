@@ -3,11 +3,12 @@ tags:
   - '#adr'
   - '#a2a-distribution-trust'
 date: '2026-07-20'
-modified: '2026-07-30'
-body_hash: 'sha256:b537ae751338a31f8c7a6f529572a51c68822ddf4c7e308996e96f37cbde4b56'
+modified: '2026-08-01'
+body_hash: 'sha256:fcaabb5ee3ebe123ab0b16b3f94c431ae11dc23251973b7aa660db17f948259c'
 related:
   - "[[2026-07-20-a2a-distribution-trust-research]]"
   - "[[2026-07-18-a2a-product-provisioning-adr]]"
+  - '[[2026-07-24-a2a-product-provisioning-adr]]'
 ---
 
 # `a2a-distribution-trust` adr: `TUF-rooted offline distribution authority` | (**status:** `accepted`)
@@ -229,6 +230,8 @@ provide independent-human approval.
   posture remains honest and unchanged.
 - The product-provisioning D8 and D10 contracts become implementable without changing
   their artifact-level certification or fixed-journal semantics.
+
+**Amendment note (2026-08-01):** the accepted `2026-07-24-a2a-product-provisioning-adr` declares this record untouched (its D6): no trust-model clause here is narrowed. One referent changed: the a2a component bound by the cohort record is no longer a fetched A2A capsule but a frozen a2a onedir bundled as ordinary release files (published per target by the a2a repository under that record's 2026-07-31 amendment), and there is no longer a separate capsule manifest to cross-verify — component trust is the member manifest's composition-time file digests. Read "capsule contract" in the cohort-record constraint and "the A2A capsule's four-target set" in the D2 amendment with that referent; the `a2a_component` reshape of the release-set-manifest schema is a reviewed contract event under that record.
 
 ## Amendment (2026-07-21): free open-source scope — unsigned release, ceremony is not a prerequisite
 

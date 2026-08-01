@@ -87,7 +87,7 @@ available to sub-agents; Figma serialises writes.
 ```
 npm run figma:names    # @figma headers are well-formed and point at SlhonORmySdoSMTQgDWw3w
 npm run tokens:check   # the DTCG → CSS token drift gate
-just dev lint frontend # the full gate (eslint + prettier + tsc + the above)
+just lint frontend # the full gate (eslint + prettier + tsc + the above)
 ```
 
 Parity by name is a read-only MCP spot-check, not a local gate: `search_design_system`

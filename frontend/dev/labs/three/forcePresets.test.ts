@@ -20,7 +20,7 @@ import {
   sanitizeParams,
   writeStoredParams,
 } from "./forcePresets";
-import { FORCE_CONTROL_DEFAULTS } from "../scene/three/forceControls";
+import { FORCE_CONTROL_DEFAULTS } from "@app/scene/three/forceControls";
 
 afterEach(() => {
   localStorage.clear();

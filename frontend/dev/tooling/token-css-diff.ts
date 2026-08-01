@@ -16,7 +16,10 @@
  * accumulated from its `--name:` opener until the terminating `;`, so the comparison
  * stays formatting-agnostic for multi-line as well as single-line values.
  */
-export function parseScopedDecls(region: string, defaultScope: string): Map<string, string> {
+export function parseScopedDecls(
+  region: string,
+  defaultScope: string,
+): Map<string, string> {
   const out = new Map<string, string>();
   let scope = defaultScope;
   let pendingName: string | null = null;
@@ -24,7 +27,11 @@ export function parseScopedDecls(region: string, defaultScope: string): Map<stri
 
   const flush = () => {
     if (pendingName === null) return;
-    const value = pendingValue.replace(/;[\s\S]*$/, "").replace(/\s+/g, " ").trim().toLowerCase();
+    const value = pendingValue
+      .replace(/;[\s\S]*$/, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLowerCase();
     out.set(`${scope}|${pendingName}`, value);
     pendingName = null;
     pendingValue = "";
@@ -69,7 +76,8 @@ export function compareDecls(
   for (const key of keys) {
     const c = committed.get(key);
     const f = fresh.get(key);
-    if (c !== f) diffs.push(`  ${key}: committed=${c ?? "<missing>"} fresh=${f ?? "<missing>"}`);
+    if (c !== f)
+      diffs.push(`  ${key}: committed=${c ?? "<missing>"} fresh=${f ?? "<missing>"}`);
   }
   return diffs.sort();
 }

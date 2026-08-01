@@ -40,9 +40,6 @@ function productionModel(): HoverCardModel {
   };
   const evidence: NodeEvidence = {
     documents: [{ path: hostile.path, doc_type: "private_kind" }],
-    code_locations: [
-      { path: "/private/code.ts", symbol: hostile.symbol, state: hostile.state },
-    ],
     commits: [
       {
         sha: hostile.sha,
@@ -87,7 +84,6 @@ describe("HoverCard safe localized presentation", () => {
       "  Authored commit subject  ",
     );
     expect(screen.getByText("1 related document")).toBeTruthy();
-    expect(screen.getByText("1 code location")).toBeTruthy();
     expect(screen.getByText("1 related change")).toBeTruthy();
 
     for (const forbidden of Object.values(hostile)) {
@@ -102,7 +98,6 @@ describe("HoverCard safe localized presentation", () => {
     const dialog = screen.getByRole("dialog");
     const type = container.querySelector("[data-hover-doc-type]")!;
     const documents = container.querySelector("[data-hover-document-count]")!;
-    const code = container.querySelector("[data-hover-code-count]")!;
     const commits = container.querySelector("[data-hover-commit-count]")!;
     const open = container.querySelector<HTMLButtonElement>("[data-hover-open]")!;
 
@@ -129,12 +124,6 @@ describe("HoverCard safe localized presentation", () => {
           values: { count: 1 },
         }).message,
       );
-      expect(code.textContent).toBe(
-        resolveMessageResult(runtime, {
-          key: "graph:hover.evidence.codeLocations",
-          values: { count: 1 },
-        }).message,
-      );
       expect(commits.textContent).toBe(
         resolveMessageResult(runtime, {
           key: "graph:hover.evidence.commits",
@@ -142,6 +131,24 @@ describe("HoverCard safe localized presentation", () => {
         }).message,
       );
     }
+  });
+
+  it("runs every body line at ONE small type role and carries no accent edge strip", () => {
+    const { container } = setup();
+    const card = container.querySelector("[data-hover-card]")!;
+
+    // The popup's depth is the elevation shadow alone — no coloured edge rule.
+    expect(container.querySelector("[data-category-strip]")).toBeNull();
+    expect(card.className).toContain("shadow-fg-overlay");
+
+    // Summary and evidence read at the same small role; nothing steps up a size.
+    const summary = container.querySelector("[data-hover-summary]")!;
+    const evidence = container.querySelector(
+      "[data-hover-document-count]",
+    )!.parentElement!;
+    expect(summary.className).toContain("text-caption");
+    expect(evidence.className).toContain("text-caption");
+    expect(evidence.className).not.toContain("text-label");
   });
 
   it("opens through the real stateful callback without exposing the identifier", () => {

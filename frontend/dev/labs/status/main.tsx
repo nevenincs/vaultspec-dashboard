@@ -9,12 +9,12 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 
-import { StatusTab } from "../app/right/StatusTab";
-import type { RailState } from "../app/right/railStates";
-import { getThemeController } from "../platform/theme/themeController";
-import { queryClient } from "../stores/server/queryClient";
-import { useViewStore } from "../stores/view/viewStore";
-import "../styles.css";
+import { StatusTab, StatusTabView } from "@app/app/right/StatusTab";
+import type { RailState } from "@app/app/right/railStates";
+import { getThemeController } from "@app/platform/theme/themeController";
+import { queryClient } from "@app/stores/server/queryClient";
+import { useViewStore } from "@app/stores/view/viewStore";
+import "@app/styles.css";
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
@@ -28,15 +28,13 @@ function seedScopeFromUrl(): void {
   if (scope) useViewStore.getState().setScope(scope);
 }
 
-// `?state=empty|degraded|loading|populated` drives the rail into a single binding
-// state for a visual-parity capture (the live engine only ever yields whichever
-// state its real data implies). Absent/invalid → live-derived state.
-function stateOverrideFromUrl(): RailState | undefined {
+// `?state=empty|degraded|loading|typical` renders ONE canonical mode. It drives the
+// wire-free `StatusTabView` directly rather than overriding what the container
+// derives — production carries no preview affordance (visual-review-harness ADR D2).
+// Absent/invalid → the live container, whose mode its real data implies.
+function modeFromUrl(): RailState | undefined {
   const raw = new URLSearchParams(window.location.search).get("state");
-  return raw === "empty" ||
-    raw === "degraded" ||
-    raw === "loading" ||
-    raw === "populated"
+  return raw === "empty" || raw === "degraded" || raw === "loading" || raw === "typical"
     ? raw
     : undefined;
 }
@@ -45,7 +43,7 @@ function StatusVisualHarness() {
   useEffect(() => {
     seedScopeFromUrl();
   }, []);
-  const stateOverride = stateOverrideFromUrl();
+  const mode = modeFromUrl();
   return (
     <main className="flex min-h-screen items-start justify-start bg-paper p-6">
       <div
@@ -53,7 +51,7 @@ function StatusVisualHarness() {
         data-status-harness
       >
         <div className="flex flex-col p-fg-4">
-          <StatusTab stateOverride={stateOverride} />
+          {mode ? <StatusTabView railState={mode} /> : <StatusTab />}
         </div>
       </div>
     </main>

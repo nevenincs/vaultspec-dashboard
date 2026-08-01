@@ -102,7 +102,9 @@ describe("CanvasStateOverlay localization", () => {
         restoring,
       );
       expect(screen.getAllByRole("status")).toEqual([restoringStatus]);
-      expect(restoring?.querySelector("p")?.textContent).toBe(
+      // Loading is UI-ONLY (state-mode-uniformity ADR D2): the label lives only
+      // in the Spinner's sr-only text, never a visible caption beside it.
+      expect(restoring?.querySelector(".sr-only")?.textContent).toBe(
         expectation.canvas.states.restoring,
       );
     }

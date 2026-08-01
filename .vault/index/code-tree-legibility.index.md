@@ -1,0 +1,26 @@
+---
+generated: true
+tags:
+  - '#index'
+  - '#code-tree-legibility'
+date: '2026-08-01'
+modified: '2026-08-01'
+body_schema: 'body-v1'
+related:
+  - '[[2026-08-01-code-tree-legibility-adr]]'
+  - '[[2026-08-01-code-tree-legibility-research]]'
+---
+
+# `code-tree-legibility` feature index
+
+Auto-generated index of all documents tagged with `#code-tree-legibility`.
+
+## Documents
+
+### adr
+
+- `2026-08-01-code-tree-legibility-adr` - `code-tree-legibility` adr: `file-type icons, ignore dimming, and served git status` | (**status:** `{proposed|accepted|rejected|superseded|deprecated}`)
+
+### research
+
+- `2026-08-01-code-tree-legibility-research` - `code-tree-legibility` research: `vs code grade file tree legibility`

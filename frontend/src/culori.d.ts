@@ -16,4 +16,15 @@ declare module "culori" {
   export function converter(
     mode: "rgb",
   ): (color: object | undefined) => Rgb | undefined;
+  interface Oklch {
+    mode: "oklch";
+    l?: number;
+    c?: number;
+    h?: number;
+    alpha?: number;
+  }
+  /** Format any parsed colour as a `#rrggbb` string. */
+  export function formatHex(color: object | string | undefined): string | undefined;
+  /** Parse/convert a colour into OKLCH. */
+  export function oklch(color: object | string | undefined): Oklch | undefined;
 }

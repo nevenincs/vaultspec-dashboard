@@ -46,7 +46,7 @@ export const timeline = {
   states: {
     noDatedDocuments: "No dated documents in this view.",
     noDatedFiles: "No dated files in this view.",
-    rangeUnavailable: "Date range is unavailable. Try again shortly.",
+    rangeUnavailable: "Could not load timeline",
   },
   summaries: {
     selectedRange: "{{start}} to {{end}}",

@@ -754,9 +754,6 @@ export function adaptNodeEvidence(body: unknown): NodeEvidence {
     documents: Array.isArray(rec.documents)
       ? (rec.documents as NodeEvidence["documents"])
       : [],
-    code_locations: Array.isArray(rec.code_locations)
-      ? (rec.code_locations as NodeEvidence["code_locations"])
-      : [],
     commits: Array.isArray(rec.commits) ? (rec.commits as NodeEvidence["commits"]) : [],
     tiers: (rec.tiers ?? {}) as TiersBlock,
   };

@@ -1,7 +1,7 @@
 # cargo-deny — Rust supply-chain quality gate for the vaultspec engine workspace.
 #
 # Run:   cargo deny --manifest-path engine/Cargo.toml check
-# Front: just dev audit rust   (and the quality-gates CI workflow)
+# Front: just audit rust   (and the quality-gates CI workflow)
 #
 # Parallels Python's `uv audit` and Node's `npm audit`: advisories are the hard
 # gate (known vulnerabilities / yanked crates fail the build); the license

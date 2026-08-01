@@ -4,7 +4,7 @@
 The core and RAG repositories use the same Rich ``Console.export_svg``
 workflow. Keep this script's interface aligned with theirs:
 
-    uv run --no-sync python scripts/render_readme_assets.py [OUT_DIR]
+    just docs readme-assets
 
 ``OUT_DIR`` defaults to ``docs/assets``. Set ``VAULTSPEC_BIN`` to select a
 specific binary; otherwise the script prefers an installed executable, then
@@ -88,7 +88,7 @@ def resolve_binary() -> Path:
         return Path(installed)
 
     raise FileNotFoundError(
-        "vaultspec binary not found; run `just dev build package` or set VAULTSPEC_BIN"
+        "vaultspec binary not found; run `just build package` or set VAULTSPEC_BIN"
     )
 
 

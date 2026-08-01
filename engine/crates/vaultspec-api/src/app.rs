@@ -959,125 +959,12 @@ impl ScopeCell {
     }
 }
 
+use crate::semantic_epoch::SemanticEpochCache;
+use crate::shutdown::ShutdownSignal;
+
 /// Workspace-level serve state: the warm scope registry, the single shared
 /// user-state handle, the bearer token, and the active scope. Per-scope serve
 /// state lives in [`ScopeCell`], resolved through the registry.
-/// The freshness window for the cached semantic epoch.
-/// rag's index epoch only advances when a
-/// reindex COMPLETES — a minutes-long operation — so serving an epoch up to a
-/// few seconds stale is negligible against the build it tracks, while the window
-/// collapses a burst of `/search` freshness annotations and `/graph/embeddings`
-/// polls onto a single `/jobs` round-trip.
-const SEMANTIC_EPOCH_TTL: std::time::Duration = std::time::Duration::from_secs(5);
-
-/// The value + read instant of a cached semantic epoch.
-struct CachedEpoch {
-    epoch: u64,
-    read_at: std::time::Instant,
-}
-
-/// A bounded, single-value, short-TTL cache of rag's machine-global semantic
-/// freshness epoch. The epoch is ONE fact for the
-/// resident service — the newest terminal reindex timestamp across its `/jobs`,
-/// derived by [`rag_client::control::semantic_epoch`] — so the whole cache is a
-/// single `(epoch, read_at)` slot, never a growing per-scope map
-/// (`every-accumulator-is-bounded`: one value plus a TTL bound). Both the
-/// `/graph/embeddings` vector-cache key and the `/search` freshness annotation
-/// read the epoch through this one seam, so the derivation lives in exactly one
-/// place and a warm read costs no round-trip.
-#[derive(Default)]
-pub struct SemanticEpochCache {
-    slot: Mutex<Option<CachedEpoch>>,
-}
-
-impl SemanticEpochCache {
-    /// The cached epoch IF it was read within [`SEMANTIC_EPOCH_TTL`], else `None`
-    /// (a cold or expired slot). A `None` is each caller's cue to refresh on its
-    /// own terms: `/graph/embeddings` does the one bounded `/jobs` read and
-    /// [`SemanticEpochCache::store`]s it; `/search` annotates an honest absent
-    /// marker rather than adding a second blocking round-trip on the search path.
-    pub fn fresh(&self) -> Option<u64> {
-        // Poison recovery (robustness H2): see `graph_arc`.
-        let slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        slot.as_ref()
-            .filter(|c| c.read_at.elapsed() < SEMANTIC_EPOCH_TTL)
-            .map(|c| c.epoch)
-    }
-
-    /// Store a freshly-read epoch, opening a new TTL window. Only a genuinely
-    /// read epoch is stored — a legitimate `0` ("nothing reindexed yet") included;
-    /// a FAILED read is never stored, so a rag flake leaves the slot cold and
-    /// `/search` reports absent rather than a fabricated `0`.
-    pub fn store(&self, epoch: u64) {
-        let mut slot = self.slot.lock().unwrap_or_else(|e| e.into_inner());
-        *slot = Some(CachedEpoch {
-            epoch,
-            read_at: std::time::Instant::now(),
-        });
-    }
-}
-
-/// The process-wide graceful-shutdown latch.
-///
-/// A LATCH, not a notification: once raised it stays raised, and a waiter that
-/// subscribes AFTER the raise resolves immediately. That property is what makes
-/// the drain finish. An endless response body (the graph SSE stream, the A2A run
-/// relay) is opened at an arbitrary moment and must end when the process is
-/// stopping; with a one-shot notification the permit is consumed by whoever
-/// waits first — every stream opened before the signal (or subscribing after it)
-/// would keep its connection open forever, so `axum::serve`'s graceful shutdown
-/// never completes, the caller's bounded wait expires, and the process is
-/// force-killed WITH IN-FLIGHT CONNECTIONS ATTACHED — client-visible as a
-/// dropped socket on requests that had nothing to do with the stop.
-///
-/// Backed by a `watch` channel because it keeps the raised value for late
-/// subscribers and never fails on a send (`send_replace` ignores the
-/// receiver count), so raising the latch cannot depend on who is listening.
-pub struct ShutdownSignal {
-    tx: tokio::sync::watch::Sender<bool>,
-}
-
-impl Default for ShutdownSignal {
-    fn default() -> Self {
-        Self {
-            tx: tokio::sync::watch::channel(false).0,
-        }
-    }
-}
-
-impl ShutdownSignal {
-    /// Raise the latch. Idempotent: a repeated raise while draining is a no-op
-    /// beyond re-publishing the same value.
-    pub fn signal(&self) {
-        self.tx.send_replace(true);
-    }
-
-    /// Whether the latch is raised (a cheap, non-blocking read).
-    pub fn is_signalled(&self) -> bool {
-        *self.tx.borrow()
-    }
-
-    /// Await the latch, resolving immediately when it is ALREADY raised.
-    pub async fn wait(&self) {
-        self.waiter().await;
-    }
-
-    /// An OWNED future that resolves when the latch is raised — the form a
-    /// response body needs, since a streaming body outlives the handler's
-    /// borrow of the state. Used to terminate endless SSE bodies at shutdown.
-    // `use<>`: capture NOTHING from `&self` (edition 2024 would otherwise infer
-    // the borrow into the opaque type), so the returned future is genuinely
-    // owned and can ride a response body that outlives this borrow.
-    pub fn waiter(&self) -> impl std::future::Future<Output = ()> + Send + 'static + use<> {
-        let mut rx = self.tx.subscribe();
-        async move {
-            // `wait_for` checks the CURRENT value first, so a waiter created
-            // after the raise returns without awaiting anything.
-            let _ = rx.wait_for(|raised| *raised).await;
-        }
-    }
-}
-
 pub struct AppState {
     /// The launch root of the workspace — used for worktree discovery so any
     /// vault-bearing worktree in this workspace is a selectable scope.
@@ -1262,6 +1149,121 @@ pub async fn bearer_gate(
 /// Cap on an error body we will buffer to inspect/rewrite. Error responses
 /// are tiny; success bodies are never buffered (we short-circuit on 2xx).
 const MAX_ERROR_BODY: usize = 64 * 1024;
+
+/// Header naming the demo condition a single request should be served under.
+pub const DEMO_CONDITION_HEADER: &str = "x-vaultspec-demo-condition";
+
+/// How long a `loading` request is held open. Long enough that the client's real
+/// loading UI is what a reviewer sees, bounded so a forgotten cell cannot pin a
+/// connection forever.
+const DEMO_LOADING_HOLD: std::time::Duration = std::time::Duration::from_secs(300);
+
+/// Is demo-condition simulation enabled for this process?
+///
+/// Gated on an environment variable set only by a dev/demo serve, so a production
+/// serve cannot enter the branch at all — the condition machinery does not exist for
+/// it. Read once: the answer cannot change within a process lifetime.
+fn demo_conditions_enabled() -> bool {
+    static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ENABLED.get_or_init(|| std::env::var("VAULTSPEC_DEMO_CONDITIONS").is_ok_and(|v| v == "1"))
+}
+
+/// Serve one request under a simulated demo CONDITION.
+///
+/// The visual review desk renders every principal surface in each of four conditions
+/// — normal, loading, error, empty — and those conditions must come from the BACKEND.
+/// Faking them in the client would review the harness's idea of a loading state
+/// rather than the application's, and the wire-contract rule forbids a faked wire
+/// outright. So the engine produces them:
+///
+///   `loading` — the request is genuinely held in flight, so the app's real pending
+///               path renders. Nothing is mocked; the response simply has not come.
+///   `error`   — a degraded envelope whose `tiers` actually report the backing tiers
+///               down, which is the only signal a client is permitted to read.
+///   normal / empty — pass through untouched; those two differ by which demo CORPUS
+///               the engine was pointed at, not by any per-request behaviour.
+pub async fn demo_condition(
+    // The state is unused: conditions are decided per-request, not from engine state.
+    // The extractor stays because `from_fn_with_state` requires the shape.
+    State(_state): State<Arc<AppState>>,
+    request: Request,
+    next: Next,
+) -> Response {
+    if !demo_conditions_enabled() {
+        return next.run(request).await;
+    }
+    let condition = request
+        .headers()
+        .get(DEMO_CONDITION_HEADER)
+        .and_then(|v| v.to_str().ok())
+        .map(str::to_ascii_lowercase);
+    match condition.as_deref() {
+        Some("loading") => {
+            tokio::time::sleep(DEMO_LOADING_HOLD).await;
+            next.run(request).await
+        }
+        Some("error") => {
+            let envelope = serde_json::json!({
+                "error": "demo: simulated backend outage",
+                "tiers": crate::routes::demo_degraded_tiers(),
+            });
+            let body = serde_json::to_vec(&envelope).expect("demo envelope serializes");
+            let mut response = Response::new(axum::body::Body::from(body));
+            *response.status_mut() = StatusCode::SERVICE_UNAVAILABLE;
+            response.headers_mut().insert(
+                axum::http::header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static("application/json"),
+            );
+            response
+        }
+        Some("normal") => {
+            // `normal` must actually BE normal. On a demo host, rag is usually not
+            // running and the a2a receipt authority is unverifiable, so the honest
+            // tiers block reports those tiers down — and every surface correctly
+            // renders its DEGRADED treatment. The desk then cannot show a healthy
+            // state at all, which defeats a four-condition matrix: three of the four
+            // cells would be degraded.
+            //
+            // So `normal` is simulated exactly as deliberately as `error` is: the
+            // response is served normally and its tiers block is overlaid with all
+            // tiers available. Both ends of the matrix are backend-asserted; neither
+            // is left to whatever the demo host happens to be missing.
+            let response = next.run(request).await;
+            overlay_healthy_tiers(response).await
+        }
+        _ => next.run(request).await,
+    }
+}
+
+/// Rewrite a JSON response's `tiers` block to report every tier available.
+///
+/// Only touches successful JSON bodies that already carry a tiers block; SSE streams,
+/// errors and non-JSON pass through untouched so nothing is buffered that should not
+/// be.
+async fn overlay_healthy_tiers(response: Response) -> Response {
+    let is_json = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|v| v.starts_with("application/json"));
+    if !response.status().is_success() || !is_json {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, MAX_ERROR_BODY).await else {
+        return Response::from_parts(parts, axum::body::Body::empty());
+    };
+    let Ok(mut value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return Response::from_parts(parts, axum::body::Body::from(bytes));
+    };
+    if value.get("tiers").is_none() {
+        return Response::from_parts(parts, axum::body::Body::from(bytes));
+    }
+    value["tiers"] = crate::routes::demo_healthy_tiers();
+    let rebuilt = serde_json::to_vec(&value).unwrap_or_else(|_| bytes.to_vec());
+    parts.headers.remove(axum::http::header::CONTENT_LENGTH);
+    Response::from_parts(parts, axum::body::Body::from(rebuilt))
+}
 
 /// Post-response guarantee for the contract §2 / codified tiers-block rule:
 /// EVERY wire response carries the per-tier degradation block. Handlers build

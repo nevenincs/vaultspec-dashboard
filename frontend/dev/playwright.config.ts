@@ -8,7 +8,7 @@ import { defineConfig } from "@playwright/test";
 import { DEV_PORTS } from "./dev-ports";
 
 export default defineConfig({
-  testDir: "./e2e",
+  testDir: "../e2e",
   // The adverse pass and the locale-swap localization spec run against the
   // Vite dev server (dev affordances), not this live-origin smoke config;
   // they have their own playwright.adverse.config.ts /

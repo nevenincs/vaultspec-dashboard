@@ -96,7 +96,7 @@ fn cold_index_baseline() {
     // shared CI runners and under parallel test load they flake without
     // signalling a real regression. The default suite keeps the
     // deterministic assertions (doc counts, cache hits) and the printed
-    // baseline; `just dev test bench` sets the flag for the gated run.
+    // baseline; `just test bench` sets the flag for the gated run.
     // (A strict warm<=cold ordering is load-sensitive either way — the
     // cache-hit assertion above is the real warmth proof.)
     if std::env::var("VAULTSPEC_BENCH_STRICT").as_deref() == Ok("1") {

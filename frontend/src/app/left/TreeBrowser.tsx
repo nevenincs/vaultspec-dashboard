@@ -7,8 +7,10 @@
 // all render through the SAME `VaultTreeRow` shell so every level reads identically:
 // the same fully-rounded row (`rounded-fg-xs` — never a square or half-rounded edge),
 // the same one-step-per-level indentation, and the SAME selection treatment — a
-// filled accent tint over the WHOLE rounded row plus accent label ink (the binding
-// Figma selected-row look: accent tint + accent name). There is no left-edge bar and
+// filled accent tint over the whole rounded row plus accent label ink (the binding
+// Figma selected-row look: accent tint + accent name). The row — and therefore the
+// tint — begins at the row's OWN indent, so the fill matches the item it belongs to
+// and leaves the ancestors' depth guides in the clear. There is no left-edge bar and
 // no straight-edged highlight anywhere; selection is the rounded fill, identical on a
 // folder and on a leaf.
 //
@@ -34,8 +36,16 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
+import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
-import { categoryColorVar, categoryToken, IconButton, type Category } from "../kit";
+import {
+  Button,
+  categoryColorVar,
+  categoryToken,
+  IconButton,
+  StateBlock,
+  type Category,
+} from "../kit";
 import { RailSection } from "../chrome/RailSection";
 import { useFocusZone, type FocusZoneItemProps } from "../chrome/useFocusZone";
 import { DocTypeMark } from "../../scene/field/markComponents";
@@ -53,6 +63,7 @@ import {
   useDashboardSelectedNodeId,
   useVaultRailFacets,
   useVaultTreeSurface,
+  useWorkspaceMapSurface,
   type VaultDocTypeGroup,
   type VaultTreeFeatureGroup,
 } from "../../stores/server/queries";
@@ -91,18 +102,12 @@ import {
   formatBytes,
   formatDate,
   formatNumber,
-  formatPercentage,
 } from "../../platform/localization/formatters";
 import {
   useActiveLocale,
   useLocalizedMessageResolver,
   type LocalizedMessageResolver,
 } from "../../platform/localization/LocalizationProvider";
-import type {
-  AnyMessageDescriptor,
-  MessageDescriptor,
-} from "../../platform/localization/message";
-import { createCountMessageDescriptor } from "../../platform/localization/message";
 import { localizationNamespaces } from "../../platform/localization/runtime";
 import {
   pathStem,
@@ -121,7 +126,6 @@ import "./menus/vaultCategoryMenu";
 import "./menus/vaultSectionMenu";
 import {
   CHEVRON_PX,
-  STATUS_MARK_PX,
   adrStatusMark,
   adrStatusToneClass,
   docDateTimestamp,
@@ -135,129 +139,18 @@ import {
   planTierLabel,
 } from "./vaultRowPresentation";
 
-export const TREE_BROWSER_MESSAGES = {
-  addDocumentToFeature: {
-    key: "documents:accessibility.addDocumentToFeature",
-  },
-  degraded: { key: "documents:tree.degraded" },
-  emptyWorktree: { key: "documents:tree.emptyWorktree" },
-  features: { key: "features:labels.feature" },
-  loading: { key: "documents:tree.loading" },
-  noFilterMatches: { key: "documents:tree.noFilterMatches" },
-  noFilterMatchesYet: { key: "documents:tree.noFilterMatchesYet" },
-  partialAnnouncement: { key: "documents:tree.partialAnnouncement" },
-  retry: { key: "common:actions.retry" },
-  treeBrowser: { key: "documents:accessibility.treeBrowser" },
-  unavailable: { key: "documents:tree.unavailable" },
-  vaultBrowser: { key: "documents:tree.vaultBrowser" },
-  documents: { key: "documents:browserModes.documents" },
-} as const satisfies Record<string, MessageDescriptor>;
-
-export function treePartialCountMessage(count: number): AnyMessageDescriptor {
-  const descriptor = createCountMessageDescriptor("documents:tree.partialCount", count);
-  if (descriptor === null) return TREE_BROWSER_MESSAGES.partialAnnouncement;
-  return descriptor;
-}
-
-export function treeRowActionsMessage(item: string): MessageDescriptor {
-  return {
-    key: "common:accessibility.actionsForItem",
-    values: { item },
-  };
-}
-
-export function treePlanProgressMessage(
-  done: number,
-  total: number,
-): MessageDescriptor | null {
-  if (
-    !Number.isSafeInteger(done) ||
-    !Number.isSafeInteger(total) ||
-    done < 0 ||
-    total <= 0 ||
-    done > total
-  ) {
-    return null;
-  }
-  return { key: "documents:tree.planProgress", values: { done, total } };
-}
-
-export function treeWordCountMessage(count: number): AnyMessageDescriptor | null {
-  return createCountMessageDescriptor("documents:tree.wordCount", count);
-}
-
-export function treeSizeSummaryMessage(
-  count: number,
-  size: string,
-): AnyMessageDescriptor | null {
-  return createCountMessageDescriptor("documents:tree.sizeSummary", count, { size });
-}
-
-export function formatTreeWeight(
-  locale: string,
-  weightBytes: number,
-  totalBytes: number,
-  resolveMessage: LocalizedMessageResolver,
-): string {
-  if (
-    !Number.isFinite(weightBytes) ||
-    !Number.isFinite(totalBytes) ||
-    weightBytes <= 0 ||
-    totalBytes <= 0 ||
-    weightBytes > totalBytes
-  ) {
-    return "";
-  }
-  const ratio = weightBytes / totalBytes;
-  if (ratio < 0.01) {
-    const threshold = formatPercentage(locale, 0.01, { maximumFractionDigits: 0 });
-    return threshold
-      ? resolveMessage({
-          key: "documents:tree.weightBelowThreshold",
-          values: { threshold },
-        }).message
-      : "";
-  }
-  return formatPercentage(locale, ratio, { maximumFractionDigits: 1 }) ?? "";
-}
-
-const PLAN_STATUS_MESSAGES = {
-  complete: { key: "documents:accessibility.planComplete" },
-  "in-progress": { key: "documents:accessibility.planInProgress" },
-  "not-started": { key: "documents:accessibility.planNotStarted" },
-} as const satisfies Record<ReturnType<typeof planStatus>, MessageDescriptor>;
-
-const DECISION_STATUS_MESSAGES = {
-  accepted: { key: "documents:accessibility.decisionAccepted" },
-  deprecated: { key: "documents:accessibility.decisionDeprecated" },
-  proposed: { key: "documents:accessibility.decisionProposed" },
-  rejected: { key: "documents:accessibility.decisionRejected" },
-  superseded: { key: "documents:accessibility.decisionSuperseded" },
-} as const satisfies Record<string, MessageDescriptor>;
-
-const DECISION_STATUS_LABEL_MESSAGES = {
-  accepted: { key: "documents:tree.decisionStatusAccepted" },
-  deprecated: { key: "documents:tree.decisionStatusDeprecated" },
-  proposed: { key: "documents:tree.decisionStatusProposed" },
-  rejected: { key: "documents:tree.decisionStatusRejected" },
-  superseded: { key: "documents:tree.decisionStatusSuperseded" },
-} as const satisfies Record<string, MessageDescriptor>;
-
-export function treeDecisionStatusMessage(status: string): MessageDescriptor | null {
-  return (
-    DECISION_STATUS_MESSAGES[status as keyof typeof DECISION_STATUS_MESSAGES] ?? null
-  );
-}
-
-export function treeDecisionStatusLabelMessage(
-  status: string,
-): MessageDescriptor | null {
-  return (
-    DECISION_STATUS_LABEL_MESSAGES[
-      status as keyof typeof DECISION_STATUS_LABEL_MESSAGES
-    ] ?? null
-  );
-}
+import {
+  PLAN_STATUS_MESSAGES,
+  TREE_BROWSER_MESSAGES,
+  formatTreeWeight,
+  treeDecisionStatusLabelMessage,
+  treeDecisionStatusMessage,
+  treePartialCountMessage,
+  treePlanProgressMessage,
+  treeRowActionsMessage,
+  treeSizeSummaryMessage,
+  treeWordCountMessage,
+} from "./treeBrowserMessages";
 
 /** Display stem — the shared derivation from the selection join. */
 export function entryStem(path: string): string {
@@ -269,12 +162,22 @@ export function entryStem(path: string): string {
 // reads as a clear staircase under one UI-scale change (no-hardcoded-px — rem, not
 // px). The section header sits at level 0; a section's first folder row is level 1;
 // a feature's category sub-folder is level 2; a document leaf is one level deeper
-// than its parent folder. The inset is applied as `padding-inline-start` so the
-// whole row (chevron + icon + label) shifts together.
+// than its parent folder.
+//
+// The inset is a `margin-inline-start`, NOT padding: the row RECTANGLE itself starts
+// at the row's own indent, so the selection/hover fill matches the item it belongs to
+// instead of spilling back across the tree's structural gutter. That gutter is where
+// the ancestors' depth guides live — an ancestor guide sits at
+// `BASE + a*STEP + GUIDE_CENTER` for some ancestor level `a < level`, which is always
+// strictly left of this row's `BASE + level*STEP` edge — so no guide can ever be
+// painted over by a row's fill, at any depth, selected or not. (With padding the row
+// box began at the gutter's left edge and each nested folder body, being positioned,
+// painted its rows' fills over the outer guides — visibly cutting them, and only at
+// some depths.)
 const INDENT_STEP_REM = 1;
 const INDENT_BASE_REM = 0.5;
 function indentStyle(level: number): CSSProperties {
-  return { paddingInlineStart: `${INDENT_BASE_REM + level * INDENT_STEP_REM}rem` };
+  return { marginInlineStart: `${INDENT_BASE_REM + level * INDENT_STEP_REM}rem` };
 }
 
 // The leading category GLYPH reads at the row text size — a real icon, not a dot.
@@ -295,11 +198,15 @@ function guideStyle(parentLevel: number): CSSProperties {
 
 /** The ONE row shell + selection treatment shared by EVERY tree level (feature,
  *  category folder, document leaf). Fully rounded (`rounded-fg-xs`) always; a
- *  highlighted row is filled with the accent tint over the whole rounded row — the
- *  binding Figma selected-row look. No left-edge bar, no half-rounded/straight edge:
- *  a leaf and a folder select identically. */
+ *  highlighted row is filled with the accent tint over the whole rounded row — which
+ *  spans the row from its own indent to the rail's edge, the binding Figma
+ *  selected-row look. No left-edge bar, no half-rounded/straight edge: a leaf and a
+ *  folder select identically. */
 function rowClassName(highlighted: boolean): string {
-  return `flex w-full select-text items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+  // `min-w-0 flex-1` (not `w-full`): the row is indented by margin, so it takes the
+  // REMAINING width of its flex line — a `w-full` row would measure 100% of the line
+  // and overhang the rail by its own indent.
+  return `flex min-w-0 flex-1 select-text items-center gap-fg-1-5 rounded-fg-xs py-fg-1-5 pe-fg-2 text-left transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
     highlighted ? "bg-accent-subtle" : "hover:bg-paper-sunken"
   }`;
 }
@@ -386,6 +293,16 @@ export function TreeBrowser({
   const resolveMessage = useLocalizedMessageResolver();
   const activeLocale = useActiveLocale();
   const scope = useActiveScope();
+  // Scope resolution itself can fail (the workspace map/session read that names the
+  // active project is down) — distinct from `state === "error"` below, which reads
+  // this tree's OWN query. When resolution itself has failed the vault-tree read
+  // never even gets to run (its query stays disabled on a scope that will never
+  // arrive), so without this check the tree is stuck honestly reporting "loading"
+  // forever instead of the shared degraded treatment (Stage/TimelineRangeSelector
+  // read this same surface truth; degradation is read from tiers, never guessed).
+  const workspaceMapSurface = useWorkspaceMapSurface();
+  const scopeResolutionFailed =
+    workspaceMapSurface.state === "error" || workspaceMapSurface.availability.degraded;
   const { tree, availability, state, complete } = useVaultTreeSurface(scope);
   const facets = useVaultRailFacets(scope);
   const dashboardSelection = useDashboardBrowserSelection(scope);
@@ -567,6 +484,15 @@ export function TreeBrowser({
     publishVaultBrowserTreeKeys(scope, allTreeKeys);
   }, [scope, allTreeKeys]);
 
+  if (scopeResolutionFailed) {
+    return (
+      <RailMessage
+        tone="degraded"
+        label={resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
+      />
+    );
+  }
+
   if (state === "loading") {
     // LOADING mode (binding `LeftRail` State=Loading): the shared designed skeleton.
     return (
@@ -575,23 +501,21 @@ export function TreeBrowser({
   }
 
   if (state === "error") {
+    // Uniform degraded treatment (state-mode-uniformity ADR D1/D3/D4): the shared
+    // caution glyph + one plain sentence, exactly as the code tree's read failure —
+    // never a bespoke color/copy pairing for the same underlying condition.
     return (
-      <div
-        className="space-y-fg-1 px-fg-1 py-fg-0-5"
-        role="status"
-        aria-live="polite"
-        data-tree-error
-      >
-        <p className="text-label text-state-broken">
-          {resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
-        </p>
-        <button
-          type="button"
-          onClick={tree.retry}
-          className="rounded-fg-xs text-label text-ink-muted underline-offset-2 hover:text-ink hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-        >
-          {resolveMessage(TREE_BROWSER_MESSAGES.retry).message}
-        </button>
+      <div data-tree-error>
+        <StateBlock
+          mode="degraded"
+          layout="block"
+          message={resolveMessage(TREE_BROWSER_MESSAGES.unavailable).message}
+        />
+        <div className="flex justify-center px-fg-3 pb-fg-6">
+          <Button variant="ghost" onClick={tree.retry}>
+            {resolveMessage(TREE_BROWSER_MESSAGES.retry).message}
+          </Button>
+        </div>
       </div>
     );
   }
@@ -737,6 +661,20 @@ interface RowNav {
 
 // --- the ONE tree row (feature, category folder, AND document leaf) ---------------
 
+/** The presentation of a leaf's SERVED review state as the row's item icon: the
+ *  shape, its sanctioned tone class, and the plain-language word that becomes the
+ *  icon's accessible name (the rail is too narrow for the word itself). `statusHook`
+ *  carries the row-level `data-*-status` attribute on desktop, where the icon is the
+ *  only status carrier; on compact the inline status WORD carries it instead, so the
+ *  hook resolves to the element that actually presents the token. Nothing here
+ *  decides what the status IS — the projection serves it. */
+interface RowStatusMark {
+  Mark: PhosphorIcon;
+  toneClass: string;
+  label: string;
+  statusHook?: { attribute: "data-adr-status" | "data-plan-status"; value: string };
+}
+
 interface VaultTreeRowProps {
   /** Stable nav/expansion key. */
   navKey: string;
@@ -750,6 +688,10 @@ interface VaultTreeRowProps {
    *  absent, the icon reads in quiet neutral ink (document leaves) — color is a
    *  top-level-only signal. */
   markColor?: Category;
+  /** A leaf whose served review state has its own mark (a decision's acceptance, a
+   *  plan's progress) leads with THAT mark as the row's ONE item icon, at the same
+   *  size as the doc-type mark it replaces. One row, one icon. */
+  statusMark?: RowStatusMark;
   /** Expandable (folder) rows show a chevron and toggle; leaves show an aligned
    *  spacer and select/open. */
   expandable: boolean;
@@ -794,6 +736,7 @@ function VaultTreeRow({
   label,
   markKind,
   markColor,
+  statusMark,
   expandable,
   expanded = false,
   count,
@@ -883,47 +826,72 @@ function VaultTreeRow({
           <span style={{ display: "inline-block", width: CHEVRON_PX }} />
         )}
       </span>
-      {/* the category GLYPH — tinted (parents) or quiet neutral ink (leaves). */}
-      <span
-        className="flex shrink-0 items-center text-ink-faint"
-        style={markColor ? { color: categoryColorVar(markColor) } : undefined}
-        data-doc-mark={markKind}
-        data-category={markColor ? categoryToken(markColor) : undefined}
-        aria-hidden
-      >
-        <DocTypeMark kind={markKind} size={ICON_PX} />
-      </span>
+      {/* The row's ONE item icon. A leaf with a served review state leads with THAT
+          state's mark — the decision's acceptance shape, the plan's progress ring —
+          at the doc-type mark's own size, carrying the status word as its accessible
+          name (the mark used to trail the row at two thirds the size beside the
+          doc-type glyph; a row now shows one icon, not two). Every other row keeps
+          the category GLYPH — tinted (parents) or quiet neutral ink (leaves). */}
+      {statusMark ? (
+        <span
+          className={`flex shrink-0 items-center ${statusMark.toneClass}`}
+          {...(statusMark.statusHook
+            ? { [statusMark.statusHook.attribute]: statusMark.statusHook.value }
+            : {})}
+          role="img"
+          aria-label={statusMark.label}
+        >
+          <statusMark.Mark size={ICON_PX} aria-hidden />
+        </span>
+      ) : (
+        <span
+          className="flex shrink-0 items-center text-ink-faint"
+          style={markColor ? { color: categoryColorVar(markColor) } : undefined}
+          data-doc-mark={markKind}
+          data-category={markColor ? categoryToken(markColor) : undefined}
+          aria-hidden
+        >
+          <DocTypeMark kind={markKind} size={ICON_PX} />
+        </span>
+      )}
       {subMeta ? (
         // Compact leaf (mobile-enrichment ADR D2): title over an inline meta line —
         // authored date + plain-language status word — so the review state and date
         // read WITHOUT a hover tooltip on touch.
         <span className="flex min-w-0 flex-1 flex-col gap-fg-0-5">
           <span
-            className={`truncate text-body ${highlighted ? "text-accent-text" : "text-ink"}`}
+            className={`truncate text-label ${highlighted ? "text-accent-text" : "text-ink"}`}
           >
             {label}
           </span>
-          <span className="flex items-center gap-fg-1-5 truncate text-meta">
+          <span className="flex items-center gap-fg-1-5 truncate text-meta font-normal">
             {subMeta}
           </span>
         </span>
       ) : (
+        // A tree row is a navigation LABEL, so it takes the label role (the one
+        // authored 0.8125rem/500 step) — not the reading-text `text-body` size, which
+        // set 0.875rem while silently inheriting the surrounding label WEIGHT and so
+        // rendered an 0.875rem/500 pairing no type token declares.
         <span
-          className={`min-w-0 flex-1 truncate text-body ${
+          className={`min-w-0 flex-1 truncate text-label ${
             highlighted ? "text-accent-text" : "text-ink"
           }`}
         >
           {label}
         </span>
       )}
+      {/* `font-normal` restores each meta value's AUTHORED weight: the `text-meta`
+          utility carries only size and line-height, so without it the trailing
+          numbers inherit the surrounding label weight and read as emphasis. */}
       {count !== undefined && formatNumber(locale, count) !== null && (
-        <span className="shrink-0 text-meta text-ink-muted" data-tabular>
+        <span className="shrink-0 text-meta font-normal text-ink-muted" data-tabular>
           {formatNumber(locale, count)}
         </span>
       )}
       {signal}
       {meta && (
-        <span className="shrink-0 text-meta text-ink-muted" data-tabular>
+        <span className="shrink-0 text-meta font-normal text-ink-muted" data-tabular>
           {meta}
         </span>
       )}
@@ -1292,46 +1260,64 @@ interface DocumentRowProps {
   nav: RowNav;
 }
 
-function docSignal(
+/** A leaf's SERVED review state as the row's one item icon: a plan's progress ring,
+ *  a decision's acceptance shape. Null for a doc type with no served review state —
+ *  those rows keep the doc-type glyph. `carriesStatusHook` is false on compact, where
+ *  the inline status WORD carries the row's `data-*-status` attribute instead. */
+function docStatusMark(
   entry: VaultTreeEntry,
   resolveMessage: LocalizedMessageResolver,
-): ReactNode {
+  carriesStatusHook: boolean,
+): RowStatusMark | undefined {
   if (entry.doc_type === "plan") {
-    const progressMessage = entry.progress
-      ? treePlanProgressMessage(entry.progress.done, entry.progress.total)
-      : null;
-    if (entry.progress && !progressMessage) return null;
     const status = planStatus(entry.progress);
-    const Mark = planStatusMark(status);
-    return (
-      <span
-        className={`flex shrink-0 items-center gap-fg-1 text-meta ${planStatusToneClass(status)}`}
-        data-plan-status={status}
-        aria-label={resolveMessage(PLAN_STATUS_MESSAGES[status]).message}
-      >
-        <Mark size={STATUS_MARK_PX} aria-hidden />
-        {entry.progress && (
-          <span data-tabular>{resolveMessage(progressMessage!).message}</span>
-        )}
-      </span>
-    );
+    return {
+      Mark: planStatusMark(status),
+      toneClass: planStatusToneClass(status),
+      label: resolveMessage(PLAN_STATUS_MESSAGES[status]).message,
+      ...(carriesStatusHook
+        ? { statusHook: { attribute: "data-plan-status" as const, value: status } }
+        : {}),
+    };
   }
   if (entry.doc_type === "adr" && entry.status) {
     const Mark = adrStatusMark(entry.status);
     const statusMessage = treeDecisionStatusMessage(entry.status);
-    if (!Mark || !statusMessage) return null;
-    return (
-      <span
-        className={`flex shrink-0 items-center ${adrStatusToneClass(entry.status)}`}
-        data-adr-status={entry.status}
-        role="img"
-        aria-label={resolveMessage(statusMessage).message}
-      >
-        <Mark size={STATUS_MARK_PX} aria-hidden />
-      </span>
-    );
+    if (!Mark || !statusMessage) return undefined;
+    return {
+      Mark,
+      toneClass: adrStatusToneClass(entry.status),
+      label: resolveMessage(statusMessage).message,
+      ...(carriesStatusHook
+        ? {
+            statusHook: { attribute: "data-adr-status" as const, value: entry.status },
+          }
+        : {}),
+    };
   }
-  return null;
+  return undefined;
+}
+
+/** The trailing review-state VALUE — a plan's done-of-total count. The state's SHAPE
+ *  now leads the row as its item icon, so nothing here repeats it. */
+function docSignal(
+  entry: VaultTreeEntry,
+  resolveMessage: LocalizedMessageResolver,
+): ReactNode {
+  if (entry.doc_type !== "plan" || !entry.progress) return null;
+  const progressMessage = treePlanProgressMessage(
+    entry.progress.done,
+    entry.progress.total,
+  );
+  if (!progressMessage) return null;
+  return (
+    <span
+      className={`shrink-0 text-meta font-normal ${planStatusToneClass(planStatus(entry.progress))}`}
+      data-tabular
+    >
+      {resolveMessage(progressMessage).message}
+    </span>
+  );
 }
 
 function docCompactSubMeta(
@@ -1484,6 +1470,7 @@ function DocumentRow({
       level={level}
       label={docDisplayTitle(entry.path, entry.title)}
       markKind={docType}
+      statusMark={docStatusMark(entry, resolveMessage, !compact)}
       expandable={false}
       signal={compact ? undefined : docSignal(entry, resolveMessage)}
       meta={compact ? undefined : docMetaLabel(entry, sortKey, resolveMessage, locale)}

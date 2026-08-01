@@ -73,6 +73,7 @@ const EXPECTED_AGENT_SERVICE_KEYS = [
   "common:agentService.ops.doctor",
   "common:agentService.activeGeneration",
   "common:agentService.progress",
+  "common:agentService.statusUnavailable",
   "common:agentService.runFailed",
   "common:agentService.dataPreserved",
   "common:agentService.outcome.succeeded",
@@ -163,6 +164,7 @@ const EXPECTED_CATALOG_KEYS = [
   "common:changeBuckets.modified",
   "common:changeBuckets.deleted",
   "common:changeBuckets.new",
+  "common:changes.couldNotLoad",
   "common:changes.filesChanged_one",
   "common:changes.filesChanged_other",
   "common:commandFamilies.editing",
@@ -874,6 +876,7 @@ const EXPECTED_CATALOG_KEYS = [
   "projects:actions.add",
   "projects:actions.checkProjectStatus",
   "projects:actions.clearHistory",
+  "projects:actions.openIssue",
   "projects:actions.openPullRequest",
   "projects:actions.prepareProjectTools",
   "projects:actions.setUpProject",
@@ -1088,7 +1091,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       !/^operations:searchMaintenance\.(?:jobs\.(?:count|partial)|projects\.(?:live|partial|summary))_(?:zero|one|two|few|many|other)$/u.test(
         key,
       ) &&
-      !/^(?:common:(?:changes\.filesChanged|palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:codeLocations|commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
+      !/^(?:common:(?:changes\.filesChanged|palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.counts\.(?:acknowledgements|changes)|tree\.(?:partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
         key,
       ),
   ),
@@ -1138,7 +1141,6 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "documents:tree.wordCount",
   "graph:accessibility.workingSetCount",
   "graph:islands.progress.stepsComplete",
-  "graph:hover.evidence.codeLocations",
   "graph:hover.evidence.commits",
   "graph:hover.evidence.documents",
   "projects:workspaceIdentity.counts.ahead",
@@ -1234,7 +1236,6 @@ describe("shipped localization catalog keys", () => {
       "documents:tree.wordCount",
       "graph:accessibility.workingSetCount",
       "graph:islands.progress.stepsComplete",
-      "graph:hover.evidence.codeLocations",
       "graph:hover.evidence.commits",
       "graph:hover.evidence.documents",
       "operations:searchMaintenance.jobs.count",

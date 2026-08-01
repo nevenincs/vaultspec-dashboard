@@ -16,7 +16,7 @@
  * Figma role-named type scale as Tokens Studio `typography` composites plus a `fontFamily`
  * set, radius as `borderRadius`, elevation as `boxShadow`, and spacing as `spacing`.
  *
- * Run: `node scripts/figma-export.ts` (npm run tokens:figma). This is the mechanical
+ * Run: `node dev/tooling/figma-export.ts` (npm run tokens:figma). This is the mechanical
  * code-side projection of the binding Figma foundation, not a separate authority source.
  */
 
@@ -28,7 +28,7 @@ import StyleDictionary from "style-dictionary";
 import { isAliasRef, type DtcgColorValue } from "./sd-transforms.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const tokensDir = join(here, "..", "tokens");
+const tokensDir = join(here, "..", "..", "tokens");
 const outDir = join(tokensDir, "figma");
 
 type Leaf = { path: string[]; original: { $value: DtcgColorValue } };
@@ -59,7 +59,14 @@ function toFigmaValue(raw: DtcgColorValue): string {
   if (raw.colorSpace === "srgb" && raw.hex) return raw.hex.toLowerCase();
   if (raw.colorSpace === "oklch" && raw.components) {
     const [l, c, h] = raw.components;
-    return formatHex(toOklch({ mode: "oklch", l, c, h })).toLowerCase();
+    // culori returns undefined for a colour it cannot parse. Left unchecked this
+    // threw a bare "cannot read toLowerCase of undefined" far from the cause; the
+    // token that failed is what a maintainer actually needs to see.
+    const hex = formatHex(toOklch({ mode: "oklch", l, c, h }));
+    if (hex === undefined) {
+      throw new Error(`unconvertible oklch color: ${JSON.stringify(raw)}`);
+    }
+    return hex.toLowerCase();
   }
   if (raw.hex) return raw.hex.toLowerCase();
   throw new Error(`unconvertible color: ${JSON.stringify(raw)}`);
@@ -77,19 +84,43 @@ function nest(tokens: Leaf[], keep: (p: string) => boolean): Record<string, unkn
       node[k] = (node[k] as Record<string, unknown>) ?? {};
       node = node[k] as Record<string, unknown>;
     }
-    node[t.path[t.path.length - 1]] = { value: toFigmaValue(t.original.$value), type: "color" };
+    node[t.path[t.path.length - 1]] = {
+      value: toFigmaValue(t.original.$value),
+      type: "color",
+    };
   }
   return root;
 }
 
+/**
+ * A parsed DTCG token tree. Every node is either a group (more nodes) or a leaf
+ * carrying `$value`, and the traversals below walk it by dotted path. Modelling it
+ * as a recursive indexable node is what lets `type.family.sans.$value` type-check
+ * without reaching for `any`.
+ */
+interface DtcgNode {
+  [key: string]: DtcgNode;
+}
+
+/**
+ * Read a DTCG leaf's `$value`.
+ *
+ * The tree is uniformly `DtcgNode` so dotted traversal narrows cleanly; the scalar
+ * leaf is the one place that genuinely leaves the type, so the cast lives here in a
+ * single named function rather than being sprinkled across every call site.
+ */
+function valueOf(node: DtcgNode): string | number {
+  return node.$value as unknown as string | number;
+}
+
 /** Read and JSON-parse a token file. */
-function readJson(path: string): any {
-  return JSON.parse(readFileSync(path, "utf8"));
+function readJson(path: string): DtcgNode {
+  return JSON.parse(readFileSync(path, "utf8")) as DtcgNode;
 }
 
 /** Flatten a DTCG file to {path, value} leaves carrying the raw scalar $value. */
 function flatLeaves(
-  obj: any,
+  obj: DtcgNode,
   prefix: string[] = [],
   acc: { path: string[]; value: string | number }[] = [],
 ): { path: string[]; value: string | number }[] {
@@ -97,7 +128,7 @@ function flatLeaves(
     if (k.startsWith("$")) continue;
     const v = obj[k];
     if (v && typeof v === "object" && "$value" in v) {
-      acc.push({ path: [...prefix, k], value: v.$value as string | number });
+      acc.push({ path: [...prefix, k], value: valueOf(v) });
     } else if (v && typeof v === "object") {
       flatLeaves(v, [...prefix, k], acc);
     }
@@ -128,23 +159,26 @@ function nestNonColor(
  * composite typography token (fontFamily/fontSize/lineHeight/fontWeight), and the two
  * font families become a fontFamilies set. This is the binding Figma type layer.
  */
-function buildType(): { typography: Record<string, unknown>; fontFamilies: Record<string, unknown> } {
+function buildType(): {
+  typography: Record<string, unknown>;
+  fontFamilies: Record<string, unknown>;
+} {
   const type = readJson(TYPE).type;
   const fontFamilies: Record<string, unknown> = {};
   for (const fam of Object.keys(type.family).filter((k) => !k.startsWith("$"))) {
-    fontFamilies[fam] = { value: type.family[fam].$value, type: "fontFamilies" };
+    fontFamilies[fam] = { value: valueOf(type.family[fam]), type: "fontFamilies" };
   }
-  const sans = type.family.sans.$value;
-  const mono = type.family.mono.$value;
+  const sans = valueOf(type.family.sans);
+  const mono = valueOf(type.family.mono);
   const typography: Record<string, unknown> = {};
   for (const role of Object.keys(type.role).filter((k) => !k.startsWith("$"))) {
     const r = type.role[role];
     typography[role] = {
       value: {
         fontFamily: role === "mono" ? mono : sans,
-        fontSize: r.size.$value,
-        lineHeight: r["line-height"].$value,
-        fontWeight: String(r.weight.$value),
+        fontSize: valueOf(r.size),
+        lineHeight: valueOf(r["line-height"]),
+        fontWeight: String(valueOf(r.weight)),
       },
       type: "typography",
     };
@@ -164,7 +198,10 @@ async function build(): Promise<void> {
   // for Figma verification as Tokens Studio borderRadius / boxShadow / spacing / typography sets.
   const { typography, fontFamilies } = buildType();
   const radius = nestNonColor(flatLeaves(readJson(RADIUS).radius), "borderRadius");
-  const elevation = nestNonColor(flatLeaves(readJson(ELEVATION).elevation), "boxShadow");
+  const elevation = nestNonColor(
+    flatLeaves(readJson(ELEVATION).elevation),
+    "boxShadow",
+  );
   const spacing = nestNonColor(flatLeaves(readJson(SPACING).spacing), "spacing");
 
   const file = {
@@ -196,7 +233,11 @@ async function build(): Promise<void> {
   };
 
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, "tokens.json"), JSON.stringify(file, null, 2) + "\n", "utf8");
+  writeFileSync(
+    join(outDir, "tokens.json"),
+    JSON.stringify(file, null, 2) + "\n",
+    "utf8",
+  );
   console.log(`wrote ${join(outDir, "tokens.json")}`);
 }
 
