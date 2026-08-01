@@ -12,7 +12,6 @@ const tiers = {} as NodeEvidence["tiers"];
 function evidence(partial: Partial<NodeEvidence>): NodeEvidence {
   return {
     documents: [],
-    code_locations: [],
     commits: [],
     tiers,
     ...partial,
@@ -24,13 +23,6 @@ describe("deriveHoverEvidenceSummary", () => {
     const summary = deriveHoverEvidenceSummary(
       evidence({
         documents: [{ path: "/private/doc.md", doc_type: "private_kind" }],
-        code_locations: [
-          {
-            path: "/private/code.ts",
-            symbol: "secretSymbol",
-            state: "private_state",
-          },
-        ],
         commits: [
           {
             sha: "private-sha",
@@ -42,13 +34,10 @@ describe("deriveHoverEvidenceSummary", () => {
     );
     expect(summary).toEqual({
       documentCount: 1,
-      codeLocationCount: 1,
       commitCount: 1,
       commitSubjects: ["  Authored subject stays exact  "],
     });
     expect(JSON.stringify(summary)).not.toContain("/private/");
-    expect(JSON.stringify(summary)).not.toContain("secretSymbol");
-    expect(JSON.stringify(summary)).not.toContain("private_state");
     expect(JSON.stringify(summary)).not.toContain("private-sha");
     expect(JSON.stringify(summary)).not.toContain("0.91");
   });
@@ -69,7 +58,6 @@ describe("deriveHoverEvidenceSummary", () => {
   it("defensively handles omitted arrays", () => {
     expect(deriveHoverEvidenceSummary({ tiers } as NodeEvidence)).toEqual({
       documentCount: 0,
-      codeLocationCount: 0,
       commitCount: 0,
       commitSubjects: [],
     });

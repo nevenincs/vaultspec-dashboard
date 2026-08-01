@@ -54,7 +54,6 @@ import {
 
 const HOVER_ZERO_EVIDENCE: HoverCardModel["evidence"] = {
   documentCount: 0,
-  codeLocationCount: 0,
   commitCount: 0,
   commitSubjects: [],
 };
@@ -70,7 +69,6 @@ const HOVER_MODELS: Record<ReviewState, HoverCardModel> = {
       "Establishes the problem space for authored-props visual review and the four canonical states every specimen must cover.",
     evidence: {
       documentCount: 3,
-      codeLocationCount: 5,
       commitCount: 2,
       commitSubjects: [
         "author visual-review harness scaffold",

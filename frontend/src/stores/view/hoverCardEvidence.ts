@@ -5,7 +5,6 @@ export const HOVER_COMMIT_SUBJECT_CAP = 4;
 /** Safe hover evidence. Wire identity and diagnostic metadata never cross this seam. */
 export interface HoverEvidenceSummary {
   readonly documentCount: number;
-  readonly codeLocationCount: number;
   readonly commitCount: number;
   readonly commitSubjects: readonly string[];
 }
@@ -19,11 +18,9 @@ export function deriveHoverEvidenceSummary(
   evidence: NodeEvidence | undefined,
 ): HoverEvidenceSummary {
   const documents = evidence?.documents ?? [];
-  const codeLocations = evidence?.code_locations ?? [];
   const commits = evidence?.commits ?? [];
   return Object.freeze({
     documentCount: documents.length,
-    codeLocationCount: codeLocations.length,
     commitCount: commits.length,
     commitSubjects: Object.freeze(
       commits
@@ -36,9 +33,5 @@ export function deriveHoverEvidenceSummary(
 
 export function hasEvidence(evidence: NodeEvidence): boolean {
   const summary = deriveHoverEvidenceSummary(evidence);
-  return (
-    summary.documentCount > 0 ||
-    summary.codeLocationCount > 0 ||
-    summary.commitCount > 0
-  );
+  return summary.documentCount > 0 || summary.commitCount > 0;
 }

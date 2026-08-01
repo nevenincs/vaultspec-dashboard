@@ -129,7 +129,6 @@ describe("plural catalog manifest", () => {
       "documents:tree.wordCount",
       "graph:accessibility.workingSetCount",
       "graph:islands.progress.stepsComplete",
-      "graph:hover.evidence.codeLocations",
       "graph:hover.evidence.commits",
       "graph:hover.evidence.documents",
       "operations:searchMaintenance.jobs.count",

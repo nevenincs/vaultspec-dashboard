@@ -854,12 +854,6 @@ export interface NodeDetail {
 
 export interface NodeEvidence {
   documents: { path: string; doc_type: string }[];
-  code_locations: {
-    path: string;
-    symbol?: string;
-    line?: number;
-    state?: string;
-  }[];
   // The engine `CorrelatedCommit` serializes `confidence: f32` (the correlating
   // edge's confidence) alongside `sha`/`subject`/`rule`, and the mock mirrors it
   // byte-for-byte; the type declares it optional so a richer consumer (the binding

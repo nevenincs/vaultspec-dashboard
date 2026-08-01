@@ -227,8 +227,6 @@ export const graph = {
       open: "Open {{title}}",
     },
     evidence: {
-      codeLocations_one: "{{count, number}} code location",
-      codeLocations_other: "{{count, number}} code locations",
       commits_one: "{{count, number}} related change",
       commits_other: "{{count, number}} related changes",
       documents_one: "{{count, number}} related document",

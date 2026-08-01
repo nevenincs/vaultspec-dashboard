@@ -40,9 +40,6 @@ function productionModel(): HoverCardModel {
   };
   const evidence: NodeEvidence = {
     documents: [{ path: hostile.path, doc_type: "private_kind" }],
-    code_locations: [
-      { path: "/private/code.ts", symbol: hostile.symbol, state: hostile.state },
-    ],
     commits: [
       {
         sha: hostile.sha,
@@ -87,7 +84,6 @@ describe("HoverCard safe localized presentation", () => {
       "  Authored commit subject  ",
     );
     expect(screen.getByText("1 related document")).toBeTruthy();
-    expect(screen.getByText("1 code location")).toBeTruthy();
     expect(screen.getByText("1 related change")).toBeTruthy();
 
     for (const forbidden of Object.values(hostile)) {
@@ -102,7 +98,6 @@ describe("HoverCard safe localized presentation", () => {
     const dialog = screen.getByRole("dialog");
     const type = container.querySelector("[data-hover-doc-type]")!;
     const documents = container.querySelector("[data-hover-document-count]")!;
-    const code = container.querySelector("[data-hover-code-count]")!;
     const commits = container.querySelector("[data-hover-commit-count]")!;
     const open = container.querySelector<HTMLButtonElement>("[data-hover-open]")!;
 
@@ -126,12 +121,6 @@ describe("HoverCard safe localized presentation", () => {
       expect(documents.textContent).toBe(
         resolveMessageResult(runtime, {
           key: "graph:hover.evidence.documents",
-          values: { count: 1 },
-        }).message,
-      );
-      expect(code.textContent).toBe(
-        resolveMessageResult(runtime, {
-          key: "graph:hover.evidence.codeLocations",
           values: { count: 1 },
         }).message,
       );

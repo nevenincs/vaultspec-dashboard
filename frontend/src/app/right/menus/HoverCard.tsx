@@ -1,6 +1,6 @@
 // Hover-card (binding graph/HoverCard frame 84:2; figma-parity-reconciliation
 // W03.P08.S50). The TRANSIENT card that blooms over a hovered canvas node and
-// shows its identity plus its ENRICHED evidence (documents / code / commits).
+// shows its identity plus its ENRICHED evidence (documents / commits).
 //
 // DUMB PROJECTION (dashboard-layer-ownership, views-are-projections-of-one-model):
 // the card takes a typed model a stores selector supplies and renders it. It does
@@ -34,10 +34,7 @@ function categoryTokenVar(category: NonNullable<HoverCardModel["category"]>): st
   return `--color-scene-category-${category}`;
 }
 
-type HoverCountKey =
-  | "graph:hover.evidence.codeLocations"
-  | "graph:hover.evidence.commits"
-  | "graph:hover.evidence.documents";
+type HoverCountKey = "graph:hover.evidence.commits" | "graph:hover.evidence.documents";
 
 function countMessage<Key extends HoverCountKey>(
   key: Key,
@@ -63,15 +60,6 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
     model.evidence.documentCount > 0
       ? resolveMessage(
           countMessage("graph:hover.evidence.documents", model.evidence.documentCount),
-        ).message
-      : null;
-  const codeLocationCount =
-    model.evidence.codeLocationCount > 0
-      ? resolveMessage(
-          countMessage(
-            "graph:hover.evidence.codeLocations",
-            model.evidence.codeLocationCount,
-          ),
         ).message
       : null;
   const commitCount =
@@ -149,10 +137,9 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
           text runs at ONE size — a second, larger role here made the counts read as a
           heading over the summary they belong to. Each line renders only while the
           wire actually serves that evidence class (honest absence). */}
-      {(documentCount || codeLocationCount || commitCount) && (
+      {(documentCount || commitCount) && (
         <div className="space-y-fg-1 text-caption text-ink-muted">
           {documentCount && <p data-hover-document-count>{documentCount}</p>}
-          {codeLocationCount && <p data-hover-code-count>{codeLocationCount}</p>}
           {commitCount && <p data-hover-commit-count>{commitCount}</p>}
           {model.evidence.commitSubjects.length > 0 && (
             <ul className="space-y-fg-0-5">

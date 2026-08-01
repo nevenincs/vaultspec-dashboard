@@ -604,8 +604,7 @@ describe("status + tier facets carried by live-shaped vault tree samples", () =>
 describe("enriched node-evidence consumer fidelity", () => {
   // A sample CAPTURED from the live `/nodes/{id}/evidence` wire under this
   // enrichment: the `{data, tiers}` envelope carrying the GUI `NodeEvidence`
-  // shape — documents as `{ path, doc_type }`, code locations as
-  // `{ path, symbol?, line?, state? }`, and commits carrying the `subject`.
+  // shape — documents as `{ path, doc_type }` and commits carrying the `subject`.
   // Feeding it through the SAME unwrap path the app uses verifies the enriched
   // evidence shape.
   const liveEvidence = {
@@ -613,9 +612,6 @@ describe("enriched node-evidence consumer fidelity", () => {
       documents: [
         { path: ".vault/adr/2026-06-14-x-adr.md", doc_type: "adr" },
         { path: ".vault/plan/2026-06-14-x-plan.md", doc_type: "plan" },
-      ],
-      code_locations: [
-        { path: "src/lib.rs", symbol: "build", line: 42, state: "resolved" },
       ],
       commits: [
         {
@@ -635,12 +631,6 @@ describe("enriched node-evidence consumer fidelity", () => {
   it("unwraps the live enriched evidence envelope onto the GUI NodeEvidence shape", () => {
     const ev = unwrapEnvelope(liveEvidence) as {
       documents: { path: string; doc_type: string }[];
-      code_locations: {
-        path: string;
-        symbol?: string;
-        line?: number;
-        state?: string;
-      }[];
       commits: { sha: string; subject: string; rule?: string }[];
       tiers: typeof TIERS;
     };
@@ -648,12 +638,6 @@ describe("enriched node-evidence consumer fidelity", () => {
     expect(ev.documents[0]).toEqual({
       path: ".vault/adr/2026-06-14-x-adr.md",
       doc_type: "adr",
-    });
-    expect(ev.code_locations[0]).toEqual({
-      path: "src/lib.rs",
-      symbol: "build",
-      line: 42,
-      state: "resolved",
     });
     // Commits carry the subject (the previously-missing git lookup datum).
     expect(ev.commits[0].subject).toBe("feat: the enriched commit");
@@ -722,30 +706,27 @@ describe("adaptNodeDetail (live nested {detail:{bundle}} wire, hover-card summar
 describe("adaptNodeEvidence (live /nodes/{id}/evidence; serde-omitted empty arrays)", () => {
   // The shape `unwrapEnvelope` hands this adapter: the evidence fields flattened to
   // the top level with the tiers block a sibling. The engine serde OMITS an empty
-  // evidence array, so a node with no code locations arrives MISSING `code_locations`.
-  it("floors each omitted evidence array to [] (the crash the raw consumer hit)", () => {
-    // A doc node with documents + commits but NO code_locations key on the wire.
+  // evidence array, so a node with no commits arrives MISSING `commits`.
+  it("floors an omitted evidence array to [] (the crash the raw consumer hit)", () => {
+    // A doc node with documents but NO commits key on the wire.
     const evidence = adaptNodeEvidence({
       documents: [{ path: ".vault/adr/x.md", doc_type: "adr" }],
-      commits: [{ sha: "abc1234", subject: "do a thing" }],
       tiers: TIERS,
     });
     expect(evidence.documents).toHaveLength(1);
-    expect(evidence.commits).toHaveLength(1);
-    expect(evidence.code_locations).toEqual([]); // omitted on the wire → floored
+    expect(evidence.commits).toEqual([]); // omitted on the wire → floored
     expect(evidence.tiers).toEqual(TIERS);
   });
 
-  it("yields three empty arrays + empty tiers for an absent/odd body", () => {
+  it("yields empty arrays + empty tiers for an absent/odd body", () => {
     const evidence = adaptNodeEvidence(null);
     expect(evidence.documents).toEqual([]);
-    expect(evidence.code_locations).toEqual([]);
     expect(evidence.commits).toEqual([]);
     expect(evidence.tiers).toEqual({});
   });
 
   it("the adapted evidence folds without throwing — the panel no longer crashes", () => {
-    // The exact regression: a payload MISSING `code_locations` must fold to bounded
+    // The exact regression: a payload MISSING an evidence array must fold to bounded
     // groups, never read `.length` of undefined (the stage-panel ErrorBoundary crash).
     const evidence = adaptNodeEvidence({
       documents: [{ path: ".vault/plan/p.md", doc_type: "plan" }],
