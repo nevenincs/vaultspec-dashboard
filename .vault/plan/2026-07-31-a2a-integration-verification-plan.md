@@ -4,6 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-01'
+body_hash: 'sha256:84093e92e817432c12e4333b23aae162052b7c53811a025c938162a090975d40'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -24,15 +25,15 @@ The premise this wave was written against has expired, and the wave survives it.
 
 A deterministic-preset run has since completed through the real chain end to end and left a queued proposal in the engine, against pristine upstream a2a. That was a MANUAL run, and a manual run is not a test: no permanent test on either side still requires a run to complete through the model chain, which is the hole this wave exists to close. It lands directly in the a2a repository and stays on the critical path.
 
-Two findings from that run bind the phases below. The blocker was never the model — it was an unforwarded engine bearer, fixed engine-side in `1370403db6`. And `MockChatModel` proxies to a tape server on a fixed loopback port, so the bundled mock preset cannot complete without a third process, while the in-process deterministic preset can.
+Two findings from that run bind the phases below. The blocker was never the model - it was an unforwarded engine bearer, fixed engine-side in `1370403db6`. And `MockChatModel` proxies to a tape server on a fixed loopback port, so the bundled mock preset cannot complete without a third process, while the in-process deterministic preset can.
 
 ### Phase `W01.P01` - root-cause and fix the model resolution defect
 
-There is no live seam left to name: the instrumentation has been run and every seam returned a real chat model. What survives is the LOCK. A regression test that resolves every bundled preset through the REAL provider factory keeps the fix — whoever's refactor delivered it — from being undone silently, and holds the principle the wave was written on: a non-model resolution must fail at the producer, never be defended by a type check at the consumer.
+There is no live seam left to name: the instrumentation has been run and every seam returned a real chat model. What survives is the LOCK. A regression test that resolves every bundled preset through the REAL provider factory keeps the fix - whoever's refactor delivered it - from being undone silently, and holds the principle the wave was written on: a non-model resolution must fail at the producer, never be defended by a type check at the consumer.
 
 Because the defect is already gone, this phase can no longer demonstrate its own red by reproducing it. The lock earns its place by being proven against a deliberate fault instead: the test must be shown failing on an injected non-model resolution before it is trusted.
 
-- [ ] `W01.P01.S01` - Record the completed instrumentation finding as the phase's grounding: a real-worker dispatch logged a chat model at the inbound point and at every wrapping seam that ran, and an AST sweep found only two tuple-returning resolvers, both correctly annotated and correctly unpacked at every call site, so no seam yields a tuple; `src/vaultspec_a2a/graph/nodes/worker.py`.
+- [x] `W01.P01.S01` - Record the completed instrumentation finding as the phase's grounding: a real-worker dispatch logged a chat model at the inbound point and at every wrapping seam that ran, and an AST sweep found only two tuple-returning resolvers, both correctly annotated and correctly unpacked at every call site, so no seam yields a tuple; `src/vaultspec_a2a/graph/nodes/worker.py`.
 - [ ] `W01.P01.S02` - Close the fix step against the recorded finding rather than editing code: there is no seam to repair, so this Step is satisfied by the S01 evidence and reopens ONLY if the S03 lock goes red against a real resolution; `src/vaultspec_a2a/graph/nodes/worker.py`.
 - [ ] `W01.P01.S03` - Add a regression test resolving every bundled preset worker model through the REAL provider factory with no protocol injection and asserting a chat-model instance each time, demonstrated red against a deliberately injected non-model resolution since the original defect can no longer supply the red; `src/vaultspec_a2a/graph/tests/test_compiler.py`.
 
