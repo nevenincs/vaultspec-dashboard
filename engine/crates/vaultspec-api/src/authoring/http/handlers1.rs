@@ -635,8 +635,7 @@ pub(super) fn active_authorized_scope(state: &AppState) -> String {
 /// Run the composed authorization engine ([`authorize_command`]) for one mutating command
 /// over a bounded actor-registry read. Standing + delegation always run; the
 /// document-scope guard runs when an `authorized_scope` is supplied AND `targets` are
-/// present; the review-authority guard runs for approve/apply-class commands carrying an
-/// `origin_author`. A refusal is a VALUE (`Ok(ActionEligibility { allowed: false, .. })`);
+/// present. A refusal is a VALUE (`Ok(ActionEligibility { allowed: false, .. })`);
 /// only a genuine infrastructure failure is `Err`. The identity read rides a FIXED
 /// mutating command's unit of work (the house pattern: a deferred transaction that commits
 /// empty) — keying it on the ACTUAL `command` would reject a non-mutating one (a read tool
@@ -648,7 +647,6 @@ pub(super) fn run_authorization(
     actor: &ActorRef,
     authorized_scope: Option<&str>,
     targets: &[&DocumentRef],
-    origin_author: Option<&ActorRef>,
 ) -> Result<ActionEligibility, AuthorizationFault> {
     let outcome = state.with_authoring_store(|store| {
         store.with_unit_of_work(CommandKind::CreateSession, |uow| {
@@ -657,7 +655,6 @@ pub(super) fn run_authorization(
                 actor,
                 authorized_scope,
                 targets,
-                origin_author,
             };
             Ok(authorize_command(&uow.actors(), &authorization))
         })
@@ -741,14 +738,7 @@ pub(super) fn authorize_targets_or_deny(
         .iter()
         .map(|operation| &operation.target.document)
         .collect();
-    match run_authorization(
-        state,
-        command,
-        actor,
-        Some(&authorized_scope),
-        &targets,
-        None,
-    ) {
+    match run_authorization(state, command, actor, Some(&authorized_scope), &targets) {
         Ok(eligibility) if eligibility.allowed => None,
         Ok(eligibility) => Some(denial_snapshot(state, &eligibility)),
         Err(fault) => Some(authorization_fault_response(state, fault)),

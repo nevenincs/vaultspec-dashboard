@@ -697,14 +697,7 @@ pub(super) async fn dispatch_agent_tool_command(
         _ => Vec::new(),
     };
     let scope_arg = (!scope_targets.is_empty()).then_some(authorized_scope.as_str());
-    match run_authorization(
-        &state,
-        command_kind,
-        &actor,
-        scope_arg,
-        &scope_targets,
-        None,
-    ) {
+    match run_authorization(&state, command_kind, &actor, scope_arg, &scope_targets) {
         Ok(eligibility) if eligibility.allowed => {}
         Ok(eligibility) => {
             return agent_tool_execute_response(

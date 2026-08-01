@@ -292,11 +292,11 @@ where
         let resolved = ResolvedCommand::from_principal(principal, envelope);
         // The route-layer authorization FLOOR. Every mutating command is
         // constructed here and NOWHERE else, so running the standing + delegation guards
-        // ([`authorize_command`] with no scope/targets/origin) before returning refuses an
+        // ([`authorize_command`] with no scope/targets) before returning refuses an
         // unregistered, deactivated, or stale-delegated actor on EVERY mutating route with
-        // no bypass. The document-scope and review-authority guards run in the handlers
-        // that carry a session scope, drafted targets, or an origin author.
-        match run_authorization(state, resolved.command(), resolved.actor(), None, &[], None) {
+        // no bypass. The document-scope guard runs in the handlers that carry a session
+        // scope and drafted targets.
+        match run_authorization(state, resolved.command(), resolved.actor(), None, &[]) {
             Ok(eligibility) if eligibility.allowed => Ok(resolved),
             Ok(eligibility) => Err(ResolvedCommandRejection::authorization_denied(
                 state,

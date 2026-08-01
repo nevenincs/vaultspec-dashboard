@@ -4,7 +4,7 @@ tags:
   - '#approval-shape-reconciliation'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:eb11669d35cb0d6214fd0c9dd6f2aef6746f18b0266b20ac0ef2a577cef2028e'
+body_hash: 'sha256:54b87bc6e33a1f8bb6e3300a92bdb70d8e5969da3b86ea92adff1a436297af93'
 tier: L3
 related:
   - '[[2026-08-01-approval-shape-reconciliation-adr]]'
@@ -33,11 +33,11 @@ Delete the dead review-authority branch, split the approval requirement to enfor
 
 Remove the origin_author field, the review-authority clause, is_review_authority_command, and the now-orphaned reviewer_eligibility wrapper, since the only production caller of the review-authority branch is being deleted.
 
-- [ ] `W01.P01.S01` - Remove the origin_author field from CommandAuthorization, delete the review-authority clause from authorize_command, delete is_review_authority_command, and remove the test exercising the deleted clause; `engine/crates/vaultspec-api/src/authoring/security.rs`.
-- [ ] `W01.P01.S02` - Delete the now-orphaned reviewer_eligibility wrapper and its unit test since its only caller was the deleted review-authority clause; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
-- [ ] `W01.P01.S03` - Drop the origin_author parameter from run_authorization and its CommandAuthorization construction, and remove the trailing None argument from its own call site; `engine/crates/vaultspec-api/src/authoring/http/handlers1.rs`.
-- [ ] `W01.P01.S04` - Drop the trailing None origin_author argument from the run_authorization call in the agent tool dispatch path; `engine/crates/vaultspec-api/src/authoring/http/handlers3.rs`.
-- [ ] `W01.P01.S05` - Drop the trailing None origin_author argument from the route layer run_authorization call; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
+- [x] `W01.P01.S01` - Remove the origin_author field from CommandAuthorization, delete the review-authority clause from authorize_command, delete is_review_authority_command, and remove the test exercising the deleted clause; `engine/crates/vaultspec-api/src/authoring/security.rs`.
+- [x] `W01.P01.S02` - Delete the now-orphaned reviewer_eligibility wrapper and its unit test since its only caller was the deleted review-authority clause; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [x] `W01.P01.S03` - Drop the origin_author parameter from run_authorization and its CommandAuthorization construction, and remove the trailing None argument from its own call site; `engine/crates/vaultspec-api/src/authoring/http/handlers1.rs`.
+- [x] `W01.P01.S04` - Drop the trailing None origin_author argument from the run_authorization call in the agent tool dispatch path; `engine/crates/vaultspec-api/src/authoring/http/handlers3.rs`.
+- [x] `W01.P01.S05` - Drop the trailing None origin_author argument from the route layer run_authorization call; `engine/crates/vaultspec-api/src/authoring/http/mod.rs`.
 
 ### Phase `W01.P02` - Split the approval requirement and enforce the destructive-human floor
 

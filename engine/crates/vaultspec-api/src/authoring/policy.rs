@@ -29,7 +29,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::api::ChangesetOperationKind;
-use super::approvals::{V1_POLICY_VERSION, automated_self_approval_blocker};
+use super::approvals::V1_POLICY_VERSION;
 use super::model::{ActionEligibility, ActorKind, ActorRef, ChangesetKind, CommandKind};
 use super::transitions::ApprovalFreshness;
 
@@ -175,30 +175,6 @@ pub fn approval_requirement(mode: OperationMode, risk: RiskClass) -> ApprovalReq
                 ApprovalRequirement::SystemAutoApprovable
             }
         },
-    }
-}
-
-/// Reviewer eligibility for a review DECISION (approve / reject / apply). The
-/// agent-self-approval ban is the single authority — REUSED from [`super::approvals`]
-/// (`automated_self_approval_blocker`), never re-derived: an automated writer cannot
-/// approve or apply its own proposal (or one it proposed on behalf of), while a human
-/// approving their own manual changeset and any distinct reviewer are permitted. This
-/// formalizes the reviewer check through the policy layer without duplicating it.
-///
-/// SCOPE — approve/apply-class commands ONLY (Approve, RequestApply, and their kin).
-/// The ban targets self-APPROVAL, so a caller must NOT route a reject or a withdrawal
-/// through this helper: an agent rejecting or withdrawing its OWN proposal is
-/// deliberately legal, and a future uniform decision-path wiring that gated EVERY
-/// decision on this helper would silently outlaw that. Reject/withdraw run their own
-/// transition eligibility, never this self-approval gate.
-pub fn reviewer_eligibility(
-    command: CommandKind,
-    approver: &ActorRef,
-    origin_author: &ActorRef,
-) -> ActionEligibility {
-    match automated_self_approval_blocker(command, approver, origin_author) {
-        Some(denied) => denied,
-        None => ActionEligibility::allowed(command),
     }
 }
 
@@ -575,27 +551,6 @@ mod tests {
             resolve_effective_mode(OperationMode::Assisted, None),
             OperationMode::Assisted
         );
-    }
-
-    #[test]
-    fn reviewer_eligibility_refuses_agent_self_approval_but_permits_human_and_distinct() {
-        let agent = actor("agent:author", ActorKind::Agent);
-        let human = actor("human:author", ActorKind::Human);
-        let other = actor("agent:other", ActorKind::Agent);
-
-        // Agent approving its OWN proposal → refused (self-approval refusal).
-        let denied = reviewer_eligibility(CommandKind::Approve, &agent, &agent);
-        assert!(!denied.allowed);
-        assert!(
-            denied
-                .reason
-                .as_deref()
-                .is_some_and(|reason| reason.contains("its own proposal"))
-        );
-        // Human approving their OWN manual changeset → permitted (kind=direct).
-        assert!(reviewer_eligibility(CommandKind::Approve, &human, &human).allowed);
-        // A distinct agent reviewer → permitted.
-        assert!(reviewer_eligibility(CommandKind::Approve, &other, &agent).allowed);
     }
 
     #[test]
