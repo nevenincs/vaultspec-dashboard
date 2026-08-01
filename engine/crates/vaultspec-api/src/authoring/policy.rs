@@ -38,7 +38,10 @@ use super::transitions::ApprovalFreshness;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OperationMode {
-    /// Every changeset requires an eligible human approval before apply.
+    /// Every changeset requires a decision by an authorized reviewer distinct
+    /// from the proposer before apply; a destructive changeset additionally
+    /// requires that decision-maker to be human (the destructive floor, held in
+    /// every mode).
     Manual,
     /// Non-destructive changesets auto-approve; everything else queues for human
     /// review exactly as in `manual`.
@@ -148,12 +151,23 @@ pub fn changeset_risk(kind: ChangesetKind, operations: &[ChangesetOperationKind]
     }
 }
 
-/// What a changeset approval requires under the policy.
+/// What a changeset approval requires under the policy (approval-shape-reconciliation
+/// ADR D1: the requirement splits into three honest variants so every served value
+/// states an enforced truth).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ApprovalRequirement {
-    /// An eligible HUMAN approval is required before apply.
+    /// An eligible HUMAN approval is required before apply. Retained ONLY for
+    /// DESTRUCTIVE risk — the floor no mode may widen — and ENFORCED at the
+    /// decision seam (`review_decision_eligibility`'s approve arm and the apply
+    /// preflight's equivalent seam refuse a non-Human decision-maker).
     HumanApprovalRequired,
+    /// A decision by an authorized actor DISTINCT from the proposer is required
+    /// before apply (the existing `automated_self_approval_blocker` law); the
+    /// SYSTEM actor may not auto-approve. This is the `manual`-mode
+    /// non-destructive case — the variant that makes an agent reviewer honest
+    /// rather than merely tolerated.
+    ReviewerApprovalRequired,
     /// The changeset may be auto-approved by the SYSTEM actor under the mode policy.
     /// This is the policy REPRESENTATION of the allowance; the system-actor approval
     /// record + the after-the-fact review lane live elsewhere.
@@ -164,18 +178,47 @@ pub enum ApprovalRequirement {
 ///
 /// The DESTRUCTIVE FLOOR is absolute: a destructive changeset requires human
 /// approval in EVERY mode — no mode may widen this (operation-modes ADR constraint).
-/// A non-destructive changeset is human-gated in `manual` and system-auto-approvable
-/// in `assisted` / `autonomous`.
+/// A non-destructive changeset requires a decision by an authorized reviewer
+/// distinct from the proposer in `manual`, and is system-auto-approvable in
+/// `assisted` / `autonomous`.
 pub fn approval_requirement(mode: OperationMode, risk: RiskClass) -> ApprovalRequirement {
     match risk {
         RiskClass::Destructive => ApprovalRequirement::HumanApprovalRequired,
         RiskClass::NonDestructive => match mode {
-            OperationMode::Manual => ApprovalRequirement::HumanApprovalRequired,
+            OperationMode::Manual => ApprovalRequirement::ReviewerApprovalRequired,
             OperationMode::Assisted | OperationMode::Autonomous => {
                 ApprovalRequirement::SystemAutoApprovable
             }
         },
     }
+}
+
+/// The DESTRUCTIVE-FLOOR enforcement (approval-shape-reconciliation ADR D1): a
+/// destructive changeset's decision must be made by a HUMAN actor, in EVERY mode —
+/// no mode may widen this. REUSES [`changeset_risk`] (never re-derives it) and
+/// denies a non-Human decision-maker as an [`ActionEligibility`] VALUE, never a
+/// fault. `None` when the floor does not apply (non-destructive risk) or the
+/// deciding actor is Human. This is the ONE reusable check for both live domain
+/// seams — `authoring::approvals::review_decision_eligibility`'s approve arm and
+/// the `authoring::apply` preflight's equivalent seam — so what the review-station
+/// projection advertises can never drift from what apply enforces.
+pub fn destructive_floor_eligibility(
+    command: CommandKind,
+    actor: &ActorRef,
+    kind: ChangesetKind,
+    operations: &[ChangesetOperationKind],
+) -> Option<ActionEligibility> {
+    if changeset_risk(kind, operations) != RiskClass::Destructive {
+        return None;
+    }
+    if actor.kind == ActorKind::Human {
+        return None;
+    }
+    Some(ActionEligibility::denied(
+        command,
+        "a destructive changeset requires an eligible human approval in every mode \
+         (the destructive-operation floor); this actor is not human",
+    ))
 }
 
 /// Whether the SYSTEM actor may record a policy auto-approval. This is a DISTINCT
@@ -189,11 +232,21 @@ pub fn system_auto_approval_eligibility(
     actor: &ActorRef,
     requirement: ApprovalRequirement,
 ) -> ActionEligibility {
-    if requirement != ApprovalRequirement::SystemAutoApprovable {
-        return ActionEligibility::denied(
-            command,
-            "policy requires a human approval; the system actor cannot auto-approve this changeset",
-        );
+    match requirement {
+        ApprovalRequirement::SystemAutoApprovable => {}
+        ApprovalRequirement::HumanApprovalRequired => {
+            return ActionEligibility::denied(
+                command,
+                "policy requires a human approval; the system actor cannot auto-approve this changeset",
+            );
+        }
+        ApprovalRequirement::ReviewerApprovalRequired => {
+            return ActionEligibility::denied(
+                command,
+                "policy requires a decision by an authorized reviewer distinct from the \
+                 proposer; the system actor cannot auto-approve this changeset",
+            );
+        }
     }
     if actor.kind != ActorKind::System {
         return ActionEligibility::denied(
@@ -401,20 +454,31 @@ fn decision_reason(
     requirement: ApprovalRequirement,
     session_override_ignored: bool,
 ) -> String {
-    let base = match (risk, requirement) {
-        (RiskClass::Destructive, _) => {
+    let base = match risk {
+        RiskClass::Destructive => {
             "a destructive changeset requires explicit human approval in every mode \
              (the destructive-operation floor)"
                 .to_string()
         }
-        (RiskClass::NonDestructive, ApprovalRequirement::HumanApprovalRequired) => format!(
-            "{} mode requires an eligible human approval before apply",
-            mode.label()
-        ),
-        (RiskClass::NonDestructive, ApprovalRequirement::SystemAutoApprovable) => format!(
-            "{} mode auto-approves a non-destructive changeset under system-actor authority",
-            mode.label()
-        ),
+        RiskClass::NonDestructive => match requirement {
+            ApprovalRequirement::ReviewerApprovalRequired => format!(
+                "{} mode requires a decision by an authorized reviewer distinct from the \
+                 proposer before apply",
+                mode.label()
+            ),
+            ApprovalRequirement::SystemAutoApprovable => format!(
+                "{} mode auto-approves a non-destructive changeset under system-actor authority",
+                mode.label()
+            ),
+            // The matrix never produces this pairing (`approval_requirement` maps
+            // non-destructive risk to `ReviewerApprovalRequired`/`SystemAutoApprovable`
+            // only) — a defensive fallback rather than an unreachable panic, matching
+            // the fail-honest posture the served projection holds elsewhere.
+            ApprovalRequirement::HumanApprovalRequired => format!(
+                "{} mode requires an eligible human approval before apply",
+                mode.label()
+            ),
+        },
     };
     if session_override_ignored {
         format!(
@@ -510,7 +574,7 @@ mod tests {
         }
         assert_eq!(
             approval_requirement(OperationMode::Manual, RiskClass::NonDestructive),
-            ApprovalRequirement::HumanApprovalRequired
+            ApprovalRequirement::ReviewerApprovalRequired
         );
         assert_eq!(
             approval_requirement(OperationMode::Assisted, RiskClass::NonDestructive),
@@ -580,6 +644,20 @@ mod tests {
                 .as_deref()
                 .is_some_and(|reason| reason.contains("human approval"))
         );
+        // System actor but the changeset requires a distinct reviewer decision →
+        // denied with the reviewer-specific wording, not the human-specific one.
+        let reviewer_required = system_auto_approval_eligibility(
+            CommandKind::Approve,
+            &system,
+            ApprovalRequirement::ReviewerApprovalRequired,
+        );
+        assert!(!reviewer_required.allowed);
+        assert!(
+            reviewer_required
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("authorized reviewer distinct"))
+        );
         // A NON-system actor cannot record the auto-approval (distinct from agent
         // self-approval — an agent may never wear the system hat).
         let not_system = system_auto_approval_eligibility(
@@ -593,6 +671,60 @@ mod tests {
                 .reason
                 .as_deref()
                 .is_some_and(|reason| reason.contains("only the system actor"))
+        );
+    }
+
+    #[test]
+    fn destructive_floor_denies_a_non_human_decision_maker_only_for_destructive_risk() {
+        let agent = actor("agent:reviewer", ActorKind::Agent);
+        let human = actor("human:reviewer", ActorKind::Human);
+
+        // Destructive risk + non-Human actor → denied.
+        let denied = destructive_floor_eligibility(
+            CommandKind::Approve,
+            &agent,
+            ChangesetKind::Authoring,
+            &[ChangesetOperationKind::Rename],
+        );
+        assert!(denied.is_some());
+        assert!(
+            denied
+                .unwrap()
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("human"))
+        );
+        // Destructive risk + Human actor → the floor does not apply here.
+        assert!(
+            destructive_floor_eligibility(
+                CommandKind::Approve,
+                &human,
+                ChangesetKind::Authoring,
+                &[ChangesetOperationKind::Rename],
+            )
+            .is_none()
+        );
+        // Non-destructive risk + non-Human actor → the floor never fires.
+        assert!(
+            destructive_floor_eligibility(
+                CommandKind::Approve,
+                &agent,
+                ChangesetKind::Authoring,
+                &[ChangesetOperationKind::ReplaceBody],
+            )
+            .is_none()
+        );
+        // A rollback changeset is destructive by KIND regardless of its operations
+        // — the floor fires for a non-Human actor even over a nominally
+        // non-destructive operation set.
+        assert!(
+            destructive_floor_eligibility(
+                CommandKind::Approve,
+                &agent,
+                ChangesetKind::Rollback,
+                &[ChangesetOperationKind::ReplaceBody],
+            )
+            .is_some()
         );
     }
 

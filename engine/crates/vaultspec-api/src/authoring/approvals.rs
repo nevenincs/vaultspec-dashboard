@@ -27,6 +27,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::api::ChangesetOperationKind;
 use super::events::{LifecycleEventKind, approval_requested_event, review_decision_event};
 use super::ledger::{
     ChangesetAggregateRecord, ChangesetChildOperationInput, ChangesetRevisionInput,
@@ -35,6 +36,7 @@ use super::model::{
     ActionEligibility, ActorKind, ActorRef, ApprovalId, ChangesetId, ChangesetKind,
     ChangesetStatus, CommandKind, ProposalId, RevisionToken,
 };
+use super::policy::destructive_floor_eligibility;
 use super::store::outbox::AppendDecision;
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
@@ -271,8 +273,10 @@ pub fn review_decision_freshness(
 }
 
 /// The full eligibility of a review decision: the AGENT-SELF-APPROVAL ban first
-/// (approve only), then the status + freshness/stale transition gate reused from
-/// `transitions`. Pure: it decides, it does not persist.
+/// (approve only), then the DESTRUCTIVE-FLOOR enforcement (approve only —
+/// approval-shape-reconciliation ADR D1: a destructive changeset's decision-maker
+/// must be Human, in every mode), then the status + freshness/stale transition
+/// gate reused from `transitions`. Pure: it decides, it does not persist.
 pub fn review_decision_eligibility(
     decision: ApprovalDecision,
     approver: &ActorRef,
@@ -286,6 +290,23 @@ pub fn review_decision_eligibility(
             if let Some(blocked) =
                 automated_self_approval_blocker(CommandKind::Approve, approver, origin_author)
             {
+                return blocked;
+            }
+            // REUSES `changeset_risk` (never re-derives it) via the shared
+            // `destructive_floor_eligibility` — the SAME check the apply preflight
+            // seam runs, so what the review-station projection advertises can never
+            // drift from what apply enforces.
+            let operations: Vec<ChangesetOperationKind> = current
+                .children
+                .iter()
+                .map(|child| child.operation)
+                .collect();
+            if let Some(blocked) = destructive_floor_eligibility(
+                CommandKind::Approve,
+                approver,
+                current.kind,
+                &operations,
+            ) {
                 return blocked;
             }
             approve_transition_eligibility(current, freshness, validation)

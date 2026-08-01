@@ -748,6 +748,59 @@ fn an_agent_cannot_apply_the_proposal_it_originated() {
 }
 
 #[test]
+fn agent_actor_distinct_from_proposer_is_denied_applying_a_destructive_changeset() {
+    // approval-shape-reconciliation ADR D1: the destructive floor is enforced at
+    // the apply preflight seam too, not only at review-decision time.
+    let mut fx = setup_live_rename();
+    let other_agent = actor("agent:other", ActorKind::Agent);
+    fx.store
+        .with_unit_of_work(CommandKind::CreateProposal, |uow| {
+            uow.actors().put_record(ActorRecordInput::active(
+                other_agent.clone(),
+                ActorDisplayMetadata::new("agent:other", None),
+                1,
+            ))
+        })
+        .unwrap();
+
+    // DISTINCT from the proposer (fx.origin = "agent:author"), so the
+    // pre-existing self-approval ban alone would ALLOW this apply — proving the
+    // denial below comes from the NEW destructive floor, not the old ban.
+    assert!(
+        crate::authoring::approvals::automated_self_approval_blocker(
+            CommandKind::RequestApply,
+            &other_agent,
+            &fx.origin,
+        )
+        .is_none(),
+        "precondition: the self-approval ban alone does not block a distinct agent"
+    );
+
+    let outcome = apply(
+        &mut fx,
+        &envelope_adapter("updated"),
+        &other_agent,
+        "idem:apply:rn:destructive-floor:1",
+        100,
+    );
+    assert!(
+        !outcome.eligibility.allowed,
+        "an agent applier must not apply a destructive changeset"
+    );
+    assert!(
+        outcome
+            .eligibility
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("human")),
+        "reason: {:?}",
+        outcome.eligibility.reason
+    );
+    assert!(outcome.receipt.is_none());
+    assert_ne!(ledger_status(&mut fx), ChangesetStatus::Applied);
+}
+
+#[test]
 fn a_multi_child_changeset_is_refused_with_a_capability_limit() {
     // A 2-child changeset (schema stays multi-doc) is refused before any
     // materialization — V1 apply is single-child.

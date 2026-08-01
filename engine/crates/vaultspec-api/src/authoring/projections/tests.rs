@@ -339,7 +339,7 @@ fn needs_review_proposal_serves_approve_reject_request_changes_eligibility() {
     assert_eq!(projection.policy.risk, RiskClass::NonDestructive);
     assert_eq!(
         projection.policy.requirement,
-        ApprovalRequirement::HumanApprovalRequired
+        ApprovalRequirement::ReviewerApprovalRequired
     );
     assert!(
         projection.policy.reason.contains("manual mode"),

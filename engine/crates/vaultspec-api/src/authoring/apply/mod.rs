@@ -50,6 +50,7 @@ use super::model::{
     ActionEligibility, ActorRef, ApplyState, ChangesetId, ChangesetStatus, CommandKind,
     DocumentRef, IdempotencyKey, ReceiptId, RevisionToken,
 };
+use super::policy::destructive_floor_eligibility;
 use super::snapshots::SnapshotReader;
 use super::store::idempotency::{
     IdempotencyKeyScope, IdempotencyScope, InFlightReservation, OutcomeKind, RecordedOutcome,
@@ -281,6 +282,25 @@ fn preflight_in_uow(
             denied,
             Some(ApplyDenialKind::SelfApproval),
         )));
+    }
+
+    // The DESTRUCTIVE FLOOR (approval-shape-reconciliation ADR D1): a destructive
+    // changeset's applying actor must be Human, in every mode — the SAME
+    // `destructive_floor_eligibility` check the approve-arm seam runs (reusing
+    // `changeset_risk`, never re-deriving it), so what apply enforces can never
+    // drift from what the review-station projection advertised.
+    let operations: Vec<ChangesetOperationKind> = latest
+        .children
+        .iter()
+        .map(|child| child.operation)
+        .collect();
+    if let Some(denied) = destructive_floor_eligibility(
+        CommandKind::RequestApply,
+        request.actor,
+        latest.kind,
+        &operations,
+    ) {
+        return Ok(Ok(Preflight::Denied(denied, None)));
     }
 
     // Lifecycle + approval-freshness + validation-status gate.

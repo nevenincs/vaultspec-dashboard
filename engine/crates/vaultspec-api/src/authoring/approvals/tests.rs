@@ -24,11 +24,21 @@ fn existing_doc() -> DocumentRef {
 }
 
 fn child() -> ChangesetChildOperationInput {
+    child_of(ChangesetOperationKind::ReplaceBody)
+}
+
+/// A destructive (Rename) child — used to exercise the D1 destructive floor,
+/// distinct from `child()`'s non-destructive `ReplaceBody`.
+fn destructive_child() -> ChangesetChildOperationInput {
+    child_of(ChangesetOperationKind::Rename)
+}
+
+fn child_of(operation: ChangesetOperationKind) -> ChangesetChildOperationInput {
     let document = existing_doc();
     let base = RevisionToken::new("blob:base111").unwrap();
     ChangesetChildOperationInput {
         child_key: "child_1".to_string(),
-        operation: ChangesetOperationKind::ReplaceBody,
+        operation,
         target: TargetRevisionFence {
             document,
             base_revision: Some(base.clone()),
@@ -47,6 +57,24 @@ fn changeset_record(
     author: &ActorRef,
     created_at_ms: i64,
 ) -> ChangesetAggregateRecord {
+    changeset_record_with_child(
+        changeset_id,
+        previous,
+        status,
+        author,
+        created_at_ms,
+        child(),
+    )
+}
+
+fn changeset_record_with_child(
+    changeset_id: &ChangesetId,
+    previous: Option<RevisionToken>,
+    status: ChangesetStatus,
+    author: &ActorRef,
+    created_at_ms: i64,
+    child: ChangesetChildOperationInput,
+) -> ChangesetAggregateRecord {
     ChangesetAggregateRecord::new(ChangesetRevisionInput {
         changeset_id: changeset_id.clone(),
         previous_revision: previous,
@@ -55,7 +83,7 @@ fn changeset_record(
         session_id: Some(SessionId::new("session_1").unwrap()),
         actor: author.clone(),
         summary: "approval proposal".to_string(),
-        children: vec![child()],
+        children: vec![child],
         created_at_ms,
     })
     .unwrap()
@@ -91,16 +119,43 @@ fn seed_needs_review(
     changeset_id: &ChangesetId,
     author: &ActorRef,
 ) -> RevisionToken {
+    seed_needs_review_with_child(store, changeset_id, author, child())
+}
+
+/// The `seed_needs_review` sibling for a DESTRUCTIVE (Rename) child — exercises
+/// the D1 destructive floor.
+fn seed_needs_review_destructive(
+    store: &mut Store,
+    changeset_id: &ChangesetId,
+    author: &ActorRef,
+) -> RevisionToken {
+    seed_needs_review_with_child(store, changeset_id, author, destructive_child())
+}
+
+fn seed_needs_review_with_child(
+    store: &mut Store,
+    changeset_id: &ChangesetId,
+    author: &ActorRef,
+    child: ChangesetChildOperationInput,
+) -> RevisionToken {
     store
         .with_unit_of_work(CommandKind::CreateProposal, |uow| {
-            let draft = changeset_record(changeset_id, None, ChangesetStatus::Draft, author, 10);
+            let draft = changeset_record_with_child(
+                changeset_id,
+                None,
+                ChangesetStatus::Draft,
+                author,
+                10,
+                child.clone(),
+            );
             uow.ledger().append_revision(&draft)?;
-            let needs_review = changeset_record(
+            let needs_review = changeset_record_with_child(
                 changeset_id,
                 Some(draft.changeset_revision.clone()),
                 ChangesetStatus::NeedsReview,
                 author,
                 20,
+                child,
             );
             uow.ledger().append_revision(&needs_review)?;
             Ok(needs_review.changeset_revision)
@@ -429,6 +484,69 @@ fn automated_self_approval_ban_covers_delegated_on_behalf_and_tool_executor() {
         automated_self_approval_blocker(CommandKind::Approve, &other_delegate, &origin_human)
             .is_none(),
         "a delegate of a different principal is a distinct reviewer"
+    );
+}
+
+// --- the DESTRUCTIVE FLOOR (approval-shape-reconciliation ADR D1) ---
+
+#[test]
+fn agent_reviewer_distinct_from_proposer_is_denied_approving_a_destructive_changeset() {
+    let (_dir, mut store) = temp_store();
+    let changeset_id = ChangesetId::new("changeset_1").unwrap();
+    let proposal_id = ProposalId::new("proposal_1").unwrap();
+    let author = actor("agent:author", ActorKind::Agent);
+    // A DISTINCT agent reviewer — not the proposer, so the pre-existing
+    // self-approval ban ALONE would allow this. Proving the denial below comes
+    // from the destructive floor, not from the self-approval ban.
+    let reviewer = actor("agent:other", ActorKind::Agent);
+    assert!(
+        automated_self_approval_blocker(CommandKind::Approve, &reviewer, &author).is_none(),
+        "precondition: the self-approval ban alone does not block a distinct agent reviewer"
+    );
+
+    let revision = seed_needs_review_destructive(&mut store, &changeset_id, &author);
+    request(&mut store, &proposal_id, &changeset_id, &revision);
+
+    let outcome = decide(
+        &mut store,
+        CommandKind::Approve,
+        &proposal_id,
+        ApprovalDecision::Approve,
+        &reviewer,
+        40,
+    )
+    .unwrap();
+    assert!(
+        !outcome.eligibility.allowed,
+        "an agent reviewer must not approve a destructive changeset"
+    );
+    assert!(
+        outcome
+            .eligibility
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("human")),
+        "reason: {:?}",
+        outcome.eligibility.reason
+    );
+    assert!(outcome.record.decision.is_none(), "no decision is recorded");
+
+    // A distinct HUMAN reviewer, by contrast, remains permitted (the floor
+    // enforces HUMAN, not merely distinct).
+    let human_reviewer = actor("human:reviewer", ActorKind::Human);
+    let human_outcome = decide(
+        &mut store,
+        CommandKind::Approve,
+        &proposal_id,
+        ApprovalDecision::Approve,
+        &human_reviewer,
+        41,
+    )
+    .unwrap();
+    assert!(
+        human_outcome.eligibility.allowed,
+        "a distinct human reviewer may approve a destructive changeset: {:?}",
+        human_outcome.eligibility.reason
     );
 }
 
