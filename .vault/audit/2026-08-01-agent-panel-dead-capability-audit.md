@@ -5,6 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:595889f5f5ef663ed15c08e934f94a12e3da471be63ab1a179c1c413ddf38aa7'
 related:
   - '[[2026-08-01-a2a-agent-flow-adr]]'
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
