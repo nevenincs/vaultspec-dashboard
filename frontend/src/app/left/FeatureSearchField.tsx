@@ -10,14 +10,15 @@
 // and applies it. Plain text is a substring feature search, `dashboard-*` is a glob,
 // and `/pattern/` is an advanced regex (parsed in stores/featureQuery).
 //
-// A suggestion row is the readable NAME over its served size. It used to print the
-// raw tag on the second line — the same information de-kebabed, read as noise — so
-// the tag now rides the row's hover tooltip and the second line carries metadata you
-// cannot get from the name: how many documents the feature holds. That count is
-// ENGINE-SERVED off the feature roster (`{feature, doc_count, types_present}`) and
-// joined by tag; it is never re-counted from a client listing (complete-set law), and
-// a feature the roster does not carry simply shows no second line. The feature's date
-// span belongs on this line too and is omitted until the wire carries it.
+// A suggestion row is the readable NAME over its served metadata. It used to print
+// the raw tag on the second line — the same information de-kebabed, read as noise —
+// so the tag now rides the row's hover tooltip and the second line carries what the
+// name cannot say: the feature's COMPOSITION (documents per pipeline type, in
+// canonical order) and the date span of the decisions that bind it. Both are
+// ENGINE-SERVED off the one feature roster and joined by tag; nothing here is
+// re-counted from a client listing (complete-set law), and a feature the roster does
+// not carry — or an older engine serving no metadata — simply shows no second line
+// rather than a zero standing in for an unknown.
 //
 // The roster query lives on the SUGGESTION LIST, which mounts only while the dropdown
 // is open — a closed dropdown fetches nothing (mount-gating-is-the-canonical-
@@ -51,13 +52,14 @@ import {
   useActiveLocale,
   useLocalizedMessageResolver,
 } from "../../platform/localization/LocalizationProvider";
-import { createCountMessageDescriptor } from "../../platform/localization/message";
+import { featureMetaLine } from "./featureRowPresentation";
 
-/** The open dropdown. It OWNS the feature-roster read, so the served per-feature
- *  document count is fetched only while the list is actually on screen, and a rail
- *  sitting with the field closed costs nothing. A feature missing from the roster
- *  (or a degraded roster, which the stores view empties) renders its name alone —
- *  never a zero standing in for an unknown. */
+/** The open dropdown. It reads the feature roster only while the list is actually
+ *  on screen, so a rail sitting with the field closed costs nothing; the rail tree
+ *  reads the SAME scope-keyed query, so an open dropdown over a loaded tree costs
+ *  nothing either (rail-feature-metadata ADR D5 — one read, every feature surface).
+ *  A feature missing from the roster (or a degraded roster, which the stores view
+ *  empties) renders its name alone — never a zero standing in for an unknown. */
 function FeatureSuggestionList({
   listboxId,
   scope,
@@ -74,10 +76,11 @@ function FeatureSuggestionList({
   onCommit: (tag: string) => void;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
+  const locale = useActiveLocale();
   const roster = useFeatureRosterView(scope);
   const rosterEntries = roster.roster;
-  const docCountByTag = useMemo(
-    () => new Map(rosterEntries.map((entry) => [entry.feature, entry.doc_count])),
+  const rosterByTag = useMemo(
+    () => new Map(rosterEntries.map((entry) => [entry.feature, entry])),
     [rosterEntries],
   );
   return (
@@ -91,16 +94,11 @@ function FeatureSuggestionList({
       className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-40 max-h-[16rem] overflow-y-auto rounded-fg-md border border-rule bg-paper py-fg-1 shadow-fg-overlay"
     >
       {suggestions.map((suggestion, index) => {
-        const docCount = docCountByTag.get(suggestion.tag);
-        const countDescriptor =
-          docCount === undefined
-            ? null
-            : createCountMessageDescriptor(
-                "documents:documentSearch.counts.documents",
-                docCount,
-              );
-        const countLabel =
-          countDescriptor === null ? null : resolveMessage(countDescriptor);
+        const meta = featureMetaLine(
+          locale,
+          rosterByTag.get(suggestion.tag),
+          resolveMessage,
+        );
         return (
           <li key={suggestion.tag} role="presentation">
             <button
@@ -127,12 +125,14 @@ function FeatureSuggestionList({
               <span className="w-full select-text truncate text-[0.75rem] text-ink">
                 {suggestion.display}
               </span>
-              {countLabel !== null && !countLabel.usedFallback && (
+              {/* Composition + decision span on ONE line that truncates with an
+                  honest ellipsis rather than wrapping the row taller (ADR D4). */}
+              {meta !== "" && (
                 <span
                   className="w-full truncate text-[0.6875rem] tabular-nums text-ink-muted"
                   data-feature-suggestion-meta
                 >
-                  {countLabel.message}
+                  {meta}
                 </span>
               )}
             </button>

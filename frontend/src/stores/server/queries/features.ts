@@ -151,6 +151,13 @@ export function useFeatureCoverageView(
  * panel combobox reads one interpreted shape. A degraded roster is left empty (the
  * combobox falls back to the corpus feature-tag vocabulary the editor already
  * reads) rather than rendered as current.
+ *
+ * This is the ONE per-feature metadata read: each entry carries the served
+ * composition (`type_counts`), plan-state rollup, and binding-decision span
+ * alongside the totals, and EVERY feature surface — the rail's Features section,
+ * the feature search suggestions — consumes this same scope-keyed query. No
+ * surface adds a second per-feature fetch for that metadata, and none re-derives
+ * a count from a listing.
  */
 export interface FeatureRosterView extends TierAvailability {
   loading: boolean;

@@ -811,16 +811,43 @@ export interface FeatureCoverage {
 }
 
 /**
+ * The ISO date span over a feature's binding ADRs — the DEFINED meaning of a
+ * feature row's date (the decisions that bind the feature, not its corpus span).
+ * `first === last` when the feature has one dated decision, or several sharing a
+ * date; the presentation plane then renders one date rather than a span. Both
+ * are `yyyy-mm-dd`.
+ */
+export interface FeatureAdrDates {
+  first: string;
+  last: string;
+}
+
+/**
  * A compact per-feature roster entry (`GET /features?scope=`, the all-features
- * variant): the feature tag, its document counts, and the advised next step —
- * enough for the panel's feature combobox to show group progress without a
- * per-feature round trip.
+ * variant): the feature tag, its document counts, the advised next step, and the
+ * served metadata every feature row renders — status, age, and composition from
+ * ONE read, without a per-feature round trip.
+ *
+ * The three metadata fields are OPTIONAL on this wire because an older engine
+ * simply does not serve them: absent means UNKNOWN, and a row omits the mark,
+ * the date, or the composition rather than substituting a zero or a guess. Every
+ * value here is engine-computed over the full corpus and is never re-derived
+ * client-side from a listing (displayed-state-is-backend-served).
  */
 export interface FeatureRosterEntry {
   feature: string;
   doc_count: number;
   types_present: number;
   next_step?: string;
+  /** Per-doc-type document counts over the full corpus; a type with no document
+   *  carries NO key (absent IS zero). Absent entirely on an older engine. */
+  type_counts?: Readonly<Record<string, number>>;
+  /** The feature's plan-state rollup token (`not-started`/`in-progress`/
+   *  `finished`, the engine's one plan-completion vocabulary); absent when the
+   *  feature has no plan whose state the engine can read. */
+  plan_state?: string;
+  /** The ISO span over the feature's binding decisions; absent when it has none. */
+  adr_dates?: FeatureAdrDates;
 }
 
 /** The per-feature coverage response (feature-present variant), unwrapped. */

@@ -110,14 +110,86 @@ describe("adaptFeatureRoster (tolerant wire parse)", () => {
     };
     const { roster, tiers } = adaptFeatureRoster(body);
     expect(roster).toEqual([
-      { feature: "a", doc_count: 2, types_present: 2, next_step: "plan" },
-      { feature: "b", doc_count: 1, types_present: 1, next_step: undefined },
+      {
+        feature: "a",
+        doc_count: 2,
+        types_present: 2,
+        next_step: "plan",
+        type_counts: undefined,
+        plan_state: undefined,
+        adr_dates: undefined,
+      },
+      {
+        feature: "b",
+        doc_count: 1,
+        types_present: 1,
+        next_step: undefined,
+        type_counts: undefined,
+        plan_state: undefined,
+        adr_dates: undefined,
+      },
     ]);
     expect(tiers).toEqual(UP_TIERS);
   });
 
   it("defaults an absent roster to an empty list", () => {
     expect(adaptFeatureRoster({}).roster).toEqual([]);
+  });
+
+  it("carries the served composition, plan-state rollup, and decision span", () => {
+    const { roster } = adaptFeatureRoster({
+      roster: [
+        {
+          feature: "a",
+          doc_count: 6,
+          types_present: 3,
+          type_counts: { research: 1, adr: 2, plan: 3 },
+          plan_state: "in-progress",
+          adr_dates: { first: "2026-06-14", last: "2026-08-01" },
+        },
+      ],
+    });
+    expect(roster[0]).toMatchObject({
+      type_counts: { research: 1, adr: 2, plan: 3 },
+      plan_state: "in-progress",
+      adr_dates: { first: "2026-06-14", last: "2026-08-01" },
+    });
+  });
+
+  it("leaves the metadata UNDEFINED on an older engine that serves none of it", () => {
+    // Absent is unknown, not zero: nothing here may manufacture an empty
+    // composition, a not-started rollup, or a date the wire never carried.
+    const { roster } = adaptFeatureRoster({
+      roster: [{ feature: "a", doc_count: 3, types_present: 2 }],
+    });
+    expect(roster[0]!.type_counts).toBeUndefined();
+    expect(roster[0]!.plan_state).toBeUndefined();
+    expect(roster[0]!.adr_dates).toBeUndefined();
+  });
+
+  it("drops malformed counts and a half-served decision span", () => {
+    const { roster } = adaptFeatureRoster({
+      roster: [
+        {
+          feature: "a",
+          doc_count: 1,
+          types_present: 1,
+          type_counts: { research: 2, adr: "many", plan: 0, exec: -3 },
+          adr_dates: { first: "2026-06-14" },
+        },
+        {
+          feature: "b",
+          doc_count: 1,
+          types_present: 1,
+          type_counts: "not a map",
+          adr_dates: "not a span",
+        },
+      ],
+    });
+    expect(roster[0]!.type_counts).toEqual({ research: 2 });
+    expect(roster[0]!.adr_dates).toBeUndefined();
+    expect(roster[1]!.type_counts).toBeUndefined();
+    expect(roster[1]!.adr_dates).toBeUndefined();
   });
 });
 

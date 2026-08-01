@@ -36,7 +36,6 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 
 import { ChevronDown, ChevronRight, Plus } from "lucide-react";
-import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 import {
   Button,
@@ -56,11 +55,12 @@ import type {
   VaultFeatureEntity,
   VaultSectionEntity,
 } from "../../platform/actions/entity";
-import type { VaultTreeEntry } from "../../stores/server/engine";
+import type { FeatureRosterEntry, VaultTreeEntry } from "../../stores/server/engine";
 import {
   deriveVaultRailView,
   useActiveScope,
   useDashboardSelectedNodeId,
+  useFeatureRosterView,
   useVaultRailFacets,
   useVaultTreeSurface,
   useWorkspaceMapSurface,
@@ -98,15 +98,10 @@ import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { handleKeyboardContextMenu } from "../chrome/keyboardContextMenu";
 import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
-import {
-  formatBytes,
-  formatDate,
-  formatNumber,
-} from "../../platform/localization/formatters";
+import { formatNumber } from "../../platform/localization/formatters";
 import {
   useActiveLocale,
   useLocalizedMessageResolver,
-  type LocalizedMessageResolver,
 } from "../../platform/localization/LocalizationProvider";
 import { localizationNamespaces } from "../../platform/localization/runtime";
 import {
@@ -126,30 +121,28 @@ import "./menus/vaultCategoryMenu";
 import "./menus/vaultSectionMenu";
 import {
   CHEVRON_PX,
-  adrStatusMark,
-  adrStatusToneClass,
-  docDateTimestamp,
   docDisplayTitle,
   docGroupMessage,
   docTypeCategory,
   featureDisplayName,
-  planStatus,
-  planStatusMark,
-  planStatusToneClass,
-  planTierLabel,
 } from "./vaultRowPresentation";
+import { featureTooltipLabel } from "./featureRowPresentation";
+import {
+  docCompactSubMeta,
+  docMetaLabel,
+  docSignal,
+  docStatusMark,
+  docTooltipLabel,
+  featureDateSignal,
+  featureStatusMark,
+  type RowStatusMark,
+} from "./treeRowChrome";
 
 import {
-  PLAN_STATUS_MESSAGES,
   TREE_BROWSER_MESSAGES,
   formatTreeWeight,
-  treeDecisionStatusLabelMessage,
-  treeDecisionStatusMessage,
   treePartialCountMessage,
-  treePlanProgressMessage,
   treeRowActionsMessage,
-  treeSizeSummaryMessage,
-  treeWordCountMessage,
 } from "./treeBrowserMessages";
 
 /** Display stem — the shared derivation from the selection join. */
@@ -305,6 +298,13 @@ export function TreeBrowser({
     workspaceMapSurface.state === "error" || workspaceMapSurface.availability.degraded;
   const { tree, availability, state, complete } = useVaultTreeSurface(scope);
   const facets = useVaultRailFacets(scope);
+  // The ONE feature-metadata read (rail-feature-metadata ADR D5): the served
+  // roster carries every feature's plan-state rollup, binding-decision span, and
+  // composition, so each Features-section row renders its status mark and date
+  // from this single scope-keyed query — never a fetch per row, and never a count
+  // re-derived from the tree listing this component already holds.
+  const roster = useFeatureRosterView(scope);
+  const rosterEntries = roster.roster;
   const dashboardSelection = useDashboardBrowserSelection(scope);
   const sharedHighlight = useHighlightedPath(tree.data?.entries, scope);
   const clickHandler = onEntryClick ?? dashboardSelection.handleEntryClick;
@@ -468,6 +468,10 @@ export function TreeBrowser({
     () => deriveVaultRailView(tree.data?.entries ?? [], facets, sort, activeLocale),
     [tree.data?.entries, facets, sort, activeLocale],
   );
+  const rosterByFeature = useMemo(
+    () => new Map(rosterEntries.map((entry) => [entry.feature, entry])),
+    [rosterEntries],
+  );
   const allTreeKeys = useMemo(
     () =>
       deriveAllVaultBrowserTreeKeys({
@@ -597,6 +601,7 @@ export function TreeBrowser({
               <FeatureFolderRow
                 key={group.feature}
                 group={group}
+                rosterEntry={rosterByFeature.get(group.feature)}
                 sortKey={sort.key}
                 totalCorpusBytes={view.totalCorpusBytes}
                 expanded={expanded}
@@ -660,20 +665,6 @@ interface RowNav {
 }
 
 // --- the ONE tree row (feature, category folder, AND document leaf) ---------------
-
-/** The presentation of a leaf's SERVED review state as the row's item icon: the
- *  shape, its sanctioned tone class, and the plain-language word that becomes the
- *  icon's accessible name (the rail is too narrow for the word itself). `statusHook`
- *  carries the row-level `data-*-status` attribute on desktop, where the icon is the
- *  only status carrier; on compact the inline status WORD carries it instead, so the
- *  hook resolves to the element that actually presents the token. Nothing here
- *  decides what the status IS — the projection serves it. */
-interface RowStatusMark {
-  Mark: PhosphorIcon;
-  toneClass: string;
-  label: string;
-  statusHook?: { attribute: "data-adr-status" | "data-plan-status"; value: string };
-}
 
 interface VaultTreeRowProps {
   /** Stable nav/expansion key. */
@@ -1063,6 +1054,11 @@ function folderCategory(docType: string): Category {
 
 interface FeatureFolderRowProps {
   group: VaultTreeFeatureGroup;
+  /** This feature's SERVED roster entry (plan-state rollup, binding-decision
+   *  span, composition). Undefined when the roster does not describe the feature
+   *  — a degraded roster, an older engine, or a group the cap left out — and the
+   *  row then renders exactly as it did before: name, glyph, count. */
+  rosterEntry?: FeatureRosterEntry;
   /** The active sort key — the leaf meta shows its field's value. */
   sortKey: RailSortKey;
   /** Whole-vault served byte weight (the corpus-weight share denominator). */
@@ -1079,10 +1075,15 @@ interface FeatureFolderRowProps {
   nav: RowNav;
 }
 
-/** A feature folder: leads with the plan mark in the feature color, expands to one
- *  category sub-folder per doc type present (each itself expanding to documents). */
+/** A feature folder: leads with its SERVED plan-state mark (or the plain feature
+ *  glyph when the feature has no readable plan), trails the binding-decision date
+ *  span, and expands to one category sub-folder per doc type present (each itself
+ *  expanding to documents). The composition breakdown is not printed inline — the
+ *  sub-folders ARE the breakdown — so it rides the row's tooltip instead, beside
+ *  the spelled-out status word and date. */
 function FeatureFolderRow({
   group,
+  rosterEntry,
   sortKey,
   totalCorpusBytes,
   expanded,
@@ -1099,13 +1100,17 @@ function FeatureFolderRow({
   const locale = i18n.resolvedLanguage ?? i18n.language;
   const folderKey = `feat:${group.feature}`;
   const open = deriveBrowserTreeExpansionItem(folderKey, expanded).expanded;
+  const name = featureDisplayName(group.feature);
   return (
     <VaultTreeRow
       navKey={folderKey}
       level={1}
-      label={featureDisplayName(group.feature)}
+      label={name}
       markKind="plan"
       markColor="feature"
+      statusMark={featureStatusMark(rosterEntry, resolveMessage)}
+      signal={featureDateSignal(locale, rosterEntry, resolveMessage)}
+      tooltip={featureTooltipLabel(locale, name, rosterEntry, resolveMessage)}
       expandable
       expanded={open}
       // Under the corpus-weight sort the folder shows ITS SORTED VALUE — the
@@ -1258,194 +1263,6 @@ interface DocumentRowProps {
   onClick: () => void;
   onOpen: () => void;
   nav: RowNav;
-}
-
-/** A leaf's SERVED review state as the row's one item icon: a plan's progress ring,
- *  a decision's acceptance shape. Null for a doc type with no served review state —
- *  those rows keep the doc-type glyph. `carriesStatusHook` is false on compact, where
- *  the inline status WORD carries the row's `data-*-status` attribute instead. */
-function docStatusMark(
-  entry: VaultTreeEntry,
-  resolveMessage: LocalizedMessageResolver,
-  carriesStatusHook: boolean,
-): RowStatusMark | undefined {
-  if (entry.doc_type === "plan") {
-    const status = planStatus(entry.progress);
-    return {
-      Mark: planStatusMark(status),
-      toneClass: planStatusToneClass(status),
-      label: resolveMessage(PLAN_STATUS_MESSAGES[status]).message,
-      ...(carriesStatusHook
-        ? { statusHook: { attribute: "data-plan-status" as const, value: status } }
-        : {}),
-    };
-  }
-  if (entry.doc_type === "adr" && entry.status) {
-    const Mark = adrStatusMark(entry.status);
-    const statusMessage = treeDecisionStatusMessage(entry.status);
-    if (!Mark || !statusMessage) return undefined;
-    return {
-      Mark,
-      toneClass: adrStatusToneClass(entry.status),
-      label: resolveMessage(statusMessage).message,
-      ...(carriesStatusHook
-        ? {
-            statusHook: { attribute: "data-adr-status" as const, value: entry.status },
-          }
-        : {}),
-    };
-  }
-  return undefined;
-}
-
-/** The trailing review-state VALUE — a plan's done-of-total count. The state's SHAPE
- *  now leads the row as its item icon, so nothing here repeats it. */
-function docSignal(
-  entry: VaultTreeEntry,
-  resolveMessage: LocalizedMessageResolver,
-): ReactNode {
-  if (entry.doc_type !== "plan" || !entry.progress) return null;
-  const progressMessage = treePlanProgressMessage(
-    entry.progress.done,
-    entry.progress.total,
-  );
-  if (!progressMessage) return null;
-  return (
-    <span
-      className={`shrink-0 text-meta font-normal ${planStatusToneClass(planStatus(entry.progress))}`}
-      data-tabular
-    >
-      {resolveMessage(progressMessage).message}
-    </span>
-  );
-}
-
-function docCompactSubMeta(
-  entry: VaultTreeEntry,
-  resolveMessage: LocalizedMessageResolver,
-  locale: string,
-): ReactNode | undefined {
-  const date = formatTreeDate(
-    locale,
-    entry.dates.created ?? entry.dates.modified,
-    "compact",
-  );
-  const pillClass = "shrink-0 rounded-fg-xs bg-paper-sunken px-fg-1";
-  let status: ReactNode = null;
-  if (entry.doc_type === "adr" && entry.status) {
-    const statusMessage = treeDecisionStatusLabelMessage(entry.status);
-    if (statusMessage && adrStatusMark(entry.status)) {
-      status = (
-        <span
-          className={`${pillClass} ${adrStatusToneClass(entry.status)}`}
-          data-adr-status={entry.status}
-        >
-          {resolveMessage(statusMessage).message}
-        </span>
-      );
-    }
-  } else if (entry.doc_type === "plan") {
-    const planState = planStatus(entry.progress);
-    const progressMessage = entry.progress
-      ? treePlanProgressMessage(entry.progress.done, entry.progress.total)
-      : null;
-    const label = entry.progress
-      ? progressMessage
-        ? resolveMessage(progressMessage).message
-        : null
-      : resolveMessage(PLAN_STATUS_MESSAGES[planState]).message;
-    if (!label) return date ? <span>{date}</span> : undefined;
-    status = (
-      <span
-        className={`${pillClass} ${planStatusToneClass(planState)}`}
-        data-plan-status={planState}
-      >
-        {label}
-      </span>
-    );
-  }
-  if (!date && !status) return undefined;
-  return (
-    <>
-      {date && (
-        <span className="shrink-0 text-ink-muted" data-doc-date>
-          {date}
-        </span>
-      )}
-      {status}
-    </>
-  );
-}
-
-function docMetaLabel(
-  entry: VaultTreeEntry,
-  sortKey: RailSortKey,
-  resolveMessage: LocalizedMessageResolver,
-  locale: string,
-): string {
-  if (sortKey === "size" && entry.size) {
-    const message = treeWordCountMessage(entry.size.words);
-    return message ? resolveMessage(message).message : "";
-  }
-  if (sortKey === "weight" && entry.size) {
-    return formatBytes(locale, entry.size.bytes) ?? "";
-  }
-  if (
-    (sortKey === "recency" || sortKey === "docs" || sortKey === "name") &&
-    entry.doc_type === "plan" &&
-    entry.progress
-  ) {
-    return "";
-  }
-  const date =
-    sortKey === "modified"
-      ? (entry.dates.modified ?? entry.dates.created)
-      : (entry.dates.created ?? entry.dates.modified);
-  return formatTreeDate(locale, date, "compact");
-}
-
-export function docTooltipLabel(
-  entry: VaultTreeEntry,
-  resolveMessage: LocalizedMessageResolver,
-  locale: string,
-): string {
-  const lines = [entry.path];
-  const dateMessages = [
-    ["documents:tree.created", entry.dates.created],
-    ["documents:tree.updated", entry.dates.stamped],
-    ["documents:tree.lastEdited", entry.dates.modified],
-  ] as const;
-  for (const [key, rawDate] of dateMessages) {
-    const date = formatTreeDate(locale, rawDate, "full");
-    if (date) lines.push(resolveMessage({ key, values: { date } }).message);
-  }
-  if (entry.size) {
-    const size = formatBytes(locale, entry.size.bytes);
-    if (size) {
-      const message = treeSizeSummaryMessage(entry.size.words, size);
-      if (message) lines.push(resolveMessage(message).message);
-    }
-  }
-  const tier = entry.tier ? planTierLabel(entry.tier) : "";
-  if (tier) lines.push(tier);
-  return lines.join("\n");
-}
-
-export function formatTreeDate(
-  locale: string,
-  iso: string | undefined,
-  style: "compact" | "full",
-): string {
-  const timestamp = docDateTimestamp(iso);
-  if (timestamp === null) return "";
-  return (
-    formatDate(locale, timestamp, {
-      day: "numeric",
-      month: "short",
-      ...(style === "full" ? { year: "numeric" as const } : {}),
-      timeZone: "UTC",
-    }) ?? ""
-  );
 }
 
 function DocumentRow({

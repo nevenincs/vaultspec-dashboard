@@ -305,8 +305,12 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
       expect(button).toBeTruthy();
       return button!;
     }, ENGINE_WAIT);
-    // The feature row carries a category icon (the centralized DocTypeMark), not a folder glyph.
-    expect(featureFolder.querySelector("[data-doc-mark]")).toBeTruthy();
+    // The feature row leads with exactly ONE item icon and never a folder glyph:
+    // the SERVED plan-state mark when the engine can read the feature's plans,
+    // else the plain feature glyph (rail-feature-metadata ADR D3).
+    expect(
+      featureFolder.querySelector("[data-doc-mark], [data-feature-plan-status]"),
+    ).toBeTruthy();
     fireEvent.click(featureFolder);
     // Expanding it reveals category SUB-FOLDER rows (aria-expanded buttons), each
     // itself carrying a category dot — NOT a flat list of `.vault/` document rows.
@@ -324,6 +328,57 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     expect(
       subFolder.querySelector("[data-category]")?.getAttribute("data-category"),
     ).toBeTruthy();
+  });
+
+  it("puts the SERVED plan-state mark and decision date on the feature rows", async () => {
+    // rail-feature-metadata ADR D3/D2 over the real roster: the fixture's `alpha`
+    // feature holds a half-checked plan and one decision dated 2026-01-02, and
+    // `beta` holds a decision but NO plan. So alpha's row must lead with the
+    // in-progress mark and trail its decision date, while beta's — a feature whose
+    // plan state the engine cannot read — keeps the plain feature glyph. Nothing
+    // here is derived client-side; the row prints what the roster served.
+    renderBrowser();
+    await screen.findByRole("navigation", { name: "Vault browser" }, ENGINE_WAIT);
+    await expandSection("features");
+
+    const alpha = await waitFor(() => {
+      const button = screen
+        .getAllByRole("button")
+        .find(
+          (b) =>
+            b.parentElement?.hasAttribute("data-vault-folder") &&
+            b.querySelector("[data-feature-plan-status]") !== null,
+        );
+      expect(button).toBeTruthy();
+      return button!;
+    }, ENGINE_WAIT);
+
+    const mark = alpha.querySelector("[data-feature-plan-status]")!;
+    expect(mark.getAttribute("data-feature-plan-status")).toBe("in-progress");
+    // The rail is too narrow for the status WORD, so the mark carries it as its
+    // accessible name rather than leaving a shape with no name.
+    expect(mark.getAttribute("aria-label")).toBe("Plans in progress");
+    // The row shows ONE icon: the status mark REPLACES the doc-type glyph.
+    expect(alpha.querySelector("[data-doc-mark]")).toBeNull();
+
+    // The trailing date is the binding-DECISION span (ADR D2) — one date here,
+    // because the fixture's alpha carries a single decision — and it says what it
+    // means out loud for assistive tech.
+    const dates = alpha.querySelector("[data-feature-dates]")!;
+    expect(dates.textContent).toBe("Jan 2");
+    expect(dates.getAttribute("aria-label")).toBe("Decisions dated Jan 2, 2026");
+
+    // Beta has no plan at all: no invented "not started" mark, just the glyph.
+    const beta = screen
+      .getAllByRole("button")
+      .find(
+        (b) =>
+          b.parentElement?.hasAttribute("data-vault-folder") &&
+          b.querySelector("[data-doc-mark]") !== null &&
+          b.textContent?.startsWith("Beta") === true,
+      );
+    expect(beta).toBeTruthy();
+    expect(beta!.querySelector("[data-feature-plan-status]")).toBeNull();
   });
 
   it("groups the Documents section by category and never surfaces an index row", async () => {

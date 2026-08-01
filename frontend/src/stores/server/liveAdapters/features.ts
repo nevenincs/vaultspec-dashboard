@@ -15,6 +15,7 @@
 
 import {
   PIPELINE_COVERAGE_DOC_TYPES,
+  type FeatureAdrDates,
   type FeatureCoverage,
   type FeatureCoverageResponse,
   type FeatureRosterEntry,
@@ -119,7 +120,38 @@ function allMissingCoverage(feature: string): FeatureCoverage {
   };
 }
 
-/** Adapt a `/features` roster body, tolerating an absent or partial array. */
+/** The served per-doc-type count map → the internal shape. Only positive whole
+ *  counts survive (the engine already omits the zeroes; a malformed value is
+ *  dropped rather than shown). A wholly absent or non-object map stays UNDEFINED:
+ *  an engine that serves no composition leaves it UNKNOWN, which a row omits —
+ *  an empty map would claim the feature holds nothing. */
+function adaptTypeCounts(raw: unknown): Record<string, number> | undefined {
+  if (!isRec(raw)) return undefined;
+  const counts: Record<string, number> = {};
+  for (const [docType, value] of Object.entries(raw)) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 1) {
+      counts[docType] = Math.trunc(value);
+    }
+  }
+  return counts;
+}
+
+/** The served binding-decision span → the internal shape. Both ends must be
+ *  present for a span to mean anything, so a half-served pair reads as absent. */
+function adaptAdrDates(raw: unknown): FeatureAdrDates | undefined {
+  if (!isRec(raw)) return undefined;
+  const first = strOrUndef(raw.first);
+  const last = strOrUndef(raw.last);
+  return first === undefined || last === undefined ? undefined : { first, last };
+}
+
+/** Adapt a `/features` roster body, tolerating an absent or partial array. The
+ *  three metadata fields are absorbed ADDITIVELY: an older engine that serves
+ *  none of them yields entries whose `type_counts`/`plan_state`/`adr_dates` are
+ *  simply undefined, and every consumer omits the corresponding presentation
+ *  rather than inventing a floor. The `plan_state` token passes through
+ *  unvalidated, exactly as `next_step` and `note` do — presentation fails closed
+ *  on a token it does not know. */
 export function adaptFeatureRoster(body: unknown): FeatureRosterResponse {
   const b = isRec(body) ? body : {};
   const rawRoster = Array.isArray(b.roster) ? b.roster : [];
@@ -131,6 +163,9 @@ export function adaptFeatureRoster(body: unknown): FeatureRosterResponse {
       doc_count: numOr(entry.doc_count, 0),
       types_present: numOr(entry.types_present, 0),
       next_step: strOrUndef(entry.next_step),
+      type_counts: adaptTypeCounts(entry.type_counts),
+      plan_state: strOrUndef(entry.plan_state),
+      adr_dates: adaptAdrDates(entry.adr_dates),
     }));
   return { roster, tiers: tiersOf(b) };
 }

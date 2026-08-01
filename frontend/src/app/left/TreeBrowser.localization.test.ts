@@ -6,7 +6,14 @@ import {
   rtlTestLocale,
 } from "../../localization/testing";
 import { resolveMessageResult } from "../../platform/localization/fallback";
-import { docTooltipLabel, formatTreeDate } from "./TreeBrowser";
+import {
+  FEATURE_PLAN_STATUS_MESSAGES,
+  featureCompositionLabel,
+  featureDateSpanAccessibleLabel,
+  featureDateSpanLabel,
+} from "./featureRowPresentation";
+import { docTooltipLabel } from "./treeRowChrome";
+import { formatTreeDate } from "./vaultRowPresentation";
 import {
   TREE_BROWSER_MESSAGES,
   formatTreeWeight,
@@ -114,6 +121,45 @@ describe("TreeBrowser localization", () => {
       expect(tooltip).toMatch(expected);
       expect(tooltip).toMatch(/4|٤/);
       expect(tooltip).not.toMatch(/documents:tree|Authored|Edited/);
+    }
+  });
+
+  it("resolves the feature row's served metadata in every supported locale", () => {
+    // The composition line, the date span, and the plan-state word are the three
+    // things a feature row says beyond its name. Each must be real copy in every
+    // locale — a fallback here would print an internal key on the rail.
+    for (const locale of ["en", ltrTestLocale, rtlTestLocale] as const) {
+      const runtime = createTestLocalizationRuntime(
+        locale === "en" ? undefined : locale,
+      );
+      const resolve = (message: Parameters<typeof resolveMessageResult>[1]) =>
+        resolveMessageResult(runtime, message);
+      for (const message of Object.values(FEATURE_PLAN_STATUS_MESSAGES)) {
+        const result = resolve(message);
+        expect(result.usedFallback).toBe(false);
+        expect(result.message.length).toBeGreaterThan(0);
+      }
+      const composition = featureCompositionLabel(
+        locale,
+        { research: 1, adr: 2, plan: 1, exec: 4, audit: 1, reference: 3 },
+        resolve,
+      );
+      expect(composition.length).toBeGreaterThan(0);
+      expect(composition).not.toMatch(/documents:|common:/);
+      const span = featureDateSpanLabel(
+        locale,
+        { first: "2026-01-02", last: "2026-01-06" },
+        resolve,
+      );
+      expect(span.length).toBeGreaterThan(0);
+      expect(span).not.toMatch(/documents:|common:/);
+      const spoken = featureDateSpanAccessibleLabel(
+        locale,
+        { first: "2026-01-02", last: "2026-01-06" },
+        resolve,
+      );
+      expect(spoken.length).toBeGreaterThan(0);
+      expect(spoken).not.toMatch(/documents:|common:/);
     }
   });
 

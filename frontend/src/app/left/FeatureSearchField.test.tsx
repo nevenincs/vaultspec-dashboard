@@ -9,9 +9,13 @@ const setValue = vi.fn();
 const clear = vi.fn();
 let draftValue = "";
 
-// The served roster the open dropdown joins its per-feature document counts from.
-// `timeline` is deliberately ABSENT so a suggestion the roster does not carry proves
-// it renders its name alone rather than a zero standing in for an unknown.
+// The served roster the open dropdown joins its per-feature metadata from — the
+// only mocked dependency is the DATA seam; every string below resolves through the
+// real localization runtime. `dashboard-left-rail` carries a full entry (a
+// composition plus a multi-decision span), `dashboard-gui` carries only totals (an
+// older engine, or a feature the engine can say nothing more about), and `timeline`
+// is deliberately ABSENT — so the three rows prove the full line, no line, and no
+// line respectively, and never a zero standing in for an unknown.
 vi.mock("../../stores/server/queries", () => ({
   useActiveScope: () => "scope-a",
   useFiltersVocabularyView: () => ({
@@ -23,7 +27,14 @@ vi.mock("../../stores/server/queries", () => ({
     degradedTiers: [],
     reasons: {},
     roster: [
-      { feature: "dashboard-left-rail", doc_count: 12, types_present: 4 },
+      {
+        feature: "dashboard-left-rail",
+        doc_count: 12,
+        types_present: 4,
+        type_counts: { research: 2, adr: 3, plan: 1, exec: 6 },
+        plan_state: "in-progress",
+        adr_dates: { first: "2026-06-14", last: "2026-08-01" },
+      },
       { feature: "dashboard-gui", doc_count: 1, types_present: 1 },
     ],
   }),
@@ -58,7 +69,7 @@ describe("FeatureSearchField (feature autofill)", () => {
     fireEvent.focus(input);
 
     expect(screen.getByRole("listbox")).toBeTruthy();
-    // A row shows the READABLE NAME over its served document count. The raw tag is
+    // A row shows the READABLE NAME over its served metadata. The raw tag is
     // no longer printed — it said the same thing as the name — and rides the row's
     // hover tooltip instead (owner review).
     expect(screen.getByText("Dashboard Left Rail")).toBeTruthy();
@@ -72,15 +83,23 @@ describe("FeatureSearchField (feature autofill)", () => {
     expect(commit).toHaveBeenCalledWith("dashboard-left-rail");
   });
 
-  it("shows the SERVED document count per feature, and none when unserved", () => {
+  it("shows the SERVED composition and decision span, and nothing when unserved", () => {
     render(createElement(FeatureSearchField));
     fireEvent.focus(screen.getByLabelText("Filter the vault by feature"));
 
-    // Counts come from the roster the engine serves — plural-correct, and never
-    // re-counted from a client listing.
-    expect(screen.getByText("12 documents")).toBeTruthy();
-    expect(screen.getByText("1 document")).toBeTruthy();
-    // `timeline` is not on the roster, so its row carries no second line at all.
+    // Per-type counts in canonical pipeline order, plural-correct, followed by the
+    // span of the decisions that bind the feature. Every value is engine-served and
+    // never re-counted from a client listing (ADR D4).
+    expect(
+      screen.getByText(
+        "2 research notes, 3 decisions, 1 plan, 6 step records, Jun 14 – Aug 1",
+      ),
+    ).toBeTruthy();
+    // The row that used to print a bare total now prints nothing: a roster entry
+    // carrying only totals says nothing the name does not already say.
+    const gui = screen.getByRole("option", { name: /Dashboard Gui/ });
+    expect(gui.querySelector("[data-feature-suggestion-meta]")).toBeNull();
+    // `timeline` is not on the roster at all, so its row carries no second line.
     const timeline = screen.getByRole("option", { name: /Timeline/ });
     expect(timeline.querySelector("[data-feature-suggestion-meta]")).toBeNull();
   });

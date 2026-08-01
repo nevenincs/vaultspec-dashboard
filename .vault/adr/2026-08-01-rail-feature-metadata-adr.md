@@ -5,6 +5,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:1ae9703d2405b5eb7768808b7db0484fe0bafbfe4058d979fe50e94ef8777829'
 related:
   - "[[2026-08-01-rail-feature-metadata-research]]"
 ---

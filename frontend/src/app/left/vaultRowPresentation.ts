@@ -24,8 +24,12 @@ import {
   XCircle,
 } from "@phosphor-icons/react";
 
-import type { MessageDescriptor } from "../../platform/localization/message";
+import { formatDate } from "../../platform/localization/formatters";
 import { featureTagDisplayName } from "../../stores/featureQuery";
+import {
+  DOCUMENT_TYPE_MESSAGES,
+  docTypePresentation,
+} from "../../stores/server/docTypeVocabulary";
 import type { Category } from "../kit";
 import { freshness, freshnessToneClass } from "../presentation/freshness";
 
@@ -72,28 +76,9 @@ export function docMark(docType: string): Icon {
   return DOC_MARKS[docType] ?? FileDashed;
 }
 
-/** The display label for a doc-type group header (binding Figma `LeftRail` 244:750
- *  group headers: RESEARCH / DECISIONS / PLANS / STEPS / AUDITS / REFERENCES). The
- *  human plural vocabulary is the ONE canonical doc-type schema (terminology-
- *  standardization ADR D1) — this delegates to it so the rail headers can never
- *  drift from the filter facets and search pills. The label text keeps catalog casing
- *  so the kit `SectionLabel` renders it verbatim. Kept exported here for the VAULT
- *  and TREE browser headers. */
-const DOC_GROUP_MESSAGES = {
-  adr: { key: "documents:documentTypes.adr" },
-  audit: { key: "documents:documentTypes.audit" },
-  exec: { key: "documents:documentTypes.exec" },
-  plan: { key: "documents:documentTypes.plan" },
-  reference: { key: "documents:documentTypes.reference" },
-  research: { key: "documents:documentTypes.research" },
-} as const satisfies Record<string, MessageDescriptor>;
-
-export function docGroupMessage(docType: string): MessageDescriptor {
-  return (
-    DOC_GROUP_MESSAGES[docType as keyof typeof DOC_GROUP_MESSAGES] ?? {
-      key: "documents:browserModes.documents",
-    }
-  );
+/** The canonical localized group label, failing closed to the generic document noun. */
+export function docGroupMessage(docType: string) {
+  return docTypePresentation(docType)?.label ?? DOCUMENT_TYPE_MESSAGES.document;
 }
 
 // Doc-type → kit category token (binding board 135:2 StatusDot/Chip category set).
@@ -102,19 +87,10 @@ export function docGroupMessage(docType: string): MessageDescriptor {
 // leading StatusDot and its node always agree. `reference` now has its own bound
 // `scene/category-reference` color (terminology-standardization ADR D3). `index` is
 // never a displayed row (ADR D5), so it carries no category here.
-const DOC_TYPE_CATEGORY: Record<string, Category> = {
-  research: "research",
-  adr: "adr",
-  plan: "plan",
-  exec: "exec",
-  audit: "audit",
-  reference: "reference",
-};
-
 /** The kit category whose bound scene color tints a doc row's leading StatusDot,
  *  or null for a doc type with no bound category color. */
 export function docTypeCategory(docType: string): Category | null {
-  return DOC_TYPE_CATEGORY[docType] ?? null;
+  return docTypePresentation(docType)?.id ?? null;
 }
 
 /**
@@ -196,6 +172,28 @@ export function docDateTimestamp(iso?: string): number | null {
     return null;
   }
   return timestamp;
+}
+
+/** The rail's one absolute date label: "Jun 14" at a glance, "Jun 14, 2026" when
+ *  the year has to be said. Pinned to UTC so the printed day is the stored day;
+ *  empty string for anything that is not a strict ISO date. Lives here beside the
+ *  parser rather than in the tree component, because the feature rows and the
+ *  document rows both print dates and neither owns the format. */
+export function formatTreeDate(
+  locale: string,
+  iso: string | undefined,
+  style: "compact" | "full",
+): string {
+  const timestamp = docDateTimestamp(iso);
+  if (timestamp === null) return "";
+  return (
+    formatDate(locale, timestamp, {
+      day: "numeric",
+      month: "short",
+      ...(style === "full" ? { year: "numeric" as const } : {}),
+      timeZone: "UTC",
+    }) ?? ""
+  );
 }
 
 /** A readable FEATURE name for the Features section rows (binding `LeftRail`

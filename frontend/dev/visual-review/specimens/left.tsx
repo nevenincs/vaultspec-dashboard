@@ -10,6 +10,11 @@
 // `RailFilterField`/`FeatureSearchField` read the same `dashboardState` plus the
 // served filter vocabulary; `CreateDocDialog` is closed-by-default and portals
 // out, so it is `solo` and opened imperatively from a local wrapper.
+//
+// Every surface that shows a FEATURE also reads the one feature roster, so the
+// tree, the rail, and the suggestion dropdown are all seeded from the same
+// authored roster below — the desk proves what a status mark, a decision date
+// span, and a composition line LOOK like across all four rollup states.
 
 import { useEffect, useMemo, useState } from "react";
 import type { QueryClient } from "@tanstack/react-query";
@@ -30,6 +35,7 @@ import {
 } from "@app/stores/view/createDocChrome";
 import type {
   FeatureCoverage,
+  FeatureRosterEntry,
   FileTreeEntry,
   FileTreeResponse,
   FiltersVocabulary,
@@ -60,6 +66,8 @@ import {
 
 const ALPHA_FEATURE = "alpha-initiative";
 const BETA_FEATURE = "beta-rollout";
+const GAMMA_FEATURE = "gamma-migration";
+const DELTA_FEATURE = "delta-cleanup";
 
 const VAULT_TREE_ENTRIES: VaultTreeEntry[] = [
   {
@@ -105,6 +113,100 @@ const VAULT_TREE_ENTRIES: VaultTreeEntry[] = [
     dates: { created: "2026-07-30", modified: "2026-07-30" },
     size: { bytes: 1800, words: 260 },
   },
+  // Gamma carries TWO decisions, which is what makes its feature row print a real
+  // date SPAN rather than a single date, and a finished plan for the ✓ mark.
+  {
+    path: `.vault/adr/2026-06-14-${GAMMA_FEATURE}-adr.md`,
+    doc_type: "adr",
+    title: "Gamma migration approach",
+    feature_tags: [GAMMA_FEATURE],
+    dates: { created: "2026-06-14", modified: "2026-06-14" },
+    status: "accepted",
+    size: { bytes: 2400, words: 380 },
+  },
+  {
+    path: `.vault/adr/2026-07-30-${GAMMA_FEATURE}-rollback-adr.md`,
+    doc_type: "adr",
+    title: "Gamma migration rollback",
+    feature_tags: [GAMMA_FEATURE],
+    dates: { created: "2026-07-30", modified: "2026-07-30" },
+    status: "accepted",
+    size: { bytes: 1900, words: 300 },
+  },
+  {
+    path: `.vault/plan/2026-07-01-${GAMMA_FEATURE}-plan.md`,
+    doc_type: "plan",
+    title: "Gamma migration plan",
+    feature_tags: [GAMMA_FEATURE],
+    dates: { created: "2026-07-01", modified: "2026-07-29" },
+    tier: "L1",
+    progress: { done: 4, total: 4 },
+    size: { bytes: 3300, words: 520 },
+  },
+  // Delta has a plan nobody has started and NO decision at all — the row that
+  // proves a composition line renders without any date beside it.
+  {
+    path: `.vault/research/2026-07-28-${DELTA_FEATURE}-research.md`,
+    doc_type: "research",
+    title: "Delta cleanup research",
+    feature_tags: [DELTA_FEATURE],
+    dates: { created: "2026-07-28", modified: "2026-07-28" },
+    size: { bytes: 2100, words: 340 },
+  },
+  {
+    path: `.vault/plan/2026-07-29-${DELTA_FEATURE}-plan.md`,
+    doc_type: "plan",
+    title: "Delta cleanup plan",
+    feature_tags: [DELTA_FEATURE],
+    dates: { created: "2026-07-29", modified: "2026-07-29" },
+    tier: "L1",
+    progress: { done: 0, total: 3 },
+    size: { bytes: 2700, words: 430 },
+  },
+];
+
+/**
+ * The served feature roster — the ONE read every feature surface joins its
+ * metadata from (rail-feature-metadata ADR D5). Authored to cover every
+ * presentation the rows can reach: a single-date span with an in-progress rollup
+ * (alpha), a real multi-decision span with a finished rollup (gamma), a
+ * composition with a not-started rollup and NO date (delta), and a feature the
+ * engine can say nothing more about than its totals — no plan, no decision — so
+ * its row keeps the plain feature glyph and prints no second line (beta).
+ *
+ * Counts here are authored to agree with the vault-tree fixture above: on the
+ * live wire they are engine-computed over the full corpus, and no surface ever
+ * re-derives them from the listing.
+ */
+const FEATURE_ROSTER: FeatureRosterEntry[] = [
+  {
+    feature: ALPHA_FEATURE,
+    doc_count: 3,
+    types_present: 3,
+    type_counts: { research: 1, adr: 1, plan: 1 },
+    plan_state: "in-progress",
+    adr_dates: { first: "2026-07-30", last: "2026-07-30" },
+  },
+  {
+    feature: BETA_FEATURE,
+    doc_count: 1,
+    types_present: 1,
+  },
+  {
+    feature: GAMMA_FEATURE,
+    doc_count: 3,
+    types_present: 2,
+    type_counts: { adr: 2, plan: 1 },
+    plan_state: "finished",
+    adr_dates: { first: "2026-06-14", last: "2026-07-30" },
+  },
+  {
+    feature: DELTA_FEATURE,
+    doc_count: 2,
+    types_present: 2,
+    type_counts: { research: 1, plan: 1 },
+    plan_state: "not-started",
+  },
 ];
 
 /** The ADR row's document node id (the shared `doc:{stem}` grammar) — used to
@@ -130,6 +232,20 @@ function vaultTreeResponse(state: ReviewState): VaultTreeResponse {
 function seedVaultTree(client: QueryClient, state: ReviewState): void {
   if (state === "loading") return;
   client.setQueryData(engineKeys.vaultTree(REVIEW_SCOPE), vaultTreeResponse(state));
+}
+
+/** Seed the feature roster every feature surface joins its served status mark,
+ *  decision span, and composition from. Degraded seeds a tiers-down envelope,
+ *  which the stores view empties — so the degraded pane honestly shows feature
+ *  rows WITHOUT metadata rather than stale marks, and `loading` leaves the read
+ *  pending exactly as the tree beside it. */
+function seedFeatureRoster(client: QueryClient, state: ReviewState): void {
+  if (state === "loading") return;
+  client.setQueryData(engineKeys.featureRoster(REVIEW_SCOPE), {
+    roster: state === "empty" ? [] : FEATURE_ROSTER,
+    tiers:
+      state === "degraded" ? tiersDown(["structural"]) : tiersHealthy("structural"),
+  });
 }
 
 // The code-tree row treatment composes THREE channels (code-tree-legibility ADR
@@ -286,7 +402,7 @@ function filtersVocabulary(state: ReviewState): FiltersVocabulary {
     relations: [],
     tiers: [],
     doc_types: ["research", "adr", "plan", "reference"],
-    feature_tags: [ALPHA_FEATURE, BETA_FEATURE],
+    feature_tags: [ALPHA_FEATURE, BETA_FEATURE, GAMMA_FEATURE, DELTA_FEATURE],
     kinds: [],
     statuses: ["accepted", "proposed"],
     plan_states: ["active", "complete"],
@@ -488,12 +604,13 @@ export const leftSpecimens: Readonly<Record<string, SpecimenDef>> = {
   },
 
   "left-treebrowser": {
-    note: "Container: seeds session + dashboardState (dashboardState is gated on a resolved session) for the canonical rail facets/selection, plus the vault-tree read. The ADR row is pre-selected in every non-empty state so the accent highlight is visible. Sections start collapsed, matching a fresh load.",
+    note: "Container: seeds session + dashboardState (dashboardState is gated on a resolved session) for the canonical rail facets/selection, the vault-tree read, and the feature roster. The ADR row is pre-selected in every non-empty state so the accent highlight is visible. Sections start collapsed, matching a fresh load. Expand Features to see all four served rollups in the icon slot: alpha in-progress with a single decision date, gamma finished with a real decision span, delta not-started with no decision date at all, and beta with no readable plan state, which keeps the plain feature glyph. Degraded empties the roster, so the same rows render honestly without marks or dates.",
     seed: (client, state) => {
       seedSessionAndDashboardState(client, {
         selected_ids: state === "empty" ? [] : [SELECTED_DOC_NODE_ID],
       });
       seedVaultTree(client, state);
+      seedFeatureRoster(client, state);
     },
     render: () => <TreeBrowser />,
   },
@@ -515,6 +632,7 @@ export const leftSpecimens: Readonly<Record<string, SpecimenDef>> = {
       });
       seedVaultTree(client, state);
       seedFileTree(client, state);
+      seedFeatureRoster(client, state);
     },
     render: () => <BrowserRegion />,
   },
@@ -528,6 +646,7 @@ export const leftSpecimens: Readonly<Record<string, SpecimenDef>> = {
       });
       seedVaultTree(client, state);
       seedFileTree(client, state);
+      seedFeatureRoster(client, state);
       if (state === "loading") return;
       const map: MapResponse =
         state === "empty"
@@ -575,12 +694,13 @@ export const leftSpecimens: Readonly<Record<string, SpecimenDef>> = {
             : {},
       });
       seedFiltersVocabulary(client, state);
+      seedFeatureRoster(client, state);
     },
     render: () => <RailFilterField />,
   },
 
   "left-featuresearchfield": {
-    note: "Container: seeds session + dashboardState (the field echoes the canonical filters.feature_query) plus the /filters vocabulary (the autocomplete's feature-tag suggestions). Same honest limitation as left-railfilterfield: the vocabulary's degraded tiers flag is not read by this component, so degraded renders like normal.",
+    note: "Container: seeds session + dashboardState (the field echoes the canonical filters.feature_query), the /filters vocabulary (the autocomplete's feature-tag suggestions), and the feature roster the suggestion second line reads. Focus the field to open the dropdown: each row shows its name over its served composition and decision span, and beta — which the roster describes only by totals — shows its name alone. Same honest limitation as left-railfilterfield: the vocabulary's degraded tiers flag is not read by this component, so the FIELD renders like normal under degraded; the suggestion metadata does drop, because the roster view empties on a degraded read.",
     seed: (client, state) => {
       seedSessionAndDashboardState(client, {
         filters:
@@ -589,6 +709,7 @@ export const leftSpecimens: Readonly<Record<string, SpecimenDef>> = {
             : {},
       });
       seedFiltersVocabulary(client, state);
+      seedFeatureRoster(client, state);
     },
     render: () => <FeatureSearchField />,
   },
