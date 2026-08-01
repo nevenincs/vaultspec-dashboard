@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#code-artifact-nodes'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:ffcd83c0518a5681ea4e9529625fbd36c80788bc0025b3db11aebfd704232b6b'
 related:
   - '[[2026-06-16-code-artifact-nodes-adr]]'
 ---

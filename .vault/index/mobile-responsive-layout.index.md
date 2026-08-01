@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#mobile-responsive-layout'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:b95c638ec8ad6b589eb1107e50f3327299bc7619b1f7d5ef962c848d13003a10'
 related:
   - '[[2026-06-22-mobile-responsive-layout-adr]]'
   - '[[2026-06-22-mobile-responsive-layout-audit]]'

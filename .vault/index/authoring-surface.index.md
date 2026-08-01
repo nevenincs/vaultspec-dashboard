@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#authoring-surface'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:fa3739f0c7b6605eecc497158428f326235aa7100f5c8cc0b1fa7fbb7ed7b582'
 related:
   - '[[2026-07-12-authoring-surface-W01-P01-S01]]'
   - '[[2026-07-12-authoring-surface-W01-P01-S02]]'

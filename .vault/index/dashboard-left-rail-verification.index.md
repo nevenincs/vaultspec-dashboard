@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-left-rail-verification'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:9532c7a16a51fb3fc4623e610c50d68d7300899eb52180938869d3bf6376537c'
 related:
   - '[[2026-06-15-dashboard-left-rail-verification-audit]]'
 ---

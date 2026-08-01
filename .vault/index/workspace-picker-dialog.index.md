@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#workspace-picker-dialog'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:72b1f90542d2bd86ac3517bc38ab44de14b51a4e83ef540909f5e6c1452d663a'
 related:
   - '[[2026-07-14-workspace-picker-dialog-adr]]'
   - '[[2026-07-14-workspace-picker-dialog-research]]'

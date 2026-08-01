@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-left-rail'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:e97face9b3832f400cb96cd1a12cc46bdd99d9443c8554b12e02b32a5436e2f1'
 related:
   - '[[2026-06-14-dashboard-left-rail-P01-S01]]'
   - '[[2026-06-14-dashboard-left-rail-P01-S02]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#rag-control-plane'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:afe783c3e98e4e2120ac6155fbe59de143b8629335f0c93a6d96c4d0d1144aea'
 related:
   - '[[2026-06-16-rag-control-plane-adr]]'
   - '[[2026-06-16-rag-control-plane-plan]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-viz-scorecard'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:f9c8bf8d99ff7183b1d19f783f43f56e2e62ed5283f3f54cff654579dc799b22'
 related:
   - '[[2026-06-16-graph-viz-scorecard-adr]]'
 ---

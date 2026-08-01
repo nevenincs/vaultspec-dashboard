@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#ledgered-edit-migration'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:3116099e4569030b76b92b593441fd61f509140e708f00fc75ae2746e68f5cf0'
 related:
   - '[[2026-07-09-ledgered-edit-migration-adr]]'
   - '[[2026-07-09-ledgered-edit-migration-audit]]'

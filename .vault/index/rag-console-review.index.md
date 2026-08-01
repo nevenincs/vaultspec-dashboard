@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#rag-console-review'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:bed2d0b13bca4da4fa2d75cc38d05e33156a6997f0b3bfe91174aba9d1ce4d1f'
 related:
   - '[[2026-07-02-rag-console-review-P02-S05]]'
   - '[[2026-07-02-rag-console-review-audit]]'

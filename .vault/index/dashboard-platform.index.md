@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-platform'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:98b6edc3a8149175958a6cb0baba20bece7a95314fb58a53142b290a8412e4e8'
 related:
   - '[[2026-06-13-dashboard-platform-P01-S01]]'
   - '[[2026-06-13-dashboard-platform-P01-S02]]'

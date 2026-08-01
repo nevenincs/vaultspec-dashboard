@@ -8,6 +8,7 @@ modified: '2026-08-01'
 body_schema: 'body-v1'
 related:
   - '[[2026-08-01-rail-feature-metadata-adr]]'
+  - '[[2026-08-01-rail-feature-metadata-plan]]'
   - '[[2026-08-01-rail-feature-metadata-research]]'
 ---
 
@@ -19,7 +20,11 @@ Auto-generated index of all documents tagged with `#rail-feature-metadata`.
 
 ### adr
 
-- `2026-08-01-rail-feature-metadata-adr` - `rail-feature-metadata` adr: `served feature metadata: status mark, dates, per-type counts` | (**status:** `{proposed|accepted|rejected|superseded|deprecated}`)
+- `2026-08-01-rail-feature-metadata-adr` - `rail-feature-metadata` adr: `served feature metadata: status mark, dates, per-type counts` | (**status:** `accepted`)
+
+### plan
+
+- `2026-08-01-rail-feature-metadata-plan` - `rail-feature-metadata` plan
 
 ### research
 

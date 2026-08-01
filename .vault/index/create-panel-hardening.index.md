@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#create-panel-hardening'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:b3a1552d224a506ce979309a509d1b4ebbddbd278780a2b919c2153d73072959'
 related:
   - '[[2026-07-14-create-panel-hardening-P01-S01]]'
   - '[[2026-07-14-create-panel-hardening-P01-S02]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#a2a-generation-authority'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:f8c0e34810aabac7e0d88adcb3c21ccddbc7b8fe1d2aa32e515ee8e805aac424'
 related:
   - '[[2026-07-20-a2a-generation-authority-adr]]'
   - '[[2026-07-20-a2a-generation-authority-audit]]'

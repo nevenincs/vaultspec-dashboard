@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#node-visual-richness'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:d01a1fbea1592484db136cbfe66e2aff575b1f35af7066b962dd3ef01d28af8d'
 related:
   - '[[2026-06-14-node-visual-richness-P01-S01]]'
   - '[[2026-06-14-node-visual-richness-P01-S02]]'

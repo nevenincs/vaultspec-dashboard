@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-gui'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:40181a7b196f7ce9003e7f83e7c3737185852010436c0008d5a95da72be5ded3'
 related:
   - '[[2026-06-12-dashboard-gui-W01-P01-S01]]'
   - '[[2026-06-12-dashboard-gui-W01-P01-S02]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#status-worktree-latency'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:d920e192af234ce93ad9c154759c940936463c692836efa9a9e74d14fbac17f4'
 related:
   - '[[2026-06-16-status-worktree-latency-adr]]'
   - '[[2026-06-16-status-worktree-latency-audit]]'

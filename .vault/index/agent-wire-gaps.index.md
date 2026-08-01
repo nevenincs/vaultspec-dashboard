@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#agent-wire-gaps'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:b373fb12d73f10ffe66c43aa2b4a38fce6f34ec224c4cf588dbe0b56e23d6e6e'
 related:
   - '[[2026-07-17-agent-wire-gaps-P01-S13]]'
   - '[[2026-07-17-agent-wire-gaps-P02-S15]]'

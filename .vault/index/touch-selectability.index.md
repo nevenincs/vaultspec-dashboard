@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#touch-selectability'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:a031b8d5474d04a0268e4fd562dd9c5aaf9708cf4d7709049584f9a6039cac0a'
 related:
   - '[[2026-07-12-touch-selectability-P01-S01]]'
   - '[[2026-07-12-touch-selectability-P01-S02]]'

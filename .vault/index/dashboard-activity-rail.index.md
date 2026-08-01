@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-activity-rail'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:d2416fef97a37247a635c7e5f1dcab73a3f31cab3ff5f4b4d5fb8f08ccd035ec'
 related:
   - '[[2026-06-14-dashboard-activity-rail-P01-S01]]'
   - '[[2026-06-14-dashboard-activity-rail-P01-S02]]'

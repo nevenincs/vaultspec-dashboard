@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#worktree-parse-performance'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:5eba8098d29d47f9abb9a5cec8605b807b131d508d34e7a3e2de699661d28eab'
 related:
   - '[[2026-06-14-worktree-parse-performance-adr]]'
   - '[[2026-06-14-worktree-parse-performance-audit]]'

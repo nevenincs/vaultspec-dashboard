@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-node-canvas'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:494598ff6be80bf6ea34fa5a3f93b5115cce8718e1cb7e320e602ac81d418712'
 related:
   - '[[2026-06-14-dashboard-node-canvas-adr]]'
 ---

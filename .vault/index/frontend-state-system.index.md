@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#frontend-state-system'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:8067c45200437553820e99b2ae902d3faff7585b14917464585f6aa75bcb7460'
 related:
   - '[[2026-06-13-frontend-state-system-audit]]'
   - '[[2026-06-13-frontend-state-system-reference]]'

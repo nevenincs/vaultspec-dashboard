@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-node-semantics'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:b69842ac6b962a25438b6f283e5f3b3b8d8d762ab934ceb0e3531a271588a3b0'
 related:
   - '[[2026-06-14-graph-node-semantics-P01-S01]]'
   - '[[2026-06-14-graph-node-semantics-P01-S02]]'

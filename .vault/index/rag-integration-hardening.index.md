@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#rag-integration-hardening'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:c3237980ba580f29df32c9e86a29c97917a66606614bf3f3eb1c8f5c7e05d164'
 related:
   - '[[2026-07-03-rag-integration-hardening-P01-S01]]'
   - '[[2026-07-03-rag-integration-hardening-P01-S02]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#temporal-graph-layout'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:291bc7b290aab889e05f9296fdfa81003e8dbecf486c37e29432e1459606a4a8'
 related:
   - '[[2026-06-17-temporal-graph-layout-W01-P01-S01]]'
   - '[[2026-06-17-temporal-graph-layout-W01-P01-S02]]'

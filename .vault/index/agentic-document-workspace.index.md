@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#agentic-document-workspace'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:a151177813c2fdecb2149a80efd15f94aa6e0e7330014715ea1025a58dbb84b0'
 related:
   - '[[2026-07-14-agentic-document-workspace-adr]]'
   - '[[2026-07-14-agentic-document-workspace-research]]'

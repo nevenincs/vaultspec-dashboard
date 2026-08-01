@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-force-stability'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:ef8d58641cd6f848e1027a296c694bdd507c987efc1f09de3a6e535ead3169b4'
 related:
   - '[[2026-06-16-graph-force-stability-adr]]'
   - '[[2026-06-16-graph-force-stability-research]]'

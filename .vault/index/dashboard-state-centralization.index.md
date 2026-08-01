@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-state-centralization'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:12b9a90c7188403a4f3f2747899fd014273c1710d5efd140e72fccafd63538d6'
 related:
   - '[[2026-06-17-dashboard-state-centralization-W01-P01-S01]]'
   - '[[2026-06-17-dashboard-state-centralization-W01-P01-S02]]'

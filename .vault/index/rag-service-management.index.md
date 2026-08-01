@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#rag-service-management'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:3c9c16ebaee7e68ade468e3da5ab19802ba92feede5c5db9b7f72b33c7adfb2e'
 related:
   - '[[2026-06-26-rag-service-management-W01-P01-S01]]'
   - '[[2026-06-26-rag-service-management-W01-P01-S02]]'

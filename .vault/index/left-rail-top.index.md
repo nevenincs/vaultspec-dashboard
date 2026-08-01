@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#left-rail-top'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:38cb90cec36870797008a5de66c8ea7070babdbde7ac129db5dac11f92f22f49'
 related:
   - '[[2026-06-20-left-rail-top-adr]]'
   - '[[2026-06-20-left-rail-top-research]]'

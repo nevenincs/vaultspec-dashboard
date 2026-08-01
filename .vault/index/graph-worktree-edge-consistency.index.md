@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-worktree-edge-consistency'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:23e44d8132cd65998217ca09b73e3952bd667f299e88b73e0129d6bbfe5d94d6'
 related:
   - '[[2026-06-30-graph-worktree-edge-consistency-adr]]'
   - '[[2026-06-30-graph-worktree-edge-consistency-audit]]'

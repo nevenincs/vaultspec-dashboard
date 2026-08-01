@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#visual-review-harness'
-date: '2026-07-31'
-modified: '2026-07-31'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:2aef0a0024027ea70ddb4684fff6f445dd1e169e08cbdff1c8c745262efdd4ee'
 related:
   - '[[2026-07-30-visual-review-harness-adr]]'
   - '[[2026-07-30-visual-review-harness-plan]]'
@@ -22,7 +21,7 @@ Auto-generated index of all documents tagged with `#visual-review-harness`.
 
 ### adr
 
-- `2026-07-30-visual-review-harness-adr` - `visual-review-harness` adr: `modes are rendered not simulated; a fenced dev domain with an iframe matrix harness` | (**status:** `accepted`)
+- `2026-07-30-visual-review-harness-adr` - `visual-review-harness` adr: `modes are rendered not simulated; a fenced dev domain with an iframe matrix harness` | (**status:** `superseded`)
 
 ### audit
 

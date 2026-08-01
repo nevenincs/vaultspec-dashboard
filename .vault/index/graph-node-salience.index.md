@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-node-salience'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:d93d9630d4b94e812b98e148aef0311e3095fad2f207ffcb6e74f3bd331a27d4'
 related:
   - '[[2026-06-14-graph-node-salience-W01-P01-S01]]'
   - '[[2026-06-14-graph-node-salience-W01-P01-S02]]'

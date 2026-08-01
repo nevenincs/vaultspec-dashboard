@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#keyboard-navigation'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:e6496dac325f371378d384ec7f1e2c2e17c95f9e0f1323967bc03e354c02535a'
 related:
   - '[[2026-06-21-keyboard-navigation-W01-P01-S01]]'
   - '[[2026-06-21-keyboard-navigation-W01-P01-S02]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#frontend-localization'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:7da479398b452342561fe6a04f0a82db5879d4b0c964a6b0e469dbe621e30535'
 related:
   - '[[2026-07-14-frontend-localization-W01-P01-S01]]'
   - '[[2026-07-14-frontend-localization-W01-P01-S02]]'

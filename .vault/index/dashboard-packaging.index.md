@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-packaging'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:14926152002c7ab1bb0fb48f39fe4bf2f616802df8be3051a73b805f2f578447'
 related:
   - '[[2026-07-04-dashboard-packaging-P01-S01]]'
   - '[[2026-07-04-dashboard-packaging-P01-S02]]'

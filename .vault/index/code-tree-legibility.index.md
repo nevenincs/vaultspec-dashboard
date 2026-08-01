@@ -8,6 +8,7 @@ modified: '2026-08-01'
 body_schema: 'body-v1'
 related:
   - '[[2026-08-01-code-tree-legibility-adr]]'
+  - '[[2026-08-01-code-tree-legibility-plan]]'
   - '[[2026-08-01-code-tree-legibility-research]]'
 ---
 
@@ -19,7 +20,11 @@ Auto-generated index of all documents tagged with `#code-tree-legibility`.
 
 ### adr
 
-- `2026-08-01-code-tree-legibility-adr` - `code-tree-legibility` adr: `file-type icons, ignore dimming, and served git status` | (**status:** `{proposed|accepted|rejected|superseded|deprecated}`)
+- `2026-08-01-code-tree-legibility-adr` - `code-tree-legibility` adr: `file-type icons, ignore dimming, and served git status` | (**status:** `accepted`)
+
+### plan
+
+- `2026-08-01-code-tree-legibility-plan` - `code-tree-legibility` plan
 
 ### research
 

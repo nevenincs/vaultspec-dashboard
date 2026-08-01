@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#dashboard-code-tree'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:66f9cc1fb280f03a9f159ac4a12514148f526851fbb42e655e050fcb29b8f64b'
 related:
   - '[[2026-06-14-dashboard-code-tree-P01-S01]]'
   - '[[2026-06-14-dashboard-code-tree-P01-S02]]'

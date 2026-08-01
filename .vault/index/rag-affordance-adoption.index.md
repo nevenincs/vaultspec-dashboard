@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#rag-affordance-adoption'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:62405486569cc31927dda70bd82fd1d53f00c05d869fb064a4a21572b7c49517'
 related:
   - '[[2026-06-27-rag-affordance-adoption-P01-S01]]'
   - '[[2026-06-27-rag-affordance-adoption-P01-S02]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#single-app-runtime'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:ce3bc764713193a1b879bf2602deba13d8b85b12a65a07b228a8a7b1075f7b89'
 related:
   - '[[2026-07-12-single-app-runtime-W01-P01-S01]]'
   - '[[2026-07-12-single-app-runtime-W01-P01-S02]]'

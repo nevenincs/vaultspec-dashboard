@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#windows-private-file-authority'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:b7d487651e18f9ab3cff2441fef905597a71c57a447660a959554707e6ccf27d'
 related:
   - '[[2026-07-20-windows-private-file-authority-adr]]'
   - '[[2026-07-20-windows-private-file-authority-research]]'

@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#left-rail-tree-controls'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:e88afe11bb246692578b04d74d5e0b6ec728ee9b058ae5b7bf927804d55f4530'
 related:
   - '[[2026-07-03-left-rail-tree-controls-P01-S01]]'
   - '[[2026-07-03-left-rail-tree-controls-P01-S02]]'

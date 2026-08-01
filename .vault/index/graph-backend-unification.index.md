@@ -3,10 +3,9 @@ generated: true
 tags:
   - '#index'
   - '#graph-backend-unification'
-date: '2026-07-30'
-modified: '2026-07-30'
+date: '2026-08-01'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:2e7eb0f71f0aa1af70e4c8125e3c8be2799909e73901a684df212d93ccec1a88'
 related:
   - '[[2026-06-19-graph-backend-unification-adr]]'
   - '[[2026-06-19-graph-backend-unification-plan]]'
