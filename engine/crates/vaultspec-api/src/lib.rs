@@ -235,7 +235,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // The a2a orchestration control pass-through: five whitelisted control
         // verbs (run-start / run-status /
         // run-cancel / presets-list / service-state) plus bounded active-runs
-        // discovery forwarded to the resident vaultspec-a2a
+        // discovery plus the typed clarification-respond resume
+        // forwarded to the resident vaultspec-a2a
         // gateway, the sibling envelope verbatim inside the tiers envelope,
         // sibling-down degraded at 200, run-start actor-token provisioning. The rag
         // ops template retargeted at an HTTP sibling; attach-never-own discovery.
@@ -255,7 +256,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // The A2A component lifecycle plane: typed install/ensure/start/stop/.../doctor as bounded, atomically-
         // admitted, component-single-flight jobs over the vaultspec-product
         // controller. A DEDICATED namespace, deliberately SEPARATE from the fixed
-        // six-member `/ops/a2a` whitelist above — no lifecycle verb here.
+        // seven-member `/ops/a2a` whitelist above — no lifecycle verb here.
         // Bearer-gated by the same middleware as every other data route.
         .route(
             "/a2a/lifecycle/status",

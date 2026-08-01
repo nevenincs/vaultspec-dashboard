@@ -1,5 +1,5 @@
 //! The `/ops/a2a/{verb}` orchestration control pass-through: the engine forwards
-//! a FIXED six-verb whitelist to the
+//! a FIXED seven-verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -50,10 +50,11 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED six-verb whitelist: orchestration
-/// control and one bounded active-run recovery read only, with no mutating vault
-/// semantics. A verb outside this set is a 403 BEFORE any discovery or
-/// round-trip — the whitelist miss never reaches the sibling.
+/// The FIXED seven-verb whitelist: orchestration
+/// control, one bounded active-run recovery read, and one typed interrupt-resume
+/// only, with no mutating vault semantics. A verb outside this set is a 403
+/// BEFORE any discovery or round-trip — the whitelist miss never reaches the
+/// sibling.
 const A2A_WHITELIST: &[&str] = &[
     "run-start",
     "run-status",
@@ -61,6 +62,7 @@ const A2A_WHITELIST: &[&str] = &[
     "presets-list",
     "service-state",
     "active-runs",
+    "clarification-respond",
 ];
 
 /// The sibling caps a prepared/preset role set at 64. The dashboard applies the
@@ -102,6 +104,12 @@ const MAX_A2A_FEATURE_CHARS: usize = 128;
 const MAX_A2A_TITLE_CHARS: usize = 200;
 const MAX_A2A_RUN_ID_CHARS: usize = 128;
 const MAX_A2A_SCOPE_CHARS: usize = 4096;
+
+/// The `clarification-respond` boundary: the D5 caps, the sibling route, and the
+/// answer validation, held apart from the control verbs because it is the one
+/// verb whose shape reconciles against a sibling route that has not landed yet.
+#[path = "a2a/clarification.rs"]
+mod clarification;
 
 /// Fixed-size serialization stripes for brokered run starts. A stable `run_id`
 /// always maps to one stripe, so concurrent retries cannot both pass the status
@@ -155,6 +163,17 @@ pub struct A2aVerbBody {
     /// run-start: the autonomy flag forwarded verbatim.
     #[serde(default)]
     pub autonomous: Option<bool>,
+    /// clarification-respond: the id of the pending clarification these answers
+    /// resolve (required). Path-safe like `run_id` — it is interpolated into the
+    /// sibling URL.
+    #[serde(default)]
+    pub request_id: Option<String>,
+    /// clarification-respond: the answers keyed by question id (required, one to
+    /// four entries, each a bounded string). Nothing here is authoritative: the
+    /// parked node decides whether an answer satisfies its question, whether
+    /// every required question was answered, and whether an option id exists.
+    #[serde(default)]
+    pub answers: Option<serde_json::Map<String, Value>>,
 }
 
 /// The a2a discovery record shape (`~/.vaultspec-a2a/service.json`): the R8
@@ -369,15 +388,19 @@ fn a2a_endpoint_from(candidates: &[PathBuf]) -> Result<(u16, Option<String>), St
     }
 }
 
-/// Validate a bounded, path-safe run id: non-empty, not flag-shaped, restricted
-/// to `[A-Za-z0-9_-]` so it can never carry a path separator, `..`, or shell
-/// metacharacter into the `/v1/runs/{run_id}` URL. Length-bounded to the a2a
-/// contract's 128-char ceiling.
-fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode, Json<Value>)> {
-    let ok = !run_id.is_empty()
-        && run_id.len() <= MAX_A2A_RUN_ID_CHARS
-        && !run_id.starts_with('-')
-        && run_id
+/// Validate a bounded, path-safe id: non-empty, not flag-shaped, restricted to
+/// `[A-Za-z0-9_-]` so it can never carry a path separator, `..`, or shell
+/// metacharacter into the URL it is interpolated into.
+fn validate_path_safe_id(
+    state: &AppState,
+    field: &str,
+    value: &str,
+    max: usize,
+) -> Result<String, (StatusCode, Json<Value>)> {
+    let ok = !value.is_empty()
+        && value.len() <= max
+        && !value.starts_with('-')
+        && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
     if !ok {
@@ -385,12 +408,18 @@ fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode
             state,
             StatusCode::BAD_REQUEST,
             format!(
-                "`run_id` `{run_id}` must be a non-empty path-safe token \
-                 (letters, digits, `-`, `_`; no leading `-`; <= {MAX_A2A_RUN_ID_CHARS} chars)"
+                "`{field}` `{value}` must be a non-empty path-safe token \
+                 (letters, digits, `-`, `_`; no leading `-`; <= {max} chars)"
             ),
         ));
     }
-    Ok(run_id.to_string())
+    Ok(value.to_string())
+}
+
+/// [`validate_path_safe_id`] for the run id that forms `/v1/runs/{run_id}`,
+/// length-bounded to the a2a contract's 128-char ceiling.
+fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    validate_path_safe_id(state, "run_id", run_id, MAX_A2A_RUN_ID_CHARS)
 }
 
 /// Validate a bounded free-text field (`title`) capped at `max` chars, rejecting
@@ -605,6 +634,10 @@ fn build_forwarded_call(
                 budget: A2A_CONTROL_BUDGET,
             })
         }
+        // The typed resume of a run parked on a clarification interrupt: the
+        // run and request address one parked node and the answers ride keyed by
+        // question id, all bounded at this boundary (agent-flow D5(c)).
+        "clarification-respond" => clarification::build_call(state, body),
         "run-start" => {
             validate_expected_scope(state, cell, body, "run-start")?;
             let team_preset = body.team_preset.as_deref().ok_or_else(|| {
@@ -1342,7 +1375,7 @@ fn map_transport_error(
 }
 
 /// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through.
-/// A verb outside the six-verb whitelist is a 403 before any
+/// A verb outside the seven-verb whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor
