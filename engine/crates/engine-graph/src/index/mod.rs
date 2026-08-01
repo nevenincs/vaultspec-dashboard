@@ -13,7 +13,10 @@ use engine_model::{
     CanonicalKey, Edge, Facet, Node, NodeId, NodeKind, Presence, Provenance, RelationKind,
     ScopeRef, Tier, Timestamp, edge_id, node_id,
 };
-use ingest_struct::extract::ExtractedMention;
+use ingest_struct::{
+    extract::ExtractedMention,
+    metadata::{DocumentMetadata, MetadataProvenance, parse_document_metadata},
+};
 use rayon::prelude::*;
 
 use crate::graph::{EdgeAttrs, LinkageGraph};
@@ -179,7 +182,8 @@ fn index_documents(
     //
     // PRESENT-VIEW CONSISTENCY:
     // the structural tier above sources its NODES from a working-tree file walk
-    // (`index_structural` → `vault_documents`), so the declared cross-reference
+    // (`index_structural` → `ingest_struct::corpus::worktree_vault_documents`),
+    // so the declared cross-reference
     // EDGES must come from the SAME working-tree snapshot — otherwise an
     // uncommitted document appears as a node with no edges (its `related:` links
     // live only in the working tree, not yet at HEAD). We therefore pass `None`
@@ -231,7 +235,7 @@ fn index_structural(
     observed_at: Timestamp,
     force_extract: bool,
 ) -> Result<IndexStats> {
-    let docs = vault_documents(root)?;
+    let docs = ingest_struct::corpus::worktree_vault_documents(root);
     let mut stats = IndexStats {
         documents: docs.len(),
         ..Default::default()
@@ -306,6 +310,7 @@ fn index_structural(
             stats.duplicate_stems.push(stem.clone());
         }
         let feature_tags = frontmatter_feature_tags(&text);
+        let metadata = parse_document_metadata(&text);
         // Plan-container minting: a plan
         // document's interior becomes first-class-but-subordinate
         // PlanContainer nodes + Contains edges, keyed only by plan stem +
@@ -343,8 +348,8 @@ fn index_structural(
             // the same deterministic way as dates/feature_tags. Both are
             // truthful-absence Options — a non-ADR carries no status, a non-plan
             // (or tier-less plan) carries no tier.
-            status: frontmatter_adr_status(&text),
-            tier: frontmatter_plan_tier(&text),
+            status: canonical_adr_status(metadata),
+            tier: canonical_plan_tier(metadata),
             // Document weight: measured on the
             // body this pass already holds — O(bytes), no second read.
             size: Some(engine_model::DocSize::measure(&text)),
@@ -352,7 +357,7 @@ fn index_structural(
                 scope: scope.clone(),
                 presence: Presence::Exists,
                 content_hash: Some(blob_hash.clone()),
-                lifecycle: doc_lifecycle(doc_type.as_deref(), &text),
+                lifecycle: doc_lifecycle(doc_type.as_deref(), &text, metadata),
             }],
         });
 
@@ -1170,48 +1175,23 @@ pub(crate) fn frontmatter_stamped(text: &str) -> Option<String> {
     })
 }
 
-/// The ADR H1 status value (contract §4 status facet):
-/// one of `proposed`, `accepted`, `rejected`, or `deprecated`,
-/// read from the H1 status marker the ADR template emits, e.g.
-/// `# `feature` adr: `topic` | (**status:** `accepted`)`. The marker is
-/// `(**status:** `<value>`)`; the value is the backtick-wrapped enum token.
-///
-/// An ADR with no recognizable status marker, or a status outside the four-
-/// value enum, returns `None` — "in-flight ADR" is honest only when the real
-/// status is present; a missing or out-of-enum status is truthful absence, not
-/// a guessed default.
-pub(crate) fn frontmatter_adr_status(text: &str) -> Option<String> {
-    const STATUSES: &[&str] = &["proposed", "accepted", "rejected", "deprecated"];
-    // The status marker lives on the H1 line. Scan for the `**status:**`
-    // sentinel and read the next backtick-wrapped token after it. Tolerant of
-    // spacing around the colon and the value's backticks, matching the template
-    // form `(**status:** `accepted`)` while not over-fitting to the exact
-    // surrounding punctuation.
-    let line = text.lines().find(|l| l.contains("**status:**"))?;
-    let after = line.split("**status:**").nth(1)?;
-    let start = after.find('`')? + 1;
-    let end = after[start..].find('`')? + start;
-    let value = after[start..end].trim().to_ascii_lowercase();
-    STATUSES.contains(&value.as_str()).then_some(value)
+/// Canonical ADR status is eligible for the status facet. Retained legacy H1
+/// tolerance belongs to lifecycle only; presenting it as template-canonical
+/// facet data would change the filter contract.
+pub(crate) fn canonical_adr_status(metadata: DocumentMetadata) -> Option<String> {
+    metadata
+        .adr_status
+        .filter(|status| status.provenance == MetadataProvenance::Canonical)
+        .map(|status| status.value.as_str().to_string())
 }
 
-/// The plan frontmatter `tier` value (contract §4 tier facet):
-/// one of `L1`, `L2`, `L3`, or `L4`,
-/// read from the `tier:` frontmatter key the plan template requires.
-///
-/// A document with no `tier:` key, or a tier outside the four-value enum,
-/// returns `None` — an out-of-enum tier is rejected (truthful absence) rather
-/// than carried through as a bogus facet.
-pub(crate) fn frontmatter_plan_tier(text: &str) -> Option<String> {
-    const TIERS: &[&str] = &["L1", "L2", "L3", "L4"];
-    let rest = text.strip_prefix("---")?;
-    let end = rest.find("\n---")?;
-    let value = rest[..end].lines().find_map(|line| {
-        let value = line.trim().strip_prefix("tier:")?.trim();
-        let value = value.trim_matches('\'').trim_matches('"').trim();
-        (!value.is_empty()).then(|| value.to_string())
-    })?;
-    TIERS.contains(&value.as_str()).then_some(value)
+/// Plan tiers are parsed from the canonical frontmatter grammar and exposed as
+/// the tier facet without another document scan.
+pub(crate) fn canonical_plan_tier(metadata: DocumentMetadata) -> Option<String> {
+    metadata
+        .plan_tier
+        .filter(|tier| tier.provenance == MetadataProvenance::Canonical)
+        .map(|tier| tier.value.as_str().to_string())
 }
 
 /// Vault document type from the repo-relative path: the `.vault/<type>/…`
@@ -1253,12 +1233,17 @@ fn checkbox_lifecycle(text: &str) -> Option<engine_model::Lifecycle> {
 /// finding-severity headings, frontmatter tier/status), it DEGRADES HONESTLY:
 /// a document predating the convention falls back to the generic checkbox
 /// lifecycle (or `None`), never a fabricated state.
-pub(crate) fn doc_lifecycle(doc_type: Option<&str>, text: &str) -> Option<engine_model::Lifecycle> {
+pub(crate) fn doc_lifecycle(
+    doc_type: Option<&str>,
+    text: &str,
+    metadata: DocumentMetadata,
+) -> Option<engine_model::Lifecycle> {
     match doc_type {
         // ADR: the H1 status line — `(**status:** \`accepted\`)`.
-        Some("adr") => adr_status(text)
+        Some("adr") => metadata
+            .adr_status
             .map(|state| engine_model::Lifecycle {
-                state,
+                state: state.value.as_str().to_string(),
                 progress: None,
             })
             .or_else(|| checkbox_lifecycle(text)),
@@ -1267,10 +1252,10 @@ pub(crate) fn doc_lifecycle(doc_type: Option<&str>, text: &str) -> Option<engine
         // state while progress stays on the §4 progress channel.
         Some("plan") => {
             let progress = checkbox_lifecycle(text).and_then(|l| l.progress);
-            let tier = plan_tier(text);
+            let tier = metadata.plan_tier.map(|tier| tier.value.as_str());
             match (tier, progress) {
                 (Some(tier), progress) => Some(engine_model::Lifecycle {
-                    state: tier,
+                    state: tier.to_string(),
                     progress,
                 }),
                 (None, _) => checkbox_lifecycle(text),
@@ -1291,33 +1276,6 @@ pub(crate) fn doc_lifecycle(doc_type: Option<&str>, text: &str) -> Option<engine
         // Every other type keeps the generic checkbox lifecycle.
         _ => checkbox_lifecycle(text),
     }
-}
-
-/// The ADR status from the H1 status line (`… (**status:** \`accepted\`)`).
-/// Recognizes the four-state machine; an ADR predating the convention yields
-/// `None` (honest absence, not a fabricated `accepted`).
-pub(crate) fn adr_status(text: &str) -> Option<String> {
-    let h1 = body_lines_outside_fences(text).find(|l| l.starts_with("# "))?;
-    let lower = h1.to_lowercase();
-    for status in ["deprecated", "rejected", "accepted", "proposed"] {
-        // Match `status:` followed (loosely) by the keyword on the H1 line.
-        if lower.contains("status") && lower.contains(status) {
-            return Some(status.to_string());
-        }
-    }
-    None
-}
-
-/// The plan tier from frontmatter (`tier: L2`). The L1–L4 complexity signal a
-/// generic `state` cannot carry; `None` when absent.
-pub(crate) fn plan_tier(text: &str) -> Option<String> {
-    let rest = text.strip_prefix("---")?;
-    let end = rest.find("\n---")?;
-    rest[..end].lines().find_map(|line| {
-        let value = line.trim().strip_prefix("tier:")?.trim();
-        let value = value.trim_matches('\'').trim_matches('"');
-        matches!(value, "L1" | "L2" | "L3" | "L4").then(|| value.to_string())
-    })
 }
 
 /// The worst finding severity in an audit body. Audits surface findings with a
@@ -1425,33 +1383,6 @@ pub(crate) fn frontmatter_feature_tags(text: &str) -> Vec<String> {
             (!tag.is_empty() && !DIRECTORY_TAGS.contains(&tag)).then(|| tag.to_string())
         })
         .collect()
-}
-
-/// Enumerate vault documents (`.vault/**/*.md`) as repo-relative paths.
-fn vault_documents(root: &Path) -> Result<Vec<String>> {
-    let vault = root.join(".vault");
-    let mut out = Vec::new();
-    let mut stack = vec![vault];
-    while let Some(dir) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let name = entry.file_name().to_string_lossy().into_owned();
-            if path.is_dir() {
-                if !name.starts_with('.') && name != "data" && name != "logs" {
-                    stack.push(path);
-                }
-            } else if name.ends_with(".md")
-                && let Ok(rel) = path.strip_prefix(root)
-            {
-                out.push(rel.to_string_lossy().replace('\\', "/"));
-            }
-        }
-    }
-    out.sort();
-    Ok(out)
 }
 
 #[cfg(test)]

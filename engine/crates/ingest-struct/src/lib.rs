@@ -5,7 +5,9 @@
 //! are prose, not graph relationships. Resolution state is signal: stale/broken
 //! edges are kept and surfaced, not dropped.
 
+pub mod corpus;
 pub mod extract;
+pub mod metadata;
 pub mod plan_structure;
 pub mod reader;
 

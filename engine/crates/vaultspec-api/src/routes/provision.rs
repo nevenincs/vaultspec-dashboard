@@ -44,16 +44,14 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::app::AppState;
+use crate::bounded_child::{BoundedFault, BoundedLimits, CapPolicy, run_bounded};
+use crate::handshake::{CORE_FLOOR, RAG_FLOOR};
 use axum::Json;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::io::AsyncReadExt;
-
-use crate::app::AppState;
-use crate::handshake::{CORE_FLOOR, RAG_FLOOR};
-
 type ApiResult = Result<Json<Value>, (StatusCode, Json<Value>)>;
 
 // --- bounds (resource-bounds: every cap explicit at creation) -----------------
@@ -425,38 +423,29 @@ fn resolve_target(
 /// is absent, errors, or breaches a bound. Reads BOTH streams so a chatty child
 /// cannot block on a full stderr pipe.
 async fn probe_version(program: &str, args: &[&str]) -> Option<String> {
-    let mut child = tokio::process::Command::new(program)
-        .args(args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .ok()?;
-    let stdout = child.stdout.take()?;
-    let stderr = child.stderr.take()?;
-    let collect = async {
-        let mut obuf = Vec::new();
-        let mut ebuf = Vec::new();
-        let mut otake = stdout.take(PROBE_CAP);
-        let mut etake = stderr.take(PROBE_CAP);
-        let (_o, _e) = tokio::join!(otake.read_to_end(&mut obuf), etake.read_to_end(&mut ebuf),);
-        (obuf, ebuf)
-    };
-    let (obuf, ebuf) = match tokio::time::timeout(PROBE_TIMEOUT, collect).await {
-        Ok(bufs) => bufs,
-        Err(_) => {
-            let _ = child.kill().await;
-            return None;
-        }
-    };
-    let status = child.wait().await.ok()?;
-    if !status.success() {
+    let mut command = tokio::process::Command::new(program);
+    command.args(args);
+    let outcome = run_bounded(
+        command,
+        None,
+        BoundedLimits {
+            cap: PROBE_CAP,
+            timeout: PROBE_TIMEOUT,
+        },
+        CapPolicy::Refuse,
+    )
+    .await
+    .ok()?;
+    if !outcome.success {
         return None;
     }
     // Some tools print the version to stdout, some to stderr.
-    let text = if obuf.is_empty() { ebuf } else { obuf };
-    String::from_utf8_lossy(&text)
-        .lines()
+    let text = if outcome.stdout.is_empty() {
+        outcome.stderr_lossy()
+    } else {
+        outcome.stdout_lossy()
+    };
+    text.lines()
         .map(|l| l.trim())
         .find(|l| !l.is_empty())
         .map(|l| l.to_string())
@@ -489,32 +478,23 @@ async fn probe_pending_migrations(target: &FsPath) -> Option<Value> {
     let target_s = target.to_string_lossy().to_string();
     let mut args: Vec<&str> = leading.iter().map(|s| s.as_str()).collect();
     args.extend_from_slice(&["migrations", "status", "-t", &target_s, "--json"]);
-    let mut child = tokio::process::Command::new(program)
-        .args(&args)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn()
-        .ok()?;
-    let stdout = child.stdout.take()?;
-    let collect = async {
-        let mut buf = Vec::new();
-        let mut take = stdout.take(JOB_OUTPUT_CAP);
-        let _ = take.read_to_end(&mut buf).await;
-        buf
-    };
-    let buf = match tokio::time::timeout(MIGRATIONS_PROBE_TIMEOUT, collect).await {
-        Ok(buf) => buf,
-        Err(_) => {
-            let _ = child.kill().await;
-            return None;
-        }
-    };
-    let status = child.wait().await.ok()?;
-    if !status.success() {
+    let mut command = tokio::process::Command::new(program);
+    command.args(&args);
+    let outcome = run_bounded(
+        command,
+        None,
+        BoundedLimits {
+            cap: JOB_OUTPUT_CAP,
+            timeout: MIGRATIONS_PROBE_TIMEOUT,
+        },
+        CapPolicy::Refuse,
+    )
+    .await
+    .ok()?;
+    if !outcome.success {
         return None;
     }
-    serde_json::from_slice::<Value>(&buf).ok()
+    serde_json::from_slice::<Value>(&outcome.stdout).ok()
 }
 
 /// Best-effort rag enrollment read: if a rag service is discoverable for the
@@ -779,67 +759,61 @@ fn registry_lock() -> std::sync::MutexGuard<'static, Registry> {
 
 /// Spawn a capability's argv bounded (output cap + wall-clock), capturing the
 /// combined streams. Returns `(exit_code, combined_output, breached)`. On a
-/// breach the child is killed with the same `tokio` `child.kill().await` the
-/// sibling runner uses (`run_sibling_bounded`); `breached` marks the outcome
-/// INDETERMINATE — a `uv run`/console-script grandchild can outlive a direct
-/// kill on either platform, so the caller must re-probe `GET /provision/status`
-/// rather than trust the exit code (mirroring `core_adapter`).
+/// breach the canonical bounded runner kills and reaps the child; `breached`
+/// marks the outcome INDETERMINATE — a `uv run`/console-script grandchild can
+/// outlive a direct kill on either platform, so the caller must re-probe
+/// `GET /provision/status` rather than trust the exit code (mirroring
+/// `core_adapter`).
 async fn run_capability(argv: &[String]) -> (Option<i32>, String, bool) {
-    let mut child = match tokio::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+    let mut command = tokio::process::Command::new(&argv[0]);
+    command.args(&argv[1..]);
+    let outcome = match run_bounded(
+        command,
+        None,
+        BoundedLimits {
+            cap: JOB_OUTPUT_CAP,
+            timeout: JOB_TIMEOUT,
+        },
+        CapPolicy::Refuse,
+    )
+    .await
     {
-        Ok(c) => c,
-        Err(e) => return (None, format!("spawning {}: {e}", argv[0]), false),
-    };
-    let stdout = child.stdout.take().expect("piped stdout");
-    let stderr = child.stderr.take().expect("piped stderr");
-    let collect = async {
-        let mut obuf = Vec::new();
-        let mut ebuf = Vec::new();
-        let mut otake = stdout.take(JOB_OUTPUT_CAP);
-        let mut etake = stderr.take(JOB_OUTPUT_CAP);
-        let (_o, _e) = tokio::join!(otake.read_to_end(&mut obuf), etake.read_to_end(&mut ebuf),);
-        (obuf, ebuf)
-    };
-    let (obuf, ebuf) = match tokio::time::timeout(JOB_TIMEOUT, collect).await {
-        Ok(bufs) => bufs,
-        Err(_) => {
-            let _ = child.kill().await;
+        Ok(outcome) => outcome,
+        Err(BoundedFault::Spawn(error)) => {
+            return (None, format!("spawning {}: {error}", argv[0]), false);
+        }
+        Err(BoundedFault::Timeout) => {
             return (
                 None,
                 format!("{} timed out after {}s", argv[0], JOB_TIMEOUT.as_secs()),
                 true,
             );
         }
+        Err(BoundedFault::OverCap) => {
+            return (
+                None,
+                format!(
+                    "{} produced over {} bytes of output (capped)",
+                    argv[0], JOB_OUTPUT_CAP
+                ),
+                true,
+            );
+        }
+        Err(BoundedFault::Read(error) | BoundedFault::Wait(error)) => {
+            return (None, format!("running {}: {error}", argv[0]), false);
+        }
     };
-    let over_cap = obuf.len() as u64 >= JOB_OUTPUT_CAP || ebuf.len() as u64 >= JOB_OUTPUT_CAP;
-    if over_cap {
-        let _ = child.kill().await;
-        return (
-            None,
-            format!(
-                "{} produced over {} bytes of output (capped)",
-                argv[0], JOB_OUTPUT_CAP
-            ),
-            true,
-        );
-    }
-    let code = child.wait().await.ok().and_then(|s| s.code());
-    let combined = match (obuf.is_empty(), ebuf.is_empty()) {
+    let combined = match (outcome.stdout.is_empty(), outcome.stderr.is_empty()) {
         (false, false) => format!(
             "{}\n{}",
-            String::from_utf8_lossy(&obuf).trim(),
-            String::from_utf8_lossy(&ebuf).trim()
+            outcome.stdout_lossy().trim(),
+            outcome.stderr_lossy().trim()
         ),
-        (false, true) => String::from_utf8_lossy(&obuf).trim().to_string(),
-        (true, false) => String::from_utf8_lossy(&ebuf).trim().to_string(),
+        (false, true) => outcome.stdout_lossy().trim().to_string(),
+        (true, false) => outcome.stderr_lossy().trim().to_string(),
         (true, true) => String::new(),
     };
-    (code, combined, false)
+    (outcome.code, combined, false)
 }
 
 /// Interpret a completed run into the job outcome value + final state. A core
@@ -1279,5 +1253,16 @@ mod tests {
         }
         // All running: the cap cannot shed them, so every one survives.
         assert_eq!(reg.jobs.len(), MAX_JOBS + 5);
+    }
+
+    #[tokio::test]
+    async fn version_probe_interprets_a_real_rustc_process() {
+        let version = probe_version("rustc", &["--version"])
+            .await
+            .expect("the test toolchain provides rustc on PATH");
+        assert!(
+            version.starts_with("rustc "),
+            "expected rustc version output, got {version:?}"
+        );
     }
 }

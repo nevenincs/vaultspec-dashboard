@@ -162,19 +162,11 @@ pub fn asof_graph_resolved_cached(
     let tree = commit.tree().map_err(|e| IndexError::Git(e.to_string()))?;
 
     // The `.vault/` documents in the committed tree — the node set at T.
-    let mut vault_docs: Vec<String> = Vec::new();
-    for entry in tree
-        .traverse()
-        .breadthfirst
-        .files()
-        .map_err(|e| IndexError::Git(e.to_string()))?
-    {
-        let path = entry.filepath.to_string();
-        if path.starts_with(".vault/") && path.ends_with(".md") {
-            vault_docs.push(path);
-        }
-    }
-    vault_docs.sort();
+    // The corpus owner preserves this resolved-tree membership exactly as the
+    // commit carried it; historical caller policy deliberately differs from
+    // worktree auxiliary-directory filtering.
+    let vault_docs = ingest_struct::corpus::tree_vault_documents(&tree)
+        .map_err(|error| IndexError::Git(error.to_string()))?;
 
     // Reuse the OPEN repo + already-resolved commit tree for the per-doc blob
     // reads below. The dominant /graph/asof cost was a FRESH `gix::open` +
@@ -194,6 +186,7 @@ pub fn asof_graph_resolved_cached(
         std::collections::HashSet::new();
     for doc_path in &vault_docs {
         let body = ingest_struct::reader::read_path_in_tree(&tree, &resolved_sha, doc_path)?;
+        let metadata = ingest_struct::metadata::parse_document_metadata(&body.text);
         let stem = doc_path
             .rsplit('/')
             .next()
@@ -224,8 +217,8 @@ pub fn asof_graph_resolved_cached(
             // Status/tier facets are blob-true here too: both derive from
             // frontmatter/H1 the historical view reads, so an as-of snapshot
             // carries the ADR status and plan tier AS THEY STOOD at that commit.
-            status: crate::index::frontmatter_adr_status(&body.text),
-            tier: crate::index::frontmatter_plan_tier(&body.text),
+            status: crate::index::canonical_adr_status(metadata),
+            tier: crate::index::canonical_plan_tier(metadata),
             // Blob-true weight: measured on the committed body as it stood at T.
             size: Some(engine_model::DocSize::measure(&body.text)),
             facets: vec![Facet {
@@ -234,7 +227,7 @@ pub fn asof_graph_resolved_cached(
                 content_hash: Some(body.blob_hash.clone()),
                 // Type-specific lifecycle, blob-true at T: the historical playhead reads each species' state from
                 // the committed blob, not the present working tree.
-                lifecycle: crate::index::doc_lifecycle(doc_type.as_deref(), &body.text),
+                lifecycle: crate::index::doc_lifecycle(doc_type.as_deref(), &body.text, metadata),
             }],
         });
 
