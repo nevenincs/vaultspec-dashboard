@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:3eeca6450459dfd48b60dd395bcb45786cbb7fd20b9b1389f5ac52f25c5709a4'
+body_hash: 'sha256:c4ad1150356f97ac7572d2592405e9743db5c154af609a02948ebbae0aeae27f'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -112,6 +112,7 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 - [ ] `P10.S43` - Amend the agent-flow ADR D3 with the serving-versus-eligibility reconciliation and the provider set actually witnessed completing turns in the live-drives; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
 - [x] `P10.S44` - Amend the shell-integration ADR composer decision with the owner's feature-first mandate: document-authoring runs bind a first-class feature context chip on the composer, defaulted from the open document, required before run-start for tag-requiring presets; `.vault/adr/2026-08-01-agent-panel-shell-integration-adr.md`.
 - [x] `P10.S45` - Collapse the autonomy control into a composer pill consistent with the row-of-pills grammar and the reference-verified C6 anatomy, fixing the row-2 overlap at split width; `frontend/src/app/agent/Composer.tsx`.
+- [x] `P10.S50` - House main's unhoused degraded-intent in the begin idiom: the begin state must not invite a prompt when the data plane is degraded and starting would fail, using the parked common:agent.transcript.unavailable vocabulary; `frontend/src/app/agent/AgentBeginView.tsx`.
 
 ### Phase `P11` - Owner mandate: user-chosen providers
 
