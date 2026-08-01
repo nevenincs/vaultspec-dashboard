@@ -503,7 +503,7 @@ describe("ProposalCard", () => {
       }),
     );
     const feedback = await screen.findByText(
-      "Review the latest proposal, then try again.",
+      "Review the latest change, then try again.",
     );
     expect(feedback.getAttribute("data-card-feedback")).toBe("error");
     expect(document.body.textContent).not.toContain("private-error-message");
@@ -705,7 +705,7 @@ describe("AutonomyControl", () => {
     );
     fireEvent.click(screen.getByRole("radio", { name: "Apply automatically" }));
     const feedback = await screen.findByText(
-      "Review the latest proposal, then try again.",
+      "Review the latest change, then try again.",
     );
     expect(feedback.getAttribute("data-autonomy-feedback")).toBe("error");
     expect(document.body.textContent).not.toContain("private-error");
@@ -727,7 +727,7 @@ describe("ReviewStation states", () => {
     );
 
     const states = [
-      [view({ empty: true }), "No proposals are waiting for review."],
+      [view({ empty: true }), "No changes are waiting for your review."],
       [
         view({
           degraded: true,
@@ -741,7 +741,7 @@ describe("ReviewStation states", () => {
       ],
       [
         view({ truncated: true, afterFactTruncated: true }),
-        "More proposals are available. Narrow the queue to see them.",
+        "More changes are waiting. Narrow the list to see them.",
       ],
     ] as const;
     for (const [state, expected] of states) {

@@ -809,7 +809,7 @@ export function ReviewStationBody({
         />
       )}
       {view.rows.length > 0 && (
-        <ul className="flex flex-col gap-fg-2" role="list" data-proposal-list>
+        <ul className="flex flex-col gap-fg-3" role="list" data-proposal-list>
           {view.rows.map((proposal) => (
             <ProposalCard
               key={proposal.changeset_id}
