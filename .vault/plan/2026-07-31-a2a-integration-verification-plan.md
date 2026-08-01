@@ -4,7 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-01'
-body_hash: 'sha256:fd08421c64125b9409c2f02673a35615a3e29ed271181b2e90354f8295621c5d'
+body_hash: 'sha256:91155bd3c800f08d9b97e62caa18ee7472641b99126db14d4ed03417870949f8'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
@@ -35,7 +35,7 @@ Because the defect is already gone, this phase can no longer demonstrate its own
 
 - [x] `W01.P01.S01` - Record the completed instrumentation finding as the phase's grounding: a real-worker dispatch logged a chat model at the inbound point and at every wrapping seam that ran, and an AST sweep found only two tuple-returning resolvers, both correctly annotated and correctly unpacked at every call site, so no seam yields a tuple; `src/vaultspec_a2a/graph/nodes/worker.py`.
 - [x] `W01.P01.S02` - Close the fix step against the recorded finding rather than editing code: there is no seam to repair, so this Step is satisfied by the S01 evidence and reopens ONLY if the S03 lock goes red against a real resolution; `src/vaultspec_a2a/graph/nodes/worker.py`.
-- [ ] `W01.P01.S03` - Add a regression test resolving every bundled preset worker model through the REAL provider factory with no protocol injection and asserting a chat-model instance each time, demonstrated red against a deliberately injected non-model resolution since the original defect can no longer supply the red; `src/vaultspec_a2a/graph/tests/test_compiler.py`.
+- [x] `W01.P01.S03` - Add a regression test resolving every bundled preset worker model through the REAL provider factory with no protocol injection and asserting a chat-model instance each time, demonstrated red against a deliberately injected non-model resolution since the original defect can no longer supply the red; `src/vaultspec_a2a/graph/tests/test_compiler.py`.
 
 ### Phase `W01.P02` - the completion proof
 
