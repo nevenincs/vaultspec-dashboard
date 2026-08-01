@@ -6,10 +6,9 @@
 // `CLARIFICATION_MAX_ANSWER_CHARS` and expects a result of that same length. That
 // is a correct behaviour test and a worthless value test — set the constant to
 // 4096, to 2048, or to a million and it stays green, because its input and its
-// expectation move together. It did stay green: the card admitted 4096-char
-// answers against a sibling that hard-refuses at 2048, so a pasted paragraph
-// sailed through the local gate, sailed through the engine, and came back a 422
-// the user saw only as an unexplained submit failure on a still-parked run.
+// expectation move together. That is how the two sides came to disagree twice:
+// once with the card looser than the boundary, and once with both tightened
+// against a reading of an a2a tree the panel does not drive.
 //
 // A cap declared on two sides of a language boundary needs one of them to read
 // the other, or neither is checking anything. So this test reads
@@ -67,7 +66,8 @@ function contractConst(name: string): number {
 
 describe("the card's clarification caps against the shared a2a contract", () => {
   it("caps an answer at exactly the number the engine imports from the contract", () => {
-    // The finding, in one assertion: this was 4096 against a contract of 2048.
+    // One assertion, both directions: looser than the contract buys a remote 422,
+    // tighter refuses an answer the sibling would have taken.
     expect(CLARIFICATION_MAX_ANSWER_CHARS).toBe(
       contractConst("A2A_MAX_CLARIFICATION_ANSWER_CHARS"),
     );
@@ -90,8 +90,12 @@ describe("the card's clarification caps against the shared a2a contract", () => 
     expect(CONTRACT_SOURCE).toContain(
       "fn the_clarification_bounds_are_pinned_to_the_numbers_a2a_enforces",
     );
-    // And it must name the sibling module that owns the numbers, so a reader of
-    // either side can find the authority without guessing.
-    expect(CONTRACT_SOURCE).toContain("thread/clarification.py");
+    // And it must name the ARBITER those numbers were read from — the served
+    // contract, not a checkout — so a reader of either side can re-derive them
+    // from the same document instead of from whichever a2a tree they have open.
+    expect(CONTRACT_SOURCE).toContain("openapi.json");
+    expect(CONTRACT_SOURCE).toContain(
+      "/v1/runs/{run_id}/clarifications/{request_id}/respond",
+    );
   });
 });

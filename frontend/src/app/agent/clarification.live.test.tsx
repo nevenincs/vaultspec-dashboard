@@ -2,34 +2,31 @@
 //
 // The questionnaire against a CAPTURED `pending_clarification` disclosure.
 //
-// Provenance, stated precisely because the previous version of this header did
-// not: `fixtures/a2aPendingClarification.live.json` is the `pending_clarification`
-// object served by a real a2a `run-status` on a real parked run. It was captured
-// by starting a run on the shipped preset `vaultspec-adr-research-clarify` against
-// a production gateway and polling status until the run parked, then writing the
-// served object verbatim — `type` discriminator, explicit `"options": null` on the
-// text question and all. Re-capture it the same way when the sibling's disclosure
-// moves; do not hand-edit it.
+// Provenance. `fixtures/a2aPendingClarification.live.json` is the
+// `pending_clarification` object served by a real a2a `run-status` on a real
+// parked run, written verbatim, with its capture details carried inside the
+// fixture's own `_provenance` block: date, gateway, a2a branch and commit, run
+// id, preset, trigger, and the exact commands to re-capture it. Re-capture it
+// that way when the disclosure moves; do not hand-edit it.
 //
-// What the previous header claimed and why it mattered. It said the payload was
-// "the exact array a2a's deterministic provider parks when a run's message carries
-// DETERMINISTIC_FORCE_CLARIFICATION — copied verbatim from
-// providers/deterministic_chat_model.py". None of that existed: no such token in
-// a2a, no clarification code in that module, and no message-driven trigger at all.
-// A run CANNOT ask a question its preset did not declare — a2a's only production
-// arming path reads `[team.clarification]` off the preset and never sees the user's
-// prompt — so the drive step that header implied could not have worked. The shape
-// happened to be close enough that every assertion here passed, which is exactly
-// what made it dangerous: a fixture asserting provenance it does not have turns
-// every test built on it into a false green, and a reader has no way to tell.
+// Two captures of this payload have existed, taken from two different a2a trees,
+// and they disagree on three fields: a `type` discriminator, `options: null`
+// versus `[]` on a text question, and the request-id minting shape. Neither is a
+// forgery — they are different trees, and each looked authoritative on its own.
+// What settled it was not a reading of either checkout but the SERVED contract of
+// the stack the panel drives: `openapi.json` from that gateway, whose respond
+// route and request schema are recorded in
+// `engine/crates/vaultspec-product/src/a2a_contract.rs`. Ground any future
+// correction there first, then re-capture, then change the assertions — in that
+// order, or the next capture just restarts the disagreement.
 //
-// Why a captured fixture rather than a hand-written one: my hand-written fixtures
-// used `{id, label}` option objects, but the wire sends `list[str]`, so every option
-// was dropped and every `choice` silently degraded to a text input. A screenshot of
-// that bug and of a working build look identical — a text box either way. So the
-// adapter and the rendered controls are pinned against the producer's real payload
-// here, and a live drive is left to prove only what a drive can: that the run
-// actually parks and the panel actually shows it.
+// Why a captured fixture rather than a hand-written one: hand-written fixtures
+// encode their author's belief about a wire. One used `{id, label}` option objects
+// where this wire sends `list[str]`, so every option was dropped and every `choice`
+// silently degraded to a text input — and a screenshot of that bug and of a working
+// build look identical. So the adapter and the rendered controls are pinned against
+// the producer's real payload here, and a live drive is left to prove only what a
+// drive can: that a run actually parks and the panel actually shows it.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -70,27 +67,34 @@ describe("the captured disclosure payload", () => {
     // precisely why they need asserting: nothing else would notice their loss,
     // and a fixture missing them is no longer the wire.
     const raw = LIVE_PAYLOAD as Record<string, unknown>;
-    expect(raw.type).toBe("clarification_request");
+    // The capture must keep its own provenance block: a fixture that cannot say
+    // which stack and date it came from is what let two disagreeing captures
+    // each look authoritative.
+    expect(raw._provenance).toBeTypeOf("object");
     const questions = raw.questions as Record<string, unknown>[];
-    // a2a serializes `options` explicitly on a text question rather than omitting
-    // it, so the key is present and null.
-    expect(questions[1]).toHaveProperty("options", null);
+    // Our stack serializes `options` on a text question as an empty ARRAY, not
+    // null and not omitted. The normalizer tolerates all three, which is exactly
+    // why the served form needs asserting — nothing else would notice a change.
+    expect(questions[1]).toHaveProperty("options", []);
   });
 
-  it("carries the request id a2a really mints for a dashboard run", () => {
+  it("carries the request id our stack really mints", () => {
     const pending = renderLive();
-    // a2a mints `clarify-{thread_id}`, and the dashboard's `createTeamRunId()`
-    // emits `run-` + 32 hex. Asserted structurally rather than as a literal: the
-    // SHAPE is the contract, the hex is one capture's run.
-    expect(pending.requestId).toMatch(/^clarify-run-[0-9a-f]{32}$/);
+    // 16 lowercase hex, minted by the gateway — NOT derived from the run id. The
+    // shape is asserted rather than the literal, but the shape is this stack's:
+    // a different a2a tree mints `clarify-{thread_id}`, and pinning to that form
+    // here would fail against every run the panel can actually drive.
+    expect(pending.requestId).toMatch(/^[0-9a-f]{16}$/);
+    // And it must fit the bound the served respond route puts on the path param.
+    expect(pending.requestId.length).toBeLessThanOrEqual(64);
   });
 
   it("normalizes both question kinds with their served ids", () => {
     const pending = renderLive();
     // The preset declares exactly these two, in this order.
     expect(pending.questions.map((question) => question.id)).toEqual([
+      "provider",
       "scope",
-      "constraints",
     ]);
     expect(pending.questions.map((question) => question.kind)).toEqual([
       "choice",
@@ -107,37 +111,37 @@ describe("the captured disclosure payload", () => {
     // option, and the option-less-choice fallback then rendered a text input —
     // indistinguishable from a working build in a screenshot.
     const pending = renderLive();
-    const scope = pending.questions[0]!;
-    expect(scope.options.map((option) => option.id)).toEqual([
-      "frontend",
-      "backend",
-      "both",
+    const provider = pending.questions[0]!;
+    expect(provider.options.map((option) => option.id)).toEqual([
+      "codex",
+      "zai",
+      "claude",
     ]);
     // With no separate label served, the string is both id and label.
-    expect(scope.options.map((option) => option.label)).toEqual([
-      "frontend",
-      "backend",
-      "both",
+    expect(provider.options.map((option) => option.label)).toEqual([
+      "codex",
+      "zai",
+      "claude",
     ]);
   });
 
   it("renders real option BUTTONS for the choice, not a text box", () => {
     renderLive();
     const group = screen.getByRole("radiogroup", {
-      name: "Which surface should this cover?",
+      name: "Which provider should author the plan?",
     });
     expect(group).not.toBeNull();
-    for (const option of ["frontend", "backend", "both"]) {
+    for (const option of ["codex", "zai", "claude"]) {
       expect(screen.getByRole("radio", { name: option })).toBeTruthy();
     }
     expect(document.querySelectorAll("[data-clarification-option]").length).toBe(3);
     // The choice question must NOT have produced an input of its own.
-    expect(document.querySelector("[data-clarification-input='scope']")).toBeNull();
+    expect(document.querySelector("[data-clarification-input='provider']")).toBeNull();
   });
 
   it("renders a single-line input for the text question", () => {
     renderLive();
-    const input = document.querySelector("[data-clarification-input='constraints']");
+    const input = document.querySelector("[data-clarification-input='scope']");
     expect(input).not.toBeNull();
     expect(input?.tagName).toBe("INPUT");
     // The engine refuses control characters in a bounded text field.
@@ -149,7 +153,7 @@ describe("the captured disclosure payload", () => {
     const submit = document.querySelector<HTMLButtonElement>(
       "[data-clarification-submit]",
     );
-    // `scope` is required and unanswered, so submit is closed even though the
+    // `provider` is required and unanswered, so submit is closed even though the
     // only free-text question is optional.
     expect(submit?.disabled).toBe(true);
   });

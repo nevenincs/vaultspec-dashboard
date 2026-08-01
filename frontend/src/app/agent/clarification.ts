@@ -14,12 +14,13 @@
 // are rejected at the engine boundary, which is exactly why a text answer
 // renders as an input and never a textarea.
 //
-// "a2a's, not the engine's" is the whole point and was once got wrong: this file
-// mirrored an engine answer cap of 4096 against a sibling that refuses at 2048,
-// so a pasted paragraph passed the card, passed the engine, and came back a 422
-// the user saw only as an unexplained submit failure on a run that stayed parked.
-// The engine no longer holds an opinion either — it imports these numbers from
-// the shared contract declaration, which is where they are pinned to a2a.
+// "a2a's, not the engine's" is the whole point, and getting it wrong is costly in
+// BOTH directions: a cap looser than the sibling's buys the user an unexplained
+// 422 on a run that stays parked, and a cap tighter than it refuses an answer the
+// sibling would have accepted, with nothing to distinguish a local refusal from a
+// remote one. The engine holds no independent opinion either — it imports these
+// numbers from the shared contract declaration, which carries the provenance of
+// the served document they were read from.
 //
 // Layer law: no wire, no React — plain functions over an already-read snapshot.
 
@@ -30,7 +31,7 @@
  */
 export const CLARIFICATION_MAX_QUESTIONS = 4;
 export const CLARIFICATION_MAX_OPTIONS = 4;
-export const CLARIFICATION_MAX_ANSWER_CHARS = 2048;
+export const CLARIFICATION_MAX_ANSWER_CHARS = 4096;
 
 export type ClarificationKind = "choice" | "text";
 

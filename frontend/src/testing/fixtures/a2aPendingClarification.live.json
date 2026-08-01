@@ -1,19 +1,28 @@
 {
-  "type": "clarification_request",
-  "request_id": "clarify-run-19b53e071e8baf92b20a029c1308828c",
+  "_provenance": {
+    "captured": "2026-08-01",
+    "source": "the `pending_clarification` object on run-status, copied verbatim from the served envelope",
+    "stack": "a2a gateway 127.0.0.1:18100 serving feature/agent-flow at eafacbe5+ — the stack the panel drives",
+    "run_id": "run-61cd399e877648e0a7ce735e22a18168",
+    "preset": "vaultspec-adr-research-deterministic",
+    "trigger": "DETERMINISTIC_FORCE_CLARIFICATION carried in the run-start message",
+    "recapture": "POST /ops/a2a/run-start with that marker in `message`, then poll POST /ops/a2a/run-status until `pending_clarification` is non-null and copy it whole",
+    "note": "A second capture of this payload exists, taken from a different a2a tree, and its shape differs: a `type` discriminator, `options: null` on the text question, and a `clarify-{thread_id}` request id. Neither capture is a forgery — they are different trees. This one is the tree the panel drives. Re-capture from the stack before changing any field here."
+  },
+  "request_id": "f523047f7a204cf5",
   "questions": [
     {
-      "id": "scope",
-      "prompt": "Which surface should this cover?",
+      "id": "provider",
+      "prompt": "Which provider should author the plan?",
       "kind": "choice",
-      "options": ["frontend", "backend", "both"],
+      "options": ["codex", "zai", "claude"],
       "required": true
     },
     {
-      "id": "constraints",
-      "prompt": "Any constraint the work must respect?",
+      "id": "scope",
+      "prompt": "Which module should this research target?",
       "kind": "text",
-      "options": null,
+      "options": [],
       "required": false
     }
   ]

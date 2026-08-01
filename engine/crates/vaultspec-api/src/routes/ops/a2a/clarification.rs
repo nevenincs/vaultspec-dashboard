@@ -35,11 +35,10 @@ use crate::app::AppState;
 /// map as well as the question set).
 pub(super) const MAX_A2A_CLARIFICATION_ANSWERS: usize = A2A_MAX_CLARIFICATION_QUESTIONS;
 
-/// 128, the same ceiling a run id gets, because that is what the id CONTAINS:
-/// a2a mints it as `clarify-{thread_id}` truncated to its own
-/// `MAX_REQUEST_ID_CHARS`. A tighter bound here refuses handles the sibling
-/// legitimately issued and would accept, which leaves the run unanswerable from
-/// this boundary — it was 64 until that was found.
+/// 64 — the bound the served respond route puts on its `request_id` PATH
+/// parameter. The run id is the parameter that takes 128; these are two
+/// parameters on one route and not interchangeable, so admitting a longer
+/// request id here would only defer the refusal to a2a's path validation.
 pub(super) const MAX_A2A_REQUEST_ID_CHARS: usize = A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS;
 
 /// A question id is the key of the forwarded `answers` map, which a2a types as
