@@ -25,6 +25,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { formatDate } from "../../platform/localization/formatters";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { featureTagDisplayName } from "../../stores/featureQuery";
 import {
   DOCUMENT_TYPE_MESSAGES,
@@ -77,7 +78,7 @@ export function docMark(docType: string): Icon {
 }
 
 /** The canonical localized group label, failing closed to the generic document noun. */
-export function docGroupMessage(docType: string) {
+export function docGroupMessage(docType: string): MessageDescriptor {
   return docTypePresentation(docType)?.label ?? DOCUMENT_TYPE_MESSAGES.document;
 }
 

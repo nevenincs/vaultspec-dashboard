@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:e22926defa536dec51e8bcf09314c52cfe06f00e941afd52bcac75265b43422c'
 related:
   - '[[2026-08-01-rail-feature-metadata-adr]]'
   - '[[2026-08-01-rail-feature-metadata-plan]]'

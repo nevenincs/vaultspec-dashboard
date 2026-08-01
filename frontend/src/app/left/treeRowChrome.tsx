@@ -265,17 +265,30 @@ export function featureDateSignal(
 ): ReactNode {
   const span = featureDateSpanLabel(locale, entry?.adr_dates, resolveMessage);
   if (span === "") return undefined;
+  const accessibleLabel = featureDateSpanAccessibleLabel(
+    locale,
+    entry?.adr_dates,
+    resolveMessage,
+  );
+  const className = "shrink-0 text-meta font-normal text-ink-muted";
+  // `role="img"` replaces the compact date text with the sentence that says what
+  // the dates MEAN — which is only an improvement while that sentence exists. An
+  // unlabelled img would announce nothing, so an empty label falls back to a
+  // plain span that reads its own text.
+  if (accessibleLabel === "") {
+    return (
+      <span className={className} data-feature-dates data-tabular>
+        {span}
+      </span>
+    );
+  }
   return (
     <span
-      className="shrink-0 text-meta font-normal text-ink-muted"
+      className={className}
       data-feature-dates
       data-tabular
       role="img"
-      aria-label={featureDateSpanAccessibleLabel(
-        locale,
-        entry?.adr_dates,
-        resolveMessage,
-      )}
+      aria-label={accessibleLabel}
     >
       {span}
     </span>
