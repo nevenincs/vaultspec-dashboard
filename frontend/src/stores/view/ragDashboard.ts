@@ -1,7 +1,7 @@
-// The rag job-dashboard view-local presentation state.
-// Sort key, phase facets, the two filter-text fields, the selected job (which
-// joins the log pane), and the log lines window — all PRESENTATION state, bounded
-// and non-persisted, in the `settingsDialog`/`controlPanels` view-store idiom.
+// The index console's view-local presentation state.
+// Sort key, phase facets, the two filter-text fields, the selected update (which
+// joins the log tail), and the log lines window — all PRESENTATION state, bounded
+// and non-persisted, in the `settingsDialog`/`advancedConsole` view-store idiom.
 //
 // This is presentation, NOT a corpus filter: it never touches
 // `dashboardState.filters` (filter-vs-presentation law). Every write goes through

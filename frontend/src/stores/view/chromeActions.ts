@@ -8,26 +8,18 @@
 // a verb with no bound chord simply renders without one.
 
 import {
-  Activity,
-  Bot,
   ClipboardCheck,
   Command,
   Crosshair,
   Keyboard,
   Network,
   RotateCcw,
-  Search,
   Settings,
-  ShieldCheck,
+  SlidersHorizontal,
 } from "lucide-react";
 
-import { type ActionDescriptor, type ActionIcon } from "../../platform/actions/action";
-import {
-  CONTROL_PANEL_IDS,
-  toggleControlPanel,
-  type ControlPanelId,
-  type FooterChipId,
-} from "./controlPanels";
+import { type ActionDescriptor } from "../../platform/actions/action";
+import { openAdvancedSettings } from "./advancedConsole";
 import { openAgentPanel } from "./agentPanel";
 import { chordToKeycaps } from "../../platform/keymap/chord";
 import { effectiveChord, getKeybinding } from "../../platform/keymap/registry";
@@ -41,9 +33,9 @@ import {
 import { getKeymapOverrides } from "./keymapDispatcher";
 import { runResetLayout } from "./resetLayoutBridge";
 import { openSettingsDialog } from "./settingsDialog";
-import { CONTROL_PANEL_VOCABULARY } from "./controlPanelVocabulary";
 
 export const SETTINGS_ACTION_ID = "app:settings";
+export const ADVANCED_SETTINGS_ACTION_ID = "app:advanced-settings";
 export const RESET_LAYOUT_ACTION_ID = "window:reset-layout";
 
 /** The registry-derived accelerator for an action id, or undefined when unbound. */
@@ -153,53 +145,27 @@ export function toggleFollowModeAction(): ActionDescriptor {
   });
 }
 
-/** The stable action id per control panel (activity-rail-realignment D4). The chip,
- *  the palette command, and the keymap accelerator all resolve under this one id. */
-export const CONTROL_PANEL_ACTION_IDS: Record<ControlPanelId, string> = {
-  "search-service": "panel:search-service",
-  "backend-health": "panel:backend-health",
-  "vault-health": "panel:vault-health",
-  "agent-service": "panel:agent-service",
-};
-
-const CONTROL_PANEL_ACTION_ICONS: Record<ControlPanelId, ActionIcon> = {
-  "search-service": Search,
-  "backend-health": Activity,
-  "vault-health": ShieldCheck,
-  "agent-service": Bot,
-};
+/** Open Settings ▸ Advanced with the primary console expanded
+ *  (advanced-service-console ADR D7): the ONE verb that replaces the four retired
+ *  per-panel toggles the rail-footer cluster used to fire. Every operational
+ *  console now lives behind this one destination, so there is one command rather
+ *  than four aliases pointing at it (no-deprecation-bridges). A view toggle, not
+ *  a mutation — not time-travel gated. */
+export function openAdvancedSettingsAction(): ActionDescriptor {
+  return withAccelerator({
+    id: ADVANCED_SETTINGS_ACTION_ID,
+    label: { key: "common:actions.openAdvancedSettings" },
+    section: "navigate",
+    icon: SlidersHorizontal,
+    run: openAdvancedSettings,
+  });
+}
 
 /** The pending-changes chip's stable action id. The verb opens the Agent panel's
  *  pending-changes view, so it is enrolled on the AGENT plane
  *  (agent-panel-shell-integration D1) — the last trace of the retired Approvals
  *  modal, `panel:approvals`, is retired with the "Review" vocabulary it carried. */
 export const AGENT_PENDING_CHANGES_ACTION_ID = "agent:pending-changes";
-
-/** Toggle one framework control panel (activity-rail-realignment D4): ONE shared
- *  descriptor per panel under a single id, composed by the rail-footer chip, the
- *  command palette, and the keymap — no bespoke per-surface handler. The panels are
- *  session-transient dialogs (settings-dialog idiom), so this is a view toggle, not
- *  a mutation — not time-travel gated. */
-export function controlPanelToggleAction(
-  id: ControlPanelId,
-  openControlPanel: ControlPanelId | null,
-): ActionDescriptor {
-  const vocabulary = CONTROL_PANEL_VOCABULARY[id];
-  return withAccelerator({
-    id: CONTROL_PANEL_ACTION_IDS[id],
-    label: openControlPanel === id ? vocabulary.hideLabel : vocabulary.showLabel,
-    section: "navigate",
-    icon: CONTROL_PANEL_ACTION_ICONS[id],
-    run: () => toggleControlPanel(id),
-  });
-}
-
-/** Every modal control-panel toggle descriptor, in cluster order. */
-export function controlPanelActions(
-  openControlPanel: ControlPanelId | null,
-): ActionDescriptor[] {
-  return CONTROL_PANEL_IDS.map((id) => controlPanelToggleAction(id, openControlPanel));
-}
 
 /** Open the pending-changes inbox (review-surface-flow ADR F1): the SHARED
  *  descriptor for the footer chip and its Cmd+K command. It gives the center slot
@@ -213,19 +179,6 @@ export function agentPendingChangesAction(): ActionDescriptor {
     icon: ClipboardCheck,
     run: () => openAgentPanel({ view: "pending" }),
   });
-}
-
-/** The ONE shared descriptor for a rail-footer status chip, dispatched by id: the
- *  two panel-backed chips fire their modal toggle; the pending chip opens the Agent
- *  panel's pending view. Composed identically by the footer cluster and the command
- *  palette so no chip can drift (actions-keymap-palette). */
-export function footerChipAction(
-  id: FooterChipId,
-  openControlPanel: ControlPanelId | null,
-): ActionDescriptor {
-  return id === "pending"
-    ? agentPendingChangesAction()
-    : controlPanelToggleAction(id, openControlPanel);
 }
 
 /** The full app-chrome escape-hatch set, in menu order. */

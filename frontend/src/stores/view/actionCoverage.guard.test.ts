@@ -42,7 +42,7 @@ import {
 } from "./keyboardShortcuts";
 import {
   AGENT_PENDING_CHANGES_ACTION_ID,
-  CONTROL_PANEL_ACTION_IDS,
+  ADVANCED_SETTINGS_ACTION_ID,
   GRAPH_TOGGLE_ACTION_ID,
 } from "./chromeActions";
 import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
@@ -57,7 +57,7 @@ import "./commandProviders/leftRailCommandProvider";
 import "./commandProviders/projectCommandProvider";
 import "./commandProviders/reloadCommandProvider";
 import "./commandProviders/windowCommandProvider";
-import "./commandProviders/controlPanelsCommandProvider";
+import "./commandProviders/advancedConsoleCommandProvider";
 import "./commandProviders/agentCommandProvider";
 import "../../app/right/menus/commitMenu";
 import "../../app/right/menus/prMenu";
@@ -98,7 +98,6 @@ function commandContext(): CommandContext {
     timeTravel: false,
     keybindingOverrides: {},
     graphFrozen: false,
-    openControlPanel: null,
     shell: {
       leftRailVisible: true,
       leftCollapsed: false,
@@ -180,21 +179,21 @@ describe("action coverage grid guard", () => {
     expect(hasResolver("doc-tab")).toBe(true);
   });
 
-  it("each framework control panel toggle is enrolled in the palette under its shared id", () => {
-    // Palette-only verbs (like Settings, no default chord): each must still resolve
-    // in the palette under the shared action id the chip and keymap accelerator use.
-    for (const id of Object.values(CONTROL_PANEL_ACTION_IDS)) {
-      expect(paletteIds.has(id)).toBe(true);
-    }
-    // The agent-service lifecycle panel is the
-    // fourth modal toggle; require it explicitly on the palette plane under its
-    // shared id, so a regression that drops it fails here.
-    expect(paletteIds.has(CONTROL_PANEL_ACTION_IDS["agent-service"])).toBe(true);
-    // The pending-changes inbox is enrolled on the AGENT plane, not the control-panel
-    // plane, because it opens the Agent panel's pending view rather than a modal — so
-    // it is absent from CONTROL_PANEL_ACTION_IDS. Assert it here too, restoring the
-    // cross-plane enrollment symmetry that loop lost.
+  it("the Advanced console and the pending inbox are enrolled under their shared ids", () => {
+    // advanced-service-console ADR D2/D7: the four retired per-panel toggles
+    // collapsed into ONE destination — no alias command may reappear beside it —
+    // and the pending-changes inbox stays enrolled on the AGENT plane because it
+    // opens the Agent panel's pending view rather than a modal.
+    expect(paletteIds.has(ADVANCED_SETTINGS_ACTION_ID)).toBe(true);
     expect(paletteIds.has(AGENT_PENDING_CHANGES_ACTION_ID)).toBe(true);
+    for (const retired of [
+      "panel:search-service",
+      "panel:backend-health",
+      "panel:vault-health",
+      "panel:agent-service",
+    ]) {
+      expect(paletteIds.has(retired)).toBe(false);
+    }
   });
 
   it("the always-available agent verbs resolve in the palette under their shared ids", () => {

@@ -25,7 +25,7 @@ import "./commandProviders/editorCommandProvider";
 import "./commandProviders/settingsCommandProvider";
 import "./commandProviders/opsCommandProvider";
 import "./commandProviders/reloadCommandProvider";
-import "./commandProviders/controlPanelsCommandProvider";
+import "./commandProviders/advancedConsoleCommandProvider";
 import "./commandProviders/agentCommandProvider";
 
 const noop = () => undefined;
@@ -35,7 +35,6 @@ function commandContext(): CommandContext {
     timeTravel: false,
     keybindingOverrides: {},
     graphFrozen: false,
-    openControlPanel: null,
     shell: {
       leftRailVisible: true,
       leftCollapsed: false,

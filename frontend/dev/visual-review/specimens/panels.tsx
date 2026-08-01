@@ -1,10 +1,14 @@
-// Specimens: `panels` area (the control-panel dialog bodies).
+// Specimens: `panels` area — the console bodies Settings > Advanced now hosts
+// (advanced-service-console ADR D1). These surfaces used to open as modal control
+// panels from the rail-footer status chips; the chips and the modal host are gone,
+// and every one of them is reached from the Advanced section instead. What they
+// LOOK like is unchanged, which is exactly what these cells prove.
 //
-// Three of the four prefer their exported wire-free BODY component, authoring
-// the four states directly as props (no seed, no QueryClient involvement).
-// `panels-ragjobdashboard` is the one real container: it mounts the production
-// `RagJobDashboard` (which itself mounts the `RagJobsTable` container) and seeds
-// the cell's QueryClient at the real query keys the two hooks it composes read.
+// Each prefers its exported wire-free BODY component, authoring the four states
+// directly as props (no seed, no QueryClient involvement). The retired
+// `panels-ragjobdashboard` container cell went with `RagJobDashboard` itself: its
+// header is now `IndexConsoleHeader`, reviewed here from authored identity props
+// rather than from a seeded engine status.
 
 import {
   deriveA2aLifecycleView,
@@ -14,9 +18,9 @@ import {
 import { A2aLifecyclePanelBody } from "@app/app/panels/A2aLifecyclePanel";
 
 import {
-  ragControlKeys,
   type RagJob,
   type RagJobsSnapshot,
+  type RagLogsHookView,
   type RagStorageNamespace,
   type RagStorageRollup,
 } from "@app/stores/server/ragControl";
@@ -26,12 +30,11 @@ import {
   type RagJobsTableViewState,
 } from "@app/stores/server/ragDashboardView";
 import { RagJobsTableBody } from "@app/app/panels/RagJobsTable";
-import { RagJobDashboard } from "@app/app/panels/RagJobDashboard";
-import { engineKeys } from "@app/stores/server/queries";
-import type { EngineStatus } from "@app/stores/server/engine";
+import { IndexConsoleHeader } from "@app/app/panels/IndexConsole";
+import { IndexLogTailBody } from "@app/app/panels/IndexLogTail";
+import type { RagServiceIdentityView } from "@app/stores/server/ragServiceIdentity";
 
 import type { SpecimenDef } from "../registry";
-import { REVIEW_SCOPE, tiersDown, tiersHealthy } from "./support";
 
 // --- panels-a2alifecyclepanel --------------------------------------------------
 
@@ -158,37 +161,69 @@ const RAG_JOBS_VIEW_STATE: RagJobsTableViewState = {
 
 // --- panels-ragjobdashboard: the status read the header + table both compose ---
 
-// `useRagStatus` reads the `semantic` tier via `readTierAvailability`, where
-// an ABSENT tier is unavailable (contract §2, absence ≠ available) — an empty
-// `{}` block here reads as degraded and the header would show "Unavailable"
-// text under a green (running) dot. Mark it healthy explicitly.
-const RAG_DASHBOARD_STATUS_NORMAL: EngineStatus = {
-  ok: true,
-  nodes: 120,
-  edges: 340,
-  degradations: [],
-  tiers: tiersHealthy("semantic"),
-  rag: { service: "running", watcher: "watching", index: "fresh", jobs: 1 },
+// --- panels-indexconsole / panels-indexlogtail ---------------------------------
+//
+// Authored identity + log props. Every field mirrors a SERVED one
+// (`deriveRagServiceIdentity` over the component handshake, the brokered ops-state
+// blocks, and the provisioning projection); the empty view is the honest
+// "reachable but nothing served" case the header renders as an empty state.
+
+const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
+  name: "vaultspec-rag",
+  version: null,
+  installedVersion: "0.2.25",
+  requiredVersion: "0.2.20",
+  storageMode: "server",
+  storageEndpoint: "127.0.0.1:6333",
+  storageProcessId: 48213,
+  storageVersion: "1.18.2",
+  storagePath: "~/.vaultspec-rag/qdrant-server",
+  documents: 1284,
+  code: 21903,
+  empty: false,
 };
 
-const RAG_DASHBOARD_STATUS_EMPTY: EngineStatus = {
-  ok: true,
-  nodes: 120,
-  edges: 340,
-  degradations: [],
-  tiers: tiersHealthy("semantic"),
-  rag: { service: "running", watcher: "idle", index: "fresh", jobs: 0 },
+const INDEX_IDENTITY_EMPTY: RagServiceIdentityView = {
+  name: null,
+  version: null,
+  installedVersion: null,
+  requiredVersion: null,
+  storageMode: null,
+  storageEndpoint: null,
+  storageProcessId: null,
+  storageVersion: null,
+  storagePath: null,
+  documents: null,
+  code: null,
+  empty: true,
 };
 
-const RAG_DASHBOARD_STATUS_DEGRADED: EngineStatus = {
-  ok: false,
-  nodes: 0,
-  edges: 0,
-  degradations: ["semantic"],
-  tiers: tiersDown(["semantic"]),
-};
+const INDEX_LOG_LINES = [
+  {
+    text: "2026-08-01 18:02:11,004 INFO  reindex started (vault)",
+    level: "info" as const,
+  },
+  {
+    text: "2026-08-01 18:02:14,338 DEBUG embedded 128 chunks",
+    level: "debug" as const,
+  },
+  {
+    text: "2026-08-01 18:02:19,771 WARNING slow batch: 3.4s",
+    level: "warning" as const,
+  },
+  { text: "2026-08-01 18:02:22,105 INFO  reindex complete", level: "info" as const },
+];
 
-const RAG_JOBS_KEY = ragControlKeys.jobs(REVIEW_SCOPE, "recent-50");
+function logsView(over: Partial<RagLogsHookView>): RagLogsHookView {
+  return {
+    lines: [],
+    total: 0,
+    jobFilter: null,
+    semanticOffline: false,
+    pending: false,
+    ...over,
+  };
+}
 
 export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
   "panels-a2alifecyclepanel": {
@@ -341,36 +376,120 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
     },
   },
 
-  "panels-ragjobdashboard": {
-    note: 'Container: mounts the real RagJobDashboard (which itself mounts RagJobsTable). Seeds engineKeys.status() (useRagStatus, the header) and ragControlKeys.jobs(scope,"recent-50") (useRagJobs(scope, RAG_JOBS_LIMIT_CAP), the table) — the exact keys and BrokeredResult<T> envelope shape those two hooks read. Loading seeds neither, so both queries pend and the header/table render their own loading treatments together.',
-    seed: (client, state) => {
-      if (state === "normal") {
-        client.setQueryData(engineKeys.status(), RAG_DASHBOARD_STATUS_NORMAL);
-        // `ragQuerySemanticOffline` reads this envelope's own `tiers` (same
-        // absence-is-unavailable rule) to drive the table's `offline` prop.
-        client.setQueryData(RAG_JOBS_KEY, {
-          envelope: RAG_JOBS_SNAPSHOT_NORMAL,
-          tiers: tiersHealthy("semantic"),
-        });
-        return;
-      }
-      if (state === "empty") {
-        client.setQueryData(engineKeys.status(), RAG_DASHBOARD_STATUS_EMPTY);
-        client.setQueryData(RAG_JOBS_KEY, {
-          envelope: RAG_JOBS_SNAPSHOT_EMPTY,
-          tiers: tiersHealthy("semantic"),
-        });
-        return;
+  "panels-indexconsole": {
+    note: "Mounts the exported wire-free IndexConsoleHeader directly — the redesigned identity line the owner asked for: the SERVED tool name (never the word Search), the running/installed/required versions, the store's address, process, version and location, and normal-weight lifecycle actions instead of a row of large buttons. States are authored props: loading is the identity read in flight, degraded is the semantic tier reporting unavailable, empty is a reachable tool that served no identity fact at all.",
+    render: (state) => {
+      if (state === "loading") {
+        return (
+          <IndexConsoleHeader
+            identity={INDEX_IDENTITY_EMPTY}
+            identityLoading
+            identityOffline={false}
+            running={false}
+            healthWord="Checking…"
+            healthTone="stale"
+            actionsPending={false}
+            doctorPending={false}
+            reindexActive={false}
+            onStart={() => {}}
+            onStop={() => {}}
+            onRestart={() => {}}
+            onDoctor={() => {}}
+            onReindex={() => {}}
+          />
+        );
       }
       if (state === "degraded") {
-        client.setQueryData(engineKeys.status(), RAG_DASHBOARD_STATUS_DEGRADED);
-        client.setQueryData(RAG_JOBS_KEY, {
-          envelope: null,
-          tiers: tiersDown(["semantic"]),
-        });
+        return (
+          <IndexConsoleHeader
+            identity={INDEX_IDENTITY_EMPTY}
+            identityLoading={false}
+            identityOffline
+            running={false}
+            healthWord="Unavailable"
+            healthTone="broken"
+            errored
+            actionsPending={false}
+            doctorPending={false}
+            reindexActive={false}
+            onStart={() => {}}
+            onStop={() => {}}
+            onRestart={() => {}}
+            onDoctor={() => {}}
+            onReindex={() => {}}
+          />
+        );
       }
-      // loading: leave both engineKeys.status() and the jobs key unseeded.
+      if (state === "empty") {
+        return (
+          <IndexConsoleHeader
+            identity={INDEX_IDENTITY_EMPTY}
+            identityLoading={false}
+            identityOffline={false}
+            running
+            healthWord="Running"
+            healthTone="active"
+            actionsPending={false}
+            doctorPending={false}
+            reindexActive={false}
+            onStart={() => {}}
+            onStop={() => {}}
+            onRestart={() => {}}
+            onDoctor={() => {}}
+            onReindex={() => {}}
+          />
+        );
+      }
+      return (
+        <IndexConsoleHeader
+          identity={INDEX_IDENTITY_NORMAL}
+          identityLoading={false}
+          identityOffline={false}
+          running
+          healthWord="Running"
+          healthTone="active"
+          actionsPending={false}
+          doctorPending={false}
+          reindexActive
+          reindexFraction={0.42}
+          onStart={() => {}}
+          onStop={() => {}}
+          onRestart={() => {}}
+          onDoctor={() => {}}
+          onReindex={() => {}}
+        />
+      );
     },
-    render: () => <RagJobDashboard />,
+  },
+
+  "panels-indexlogtail": {
+    note: "Mounts the exported wire-free IndexLogTailBody directly — the log half of the owner's log/updates ask, which now lives inside the ONE index console instead of nowhere. The four states are authored RagLogsHookView props (pending is loading, semanticOffline is degraded, no lines is empty); the normal cell also shows the narrowed-to-selection note.",
+    render: (state) => {
+      if (state === "loading") {
+        return (
+          <IndexLogTailBody
+            view={logsView({ pending: true })}
+            scopedToSelection={false}
+          />
+        );
+      }
+      if (state === "degraded") {
+        return (
+          <IndexLogTailBody
+            view={logsView({ semanticOffline: true })}
+            scopedToSelection={false}
+          />
+        );
+      }
+      if (state === "empty") {
+        return <IndexLogTailBody view={logsView({})} scopedToSelection={false} />;
+      }
+      return (
+        <IndexLogTailBody
+          view={logsView({ lines: INDEX_LOG_LINES })}
+          scopedToSelection
+        />
+      );
+    },
   },
 };

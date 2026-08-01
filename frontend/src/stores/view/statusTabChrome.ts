@@ -17,9 +17,10 @@ export type StatusSectionId =
   | "open-issues"
   | "recent-commits";
 // The former `rag-ops`, `rag-ops:details`, and `authoring-review` section ids all
-// retired: the search-service console moved into a modal control panel and was then
-// replaced outright by the rag job dashboard, whose view
-// state lives in its own view-local store — so no rail-section id survives for it.
+// retired: the search-service console moved into a modal control panel, was then
+// replaced outright by the index console, and finally moved to Settings ▸ Advanced
+// (advanced-service-console ADR D1); its view state lives in its own view-local
+// store — so no rail-section id survives for it.
 // The normalizer drops these unknowns, so a persisted/legacy blob can never re-mount
 // a retired fold.
 

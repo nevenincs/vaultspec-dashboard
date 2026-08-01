@@ -438,7 +438,8 @@ export function A2aLifecyclePanelBody({
 
 /** The wired panel: reads the lifecycle status + run + job-poll hooks, memoizes the
  *  projection, and delegates to the props-driven body. Mounted only while the
- *  agent-service dialog is open (`ControlPanels`), so a closed panel reads nothing. */
+ *  agent console is EXPANDED in Settings ▸ Advanced (advanced-service-console ADR
+ *  D5), so a collapsed console reads nothing. */
 export function A2aLifecyclePanel() {
   const status = useA2aLifecycleStatus();
   const run = useA2aLifecycleRun();

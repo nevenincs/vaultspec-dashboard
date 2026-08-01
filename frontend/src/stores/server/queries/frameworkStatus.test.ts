@@ -1,197 +1,122 @@
-// The framework-status cluster projection. Pins
-// the tone/count mapping per plane — ok / attention / down / unknown — over the
-// interpreted status inputs, so a chip can only render served health truth.
+// The rail-footer approvals projection and the shared vault-health tone
+// classifier. Pins the tone/count mapping — ok / attention / down / unknown —
+// over the interpreted status inputs, so the surviving chip can only render
+// served truth (advanced-service-console ADR D3).
 
 import { describe, expect, it } from "vitest";
 
 import {
-  deriveFrameworkStatusView,
-  type FrameworkStatusInputs,
+  deriveApprovalsStatusView,
+  deriveVaultHealthTone,
+  type ApprovalsStatusInputs,
 } from "./frameworkStatus";
 
-/** A fully-healthy input; each case overrides just the plane under test. */
-function healthy(): FrameworkStatusInputs {
+/** A settled, empty queue; each case overrides just the field under test. */
+function settled(): ApprovalsStatusInputs {
   return {
-    core: { loading: false, errored: false, reachable: true, vaultHealth: "healthy" },
-    rag: { loading: false, errored: false, degraded: false },
-    pending: {
-      loading: false,
-      storeUnavailable: false,
-      degraded: false,
-      queued: 0,
-      truncated: false,
-    },
+    loading: false,
+    storeUnavailable: false,
+    degraded: false,
+    queued: 0,
+    truncated: false,
   };
 }
 
-describe("deriveFrameworkStatusView", () => {
-  it("maps every plane to ok when the framework is healthy", () => {
-    const view = deriveFrameworkStatusView(healthy());
-    expect(view).toEqual({
-      "search-service": { tone: "ok" },
-      pending: { tone: "ok" },
-      "vault-health": { tone: "ok" },
-    });
-  });
-});
-
-describe("vault-health chip", () => {
+describe("deriveVaultHealthTone", () => {
   it("is down when core is unreachable", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      core: { loading: false, errored: false, reachable: false },
-    });
-    expect(view["vault-health"].tone).toBe("down");
+    expect(
+      deriveVaultHealthTone({ loading: false, errored: false, reachable: false }),
+    ).toBe("down");
   });
 
   it("is down when the status query errored", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      core: { loading: false, errored: true, reachable: false },
-    });
-    expect(view["vault-health"].tone).toBe("down");
+    expect(
+      deriveVaultHealthTone({ loading: false, errored: true, reachable: false }),
+    ).toBe("down");
   });
 
   it("is unknown while core is still loading with no reachability", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      core: { loading: true, errored: false, reachable: false },
-    });
-    expect(view["vault-health"].tone).toBe("unknown");
+    expect(
+      deriveVaultHealthTone({ loading: true, errored: false, reachable: false }),
+    ).toBe("unknown");
   });
 
-  it("is attention on a served health word other than healthy/ok", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      core: {
+  it("is attention on a served health word other than healthy/ok/green", () => {
+    expect(
+      deriveVaultHealthTone({
         loading: false,
         errored: false,
         reachable: true,
         vaultHealth: "degraded",
-      },
-    });
-    expect(view["vault-health"].tone).toBe("attention");
+      }),
+    ).toBe("attention");
   });
 
   it("stays ok for the healthy, ok, and green words and when no word is served", () => {
-    const ok = deriveFrameworkStatusView({
-      ...healthy(),
-      core: { loading: false, errored: false, reachable: true, vaultHealth: "OK" },
-    });
-    expect(ok["vault-health"].tone).toBe("ok");
-    // "green" is the engine's CANONICAL healthy word (the live adapter's
-    // vault-green rollup) — the ambient chip must never contradict the panel
-    // it opens on live data.
-    const green = deriveFrameworkStatusView({
-      ...healthy(),
-      core: { loading: false, errored: false, reachable: true, vaultHealth: "green" },
-    });
-    expect(green["vault-health"].tone).toBe("ok");
-    const none = deriveFrameworkStatusView({
-      ...healthy(),
-      core: { loading: false, errored: false, reachable: true },
-    });
-    expect(none["vault-health"].tone).toBe("ok");
-  });
-});
-
-describe("search-service chip", () => {
-  it("is down when the semantic tier is degraded", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      rag: { loading: false, errored: false, degraded: true },
-    });
-    expect(view["search-service"].tone).toBe("down");
-  });
-
-  it("is down when the status query errored", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      rag: { loading: false, errored: true, degraded: false },
-    });
-    expect(view["search-service"].tone).toBe("down");
-  });
-
-  it("is unknown while rag status is loading", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      rag: { loading: true, errored: false, degraded: false },
-    });
-    expect(view["search-service"].tone).toBe("unknown");
-  });
-});
-
-describe("pending-changes chip", () => {
-  it("is down when the authoring store is unavailable", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      pending: {
+    expect(
+      deriveVaultHealthTone({
         loading: false,
-        storeUnavailable: true,
-        degraded: false,
-        queued: 3,
-        truncated: false,
-      },
+        errored: false,
+        reachable: true,
+        vaultHealth: "OK",
+      }),
+    ).toBe("ok");
+    // "green" is the engine's CANONICAL healthy word (the live adapter's
+    // vault-green rollup) — every surface classifying vault health must agree.
+    expect(
+      deriveVaultHealthTone({
+        loading: false,
+        errored: false,
+        reachable: true,
+        vaultHealth: "green",
+      }),
+    ).toBe("ok");
+    expect(
+      deriveVaultHealthTone({ loading: false, errored: false, reachable: true }),
+    ).toBe("ok");
+  });
+});
+
+describe("deriveApprovalsStatusView", () => {
+  it("is ok with no count when the queue is settled and empty", () => {
+    expect(deriveApprovalsStatusView(settled())).toEqual({ tone: "ok" });
+  });
+
+  it("is down when the authoring store is unavailable", () => {
+    const view = deriveApprovalsStatusView({
+      ...settled(),
+      storeUnavailable: true,
+      queued: 3,
     });
-    expect(view.pending.tone).toBe("down");
-    expect(view.pending.count).toBeUndefined();
+    expect(view.tone).toBe("down");
+    expect(view.count).toBeUndefined();
   });
 
   it("is unknown while the queue is loading", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      pending: {
-        loading: true,
-        storeUnavailable: false,
-        degraded: false,
-        queued: 0,
-        truncated: false,
-      },
-    });
-    expect(view.pending.tone).toBe("unknown");
+    expect(deriveApprovalsStatusView({ ...settled(), loading: true }).tone).toBe(
+      "unknown",
+    );
   });
 
   it("is attention with the served count when items are pending", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      pending: {
-        loading: false,
-        storeUnavailable: false,
-        degraded: false,
-        queued: 4,
-        truncated: false,
-      },
-    });
-    expect(view.pending.tone).toBe("attention");
-    expect(view.pending.count).toBe(4);
+    const view = deriveApprovalsStatusView({ ...settled(), queued: 4 });
+    expect(view.tone).toBe("attention");
+    expect(view.count).toBe(4);
   });
 
   it("omits the count when the served queue is truncated", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      pending: {
-        loading: false,
-        storeUnavailable: false,
-        degraded: false,
-        queued: 50,
-        truncated: true,
-      },
+    const view = deriveApprovalsStatusView({
+      ...settled(),
+      queued: 50,
+      truncated: true,
     });
-    expect(view.pending.tone).toBe("attention");
-    expect(view.pending.count).toBeUndefined();
+    expect(view.tone).toBe("attention");
+    expect(view.count).toBeUndefined();
   });
 
   it("is attention when the queue is degraded even with nothing pending", () => {
-    const view = deriveFrameworkStatusView({
-      ...healthy(),
-      pending: {
-        loading: false,
-        storeUnavailable: false,
-        degraded: true,
-        queued: 0,
-        truncated: false,
-      },
-    });
-    expect(view.pending.tone).toBe("attention");
+    expect(deriveApprovalsStatusView({ ...settled(), degraded: true }).tone).toBe(
+      "attention",
+    );
   });
 });

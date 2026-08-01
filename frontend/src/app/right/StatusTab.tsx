@@ -946,10 +946,10 @@ export function StatusTab() {
       >
         <RecentCommitsBody scope={scope} />
       </SectionCard>
-      {/* The two admin consoles (Search service, Pending changes) were evicted from the
-          rail into modal control panels (activity-rail-realignment ADR D1/D3);
-          the rail is status-only. They are reached from the rail-footer framework
-          status cluster now. */}
+      {/* The admin consoles were evicted from the rail (activity-rail-realignment ADR
+          D1/D3) and then out of the chrome entirely, into Settings ▸ Advanced
+          (advanced-service-console ADR D1/D2); the rail is status-only. Only the
+          pending-changes affordance survives, in the rail footer (ADR D3). */}
     </StatusTabView>
   );
 }

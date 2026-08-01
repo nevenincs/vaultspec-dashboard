@@ -1,20 +1,22 @@
-// The rail-footer framework status cluster (activity-rail-realignment ADR D2). A
-// slim strip pinned to the activity rail's bottom edge — OUTSIDE the scroll region
-// — with one chip per FOOTER surface: Search service, Pending changes, Vault health. Each
-// chip shows only a served health tone (the standard status-dot vocabulary) plus
-// at most one served count. Search service and Vault health toggle their modal
-// panel; Pending changes gives the slot to the Agent panel's pending-changes view
-// (review-surface-flow
-// ADR F1). Backend health is NOT a footer chip — its engine-status read unclearly,
-// so it was pulled from the strip (user UX decision); the Cmd+K palette is its only
-// surfacing path.
+// The rail-footer cluster (activity-rail-realignment ADR D2, narrowed by
+// advanced-service-console ADR D2/D3). A slim strip pinned to the activity rail's
+// bottom edge — OUTSIDE the scroll region.
+//
+// It used to carry one chip per FRAMEWORK STATUS surface (Search service, Vault
+// health) beside the pending-changes chip. Those were dev status bleeding into
+// the user chrome: every operational console now lives behind Settings ▸
+// Advanced, and nothing in the product chrome opens one. What SURVIVES here is
+// the pending-changes affordance — a served count plus an open-review intent —
+// because the review queue feeds the authoring workflow rather than reporting on
+// a tool's health (ADR D3; its final form belongs to the in-flight agent-panel
+// campaign).
 //
 // Layer ownership (dashboard-layer-ownership / views-are-projections): this is a
-// DUMB app-chrome view. Tones and counts come from ONE interpreted stores
-// projection (`useFrameworkStatusView`) — it fetches nothing and never inspects
-// the raw `tiers` block. Each chip dispatches the ONE shared ActionDescriptor for
-// its surface (`footerChipAction`), the same verb the command palette and the
-// keymap fire — never a bespoke per-surface handler (actions-keymap-palette).
+// DUMB app-chrome view. The tone and count come from ONE interpreted stores
+// projection (`useApprovalsStatusView`) — it fetches nothing and never inspects
+// the raw `tiers` block. The chip dispatches the ONE shared ActionDescriptor
+// (`agentPendingChangesAction`), the same verb the command palette and the keymap
+// fire — never a bespoke per-surface handler (actions-keymap-palette).
 //
 // Keyboard (keyboard-navigation): the footer chips are ONE FocusZone tab stop —
 // Tab enters/leaves the cluster while Left/Right (Home/End) rove between chips
@@ -25,16 +27,10 @@ import { useState } from "react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageDescriptor } from "../../platform/localization/message";
-import {
-  FOOTER_CHIP_IDS,
-  useOpenControlPanel,
-  type FooterChipId,
-} from "../../stores/view/controlPanels";
-import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
-import { footerChipAction } from "../../stores/view/chromeActions";
 import { useAgentPanelOpen, useAgentPanelView } from "../../stores/view/agentPanel";
+import { agentPendingChangesAction } from "../../stores/view/chromeActions";
 import {
-  useFrameworkStatusView,
+  useApprovalsStatusView,
   type FrameworkStatusChip,
   type FrameworkStatusTone,
 } from "../../stores/server/queries";
@@ -63,15 +59,17 @@ const GROUP_MESSAGE = { key: "common:controlPanels.accessibility.group" } as con
 const PANEL_STATUS_MESSAGE = {
   key: "common:controlPanels.accessibility.panelStatus",
 } as const;
+const PENDING_LABEL_MESSAGE = { key: "common:agent.pending.label" } as const;
 
 export interface StatusChipProps {
-  id: FooterChipId;
+  /** The surface's plain-language name, resolved through the catalog here so the
+   *  chip stays a single self-contained presentation unit. */
+  label: MessageDescriptor;
   chip: FrameworkStatusChip;
-  /** Whether this chip's surface is the open one (its modal panel, or — for the
-   *  pending chip — the Agent panel's pending-changes view). */
+  /** Whether this chip's surface is the open one (for the pending chip, the Agent
+   *  panel's pending-changes view). */
   open: boolean;
-  /** Activate this chip's surface — toggle its modal panel, or open the Agent
-   *  pending view for the pending chip (the shared descriptor's run). */
+  /** Activate this chip's surface (the shared descriptor's run). */
   onToggle: () => void;
   /** FocusZone item ref registering the button in the roving order. */
   chipRef: (el: HTMLElement | null) => void;
@@ -87,7 +85,7 @@ export interface StatusChipProps {
  *  served count. Pure presentation — the parent supplies the served chip, the
  *  open flag, and the shared toggle so the chip stays wire- and store-free. */
 export function StatusChip({
-  id,
+  label,
   chip,
   open,
   onToggle,
@@ -98,7 +96,7 @@ export function StatusChip({
   coarse = false,
 }: StatusChipProps) {
   const resolve = useLocalizedMessageResolver();
-  const panel = resolve(CONTROL_PANEL_VOCABULARY[id].label);
+  const panel = resolve(label);
   const status = resolve(TONE_MESSAGES[chip.tone]);
   const accessibleName = resolve({
     ...PANEL_STATUS_MESSAGE,
@@ -142,18 +140,15 @@ export function StatusChip({
 }
 
 /**
- * The framework status cluster strip. Renders one chip per FOOTER control panel
- * from the served projection; the chips share one FocusZone tab stop with
- * horizontal roving. Mounted as a pinned footer beneath the activity rail scroll
- * region.
+ * The rail-footer cluster strip: the pending-changes affordance and — while a run
+ * streams with the panel collapsed — the agent chip. The two share one FocusZone
+ * tab stop with horizontal roving. Mounted as a pinned footer beneath the
+ * activity rail scroll region.
  */
 export function FrameworkStatusCluster() {
-  const view = useFrameworkStatusView();
+  const pending = useApprovalsStatusView();
   const resolve = useLocalizedMessageResolver();
   const group = resolve(GROUP_MESSAGE);
-  // The panels are MODAL (single-open), so one selector yields the open id and
-  // each chip's open flag is a value compare — no per-chip store hook in a loop.
-  const openPanel = useOpenControlPanel();
   // The pending chip's pressed state tracks the Agent panel's pending view (its
   // surface is that view, not a modal), so read the slot + view flags once.
   const agentOpen = useAgentPanelOpen();
@@ -172,6 +167,10 @@ export function FrameworkStatusCluster() {
   // hook is called unconditionally (rules-of-hooks); the render + the rove are
   // gated on its result so a hidden chip never registers a phantom roving item.
   const chipView = useAgentChipView();
+  // The ONE shared descriptor, composed here exactly as the command palette
+  // composes it, so the chip cannot drift.
+  const pendingAction = agentPendingChangesAction();
+  const pendingItem = zone.rove("pending");
   if (group.usedFallback) return null;
 
   return (
@@ -181,34 +180,23 @@ export function FrameworkStatusCluster() {
       data-framework-status-cluster
       className="flex shrink-0 items-center justify-between gap-fg-1 border-t border-rule bg-paper-raised px-fg-2 py-fg-1-5"
     >
-      {FOOTER_CHIP_IDS.map((id: FooterChipId) => {
-        const item = zone.rove(id);
-        // The ONE shared descriptor for this chip — composed here exactly as the
-        // command palette and keymap compose it, so the chip cannot drift. Panel
-        // chips toggle their modal; the pending chip opens the Agent pending view.
-        const action = footerChipAction(id, openPanel);
-        if (action.run === undefined) return null;
-        const open =
-          id === "pending" ? agentOpen && agentView === "pending" : openPanel === id;
-        return (
-          <StatusChip
-            key={id}
-            id={id}
-            chip={view[id]}
-            open={open}
-            onToggle={action.run}
-            chipRef={item.ref}
-            tabIndex={item.tabIndex}
-            onKeyDown={item.onKeyDown}
-            onFocus={() => setActive(id)}
-            coarse={coarse}
-          />
-        );
-      })}
+      {pendingAction.run !== undefined && (
+        <StatusChip
+          label={PENDING_LABEL_MESSAGE}
+          chip={pending}
+          open={agentOpen && agentView === "pending"}
+          onToggle={pendingAction.run}
+          chipRef={pendingItem.ref}
+          tabIndex={pendingItem.tabIndex}
+          onKeyDown={pendingItem.onKeyDown}
+          onFocus={() => setActive("pending")}
+          coarse={coarse}
+        />
+      )}
       {/* The collapsed-agent chip (agentic-authoring-ux ADR D1/D8): renders only
           while a run streams with the panel collapsed, so it is absent from the
           cluster most of the time. When present it is ONE more roving tab stop
-          (`zone.rove("agent")`, called after the panel chips so it sits last) and
+          (`zone.rove("agent")`, called after the pending chip so it sits last) and
           fires the SHARED `agent:toggle-panel` descriptor — not a bespoke handler. */}
       {chipView !== null &&
         (() => {

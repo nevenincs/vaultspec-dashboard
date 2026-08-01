@@ -25,7 +25,6 @@ function commandContext(over: Partial<CommandContext> = {}): CommandContext {
     timeTravel: false,
     keybindingOverrides: {},
     graphFrozen: false,
-    openControlPanel: null,
     shell: {
       leftRailVisible: true,
       leftCollapsed: false,

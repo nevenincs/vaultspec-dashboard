@@ -34,6 +34,7 @@ import {
 } from "../../stores/view/settingsControlRow";
 import { Dialog } from "../chrome/Dialog";
 import { Button, SectionLabel } from "../kit";
+import { AdvancedSection } from "./AdvancedSection";
 import { SettingControl } from "./controls/registry";
 
 export function SettingsDialog() {
@@ -113,6 +114,9 @@ export function SettingsDialog() {
             </div>
           </section>
         ))}
+        {/* The one designed non-schema section (advanced-service-console ADR D1):
+            every operational console lives here, after the schema-driven groups. */}
+        <AdvancedSection />
       </div>
     </Dialog>
   );

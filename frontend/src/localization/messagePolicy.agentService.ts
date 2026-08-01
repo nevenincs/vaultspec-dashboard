@@ -9,9 +9,6 @@ import type { MessagePolicyEntry } from "./messagePolicy";
 
 export const AGENT_SERVICE_MESSAGE_POLICY = {
   "common:controlPanels.labels.agentService": { role: "label" },
-  "common:controlPanels.actions.showAgentService": { role: "action" },
-  "common:controlPanels.actions.hideAgentService": { role: "action" },
-  "common:controlPanels.unavailableTitles.agentService": { role: "error-title" },
   "common:agentService.description": { role: "description" },
   "common:agentService.statusLabel": { role: "accessibility" },
   "common:agentService.sections.status": { role: "label" },

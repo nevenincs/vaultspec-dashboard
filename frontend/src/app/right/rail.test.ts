@@ -9,7 +9,7 @@ import {
   opsReceiptFromError,
   opsReceiptFromResult,
 } from "../../stores/server/queries";
-import { CONTROL_PANEL_IDS, FOOTER_CHIP_IDS } from "../../stores/view/controlPanels";
+import { ADVANCED_CONSOLE_IDS } from "../../stores/view/advancedConsole";
 import { normalizeStatusSectionId } from "../../stores/view/statusTabChrome";
 import {
   RIGHT_RAIL_TABS,
@@ -105,23 +105,12 @@ describe("status-only rail composition (activity-rail-realignment ADR D1/D3)", (
     expect(normalizeStatusSectionId("recent-commits")).toBe("recent-commits");
   });
 
-  it("registers four modal panels and pins three footer chips (pending is not modal)", () => {
-    // Pending changes is not a modal control panel (review-surface-flow ADR F1): its
-    // queue folded into the Agent panel as a pending-changes view, so `pending`
-    // is a footer-chip id only. The modal set is the three global consoles plus the
-    // agent-service lifecycle panel (a2a-product-provisioning W05.P12), a modal
-    // identity that is deliberately NOT a footer chip.
-    expect(CONTROL_PANEL_IDS).toEqual([
-      "search-service",
-      "backend-health",
-      "vault-health",
-      "agent-service",
-    ]);
-    // The footer cluster keeps its three chips: Search service and Vault health open
-    // their modal panels; the Pending changes chip gives the center slot to the Agent
-    // panel's pending view. Backend health and the agent-service panel are NOT footer
-    // chips — they surface only through the palette.
-    expect(FOOTER_CHIP_IDS).toEqual(["search-service", "pending", "vault-health"]);
+  it("hosts every operational console in Settings ▸ Advanced, none in the rail", () => {
+    // advanced-service-console ADR D1/D2: the four modal control panels retired
+    // into ONE Advanced section, in rendered order. The rail footer keeps only the
+    // pending-changes affordance (ADR D3), which is not a console at all — so no
+    // console id may ever name a rail chip again.
+    expect(ADVANCED_CONSOLE_IDS).toEqual(["index", "system", "project", "agent"]);
   });
 });
 

@@ -434,6 +434,14 @@ export interface RagLogsView {
   semanticOffline: boolean;
 }
 
+/** The log-tail view a CONSUMER receives: the interpreted window plus the query
+ *  state its loading treatment renders from. `interpretRagLogs` stays pure over
+ *  the served window; only the hook can know a read is still in flight. */
+export interface RagLogsHookView extends RagLogsView {
+  /** The window read is in flight with nothing held yet. */
+  pending: boolean;
+}
+
 /** Clamp a requested `lines` window to `[MIN, MAX]`, defaulting a missing or
  *  malformed value to `RAG_LOGS_LINES_DEFAULT`. */
 export function boundedRagLogLines(lines: unknown): number {
@@ -1045,7 +1053,7 @@ export interface UseRagLogsOptions {
 export function useRagLogs(
   scope: unknown,
   options: UseRagLogsOptions = {},
-): RagLogsView {
+): RagLogsHookView {
   const normalizedScope = normalizeRagControlScope(scope);
   const lines = boundedRagLogLines(options.lines);
   const jobId = normalizeRagJobId(options.jobId);
@@ -1067,7 +1075,9 @@ export function useRagLogs(
   const data = active
     ? (query.data as BrokeredResult<RagLogsEnvelope> | undefined)
     : undefined;
-  return useMemo(() => interpretRagLogs(data), [data]);
+  const view = useMemo(() => interpretRagLogs(data), [data]);
+  const pending = active && query.isPending;
+  return useMemo(() => ({ ...view, pending }), [view, pending]);
 }
 
 // --- control mutations (dispatched through the platform seam) ------------------

@@ -54,7 +54,6 @@ import {
 } from "./onboarding/FirstRunOnboarding";
 import { CommandPalette } from "./palette/CommandPalette";
 import { SettingsDialog } from "./settings/SettingsDialog";
-import { ControlPanels } from "./panels/ControlPanels";
 import { useSettingsEffects } from "./settings/settingsEffects";
 import { useGraphViewModeBridge } from "../stores/server/graphViewModeBridge";
 import { useThemeSetting } from "./settings/themeSetting";
@@ -203,7 +202,6 @@ export function AppShell() {
         <DataActivityIndicator />
         <CommandPalette />
         <SettingsDialog />
-        <ControlPanels />
         <AddProjectDialog />
         <CreateDocDialog />
         <ProjectNavigator />
@@ -240,7 +238,6 @@ export function AppShell() {
       <DataActivityIndicator />
       <CommandPalette />
       <SettingsDialog />
-      <ControlPanels />
       <AddProjectDialog />
       <CreateDocDialog />
       <ProjectNavigator />

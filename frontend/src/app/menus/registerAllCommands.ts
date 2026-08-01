@@ -14,5 +14,5 @@ import "../../stores/view/commandProviders/documentCommandProvider";
 import "../../stores/view/commandProviders/settingsCommandProvider";
 import "../../stores/view/commandProviders/opsCommandProvider";
 import "../../stores/view/commandProviders/reloadCommandProvider";
-import "../../stores/view/commandProviders/controlPanelsCommandProvider";
+import "../../stores/view/commandProviders/advancedConsoleCommandProvider";
 import "../../stores/view/commandProviders/agentCommandProvider";

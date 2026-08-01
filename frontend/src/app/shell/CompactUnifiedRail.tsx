@@ -19,14 +19,14 @@
 // renders that at TOP LEVEL, OUTSIDE the collapsible Browse body, so the top bar's
 // filter button works regardless of the Browse fold state.
 //
-// The compact rail carries NO framework status cluster (owner review, 2026-08-01):
-// the Search-service / Review / Vault-health chips report development-framework health,
-// not the corpus state a phone-sized Home pane exists to show, so the strip was pulled
-// from this surface. Their control panels stay reachable on compact through the shared
-// command palette (`chromeEscapeHatchActions` -> the rail's own background menu, and the
-// panel-toggle command provider), so no verb is lost — only its permanent footer real
-// estate. The desktop rail keeps the pinned cluster (activity-rail-realignment ADR D6);
-// removing it there is a separate, separately-decided piece of work.
+// The compact rail carries NO rail-footer cluster (owner review, 2026-08-01): the
+// chips reported framework health, not the corpus state a phone-sized Home pane
+// exists to show, so the strip was pulled from this surface. The consoles they used
+// to open no longer live in the chrome at all — Settings ▸ Advanced is their one home
+// (advanced-service-console ADR D1/D2), reached on compact exactly as on desktop
+// (Settings, or the shared `Open advanced settings` palette command), so no verb is
+// lost. The desktop rail keeps the pinned strip for the surviving pending-changes
+// affordance (ADR D3).
 
 import {
   toggleCompactRailBrowse,

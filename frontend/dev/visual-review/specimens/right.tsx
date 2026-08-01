@@ -171,7 +171,7 @@ export const rightSpecimens: Readonly<Record<string, SpecimenDef>> = {
   },
 
   "right-frameworkstatuscluster": {
-    note: "Container over useFrameworkStatusView: seeds engineKeys.status() (vault/search chips) and the authoring review-queue keys (approvals chip). 'unknown' tone (every chip) is the pre-resolution look, so loading seeds nothing.",
+    note: "Container over useApprovalsStatusView. Narrowed by advanced-service-console ADR D2/D3: the search and vault-health chips left with the rest of the operational chrome for Settings ▸ Advanced (see the panels area), so the strip is now the pending-changes affordance alone (plus the agent chip while a run streams). engineKeys.status() is still seeded because the shell around the chip reads it; the review-queue keys drive the only chip. 'unknown' tone is the pre-resolution look, so loading seeds nothing.",
     seed: (client, state) => {
       if (state === "loading") return;
       if (state === "normal") {

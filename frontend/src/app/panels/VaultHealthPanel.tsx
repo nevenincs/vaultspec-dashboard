@@ -11,7 +11,7 @@ import { useOpsReceipt } from "../../stores/view/opsReceipt";
 import type { OpsReceipt } from "../../stores/server/queries";
 import { useLocalizedMessage } from "../../platform/localization/LocalizationProvider";
 import type { MessageDescriptor } from "../../platform/localization/message";
-import { CONTROL_PANEL_VOCABULARY } from "../../stores/view/controlPanelVocabulary";
+import { ADVANCED_CONSOLE_LABELS } from "../../stores/view/advancedConsole";
 import { Button } from "../kit";
 
 /** Projected status word and visual tone. The word is a fail-closed catalog
@@ -72,9 +72,7 @@ export function VaultHealthPanel() {
   const checkVaultLabel = useLocalizedMessage({
     key: "operations:actions.checkVault",
   });
-  const projectHealthLabel = useLocalizedMessage(
-    CONTROL_PANEL_VOCABULARY["vault-health"].label,
-  );
+  const projectHealthLabel = useLocalizedMessage(ADVANCED_CONSOLE_LABELS.project);
   const core = useCoreStatus();
   const view = deriveVaultHealthView(core);
   const healthWord = useLocalizedMessage(view.word);

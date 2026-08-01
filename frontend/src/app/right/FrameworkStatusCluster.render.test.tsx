@@ -13,13 +13,15 @@ import {
 } from "../../localization/testing";
 import { en, sourceLocale } from "../../locales/en";
 import type { FrameworkStatusChip } from "../../stores/server/queries";
-import type { FooterChipId } from "../../stores/view/controlPanels";
+import type { MessageDescriptor } from "../../platform/localization/message";
 import { StatusChip } from "./FrameworkStatusCluster";
 
 afterEach(cleanup);
 
+const PENDING_LABEL: MessageDescriptor = { key: "common:agent.pending.label" };
+
 function renderChip(
-  id: FooterChipId,
+  label: MessageDescriptor,
   chip: FrameworkStatusChip,
   over: { open?: boolean; tabIndex?: 0 | -1; coarse?: boolean } = {},
 ) {
@@ -29,7 +31,7 @@ function renderChip(
   const result = render(
     <I18nextProvider i18n={runtime}>
       <StatusChip
-        id={id}
+        label={label}
         chip={chip}
         open={over.open ?? false}
         onToggle={() => {
@@ -66,7 +68,7 @@ function expectedPanelStatus(
 
 describe.sequential("StatusChip", () => {
   it("updates one chip through English, French, and Arabic", async () => {
-    const rendered = renderChip("pending", { tone: "attention", count: 3 });
+    const rendered = renderChip(PENDING_LABEL, { tone: "attention", count: 3 });
     const englishName = expectedPanelStatus(
       rendered.runtime,
       en.common.agent.pending.label,
@@ -110,7 +112,7 @@ describe.sequential("StatusChip", () => {
       unknown: "bg-ink-faint",
     };
     for (const [tone, className] of Object.entries(toneToClass)) {
-      const { container } = renderChip("vault-health", {
+      const { container } = renderChip(PENDING_LABEL, {
         tone: tone as FrameworkStatusChip["tone"],
       });
       const dot = container.querySelector("[data-framework-chip] span[aria-hidden]");
@@ -121,7 +123,7 @@ describe.sequential("StatusChip", () => {
 
   it("preserves count, pressed state, callbacks, and focus behavior", () => {
     const rendered = renderChip(
-      "search-service",
+      PENDING_LABEL,
       { tone: "unknown", count: 2 },
       { open: true },
     );
@@ -146,7 +148,7 @@ describe.sequential("StatusChip", () => {
     const { container } = render(
       <I18nextProvider i18n={runtime}>
         <StatusChip
-          id="vault-health"
+          label={PENDING_LABEL}
           chip={{ tone: "ok" }}
           open={false}
           onToggle={() => {
