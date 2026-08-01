@@ -8,8 +8,7 @@ body_schema: 'body-v1'
 related:
   - "[[2026-08-01-rail-feature-metadata-research]]"
 ---
-
-# `rail-feature-metadata` adr: `served feature metadata: status mark, dates, per-type counts` | (**status:** `proposed`)
+# `rail-feature-metadata` adr: `served feature metadata: status mark, dates, per-type counts` | (**status:** `accepted`)
 
 ## Problem Statement
 

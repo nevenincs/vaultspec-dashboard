@@ -8,8 +8,7 @@ body_schema: 'body-v1'
 related:
   - "[[2026-08-01-advanced-service-console-research]]"
 ---
-
-# `advanced-service-console` adr: `one advanced console, no service chrome in the user ux` | (**status:** `proposed`)
+# `advanced-service-console` adr: `one advanced console, no service chrome in the user ux` | (**status:** `accepted`)
 
 ## Problem Statement
 
