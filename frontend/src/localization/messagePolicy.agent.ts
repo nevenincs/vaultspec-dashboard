@@ -40,6 +40,11 @@ export const AGENT_MESSAGE_POLICY = {
   // it is a status, not an error the user caused.
   "common:agent.autonomyBanner.warning": { role: "status" },
   "common:agent.autonomyBanner.dismiss": { role: "action" },
+  // The docked run header (C5): a region name, the served phase rendered verbatim,
+  // and the roster eyebrow.
+  "common:agent.runHeader.region": { role: "accessibility" },
+  "common:agent.runHeader.phase": { role: "label" },
+  "common:agent.runHeader.roster": { role: "label" },
   "common:agent.pending.label": { role: "label" },
   "common:agent.pending.show": { role: "action" },
   "common:agent.pending.hide": { role: "action" },
@@ -63,7 +68,11 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.transcript.noSession": { role: "status" },
   "common:agent.transcript.error": { role: "error-message" },
   "common:agent.transcript.showingRecent": { role: "status" },
-  "common:agent.transcript.toolCalls": { role: "accessibility" },
+  // The one work-stretch disclosure (C2/C3): its label reports elapsed time or the
+  // served tool count, and the expanded flat list is named for screen readers.
+  "common:agent.transcript.timeline": { role: "accessibility" },
+  "common:agent.transcript.usedTools": { role: "label" },
+  "common:agent.transcript.workedFor": { role: "label" },
   "common:agent.transcript.thinking": { role: "label" },
   "common:agent.transcript.thinkingDuration": { role: "label" },
   "common:agent.transcript.toolInput": { role: "label" },

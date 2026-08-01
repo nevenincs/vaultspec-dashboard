@@ -315,6 +315,11 @@ export const documents = {
     },
   },
   reviewStation: {
+    diffstat: {
+      added: "+{{count, number}}",
+      aggregate: "Changed lines",
+      removed: "−{{count, number}}",
+    },
     accessibility: {
       loadingQueue: "Loading approvals",
     },

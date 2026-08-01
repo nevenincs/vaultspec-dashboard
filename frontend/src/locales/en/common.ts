@@ -385,6 +385,11 @@ export const common = {
       },
       startersLabel: "Ways to start",
     },
+    runHeader: {
+      phase: "Phase: {{phase}}",
+      region: "Run status",
+      roster: "AGENTS",
+    },
     pending: {
       hide: "Hide pending changes",
       label: "Pending changes",
@@ -412,7 +417,10 @@ export const common = {
       error:
         "This conversation couldn’t be loaded. It may have expired. Open a new session.",
       showingRecent: "Showing the most recent messages.",
-      toolCalls: "Tool calls",
+      timeline: "Work timeline",
+      usedTools_one: "Used {{count, number}} tool",
+      usedTools_other: "Used {{count, number}} tools",
+      workedFor: "Worked for {{elapsed}}",
       thinking: "Thinking",
       thinkingDuration: "Thinking ({{seconds, number}}s)",
       toolInput: "Input",

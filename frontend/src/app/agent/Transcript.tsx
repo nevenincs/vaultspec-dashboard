@@ -40,11 +40,11 @@ import {
 } from "../../stores/view/agentTranscript";
 import { Spinner } from "../kit";
 import { AgentTurnProposal } from "./ProposalCard";
-import { ThinkingEntry, ToolCallEntry } from "./ToolCallEntry";
+import { WorkStretchDisclosure } from "./WorkStretchDisclosure";
+import { deriveWorkStretch } from "./workStretch";
 
 const MSG = {
   showingRecent: "common:agent.transcript.showingRecent",
-  toolCalls: "common:agent.transcript.toolCalls",
 } as const;
 
 /** The rendered turn window FALLBACK. The render cap is taken from the snapshot's
@@ -177,35 +177,32 @@ function TurnStatusLine({ view }: { view: TranscriptTurnView }) {
 }
 
 function TranscriptTurn({ view }: { view: TranscriptTurnView }) {
-  const resolveMessage = useLocalizedMessageResolver();
+  // C2/C3: ONE disclosure per work stretch — the former thinking fold plus the
+  // per-call fold list collapse into it, and reasoning interleaves with the tool
+  // steps in its flat timeline rather than occupying a lane of its own.
+  const stretch = deriveWorkStretch(view.thinking, view.toolCalls);
   return (
     <li
       className="flex flex-col gap-fg-1-5"
       data-transcript-turn={view.turnId}
       data-transcript-live={view.live ? "" : undefined}
     >
-      <div data-transcript-prompt>
-        <p className="rounded-fg-md bg-paper-sunken px-fg-2 py-fg-1-5 text-body text-ink">
+      {/* C1: the USER turn is a right-aligned accent bubble. Bubble-vs-open text
+          plus alignment is the ONLY speaker cue — there are no name labels. */}
+      <div className="flex justify-end" data-transcript-prompt>
+        <p className="max-w-[85%] rounded-fg-md bg-accent/12 px-fg-2 py-fg-1-5 text-body text-ink">
           {view.prompt}
         </p>
-        {view.summary !== null && view.summary.length > 0 && (
-          <p className="px-fg-2 pt-fg-1 text-meta text-ink-muted">{view.summary}</p>
-        )}
       </div>
-      <ThinkingEntry segment={view.thinking} />
-      {view.toolCalls.length > 0 && (
-        <ul
-          className="flex flex-col gap-fg-1"
-          aria-label={resolveMessage({ key: MSG.toolCalls }).message}
-          data-transcript-tools
-        >
-          {view.toolCalls.map((record) => (
-            <li key={record.toolCallId}>
-              <ToolCallEntry record={record} live={view.live} />
-            </li>
-          ))}
-        </ul>
+      {/* C1: the ASSISTANT side is full-width, unbubbled, open text. The served
+          turn summary is the only assistant-authored text this plane carries; the
+          final-message position below stays honestly empty until a wire serves one. */}
+      {view.summary !== null && view.summary.length > 0 && (
+        <p className="text-body text-ink" data-transcript-assistant>
+          {view.summary}
+        </p>
       )}
+      <WorkStretchDisclosure stretch={stretch} live={view.live} />
       {/* Final text: no wire surface serves the agent's message yet (a2a relay
           gap) — the position stays honestly empty rather than faking output. */}
       <TurnStatusLine view={view} />

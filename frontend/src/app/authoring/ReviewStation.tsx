@@ -41,6 +41,8 @@ import {
 } from "../kit";
 import { ActionConfirmationDialog } from "../chrome/ActionConfirmationDialog";
 import { DiffPanel } from "./DiffPanel";
+import { ProposalDiffstat } from "./ProposalDiffstat";
+import type { ReactNode } from "react";
 
 type ResolveMessage = ReturnType<typeof useLocalizedMessageResolver>;
 
@@ -211,10 +213,16 @@ export function ProposalCard({
   proposal,
   actions,
   appliedPolicy,
+  diffstat,
 }: {
   proposal: ProposalProjection;
   actions: ReviewActions;
   appliedPolicy?: AppliedPolicyMeta;
+  /** The C4 stat block, supplied by the HOST rather than read here. The card is a
+   *  prop-driven export with three consumers and no provider of its own; giving it
+   *  a query would make it un-renderable outside one. `ProposalDiffstat` is that
+   *  block, and `proposalDiffstatSlot` is the one place hosts build it. */
+  diffstat?: ReactNode;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const [busy, setBusy] = useState(false);
@@ -406,7 +414,12 @@ export function ProposalCard({
 
       {conflict && <StateBlock mode="degraded" layout="inline" message={conflict} />}
 
-      <div className="flex flex-wrap items-center gap-fg-2">
+      {/* C4: the change renders as a STAT card — an aggregate plus a per-file
+          breakdown — with the full diff still deferred to the expansion below.
+          Actions stay terminal-right, after the stat. */}
+      {diffstat}
+
+      <div className="flex flex-wrap items-center justify-end gap-fg-2">
         {eligibilityForRender.map(({ entry, command, label, presentation }) => (
           <ActionButton
             key={command}
@@ -620,6 +633,12 @@ function RequestChangesComposer({
   );
 }
 
+/** Build the C4 stat block for a proposal. The ONE place a host mounts it, so the
+ *  three card consumers cannot drift into three different stat treatments. */
+export function proposalDiffstatSlot(proposal: ProposalProjection): ReactNode {
+  return <ProposalDiffstat changesetId={proposal.changeset_id} />;
+}
+
 export function AppliedUnderPolicyLane({
   items,
   actions,
@@ -644,6 +663,7 @@ export function AppliedUnderPolicyLane({
             proposal={item.proposal}
             actions={actions}
             appliedPolicy={item}
+            diffstat={proposalDiffstatSlot(item.proposal)}
           />
         ))}
       </ul>
@@ -724,6 +744,7 @@ export function ReviewStationBody({
               key={proposal.changeset_id}
               proposal={proposal}
               actions={actions}
+              diffstat={proposalDiffstatSlot(proposal)}
             />
           ))}
         </ul>

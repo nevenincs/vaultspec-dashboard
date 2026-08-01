@@ -80,10 +80,55 @@ export interface TeamRunView {
   readonly entries: TeamActivityEntry[];
   /** Agent ids currently `working` (drives the live pulsing indicator). */
   readonly activeAgents: string[];
+  /** The run's ROSTER as the relay disclosed it: every agent seen, with the served
+   *  state token for each. Rendered by the docked run header (research C5), which
+   *  is why it is exposed rather than kept internal to the reducer. Per-role MODEL
+   *  is deliberately absent — no relay frame or run-status field carries one, so
+   *  the header names roles and states only. */
+  readonly roster: readonly TeamRosterMember[];
   /** True only when the authoritative run-status snapshot is terminal. */
   readonly terminal: boolean;
   /** A run-fault message when an `error` frame arrived, else null. */
   readonly error: string | null;
+}
+
+/** One roster row: an agent the run disclosed, and the last served state token for
+ *  it. The token passes through verbatim — the header never classifies it. */
+export interface TeamRosterMember {
+  readonly agentId: string;
+  readonly state: string;
+}
+
+/**
+ * The roster alone, walked from the relay's status frames.
+ *
+ * The docked run header (C5) needs only this, and it must not pay for — or duplicate
+ * — the full activity assembly to get it. Same rule as the reducer: `team_status`
+ * carries a roster array, `agent_status` carries one member, and both pass their
+ * state token through verbatim.
+ */
+export function deriveTeamRoster(
+  frames: readonly RelayTranscriptFrame[],
+): TeamRosterMember[] {
+  const agentState = new Map<string, string>();
+  for (const frame of frames) {
+    if (frame.kind !== "status") continue;
+    const rosterRaw = frame.payload.agents;
+    if (Array.isArray(rosterRaw)) {
+      for (const member of rosterRaw) {
+        if (member && typeof member === "object") {
+          const rec = member as Record<string, unknown>;
+          const id = typeof rec.agent_id === "string" ? rec.agent_id : "";
+          const state = typeof rec.state === "string" ? rec.state : "";
+          if (id) agentState.set(id, state);
+        }
+      }
+    }
+    const id = relayAgentId(frame);
+    const state = relayAgentState(frame);
+    if (id && state) agentState.set(id, state);
+  }
+  return [...agentState.entries()].map(([agentId, state]) => ({ agentId, state }));
 }
 
 /** A mutable accumulator entry (internal; frozen into the readonly view at end). */
@@ -291,5 +336,12 @@ export function assembleTeamRun(
         .filter(([, state]) => state === WORKING_STATE)
         .map(([id]) => id);
 
-  return { entries: capped, activeAgents, terminal, error };
+  const roster: TeamRosterMember[] = [...agentState.entries()].map(
+    ([agentId, state]) => ({
+      agentId,
+      state,
+    }),
+  );
+
+  return { entries: capped, activeAgents, roster, terminal, error };
 }

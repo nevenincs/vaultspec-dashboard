@@ -3,6 +3,11 @@ const body = "body" as const;
 
 export const ltrReviewStationResources = {
   accessibility: { loadingQueue: "Chargement des approbations" },
+  diffstat: {
+    added: "+{{count, number}}",
+    aggregate: "Lignes modifiées",
+    removed: "−{{count, number}}",
+  },
   actions: {
     hideChanges: "Masquer les modifications",
     requestChanges: "Demander des modifications",
@@ -139,6 +144,11 @@ export const ltrReviewStationDestructiveActions = {
 
 export const rtlReviewStationResources = {
   accessibility: { loadingQueue: "جارٍ تحميل الموافقات" },
+  diffstat: {
+    added: "+{{count, number}}",
+    aggregate: "الأسطر المعدّلة",
+    removed: "−{{count, number}}",
+  },
   actions: {
     hideChanges: "إخفاء التغييرات",
     requestChanges: "طلب تغييرات",

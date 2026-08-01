@@ -156,7 +156,19 @@ function localized(ui: React.ReactNode) {
   const runtime = createTestLocalizationRuntime();
   return {
     runtime,
-    ...render(<I18nextProvider i18n={runtime}>{ui}</I18nextProvider>),
+    // A QueryClient is present because the station's VIEWS (the queue body, the
+    // after-fact lane) mount the C4 diffstat, which reads the served review detail.
+    // `ProposalCard` itself stays prop-driven and needs no provider — its own tests
+    // below render it bare, which is exactly the fence that keeps it headless.
+    ...render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider
+          client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
+        >
+          {ui}
+        </QueryClientProvider>
+      </I18nextProvider>,
+    ),
   };
 }
 

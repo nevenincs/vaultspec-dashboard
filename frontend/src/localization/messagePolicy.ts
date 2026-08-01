@@ -506,6 +506,11 @@ export const ENGLISH_MESSAGE_POLICY = {
   "documents:reviewStation.statuses.compensationRequired": { role: "status" },
   "documents:reviewStation.statuses.conflicted": { role: "status" },
   "documents:reviewStation.statuses.draft": { role: "status" },
+  // C4 stat card: the aggregate eyebrow and the two signed line tallies. The
+  // tallies are numbers with a sign, not sentences, so they carry no verb.
+  "documents:reviewStation.diffstat.aggregate": { role: "label" },
+  "documents:reviewStation.diffstat.added": { role: "label" },
+  "documents:reviewStation.diffstat.removed": { role: "label" },
   "documents:reviewStation.statuses.failed": { role: "status" },
   "documents:reviewStation.statuses.generating": { role: "status" },
   "documents:reviewStation.statuses.needsReview": { role: "status" },

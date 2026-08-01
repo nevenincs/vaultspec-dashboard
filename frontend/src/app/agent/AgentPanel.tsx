@@ -15,7 +15,7 @@
 // nothing itself and reads no raw `tiers`. Run/session STATE is read from the
 // session snapshot (there is no run-status route on this plane).
 //
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -69,7 +69,9 @@ import { PendingChangesBridge } from "./PendingChangesBridge";
 import { PendingChangesView } from "./PendingChangesView";
 import { Transcript } from "./Transcript";
 import { TeamRunTranscript } from "./TeamRunTranscript";
-import { TeamRunProgressProvider } from "./TeamRunProgressContext";
+import { TeamRunProgressProvider, useTeamRunProgress } from "./TeamRunProgressContext";
+import { TeamRunHeader } from "./TeamRunHeader";
+import { deriveTeamRoster } from "./teamRun";
 
 const AGENT = {
   region: "common:agent.panel.region",
@@ -328,6 +330,16 @@ function ActiveTeamRunRecovery({ scope }: { scope: string }) {
   return null;
 }
 
+/** The run header's slot. It reads the progress context, so it must live INSIDE
+ *  the provider — hence a component rather than an inline derivation in the panel
+ *  body. The roster walk is memoized off the raw frames. */
+function AgentRunHeaderSlot() {
+  const progress = useTeamRunProgress();
+  const frames = progress.frames;
+  const roster = useMemo(() => deriveTeamRoster(frames), [frames]);
+  return <TeamRunHeader roster={roster} />;
+}
+
 /** The CONTINUE posture's composer slot: docked at the panel bottom beneath the
  *  transcript (research G8 — position encodes posture). The begin posture renders
  *  the same component centered instead, from `AgentBeginView`. */
@@ -391,6 +403,10 @@ export function AgentPanel() {
         ) : null}
         <AgentPanelHeader currentSessionId={currentSessionId} />
         <AgentViewSwitcher panelView={panelView} />
+        {/* C5: live run metadata DOCKS beside the conversation. It sits between the
+            view switcher and the transcript in both postures, so it is never
+            scrolled away inside the message flow. */}
+        {panelView === "pending" ? null : <AgentRunHeaderSlot />}
         {panelView === "pending" ? (
           <PendingChangesView />
         ) : posture === "begin" ? (

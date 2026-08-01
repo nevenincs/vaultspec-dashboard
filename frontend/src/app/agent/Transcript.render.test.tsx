@@ -362,18 +362,19 @@ describe("Transcript rendering (live wire)", () => {
     expect(streaming!.getAttribute("data-transcript-streaming")).toBe("active");
     expect(document.querySelector("[data-transcript-thinking]")).toBeNull();
 
-    // Fixed order within the turn: prompt precedes tools precedes the status
-    // line precedes the S16 proposal slot.
+    // Fixed order within the turn: prompt precedes the ONE work-stretch disclosure
+    // precedes the status line precedes the S16 proposal slot. Tool calls and
+    // reasoning no longer sit as siblings here — C2/C3 folded both INTO the
+    // stretch, so the turn has one work row, not a stack of them.
     recordAgentToolCall(toolRecord({ toolCallId: `call:order-${run}`, runId: runId! }));
     recordAgentThinking({ runId: runId!, text: "weighing options", durationMs: 1200 });
     await waitFor(() =>
-      expect(document.querySelector("[data-transcript-tools]")).not.toBeNull(),
+      expect(document.querySelector("[data-transcript-work-stretch]")).not.toBeNull(),
     );
     const turn = document.querySelector("[data-transcript-turn]")!;
     const parts = [
       turn.querySelector("[data-transcript-prompt]"),
-      turn.querySelector("[data-transcript-thinking]"),
-      turn.querySelector("[data-transcript-tools]"),
+      turn.querySelector("[data-transcript-work-stretch]"),
       turn.querySelector("[data-transcript-streaming]"),
       turn.querySelector("[data-agent-proposal-slot]"),
     ];
@@ -384,10 +385,12 @@ describe("Transcript rendering (live wire)", () => {
           Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
     }
-    // The thinking block is dimmed, collapsed, and cost-labeled from the
-    // recorded duration; expanding reveals the segment.
-    expect(screen.getByText("Thinking (1.2s)")).toBeTruthy();
+    // Exactly ONE disclosure for the whole stretch (C2), not one per step.
+    expect(turn.querySelectorAll("[data-transcript-work-stretch]").length).toBe(1);
+    // Collapsed by default, so the reasoning text AND the tool rows are both behind
+    // it — the stretch is the single thing the reader chooses to open.
     expect(screen.queryByText("weighing options")).toBeNull();
+    expect(turn.querySelector("[data-transcript-timeline]")).toBeNull();
 
     // Settle the run over the real wire; the re-read snapshot collapses the
     // streaming chrome to the terminal served status only.
