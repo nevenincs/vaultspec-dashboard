@@ -45,6 +45,12 @@ function asText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
+/** An option's readable label: the served one, or its id when the sibling served
+ *  none. Both are AUTHORED data passed through, never UI copy of ours. */
+function optionLabel(label: string, id: string): string {
+  return label.length > 0 ? label : id;
+}
+
 /** Normalize one served option. An option without an id cannot be answered with,
  *  so it is dropped rather than rendered as an unselectable button. */
 function normalizeOption(raw: unknown): ClarificationOption | null {
@@ -52,8 +58,7 @@ function normalizeOption(raw: unknown): ClarificationOption | null {
   const rec = raw as Record<string, unknown>;
   const id = asText(rec.id).trim();
   if (id.length === 0) return null;
-  const label = asText(rec.label).trim();
-  return { id, label: label.length > 0 ? label : id };
+  return { id, label: optionLabel(asText(rec.label).trim(), id) };
 }
 
 /** Normalize one served question. A question with no id or no prompt is dropped:

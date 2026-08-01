@@ -27,7 +27,7 @@ import { dirname, join, relative, sep } from "node:path";
 const LIMIT = 1500;
 
 const here = dirname(fileURLToPath(import.meta.url));
-const frontendRoot = join(here, "..");
+const frontendRoot = join(here, "..", "..");
 const repoRoot = join(frontendRoot, "..");
 const baselinePath = join(here, "module-size-baseline.json");
 

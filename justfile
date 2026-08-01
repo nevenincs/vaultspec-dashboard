@@ -127,7 +127,9 @@ _dev-lint-markdown:
 _dev-lint-rust:
   cargo fmt --manifest-path engine/Cargo.toml --all -- --check
   cargo clippy --manifest-path engine/Cargo.toml --workspace --all-targets -- -D warnings
-  node frontend/scripts/scan-module-size.mjs
+  # The module-size scanner covers BOTH trees (frontend/src + engine/crates), which
+  # is why the rust lane runs it too. It lives under frontend/dev/tooling/ now.
+  node frontend/dev/tooling/scan-module-size.mjs
 
 _dev-lint-frontend:
   npm --prefix frontend run lint

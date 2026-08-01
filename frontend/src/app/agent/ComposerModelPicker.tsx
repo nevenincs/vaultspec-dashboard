@@ -73,6 +73,7 @@ function ProfileRow({
   // The sibling's own words for why a profile cannot be used. Joined, never
   // paraphrased — a reason we rewrite is a reason we might get wrong.
   const reason = profile.unavailable_reasons.join(" ");
+  const reasonTitle = profile.eligible ? undefined : authoredDisplayText(reason);
   const provider = profileProviderLabel(profile, mixedLabel);
   const mixed = profileIsMixedProvider(profile);
   return (
@@ -82,7 +83,7 @@ function ProfileRow({
         role="menuitemradio"
         aria-checked={selected}
         disabled={!profile.eligible}
-        title={profile.eligible ? undefined : authoredDisplayText(reason)}
+        title={reasonTitle}
         data-model-profile={profile.id}
         data-model-eligible={profile.eligible ? "" : undefined}
         onClick={profile.eligible ? onSelect : undefined}
@@ -180,11 +181,12 @@ export function ComposerModelPicker({
       }).message
     : pill;
   const menuAria = resolveMessage({ key: MSG.menuAria });
+  const disabledTitle = disabled ? authoredDisplayText(reason) : undefined;
 
   return (
     <div className="relative" data-composer-model>
       <span
-        title={disabled ? reason : undefined}
+        title={disabledTitle}
         data-composer-model-trigger
         data-model-profile={selected?.id}
       >

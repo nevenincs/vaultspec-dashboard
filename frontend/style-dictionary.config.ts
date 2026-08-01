@@ -21,7 +21,11 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { readFileSync, writeFileSync } from "node:fs";
 import StyleDictionary from "style-dictionary";
-import { cssValue, defaultCssVar, type DtcgColorValue } from "./scripts/sd-transforms.ts";
+import {
+  cssValue,
+  defaultCssVar,
+  type DtcgColorValue,
+} from "./dev/tooling/sd-transforms.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const tokensDir = join(here, "tokens");

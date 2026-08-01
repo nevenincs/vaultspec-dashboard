@@ -38,7 +38,7 @@ import {
 
 const MSG = {
   region: "common:agent.clarification.region",
-  title: "common:agent.clarification.title",
+  heading: "common:agent.clarification.title",
   submit: "common:agent.clarification.submit",
   required: "common:agent.clarification.required",
   answerPlaceholder: "common:agent.clarification.answerPlaceholder",
@@ -57,16 +57,16 @@ export function ClarificationRecap({
   entries: readonly ClarificationRecapEntry[];
 }) {
   const resolveMessage = useLocalizedMessageResolver();
-  const title = resolveMessage({ key: MSG.recapTitle });
+  const recapHeading = resolveMessage({ key: MSG.recapTitle });
   if (entries.length === 0) return null;
   return (
     <section
       className="flex flex-col gap-fg-1 rounded-fg-md border border-rule bg-paper-sunken px-fg-2 py-fg-1-5"
-      aria-label={title.usedFallback ? undefined : title.message}
+      aria-label={recapHeading.usedFallback ? undefined : recapHeading.message}
       data-clarification-recap
     >
-      {!title.usedFallback && (
-        <p className="text-caption text-ink-faint">{title.message}</p>
+      {!recapHeading.usedFallback && (
+        <p className="text-caption text-ink-faint">{recapHeading.message}</p>
       )}
       <dl className="flex flex-col gap-fg-1">
         {entries.map((entry) => (
@@ -102,7 +102,7 @@ export function ClarificationCard({
   const [failed, setFailed] = useState(false);
 
   const region = resolveMessage({ key: MSG.region });
-  const title = resolveMessage({ key: MSG.title });
+  const heading = resolveMessage({ key: MSG.heading });
   const submitLabel = resolveMessage({ key: MSG.submit });
   const requiredLabel = resolveMessage({ key: MSG.required });
   const placeholder = resolveMessage({ key: MSG.answerPlaceholder });
@@ -110,7 +110,7 @@ export function ClarificationCard({
   // Once answered, the card IS the recap — the questions do not linger beside their
   // own answers.
   if (recap !== null) return <ClarificationRecap entries={recap} />;
-  if (region.usedFallback || title.usedFallback || submitLabel.usedFallback) {
+  if (region.usedFallback || heading.usedFallback || submitLabel.usedFallback) {
     return null;
   }
 
@@ -150,7 +150,7 @@ export function ClarificationCard({
       aria-label={region.message}
       data-clarification-card={pending.requestId}
     >
-      <p className="text-label font-medium text-ink">{title.message}</p>
+      <p className="text-label font-medium text-ink">{heading.message}</p>
       <ol className="flex flex-col gap-fg-2">
         {pending.questions.map((question) => (
           <li

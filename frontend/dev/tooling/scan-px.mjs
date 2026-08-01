@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, relative, sep } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const frontendRoot = join(here, "..");
+const frontendRoot = join(here, "..", "..");
 const srcRoot = join(frontendRoot, "src");
 const allowlistPath = join(here, "px-allowlist.json");
 

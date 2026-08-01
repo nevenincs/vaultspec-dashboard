@@ -28,7 +28,7 @@ import { evidenceMention, evidenceOptions } from "./composerEvidence";
 
 const MSG = {
   aria: "common:agent.composer.evidenceAria",
-  placeholder: "common:agent.composer.evidencePlaceholder",
+  searchPlaceholder: "common:agent.composer.evidencePlaceholder",
   empty: "common:agent.composer.evidenceEmpty",
 } as const;
 
@@ -63,9 +63,11 @@ export function ComposerEvidencePicker({
   };
 
   const aria = resolveMessage({ key: MSG.aria });
-  const placeholder = resolveMessage({ key: MSG.placeholder });
+  const searchPlaceholder = resolveMessage({ key: MSG.searchPlaceholder });
   const empty = resolveMessage({ key: MSG.empty });
-  if (aria.usedFallback || placeholder.usedFallback || empty.usedFallback) return null;
+  if (aria.usedFallback || searchPlaceholder.usedFallback || empty.usedFallback) {
+    return null;
+  }
 
   return (
     <Popover
@@ -83,7 +85,7 @@ export function ComposerEvidencePicker({
         onQueryChange={setQuery}
         autoFocus
         clearOnCommit
-        placeholder={placeholder.message}
+        placeholder={searchPlaceholder.message}
         ariaLabel={aria.message}
         emptyLabel={empty.message}
       />

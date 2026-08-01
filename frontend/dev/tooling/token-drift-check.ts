@@ -19,7 +19,7 @@ import {
   generateRegions,
   MARKERS,
   STYLES_FILE,
-} from "../style-dictionary.config.ts";
+} from "../../style-dictionary.config.ts";
 import { compareDecls, extractRegion, parseScopedDecls } from "./token-css-diff.ts";
 
 async function main(): Promise<void> {

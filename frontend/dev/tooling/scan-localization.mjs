@@ -14,7 +14,7 @@ import {
 } from "./scan-localization-policy.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const frontendRoot = resolve(here, "..");
+const frontendRoot = resolve(here, "..", "..");
 const sourceRoot = join(frontendRoot, "src");
 const tsconfigPath = join(frontendRoot, "tsconfig.json");
 
