@@ -40,7 +40,15 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Clock3, FileText, Hash, MessageSquareText, X } from "lucide-react";
+import {
+  Clock3,
+  FileCode2,
+  FileText,
+  Hash,
+  MessageSquareText,
+  Plus,
+  X,
+} from "lucide-react";
 
 import {
   useActiveLocale,
@@ -95,6 +103,10 @@ import {
 } from "../../stores/view/commandPaletteCommands";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Button, DropdownButton, Popover, Spinner } from "../kit";
+import { AgentAutonomyControl } from "./AgentAutonomyControl";
+import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
+import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
+import { clearComposerDraft, useComposerSeed } from "./composerDraft";
 
 const MSG = {
   idlePlaceholder: "common:agent.composer.placeholder",
@@ -129,6 +141,7 @@ const MSG = {
   teamRunDegraded: "common:agent.composer.teamRunDegraded",
   teamRunDismiss: "common:agent.composer.teamRunDismiss",
   teamRunLocked: "common:agent.composer.teamRunLocked",
+  attachContext: "common:agent.composer.attachContext",
 } as const;
 
 /** Cap the slash popover's rendered rows (bounded-by-default). */
@@ -274,6 +287,8 @@ function ComposerChipRow({ queuedCount }: { queuedCount: number }) {
             glyph={
               mention.kind === "feature" ? (
                 <Hash size={12} aria-hidden />
+              ) : mention.kind === "path" ? (
+                <FileCode2 size={12} aria-hidden />
               ) : (
                 <FileText size={12} aria-hidden />
               )
@@ -506,46 +521,101 @@ function ComposerTeamSelector({
   );
 }
 
-/** The composer's left-side selector pills: the LIVE Team selector and the
- *  still-static Model pill. The wire serves no model options, so Model stays
- *  disabled-with-reason (honest single-agent default); Team is now a live selector
- *  fed by the a2a store layer. */
-function ComposerSelectorPills({
-  selectedTeamPreset,
-  onSelectTeam,
-  locked,
-}: {
-  selectedTeamPreset: string | null;
-  onSelectTeam: (id: string | null) => void;
-  locked: boolean;
-}) {
+/** The model pill, rendered from the SERVED profile only
+ *  (agent-panel-shell-integration D3; a2a-agent-flow D3). The wire serves no list
+ *  of selectable models — a preset carries exactly one `default_profile_id` — so
+ *  this renders that served id when the chosen preset has one and stays
+ *  disabled-with-reason otherwise. It never invents a menu of profiles the sibling
+ *  has not admitted, and never shows a model the run would not actually use. */
+function ComposerModelPill({ profileId }: { profileId: string | null }) {
   const resolveMessage = useLocalizedMessageResolver();
   const modelLabel = resolveMessage({ key: MSG.model }).message;
-  const modelValue = resolveMessage({ key: MSG.modelDefault }).message;
+  const served = profileId !== null && profileId.length > 0;
+  const modelValue = served
+    ? authoredDisplayText(profileId)
+    : resolveMessage({ key: MSG.modelDefault }).message;
   const modelReason = resolveMessage({ key: MSG.modelUnavailable }).message;
   const modelPill = resolveMessage({
     key: MSG.selectorValue,
     values: { selector: modelLabel, value: modelValue },
   }).message;
-  const modelAria = resolveMessage({
-    key: MSG.selectorDisabled,
-    values: { selector: modelLabel, value: modelValue, reason: modelReason },
-  }).message;
+  const modelAria = served
+    ? modelPill
+    : resolveMessage({
+        key: MSG.selectorDisabled,
+        values: { selector: modelLabel, value: modelValue, reason: modelReason },
+      }).message;
   return (
-    <div className="flex min-w-0 items-center gap-fg-1">
-      <span title={modelReason} data-composer-model>
-        <DropdownButton
-          label={modelPill}
-          onClick={() => undefined}
-          disabled
-          ariaLabel={modelAria}
-        />
-      </span>
+    <span
+      title={served ? undefined : modelReason}
+      data-composer-model
+      data-model-profile={served ? profileId : undefined}
+    >
+      <DropdownButton
+        label={modelPill}
+        onClick={() => undefined}
+        disabled
+        ariaLabel={modelAria}
+      />
+    </span>
+  );
+}
+
+/** Row 2 RIGHT — how it thinks (research G6, codified by D3): the team/preset
+ *  selector and the served model profile. The send control sits to their right,
+ *  rendered by the composer itself since it changes shape with the run. */
+function ComposerThinkingControls({
+  selectedTeamPreset,
+  onSelectTeam,
+  locked,
+  profileId,
+}: {
+  selectedTeamPreset: string | null;
+  onSelectTeam: (id: string | null) => void;
+  locked: boolean;
+  profileId: string | null;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-fg-1" data-composer-thinking>
       <ComposerTeamSelector
         selectedPresetId={selectedTeamPreset}
         onSelectPreset={onSelectTeam}
         locked={locked}
       />
+      <ComposerModelPill profileId={profileId} />
+    </div>
+  );
+}
+
+/** Row 2 LEFT — what the agent works on (research G6, codified by D3): the `+`
+ *  attach affordance (the features/documents corpus picker, which `@` no longer
+ *  owns) and the autonomy control, which IS the permission-scope selector the
+ *  reference products converge on (C6). */
+function ComposerScopeControls({
+  onAttach,
+  attachDisabled,
+}: {
+  onAttach: () => void;
+  attachDisabled: boolean;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const attach = resolveMessage({ key: MSG.attachContext });
+  return (
+    <div className="flex min-w-0 items-center gap-fg-1-5" data-composer-scope>
+      {!attach.usedFallback && (
+        <button
+          type="button"
+          onClick={onAttach}
+          disabled={attachDisabled}
+          aria-label={attach.message}
+          title={attach.message}
+          data-composer-attach
+          className="inline-flex size-fg-5 shrink-0 items-center justify-center rounded-fg-sm border border-rule text-ink-faint transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus size={14} aria-hidden />
+        </button>
+      )}
+      <AgentAutonomyControl />
     </div>
   );
 }
@@ -569,6 +639,7 @@ export function Composer() {
 
   const [text, setText] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [sendFailed, setSendFailed] = useState(false);
@@ -597,6 +668,15 @@ export function Composer() {
   const teamTerminal = teamProgress.terminal;
   const teamPhase = teamProgress.status?.semantic_phase ?? teamProgress.status?.status;
   const teamMode = selectedTeamPreset !== null;
+  // The model the run will actually use, read from the SERVED preset list: a preset
+  // carries one `default_profile_id`. No preset (or none served) means no profile to
+  // name, and the pill says so rather than showing a model the run would not use.
+  const teamSelector = useTeamSelectorState();
+  const selectedProfileId =
+    selectedTeamPreset === null
+      ? null
+      : (teamSelector.presets.find((preset) => preset.id === selectedTeamPreset)
+          ?.default_profile_id ?? null);
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
@@ -645,6 +725,21 @@ export function Composer() {
     row.command.run();
     inputRef.current?.focus();
   };
+
+  // A starter affordance from the begin state seeds the draft ONCE. The seed is
+  // consumed on delivery, so it can never re-apply over what the user typed next,
+  // and focus lands in the input so the starter continues into typing.
+  const seed = useComposerSeed();
+  useEffect(() => {
+    if (seed === null) return;
+    setText(seed);
+    clearComposerDraft();
+    const el = inputRef.current;
+    if (el !== null) {
+      el.focus();
+      el.setSelectionRange(seed.length, seed.length);
+    }
+  }, [seed]);
 
   // --- auto-grow: min 1 line, CSS max-height caps at ~5 lines then scrolls ------
   useEffect(() => {
@@ -827,9 +922,13 @@ export function Composer() {
         isMentionTrigger(text, caret) &&
         mentions.length < AGENT_COMPOSER_MENTION_CAP
       ) {
+        // `@` is the EVIDENCE key (agent-panel-shell-integration D3): rel paths off
+        // the files providers, scoped to the bound workspace. The corpus picker
+        // (features + documents) keeps its own affordance on the `+` attach button,
+        // so neither capability was traded for the other.
         event.preventDefault();
         event.stopPropagation();
-        setMentionOpen(true);
+        setEvidenceOpen(true);
         return;
       }
     }
@@ -881,6 +980,12 @@ export function Composer() {
       {mentionOpen && (
         <ComposerMentionPicker
           onDismiss={() => setMentionOpen(false)}
+          inputRef={inputRef}
+        />
+      )}
+      {evidenceOpen && (
+        <ComposerEvidencePicker
+          onDismiss={() => setEvidenceOpen(false)}
           inputRef={inputRef}
         />
       )}
@@ -959,57 +1064,69 @@ export function Composer() {
           )}
         </div>
       )}
+      {/* C7: the standing elevated-autonomy warning sits directly ABOVE the
+          composer's control row — never modal, never blocking the prompt. */}
+      <ComposerAutonomyBanner />
+      {/* Row 2 (G6, codified by D3): LEFT changes what the agent works on, RIGHT
+          changes how it thinks, and send is terminal-right. */}
       <div className="flex items-center justify-between gap-fg-2">
-        <ComposerSelectorPills
-          selectedTeamPreset={selectedTeamPreset}
-          onSelectTeam={setSelectedTeamPreset}
-          locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
+        <ComposerScopeControls
+          onAttach={() => setMentionOpen(true)}
+          attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
         />
-        {teamRunActive && !teamTerminal ? (
-          <Button
-            variant="danger"
-            disabled={cancelTeamRun.isPending}
-            onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
-            data-composer-team-cancel
-          >
-            {resolveMessage({ key: MSG.cancelTeamRun }).message}
-          </Button>
-        ) : teamRunActive && teamTerminal ? (
-          <Button
-            variant="secondary"
-            onClick={() => setAgentTeamRun(null)}
-            data-composer-team-dismiss
-          >
-            {resolveMessage({ key: MSG.teamRunDismiss }).message}
-          </Button>
-        ) : activeRun !== null ? (
-          <Button
-            variant="danger"
-            disabled={stopDisabled}
-            onClick={() => agentStopRunAction().run?.()}
-            data-composer-stop
-          >
-            {resolveMessage({ key: MSG.stop }).message}
-          </Button>
-        ) : teamMode ? (
-          <Button
-            variant="primary"
-            disabled={teamStartDisabled}
-            onClick={() => void startTeam()}
-            data-composer-team-start
-          >
-            {resolveMessage({ key: MSG.startTeamRun }).message}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            disabled={sendDisabled}
-            onClick={() => void submit()}
-            data-composer-send
-          >
-            {resolveMessage({ key: MSG.send }).message}
-          </Button>
-        )}
+        <div className="flex min-w-0 items-center gap-fg-2">
+          <ComposerThinkingControls
+            selectedTeamPreset={selectedTeamPreset}
+            onSelectTeam={setSelectedTeamPreset}
+            locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
+            profileId={selectedProfileId}
+          />
+          {teamRunActive && !teamTerminal ? (
+            <Button
+              variant="danger"
+              disabled={cancelTeamRun.isPending}
+              onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
+              data-composer-team-cancel
+            >
+              {resolveMessage({ key: MSG.cancelTeamRun }).message}
+            </Button>
+          ) : teamRunActive && teamTerminal ? (
+            <Button
+              variant="secondary"
+              onClick={() => setAgentTeamRun(null)}
+              data-composer-team-dismiss
+            >
+              {resolveMessage({ key: MSG.teamRunDismiss }).message}
+            </Button>
+          ) : activeRun !== null ? (
+            <Button
+              variant="danger"
+              disabled={stopDisabled}
+              onClick={() => agentStopRunAction().run?.()}
+              data-composer-stop
+            >
+              {resolveMessage({ key: MSG.stop }).message}
+            </Button>
+          ) : teamMode ? (
+            <Button
+              variant="primary"
+              disabled={teamStartDisabled}
+              onClick={() => void startTeam()}
+              data-composer-team-start
+            >
+              {resolveMessage({ key: MSG.startTeamRun }).message}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              disabled={sendDisabled}
+              onClick={() => void submit()}
+              data-composer-send
+            >
+              {resolveMessage({ key: MSG.send }).message}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

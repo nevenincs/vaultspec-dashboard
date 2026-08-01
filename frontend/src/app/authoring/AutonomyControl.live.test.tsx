@@ -27,7 +27,7 @@ import {
   type CreateProposalPayload,
 } from "../../stores/server/authoring";
 import { queryClient } from "../../stores/server/queryClient";
-import { AgentAutonomyControl } from "../agent/AgentPanel";
+import { AgentAutonomyControl } from "../agent/AgentAutonomyControl";
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 

@@ -12,7 +12,7 @@
 // receives the committed value through `onCommit`.
 
 import type { KeyboardEvent } from "react";
-import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { authoredDisplayText } from "../../platform/localization/displayText";
@@ -74,6 +74,16 @@ export interface AutocompleteComboboxProps {
    *  field stays a picker while open, yet an Enter with the list dismissed still
    *  submits the surrounding form. Omitted callers keep the pure picker behaviour. */
   onSubmit?: () => void;
+  /** Observe the typed query. For a host whose OPTIONS are produced by the query
+   *  itself — the composer's `@`-evidence picker feeds it to the files search
+   *  providers — so the field stays the one combobox implementation instead of the
+   *  host growing a parallel input. The internal filter still applies, which is
+   *  harmless for provider results already matched on the same query. */
+  onQueryChange?: (query: string) => void;
+  /** Land focus in the field on mount. For a picker that IS the continuation of a
+   *  keystroke (the composer's `@`), where the host would otherwise have to reach
+   *  into the DOM for the input. */
+  autoFocus?: boolean;
 }
 
 function matches(option: ComboOption, q: string): boolean {
@@ -94,6 +104,8 @@ export function AutocompleteCombobox({
   emptyLabel,
   initialQuery = "",
   onSubmit,
+  onQueryChange,
+  autoFocus = false,
 }: AutocompleteComboboxProps) {
   const resolveMessage = useLocalizedMessageResolver();
   const listboxId = useId();
@@ -160,6 +172,12 @@ export function AutocompleteCombobox({
     };
   }, [showList]);
 
+  // A picker that IS the continuation of a keystroke lands focus in the field on
+  // mount, so the next character the user types goes where they expect.
+  useEffect(() => {
+    if (autoFocus) inputRef.current?.focus();
+  }, [autoFocus]);
+
   const commit = (value: string) => {
     const trimmed = value.trim();
     if (trimmed.length === 0) return;
@@ -168,6 +186,7 @@ export function AutocompleteCombobox({
     setActiveIndex(-1);
     if (clearOnCommit) setQuery("");
     else setQuery(trimmed);
+    onQueryChange?.(clearOnCommit ? "" : trimmed);
     inputRef.current?.focus();
   };
 
@@ -231,10 +250,18 @@ export function AutocompleteCombobox({
         value={query}
         onChange={(value) => {
           setQuery(value);
+          onQueryChange?.(value);
           setOpen(true);
           setActiveIndex(-1);
         }}
-        onClear={query.length > 0 ? () => setQuery("") : undefined}
+        onClear={
+          query.length > 0
+            ? () => {
+                setQuery("");
+                onQueryChange?.("");
+              }
+            : undefined
+        }
         onFocus={() => setOpen(true)}
         onKeyDown={handleKeyDown}
         inputRef={inputRef}

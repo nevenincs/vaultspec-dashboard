@@ -252,9 +252,21 @@ describe("Composer mention chips", () => {
     expect(isMentionTrigger("user@", 5)).toBe(false);
   });
 
-  it("adds a removable chip from the corpus picker on `@`", async () => {
+  it("adds a removable chip from the corpus picker on the `+` attach button", async () => {
+    // `@` is the EVIDENCE key now (D3): rel paths off the files providers. The
+    // features/documents corpus picker kept its own affordance — the row-2 LEFT
+    // `+` — so neither capability was traded away for the other.
     renderComposer();
     fireEvent.keyDown(input(), { key: "@" });
+    await waitFor(() =>
+      expect(document.querySelector("[data-composer-evidence]")).not.toBeNull(),
+    );
+    expect(document.querySelector("[data-composer-mention]")).toBeNull();
+    fireEvent.keyDown(document.querySelector("[data-composer-evidence] input")!, {
+      key: "Escape",
+    });
+
+    fireEvent.click(document.querySelector("[data-composer-attach]")!);
     await waitFor(() =>
       expect(document.querySelector("[data-composer-mention]")).not.toBeNull(),
     );

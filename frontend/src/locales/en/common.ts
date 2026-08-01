@@ -365,6 +365,26 @@ export const common = {
       stopRun: "Stop run",
       newSession: "Start new agent session",
     },
+    autonomyBanner: {
+      dismiss: "Hide the autonomy warning",
+      warning: "Apply automatically is on. Changes land without your review.",
+    },
+    begin: {
+      headline: "What should we run against {{workspace}}?",
+      headlineUnbound: "What should we run?",
+      recentsLabel: "Recent conversations",
+      seeds: {
+        build: "Build ",
+        explore: "Explore ",
+        review: "Review ",
+      },
+      starters: {
+        build: "Build",
+        explore: "Explore",
+        review: "Review",
+      },
+      startersLabel: "Ways to start",
+    },
     pending: {
       hide: "Hide pending changes",
       label: "Pending changes",
@@ -431,7 +451,11 @@ export const common = {
       steerPlaceholder: "Reply to guide the running agent",
       send: "Send",
       sendFailed: "The message couldn’t be sent. Try again.",
+      attachContext: "Add a feature or document",
       attachedContext: "Attached context",
+      evidenceAria: "Attach a file as evidence",
+      evidenceEmpty: "No matching files.",
+      evidencePlaceholder: "Search files by path",
       queuedChip: "Next prompt",
       removeQueued: "Remove the queued message",
       mentionPlaceholder: "Search features and documents",

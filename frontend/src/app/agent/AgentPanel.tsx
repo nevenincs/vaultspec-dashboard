@@ -33,10 +33,6 @@ import {
 } from "../../stores/server/agent/a2aTeam";
 import { useActiveScope } from "../../stores/server/queries";
 import {
-  useReviewStationView,
-  useSetOperationMode,
-} from "../../stores/server/authoring";
-import {
   closeAgentPanel,
   setAgentPanelView,
   setAgentCurrentSession,
@@ -65,8 +61,10 @@ import {
   SkeletonRow,
   StateBlock,
 } from "../kit";
-import { AutonomyControl } from "../authoring/ReviewStation";
 import { Composer } from "./Composer";
+import { AgentBeginView } from "./AgentBeginView";
+import { agentComposerPosture } from "./agentBegin";
+import { setComposerDraft } from "./composerDraft";
 import { PendingChangesBridge } from "./PendingChangesBridge";
 import { PendingChangesView } from "./PendingChangesView";
 import { Transcript } from "./Transcript";
@@ -290,26 +288,6 @@ function AgentViewSwitcher({ panelView }: { panelView: "transcript" | "pending" 
   );
 }
 
-/** The composer-adjacent autonomy control: the
- *  operation-mode toggle governs THIS conversation's autonomy, so it lives beside
- *  the composer, not in the review inbox. Fed exactly as the retired
- *  `ReviewStationSection` fed it — the SERVED worktree mode (scope-level GET /v1/mode
- *  when the queue is empty, a proposal's policy when not) plus the mode-set seam —
- *  and renders only when a mode is observable (never a fabricated selection). */
-export function AgentAutonomyControl() {
-  const view = useReviewStationView();
-  const setMode = useSetOperationMode();
-  if (view.operationMode === null) return null;
-  return (
-    <div className="border-t border-rule px-fg-2 py-fg-2">
-      <AutonomyControl
-        mode={view.operationMode}
-        onSelect={(mode) => setMode.mutateAsync(mode)}
-      />
-    </div>
-  );
-}
-
 /** Reload-recovery of the team-run viewing binding (a2a-orchestration-edge D5):
  *  when the panel is open with NO run bound, discover the workspace's live runs
  *  (`GET /ops/a2a active-runs`) and re-bind the single unambiguous one, so a
@@ -350,7 +328,9 @@ function ActiveTeamRunRecovery({ scope }: { scope: string }) {
   return null;
 }
 
-/** The bottom composer slot hosts the multiline composer. */
+/** The CONTINUE posture's composer slot: docked at the panel bottom beneath the
+ *  transcript (research G8 — position encodes posture). The begin posture renders
+ *  the same component centered instead, from `AgentBeginView`. */
 function AgentComposerSlot() {
   return (
     <div className="border-t border-rule px-fg-2 py-fg-2" data-agent-composer-slot>
@@ -386,6 +366,18 @@ export function AgentPanel() {
   const scopedRunId = scopedTeamRunId(teamRunId, teamRunScope, scope);
   const currentSessionId = useAgentCurrentSessionId();
   const resolveMessage = useLocalizedMessageResolver();
+  // The BEGIN idiom (D2, research G8): with nothing to continue, the panel's whole
+  // content is the centered composer under a scope-named headline. The session read
+  // here is the same cached query the transcript container consumes, so the posture
+  // costs no extra wire work.
+  const session = useSession(currentSessionId);
+  const posture = agentComposerPosture({
+    sessionId: currentSessionId,
+    hasTurns: (session.data?.turns.length ?? 0) > 0,
+    teamRunId: scopedRunId,
+    transcriptUnsettled:
+      currentSessionId !== null && (session.isLoading || session.isError),
+  });
   return (
     <section
       className="flex h-full min-h-0 min-w-0 flex-col bg-paper"
@@ -401,14 +393,23 @@ export function AgentPanel() {
         <AgentViewSwitcher panelView={panelView} />
         {panelView === "pending" ? (
           <PendingChangesView />
+        ) : posture === "begin" ? (
+          /* Nothing to continue: the composer IS the content, centered under the
+             headline (G1/G8). The cross-run bridge still rides above it — a proposal
+             waiting from an earlier run is exactly the thing a fresh start should
+             not hide. The autonomy control travels INSIDE the composer now (D3
+             row-2 left), so it needs no slot of its own in either posture. */
+          <>
+            <PendingChangesBridge />
+            <AgentBeginView onSeed={setComposerDraft} />
+          </>
         ) : (
           <>
             <AgentTranscriptContainer currentSessionId={currentSessionId} />
             {/* Composer-adjacent, transcript-view only: the cross-run bridge into the
               inbox (nothing when the queue is fully represented inline), then the
-              autonomy control (nothing until a mode is observable), then the composer. */}
+              bottom-docked composer. */}
             <PendingChangesBridge />
-            <AgentAutonomyControl />
             <AgentComposerSlot />
           </>
         )}

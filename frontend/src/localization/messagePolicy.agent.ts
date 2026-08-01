@@ -20,6 +20,26 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.actions.newSession": { role: "action" },
   // The rail-footer pending-changes chip, retired out of the "Approvals"/
   // `panel:approvals` vocabulary onto the agent plane it actually opens.
+  // The begin idiom (research G1/G2/G4/G11): the headline is a question addressed
+  // to the user, the starters are intent verbs, and the seeds are draft text the
+  // user continues typing — not commands.
+  "common:agent.begin.headline": { role: "label" },
+  "common:agent.begin.headlineUnbound": { role: "label" },
+  "common:agent.begin.startersLabel": { role: "accessibility" },
+  "common:agent.begin.recentsLabel": { role: "accessibility" },
+  // The starters NAME an intent the click seeds into the draft; they do not perform
+  // it. That makes them option labels, like the segmented-toggle option names above,
+  // not imperative command buttons.
+  "common:agent.begin.starters.explore": { role: "label" },
+  "common:agent.begin.starters.build": { role: "label" },
+  "common:agent.begin.starters.review": { role: "label" },
+  "common:agent.begin.seeds.explore": { role: "label" },
+  "common:agent.begin.seeds.build": { role: "label" },
+  "common:agent.begin.seeds.review": { role: "label" },
+  // The standing elevated-autonomy strip (C7). A warning about a live policy, so
+  // it is a status, not an error the user caused.
+  "common:agent.autonomyBanner.warning": { role: "status" },
+  "common:agent.autonomyBanner.dismiss": { role: "action" },
   "common:agent.pending.label": { role: "label" },
   "common:agent.pending.show": { role: "action" },
   "common:agent.pending.hide": { role: "action" },
@@ -74,7 +94,11 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.steerPlaceholder": { role: "label" },
   "common:agent.composer.send": { role: "action" },
   "common:agent.composer.sendFailed": { role: "error-message" },
+  "common:agent.composer.attachContext": { role: "action" },
   "common:agent.composer.attachedContext": { role: "accessibility" },
+  "common:agent.composer.evidenceAria": { role: "accessibility" },
+  "common:agent.composer.evidencePlaceholder": { role: "label" },
+  "common:agent.composer.evidenceEmpty": { role: "status" },
   "common:agent.composer.queuedChip": { role: "label" },
   "common:agent.composer.removeQueued": { role: "accessibility" },
   "common:agent.composer.mentionPlaceholder": { role: "label" },

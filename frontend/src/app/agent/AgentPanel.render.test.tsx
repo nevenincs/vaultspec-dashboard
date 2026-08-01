@@ -5,9 +5,11 @@
 // the live transport in `liveSetup`) — never a mocked wire. Covers the mount
 // contract (the body is unconditional now — the center slot decides whether it is
 // mounted at all, and the lifecycle feed outlives it) and the honest transcript
-// container states off `useSession`: the no-session empty, the created-session
-// "No messages yet" empty, and the 422 error a bad/expired session id faults into
-// (never a fabricated empty snapshot). Core vitest matchers only.
+// container states off `useSession`. The two EMPTY states are the begin idiom now
+// (D2): with no session, or a session that has said nothing yet, the panel centers
+// the composer under a headline instead of showing an empty-transcript block. What
+// remains transcript-container truth is the 422 a bad/expired session id faults
+// into — never a fabricated empty snapshot. Core vitest matchers only.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
@@ -240,10 +242,14 @@ describe("AgentPanel transcript states", () => {
     expect(useAgentPanel.getState().teamRunId).toBeNull();
   });
 
-  it("shows the no-session empty state when no session is current", () => {
+  it("shows the BEGIN idiom, not an empty transcript, when no session is current", () => {
     useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
-    expect(screen.getByText("Message the agent to start a conversation.")).toBeTruthy();
+    // G1/G8: nothing to continue means the composer IS the content, centered under
+    // the headline — not a transcript region reporting its own emptiness.
+    expect(document.querySelector("[data-agent-begin]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-composer]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-transcript]")).toBeNull();
   });
 
   it("shows an honest error (not an empty snapshot) when the session id faults", async () => {
@@ -265,13 +271,17 @@ describe("AgentPanel transcript states", () => {
     ).toBeTruthy();
   });
 
-  it("shows the 'No messages yet' empty state for a fresh session with no turns", async () => {
+  it("still begins for a fresh live session that carries no turns", async () => {
+    // A real session exists on the wire, but the user has not said anything in it.
+    // That is a beginning, not a conversation with nothing in it.
     const sessionId = await createLiveSession();
     useAgentPanel.setState({ currentSessionId: sessionId });
     renderPanel();
-    await waitFor(() => expect(screen.getByText("No messages yet.")).toBeTruthy(), {
-      timeout: 10_000,
-    });
+    await waitFor(
+      () => expect(document.querySelector("[data-agent-begin]")).not.toBeNull(),
+      { timeout: 10_000 },
+    );
+    expect(document.querySelector("[data-agent-transcript]")).toBeNull();
   });
 
   it("keeps sent prompts visible in a populated conversation", async () => {
@@ -388,14 +398,16 @@ async function seedOutOfSessionProposal(): Promise<void> {
 }
 
 describe("AgentPanel autonomy + bridge", () => {
-  it("renders the autonomy control composer-adjacent in the transcript view", async () => {
+  it("renders the autonomy control INSIDE the composer's scope controls", async () => {
     useAgentPanel.setState({
       currentSessionId: null,
       panelView: "transcript",
     });
     renderPanel();
     // The served scope-level mode (GET /v1/mode) resolves to a default, so the
-    // control renders even with an empty queue — composer-adjacent, inside the panel.
+    // control renders even with an empty queue. D3 relocated it from a panel band
+    // into the composer's row-2 LEFT group — the "what the agent may touch" side —
+    // so composer-ADJACENT became composer-RESIDENT.
     const control = await waitFor(
       () => {
         const el = document.querySelector<HTMLElement>("[data-autonomy-control]");
@@ -404,13 +416,14 @@ describe("AgentPanel autonomy + bridge", () => {
       },
       { timeout: 15_000 },
     );
-    const panel = document.querySelector("[data-agent-panel]");
-    const composer = document.querySelector("[data-agent-composer-slot]");
-    expect(panel?.contains(control)).toBe(true);
-    expect(composer).not.toBeNull();
-    // Composer-adjacent: the control sits ABOVE the composer in document order.
+    const scopeControls = document.querySelector("[data-composer-scope]");
+    expect(scopeControls).not.toBeNull();
+    expect(scopeControls?.contains(control)).toBe(true);
+    // And the scope group is the LEFT of the row: the thinking controls follow it.
+    const thinking = document.querySelector("[data-composer-thinking]");
     expect(
-      control.compareDocumentPosition(composer!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      scopeControls!.compareDocumentPosition(thinking!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

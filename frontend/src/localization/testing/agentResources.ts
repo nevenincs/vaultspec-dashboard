@@ -12,6 +12,27 @@ export const ltrAgentResources = {
     stopRun: "Terminer la conversation",
     newSession: "Démarrer une nouvelle session de l’assistant",
   },
+  autonomyBanner: {
+    dismiss: "Masquer l’avertissement d’autonomie",
+    warning:
+      "L’application automatique est active. Les modifications sont appliquées sans révision.",
+  },
+  begin: {
+    headline: "Que devons-nous exécuter sur {{workspace}} ?",
+    headlineUnbound: "Que devons-nous exécuter ?",
+    recentsLabel: "Conversations récentes",
+    seeds: {
+      build: "Construire ",
+      explore: "Explorer ",
+      review: "Réviser ",
+    },
+    starters: {
+      build: "Construire",
+      explore: "Explorer",
+      review: "Réviser",
+    },
+    startersLabel: "Manières de commencer",
+  },
   pending: {
     hide: "Masquer les modifications en attente",
     label: "Modifications en attente",
@@ -62,7 +83,11 @@ export const ltrAgentResources = {
     steerPlaceholder: "Répondez pour orienter l’assistant en cours",
     send: "Envoyer",
     sendFailed: "Le message n’a pas pu être envoyé. Réessayez.",
+    attachContext: "Ajouter une fonctionnalité ou un document",
     attachedContext: "Contexte joint",
+    evidenceAria: "Joindre un fichier comme preuve",
+    evidenceEmpty: "Aucun fichier correspondant.",
+    evidencePlaceholder: "Rechercher des fichiers par chemin",
     queuedChip: "Prochain message",
     removeQueued: "Retirer le message en attente",
     mentionPlaceholder: "Rechercher des fonctionnalités et des documents",
@@ -124,6 +149,26 @@ export const rtlAgentResources = {
     stopRun: "إنهاء المحادثة",
     newSession: "بدء جلسة مساعد جديدة",
   },
+  autonomyBanner: {
+    dismiss: "تجاهل تحذير الاستقلالية",
+    warning: "التطبيق التلقائي مفعّل. يطبّق المساعد تغييراته دون سؤالك.",
+  },
+  begin: {
+    headline: "ما الذي ينبغي تشغيله على {{workspace}}؟",
+    headlineUnbound: "ما الذي ينبغي تشغيله؟",
+    recentsLabel: "المحادثات الأخيرة",
+    seeds: {
+      build: "ابنِ ",
+      explore: "استكشف ",
+      review: "راجع ",
+    },
+    starters: {
+      build: "ابنِ",
+      explore: "استكشف",
+      review: "راجع",
+    },
+    startersLabel: "طرق البدء",
+  },
   pending: {
     hide: "إخفاء التغييرات المعلقة",
     label: "التغييرات المعلقة",
@@ -173,7 +218,11 @@ export const rtlAgentResources = {
     steerPlaceholder: "أجب لتوجيه المساعد أثناء عمله",
     send: "إرسال",
     sendFailed: "تعذّر إرسال الرسالة. حاول مرة أخرى.",
+    attachContext: "إضافة ميزة أو مستند",
     attachedContext: "السياق المرفق",
+    evidenceAria: "إرفاق ملف كدليل",
+    evidenceEmpty: "لا توجد ملفات مطابقة.",
+    evidencePlaceholder: "ابحث عن الملفات بالمسار",
     queuedChip: "الرسالة التالية",
     removeQueued: "إزالة الرسالة المنتظرة",
     mentionPlaceholder: "البحث في الميزات والمستندات",
