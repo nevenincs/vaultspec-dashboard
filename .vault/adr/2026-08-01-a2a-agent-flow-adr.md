@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:c271a95e0676456fa143c7ad9df0a06d30c99fe52f4f9c41dfc1a38215a7c965'
+body_hash: 'sha256:f224986796776a13a07f59ce786a59747c1baf1df8596ec64ac706b7cd5e8015'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
@@ -166,6 +166,30 @@ proof is deliberately NOT accepted as sufficient — the strict rule is
 kept over convenience), and gemini/openai/zhipu likewise. Free-form
 per-run override is a NAMED FUTURE contract event (new precedence layer +
 new `run-start` field), deliberately not bundled here.
+
+> **Amendment (2026-08-01, owner cornerstone ruling — teams are
+> provider-free; the user chooses):** the owner supersedes this
+> decision's v1 shape during first live use. TEAMS HAVE SHAPE AND
+> PERSONALITY BUT NO PROVIDERS: no preset may hardcode a provider
+> anywhere — not as a team default, not as a profile lane — and the
+> USER picks the provider and model when starting a team. Consequences:
+> (a) the free-form selection this decision deferred is UN-DEFERRED and
+> mandated — `run-start` gains bounded user-selection fields (provider
+> and model, user choice as the HIGHEST precedence in the resolution
+> chain), a reviewed contract event now specified by the P11 plan
+> steps; (b) served presets are de-providered — profiles collapse to
+> role-shape declarations, and the composer's picker becomes a
+> provider-and-model chooser the user must set at team start, listing
+> functioning providers with their honest served readiness; (c) "all
+> providers must function" — the provider-generic harness attachment
+> work (the config-home isolation was claude-specific; the authoring
+> bridge silently failed to mount for codex sessions) is part of this
+> mandate, not optional hardening; (d) test-variant presets remain
+> pinned to the deterministic provider as harness infrastructure —
+> they are not user-facing lanes and carry no provider CHOICE, only a
+> test fixture. The completed-turn admission discipline survives
+> re-homed: it governs which providers the chooser lists as ready, not
+> which lanes a preset may declare — presets no longer declare lanes.
 
 **D4 — Archetype B extends `research_adr` with a third phase: Plan.**
 After Gate 2 (ADR accepted), the run proceeds Ground → Diverge →

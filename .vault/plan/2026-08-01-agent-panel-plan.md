@@ -4,6 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
+body_hash: 'sha256:3eeca6450459dfd48b60dd395bcb45786cbb7fd20b9b1389f5ac52f25c5709a4'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -111,6 +112,15 @@ Live-drive both archetypes end-to-end in the assembled app, run every gate, reco
 - [ ] `P10.S43` - Amend the agent-flow ADR D3 with the serving-versus-eligibility reconciliation and the provider set actually witnessed completing turns in the live-drives; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
 - [x] `P10.S44` - Amend the shell-integration ADR composer decision with the owner's feature-first mandate: document-authoring runs bind a first-class feature context chip on the composer, defaulted from the open document, required before run-start for tag-requiring presets; `.vault/adr/2026-08-01-agent-panel-shell-integration-adr.md`.
 - [x] `P10.S45` - Collapse the autonomy control into a composer pill consistent with the row-of-pills grammar and the reference-verified C6 anatomy, fixing the row-2 overlap at split width; `frontend/src/app/agent/Composer.tsx`.
+
+### Phase `P11` - Owner mandate: user-chosen providers
+
+Cross-repository ripple from the owner's cornerstone ruling: presets carry role shape and personality only - never a provider; the user picks provider and model at team start; all providers must function through the harness. Supersedes the provider-baked preset lanes of the shipped v1.
+
+- [x] `P11.S46` - Amend the agent-flow ADR: teams are provider-free (shape and personality only), the user chooses provider and model at team start, the free-form selection contract event is un-deferred and specified, test-variant presets stay pinned to the deterministic provider as harness infrastructure; `.vault/adr/2026-08-01-a2a-agent-flow-adr.md`.
+- [ ] `P11.S47` - Strip provider identity from the served team presets and add the user selection to run-start (bounded provider and model fields, user choice as the highest precedence in the resolution chain, refused with a served reason when absent for a lane that needs it); `src/vaultspec_a2a/team/`.
+- [ ] `P11.S48` - Validate the new run-start selection fields at the engine boundary (bounded enums and caps per the edge discipline) and record the contract event in the edge ADR; `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
+- [ ] `P11.S49` - Replace the composer model pill with a provider-and-model chooser the user must set at team start (functioning providers listed with honest served readiness, required binding like the feature chip), and re-drive an archetype to prove the chosen pair rides the wire; `frontend/src/app/agent/Composer.tsx`.
 
 ## Parallelization
 
