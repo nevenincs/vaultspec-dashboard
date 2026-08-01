@@ -6,8 +6,12 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:26e856fb42c5d23b5e7da2ee3b185e5685ba6865454f5edfc41b81c13e64d05d'
 related:
+  - '[[2026-08-01-advanced-service-console-S01]]'
+  - '[[2026-08-01-advanced-service-console-S02]]'
+  - '[[2026-08-01-advanced-service-console-S03]]'
+  - '[[2026-08-01-advanced-service-console-S04]]'
+  - '[[2026-08-01-advanced-service-console-S05]]'
   - '[[2026-08-01-advanced-service-console-adr]]'
   - '[[2026-08-01-advanced-service-console-plan]]'
   - '[[2026-08-01-advanced-service-console-research]]'
@@ -22,6 +26,14 @@ Auto-generated index of all documents tagged with `#advanced-service-console`.
 ### adr
 
 - `2026-08-01-advanced-service-console-adr` - `advanced-service-console` adr: `one advanced console, no service chrome in the user ux` | (**status:** `accepted`)
+
+### exec
+
+- `2026-08-01-advanced-service-console-S01` - Add the Advanced section frame to the settings dialog, rendered after the schema-driven groups, with the palette command Open service console
+- `2026-08-01-advanced-service-console-S02` - Redesign and relocate the rag console as the service-named TUI pair: identity header (name, version, host:port, pid, storage path), normal-sized lifecycle controls, jobs with existing filters, log tail, storage summary, all over the codified contract reads
+- `2026-08-01-advanced-service-console-S03` - Relocate the A2A lifecycle panel as a dev subsection under Advanced and add the compact engine-status block from existing status reads
+- `2026-08-01-advanced-service-console-S04` - Remove FrameworkStatusCluster and its ControlPanels plumbing from user chrome in the same change, keep a minimal user-facing approvals affordance, and re-point palette commands
+- `2026-08-01-advanced-service-console-S05` - Update guards, desk specimens for the moved surfaces, and run the full frontend gate plus touched-scope vitest green
 
 ### plan
 
