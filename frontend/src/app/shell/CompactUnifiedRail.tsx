@@ -19,13 +19,14 @@
 // renders that at TOP LEVEL, OUTSIDE the collapsible Browse body, so the top bar's
 // filter button works regardless of the Browse fold state.
 //
-// The framework status cluster is the rail's pinned FOOTER (activity-rail-realignment
-// ADR D6, compact parity): the SAME `FrameworkStatusCluster` the desktop rail pins,
-// mounted here as a shrink-0 sibling BELOW the scrolling content region so it stays
-// fixed at the rail's bottom edge while the Status/Browse stack scrolls — mirroring
-// the desktop pin idiom (scroll on the content, cluster outside it). The four control
-// panels the chips toggle mount once in `AppShell`'s compact branch (`ControlPanels`),
-// so they open compact-safe from every chip.
+// The compact rail carries NO framework status cluster (owner review, 2026-08-01):
+// the Search-service / Review / Vault-health chips report development-framework health,
+// not the corpus state a phone-sized Home pane exists to show, so the strip was pulled
+// from this surface. Their control panels stay reachable on compact through the shared
+// command palette (`chromeEscapeHatchActions` -> the rail's own background menu, and the
+// panel-toggle command provider), so no verb is lost — only its permanent footer real
+// estate. The desktop rail keeps the pinned cluster (activity-rail-realignment ADR D6);
+// removing it there is a separate, separately-decided piece of work.
 
 import {
   toggleCompactRailBrowse,
@@ -41,7 +42,6 @@ import {
   backgroundContextMenuHandler,
   isRailBackgroundTarget,
 } from "../menus/backgroundContextMenu";
-import { FrameworkStatusCluster } from "../right/FrameworkStatusCluster";
 import { StatusTab } from "../right/StatusTab";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
@@ -103,11 +103,6 @@ export function CompactUnifiedRail() {
           <BrowserRegion />
         </FoldSection>
       </div>
-
-      {/* The framework status cluster — pinned rail FOOTER, a shrink-0 sibling of the
-          scroll region above (activity-rail-realignment ADR D6). Same component the
-          desktop rail pins; the compact scroll never contains it. */}
-      <FrameworkStatusCluster />
 
       {/* Canonical corpus filter (compact bottom sheet), authored under `app/left/`
           and mounted here at top level — outside the Browse fold — opened by the Home

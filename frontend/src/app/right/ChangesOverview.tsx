@@ -29,6 +29,11 @@
 // DIFF LEGIBILITY: the numstat tallies keep the sacred diff hues AND carry +/−
 // glyphs + programmatic labels, so the change magnitude reads in grayscale.
 //
+// A FOLD ONLY WHEN THERE IS A TREE: the surface folds only in the states that have
+// children. A CLEAN worktree renders the summary line alone (no twisty, no body — an
+// expandable "No changes" opens onto nothing), and an unavailable repository read
+// renders the shared centered caution + one sentence in place of the whole fold.
+//
 // Design system (design-system-is-centralized): the fold resolves to the centralized
 // `FoldSection` primitive over the shared status-section chrome seam — the SAME
 // flush twisty + collapsible body the rail's other sections use — with the open
@@ -194,15 +199,16 @@ function ChangeGroup({ group, scope }: { group: GitChangeGroupView; scope: unkno
 // ---------------------------------------------------------------------------
 
 /** The fold's label: the ONE aggregated "<N> files changed" count — falls back to
- *  the in-flight / degraded / errored / clean copy so the collapsed header always
- *  states the working-tree truth. Derived from the LIGHT engine summary, never
- *  the full changed-files lists (changes-summary-projection). */
+ *  the in-flight / errored copy so the collapsed header always states the
+ *  working-tree truth. Derived from the LIGHT engine summary, never the full
+ *  changed-files lists (changes-summary-projection). The degraded and clean states
+ *  never reach this label: neither has a tree to fold, so both render as their own
+ *  body above (a centered notice / the bare summary line). */
 function changesHeadLabel(
   changes: ChangesSummaryView,
   resolveMessage: LocalizedMessageResolver,
 ): string {
   if (changes.loading) return changes.loadingLabel;
-  if (changes.degraded) return changes.degradedLabel;
   if (changes.errored) return changes.errorTitle;
   if (changes.hasChanges) return resolveMessage(changes.summaryLabels.total).message;
   return changes.cleanLabel;
@@ -301,6 +307,41 @@ export function ChangesOverview({
 
   if (changes.noScope) {
     return <p className={changes.noScopeClassName}>{changes.noScopeLabel}</p>;
+  }
+
+  // DEGRADED — the working-tree read is unavailable, so there is no tree to fold.
+  // The whole fold gives way to the shared centered caution + ONE sentence, the same
+  // treatment every other degraded body in this rail uses; a twisty here would open
+  // onto a body that cannot exist.
+  if (changes.degraded) {
+    return (
+      <div data-changes-overview data-changes-degraded>
+        <StateBlock
+          mode="degraded"
+          message={resolveMessage({ key: "common:changes.couldNotLoad" }).message}
+        />
+      </div>
+    );
+  }
+
+  // CLEAN — the summary line ALONE, with no twisty and no body: a fold that opens
+  // onto an empty tree promises children the state does not have. The twisty-width
+  // spacer keeps the line on the same grid as the folding section headers below it.
+  if (changes.clean) {
+    return (
+      <p
+        className="flex w-full items-center gap-fg-2 px-fg-1 py-fg-1-5"
+        data-changes-overview
+        data-changes-clean
+      >
+        <span
+          aria-hidden
+          className="shrink-0"
+          style={{ inlineSize: `${chrome.twistyPx / 16}rem` }}
+        />
+        <span className={changes.summaryPrimaryClassName}>{changes.cleanLabel}</span>
+      </p>
+    );
   }
 
   // The right-aligned diff tallies stay with the summary header (sacred hues +

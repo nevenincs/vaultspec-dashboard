@@ -35,11 +35,11 @@ export type { Freshness } from "../presentation/freshness";
 // --- icon sizing (token-aligned, not arbitrary px) -------------------------------
 // 14px is the iconography ADR's grayscale-by-shape gate size; the disclosure
 // chevrons read one density step smaller so the structural chrome stays attenuated
-// relative to the doc-type marks. The plan-status mark reads one step smaller still
-// (10px in the binding design — a quiet leading status pip on plan rows).
+// relative to the doc-type marks. A review-status mark is not a subordinate pip: it
+// IS the row's item icon on a leaf that has one, so it reads at the doc-type mark's
+// size rather than a smaller one of its own.
 export const DOC_MARK_PX = 14;
 export const CHEVRON_PX = 12;
-export const STATUS_MARK_PX = 10;
 
 /** Canonical `.vault/` group order — the pipeline reading order (terminology-
  *  standardization ADR D2); unknown groups append alphabetically. `index` is never

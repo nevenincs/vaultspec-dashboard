@@ -51,9 +51,11 @@ export function SkeletonBar({
   );
 }
 
-/** A list/tree/card row skeleton: a leading dot + a flexible bar. `boxed` renders the
- *  raised-card framing some surfaces (the activity rail) use; otherwise it is a bare
- *  tree/list row. */
+/** A list/tree/card row skeleton: a leading dot + a flexible bar. `boxed` gives the row
+ *  the card FOOTPRINT some surfaces (the activity rail, the review queue) load into —
+ *  its outline and its height — but never a filled card surface: a ghost is the neutral
+ *  shimmer on the page's own background, so a raised/white plate under it would read as
+ *  real, settled content. Unboxed is the bare tree/list row. */
 export function SkeletonRow({
   width = "w-1/2",
   boxed = false,
@@ -64,9 +66,7 @@ export function SkeletonRow({
   return (
     <div
       className={`flex items-center gap-fg-2 ${
-        boxed
-          ? "rounded-fg-sm border border-rule bg-paper-raised px-fg-2 py-[0.6875rem]"
-          : ""
+        boxed ? "rounded-fg-sm border border-rule px-fg-2 py-[0.6875rem]" : ""
       }`}
     >
       <span className="size-3 shrink-0 rounded-full bg-rule-strong" />

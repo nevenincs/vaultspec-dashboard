@@ -407,7 +407,10 @@ function CommandPaletteSurface() {
               id={listboxId}
               role="listbox"
               aria-label={listboxLabel.message}
-              className="max-h-80 overflow-y-auto py-fg-1 text-body"
+              // The listbox insets its rows by half the surface gutter so the
+              // rounded selection rectangle never touches the palette's edges;
+              // the rows carry the other half, keeping label x unchanged.
+              className="max-h-80 overflow-y-auto px-fg-2 py-fg-1 text-body"
             >
               {presentation.noMatch && !presentation.navLoading && (
                 // Empty is the shared glyph + one plain sentence (state-mode-uniformity
@@ -421,7 +424,7 @@ function CommandPaletteSurface() {
                 return (
                   <li key={group.family} role="presentation">
                     {heading !== null && (
-                      <div className="px-fg-4 pt-fg-2 pb-fg-0-5 text-caption font-medium text-ink-faint">
+                      <div className="px-fg-2 pt-fg-2 pb-fg-0-5 text-caption font-medium text-ink-faint">
                         {heading}
                       </div>
                     )}
@@ -480,7 +483,7 @@ function CommandPaletteSurface() {
                 // Loading is UI-ONLY (state-mode-uniformity ADR D2): a text-free skeleton
                 // standing in for result rows, the human search message only in the kit
                 // `Skeleton`'s sr-only — never on-screen "Searching…" text.
-                <li role="presentation" className="px-fg-4 py-fg-2">
+                <li role="presentation" className="px-fg-2 py-fg-2">
                   <Skeleton label={loading.message} className="gap-fg-1-5">
                     <SkeletonRow width="w-3/4" />
                     <SkeletonRow width="w-1/2" />

@@ -20,7 +20,7 @@ import { useMemo } from "react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { authoredDisplayText } from "../../platform/localization/displayText";
 import type { BoundedDocumentText } from "../../stores/server/authoring";
-import { DecorativeGlyph, StateBlock } from "../kit";
+import { Check, DecorativeGlyph, StateBlock } from "../kit";
 import { HighlightedLineContent } from "../viewer/HighlightedCode";
 import { languageHintFromPath } from "../viewer/languages";
 import { useTokenLines } from "../viewer/useHighlighter";
@@ -108,9 +108,12 @@ export function DiffView({
         </span>
       </div>
       {stat.added === 0 && stat.removed === 0 ? (
+        // "Nothing changed" is the SETTLED empty, so it carries the shared Check
+        // mark — the kit's default corpus-folder glyph says nothing in a diff.
         <StateBlock
           mode="empty"
           layout="inline"
+          icon={Check}
           message={
             resolveMessage({
               key: "documents:localizationWave.authoring.noTextChange",

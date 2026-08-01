@@ -54,14 +54,15 @@ describe("ChangesOverview (scope resolving while mounted)", () => {
       useViewStore.getState().setScope(scope);
     });
 
-    // The fold's own header now renders in place of the no-scope paragraph.
-    const toggle = await screen.findByRole(
-      "button",
-      {
-        name: /changed|no changes|reading changes|repository state unavailable|changes unavailable/i,
-      },
+    // The fold's own header now renders in place of the no-scope paragraph. On a
+    // CLEAN tree the surface is the summary line alone — no fold, because there are
+    // no children to reveal — and on a degraded read it is the centered notice, so
+    // this asserts the head TEXT rather than a button role.
+    const head = await screen.findByText(
+      /changed|no changes|reading changes|could not load changes|changes unavailable/i,
+      {},
       ENGINE_WAIT,
     );
-    expect(toggle).toBeTruthy();
+    expect(head).toBeTruthy();
   });
 });

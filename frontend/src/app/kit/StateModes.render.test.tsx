@@ -59,4 +59,32 @@ describe("StateBlock (degraded / empty = shared glyph + one sentence)", () => {
     const block = container.querySelector('[data-state-block="degraded"]');
     expect(block?.className).toContain("bg-paper-sunken");
   });
+
+  it("bare layout drops the chip framing but keeps the glyph + sentence", () => {
+    const { container, getByText } = render(
+      <StateBlock mode="degraded" layout="bare" message="Could not load timeline" />,
+    );
+    const block = container.querySelector('[data-state-block="degraded"]');
+    expect(block?.getAttribute("data-state-block-layout")).toBe("bare");
+    // No rounded plate and no surface fill — the host strip is the only surface.
+    expect(block?.className).not.toContain("bg-paper-sunken");
+    expect(block?.className).not.toContain("rounded-fg-xs");
+    expect(getByText("Could not load timeline")).toBeTruthy();
+    expect(container.querySelector(".text-state-stale")).toBeTruthy();
+  });
+});
+
+describe("ghost rows never paint a settled surface", () => {
+  it("a boxed skeleton row keeps the card footprint but no raised fill", () => {
+    const { container } = render(
+      <Skeleton label="loading activity">
+        <SkeletonRow boxed />
+      </Skeleton>,
+    );
+    const row = container.querySelector(".rounded-fg-sm");
+    expect(row).toBeTruthy();
+    // The outline stays (the row still stands in for a card) — the fill does not.
+    expect(row?.className).toContain("border-rule");
+    expect(row?.className).not.toContain("bg-paper-raised");
+  });
 });

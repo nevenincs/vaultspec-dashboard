@@ -29,6 +29,7 @@ export const projects = {
     add: "Add project…",
     checkProjectStatus: "Check project status",
     clearHistory: "Clear project history",
+    openIssue: "Open issue",
     openPullRequest: "Open pull request",
     prepareProjectTools: "Set up project tools",
     setUpProject: "Set up project",

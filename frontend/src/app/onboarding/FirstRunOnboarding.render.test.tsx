@@ -84,13 +84,19 @@ describe("FirstRunOnboardingBody", () => {
   it("renders the welcome card with the add-project affordance", () => {
     render(<FirstRunOnboardingBody onAddProject={vi.fn()} />);
     expect(screen.getByText("Welcome to vaultspec")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Add your first project" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add project" })).toBeTruthy();
+  });
+
+  it("heads the card with the product's own brand mark, not a family folder glyph", () => {
+    const { container } = render(<FirstRunOnboardingBody onAddProject={vi.fn()} />);
+    expect(container.querySelector("[data-brand-mark]")).toBeTruthy();
+    expect(container.querySelector("svg.lucide-folder-plus")).toBeNull();
   });
 
   it("clicking the affordance fires onAddProject", () => {
     const onAddProject = vi.fn();
     render(<FirstRunOnboardingBody onAddProject={onAddProject} />);
-    fireEvent.click(screen.getByRole("button", { name: "Add your first project" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add project" }));
     expect(onAddProject).toHaveBeenCalledTimes(1);
   });
 });

@@ -108,6 +108,17 @@ describe("PlanStepTree", () => {
     expect(screen.getByText("No steps in this plan yet.")).toBeTruthy();
   });
 
+  it("centers the empty sentence and carries no glyph of its own", () => {
+    const { container } = renderPure(emptyView);
+
+    const block = container.querySelector('[data-state-block="empty"]')!;
+    // Centered like every other settled empty body — not the left-aligned chip.
+    expect(block.className).toContain("items-center");
+    expect(block.className).toContain("text-center");
+    // No mark: the tree is nested inside a surface that carries its own.
+    expect(block.querySelector("svg")).toBeNull();
+  });
+
   it("renders the honest bounded-truncation message", () => {
     renderPure({
       ...emptyView,

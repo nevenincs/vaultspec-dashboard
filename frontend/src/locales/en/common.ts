@@ -111,7 +111,7 @@ export const common = {
       featurePlaceholder: "Filter by feature…",
     },
     states: {
-      degradedMessage: "Search is offline. Open items and history may be incomplete.",
+      degradedMessage: "Could not load status.",
       degradedTitle: "Running degraded",
       emptyMessage: "No open plans, pull requests, or issues in this worktree.",
       emptyTitle: "Nothing in flight",
@@ -171,6 +171,7 @@ export const common = {
     new: "New",
   },
   changes: {
+    couldNotLoad: "Could not load changes",
     filesChanged_one: "{{count, number}} file changed",
     filesChanged_other: "{{count, number}} files changed",
   },
@@ -501,7 +502,7 @@ export const common = {
       openCommit: "Open {{commit}}",
     },
     onboarding: {
-      action: "Add your first project",
+      action: "Add project",
       body: "No project is connected yet. Add a project folder to get started. The path is registered read-only, so nothing on disk is created or modified.",
       title: "Welcome to vaultspec",
     },

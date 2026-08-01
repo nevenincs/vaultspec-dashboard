@@ -403,19 +403,28 @@ describe("VaultBrowser Features + Documents sections + a11y (live engine)", () =
     )) {
       fireEvent.click(folder);
     }
-    // Plan leaf: in-progress pip + done/total in tabular numerals.
-    const planSignal = await waitFor(() => {
+    // Plan leaf: the served progress leads the row as its ONE item icon (the
+    // in-progress ring, with the plain-language word as its accessible name), and
+    // the done/total count trails it in tabular numerals. The row carries exactly
+    // one icon — the status mark REPLACED the doc-type glyph rather than joining it.
+    const planMark = await waitFor(() => {
       const el = body.querySelector("[data-plan-status]");
       expect(el).toBeTruthy();
       return el!;
     }, ENGINE_WAIT);
-    expect(planSignal.getAttribute("data-plan-status")).toBe("in-progress");
-    expect(planSignal.textContent).toContain("1 of 2 completed");
-    // ADR leaf: the acceptance status as a compact shape+tone mark whose
-    // plain-language word rides the aria-label (title-first density).
+    expect(planMark.getAttribute("data-plan-status")).toBe("in-progress");
+    expect(planMark.getAttribute("aria-label")).toBe("Plan in progress");
+    const planLeaf = planMark.closest("button")!;
+    expect(planLeaf.textContent).toContain("1 of 2 completed");
+    expect(planLeaf.querySelectorAll("[data-doc-mark]").length).toBe(0);
+    // ADR leaf: the acceptance status is likewise the row's item mark, its
+    // plain-language word riding the aria-label (title-first density).
     const adrSignal = body.querySelector("[data-adr-status]");
     expect(adrSignal?.getAttribute("data-adr-status")).toBe("accepted");
     expect(adrSignal?.getAttribute("aria-label")).toBe("Decision accepted");
+    expect(
+      adrSignal!.closest("button")!.querySelectorAll("[data-doc-mark]").length,
+    ).toBe(0);
     // A leaf's meta is ONE value — the AUTHORED date by default (fixture created
     // 2026-01-05 → "Jan 5"), never the checkout's worktree mtime; the weight
     // lives in the tooltip so the title never collapses (title-first density).

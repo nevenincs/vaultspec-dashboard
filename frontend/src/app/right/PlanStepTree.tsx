@@ -336,14 +336,16 @@ export function PlanStepTree({
     );
   }
 
+  // Shared empty treatment (state-mode-uniformity ADR D3/D4): ONE sentence, centered
+  // like every other settled empty body. No glyph — the tree is nested inside a plan
+  // pill that already carries its own marks, so a folder mark here names a second
+  // subject and reads as a filesystem the plan does not have.
   if (!view.served) {
-    // Shared empty treatment (state-mode-uniformity ADR D3/D4): the glyph + one
-    // sentence, uniform with every other non-typical body in this rail.
     return (
       <div data-step-tree-placeholder>
         <StateBlock
           mode="empty"
-          layout="inline"
+          icon={null}
           message={resolveMessage(view.placeholderMessage).message}
         />
       </div>
@@ -355,7 +357,7 @@ export function PlanStepTree({
       <div data-step-tree-empty>
         <StateBlock
           mode="empty"
-          layout="inline"
+          icon={null}
           message={resolveMessage(view.emptyMessage).message}
         />
       </div>

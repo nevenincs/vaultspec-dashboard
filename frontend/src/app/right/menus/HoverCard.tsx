@@ -86,18 +86,12 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
       role="dialog"
       aria-label={dialogLabel}
       data-hover-card
-      className="relative flex w-64 flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper-raised p-fg-2 pl-fg-3 text-ink shadow-fg-overlay"
+      className="flex w-64 flex-col gap-fg-1-5 overflow-hidden rounded-fg-md border border-rule bg-paper-raised p-fg-2 text-ink shadow-fg-overlay"
     >
-      {/* Category-accent strip: a single-token vertical rule naming the node's
-          category by hue. Warmth lives in this one token, never decoration. */}
-      {accentVar && (
-        <span
-          data-category-strip
-          aria-hidden
-          className="absolute inset-y-0 left-0 w-fg-0-5"
-          style={{ backgroundColor: `var(${accentVar})` }}
-        />
-      )}
+      {/* No category-accent edge strip: the popup names its category through the
+          kind glyph's hue and its doc-type eyebrow, and the elevation shadow already
+          lifts it off the canvas. A coloured rule down the edge is decoration on top
+          of information the card states twice already (owner review). */}
 
       {/* Header: doc-type glyph in the category accent + a doc-type eyebrow over a
           MULTILINE title (the title wraps to at most two lines rather than
@@ -151,8 +145,12 @@ export function HoverCard({ model, onOpen }: HoverCardProps) {
         </p>
       )}
 
+      {/* Evidence: the same small body role the summary above uses. The card's body
+          text runs at ONE size — a second, larger role here made the counts read as a
+          heading over the summary they belong to. Each line renders only while the
+          wire actually serves that evidence class (honest absence). */}
       {(documentCount || codeLocationCount || commitCount) && (
-        <div className="space-y-fg-1 text-label text-ink-muted">
+        <div className="space-y-fg-1 text-caption text-ink-muted">
           {documentCount && <p data-hover-document-count>{documentCount}</p>}
           {codeLocationCount && <p data-hover-code-count>{codeLocationCount}</p>}
           {commitCount && <p data-hover-commit-count>{commitCount}</p>}

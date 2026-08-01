@@ -704,7 +704,7 @@ export const documents = {
     planProgress: "{{done, number}} of {{total, number}} completed",
     sizeSummary_one: "{{count, number}} word, {{size}}",
     sizeSummary_other: "{{count, number}} words, {{size}}",
-    unavailable: "Documents are unavailable. Refresh the app and try again.",
+    unavailable: "Could not load files.",
     updated: "Updated {{date}}",
     vaultBrowser: "Vault browser",
     wordCount_one: "{{count, number}} word",

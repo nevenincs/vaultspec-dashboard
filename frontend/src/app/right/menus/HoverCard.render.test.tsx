@@ -144,6 +144,24 @@ describe("HoverCard safe localized presentation", () => {
     }
   });
 
+  it("runs every body line at ONE small type role and carries no accent edge strip", () => {
+    const { container } = setup();
+    const card = container.querySelector("[data-hover-card]")!;
+
+    // The popup's depth is the elevation shadow alone — no coloured edge rule.
+    expect(container.querySelector("[data-category-strip]")).toBeNull();
+    expect(card.className).toContain("shadow-fg-overlay");
+
+    // Summary and evidence read at the same small role; nothing steps up a size.
+    const summary = container.querySelector("[data-hover-summary]")!;
+    const evidence = container.querySelector(
+      "[data-hover-document-count]",
+    )!.parentElement!;
+    expect(summary.className).toContain("text-caption");
+    expect(evidence.className).toContain("text-caption");
+    expect(evidence.className).not.toContain("text-label");
+  });
+
   it("opens through the real stateful callback without exposing the identifier", () => {
     const { container } = setup();
     expect(screen.getByText("closed")).toBeTruthy();
