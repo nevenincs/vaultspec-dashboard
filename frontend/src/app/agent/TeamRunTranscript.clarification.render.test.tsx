@@ -150,12 +150,13 @@ describe("TeamRunTranscript clarification lifecycle", () => {
 
   it("answers the parked question through the card and records ONE recap per request", () => {
     renderTranscript(true);
-    // Selecting an option satisfies the required question and arms submit.
+    // A lone choice question answers on CLICK — the option IS the reply, so the
+    // card renders no separate submit control (see ClarificationCard).
     fireEvent.click(screen.getByRole("radio", { name: "The vault" }));
     expect(
-      document.querySelector<HTMLButtonElement>("[data-clarification-submit]")
-        ?.disabled,
-    ).toBe(false);
+      screen.getByRole("radio", { name: "The vault" }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(document.querySelector("[data-clarification-submit]")).toBeNull();
 
     // Re-answering the same request replaces its recap rather than stacking one.
     act(() => {
