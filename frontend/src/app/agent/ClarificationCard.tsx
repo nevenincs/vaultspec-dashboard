@@ -68,21 +68,25 @@ export function ClarificationRecap({
   const recapHeading = resolveMessage({ key: MSG.recapTitle });
   if (entries.length === 0) return null;
   return (
+    // C8: a durable transcript OBJECT sitting between turns, so it is read at the
+    // transcript's own weight — body type, turn-level spacing. Rendering it at
+    // metadata size (as it was) made a decision the run turned on look like a
+    // footnote beside the answer it produced.
     <section
-      className="flex flex-col gap-fg-1 rounded-fg-md border border-rule bg-paper-sunken px-fg-2 py-fg-1-5"
+      className="flex flex-col gap-fg-2 rounded-fg-md border border-rule bg-paper-sunken px-fg-3 py-fg-2"
       aria-label={recapHeading.usedFallback ? undefined : recapHeading.message}
       data-clarification-recap
     >
       {!recapHeading.usedFallback && (
-        <p className="text-caption text-ink-faint">{recapHeading.message}</p>
+        <p className="text-meta text-ink-faint">{recapHeading.message}</p>
       )}
-      <dl className="flex flex-col gap-fg-1">
+      <dl className="flex flex-col gap-fg-2">
         {entries.map((entry) => (
           <div key={entry.id} className="flex flex-col gap-fg-0-5">
-            <dt className="text-meta font-medium text-ink">
+            <dt className="text-body-strong text-ink">
               {authoredDisplayText(entry.prompt)}
             </dt>
-            <dd className="text-meta text-ink-muted">
+            <dd className="text-body text-ink-muted">
               {authoredDisplayText(entry.answer)}
             </dd>
           </div>
