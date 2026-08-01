@@ -353,12 +353,79 @@ fn immutable_reason(reason: &ImmutableReason) -> &'static str {
     }
 }
 
+/// Whether a resident, non-product a2a gateway is attachable, as the `/ops/a2a`
+/// pass-through's own filesystem predicate sees it. Read once per snapshot and
+/// passed in, so the classifier below stays pure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ResidentSibling {
+    Attachable,
+    Absent,
+}
+
 /// Derive the honest agent availability from ALREADY-READ product state — a pure
 /// classifier so the read pass happens exactly once (review MEDIUM). A usable
 /// gateway (owned-live or foreign-attachable-live) is available; every other
 /// state degrades with a truthful, non-secret reason. No credential secret is
 /// read here.
+///
+/// The `agent` tier describes ONE question: can the orchestration plane be
+/// reached? So a resident sibling the pass-through can attach to makes the tier
+/// available even when the product lane cannot vouch for an installed release —
+/// a procs-booted dev sibling under the attach-never-own lane is exactly that
+/// case. This does NOT weaken the fixed-receipt authority: that authority gates
+/// install, update, repair, and rollback on the dedicated lifecycle plane, which
+/// is untouched here, and it keeps reporting through `install_state` on the
+/// component handshake. The distinction is the a2a-distribution-trust ADR's own:
+/// a receipt authenticates the INSTALLED RELEASE, never the reachability of a
+/// process already serving.
+///
+/// The fallback speaks only where the product lane has no classification of a
+/// running gateway to offer. When the product lane HAS classified one and found
+/// it unusable — stale, protocol-incompatible, or foreign-immutable — that
+/// specific knowledge is strictly better than a heartbeat and wins; a bare
+/// freshness read must never claim availability for a gateway we know we cannot
+/// speak to.
 fn availability_from(
+    release: &ReleaseObservation,
+    verdict: Option<&Verdict>,
+    resident: ResidentSibling,
+) -> (bool, Option<String>) {
+    compose_availability(
+        availability_from_product(release, verdict),
+        matches!(release, ReleaseObservation::Settled(_)) && verdict.is_some(),
+        resident,
+    )
+}
+
+/// The precedence rule, pure and total over its three inputs so every
+/// combination is directly testable (a `Settled` observation cannot be
+/// constructed outside the product crate).
+fn compose_availability(
+    product: (bool, Option<String>),
+    product_classified_a_live_gateway: bool,
+    resident: ResidentSibling,
+) -> (bool, Option<String>) {
+    if product.0 {
+        return product;
+    }
+    match resident {
+        ResidentSibling::Attachable if !product_classified_a_live_gateway => (true, None),
+        _ => product,
+    }
+}
+
+/// Read the pass-through's resident-sibling predicate once. Filesystem-only, so
+/// it costs a stat and a small read behind the snapshot memo.
+fn observe_resident_sibling() -> ResidentSibling {
+    match super::ops::resident_sibling_is_attachable() {
+        Ok(()) => ResidentSibling::Attachable,
+        Err(_) => ResidentSibling::Absent,
+    }
+}
+
+/// The product lane's own verdict, unchanged: what the fixed receipt and the
+/// product gateway-discovery record alone can say.
+fn availability_from_product(
     release: &ReleaseObservation,
     verdict: Option<&Verdict>,
 ) -> (bool, Option<String>) {
@@ -570,7 +637,7 @@ pub(crate) fn agent_availability_at(
     let verdict = discovery
         .as_ref()
         .map(|d| d.classify(&discovery_ctx(owner_id)));
-    availability_from(&release, verdict.as_ref())
+    availability_from(&release, verdict.as_ref(), observe_resident_sibling())
 }
 
 /// The component-handshake projection for a product state under an app home,
@@ -583,7 +650,8 @@ pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value 
     let verdict = discovery
         .as_ref()
         .map(|d| d.classify(&discovery_ctx(owner_id)));
-    let (available, reason) = availability_from(&release, verdict.as_ref());
+    let (available, reason) =
+        availability_from(&release, verdict.as_ref(), observe_resident_sibling());
     let readiness = readiness_from(&release, verdict.as_ref());
     handshake_value(
         &release,
@@ -671,7 +739,8 @@ fn compute_agent_snapshot() -> AgentSnapshot {
     let verdict = discovery
         .as_ref()
         .map(|d| d.classify(&discovery_ctx(&owner_id)));
-    let (available, reason) = availability_from(&release, verdict.as_ref());
+    let (available, reason) =
+        availability_from(&release, verdict.as_ref(), observe_resident_sibling());
     let readiness = readiness_from(&release, verdict.as_ref());
     let handshake = handshake_value(
         &release,
@@ -1529,17 +1598,73 @@ mod tests {
             ReleaseObservation::Busy,
             ReleaseObservation::Unverifiable,
         ] {
-            let (available, reason) = availability_from(&release, Some(&Verdict::OwnedLive));
+            let (available, reason) =
+                availability_from(&release, Some(&Verdict::OwnedLive), ResidentSibling::Absent);
             assert!(!available, "non-settled state {}", release.label());
             assert!(reason.is_some(), "non-settled state {}", release.label());
         }
     }
 
     #[test]
+    fn a_resident_sibling_makes_the_plane_available_without_a_verified_receipt() {
+        // The incoherence this fixes: a procs-booted dev sibling under the
+        // attach-never-own lane serves presets and runs through the pass-through
+        // while the tier — reading only the product lane — called that same plane
+        // unavailable in the very response carrying the sibling's answer. The
+        // `agent` tier answers reachability; the fixed-receipt authority keeps
+        // gating install/update/repair on the dedicated lifecycle plane, and the
+        // component handshake keeps reporting the unverified install state.
+        for release in [
+            ReleaseObservation::Absent,
+            ReleaseObservation::RecoveryRequired,
+            ReleaseObservation::Busy,
+            ReleaseObservation::Unverifiable,
+        ] {
+            let (available, reason) =
+                availability_from(&release, None, ResidentSibling::Attachable);
+            assert!(
+                available,
+                "a reachable resident sibling is available despite {}",
+                release.label()
+            );
+            assert!(
+                reason.is_none(),
+                "an available tier carries no degradation reason ({})",
+                release.label()
+            );
+        }
+    }
+
+    #[test]
+    fn a_resident_sibling_never_overrides_a_gateway_the_product_lane_knows_is_unusable() {
+        // A bare heartbeat is weaker evidence than a classification. Where the
+        // product lane HAS classified the running gateway and found it stale,
+        // protocol-incompatible, or foreign-immutable, that verdict wins: the
+        // fallback must never claim we can speak to a gateway we know we cannot.
+        let unusable = (
+            false,
+            Some("owned a2a gateway is incompatible with this release".to_string()),
+        );
+        let (available, reason) =
+            compose_availability(unusable.clone(), true, ResidentSibling::Attachable);
+        assert!(
+            !available,
+            "a classified-unusable gateway stays unavailable"
+        );
+        assert_eq!(reason, unusable.1, "its specific reason survives verbatim");
+
+        // An available product lane is never disturbed by the fallback either.
+        let (available, reason) = compose_availability((true, None), true, ResidentSibling::Absent);
+        assert!(available);
+        assert!(reason.is_none());
+    }
+
+    #[test]
     fn recovery_required_has_unknown_degraded_wire_and_typed_refusal_kind() {
         let release = ReleaseObservation::RecoveryRequired;
         let readiness = readiness_from(&release, Some(&Verdict::OwnedLive));
-        let (available, reason) = availability_from(&release, Some(&Verdict::OwnedLive));
+        let (available, reason) =
+            availability_from(&release, Some(&Verdict::OwnedLive), ResidentSibling::Absent);
         let wire = handshake_value(&release, None, None, readiness, available, reason);
 
         assert!(wire["installed"].is_null());

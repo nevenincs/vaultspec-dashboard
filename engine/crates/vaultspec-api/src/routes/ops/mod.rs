@@ -49,6 +49,9 @@ use sibling::*;
 /// template retargeted at an HTTP sibling.
 mod a2a;
 pub use a2a::ops_a2a;
+// The agent tier reads the pass-through's own resident-attach predicate, so the
+// tier can never contradict the plane it describes.
+pub(crate) use a2a::resident_sibling_is_attachable;
 
 /// The `/ops/a2a/runs/{run_id}/stream` run-progress relay:
 /// a new engine SSE channel re-serving the a2a gateway's run-stream verb

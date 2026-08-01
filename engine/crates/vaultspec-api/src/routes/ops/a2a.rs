@@ -388,6 +388,30 @@ fn a2a_endpoint_from(candidates: &[PathBuf]) -> Result<(u16, Option<String>), St
     }
 }
 
+/// Is a RESIDENT (non-product) a2a gateway discoverable and attachable right now?
+/// This is the filesystem half of the pass-through's OWN attach-never-own
+/// predicate — a fresh heartbeat plus a readable owner-restricted handoff — and
+/// nothing else; no secret escapes (a `Fresh` record's token is dropped here).
+///
+/// The agent tier rides this so it can never contradict the plane it describes.
+/// The transport dual-resolves (product controller discovery first, this resident
+/// record as the fallback that keeps the live edge green), so a tier reading only
+/// the product lane reports a sibling unavailable in the very response that
+/// forwarded that sibling's answer.
+///
+/// The `/health` confirm is deliberately NOT performed here: the tier is
+/// recomputed behind a one-second memo on EVERY response envelope, and a probe
+/// against a dead port would stall unrelated reads. A discovered-but-not-serving
+/// sibling still degrades honestly — the pass-through performs the confirm at
+/// call time and returns its own explicit `agent` degradation, which is
+/// authoritative and overrides this baseline.
+pub(crate) fn resident_sibling_is_attachable() -> Result<(), String> {
+    match discover_a2a_at(&a2a_service_json_candidates()) {
+        A2aDiscovery::Fresh(_) => Ok(()),
+        A2aDiscovery::Down { reason } => Err(reason),
+    }
+}
+
 /// Validate a bounded, path-safe id: non-empty, not flag-shaped, restricted to
 /// `[A-Za-z0-9_-]` so it can never carry a path separator, `..`, or shell
 /// metacharacter into the URL it is interpolated into.
