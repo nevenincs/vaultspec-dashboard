@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:aa304ec805c45e7664334e4e62b5dc2494a303c40feb14049f7edcbe87f9ce67'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
   - '[[2026-08-01-a2a-agent-flow-adr]]'
