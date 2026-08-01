@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:22099147a0099c9b56c54cbdeb949047b6f3969e5c0b621b50a628d24444cd73'
+body_hash: 'sha256:6ea45245fc01b4bda937ff92f18d3984dea24db5515e52027ec911d85e23e6ea'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -51,7 +51,7 @@ The three reviewed contract events crossing the frozen edge: verb whitelist, rel
 
 - [x] `P04.S11` - Add clarification-respond to the ops a2a verb whitelist with boundary-validated bounded args (run id, request id, answers keyed by question id); `engine/crates/vaultspec-api/src/routes/ops/a2a.rs`.
 - [x] `P04.S12` - Accept and relay the clarification-pending frame kind within existing frame caps, with a conformance test that the relay stays non-authoritative; `engine/crates/vaultspec-api/src/routes/ops/a2a_stream.rs`.
-- [ ] `P04.S13` - Record the whitelist change as a reviewed contract event mutually referenced in both repos per the edge ADR consequence; `.vault/adr/2026-07-14-a2a-orchestration-edge-adr.md`.
+- [x] `P04.S13` - Record the whitelist change as a reviewed contract event mutually referenced in both repos per the edge ADR consequence; `.vault/adr/2026-07-14-a2a-orchestration-edge-adr.md`.
 
 ### Phase `P05` - Center-slot rehome (frontend shell)
 
