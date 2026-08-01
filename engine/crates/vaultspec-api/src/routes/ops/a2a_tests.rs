@@ -179,6 +179,17 @@ async fn an_unknown_verb_403s_before_any_discovery() {
 /// its consumer, not ahead of one.
 #[tokio::test]
 async fn the_retired_service_state_verb_is_no_longer_brokered() {
+    // BOTH gates, asserted separately and deliberately. The verb is refused twice
+    // over - once by the whitelist and once by the call builder's fallback - so
+    // checking only the refused RESPONSE would still pass with the whitelist entry
+    // put back, and a re-add is the failure this test exists to catch. The
+    // membership assertion is therefore not redundant with the response one.
+    assert!(
+        !A2A_WHITELIST.contains(&"service-state"),
+        "`service-state` was revoked: it had a full client stack, a live test, and \
+         no product consumer. Re-adding it needs a consumer, not a green broker"
+    );
+
     let (_dir, state) = test_state();
     let err = ops_a2a(State(state), Path("service-state".to_string()), None)
         .await
