@@ -4,7 +4,7 @@ tags:
   - '#approval-shape-reconciliation'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:54b87bc6e33a1f8bb6e3300a92bdb70d8e5969da3b86ea92adff1a436297af93'
+body_hash: 'sha256:a505ad3cbaf3e26891630987eb6877f611f8f7ef8618fc0a09750e33d4d0ce02'
 tier: L3
 related:
   - '[[2026-08-01-approval-shape-reconciliation-adr]]'
@@ -43,9 +43,9 @@ Remove the origin_author field, the review-authority clause, is_review_authority
 
 Add the ReviewerApprovalRequired variant so the manual non-destructive case stops lying about a human requirement it never checked, and enforce the destructive floor as a Human-kind refusal at the two live domain seams that already back the served eligibility.
 
-- [ ] `W01.P02.S06` - Add the ReviewerApprovalRequired variant to ApprovalRequirement, update the approval_requirement matrix so manual non-destructive yields it, and correct decision_reason and system_auto_approval_eligibility wording for the three way split; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
-- [ ] `W01.P02.S07` - Enforce the destructive floor inside review_decision_eligibility by reusing changeset_risk to refuse a non Human approver on a destructive changeset, with a test proving an agent reviewer is denied approving a destructive changeset; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
-- [ ] `W01.P02.S08` - Enforce the same destructive floor Human kind refusal at the apply preflight seam, with a test proving a distinct agent actor is denied applying an approved destructive changeset; `engine/crates/vaultspec-api/src/authoring/apply/mod.rs`.
+- [x] `W01.P02.S06` - Add the ReviewerApprovalRequired variant to ApprovalRequirement, update the approval_requirement matrix so manual non-destructive yields it, and correct decision_reason and system_auto_approval_eligibility wording for the three way split; `engine/crates/vaultspec-api/src/authoring/policy.rs`.
+- [x] `W01.P02.S07` - Enforce the destructive floor inside review_decision_eligibility by reusing changeset_risk to refuse a non Human approver on a destructive changeset, with a test proving an agent reviewer is denied approving a destructive changeset; `engine/crates/vaultspec-api/src/authoring/approvals.rs`.
+- [x] `W01.P02.S08` - Enforce the same destructive floor Human kind refusal at the apply preflight seam, with a test proving a distinct agent actor is denied applying an approved destructive changeset; `engine/crates/vaultspec-api/src/authoring/apply/mod.rs`.
 
 ### Phase `W01.P03` - Strip the session-override layer end to end
 
@@ -91,34 +91,34 @@ Refuse document-approval pauses at the A2A respond route, split the pause-cause 
 
 Add a locally-respondable pause-cause set that excludes document_approval_request, keep the existing broader set for its legitimate projection and FSM classification use, and correct the comment that falsely claims both gates park with the same shape.
 
-- [ ] `W03.P06.S26` - Add a LOCALLY_RESPONDABLE_PAUSE_CAUSES set that excludes document_approval_request and correct the misleading comment on PLAN_APPROVAL_PAUSE_CAUSES to describe it as a projection and FSM classification rather than an answerability set; `src/vaultspec_a2a/thread/snapshots.py`.
-- [ ] `W03.P06.S27` - Re export LOCALLY_RESPONDABLE_PAUSE_CAUSES alongside the existing pause cause export; `src/vaultspec_a2a/thread/__init__.py`.
+- [x] `W03.P06.S26` - Add a LOCALLY_RESPONDABLE_PAUSE_CAUSES set that excludes document_approval_request and correct the misleading comment on PLAN_APPROVAL_PAUSE_CAUSES to describe it as a projection and FSM classification rather than an answerability set; `src/vaultspec_a2a/thread/snapshots.py`.
+- [x] `W03.P06.S27` - Re export LOCALLY_RESPONDABLE_PAUSE_CAUSES alongside the existing pause cause export; `src/vaultspec_a2a/thread/__init__.py`.
 
 ### Phase `W03.P07` - Refuse document-approval pauses at the respond route
 
 Return a typed refusal naming the engine review surface as the deciding authority the moment a respond call targets a document-approval pause, before any transition or approval-status write is attempted.
 
-- [ ] `W03.P07.S28` - Refuse a respond call against a document approval pause with a typed error naming the engine review surface, before the idempotency and transition logic runs, and narrow the local branching in the transition and approval status blocks to the locally respondable set; `src/vaultspec_a2a/control/permission_service.py`.
-- [ ] `W03.P07.S29` - Add a test proving a respond call against a document_approval_request pause is refused and never constructs an approved boolean resume; `src/vaultspec_a2a/control/tests/test_permission_rejection_journal.py`.
+- [x] `W03.P07.S28` - Refuse a respond call against a document approval pause with a typed error naming the engine review surface, before the idempotency and transition logic runs, and narrow the local branching in the transition and approval status blocks to the locally respondable set; `src/vaultspec_a2a/control/permission_service.py`.
+- [x] `W03.P07.S29` - Add a test proving a respond call against a document_approval_request pause is refused and never constructs an approved boolean resume; `src/vaultspec_a2a/control/tests/test_permission_rejection_journal.py`.
 
 ### Phase `W03.P08` - Unify on the verdict vocabulary
 
 Retire the approved-boolean parse and construction on the legacy plan gate and the respond transition together, in one cutover, and give the respond DTO an optional notes field so a reviewer comment survives the resume.
 
-- [ ] `W03.P08.S30` - Promote the private verdict parsing helper to a public exported function so the legacy plan gate can reuse it instead of re deriving verdict parsing; `src/vaultspec_a2a/graph/nodes/phase_gate.py`.
-- [ ] `W03.P08.S31` - Rewrite the plan approval node to parse the verdict shape via the promoted helper instead of the approved boolean shape, and correct its docstring resume shape description; `src/vaultspec_a2a/graph/nodes/supervisor.py`.
-- [ ] `W03.P08.S32` - Retire the approved boolean resume construction in favor of the verdict and notes shape for the locally respondable pause set, threading a new notes parameter through the respond service; `src/vaultspec_a2a/control/permission_service.py`.
-- [ ] `W03.P08.S33` - Add an optional notes field to the permission respond request schema; `src/vaultspec_a2a/api/schemas/gateway.py`.
-- [ ] `W03.P08.S34` - Thread the request notes field into the respond service call; `src/vaultspec_a2a/api/routes/gateway.py`.
-- [ ] `W03.P08.S35` - Add a test proving the legacy plan gate now parses the verdict shape and no longer accepts the retired approved boolean shape; `src/vaultspec_a2a/graph/tests/nodes/test_supervisor.py`.
-- [ ] `W03.P08.S36` - Add a test proving the respond endpoint accepts an optional notes field and that it survives into the verdict resume payload; `src/vaultspec_a2a/api/tests/test_endpoints.py`.
+- [x] `W03.P08.S30` - Promote the private verdict parsing helper to a public exported function so the legacy plan gate can reuse it instead of re deriving verdict parsing; `src/vaultspec_a2a/graph/nodes/phase_gate.py`.
+- [x] `W03.P08.S31` - Rewrite the plan approval node to parse the verdict shape via the promoted helper instead of the approved boolean shape, and correct its docstring resume shape description; `src/vaultspec_a2a/graph/nodes/supervisor.py`.
+- [x] `W03.P08.S32` - Retire the approved boolean resume construction in favor of the verdict and notes shape for the locally respondable pause set, threading a new notes parameter through the respond service; `src/vaultspec_a2a/control/permission_service.py`.
+- [x] `W03.P08.S33` - Add an optional notes field to the permission respond request schema; `src/vaultspec_a2a/api/schemas/gateway.py`.
+- [x] `W03.P08.S34` - Thread the request notes field into the respond service call; `src/vaultspec_a2a/api/routes/gateway.py`.
+- [x] `W03.P08.S35` - Add a test proving the legacy plan gate now parses the verdict shape and no longer accepts the retired approved boolean shape; `src/vaultspec_a2a/graph/tests/nodes/test_supervisor.py`.
+- [x] `W03.P08.S36` - Add a test proving the respond endpoint accepts an optional notes field and that it survives into the verdict resume payload; `src/vaultspec_a2a/api/tests/test_endpoints.py`.
 
 ### Phase `W03.P09` - Verify the preserved properties and report the open question
 
 Confirm no production A2A path sets the engine operation mode and check what the Kimi family's exact-name allowlist holds at call time for a mutating tool under autonomy, reporting both as read-only findings with no behaviour change.
 
-- [ ] `W03.P09.S37` - Grep the codebase for any production call to the engine operation mode setting endpoint outside this acceptance test, confirm none exists, and record the finding as a durable comment marking this test the sole sanctioned caller; `src/vaultspec_a2a/service_tests/test_pw7_acceptance.py`.
-- [ ] `W03.P09.S38` - Trace whether a mutating tool call can reach the Claude family auto approve first option branch under autonomy and record the reachability finding as a durable comment, changing no behaviour; `src/vaultspec_a2a/providers/lane_admission.py`.
+- [x] `W03.P09.S37` - Grep the codebase for any production call to the engine operation mode setting endpoint outside this acceptance test, confirm none exists, and record the finding as a durable comment marking this test the sole sanctioned caller; `src/vaultspec_a2a/service_tests/test_pw7_acceptance.py`.
+- [x] `W03.P09.S38` - Trace whether a mutating tool call can reach the Claude family auto approve first option branch under autonomy and record the reachability finding as a durable comment, changing no behaviour; `src/vaultspec_a2a/providers/lane_admission.py`.
 
 ## Parallelization
 

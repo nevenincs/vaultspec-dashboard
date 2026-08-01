@@ -184,7 +184,7 @@ async fn proposal_routes_serve_backend_policy_decision() {
     let list_policy = &list["data"]["items"][0]["policy"];
     assert_eq!(list_policy["effective_mode"], "manual");
     assert_eq!(list_policy["risk"], "non_destructive");
-    assert_eq!(list_policy["requirement"], "human_approval_required");
+    assert_eq!(list_policy["requirement"], "reviewer_approval_required");
     assert!(
         list_policy["reason"]
             .as_str()
