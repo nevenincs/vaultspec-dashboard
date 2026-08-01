@@ -5,6 +5,10 @@ import { normalizeStoreScope } from "./scopeIdentity";
 
 export interface DashboardFilterSidebarIntent {
   toggleFacet: (facet: unknown, value: unknown) => Promise<unknown>;
+  /** Replace ONE facet's values in a single write — the seam the ALL-ON checkbox
+   *  model unticks through (unticking from an unnarrowed facet commits every
+   *  remaining value at once). */
+  setFacetValues: (facet: unknown, values: unknown) => Promise<unknown>;
   /** Clear ONE facet (e.g. the legend's `doc_types` Reset) without disturbing
    *  the other flyout facets — the canonical scoped-clear seam. */
   clearFacet: (facet: unknown) => Promise<unknown>;
@@ -24,9 +28,11 @@ export function useDashboardFilterSidebarIntent(
   const normalizedScope = normalizeDashboardFilterSidebarScope(scope);
   const mutations = useDashboardStateMutations(normalizedScope);
   const toggleFilterFacetRef = useRef(mutations.toggleFilterFacet);
+  const setFilterFacetValuesRef = useRef(mutations.setFilterFacetValues);
   const clearFilterFacetRef = useRef(mutations.clearFilterFacet);
   const setFiltersRef = useRef(mutations.setFilters);
   toggleFilterFacetRef.current = mutations.toggleFilterFacet;
+  setFilterFacetValuesRef.current = mutations.setFilterFacetValues;
   clearFilterFacetRef.current = mutations.clearFilterFacet;
   setFiltersRef.current = mutations.setFilters;
 
@@ -35,6 +41,13 @@ export function useDashboardFilterSidebarIntent(
       normalizedScope === null
         ? Promise.resolve(null)
         : toggleFilterFacetRef.current(facet, value),
+    [normalizedScope],
+  );
+  const setFacetValues = useCallback(
+    (facet: unknown, values: unknown) =>
+      normalizedScope === null
+        ? Promise.resolve(null)
+        : setFilterFacetValuesRef.current(facet, values),
     [normalizedScope],
   );
   const clearFacet = useCallback(
@@ -51,7 +64,7 @@ export function useDashboardFilterSidebarIntent(
   );
 
   return useMemo(
-    () => ({ toggleFacet, clearFacet, clearFilters }),
-    [clearFacet, clearFilters, toggleFacet],
+    () => ({ toggleFacet, setFacetValues, clearFacet, clearFilters }),
+    [clearFacet, clearFilters, setFacetValues, toggleFacet],
   );
 }

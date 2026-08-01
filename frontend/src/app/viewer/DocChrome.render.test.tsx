@@ -33,7 +33,7 @@ function renderChrome(mode: "view" | "edit" = "view") {
     const [currentMode, setCurrentMode] = useState(mode);
     return (
       <DocChrome
-        trail={[{ label: "doc" }]}
+        leading={<span>doc</span>}
         mode={currentMode}
         onModeChange={(next) => {
           selections.push(next);

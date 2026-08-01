@@ -25,7 +25,9 @@ import { createLiveClient, liveScope } from "../../testing/liveClient";
 import { dashboardDocumentStateResetPatch } from "../../stores/server/dashboardState";
 import { queryClient } from "../../stores/server/queryClient";
 import {
+  graphAutoframeFilterIdentity,
   resetGraphControlsChrome,
+  syncGraphAutoframeFilterIdentity,
   useGraphControlsChromeStore,
 } from "../../stores/view/graphControlsChrome";
 import { useViewStore } from "../../stores/view/viewStore";
@@ -109,16 +111,54 @@ function openSettings() {
 }
 
 describe("GraphNavControls - Navigate (camera commands)", () => {
-  it("runs navigation controls and persists the autoframe intent", () => {
+  it("disengages tracking on a manual zoom, so the control never claims to be tracking a camera the user took", () => {
     renderGraphControls();
 
     expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
-    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fit graph to view" }));
-    fireEvent.click(screen.getByRole("button", { name: "Keep graph in view" }));
-
     expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Zoom out" }));
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+  });
+
+  it("leaves framing to the user's own toggle: fit-to-view is a framing action, not navigation", () => {
+    renderGraphControls();
+
+    fireEvent.click(screen.getByRole("button", { name: "Fit graph to view" }));
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep graph in view" }));
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep graph in view" }));
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+  });
+
+  it("re-engages on a filter change, and the rendered control reflects both transitions", () => {
+    renderGraphControls();
+    const autoframe = () => screen.getByRole("button", { name: "Keep graph in view" });
+    const identity = (docTypes: string[]) =>
+      graphAutoframeFilterIdentity({
+        scope,
+        corpus: "vault",
+        granularity: "feature",
+        filter: { doc_types: docTypes },
+      });
+
+    // The first identity report is a mount, not a change.
+    act(() => syncGraphAutoframeFilterIdentity(identity([])));
+    expect(autoframe().getAttribute("aria-pressed")).toBe("true");
+
+    // A manual camera gesture: the CONTROL must show it disengaged, which is the
+    // whole point — the field used to suspend tracking behind a lit toggle.
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+    expect(autoframe().getAttribute("aria-pressed")).toBe("false");
+
+    // Narrowing the corpus puts a different set of nodes on screen, so tracking
+    // resumes without the user re-arming it.
+    act(() => syncGraphAutoframeFilterIdentity(identity(["adr"])));
+    expect(autoframe().getAttribute("aria-pressed")).toBe("true");
   });
 });
 

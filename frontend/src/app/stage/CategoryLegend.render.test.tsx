@@ -19,8 +19,8 @@ import {
   engineClient,
   type DashboardState,
   type DashboardStatePatch,
-  type FetchLike,
 } from "../../stores/server/engine";
+import type { FetchLike } from "../../stores/server/httpTransport";
 import { testQueryClient } from "../../stores/server/queries/testFixtures";
 import { deriveCodeModuleLegend } from "../../stores/view/codeModuleLegend";
 import { resetGraphControlsChrome } from "../../stores/view/graphControlsChrome";

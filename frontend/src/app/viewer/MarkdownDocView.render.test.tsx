@@ -45,6 +45,8 @@ const NODE_ID = "doc:2026-07-11-sample-plan";
 const TOGGLE_CHANGES_LABEL = en.documents.actions.showOrHideChanges;
 const SAVE_LABEL = en.documents.actions.save;
 const CLOSE_LABEL = en.documents.actions.finishEditing;
+const METADATA_TOGGLE_LABEL = en.documents.actions.showOrHideMetadata;
+const UNSAVED_CAPTION = en.documents.editor.statuses.unsaved;
 const BODY = [
   "---",
   "tags:",
@@ -76,7 +78,12 @@ function renderEditing() {
   const view = render(
     <I18nextProvider i18n={runtime}>
       <QueryClientProvider client={queryClient}>
-        <MarkdownDocView nodeId={NODE_ID} content={content()} scope={null} trail={[]} />
+        <MarkdownDocView
+          nodeId={NODE_ID}
+          content={content()}
+          scope={null}
+          heading={null}
+        />
       </QueryClientProvider>
     </I18nextProvider>,
   );
@@ -104,10 +111,17 @@ describe("MarkdownDocView edit mode", () => {
     expect(screen.queryByRole("dialog", { name: "Document properties" })).toBeNull();
   });
 
-  it("opens the Properties popover on demand", () => {
+  it("shows the metadata block from the header's show/hide toggle", () => {
     renderEditing();
-    fireEvent.click(screen.getByRole("button", { name: "Document properties" }));
+    const toggle = screen.getByRole("button", { name: METADATA_TOGGLE_LABEL });
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+
+    fireEvent.click(toggle);
     expect(screen.getByRole("dialog", { name: "Document properties" })).toBeTruthy();
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(toggle);
+    expect(screen.queryByRole("dialog", { name: "Document properties" })).toBeNull();
   });
 
   it("applies a formatting command from the toolbar to the selection", () => {
@@ -170,7 +184,7 @@ describe("MarkdownDocView edit mode", () => {
             nodeId={NODE_ID}
             content={content()}
             scope={null}
-            trail={[]}
+            heading={null}
           />
         </QueryClientProvider>
       </I18nextProvider>,
@@ -180,6 +194,45 @@ describe("MarkdownDocView edit mode", () => {
     expect(screen.queryByRole("button", { name: SAVE_LABEL })).toBeNull();
     expect(screen.queryByRole("button", { name: CLOSE_LABEL })).toBeNull();
     expect(document.body.textContent).not.toContain("documents:actions");
+  });
+
+  it("carries save and stop-editing as glyph affordances, not text buttons", () => {
+    renderEditing();
+    const save = screen.getByRole("button", { name: SAVE_LABEL });
+    const close = screen.getByRole("button", { name: CLOSE_LABEL });
+    // A glyph affordance names itself through its accessible name; the visible
+    // label text is gone.
+    expect(save.textContent).toBe("");
+    expect(close.textContent).toBe("");
+    // Neither is a toggle, so neither claims a pressed state.
+    expect(save.getAttribute("aria-pressed")).toBeNull();
+    expect(close.getAttribute("aria-pressed")).toBeNull();
+  });
+
+  it("reads a dirty draft from the Save affordance's tone, with no unsaved-changes caption", () => {
+    renderEditing();
+    const save = screen.getByRole("button", { name: SAVE_LABEL });
+    expect(save.getAttribute("data-variant")).toBe("ghost");
+    expect(document.body.textContent).not.toContain(UNSAVED_CAPTION);
+
+    act(() => updateEditorDraft(`${BODY}\nChanged`));
+    expect(save.getAttribute("data-variant")).toBe("primary");
+    expect(document.body.textContent).not.toContain(UNSAVED_CAPTION);
+  });
+
+  it("counts the draft's added and removed lines in the header", () => {
+    renderEditing();
+    const stat = () => document.querySelector("[data-editor-draft-stat]");
+    expect(stat()?.querySelector("[data-diff-added]")?.textContent).toBe("+0");
+    expect(stat()?.querySelector("[data-diff-removed]")?.textContent).toBe("−0");
+
+    act(() => updateEditorDraft(`${BODY}\nOne\nTwo`));
+    expect(stat()?.querySelector("[data-diff-added]")?.textContent).toBe("+2");
+    expect(stat()?.querySelector("[data-diff-removed]")?.textContent).toBe("−0");
+
+    act(() => updateEditorDraft(BODY.replace("  - '#sample'\n", "")));
+    expect(stat()?.querySelector("[data-diff-added]")?.textContent).toBe("+0");
+    expect(stat()?.querySelector("[data-diff-removed]")?.textContent).toBe("−1");
   });
 
   it("does NOT swallow the global Mod+K / Mod+B chords (no bespoke formatting accelerator)", () => {
@@ -260,7 +313,7 @@ describe("MarkdownDocView diff panel", () => {
             nodeId={NODE_ID}
             content={content()}
             scope={null}
-            trail={[]}
+            heading={null}
           />
         </QueryClientProvider>
       </I18nextProvider>,

@@ -35,7 +35,12 @@ import {
   unwrapEnvelope,
 } from "../liveAdapters";
 import { reportDrainProgress, settleDrainProgress } from "../drainProgress";
-import { EngineError } from "./tiers";
+import {
+  engineErrorFromResponse,
+  machineBearerFetch,
+  machineBearerToken,
+  type FetchLike,
+} from "../httpTransport";
 import type { TiersBlock } from "./tiers";
 import type {
   CodeFilesResponse,
@@ -94,6 +99,7 @@ import type {
   SettingsSchema,
   SettingsState,
 } from "./statusTypes";
+import { drainGenerationListing } from "./generationListingDrain";
 
 // In development Vite proxies /api to the engine (vite.config.ts); in
 // production the SPA is served by the engine itself, so the API shares the
@@ -146,58 +152,7 @@ function drainYield(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Build an EngineError from a non-ok response, preserving the tiers block the
- * engine attaches to its error envelope (contract §2 /
- * every-wire-response-carries-the-tiers-block). The transport must never
- * discard the degradation truth: a down backend has to reach the client as a
- * degraded state, not a bare failure. A body that is missing or unparseable
- * (a genuine transport fault) yields an EngineError with no tiers.
- */
-async function engineErrorFrom(path: string, response: Response): Promise<EngineError> {
-  let body: unknown;
-  let tiers: TiersBlock | undefined;
-  try {
-    body = unwrapEnvelope(await response.json());
-    if (body && typeof body === "object" && "tiers" in body) {
-      const candidate = (body as { tiers?: unknown }).tiers;
-      if (candidate && typeof candidate === "object") {
-        tiers = candidate as TiersBlock;
-      }
-    }
-  } catch {
-    // No structured JSON body — nothing to preserve.
-  }
-  return new EngineError(path, response.status, { tiers, body });
-}
-
 // --- the client ------------------------------------------------------------------------------
-
-export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
-
-/**
- * Production token bootstrap (DF-6 amendment): the engine injects a
- * `vaultspec-token` meta tag into the served index.html; the default
- * transport carries it as the bearer. In dev the Vite proxy injects the
- * header instead (vite.config.ts), so an absent tag is not an error.
- */
-export function bearerToken(): string | null {
-  if (typeof document === "undefined") return null;
-  return (
-    document.querySelector('meta[name="vaultspec-token"]')?.getAttribute("content") ??
-    null
-  );
-}
-
-const defaultTransport: FetchLike = (input, init) => {
-  const token = bearerToken();
-  if (!token) return fetch(input, init);
-  const headers = new Headers(init?.headers);
-  if (!headers.has("authorization")) {
-    headers.set("Authorization", `Bearer ${token}`);
-  }
-  return fetch(input, { ...init, headers });
-};
 
 export interface EngineClientOptions {
   baseUrl?: string;
@@ -210,7 +165,7 @@ export class EngineClient {
 
   constructor(options: EngineClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? API_BASE;
-    this.fetchImpl = options.fetchImpl ?? defaultTransport;
+    this.fetchImpl = options.fetchImpl ?? machineBearerFetch(machineBearerToken);
   }
 
   /**
@@ -263,71 +218,49 @@ export class EngineClient {
     // can render the first page immediately while the drain continues; the
     // resolved value is the whole listing with `complete: true`.
     const drainId = `vault-tree:${scope}`;
-    try {
-      // Outer restart loop (D1): a mid-walk generation change restarts the drain
-      // from page 0. Bounded by the restart budget — on exhaustion the last attempt
-      // accepts the (possibly straddled) listing but drops its generation baseline.
-      for (let attempt = 0; ; attempt += 1) {
-        const canRestart = attempt < VAULT_TREE_MAX_WALK_RESTARTS;
-        const entries: unknown[] = [];
-        let tiers: unknown = {};
-        // The generation the walk committed to (the first page's); a later page
-        // from a different generation is a mid-walk straddle.
-        let generation: number | undefined;
-        let straddled = false;
-        let cursor: string | undefined;
-        let restart = false;
-        for (let page = 0; page < VAULT_TREE_MAX_PAGES; page += 1) {
-          const body = await this.get<{
-            entries?: unknown[];
-            tiers?: unknown;
-            generation?: number;
-            next_cursor?: string;
-          }>("/vault-tree", {
-            scope,
-            page_size: page === 0 ? VAULT_TREE_FIRST_PAGE_SIZE : VAULT_TREE_PAGE_SIZE,
-            cursor,
-          });
-          const pageGeneration =
-            typeof body.generation === "number" ? body.generation : undefined;
-          if (page === 0) {
-            generation = pageGeneration;
-          } else if (
-            pageGeneration !== undefined &&
-            generation !== undefined &&
-            pageGeneration !== generation
-          ) {
-            if (canRestart) {
-              // The graph rebuilt mid-drain: discard the mixed prefix and restart.
-              restart = true;
-              break;
-            }
-            // Restart budget spent: accept the mixed listing but mark it straddled
-            // so no generation baseline is carried (the next sweep re-drains).
-            straddled = true;
-          }
-          if (Array.isArray(body.entries)) entries.push(...body.entries);
-          if (body.tiers !== undefined) tiers = body.tiers;
-          cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
-          if (cursor === undefined) break;
-          reportDrainProgress(drainId, page + 1, entries.length);
-          onPartial?.({
-            ...adaptVaultTree({ entries: [...entries], tiers, generation }),
-            complete: false,
-          });
-          await drainYield(VAULT_TREE_PAGE_YIELD_MS);
-        }
-        if (restart) continue;
-        // A straddled final attempt carries no reliable baseline: omit generation.
-        const resolvedGeneration = straddled ? undefined : generation;
+    const drained = await drainGenerationListing<unknown, unknown>({
+      initialTiers: {},
+      maxPages: VAULT_TREE_MAX_PAGES,
+      maxRestarts: VAULT_TREE_MAX_WALK_RESTARTS,
+      fetchPage: async ({ cursor, page }) => {
+        const body = await this.get<{
+          entries?: unknown[];
+          tiers?: unknown;
+          generation?: number;
+          next_cursor?: string;
+        }>("/vault-tree", {
+          scope,
+          page_size: page === 0 ? VAULT_TREE_FIRST_PAGE_SIZE : VAULT_TREE_PAGE_SIZE,
+          cursor,
+        });
         return {
-          ...adaptVaultTree({ entries, tiers, generation: resolvedGeneration }),
-          complete: true,
+          entries: Array.isArray(body.entries) ? body.entries : [],
+          tiers: body.tiers,
+          generation: typeof body.generation === "number" ? body.generation : undefined,
+          nextCursor:
+            typeof body.next_cursor === "string" ? body.next_cursor : undefined,
         };
-      }
-    } finally {
-      settleDrainProgress(drainId);
-    }
+      },
+      onContinuation: async ({ entries, tiers, generation, page }) => {
+        reportDrainProgress(drainId, page + 1, entries.length);
+        onPartial?.({
+          ...adaptVaultTree({ entries, tiers, generation }),
+          complete: false,
+        });
+        await drainYield(VAULT_TREE_PAGE_YIELD_MS);
+      },
+      onSettle: () => {
+        settleDrainProgress(drainId);
+      },
+    });
+    return {
+      ...adaptVaultTree({
+        entries: drained.entries,
+        tiers: drained.tiers,
+        generation: drained.generation,
+      }),
+      complete: true,
+    };
   }
 
   /** The generation-keyed vault-tree delta: the stem-keyed
@@ -346,83 +279,66 @@ export class EngineClient {
     // the walk. The walk-cap `truncated` block is generation-stable (identical
     // on every page), so the last-seen value is the honest whole-listing truth.
     const drainId = `code-files:${scope}`;
-    try {
-      // Outer restart loop (mirroring the vault tree): a mid-walk generation
-      // change restarts the drain from page 0, bounded by the restart budget.
-      for (let attempt = 0; ; attempt += 1) {
-        const canRestart = attempt < VAULT_TREE_MAX_WALK_RESTARTS;
-        const entries: unknown[] = [];
-        let tiers: unknown = {};
-        let truncated: unknown = null;
-        // The code `generation` the walk committed to (the first page's); a later
-        // page from a different generation is a mid-walk straddle.
-        let generation: number | undefined;
-        let straddled = false;
-        let cursor: string | undefined;
-        let restart = false;
-        for (let page = 0; page < CODE_FILES_MAX_PAGES; page += 1) {
-          const body = await this.get<{
-            entries?: unknown[];
-            tiers?: unknown;
-            truncated?: unknown;
-            generation?: number;
-            next_cursor?: string;
-          }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
-          const pageGeneration =
-            typeof body.generation === "number" ? body.generation : undefined;
-          if (page === 0) {
-            generation = pageGeneration;
-          } else if (
-            pageGeneration !== undefined &&
-            generation !== undefined &&
-            pageGeneration !== generation
-          ) {
-            if (canRestart) {
-              restart = true;
-              break;
-            }
-            straddled = true;
-          }
-          if (Array.isArray(body.entries)) entries.push(...body.entries);
-          if (body.tiers !== undefined) tiers = body.tiers;
-          if (body.truncated !== undefined) truncated = body.truncated;
-          cursor = typeof body.next_cursor === "string" ? body.next_cursor : undefined;
-          if (cursor === undefined) break;
-          // Report only while another page remains: the common single-page
-          // listing never touches the drain slice,
-          // so small corpora cannot flicker the indicator.
-          reportDrainProgress(drainId, page + 1, entries.length);
+    let serverTruncated: unknown = null;
+    let truncationAttempt = -1;
+    const drained = await drainGenerationListing<unknown, unknown>({
+      initialTiers: {},
+      maxPages: CODE_FILES_MAX_PAGES,
+      maxRestarts: VAULT_TREE_MAX_WALK_RESTARTS,
+      fetchPage: async ({ attempt, cursor }) => {
+        if (attempt !== truncationAttempt) {
+          truncationAttempt = attempt;
+          serverTruncated = null;
         }
-        if (restart) continue;
-        // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its
-        // bound while a cursor still remained, files beyond it never loaded — an
-        // incomplete listing exactly like the engine's own walk cap. Surface it
-        // (when the server did not already report truncation).
-        if (truncated === null && cursor !== undefined) {
-          truncated = {
-            returned_files: entries.length,
+        const body = await this.get<{
+          entries?: unknown[];
+          tiers?: unknown;
+          truncated?: unknown;
+          generation?: number;
+          next_cursor?: string;
+        }>("/code-files", { scope, page_size: CODE_FILES_PAGE_SIZE, cursor });
+        if (body.truncated !== undefined) serverTruncated = body.truncated;
+        return {
+          entries: Array.isArray(body.entries) ? body.entries : [],
+          tiers: body.tiers,
+          generation: typeof body.generation === "number" ? body.generation : undefined,
+          nextCursor:
+            typeof body.next_cursor === "string" ? body.next_cursor : undefined,
+        };
+      },
+      onContinuation: ({ entries, page }) => {
+        // Report only while another page remains: the common single-page listing
+        // never touches the drain slice, so small corpora cannot flicker it.
+        reportDrainProgress(drainId, page + 1, entries.length);
+      },
+      onSettle: () => {
+        settleDrainProgress(drainId);
+      },
+    });
+    // The CLIENT walk cap is ALSO truncation: if the page loop exhausted its bound
+    // while a cursor still remained, files beyond it never loaded — an incomplete
+    // listing exactly like the engine's own walk cap. Surface it when the server did
+    // not already report truncation.
+    const truncated =
+      serverTruncated === null && drained.pageCapReached
+        ? {
+            returned_files: drained.entries.length,
             reason:
               "client page-walk cap: the listing stopped at its page ceiling; files beyond it are absent",
-          };
-        }
-        // A truncated corpus (server or client-cap) or a straddled walk carries no
-        // stable delta baseline — omit the generation so the next sweep re-drains
-        // rather than patches an incomplete/mixed-generation listing.
-        const resolvedGeneration =
-          truncated !== null || straddled ? undefined : generation;
-        return {
-          ...adaptCodeFiles({
-            entries,
-            tiers,
-            truncated,
-            generation: resolvedGeneration,
-          }),
-          complete: true,
-        };
-      }
-    } finally {
-      settleDrainProgress(drainId);
-    }
+          }
+        : serverTruncated;
+    // A truncated corpus (server or client-cap) carries no stable delta baseline:
+    // the next sweep re-drains rather than patching an incomplete listing.
+    const generation = truncated === null ? drained.generation : undefined;
+    return {
+      ...adaptCodeFiles({
+        entries: drained.entries,
+        tiers: drained.tiers,
+        truncated,
+        generation,
+      }),
+      complete: true,
+    };
   }
 
   /** The generation-keyed code-files delta: the path-keyed diff from the
@@ -951,7 +867,7 @@ export class EngineClient {
       if (qs) url += `?${qs}`;
     }
     const response = await this.fetchImpl(url, signal ? { signal } : undefined);
-    if (!response.ok) throw await engineErrorFrom(path, response);
+    if (!response.ok) throw await engineErrorFromResponse(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
 
@@ -962,7 +878,7 @@ export class EngineClient {
       body: JSON.stringify(body),
       signal,
     });
-    if (!response.ok) throw await engineErrorFrom(path, response);
+    if (!response.ok) throw await engineErrorFromResponse(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
 
@@ -972,7 +888,7 @@ export class EngineClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw await engineErrorFrom(path, response);
+    if (!response.ok) throw await engineErrorFromResponse(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
 
@@ -982,7 +898,7 @@ export class EngineClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!response.ok) throw await engineErrorFrom(path, response);
+    if (!response.ok) throw await engineErrorFromResponse(path, response);
     return unwrapEnvelope(await response.json()) as T;
   }
 }

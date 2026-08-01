@@ -9,18 +9,19 @@
 // them to its `Segment` children through a context; `Segment` (sibling file)
 // consumes it. Display-only and prop-driven — emits the next value via `onChange`.
 
-import { createContext, useCallback, useContext, useRef } from "react";
+import { createContext, useContext } from "react";
 import type { ReactNode } from "react";
+
+import { useFocusZone } from "../chrome/useFocusZone";
+import type { UseFocusZone } from "../chrome/useFocusZone";
 
 interface SegmentedContextValue {
   /** The currently selected segment value. */
   value: string;
   /** Selects a segment (emits up to the container's `onChange`). */
   selectSegment: (value: string) => void;
-  /** A `Segment` registers its element on mount and clears it on unmount. */
-  registerSegment: (value: string, el: HTMLButtonElement | null) => void;
-  /** Roving arrow-key movement from a segment in the given direction. */
-  moveFocus: (from: string, dir: 1 | -1) => void;
+  /** The canonical composite-navigation owner for the segment items. */
+  focusZone: UseFocusZone;
   /** Whether the whole group is disabled. */
   disabled: boolean;
   /** When true, the track fills its container and segments share width equally. */
@@ -66,39 +67,19 @@ export function SegmentedToggle({
   className = "",
   fullWidth = false,
 }: SegmentedToggleProps) {
-  const segments = useRef(new Map<string, HTMLButtonElement>());
-  const order = useRef<string[]>([]);
-
-  const registerSegment = useCallback(
-    (segValue: string, el: HTMLButtonElement | null) => {
-      if (el) {
-        segments.current.set(segValue, el);
-        if (!order.current.includes(segValue)) order.current.push(segValue);
-      } else {
-        segments.current.delete(segValue);
-        order.current = order.current.filter((v) => v !== segValue);
-      }
-    },
-    [],
-  );
-
-  const moveFocus = useCallback(
-    (from: string, dir: 1 | -1) => {
-      const list = order.current;
-      const index = list.indexOf(from);
-      if (index < 0 || list.length === 0) return;
-      const next = list[(index + (dir === 1 ? 1 : list.length - 1)) % list.length]!;
-      onChange(next);
-      segments.current.get(next)?.focus();
-    },
-    [onChange],
-  );
+  const focusZone = useFocusZone({
+    orientation: "horizontal",
+    wrap: true,
+    activeKey: value,
+    // SegmentedToggle preserves its established selection-follows-roving policy;
+    // FocusZone owns only traversal, tab stop selection, and DOM focus.
+    onActiveKeyChange: onChange,
+  });
 
   const ctx: SegmentedContextValue = {
     value,
     selectSegment: onChange,
-    registerSegment,
-    moveFocus,
+    focusZone,
     disabled,
     fullWidth,
   };

@@ -98,15 +98,17 @@ export const ltrGraphResources = {
   filters: {
     accessibility: { panel: "Filtres de documents" },
     actions: {
-      clearAll: "Tout effacer",
       reset: "Réinitialiser les filtres",
       showResults: "Afficher les résultats",
     },
     edited: {
       any: "À tout moment",
+      custom: "Période personnalisée",
+      from: "Du",
       lastSevenDays: "7 derniers jours",
       lastThirtyDays: "30 derniers jours",
       thisYear: "Cette année",
+      to: "Au",
     },
     health: {
       dangling: "Destination manquante",
@@ -135,6 +137,8 @@ export const ltrGraphResources = {
     states: {
       empty: "Aucun choix de filtre disponible.",
       loading: "Chargement des choix de filtre…",
+      noFeatureFilter:
+        "Aucun filtre de fonctionnalité n’est actif. Utilisez la recherche de fonctionnalités pour en ajouter un.",
     },
     statuses: {
       accepted: "Accepté",
@@ -320,15 +324,17 @@ export const rtlGraphResources = {
   filters: {
     accessibility: { panel: "عوامل تصفية المستندات" },
     actions: {
-      clearAll: "مسح الكل",
       reset: "إعادة تعيين عوامل التصفية",
       showResults: "إظهار النتائج",
     },
     edited: {
       any: "أي وقت",
+      custom: "نطاق مخصص",
+      from: "من",
       lastSevenDays: "آخر 7 أيام",
       lastThirtyDays: "آخر 30 يومًا",
       thisYear: "هذا العام",
+      to: "إلى",
     },
     health: {
       dangling: "وجهة مفقودة",
@@ -357,6 +363,7 @@ export const rtlGraphResources = {
     states: {
       empty: "لا تتوفر خيارات تصفية.",
       loading: "جارٍ تحميل خيارات التصفية…",
+      noFeatureFilter: "لا يوجد فلتر ميزات نشط. استخدم بحث الميزات لإضافة واحد.",
     },
     statuses: {
       accepted: "مقبول",

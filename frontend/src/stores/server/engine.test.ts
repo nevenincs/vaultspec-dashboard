@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import type { FetchLike } from "./engine";
 import { EngineClient, EngineError } from "./engine";
 import { resetDrainProgress, useDrainProgressStore } from "./drainProgress";
+import type { FetchLike } from "./httpTransport";
 
 function recordingFetch(payload: unknown = { ok: true }, status = 200) {
   const calls: { url: string; init?: RequestInit }[] = [];
@@ -184,6 +184,129 @@ describe("EngineClient", () => {
     expect(tree.complete).toBe(true);
     // The drain-progress entry never outlives the walk (settled on resolve).
     expect(useDrainProgressStore.getState().drains["vault-tree:wt-1"]).toBeUndefined();
+  });
+
+  it("restarts a straddled vault-tree drain from the first page and drops its mixed prefix", async () => {
+    const pages = [
+      {
+        data: {
+          entries: [{ stem: "old-a", doc_type: "adr", feature_tags: [] }],
+          generation: 1,
+        },
+        tiers: {},
+        next_cursor: "old-a",
+      },
+      {
+        data: {
+          entries: [{ stem: "old-b", doc_type: "adr", feature_tags: [] }],
+          generation: 2,
+        },
+        tiers: {},
+      },
+      {
+        data: {
+          entries: [{ stem: "new-a", doc_type: "adr", feature_tags: [] }],
+          generation: 3,
+        },
+        tiers: {},
+        next_cursor: "new-a",
+      },
+      {
+        data: {
+          entries: [{ stem: "new-b", doc_type: "adr", feature_tags: [] }],
+          generation: 3,
+        },
+        tiers: {},
+      },
+    ];
+    const calls: string[] = [];
+    let page = 0;
+    const fetchImpl: FetchLike = (url) => {
+      calls.push(String(url));
+      const body = pages[page]!;
+      page += 1;
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    const client = new EngineClient({ baseUrl: "/api", fetchImpl });
+
+    const tree = await client.vaultTree("wt-1");
+
+    expect(calls).toEqual([
+      "/api/vault-tree?scope=wt-1&page_size=200",
+      "/api/vault-tree?scope=wt-1&page_size=2000&cursor=old-a",
+      "/api/vault-tree?scope=wt-1&page_size=200",
+      "/api/vault-tree?scope=wt-1&page_size=2000&cursor=new-a",
+    ]);
+    expect(tree.entries.map((entry) => entry.path)).toEqual([
+      ".vault/adr/new-a.md",
+      ".vault/adr/new-b.md",
+    ]);
+    expect(tree.generation).toBe(3);
+  });
+
+  it("restarts a straddled code-files drain and suppresses its truncated baseline", async () => {
+    const pages = [
+      {
+        data: { entries: [{ path: "src/old-a.ts" }], generation: 1 },
+        tiers: {},
+        next_cursor: "src/old-a.ts",
+      },
+      {
+        data: { entries: [{ path: "src/old-b.ts" }], generation: 2 },
+        tiers: {},
+      },
+      {
+        data: { entries: [{ path: "src/new-a.ts" }], generation: 3 },
+        tiers: {},
+        next_cursor: "src/new-a.ts",
+      },
+      {
+        data: {
+          entries: [{ path: "src/new-b.ts" }],
+          generation: 3,
+          truncated: { returned_files: 2, reason: "source-tree walk cap" },
+        },
+        tiers: {},
+      },
+    ];
+    const calls: string[] = [];
+    let page = 0;
+    const fetchImpl: FetchLike = (url) => {
+      calls.push(String(url));
+      const body = pages[page]!;
+      page += 1;
+      return Promise.resolve(
+        new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+      );
+    };
+    const client = new EngineClient({ baseUrl: "/api", fetchImpl });
+
+    const files = await client.codeFiles("wt-1");
+
+    expect(calls).toEqual([
+      "/api/code-files?scope=wt-1&page_size=2000",
+      "/api/code-files?scope=wt-1&page_size=2000&cursor=src%2Fold-a.ts",
+      "/api/code-files?scope=wt-1&page_size=2000",
+      "/api/code-files?scope=wt-1&page_size=2000&cursor=src%2Fnew-a.ts",
+    ]);
+    expect(files.entries.map((entry) => entry.path)).toEqual([
+      "src/new-a.ts",
+      "src/new-b.ts",
+    ]);
+    expect(files.truncated).toEqual({
+      returned_files: 2,
+      reason: "source-tree walk cap",
+    });
+    expect(files.generation).toBeUndefined();
+    expect(files.complete).toBe(true);
   });
 
   it("builds the multiplexed stream URL with splice resume (§7)", () => {

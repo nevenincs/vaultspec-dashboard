@@ -203,6 +203,68 @@ describe("CodeViewer", () => {
     expect(document.body.textContent).toContain("const answer = 42;");
   });
 
+  it("names what each copy writes instead of one ambiguous Copy", () => {
+    const { runtime } = renderViewer(available("const answer = 42;\n"));
+    const trigger = screen.getByRole("button", {
+      name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copy),
+    });
+    // The affordance is a glyph that OPENS a menu, not a one-shot copy.
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(screen.queryByRole("menu")).toBeNull();
+
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    const items = within(screen.getByRole("menu")).getAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copyContents),
+      resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copyPath),
+    ]);
+
+    // Choosing one closes the menu; the viewer stays read-only either way.
+    fireEvent.click(items[0]!);
+    expect(screen.queryByRole("menu")).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+
+  it("offers no path copy for a file served without a path", () => {
+    const { runtime } = renderViewer(available("x\n", { path: undefined }));
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: resolveMessage(runtime, CODE_VIEWER_MESSAGES.actions.copy),
+      }),
+    );
+    // Honest absence rather than a permanently dead menu row.
+    expect(within(screen.getByRole("menu")).getAllByRole("menuitem")).toHaveLength(1);
+  });
+
+  it("heads the file with its name over its repo-relative path", () => {
+    const { container } = renderViewer(available("x\n"));
+    const header = container.querySelector("header")!;
+    expect(within(header).getByText("mod.rs")).toBeTruthy();
+    const path = header.querySelector("[data-code-viewer-path]")!;
+    expect(path.textContent).toBe("src/auth/mod.rs");
+    // The full path is revealed on hover when the header is too narrow for it.
+    expect(path.getAttribute("title")).toBe("src/auth/mod.rs");
+  });
+
+  it("renders the shared caution treatment when the read is degraded", () => {
+    const { runtime } = renderViewer(
+      available("", {
+        degraded: true,
+        available: false,
+        reasons: { structural: "private_backend_state" },
+      }),
+    );
+    // The one shared degraded block (caution mark + one sentence), not a plain
+    // tinted paragraph that reads as ordinary prose.
+    const block = document.querySelector('[data-state-block="degraded"]')!;
+    expect(block).toBeTruthy();
+    expect(block.textContent).toBe(
+      resolveMessage(runtime, CODE_VIEWER_MESSAGES.errors.temporarilyUnavailable),
+    );
+    expect(document.body.textContent).not.toContain("private_backend_state");
+  });
+
   it("remains display-only", () => {
     renderViewer(available("fn main() {}\n"));
     expect(screen.queryByRole("textbox")).toBeNull();

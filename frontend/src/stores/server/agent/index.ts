@@ -31,15 +31,19 @@ import {
 } from "@tanstack/react-query";
 
 import {
-  bearerToken,
   CANONICAL_TIERS,
-  EngineError,
   readTierAvailability,
   tiersFromQuery,
-  type FetchLike,
   type TiersBlock,
-} from "../engine";
-import { unwrapEnvelope } from "../liveAdapters";
+} from "../engine/tiers";
+import {
+  authoringActorFetch,
+  engineErrorFromResponse,
+  machineBearerFetch,
+  machineBearerToken,
+  type FetchLike,
+} from "../httpTransport";
+import { unwrapEnvelope } from "../liveAdapters/internal";
 import { queryClient as defaultQueryClient } from "../queryClient";
 import {
   ensureActorToken,
@@ -87,45 +91,6 @@ export * from "./a2aTeam";
 // production the SPA shares the engine origin and the prefix collapses.
 const AGENT_BASE = import.meta.env.DEV ? "/api" : "";
 
-/** The per-principal actor-token header the command routes resolve identity from
- *  (shared with the authoring plane — one session credential, ambient-minted). */
-const ACTOR_TOKEN_HEADER = "x-authoring-actor-token";
-
-/** The production base transport: the machine bearer from the injected meta tag,
- *  identical to `AuthoringClient`. The test harness swaps this for the live
- *  transport carrying the spawned engine's bearer. */
-const defaultBearerTransport: FetchLike = (input, init) => {
-  const bearer = bearerToken();
-  if (!bearer) return fetch(input, init);
-  const headers = new Headers(init?.headers);
-  if (!headers.has("authorization")) {
-    headers.set("Authorization", `Bearer ${bearer}`);
-  }
-  return fetch(input, { ...init, headers });
-};
-
-/** Build a tiers-preserving `EngineError` from a non-ok agent response, so a
- *  degraded-store 503 or a 409 conflict reaches the consumer as degradation
- *  truth, never a tiers-less bare failure (wire-contract). */
-async function agentErrorFrom(path: string, response: Response): Promise<EngineError> {
-  let body: unknown;
-  let tiers: TiersBlock | undefined;
-  try {
-    body = unwrapEnvelope(await response.json());
-    if (
-      body &&
-      typeof body === "object" &&
-      "tiers" in body &&
-      typeof (body as { tiers: unknown }).tiers === "object"
-    ) {
-      tiers = (body as { tiers: TiersBlock }).tiers;
-    }
-  } catch {
-    // No structured JSON body — nothing to preserve.
-  }
-  return new EngineError(path, response.status, { tiers, body });
-}
-
 export interface AgentClientOptions {
   baseUrl?: string;
   fetchImpl?: FetchLike;
@@ -147,22 +112,13 @@ export class AgentClient {
 
   constructor(options: AgentClientOptions = {}) {
     this.baseUrl = options.baseUrl ?? AGENT_BASE;
-    this.baseFetch = options.fetchImpl ?? defaultBearerTransport;
+    this.baseFetch = options.fetchImpl ?? machineBearerFetch(machineBearerToken);
   }
 
   /** Rebind the base transport (the live-wire test harness injects the spawned
    *  engine's transport, so the SAME client code runs against the real engine). */
   useTransport(fetchImpl: FetchLike): void {
     this.baseFetch = fetchImpl;
-  }
-
-  private withActor(actorToken?: string): FetchLike {
-    return (input, init) => {
-      if (!actorToken) return this.baseFetch(input, init);
-      const headers = new Headers(init?.headers);
-      headers.set(ACTOR_TOKEN_HEADER, actorToken);
-      return this.baseFetch(input, { ...init, headers });
-    };
   }
 
   // --- reads (principal-permissive) ---
@@ -406,11 +362,11 @@ export class AgentClient {
   // --- transport (mirrors AuthoringClient) ---
 
   private async get(path: string, signal?: AbortSignal): Promise<unknown> {
-    const response = await this.withActor()(
+    const response = await authoringActorFetch(this.baseFetch)(
       `${this.baseUrl}${path}`,
       signal ? { signal } : undefined,
     );
-    if (!response.ok) throw await agentErrorFrom(path, response);
+    if (!response.ok) throw await engineErrorFromResponse(path, response);
     return unwrapEnvelope(await response.json());
   }
 
@@ -426,12 +382,15 @@ export class AgentClient {
       idempotency_key: opts.idempotencyKey ?? newIdempotencyKey("agent"),
       payload,
     };
-    const response = await this.withActor(opts.actorToken)(`${this.baseUrl}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(envelope),
-    });
-    if (!response.ok) throw await agentErrorFrom(path, response);
+    const response = await authoringActorFetch(this.baseFetch, opts.actorToken)(
+      `${this.baseUrl}${path}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(envelope),
+      },
+    );
+    if (!response.ok) throw await engineErrorFromResponse(path, response);
     return unwrapEnvelope(await response.json());
   }
 }

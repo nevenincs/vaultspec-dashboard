@@ -35,7 +35,12 @@ import {
   stageSetDataCommand,
 } from "../../stores/view/stageSceneCommands";
 import { useGraphAffordanceReconciliation } from "../../stores/view/graphAffordances";
-import { setGraphControlsSimRunning } from "../../stores/view/graphControlsChrome";
+import {
+  graphAutoframeFilterIdentity,
+  noteGraphManualNavigation,
+  setGraphControlsSimRunning,
+  syncGraphAutoframeFilterIdentity,
+} from "../../stores/view/graphControlsChrome";
 import { useGraphOverlays } from "../../stores/view/graphOverlays";
 import { useRenderCapability } from "../../stores/view/renderCapability";
 import { bindPinsToScene } from "../../stores/view/pins";
@@ -134,6 +139,48 @@ export function useSceneSimStateBridge(): void {
       setGraphControlsSimRunning(event.running);
     });
   }, []);
+}
+
+/** A pointer press only counts as navigation once it has travelled this far, so a
+ *  plain click (which selects a node) never disengages tracking. Mirrors the
+ *  field's own click-vs-drag threshold. */
+const MANUAL_NAV_DRAG_PX = 2;
+
+/** Chrome-level observation of a MANUAL camera gesture over the canvas host. The
+ *  field still owns the gestures; this only notices that one happened, so the
+ *  "Keep in view" control can disengage visibly instead of the field suspending
+ *  tracking behind a toggle that still reads as engaged.
+ *
+ *  Deliberately coarse: it cannot tell a camera pan from a node drag (both are a
+ *  pointer drag over the same host, and hit-testing belongs to the scene). A node
+ *  drag therefore also disengages tracking — the user is working the graph by
+ *  hand either way, which is the case for holding the camera still. */
+function useManualNavigationHandlers() {
+  const originRef = useRef<{ x: number; y: number } | null>(null);
+  const notedRef = useRef(false);
+  const onPointerDown = useCallback((event: React.PointerEvent) => {
+    originRef.current = { x: event.clientX, y: event.clientY };
+    notedRef.current = false;
+  }, []);
+  const onPointerMove = useCallback((event: React.PointerEvent) => {
+    const origin = originRef.current;
+    if (!origin || notedRef.current) return;
+    const travelled =
+      Math.abs(event.clientX - origin.x) + Math.abs(event.clientY - origin.y);
+    if (travelled <= MANUAL_NAV_DRAG_PX) return;
+    notedRef.current = true;
+    noteGraphManualNavigation();
+  }, []);
+  const onPointerUp = useCallback(() => {
+    originRef.current = null;
+  }, []);
+  return {
+    onPointerDown,
+    onPointerMove,
+    onPointerUp,
+    onPointerCancel: onPointerUp,
+    onWheel: noteGraphManualNavigation,
+  };
 }
 
 export function Stage() {
@@ -350,6 +397,20 @@ export function Stage() {
   // corpus's data lands.
   const pushedCorpusRef = useRef<string | undefined>(undefined);
   const corpus = graphQuery?.corpus ?? "vault";
+  // Autoframe re-engagement (owner review): a manual camera gesture disengages
+  // "Keep in view"; a change to WHICH corpus is on screen — scope, corpus,
+  // granularity, or any filter facet — re-engages it, so tracking resumes for the
+  // new set of nodes without the user re-arming it. Selection, camera moves, and
+  // ambient live edits deliberately do NOT re-engage.
+  const autoframeFilterIdentity = graphAutoframeFilterIdentity({
+    scope: graphScope,
+    corpus,
+    granularity,
+    filter: graphQuery?.filter,
+  });
+  useEffect(() => {
+    syncGraphAutoframeFilterIdentity(autoframeFilterIdentity);
+  }, [autoframeFilterIdentity]);
   useEffect(() => {
     if (!displaySlice || !scope || !liveTimeline) return;
     const held = pushedCorpusRef.current;
@@ -444,10 +505,12 @@ export function Stage() {
   // about to paint its own card, `CanvasStateOverlay`'s card is suppressed so
   // the two never occupy the same centered coordinates at once.
   const { state: provisionPanelState } = useProvisionPanelState(scope);
+  const manualNavigation = useManualNavigationHandlers();
   return (
     <div className="relative h-full w-full overflow-hidden">
       <div
         ref={setStageHost}
+        {...manualNavigation}
         // Focusable so keyboard graph-walk can own the canvas (ADR keyboard
         // operability). aria-label names the surface for screen readers.
         tabIndex={0}

@@ -26,6 +26,7 @@ import {
   AuthoringClient,
   type CreateProposalPayload,
 } from "../../stores/server/authoring";
+import { AUTHORING_ACTOR_TOKEN_HEADER } from "../../stores/server/httpTransport";
 import { queryClient } from "../../stores/server/queryClient";
 import { AgentAutonomyControl } from "../agent/AgentPanel";
 
@@ -103,7 +104,7 @@ async function createLiveSession(actorToken: string): Promise<string> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-authoring-actor-token": actorToken,
+      [AUTHORING_ACTOR_TOKEN_HEADER]: actorToken,
     },
     body: JSON.stringify({
       api_version: "v1",

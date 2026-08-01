@@ -20,6 +20,7 @@ import {
 import { DOCUMENT_DASHBOARD_GRAPH_GRANULARITY } from "./dashboardDefaults";
 import { dashboardStateSessionIdentity, engineKeys, useSession } from "./queries";
 import { queryClient } from "./queryClient";
+import { createKeyedSerializer } from "./keyedSerializer";
 import type { GraphSettingsDefaults } from "./settingsSelectors";
 import { normalizeStoreScope } from "./scopeIdentity";
 import { parseFeatureQueryInput } from "../featureQuery";
@@ -278,7 +279,7 @@ export async function patchDashboardState(
 }
 
 const pendingPanelStatesByScope = new Map<string, DashboardPanelState>();
-const panelStateWriteChainsByScope = new Map<string, Promise<DashboardState>>();
+const panelStateWriteSerializer = createKeyedSerializer<string>();
 const timelineModeWriteSeqByScope = new Map<string, number>();
 
 export interface DashboardTimelineModeWriteToken {
@@ -368,22 +369,6 @@ function cachedDashboardFilters(
   );
 }
 
-function queuePanelStateWrite(
-  scope: string,
-  write: () => Promise<DashboardState>,
-): Promise<DashboardState> {
-  const previous = panelStateWriteChainsByScope.get(scope) ?? Promise.resolve(null);
-  const next = previous.catch(() => null).then(write);
-  panelStateWriteChainsByScope.set(scope, next);
-  void next.finally(() => {
-    if (panelStateWriteChainsByScope.get(scope) === next) {
-      panelStateWriteChainsByScope.delete(scope);
-      pendingPanelStatesByScope.delete(scope);
-    }
-  });
-  return next;
-}
-
 // SRR-001 filter-write serialization. The whole `filters` record is ONE
 // top-level field the engine PATCH replaces wholesale, so two rapid toggles that
 // both read the SAME base filters lost-update each other (the second PATCH erases
@@ -394,19 +379,7 @@ function queuePanelStateWrite(
 // AND recompute the payload from the FRESHEST cache INSIDE the queued thunk, so
 // each serialized write builds on the prior write's committed result rather than
 // a stale snapshot captured at call time.
-const filterWriteChainsByScope = new Map<string, Promise<unknown>>();
-
-function queueFilterWrite<T>(scope: string, write: () => Promise<T>): Promise<T> {
-  const previous = filterWriteChainsByScope.get(scope) ?? Promise.resolve(undefined);
-  const next = previous.catch(() => undefined).then(() => write());
-  filterWriteChainsByScope.set(scope, next);
-  void next.finally(() => {
-    if (filterWriteChainsByScope.get(scope) === next) {
-      filterWriteChainsByScope.delete(scope);
-    }
-  });
-  return next;
-}
+const filterWriteSerializer = createKeyedSerializer<string>();
 
 /** Serialize one filter transform for a scope, reading the base filters INSIDE
  *  the queued thunk (SRR-001) so concurrent facet writes cannot lost-update. */
@@ -417,7 +390,7 @@ function serializedFilterWrite<T>(
   transform: (filters: DashboardFilters) => DashboardFilters,
   write: (patch: DashboardStateMutationPatch) => Promise<T>,
 ): Promise<T> {
-  return queueFilterWrite(scope, () =>
+  return filterWriteSerializer.run(scope, () =>
     write(
       filtersPatch(transform(cachedDashboardFilters(client, scope, sessionIdentity))),
     ),
@@ -537,6 +510,33 @@ export function dashboardFiltersWithFacetToggled(
     ? current.filter((entry) => entry !== normalizedValue)
     : [...current, normalizedValue];
   if (values.length > 0) next[normalizedFacet] = values;
+  else delete next[normalizedFacet];
+  return next;
+}
+
+/** Replace ONE multi-select facet's values wholesale, leaving every OTHER facet
+ *  untouched. The ALL-ON checkbox model needs this: unticking one value from an
+ *  unnarrowed facet means committing every REMAINING value, which a value-at-a-time
+ *  toggle walk could only reach through N racing writes. An empty list clears the
+ *  facet (the canonical "not narrowed" form), exactly like `…WithFacetCleared`. */
+export function dashboardFiltersWithFacetValues(
+  filters: unknown,
+  facet: unknown,
+  values: unknown,
+): DashboardFilters {
+  const next = cloneDashboardFilters(filters);
+  const normalizedFacet = normalizeDashboardFilterFacet(facet);
+  if (normalizedFacet === null) return next;
+  const normalizeValue =
+    normalizedFacet === "feature_tags"
+      ? normalizeDashboardFeatureTag
+      : normalizeDashboardFilterFacetValue;
+  const normalized: string[] = [];
+  for (const value of Array.isArray(values) ? values : []) {
+    const entry = normalizeValue(value);
+    if (entry !== null && !normalized.includes(entry)) normalized.push(entry);
+  }
+  if (normalized.length > 0) next[normalizedFacet] = normalized;
   else delete next[normalizedFacet];
   return next;
 }
@@ -757,12 +757,11 @@ export function useDashboardStateMutations(scope: unknown) {
       return mutation.mutateAsync(panelStatePatch(normalizedPanelState));
     }
     pendingPanelStatesByScope.set(normalizedScope, normalizedPanelState);
-    return queuePanelStateWrite(normalizedScope, () =>
-      mutation.mutateAsync(panelStatePatch(normalizedPanelState)),
-    ).catch((error: unknown) => {
-      pendingPanelStatesByScope.delete(normalizedScope);
-      throw error;
-    });
+    return panelStateWriteSerializer.run(
+      normalizedScope,
+      () => mutation.mutateAsync(panelStatePatch(normalizedPanelState)),
+      { onCurrentSettled: () => pendingPanelStatesByScope.delete(normalizedScope) },
+    );
   };
   return {
     mutation,
@@ -805,6 +804,18 @@ export function useDashboardStateMutations(scope: unknown) {
             client,
             sessionIdentity,
             (filters) => dashboardFiltersWithFacetToggled(filters, facet, value),
+            (patch) => mutation.mutateAsync(patch),
+          ),
+    setFilterFacetValues: (facet: unknown, values: unknown) =>
+      normalizedScope === null
+        ? mutation.mutateAsync(
+            filtersPatch(dashboardFiltersWithFacetValues({}, facet, values)),
+          )
+        : serializedFilterWrite(
+            normalizedScope,
+            client,
+            sessionIdentity,
+            (filters) => dashboardFiltersWithFacetValues(filters, facet, values),
             (patch) => mutation.mutateAsync(patch),
           ),
     clearFilterFacet: (facet: unknown) =>

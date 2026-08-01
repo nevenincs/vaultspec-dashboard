@@ -202,7 +202,7 @@ function FiltersHarness() {
       <FilterMenu
         sections={sections}
         anyActive={anyActive}
-        onClearAll={() => {
+        onReset={() => {
           setKind([]);
           setFeature([]);
           setStatus([]);

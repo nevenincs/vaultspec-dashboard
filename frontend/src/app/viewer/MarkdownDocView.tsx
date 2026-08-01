@@ -5,9 +5,10 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
 
-import { GitCompare } from "lucide-react";
+import { Check, GitCompare, X } from "lucide-react";
 
 import {
   useActiveLocale,
@@ -90,14 +91,9 @@ import {
   type LineChange,
 } from "../authoring/editorChanges";
 import { ConflictResolutionPanel } from "../authoring/ConflictResolutionPanel";
+import { diffLines, diffStat } from "../authoring/diffLines";
 import { reconcileSections, segmentTextByKey } from "../authoring/sectionReconcile";
-import {
-  Button,
-  DecorativeGlyph,
-  Divider,
-  IconButton,
-  type BreadcrumbItem,
-} from "../kit";
+import { Button, DecorativeGlyph, Divider, IconButton } from "../kit";
 import { DocChrome, type DocChromeMode } from "./DocChrome";
 import { EditorToolbar } from "./EditorToolbar";
 import { HighlightedTextarea } from "./HighlightedCode";
@@ -120,6 +116,9 @@ export const featureFromDocTags = featureTagOf;
 // either grow a private keydown that swallows those global commands (the exact
 // failure actions-keymap-palette forbids) or add palette commands that do nothing
 // without a focused editor. Save remains the one editor keymap-registry binding.
+
+/** The editor chrome's glyph size, matching the toolbar's own marks. */
+const GLYPH_PX = 16;
 
 /** Debounces the proposed text fed to DiffView so per-keystroke O(n·m)
  *  line-LCS is bounded. Flushes immediately when the diff panel first opens
@@ -157,14 +156,14 @@ export function MarkdownDocView({
   nodeId,
   content,
   scope,
-  trail,
+  heading,
 }: {
   nodeId: string;
   content: ContentView;
   scope: string | null;
-  /** The path trail for the chrome breadcrumb (built by the host from the
+  /** The document's identity block for the chrome (built by the host from the
    *  preserved stores header model). */
-  trail: BreadcrumbItem[];
+  heading: ReactNode;
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const toggleChangesLabel = resolveMessage(EDITOR_TOGGLE_DIFF_LABEL).message;
@@ -245,6 +244,15 @@ export function MarkdownDocView({
   // agent marks survive as the user edits above/around them (anchor stability by
   // per-edit reclassification — no stored decoration state). No debounce — the two
   // bounded diffs are cheap per keystroke (see diffLines.ts).
+  // The header's draft-vs-saved line stat (+added / −removed). It reads the SAME
+  // draft-vs-saved pair the diff panel does, so the number in the header and the
+  // hunks in the panel can never disagree; a second bounded line diff per keystroke
+  // costs what the edit costs, not what the document costs (see diffLines.ts).
+  const draftStat = useMemo(
+    () => diffStat(diffLines(editor.baseText, editor.draftText)),
+    [editor.baseText, editor.draftText],
+  );
+
   const editorChanges = useMemo<LineChange[]>(
     () =>
       deriveEffectiveChanges(
@@ -374,6 +382,11 @@ export function MarkdownDocView({
   // layout effect, so it runs before paint and is deterministic under test).
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingSelectionRef = useRef<[number, number] | null>(null);
+
+  // Whether the document's metadata block is showing. View-local chrome: the toggle
+  // reveals the ONE metadata surface the editor already owns (the properties
+  // popover), it does not mint a second one.
+  const [metadataVisible, setMetadataVisible] = useState(false);
 
   const applyFormat = (command: MarkdownFormatCommand) => {
     const el = textareaRef.current;
@@ -627,7 +640,7 @@ export function MarkdownDocView({
     return (
       <div className="flex h-full flex-col bg-paper" onContextMenu={onDocContextMenu}>
         <DocChrome
-          trail={trail}
+          leading={heading}
           mode="view"
           onModeChange={onModeChange}
           canEdit={documentEditor.canEdit}
@@ -659,15 +672,35 @@ export function MarkdownDocView({
   return (
     <div className="flex h-full flex-col bg-paper">
       <DocChrome
-        trail={trail}
+        leading={heading}
         mode="edit"
         onModeChange={onModeChange}
         canEdit={documentEditor.canEdit}
       />
       <div className="flex flex-wrap items-center justify-between gap-fg-2 border-b border-rule px-fg-3 py-fg-1">
-        <span className={`shrink-0 text-label ${editor.statusToneClass}`}>
-          {resolveMessage(editor.statusLabel).message}
-        </span>
+        {/* Draft state reads from the header (owner review, 2026-08-01): the line
+            stat says HOW MUCH changed and the Save affordance's accent fill says
+            THAT something has, so the standing "Unsaved changes" caption is gone.
+            The states an affordance cannot convey — a save in flight, a failed
+            save, an on-disk conflict — keep their explicit text, because losing
+            those would trade a caption for a silent failure. */}
+        <div className="flex shrink-0 items-center gap-fg-2">
+          <span className="flex items-center gap-fg-2 text-meta" data-editor-draft-stat>
+            <span className="tabular-nums text-diff-add" data-diff-added>
+              <DecorativeGlyph name="plus" />
+              {draftStat.added}
+            </span>
+            <span className="tabular-nums text-diff-remove" data-diff-removed>
+              <DecorativeGlyph name="minus" />
+              {draftStat.removed}
+            </span>
+          </span>
+          {editor.statusNeedsCaption && (
+            <span className={`text-label ${editor.statusToneClass}`}>
+              {resolveMessage(editor.statusLabel).message}
+            </span>
+          )}
+        </div>
         <div className="flex min-w-0 flex-1 items-center justify-end gap-fg-2">
           <div className="min-w-0 overflow-x-auto" data-editor-toolbar-scroll-region>
             <EditorToolbar onCommand={applyFormat} />
@@ -682,10 +715,12 @@ export function MarkdownDocView({
             data-editor-diff-toggle
             onClick={toggleEditorDiff}
           >
-            <GitCompare size={16} aria-hidden />
+            <GitCompare size={GLYPH_PX} aria-hidden />
           </IconButton>
           <Divider orientation="vertical" className="self-stretch" />
           <PropertiesPopover
+            open={metadataVisible}
+            onOpenChange={setMetadataVisible}
             frontmatterDraft={editorChrome.frontmatterDraft}
             onFrontmatterChange={setMarkdownEditorFrontmatterDraft}
             onSaveProperties={saveFrontmatterNow}
@@ -698,18 +733,34 @@ export function MarkdownDocView({
             corpus={corpus}
             selfStem={selfStem}
           />
+          {/* Save / stop editing are glyph affordances (owner review): a check that
+              fills with the accent the moment there is something to commit, and a
+              cross that leaves editing. Both keep their registered action names as
+              accessible names, so the keymap, the palette, and these buttons stay
+              one action each (actions-keymap-palette). Plain kit Buttons rather
+              than IconButtons — neither is a toggle, and IconButton would put an
+              `aria-pressed` on them that means nothing. */}
           {!saveLabel.usedFallback && (
             <Button
-              variant="primary"
+              variant={editor.canSave ? "primary" : "ghost"}
+              aria-label={saveLabel.message}
+              title={saveLabel.message}
+              data-editor-save
               onClick={saveBodyNow}
               disabled={!editor.canSave || saveBody.isPending}
             >
-              {saveLabel.message}
+              <Check size={GLYPH_PX} aria-hidden />
             </Button>
           )}
           {!closeLabel.usedFallback && (
-            <Button variant="ghost" onClick={requestCloseDocumentEditor}>
-              {closeLabel.message}
+            <Button
+              variant="ghost"
+              aria-label={closeLabel.message}
+              title={closeLabel.message}
+              data-editor-close
+              onClick={requestCloseDocumentEditor}
+            >
+              <X size={GLYPH_PX} aria-hidden />
             </Button>
           )}
         </div>

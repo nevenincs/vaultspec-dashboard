@@ -174,15 +174,6 @@ function fileBasename(path: string): string {
   return path.split(/[/\\]/).pop() ?? path;
 }
 
-/** The repo-relative parent directory of a path, shown dimmed beside the basename
- *  so a row reads unambiguously even when the basename is opaque (a cache file's
- *  hash name) or duplicated across directories (the many `index.ts`/`mod.rs`). */
-function fileDirname(path: string): string {
-  const segments = path.split(/[/\\]/);
-  segments.pop();
-  return segments.join("/");
-}
-
 function changedDocumentType(path: string): string | null {
   const match = /(?:^|\/)\.vault\/([^/]+)\//.exec(path);
   return match ? (match[1] ?? null) : null;
@@ -309,12 +300,10 @@ function gitChangeBucket(group: GitChangeGroup): GitChangeBucket {
 
 export interface GitChangeRow {
   path: string;
-  /** Source-file basename, or the readable title for a vault document. */
+  /** Source-file basename, or the readable title for a vault document. The row shows
+   *  the NAME alone; the repo-relative `path` above rides the row's hover tooltip, so
+   *  the rail never spends its width on directory context it can reveal on demand. */
   label: string;
-  /** The dimmed parent-directory context shown after the basename (empty at repo
-   *  root). Disambiguates opaque/duplicate basenames so a row is always readable. */
-  dirLabel: string;
-  dirClassName: string;
   nodeId: string;
   /** Open target: the code viewer for files, the markdown reader for vault docs. */
   surface: "code" | "markdown";
@@ -352,15 +341,12 @@ export interface GitChangeGroupView {
 // in the sacred diff hues. Deleted strikes the name and dims it to ink-faint.
 const GIT_CHANGE_ROW_CLASS =
   "flex h-[1.875rem] w-full items-center gap-fg-1 rounded-fg-xs pr-fg-1 text-meta text-ink-muted text-left transition-colors duration-ui-fast ease-settle hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
-// The basename sizes to content but yields to the dimmed dir context when the row
-// is tight (shrink, not flex-1), so both the name and its location stay legible.
-// Mono, inheriting the row's ink — the left-rail file-label treatment.
-const GIT_CHANGE_LABEL_CLASS = "shrink truncate font-mono";
+// The file NAME takes the row's remaining width now that no directory context
+// competes for it — mono, inheriting the row's ink (the left-rail file-label
+// treatment). The full repo-relative path lives in the row's hover tooltip.
+const GIT_CHANGE_LABEL_CLASS = "min-w-0 flex-1 truncate font-mono";
 const GIT_CHANGE_LABEL_DELETED_CLASS =
-  "shrink truncate font-mono text-ink-faint line-through";
-// The dimmed parent-dir context takes the remaining width, truncating first.
-const GIT_CHANGE_DIR_CLASS =
-  "min-w-0 flex-1 truncate font-mono text-[0.6875rem] text-ink-faint";
+  "min-w-0 flex-1 truncate font-mono text-ink-faint line-through";
 const GIT_CHANGE_DIFF_CLASS = "flex shrink-0 items-center gap-fg-1 font-mono text-meta";
 const GIT_CHANGE_ADDS_CLASS = "shrink-0 text-diff-add";
 const GIT_CHANGE_DELS_CLASS = "shrink-0 text-diff-remove";
@@ -373,8 +359,6 @@ function gitChangeRow(file: ChangedFile, bucket: GitChangeBucket): GitChangeRow 
   return {
     path: file.path,
     label: isDoc ? changedDocumentTitle(file.path) : fileBasename(file.path),
-    dirLabel: fileDirname(file.path),
-    dirClassName: GIT_CHANGE_DIR_CLASS,
     nodeId: isDoc
       ? docNodeIdFromStem(stemFromPath(file.path))
       : codeNodeIdFromPath(file.path),

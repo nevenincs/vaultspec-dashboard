@@ -44,11 +44,15 @@ export const documents = {
       completion_one: "Plan completion, {{done, number}} of {{count, number}} step",
       completion_other: "Plan completion, {{done, number}} of {{count, number}} steps",
       counts: "{{waves}} · {{phases}} · {{steps}}",
+      dateLabel: "Plan date",
+      featureLabel: "Feature",
       loadingSummary: "Loading plan summary…",
       phaseCount_one: "{{count, number}} phase",
       phaseCount_other: "{{count, number}} phases",
       stepCount_one: "{{count, number}} step",
       stepCount_other: "{{count, number}} steps",
+      summaryUnavailable: "Plan progress is temporarily unavailable.",
+      tierLabel: "Plan size",
       waveCount_one: "{{count, number}} wave",
       waveCount_other: "{{count, number}} waves",
     },
@@ -119,6 +123,7 @@ export const documents = {
     sortByWorkspaceShare: "Sort by workspace share",
     showOrHideFilterOptions: "Show or hide filter options",
     showOrHideChanges: "Show or hide changes",
+    showOrHideMetadata: "Show or hide document metadata",
     filterByDocumentType: "Filter by this document type",
     switchReadingAndEditing: "Switch between reading and editing",
     switchView: "Switch between documents and files",
@@ -451,10 +456,12 @@ export const documents = {
       accessibility: {
         contents: "Code contents",
       },
+      actions: {
+        copyContents: "Copy contents",
+      },
       errors: {
         loadFailed: "The file could not be loaded. Close it, then open it again.",
-        temporarilyUnavailable:
-          "The file is temporarily unavailable. Try again in a moment.",
+        temporarilyUnavailable: "Could not read the file. Try again.",
       },
       footer: {
         summary_one: "{{language}}, {{encoding}}, {{count, number}} line, read-only",

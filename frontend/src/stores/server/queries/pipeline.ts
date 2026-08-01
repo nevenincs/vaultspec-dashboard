@@ -20,6 +20,7 @@ import {
   type TiersBlock,
 } from "../engine";
 import { useQuery } from "@tanstack/react-query";
+import { useMemo } from "react";
 import {
   isAddressableNode,
   normalizeGraphSliceAsOf,
@@ -486,7 +487,7 @@ export interface InteriorWaveView {
   rollup: InteriorRollup;
 }
 
-export interface PlanInteriorView {
+export interface PlanInteriorView extends TierAvailability {
   /** The interior query is in flight with no held data (the expanded row is loading). */
   loading: boolean;
   /** Whether the plan-interior capability is served by the backend. */
@@ -579,13 +580,21 @@ function interiorStepView(step: InteriorStep): InteriorStepView {
  * block surfaces as a designed state (graph-queries-are-bounded-by-default). The
  * tier-honest shape passes through: an L1 plan carries flat `steps`, an L2 plan
  * `phases`, an L3/L4 plan `waves` — exactly as the wire serves it.
+ *
+ * Degradation is READ FROM THE SERVED `tiers` BLOCK (the same `structural` tier the
+ * pipeline projection resolves through), never guessed from a transport fault — so a
+ * consumer can render its designed degraded state instead of a stale-looking interior
+ * (degradation-is-read-from-tiers-not-guessed-from-errors).
  */
 export function derivePlanInteriorView(
   interior: PlanInterior | undefined,
   loading: boolean,
+  tiers: TiersBlock | undefined = undefined,
 ): PlanInteriorView {
+  const availability = readTierAvailability(tiers, PIPELINE_STATUS_TIERS);
   if (!interior) {
     return {
+      ...availability,
       loading,
       served: PLAN_INTERIOR_SERVED,
       empty: true,
@@ -627,6 +636,7 @@ export function derivePlanInteriorView(
   };
   const truncated = interior.truncated ?? null;
   return {
+    ...availability,
     loading,
     served: PLAN_INTERIOR_SERVED,
     empty: waves.length === 0 && phases.length === 0 && steps.length === 0,
@@ -665,7 +675,73 @@ export function usePlanInteriorView(planId: unknown, scope: unknown): PlanInteri
   return derivePlanInteriorView(
     query.data?.interior,
     request.planId !== null && query.isPending,
+    tiersFromQuery(query),
   );
+}
+
+// --- served plan identity (tier · feature · date) ----------------------------------------
+//
+// The reader's plan card decorates its progress with the plan's IDENTITY: the
+// complexity tier (L1–L4), the feature group it belongs to, and its date. All three
+// are ENGINE-SERVED on the per-scope pipeline projection's artifact row (`tier`,
+// `feature_tags`, `dates`) — the card joins by node id and maps served tokens to
+// presentation, never parsing a stem or deriving a tier itself
+// (display-state-is-backend-served-not-frontend-derived). An artifact row absent from
+// the in-flight projection (a finished plan the projection no longer carries) yields
+// honest nulls, and the card simply omits the chips.
+
+/** The served identity facets the plan card decorates its progress with. Every field
+ *  is truthfully absent when the wire does not carry it. */
+export interface PlanIdentityView {
+  /** Whether a pipeline artifact row was found for this node at all. */
+  found: boolean;
+  /** The served plan complexity tier (`L1`–`L4`); null when unserved. */
+  tier: string | null;
+  /** The served feature tags for the plan; empty when unserved. */
+  featureTags: string[];
+  /** The served plan date (`modified`, else `created`) as the wire's ISO string;
+   *  null when the doc node carries no dates. */
+  date: string | null;
+}
+
+const ABSENT_PLAN_IDENTITY: PlanIdentityView = Object.freeze({
+  found: false,
+  tier: null,
+  featureTags: [],
+  date: null,
+});
+
+export function derivePlanIdentityView(
+  artifacts: readonly PipelineArtifact[],
+  nodeId: unknown,
+): PlanIdentityView {
+  const id = normalizeNodeId(nodeId);
+  if (id === null) return ABSENT_PLAN_IDENTITY;
+  const artifact = artifacts.find((candidate) => candidate.node_id === id);
+  if (artifact === undefined) return ABSENT_PLAN_IDENTITY;
+  const tags = (artifact.feature_tags ?? []).filter(
+    (tag): tag is string => typeof tag === "string" && tag.trim().length > 0,
+  );
+  return {
+    found: true,
+    tier: artifact.tier ?? null,
+    featureTags: tags,
+    date: artifact.dates?.modified ?? artifact.dates?.created ?? null,
+  };
+}
+
+/**
+ * Stores hook: the served identity facets for one plan node, joined off the
+ * per-scope pipeline projection the Work surface already reads (one shared cache
+ * entry — the card adds no per-plan fetch). While the projection is degraded its
+ * artifacts are untrusted and left empty upstream, so the identity reads absent and
+ * the card shows no chips rather than stale ones.
+ */
+export function usePlanIdentityView(nodeId: unknown, scope: unknown): PlanIdentityView {
+  const pipeline = usePipelineStatusView(scope);
+  const artifacts = pipeline.artifacts;
+  const id = normalizeNodeId(nodeId);
+  return useMemo(() => derivePlanIdentityView(artifacts, id), [artifacts, id]);
 }
 
 /** The completion tone of a plan, for the summary card's state badge + bar. The

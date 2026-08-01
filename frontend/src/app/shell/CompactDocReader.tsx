@@ -35,8 +35,10 @@ import {
   useDockDocPanelView,
   useOpenDocs,
 } from "../../stores/view/tabs";
+import { docTypePresentation } from "../../stores/server/docTypeVocabulary";
 import { guardUnsavedDiscardForDoc } from "../../stores/view/unsavedEditGuard";
 import type { ViewerSurface } from "../../stores/view/viewStore";
+import { Breadcrumb } from "../kit";
 import { CodeViewer } from "../viewer/CodeViewer";
 import { buildDocTrail } from "../viewer/docTrail";
 import { MarkdownDocView } from "../viewer/MarkdownDocView";
@@ -173,7 +175,14 @@ function DocReaderPane({
 
   // Drop the "Vault" root on compact so the doc-type / title pair reads without
   // ellipsizing every crumb in the narrow reader chrome (ADR D6).
-  const trail = buildDocTrail(view.header, { includeRoot: false });
+  const typePresentation = docTypePresentation(view.header.categoryLabel);
+  const trail = buildDocTrail(view.header, {
+    includeRoot: false,
+    typeLabel:
+      typePresentation === null
+        ? undefined
+        : resolveMessage(typePresentation.label).message,
+  });
   return (
     <div
       className="absolute inset-0 z-40 flex flex-col bg-paper animate-fade-in"
@@ -192,7 +201,7 @@ function DocReaderPane({
           nodeId={view.nodeId}
           content={view.content}
           scope={view.scope}
-          trail={trail}
+          heading={<Breadcrumb items={trail} className="min-w-0" />}
         />
       </div>
     </div>

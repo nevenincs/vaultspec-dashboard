@@ -1,9 +1,9 @@
-// Document navigation and reading-mode controls. The host owns the path, mode,
-// and actions; this component resolves presentation at render time.
+// Document identity and reading-mode controls. The host owns the identity block,
+// mode, and actions; this component resolves presentation at render time.
 
 import type { ReactNode } from "react";
 
-import { Breadcrumb, type BreadcrumbItem, Segment, SegmentedToggle } from "../kit";
+import { Segment, SegmentedToggle } from "../kit";
 import { effectiveChord } from "../../platform/keymap/registry";
 import {
   chordToKeycaps,
@@ -33,14 +33,16 @@ function editorAcceleratorCaps(actionId: string) {
 }
 
 export function DocChrome({
-  trail,
+  leading,
   mode,
   onModeChange,
   canEdit,
   trailing,
 }: {
-  /** The path trail leading to the document (kit Breadcrumb). */
-  trail: BreadcrumbItem[];
+  /** The document's identity block. The desktop panel passes a `DocHeading`; the
+   *  compact reader, whose top bar does NOT repeat the title, passes its
+   *  breadcrumb trail. One slot, so this chrome never branches on which. */
+  leading: ReactNode;
   /** The active mode drives the segmented toggle's selection. */
   mode: DocChromeMode;
   /** Emits the next mode when a segment is chosen. */
@@ -67,7 +69,7 @@ export function DocChrome({
   return (
     <div data-doc-chrome className="shrink-0">
       <div className="flex items-center justify-between gap-fg-3 bg-paper py-[0.8125rem] pl-[1.25rem] pr-[0.875rem]">
-        <Breadcrumb items={trail} className="min-w-0" />
+        <div className="min-w-0 flex-1">{leading}</div>
         <div className="flex shrink-0 items-center gap-fg-3">
           <SegmentedToggle
             value={mode}

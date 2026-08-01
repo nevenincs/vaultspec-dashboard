@@ -10,6 +10,8 @@ import {
   deriveFilterSidebarMenuSections,
   deriveFilterSidebarVisualStateKey,
   expandFilterSidebarList,
+  filterSidebarCheckedValues,
+  nextFilterSidebarFacetValues,
   FILTER_SIDEBAR_FEATURE_SEARCH_MAX_CHARS,
   FILTER_SIDEBAR_VISUAL_STATE_KEY_MAX_CHARS,
   FILTER_SIDEBAR_VOCABULARY_PART_MAX_VALUES,
@@ -450,6 +452,9 @@ describe("filter sidebar view store", () => {
 
   it("derives filter menu sections from dashboard-state and served vocabulary", () => {
     const toggles: Array<[unknown, unknown]> = [];
+    const sets: Array<[unknown, unknown]> = [];
+    const presets: string[] = [];
+    const ranges: Array<[string, string]> = [];
     const sections = deriveFilterSidebarMenuSections({
       vocabulary: {
         vocabulary: undefined,
@@ -523,15 +528,43 @@ describe("filter sidebar view store", () => {
         },
       },
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
+      onSetFacetValues: (facet, values) => sets.push([facet, values]),
+      date: {
+        preset: "any",
+        from: "2026-01-01",
+        to: "2026-08-01",
+        min: "2026-01-01",
+        max: "2026-08-01",
+        customOpen: false,
+        onSelectPreset: (preset) => presets.push(preset),
+        onSetRange: (from, to) => ranges.push([from, to]),
+      },
     });
 
-    // Category filtering lives on the graph legend and dates on the timeline, so the
-    // advanced flyout hosts ONLY the doc-type-scoped STATUS groups + HEALTH.
-    expect(sections.map((section) => section.key)).toEqual(["status", "health"]);
+    // Category filtering lives on the graph legend, so the advanced flyout hosts the
+    // ACTIVE feature narrowing, the doc-type-scoped STATUS groups, HEALTH, and the
+    // temporal window bound to the timeline's one canonical date range.
+    expect(sections.map((section) => section.key)).toEqual([
+      "feature",
+      "status",
+      "health",
+      "edited",
+    ]);
+    // The FEATURE section lists only what is ACTIVELY narrowing — never the roster
+    // ("design-system" is served but not filtered, so it is absent).
     expect(sections[0]).toMatchObject({
       type: "checkbox",
+      key: "feature",
+      selected: ["state"],
+      options: [{ value: "state", label: { kind: "authored", value: "state" } }],
+      emptyLabel: { key: "graph:filters.states.noFeatureFilter" },
+    });
+    // ALL-ON: an unnarrowed facet renders every value TICKED, so "unticked" always
+    // means hidden (owner review [msach8nx]).
+    expect(sections[1]).toMatchObject({
+      type: "checkbox",
       key: "status",
-      selected: [],
+      selected: ["accepted"],
       options: [
         {
           value: "accepted",
@@ -543,7 +576,7 @@ describe("filter sidebar view store", () => {
         },
       ],
     });
-    expect(sections[1]).toMatchObject({
+    expect(sections[2]).toMatchObject({
       key: "health",
       options: [
         {
@@ -556,14 +589,131 @@ describe("filter sidebar view store", () => {
         },
       ],
     });
+    // The temporal section offers the named windows plus the Custom reflection, and
+    // hides the two explicit inputs until Custom is the active window.
+    expect(sections[3]).toMatchObject({
+      type: "date",
+      key: "edited",
+      value: "any",
+      custom: null,
+    });
+    if (sections[3]?.type === "date") {
+      expect(sections[3].options.map((option) => option.value)).toEqual([
+        "any",
+        "7d",
+        "30d",
+        "year",
+        "custom",
+      ]);
+      sections[3].onSelect("30d");
+    }
+    expect(presets).toEqual(["30d"]);
 
-    if (sections[0]?.type === "checkbox") sections[0].onToggle("accepted");
+    // Unticking the ONLY ticked feature removes it through the plain toggle seam —
+    // the feature section shows what is active, so displayed === selected.
+    if (sections[0]?.type === "checkbox") sections[0].onToggle("state");
+    expect(toggles).toEqual([["feature_tags", "state"]]);
 
-    expect(toggles).toEqual([["statuses", "accepted"]]);
+    // Unticking a value from the all-on STATUS facet commits every REMAINING value
+    // in ONE write, never a value-at-a-time walk.
+    if (sections[1]?.type === "checkbox") sections[1].onToggle("accepted");
+    expect(sets).toEqual([["statuses", []]]);
+    expect(ranges).toEqual([]);
+  });
+
+  it("keeps the temporal section reflecting a hand-dragged timeline range as Custom", () => {
+    const ranges: Array<[string, string]> = [];
+    const sections = deriveFilterSidebarMenuSections({
+      vocabulary: {
+        vocabulary: undefined,
+        loading: false,
+        facetsLoading: false,
+        docTypes: [],
+        featureTags: [],
+        statuses: [],
+        health: [],
+        dateBounds: undefined,
+      },
+      filterView: { filters: {}, dateRange: {}, featureTags: [] },
+      onToggleFacet: () => undefined,
+      onSetFacetValues: () => undefined,
+      date: {
+        preset: "custom",
+        from: "2026-03-04",
+        to: "2026-05-06",
+        min: "2026-01-01",
+        max: "2026-08-01",
+        customOpen: false,
+        onSelectPreset: () => undefined,
+        onSetRange: (from, to) => ranges.push([from, to]),
+      },
+    });
+    const edited = sections.find((section) => section.key === "edited");
+    expect(edited?.type).toBe("date");
+    if (edited?.type !== "date" || edited.custom === null) {
+      throw new Error("The custom range must be disclosed for a custom window.");
+    }
+    expect(edited.custom).toMatchObject({
+      from: "2026-03-04",
+      to: "2026-05-06",
+      min: "2026-01-01",
+      max: "2026-08-01",
+      fromLabel: { key: "graph:filters.edited.from" },
+      toLabel: { key: "graph:filters.edited.to" },
+    });
+    edited.custom.onChange("2026-03-05", "2026-05-06");
+    expect(ranges).toEqual([["2026-03-05", "2026-05-06"]]);
+  });
+
+  it("omits the temporal section where the corpus serves no date span", () => {
+    const sections = deriveFilterSidebarMenuSections({
+      vocabulary: {
+        vocabulary: undefined,
+        loading: false,
+        facetsLoading: false,
+        docTypes: [],
+        featureTags: [],
+        statuses: [],
+        health: [],
+        dateBounds: undefined,
+      },
+      filterView: { filters: {}, dateRange: {}, featureTags: [] },
+      onToggleFacet: () => undefined,
+      onSetFacetValues: () => undefined,
+    });
+    expect(sections.map((section) => section.key)).toEqual(["feature"]);
+    // The honest none-state: no feature is narrowing, and the section says so
+    // rather than rendering the whole roster.
+    expect(sections[0]).toMatchObject({
+      selected: [],
+      options: [],
+      emptyLabel: { key: "graph:filters.states.noFeatureFilter" },
+    });
+  });
+
+  it("collapses both all-on edges of the checkbox model to the cleared facet", () => {
+    const vocabulary = ["accepted", "proposed", "rejected"];
+    // Unticking one value from the unnarrowed facet commits the rest.
+    expect(nextFilterSidebarFacetValues(vocabulary, [], "rejected")).toEqual([
+      "accepted",
+      "proposed",
+    ]);
+    // Re-ticking the last missing value is "not narrowed" again.
+    expect(
+      nextFilterSidebarFacetValues(vocabulary, ["accepted", "proposed"], "rejected"),
+    ).toEqual([]);
+    // "Show nothing" has no representation in an inclusion grammar, so unticking the
+    // last remaining value re-ticks the set instead of emptying the corpus.
+    expect(nextFilterSidebarFacetValues(vocabulary, ["accepted"], "accepted")).toEqual(
+      [],
+    );
+    expect(filterSidebarCheckedValues(vocabulary, [])).toEqual(vocabulary);
+    expect(filterSidebarCheckedValues(vocabulary, ["proposed"])).toEqual(["proposed"]);
   });
 
   it("normalizes malformed facet rows before menu projection", () => {
     const toggles: Array<[unknown, unknown]> = [];
+    const sets: Array<[unknown, unknown]> = [];
     const sections = deriveFilterSidebarMenuSections({
       vocabulary: {
         vocabulary: undefined,
@@ -621,12 +771,17 @@ describe("filter sidebar view store", () => {
         },
       },
       onToggleFacet: (facet, value) => toggles.push([facet, value]),
+      onSetFacetValues: (facet, values) => sets.push([facet, values]),
     });
 
-    // Advanced flyout sections: STATUS / HEALTH only (category → legend, date →
-    // timeline).
-    expect(sections.map((section) => section.key)).toEqual(["status", "health"]);
-    expect(sections[0]).toMatchObject({
+    // Advanced flyout sections: the active FEATURE narrowing, then STATUS / HEALTH
+    // (category → legend). No temporal section without a served date span.
+    expect(sections.map((section) => section.key)).toEqual([
+      "feature",
+      "status",
+      "health",
+    ]);
+    expect(sections[1]).toMatchObject({
       key: "status",
       selected: ["accepted"],
       options: [
@@ -640,7 +795,7 @@ describe("filter sidebar view store", () => {
         },
       ],
     });
-    expect(sections[1]).toMatchObject({
+    expect(sections[2]).toMatchObject({
       key: "health",
       selected: ["dangling"],
       options: [
@@ -655,11 +810,14 @@ describe("filter sidebar view store", () => {
       ],
     });
 
-    if (sections[0]?.type === "checkbox") {
-      sections[0].onToggle(" accepted ");
-      sections[0].onToggle({ value: "accepted" } as unknown as string);
+    if (sections[1]?.type === "checkbox") {
+      sections[1].onToggle(" accepted ");
+      sections[1].onToggle({ value: "accepted" } as unknown as string);
     }
-    expect(toggles).toEqual([["statuses", "accepted"]]);
+    // A malformed value never reaches the wire; the well-formed one commits the
+    // remaining inclusion list (here: none, so the facet clears).
+    expect(sets).toEqual([["statuses", []]]);
+    expect(toggles).toEqual([]);
   });
 
   it("exposes named chrome intent helpers for app-layer consumers", () => {

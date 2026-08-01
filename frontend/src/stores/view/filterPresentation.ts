@@ -15,10 +15,12 @@ export function authoredFilterLabel(value: string): FilterOptionLabel {
 
 type FilterMessageKey =
   | "graph:filters.accessibility.panel"
-  | "graph:filters.actions.clearAll"
   | "graph:filters.actions.reset"
   | "graph:filters.actions.showResults"
   | "graph:filters.edited.any"
+  | "graph:filters.edited.custom"
+  | "graph:filters.edited.from"
+  | "graph:filters.edited.to"
   | "graph:filters.edited.lastSevenDays"
   | "graph:filters.edited.lastThirtyDays"
   | "graph:filters.edited.thisYear"
@@ -43,6 +45,7 @@ type FilterMessageKey =
   | "graph:filters.states.degraded"
   | "graph:filters.states.empty"
   | "graph:filters.states.loading"
+  | "graph:filters.states.noFeatureFilter"
   | "graph:filters.statuses.accepted"
   | "graph:filters.statuses.active"
   | "graph:filters.statuses.archived"
@@ -62,11 +65,11 @@ const message = <Key extends FilterMessageKey>(key: Key): MessageDescriptor<Key>
 
 export const FILTER_MESSAGES = Object.freeze({
   panel: message("graph:filters.accessibility.panel"),
-  clearAll: message("graph:filters.actions.clearAll"),
   reset: message("graph:filters.actions.reset"),
   showResults: message("graph:filters.actions.showResults"),
   loading: message("graph:filters.states.loading"),
   empty: message("graph:filters.states.empty"),
+  noFeatureFilter: message("graph:filters.states.noFeatureFilter"),
   degraded: message("graph:filters.states.degraded"),
   compactTitle: message("graph:filters.compactTitle"),
   title: message("graph:filters.title"),
@@ -84,6 +87,11 @@ export const FILTER_MESSAGES = Object.freeze({
     "7d": message("graph:filters.edited.lastSevenDays"),
     "30d": message("graph:filters.edited.lastThirtyDays"),
     year: message("graph:filters.edited.thisYear"),
+    custom: message("graph:filters.edited.custom"),
+  }),
+  editedRange: Object.freeze({
+    from: message("graph:filters.edited.from"),
+    to: message("graph:filters.edited.to"),
   }),
   options: Object.freeze({
     research: message("graph:filters.options.research"),

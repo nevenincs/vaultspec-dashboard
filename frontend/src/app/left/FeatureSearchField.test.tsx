@@ -9,10 +9,23 @@ const setValue = vi.fn();
 const clear = vi.fn();
 let draftValue = "";
 
+// The served roster the open dropdown joins its per-feature document counts from.
+// `timeline` is deliberately ABSENT so a suggestion the roster does not carry proves
+// it renders its name alone rather than a zero standing in for an unknown.
 vi.mock("../../stores/server/queries", () => ({
   useActiveScope: () => "scope-a",
   useFiltersVocabularyView: () => ({
     featureTags: ["dashboard-left-rail", "dashboard-gui", "timeline"],
+  }),
+  useFeatureRosterView: () => ({
+    loading: false,
+    degraded: false,
+    degradedTiers: [],
+    reasons: {},
+    roster: [
+      { feature: "dashboard-left-rail", doc_count: 12, types_present: 4 },
+      { feature: "dashboard-gui", doc_count: 1, types_present: 1 },
+    ],
   }),
 }));
 vi.mock("../../stores/view/dashboardFeatureFilter", () => ({
@@ -45,13 +58,31 @@ describe("FeatureSearchField (feature autofill)", () => {
     fireEvent.focus(input);
 
     expect(screen.getByRole("listbox")).toBeTruthy();
-    // The display name AND the raw tag are both shown on a suggestion row.
+    // A row shows the READABLE NAME over its served document count. The raw tag is
+    // no longer printed — it said the same thing as the name — and rides the row's
+    // hover tooltip instead (owner review).
     expect(screen.getByText("Dashboard Left Rail")).toBeTruthy();
-    expect(screen.getByText("dashboard-left-rail")).toBeTruthy();
+    expect(screen.queryByText("dashboard-left-rail")).toBeNull();
+    expect(screen.getByRole("option", { name: /Dashboard Left Rail/ }).title).toBe(
+      "dashboard-left-rail",
+    );
 
     // Choosing a suggestion commits the RAW hyphenated tag to the filter.
     fireEvent.mouseDown(screen.getByText("Dashboard Left Rail"));
     expect(commit).toHaveBeenCalledWith("dashboard-left-rail");
+  });
+
+  it("shows the SERVED document count per feature, and none when unserved", () => {
+    render(createElement(FeatureSearchField));
+    fireEvent.focus(screen.getByLabelText("Filter the vault by feature"));
+
+    // Counts come from the roster the engine serves — plural-correct, and never
+    // re-counted from a client listing.
+    expect(screen.getByText("12 documents")).toBeTruthy();
+    expect(screen.getByText("1 document")).toBeTruthy();
+    // `timeline` is not on the roster, so its row carries no second line at all.
+    const timeline = screen.getByRole("option", { name: /Timeline/ });
+    expect(timeline.querySelector("[data-feature-suggestion-meta]")).toBeNull();
   });
 
   it("narrows suggestions by the display string and the raw tag as the user types", () => {
@@ -66,9 +97,9 @@ describe("FeatureSearchField (feature autofill)", () => {
     // Typing is what narrows the list — a keystroke marks the query as edited.
     fireEvent.change(input, { target: { value: "Left Rail" } });
 
-    expect(screen.getByText("dashboard-left-rail")).toBeTruthy();
-    expect(screen.queryByText("dashboard-gui")).toBeNull();
-    expect(screen.queryByText("timeline")).toBeNull();
+    expect(screen.getByText("Dashboard Left Rail")).toBeTruthy();
+    expect(screen.queryByText("Dashboard Gui")).toBeNull();
+    expect(screen.queryByText("Timeline")).toBeNull();
   });
 
   it("browses the FULL vocabulary on focus even when a filter is applied (#6.1)", () => {
@@ -79,9 +110,9 @@ describe("FeatureSearchField (feature autofill)", () => {
     render(createElement(FeatureSearchField));
     fireEvent.focus(screen.getByLabelText("Filter the vault by feature"));
 
-    expect(screen.getByText("dashboard-left-rail")).toBeTruthy();
-    expect(screen.getByText("dashboard-gui")).toBeTruthy();
-    expect(screen.getByText("timeline")).toBeTruthy();
+    expect(screen.getByText("Dashboard Left Rail")).toBeTruthy();
+    expect(screen.getByText("Dashboard Gui")).toBeTruthy();
+    expect(screen.getByText("Timeline")).toBeTruthy();
   });
 
   it("commits the active suggestion on Enter after ArrowDown", () => {

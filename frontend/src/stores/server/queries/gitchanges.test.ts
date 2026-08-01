@@ -600,6 +600,55 @@ describe("deriveChangesOverviewView", () => {
     expect(view.retry).toBe(retry);
   });
 
+  it("gives a grouped row the file NAME alone, with the full path for its tooltip", () => {
+    // Two files sharing a basename in different directories: the row shows the name,
+    // and the full repo-relative path is carried for the row's hover tooltip rather
+    // than spent as a dimmed inline directory column (owner review).
+    const changed = deriveChangedFilesView(
+      [
+        {
+          path: "src/app/index.ts",
+          code: " M",
+          letter: "M",
+          group: "modified",
+          vault: false,
+          adds: 1,
+          dels: 0,
+        },
+        {
+          path: "src/scene/index.ts",
+          code: " M",
+          letter: "M",
+          group: "modified",
+          vault: false,
+          adds: 2,
+          dels: 3,
+        },
+      ],
+      false,
+      false,
+    );
+    const rows = deriveChangesOverviewView(availableGit, changed).changeGroups.flatMap(
+      (group) => group.rows,
+    );
+
+    expect(rows.map((row) => row.label)).toEqual(["index.ts", "index.ts"]);
+    expect(rows.map((row) => row.path)).toEqual([
+      "src/app/index.ts",
+      "src/scene/index.ts",
+    ]);
+    // The row carries no directory column of its own any more.
+    expect(rows[0]).not.toHaveProperty("dirLabel");
+    // The name takes the row's remaining width now that nothing competes for it.
+    expect(rows[0]!.labelClassName).toBe("min-w-0 flex-1 truncate font-mono");
+    // A source file opens through the shared `code:<path>` node identity.
+    expect(rows.map((row) => row.nodeId)).toEqual([
+      "code:src/app/index.ts",
+      "code:src/scene/index.ts",
+    ]);
+    expect(rows.every((row) => row.surface === "code")).toBe(true);
+  });
+
   it("prioritizes designed empty/loading/degraded/error states only when no rows exist", () => {
     const empty = deriveChangedFilesView([], false, false);
 

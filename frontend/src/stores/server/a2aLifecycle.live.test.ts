@@ -17,8 +17,9 @@
 import { describe, expect, it } from "vitest";
 
 import { LIVE_BASE_URL, liveTransport } from "../../testing/liveClient";
-import { EngineClient, type FetchLike } from "./engine";
+import { EngineClient } from "./engine";
 import { readAgentTierAvailability } from "./agent/a2aTeam";
+import type { FetchLike } from "./httpTransport";
 
 /** A live lifecycle client that RECORDS every request URL, so the test can prove
  *  the client only ever touches the engine origin (no direct browser→A2A sibling

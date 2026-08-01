@@ -11,11 +11,15 @@
 // on Escape or an outside pointer (the button is excluded so its own toggle owns
 // open/close).
 //
-// Sections: KIND (doc types) · STATUS (lifecycle — ADR adjectives + plan
-// meta-states) · HEALTH (validity — dangling/orphaned…) · EDITED (date window).
-// STATUS/HEALTH render only when the engine serves their vocabulary, so they are
-// never dead controls. FEATURE filtering is NOT here — it is authored by the rail's
-// feature search bar (filtering-has-one-canonical-surface).
+// Sections: FEATURE (the ACTIVE feature narrowing only) · STATUS (lifecycle — ADR
+// adjectives + plan meta-states) · HEALTH (validity — dangling/orphaned…) · EDITED
+// (the temporal window). STATUS/HEALTH render only when the engine serves their
+// vocabulary, so they are never dead controls. Feature narrowing is AUTHORED by the
+// rail's feature search bar; what this flyout offers is the list of features
+// currently narrowing the corpus and a way to undo them (owner review [msacfd3s]).
+// The EDITED window is the ONE canonical `date_range`, committed through the
+// timeline's Setter seam — this surface is a second READER, never a second writer
+// (filtering-has-one-canonical-surface).
 
 import { useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
@@ -25,12 +29,23 @@ import { useLocalizedMessageResolver } from "../../platform/localization/Localiz
 import { useDashboardFilterSidebarIntent } from "../../stores/server/dashboardFilterSidebarIntent";
 import {
   useDashboardFilterSidebarView,
+  useDashboardState,
   useFiltersVocabularyView,
+  useTimelineDateCriterion,
 } from "../../stores/server/queries";
+import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
 import {
   deriveFilterSidebarMenuSections,
+  setFilterSidebarCustomDateOpen,
+  useFilterSidebarCustomDateOpen,
   useFilterSidebarVisualState,
 } from "../../stores/view/filterSidebar";
+import { useTimelineDateRangeSetter } from "../timeline/timelineDateRangeSetter";
+import { dayISO, parseISO } from "../timeline/timelineRangeMath";
+import {
+  timelineRangePreset,
+  timelineRangePresetForRange,
+} from "../timeline/timelineRangePresets";
 import { FILTER_MESSAGES } from "../../stores/view/filterPresentation";
 import { useViewportClass } from "../../stores/view/viewportClass";
 import { BottomSheet } from "../chrome/BottomSheet";
@@ -199,11 +214,59 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
   const compact = useViewportClass() === "compact";
   const { anchor, ready } = useFlyoutAnchor(open && !compact);
 
+  // The temporal section is bound to the SAME corpus span and the SAME record the
+  // timeline reads, and commits through the TIMELINE's Setter seam — never a second
+  // date_range writer (filtering-has-one-canonical-surface). A preset picked here
+  // moves the timeline's handles; a range those handles produced reads back here as
+  // "Custom range". The criterion resolution mirrors the timeline's exactly — a code
+  // corpus is pinned to `modified` there, so pinning it here too keeps both surfaces
+  // on ONE span rather than two readings of the same window.
+  const corpus = normalizeDashboardGraphCorpus(useDashboardState(scope).data?.corpus);
+  const { criterion: vaultCriterion } = useTimelineDateCriterion(scope);
+  const criterion = corpus === "code" ? "modified" : vaultCriterion;
+  const bounds = vocabulary.dateBoundsByField?.[criterion] ?? vocabulary.dateBounds;
+  const minMs = parseISO(bounds?.from);
+  const maxMs = parseISO(bounds?.to);
+  const hasSpan = minMs !== null && maxMs !== null && maxMs > minMs;
+  const dateRangeSetter = useTimelineDateRangeSetter(scope, {
+    lo: minMs ?? 0,
+    hi: maxMs ?? 0,
+  });
+  const customDateOpen = useFilterSidebarCustomDateOpen();
+
   const sections = deriveFilterSidebarMenuSections({
     vocabulary,
     filterView,
     onToggleFacet: (facet, value) => void filterIntent.toggleFacet(facet, value),
+    onSetFacetValues: (facet, values) =>
+      void filterIntent.setFacetValues(facet, values),
+    date:
+      hasSpan && !compact
+        ? {
+            preset: timelineRangePresetForRange(filterView.dateRange, Date.now()),
+            from: filterView.dateRange.from ?? dayISO(minMs),
+            to: filterView.dateRange.to ?? dayISO(maxMs),
+            min: dayISO(minMs),
+            max: dayISO(maxMs),
+            customOpen: customDateOpen,
+            onSelectPreset: (value) => {
+              const preset = timelineRangePreset(value);
+              if (preset === null) return;
+              setFilterSidebarCustomDateOpen(preset === "custom");
+              if (preset !== "custom") dateRangeSetter.setDateRangePreset(preset);
+            },
+            onSetRange: (from, to) => dateRangeSetter.setDateRange({ from, to }),
+          }
+        : undefined,
   });
+
+  const resetFilters = () => {
+    void filterIntent.clearFilters();
+    // The date window is part of "every active filter" the reader sees here, and
+    // the ONLY sanctioned way to clear it is the timeline's own Setter.
+    dateRangeSetter.resetDateRange();
+    setFilterSidebarCustomDateOpen(false);
+  };
 
   const filterMenu = (
     <FilterMenu
@@ -211,11 +274,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
       title={FILTER_MESSAGES.title}
       anyActive={filterView.anyActive}
       degraded={vocabulary.degraded}
-      onClearAll={() => {
-        // Clears only the facet filters; the date window is the timeline's to own
-        // (filtering-has-one-canonical-surface: one date writer).
-        void filterIntent.clearFilters();
-      }}
+      onReset={resetFilters}
       sections={sections}
       maxHeight={compact ? "65vh" : "calc(100vh - 3.5rem)"}
     />
@@ -231,7 +290,7 @@ export function FilterSidebar({ open, onClose, scope }: FilterSidebarProps) {
           title={FILTER_MESSAGES.compactTitle}
           anyActive={filterView.anyActive}
           degraded={vocabulary.degraded}
-          onClearAll={() => void filterIntent.clearFilters()}
+          onReset={resetFilters}
           sections={sections}
           chips
           onApply={onClose}

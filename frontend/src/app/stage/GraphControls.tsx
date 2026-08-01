@@ -40,6 +40,7 @@ import {
   deriveGraphControlsSimToggleView,
   deriveGraphControlsTunePresentationView,
   deriveGraphControlsViewPresentationView,
+  noteGraphManualNavigation,
   setGraphControlsAppearanceParams,
   toggleGraphControlsAppearanceOpen,
   toggleGraphControlsAutoframe,
@@ -141,7 +142,12 @@ export function GraphNavControls() {
           onKeyDown={zoomIn.onKeyDown}
           onFocus={() => setActiveNav("zoom-in")}
           label={message(navigationView.zoomIn.label)}
-          onClick={() => scene.controller.command({ kind: "zoom-in" })}
+          // Zooming IS manual navigation, so it disengages tracking — the same
+          // rule a canvas drag or wheel follows.
+          onClick={() => {
+            noteGraphManualNavigation();
+            scene.controller.command({ kind: "zoom-in" });
+          }}
         >
           <Plus size={ICON_PX} aria-hidden />
         </IconButton>
@@ -151,7 +157,10 @@ export function GraphNavControls() {
           onKeyDown={zoomOut.onKeyDown}
           onFocus={() => setActiveNav("zoom-out")}
           label={message(navigationView.zoomOut.label)}
-          onClick={() => scene.controller.command({ kind: "zoom-out" })}
+          onClick={() => {
+            noteGraphManualNavigation();
+            scene.controller.command({ kind: "zoom-out" });
+          }}
         >
           <Minus size={ICON_PX} aria-hidden />
         </IconButton>

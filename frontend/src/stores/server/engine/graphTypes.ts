@@ -193,6 +193,26 @@ export interface CodeFilesResponse {
 // shapes stay snake_case as the live `vaultspec-api` route serves them under the
 // `{data, tiers}` envelope.
 
+/** How a listed path diverges from HEAD, as the engine's status join reports it
+ *  (code-tree-legibility ADR D3). The ABSENCE of the field is the clean state —
+ *  there is no `clean` token, because the overwhelming majority of entries carry
+ *  no key at all and the level body must not grow for them. The frontend maps
+ *  each token to a label tone and a one-letter badge and derives nothing. */
+export type FileTreeGitStatus =
+  | "modified"
+  | "added"
+  | "deleted"
+  | "renamed"
+  | "untracked"
+  | "conflicted";
+
+/** Which ignore file claims a listed path (code-tree-legibility ADR D3/D4).
+ *  `git` = a `.gitignore` rule (gix's own exclude stack), `rag` = a
+ *  `.vaultspecragignore` pattern through the same matcher. Absent = not ignored.
+ *  Ignored entries are SERVED AND SHOWN (dimmed), never hidden — the tree reports
+ *  the file's ignore PROVENANCE and never infers what rag actually indexed. */
+export type FileTreeIgnoreSource = "git" | "rag";
+
 /** One child of a listed directory level (GET /file-tree data.entries). Metadata
  *  only — the ADR's read-only/no-content constraint; never file bytes. */
 export interface FileTreeEntry {
@@ -208,6 +228,10 @@ export interface FileTreeEntry {
    *  graph (unindexed / below the structural tier's reach) — the code mode renders
    *  a quiet absent-interlink state for those, never an error. */
   node_id: string;
+  /** Served git state; ABSENT means clean (never rendered as a token). */
+  git_status?: FileTreeGitStatus;
+  /** Served ignore provenance; ABSENT means not ignored. */
+  ignored?: FileTreeIgnoreSource;
 }
 
 /** The honest bounded-read marker (graph-queries-are-bounded-by-default): present
@@ -226,6 +250,11 @@ export interface FileTreeResponse {
   entries: FileTreeEntry[];
   path: string;
   truncated: FileTreeTruncated | null;
+  /** The status join's own honesty marker (code-tree-legibility ADR D3, amended):
+   *  true when the engine's per-scope status snapshot hit its cap, so an entry on
+   *  this level may carry no `git_status` for want of a snapshot row rather than
+   *  because it is clean. A partial join must never read as clean truth. */
+  status_truncated: boolean;
   /** Cursor for the next page when the level paginates; absent on the last page. */
   next_cursor?: string;
   tiers: TiersBlock;

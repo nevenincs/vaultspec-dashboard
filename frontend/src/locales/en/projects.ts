@@ -175,10 +175,18 @@ export const projects = {
   provisioning: {
     description: "Set up this project to continue.",
     details: {
+      addProjectFiles:
+        "This project has no setup files yet. Setting up adds them and leaves your own files unchanged.",
+      installProjectTools:
+        "This computer is missing the tools this project needs. Setting up installs them.",
       installRequiredProjectTools:
         "Install the required project tools, then try again.",
       prepareFolderAsGitProject:
         "Prepare this folder as a Git project, then try again.",
+      updateProjectFiles:
+        "This project’s setup files come from an older version. Updating brings them up to date.",
+      updateProjectTools:
+        "The project tools on this computer are older than this project needs. Updating replaces them.",
     },
     progress: "Setting up project…",
     result: {
@@ -201,7 +209,13 @@ export const projects = {
     },
     startFailed: "Project setup could not start. Try again.",
     statusUnavailable: "Project status is unavailable",
-    title: "Project setup required",
+    titles: {
+      notAGitProject: "This folder is not a Git project",
+      setUpRequired: "Project setup required",
+      toolsMissing: "Required project tools are missing",
+      toolsUpdateRequired: "Project tools update required",
+      updateRequired: "Project update required",
+    },
   },
   shortcutGroups: {
     projects: "Projects",

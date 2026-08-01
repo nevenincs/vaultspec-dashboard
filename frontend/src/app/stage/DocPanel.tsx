@@ -7,20 +7,22 @@
 //
 // The panel id IS the node id, so dockview geometry and the tab slice reconcile
 // by id. Close routes through the dockview tab's own close button (mapped back to
-// `closeDocTab`); the binding reader chrome (breadcrumb + View/Edit toggle) lives
-// inside `MarkdownDocView` (editor-figma-parity), so the panel adds no second
-// header bar.
+// `closeDocTab`); the binding reader chrome (the identity heading + View/Edit
+// toggle) lives inside `MarkdownDocView` (editor-figma-parity), so the panel adds
+// no second header bar.
 
 import type { IDockviewPanelProps } from "dockview";
 import { useMemo } from "react";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 
 import { useGitFileDiff } from "../../stores/server/queries/gitchanges";
+import { docTypePresentation } from "../../stores/server/docTypeVocabulary";
 import { useDockDocPanelView } from "../../stores/view/tabs";
 import type { ViewerSurface } from "../../stores/view/viewStore";
+import { categoryPresentation } from "../kit";
 import { gitFileDiffToLineChanges } from "../viewer/codeChangeMarkers";
 import { CodeViewer } from "../viewer/CodeViewer";
-import { buildDocTrail } from "../viewer/docTrail";
+import { DocHeading } from "../viewer/DocHeading";
 import { MarkdownDocView } from "../viewer/MarkdownDocView";
 
 export interface DocPanelParams {
@@ -66,6 +68,17 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
     );
   }
 
+  // The panel's own tab already reads the document title, so the reader chrome
+  // states the identity once rather than repeating it as a Vault / <type> / <title>
+  // breadcrumb (owner review, 2026-08-01). Every value comes from the stores header
+  // projection; this panel derives nothing.
+  const typePresentation = docTypePresentation(view.header.categoryLabel);
+  // The category comes from the doc TYPE, not `header.category` — the latter has no
+  // `reference` member, which would drop the type pill off a reference document
+  // whose label resolves perfectly well. Both resolvers reject `index` together, so
+  // an index metanode still gets no pill (index-node-exclusion ADR).
+  const category = categoryPresentation(view.header.categoryLabel);
+
   return (
     <section
       className="flex h-full flex-col bg-paper"
@@ -79,9 +92,21 @@ export function DocPanel(props: IDockviewPanelProps<DocPanelParams>) {
           nodeId={view.nodeId}
           content={view.content}
           scope={view.scope}
-          trail={buildDocTrail(view.header, {
-            rootLabel: resolveMessage({ key: "documents:labels.vault" }).message,
-          })}
+          heading={
+            <DocHeading
+              heading={{
+                title: view.header.title,
+                docType: view.header.categoryLabel ?? null,
+                typeLabel:
+                  typePresentation === null
+                    ? null
+                    : resolveMessage(typePresentation.label).message,
+                category: category === null ? null : category.id,
+                featureTags: view.header.featureTags,
+                path: view.header.path ?? null,
+              }}
+            />
+          }
         />
       </div>
     </section>

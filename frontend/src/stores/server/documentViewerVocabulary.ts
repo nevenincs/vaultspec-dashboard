@@ -62,8 +62,15 @@ export const CODE_VIEWER_MESSAGES = Object.freeze({
   accessibility: Object.freeze({
     contents: descriptor("documents:viewer.codeViewer.accessibility.contents"),
   }),
+  // "Copy" alone left the reader guessing WHAT was copied (owner review): the header
+  // affordance is a copy glyph opening a two-item menu that names each shape. The
+  // menu's own name and its path item reuse the shared copy vocabulary the code
+  // file's context menu already speaks ("Copy" / "Copy path"), so one file offers
+  // one wording everywhere; only "copy the text of this file" is new here.
   actions: Object.freeze({
     copy: DOCUMENT_VIEWER_MESSAGES.actions.copy,
+    copyContents: descriptor("documents:viewer.codeViewer.actions.copyContents"),
+    copyPath: descriptor("common:actions.copyPath"),
   }),
   errors: Object.freeze({
     loadFailed: descriptor("documents:viewer.codeViewer.errors.loadFailed"),

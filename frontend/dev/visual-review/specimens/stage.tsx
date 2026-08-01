@@ -67,8 +67,8 @@ import {
 //
 // Pure view: `CanvasStateOverlay({ state })` renders `resolveCanvasState(inputs)`.
 // The primary/annotation split means "degraded" is not a distinct primary card here
-// (there is no such CanvasPrimary kind) — it is the annotation chip layered over an
-// otherwise-`ok` slice, so that is what's authored for the degraded cell.
+// (there is no such CanvasPrimary kind) — it is the centered caution the overlay
+// layers over an otherwise-`ok` slice, so that is what's authored for that cell.
 
 function canvasSlice(): GraphSlice {
   return {
@@ -101,10 +101,10 @@ const CANVAS_STATE_INPUTS: Record<ReviewState, CanvasStateInputs> = {
     stageSurface: "normal",
     slice: canvasSlice(),
     queriedScope: REVIEW_SCOPE,
-    // A quiet, non-blocking "refreshing" caption is the one visible thing an
-    // otherwise-healthy (`ok`) slice can show — the overlay is error/loading chrome
-    // only, so a fully idle-healthy slice renders nothing at all (see note below).
-    availability: canvasAvailability({ refreshing: true }),
+    // A healthy, settled slice. The overlay is error/loading chrome layered over
+    // the canvas, so its default state is to render NOTHING — this cell is
+    // deliberately blank (see note below), not an authoring gap.
+    availability: canvasAvailability(),
     renderCapability: DEFAULT_RENDER_CAPABILITY,
     scopeResolutionFailed: false,
   },
@@ -121,8 +121,8 @@ const CANVAS_STATE_INPUTS: Record<ReviewState, CanvasStateInputs> = {
   empty: {
     scope: REVIEW_SCOPE,
     granularity: "feature",
-    // The ONLY path to the `empty` primary (Folder / "no filter matches" card) is
-    // this surface flag — resolvePrimary never inspects node count directly.
+    // The ONLY path to the `empty` primary ("no filter matches", plain centered
+    // text) is this surface flag — resolvePrimary never inspects node count.
     stageSurface: "empty-invitation",
     slice: { nodes: [], edges: [], tiers: tiersHealthy("structural") },
     queriedScope: REVIEW_SCOPE,
@@ -136,11 +136,14 @@ const CANVAS_STATE_INPUTS: Record<ReviewState, CanvasStateInputs> = {
     stageSurface: "normal",
     slice: canvasSlice(),
     queriedScope: REVIEW_SCOPE,
+    // Genuinely DOWN, not still building: a "building" reason resolves to the
+    // loading-details caption instead, which is a loading state wearing the
+    // degraded state's name. This authors the caution the overlay really means.
     availability: canvasAvailability({
       degraded: true,
       degradedTiers: ["structural"],
       reasons: {
-        structural: "Authored review state: structural links are rebuilding.",
+        structural: "Authored review state: the structural backend is unreachable.",
       },
     }),
     renderCapability: DEFAULT_RENDER_CAPABILITY,
@@ -399,18 +402,6 @@ function vaultSampleNodes(): EngineNode[] {
   ];
 }
 
-function codeModuleNodes(): EngineNode[] {
-  const modules = ["app", "stores", "scene", "engine"];
-  return modules.flatMap((module, moduleHue) =>
-    Array.from({ length: 3 }, (_, i) => ({
-      id: `code:src/${module}/file-${i}.ts`,
-      kind: "file",
-      module,
-      module_hue: moduleHue,
-    })),
-  );
-}
-
 // --- stage-docpanel -------------------------------------------------------------------
 //
 // Container: seeds the read-only content read (`engineKeys.content`) that
@@ -451,7 +442,7 @@ function DocPanelHarness() {
 
 export const stageSpecimens: Readonly<Record<string, SpecimenDef>> = {
   "stage-canvasstateoverlay": {
-    note: "Pure view: CanvasStateOverlay renders resolveCanvasState(authored CanvasStateInputs). 'normal' is an ok slice with a non-blocking 'refreshing' caption — a fully idle-healthy slice renders NOTHING (the overlay is error/loading chrome layered over the canvas, not decoration), so refreshing is the one honest way to show something for a healthy state. 'empty' is reached only via stageSurface: 'empty-invitation' (resolvePrimary never inspects node count itself). 'degraded' has no distinct CanvasPrimary kind — it is the annotation chip over an otherwise-ok slice.",
+    note: "Pure view: CanvasStateOverlay renders resolveCanvasState(authored CanvasStateInputs). 'normal' is DELIBERATELY BLANK: the overlay is error/loading chrome layered over the canvas, so over a healthy settled slice it renders nothing at all — that honest nothing is the default state, and loading keeps the spinner rather than borrowing it. 'loading' is the centered spinner (no visible caption; the label lives in the Spinner's sr-only text). 'empty' is reached only via stageSurface: 'empty-invitation' (resolvePrimary never inspects node count itself) and renders as plain centered text — no card, no glyph, because an absence is not an error. 'degraded' has no distinct CanvasPrimary kind: it is the centered caution (caution mark + one sentence) the overlay layers over an otherwise-ok slice, authored from a tier that is genuinely DOWN — a tier whose reason says it is still 'building' is loading, and stays a quiet bottom caption instead.",
     host: "relative h-[20rem]",
     render: (state) => (
       <CanvasStateOverlay state={resolveCanvasState(CANVAS_STATE_INPUTS[state])} />
@@ -464,7 +455,7 @@ export const stageSpecimens: Readonly<Record<string, SpecimenDef>> = {
         sections={filterMenuSections(state)}
         anyActive={state === "normal" || state === "degraded"}
         degraded={state === "degraded"}
-        onClearAll={() => undefined}
+        onReset={() => undefined}
       />
     ),
   },
@@ -494,34 +485,32 @@ export const stageSpecimens: Readonly<Record<string, SpecimenDef>> = {
     render: () => <FilterSidebarHarness />,
   },
   "stage-provisionpanel": {
-    note: "Wire-free view: ProvisionPanelBody (the not-a-vaultspec-project card) driven by authored ProvisionStatus/ProvisionJob, never ProvisionPanel itself — which additionally reads useProvisionPanelState/useProvisionRun/useProvisionJob against the wire and owns the container-level 'hidden' (scope already resolved, or the status read still pending) and 'unavailable' (a hard status-read failure) branches this Body does not render; those two are structurally out of reach from the Body alone. 'loading' is the Body's OWN busy render (a running job: disabled buttons + the progress skeleton). 'empty' is the leanest affordance set (uv absent, no Force option, no job outcome). 'degraded' is the dispatch-failure caption (runError) — the only error affordance this Body designs for, since ProvisionStatus itself carries no tiers block.",
+    note: "Wire-free view: ProvisionPanelBody (the project-not-set-up card) driven by authored ProvisionStatus/ProvisionJob, never ProvisionPanel itself — which additionally reads useProvisionPanelState/useProvisionRun/useProvisionJob against the wire and owns the container-level 'hidden' (scope already resolved, or the status read still pending) and 'unavailable' (a hard status-read failure) branches this Body does not render; those two are structurally out of reach from the Body alone. 'loading' is the Body's OWN busy render (a running job: disabled buttons + the progress skeleton). 'empty' is the leanest affordance set (uv absent, no Force option, no job outcome). 'degraded' is the dispatch-failure caption (runError) — the only error affordance this Body designs for, since ProvisionStatus itself carries no tiers block. Every cell's heading and sentence come from its OWN served `recommended` value: 'normal' is install-framework (setup files absent) and 'empty' is acquire-uv (a hard dead-end, so the action is disabled with its reason). The remaining served recommendations — acquire-core, run-migrations, upgrade-core — each carry their own heading and sentence too, proven by unit test rather than by a desk cell, since this desk has only four state slots.",
     host: "relative h-[20rem]",
     render: (state) => <ProvisionPanelBody {...provisionPanelProps(state)} />,
   },
   "stage-workspaceghost": {
-    note: "Pure view with no props at all — a static invitation card. Its four states are visually identical: the component reads nothing from the wire or the review state, so there is nothing to vary. Its two buttons dispatch real view-store actions (setShellGraphVisible, the shared new-document action) on click, which the specimen contract accepts.",
+    note: "Pure view with no props at all — a static invitation shown when the graph is toggled off and no document is open. This surface HAS NO LOADING OR DEGRADED STATE OF ITS OWN: it reads nothing from the wire, so there is nothing to be in flight and no tiers block to report down; the canvas overlay carries those two states for the centre. All four cells therefore render the identical card by design, and the loading/degraded cells are honest repetitions, not authoring gaps. Its two buttons dispatch real view-store actions (setShellGraphVisible, the shared new-document action) on click, which the specimen contract accepts.",
     host: "relative h-[20rem]",
     render: () => <WorkspaceGhost />,
   },
   "stage-categorylegend": {
-    note: "Container: seeds session (the dashboardState key folds the session identity), dashboardState (feeds useVaultRailFacets AND, via useDashboardStageSceneView, the graph-query variables useCodeModuleLegend's useGraphSlice call requests), and that graph slice — its key computed with the REAL dashboardGraphQueryVariables/normalizeGraphSliceRequestIdentity so it lands exactly where the hook reads. 'normal' is a VAULT corpus with active doc-type filters (the toolbar's highlighted-selection + 'Clear' affordance). 'empty' is the SAME vault toolbar with zero active filters (the DOC_TYPE_ORDER list is a static constant, never server data, so there is no 'no data' rendering to show here). 'degraded' switches to a CODE corpus with module_hue'd nodes so the alternate module-color-legend branch gets covered at least once, paired with the structural tier reported down on both the dashboardState and the graph slice — but CategoryLegend reads neither tiers block anywhere, so it is tier-blind by design and cannot show a visually distinct degraded treatment; this pairing only proves a truthfully degraded served envelope alongside that branch. The recency-scale branch (nodeColorMode: 'recency') is a view-store-only axis this desk does not toggle and is left uncovered. 'loading' leaves every query unseeded and renders the same baseline unfiltered toolbar as 'empty', for the same tier-blind reason.",
+    note: "Container: seeds session (the dashboardState key folds the session identity), dashboardState (feeds useVaultRailFacets AND, via useDashboardStageSceneView, the graph-query variables useGraphLegendView's useGraphSlice call requests), and that graph slice — its key computed with the REAL dashboardGraphQueryVariables/normalizeGraphSliceRequestIdentity so it lands exactly where the hook reads. 'normal' is a VAULT corpus with active doc-type filters (the toolbar's highlighted-selection + 'Clear' affordance). 'empty' is the SAME vault toolbar with zero active filters (the DOC_TYPE_ORDER list is a static constant, never server data, so there is no 'no data' rendering to show here). 'degraded' is the SAME vault toolbar with the structural tier reported down on the served graph slice: the categories stay on screen (the legend doubles as the canvas node-fill key) but every control that would write the doc-type facet renders disabled and dimmed, since narrowing a corpus the engine reports as partial would silently hide matching documents. 'loading' leaves every query unseeded and renders the same baseline unfiltered toolbar as 'empty' — the toolbar is a static constant, so there is no distinct pending rendering. Two branches are left uncovered by this desk and are proven by unit test instead: the CODE module-color legend (a corpus this desk does not switch to, since the degraded cell now carries the honest vault treatment) and the recency scale (nodeColorMode: 'recency', a view-store-only axis).",
     host: "h-[3.5rem]",
     seed: (client, state) => {
       if (state === "loading") return;
-      const showCodeModules = state === "degraded";
       const tiers =
         state === "degraded" ? tiersDown(["structural"]) : tiersHealthy("structural");
       const overrides: Partial<DashboardState> = {
-        corpus: showCodeModules ? "code" : "vault",
-        filters:
-          showCodeModules || state === "empty" ? {} : { doc_types: ["adr", "plan"] },
+        corpus: "vault",
+        filters: state === "empty" ? {} : { doc_types: ["adr", "plan"] },
         tiers,
       };
       seedSessionAndDashboardState(client, overrides);
       client.setQueryData(
         categoryLegendGraphSliceKey(authoredDashboardState(overrides)),
         {
-          nodes: showCodeModules ? codeModuleNodes() : vaultSampleNodes(),
+          nodes: vaultSampleNodes(),
           edges: [],
           tiers,
         } satisfies GraphSlice,

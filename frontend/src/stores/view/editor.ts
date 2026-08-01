@@ -62,6 +62,11 @@ export interface DocumentEditorView {
   statusLabel: MessageDescriptor;
   statusTone: EditorStatusTone;
   statusToneClass: string;
+  /** Whether the status still needs to be SPELLED OUT in the editor chrome. Clean
+   *  and dirty are carried by the Save affordance's own tone and the header's line
+   *  stat, so they read without a caption; a save in flight, a failed save, and an
+   *  on-disk conflict have no such affordance and must stay stated in words. */
+  statusNeedsCaption: boolean;
   canSave: boolean;
 }
 
@@ -327,6 +332,8 @@ export function deriveDocumentEditorView(
     statusLabel: STATUS_LABEL[status],
     statusTone,
     statusToneClass: editorStatusToneClass(statusTone),
+    statusNeedsCaption:
+      status === "saving" || status === "save-failed" || status === "conflict",
     canSave: status === "dirty" || status === "save-failed",
   };
 }

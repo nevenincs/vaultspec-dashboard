@@ -9,7 +9,8 @@
 // any worker forks; importing this file before the setup has run is a usage
 // error and throws loudly rather than silently falling back to a fake.
 
-import { EngineClient, type FetchLike } from "../stores/server/engine";
+import { EngineClient } from "../stores/server/engine";
+import type { FetchLike } from "../stores/server/httpTransport";
 
 const BASE_URL = process.env["ENGINE_BASE_URL"];
 const TOKEN = process.env["ENGINE_TOKEN"];

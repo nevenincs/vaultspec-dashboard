@@ -24,7 +24,7 @@ import { CanvasStateOverlay, type CanvasState } from "./CanvasStateOverlay";
 import {
   ProvisionPanelBody,
   dispatchPayload,
-  recommendationDetail,
+  provisionExplanation,
   resolveProvisionPanelState,
   shouldSuppressCanvasStateOverlay,
 } from "./ProvisionPanel";
@@ -117,16 +117,44 @@ describe("resolveProvisionPanelState", () => {
   });
 });
 
-describe("recommendationDetail", () => {
-  it("adds context prose only for the two hard dead-ends", () => {
-    expect(recommendationDetail("not-a-git-project")).toEqual({
-      key: "projects:provisioning.details.prepareFolderAsGitProject",
+describe("provisionExplanation", () => {
+  const SERVED_RECOMMENDATIONS = [
+    "not-a-git-project",
+    "acquire-uv",
+    "acquire-core",
+    "install-framework",
+    "run-migrations",
+    "upgrade-core",
+  ] as const;
+
+  it("gives every served recommendation its own sentence", () => {
+    const details = SERVED_RECOMMENDATIONS.map(
+      (recommended) => provisionExplanation(recommended).detail.key,
+    );
+    expect(new Set(details).size).toBe(SERVED_RECOMMENDATIONS.length);
+    expect(details).not.toContain("projects:provisioning.description");
+  });
+
+  it("distinguishes a setup situation from an update situation in the heading", () => {
+    expect(provisionExplanation("install-framework").title.key).toBe(
+      "projects:provisioning.titles.setUpRequired",
+    );
+    expect(provisionExplanation("run-migrations").title.key).toBe(
+      "projects:provisioning.titles.updateRequired",
+    );
+    expect(provisionExplanation("upgrade-core").title.key).toBe(
+      "projects:provisioning.titles.toolsUpdateRequired",
+    );
+    expect(provisionExplanation("acquire-core").title.key).toBe(
+      "projects:provisioning.titles.toolsMissing",
+    );
+  });
+
+  it("falls back to neutral setup wording for a recommendation the catalog has no sentence for", () => {
+    expect(provisionExplanation("managed")).toEqual({
+      title: { key: "projects:provisioning.titles.setUpRequired" },
+      detail: { key: "projects:provisioning.description" },
     });
-    expect(recommendationDetail("acquire-uv")).toEqual({
-      key: "projects:provisioning.details.installRequiredProjectTools",
-    });
-    expect(recommendationDetail("install-framework")).toBeNull();
-    expect(recommendationDetail("managed")).toBeNull();
   });
 });
 
@@ -166,7 +194,34 @@ describe("ProvisionPanelBody", () => {
       />,
     );
     expect(screen.getByText("Project setup required")).toBeTruthy();
+    // One plain sentence naming THIS situation, not the generic "Set up this
+    // project to continue." every recommendation used to share.
+    expect(
+      screen.getByText(
+        "This project has no setup files yet. Setting up adds them and leaves your own files unchanged.",
+      ),
+    ).toBeTruthy();
     expect(screen.getByRole("button", { name: "Set up project" })).toBeTruthy();
+  });
+
+  it("explains an update situation as an update, with the update action", () => {
+    render(
+      <ProvisionPanelBody
+        data={status({ recommended: "run-migrations" })}
+        job={undefined}
+        busy={false}
+        runError={false}
+        onPrimary={noOp}
+        onForce={noOp}
+      />,
+    );
+    expect(screen.getByText("Project update required")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "This project’s setup files come from an older version. Updating brings them up to date.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Update project" })).toBeTruthy();
   });
 
   it("clicking the primary affordance fires onPrimary", () => {

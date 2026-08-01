@@ -88,6 +88,7 @@ export const DOCUMENT_VIEWER_MESSAGE_POLICY = {
   "documents:viewer.comments.states.preparing": { role: "status" },
   "documents:viewer.comments.states.resolved": { role: "status" },
   "documents:viewer.codeViewer.accessibility.contents": { role: "accessibility" },
+  "documents:viewer.codeViewer.actions.copyContents": { role: "action" },
   "documents:viewer.codeViewer.errors.loadFailed": { role: "error-message" },
   "documents:viewer.codeViewer.errors.temporarilyUnavailable": {
     role: "error-message",

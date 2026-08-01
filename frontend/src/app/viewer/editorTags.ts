@@ -6,18 +6,9 @@
 // bridge the editor's comma-joined `tags` draft string and that two-tag model, and
 // are unit-tested in isolation.
 
-/** The directory tags every `.vault/` document may carry; the OTHER tag is the
- *  feature. `index` is included for completeness though index documents are not
- *  editable in the reader. */
-export const VAULT_DIRECTORY_TAGS = new Set([
-  "adr",
-  "audit",
-  "exec",
-  "index",
-  "plan",
-  "reference",
-  "research",
-]);
+import { VAULT_DIRECTORY_TAGS } from "../../stores/server/vaultTags";
+
+export { VAULT_DIRECTORY_TAGS };
 
 /** Strip a leading `#` and surrounding whitespace from one tag token. */
 export function normalizeTag(raw: string): string {

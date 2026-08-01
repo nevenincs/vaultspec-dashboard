@@ -4,7 +4,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { EngineNode } from "../server/engine";
-import { deriveCodeModuleLegend } from "./codeModuleLegend";
+import { deriveCodeModuleLegend, graphLegendDegraded } from "./codeModuleLegend";
 
 const node = (over: Partial<EngineNode>): EngineNode => ({
   id: over.id ?? "code:x",
@@ -48,5 +48,41 @@ describe("deriveCodeModuleLegend", () => {
       node({ id: "code:d", module_hue: 4 }), // no module key
     ]);
     expect(rows).toEqual([{ module: "engine", moduleHue: 0 }]);
+  });
+});
+
+describe("graphLegendDegraded", () => {
+  it("is false for a healthy slice", () => {
+    expect(graphLegendDegraded([])).toBe(false);
+  });
+
+  it("ignores a semantic-only outage (search's concern, not the corpus narrowing)", () => {
+    expect(graphLegendDegraded(["semantic"])).toBe(false);
+  });
+
+  it("is true for any corpus-bearing tier the engine reports down", () => {
+    expect(
+      graphLegendDegraded(["structural"], { structural: "core unreachable" }),
+    ).toBe(true);
+    expect(graphLegendDegraded(["semantic", "declared"], {})).toBe(true);
+    expect(graphLegendDegraded(["temporal"])).toBe(true);
+  });
+
+  it("treats a still-building or refreshing tier as loading, not degradation", () => {
+    expect(
+      graphLegendDegraded(["declared"], { declared: "declared tier building" }),
+    ).toBe(false);
+    expect(
+      graphLegendDegraded(["structural"], {
+        structural: "structural index refreshing",
+      }),
+    ).toBe(false);
+    // A second tier that is genuinely down still degrades the legend.
+    expect(
+      graphLegendDegraded(["declared", "temporal"], {
+        declared: "declared tier building",
+        temporal: "index not built",
+      }),
+    ).toBe(true);
   });
 });

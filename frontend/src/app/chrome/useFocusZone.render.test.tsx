@@ -9,7 +9,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { useFocusZone } from "./useFocusZone";
 
@@ -17,8 +17,15 @@ afterEach(cleanup);
 
 const ITEMS = ["alpha", "beta", "gamma"];
 
-function ZoneHarness({ initialActive = null }: { initialActive?: string | null }) {
+function ZoneHarness({
+  initialActive = null,
+  disabledKeys = [],
+}: {
+  initialActive?: string | null;
+  disabledKeys?: readonly string[];
+}) {
   const [active, setActive] = useState<string | null>(initialActive);
+  const disabled = new Set(disabledKeys);
   const zone = useFocusZone({
     orientation: "vertical",
     wrap: false,
@@ -28,12 +35,14 @@ function ZoneHarness({ initialActive = null }: { initialActive?: string | null }
   return (
     <ul>
       {ITEMS.map((key) => {
-        const props = zone.rove(key);
+        const isDisabled = disabled.has(key);
+        const props = zone.rove(key, { disabled: isDisabled });
         return (
           <li key={key}>
             <button
               type="button"
               data-key={key}
+              disabled={isDisabled}
               ref={props.ref as (el: HTMLButtonElement | null) => void}
               tabIndex={props.tabIndex}
               onKeyDown={props.onKeyDown}
@@ -91,8 +100,41 @@ describe("useFocusZone (rendered)", () => {
     expect(document.activeElement).toBe(buttonFor("gamma"));
   });
 
+  it("keeps a disabled active item out of the tab ring and skips it while roving", () => {
+    render(<ZoneHarness initialActive="beta" disabledKeys={["beta"]} />);
+    const alpha = buttonFor("alpha");
+    const beta = buttonFor("beta");
+    const gamma = buttonFor("gamma");
+
+    // The disabled active key remains controlled state, but it cannot claim the
+    // zone's one tab stop. The first enabled item must remain reachable.
+    expect(alpha.tabIndex).toBe(0);
+    expect(beta.tabIndex).toBe(-1);
+    expect(beta.disabled).toBe(true);
+
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(gamma);
+    expect(gamma.tabIndex).toBe(0);
+  });
+
+  it("reassigns the tab stop when the current roving item becomes disabled", () => {
+    const { rerender } = render(<ZoneHarness initialActive="beta" />);
+    // A second render establishes beta as the current roving item.
+    rerender(<ZoneHarness initialActive="beta" />);
+    expect(buttonFor("beta").tabIndex).toBe(0);
+
+    rerender(<ZoneHarness initialActive="beta" disabledKeys={["beta"]} />);
+    expect(buttonFor("alpha").tabIndex).toBe(0);
+    expect(buttonFor("beta").tabIndex).toBe(-1);
+    expect(buttonFor("gamma").tabIndex).toBe(-1);
+  });
+
   it("stops a consumed arrow from reaching a window listener (no double-fire)", () => {
-    const onWindowKey = vi.fn();
+    let windowKeyCalls = 0;
+    const onWindowKey = () => {
+      windowKeyCalls += 1;
+    };
     window.addEventListener("keydown", onWindowKey);
     try {
       render(<ZoneHarness initialActive="alpha" />);
@@ -101,11 +143,11 @@ describe("useFocusZone (rendered)", () => {
 
       // An owned arrow is consumed and must NOT reach the global dispatcher.
       fireEvent.keyDown(alpha, { key: "ArrowDown" });
-      expect(onWindowKey).not.toHaveBeenCalled();
+      expect(windowKeyCalls).toBe(0);
 
       // A key the zone does not own still bubbles (e.g. Enter to activate).
       fireEvent.keyDown(buttonFor("beta"), { key: "Enter" });
-      expect(onWindowKey).toHaveBeenCalledTimes(1);
+      expect(windowKeyCalls).toBe(1);
     } finally {
       window.removeEventListener("keydown", onWindowKey);
     }

@@ -139,9 +139,15 @@ export const SHELL_MESSAGE_POLICY = {
   },
   "documents:localizationWave.plan.completion": { role: "accessibility" },
   "documents:localizationWave.plan.counts": { role: "status" },
+  "documents:localizationWave.plan.dateLabel": { role: "accessibility" },
+  "documents:localizationWave.plan.featureLabel": { role: "accessibility" },
   "documents:localizationWave.plan.loadingSummary": { role: "accessibility" },
   "documents:localizationWave.plan.phaseCount": { role: "status" },
   "documents:localizationWave.plan.stepCount": { role: "status" },
+  // A surface's degraded sentence is a STATUS, not an error the reader caused or can
+  // retry from — the same classification `documents:codeTree.states.degraded` carries.
+  "documents:localizationWave.plan.summaryUnavailable": { role: "status" },
+  "documents:localizationWave.plan.tierLabel": { role: "accessibility" },
   "documents:localizationWave.plan.waveCount": { role: "status" },
   "documents:localizationWave.related.aria": { role: "accessibility" },
   "documents:localizationWave.related.empty": { role: "status" },

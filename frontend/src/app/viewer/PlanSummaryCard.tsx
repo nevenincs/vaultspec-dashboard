@@ -1,20 +1,42 @@
 // The plan summary card — a decoration under the reader's DocHeader for `plan`
 // documents. It surfaces the plan's DERIVED metadata: the completion state, the
-// completion percentage with a progress bar, and the wave/phase/step counts. Every
-// value is ENGINE-SERVED (the `PlanInterior.summary`, computed pre-truncation) and
-// read through the stores plan-interior hook — this card counts nothing itself
+// completion percentage with a progress bar, the wave/phase/step counts, and the
+// plan's IDENTITY row — the complexity tier (L1–L4), the feature group, and the plan
+// date. Every value is ENGINE-SERVED — the counts from `PlanInterior.summary`
+// (computed pre-truncation), the identity facets from the per-scope pipeline
+// projection's artifact row (`tier` / `feature_tags` / `dates`) — and read through
+// stores hooks; this card counts nothing and parses no stem
 // (display-state-is-backend-served / dashboard-layer-ownership). It composes the
-// centralized kit (Card / ProgressBar) on the binding token tier; no raw px, no hex.
+// centralized kit (Card / Badge / Chip / ProgressBar / StateBlock) on the binding
+// token tier; no raw px, no hex.
+//
+// DEGRADED is a real state here (owner review): when the plan-interior read resolves
+// degraded off its served `tiers` block, the card renders the shared caution + one
+// sentence instead of a normal-looking card built on numbers it cannot vouch for.
 
 import { useMemo, type ReactElement } from "react";
 
 import {
   derivePlanSummaryView,
+  usePlanIdentityView,
   usePlanInteriorView,
   type PlanStateTone,
 } from "../../stores/server/queries";
-import { Card, ProgressBar, Skeleton, SkeletonBar } from "../kit";
-import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
+import { featureTagDisplayName } from "../../stores/featureQuery";
+import {
+  Badge,
+  Card,
+  Chip,
+  ProgressBar,
+  Skeleton,
+  SkeletonBar,
+  StateBlock,
+} from "../kit";
+import {
+  useActiveLocale,
+  useLocalizedMessageResolver,
+} from "../../platform/localization/LocalizationProvider";
+import { formatDate } from "../../platform/localization/formatters";
 import { createCountMessageDescriptor } from "../../platform/localization/message";
 
 /** The state-tone → ink-token class for the state dot + label. The completion
@@ -35,11 +57,26 @@ export function PlanSummaryCard({
   scope: string | null;
 }): ReactElement | null {
   const resolveMessage = useLocalizedMessageResolver();
+  const locale = useActiveLocale();
   const interior = usePlanInteriorView(nodeId, scope);
+  const identity = usePlanIdentityView(nodeId, scope);
   const summary = useMemo(
     () => derivePlanSummaryView(interior.summary),
     [interior.summary],
   );
+  // The wire serves an ISO date; the reader sees it in the active locale's short
+  // form. UTC so a plan stamped "2026-08-01" never reads as the day before.
+  const dateLabel = useMemo(() => {
+    if (identity.date === null) return null;
+    const parsed = Date.parse(identity.date);
+    if (!Number.isFinite(parsed)) return null;
+    return formatDate(locale, parsed, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }, [identity.date, locale]);
 
   // Loading is UI-only (state-mode-uniformity ADR D2): a shimmer standing in for
   // the card's rhythm, the human label only in the kit Skeleton's sr-only.
@@ -58,6 +95,26 @@ export function PlanSummaryCard({
           <SkeletonBar width="w-full" height="h-2" />
           <SkeletonBar width="w-2/5" height="h-2" />
         </Skeleton>
+      </Card>
+    );
+  }
+
+  // DEGRADED — the interior read resolved with its `structural` tier unavailable, so
+  // the counts and completion cannot be vouched for. Render the shared caution + ONE
+  // sentence in the card's frame rather than a normal card whose numbers silently
+  // describe nothing (degradation-is-read-from-tiers).
+  if (interior.degraded) {
+    return (
+      <Card elevation="flat" className="mb-fg-2" data-plan-summary-degraded>
+        <StateBlock
+          mode="degraded"
+          layout="inline"
+          message={
+            resolveMessage({
+              key: "documents:localizationWave.plan.summaryUnavailable",
+            }).message
+          }
+        />
       </Card>
     );
   }
@@ -140,6 +197,63 @@ export function PlanSummaryCard({
       )}
       {counts.length > 0 && (
         <p className="text-meta tabular-nums text-ink-muted">{counts.join(" · ")}</p>
+      )}
+      {/* The plan's IDENTITY row — served tier badge, feature chip(s), plan date.
+          Each facet renders only when the wire carries it; an artifact row absent
+          from the in-flight projection simply yields no row (honest omission, never
+          a placeholder chip).
+
+          Each facet names itself for a screen reader with `sr-only` lead-in text
+          rather than an `aria-label` on the wrapper: the visible value IS the
+          content, and an aria-label on a role-less span REPLACES it, so a reader
+          would hear "Plan size" and never learn the plan is an L3. */}
+      {(identity.tier !== null ||
+        identity.featureTags.length > 0 ||
+        dateLabel !== null) && (
+        <div
+          className="flex flex-wrap items-center gap-fg-1-5"
+          data-plan-summary-identity
+        >
+          {identity.tier !== null && (
+            <span data-plan-summary-tier>
+              <span className="sr-only">
+                {
+                  resolveMessage({
+                    key: "documents:localizationWave.plan.tierLabel",
+                  }).message
+                }{" "}
+              </span>
+              <Badge>{identity.tier}</Badge>
+            </span>
+          )}
+          {identity.featureTags.map((tag) => (
+            <span key={tag} data-plan-summary-feature>
+              <span className="sr-only">
+                {
+                  resolveMessage({
+                    key: "documents:localizationWave.plan.featureLabel",
+                  }).message
+                }{" "}
+              </span>
+              <Chip category="feature">{featureTagDisplayName(tag)}</Chip>
+            </span>
+          ))}
+          {dateLabel !== null && (
+            <span
+              className="text-meta tabular-nums text-ink-faint"
+              data-plan-summary-date
+            >
+              <span className="sr-only">
+                {
+                  resolveMessage({
+                    key: "documents:localizationWave.plan.dateLabel",
+                  }).message
+                }{" "}
+              </span>
+              {dateLabel}
+            </span>
+          )}
+        </div>
       )}
     </Card>
   );

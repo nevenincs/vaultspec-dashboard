@@ -219,18 +219,55 @@ export function JobOutcome({
   );
 }
 
-/** Plain-language prose per served recommendation — never the raw token on
- *  screen (ui-labels-are-user-facing). Only the two hard dead-ends need extra
- *  context; every other recommendation is fully explained by the button label. */
-export function recommendationDetail(recommended: string): MessageDescriptor | null {
-  switch (recommended) {
-    case "not-a-git-project":
-      return { key: "projects:provisioning.details.prepareFolderAsGitProject" };
-    case "acquire-uv":
-      return { key: "projects:provisioning.details.installRequiredProjectTools" };
-    default:
-      return null;
-  }
+/** What this project's state IS, and what the one action will do about it —
+ *  authored per SERVED recommendation so no two different situations read the
+ *  same. Never the raw token on screen (ui-labels-are-user-facing).
+ *
+ *  The panel previously carried one fixed heading ("Project setup required") and
+ *  a sentence for only the two hard dead-ends, so four genuinely different
+ *  situations — tools absent, setup files absent, setup files out of date, tools
+ *  out of date — all read identically and none of them said what would happen. */
+export interface ProvisionExplanation {
+  title: MessageDescriptor;
+  detail: MessageDescriptor;
+}
+
+const GENERIC_EXPLANATION: ProvisionExplanation = {
+  title: { key: "projects:provisioning.titles.setUpRequired" },
+  detail: { key: "projects:provisioning.description" },
+};
+
+const PROVISION_EXPLANATIONS: Record<string, ProvisionExplanation> = {
+  "not-a-git-project": {
+    title: { key: "projects:provisioning.titles.notAGitProject" },
+    detail: { key: "projects:provisioning.details.prepareFolderAsGitProject" },
+  },
+  "acquire-uv": {
+    title: { key: "projects:provisioning.titles.toolsMissing" },
+    detail: { key: "projects:provisioning.details.installRequiredProjectTools" },
+  },
+  "acquire-core": {
+    title: { key: "projects:provisioning.titles.toolsMissing" },
+    detail: { key: "projects:provisioning.details.installProjectTools" },
+  },
+  "install-framework": {
+    title: { key: "projects:provisioning.titles.setUpRequired" },
+    detail: { key: "projects:provisioning.details.addProjectFiles" },
+  },
+  "run-migrations": {
+    title: { key: "projects:provisioning.titles.updateRequired" },
+    detail: { key: "projects:provisioning.details.updateProjectFiles" },
+  },
+  "upgrade-core": {
+    title: { key: "projects:provisioning.titles.toolsUpdateRequired" },
+    detail: { key: "projects:provisioning.details.updateProjectTools" },
+  },
+};
+
+/** An unrecognized recommendation falls back to the neutral setup wording rather
+ *  than showing a served token the catalog has no sentence for. */
+export function provisionExplanation(recommended: string): ProvisionExplanation {
+  return PROVISION_EXPLANATIONS[recommended] ?? GENERIC_EXPLANATION;
 }
 
 /** The payload a runnable dispatch-lane descriptor carries, or null when the
@@ -297,12 +334,9 @@ export function ProvisionPanelBody({
     forceLabel.usedFallback ||
     forceReason?.usedFallback === true ||
     forceConfirmationFallback;
-  const detailDescriptor = recommendationDetail(data.recommended);
-  const detail =
-    detailDescriptor === null
-      ? resolveMessage({ key: "projects:provisioning.description" })
-      : resolveMessage(detailDescriptor);
-  const title = resolveMessage({ key: "projects:provisioning.title" });
+  const explanation = provisionExplanation(data.recommended);
+  const detail = resolveMessage(explanation.detail);
+  const title = resolveMessage(explanation.title);
   const startFailed = resolveMessage({ key: "projects:provisioning.startFailed" });
   const progress = resolveMessage({ key: "projects:provisioning.progress" });
   const cancelForce = useCallback(() => setForceConfirmationOpen(false), []);

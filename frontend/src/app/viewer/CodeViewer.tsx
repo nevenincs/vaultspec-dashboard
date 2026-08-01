@@ -1,5 +1,6 @@
 import type { ReactElement, ReactNode } from "react";
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState } from "react";
+import { Copy } from "lucide-react";
 
 import {
   deriveCodeViewerView,
@@ -22,7 +23,7 @@ import {
   useCodeViewerScrollTop,
 } from "../../stores/view/codeViewer";
 import { useElementHeight } from "../chrome/useElementWidth";
-import { Badge, Button, Skeleton, SkeletonBar } from "../kit";
+import { Badge, IconButton, Popover, Skeleton, SkeletonBar, StateBlock } from "../kit";
 import type { LineChange, LineMarker } from "../authoring/editorChanges";
 import { lineMarkers } from "../authoring/editorChanges";
 import { HighlightedLineContent, MARKER_TONE } from "./HighlightedCode";
@@ -117,6 +118,89 @@ function CodeLines({
 
 const CODE_ENCODING = "UTF-8";
 
+/** The header's copy affordance: a copy GLYPH opening a two-item menu that names
+ *  each shape ("Copy contents" / "Copy path"). A bare "Copy" button left the reader
+ *  guessing which of the two it wrote (owner review). Composes the centralized kit
+ *  IconButton + Popover with the app's standing menu semantics (`role="menu"` /
+ *  `role="menuitem"`), never a hand-built dropdown; the clipboard write rides the
+ *  one `dispatchCopy` seam with its sanctioned `what` shape, and the path item
+ *  speaks the same "Copy path" the code file's context menu does. */
+function CopyMenu({
+  menuLabel,
+  contentsLabel,
+  pathLabel,
+  text,
+  path,
+}: {
+  menuLabel: string;
+  contentsLabel: string;
+  pathLabel: string;
+  text: string;
+  path: string | null;
+}): ReactElement {
+  const [open, setOpen] = useState(false);
+  // File CONTENTS carry no `what` token — the sanctioned whitelist names identity
+  // shapes (id/title/path/stem/summary), and inventing a sixth here would widen a
+  // platform contract for a label. The path copy uses its real `path` shape.
+  const copy = (payload: { text: string; what?: "path" }) => {
+    setOpen(false);
+    void dispatchCopy(payload);
+  };
+  return (
+    <span className="relative">
+      <IconButton
+        label={menuLabel}
+        active={open}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        data-code-viewer-copy
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Copy size={16} aria-hidden />
+      </IconButton>
+      {open && (
+        <Popover
+          open
+          onDismiss={() => setOpen(false)}
+          // The trigger is a SIBLING of the popover root, so the light-dismiss must
+          // skip it — otherwise the pointerdown dismiss and the button's own toggle
+          // fight and the menu can never be closed by clicking its own glyph.
+          ignoreSelector="[data-code-viewer-copy]"
+          role="menu"
+          aria-label={menuLabel}
+          className="absolute right-0 top-full z-40 mt-fg-1 flex w-56 flex-col gap-fg-1 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
+        >
+          <button
+            type="button"
+            role="menuitem"
+            data-code-viewer-copy-contents
+            onClick={() => copy({ text })}
+            className={COPY_MENU_ITEM_CLASS}
+          >
+            {contentsLabel}
+          </button>
+          {/* Honest absence: a content view served without a path offers no path to
+              copy, so the item is omitted rather than shipped permanently dead. */}
+          {path !== null && (
+            <button
+              type="button"
+              role="menuitem"
+              data-code-viewer-copy-path
+              onClick={() => copy({ text: path, what: "path" })}
+              className={COPY_MENU_ITEM_CLASS}
+            >
+              {pathLabel}
+            </button>
+          )}
+        </Popover>
+      )}
+    </span>
+  );
+}
+
+const COPY_MENU_ITEM_CLASS =
+  "rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+
 export function CodeViewer({
   content,
   changes,
@@ -138,7 +222,9 @@ export function CodeViewer({
     stateDescriptor === null ? null : resolveMessage(stateDescriptor);
   const genericCode = resolveMessage(CODE_VIEWER_MESSAGES.labels.code);
   const readOnly = resolveMessage(CODE_VIEWER_MESSAGES.labels.readOnly);
-  const copy = resolveMessage(CODE_VIEWER_MESSAGES.actions.copy);
+  const copyMenu = resolveMessage(CODE_VIEWER_MESSAGES.actions.copy);
+  const copyContents = resolveMessage(CODE_VIEWER_MESSAGES.actions.copyContents);
+  const copyPath = resolveMessage(CODE_VIEWER_MESSAGES.actions.copyPath);
   const contents = resolveMessage(CODE_VIEWER_MESSAGES.accessibility.contents);
   const language = resolveMessage(languageDisplayDescriptor(view.languageHint, "code"));
   const footerDescriptor = codeViewerFooterDescriptor(
@@ -160,6 +246,17 @@ export function CodeViewer({
   if (view.state === "loading") {
     return <CodeViewerSkeleton label={stateMessage!.message} />;
   }
+  // DEGRADED — the shared caution mark + ONE plain sentence at the uniform glyph
+  // size (state-mode-uniformity ADR D3), centred in the viewer body. A bare tinted
+  // paragraph read as ordinary prose rather than the "the read did not land" state
+  // every other surface in the app renders the same way.
+  if (view.state === "degraded") {
+    return (
+      <div className="flex h-full items-center justify-center p-fg-6">
+        <StateBlock mode="degraded" message={stateMessage!.message} />
+      </div>
+    );
+  }
   if (view.state !== "ready") {
     return (
       <ViewerState toneClass={codeViewerToneClass(view.stateTone)}>
@@ -171,7 +268,9 @@ export function CodeViewer({
     genericCode.usedFallback ||
     language.usedFallback ||
     readOnly.usedFallback ||
-    copy.usedFallback ||
+    copyMenu.usedFallback ||
+    copyContents.usedFallback ||
+    copyPath.usedFallback ||
     contents.usedFallback ||
     footer === null ||
     footer.usedFallback
@@ -182,24 +281,43 @@ export function CodeViewer({
   }
 
   const fileName = view.path ? (view.path.split("/").pop() ?? view.path) : null;
-  const onCopy = () => {
-    void dispatchCopy({ text: view.text });
-  };
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between gap-fg-2 border-b border-rule bg-paper px-fg-4 py-fg-2">
-        <div className="flex min-w-0 items-center gap-[0.625rem]">
-          <span className="min-w-0 truncate font-mono text-label text-ink">
-            {fileName ?? language.message}
+      {/* Two-line identity (owner review): the file NAME leads, the repo-relative
+          path sits under it in the small caption role. One glance answers both
+          "which file" and "where" without the name competing for width. */}
+      <header className="flex items-start justify-between gap-fg-2 border-b border-rule bg-paper px-fg-4 py-fg-2">
+        <div className="flex min-w-0 flex-col gap-fg-0-5">
+          <span className="flex min-w-0 items-center gap-[0.625rem]">
+            <span className="min-w-0 truncate font-mono text-label text-ink">
+              {fileName ?? language.message}
+            </span>
+            {view.languageHint && <Badge>{language.message}</Badge>}
           </span>
-          {view.languageHint && <Badge>{language.message}</Badge>}
+          {/* The path is its own accessible name — it is visible text, so it carries
+              no `aria-label` (one on a role-less span REPLACES the path for a screen
+              reader, losing the very thing the line exists to say). `title` reveals
+              it in full when the header is too narrow to show it. */}
+          {view.path !== undefined && view.path !== null && (
+            <span
+              title={view.path}
+              data-code-viewer-path
+              className="min-w-0 select-text truncate font-mono text-caption text-ink-faint"
+            >
+              {view.path}
+            </span>
+          )}
         </div>
         <div className="flex shrink-0 items-center gap-[0.625rem]">
           <span className="text-label text-ink-muted">{readOnly.message}</span>
-          <Button variant="ghost" onClick={onCopy}>
-            {copy.message}
-          </Button>
+          <CopyMenu
+            menuLabel={copyMenu.message}
+            contentsLabel={copyContents.message}
+            pathLabel={copyPath.message}
+            text={view.text}
+            path={view.path ?? null}
+          />
         </div>
       </header>
       {truncation !== null && !truncation.usedFallback && (

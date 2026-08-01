@@ -7,14 +7,12 @@
 // in the zone has been focused, the FIRST item is the tab stop so the zone is
 // reachable from a cold load (the proven left-rail tree pattern).
 //
-// This generalizes the five bespoke roving implementations (vault/files trees,
-// segmented toggle, search results, context-menu items) onto one model. It
-// composes the existing focus utilities rather than re-implementing them and is
-// itself logic-only (no JSX), consumed by app surfaces; the `platform` layer
-// forbids upward imports, so the primitive lives in `app/chrome` beside
-// `useFocusRestore`, `focusTrap`, and `rovingFocus`.
+// This owns the shared roving model for vault/files trees, segmented toggles,
+// search results, and context-menu items. It is logic-only (no JSX), consumed
+// by app surfaces; the `platform` layer forbids upward imports, so the primitive
+// lives in `app/chrome` beside the other chrome focus utilities.
 
-import { useCallback, useRef } from "react";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 /** Primary movement axis of a zone. `both` accepts either arrow pair. */
@@ -34,6 +32,13 @@ export interface FocusKeyResolution {
   cross?: FocusCrossIntent;
 }
 
+export interface FocusTargetOptions {
+  /** Cycle past the ends (true) or stop at them (false). */
+  wrap: boolean;
+  /** Exclude an item from roving traversal while retaining it in DOM order. */
+  isFocusable?: (key: string) => boolean;
+}
+
 /**
  * Pure next-key resolution over an ordered key list. Returns the target key, or
  * null when the move is a no-op (unknown `from`, empty list, or a clamped edge).
@@ -43,24 +48,29 @@ export function resolveFocusTarget(
   order: readonly string[],
   from: string,
   intent: FocusMoveIntent,
-  options: { wrap: boolean },
+  options: FocusTargetOptions,
 ): string | null {
   const n = order.length;
   if (n === 0) return null;
-  if (intent === "first") return order[0] ?? null;
-  if (intent === "last") return order[n - 1] ?? null;
+  const isFocusable = options.isFocusable ?? (() => true);
+  if (intent === "first") return order.find(isFocusable) ?? null;
+  if (intent === "last") return order.findLast(isFocusable) ?? null;
 
   const at = order.indexOf(from);
   if (at === -1) return null;
 
   const step = intent === "next" ? 1 : -1;
-  let target = at + step;
-  if (options.wrap) {
-    target = (target + n) % n;
-  } else if (target < 0 || target >= n) {
-    return null;
+  for (let distance = 1; distance < n; distance += 1) {
+    let target = at + step * distance;
+    if (options.wrap) {
+      target = (target + n) % n;
+    } else if (target < 0 || target >= n) {
+      break;
+    }
+    const candidate = order[target];
+    if (candidate !== undefined && isFocusable(candidate)) return candidate;
   }
-  return order[target] ?? null;
+  return null;
 }
 
 /**
@@ -124,6 +134,8 @@ export interface FocusZoneItemProps {
 }
 
 export interface FocusZoneItemOptions {
+  /** Excluded from roving traversal (for example, a disabled menu item). */
+  disabled?: boolean;
   /** Bound when a secondary-axis ArrowRight/ArrowDown fires (e.g. expand). */
   onCrossNext?: () => void;
   /** Bound when a secondary-axis ArrowLeft/ArrowUp fires (e.g. collapse). */
@@ -158,7 +170,10 @@ export function useFocusZone({
   const order = useRef<string[]>([]);
   const prevOrder = useRef<string[]>([]);
   const seenKeys = useRef(new Set<string>());
+  const disabledKeys = useRef(new Set<string>());
   const rovingKeyRef = useRef<string | null>(null);
+  const needsTabStopReconciliation = useRef(false);
+  const [, reconcileTabStop] = useState(0);
 
   // Resolve the roving key from the PREVIOUS render's order (the current order is
   // not yet built — children call `rove` after this body runs). Honor the active
@@ -170,9 +185,22 @@ export function useFocusZone({
   // is matched identically on every invocation. The latch below is only the
   // first-render seed, before any prior order exists.
   rovingKeyRef.current =
-    activeKey !== null && prevOrder.current.includes(activeKey)
+    activeKey !== null &&
+    prevOrder.current.includes(activeKey) &&
+    !disabledKeys.current.has(activeKey)
       ? activeKey
-      : (prevOrder.current[0] ?? null);
+      : (prevOrder.current.find((key) => !disabledKeys.current.has(key)) ?? null);
+  needsTabStopReconciliation.current = false;
+
+  // An item can become disabled after it was the roving tab stop. `rove()` then
+  // discovers that change in item order; if it is not the first item, preceding
+  // siblings have already received -1 for this render. Re-render before paint so
+  // the next pass uses the now-current disabled set to assign one enabled tab stop.
+  useLayoutEffect(() => {
+    if (!needsTabStopReconciliation.current) return;
+    needsTabStopReconciliation.current = false;
+    reconcileTabStop((version) => version + 1);
+  });
 
   // Render-pass reset: children call `rove` after this hook body runs in the
   // same render, so the order they build reflects the current visible set. The
@@ -187,7 +215,10 @@ export function useFocusZone({
 
   const moveTo = useCallback(
     (from: string, intent: FocusMoveIntent) => {
-      const next = resolveFocusTarget(order.current, from, intent, { wrap });
+      const next = resolveFocusTarget(order.current, from, intent, {
+        wrap,
+        isFocusable: (key) => !disabledKeys.current.has(key),
+      });
       if (next === null || next === from) return;
       onActiveKeyChange(next);
       elements.current.get(next)?.focus();
@@ -202,14 +233,23 @@ export function useFocusZone({
         order.current.push(key);
         prevOrder.current = order.current;
       }
+      if (options?.disabled) disabledKeys.current.add(key);
+      else disabledKeys.current.delete(key);
+      if (options?.disabled && rovingKeyRef.current === key) {
+        rovingKeyRef.current = null;
+        needsTabStopReconciliation.current = true;
+      }
       // One tab stop: the resolved roving key carries it; when none resolved
-      // (the first render, before any prior order) the FIRST distinct item does,
-      // so the zone is always Tab-reachable. Both branches are idempotent under
-      // React's double-invoked render — `order.current[0]` is the same on every
-      // invocation, so no per-call latch can be consumed by the first pass.
+      // (the first render, before any prior order) the first focusable item does.
+      // Both branches are idempotent under React's double-invoked render, so no
+      // per-call latch can be consumed by the first pass.
       const rovingKey = rovingKeyRef.current;
+      const firstFocusable = order.current.find(
+        (candidate) => !disabledKeys.current.has(candidate),
+      );
       const tabbable =
-        rovingKey === key || (rovingKey === null && order.current[0] === key);
+        !options?.disabled &&
+        (rovingKey === key || (rovingKey === null && firstFocusable === key));
 
       const ref = (el: HTMLElement | null) => {
         if (el) elements.current.set(key, el);

@@ -10,7 +10,7 @@ import {
 import { useActiveScope, useVaultRailFacets } from "../../stores/server/queries";
 import {
   type CodeModuleLegendRow,
-  useCodeModuleLegend,
+  useGraphLegendView,
 } from "../../stores/view/codeModuleLegend";
 import { useGraphControlsAppearanceParams } from "../../stores/view/graphControlsChrome";
 import { DocTypeMark } from "../../scene/field/markComponents";
@@ -63,6 +63,11 @@ export const CATEGORY_LEGEND_MESSAGES = Object.freeze({
   removeDocumentTypeFilter: Object.freeze({
     key: "graph:legend.actions.removeDocumentTypeFilter",
   } satisfies MessageDescriptor<"graph:legend.actions.removeDocumentTypeFilter">),
+  // Why the filter affordances are offered but unclickable while the graph slice
+  // is degraded — the same sentence the canvas overlay uses for a partial map.
+  corpusUnavailable: Object.freeze({
+    key: "graph:canvas.errors.partialUnavailable",
+  } satisfies MessageDescriptor<"graph:canvas.errors.partialUnavailable">),
   older: Object.freeze({
     key: "graph:legend.labels.older",
   } satisfies MessageDescriptor<"graph:legend.labels.older">),
@@ -132,7 +137,12 @@ const LEGEND_REGION_POSITION =
 export function CategoryLegend() {
   const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
-  const codeModules = useCodeModuleLegend(scope);
+  // Degradation is read from the graph slice's OWN served tiers block. A degraded
+  // corpus keeps the SAME categories on screen — the legend is also the node-fill
+  // key, so hiding it would strand the canvas — but every control that would WRITE
+  // the doc-type facet is offered disabled: narrowing a corpus the engine has told
+  // us is partial would silently hide documents that do match.
+  const { codeModules, degraded } = useGraphLegendView(scope);
   const { nodeColorMode } = useGraphControlsAppearanceParams();
   const { docTypes } = useVaultRailFacets(scope);
   const { toggleFacet, clearFacet } = useDashboardFilterSidebarIntent(scope);
@@ -271,6 +281,7 @@ export function CategoryLegend() {
           resolveMessage(CATEGORY_LEGEND_MESSAGES.documentTypeFilters).message
         }
         data-category-legend
+        data-category-legend-degraded={degraded ? "true" : undefined}
         data-category-legend-mode={compact ? "compact" : "expanded"}
       >
         <button
@@ -307,11 +318,14 @@ export function CategoryLegend() {
           const selected = activeDocTypes.has(token);
           const included = !filterActive || selected;
           const item = zone.rove(token);
-          const className = selected
+          const baseClassName = selected
             ? "flex shrink-0 items-center gap-fg-1 rounded-fg-pill border border-accent bg-accent-subtle px-fg-2 py-fg-0-5 text-caption font-medium text-accent-text outline-none transition-[opacity,background-color] duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-            : `flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted outline-none transition-[opacity,background-color] duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
-                included ? "opacity-100" : "opacity-40"
-              }`;
+            : `flex shrink-0 items-center gap-fg-1 rounded-fg-xs px-fg-1 py-fg-0-5 text-caption text-ink-muted outline-none transition-[opacity,background-color] duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                degraded ? "" : "hover:bg-paper-raised "
+              }${included ? "opacity-100" : "opacity-40"}`;
+          const className = degraded
+            ? `${baseClassName} cursor-not-allowed opacity-40`
+            : baseClassName;
           return (
             <button
               ref={item.ref}
@@ -320,15 +334,21 @@ export function CategoryLegend() {
               onFocus={() => setActiveItem(token)}
               type="button"
               key={token}
-              onClick={() => void toggleFacet("doc_types", token)}
+              disabled={degraded}
+              aria-disabled={degraded || undefined}
+              onClick={
+                degraded ? undefined : () => void toggleFacet("doc_types", token)
+              }
               aria-pressed={selected}
               title={
-                resolveMessage({
-                  key: selected
-                    ? CATEGORY_LEGEND_MESSAGES.removeDocumentTypeFilter.key
-                    : CATEGORY_LEGEND_MESSAGES.addDocumentTypeFilter.key,
-                  values: { documentType: label },
-                }).message
+                degraded
+                  ? resolveMessage(CATEGORY_LEGEND_MESSAGES.corpusUnavailable).message
+                  : resolveMessage({
+                      key: selected
+                        ? CATEGORY_LEGEND_MESSAGES.removeDocumentTypeFilter.key
+                        : CATEGORY_LEGEND_MESSAGES.addDocumentTypeFilter.key,
+                      values: { documentType: label },
+                    }).message
               }
               data-category-legend-item={token}
               className={className}
@@ -350,13 +370,22 @@ export function CategoryLegend() {
                     onKeyDown={reset.onKeyDown}
                     onFocus={() => setActiveItem("reset")}
                     type="button"
-                    onClick={() => void clearFacet("doc_types")}
+                    disabled={degraded}
+                    aria-disabled={degraded || undefined}
+                    onClick={degraded ? undefined : () => void clearFacet("doc_types")}
                     title={
-                      resolveMessage(CATEGORY_LEGEND_MESSAGES.clearDocumentTypeFilters)
-                        .message
+                      resolveMessage(
+                        degraded
+                          ? CATEGORY_LEGEND_MESSAGES.corpusUnavailable
+                          : CATEGORY_LEGEND_MESSAGES.clearDocumentTypeFilters,
+                      ).message
                     }
                     data-category-legend-reset
-                    className="flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-caption font-medium text-ink-muted outline-none transition-colors duration-ui-fast ease-settle hover:bg-paper-raised focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                    className={`flex shrink-0 items-center rounded-fg-xs px-fg-1 py-fg-0-5 text-caption font-medium text-ink-muted outline-none transition-colors duration-ui-fast ease-settle focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                      degraded
+                        ? "cursor-not-allowed opacity-40"
+                        : "hover:bg-paper-raised"
+                    }`}
                   >
                     {
                       resolveMessage(CATEGORY_LEGEND_MESSAGES.clearDocumentTypeFilters)

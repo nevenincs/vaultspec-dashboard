@@ -609,6 +609,22 @@ export function deriveGraphSliceAvailability(
 }
 
 /**
+ * A served tier reason that reports WORK IN PROGRESS rather than an outage: the
+ * tier is building its index for the first time, or refreshing an existing one.
+ * That is loading, not degradation — every surface reading `degradedTiers` must
+ * agree on the distinction, so the test lives here beside the derivation rather
+ * than being re-guessed per surface (the canvas shows such a tier as a quiet
+ * caption, and the graph legend keeps its controls live).
+ */
+export function isTierBuildingReason(reason: string | undefined): boolean {
+  return reason !== undefined && reason.toLowerCase().includes("building");
+}
+
+export function isTierRefreshingReason(reason: string | undefined): boolean {
+  return reason !== undefined && reason.toLowerCase().includes("refreshing");
+}
+
+/**
  * Stores hook: the graph slice's loading + degradation truth for the active
  * scope and granularity, read through the wire client so the nav toolbar
  * consumes derived truth instead of the raw `tiers` block. Mirrors

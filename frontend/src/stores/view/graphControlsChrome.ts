@@ -440,6 +440,33 @@ export function deriveGraphControlsNavigationView(): GraphControlsNavigationView
   };
 }
 
+/** Stable identity of the conditions that decide WHICH corpus the canvas is
+ *  showing: the scope, the active corpus, the node granularity, and the filter
+ *  facets. Autoframe re-engages when this changes — a new set of nodes deserves a
+ *  fresh frame — and NOT when the camera, the selection, or an ambient live edit
+ *  moves. Object keys are sorted so a normalizer that emits its fields in a
+ *  different order never reads as a change. */
+export function graphAutoframeFilterIdentity(input: {
+  scope: string | null | undefined;
+  corpus: string | null | undefined;
+  granularity: string | null | undefined;
+  filter: unknown;
+}): string {
+  return stableIdentity([input.scope, input.corpus, input.granularity, input.filter]);
+}
+
+function stableIdentity(value: unknown): string {
+  if (value === undefined) return "null";
+  if (value === null || typeof value !== "object")
+    return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return `[${value.map(stableIdentity).join(",")}]`;
+  const entries = Object.entries(value as Record<string, unknown>)
+    .filter(([, entry]) => entry !== undefined)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([key, entry]) => `${JSON.stringify(key)}:${stableIdentity(entry)}`);
+  return `{${entries.join(",")}}`;
+}
+
 interface GraphControlsChromeState {
   settingsOpen: boolean;
   layoutOpen: boolean;
@@ -448,6 +475,9 @@ interface GraphControlsChromeState {
   frozenScope: string | null;
   reflowFilter: boolean;
   autoframeEnabled: boolean;
+  /** The last observed corpus-narrowing identity, so a CHANGE can be told from
+   *  the first observation (which must not re-engage anything). */
+  autoframeFilterIdentity: string | null;
   simRunning: boolean;
   tuneParams: GraphControlsTuneParams;
   appearanceParams: GraphControlsAppearanceParams;
@@ -462,6 +492,8 @@ interface GraphControlsChromeState {
   toggleReflowFilter: () => void;
   setAutoframe: (on: unknown) => void;
   toggleAutoframe: () => void;
+  noteManualNavigation: () => void;
+  syncAutoframeFilterIdentity: (identity: unknown) => void;
   setSimRunning: (running: unknown) => void;
   setTuneParams: (params: unknown) => void;
   patchTuneParams: (patch: unknown) => void;
@@ -478,6 +510,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   frozenScope: null,
   reflowFilter: false,
   autoframeEnabled: true,
+  autoframeFilterIdentity: null,
   simRunning: false,
   tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
   appearanceParams: normalizeGraphControlsAppearanceParams(
@@ -503,6 +536,25 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
   setAutoframe: (on) => set({ autoframeEnabled: normalizeGraphControlsOpen(on) }),
   toggleAutoframe: () =>
     set((state) => ({ autoframeEnabled: !state.autoframeEnabled })),
+  // The user took the camera: stop tracking. Disengaging in the STORE (rather
+  // than only inside the field, where it was an invisible suspension) is what
+  // makes the "Keep in view" control tell the truth — an engaged-looking toggle
+  // over a camera that had quietly stopped tracking was the defect.
+  noteManualNavigation: () =>
+    set((state) => (state.autoframeEnabled ? { autoframeEnabled: false } : state)),
+  // A different set of nodes is on screen: re-engage, so tracking resumes for
+  // the new corpus without the user having to re-arm it. The FIRST observation
+  // only records the identity — a fresh mount is not a change, and must not flip
+  // a toggle the user deliberately turned off.
+  syncAutoframeFilterIdentity: (identity) =>
+    set((state) => {
+      if (typeof identity !== "string" || identity === state.autoframeFilterIdentity) {
+        return state;
+      }
+      return state.autoframeFilterIdentity === null
+        ? { autoframeFilterIdentity: identity }
+        : { autoframeFilterIdentity: identity, autoframeEnabled: true };
+    }),
   setSimRunning: (running) => set({ simRunning: normalizeGraphControlsOpen(running) }),
   setTuneParams: (tuneParams) =>
     set({ tuneParams: normalizeGraphControlsTuneParams(tuneParams) }),
@@ -545,6 +597,7 @@ export const useGraphControlsChromeStore = create<GraphControlsChromeState>((set
       frozenScope: null,
       reflowFilter: false,
       autoframeEnabled: true,
+      autoframeFilterIdentity: null,
       simRunning: false,
       tuneParams: normalizeGraphControlsTuneParams(GRAPH_CONTROLS_TUNE_DEFAULTS),
       appearanceParams: normalizeGraphControlsAppearanceParams(
@@ -571,6 +624,18 @@ export function setGraphControlsSimRunning(running: unknown): void {
 
 export function toggleGraphControlsAutoframe(): void {
   useGraphControlsChromeStore.getState().toggleAutoframe();
+}
+
+/** The user navigated the camera by hand (canvas drag, wheel, minimap, or the
+ *  zoom buttons): autoframe disengages and the control shows it. */
+export function noteGraphManualNavigation(): void {
+  useGraphControlsChromeStore.getState().noteManualNavigation();
+}
+
+/** Report the corpus-narrowing identity currently on screen; a change re-engages
+ *  autoframe. Idempotent, so a re-render with the same identity does nothing. */
+export function syncGraphAutoframeFilterIdentity(identity: unknown): void {
+  useGraphControlsChromeStore.getState().syncAutoframeFilterIdentity(identity);
 }
 
 export function useGraphControlsLayoutOpen(): boolean {

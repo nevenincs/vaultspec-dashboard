@@ -24,6 +24,7 @@ import {
   type AuthoringCommandOutcome,
   type CreateProposalPayload,
 } from "./authoring";
+import { AUTHORING_ACTOR_TOKEN_HEADER } from "./httpTransport";
 
 function liveAuthoringClient(): AuthoringClient {
   return new AuthoringClient({ baseUrl: "", fetchImpl: liveTransport });
@@ -39,7 +40,7 @@ async function createLiveSession(actorToken: string): Promise<string> {
     method: "POST",
     headers: {
       "content-type": "application/json",
-      "x-authoring-actor-token": actorToken,
+      [AUTHORING_ACTOR_TOKEN_HEADER]: actorToken,
     },
     body: JSON.stringify({
       api_version: "v1",

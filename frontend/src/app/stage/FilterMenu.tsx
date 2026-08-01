@@ -62,15 +62,38 @@ interface RadioSection {
   onSelect: (value: string) => void;
 }
 
-export type FilterMenuSection = CheckboxSection | RadioSection;
+/** The temporal section: named windows over the ONE canonical `date_range`, plus
+ *  the explicit two-input range a hand-dragged timeline window reflects back as.
+ *  Every commit goes out through the timeline's Setter seam the container wires —
+ *  this view holds no window of its own. */
+interface DateSection {
+  type: "date";
+  key: string;
+  label: MessageDescriptor;
+  options: { value: string; label: MessageDescriptor }[];
+  value: string;
+  onSelect: (value: string) => void;
+  custom: {
+    /** `yyyy-mm-dd` day bounds — the canonical wire form. */
+    from: string;
+    to: string;
+    min: string;
+    max: string;
+    fromLabel: MessageDescriptor;
+    toLabel: MessageDescriptor;
+    onChange: (from: string, to: string) => void;
+  } | null;
+}
+
+export type FilterMenuSection = CheckboxSection | RadioSection | DateSection;
 
 export interface FilterMenuProps {
   /** Panel title (default "Filter documents"). */
   title?: MessageDescriptor;
-  /** Whether any filter is active — gates the "Clear all" action. */
+  /** Whether any filter is active — gates the "Reset filters" action. */
   anyActive?: boolean;
-  /** Clear every active filter. */
-  onClearAll?: () => void;
+  /** Reset every active filter: the record is cleared, so every value re-ticks. */
+  onReset?: () => void;
   /** The served facet vocabulary is degraded (state-mode-uniformity ADR D1/D3):
    *  the caller has already read this from the `tiers` block, never inferred
    *  here. Non-terminal — the held (possibly stale) sections still render below
@@ -146,14 +169,15 @@ function DegradedNotice({
   );
 }
 
-/** Compact chip body: each checkbox section becomes a wrapped chip group; the date
- *  (radio) section is omitted (the timeline owns the date window). */
+/** Compact chip body: each checkbox section becomes a wrapped chip group; the
+ *  temporal section is omitted — on compact the timeline strip is the date window
+ *  control, and the flyout would only mirror it. */
 function ChipsBody({
   sections,
   title,
   anyActive,
   degraded,
-  onClearAll,
+  onReset,
   onApply,
   resolveMessage,
 }: {
@@ -161,7 +185,7 @@ function ChipsBody({
   title: string;
   anyActive: boolean;
   degraded: boolean;
-  onClearAll?: () => void;
+  onReset?: () => void;
   onApply?: () => void;
   resolveMessage: LocalizedMessageResolver;
 }) {
@@ -172,10 +196,10 @@ function ChipsBody({
     <div className="flex flex-col gap-fg-4 pb-fg-2" data-filter-menu>
       <div className="flex items-center justify-between">
         <span className="text-title font-medium text-ink">{title}</span>
-        {anyActive && onClearAll && (
+        {anyActive && onReset && (
           <button
             type="button"
-            onClick={onClearAll}
+            onClick={onReset}
             className="rounded-fg-xs text-body font-medium text-accent-text transition-colors duration-ui-fast hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
             {resolveMessage(FILTER_MESSAGES.reset).message}
@@ -188,20 +212,28 @@ function ChipsBody({
         return (
           <div key={section.key} className="flex flex-col gap-fg-2">
             <SectionLabel>{resolveMessage(section.label).message}</SectionLabel>
-            <div className="flex flex-wrap gap-fg-2">
-              {section.options.map((opt) => {
-                const label = localizedText(opt.label, resolveMessage);
-                return label === null ? null : (
-                  <FilterChip
-                    key={opt.value}
-                    active={selected.has(opt.value)}
-                    onClick={() => section.onToggle(opt.value)}
-                  >
-                    {label}
-                  </FilterChip>
-                );
-              })}
-            </div>
+            {section.options.length === 0 ? (
+              // The honest none-state, same sentence the desktop rows carry — never
+              // a section label over an empty row of chips.
+              <p className="text-meta text-ink-muted">
+                {resolveMessage(section.emptyLabel ?? FILTER_MESSAGES.empty).message}
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-fg-2">
+                {section.options.map((opt) => {
+                  const label = localizedText(opt.label, resolveMessage);
+                  return label === null ? null : (
+                    <FilterChip
+                      key={opt.value}
+                      active={selected.has(opt.value)}
+                      onClick={() => section.onToggle(opt.value)}
+                    >
+                      {label}
+                    </FilterChip>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
@@ -311,11 +343,110 @@ function RadioBody({
   );
 }
 
+/** The two explicit day inputs. Native `<input type="date">` — no new dependency,
+ *  and the platform picker is already locale-aware and keyboard-complete. Bounded
+ *  by the corpus span so neither edge can ask for an empty result. */
+function CustomRangeInputs({
+  custom,
+  resolveMessage,
+}: {
+  custom: NonNullable<DateSection["custom"]>;
+  resolveMessage: LocalizedMessageResolver;
+}) {
+  const fromLabel = resolveMessage(custom.fromLabel).message;
+  const toLabel = resolveMessage(custom.toLabel).message;
+  const inputClassName =
+    "w-full rounded-fg-sm border border-rule bg-paper px-fg-1-5 py-fg-1 text-meta text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus";
+  return (
+    <div className="flex items-end gap-fg-2 px-fg-1-5 pt-fg-1">
+      <label className="flex min-w-0 flex-1 flex-col gap-fg-0-5">
+        <span className="text-meta text-ink-muted">{fromLabel}</span>
+        <input
+          type="date"
+          value={custom.from}
+          min={custom.min}
+          max={custom.to}
+          aria-label={fromLabel}
+          data-filter-date-from
+          onChange={(event) => custom.onChange(event.target.value, custom.to)}
+          className={inputClassName}
+        />
+      </label>
+      <label className="flex min-w-0 flex-1 flex-col gap-fg-0-5">
+        <span className="text-meta text-ink-muted">{toLabel}</span>
+        <input
+          type="date"
+          value={custom.to}
+          min={custom.from}
+          max={custom.max}
+          aria-label={toLabel}
+          data-filter-date-to
+          onChange={(event) => custom.onChange(custom.from, event.target.value)}
+          className={inputClassName}
+        />
+      </label>
+    </div>
+  );
+}
+
+function DateBody({
+  section,
+  resolveMessage,
+}: {
+  section: DateSection;
+  resolveMessage: LocalizedMessageResolver;
+}) {
+  return (
+    <>
+      <ul
+        role="radiogroup"
+        aria-label={resolveMessage(section.label).message}
+        className="flex flex-col gap-fg-0-5"
+      >
+        {section.options.map((opt) => (
+          <li key={opt.value}>
+            <FacetRow
+              control="radio"
+              name={`filter-${section.key}`}
+              label={resolveMessage(opt.label).message}
+              checked={section.value === opt.value}
+              onToggle={() => section.onSelect(opt.value)}
+            />
+          </li>
+        ))}
+      </ul>
+      {section.custom !== null && (
+        <CustomRangeInputs custom={section.custom} resolveMessage={resolveMessage} />
+      )}
+    </>
+  );
+}
+
+function SectionBody({
+  section,
+  locale,
+  resolveMessage,
+}: {
+  section: FilterMenuSection;
+  locale: string;
+  resolveMessage: LocalizedMessageResolver;
+}) {
+  if (section.type === "checkbox") {
+    return (
+      <CheckboxBody section={section} locale={locale} resolveMessage={resolveMessage} />
+    );
+  }
+  if (section.type === "date") {
+    return <DateBody section={section} resolveMessage={resolveMessage} />;
+  }
+  return <RadioBody section={section} resolveMessage={resolveMessage} />;
+}
+
 export function FilterMenu({
   title = FILTER_MESSAGES.title,
   anyActive = false,
   degraded = false,
-  onClearAll,
+  onReset,
   sections,
   width = 252,
   maxHeight,
@@ -332,7 +463,7 @@ export function FilterMenu({
         title={resolvedTitle}
         anyActive={anyActive}
         degraded={degraded}
-        onClearAll={onClearAll}
+        onReset={onReset}
         onApply={onApply}
         resolveMessage={resolveMessage}
       />
@@ -342,15 +473,7 @@ export function FilterMenu({
     <div key={section.key} className="flex flex-col gap-fg-1">
       {i > 0 && <div className="my-fg-1 h-px w-full bg-rule" />}
       <SectionLabel>{resolveMessage(section.label).message}</SectionLabel>
-      {section.type === "checkbox" ? (
-        <CheckboxBody
-          section={section}
-          locale={locale}
-          resolveMessage={resolveMessage}
-        />
-      ) : (
-        <RadioBody section={section} resolveMessage={resolveMessage} />
-      )}
+      <SectionBody section={section} locale={locale} resolveMessage={resolveMessage} />
     </div>
   ));
 
@@ -365,13 +488,13 @@ export function FilterMenu({
       {/* Header — title + Clear all (left-aligned, binding 224:630). Pinned. */}
       <div className="flex shrink-0 items-center gap-fg-1-5">
         <span className="text-body font-semibold text-ink">{resolvedTitle}</span>
-        {anyActive && onClearAll && (
+        {anyActive && onReset && (
           <button
             type="button"
-            onClick={onClearAll}
+            onClick={onReset}
             className="rounded-fg-xs text-meta font-medium text-accent-text transition-colors duration-ui-fast hover:underline focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
           >
-            {resolveMessage(FILTER_MESSAGES.clearAll).message}
+            {resolveMessage(FILTER_MESSAGES.reset).message}
           </button>
         )}
       </div>

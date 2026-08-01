@@ -22,9 +22,8 @@ import { liveScope, liveTransport } from "../../testing/liveClient";
 import { assembleTranscript } from "../../app/agent/Transcript";
 import { AuthoringClient, newIdempotencyKey } from "./authoring";
 import { AgentClient } from "./agent";
+import { AUTHORING_ACTOR_TOKEN_HEADER } from "./httpTransport";
 import { unwrapEnvelope } from "./liveAdapters";
-
-const ACTOR_TOKEN_HEADER = "x-authoring-actor-token";
 
 const liveAgent = new AgentClient({ baseUrl: "", fetchImpl: liveTransport });
 const liveAuthoring = new AuthoringClient({ baseUrl: "", fetchImpl: liveTransport });
@@ -63,7 +62,7 @@ async function completeRun(
       method: "POST",
       headers: {
         "content-type": "application/json",
-        [ACTOR_TOKEN_HEADER]: token,
+        [AUTHORING_ACTOR_TOKEN_HEADER]: token,
       },
       body: JSON.stringify(envelope),
     },

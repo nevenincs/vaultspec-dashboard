@@ -154,6 +154,8 @@ describe("deriveMarkdownHeaderView (viewer document chrome)", () => {
       trail: [{ label: ".vault" }, { label: "plan" }],
       category: "plan",
       categoryLabel: "plan",
+      path: ".vault/plan/2026-06-18-centralize-state-plan.md",
+      featureTags: [],
       meta: [
         { kind: "created", iso: "2026-06-17" },
         { kind: "updated", iso: "2026-06-18" },
@@ -171,9 +173,29 @@ describe("deriveMarkdownHeaderView (viewer document chrome)", () => {
       title: "boundary audit",
       category: "audit",
       categoryLabel: "audit",
+      path: undefined,
+      featureTags: [],
       meta: undefined,
       trail: undefined,
     });
+  });
+
+  it("carries the feature tags and drops the fixed directory tag", () => {
+    const view = deriveMarkdownHeaderView(
+      "doc:2026-06-18-centralize-state-plan",
+      content({
+        text: "---\ntags:\n  - '#plan'\n  - '#centralize-state'\n---\n# Title\n",
+      }),
+    );
+    expect(view.featureTags).toEqual(["centralize-state"]);
+  });
+
+  it("reports no feature tags for a document that carries only its directory tag", () => {
+    const view = deriveMarkdownHeaderView(
+      "doc:2026-06-18-boundary-audit",
+      content({ text: "---\ntags:\n  - '#audit'\n---\n# Title\n" }),
+    );
+    expect(view.featureTags).toEqual([]);
   });
 });
 

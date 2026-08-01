@@ -1,8 +1,11 @@
-// On-demand document metadata form. The parent owns drafts and mutations while
-// this component resolves labels and composes the shared field controls.
+// On-demand document metadata form. The parent owns drafts, mutations, and whether
+// the block is showing, while this component resolves labels and composes the
+// shared field controls. Visibility is the PARENT's (owner review, 2026-08-01): the
+// editor chrome needs a show/hide metadata toggle it can reason about, and two
+// components each holding their own idea of "open" is how a toggle and its panel
+// drift apart.
 
 import type { ReactNode } from "react";
-import { useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
@@ -32,6 +35,7 @@ export const PROPERTIES_POPOVER_MESSAGES = {
   notSet: { key: "documents:viewer.properties.states.notSet" },
   relatedDocuments: { key: "documents:viewer.properties.labels.relatedDocuments" },
   rename: { key: "documents:viewer.properties.actions.rename" },
+  showOrHideMetadata: { key: "documents:actions.showOrHideMetadata" },
   renaming: { key: "documents:viewer.properties.states.renaming" },
   save: { key: "documents:viewer.properties.actions.save" },
   saving: { key: "documents:viewer.properties.states.saving" },
@@ -48,6 +52,8 @@ function PropField({ label, children }: { label: string; children: ReactNode }) 
 }
 
 export function PropertiesPopover({
+  open,
+  onOpenChange,
   frontmatterDraft,
   onFrontmatterChange,
   onSaveProperties,
@@ -60,6 +66,10 @@ export function PropertiesPopover({
   corpus,
   selfStem,
 }: {
+  /** Whether the metadata block is showing. Owned by the editor chrome. */
+  open: boolean;
+  /** Emits the next visibility (the toggle, and the popover's own dismiss). */
+  onOpenChange: (open: boolean) => void;
   frontmatterDraft: MarkdownEditorFrontmatterDraft;
   onFrontmatterChange: (patch: Partial<MarkdownEditorFrontmatterDraft>) => void;
   onSaveProperties: () => void;
@@ -74,7 +84,6 @@ export function PropertiesPopover({
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const message = (descriptor: MessageDescriptor) => resolveMessage(descriptor).message;
-  const [open, setOpen] = useState(false);
 
   const directoryTag = directoryTagOf(frontmatterDraft.tags);
   const documentType = docTypePresentation(directoryTag);
@@ -87,12 +96,16 @@ export function PropertiesPopover({
   return (
     <div className="relative" data-properties>
       <span data-properties-trigger>
+        {/* The one show/hide metadata toggle (owner review). IconButton already
+            carries `aria-pressed` from `active`, so the pressed state and the
+            expanded panel are announced from the same source of truth. */}
         <IconButton
-          label={message(PROPERTIES_POPOVER_MESSAGES.documentProperties)}
-          title={message(PROPERTIES_POPOVER_MESSAGES.documentProperties)}
+          label={message(PROPERTIES_POPOVER_MESSAGES.showOrHideMetadata)}
+          title={message(PROPERTIES_POPOVER_MESSAGES.showOrHideMetadata)}
           active={open}
           aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
+          data-metadata-toggle
+          onClick={() => onOpenChange(!open)}
         >
           <SlidersHorizontal size={GLYPH_PX} aria-hidden />
         </IconButton>
@@ -100,7 +113,7 @@ export function PropertiesPopover({
       {open && (
         <Popover
           open={open}
-          onDismiss={() => setOpen(false)}
+          onDismiss={() => onOpenChange(false)}
           ignoreSelector="[data-properties-trigger]"
           role="dialog"
           aria-label={message(PROPERTIES_POPOVER_MESSAGES.documentProperties)}

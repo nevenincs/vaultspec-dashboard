@@ -1,7 +1,15 @@
 // @vitest-environment happy-dom
 
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -53,7 +61,7 @@ describe("TimelineRange localized controls", () => {
     useViewStore.getState().setScope(null);
   });
 
-  it("surfaces created/modified/stamped as one labelled radiogroup with the active criterion checked", async () => {
+  it("surfaces created/modified/stamped as ONE labelled dropdown menu with the active criterion checked", async () => {
     const runtime = createTestLocalizationRuntime();
     render(
       <I18nextProvider i18n={runtime}>
@@ -63,33 +71,50 @@ describe("TimelineRange localized controls", () => {
       </I18nextProvider>,
     );
 
-    const group = await screen.findByRole(
-      "radiogroup",
+    // ONE control, not three toggles (owner review [msacnto1]): a dropdown trigger
+    // carrying the CURRENT value, opening a menu of the three criteria.
+    const trigger = await screen.findByRole(
+      "button",
       { name: en.timeline.accessibility.dateField },
       ENGINE_WAIT,
     );
+    expect(trigger.getAttribute("aria-haspopup")).toBe("menu");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.textContent).toContain(en.timeline.criteria.created);
+    // The retired segmented triple is gone — no three-radio group remains.
+    expect(screen.queryByRole("radiogroup")).toBeNull();
 
-    const radios = within(group).getAllByRole("radio");
-    expect(radios.map((r) => r.textContent)).toEqual([
+    await act(async () => {
+      fireEvent.click(trigger);
+    });
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+    const menu = screen.getByRole("menu", {
+      name: en.timeline.accessibility.dateField,
+    });
+    const items = within(menu).getAllByRole("menuitemradio");
+    expect(items.map((item) => item.textContent)).toEqual([
       en.timeline.criteria.created,
       en.timeline.criteria.modified,
       en.timeline.criteria.stamped,
     ]);
 
-    const created = within(group).getByRole("radio", {
+    const created = within(menu).getByRole("menuitemradio", {
       name: en.timeline.criteria.created,
-    });
-    const modified = within(group).getByRole("radio", {
-      name: en.timeline.criteria.modified,
-    });
-    const stamped = within(group).getByRole("radio", {
-      name: en.timeline.criteria.stamped,
     });
     expect(created.getAttribute("aria-checked")).toBe("true");
     expect((created as HTMLButtonElement).disabled).toBe(false);
     expect(created.getAttribute("title")).toBe(
       en.timeline.descriptions.useCreationDateForRange,
     );
+    // The menu is ONE tab stop: the current value carries it, its siblings do not.
+    expect(created.getAttribute("tabindex")).toBe("0");
+    expect(
+      items
+        .filter((item) => item !== created)
+        .map((item) => item.getAttribute("tabindex")),
+    ).toEqual(["-1", "-1"]);
+
     const rangeSummary = screen.getByLabelText(en.timeline.accessibility.selectedRange);
     const rangeStart = screen.getByRole("slider", {
       name: en.timeline.accessibility.rangeStart,
@@ -105,25 +130,25 @@ describe("TimelineRange localized controls", () => {
 
     await act(async () => runtime.changeLanguage(ltrTestLocale));
     expect(
-      screen.getByRole("radiogroup", {
+      screen.getByRole("menu", {
         name: ltrTestResources.timeline.accessibility.dateField,
       }),
-    ).toBe(group);
+    ).toBe(menu);
     expect(
-      within(group).getByRole("radio", {
+      within(menu).getByRole("menuitemradio", {
         name: ltrTestResources.timeline.criteria.created,
       }),
     ).toBe(created);
     expect(
-      within(group).getByRole("radio", {
+      within(menu).getByRole("menuitemradio", {
         name: ltrTestResources.timeline.criteria.modified,
       }),
-    ).toBe(modified);
+    ).toBe(items[1]);
     expect(
-      within(group).getByRole("radio", {
+      within(menu).getByRole("menuitemradio", {
         name: ltrTestResources.timeline.criteria.stamped,
       }),
-    ).toBe(stamped);
+    ).toBe(items[2]);
     expect(created.getAttribute("title")).toBe(
       ltrTestResources.timeline.descriptions.useCreationDateForRange,
     );
@@ -147,25 +172,25 @@ describe("TimelineRange localized controls", () => {
 
     await act(async () => runtime.changeLanguage(rtlTestLocale));
     expect(
-      screen.getByRole("radiogroup", {
+      screen.getByRole("menu", {
         name: rtlTestResources.timeline.accessibility.dateField,
       }),
-    ).toBe(group);
+    ).toBe(menu);
     expect(
-      within(group).getByRole("radio", {
+      within(menu).getByRole("menuitemradio", {
         name: rtlTestResources.timeline.criteria.created,
       }),
     ).toBe(created);
     expect(
-      within(group).getByRole("radio", {
+      within(menu).getByRole("menuitemradio", {
         name: rtlTestResources.timeline.criteria.modified,
       }),
-    ).toBe(modified);
+    ).toBe(items[1]);
     expect(
-      within(group).getByRole("radio", {
+      within(menu).getByRole("menuitemradio", {
         name: rtlTestResources.timeline.criteria.stamped,
       }),
-    ).toBe(stamped);
+    ).toBe(items[2]);
     expect(created.getAttribute("title")).toBe(
       rtlTestResources.timeline.descriptions.useCreationDateForRange,
     );
@@ -186,5 +211,47 @@ describe("TimelineRange localized controls", () => {
     expect(rangeSummary.textContent).toBe(
       runtime.t("timeline:summaries.selectedRange", rtlRange),
     );
+  });
+
+  it("mounts the range-restore gesture on the track and the date label, never on a handle", async () => {
+    const runtime = createTestLocalizationRuntime();
+    render(
+      <I18nextProvider i18n={runtime}>
+        <QueryClientProvider client={queryClient}>
+          <TimelineRange scope={scope} />
+        </QueryClientProvider>
+      </I18nextProvider>,
+    );
+
+    const rangeStart = await screen.findByRole(
+      "slider",
+      { name: en.timeline.accessibility.rangeStart },
+      ENGINE_WAIT,
+    );
+    const summary = screen.getByLabelText(en.timeline.accessibility.selectedRange);
+    const trackRow = rangeStart.closest("[data-timeline-track-row]");
+
+    // The two hosts the owner named carry the restore gesture (owner review
+    // [msa28dxz]); the handles do NOT — their own pointer session owns the drag, so
+    // a double-click while adjusting an edge never throws the range away.
+    expect(summary.hasAttribute("data-timeline-restore")).toBe(true);
+    expect(
+      (trackRow as HTMLElement | null)?.hasAttribute("data-timeline-restore"),
+    ).toBe(true);
+    expect(rangeStart.hasAttribute("data-timeline-restore")).toBe(false);
+    expect(
+      screen
+        .getByRole("slider", { name: en.timeline.accessibility.rangeEnd })
+        .hasAttribute("data-timeline-restore"),
+    ).toBe(false);
+
+    // The gesture is inert while the range already covers the whole corpus: the
+    // fixture range is un-narrowed, so restoring it leaves nothing to clear.
+    await act(async () => {
+      fireEvent.doubleClick(summary);
+    });
+    expect(
+      screen.queryByRole("button", { name: en.timeline.actions.clearDateRange }),
+    ).toBeNull();
   });
 });

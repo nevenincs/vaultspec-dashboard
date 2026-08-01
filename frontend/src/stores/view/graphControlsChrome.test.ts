@@ -11,6 +11,8 @@ import {
   deriveGraphControlsSimToggleView,
   deriveGraphControlsTunePresentationView,
   deriveGraphControlsViewPresentationView,
+  graphAutoframeFilterIdentity,
+  noteGraphManualNavigation,
   normalizeGraphControlsAppearanceParams,
   normalizeGraphControlsFrozenScope,
   normalizeGraphControlsTuneParams,
@@ -24,6 +26,7 @@ import {
   setGraphControlsSettingsOpen,
   setGraphControlsSimRunning,
   setGraphControlsTuneParams,
+  syncGraphAutoframeFilterIdentity,
   toggleGraphControlsAppearanceOpen,
   toggleGraphControlsLayoutOpen,
   toggleGraphControlsSettingsOpen,
@@ -231,6 +234,102 @@ describe("graph controls chrome view seam", () => {
 
     resetGraphControlsChrome();
     expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+  });
+
+  it("disengages autoframe on a manual navigation and leaves it off", () => {
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+
+    noteGraphManualNavigation();
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    // Idempotent: a continuing gesture never flips it back on.
+    noteGraphManualNavigation();
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+  });
+
+  it("re-engages autoframe when the corpus-narrowing identity changes, but not on the first observation", () => {
+    const vault = graphAutoframeFilterIdentity({
+      scope: "wt-1",
+      corpus: "vault",
+      granularity: "feature",
+      filter: { doc_types: ["adr"] },
+    });
+
+    // First observation is a mount, not a change: a user who turned tracking off
+    // before any identity was recorded stays off.
+    useGraphControlsChromeStore.getState().setAutoframe(false);
+    syncGraphAutoframeFilterIdentity(vault);
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    // Re-reporting the same identity is not a change either.
+    syncGraphAutoframeFilterIdentity(vault);
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    syncGraphAutoframeFilterIdentity(
+      graphAutoframeFilterIdentity({
+        scope: "wt-1",
+        corpus: "vault",
+        granularity: "feature",
+        filter: { doc_types: ["adr", "plan"] },
+      }),
+    );
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+  });
+
+  it("re-engages after a manual navigation once the filter conditions change", () => {
+    const before = graphAutoframeFilterIdentity({
+      scope: "wt-1",
+      corpus: "vault",
+      granularity: "feature",
+      filter: {},
+    });
+    syncGraphAutoframeFilterIdentity(before);
+    noteGraphManualNavigation();
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+
+    syncGraphAutoframeFilterIdentity(
+      graphAutoframeFilterIdentity({
+        scope: "wt-1",
+        corpus: "code",
+        granularity: "feature",
+        filter: {},
+      }),
+    );
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(true);
+  });
+
+  it("identifies the corpus-narrowing conditions independently of key order, and ignores non-string reports", () => {
+    expect(
+      graphAutoframeFilterIdentity({
+        scope: "wt-1",
+        corpus: "vault",
+        granularity: "feature",
+        filter: { statuses: ["accepted"], doc_types: ["adr"] },
+      }),
+    ).toBe(
+      graphAutoframeFilterIdentity({
+        scope: "wt-1",
+        corpus: "vault",
+        granularity: "feature",
+        filter: { doc_types: ["adr"], statuses: ["accepted"] },
+      }),
+    );
+
+    syncGraphAutoframeFilterIdentity("wt-1");
+    useGraphControlsChromeStore.getState().setAutoframe(false);
+    syncGraphAutoframeFilterIdentity(undefined);
+    syncGraphAutoframeFilterIdentity({ scope: "wt-2" });
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
+  });
+
+  it("clears the recorded identity on reset so the next mount is a first observation again", () => {
+    syncGraphAutoframeFilterIdentity("identity-a");
+    resetGraphControlsChrome();
+    expect(useGraphControlsChromeStore.getState().autoframeFilterIdentity).toBeNull();
+
+    useGraphControlsChromeStore.getState().setAutoframe(false);
+    syncGraphAutoframeFilterIdentity("identity-b");
+    expect(useGraphControlsChromeStore.getState().autoframeEnabled).toBe(false);
   });
 
   it("derives plain-language reflow toggle copy for each state", () => {

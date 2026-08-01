@@ -29,6 +29,32 @@ describe("resolveFocusTarget", () => {
     expect(resolveFocusTarget(ORDER, "z", "next", { wrap: true })).toBeNull();
     expect(resolveFocusTarget([], "a", "next", { wrap: true })).toBeNull();
   });
+
+  it("skips disabled entries without changing the surrounding order", () => {
+    const isFocusable = (key: string) => key !== "c";
+    expect(resolveFocusTarget(ORDER, "b", "next", { wrap: false, isFocusable })).toBe(
+      "d",
+    );
+    expect(resolveFocusTarget(ORDER, "d", "prev", { wrap: false, isFocusable })).toBe(
+      "b",
+    );
+    expect(resolveFocusTarget(ORDER, "d", "first", { wrap: false, isFocusable })).toBe(
+      "a",
+    );
+    expect(resolveFocusTarget(ORDER, "a", "last", { wrap: false, isFocusable })).toBe(
+      "d",
+    );
+  });
+
+  it("returns null when no other focusable item is reachable", () => {
+    const isFocusable = (key: string) => key === "a";
+    expect(
+      resolveFocusTarget(ORDER, "a", "next", { wrap: true, isFocusable }),
+    ).toBeNull();
+    expect(
+      resolveFocusTarget(ORDER, "b", "next", { wrap: false, isFocusable }),
+    ).toBeNull();
+  });
 });
 
 describe("resolveFocusKey", () => {

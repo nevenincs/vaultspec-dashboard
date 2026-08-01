@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { localizationNamespaces } from "../../platform/localization/runtime";
 import { formatDate } from "../../platform/localization/formatters";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
-import { Segment, SegmentedToggle, Skeleton, SkeletonBar, StateBlock } from "../kit";
+import { Skeleton, SkeletonBar, StateBlock } from "../kit";
 import {
   useDashboardDateRangeView,
   useDashboardState,
@@ -13,25 +13,32 @@ import {
   useTimelineDateCriterion,
   useWorkspaceMapSurface,
 } from "../../stores/server/queries";
-import { useDashboardStateMutations } from "../../stores/server/dashboardState";
 import { normalizeDashboardGraphCorpus } from "../../stores/server/dashboardStateNormalization";
 import { setTimelineDateCriterion } from "../../stores/server/timelineDateCriterionIntent";
+import { DateBasisSelect, type DateBasisOption } from "./DateBasisSelect";
 import {
   TIMELINE_DATE_CRITERIA,
   TIMELINE_DATE_CRITERION_MESSAGES,
   timelineDateCriterionIsAvailable,
   timelineDateCriterionPresentation,
 } from "./timelineDateCriterion";
+import { useTimelineDateRangeSetter } from "./timelineDateRangeSetter";
 import {
   clampToSpan,
+  isDoubleTap,
   nextRangeForHandle,
   parseISO,
   ratioAtClientX,
   msAtRatio,
   rangeIsNarrowed,
-  rangeWritePayload,
   spanRatio,
+  type TimelineTap,
 } from "./timelineRangeMath";
+
+/** A pointer landing on a range HANDLE, whose own drag session owns the gesture. */
+function isHandleTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[role="slider"]') !== null;
+}
 
 const TIMELINE_RANGE_MESSAGES = Object.freeze({
   clear: Object.freeze({ key: "timeline:actions.clearDateRange" }),
@@ -52,6 +59,21 @@ export type TimelineRangeVariant = "desktop" | "compact";
  *  to the touch target. */
 function handleFootprint(variant: TimelineRangeVariant): string {
   return variant === "compact" ? "size-[1.25rem]" : "size-[0.875rem]";
+}
+
+/** The date-basis control's ghost footprint: the dropdown's bordered pill with its
+ *  leading mark, value, and chevron blocked out — mirroring the live
+ *  `DateBasisSelect` geometry rather than the retired segmented triple's wider bar
+ *  (owner review [msacnto1]). Bordered, never raised: the ghost paints in the
+ *  neutral rule gray only. */
+function DateBasisGhost() {
+  return (
+    <div className="flex shrink-0 items-center gap-fg-1-5 rounded-fg-md border border-rule px-fg-2 py-fg-1">
+      <span className="size-[0.875rem] shrink-0 rounded-fg-xs bg-rule-strong" />
+      <SkeletonBar width="w-[3.5rem]" height="h-3" />
+      <span className="size-[0.875rem] shrink-0 rounded-fg-xs bg-rule-strong" />
+    </div>
+  );
 }
 
 /** The GHOST timeline: the default mode's own geometry — the selected-range
@@ -81,7 +103,7 @@ export function TimelineGhost({ variant }: { variant: TimelineRangeVariant }) {
           <span className={handleClassName} style={{ left: "100%" }} />
         </div>
       </div>
-      <SkeletonBar width="w-[7rem]" height="h-fg-5" />
+      <DateBasisGhost />
     </div>
   );
 }
@@ -127,10 +149,21 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
     fromMs: minMs ?? 0,
     toMs: maxMs ?? 0,
   });
-  const mutations = useDashboardStateMutations(scope);
 
   const lo = minMs ?? 0;
   const hi = maxMs ?? 0;
+  // The ONE date_range writer (filtering-has-one-canonical-surface). The seam is
+  // shared with the filter flyout's temporal presets so both commit the same
+  // payload through the same mutation — see `timelineDateRangeSetter`.
+  const { setDateRange, resetDateRange } = useTimelineDateRangeSetter(scope, {
+    lo,
+    hi,
+  });
+  // Double-click (and double-TAP, which no engine dispatches a `dblclick` for
+  // reliably) on the track or the date label RESTORES the full range — owner review
+  // [msa28dxz]. Coarse pointers get an explicit tap-pair detector; both paths land
+  // on the same sanctioned Setter.
+  const lastTap = useRef<TimelineTap | null>(null);
   const fromMs = clampToSpan(range.fromMs, lo, hi);
   const toMs = clampToSpan(range.toMs, lo, hi);
   const isNarrowed = rangeIsNarrowed(range.source, fromMs, toMs, lo, hi);
@@ -190,12 +223,29 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0) return;
     const ms = msAtRatio(ratioAtClientX(clientX, rect.left, rect.width), lo, hi);
-    void mutations.setDateRange(
-      rangeWritePayload(nextRangeForHandle(which, ms, fromMs, toMs), lo, hi),
-    );
+    setDateRange(nextRangeForHandle(which, ms, fromMs, toMs));
   };
 
-  const resetRange = () => void mutations.setDateRange({});
+  const resetRange = () => resetDateRange();
+
+  /** The restore gesture, mounted on the track and the date label — never on a
+   *  handle, whose own pointer session owns the drag (owner review [msa28dxz]).
+   *  `data-timeline-restore` marks the two hosts so the wiring is assertable. */
+  const restoreGesture = {
+    "data-timeline-restore": "",
+    onDoubleClick: (event: React.MouseEvent) => {
+      if (isHandleTarget(event.target)) return;
+      resetRange();
+    },
+    onPointerUp: (event: React.PointerEvent) => {
+      if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+      if (isHandleTarget(event.target)) return;
+      const tap = { at: Date.now(), x: event.clientX, y: event.clientY };
+      const restored = isDoubleTap(lastTap.current, tap);
+      lastTap.current = restored ? null : tap;
+      if (restored) resetRange();
+    },
+  };
 
   const handleSize = handleFootprint(variant);
 
@@ -229,6 +279,28 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   });
   if (selectedSummary.usedFallback) return null;
 
+  // The date-basis choices, resolved here so the dropdown stays wire- and
+  // localization-runtime-free. A criterion the engine (or the code corpus) does not
+  // serve is offered DISABLED WITH ITS REASON rather than hidden — never a lie, and
+  // never a silently missing option.
+  const dateBasisOptions = TIMELINE_DATE_CRITERIA.flatMap<DateBasisOption>((id) => {
+    const c = timelineDateCriterionPresentation(id);
+    if (c === null) return [];
+    const gated = isCode
+      ? c.id !== "modified"
+      : !timelineDateCriterionIsAvailable(c.id, served);
+    const titleDescriptor = gated
+      ? isCode
+        ? TIMELINE_DATE_CRITERION_MESSAGES.codeFiles
+        : c.unavailableReason
+      : c.rangeDescription;
+    if (titleDescriptor === null) return [];
+    const label = resolveMessage(c.label);
+    const title = resolveMessage(titleDescriptor);
+    if (label.usedFallback || title.usedFallback) return [];
+    return [{ id: c.id, label: label.message, title: title.message, disabled: gated }];
+  });
+
   const handleProps = (which: "from" | "to") => ({
     role: "slider" as const,
     "aria-label": which === "from" ? startLabel.message : endLabel.message,
@@ -261,9 +333,7 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         lo,
         hi,
       );
-      void mutations.setDateRange(
-        rangeWritePayload(nextRangeForHandle(which, next, fromMs, toMs), lo, hi),
-      );
+      setDateRange(nextRangeForHandle(which, next, fromMs, toMs));
     },
   });
 
@@ -272,11 +342,11 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
   return (
     <div
       className="flex h-[2.75rem] w-full items-center gap-fg-4 bg-paper px-fg-4 select-none"
-      onDoubleClick={resetRange}
       data-timeline
       data-timeline-range
     >
       <span
+        {...restoreGesture}
         data-tabular
         className="shrink-0 select-text text-label tabular-nums text-ink"
         aria-label={selectedLabel.message}
@@ -284,7 +354,11 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         {selectedSummary.message}
       </span>
 
-      <div className="flex h-fg-5 flex-1 items-center" data-timeline-track-row>
+      <div
+        {...restoreGesture}
+        className="flex h-fg-5 flex-1 items-center"
+        data-timeline-track-row
+      >
         <div
           ref={trackRef}
           className="relative h-1 w-full rounded-fg-pill bg-paper-sunken"
@@ -310,38 +384,16 @@ export function TimelineRange({ scope, variant = "desktop" }: TimelineRangeProps
         </div>
       </div>
 
-      {!dateFieldLabel.usedFallback && (
-        <SegmentedToggle
+      {!dateFieldLabel.usedFallback && dateBasisOptions.length > 0 && (
+        <DateBasisSelect
           value={criterion}
-          onChange={(next) => {
+          options={dateBasisOptions}
+          ariaLabel={dateFieldLabel.message}
+          onSelect={(next) => {
             const presentation = timelineDateCriterionPresentation(next);
             if (presentation !== null) void setTimelineDateCriterion(presentation.id);
           }}
-          ariaLabel={dateFieldLabel.message}
-          className="shrink-0"
-        >
-          {TIMELINE_DATE_CRITERIA.map((id) => {
-            const c = timelineDateCriterionPresentation(id);
-            if (c === null) return null;
-            const gated = isCode
-              ? c.id !== "modified"
-              : !timelineDateCriterionIsAvailable(c.id, served);
-            const titleDescriptor = gated
-              ? isCode
-                ? TIMELINE_DATE_CRITERION_MESSAGES.codeFiles
-                : c.unavailableReason
-              : c.rangeDescription;
-            if (titleDescriptor === null) return null;
-            const label = resolveMessage(c.label);
-            const title = resolveMessage(titleDescriptor);
-            if (label.usedFallback || title.usedFallback) return null;
-            return (
-              <Segment key={c.id} value={c.id} disabled={gated} title={title.message}>
-                {label.message}
-              </Segment>
-            );
-          })}
-        </SegmentedToggle>
+        />
       )}
 
       {isNarrowed && (

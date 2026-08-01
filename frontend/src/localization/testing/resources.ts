@@ -700,10 +700,18 @@ export const ltrTestResources = {
     provisioning: {
       description: "Configurez ce projet pour continuer.",
       details: {
+        addProjectFiles:
+          "Ce projet n’a pas encore de fichiers de configuration. La configuration les ajoute et laisse vos propres fichiers inchangés.",
+        installProjectTools:
+          "Cet ordinateur ne dispose pas des outils dont ce projet a besoin. La configuration les installe.",
         installRequiredProjectTools:
           "Installez les outils de projet requis, puis réessayez.",
         prepareFolderAsGitProject:
           "Préparez ce dossier comme projet Git, puis réessayez.",
+        updateProjectFiles:
+          "Les fichiers de configuration de ce projet proviennent d’une version antérieure. La mise à jour les actualise.",
+        updateProjectTools:
+          "Les outils de projet de cet ordinateur sont plus anciens que ce projet ne l’exige. La mise à jour les remplace.",
       },
       progress: "Configuration du projet…",
       result: {
@@ -727,7 +735,13 @@ export const ltrTestResources = {
       },
       startFailed: "La configuration du projet n’a pas pu démarrer. Réessayez.",
       statusUnavailable: "L’état du projet est indisponible",
-      title: "Configuration du projet requise",
+      titles: {
+        notAGitProject: "Ce dossier n’est pas un projet Git",
+        setUpRequired: "Configuration du projet requise",
+        toolsMissing: "Outils de projet requis manquants",
+        toolsUpdateRequired: "Mise à jour des outils de projet requise",
+        updateRequired: "Mise à jour du projet requise",
+      },
     },
     shortcutGroups: {
       projects: "Projets",
@@ -1351,8 +1365,16 @@ export const rtlTestResources = {
     provisioning: {
       description: "أعدّ هذا المشروع للمتابعة.",
       details: {
+        addProjectFiles:
+          "لا يحتوي هذا المشروع على ملفات الإعداد بعد. سيضيفها الإعداد دون تغيير ملفاتك.",
+        installProjectTools:
+          "يفتقر هذا الجهاز إلى الأدوات التي يحتاجها هذا المشروع. سيثبّتها الإعداد.",
         installRequiredProjectTools: "ثبّت أدوات المشروع المطلوبة، ثم حاول مرة أخرى.",
         prepareFolderAsGitProject: "جهّز هذا المجلد كمشروع Git، ثم حاول مرة أخرى.",
+        updateProjectFiles:
+          "ملفات إعداد هذا المشروع من إصدار أقدم. سيحدّثها التحديث إلى أحدث إصدار.",
+        updateProjectTools:
+          "أدوات المشروع على هذا الجهاز أقدم مما يحتاجه هذا المشروع. سيستبدلها التحديث.",
       },
       progress: "جارٍ إعداد المشروع…",
       result: {
@@ -1379,7 +1401,13 @@ export const rtlTestResources = {
       },
       startFailed: "تعذر بدء إعداد المشروع. حاول مرة أخرى.",
       statusUnavailable: "حالة المشروع غير متاحة",
-      title: "إعداد المشروع مطلوب",
+      titles: {
+        notAGitProject: "هذا المجلد ليس مشروع Git",
+        setUpRequired: "إعداد المشروع مطلوب",
+        toolsMissing: "أدوات المشروع المطلوبة غير متوفرة",
+        toolsUpdateRequired: "تحديث أدوات المشروع مطلوب",
+        updateRequired: "تحديث المشروع مطلوب",
+      },
     },
     shortcutGroups: {
       projects: "المشاريع",

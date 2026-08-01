@@ -67,6 +67,32 @@ export function nextRangeForHandle(
     : { from: dayISO(fromMs), to: dayISO(Math.max(ms, fromMs + MIN_RANGE_MS)) };
 }
 
+/** The tap-pair window and movement slop that read as a double-TAP on a coarse
+ *  pointer: the platform double-click threshold, and a finger-sized tolerance. */
+export const DOUBLE_TAP_MS = 300;
+export const DOUBLE_TAP_SLOP_PX = 24;
+
+export interface TimelineTap {
+  at: number;
+  x: number;
+  y: number;
+}
+
+/** Whether `next` closes a double-TAP against the tap before it. No engine fires a
+ *  `dblclick` reliably for a two-finger-free double tap, so the coarse-pointer half
+ *  of the restore gesture (owner review [msa28dxz]) is detected here — close enough
+ *  in time AND in place, so a two-finger scroll or a slow second tap never restores
+ *  the range behind the reader's back. */
+export function isDoubleTap(previous: TimelineTap | null, next: TimelineTap): boolean {
+  return (
+    previous !== null &&
+    next.at - previous.at <= DOUBLE_TAP_MS &&
+    next.at >= previous.at &&
+    Math.abs(next.x - previous.x) <= DOUBLE_TAP_SLOP_PX &&
+    Math.abs(next.y - previous.y) <= DOUBLE_TAP_SLOP_PX
+  );
+}
+
 /** Whether the committed range narrows the corpus (a real filter is active). */
 export function rangeIsNarrowed(
   source: string,

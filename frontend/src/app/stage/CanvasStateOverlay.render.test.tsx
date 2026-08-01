@@ -279,6 +279,15 @@ describe("CanvasStateOverlay primary rendering", () => {
     expect(loader?.className).toContain("pointer-events-none");
   });
 
+  it("renders empty as plain centered text — no card, no glyph", () => {
+    renderOverlay(view({ primary: { kind: "empty" } }));
+    const empty = document.querySelector('[data-canvas-state="empty"]');
+    expect(empty?.textContent).toBe(en.graph.canvas.emptyStates.noFilterMatches);
+    expect(empty?.querySelector("svg")).toBeNull();
+    expect(empty?.innerHTML).not.toContain("border");
+    expect(empty?.innerHTML).not.toContain("bg-paper-raised");
+  });
+
   it("renders empty / unavailable / gpu cards with plain language (no jargon)", () => {
     const { rerender } = renderOverlay(view({ primary: { kind: "empty" } }));
     expect(
@@ -357,6 +366,45 @@ describe("CanvasStateOverlay annotation rendering", () => {
     expect(
       container.querySelector('[data-canvas-state="links-refreshing"]'),
     ).toBeTruthy();
+  });
+
+  it("renders a genuinely-down tier as a centered caution, never a spinner or a quiet caption", () => {
+    const { container } = renderOverlay(
+      view({
+        annotations: [
+          {
+            kind: "degraded",
+            tiers: ["structural"],
+            reasons: { structural: "engine" },
+          },
+        ],
+      }),
+    );
+    const caution = container.querySelector('[data-canvas-state="degraded"]');
+    expect(caution?.textContent).toBe(en.graph.canvas.errors.partialUnavailable);
+    expect(caution?.className).toContain("text-state-stale");
+    const notice = caution?.closest("div");
+    expect(notice?.querySelector("svg")).toBeTruthy();
+    expect(notice?.className).toContain("items-center");
+    expect(container.querySelector(".animate-spin")).toBeNull();
+  });
+
+  it("keeps a still-building tier in the quiet caption idiom (loading is not degradation)", () => {
+    const { container } = renderOverlay(
+      view({
+        annotations: [
+          {
+            kind: "degraded",
+            tiers: ["structural"],
+            reasons: { structural: "structural tier building" },
+          },
+        ],
+      }),
+    );
+    const caption = container.querySelector('[data-canvas-state="degraded"]');
+    expect(caption?.textContent).toBe(en.graph.canvas.states.loadingDetails);
+    expect(caption?.className).toContain("text-ink-muted");
+    expect(container.querySelector("svg")).toBeNull();
   });
 
   it("maps an unknown condition to safe recovery copy", () => {

@@ -21,6 +21,7 @@ import {
 } from "@app/platform/localization/LocalizationProvider";
 
 import { DocChrome } from "@app/app/viewer/DocChrome";
+import { DocHeading } from "@app/app/viewer/DocHeading";
 import { MarkdownReader } from "@app/app/viewer/MarkdownReader";
 import type { ContentResponse } from "@app/stores/server/engine";
 import { deriveContentView } from "@app/stores/server/queries";
@@ -77,23 +78,22 @@ function ReaderVisualHarness() {
         data-reader-surface
       >
         <DocChrome
-          trail={[
-            {
-              label: resolveMessage({
-                key: "common:finalWave.visualHarness.vault",
-              }).message,
-            },
-            {
-              label: resolveMessage({
-                key: "common:finalWave.visualHarness.decisions",
-              }).message,
-            },
-            {
-              label: resolveMessage({
-                key: "common:finalWave.visualHarness.title",
-              }).message,
-            },
-          ]}
+          leading={
+            <DocHeading
+              heading={{
+                title: resolveMessage({
+                  key: "common:finalWave.visualHarness.title",
+                }).message,
+                docType: "adr",
+                typeLabel: resolveMessage({
+                  key: "common:finalWave.visualHarness.decisions",
+                }).message,
+                category: "adr",
+                featureTags: [],
+                path: READER_FIXTURE_PATH,
+              }}
+            />
+          }
           mode="view"
           onModeChange={() => undefined}
           canEdit

@@ -118,15 +118,17 @@ export const graph = {
       panel: "Document filters",
     },
     actions: {
-      clearAll: "Clear all",
       reset: "Reset filters",
       showResults: "Show results",
     },
     edited: {
       any: "Any time",
+      custom: "Custom range",
+      from: "From",
       lastSevenDays: "Last 7 days",
       lastThirtyDays: "Last 30 days",
       thisYear: "This year",
+      to: "To",
     },
     health: {
       dangling: "Missing destination",
@@ -158,6 +160,8 @@ export const graph = {
       degraded: "Some filter choices may be unavailable. Refresh data, then try again.",
       empty: "No filter choices available.",
       loading: "Loading filter choices…",
+      noFeatureFilter:
+        "No feature filter is active. Use the feature search to add one.",
     },
     statuses: {
       accepted: "Accepted",

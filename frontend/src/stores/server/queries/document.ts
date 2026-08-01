@@ -18,6 +18,7 @@ import {
   sanitizeReaderBody,
 } from "../markdownSanitize";
 import { parseDocument, type Frontmatter } from "../parseDocument";
+import { VAULT_DIRECTORY_TAGS } from "../vaultTags";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { isAddressableNode, normalizeNodeScopedRequestIdentity } from "./graph";
@@ -256,6 +257,11 @@ export interface MarkdownHeaderView {
   category?: MarkdownHeaderCategory;
   /** The raw document type label shown in the chip. */
   categoryLabel?: string;
+  /** The repo-relative path of the document, when the engine served one. */
+  path?: string;
+  /** The document's feature tags — the frontmatter tags that are not the fixed
+   *  directory tag. Empty when the document carries none. */
+  featureTags: string[];
   /** Raw frontmatter dates retained for localized consumers. */
   meta?: Array<{ kind: "created" | "updated"; iso: string }>;
 }
@@ -317,6 +323,10 @@ export function deriveMarkdownHeaderView(
     trail,
     category,
     categoryLabel: docType ?? undefined,
+    path: content.path,
+    featureTags: (frontmatter?.tags ?? []).filter(
+      (tag) => !VAULT_DIRECTORY_TAGS.has(tag),
+    ),
     meta: meta.length > 0 ? meta : undefined,
   };
 }

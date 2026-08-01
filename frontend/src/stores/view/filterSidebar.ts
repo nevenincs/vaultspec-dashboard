@@ -9,6 +9,7 @@ import {
 import type { MessageDescriptor } from "../../platform/localization/message";
 import { normalizeSearchQuery } from "../searchQuery";
 import {
+  authoredFilterLabel,
   FILTER_MESSAGES,
   filterHealthPresentation,
   filterMessageLabel,
@@ -82,9 +83,32 @@ interface FilterSidebarRadioSectionView {
   onSelect: (value: string) => void;
 }
 
+interface FilterSidebarDateSectionView {
+  type: "date";
+  key: string;
+  label: MessageDescriptor;
+  options: { value: string; label: MessageDescriptor }[];
+  /** The named window the CANONICAL date_range currently is — "custom" for any
+   *  range the timeline's handles produced that matches no named window. */
+  value: string;
+  onSelect: (value: string) => void;
+  /** The explicit two-input range, rendered when the active window is custom. Its
+   *  bounds are `yyyy-mm-dd` day strings (the canonical wire form). */
+  custom: {
+    from: string;
+    to: string;
+    min: string;
+    max: string;
+    fromLabel: MessageDescriptor;
+    toLabel: MessageDescriptor;
+    onChange: (from: string, to: string) => void;
+  } | null;
+}
+
 export type FilterSidebarMenuSectionView =
   | FilterSidebarCheckboxSectionView
-  | FilterSidebarRadioSectionView;
+  | FilterSidebarRadioSectionView
+  | FilterSidebarDateSectionView;
 
 export type FilterSidebarFacetDotTone =
   | "active"
@@ -164,6 +188,10 @@ export interface FilterSidebarState {
   open: boolean;
   visualStateKey: string | null;
   featureSearch: string;
+  /** Whether the temporal section's explicit two-input range is disclosed. Pure
+   *  local chrome: the RANGE itself is the canonical `dashboardState.date_range`,
+   *  written only through the timeline's Setter seam. */
+  customDateOpen: boolean;
   sections: Partial<Record<FilterSidebarSectionKey, boolean>>;
   expandedLists: Partial<Record<FilterSidebarListKey, boolean>>;
   setOpen: (open: unknown) => void;
@@ -172,6 +200,7 @@ export interface FilterSidebarState {
   syncVisualStateKey: (key: unknown) => void;
   setFeatureSearch: (value: unknown) => void;
   clearFeatureSearch: () => void;
+  setCustomDateOpen: (open: unknown) => void;
   setSectionOpen: (key: unknown, open: unknown) => void;
   expandList: (key: unknown) => void;
   resetForScope: () => void;
@@ -181,6 +210,7 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
   open: false,
   visualStateKey: null,
   featureSearch: "",
+  customDateOpen: false,
   sections: {},
   expandedLists: {},
   setOpen: (open) =>
@@ -202,6 +232,7 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
         : {
             visualStateKey,
             featureSearch: "",
+            customDateOpen: false,
             sections: {},
             expandedLists: {},
           };
@@ -212,6 +243,13 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
       return state.featureSearch === featureSearch ? state : { featureSearch };
     }),
   clearFeatureSearch: () => set({ featureSearch: "" }),
+  setCustomDateOpen: (open) =>
+    set((state) => {
+      const customDateOpen = normalizeFilterSidebarOpen(open);
+      return customDateOpen === null || state.customDateOpen === customDateOpen
+        ? state
+        : { customDateOpen };
+    }),
   setSectionOpen: (key, open) =>
     set((state) => {
       const sectionKey = normalizeFilterSidebarSectionKey(key);
@@ -240,6 +278,7 @@ export const useFilterSidebarStore = create<FilterSidebarState>((set) => ({
       open: false,
       visualStateKey: null,
       featureSearch: "",
+      customDateOpen: false,
       sections: {},
       expandedLists: {},
     }),
@@ -367,10 +406,68 @@ export function useFilterSidebarListExpanded(key: unknown): boolean {
   );
 }
 
+/** The temporal section's inputs. The RANGE is not owned here — it is the one
+ *  canonical `dashboardState.date_range`, read back as the named window it
+ *  currently is and committed only through the timeline's Setter seam, which the
+ *  container hands in as `onSelectPreset` / `onSetRange`. */
+export interface FilterSidebarDateInput {
+  /** The named window the committed range matches ("any" | "7d" | "30d" | "year"
+   *  | "custom"), derived by the caller from the SAME record the timeline reads. */
+  preset: string;
+  /** The committed day bounds, seeded to the corpus span when no range is set. */
+  from: string;
+  to: string;
+  /** The corpus span, so the two date inputs cannot ask for an empty result. */
+  min: string;
+  max: string;
+  /** Whether the explicit two-input range is disclosed (local chrome). */
+  customOpen: boolean;
+  onSelectPreset: (preset: string) => void;
+  onSetRange: (from: string, to: string) => void;
+}
+
 export interface FilterSidebarMenuSectionsInput {
   vocabulary: unknown;
   filterView: unknown;
   onToggleFacet: (facet: unknown, value: unknown) => void;
+  /** Replace one facet's values wholesale — the write the ALL-ON model needs, since
+   *  unticking a value from the "everything shown" state means committing every
+   *  OTHER value at once. */
+  onSetFacetValues: (facet: unknown, values: string[]) => void;
+  /** Omitted where the corpus serves no date span at all. */
+  date?: FilterSidebarDateInput;
+}
+
+/**
+ * The ALL-ON checkbox model (owner review [msach8nx]). The engine's `Filter`
+ * grammar is an INCLUSION list, so an empty facet means "not narrowed" — which the
+ * old rendering showed as every box UNTICKED, and a ticked box then meant "show only
+ * this". The owner read that as a double negation ("Hide rejected, or show
+ * rejected?"). The record is unchanged; the RENDERING is inverted: an unnarrowed
+ * facet shows every value TICKED, and unticking one hides it.
+ *
+ * Two edges collapse to the cleared facet. Every value ticked IS "not narrowed".
+ * And NO value ticked — "show nothing" — has no representation in an inclusion
+ * grammar and no useful meaning, so unticking the last value re-ticks the set
+ * rather than emptying the corpus.
+ */
+export function filterSidebarCheckedValues(
+  vocabulary: readonly string[],
+  selected: readonly string[],
+): string[] {
+  return selected.length === 0 ? [...vocabulary] : [...selected];
+}
+
+export function nextFilterSidebarFacetValues(
+  vocabulary: readonly string[],
+  selected: readonly string[],
+  value: string,
+): string[] {
+  const checked = new Set(filterSidebarCheckedValues(vocabulary, selected));
+  if (checked.has(value)) checked.delete(value);
+  else checked.add(value);
+  if (checked.size === 0 || checked.size >= vocabulary.length) return [];
+  return vocabulary.filter((entry) => checked.has(entry));
 }
 
 function isFilterSidebarRecord(value: unknown): value is Record<string, unknown> {
@@ -399,6 +496,25 @@ function filterSidebarToggleHandler(
   };
 }
 
+/** The ALL-ON toggle: resolve the next inclusion list from what is DISPLAYED as
+ *  ticked, then commit the whole facet in one write (never a value-at-a-time walk,
+ *  which would leave the record briefly narrowed to nothing). */
+function filterSidebarAllOnToggleHandler(
+  facet: DashboardFilterFacet,
+  vocabulary: readonly string[],
+  selected: readonly string[],
+  onSetFacetValues: (facet: unknown, values: string[]) => void,
+): (value: unknown) => void {
+  return (value) => {
+    const normalized = normalizeFilterSidebarFacetToggle(facet, value);
+    if (normalized === null) return;
+    onSetFacetValues(
+      normalized[0],
+      nextFilterSidebarFacetValues(vocabulary, selected, normalized[1]),
+    );
+  };
+}
+
 function closedFilterOptions(
   values: readonly string[],
   presentationFor: (value: unknown) => FilterTokenPresentation | null,
@@ -421,6 +537,8 @@ export function deriveFilterSidebarMenuSections({
   vocabulary,
   filterView,
   onToggleFacet,
+  onSetFacetValues,
+  date,
 }: FilterSidebarMenuSectionsInput): FilterSidebarMenuSectionView[] {
   const vocabularyRecord = isFilterSidebarRecord(vocabulary) ? vocabulary : {};
   const filterViewRecord = isFilterSidebarRecord(filterView) ? filterView : {};
@@ -432,12 +550,33 @@ export function deriveFilterSidebarMenuSections({
     filterViewRecord.planStates,
   );
   const selectedHealth = normalizeFilterSidebarFacetValues(filterViewRecord.health);
-  // The flyout hosts ONLY the doc-type-scoped STATUS groups + HEALTH. Category
-  // filtering lives on the graph legend and date filtering on the timeline, so
-  // neither has a section here — one concept, one place
-  // (filtering-has-one-canonical-surface). Each section renders only when the
-  // corpus serves its vocabulary, so it is never a dead control.
+  const selectedFeatureTags = normalizeFilterSidebarFacetValues(
+    filterViewRecord.featureTags,
+  );
+  // The flyout hosts the ACTIVE feature narrowing, the doc-type-scoped STATUS
+  // groups, HEALTH, and the temporal window. Category filtering stays on the graph
+  // legend — one concept, one place (filtering-has-one-canonical-surface). Each
+  // section renders only when the corpus serves its vocabulary, so it is never a
+  // dead control. The three closed facets render under the ALL-ON model: every
+  // value ticked when the facet is unnarrowed, unticking one hides it.
   return [
+    // FEATURE — the ACTIVE feature narrowing only (owner review [msacfd3s]). The
+    // full roster is a corpus-sized list that belongs to the rail's feature search
+    // field, not to a flyout section; what the flyout owes the reader is what is
+    // currently narrowing the corpus and a way to undo it. With no feature filter
+    // active the section states so plainly rather than rendering an empty list.
+    {
+      type: "checkbox" as const,
+      key: "feature",
+      label: FILTER_MESSAGES.sections.feature,
+      selected: selectedFeatureTags,
+      onToggle: filterSidebarToggleHandler("feature_tags", onToggleFacet),
+      options: selectedFeatureTags.map((value) => ({
+        value,
+        label: authoredFilterLabel(value),
+      })),
+      emptyLabel: FILTER_MESSAGES.noFeatureFilter,
+    },
     // DECISION STATUS — the ADR lifecycle (proposed/accepted/rejected/deprecated/…).
     // The served `statuses` vocabulary is ADR-only, so this group is decision-scoped.
     ...(statuses.length > 0
@@ -446,8 +585,13 @@ export function deriveFilterSidebarMenuSections({
             type: "checkbox" as const,
             key: "status",
             label: FILTER_MESSAGES.sections.decisionStatus,
-            selected: selectedStatuses,
-            onToggle: filterSidebarToggleHandler("statuses", onToggleFacet),
+            selected: filterSidebarCheckedValues(statuses, selectedStatuses),
+            onToggle: filterSidebarAllOnToggleHandler(
+              "statuses",
+              statuses,
+              selectedStatuses,
+              onSetFacetValues,
+            ),
             options: closedFilterOptions(statuses, filterStatusPresentation),
           },
         ]
@@ -462,8 +606,13 @@ export function deriveFilterSidebarMenuSections({
             type: "checkbox" as const,
             key: "plan-status",
             label: FILTER_MESSAGES.sections.planStatus,
-            selected: selectedPlanStates,
-            onToggle: filterSidebarToggleHandler("plan_states", onToggleFacet),
+            selected: filterSidebarCheckedValues(planStates, selectedPlanStates),
+            onToggle: filterSidebarAllOnToggleHandler(
+              "plan_states",
+              planStates,
+              selectedPlanStates,
+              onSetFacetValues,
+            ),
             options: closedFilterOptions(planStates, filterPlanStatusPresentation),
           },
         ]
@@ -476,12 +625,52 @@ export function deriveFilterSidebarMenuSections({
             type: "checkbox" as const,
             key: "health",
             label: FILTER_MESSAGES.sections.health,
-            selected: selectedHealth,
-            onToggle: filterSidebarToggleHandler("health", onToggleFacet),
+            selected: filterSidebarCheckedValues(health, selectedHealth),
+            onToggle: filterSidebarAllOnToggleHandler(
+              "health",
+              health,
+              selectedHealth,
+              onSetFacetValues,
+            ),
             options: closedFilterOptions(health, filterHealthPresentation),
           },
         ]
       : []),
+    // EDITED — the temporal window, two-way bound to the timeline through the ONE
+    // canonical `date_range` (owner review [msacfd3s]). A preset here writes the
+    // equivalent range through the TIMELINE's Setter seam, so the handles move; a
+    // range the handles produced reads back here as "Custom range" with the two
+    // explicit day inputs. Neither surface holds a second copy of the window.
+    ...(date === undefined
+      ? []
+      : [
+          {
+            type: "date" as const,
+            key: "edited",
+            label: FILTER_MESSAGES.sections.edited,
+            value: date.preset,
+            onSelect: date.onSelectPreset,
+            options: [
+              { value: "any", label: FILTER_MESSAGES.edited.any },
+              { value: "7d", label: FILTER_MESSAGES.edited["7d"] },
+              { value: "30d", label: FILTER_MESSAGES.edited["30d"] },
+              { value: "year", label: FILTER_MESSAGES.edited.year },
+              { value: "custom", label: FILTER_MESSAGES.edited.custom },
+            ],
+            custom:
+              date.preset === "custom" || date.customOpen
+                ? {
+                    from: date.from,
+                    to: date.to,
+                    min: date.min,
+                    max: date.max,
+                    fromLabel: FILTER_MESSAGES.editedRange.from,
+                    toLabel: FILTER_MESSAGES.editedRange.to,
+                    onChange: date.onSetRange,
+                  }
+                : null,
+          },
+        ]),
   ];
 }
 
@@ -495,6 +684,16 @@ export function toggleFilterSidebar(): void {
 
 export function closeFilterSidebar(): void {
   useFilterSidebarStore.getState().close();
+}
+
+export function useFilterSidebarCustomDateOpen(): boolean {
+  return useFilterSidebarStore(
+    (state) => normalizeFilterSidebarOpen(state.customDateOpen) ?? false,
+  );
+}
+
+export function setFilterSidebarCustomDateOpen(open: unknown): void {
+  useFilterSidebarStore.getState().setCustomDateOpen(open);
 }
 
 export function setFilterSidebarFeatureSearch(value: unknown): void {

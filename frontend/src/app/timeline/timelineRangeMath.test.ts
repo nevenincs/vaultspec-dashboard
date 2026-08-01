@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   clampToSpan,
   dayISO,
+  DOUBLE_TAP_MS,
+  DOUBLE_TAP_SLOP_PX,
+  isDoubleTap,
   msAtRatio,
   nextRangeForHandle,
   parseISO,
@@ -99,5 +102,33 @@ describe("timelineRange helpers", () => {
     expect(
       rangeWritePayload({ from: "2026-06-01", to: "2026-06-20" }, JUN1, JUN30),
     ).toEqual({ from: "2026-06-01", to: "2026-06-20" });
+  });
+
+  it("isDoubleTap accepts only a tap pair that is close in BOTH time and place", () => {
+    const first = { at: 1_000, x: 100, y: 40 };
+    // The coarse-pointer half of the range-restore gesture: a real double tap.
+    expect(isDoubleTap(first, { at: 1_200, x: 104, y: 44 })).toBe(true);
+    // Exactly at both thresholds still counts.
+    expect(
+      isDoubleTap(first, {
+        at: 1_000 + DOUBLE_TAP_MS,
+        x: 100 + DOUBLE_TAP_SLOP_PX,
+        y: 40 - DOUBLE_TAP_SLOP_PX,
+      }),
+    ).toBe(true);
+    // A slow second tap is two separate taps, not a restore.
+    expect(isDoubleTap(first, { at: 1_000 + DOUBLE_TAP_MS + 1, x: 100, y: 40 })).toBe(
+      false,
+    );
+    // A tap that travelled is a drag or a scroll — never a restore behind the
+    // reader's back.
+    expect(
+      isDoubleTap(first, { at: 1_100, x: 100 + DOUBLE_TAP_SLOP_PX + 1, y: 40 }),
+    ).toBe(false);
+    expect(
+      isDoubleTap(first, { at: 1_100, x: 100, y: 40 + DOUBLE_TAP_SLOP_PX + 1 }),
+    ).toBe(false);
+    // The first tap of a session has nothing to close against.
+    expect(isDoubleTap(null, { at: 1_000, x: 100, y: 40 })).toBe(false);
   });
 });

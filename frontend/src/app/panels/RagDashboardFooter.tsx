@@ -1,7 +1,8 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 
-import { Button, Skeleton, SkeletonBar, StateBlock, Switch } from "../kit";
+import { IconButton, Skeleton, SkeletonBar, StateBlock, Switch } from "../kit";
 import {
   useActiveLocale,
   useLocalizedMessageResolver,
@@ -150,9 +151,13 @@ export function RagDashboardFooterBody({
             {resolve(watching ? M.watching : M.notWatching).message}
           </span>
         </span>
-        <Button variant="ghost" onClick={onRefresh}>
-          {resolve(M.refresh).message}
-        </Button>
+        {/* Refresh is an ICON affordance (the standard Lucide refresh mark on the kit
+            IconButton), not a text button: the footer's trailing cluster is a control
+            strip, and the verb reads from the glyph. The accessible name carries the
+            same catalog label the text button used. */}
+        <IconButton label={resolve(M.refresh).message} onClick={onRefresh}>
+          <RefreshCw size={16} aria-hidden />
+        </IconButton>
       </div>
     </div>
   );

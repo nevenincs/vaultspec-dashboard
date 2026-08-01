@@ -10,6 +10,19 @@
 // and applies it. Plain text is a substring feature search, `dashboard-*` is a glob,
 // and `/pattern/` is an advanced regex (parsed in stores/featureQuery).
 //
+// A suggestion row is the readable NAME over its served size. It used to print the
+// raw tag on the second line — the same information de-kebabed, read as noise — so
+// the tag now rides the row's hover tooltip and the second line carries metadata you
+// cannot get from the name: how many documents the feature holds. That count is
+// ENGINE-SERVED off the feature roster (`{feature, doc_count, types_present}`) and
+// joined by tag; it is never re-counted from a client listing (complete-set law), and
+// a feature the roster does not carry simply shows no second line. The feature's date
+// span belongs on this line too and is omitted until the wire carries it.
+//
+// The roster query lives on the SUGGESTION LIST, which mounts only while the dropdown
+// is open — a closed dropdown fetches nothing (mount-gating-is-the-canonical-
+// visibility-mechanism).
+//
 // The dropdown is a "find a feature" affordance driven ONLY by what the user is
 // actively typing — it is NEVER constrained by the already-applied filter the field
 // echoes (Issue #6.1). A bare (re)focus browses the FULL vocabulary so you can switch
@@ -24,13 +37,111 @@ import type { KeyboardEvent } from "react";
 import { useId, useMemo, useRef, useState } from "react";
 
 import { SearchField } from "../kit";
-import { featureTagSuggestions } from "../../stores/featureQuery";
-import { useActiveScope, useFiltersVocabularyView } from "../../stores/server/queries";
+import {
+  featureTagSuggestions,
+  type FeatureTagSuggestion,
+} from "../../stores/featureQuery";
+import {
+  useActiveScope,
+  useFeatureRosterView,
+  useFiltersVocabularyView,
+} from "../../stores/server/queries";
 import { useDashboardFeatureFilterDraft } from "../../stores/view/dashboardFeatureFilter";
 import {
   useActiveLocale,
   useLocalizedMessageResolver,
 } from "../../platform/localization/LocalizationProvider";
+import { createCountMessageDescriptor } from "../../platform/localization/message";
+
+/** The open dropdown. It OWNS the feature-roster read, so the served per-feature
+ *  document count is fetched only while the list is actually on screen, and a rail
+ *  sitting with the field closed costs nothing. A feature missing from the roster
+ *  (or a degraded roster, which the stores view empties) renders its name alone —
+ *  never a zero standing in for an unknown. */
+function FeatureSuggestionList({
+  listboxId,
+  scope,
+  suggestions,
+  activeIndex,
+  onHover,
+  onCommit,
+}: {
+  listboxId: string;
+  scope: unknown;
+  suggestions: FeatureTagSuggestion[];
+  activeIndex: number;
+  onHover: (index: number) => void;
+  onCommit: (tag: string) => void;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const roster = useFeatureRosterView(scope);
+  const rosterEntries = roster.roster;
+  const docCountByTag = useMemo(
+    () => new Map(rosterEntries.map((entry) => [entry.feature, entry.doc_count])),
+    [rosterEntries],
+  );
+  return (
+    <ul
+      id={listboxId}
+      role="listbox"
+      aria-label={
+        resolveMessage({ key: "common:rail.accessibility.featureSuggestions" }).message
+      }
+      data-feature-suggestions
+      className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-40 max-h-[16rem] overflow-y-auto rounded-fg-md border border-rule bg-paper py-fg-1 shadow-fg-overlay"
+    >
+      {suggestions.map((suggestion, index) => {
+        const docCount = docCountByTag.get(suggestion.tag);
+        const countDescriptor =
+          docCount === undefined
+            ? null
+            : createCountMessageDescriptor(
+                "documents:documentSearch.counts.documents",
+                docCount,
+              );
+        const countLabel =
+          countDescriptor === null ? null : resolveMessage(countDescriptor);
+        return (
+          <li key={suggestion.tag} role="presentation">
+            <button
+              type="button"
+              id={`${listboxId}-opt-${index}`}
+              role="option"
+              aria-selected={index === activeIndex}
+              // Keep focus on the input so the field's blur-dismiss does not race
+              // the click; commit on mouse-down.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                onCommit(suggestion.tag);
+              }}
+              onMouseEnter={() => onHover(index)}
+              // The raw tag is the row's IDENTITY, revealed on hover rather than
+              // printed as a second line that only repeated the name (owner review).
+              title={suggestion.tag}
+              className={`flex w-full flex-col items-start gap-fg-0-5 px-fg-3 py-fg-1 text-left transition-colors duration-ui-fast ${
+                index === activeIndex ? "bg-paper-sunken" : "hover:bg-paper-sunken"
+              }`}
+            >
+              {/* The suggestion name is corpus data: selectable inside the option
+                  button (touch-selectability ADR D2). */}
+              <span className="w-full select-text truncate text-[0.75rem] text-ink">
+                {suggestion.display}
+              </span>
+              {countLabel !== null && !countLabel.usedFallback && (
+                <span
+                  className="w-full truncate text-[0.6875rem] tabular-nums text-ink-muted"
+                  data-feature-suggestion-meta
+                >
+                  {countLabel.message}
+                </span>
+              )}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 export function FeatureSearchField() {
   const scope = useActiveScope();
@@ -148,46 +259,14 @@ export function FeatureSearchField() {
         aria-autocomplete="list"
       />
       {showList && (
-        <ul
-          id={listboxId}
-          role="listbox"
-          aria-label={
-            resolveMessage({ key: "common:rail.accessibility.featureSuggestions" })
-              .message
-          }
-          data-feature-suggestions
-          className="absolute left-0 right-0 top-[calc(100%+0.25rem)] z-40 max-h-[16rem] overflow-y-auto rounded-fg-md border border-rule bg-paper py-fg-1 shadow-fg-overlay"
-        >
-          {suggestions.map((suggestion, index) => (
-            <li key={suggestion.tag} role="presentation">
-              <button
-                type="button"
-                id={`${listboxId}-opt-${index}`}
-                role="option"
-                aria-selected={index === activeIndex}
-                // Keep focus on the input so the field's blur-dismiss does not race
-                // the click; commit on mouse-down.
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  commitTag(suggestion.tag);
-                }}
-                onMouseEnter={() => setActiveIndex(index)}
-                className={`flex w-full flex-col items-start gap-fg-0-5 px-fg-3 py-fg-1 text-left transition-colors duration-ui-fast ${
-                  index === activeIndex ? "bg-paper-sunken" : "hover:bg-paper-sunken"
-                }`}
-              >
-                {/* Suggestion display/tag are corpus data: selectable inside the
-                    option button (touch-selectability ADR D2). */}
-                <span className="select-text text-[0.75rem] text-ink">
-                  {suggestion.display}
-                </span>
-                <span className="select-text text-[0.6875rem] text-ink-muted">
-                  {suggestion.tag}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <FeatureSuggestionList
+          listboxId={listboxId}
+          scope={scope}
+          suggestions={suggestions}
+          activeIndex={activeIndex}
+          onHover={setActiveIndex}
+          onCommit={commitTag}
+        />
       )}
     </div>
   );

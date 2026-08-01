@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -42,9 +43,14 @@ function renderPopover(
     related: "",
     ...overrides.draft,
   };
-  const result = render(
-    <I18nextProvider i18n={runtime}>
+  // Visibility is the editor chrome's, so the harness stands in for it — the
+  // toggle and the panel are proven against ONE owner of "open".
+  function PopoverHarness() {
+    const [open, setOpen] = useState(false);
+    return (
       <PropertiesPopover
+        open={open}
+        onOpenChange={setOpen}
         frontmatterDraft={draft}
         onFrontmatterChange={(patch) => frontmatterPatches.push(patch)}
         onSaveProperties={() => {
@@ -61,6 +67,12 @@ function renderPopover(
         corpus={CORPUS}
         selfStem="2026-07-11-x-plan"
       />
+    );
+  }
+
+  const result = render(
+    <I18nextProvider i18n={runtime}>
+      <PopoverHarness />
     </I18nextProvider>,
   );
 
@@ -74,12 +86,14 @@ function renderPopover(
   };
 }
 
+function metadataToggle() {
+  return screen.getByRole("button", {
+    name: en.documents.actions.showOrHideMetadata,
+  });
+}
+
 function openPopover() {
-  fireEvent.click(
-    screen.getByRole("button", {
-      name: en.documents.viewer.accessibility.documentProperties,
-    }),
-  );
+  fireEvent.click(metadataToggle());
   return screen.getByRole("dialog", {
     name: en.documents.viewer.accessibility.documentProperties,
   });
@@ -258,6 +272,26 @@ describe("PropertiesPopover", () => {
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  it("is a show/hide toggle: the pressed state tracks the metadata block", () => {
+    renderPopover();
+    const toggle = metadataToggle();
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      screen.getByRole("dialog", {
+        name: en.documents.viewer.accessibility.documentProperties,
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("dismisses on Escape", () => {

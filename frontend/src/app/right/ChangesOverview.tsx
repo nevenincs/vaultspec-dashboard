@@ -12,8 +12,10 @@
 // indented one tree step under its group with the standard vertical indent guide
 // under the group's twisty column. No per-row status dot, no open arrow; a
 // deleted name is struck and shows only −D, a new name only +A.
-// A row opens the code viewer (source files) or the markdown reader (vault docs)
-// through the preserved `openDocTab` intent, never a new fetch. The outer fold AND
+// A row shows the file NAME alone — the full repo-relative path rides the row's
+// hover tooltip rather than a dimmed inline dir column, so the rail's width goes to
+// the name. A row opens the code viewer (source files) or the markdown reader (vault
+// docs) through the ONE `activateEntity` seam, never a new fetch. The outer fold AND
 // the status groups default COLLAPSED, so the body reads as a clean "▸ Modified /
 // ▸ Deleted / ▸ New" tree (a large Deleted group never floods the rail) — expand a
 // parent to drill into its files.
@@ -55,7 +57,7 @@ import {
   toggleStatusSection,
   useStatusSectionOpen,
 } from "../../stores/view/statusTabChrome";
-import { previewDocTab } from "../../stores/view/tabs";
+import { activateEntity } from "../../stores/view/activateEntity";
 import {
   useLocalizedMessageResolver,
   type LocalizedMessageResolver,
@@ -91,13 +93,22 @@ const GROUP_GUIDE_CENTER_REM = 0.3125;
 
 /** A changed-entry row: the left-rail file-row idiom (File mark + mono name) plus
  *  numstat — no status dot and no open arrow; the GROUP conveys the status, a
- *  deleted name is struck. A click opens the code viewer (source) or the
- *  markdown reader (vault doc). */
+ *  deleted name is struck. The row shows the file NAME alone and reveals the full
+ *  repo-relative path on hover (the rail's one tooltip idiom — line 1 IS the path),
+ *  so a narrow rail never trades the name away for directory context. A click opens
+ *  the code viewer (source) or the markdown reader (vault doc). */
 function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
   const open = () => {
-    // Read-mode open: preview in the single provisional tab (VS Code preview),
-    // so browsing changed files never spawns ever-growing permanent tabs (#15).
-    void previewDocTab(row.nodeId, row.surface, scope).catch(() => undefined);
+    // Read-mode open through the ONE `activateEntity` seam with `frame: true` — the
+    // same verb the left rail's file rows and this rail's plan rows use. Preview
+    // (provisional) so browsing changed files never spawns ever-growing permanent
+    // tabs (#15); `frame: true` because this rail is off-canvas, so the open also
+    // materializes + centers the graph on the node.
+    void activateEntity(row.nodeId, scope, {
+      permanent: false,
+      frame: true,
+      surface: row.surface,
+    }).catch(() => undefined);
   };
   return (
     <li>
@@ -105,17 +116,13 @@ function ChangeRow({ row, scope }: { row: GitChangeRow; scope: unknown }) {
         type="button"
         onClick={open}
         title={row.path}
+        data-change-row-path={row.path}
         className={row.rowClassName}
       >
         <span className="shrink-0 text-ink-faint" aria-hidden>
           <File size={ROW_MARK_PX} />
         </span>
         <span className={`${row.labelClassName} select-text`}>{row.label}</span>
-        {row.dirLabel && (
-          <span className={row.dirClassName} aria-hidden>
-            {row.dirLabel}
-          </span>
-        )}
         {row.showBinary ? (
           <span className={row.binaryClassName}>{row.binaryLabel}</span>
         ) : (

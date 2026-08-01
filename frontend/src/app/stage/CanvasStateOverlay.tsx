@@ -2,10 +2,14 @@ import { ScanSearch } from "lucide-react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import type { MessageDescriptor } from "../../platform/localization/message";
-import { Button, Folder, Spinner, TriangleAlert } from "../kit";
+import { Button, Spinner, TriangleAlert } from "../kit";
 import { setFilterSidebarOpen } from "../../stores/view/filterSidebar";
 import type { GraphSlice } from "../../stores/server/engine";
-import type { GraphSliceAvailability } from "../../stores/server/queries";
+import {
+  isTierBuildingReason,
+  isTierRefreshingReason,
+  type GraphSliceAvailability,
+} from "../../stores/server/queries";
 import type { RenderCapability } from "../../stores/view/renderCapability";
 import type { SurfaceStates } from "../degradation/matrix";
 
@@ -121,8 +125,8 @@ function resolveAnnotations(inputs: CanvasStateInputs): CanvasAnnotation[] {
 
   const declaredReason = availability.reasons.declared;
   const declaredDegraded = edgeDegradedTiers.includes("declared");
-  const linksBuilding = declaredDegraded && isBuildingReason(declaredReason);
-  const linksRefreshing = declaredDegraded && isRefreshingReason(declaredReason);
+  const linksBuilding = declaredDegraded && isTierBuildingReason(declaredReason);
+  const linksRefreshing = declaredDegraded && isTierRefreshingReason(declaredReason);
 
   const genericDegraded = edgeDegradedTiers.filter(
     (t) =>
@@ -158,6 +162,12 @@ export function resolveCanvasState(inputs: CanvasStateInputs): CanvasOverlayView
   };
 }
 
+const CENTERED_SLOT =
+  "pointer-events-none absolute inset-0 flex items-center justify-center px-fg-4";
+
+const CARD_SHELL =
+  "flex flex-col items-center justify-center gap-[0.625rem] rounded-[0.625rem] border border-rule bg-paper-raised px-[1.625rem] py-[1.375rem] text-center";
+
 /** Shared centered card. Interactive callers opt back into pointer events. */
 export function StateCard({
   children,
@@ -169,16 +179,22 @@ export function StateCard({
   interactive?: boolean;
 }) {
   return (
-    <div
-      className="pointer-events-none absolute inset-0 flex items-center justify-center px-fg-4"
-      data-canvas-state={testid}
-      role="status"
-    >
-      <div
-        className={`flex flex-col items-center justify-center gap-[0.625rem] rounded-[0.625rem] border border-rule bg-paper-raised px-[1.625rem] py-[1.375rem] text-center ${interactive ? "pointer-events-auto" : ""}`}
-      >
+    <div className={CENTERED_SLOT} data-canvas-state={testid} role="status">
+      <div className={`${CARD_SHELL} ${interactive ? "pointer-events-auto" : ""}`}>
         {children}
       </div>
+    </div>
+  );
+}
+
+/** Centered prose with no surface of its own: the treatment for a state that is
+ *  simply an absence (nothing matched), where a card and a glyph would dress up
+ *  a non-event. Error and caution states keep the card — they need the contrast
+ *  to stay legible over a live field. */
+function CenteredProse({ children, testid }: { children: string; testid: string }) {
+  return (
+    <div className={CENTERED_SLOT} data-canvas-state={testid} role="status">
+      <p className="text-body text-ink-muted">{children}</p>
     </div>
   );
 }
@@ -192,6 +208,58 @@ function CenteredLoader({ testid, label }: { testid: string; label: string }) {
       <Spinner label={label} />
     </div>
   );
+}
+
+/** A degradation-class annotation reads as the field's DEGRADED mode and gets the
+ *  centered caution treatment (the same coordinates and the same caution mark as
+ *  the blocking `unavailable` card), never a quiet rail caption.
+ *
+ *  A tier whose only reason is that it is still BUILDING is LOADING, not degraded:
+ *  it keeps the quiet caption idiom the other in-progress annotations use, so the
+ *  caution mark never fires for work that is simply still arriving. */
+function isCautionAnnotation(annotation: CanvasAnnotation): boolean {
+  if (annotation.kind === "unknown-tier") return true;
+  if (annotation.kind !== "degraded") return false;
+  return (
+    degradedCanvasMessage(annotation.tiers, annotation.reasons).key !==
+    CANVAS_STATE_MESSAGES.loadingDetails.key
+  );
+}
+
+/** The centered caution: one caution mark over the sentence(s) explaining what is
+ *  unavailable. Stacked into a single card so two co-occurring degradations never
+ *  paint two cards at the same centered coordinates. */
+function CautionNotice({
+  annotations,
+  resolveMessage,
+}: {
+  annotations: CanvasAnnotation[];
+  resolveMessage: ResolveMessage;
+}) {
+  if (annotations.length === 0) return null;
+  return (
+    <div className={CENTERED_SLOT}>
+      <div className={CARD_SHELL}>
+        <TriangleAlert aria-hidden size={20} className="shrink-0 text-state-stale" />
+        {annotations.map((annotation) => (
+          <p
+            key={annotation.kind}
+            className="text-body font-medium text-state-stale"
+            data-canvas-state={annotation.kind}
+            role="status"
+          >
+            {resolveMessage(cautionMessage(annotation)).message}
+          </p>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function cautionMessage(annotation: CanvasAnnotation): MessageDescriptor {
+  return annotation.kind === "degraded"
+    ? degradedCanvasMessage(annotation.tiers, annotation.reasons)
+    : CANVAS_STATE_MESSAGES.partialUnavailable;
 }
 
 function AnnotationRail({
@@ -270,7 +338,7 @@ export function degradedCanvasMessage(
   reasons: Record<string, string>,
 ): MessageDescriptor {
   const loadingOnly =
-    tiers.length > 0 && tiers.every((tier) => isBuildingReason(reasons[tier]));
+    tiers.length > 0 && tiers.every((tier) => isTierBuildingReason(reasons[tier]));
   return loadingOnly
     ? CANVAS_STATE_MESSAGES.loadingDetails
     : CANVAS_STATE_MESSAGES.partialUnavailable;
@@ -284,26 +352,20 @@ function AnnotationChip({
   resolveMessage: ResolveMessage;
 }) {
   switch (annotation.kind) {
+    // Both degradation-class annotations are lifted out of the rail by
+    // `isCautionAnnotation` and rendered by `CautionNotice`; only a
+    // still-BUILDING tier reaches the rail, as the quiet in-progress caption it
+    // actually is.
     case "unknown-tier":
-      return (
-        <OverlayChip testid="unknown-tier" tone="warn">
-          <TriangleAlert aria-hidden size={16} strokeWidth={1.5} />
-          <span>
-            {resolveMessage(CANVAS_STATE_MESSAGES.partialUnavailable).message}
-          </span>
-        </OverlayChip>
-      );
+      return null;
     case "degraded":
       return (
-        <OverlayChip testid="degraded" tone="muted">
-          <span>
-            {
-              resolveMessage(
-                degradedCanvasMessage(annotation.tiers, annotation.reasons),
-              ).message
-            }
-          </span>
-        </OverlayChip>
+        <QuietCaption testid="degraded">
+          {
+            resolveMessage(degradedCanvasMessage(annotation.tiers, annotation.reasons))
+              .message
+          }
+        </QuietCaption>
       );
     case "links-building":
       return (
@@ -345,10 +407,13 @@ function AnnotationChip({
 
 export function CanvasStateOverlay({ state }: { state: CanvasOverlayView }) {
   const resolveMessage = useLocalizedMessageResolver();
+  const cautions = state.annotations.filter(isCautionAnnotation);
+  const rail = state.annotations.filter((a) => !isCautionAnnotation(a));
   return (
     <>
       <PrimaryCard primary={state.primary} resolveMessage={resolveMessage} />
-      <AnnotationRail annotations={state.annotations} resolveMessage={resolveMessage} />
+      <CautionNotice annotations={cautions} resolveMessage={resolveMessage} />
+      <AnnotationRail annotations={rail} resolveMessage={resolveMessage} />
     </>
   );
 }
@@ -373,13 +438,11 @@ function PrimaryCard({
         />
       );
     case "empty":
+      // An absence is not an error: plain centered text, no card and no glyph.
       return (
-        <StateCard testid="empty">
-          <Folder aria-hidden size={20} className="shrink-0 text-ink-faint" />
-          <p className="text-body text-ink-muted">
-            {resolveMessage(CANVAS_STATE_MESSAGES.noFilterMatches).message}
-          </p>
-        </StateCard>
+        <CenteredProse testid="empty">
+          {resolveMessage(CANVAS_STATE_MESSAGES.noFilterMatches).message}
+        </CenteredProse>
       );
     case "unavailable":
       return (
@@ -413,12 +476,4 @@ function PrimaryCard({
         />
       );
   }
-}
-
-function isBuildingReason(reason: string | undefined): boolean {
-  return reason !== undefined && reason.toLowerCase().includes("building");
-}
-
-function isRefreshingReason(reason: string | undefined): boolean {
-  return reason !== undefined && reason.toLowerCase().includes("refreshing");
 }

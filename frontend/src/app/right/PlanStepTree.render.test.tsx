@@ -58,6 +58,12 @@ function renderPure(view: PlanInteriorView, extraProps: Record<string, unknown> 
 // ---------------------------------------------------------------------------
 
 const emptyView: PlanInteriorView = {
+  // The interior view now carries its served tier availability, so a consumer can
+  // render a designed degraded state off the block instead of guessing from a
+  // transport fault. A healthy fixture reports no degraded tier.
+  degraded: false,
+  degradedTiers: [],
+  reasons: {},
   loading: false,
   served: true,
   empty: true,
