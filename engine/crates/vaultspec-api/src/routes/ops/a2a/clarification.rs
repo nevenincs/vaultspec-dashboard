@@ -25,7 +25,12 @@ use crate::app::AppState;
 /// capped strings). The engine bounds the ANSWER side of that same shape: at
 /// most one answer per question, each a bounded string.
 pub(super) const MAX_A2A_CLARIFICATION_ANSWERS: usize = 4;
-pub(super) const MAX_A2A_REQUEST_ID_CHARS: usize = 128;
+/// 64, not the 128 a run id gets: this is an interrupt id the sibling mints,
+/// never a caller-chosen slug, and it matches the landed
+/// `PathSafeClarificationRequestId` bound exactly — so an overlong id is
+/// refused HERE rather than forwarded for the sibling to reject, the same
+/// reasoning that pins the run-start message cap to the sibling's own ceiling.
+pub(super) const MAX_A2A_REQUEST_ID_CHARS: usize = 64;
 pub(super) const MAX_A2A_QUESTION_ID_CHARS: usize = 64;
 
 /// An answer value is EITHER a choice option id OR free text; which one a given

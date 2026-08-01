@@ -495,29 +495,14 @@ fn pump_sse_over_a_chunked_body_yields_frames_and_stops_on_terminal() {
     assert_eq!(seen[2].1["status"], "completed");
 }
 
-/// One `clarification-pending` frame at the D5 payload shape: four questions,
-/// four options on the choice, the request id the typed resume addresses.
+/// One `clarification-pending` frame as a2a actually serves it: the request id
+/// and NOTHING else. D5(b) makes this frame a bounded nudge — the questions
+/// themselves live only on `run-status`'s authoritative `pending_clarification`
+/// disclosure, so a client re-keyframes from there rather than rendering a
+/// questionnaire out of a droppable relay frame. Matches the sibling's landed
+/// progress catalog entry (`"clarification-pending": {"request_id": _Text(128)}`).
 fn clarification_pending_payload() -> Value {
-    json!({
-        "api_version": "v1",
-        "type": "clarification_request",
-        "request_id": "clr-1",
-        "questions": [
-            {
-                "id": "q1",
-                "prompt": "Which surface should the monitor panel dock to?",
-                "kind": "choice",
-                "options": [
-                    { "id": "right", "label": "Right rail" },
-                    { "id": "left", "label": "Left rail" },
-                    { "id": "center", "label": "Center slot" },
-                    { "id": "float", "label": "Floating" },
-                ],
-                "required": true,
-            },
-            { "id": "q2", "prompt": "Any constraint to honor?", "kind": "text", "required": false },
-        ],
-    })
+    json!({ "request_id": "clr-1" })
 }
 
 #[test]
@@ -532,14 +517,10 @@ fn a_clarification_pending_frame_relays_verbatim_within_the_existing_caps() {
     assert_eq!(out.len(), 1);
     assert_eq!(out[0].0, "clarification-pending");
     assert_eq!(out[0].1["request_id"], "clr-1");
-    assert_eq!(
-        out[0].1["questions"][0]["options"]
-            .as_array()
-            .unwrap()
-            .len(),
-        4
+    assert!(
+        out[0].1.get("questions").is_none(),
+        "the nudge carries no question payload; run-status is the only source"
     );
-    assert_eq!(out[0].1["questions"][1]["kind"], "text");
 
     let relay = RunRelay::new();
     relay.push("progress".to_string(), json!({ "phase": "ground" }));
@@ -550,11 +531,23 @@ fn a_clarification_pending_frame_relays_verbatim_within_the_existing_caps() {
     assert_eq!(frames[0].event.as_ref(), "clarification-pending");
     let replayed: Value = serde_json::from_str(frames[0].data.as_ref()).unwrap();
     assert_eq!(
-        replayed["questions"], payload["questions"],
+        replayed["request_id"], payload["request_id"],
         "payload verbatim"
     );
     assert_eq!(replayed["seq"], 1, "only the engine seq is annotated in");
     assert!(frames[0].accounted_bytes <= MAX_RELAY_FRAME_BYTES);
+
+    // Opacity is not special-cased to the shape a2a ships today: an arbitrarily
+    // richer payload on the same kind relays verbatim too, so a sibling that
+    // later widens the frame needs no engine change.
+    let rich = json!({
+        "request_id": "clr-2",
+        "questions": [{ "id": "q1", "kind": "choice", "options": ["a", "b", "c", "d"] }],
+    });
+    relay.push("clarification-pending".to_string(), rich.clone());
+    let widened = relay.snapshot_since(Some(1)).0;
+    let widened: Value = serde_json::from_str(widened[0].data.as_ref()).unwrap();
+    assert_eq!(widened["questions"], rich["questions"]);
 
     // The cap is the SAME cap: an oversized clarification frame degrades to the
     // engine drop sentinel rather than escaping the 512 KiB ceiling.

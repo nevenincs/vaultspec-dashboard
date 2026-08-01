@@ -1214,15 +1214,37 @@ fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
             "a request_id outside the path-safe grammar is refused",
         );
     }
+    // The request-id ceiling is the sibling's landed bound, pinned as a literal
+    // rather than derived from the constant: a fixture sized FROM the constant
+    // would follow a drifting cap instead of catching the drift. a2a's
+    // PathSafeClarificationRequestId is min 1 / max 64, tighter than a run id,
+    // so 65 chars must be refused HERE rather than forwarded for a 422.
+    assert_eq!(
+        MAX_A2A_REQUEST_ID_CHARS, 64,
+        "the request-id cap tracks a2a's PathSafeClarificationRequestId (64)"
+    );
     refuse(
         A2aVerbBody {
             run_id: Some("run-7".to_string()),
-            request_id: Some("a".repeat(MAX_A2A_REQUEST_ID_CHARS + 1)),
+            request_id: Some("a".repeat(65)),
             answers: json!({ "q1": "a" }).as_object().cloned(),
             ..Default::default()
         },
         "an overlength request_id is refused",
     );
+    // 64 is the boundary itself, and it passes.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("a".repeat(64)),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+    )
+    .expect("a 64-char request id sits at the ceiling, not over it");
 
     // The answers map is required, non-empty, and capped at the D5 question
     // ceiling — a fifth answer cannot correspond to any question the node asked.
@@ -1287,22 +1309,28 @@ fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
 }
 
 #[test]
-fn clarification_respond_is_inert_until_the_sibling_serves_the_route() {
-    // The edge ADR's lockstep discipline: the engine half lands first and is
-    // GATED by the sibling, not by an engine flag. Until a2a's P03 route exists,
-    // the forwarded call is a sibling 404 — a business refusal forwarded verbatim
-    // at 200 with its sibling_status, tiers healthy because a2a itself is up. The
-    // engine can never fabricate a resume the graph did not park for.
+fn a_clarification_the_sibling_will_not_answer_forwards_its_refusal_verbatim() {
+    // Whether a clarification is answerable is a2a's authority alone, and it
+    // says so with a 404: an unknown run, or a request id that is expired,
+    // superseded, or belongs to another run. That refusal forwards VERBATIM at
+    // 200 with its sibling_status and healthy tiers, because a2a IS up — it
+    // answered. The engine neither interprets the refusal nor fabricates a
+    // resume the graph did not park for.
+    //
+    // This also pinned the pre-landing posture: before a2a served the route at
+    // all, the same 404 path made the engine half inert rather than broken,
+    // which is what "lands engine-side gated until a2a serves the interrupt"
+    // required (agent-flow D5 consequences).
     let (_dir, state) = test_state();
     let cell = state.active_cell();
-    let not_served = RagError::Http {
+    let refused = RagError::Http {
         status: 404,
-        body: r#"{"detail": "Not Found"}"#.to_string(),
+        body: r#"{"detail": "Run not found"}"#.to_string(),
     };
     let Json(body) =
-        map_transport_error(&state, &cell, not_served).expect("an unserved route is a 200");
+        map_transport_error(&state, &cell, refused).expect("a sibling refusal is a 200");
     assert_eq!(body["data"]["sibling_status"], 404);
-    assert_eq!(body["data"]["envelope"]["detail"], "Not Found");
+    assert_eq!(body["data"]["envelope"]["detail"], "Run not found");
     assert!(body["tiers"]["semantic"]["available"].is_boolean());
 }
 
