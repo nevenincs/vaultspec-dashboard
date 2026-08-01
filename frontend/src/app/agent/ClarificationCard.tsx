@@ -127,14 +127,15 @@ export function ClarificationCard({
     setDraft((current) => ({ ...current, [questionId]: value }));
   };
 
-  const submit = async () => {
-    if (body === null) return;
+  const submit = async (answered: ClarificationDraft = draft) => {
+    const answers = clarificationAnswerBody(pending.questions, answered);
+    if (answers === null) return;
     setFailed(false);
     try {
       const result = await respond.mutateAsync({
         runId,
         requestId: pending.requestId,
-        answers: body,
+        answers,
       });
       // A refusal is a VALUE on this edge, not a throw — treat it exactly as a
       // failure so a refused answer never collapses the card and strands the run.
@@ -148,31 +149,48 @@ export function ClarificationCard({
       recordClarificationRecap(
         runId,
         pending.requestId,
-        clarificationRecap(pending.questions, body),
+        clarificationRecap(pending.questions, answers),
       );
     } catch {
       setFailed(true);
     }
   };
 
+  // A parked run asks its question the way the reference agent surfaces ask one:
+  // as part of the CONVERSATION, not as a form panel dropped into it. The assistant
+  // turn is open full-width text (C1), the question is prose at conversation size,
+  // and the choices are inline chips directly under it. The only chrome is a single
+  // accent rule marking the turn as awaiting the user — a panel border, a raised
+  // fill and a heading row all read as "form", which is what the owner rejected.
+  //
+  // One choice question answers on CLICK: picking the option IS the reply, the way
+  // a suggested-reply chip works in every reference. A submit affordance appears
+  // only when the answer cannot be one click — free text, or more than one question.
+  // A payload carrying no questions is nothing to answer: render nothing rather
+  // than a heading over an empty frame with a dead send control.
+  if (pending.questions.length === 0) return null;
+
+  const singleChoice =
+    pending.questions.length === 1 && pending.questions[0]!.kind === "choice";
+
   return (
     <section
-      className="flex flex-col gap-fg-2 rounded-fg-md border border-state-stale/40 bg-paper-raised px-fg-2 py-fg-2"
+      className="flex flex-col gap-fg-3 border-l-2 border-accent/40 pl-fg-3"
       aria-label={region.message}
       data-clarification-card={pending.requestId}
     >
-      <p className="text-label font-medium text-ink">{heading.message}</p>
-      <ol className="flex flex-col gap-fg-2">
+      <p className="text-body text-ink">{heading.message}</p>
+      <ol className="flex flex-col gap-fg-3">
         {pending.questions.map((question) => (
           <li
             key={question.id}
-            className="flex flex-col gap-fg-1"
+            className="flex flex-col gap-fg-2"
             data-clarification-question={question.id}
           >
-            <p className="text-meta text-ink">
+            <p className="text-body text-ink">
               {authoredDisplayText(question.prompt)}
               {question.required && !requiredLabel.usedFallback && (
-                <span className="ml-fg-1 text-caption text-ink-faint">
+                <span className="ml-fg-1 text-meta text-ink-faint">
                   {requiredLabel.message}
                 </span>
               )}
@@ -191,12 +209,21 @@ export function ClarificationCard({
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => setAnswer(question.id, option.id)}
+                      onClick={() => {
+                        setAnswer(question.id, option.id);
+                        // The only question, and it is a choice: the click is the
+                        // answer. Submit against the draft this click produces —
+                        // component state has not settled yet in this tick.
+                        if (singleChoice) {
+                          void submit({ ...draft, [question.id]: option.id });
+                        }
+                      }}
+                      disabled={respond.isPending}
                       data-clarification-option={option.id}
-                      className={`rounded-fg-pill border px-fg-3 py-fg-1 text-label transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus ${
+                      className={`rounded-fg-md border px-fg-3 py-fg-1-5 text-body text-left transition-colors duration-ui-fast focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60 ${
                         selected
-                          ? "border-accent bg-accent/12 text-ink"
-                          : "border-rule text-ink-muted hover:text-ink"
+                          ? "border-accent bg-accent-subtle text-ink"
+                          : "border-rule text-ink hover:bg-paper-sunken"
                       }`}
                     >
                       {authoredDisplayText(option.label)}
@@ -216,7 +243,7 @@ export function ClarificationCard({
                 placeholder={placeholder.usedFallback ? undefined : placeholder.message}
                 aria-label={authoredDisplayText(question.prompt)}
                 data-clarification-input={question.id}
-                className="w-full rounded-fg-sm border border-rule bg-paper-sunken px-fg-2 py-fg-1 text-body text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                className="w-full rounded-fg-md border border-rule bg-paper px-fg-2 py-fg-1-5 text-body text-ink placeholder:text-ink-faint focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
               />
             )}
           </li>
@@ -231,16 +258,18 @@ export function ClarificationCard({
           {resolveMessage({ key: MSG.failed }).message}
         </p>
       )}
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          disabled={!submittable}
-          onClick={() => void submit()}
-          data-clarification-submit
-        >
-          {submitLabel.message}
-        </Button>
-      </div>
+      {!singleChoice && (
+        <div className="flex">
+          <Button
+            variant="primary"
+            disabled={!submittable}
+            onClick={() => void submit()}
+            data-clarification-submit
+          >
+            {submitLabel.message}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
