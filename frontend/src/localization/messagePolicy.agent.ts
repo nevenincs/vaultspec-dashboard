@@ -34,6 +34,10 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.begin.starters.explore": { role: "label" },
   "common:agent.begin.starters.build": { role: "label" },
   "common:agent.begin.starters.review": { role: "label" },
+  // Intent-card outcome lines (D7): each states what the lane PRODUCES.
+  "common:agent.begin.descriptions.explore": { role: "status" },
+  "common:agent.begin.descriptions.build": { role: "status" },
+  "common:agent.begin.descriptions.review": { role: "status" },
   "common:agent.begin.seeds.explore": { role: "label" },
   "common:agent.begin.seeds.build": { role: "label" },
   "common:agent.begin.seeds.review": { role: "label" },

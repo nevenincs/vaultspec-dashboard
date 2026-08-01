@@ -346,6 +346,11 @@ export const common = {
         explore: "Explore",
         review: "Review",
       },
+      descriptions: {
+        build: "Draft or revise documents as changes you review.",
+        explore: "Research the project and report what it finds.",
+        review: "Check recent work and list what needs attention.",
+      },
       startersLabel: "Ways to start",
     },
     clarification: {

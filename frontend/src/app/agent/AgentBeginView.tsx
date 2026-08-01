@@ -22,6 +22,8 @@
 // The composer it centers is the SAME `Composer` the continue posture bottom-docks —
 // one composer, two placements, never a second build.
 
+import { ClipboardCheck, Compass, Hammer, type LucideIcon } from "lucide-react";
+
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { deriveScopeShortName } from "../../stores/view/tabs";
 import { useActiveScope } from "../../stores/server/queries";
@@ -44,9 +46,18 @@ const MSG = {
   unavailable: "common:agent.transcript.unavailable",
 } as const;
 
-/** The starter verbs (G4). Selecting one seeds the composer draft through the
- *  shared composer-draft seam; it never starts a run by itself — the user still
- *  writes and sends, because a starter is a scaffold, not a command. */
+/** The intent glyphs (structural chrome → Lucide), keyed by starter id. */
+const STARTER_ICONS: Readonly<Record<string, LucideIcon>> = {
+  explore: Compass,
+  build: Hammer,
+  review: ClipboardCheck,
+};
+
+/** The intent CARDS (G4, the captured starter-card idiom): each names a user
+ *  verb and the outcome that lane produces (D7 — this is what tells a first-time
+ *  user what the panel is FOR). Selecting one seeds the composer draft through
+ *  the shared composer-draft seam; it never starts a run by itself — the user
+ *  still writes and sends, because a starter is a scaffold, not a command. */
 function AgentStarters({ onSeed }: { onSeed: (seed: string) => void }) {
   const resolveMessage = useLocalizedMessageResolver();
   const label = resolveMessage({ key: MSG.starters });
@@ -54,27 +65,40 @@ function AgentStarters({ onSeed }: { onSeed: (seed: string) => void }) {
   const starters = AGENT_STARTERS.map((starter) => ({
     id: starter.id,
     label: resolveMessage(starter.label),
+    description: resolveMessage(starter.description),
     seed: resolveMessage(starter.seed),
-  })).filter((starter) => !starter.label.usedFallback && !starter.seed.usedFallback);
+  })).filter(
+    (starter) =>
+      !starter.label.usedFallback &&
+      !starter.seed.usedFallback &&
+      !starter.description.usedFallback,
+  );
   if (starters.length === 0) return null;
   return (
     <ul
-      className="flex flex-wrap justify-center gap-fg-1-5"
+      className="flex flex-wrap justify-center gap-fg-2"
       aria-label={label.message}
       data-agent-begin-starters
     >
-      {starters.map((starter) => (
-        <li key={starter.id}>
-          <button
-            type="button"
-            onClick={() => onSeed(starter.seed.message)}
-            data-agent-starter={starter.id}
-            className="rounded-fg-pill border border-rule bg-paper-sunken px-fg-3 py-fg-1 text-label text-ink-muted transition-colors duration-ui-fast hover:bg-paper-raised hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
-          >
-            {starter.label.message}
-          </button>
-        </li>
-      ))}
+      {starters.map((starter) => {
+        const Icon = STARTER_ICONS[starter.id] ?? Compass;
+        return (
+          <li key={starter.id} className="min-w-0 flex-1 basis-40">
+            <button
+              type="button"
+              onClick={() => onSeed(starter.seed.message)}
+              data-agent-starter={starter.id}
+              className="flex h-full w-full flex-col gap-fg-1-5 rounded-fg-md border border-rule bg-paper px-fg-3 py-fg-3 text-left transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+            >
+              <Icon size={18} aria-hidden className="shrink-0 text-ink-faint" />
+              <span className="text-body text-ink">{starter.label.message}</span>
+              <span className="text-meta text-ink-muted">
+                {starter.description.message}
+              </span>
+            </button>
+          </li>
+        );
+      })}
     </ul>
   );
 }
