@@ -44,6 +44,7 @@ import {
   Clock3,
   FileCode2,
   FileText,
+  ArrowUp,
   Hash,
   MessageSquareText,
   Plus,
@@ -104,7 +105,7 @@ import {
   type CommandDescriptor,
 } from "../../stores/view/commandPaletteCommands";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
-import { Button, DropdownButton, Popover, Spinner } from "../kit";
+import { Button, DropdownButton, IconButton, Popover, Spinner } from "../kit";
 import { AgentAutonomyControl } from "./AgentAutonomyControl";
 import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
 import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
@@ -472,8 +473,11 @@ function ComposerTeamSelector({
   return (
     <div className="relative" data-composer-team>
       <span title={disabledTitle} data-composer-team-trigger>
+        {/* The pill shows the VALUE alone — every reference product labels these
+            controls by what is selected ("Opus 5 High"), never "Model: …". The
+            selector noun stays in the accessible name below. */}
         <DropdownButton
-          label={pill}
+          label={authoredDisplayText(valueLabel)}
           open={open}
           onClick={() => setOpen((current) => !current)}
           disabled={controlDisabled}
@@ -538,16 +542,12 @@ function ComposerTeamSelector({
  *  selector and the served model profile. The send control sits to their right,
  *  rendered by the composer itself since it changes shape with the run. */
 function ComposerThinkingControls({
-  selectedTeamPreset,
-  onSelectTeam,
   locked,
   profiles,
   selectedProfileId,
   defaultProfileId,
   onSelectProfile,
 }: {
-  selectedTeamPreset: string | null;
-  onSelectTeam: (id: string | null) => void;
   locked: boolean;
   profiles: readonly TeamProfile[];
   selectedProfileId: string | null;
@@ -556,11 +556,6 @@ function ComposerThinkingControls({
 }) {
   return (
     <div className="flex min-w-0 items-center gap-fg-1" data-composer-thinking>
-      <ComposerTeamSelector
-        selectedPresetId={selectedTeamPreset}
-        onSelectPreset={onSelectTeam}
-        locked={locked}
-      />
       <ComposerModelPicker
         profiles={profiles}
         selectedProfileId={selectedProfileId}
@@ -579,10 +574,14 @@ function ComposerThinkingControls({
 function ComposerScopeControls({
   onAttach,
   attachDisabled,
+  teamSelector,
   featureChip,
 }: {
   onAttach: () => void;
   attachDisabled: boolean;
+  /** Which agent (one, or a team) the prompt is worked by — WHAT it runs on, so it
+   *  sits in this group and not beside the model (agent-panel UX research G6). */
+  teamSelector: ReactNode;
   /** The standing feature chip (S44), or null for a lane that needs no feature. */
   featureChip: ReactNode;
 }) {
@@ -603,6 +602,7 @@ function ComposerScopeControls({
           <Plus size={14} aria-hidden />
         </button>
       )}
+      {teamSelector}
       {featureChip}
       <AgentAutonomyControl />
     </div>
@@ -1140,6 +1140,13 @@ export function Composer() {
         <ComposerScopeControls
           onAttach={() => setMentionOpen(true)}
           attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
+          teamSelector={
+            <ComposerTeamSelector
+              selectedPresetId={selectedTeamPreset}
+              onSelectPreset={setSelectedTeamPreset}
+              locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
+            />
+          }
           featureChip={
             featureRequired ? (
               <ComposerFeatureChip
@@ -1153,8 +1160,6 @@ export function Composer() {
         />
         <div className="ml-auto flex min-w-0 items-center gap-fg-2">
           <ComposerThinkingControls
-            selectedTeamPreset={selectedTeamPreset}
-            onSelectTeam={setSelectedTeamPreset}
             locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
             profiles={profiles}
             selectedProfileId={selectedProfileId}
@@ -1197,14 +1202,18 @@ export function Composer() {
               {resolveMessage({ key: MSG.startTeamRun }).message}
             </Button>
           ) : (
-            <Button
-              variant="primary"
+            // G6: no prominent send button — Enter is the send. The icon affordance
+            // appears only once there is something to send, which is what all four
+            // reference products do; it keeps the verb reachable by pointer and by
+            // assistive tech without competing with the input for attention.
+            <IconButton
+              label={resolveMessage({ key: MSG.send }).message}
               disabled={sendDisabled}
               onClick={() => void submit()}
               data-composer-send
             >
-              {resolveMessage({ key: MSG.send }).message}
-            </Button>
+              <ArrowUp size={16} aria-hidden />
+            </IconButton>
           )}
         </div>
       </div>

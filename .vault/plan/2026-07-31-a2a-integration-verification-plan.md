@@ -4,6 +4,7 @@ tags:
   - '#a2a-integration-verification'
 date: '2026-07-31'
 modified: '2026-08-01'
+body_hash: 'sha256:b1c8a228ec73b0c2ee947d59ebc4badad31f8b78994ef80e7b42588bbdd98413'
 tier: L3
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'

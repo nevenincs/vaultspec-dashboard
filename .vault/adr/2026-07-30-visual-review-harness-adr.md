@@ -9,9 +9,9 @@ related:
   - "[[2026-06-15-figma-design-bridge-adr]]"
   - "[[2026-06-17-management-engine-optimization-audit]]"
 superseded_by: '2026-07-31-visual-review-authored-states-adr'
-modified: '2026-07-31'
+modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:58c68153ab2613f3f7240eb30c39a1b15039de671d684302150200986f1f3d88'
+body_hash: 'sha256:5ad22d47ab349e2b0596674ca5b86c97510d2144f110748d8fba3e58461f4cfa'
 ---
 # `visual-review-harness` adr: `modes are rendered not simulated; a fenced dev domain with an iframe matrix harness` | (**status:** `superseded`)
 

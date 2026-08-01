@@ -191,7 +191,7 @@ export function ComposerModelPicker({
         data-model-profile={selected?.id}
       >
         <DropdownButton
-          label={pill}
+          label={value}
           open={open}
           onClick={() => setOpen((current) => !current)}
           disabled={disabled}
