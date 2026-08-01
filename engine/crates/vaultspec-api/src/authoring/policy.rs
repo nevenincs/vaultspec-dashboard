@@ -55,9 +55,8 @@ impl OperationMode {
     /// The default per-scope mode when none is configured.
     pub const DEFAULT: Self = Self::Manual;
 
-    /// Autonomy rank: higher is MORE autonomous. Used to resolve a narrowing-only
-    /// session override (a session may lower the rank, never raise it), and to detect a
-    /// mode downgrade for the kill switch (`modes` — one owner of the rank).
+    /// Autonomy rank: higher is MORE autonomous. Used to detect a mode downgrade for
+    /// the kill switch (`modes` — one owner of the rank).
     pub(crate) const fn autonomy_rank(self) -> u8 {
         match self {
             Self::Manual => 0,
@@ -72,33 +71,6 @@ impl OperationMode {
             Self::Assisted => "assisted",
             Self::Autonomous => "autonomous",
         }
-    }
-}
-
-/// Resolve the effective mode from the per-scope mode and an OPTIONAL per-session
-/// override. The override may only NARROW (operation-modes ADR): a session may be
-/// more manual than its scope, never more autonomous. A widening override is IGNORED
-/// and the scope mode stands; the effective mode is the lower autonomy rank.
-pub fn resolve_effective_mode(
-    scope: OperationMode,
-    session_override: Option<OperationMode>,
-) -> OperationMode {
-    match session_override {
-        Some(session) if session.autonomy_rank() < scope.autonomy_rank() => session,
-        _ => scope,
-    }
-}
-
-/// Whether a session override is a legal narrowing (or absent / equal). A widening
-/// override (more autonomous than the scope) is not legal — the reason projection
-/// records that it was ignored.
-pub fn session_override_is_narrowing(
-    scope: OperationMode,
-    session_override: Option<OperationMode>,
-) -> bool {
-    match session_override {
-        Some(session) => session.autonomy_rank() <= scope.autonomy_rank(),
-        None => true,
     }
 }
 
@@ -401,47 +373,37 @@ pub fn approval_stale_condition(freshness: ApprovalFreshness) -> Option<StaleCon
     None
 }
 
-/// The backend-served policy decision for a changeset approval: the effective mode
-/// (after narrowing resolution), whether a session override was ignored, the
-/// changeset risk, the approval requirement, and a plain-language reason. This is the
-/// SERVED explanation the client renders — it never re-derives the policy
+/// The backend-served policy decision for a changeset approval: the effective mode,
+/// the changeset risk, the approval requirement, and a plain-language reason. This is
+/// the SERVED explanation the client renders — it never re-derives the policy
 /// (approval-policy-is-data; review-actions-are-backend-served).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PolicyDecisionProjection {
     pub policy_version: String,
     pub scope_mode: OperationMode,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub session_override: Option<OperationMode>,
     pub effective_mode: OperationMode,
-    pub session_override_ignored: bool,
     pub risk: RiskClass,
     pub requirement: ApprovalRequirement,
     pub reason: String,
 }
 
-/// Compute the served policy decision for a changeset: resolve the effective mode
-/// (narrowing-only), classify the changeset risk, and derive the approval
-/// requirement + reason. PURE — reads no state, holds none. The system-actor
-/// auto-approval execution and after-the-fact lane live elsewhere; this decides WHAT the
-/// policy requires and WHY.
+/// Compute the served policy decision for a changeset: classify the changeset risk,
+/// and derive the approval requirement + reason. PURE — reads no state, holds none.
+/// The system-actor auto-approval execution and after-the-fact lane live elsewhere;
+/// this decides WHAT the policy requires and WHY.
 pub fn decide_changeset_approval(
     scope_mode: OperationMode,
-    session_override: Option<OperationMode>,
     kind: ChangesetKind,
     operations: &[ChangesetOperationKind],
 ) -> PolicyDecisionProjection {
-    let effective_mode = resolve_effective_mode(scope_mode, session_override);
-    let session_override_ignored = !session_override_is_narrowing(scope_mode, session_override);
     let risk = changeset_risk(kind, operations);
-    let requirement = approval_requirement(effective_mode, risk);
-    let reason = decision_reason(effective_mode, risk, requirement, session_override_ignored);
+    let requirement = approval_requirement(scope_mode, risk);
+    let reason = decision_reason(scope_mode, risk, requirement);
     PolicyDecisionProjection {
         policy_version: V1_POLICY_VERSION.to_string(),
         scope_mode,
-        session_override,
-        effective_mode,
-        session_override_ignored,
+        effective_mode: scope_mode,
         risk,
         requirement,
         reason,
@@ -452,9 +414,8 @@ fn decision_reason(
     mode: OperationMode,
     risk: RiskClass,
     requirement: ApprovalRequirement,
-    session_override_ignored: bool,
 ) -> String {
-    let base = match risk {
+    match risk {
         RiskClass::Destructive => {
             "a destructive changeset requires explicit human approval in every mode \
              (the destructive-operation floor)"
@@ -479,14 +440,6 @@ fn decision_reason(
                 mode.label()
             ),
         },
-    };
-    if session_override_ignored {
-        format!(
-            "{base}; a per-session override that would widen the scope mode was ignored \
-             (overrides may only narrow)"
-        )
-    } else {
-        base
     }
 }
 
@@ -583,37 +536,6 @@ mod tests {
         assert_eq!(
             approval_requirement(OperationMode::Autonomous, RiskClass::NonDestructive),
             ApprovalRequirement::SystemAutoApprovable
-        );
-    }
-
-    #[test]
-    fn session_override_narrows_only_never_widens() {
-        // Narrowing: autonomous scope + manual session → effective manual.
-        assert_eq!(
-            resolve_effective_mode(OperationMode::Autonomous, Some(OperationMode::Manual)),
-            OperationMode::Manual
-        );
-        assert!(session_override_is_narrowing(
-            OperationMode::Autonomous,
-            Some(OperationMode::Manual)
-        ));
-        // Widening: manual scope + autonomous session → IGNORED, effective manual.
-        assert_eq!(
-            resolve_effective_mode(OperationMode::Manual, Some(OperationMode::Autonomous)),
-            OperationMode::Manual
-        );
-        assert!(!session_override_is_narrowing(
-            OperationMode::Manual,
-            Some(OperationMode::Autonomous)
-        ));
-        // Equal / absent are legal no-ops.
-        assert_eq!(
-            resolve_effective_mode(OperationMode::Assisted, Some(OperationMode::Assisted)),
-            OperationMode::Assisted
-        );
-        assert_eq!(
-            resolve_effective_mode(OperationMode::Assisted, None),
-            OperationMode::Assisted
         );
     }
 
@@ -847,7 +769,6 @@ mod tests {
         // Autonomous scope, non-destructive body edit → auto-approvable, served reason.
         let decision = decide_changeset_approval(
             OperationMode::Autonomous,
-            None,
             ChangesetKind::Authoring,
             &[ChangesetOperationKind::ReplaceBody],
         );
@@ -858,7 +779,6 @@ mod tests {
             ApprovalRequirement::SystemAutoApprovable
         );
         assert_eq!(decision.policy_version, V1_POLICY_VERSION);
-        assert!(!decision.session_override_ignored);
         assert!(decision.reason.contains("auto-approves"));
 
         // The projection is served and rejects unknown fields on the wire.
@@ -870,22 +790,18 @@ mod tests {
         tampered["frontend_inferred"] = serde_json::json!(true);
         assert!(serde_json::from_value::<PolicyDecisionProjection>(tampered).is_err());
 
-        // A widening session override is ignored and the reason says so; a
-        // destructive op keeps the human floor even in autonomous mode.
-        let widened = decide_changeset_approval(
-            OperationMode::Manual,
-            Some(OperationMode::Autonomous),
+        // A destructive op keeps the human floor even in autonomous mode.
+        let destructive = decide_changeset_approval(
+            OperationMode::Autonomous,
             ChangesetKind::Authoring,
             &[ChangesetOperationKind::Rename],
         );
-        assert_eq!(widened.effective_mode, OperationMode::Manual);
-        assert!(widened.session_override_ignored);
-        assert_eq!(widened.risk, RiskClass::Destructive);
+        assert_eq!(destructive.effective_mode, OperationMode::Autonomous);
+        assert_eq!(destructive.risk, RiskClass::Destructive);
         assert_eq!(
-            widened.requirement,
+            destructive.requirement,
             ApprovalRequirement::HumanApprovalRequired
         );
-        assert!(widened.reason.contains("destructive"));
-        assert!(widened.reason.contains("only narrow"));
+        assert!(destructive.reason.contains("destructive"));
     }
 }

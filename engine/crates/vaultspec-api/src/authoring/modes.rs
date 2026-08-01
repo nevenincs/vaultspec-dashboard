@@ -228,7 +228,7 @@ impl ModeRepository<'_, '_> {
             .map(|child| child.operation)
             .collect::<Vec<_>>();
         let policy =
-            decide_changeset_approval(mode_record.mode, None, latest.kind, operations.as_slice());
+            decide_changeset_approval(mode_record.mode, latest.kind, operations.as_slice());
         // A DIRECT changeset is human-self-approved at creation (operation-modes
         // kind=direct); the mode machinery must NEVER system-auto-approve it.
         // This guard is LOAD-BEARING, not merely defensive: a crashed direct save can

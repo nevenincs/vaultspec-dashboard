@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#agentic-spec-authoring-backend'
 date: '2026-07-02'
-modified: '2026-07-02'
-body_hash: 'sha256:4587079ec7ff7087f90be02fc6b4dcdb00479692f88db6ebe02c8b96308b5582'
+modified: '2026-08-01'
+body_hash: 'sha256:5de1d5cfe4c28eaffb1701e0a935faf1b36cbf477fa9262dd7e88c51011809b1'
 related:
   - "[[2026-06-29-agentic-spec-authoring-backend-research]]"
   - "[[2026-07-02-agentic-spec-authoring-backend-audit]]"
@@ -13,6 +13,7 @@ related:
   - "[[2026-06-29-agentic-authoring-boundary-adr]]"
   - "[[2026-06-29-agentic-changeset-ledger-adr]]"
   - "[[2026-06-16-document-editor-backend-adr]]"
+  - '[[2026-08-01-approval-shape-reconciliation-adr]]'
 ---
 
 # `agentic-operation-modes` adr: `authoring operation modes and the unified write path` | (**status:** `accepted`)
@@ -106,6 +107,21 @@ autonomous):
   the PRIMARY human surface: eligible changesets apply without waiting, and the
   human reviews applied work, with one-command rollback. Destructive operations
   still queue for explicit human approval.
+
+> **Amendment (2026-08-01, session-override layer rescinded —
+> `approval-shape-reconciliation` D5):** the per-session override this clause
+> names was modelled end to end — `ExecuteToolCallRequest`, the tool-permission
+> request input, the served `PolicyDecisionProjection`, and the frontend
+> mirror — but never had a real consumer: the request type carrying it was
+> never deserializable, and every production constructor hardcoded `None`.
+> `approval-shape-reconciliation` D5 strips the parameter, the
+> `resolve_effective_mode` / `session_override_is_narrowing` helpers, and the
+> served `session_override` / `session_override_ignored` fields end to end; the
+> effective mode is now simply the scope mode, since nothing narrows against
+> it. This clause's NARROWING-ONLY constraint stays the binding law:
+> reintroducing a per-session override requires its own decision record AND an
+> actual wire client, and must preserve narrowing-only. No deprecation bridge
+> was kept.
 
 **Lifecycle.** An auto-approved changeset traverses the canonical ledger states
 unchanged: it reaches `approved` with an approval record whose reviewer is the

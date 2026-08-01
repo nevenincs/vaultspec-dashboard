@@ -294,7 +294,6 @@ pub(super) fn seed_pending_permission(state: &AppState, requester: &ActorRef, to
                         scope_id: "worktree".to_string(),
                         requester: requester.clone(),
                         scope_mode: crate::authoring::policy::OperationMode::Manual,
-                        session_override: None,
                         idempotency_key: format!("idem:seed:{tool_call_id}"),
                         created_at_ms: now_ms(),
                         ttl_ms: None,

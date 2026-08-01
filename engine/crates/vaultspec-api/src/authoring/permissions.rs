@@ -21,8 +21,7 @@ use serde::{Deserialize, Serialize};
 use super::actors::actor_kind_name;
 use super::model::{ActionEligibility, ActorKind, ActorRef, CommandKind, ToolCallId};
 use super::policy::{
-    OperationMode, ToolPermissionRequirement, ToolRiskTier, resolve_effective_mode,
-    tool_permission_requirement_in_mode,
+    OperationMode, ToolPermissionRequirement, ToolRiskTier, tool_permission_requirement_in_mode,
 };
 use super::store::retention::{
     LifecycleStatus, RetentionClass, RetentionRecord, RetentionRecordRef,
@@ -92,8 +91,8 @@ pub struct ToolPermissionRequestRecord {
     pub risk_tier: ToolRiskTier,
     pub scope_id: String,
     pub requester: ActorRef,
-    /// The effective operation mode (after narrowing resolution) the gate decision was
-    /// made under — provenance for why a Mutating tool auto-permitted or gated.
+    /// The scope operation mode the gate decision was made under — provenance for
+    /// why a Mutating tool auto-permitted or gated.
     pub effective_mode: OperationMode,
     pub queue_state: ToolPermissionQueueState,
     pub auto_permitted: bool,
@@ -185,9 +184,6 @@ pub struct ToolPermissionRequestInput {
     /// assisted/autonomous (its proposal still rides the changeset gate); Dangerous
     /// always needs a human gate regardless of mode.
     pub scope_mode: OperationMode,
-    /// A narrowing-only per-session override; a widening override is ignored (the
-    /// scope mode stands), resolved via `policy::resolve_effective_mode`.
-    pub session_override: Option<OperationMode>,
     pub idempotency_key: String,
     pub created_at_ms: i64,
     /// Decision window override; `None` uses [`DEFAULT_TOOL_PERMISSION_TTL_MS`].
@@ -230,9 +226,9 @@ impl ToolPermissionRepository<'_, '_> {
         if let Some(existing) = self.latest_for_tool_call(&input.tool_call_id)? {
             return Ok(self.replay(existing));
         }
-        // Resolve the effective mode (narrowing-only) and gate mode-aware: a Mutating
-        // tool auto-permits under assisted/autonomous; Dangerous always needs a human.
-        let effective_mode = resolve_effective_mode(input.scope_mode, input.session_override);
+        // Gate mode-aware directly off the scope mode: a Mutating tool auto-permits
+        // under assisted/autonomous; Dangerous always needs a human.
+        let effective_mode = input.scope_mode;
         let requirement =
             tool_permission_requirement_in_mode(input.tool.risk_tier(), effective_mode);
         let record = ToolPermissionRequestRecord::from_input(&input, requirement, effective_mode);
@@ -708,7 +704,6 @@ mod tests {
                         scope_id: "worktree".to_string(),
                         requester: requester(),
                         scope_mode: OperationMode::Manual,
-                        session_override: None,
                         idempotency_key: format!("idem:{tool_call_id}"),
                         created_at_ms: now,
                         ttl_ms,
@@ -735,7 +730,6 @@ mod tests {
                         scope_id: "worktree".to_string(),
                         requester: requester(),
                         scope_mode,
-                        session_override: None,
                         idempotency_key: format!("idem:{tool_call_id}"),
                         created_at_ms: now,
                         ttl_ms: None,
@@ -1091,7 +1085,6 @@ mod tests {
                 scope_id: "worktree".to_string(),
                 requester: requester.clone(),
                 scope_mode: OperationMode::Autonomous,
-                session_override: None,
                 idempotency_key: "idem:auth".to_string(),
                 created_at_ms: 10,
                 ttl_ms: None,
@@ -1137,7 +1130,6 @@ mod tests {
                 scope_id: "worktree".to_string(),
                 requester: requester.clone(),
                 scope_mode: OperationMode::Manual,
-                session_override: None,
                 idempotency_key: "idem:read".to_string(),
                 created_at_ms: 10,
                 ttl_ms: None,
