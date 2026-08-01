@@ -1,16 +1,25 @@
 // The dock workspace host (editor-dock-workspace P04). Replaces the single-doc
 // full-cover viewer overlay with a dockview workspace inside the stage column:
-// the graph panel (default RIGHT, full width until a document opens) plus
-// document panels tabbed/split/floated to the LEFT, all walkable, movable, and
-// hot-dockable. The bounded tab slice (`stores/view`) is the SOURCE OF TRUTH for
-// WHICH documents are open; dockview owns the GEOMETRY; this host reconciles the
-// two by panel id (id === nodeId).
+// the reserved center-slot panel (default RIGHT, full width until a document
+// opens) plus document panels tabbed/split/floated to the LEFT, all walkable,
+// movable, and hot-dockable. The bounded tab slice (`stores/view`) is the SOURCE
+// OF TRUTH for WHICH documents are open; dockview owns the GEOMETRY; this host
+// reconciles the two by panel id (id === nodeId).
+//
+// The center holds ONE reserved slot with two possible occupants — the graph or
+// the Agent panel — reconciled against the `centerSlot` shell verb
+// (agent-panel-shell-integration D1). They are mutually exclusive by construction:
+// the reconcile removes the other occupant before adding the wanted one, so no
+// arrangement (including a restore race) can leave both docked.
 //
 // The graph is a portal-pinned canvas: the dockview `graph` panel is an empty
 // rect placeholder (`GraphPanel`) and the whole Stage (canvas + chrome) is
 // rendered by `GraphCanvasHost` floating over that rect, so docking never
-// re-parents the canvas (P02). Layer law: `app/` chrome over the preserved
-// stores + SceneController contracts; no fetch, no raw tiers.
+// re-parents the canvas (P02). The Agent panel is the opposite kind of occupant —
+// plain React whose state lives in external stores — so its body mounts INSIDE
+// the dockview panel with no portal, and flipping the slot never touches the
+// canvas host at all. Layer law: `app/` chrome over the preserved stores +
+// SceneController contracts; no fetch, no raw tiers.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -29,16 +38,27 @@ import { useLocalizedMessageResolver } from "../../platform/localization/Localiz
 import type { MessageDescriptor } from "../../platform/localization/message";
 import { openContextMenu } from "../../stores/view/contextMenu";
 import {
+  useShellCenterSlot,
   useShellFrameView,
-  useShellGraphVisible,
   useShellWindowActions,
 } from "../../stores/view/shellLayout";
 import { toggleGraphAction } from "../../stores/view/chromeActions";
+import { agentTogglePanelAction } from "../../stores/view/agentActions";
 import { guardedContextMenu } from "../menus/guardedContextMenu";
 import { RowMenuDisclosure } from "../chrome/RowMenuDisclosure";
-import { IconButton } from "../kit";
-import { Hierarchy, PanelRight } from "../kit/glyphs";
+import { IconButton, Segment, SegmentedToggle } from "../kit";
+import { PanelRight } from "../kit/glyphs";
+import { AgentPanel } from "../agent/AgentPanel";
 import { pokeGraphRect, setWorkspaceContainer } from "./canvasPin";
+import {
+  AGENT_PANEL_ID,
+  GRAPH_PANEL_ID,
+  RESERVED_PANEL_IDS,
+  deriveCenterSlotPlan,
+  isCenterSlotSettled,
+  isReservedPanel,
+  reservedPanelIdFor,
+} from "./centerSlotPlan";
 import { CategoryLegend } from "./CategoryLegend";
 import { DocPanel } from "./DocPanel";
 import { vaultspecDockTheme } from "./dockTheme";
@@ -60,23 +80,27 @@ import {
 } from "../../stores/view/tabs";
 import { guardUnsavedDiscardForDoc } from "../../stores/view/unsavedEditGuard";
 
-/** The always-present graph panel id (never a node id, so it cannot collide). */
-const GRAPH_PANEL_ID = "__graph__";
+/** The Agent panel's dockview body. Plain React with no portal: the panel's state
+ *  lives in external stores, so dockview may mount, move, and unmount it freely —
+ *  the constraint that forces the graph's portal pin does not apply here. */
+function AgentDockPanel() {
+  return <AgentPanel />;
+}
 
-const components = { graph: GraphPanel, doc: DocPanel };
+const components = { graph: GraphPanel, doc: DocPanel, agent: AgentDockPanel };
 
-// The graph panel is structural, not a document, and carries no label or close in
-// its tab: the graph is the canvas, not a named document, and it is never closed
-// from a tab (graph-canvas-is-portal-pinned — dropping the placeholder would strand
-// the canvas; visibility is the shell `graphVisible` verb). Its tab renders empty so
-// the graph group's header reads as a thin toolbar that hosts the top-right action
-// cluster, rather than a noisy lone "Graph" tab.
-function GraphTab(_props: IDockviewPanelHeaderProps) {
-  // `data-graph-tab` lets the stylesheet collapse the wrapping `.dv-tab` to nothing
-  // (transparent, zero width/padding) so the graph group's header reads as a clean
-  // toolbar — the legend on the left, the visibility toggles on the right — with no
-  // stray lighter tab rectangle between them.
-  return <span aria-hidden data-graph-tab className="block h-full w-0" />;
+// A reserved panel is structural, not a document, and carries no label or close in
+// its tab: it is never closed from a tab (for the graph, dropping the placeholder
+// would strand the portal-pinned canvas; for both, occupancy is the shell
+// `centerSlot` verb). Its tab renders empty so the slot group's header reads as a
+// thin toolbar that hosts the top-right action cluster, rather than a noisy lone
+// "Graph"/"Agent" tab.
+function ReservedSlotTab(_props: IDockviewPanelHeaderProps) {
+  // `data-reserved-tab` lets the stylesheet collapse the wrapping `.dv-tab` to
+  // nothing (transparent, zero width/padding) so the slot group's header reads as a
+  // clean toolbar — the legend on the left, the switch on the right — with no stray
+  // lighter tab rectangle between them.
+  return <span aria-hidden data-reserved-tab className="block h-full w-0" />;
 }
 
 // Document tab content. dockview's default tab renders at its own hardcoded 13px
@@ -192,7 +216,7 @@ function DocTab({ api }: IDockviewPanelHeaderProps) {
   );
 }
 
-const tabComponents = { graphTab: GraphTab, docTab: DocTab };
+const tabComponents = { reservedTab: ReservedSlotTab, docTab: DocTab };
 
 // Which group occupies the dock's TOP-RIGHT corner right now — the rightmost group
 // (greatest right edge), breaking a stacked-column tie by the topmost. Measured from
@@ -218,16 +242,18 @@ function isTopRightGroup(
   return host.id === group.id;
 }
 
-// The ONE window-visibility action cluster (graph + activity rail), rendered through
-// dockview's `rightHeaderActionsComponent`. dockview renders this in EVERY group's
-// header, so to avoid a duplicated/multiplied toggle the cluster paints ONLY in the
-// dock's top-right-most group (every other group's instance returns null). The host
+// The ONE window-visibility action cluster (center slot + activity rail), rendered
+// through dockview's `rightHeaderActionsComponent`. dockview renders this in EVERY
+// group's header, so to avoid a duplicated/multiplied toggle the cluster paints ONLY in
+// the dock's top-right-most group (every other group's instance returns null). The host
 // is re-derived on every layout change (`onDidLayoutChange`, which the TanStack-state-
 // driven panel reconcile and any user dock/split/move all fire), so the cluster always
 // rides the top-right corner of whatever panel is rightmost — stable, but aware of
-// what is open in the canvas. The graph verb composes the shared `toggleGraphAction()`
-// (one authoring with Cmd+K / keymap); the rail verb composes the shared shell window
-// action. No free-floating absolutely-positioned chrome, no second copy.
+// what is open in the canvas. Every verb composes a SHARED descriptor (one authoring
+// with Cmd+K / keymap): the slot segments fire `toggleGraphAction()` /
+// `agentTogglePanelAction()`, the collapse affordance fires whichever of the two owns
+// the slot, and the rail verb composes the shared shell window action. No
+// free-floating absolutely-positioned chrome, no second copy.
 export function DockActivityPanelToggle({
   label,
   active,
@@ -252,12 +278,60 @@ export function DockActivityPanelToggle({
   );
 }
 
-function DockHeaderActions(props: IDockviewHeaderActionsProps) {
+/** The segmented {graph | agent} switch plus the affordance that empties the slot.
+ *  Selecting an occupant fires that occupant's SHARED toggle descriptor, which lands
+ *  on the picked slot from any other state — so the switch, the chords, the palette,
+ *  and the background menu are one seam. Re-selecting the already-selected segment is
+ *  ignored: a radiogroup must not un-select itself into the empty slot (the collapse
+ *  affordance beside it is the verb for that). The collapse button stays rendered in
+ *  every state — it is the keyboard path back into an emptied slot, since a
+ *  radiogroup with no checked option carries no roving tab stop. */
+export function DockCenterSlotSwitch() {
   const resolveMessage = useLocalizedMessageResolver();
+  const centerSlot = useShellCenterSlot();
+  const switcher = resolveMessage({ key: "common:shell.centerSlot.switcher" });
+  const graph = resolveMessage({ key: "common:shell.centerSlot.graph" });
+  const agent = resolveMessage({ key: "common:shell.centerSlot.agent" });
+  // The occupant the collapse affordance acts on: whichever holds the slot, or the
+  // graph when it is empty (so the button reads "Show graph" and restores it).
+  const occupantAction =
+    centerSlot === "agent" ? agentTogglePanelAction() : toggleGraphAction();
+  const occupantLabel = resolveActionPresentation(occupantAction.label, resolveMessage);
+  const OccupantIcon = occupantAction.icon;
+  const select = (next: string) => {
+    if (next === centerSlot) return;
+    if (next === "graph") toggleGraphAction().run?.();
+    if (next === "agent") agentTogglePanelAction().run?.();
+  };
+  return (
+    <>
+      {!switcher.usedFallback && !graph.usedFallback && !agent.usedFallback && (
+        <SegmentedToggle
+          value={centerSlot}
+          ariaLabel={switcher.message}
+          onChange={select}
+        >
+          <Segment value="graph">{graph.message}</Segment>
+          <Segment value="agent">{agent.message}</Segment>
+        </SegmentedToggle>
+      )}
+      <IconButton
+        label={occupantLabel.message}
+        title={occupantLabel.message}
+        active={centerSlot !== "none"}
+        disabled={occupantLabel.usedFallback}
+        onClick={occupantLabel.usedFallback ? undefined : occupantAction.run}
+      >
+        {OccupantIcon ? <OccupantIcon size={16} aria-hidden /> : null}
+      </IconButton>
+    </>
+  );
+}
+
+function DockHeaderActions(props: IDockviewHeaderActionsProps) {
   const scope = useActiveScope();
   const shellFrame = useShellFrameView(scope);
   const shellActions = useShellWindowActions(scope, shellFrame);
-  const graphVisible = useShellGraphVisible();
   // Re-derive the host group whenever the dock layout changes (panels added/removed
   // by the TanStack reconcile, or a user move/split/dock).
   const [, bumpLayout] = useState(0);
@@ -270,19 +344,9 @@ function DockHeaderActions(props: IDockviewHeaderActionsProps) {
 
   if (!isTopRightGroup(props.group, props.containerApi)) return null;
 
-  const graphAction = toggleGraphAction();
-  const graphLabel = resolveActionPresentation(graphAction.label, resolveMessage);
   return (
     <div className="flex h-full items-center gap-fg-1 px-fg-1">
-      <IconButton
-        label={graphLabel.message}
-        title={graphLabel.message}
-        active={graphVisible}
-        disabled={graphLabel.usedFallback}
-        onClick={graphLabel.usedFallback ? undefined : graphAction.run}
-      >
-        <Hierarchy size={16} aria-hidden />
-      </IconButton>
+      <DockCenterSlotSwitch />
       <DockActivityPanelToggle
         label={shellFrame.rightRailToggleLabel}
         active={shellFrame.showRightRail}
@@ -316,50 +380,62 @@ function DockGraphLegend(props: IDockviewHeaderActionsProps) {
   return <CategoryLegend />;
 }
 
-// Keep the graph group's header VISIBLE so it can host the top-right action cluster
-// even when the graph is alone (the cluster is the stable home of the graph + rail
-// toggles). The graph's own tab renders empty (see GraphTab), so a lone graph still
-// reads as a thin toolbar over the canvas rather than a noisy "Graph" tab row.
-function syncGraphGroupHeader(api: DockviewApi): void {
-  const group = api.getPanel(GRAPH_PANEL_ID)?.group;
-  if (group) group.header.hidden = false;
+// Keep the reserved slot group's header VISIBLE so it can host the top-right action
+// cluster even when the slot's occupant is alone (the cluster is the stable home of
+// the slot switch + rail toggle). The occupant's own tab renders empty (see
+// ReservedSlotTab), so a lone graph/agent panel still reads as a thin toolbar over
+// its content rather than a noisy one-tab row.
+function syncReservedGroupHeader(api: DockviewApi): void {
+  for (const panelId of RESERVED_PANEL_IDS) {
+    const group = api.getPanel(panelId)?.group;
+    if (group) group.header.hidden = false;
+  }
 }
 
 export function DockWorkspace() {
   const resolveMessage = useLocalizedMessageResolver();
   const graphTitle = resolveMessage({ key: "graph:labels.graph" }).message;
+  const agentTitle = resolveMessage({ key: "common:agent.panel.region" }).message;
   const apiRef = useRef<DockviewApi | null>(null);
   // Guards the store<->dockview sync against feedback loops: while we mutate
   // dockview to match the store, its echo events (active/remove) are ignored.
   const syncingRef = useRef(false);
   const tabs = useDockWorkspaceTabsView();
-  // The graph (with its tethered timeline) is a TOGGLEABLE panel (appshell-reframe
-  // #11): when hidden, its dockview panel is removed so the documents reflow to the
-  // full center width, and the app-lifetime canvas host hides (display:none — GL
-  // context preserved). A ref lets `onReady` seed the graph at the CURRENT
-  // visibility without re-binding the once-only ready callback.
-  const graphVisible = useShellGraphVisible();
-  const graphVisibleRef = useRef(graphVisible);
-  graphVisibleRef.current = graphVisible;
+  // The center slot's occupant is a TOGGLEABLE reserved panel: when the slot empties
+  // its dockview panel is removed so the documents reflow to the full center width,
+  // and (for the graph) the app-lifetime canvas host hides — display:none, GL context
+  // preserved. A ref lets `onReady` seed the CURRENT occupant without re-binding the
+  // once-only ready callback.
+  const centerSlot = useShellCenterSlot();
+  const centerSlotRef = useRef(centerSlot);
+  centerSlotRef.current = centerSlot;
   // P06: persist + restore the open-tab set per scope through the durable session.
   // The restore seeds the tab slice; the reconcile effect below rebuilds panels.
   useWorkspacePersistence(useActiveScope());
+
+  // The dockview spec for a reserved occupant. Both share the empty `reservedTab`,
+  // so whichever holds the slot presents its group header as a plain toolbar.
+  const reservedPanelSpec = useCallback(
+    (panelId: string) => ({
+      id: panelId,
+      component: panelId === AGENT_PANEL_ID ? "agent" : "graph",
+      tabComponent: "reservedTab",
+      title: panelId === AGENT_PANEL_ID ? agentTitle : graphTitle,
+    }),
+    [agentTitle, graphTitle],
+  );
 
   const onReady = useCallback(
     (event: DockviewReadyEvent) => {
       const api = event.api;
       apiRef.current = api;
-      // The graph panel seeds the layout (full width until a document opens to its
-      // left) — but only when the graph is visible; the graph-visibility effect
-      // below reconciles add/remove on later toggles.
-      if (graphVisibleRef.current) {
-        api.addPanel({
-          id: GRAPH_PANEL_ID,
-          component: "graph",
-          tabComponent: "graphTab",
-          title: graphTitle,
-        });
-        syncGraphGroupHeader(api);
+      // The reserved panel seeds the layout (full width until a document opens to
+      // its left) — but only when the slot has an occupant; the reconcile effect
+      // below handles add/remove on later flips.
+      const seedId = reservedPanelIdFor(centerSlotRef.current);
+      if (seedId !== null) {
+        api.addPanel(reservedPanelSpec(seedId));
+        syncReservedGroupHeader(api);
       }
       // Any layout change re-measures the graph rect so the pinned canvas follows
       // (a split, a sash drag, a dock, a float), and syncs dockview's tab order
@@ -367,65 +443,71 @@ export function DockWorkspace() {
       // programmatic sync. [P06 persists here too.]
       api.onDidLayoutChange(() => {
         pokeGraphRect();
-        syncGraphGroupHeader(api);
+        syncReservedGroupHeader(api);
         if (syncingRef.current) return;
         reorderDocTabs(
-          api.panels.filter((p) => p.id !== GRAPH_PANEL_ID).map((p) => p.id),
+          api.panels.filter((p) => !isReservedPanel(p.id)).map((p) => p.id),
         );
       });
-      // User-driven activation -> store (ignore the graph panel and our own syncs).
+      // User-driven activation -> store (ignore reserved panels and our own syncs).
       api.onDidActivePanelChange((panel) => {
-        if (syncingRef.current || !panel || panel.id === GRAPH_PANEL_ID) return;
+        if (syncingRef.current || !panel || isReservedPanel(panel.id)) return;
         activateDocTab(panel.id);
       });
-      // User-driven tab close -> store (the graph panel is never closed this way).
+      // User-driven tab close -> store (a reserved panel is never closed this way).
       api.onDidRemovePanel((panel) => {
-        if (syncingRef.current || panel.id === GRAPH_PANEL_ID) return;
+        if (syncingRef.current || isReservedPanel(panel.id)) return;
         closeDocTab(panel.id);
       });
     },
-    [graphTitle],
+    [reservedPanelSpec],
   );
 
-  // Reconcile the GRAPH panel to `graphVisible` (the toggle). Adding/removing the
-  // placeholder panel is safe for the canvas: `GraphCanvasHost` (the real `<Stage/>`
-  // + WebGL context) is an app-lifetime SIBLING that never unmounts, so the panel
-  // is only the rect source — removing it hides the canvas (display:none via
-  // `setGraphVisible(false)` from `GraphPanel`'s cleanup), it is never destroyed
-  // (graph-canvas-is-portal-pinned-never-reparented). On re-show the graph re-docks
-  // to the RIGHT of the documents (or seeds the empty workspace at the root).
+  // Reconcile the RESERVED panels to `centerSlot` (the exclusive slot verb). Adding
+  // and removing a placeholder panel is safe for the canvas: `GraphCanvasHost` (the
+  // real `<Stage/>` + WebGL context) is an app-lifetime SIBLING of the whole dockview
+  // container that never unmounts, so the graph panel is only the rect source —
+  // removing it HIDES the canvas (display:none via `setGraphVisible(false)` from
+  // `GraphPanel`'s cleanup) and never destroys or re-parents it
+  // (graph-canvas-is-portal-pinned-never-reparented). Flipping the slot to the agent
+  // panel therefore does exactly what hiding the graph already did; the agent body
+  // mounts inside its own panel and never touches the canvas host. On re-show the
+  // occupant re-docks to the RIGHT of the documents (or seeds the empty workspace at
+  // the root). Removals are applied BEFORE the add so the slot is never doubly
+  // occupied, even if a restore raced both panels in.
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
-    const hasGraph = api.getPanel(GRAPH_PANEL_ID) != null;
-    if (graphVisible === hasGraph) return;
+    const plan = deriveCenterSlotPlan(
+      api.panels.map((panel) => panel.id),
+      centerSlot,
+    );
+    if (isCenterSlotSettled(plan)) return;
     syncingRef.current = true;
     try {
-      if (graphVisible) {
-        const firstDoc = api.panels.find((panel) => panel.id !== GRAPH_PANEL_ID);
+      for (const panelId of plan.removeIds) {
+        const panel = api.getPanel(panelId);
+        if (panel) api.removePanel(panel);
+      }
+      if (plan.addId !== null) {
+        const firstDoc = api.panels.find((panel) => !isReservedPanel(panel.id));
         api.addPanel({
-          id: GRAPH_PANEL_ID,
-          component: "graph",
-          tabComponent: "graphTab",
-          title: graphTitle,
+          ...reservedPanelSpec(plan.addId),
           ...(firstDoc
             ? { position: { referencePanel: firstDoc.id, direction: "right" } }
             : {}),
         });
-      } else {
-        const panel = api.getPanel(GRAPH_PANEL_ID);
-        if (panel) api.removePanel(panel);
       }
-      syncGraphGroupHeader(api);
+      syncReservedGroupHeader(api);
     } finally {
       syncingRef.current = false;
     }
-  }, [graphTitle, graphVisible]);
+  }, [centerSlot, reservedPanelSpec]);
 
   // Reconcile dockview panels to the tab slice (the source of truth). Runs on any
-  // openDocs/activeDocId change: add new doc panels (to the LEFT of the graph, or
-  // within the existing doc group), remove closed ones, and activate the active
-  // tab. The syncing guard suppresses the echo events this mutation triggers.
+  // openDocs/activeDocId change: add new doc panels (to the LEFT of the reserved
+  // slot, or within the existing doc group), remove closed ones, and activate the
+  // active tab. The syncing guard suppresses the echo events this mutation triggers.
   useEffect(() => {
     const api = apiRef.current;
     if (!api) return;
@@ -435,7 +517,7 @@ export function DockWorkspace() {
         tabs.openDocs,
         tabs.activeDocId,
         api.panels.map((panel) => panel.id),
-        GRAPH_PANEL_ID,
+        RESERVED_PANEL_IDS,
       );
       // Remove doc panels no longer open.
       for (const panelId of plan.removeIds) {
@@ -444,7 +526,7 @@ export function DockWorkspace() {
       }
       // Add newly-open doc panels.
       for (const panel of plan.addPanels) {
-        // First document splits LEFT of the graph; further documents tab into the
+        // First document splits LEFT of the slot; further documents tab into the
         // existing document group. The user can re-dock freely afterward. The doc
         // tab uses the centralized `DocTab` content so its font/colour matches the
         // app type ramp, not dockview's default.
@@ -455,7 +537,7 @@ export function DockWorkspace() {
         const panel = api.getPanel(plan.activeDocId);
         panel?.api.setActive();
       }
-      syncGraphGroupHeader(api);
+      syncReservedGroupHeader(api);
     } finally {
       syncingRef.current = false;
     }
@@ -465,10 +547,10 @@ export function DockWorkspace() {
     setWorkspaceContainer(el);
   }, []);
 
-  // Ghost / empty mode: the graph is toggled off AND no document is open, so the
+  // Ghost / empty mode: the center slot is empty AND no document is open, so the
   // center has nothing to render (appshell-reframe #11). Show the honest empty
   // state rather than a blank panel.
-  const showGhost = !graphVisible && tabs.openDocs.length === 0;
+  const showGhost = centerSlot === "none" && tabs.openDocs.length === 0;
 
   return (
     <div ref={setRoot} className="relative h-full w-full bg-paper">

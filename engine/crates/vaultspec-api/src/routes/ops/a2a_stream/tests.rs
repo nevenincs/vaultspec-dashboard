@@ -495,6 +495,162 @@ fn pump_sse_over_a_chunked_body_yields_frames_and_stops_on_terminal() {
     assert_eq!(seen[2].1["status"], "completed");
 }
 
+/// One `clarification-pending` frame as a2a actually serves it: the request id
+/// and NOTHING else. D5(b) makes this frame a bounded nudge — the questions
+/// themselves live only on `run-status`'s authoritative `pending_clarification`
+/// disclosure, so a client re-keyframes from there rather than rendering a
+/// questionnaire out of a droppable relay frame. Matches the sibling's landed
+/// progress catalog entry (`"clarification-pending": {"request_id": _Text(128)}`).
+fn clarification_pending_payload() -> Value {
+    json!({ "request_id": "clr-1" })
+}
+
+#[test]
+fn a_clarification_pending_frame_relays_verbatim_within_the_existing_caps() {
+    // The new D5(b) frame kind needs NO relay code: frame kinds are opaque here.
+    // It decodes like any other frame, keeps its payload byte for byte, and is
+    // retained and replayed under the SAME ring and byte caps as `progress`.
+    let payload = clarification_pending_payload();
+    let mut acc = SseAccumulator::new();
+    let out =
+        acc.push_bytes(format!("event: clarification-pending\ndata: {payload}\n\n").as_bytes());
+    assert_eq!(out.len(), 1);
+    assert_eq!(out[0].0, "clarification-pending");
+    assert_eq!(out[0].1["request_id"], "clr-1");
+    assert!(
+        out[0].1.get("questions").is_none(),
+        "the nudge carries no question payload; run-status is the only source"
+    );
+
+    let relay = RunRelay::new();
+    relay.push("progress".to_string(), json!({ "phase": "ground" }));
+    let seq = relay.push(out[0].0.clone(), out[0].1.clone());
+    assert_eq!(seq, 1, "the frame takes the next seq like any other");
+    let frames = relay.snapshot_since(Some(0)).0;
+    assert_eq!(frames.len(), 1);
+    assert_eq!(frames[0].event.as_ref(), "clarification-pending");
+    let replayed: Value = serde_json::from_str(frames[0].data.as_ref()).unwrap();
+    assert_eq!(
+        replayed["request_id"], payload["request_id"],
+        "payload verbatim"
+    );
+    assert_eq!(replayed["seq"], 1, "only the engine seq is annotated in");
+    assert!(frames[0].accounted_bytes <= MAX_RELAY_FRAME_BYTES);
+
+    // Opacity is not special-cased to the shape a2a ships today: an arbitrarily
+    // richer payload on the same kind relays verbatim too, so a sibling that
+    // later widens the frame needs no engine change.
+    let rich = json!({
+        "request_id": "clr-2",
+        "questions": [{ "id": "q1", "kind": "choice", "options": ["a", "b", "c", "d"] }],
+    });
+    relay.push("clarification-pending".to_string(), rich.clone());
+    let widened = relay.snapshot_since(Some(1)).0;
+    let widened: Value = serde_json::from_str(widened[0].data.as_ref()).unwrap();
+    assert_eq!(widened["questions"], rich["questions"]);
+
+    // The cap is the SAME cap: an oversized clarification frame degrades to the
+    // engine drop sentinel rather than escaping the 512 KiB ceiling.
+    let (event, data) = parse_sse_frame(&format!(
+        "event: clarification-pending\ndata: {}",
+        "x".repeat(MAX_RELAY_FRAME_BYTES + 1)
+    ))
+    .expect("an oversized frame yields a sentinel");
+    assert_eq!(event, "progress_dropped");
+    assert_eq!(data["reason"], "relay_frame_exceeds_cap");
+}
+
+#[test]
+fn a_new_frame_kind_neither_latches_terminal_nor_disturbs_existing_consumers() {
+    // The relay is non-authoritative (edge D3): a frame changes replay position
+    // and nothing else. Only `thread_terminal` latches the run as finished, so
+    // adding a frame kind can never end a live run for an existing consumer, and
+    // an unknown kind from a newer sibling flows through rather than breaking the
+    // sequence a consumer is reading.
+    let relay = RunRelay::new();
+    relay.push("progress".to_string(), json!({ "phase": "ground" }));
+    relay.push(
+        "clarification-pending".to_string(),
+        clarification_pending_payload(),
+    );
+    relay.push(
+        "a-kind-this-engine-has-never-heard-of".to_string(),
+        json!({ "n": 1 }),
+    );
+    relay.push("progress".to_string(), json!({ "phase": "diverge" }));
+    assert!(
+        !relay.is_terminal(),
+        "no frame kind but thread_terminal ends the run"
+    );
+
+    let (frames, gap) = relay.snapshot_since(None);
+    assert!(
+        gap.is_none(),
+        "an unknown kind opens no hole in the sequence"
+    );
+    assert_eq!(
+        frames.iter().map(|f| f.seq).collect::<Vec<_>>(),
+        vec![0, 1, 2, 3],
+        "seq stays dense and monotonic across kinds"
+    );
+    assert_eq!(
+        frames
+            .iter()
+            .map(|f| f.event.to_string())
+            .collect::<Vec<_>>(),
+        vec![
+            "progress",
+            "clarification-pending",
+            "a-kind-this-engine-has-never-heard-of",
+            "progress",
+        ],
+        "every kind relays under its own name; none is filtered or renamed"
+    );
+    // A consumer that only understands `progress` still reads its own frames,
+    // in order, past the kinds it ignores.
+    let understood: Vec<_> = frames
+        .iter()
+        .filter(|f| f.event.as_ref() == "progress")
+        .map(|f| f.seq)
+        .collect();
+    assert_eq!(understood, vec![0, 3]);
+
+    relay.push(
+        "thread_terminal".to_string(),
+        json!({ "status": "completed" }),
+    );
+    assert!(relay.is_terminal(), "the terminal latch is that kind alone");
+}
+
+#[test]
+fn relaying_frames_mutates_no_authoritative_engine_state() {
+    // Non-authoritative means the relay holds no seam to write through: a client
+    // recovering truth re-reads run-status and the durable events. Push the whole
+    // clarification arc — the pending frame and a terminal — and the engine's
+    // authoritative run state (the actor-token lease store) is untouched. No
+    // relay frame can open, resolve, or settle a run.
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join(".vault/plan")).unwrap();
+    let state = crate::app::build_state(dir.path().to_path_buf());
+    let before = state.a2a_run_leases.unresolved_leases().unwrap().len();
+
+    let relay = RunRelay::new();
+    relay.push(
+        "clarification-pending".to_string(),
+        clarification_pending_payload(),
+    );
+    relay.push(
+        "thread_terminal".to_string(),
+        json!({ "status": "completed" }),
+    );
+
+    assert_eq!(
+        state.a2a_run_leases.unresolved_leases().unwrap().len(),
+        before,
+        "relayed frames never touch the authoritative lease store"
+    );
+}
+
 #[test]
 fn run_id_validation_matches_the_pass_through_grammar() {
     assert!(run_id_is_valid("run_abc-123"));

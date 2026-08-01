@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:4dfcd84f66424177c7f97c0cdad9ea723cb7b781a41613d77908c2a01cbd8163'
 related:
   - '[[2026-07-02-keyboard-action-correctness-review-audit]]'
   - '[[2026-07-02-keyboard-action-correctness-review-plan]]'

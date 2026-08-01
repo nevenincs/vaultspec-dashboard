@@ -75,6 +75,82 @@ pub const GATEWAY_SHUTDOWN_PATH: &str = "/admin/shutdown";
 /// because it NAMES the a2a component and moves with this contract.
 pub const COMPONENT_LOCK_PATH: &str = "packaging/a2a-component.lock.json";
 
+// ---------------------------------------------------------------------------
+// Clarification bounds
+// ---------------------------------------------------------------------------
+//
+// These are a2a's numbers, not the dashboard's. Every one is a hard refusal at
+// the sibling's own boundary, enforced BEFORE any run state is read - so a value
+// the dashboard admits and a2a does not is not a lenient boundary, it is a 422
+// the user cannot act on and a run that stays parked.
+//
+// They live here for the reason the whole module exists: the engine once
+// declared its own literals and the frontend a second set, each internally
+// consistent and neither reconciled with a2a, while the tests meant to catch
+// that were sized FROM the constants they checked and stayed green through the
+// drift. One declaration, pinned once against the sibling, is the repair.
+//
+// ARBITER (2026-08-01). Two captures of these bounds existed, taken from two
+// different a2a trees, and disagreed on two of the five. They are reconciled
+// here against the SERVED contract rather than against either capture's source
+// reading: `openapi.json` fetched live from the gateway on 127.0.0.1:18100,
+// serving `feature/agent-flow` at eafacbe5+, the same stack the panel drives.
+// That document declares, on `RunClarificationRespondRequest` and on the
+// `/v1/runs/{run_id}/clarifications/{request_id}/respond` route:
+//
+//     answers.additionalProperties.maxLength  4096   (answer value)
+//     answers.propertyNames.maxLength           64   (question id / map key)
+//     answers.maxProperties                      4
+//     path param request_id  maxLength           64
+//     path param run_id      maxLength          128
+//
+// The run id is the parameter that takes 128; the request id does not, and an
+// id past 64 is refused by a2a's own path validation before the engine is
+// reached. Re-derive from the same document before changing any number here -
+// a source reading of one a2a tree is not evidence about the tree we serve.
+
+/// The most questions one clarification request may carry.
+///
+/// a2a: `MAX_QUESTIONS_PER_REQUEST`, enforced on
+/// `ClarificationRequest.questions` and again on `ClarificationAnswers.answers`,
+/// so it bounds the ANSWER side the engine forwards as well as the question set.
+pub const A2A_MAX_CLARIFICATION_QUESTIONS: usize = 4;
+
+/// The most options one `choice` question may declare.
+///
+/// a2a: `MAX_OPTIONS_PER_QUESTION`, enforced on `ClarificationQuestion.options`.
+pub const A2A_MAX_CLARIFICATION_OPTIONS: usize = 4;
+
+/// The longest a single answer may be.
+///
+/// a2a: the `answers` map's value bound on
+/// `RunClarificationRespondRequest` - `additionalProperties.maxLength: 4096`.
+pub const A2A_MAX_CLARIFICATION_ANSWER_CHARS: usize = 4096;
+
+/// The longest a clarification request id may be.
+///
+/// a2a: the `request_id` PATH parameter of
+/// `/v1/runs/{run_id}/clarifications/{request_id}/respond` -
+/// `maxLength: 64`, `pattern: ^[A-Za-z0-9_][A-Za-z0-9_-]{0,63}$`. It is the run
+/// id, at `maxLength: 128`, that takes the wider bound; the two are separate
+/// parameters on the same route and are not interchangeable.
+pub const A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS: usize = 64;
+
+/// The longest a question id may be.
+///
+/// a2a: `MAX_IDENTIFIER_CHARS`, carried by `QuestionId` - which is also the key
+/// type of the `answers` map the engine forwards.
+pub const A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS: usize = 64;
+
+// Two build-time asserts stood here encoding a relationship the wire does not
+// have: that the request id must exceed the identifier cap because a2a mints it
+// as `clarify-{thread_id}`. The served route contradicts both - `request_id` and
+// `run_id` are separate path parameters bounded independently at 64 and 128, and
+// an id longer than 64 is refused by a2a's own path validation before the engine
+// is consulted. They are deleted rather than re-pointed, because an assert whose
+// premise is wrong does not become right by adjusting its arithmetic. The
+// numbers are pinned against the served schema by the tests below instead.
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -127,6 +203,57 @@ mod tests {
         assert!(
             !GATEWAY_SHUTDOWN_PATH.starts_with("/api/"),
             "the legacy `/api` mount is deleted; no contract path may sit under it"
+        );
+    }
+
+    /// PIN every clarification bound to the number a2a actually enforces.
+    ///
+    /// This is the ONLY place in the repository where these values are stated
+    /// as literals, and that is deliberate. Every other check of them - the
+    /// engine's boundary tests, the card's cap test - now derives BOTH its
+    /// fixture and its expectation from the constant, which is correct for
+    /// proving BEHAVIOUR at the boundary and worthless for proving the VALUE:
+    /// set the answer cap to a million and every one of those tests still
+    /// passes, because input and expectation drift together. That is precisely
+    /// how a 4096-char answer cap survived against a sibling that refuses at
+    /// 2048.
+    ///
+    /// So exactly one assertion holds each value against the outside world. The
+    /// arbiter is the SERVED contract - `openapi.json` from the gateway the
+    /// panel drives - not a reading of any a2a checkout, because two such
+    /// readings, taken from two different trees, are what disagreed here. The
+    /// module header records the document, the date, and the exact fields.
+    ///
+    /// What this test CANNOT do, stated so nobody over-trusts it: it does not
+    /// fetch that document. A simultaneous change on both sides goes unnoticed
+    /// here and is caught only by a round-trip against a running sibling.
+    #[test]
+    fn the_clarification_bounds_are_pinned_to_the_numbers_a2a_enforces() {
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_QUESTIONS, 4,
+            "a2a's MAX_QUESTIONS_PER_REQUEST bounds ClarificationRequest.questions \
+             and ClarificationAnswers.answers at 4"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_OPTIONS, 4,
+            "a2a's MAX_OPTIONS_PER_QUESTION bounds ClarificationQuestion.options at 4"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_ANSWER_CHARS, 4096,
+            "the served RunClarificationRespondRequest bounds each answers value at \
+             maxLength 4096; refusing short of it rejects an answer a2a would have \
+             accepted, and the user cannot tell a local cap from a remote one"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS, 64,
+            "the served respond route bounds the request_id PATH parameter at \
+             maxLength 64 (pattern ^[A-Za-z0-9_][A-Za-z0-9_-]{{0,63}}$); it is the \
+             run_id parameter that takes 128, and admitting a longer request id \
+             here only defers the refusal to a2a's own path validation"
+        );
+        assert_eq!(
+            A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS, 64,
+            "a2a's MAX_IDENTIFIER_CHARS bounds QuestionId at 64"
         );
     }
 }

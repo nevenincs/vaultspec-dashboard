@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:6ad5d9f5e4ea18bd60c466a0cf898ce3d76f175d753505b25a83c4516c465cb2'
 related:
   - '[[2026-07-14-feature-group-authoring-P01-S01]]'
   - '[[2026-07-14-feature-group-authoring-P01-S02]]'

@@ -52,6 +52,11 @@ function ids(): string[] {
   return useViewStore.getState().openDocs.map((d) => d.nodeId);
 }
 
+// The center slot's reserved occupants (agent-panel-shell-integration D1). Neither
+// is a document: they are never removed by the document reconcile, and whichever is
+// docked is the reference the first document splits to the LEFT of.
+const RESERVED = ["__graph__", "__agent__"] as const;
+
 describe("deriveDockTabHeaderView (Figma tab parity)", () => {
   it("renders the tab in the app type ramp, not dockview's default font", () => {
     const view = deriveDockTabHeaderView(true, "my-plan");
@@ -412,7 +417,7 @@ describe("dock workspace projection", () => {
       ],
       "code:src/app.ts",
       ["__graph__", "doc:stale"],
-      "__graph__",
+      RESERVED,
     );
 
     expect(plan.removeIds).toEqual(["doc:stale"]);
@@ -460,7 +465,7 @@ describe("dock workspace projection", () => {
       openDocs,
       " code:src/app.ts ",
       ["__graph__", "doc:stale"],
-      "__graph__",
+      RESERVED,
     );
 
     expect(plan.removeIds).toEqual(["doc:stale"]);
@@ -480,7 +485,7 @@ describe("dock workspace projection", () => {
       ],
       "doc:b",
       ["__graph__", "doc:a"],
-      "__graph__",
+      RESERVED,
     );
 
     expect(plan.removeIds).toEqual([]);
@@ -717,12 +722,30 @@ describe("per-tab scope binding", () => {
     expect(useViewStore.getState().openDocs[0]?.scope).toBe("scope-x");
   });
 
+  it("docks the first document left of whichever reserved occupant holds the slot", () => {
+    // With the AGENT panel in the slot the first document must split to its left,
+    // exactly as it does beside the graph — the slot's occupant is the reference,
+    // and a reserved panel is never mistaken for a stale document to remove.
+    const plan = deriveDockWorkspaceSyncPlan(
+      [{ nodeId: "doc:a", surface: "markdown", provisional: false }],
+      "doc:a",
+      ["__agent__"],
+      RESERVED,
+    );
+
+    expect(plan.removeIds).toEqual([]);
+    expect(plan.addPanels[0]?.position).toEqual({
+      referencePanel: "__agent__",
+      direction: "left",
+    });
+  });
+
   it("threads the tab scope into the dock panel params", () => {
     const plan = deriveDockWorkspaceSyncPlan(
       [{ nodeId: "doc:a", surface: "markdown", provisional: false, scope: "scope-x" }],
       "doc:a",
       ["__graph__"],
-      "__graph__",
+      RESERVED,
     );
     expect(plan.addPanels[0]?.params).toEqual({
       nodeId: "doc:a",

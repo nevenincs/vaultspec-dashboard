@@ -99,6 +99,11 @@ export const SHELL_MESSAGE_POLICY = {
   "common:shell.navigation.home": { role: "label" },
   "common:shell.navigation.search": { role: "label" },
   "common:shell.navigation.status": { role: "label" },
+  // The dock header's {graph | agent} switch: the two occupant names are
+  // radio-style option labels, the hide verb is the action that empties the slot.
+  "common:shell.centerSlot.agent": { role: "label" },
+  "common:shell.centerSlot.graph": { role: "label" },
+  "common:shell.centerSlot.switcher": { role: "accessibility" },
   "common:shell.regions.activity": { role: "accessibility" },
   "common:shell.regions.fileBrowser": { role: "accessibility" },
   "common:shell.regions.timeline": { role: "accessibility" },

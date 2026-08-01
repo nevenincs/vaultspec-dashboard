@@ -66,10 +66,10 @@ function expectedPanelStatus(
 
 describe.sequential("StatusChip", () => {
   it("updates one chip through English, French, and Arabic", async () => {
-    const rendered = renderChip("approvals", { tone: "attention", count: 3 });
+    const rendered = renderChip("pending", { tone: "attention", count: 3 });
     const englishName = expectedPanelStatus(
       rendered.runtime,
-      en.common.controlPanels.labels.approvals,
+      en.common.agent.pending.label,
       en.common.controlPanels.tones.needsAttention,
     );
     const button = screen.getByRole("button", { name: englishName });
@@ -80,26 +80,26 @@ describe.sequential("StatusChip", () => {
     });
     const frenchName = expectedPanelStatus(
       rendered.runtime,
-      ltrTestResources.common.controlPanels.labels.approvals,
+      ltrTestResources.common.agent.pending.label,
       ltrTestResources.common.controlPanels.tones.needsAttention,
     );
     expect(screen.getByRole("button", { name: frenchName })).toBe(button);
-    expect(
-      screen.getByText(ltrTestResources.common.controlPanels.labels.approvals),
-    ).toBe(button.querySelector("span:not([aria-hidden])"));
+    expect(screen.getByText(ltrTestResources.common.agent.pending.label)).toBe(
+      button.querySelector("span:not([aria-hidden])"),
+    );
 
     await act(async () => {
       await rendered.runtime.changeLanguage(rtlTestLocale);
     });
     const arabicName = expectedPanelStatus(
       rendered.runtime,
-      rtlTestResources.common.controlPanels.labels.approvals,
+      rtlTestResources.common.agent.pending.label,
       rtlTestResources.common.controlPanels.tones.needsAttention,
     );
     expect(screen.getByRole("button", { name: arabicName })).toBe(button);
-    expect(
-      screen.getByText(rtlTestResources.common.controlPanels.labels.approvals),
-    ).toBe(button.querySelector("span:not([aria-hidden])"));
+    expect(screen.getByText(rtlTestResources.common.agent.pending.label)).toBe(
+      button.querySelector("span:not([aria-hidden])"),
+    );
   });
 
   it("maps each tone to its status dot class", () => {

@@ -946,7 +946,7 @@ export function StatusTab() {
       >
         <RecentCommitsBody scope={scope} />
       </SectionCard>
-      {/* The two admin consoles (Search service, Approvals) were evicted from the
+      {/* The two admin consoles (Search service, Pending changes) were evicted from the
           rail into modal control panels (activity-rail-realignment ADR D1/D3);
           the rail is status-only. They are reached from the rail-footer framework
           status cluster now. */}

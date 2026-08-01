@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:e136793a41aab8f055c3ec1f9bb85c55f5a9d46ccdccf0d7cec4561079477f7b'
 related:
   - '[[2026-07-11-universal-data-loading-P01-S01]]'
   - '[[2026-07-11-universal-data-loading-P01-S02]]'

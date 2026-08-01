@@ -7,7 +7,7 @@
 //! dashboard-created ATTACH-CONTROL credential (never the worker-IPC secret), and
 //! the dashboard revokes exactly that run's hashed token bundle.
 //!
-//! This route is deliberately OUTSIDE the fixed six-verb `/ops/a2a` orchestration
+//! This route is deliberately OUTSIDE the fixed seven-verb `/ops/a2a` orchestration
 //! whitelist and off the machine `bearer_gate` path set — it is an internal
 //! gateway->dashboard callback, not a browser API verb. It authenticates on its
 //! own by verifying the presented `Authorization: Bearer <attach-control>` against

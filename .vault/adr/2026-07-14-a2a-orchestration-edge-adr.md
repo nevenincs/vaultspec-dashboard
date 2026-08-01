@@ -3,8 +3,8 @@ tags:
   - '#adr'
   - '#a2a-orchestration-edge'
 date: '2026-07-14'
-modified: '2026-07-19'
-body_hash: 'sha256:c9fc6928f28de913e91e0f36154a5834f73628b627f21c29a9edf0587d3f119c'
+modified: '2026-08-01'
+body_hash: 'sha256:48424edc966e9d64284155d9e7ee871475f1cd92443660265ed13bfa5aed5e98'
 related:
   - "[[2026-07-14-a2a-orchestration-edge-research]]"
   - '[[2026-06-29-agentic-authoring-boundary-adr]]'
@@ -170,6 +170,43 @@ namespace — it is orchestration control only.
 > (`19d845c499`, extended `1653b4b85d`) — matching the cross-session
 > reconciliation audit's P05 amendment spec
 > (`2026-07-17-a2a-orchestration-edge-audit`).
+
+> **Amendment (2026-08-01, clarification contract — reviewed cross-repo
+> contract event, agent-panel campaign):** the whitelist grows to SEVEN
+> verbs with `clarification-respond`, the typed resume of a run parked on
+> a2a's mid-run clarification interrupt (`2026-08-01-a2a-agent-flow-adr`
+> D5). Boundary at the engine: run id and request id path-safe (request id
+> ≤64, pinned to the sibling's LITERAL bound rather than derived from an
+> engine constant); answers map 1..=4 entries keyed by ≤64-char token
+> question ids; values ≤4096, single-line (control characters rejected —
+> the questionnaire renders an input, not a textarea). Upstream:
+> `POST /v1/runs/{run_id}/clarifications/{request_id}/respond`, body
+> `{"answers": {question_id: answer}}`, extra-forbidden. The engine judges
+> no answer content: option existence, per-question satisfaction, and
+> required-question completeness are the parked node's authority,
+> validated a2a-side against the live checkpoint before any dispatch.
+> Disclosure is authoritative on `run-status` (`pending_clarification`,
+> projected from the checkpoint, proven to survive a genuine
+> second-instance reload) and rides the verbatim envelope with no engine
+> change; the relay gains ONE non-authoritative frame kind,
+> `clarification-pending`, carrying the request id only — a nudge to
+> re-read `run-status`, never the questions (D3 discipline). The relay
+> itself is UNCHANGED code: frame kinds were already opaque passthrough,
+> and the addition is pinned by conformance tests, not a relay
+> modification. A sibling 404 forwards verbatim (unknown run, or an
+> expired/superseded request id); a known-down sibling degrades the
+> `agent` tier at 200 per the shipped template semantics. Shipped
+> surface: engine `427aaddb9c` + reconciliation `9aa5648c95`
+> (`routes/ops/a2a.rs` + new `routes/ops/a2a/clarification.rs`); a2a
+> `f04425e9` on `feature/agent-flow` (node, checkpoint-projected
+> disclosure, respond service, SSE catalog entry), whose own v1-route
+> closed-set guard is the sibling-side amendment-forcing mechanism.
+> Additionally recorded as a served-shape FACT, not a new verb:
+> `presets-list` has always served full per-profile summaries (id,
+> default flag, eligibility with reasons, per-role provider assignments);
+> the composer's model picker consumes that existing truth per
+> `2026-08-01-a2a-agent-flow-adr` D3 — no wire change was needed or made
+> for model selection.
 
 **D2 — Actors and tokens are provisioned by the engine at run start.** The
 brokered `run-start` verb is the provisioning moment: the engine registers (or

@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:28c58f2ae81f10ba22ca2aaac3462c9948852cce0dcfd953bfdd6aa68704db6c'
 related:
   - '[[2026-06-16-graph-viz-quality-plan]]'
   - '[[2026-06-16-graph-viz-quality-research]]'

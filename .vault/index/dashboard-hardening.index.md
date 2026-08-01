@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:24af3a47a0dfe9564dd191f88c360a48c5b432096c7f29e231879130476c739b'
 related:
   - '[[2026-06-21-dashboard-hardening-adr]]'
   - '[[2026-06-21-dashboard-hardening-audit]]'

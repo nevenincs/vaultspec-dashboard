@@ -1,7 +1,7 @@
-// Agent-panel view-store tests. Pure local
-// chrome state — no wire. Covers the open/toggle lifecycle and the current-session
-// pointer. The docked column's WIDTH lives in the shell-layout store now, so its
-// clamp/persist coverage is in shellLayout.test.ts.
+// Agent-panel view-store tests. Pure local chrome state — no wire. Covers the
+// open/toggle lifecycle (which is the CENTER SLOT verb now, not a second open flag)
+// and the current-session pointer. The panel has no width of its own any more — the
+// dock owns its geometry — so there is no width clamp to cover here.
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -9,16 +9,19 @@ import {
   closeAgentPanel,
   openAgentPanel,
   setAgentCurrentSession,
+  setAgentPanelView,
   setAgentTeamRun,
   scopedTeamRunId,
   teamRunScopeAction,
   toggleAgentPanel,
   useAgentPanel,
 } from "./agentPanel";
+import { getShellCenterSlot, setShellCenterSlot } from "./shellLayout";
 
 function reset(): void {
+  setShellCenterSlot("none");
   useAgentPanel.setState({
-    open: false,
+    panelView: "transcript",
     currentSessionId: null,
     teamRunId: null,
     teamRunPrompt: null,
@@ -30,19 +33,44 @@ beforeEach(reset);
 afterEach(reset);
 
 describe("agent panel open lifecycle", () => {
-  it("opens, closes, and toggles the docked panel", () => {
-    expect(useAgentPanel.getState().open).toBe(false);
+  it("opens, closes, and toggles by taking and yielding the center slot", () => {
+    expect(getShellCenterSlot()).toBe("none");
     openAgentPanel();
-    expect(useAgentPanel.getState().open).toBe(true);
+    expect(getShellCenterSlot()).toBe("agent");
     // Opening again is an idempotent no-op.
     openAgentPanel();
-    expect(useAgentPanel.getState().open).toBe(true);
+    expect(getShellCenterSlot()).toBe("agent");
     closeAgentPanel();
-    expect(useAgentPanel.getState().open).toBe(false);
+    expect(getShellCenterSlot()).toBe("none");
     toggleAgentPanel();
-    expect(useAgentPanel.getState().open).toBe(true);
+    expect(getShellCenterSlot()).toBe("agent");
     toggleAgentPanel();
-    expect(useAgentPanel.getState().open).toBe(false);
+    expect(getShellCenterSlot()).toBe("none");
+  });
+
+  it("displaces the graph when opened, and never hides it when closed", () => {
+    setShellCenterSlot("graph");
+    openAgentPanel();
+    expect(getShellCenterSlot()).toBe("agent");
+
+    // Closing the panel while the GRAPH holds the slot must not empty the slot:
+    // closing a panel that is not open is a no-op, not a hide of its replacement.
+    setShellCenterSlot("graph");
+    closeAgentPanel();
+    expect(getShellCenterSlot()).toBe("graph");
+  });
+
+  it("opens straight into a targeted view and leaves the view alone otherwise", () => {
+    openAgentPanel({ view: "pending" });
+    expect(getShellCenterSlot()).toBe("agent");
+    expect(useAgentPanel.getState().panelView).toBe("pending");
+
+    setShellCenterSlot("none");
+    openAgentPanel();
+    expect(useAgentPanel.getState().panelView).toBe("pending");
+
+    setAgentPanelView("transcript");
+    expect(useAgentPanel.getState().panelView).toBe("transcript");
   });
 });
 

@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:f4aebfbbb684ca997751c4697ad21dacb143f208e4c1756b736746eccba754e4'
 related:
   - '[[2026-06-16-graph-node-representation-adr]]'
 ---

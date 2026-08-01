@@ -41,9 +41,9 @@ import {
   KEYBOARD_SHORTCUTS_TOGGLE_BINDING,
 } from "./keyboardShortcuts";
 import {
+  AGENT_PENDING_CHANGES_ACTION_ID,
   CONTROL_PANEL_ACTION_IDS,
   GRAPH_TOGGLE_ACTION_ID,
-  REVIEW_INBOX_ACTION_ID,
 } from "./chromeActions";
 import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
 import {
@@ -190,12 +190,11 @@ describe("action coverage grid guard", () => {
     // fourth modal toggle; require it explicitly on the palette plane under its
     // shared id, so a regression that drops it fails here.
     expect(paletteIds.has(CONTROL_PANEL_ACTION_IDS["agent-service"])).toBe(true);
-    // The review inbox re-uses the retired Approvals action id: it is
-    // palette-enrolled under REVIEW_INBOX_ACTION_ID even though it now
-    // opens the Agent pending view rather than a modal panel, so it left
-    // CONTROL_PANEL_ACTION_IDS. Assert it here too, restoring the cross-plane
-    // enrollment symmetry that loop lost.
-    expect(paletteIds.has(REVIEW_INBOX_ACTION_ID)).toBe(true);
+    // The pending-changes inbox is enrolled on the AGENT plane, not the control-panel
+    // plane, because it opens the Agent panel's pending view rather than a modal — so
+    // it is absent from CONTROL_PANEL_ACTION_IDS. Assert it here too, restoring the
+    // cross-plane enrollment symmetry that loop lost.
+    expect(paletteIds.has(AGENT_PENDING_CHANGES_ACTION_ID)).toBe(true);
   });
 
   it("the always-available agent verbs resolve in the palette under their shared ids", () => {

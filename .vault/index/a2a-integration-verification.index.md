@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:8f93fa70c596a0b7add973702bd72b2b8d5d1854b7200395637cd37c5aab5570'
 related:
   - '[[2026-07-31-a2a-integration-verification-adr]]'
   - '[[2026-07-31-a2a-integration-verification-plan]]'

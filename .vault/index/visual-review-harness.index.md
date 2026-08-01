@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:db740dbb2fe87b6ccb7fa4a6169867b67d449caee9e2d7dc014c37051fbc4871'
 related:
   - '[[2026-07-30-visual-review-harness-adr]]'
   - '[[2026-07-30-visual-review-harness-plan]]'

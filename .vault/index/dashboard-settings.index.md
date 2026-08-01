@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:5cbfe58dd08bbbe27a2b93d2e5b1020fe552befb2e1069985ad1c65f5c7c5c3c'
 related:
   - '[[2026-06-15-dashboard-settings-W01-P01-S01]]'
   - '[[2026-06-15-dashboard-settings-W01-P01-S02]]'

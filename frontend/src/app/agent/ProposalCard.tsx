@@ -31,7 +31,11 @@ import {
   useReviewStationView,
   type ProposalProjection,
 } from "../../stores/server/authoring";
-import { ProposalCard, useReviewActions } from "../authoring/ReviewStation";
+import {
+  ProposalCard,
+  proposalDiffstatSlot,
+  useReviewActions,
+} from "../authoring/ReviewStation";
 
 /** The marker surfaced on the mounted list so a test/inspector can prove the
  *  correlation is the EXACT served-run_id bind, not a heuristic. */
@@ -69,7 +73,11 @@ export function AgentTurnProposal({ runId }: { runId: string | null }) {
       data-agent-proposal
       data-correlation={AGENT_PROPOSAL_CORRELATION}
     >
-      <ProposalCard proposal={proposal} actions={actions} />
+      <ProposalCard
+        proposal={proposal}
+        actions={actions}
+        diffstat={proposalDiffstatSlot(proposal)}
+      />
     </ul>
   );
 }

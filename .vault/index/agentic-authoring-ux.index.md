@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:57e271f31e9a3e80e43c206f47f7a7473fc9b198430afa83bd4899c5adff9570'
 related:
   - '[[2026-07-16-agentic-authoring-ux-W01-P01-S02]]'
   - '[[2026-07-16-agentic-authoring-ux-W01-P01-S03]]'

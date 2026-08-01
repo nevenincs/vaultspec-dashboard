@@ -1,5 +1,5 @@
 //! The `/ops/a2a/{verb}` orchestration control pass-through: the engine forwards
-//! a FIXED six-verb whitelist to the
+//! a FIXED seven-verb whitelist to the
 //! resident vaultspec-a2a gateway and nothing else, wrapping the sibling's
 //! response VERBATIM inside the shared tiers envelope. It is the rag ops
 //! template retargeted at an HTTP sibling — one namespace, tiers-honest, the
@@ -38,9 +38,6 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use rag_client::client::{LoopbackTransport, RagError, RagTransport};
 use serde_json::{Value, json};
-use vaultspec_product::a2a_contract::{
-    A2A_HOME_DIR, A2A_HOME_ENV, HANDOFF_CREDENTIAL_FILE, RESIDENT_DISCOVERY_FILE,
-};
 
 use crate::a2a_run_leases::{LeaseReservation, LeaseToken};
 use crate::app::{AppState, ScopeCell, now_ms};
@@ -50,27 +47,42 @@ use crate::authoring::model::{ActorId, ActorKind, ActorRef, CommandKind};
 
 use super::ApiResult;
 
-/// The FIXED six-verb whitelist: orchestration
-/// control and one bounded active-run recovery read only, with no mutating vault
-/// semantics. A verb outside this set is a 403 BEFORE any discovery or
-/// round-trip — the whitelist miss never reaches the sibling.
+/// The FIXED seven-verb whitelist: orchestration
+/// control, one bounded active-run recovery read, and one typed interrupt-resume
+/// only, with no mutating vault semantics. A verb outside this set is a 403
+/// BEFORE any discovery or round-trip — the whitelist miss never reaches the
+/// sibling.
 const A2A_WHITELIST: &[&str] = &[
     "run-start",
     "run-status",
     "run-cancel",
     "presets-list",
-    "service-state",
     "active-runs",
+    "clarification-respond",
 ];
 
 /// The sibling caps a prepared/preset role set at 64. The dashboard applies the
 /// same ceiling before minting so an authenticated but drifted response cannot
 /// create unbounded actors or credentials.
+///
+/// Deliberately an independent bound, not a value read from the sibling: we must
+/// limit what we accept without trusting a number the other side supplies. That
+/// independence is why "the same ceiling" needs checking rather than assuming —
+/// the sibling's `MAX_ROLES_PER_RUN` (a2a `thread/actor_tokens.py`) is gated
+/// against this constant BY NAME from its
+/// `api/tests/test_engine_edge_bounds_agreement.py`, so lowering this without
+/// lowering that turns every over-limit preset into a prepare refusal before any
+/// dispatch — no run, and nothing downstream able to observe why.
 const MAX_A2A_REQUIRED_ROLES: usize = 64;
 
 /// Heartbeat staleness threshold for the a2a discovery file: the resident
 /// gateway refreshes every 15s and a consumer treats a heartbeat older than
 /// 120s as a crash (mirrors the a2a `HEARTBEAT_STALE_MS` and rag's own bound).
+///
+/// That mirroring is now gated by name from the sibling's
+/// `api/tests/test_engine_edge_bounds_agreement.py`. Disagreement is silent and
+/// blames the wrong side: a shorter threshold here treats a live gateway as
+/// crashed and refuses to attach, a longer one attaches to one already gone.
 const A2A_HEARTBEAT_STALE_MS: i64 = 120_000;
 
 /// The ungated `/health` liveness budget for the attach-never-own predicate: a
@@ -78,7 +90,7 @@ const A2A_HEARTBEAT_STALE_MS: i64 = 120_000;
 const A2A_HEALTH_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// Wall-clock budget for a brokered READ verb (run-status, presets-list,
-/// service-state): a fast recovery-snapshot / listing read.
+/// active-runs): a fast recovery-snapshot / listing read.
 const A2A_READ_BUDGET: Duration = Duration::from_secs(15);
 
 /// Wall-clock budget for a brokered CONTROL verb (run-start, run-cancel):
@@ -102,6 +114,29 @@ const MAX_A2A_FEATURE_CHARS: usize = 128;
 const MAX_A2A_TITLE_CHARS: usize = 200;
 const MAX_A2A_RUN_ID_CHARS: usize = 128;
 const MAX_A2A_SCOPE_CHARS: usize = 4096;
+
+/// The `clarification-respond` boundary: the D5 caps, the sibling route, and the
+/// answer validation, held apart from the control verbs because it is the one
+/// verb whose shape reconciles against a sibling route that has not landed yet.
+#[path = "a2a/clarification.rs"]
+mod clarification;
+
+/// Machine-global discovery of the resident a2a gateway and the endpoint
+/// resolution built on it, held apart from the control verbs because it is a
+/// self-contained trust predicate — heartbeat freshness plus an owner-restricted
+/// handoff credential — with three callers that otherwise share nothing: this
+/// pass-through, the run-stream relay, and the agent tier.
+#[path = "a2a/discovery.rs"]
+mod discovery;
+
+// Re-exported at the a2a boundary so both external callers keep the paths they
+// already use: `ops::resident_sibling_is_attachable` (the agent tier, via
+// `ops/mod.rs`) and `ops::a2a::a2a_endpoint` (the run-stream relay).
+pub(crate) use discovery::{a2a_endpoint, resident_sibling_is_attachable};
+use discovery::{a2a_endpoint_dual, a2a_service_json_candidates};
+// Reached only by the test module's `use super::*`.
+#[cfg(test)]
+use discovery::{A2aDiscovery, a2a_endpoint_from, discover_a2a_at};
 
 /// Fixed-size serialization stripes for brokered run starts. A stable `run_id`
 /// always maps to one stripe, so concurrent retries cannot both pass the status
@@ -155,229 +190,32 @@ pub struct A2aVerbBody {
     /// run-start: the autonomy flag forwarded verbatim.
     #[serde(default)]
     pub autonomous: Option<bool>,
-}
-
-/// The a2a discovery record shape (`~/.vaultspec-a2a/service.json`): the R8
-/// `ServiceInfo` contract the resident gateway publishes. Discovery itself is
-/// secret-free; `handoff_reference` names the sibling bearer file.
-#[derive(Clone, serde::Deserialize)]
-struct A2aServiceInfo {
-    port: u16,
+    /// clarification-respond: the id of the pending clarification these answers
+    /// resolve (required). Path-safe like `run_id` — it is interpolated into the
+    /// sibling URL.
     #[serde(default)]
-    #[allow(dead_code)]
-    pid: Option<u32>,
+    pub request_id: Option<String>,
+    /// clarification-respond: the answers keyed by question id (required, one to
+    /// four entries, each a bounded string). Nothing here is authoritative: the
+    /// parked node decides whether an answer satisfies its question, whether
+    /// every required question was answered, and whether an option id exists.
     #[serde(default)]
-    last_heartbeat: Option<i64>,
-    #[serde(default)]
-    handoff_reference: Option<String>,
-    #[serde(skip)]
-    service_token: Option<String>,
+    pub answers: Option<serde_json::Map<String, Value>>,
 }
 
-impl std::fmt::Debug for A2aServiceInfo {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        formatter
-            .debug_struct("A2aServiceInfo")
-            .field("port", &self.port)
-            .field("pid", &self.pid)
-            .field("last_heartbeat", &self.last_heartbeat)
-            .field("handoff_reference", &self.handoff_reference)
-            .field(
-                "service_token",
-                &self.service_token.as_ref().map(|_| "<redacted>"),
-            )
-            .finish()
-    }
-}
-
-/// The typed outcome of scanning the a2a discovery candidates, mirroring rag's
-/// `DiscoveryOutcome`: `Fresh` licenses a round-trip, everything else is a
-/// known-down sibling degraded honestly at 200.
-#[derive(Debug, Clone)]
-enum A2aDiscovery {
-    Fresh(A2aServiceInfo),
-    /// A present file that is not a live service: stale heartbeat, malformed
-    /// record, or absent file. Carried with the truthful reason.
-    Down {
-        reason: String,
-    },
-}
-
-/// The machine-global a2a discovery file candidates: the `VAULTSPEC_A2A_HOME`
-/// env override FIRST (mirrors the sibling's own `a2a_home` resolution), then
-/// the default `~/.vaultspec-a2a/service.json`. a2a is one resident service per
-/// machine, so there is no per-scope candidate.
-fn a2a_service_json_candidates() -> Vec<PathBuf> {
-    let mut candidates = Vec::new();
-    if let Some(home) = std::env::var_os(A2A_HOME_ENV) {
-        candidates.push(PathBuf::from(home).join(RESIDENT_DISCOVERY_FILE));
-    }
-    let user_home = std::env::var_os("USERPROFILE").or_else(|| std::env::var_os("HOME"));
-    if let Some(user_home) = user_home {
-        candidates.push(
-            PathBuf::from(user_home)
-                .join(A2A_HOME_DIR)
-                .join(RESIDENT_DISCOVERY_FILE),
-        );
-    }
-    candidates
-}
-
-/// Classify the a2a discovery candidates filesystem-only (no `/health` probe):
-/// the first readable record with a fresh heartbeat is `Fresh`; a stale
-/// heartbeat, an unreadable record, or no file at all is `Down` with a truthful
-/// reason. Hermetic over an explicit candidate list for tests.
-fn discover_a2a_at(candidates: &[PathBuf]) -> A2aDiscovery {
-    let mut malformed: Option<String> = None;
-    for path in candidates {
-        let Ok(raw) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        if serde_json::from_str::<Value>(&raw)
-            .ok()
-            .and_then(|value| value.get("service_token").cloned())
-            .is_some()
-        {
-            return A2aDiscovery::Down {
-                reason: "a2a service.json illegally contains a raw credential".to_string(),
-            };
-        }
-        match serde_json::from_str::<A2aServiceInfo>(&raw) {
-            Ok(mut info) => {
-                if let Some(heartbeat) = info.last_heartbeat {
-                    let now = now_ms();
-                    if now.saturating_sub(heartbeat) > A2A_HEARTBEAT_STALE_MS {
-                        return A2aDiscovery::Down {
-                            reason: "a2a gateway heartbeat stale (service crashed or stopped)"
-                                .to_string(),
-                        };
-                    }
-                }
-                info.service_token = match info.handoff_reference.as_deref() {
-                    Some(reference) => match read_a2a_handoff(path, reference) {
-                        Ok(token) => Some(token),
-                        Err(reason) => return A2aDiscovery::Down { reason },
-                    },
-                    None => None,
-                };
-                return A2aDiscovery::Fresh(info);
-            }
-            Err(e) => malformed = Some(format!("a2a service.json unreadable: {e}")),
-        }
-    }
-    A2aDiscovery::Down {
-        reason: malformed
-            .unwrap_or_else(|| "a2a gateway not running (no service.json discovered)".to_string()),
-    }
-}
-
-fn read_a2a_handoff(discovery_path: &std::path::Path, reference: &str) -> Result<String, String> {
-    let expected = discovery_path.with_file_name(HANDOFF_CREDENTIAL_FILE);
-    let expected = expected
-        .canonicalize()
-        .map_err(|_| "a2a handoff credential is absent".to_string())?;
-    let candidate = PathBuf::from(reference)
-        .canonicalize()
-        .map_err(|_| "a2a handoff credential is unreadable".to_string())?;
-    if candidate != expected {
-        return Err("a2a handoff reference escaped its discovery directory".to_string());
-    }
-    let metadata = std::fs::symlink_metadata(&candidate)
-        .map_err(|_| "a2a handoff credential metadata is unreadable".to_string())?;
-    if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-        return Err("a2a handoff credential is not a regular file".to_string());
-    }
-    if !vaultspec_product::discovery::handoff_is_owner_restricted(&candidate) {
-        return Err("a2a handoff credential is not owner-restricted".to_string());
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::MetadataExt;
-        let discovery_metadata = std::fs::metadata(discovery_path)
-            .map_err(|_| "a2a discovery owner is unreadable".to_string())?;
-        if metadata.uid() != discovery_metadata.uid() {
-            return Err("a2a handoff credential is not owner-restricted".to_string());
-        }
-    }
-    let token = std::fs::read_to_string(candidate)
-        .map_err(|_| "a2a handoff credential is unreadable".to_string())?;
-    let token = token.trim().to_string();
-    if token.is_empty() {
-        return Err("a2a handoff credential is empty".to_string());
-    }
-    Ok(token)
-}
-
-/// DUAL-RESOLVE the resident a2a gateway endpoint: PREFER the product
-/// controller's authenticated, versioned
-/// discovery (the secret-free `gateway-discovery.json` + the attach-control
-/// credential the `LifecyclePlane` resolves), and FALL BACK to the
-/// resident `service.json` + owner-restricted handoff path when the product path
-/// resolves nothing.
-///
-/// The product path is the preferred target. The `service.json` fallback keeps the
-/// live `/ops/a2a` edge green until the A2A capsule publishes the product
-/// discovery format, and retires when it does — it is NOT deleted. A product
-/// discovery that is stale, incompatible, or untrusted resolves `Unavailable`
-/// (never a usable endpoint) and DEFERS to the fallback rather than displacing a
-/// working resident; both down surfaces the fallback's honest reason. Shared by
-/// the pass-through transport (`ops_a2a`) and the run-stream relay (`a2a_stream`).
-fn a2a_endpoint_dual(
-    plane: &crate::routes::a2a_lifecycle::LifecyclePlane,
-    candidates: &[PathBuf],
-) -> Result<(u16, Option<String>), String> {
-    if let crate::routes::a2a_lifecycle::ResolvedGateway::Available(ep) = plane.resolve_gateway()
-        && let Some(port) = ep.port()
-    {
-        return Ok((port, Some(ep.attach_token)));
-    }
-    a2a_endpoint_from(candidates)
-}
-
-/// [`a2a_endpoint_dual`] over the machine-global `service.json` candidates — the
-/// production fallback list. Used by the run-stream relay (`a2a_stream`), which
-/// holds the seated `LifecyclePlane` but not an explicit candidate list.
-pub(super) fn a2a_endpoint(
-    plane: &crate::routes::a2a_lifecycle::LifecyclePlane,
-) -> Result<(u16, Option<String>), String> {
-    a2a_endpoint_dual(plane, &a2a_service_json_candidates())
-}
-
-/// [`a2a_endpoint`] over an explicit candidate list — hermetic for a real-socket
-/// loopback test, avoiding the process-global `VAULTSPEC_A2A_HOME` env under
-/// parallel test threads.
-fn a2a_endpoint_from(candidates: &[PathBuf]) -> Result<(u16, Option<String>), String> {
-    match discover_a2a_at(candidates) {
-        A2aDiscovery::Fresh(info) => {
-            // Ungated `/health` liveness confirm on the discovered port: a fresh
-            // heartbeat says "a service wrote this recently", the 200 answer
-            // proves it is actually serving. An unreachable/failing /health is a
-            // discovered-but-not-serving sibling — known-down, degraded honestly.
-            let probe = LoopbackTransport {
-                port: info.port,
-                bearer: info.service_token.clone(),
-                timeout: A2A_HEALTH_TIMEOUT,
-            };
-            match probe.get("/health") {
-                Ok(_) => Ok((info.port, info.service_token)),
-                Err(e) => Err(format!(
-                    "a2a gateway discovered but /health unreachable: {e}"
-                )),
-            }
-        }
-        A2aDiscovery::Down { reason } => Err(reason),
-    }
-}
-
-/// Validate a bounded, path-safe run id: non-empty, not flag-shaped, restricted
-/// to `[A-Za-z0-9_-]` so it can never carry a path separator, `..`, or shell
-/// metacharacter into the `/v1/runs/{run_id}` URL. Length-bounded to the a2a
-/// contract's 128-char ceiling.
-fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode, Json<Value>)> {
-    let ok = !run_id.is_empty()
-        && run_id.len() <= MAX_A2A_RUN_ID_CHARS
-        && !run_id.starts_with('-')
-        && run_id
+/// Validate a bounded, path-safe id: non-empty, not flag-shaped, restricted to
+/// `[A-Za-z0-9_-]` so it can never carry a path separator, `..`, or shell
+/// metacharacter into the URL it is interpolated into.
+fn validate_path_safe_id(
+    state: &AppState,
+    field: &str,
+    value: &str,
+    max: usize,
+) -> Result<String, (StatusCode, Json<Value>)> {
+    let ok = !value.is_empty()
+        && value.len() <= max
+        && !value.starts_with('-')
+        && value
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
     if !ok {
@@ -385,12 +223,18 @@ fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode
             state,
             StatusCode::BAD_REQUEST,
             format!(
-                "`run_id` `{run_id}` must be a non-empty path-safe token \
-                 (letters, digits, `-`, `_`; no leading `-`; <= {MAX_A2A_RUN_ID_CHARS} chars)"
+                "`{field}` `{value}` must be a non-empty path-safe token \
+                 (letters, digits, `-`, `_`; no leading `-`; <= {max} chars)"
             ),
         ));
     }
-    Ok(run_id.to_string())
+    Ok(value.to_string())
+}
+
+/// [`validate_path_safe_id`] for the run id that forms `/v1/runs/{run_id}`,
+/// length-bounded to the a2a contract's 128-char ceiling.
+fn validate_run_id(state: &AppState, run_id: &str) -> Result<String, (StatusCode, Json<Value>)> {
+    validate_path_safe_id(state, "run_id", run_id, MAX_A2A_RUN_ID_CHARS)
 }
 
 /// Validate a bounded free-text field (`title`) capped at `max` chars, rejecting
@@ -520,12 +364,6 @@ fn build_forwarded_call(
     body: &A2aVerbBody,
 ) -> Result<ForwardedCall, (StatusCode, Json<Value>)> {
     match verb {
-        "service-state" => Ok(ForwardedCall {
-            method: Method::Get,
-            path: "/v1/service".to_string(),
-            body: None,
-            budget: A2A_READ_BUDGET,
-        }),
         "presets-list" => {
             // The workspace_root is the ENGINE-controlled active scope root, never
             // a client field, so the caller can never point preset discovery at an
@@ -605,6 +443,10 @@ fn build_forwarded_call(
                 budget: A2A_CONTROL_BUDGET,
             })
         }
+        // The typed resume of a run parked on a clarification interrupt: the
+        // run and request address one parked node and the answers ride keyed by
+        // question id, all bounded at this boundary (agent-flow D5(c)).
+        "clarification-respond" => clarification::build_call(state, body),
         "run-start" => {
             validate_expected_scope(state, cell, body, "run-start")?;
             let team_preset = body.team_preset.as_deref().ok_or_else(|| {
@@ -1360,7 +1202,7 @@ fn map_transport_error(
 }
 
 /// `POST /ops/a2a/{verb}` — the whitelisted a2a orchestration control pass-through.
-/// A verb outside the six-verb whitelist is a 403 before any
+/// A verb outside the seven-verb whitelist is a 403 before any
 /// discovery. A known-down sibling degrades the `agent` tier at 200; a genuine
 /// proxy crash/timeout is 502/504; a sibling answer (2xx or a business refusal)
 /// forwards VERBATIM under `data.envelope`. run-start provisions per-role actor

@@ -29,13 +29,13 @@ export interface FrameworkStatusInputs {
   core: Pick<CoreStatusView, "loading" | "errored" | "reachable" | "vaultHealth">;
   /** The interpreted rag/search view. */
   rag: Pick<RagStatusView, "loading" | "errored" | "degraded">;
-  /** The interpreted approvals queue. */
-  approvals: {
+  /** The interpreted pending-changes queue. */
+  pending: {
     loading: boolean;
     storeUnavailable: boolean;
     degraded: boolean;
     /** The served bounded queue length (a floor when `truncated`). */
-    pending: number;
+    queued: number;
     truncated: boolean;
   };
 }
@@ -68,19 +68,19 @@ function deriveSearchChip(rag: FrameworkStatusInputs["rag"]): FrameworkStatusChi
   return { tone: "ok" };
 }
 
-function deriveApprovalsChip(
-  approvals: FrameworkStatusInputs["approvals"],
+function derivePendingChangesChip(
+  pending: FrameworkStatusInputs["pending"],
 ): FrameworkStatusChip {
-  if (approvals.storeUnavailable) return { tone: "down" };
-  if (approvals.loading) return { tone: "unknown" };
-  if (approvals.pending > 0) {
+  if (pending.storeUnavailable) return { tone: "down" };
+  if (pending.loading) return { tone: "unknown" };
+  if (pending.queued > 0) {
     // The count is a SERVED number only when the queue is complete; a truncated
     // queue reports attention with no exact count (never a re-count over a cap).
-    return approvals.truncated
+    return pending.truncated
       ? { tone: "attention" }
-      : { tone: "attention", count: approvals.pending };
+      : { tone: "attention", count: pending.queued };
   }
-  if (approvals.degraded) return { tone: "attention" };
+  if (pending.degraded) return { tone: "attention" };
   return { tone: "ok" };
 }
 
@@ -92,7 +92,7 @@ export function deriveFrameworkStatusView(
 ): FrameworkStatusView {
   return {
     "search-service": deriveSearchChip(input.rag),
-    approvals: deriveApprovalsChip(input.approvals),
+    pending: derivePendingChangesChip(input.pending),
     "vault-health": deriveVaultChip(input.core),
   };
 }
@@ -115,11 +115,11 @@ export function useFrameworkStatusView(): FrameworkStatusView {
   const ragLoading = rollup.rag.loading;
   const ragErrored = rollup.rag.errored;
   const ragDegraded = rollup.rag.degraded;
-  const approvalsLoading = review.loading;
-  const approvalsStoreUnavailable = review.storeUnavailable;
-  const approvalsDegraded = review.degraded;
-  const approvalsPending = review.rows.length;
-  const approvalsTruncated = review.truncated;
+  const pendingLoading = review.loading;
+  const pendingStoreUnavailable = review.storeUnavailable;
+  const pendingDegraded = review.degraded;
+  const pendingCount = review.rows.length;
+  const pendingTruncated = review.truncated;
 
   return useMemo(
     () =>
@@ -131,12 +131,12 @@ export function useFrameworkStatusView(): FrameworkStatusView {
           vaultHealth: coreVaultHealth,
         },
         rag: { loading: ragLoading, errored: ragErrored, degraded: ragDegraded },
-        approvals: {
-          loading: approvalsLoading,
-          storeUnavailable: approvalsStoreUnavailable,
-          degraded: approvalsDegraded,
-          pending: approvalsPending,
-          truncated: approvalsTruncated,
+        pending: {
+          loading: pendingLoading,
+          storeUnavailable: pendingStoreUnavailable,
+          degraded: pendingDegraded,
+          queued: pendingCount,
+          truncated: pendingTruncated,
         },
       }),
     [
@@ -147,11 +147,11 @@ export function useFrameworkStatusView(): FrameworkStatusView {
       ragLoading,
       ragErrored,
       ragDegraded,
-      approvalsLoading,
-      approvalsStoreUnavailable,
-      approvalsDegraded,
-      approvalsPending,
-      approvalsTruncated,
+      pendingLoading,
+      pendingStoreUnavailable,
+      pendingDegraded,
+      pendingCount,
+      pendingTruncated,
     ],
   );
 }

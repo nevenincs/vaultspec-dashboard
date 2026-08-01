@@ -7,7 +7,7 @@ import {
 import { resolveMessageResult } from "../../platform/localization/fallback";
 import { GRAPH_TOGGLE_ACTION_ID, toggleGraphAction } from "./chromeActions";
 import { deriveGraphToggleKeybindings } from "./graphToggleKeybindings";
-import { resetShellLayout, setShellGraphVisible } from "./shellLayout";
+import { resetShellLayout, setShellCenterSlot } from "./shellLayout";
 
 afterEach(resetShellLayout);
 
@@ -34,13 +34,13 @@ describe("localized graph-toggle keybinding", () => {
   });
 
   it("keeps the live action wording separate from the stable binding label", () => {
-    setShellGraphVisible(false);
+    setShellCenterSlot("none");
     expect(toggleGraphAction()).toMatchObject({
       id: GRAPH_TOGGLE_ACTION_ID,
       label: { key: "common:actions.showGraph" },
     });
 
-    setShellGraphVisible(true);
+    setShellCenterSlot("graph");
     expect(toggleGraphAction()).toMatchObject({
       id: GRAPH_TOGGLE_ACTION_ID,
       label: { key: "common:actions.hideGraph" },

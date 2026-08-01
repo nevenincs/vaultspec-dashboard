@@ -40,7 +40,15 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Clock3, FileText, Hash, MessageSquareText, X } from "lucide-react";
+import {
+  Clock3,
+  FileCode2,
+  FileText,
+  Hash,
+  MessageSquareText,
+  Plus,
+  X,
+} from "lucide-react";
 
 import {
   useActiveLocale,
@@ -69,6 +77,8 @@ import {
   useTeamSelectorState,
 } from "../../stores/server/agent";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
+import { normalizePendingClarification } from "./clarification";
+import type { TeamProfile } from "../../stores/server/agent/a2aTeam";
 import {
   setAgentCurrentSession,
   setAgentTeamRun,
@@ -95,6 +105,19 @@ import {
 } from "../../stores/view/commandPaletteCommands";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Button, DropdownButton, Popover, Spinner } from "../kit";
+import { AgentAutonomyControl } from "./AgentAutonomyControl";
+import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
+import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
+import { ComposerModelPicker } from "./ComposerModelPicker";
+import { ComposerFeatureChip } from "./ComposerFeatureChip";
+import {
+  featureStartBlocked,
+  presetRequiresFeatureTag,
+  resolveFeatureBinding,
+  type FeatureBinding,
+} from "./agentFeature";
+import { useActiveDocId } from "../../stores/view/tabs";
+import { clearComposerDraft, useComposerSeed } from "./composerDraft";
 
 const MSG = {
   idlePlaceholder: "common:agent.composer.placeholder",
@@ -103,6 +126,7 @@ const MSG = {
   stop: "common:agent.actions.stopRun",
   sendFailed: "common:agent.composer.sendFailed",
   attachedContext: "common:agent.composer.attachedContext",
+  featureUnbound: "common:agent.composer.featureUnbound",
   queuedChip: "common:agent.composer.queuedChip",
   removeQueued: "common:agent.composer.removeQueued",
   mentionPlaceholder: "common:agent.composer.mentionPlaceholder",
@@ -129,6 +153,8 @@ const MSG = {
   teamRunDegraded: "common:agent.composer.teamRunDegraded",
   teamRunDismiss: "common:agent.composer.teamRunDismiss",
   teamRunLocked: "common:agent.composer.teamRunLocked",
+  clarificationParked: "common:agent.composer.clarificationParked",
+  attachContext: "common:agent.composer.attachContext",
 } as const;
 
 /** Cap the slash popover's rendered rows (bounded-by-default). */
@@ -274,6 +300,8 @@ function ComposerChipRow({ queuedCount }: { queuedCount: number }) {
             glyph={
               mention.kind === "feature" ? (
                 <Hash size={12} aria-hidden />
+              ) : mention.kind === "path" ? (
+                <FileCode2 size={12} aria-hidden />
               ) : (
                 <FileText size={12} aria-hidden />
               )
@@ -506,46 +534,77 @@ function ComposerTeamSelector({
   );
 }
 
-/** The composer's left-side selector pills: the LIVE Team selector and the
- *  still-static Model pill. The wire serves no model options, so Model stays
- *  disabled-with-reason (honest single-agent default); Team is now a live selector
- *  fed by the a2a store layer. */
-function ComposerSelectorPills({
+/** Row 2 RIGHT — how it thinks (research G6, codified by D3): the team/preset
+ *  selector and the served model profile. The send control sits to their right,
+ *  rendered by the composer itself since it changes shape with the run. */
+function ComposerThinkingControls({
   selectedTeamPreset,
   onSelectTeam,
   locked,
+  profiles,
+  selectedProfileId,
+  defaultProfileId,
+  onSelectProfile,
 }: {
   selectedTeamPreset: string | null;
   onSelectTeam: (id: string | null) => void;
   locked: boolean;
+  profiles: readonly TeamProfile[];
+  selectedProfileId: string | null;
+  defaultProfileId: string | null;
+  onSelectProfile: (profileId: string | null) => void;
 }) {
-  const resolveMessage = useLocalizedMessageResolver();
-  const modelLabel = resolveMessage({ key: MSG.model }).message;
-  const modelValue = resolveMessage({ key: MSG.modelDefault }).message;
-  const modelReason = resolveMessage({ key: MSG.modelUnavailable }).message;
-  const modelPill = resolveMessage({
-    key: MSG.selectorValue,
-    values: { selector: modelLabel, value: modelValue },
-  }).message;
-  const modelAria = resolveMessage({
-    key: MSG.selectorDisabled,
-    values: { selector: modelLabel, value: modelValue, reason: modelReason },
-  }).message;
   return (
-    <div className="flex min-w-0 items-center gap-fg-1">
-      <span title={modelReason} data-composer-model>
-        <DropdownButton
-          label={modelPill}
-          onClick={() => undefined}
-          disabled
-          ariaLabel={modelAria}
-        />
-      </span>
+    <div className="flex min-w-0 items-center gap-fg-1" data-composer-thinking>
       <ComposerTeamSelector
         selectedPresetId={selectedTeamPreset}
         onSelectPreset={onSelectTeam}
         locked={locked}
       />
+      <ComposerModelPicker
+        profiles={profiles}
+        selectedProfileId={selectedProfileId}
+        defaultProfileId={defaultProfileId}
+        onSelectProfile={onSelectProfile}
+        locked={locked}
+      />
+    </div>
+  );
+}
+
+/** Row 2 LEFT — what the agent works on (research G6, codified by D3): the `+`
+ *  attach affordance (the features/documents corpus picker, which `@` no longer
+ *  owns) and the autonomy control, which IS the permission-scope selector the
+ *  reference products converge on (C6). */
+function ComposerScopeControls({
+  onAttach,
+  attachDisabled,
+  featureChip,
+}: {
+  onAttach: () => void;
+  attachDisabled: boolean;
+  /** The standing feature chip (S44), or null for a lane that needs no feature. */
+  featureChip: ReactNode;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const attach = resolveMessage({ key: MSG.attachContext });
+  return (
+    <div className="flex min-w-0 items-center gap-fg-1-5" data-composer-scope>
+      {!attach.usedFallback && (
+        <button
+          type="button"
+          onClick={onAttach}
+          disabled={attachDisabled}
+          aria-label={attach.message}
+          title={attach.message}
+          data-composer-attach
+          className="inline-flex size-fg-5 shrink-0 items-center justify-center rounded-fg-sm border border-rule text-ink-faint transition-colors duration-ui-fast hover:bg-paper-sunken hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Plus size={14} aria-hidden />
+        </button>
+      )}
+      {featureChip}
+      <AgentAutonomyControl />
     </div>
   );
 }
@@ -569,6 +628,7 @@ export function Composer() {
 
   const [text, setText] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [slashDismissed, setSlashDismissed] = useState(false);
   const [slashIndex, setSlashIndex] = useState(0);
   const [sendFailed, setSendFailed] = useState(false);
@@ -596,7 +656,64 @@ export function Composer() {
   // snapshot. Relay terminal frames only trigger its immediate reconciliation.
   const teamTerminal = teamProgress.terminal;
   const teamPhase = teamProgress.status?.semantic_phase ?? teamProgress.status?.status;
+  // D5: while the run is PARKED on a clarification, the card is the sole answer
+  // surface (one authority per state). The composer disables itself and says why,
+  // rather than accepting a message the parked graph would never see. Read from the
+  // authoritative status, so a reloaded panel is disabled for the same reason.
+  const parkedOnClarification =
+    normalizePendingClarification(teamProgress.status?.pending_clarification) !== null;
   const teamMode = selectedTeamPreset !== null;
+  // The model the run will actually use, read from the SERVED preset list: a preset
+  // carries one `default_profile_id`. No preset (or none served) means no profile to
+  // name, and the pill says so rather than showing a model the run would not use.
+  const teamSelector = useTeamSelectorState();
+  const activePreset =
+    selectedTeamPreset === null
+      ? null
+      : (teamSelector.presets.find((preset) => preset.id === selectedTeamPreset) ??
+        null);
+  const profiles = activePreset?.profiles ?? [];
+  const defaultProfileId = activePreset?.default_profile_id ?? null;
+  // The user's explicit model choice, cleared whenever the preset changes — a
+  // profile belongs to the preset that serves it, so carrying one across would send
+  // an id the new preset never offered.
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  useEffect(() => {
+    setSelectedProfileId(null);
+  }, [selectedTeamPreset]);
+  // What run-start will actually be sent: the explicit choice when it is still on
+  // offer, else nothing (the sibling then applies the preset's own default).
+  const runProfileId =
+    selectedProfileId !== null &&
+    profiles.some((profile) => profile.id === selectedProfileId && profile.eligible)
+      ? selectedProfileId
+      : null;
+
+  // S44 — the CORNERSTONE feature binding. Which presets need one is SERVED
+  // (`authoring_capability`), the default comes from the open document, and the
+  // explicit choice clears with the preset for the same reason the profile choice
+  // does: it belongs to the lane that asked for it.
+  const composerLocale = useActiveLocale();
+  const corpus = useEditorLinkingCorpus(scope, composerLocale);
+  const activeDocId = useActiveDocId();
+  const [chosenFeature, setChosenFeature] = useState<string | null>(null);
+  useEffect(() => {
+    setChosenFeature(null);
+  }, [selectedTeamPreset]);
+  const featureBinding: FeatureBinding = useMemo(
+    () =>
+      resolveFeatureBinding({
+        chosen: chosenFeature,
+        activeDocId,
+        documents: corpus.documents,
+      }),
+    [chosenFeature, activeDocId, corpus.documents],
+  );
+  const featureRequired = presetRequiresFeatureTag(activePreset);
+  const featureBlocked = featureStartBlocked(activePreset, featureBinding);
+  // Only a lane that ASKS for a feature sends one. A coding preset that received a
+  // `feature_tag` would be carrying a field the sibling neither needs nor validates.
+  const runFeatureTag = featureRequired ? featureBinding.tag : null;
 
   const activeRun = session.data?.active_run ?? null;
   const activeRunId = activeRun?.run_id ?? null;
@@ -645,6 +762,21 @@ export function Composer() {
     row.command.run();
     inputRef.current?.focus();
   };
+
+  // A starter affordance from the begin state seeds the draft ONCE. The seed is
+  // consumed on delivery, so it can never re-apply over what the user typed next,
+  // and focus lands in the input so the starter continues into typing.
+  const seed = useComposerSeed();
+  useEffect(() => {
+    if (seed === null) return;
+    setText(seed);
+    clearComposerDraft();
+    const el = inputRef.current;
+    if (el !== null) {
+      el.focus();
+      el.setSelectionRange(seed.length, seed.length);
+    }
+  }, [seed]);
 
   // --- auto-grow: min 1 line, CSS max-height caps at ~5 lines then scrolls ------
   useEffect(() => {
@@ -765,6 +897,10 @@ export function Composer() {
   const startTeam = async () => {
     const prompt = buildAgentPrompt(text, mentions);
     if (prompt.length === 0 || selectedTeamPreset === null || scope === null) return;
+    // A document-authoring run without its cornerstone feature is a run the sibling
+    // will refuse. Hold it here and say so, rather than spending a round trip to be
+    // told something the served capability already told us.
+    if (featureBlocked) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
     setSendFailed(false);
@@ -776,6 +912,8 @@ export function Composer() {
         message: prompt,
         expected_scope: scope,
         title: sessionTitleFromPrompt(prompt),
+        ...(runProfileId === null ? {} : { profile_id: runProfileId }),
+        ...(runFeatureTag === null ? {} : { feature_tag: runFeatureTag }),
       });
       if (result.ok && result.run_id !== undefined && result.run_id.length > 0) {
         setAgentTeamRun({ runId: result.run_id, prompt, scope });
@@ -827,9 +965,13 @@ export function Composer() {
         isMentionTrigger(text, caret) &&
         mentions.length < AGENT_COMPOSER_MENTION_CAP
       ) {
+        // `@` is the EVIDENCE key (agent-panel-shell-integration D3): rel paths off
+        // the files providers, scoped to the bound workspace. The corpus picker
+        // (features + documents) keeps its own affordance on the `+` attach button,
+        // so neither capability was traded for the other.
         event.preventDefault();
         event.stopPropagation();
-        setMentionOpen(true);
+        setEvidenceOpen(true);
         return;
       }
     }
@@ -849,10 +991,14 @@ export function Composer() {
     }
   };
 
-  const placeholderKey =
-    destination === "steer" ? MSG.steerPlaceholder : MSG.idlePlaceholder;
+  const placeholderKey = parkedOnClarification
+    ? MSG.clarificationParked
+    : destination === "steer"
+      ? MSG.steerPlaceholder
+      : MSG.idlePlaceholder;
   const placeholder = resolveMessage({ key: placeholderKey }).message;
   const sendDisabled =
+    parkedOnClarification ||
     (buildAgentPrompt(text, mentions).length === 0 &&
       (commentBatch === null || commentBatch.comments.length === 0)) ||
     slashMode ||
@@ -863,6 +1009,7 @@ export function Composer() {
   const teamStartDisabled =
     buildAgentPrompt(text, mentions).length === 0 ||
     slashMode ||
+    featureBlocked ||
     startTeamRun.isPending;
   // The served run phase, rendered verbatim (never client-classified). Falls back
   // to an ellipsis before the first status snapshot lands.
@@ -881,6 +1028,12 @@ export function Composer() {
       {mentionOpen && (
         <ComposerMentionPicker
           onDismiss={() => setMentionOpen(false)}
+          inputRef={inputRef}
+        />
+      )}
+      {evidenceOpen && (
+        <ComposerEvidencePicker
+          onDismiss={() => setEvidenceOpen(false)}
           inputRef={inputRef}
         />
       )}
@@ -925,6 +1078,7 @@ export function Composer() {
           setSlashIndex(0);
         }}
         onKeyDown={onKeyDown}
+        disabled={parkedOnClarification}
         placeholder={placeholder}
         aria-label={placeholder}
         role="combobox"
@@ -944,6 +1098,17 @@ export function Composer() {
             : resolveMessage({ key: MSG.sendFailed }).message}
         </p>
       )}
+      {/* S44: a held start says what is missing. The button being disabled is not an
+          explanation, and the sibling's refusal would arrive too late to be one. */}
+      {featureBlocked && !teamRunActive && (
+        <p
+          className="text-meta text-ink-muted"
+          role="status"
+          data-composer-feature-hint
+        >
+          {resolveMessage({ key: MSG.featureUnbound }).message}
+        </p>
+      )}
       {teamRunActive && (
         <div
           className="flex items-center gap-fg-2 text-meta text-ink-muted"
@@ -959,57 +1124,89 @@ export function Composer() {
           )}
         </div>
       )}
-      <div className="flex items-center justify-between gap-fg-2">
-        <ComposerSelectorPills
-          selectedTeamPreset={selectedTeamPreset}
-          onSelectTeam={setSelectedTeamPreset}
-          locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
+      {/* C7: the standing elevated-autonomy warning sits directly ABOVE the
+          composer's control row — never modal, never blocking the prompt. */}
+      <ComposerAutonomyBanner />
+      {/* Row 2 (G6, codified by D3): LEFT changes what the agent works on, RIGHT
+          changes how it thinks, and send is terminal-right.
+          The row WRAPS rather than overflowing. At panel width — the default
+          [document|agent] split — the pills plus the send control exceed one line,
+          and an unwrapped row does not clip the least important thing, it clips the
+          LAST one: the primary action slid under the model pill and became
+          unclickable. Wrapping keeps both clusters intact and their order (and so
+          the law) while guaranteeing the action is always reachable; `ml-auto`
+          keeps the right cluster right-aligned on whichever line it lands. */}
+      <div className="flex flex-wrap items-center justify-between gap-fg-2">
+        <ComposerScopeControls
+          onAttach={() => setMentionOpen(true)}
+          attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
+          featureChip={
+            featureRequired ? (
+              <ComposerFeatureChip
+                binding={featureBinding}
+                featureTags={corpus.featureTags}
+                onSelectFeature={setChosenFeature}
+                locked={teamRunActive || startTeamRun.isPending}
+              />
+            ) : null
+          }
         />
-        {teamRunActive && !teamTerminal ? (
-          <Button
-            variant="danger"
-            disabled={cancelTeamRun.isPending}
-            onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
-            data-composer-team-cancel
-          >
-            {resolveMessage({ key: MSG.cancelTeamRun }).message}
-          </Button>
-        ) : teamRunActive && teamTerminal ? (
-          <Button
-            variant="secondary"
-            onClick={() => setAgentTeamRun(null)}
-            data-composer-team-dismiss
-          >
-            {resolveMessage({ key: MSG.teamRunDismiss }).message}
-          </Button>
-        ) : activeRun !== null ? (
-          <Button
-            variant="danger"
-            disabled={stopDisabled}
-            onClick={() => agentStopRunAction().run?.()}
-            data-composer-stop
-          >
-            {resolveMessage({ key: MSG.stop }).message}
-          </Button>
-        ) : teamMode ? (
-          <Button
-            variant="primary"
-            disabled={teamStartDisabled}
-            onClick={() => void startTeam()}
-            data-composer-team-start
-          >
-            {resolveMessage({ key: MSG.startTeamRun }).message}
-          </Button>
-        ) : (
-          <Button
-            variant="primary"
-            disabled={sendDisabled}
-            onClick={() => void submit()}
-            data-composer-send
-          >
-            {resolveMessage({ key: MSG.send }).message}
-          </Button>
-        )}
+        <div className="ml-auto flex min-w-0 items-center gap-fg-2">
+          <ComposerThinkingControls
+            selectedTeamPreset={selectedTeamPreset}
+            onSelectTeam={setSelectedTeamPreset}
+            locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
+            profiles={profiles}
+            selectedProfileId={selectedProfileId}
+            defaultProfileId={defaultProfileId}
+            onSelectProfile={setSelectedProfileId}
+          />
+          {teamRunActive && !teamTerminal ? (
+            <Button
+              variant="danger"
+              disabled={cancelTeamRun.isPending}
+              onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
+              data-composer-team-cancel
+            >
+              {resolveMessage({ key: MSG.cancelTeamRun }).message}
+            </Button>
+          ) : teamRunActive && teamTerminal ? (
+            <Button
+              variant="secondary"
+              onClick={() => setAgentTeamRun(null)}
+              data-composer-team-dismiss
+            >
+              {resolveMessage({ key: MSG.teamRunDismiss }).message}
+            </Button>
+          ) : activeRun !== null ? (
+            <Button
+              variant="danger"
+              disabled={stopDisabled}
+              onClick={() => agentStopRunAction().run?.()}
+              data-composer-stop
+            >
+              {resolveMessage({ key: MSG.stop }).message}
+            </Button>
+          ) : teamMode ? (
+            <Button
+              variant="primary"
+              disabled={teamStartDisabled}
+              onClick={() => void startTeam()}
+              data-composer-team-start
+            >
+              {resolveMessage({ key: MSG.startTeamRun }).message}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              disabled={sendDisabled}
+              onClick={() => void submit()}
+              data-composer-send
+            >
+              {resolveMessage({ key: MSG.send }).message}
+            </Button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,13 @@
+use super::clarification::{
+    MAX_A2A_ANSWER_CHARS, MAX_A2A_CLARIFICATION_ANSWERS, MAX_A2A_QUESTION_ID_CHARS,
+    MAX_A2A_REQUEST_ID_CHARS,
+};
 use super::*;
-use vaultspec_product::a2a_contract::HANDOFF_CREDENTIAL_FILE;
+use vaultspec_product::a2a_contract::{
+    A2A_MAX_CLARIFICATION_ANSWER_CHARS, A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS,
+    A2A_MAX_CLARIFICATION_QUESTIONS, A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS,
+    HANDOFF_CREDENTIAL_FILE,
+};
 
 const TEST_REQUIRED_ROLES: &[&str] = &[
     "vaultspec-researcher",
@@ -160,6 +168,40 @@ async fn an_unknown_verb_403s_before_any_discovery() {
     );
 }
 
+/// The retired `service-state` verb is refused like any other unlisted verb.
+///
+/// Asserted by NAME rather than left to the membership count, because the
+/// failure this guards against is a re-add: the verb had a complete, working,
+/// live-tested client stack behind it and no product consumer at all, and a
+/// stack that still compiles is exactly the thing someone re-whitelists to
+/// "unbreak". The dashboard reads a2a availability from the `agent` tier on
+/// `presets-list`; if a real readiness surface is ever wanted, it arrives with
+/// its consumer, not ahead of one.
+#[tokio::test]
+async fn the_retired_service_state_verb_is_no_longer_brokered() {
+    // BOTH gates, asserted separately and deliberately. The verb is refused twice
+    // over - once by the whitelist and once by the call builder's fallback - so
+    // checking only the refused RESPONSE would still pass with the whitelist entry
+    // put back, and a re-add is the failure this test exists to catch. The
+    // membership assertion is therefore not redundant with the response one.
+    assert!(
+        !A2A_WHITELIST.contains(&"service-state"),
+        "`service-state` was revoked: it had a full client stack, a live test, and \
+         no product consumer. Re-adding it needs a consumer, not a green broker"
+    );
+
+    let (_dir, state) = test_state();
+    let err = ops_a2a(State(state), Path("service-state".to_string()), None)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        err.0,
+        StatusCode::FORBIDDEN,
+        "an unlisted verb is refused before any discovery or round-trip"
+    );
+    assert!(err.1.0["error"].as_str().unwrap().contains("service-state"));
+}
+
 #[test]
 fn run_id_guard_accepts_path_safe_and_rejects_everything_else() {
     let (_dir, state) = test_state();
@@ -225,11 +267,6 @@ fn build_forwarded_call_maps_read_verbs_to_the_right_paths() {
     let (_dir, state) = test_state();
     let cell = state.active_cell();
     let expected_scope = crate::routes::scope_token(&cell.root);
-
-    let service =
-        build_forwarded_call(&state, "service-state", &cell, &A2aVerbBody::default()).unwrap();
-    assert_eq!(service.path, "/v1/service");
-    assert!(service.body.is_none());
 
     // presets-list carries the engine-controlled workspace_root, percent-encoded.
     let presets =
@@ -968,9 +1005,11 @@ async fn stalled_health_probe_yields_the_async_worker() {
     let service_json = discovery.path().join("service.json");
     write_service_record(&service_json, port);
     let (_state_dir, state) = test_state();
+    // Any read verb exercises the stalled-probe path; `presets-list` is the
+    // cheapest one that survives the whitelist.
     let call = build_forwarded_call(
         &state,
-        "service-state",
+        "presets-list",
         &state.active_cell(),
         &A2aVerbBody::default(),
     )
@@ -1094,22 +1133,27 @@ fn invalid_prepare_role_sets_fail_closed_and_mint_nothing() {
 }
 
 #[test]
-fn the_verb_whitelist_is_exactly_five_control_verbs_plus_one_bounded_read() {
-    // The whitelist's force is its exact membership: five orchestration control
-    // verbs plus ONE bounded active-run recovery read, and nothing else. Any
-    // addition, removal, or rename is a contract change and must fail here.
-    const CONTROL_VERBS: &[&str] = &[
-        "run-start",
-        "run-status",
-        "run-cancel",
-        "presets-list",
-        "service-state",
-    ];
+fn the_verb_whitelist_is_exactly_the_reviewed_contract_surface() {
+    // The whitelist's force is its exact membership: four orchestration control
+    // verbs, ONE bounded active-run recovery read, and ONE typed interrupt-resume
+    // (agent-flow D5(c)), and nothing else. Any addition, removal, or rename is a
+    // contract change and must fail here.
+    //
+    // It was five control verbs until `service-state` was removed. That entry
+    // bought the engine a discovery and `/health` round-trip for a verb no
+    // product surface had ever called: the dashboard reads a2a's availability
+    // from the `agent` tier on `presets-list`, not from this. Its only caller
+    // was the live test asserting it round-tripped - which proved the broker
+    // worked and said nothing about the product needing it. Brokered authority
+    // is granted for a consumer, so an entry with no consumer is revoked.
+    const CONTROL_VERBS: &[&str] = &["run-start", "run-status", "run-cancel", "presets-list"];
     const BOUNDED_READS: &[&str] = &["active-runs"];
+    const RESUME_VERBS: &[&str] = &["clarification-respond"];
     assert_eq!(
         A2A_WHITELIST.len(),
-        CONTROL_VERBS.len() + BOUNDED_READS.len(),
-        "the whitelist holds exactly the five control verbs and the one bounded read"
+        CONTROL_VERBS.len() + BOUNDED_READS.len() + RESUME_VERBS.len(),
+        "the whitelist holds exactly the four control verbs, the one bounded read, \
+         and the one typed resume"
     );
     assert_eq!(
         A2A_WHITELIST
@@ -1119,12 +1163,301 @@ fn the_verb_whitelist_is_exactly_five_control_verbs_plus_one_bounded_read() {
         A2A_WHITELIST.len(),
         "whitelist entries are distinct"
     );
-    for verb in CONTROL_VERBS.iter().chain(BOUNDED_READS) {
+    for verb in CONTROL_VERBS
+        .iter()
+        .chain(BOUNDED_READS)
+        .chain(RESUME_VERBS)
+    {
         assert!(
             A2A_WHITELIST.contains(verb),
             "expected whitelisted verb `{verb}` is missing"
         );
     }
+}
+
+/// A `clarification-respond` body with the caller's overrides applied.
+fn clarification_body(answers: Value) -> A2aVerbBody {
+    A2aVerbBody {
+        run_id: Some("run-7".to_string()),
+        request_id: Some("clr-1".to_string()),
+        answers: answers.as_object().cloned(),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn clarification_respond_maps_to_the_typed_resume_route_with_bounded_answers() {
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+
+    let call = build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &clarification_body(json!({
+            // A choice answer carries an option id; a text answer carries free
+            // text. The engine bounds both and judges neither.
+            "q1": "option-b",
+            "q2": "Prefer the bounded broker over a new channel class.",
+        })),
+    )
+    .unwrap();
+    assert_eq!(call.method, Method::Post);
+    assert_eq!(call.path, "/v1/runs/run-7/clarifications/clr-1/respond");
+    assert_eq!(
+        call.budget, A2A_CONTROL_BUDGET,
+        "a resume dispatches the parked graph, so it carries the control budget"
+    );
+    let body = call.body.expect("the resume forwards the answers");
+    assert_eq!(body["answers"]["q1"], "option-b");
+    assert_eq!(
+        body["answers"]["q2"],
+        "Prefer the bounded broker over a new channel class."
+    );
+    assert_eq!(
+        body.as_object().unwrap().len(),
+        1,
+        "the forwarded body carries the answers and nothing the client invented"
+    );
+}
+
+#[test]
+fn clarification_respond_refuses_every_unbounded_or_unsafe_argument() {
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let refuse = |body: A2aVerbBody, why: &str| {
+        let err = build_forwarded_call(&state, "clarification-respond", &cell, &body)
+            .expect_err(why)
+            .0;
+        assert_eq!(err, StatusCode::BAD_REQUEST, "{why}");
+    };
+
+    // The two ids are required and both are interpolated into the sibling URL,
+    // so both are path-safe or refused before any round-trip.
+    refuse(
+        A2aVerbBody {
+            request_id: Some("clr-1".to_string()),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+        "a missing run_id is refused",
+    );
+    refuse(
+        A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+        "a missing request_id is refused",
+    );
+    for bad_request_id in ["", "-flag", "../escape", "clr/../../etc", "clr 1", "clr;rm"] {
+        refuse(
+            A2aVerbBody {
+                run_id: Some("run-7".to_string()),
+                request_id: Some(bad_request_id.to_string()),
+                answers: json!({ "q1": "a" }).as_object().cloned(),
+                ..Default::default()
+            },
+            "a request_id outside the path-safe grammar is refused",
+        );
+    }
+    // The two sides of the request-id ceiling, one char apart, both sized from
+    // the boundary's own constant. This proves the REFUSAL BEHAVIOUR and
+    // deliberately says nothing about the VALUE - the value is pinned to a2a in
+    // exactly one place (`a2a_contract::the_clarification_bounds_are_pinned_to_
+    // the_numbers_a2a_enforces`), because a literal restated here would be a
+    // second opinion about a number the engine does not own. The predecessor of
+    // this test asserted `== 64` against a a2a symbol that does not exist, at
+    // half the real bound, and so would have failed the correction.
+    refuse(
+        A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("a".repeat(MAX_A2A_REQUEST_ID_CHARS + 1)),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+        "an overlength request_id is refused",
+    );
+    // The ceiling itself passes: a2a mints ids up to exactly this length, so
+    // refusing at the boundary would strand its own questionnaire.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("a".repeat(MAX_A2A_REQUEST_ID_CHARS)),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+    )
+    .expect("a request id at the ceiling sits on it, not over it");
+    // The concrete handle a2a really mints for a dashboard-shaped run must pass.
+    // `createTeamRunId()` emits `run-` + 32 hex (36 chars) and a2a prefixes
+    // `clarify-`, so this is the exact id a live panel submits - captured from a
+    // real parked run rather than imagined. It is 43 chars, which the retired
+    // 64-char cap happened to clear; a 57-char run id, which the engine's own
+    // `MAX_A2A_RUN_ID_CHARS` declares legal, did not.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some("run-19b53e071e8baf92b20a029c1308828c".to_string()),
+            request_id: Some("clarify-run-19b53e071e8baf92b20a029c1308828c".to_string()),
+            answers: json!({ "scope": "frontend" }).as_object().cloned(),
+            ..Default::default()
+        },
+    )
+    .expect("the request id a2a mints for a dashboard run id must be answerable");
+    // And the worst case the engine itself admits: a run id at the engine's own
+    // run-id ceiling. a2a mints `clarify-{thread_id}` TRUNCATED to its request-id
+    // cap, so the handle for such a run is exactly cap-length - the case the
+    // retired 64-char cap made permanently unanswerable, and the reason the two
+    // caps must each track a2a rather than each other's intuition.
+    let longest_run_id = "r".repeat(MAX_A2A_RUN_ID_CHARS);
+    let minted: String = format!("clarify-{longest_run_id}")
+        .chars()
+        .take(MAX_A2A_REQUEST_ID_CHARS)
+        .collect();
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &A2aVerbBody {
+            run_id: Some(longest_run_id),
+            request_id: Some(minted),
+            answers: json!({ "q1": "a" }).as_object().cloned(),
+            ..Default::default()
+        },
+    )
+    .expect(
+        "a run id the engine declares legal must still yield an answerable \
+         clarification handle",
+    );
+
+    // The answers map is required, non-empty, and capped at the D5 question
+    // ceiling — a fifth answer cannot correspond to any question the node asked.
+    refuse(
+        A2aVerbBody {
+            run_id: Some("run-7".to_string()),
+            request_id: Some("clr-1".to_string()),
+            ..Default::default()
+        },
+        "absent answers are refused",
+    );
+    refuse(clarification_body(json!({})), "empty answers are refused");
+    refuse(
+        clarification_body(json!({ "q1": "a", "q2": "a", "q3": "a", "q4": "a", "q5": "a" })),
+        "a fifth answer exceeds the four-question ceiling and is refused",
+    );
+    // Exactly four is the boundary itself, and it passes.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &clarification_body(json!({ "q1": "a", "q2": "a", "q3": "a", "q4": "a" })),
+    )
+    .expect("four answers sit at the ceiling, not over it");
+
+    // Question ids are bounded tokens; answer values are bounded single-line
+    // strings. A non-string answer never reaches the sibling.
+    refuse(
+        clarification_body(json!({ "has space": "a" })),
+        "a question id outside the token grammar is refused",
+    );
+    let overlong_key: serde_json::Map<String, Value> =
+        [("q".repeat(MAX_A2A_QUESTION_ID_CHARS + 1), json!("a"))]
+            .into_iter()
+            .collect();
+    refuse(
+        clarification_body(Value::Object(overlong_key)),
+        "an overlength question id is refused",
+    );
+    for bad_answer in [json!(7), json!(true), json!(null), json!(["a"]), json!({})] {
+        refuse(
+            clarification_body(json!({ "q1": bad_answer })),
+            "a non-string answer is refused",
+        );
+    }
+    refuse(
+        clarification_body(json!({ "q1": "a".repeat(MAX_A2A_ANSWER_CHARS + 1) })),
+        "an overlength answer is refused",
+    );
+    // The ceiling itself passes. Asserted alongside the refusal because a cap is
+    // two behaviours, and a boundary that refused AT the cap would be invisible
+    // to an over-length test alone.
+    build_forwarded_call(
+        &state,
+        "clarification-respond",
+        &cell,
+        &clarification_body(json!({ "q1": "a".repeat(MAX_A2A_ANSWER_CHARS) })),
+    )
+    .expect("an answer at the ceiling sits on it, not over it");
+    refuse(
+        clarification_body(json!({ "q1": "line one\nline two" })),
+        "a control character in an answer is refused",
+    );
+}
+
+/// The boundary holds NO independent opinion about a2a's numbers.
+///
+/// This is the seam the two cap defects came through. Both caps were declared
+/// as local literals here, each defensible on its own terms and neither
+/// reconciled with the sibling, and the tests around them sized their fixtures
+/// FROM those literals - so the answer cap sat at double a2a's and the
+/// request-id cap at half it, both green.
+///
+/// The repair is structural: the values live once in `a2a_contract`, pinned
+/// there against a2a, and this test fails the moment anyone re-declares one
+/// here. It is deliberately an identity check, not a value check - restating a
+/// number the engine does not own is the mistake, not the fix.
+#[test]
+fn the_clarification_caps_are_the_contract_values_not_the_boundarys_own() {
+    assert_eq!(
+        MAX_A2A_ANSWER_CHARS, A2A_MAX_CLARIFICATION_ANSWER_CHARS,
+        "the answer cap is a2a's MAX_ANSWER_CHARS; a wider one forwards an \
+         answer the sibling's wire model refuses at 422"
+    );
+    assert_eq!(
+        MAX_A2A_REQUEST_ID_CHARS, A2A_MAX_CLARIFICATION_REQUEST_ID_CHARS,
+        "the request-id cap is a2a's MAX_REQUEST_ID_CHARS; a tighter one \
+         refuses handles a2a minted and leaves the run unanswerable"
+    );
+    assert_eq!(
+        MAX_A2A_QUESTION_ID_CHARS, A2A_MAX_CLARIFICATION_IDENTIFIER_CHARS,
+        "an answers key is a2a's QuestionId, which takes the identifier cap"
+    );
+    assert_eq!(
+        MAX_A2A_CLARIFICATION_ANSWERS, A2A_MAX_CLARIFICATION_QUESTIONS,
+        "one answer per question a bounded request could have asked"
+    );
+}
+
+#[test]
+fn a_clarification_the_sibling_will_not_answer_forwards_its_refusal_verbatim() {
+    // Whether a clarification is answerable is a2a's authority alone, and it
+    // says so with a 404: an unknown run, or a request id that is expired,
+    // superseded, or belongs to another run. That refusal forwards VERBATIM at
+    // 200 with its sibling_status and healthy tiers, because a2a IS up — it
+    // answered. The engine neither interprets the refusal nor fabricates a
+    // resume the graph did not park for.
+    //
+    // This also pinned the pre-landing posture: before a2a served the route at
+    // all, the same 404 path made the engine half inert rather than broken,
+    // which is what "lands engine-side gated until a2a serves the interrupt"
+    // required (agent-flow D5 consequences).
+    let (_dir, state) = test_state();
+    let cell = state.active_cell();
+    let refused = RagError::Http {
+        status: 404,
+        body: r#"{"detail": "Run not found"}"#.to_string(),
+    };
+    let Json(body) =
+        map_transport_error(&state, &cell, refused).expect("a sibling refusal is a 200");
+    assert_eq!(body["data"]["sibling_status"], 404);
+    assert_eq!(body["data"]["envelope"]["detail"], "Run not found");
+    assert!(body["tiers"]["semantic"]["available"].is_boolean());
 }
 
 #[test]

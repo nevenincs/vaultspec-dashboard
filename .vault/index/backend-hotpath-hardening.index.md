@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:68d82855355e38910caa0c6fcda5088ebc04b71c7c52c2fd275cf0fc4aab825e'
 related:
   - '[[2026-06-16-backend-hotpath-hardening-audit]]'
   - '[[2026-06-16-backend-hotpath-hardening-plan]]'

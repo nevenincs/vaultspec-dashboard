@@ -1,10 +1,13 @@
-// A non-modal, docked, resizable Agent panel beside the work surface.
+// A non-modal Agent panel beside the work surface.
 //
-// It is
-// mounted once in `AppShell` (like `CreateDocDialog`/`ControlPanels`) as a normal
-// in-flow grid child, so the stage's `1fr` column reflows to make room and the
-// panel never overlays or modal-blocks the editor. It does not re-parent the
-// pinned canvas (it is a sibling region, not inside the dock).
+// It is the center dock's reserved `__agent__` panel
+// (agent-panel-shell-integration D1): the same slot, and the same
+// shell-verb-reconciled treatment, the graph already had. So it reflows beside the
+// open documents inside the one dock row — the owner's default [document | agent]
+// split — instead of taking a fourth shell column, and it never overlays or
+// modal-blocks the editor. The body is plain React (no portal): its state lives in
+// external stores, so dockview may mount and unmount it freely. The panel is
+// mounted ONLY while it holds the slot, so nothing app-lifetime may live here.
 //
 // Layer ownership (architecture-boundaries): a DUMB app-chrome view. It renders
 // the `stores/server/agent` slice (session list + one session snapshot) and emits
@@ -12,7 +15,7 @@
 // nothing itself and reads no raw `tiers`. Run/session STATE is read from the
 // session snapshot (there is no run-status route on this plane).
 //
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,7 +23,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import {
   useAgentLifecycleSubscription,
-  useAgentSessionsDegraded,
   useSession,
   useSessionList,
 } from "../../stores/server/agent";
@@ -31,10 +33,6 @@ import {
 } from "../../stores/server/agent/a2aTeam";
 import { useActiveScope } from "../../stores/server/queries";
 import {
-  useReviewStationView,
-  useSetOperationMode,
-} from "../../stores/server/authoring";
-import {
   closeAgentPanel,
   setAgentPanelView,
   setAgentCurrentSession,
@@ -42,13 +40,11 @@ import {
   scopedTeamRunId,
   teamRunScopeAction,
   useAgentCurrentSessionId,
-  useAgentPanelOpen,
   useAgentPanelView,
   useAgentTeamRunId,
   useAgentTeamRunPrompt,
   useAgentTeamRunScope,
 } from "../../stores/view/agentPanel";
-import { useAgentPanelWidth } from "../../stores/view/shellLayout";
 import {
   agentNewSessionAction,
   endActiveAgentSession,
@@ -65,14 +61,17 @@ import {
   SkeletonRow,
   StateBlock,
 } from "../kit";
-import { AutonomyControl } from "../authoring/ReviewStation";
-import { ShellResizeHandle } from "../chrome/ShellResizeHandle";
 import { Composer } from "./Composer";
+import { AgentBeginView } from "./AgentBeginView";
+import { agentComposerPosture } from "./agentBegin";
+import { setComposerDraft } from "./composerDraft";
 import { PendingChangesBridge } from "./PendingChangesBridge";
 import { PendingChangesView } from "./PendingChangesView";
 import { Transcript } from "./Transcript";
 import { TeamRunTranscript } from "./TeamRunTranscript";
-import { TeamRunProgressProvider } from "./TeamRunProgressContext";
+import { TeamRunProgressProvider, useTeamRunProgress } from "./TeamRunProgressContext";
+import { TeamRunHeader } from "./TeamRunHeader";
+import { deriveTeamRoster } from "./teamRun";
 
 const AGENT = {
   region: "common:agent.panel.region",
@@ -87,9 +86,7 @@ const AGENT = {
   viewPending: "common:agent.panel.view.pending",
   loading: "common:agent.transcript.loading",
   empty: "common:agent.transcript.empty",
-  noSession: "common:agent.transcript.noSession",
   error: "common:agent.transcript.error",
-  unavailable: "common:agent.transcript.unavailable",
 } as const;
 
 function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | null }) {
@@ -209,12 +206,6 @@ function AgentTranscriptContainer({
 }) {
   const resolveMessage = useLocalizedMessageResolver();
   const session = useSession(currentSessionId);
-  // The panel's own header ALSO reads this listing (same params → the same cached
-  // query, no duplicate fetch); read here too so the "no session yet" empty prompt
-  // can distinguish itself from a genuinely degraded agent data plane instead of
-  // always claiming "message the agent to start" when that would just fail.
-  const sessionList = useSessionList({ cap: 20 });
-  const sessionsDegraded = useAgentSessionsDegraded(sessionList);
   // A team run renders independently of a single-agent session (the two planes are
   // distinct); it may be active with no session at all. So the session branching
   // only decides the SESSION body, and the team-run block mounts alongside it.
@@ -225,24 +216,12 @@ function AgentTranscriptContainer({
 
   let body: ReactNode;
   if (currentSessionId === null) {
-    // No session: the empty/degraded prompt shows ONLY when no team run is
-    // carrying the panel; otherwise the team-run block below is the content. A
-    // degraded data plane reads distinctly from "no session yet" — never the same
-    // "message the agent" invitation when starting one would just fail.
-    body =
-      teamRunId === null ? (
-        sessionsDegraded ? (
-          <StateBlock
-            mode="degraded"
-            message={resolveMessage({ key: AGENT.unavailable }).message}
-          />
-        ) : (
-          <StateBlock
-            mode="empty"
-            message={resolveMessage({ key: AGENT.noSession }).message}
-          />
-        )
-      ) : null;
+    // No session AND this container mounted means a team run is carrying the panel
+    // (the begin idiom owns the no-session case now — D2). So there is no
+    // single-agent body to render, and the team-run block below is the content. The
+    // former "Message the agent to start a conversation" empty block is RETIRED with
+    // its key: it became unreachable the moment the begin state took that state over.
+    body = null;
   } else if (session.isLoading) {
     body = (
       <Skeleton label={resolveMessage({ key: AGENT.loading }).message}>
@@ -307,26 +286,6 @@ function AgentViewSwitcher({ panelView }: { panelView: "transcript" | "pending" 
   );
 }
 
-/** The composer-adjacent autonomy control: the
- *  operation-mode toggle governs THIS conversation's autonomy, so it lives beside
- *  the composer, not in the review inbox. Fed exactly as the retired
- *  `ReviewStationSection` fed it — the SERVED worktree mode (scope-level GET /v1/mode
- *  when the queue is empty, a proposal's policy when not) plus the mode-set seam —
- *  and renders only when a mode is observable (never a fabricated selection). */
-export function AgentAutonomyControl() {
-  const view = useReviewStationView();
-  const setMode = useSetOperationMode();
-  if (view.operationMode === null) return null;
-  return (
-    <div className="border-t border-rule px-fg-2 py-fg-2">
-      <AutonomyControl
-        mode={view.operationMode}
-        onSelect={(mode) => setMode.mutateAsync(mode)}
-      />
-    </div>
-  );
-}
-
 /** Reload-recovery of the team-run viewing binding (a2a-orchestration-edge D5):
  *  when the panel is open with NO run bound, discover the workspace's live runs
  *  (`GET /ops/a2a active-runs`) and re-bind the single unambiguous one, so a
@@ -367,7 +326,22 @@ function ActiveTeamRunRecovery({ scope }: { scope: string }) {
   return null;
 }
 
-/** The bottom composer slot hosts the multiline composer. */
+/** The run header's slot. It reads the progress context, so it must live INSIDE
+ *  the provider — hence a component rather than an inline derivation in the panel
+ *  body. The roster walk is memoized off the raw frames. */
+function AgentRunHeaderSlot() {
+  const progress = useTeamRunProgress();
+  const frames = progress.frames;
+  // The AUTHORITATIVE status seeds the roster (it survives a reload; relay frames do
+  // not), and the frozen profile's assignments bind each role to its provider/model.
+  const status = progress.status;
+  const roster = useMemo(() => deriveTeamRoster(frames, status), [frames, status]);
+  return <TeamRunHeader roster={roster} />;
+}
+
+/** The CONTINUE posture's composer slot: docked at the panel bottom beneath the
+ *  transcript (research G8 — position encodes posture). The begin posture renders
+ *  the same component centered instead, from `AgentBeginView`. */
 function AgentComposerSlot() {
   return (
     <div className="border-t border-rule px-fg-2 py-fg-2" data-agent-composer-slot>
@@ -377,54 +351,84 @@ function AgentComposerSlot() {
 }
 
 /**
- * The docked Agent panel. Renders nothing when collapsed (its only trace is the
- * footer `AgentChip`). Open, it occupies its OWN explicit right-most grid track
- * (the shell frame's `agentPanelClassName` pins it to `col-start-4`), so the
- * stage's `1fr` reflows beside it — it never overlays or wraps to a new row. The
- * column width IS the grid track (from the canonical shell-layout store); the
- * shared `ShellResizeHandle` on the panel's left edge drives it.
+ * The shared durable lifecycle connection for the agent surface. It must outlive
+ * the panel — the footer `AgentChip` traces a streaming run precisely while the
+ * panel does NOT hold the center slot — so it is mounted by the shell, not by the
+ * panel body, which now unmounts whenever the graph takes the slot back.
  */
-export function AgentPanel({ className }: { className: string }) {
+export function AgentLifecycleHost() {
   useAgentLifecycleSubscription();
-  const open = useAgentPanelOpen();
+  return null;
+}
+
+/**
+ * The Agent panel body, hosted by the center dock's reserved `__agent__` panel. It
+ * fills its dock panel (the dock owns the geometry — there is no panel-owned width
+ * or resize handle any more; the dock sash between the documents and the slot is
+ * the one size control). It renders only while it holds the slot: `centerSlot`
+ * decides that, and the header's close control hands the slot back.
+ */
+export function AgentPanel() {
   const panelView = useAgentPanelView();
   useReconcileTeamRunScope();
   const scope = useActiveScope();
   const teamRunId = useAgentTeamRunId();
   const teamRunScope = useAgentTeamRunScope();
   const scopedRunId = scopedTeamRunId(teamRunId, teamRunScope, scope);
-  const width = useAgentPanelWidth();
   const currentSessionId = useAgentCurrentSessionId();
   const resolveMessage = useLocalizedMessageResolver();
-  if (!open) return null;
+  // The BEGIN idiom (D2, research G8): with nothing to continue, the panel's whole
+  // content is the centered composer under a scope-named headline. The session read
+  // here is the same cached query the transcript container consumes, so the posture
+  // costs no extra wire work.
+  const session = useSession(currentSessionId);
+  const posture = agentComposerPosture({
+    sessionId: currentSessionId,
+    hasTurns: (session.data?.turns.length ?? 0) > 0,
+    teamRunId: scopedRunId,
+    transcriptUnsettled:
+      currentSessionId !== null && (session.isLoading || session.isError),
+  });
   return (
-    <aside
-      className={className}
+    <section
+      className="flex h-full min-h-0 min-w-0 flex-col bg-paper"
       data-agent-panel
-      role="complementary"
+      role="region"
       aria-label={resolveMessage({ key: AGENT.region }).message}
     >
       <TeamRunProgressProvider runId={scopedRunId}>
         {panelView === "transcript" && teamRunId === null && scope !== null ? (
           <ActiveTeamRunRecovery scope={scope} />
         ) : null}
-        <ShellResizeHandle side="agent" axis="agent" current={width} />
         <AgentPanelHeader currentSessionId={currentSessionId} />
         <AgentViewSwitcher panelView={panelView} />
+        {/* C5: live run metadata DOCKS beside the conversation. It sits between the
+            view switcher and the transcript in both postures, so it is never
+            scrolled away inside the message flow. */}
+        {panelView === "pending" ? null : <AgentRunHeaderSlot />}
         {panelView === "pending" ? (
           <PendingChangesView />
+        ) : posture === "begin" ? (
+          /* Nothing to continue: the composer IS the content, centered under the
+             headline (G1/G8). The cross-run bridge still rides above it — a proposal
+             waiting from an earlier run is exactly the thing a fresh start should
+             not hide. The autonomy control travels INSIDE the composer now (D3
+             row-2 left), so it needs no slot of its own in either posture. */
+          <>
+            <PendingChangesBridge />
+            <AgentBeginView onSeed={setComposerDraft} />
+          </>
         ) : (
           <>
             <AgentTranscriptContainer currentSessionId={currentSessionId} />
             {/* Composer-adjacent, transcript-view only: the cross-run bridge into the
               inbox (nothing when the queue is fully represented inline), then the
-              autonomy control (nothing until a mode is observable), then the composer. */}
+              bottom-docked composer. */}
             <PendingChangesBridge />
-            <AgentAutonomyControl />
             <AgentComposerSlot />
           </>
         )}
       </TeamRunProgressProvider>
-    </aside>
+    </section>
   );
 }

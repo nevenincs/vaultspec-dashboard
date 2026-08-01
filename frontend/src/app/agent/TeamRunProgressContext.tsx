@@ -8,7 +8,12 @@ const EMPTY_PROGRESS: RunProgress = {
   terminal: false,
 };
 
-const TeamRunProgressContext = createContext<RunProgress>(EMPTY_PROGRESS);
+/** The run-progress context. `TeamRunProgressProvider` is the normal path — it owns
+ *  the relay/status reads. The raw context is exported so a host that has ALREADY
+ *  derived a progress value can supply it directly, which is also what lets the
+ *  transcript's cross-transition coverage drive a parked-then-resumed run without a
+ *  second wire client. */
+export const TeamRunProgressContext = createContext<RunProgress>(EMPTY_PROGRESS);
 
 /** One coordinator owns relay/status recovery for the panel's current run. */
 export function TeamRunProgressProvider({

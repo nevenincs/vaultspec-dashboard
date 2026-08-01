@@ -1,0 +1,152 @@
+// @vitest-environment happy-dom
+//
+// The C4 stat card's TRUNCATION affordance (P07 review finding). The tally rules are
+// covered purely in `ProposalDiffstat.test.ts`; what only a render can prove is that
+// a floor is legible to the human deciding whether to approve.
+//
+// The finding this file answers: truncation honesty existed only as
+// `data-diffstat-truncated`, which a reviewer cannot see. A count presented as exact
+// when it is really a lower bound is the kind of quiet inaccuracy that gets a change
+// approved on false information.
+//
+// This renders the REAL component, with the served detail seeded into the query
+// cache so no wire is needed. A harness that re-implemented the component's markup
+// would pass just as happily while the component itself was broken.
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { I18nextProvider } from "react-i18next";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { createTestLocalizationRuntime } from "../../localization/testing";
+import {
+  authoringKeys,
+  type ProposalDetail,
+  type ReviewDocumentProjection,
+} from "../../stores/server/authoring";
+import { ProposalDiffstat } from "./ProposalDiffstat";
+
+const FLOOR_TEXT = "At least this many. The file was too large to read in full.";
+
+function doc(
+  childKey: string,
+  base: string,
+  proposed: string,
+  truncated = false,
+): ReviewDocumentProjection {
+  return {
+    child_key: childKey,
+    document: { path: childKey },
+    base: {
+      text: base,
+      truncated,
+      total_bytes: base.length,
+      returned_bytes: base.length,
+    },
+    proposed: {
+      text: proposed,
+      truncated: false,
+      total_bytes: proposed.length,
+      returned_bytes: proposed.length,
+    },
+  };
+}
+
+/** Render the real component with its served detail already in cache. */
+async function renderStats(documents: ReviewDocumentProjection[]) {
+  const changesetId = "changeset-diffstat";
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(authoringKeys.proposal(changesetId), {
+    proposal: { changeset_id: changesetId },
+    review_documents: documents,
+  } as unknown as ProposalDetail);
+  const runtime = createTestLocalizationRuntime();
+  const view = render(
+    <I18nextProvider i18n={runtime}>
+      <QueryClientProvider client={client}>
+        <ProposalDiffstat changesetId={changesetId} />
+      </QueryClientProvider>
+    </I18nextProvider>,
+  );
+  await waitFor(() =>
+    expect(document.querySelector("[data-proposal-diffstat]")).not.toBeNull(),
+  );
+  return view;
+}
+
+afterEach(cleanup);
+
+describe("ProposalDiffstat", () => {
+  it("renders the actual +X −Y numbers", async () => {
+    // This shipped BROKEN and nothing caught it: the labels interpolated `count`,
+    // which is i18next's reserved plural trigger, so a non-plural key sent the
+    // resolver hunting for `_one`/`_other` siblings, found none, and fell back —
+    // and the pair rendered nothing at all. The pure derivation test still passed,
+    // because the numbers were correct right up to the point of display. So the
+    // rendered digits are asserted here, not just the presence of a container.
+    await renderStats([doc("a.md", "one\ntwo\n", "one\ntwo\nthree\nfour\n")]);
+    const pair = document.querySelector(
+      "[data-diffstat-file='a.md'] [data-diffstat-pair]",
+    );
+    expect(pair).not.toBeNull();
+    expect(pair?.textContent).toContain("2");
+    expect(pair?.textContent).toContain("+");
+    expect(pair?.textContent).toContain("−");
+  });
+
+  it("names each changed file", async () => {
+    await renderStats([doc("docs/a.md", "one\n", "one\ntwo\n")]);
+    expect(screen.getByText("docs/a.md")).toBeTruthy();
+  });
+});
+
+describe("ProposalDiffstat truncation affordance", () => {
+  it("marks a truncated tally VISIBLY, not only as a data attribute", async () => {
+    await renderStats([doc("big.md", "one\n", "one\ntwo\n", true)]);
+    const pair = document.querySelector(
+      "[data-diffstat-file='big.md'] [data-diffstat-pair]",
+    );
+    expect(pair?.hasAttribute("data-diffstat-truncated")).toBe(true);
+    // The part the review finding was about: something a human can see and read,
+    // not just an attribute a test can query.
+    const floor = document.querySelector("[data-diffstat-floor]");
+    expect(floor).not.toBeNull();
+    // Readable words, not a bare glyph — and localized, so the marker travels.
+    expect(floor?.textContent).toBe("Or more");
+    expect(floor?.getAttribute("title")).toBe(FLOOR_TEXT);
+    expect(pair?.getAttribute("title")).toBe(FLOOR_TEXT);
+  });
+
+  it("shows no floor marker when the counts are exact", async () => {
+    // An exact tally must not carry a hedge — that understates real confidence just
+    // as badly as the reverse overstates it.
+    await renderStats([doc("small.md", "one\n", "one\ntwo\n", false)]);
+    expect(document.querySelector("[data-diffstat-floor]")).toBeNull();
+    expect(document.querySelector("[data-diffstat-pair]")?.hasAttribute("title")).toBe(
+      false,
+    );
+  });
+
+  it("carries the floor up to the AGGREGATE when any file was capped", async () => {
+    // The headline number is the one a hurried reviewer reads. If any file was
+    // capped, the total is a floor too, and it has to say so.
+    await renderStats([
+      doc("a.md", "one\n", "one\ntwo\n", true),
+      doc("b.md", "one\n", "one\ntwo\n", false),
+    ]);
+    const pairs = document.querySelectorAll("[data-diffstat-pair]");
+    // The first pair is the aggregate, then one per file.
+    expect(pairs[0]?.hasAttribute("data-diffstat-truncated")).toBe(true);
+    expect(pairs[0]?.querySelector("[data-diffstat-floor]")).not.toBeNull();
+  });
+
+  it("marks every truncated file, not just the first", async () => {
+    await renderStats([
+      doc("a.md", "one\n", "one\ntwo\n", true),
+      doc("b.md", "one\n", "one\ntwo\n", false),
+      doc("c.md", "one\n", "one\ntwo\n", true),
+    ]);
+    // Two files plus the aggregate that inherits their floor.
+    expect(document.querySelectorAll("[data-diffstat-floor]").length).toBe(3);
+  });
+});

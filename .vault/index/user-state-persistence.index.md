@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:def62303bc299b521d692d6ddf838e65a9da03e8b801080ea60036e8cea5de60'
 related:
   - '[[2026-06-14-user-state-persistence-W01-P01-S01]]'
   - '[[2026-06-14-user-state-persistence-W01-P01-S02]]'

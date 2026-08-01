@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:316e9944b270dde0ef830cbe9467b0a11a5bb6ddcce648ea173ea5bdb30c2a18'
 related:
   - '[[2026-06-14-dashboard-nav-controls-adr]]'
 ---

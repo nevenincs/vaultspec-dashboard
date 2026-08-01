@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:efdad9ce86f6ebb81532ed3b12ff130fc5e6a8f295aff83756ec63cb1d4c11d0'
 related:
   - '[[2026-07-16-pw7-acceptance-human-1784183546-adr]]'
   - '[[2026-07-16-pw7-acceptance-human-1784183546-research]]'

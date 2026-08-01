@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:5909925631c030ffe9232b7831d399a2113015a5c357c2f3ffb88456c6340a31'
 related:
   - '[[2026-06-14-dashboard-pipeline-wire-adr]]'
   - '[[2026-06-14-dashboard-pipeline-wire-plan]]'

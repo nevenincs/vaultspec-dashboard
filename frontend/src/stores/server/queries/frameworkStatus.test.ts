@@ -14,11 +14,11 @@ function healthy(): FrameworkStatusInputs {
   return {
     core: { loading: false, errored: false, reachable: true, vaultHealth: "healthy" },
     rag: { loading: false, errored: false, degraded: false },
-    approvals: {
+    pending: {
       loading: false,
       storeUnavailable: false,
       degraded: false,
-      pending: 0,
+      queued: 0,
       truncated: false,
     },
   };
@@ -29,7 +29,7 @@ describe("deriveFrameworkStatusView", () => {
     const view = deriveFrameworkStatusView(healthy());
     expect(view).toEqual({
       "search-service": { tone: "ok" },
-      approvals: { tone: "ok" },
+      pending: { tone: "ok" },
       "vault-health": { tone: "ok" },
     });
   });
@@ -121,77 +121,77 @@ describe("search-service chip", () => {
   });
 });
 
-describe("approvals chip", () => {
+describe("pending-changes chip", () => {
   it("is down when the authoring store is unavailable", () => {
     const view = deriveFrameworkStatusView({
       ...healthy(),
-      approvals: {
+      pending: {
         loading: false,
         storeUnavailable: true,
         degraded: false,
-        pending: 3,
+        queued: 3,
         truncated: false,
       },
     });
-    expect(view.approvals.tone).toBe("down");
-    expect(view.approvals.count).toBeUndefined();
+    expect(view.pending.tone).toBe("down");
+    expect(view.pending.count).toBeUndefined();
   });
 
   it("is unknown while the queue is loading", () => {
     const view = deriveFrameworkStatusView({
       ...healthy(),
-      approvals: {
+      pending: {
         loading: true,
         storeUnavailable: false,
         degraded: false,
-        pending: 0,
+        queued: 0,
         truncated: false,
       },
     });
-    expect(view.approvals.tone).toBe("unknown");
+    expect(view.pending.tone).toBe("unknown");
   });
 
   it("is attention with the served count when items are pending", () => {
     const view = deriveFrameworkStatusView({
       ...healthy(),
-      approvals: {
+      pending: {
         loading: false,
         storeUnavailable: false,
         degraded: false,
-        pending: 4,
+        queued: 4,
         truncated: false,
       },
     });
-    expect(view.approvals.tone).toBe("attention");
-    expect(view.approvals.count).toBe(4);
+    expect(view.pending.tone).toBe("attention");
+    expect(view.pending.count).toBe(4);
   });
 
   it("omits the count when the served queue is truncated", () => {
     const view = deriveFrameworkStatusView({
       ...healthy(),
-      approvals: {
+      pending: {
         loading: false,
         storeUnavailable: false,
         degraded: false,
-        pending: 50,
+        queued: 50,
         truncated: true,
       },
     });
-    expect(view.approvals.tone).toBe("attention");
-    expect(view.approvals.count).toBeUndefined();
+    expect(view.pending.tone).toBe("attention");
+    expect(view.pending.count).toBeUndefined();
   });
 
   it("is attention when the queue is degraded even with nothing pending", () => {
     const view = deriveFrameworkStatusView({
       ...healthy(),
-      approvals: {
+      pending: {
         loading: false,
         storeUnavailable: false,
         degraded: true,
-        pending: 0,
+        queued: 0,
         truncated: false,
       },
     });
-    expect(view.approvals.tone).toBe("attention");
+    expect(view.pending.tone).toBe("attention");
   });
 });

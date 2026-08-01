@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:93a9a214adc2aa247cefa18c06b43de68407f4f755205cf5f3496af222f75430'
 related:
   - '[[2026-06-14-dashboard-worktree-switcher-adr]]'
 ---

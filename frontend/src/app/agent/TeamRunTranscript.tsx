@@ -28,6 +28,9 @@ import {
   type TeamToolEntry,
 } from "./teamRun";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
+import { ClarificationCard, ClarificationRecap } from "./ClarificationCard";
+import { normalizePendingClarification } from "./clarification";
+import { useRunClarificationRecaps } from "../../stores/view/clarificationRecaps";
 
 const MSG = {
   thinking: "common:agent.transcript.team.thinking",
@@ -196,6 +199,17 @@ export function TeamRunTranscript() {
   const prompt = useAgentTeamRunPrompt();
   const progress = useTeamRunProgress();
   const frames = progress.frames;
+  // The AUTHORITATIVE questionnaire: read from the run-status disclosure, never
+  // from the relay frame that merely nudged the re-read.
+  const pendingClarification = useMemo(
+    () => normalizePendingClarification(progress.status?.pending_clarification),
+    [progress.status],
+  );
+  // Answered clarifications (C8). Held OUTSIDE the card because answering clears the
+  // disclosure the card is mounted on — see `stores/view/clarificationRecaps`. They
+  // render here, in answer order, so a decision made mid-run stays visible in the
+  // transcript after the run resumes past it.
+  const recaps = useRunClarificationRecaps(runId);
   const view = useMemo(
     () => assembleTeamRun(frames, progress.terminal),
     [frames, progress.terminal],
@@ -223,6 +237,22 @@ export function TeamRunTranscript() {
           ),
         )}
       </div>
+      {/* C8: decisions already made, in the order they were made. These survive the
+          success refetch that unmounts the card — that is the whole point of holding
+          them outside it. */}
+      {recaps.length > 0 && (
+        <div className="flex flex-col gap-fg-2" data-clarification-recaps>
+          {recaps.map((record) => (
+            <ClarificationRecap key={record.requestId} entries={record.entries} />
+          ))}
+        </div>
+      )}
+      {/* D5: the questionnaire renders AT THE PARK POINT — the end of the activity
+          so far, which is exactly where the run stopped and waited. It is the sole
+          answer surface while parked; the composer disables itself with a hint. */}
+      {pendingClarification !== null && runId !== null && (
+        <ClarificationCard runId={runId} pending={pendingClarification} />
+      )}
       <ActiveAgentsIndicator view={view} />
       {/* Honest degraded path: the relay gapped/degraded/was lost, so live
           activity is paused and `run-status` polling is authoritative — never a

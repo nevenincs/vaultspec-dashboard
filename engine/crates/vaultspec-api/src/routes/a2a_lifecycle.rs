@@ -137,25 +137,17 @@ mod jobs;
 use eligibility::{OpEffect, eligible_ops, op_effect};
 use jobs::{Admission, JobState, Registry};
 
+/// The agent-tier projection: reachability of the orchestration plane, and the
+/// component handshake rendered beside it. Held apart from the install
+/// authority below, which answers a different question from the same reads.
+mod agent_tier;
+
+pub(crate) use agent_tier::{
+    agent_availability_at, agent_handshake_at, resolve_agent_handshake, resolve_agent_tier,
+};
+use agent_tier::{supported_protocol, supported_state_schema};
+
 // --- shared gateway resolution ---------------------------
-
-/// The protocol/state-schema ranges the dashboard's installed release set
-/// supports. v1 gateway API today; the state-schema window is deliberately wide
-/// (the packaged migration head advances independently). Kept in one place so
-/// the discovery context, resolution, and handshake all agree.
-fn supported_protocol() -> RangeBounds {
-    RangeBounds {
-        minimum: "v1".to_string(),
-        maximum: "v1".to_string(),
-    }
-}
-
-fn supported_state_schema() -> RangeBounds {
-    RangeBounds {
-        minimum: "0001".to_string(),
-        maximum: "9999".to_string(),
-    }
-}
 
 /// Read and parse the product gateway discovery record under an app home, if the
 /// gateway has published one. Secret-free by construction (`GatewayDiscovery`
@@ -186,60 +178,6 @@ fn immutable_reason(reason: &ImmutableReason) -> &'static str {
     }
 }
 
-/// Derive the honest agent availability from ALREADY-READ product state — a pure
-/// classifier so the read pass happens exactly once (review MEDIUM). A usable
-/// gateway (owned-live or foreign-attachable-live) is available; every other
-/// state degrades with a truthful, non-secret reason. No credential secret is
-/// read here.
-fn availability_from(
-    release: &ReleaseObservation,
-    verdict: Option<&Verdict>,
-) -> (bool, Option<String>) {
-    match release {
-        ReleaseObservation::Absent => (
-            false,
-            Some("a2a orchestration is not installed".to_string()),
-        ),
-        ReleaseObservation::RecoveryRequired => (
-            false,
-            Some("a2a fixed receipt requires recovery".to_string()),
-        ),
-        ReleaseObservation::Busy => (
-            false,
-            Some("a2a installation authority is busy".to_string()),
-        ),
-        ReleaseObservation::Unverifiable => (
-            false,
-            Some("a2a fixed receipt authority is unverifiable".to_string()),
-        ),
-        ReleaseObservation::Settled(_) => match verdict {
-            None => (
-                false,
-                Some("a2a gateway installed but stopped (no live discovery)".to_string()),
-            ),
-            Some(Verdict::OwnedLive | Verdict::ForeignAttachable) => (true, None),
-            Some(Verdict::OwnedStale) => (
-                false,
-                Some("owned a2a gateway is stale (recorded process not alive)".to_string()),
-            ),
-            Some(Verdict::OwnedIncompatible) => (
-                false,
-                Some(
-                    "owned a2a gateway is incompatible with this release (stop or update to recover)"
-                        .to_string(),
-                ),
-            ),
-            Some(Verdict::ForeignImmutable { reason }) => (
-                false,
-                Some(format!(
-                    "a foreign a2a gateway holds the runtime and stays immutable: {}",
-                    immutable_reason(reason)
-                )),
-            ),
-        },
-    }
-}
-
 /// The readiness model from an already-read receipt + verdict (mirrors
 /// `LifecycleController::readiness` without re-reading the receipt file). A cold
 /// worker on a live gateway is still ready; an installed-but-stopped generation
@@ -257,67 +195,6 @@ fn readiness_from(release: &ReleaseObservation, verdict: Option<&Verdict>) -> Op
         | ReleaseObservation::Busy
         | ReleaseObservation::Unverifiable => None,
     }
-}
-
-/// Build the component-handshake projection from ALREADY-READ state: the
-/// installed release set, owned-or-foreign gateway identity, protocol and
-/// state-schema ranges, and the one readiness model. No secret is ever projected.
-fn handshake_value(
-    release: &ReleaseObservation,
-    discovery: Option<&GatewayDiscovery>,
-    verdict: Option<&Verdict>,
-    readiness: Option<Readiness>,
-    available: bool,
-    reason: Option<String>,
-) -> Value {
-    let gateway = discovery.map(|d| {
-        json!({
-            "endpoint": d.endpoint,
-            "pid": d.pid,
-            "generation": d.generation,
-            "protocol": { "minimum": d.protocol.minimum, "maximum": d.protocol.maximum },
-            "state_schema": {
-                "minimum": d.state_schema.minimum,
-                "maximum": d.state_schema.maximum,
-            },
-            "ownership": match verdict {
-                Some(Verdict::OwnedLive) => "owned",
-                Some(Verdict::OwnedStale) => "owned-stale",
-                Some(Verdict::OwnedIncompatible) => "owned-incompatible",
-                Some(Verdict::ForeignAttachable) => "foreign-attachable",
-                Some(Verdict::ForeignImmutable { .. }) => "foreign-immutable",
-                None => "unknown",
-            },
-        })
-    });
-    let settled = release.settled();
-    json!({
-        "installed": release.installed(),
-        "installed_known": matches!(release, ReleaseObservation::Absent | ReleaseObservation::Settled(_)),
-        "install_state": release.label(),
-        "recovery_required": matches!(release, ReleaseObservation::RecoveryRequired),
-        "degraded": matches!(release, ReleaseObservation::RecoveryRequired | ReleaseObservation::Busy | ReleaseObservation::Unverifiable),
-        "release_set": settled.map(|r| json!({
-            "name": r.a2a_identity().name,
-            "version": r.a2a_identity().version,
-            "target": r.target().triple(),
-            "active_generation": r.active_generation(),
-        })),
-        "readiness": readiness,
-        "supported": {
-            "protocol": {
-                "minimum": supported_protocol().minimum,
-                "maximum": supported_protocol().maximum,
-            },
-            "state_schema": {
-                "minimum": supported_state_schema().minimum,
-                "maximum": supported_state_schema().maximum,
-            },
-        },
-        "gateway": gateway,
-        "available": available,
-        "reason": reason,
-    })
 }
 
 #[derive(Debug)]
@@ -388,153 +265,6 @@ fn ownership_refusal(error: CredentialError) -> Refusal {
             detail: "ownership authority is unverifiable".to_owned(),
         },
     }
-}
-
-/// The honest agent-orchestration availability derived from product state under
-/// an app home, WITHOUT reading any credential secret. One receipt + one
-/// discovery read, then the pure classifier. Scope-independent (a2a is one
-/// machine-global resident). Used by the seated plane's own reads.
-pub(crate) fn agent_availability_at(
-    paths: &ProductPaths,
-    owner_id: &str,
-) -> (bool, Option<String>) {
-    let release = observe_product_release(paths, owner_id);
-    let discovery = read_gateway_discovery(paths);
-    let verdict = discovery
-        .as_ref()
-        .map(|d| d.classify(&discovery_ctx(owner_id)));
-    availability_from(&release, verdict.as_ref())
-}
-
-/// The component-handshake projection for a product state under an app home,
-/// reading the receipt and discovery ONCE. Used by the seated plane's own
-/// reads (`/status` facts); the per-response hot path goes through the memoized
-/// [`resolve_agent_snapshot`] instead.
-pub(crate) fn agent_handshake_at(paths: &ProductPaths, owner_id: &str) -> Value {
-    let release = observe_product_release(paths, owner_id);
-    let discovery = read_gateway_discovery(paths);
-    let verdict = discovery
-        .as_ref()
-        .map(|d| d.classify(&discovery_ctx(owner_id)));
-    let (available, reason) = availability_from(&release, verdict.as_ref());
-    let readiness = readiness_from(&release, verdict.as_ref());
-    handshake_value(
-        &release,
-        discovery.as_ref(),
-        verdict.as_ref(),
-        readiness,
-        available,
-        reason,
-    )
-}
-
-/// One machine-global read pass of A2A product state (review MEDIUM): the agent
-/// tier AND the component handshake are BOTH derived from a single receipt +
-/// discovery read. Memoized on a short TTL so the per-response `tiers_value` hot
-/// path — which needs both — does not re-`derive` paths and re-read+parse the
-/// discovery/receipt files on every envelope.
-struct AgentSnapshot {
-    available: bool,
-    reason: Option<String>,
-    handshake: Value,
-}
-
-/// The memo lifetime. Deliberately far shorter than the discovery freshness
-/// window (`DISCOVERY_FRESHNESS`, 30s) so the memo caches the READS, never a
-/// stale verdict: a gateway going down still degrades the tier within this
-/// window on the next resolve.
-const AGENT_SNAPSHOT_TTL: Duration = Duration::from_millis(1000);
-
-/// The memoized snapshot with the instant it was computed. Aliased so the cache
-/// type stays legible (clippy `type_complexity`).
-type CachedSnapshot = (Instant, Arc<AgentSnapshot>);
-
-fn agent_snapshot_cache() -> &'static RwLock<Option<CachedSnapshot>> {
-    static CACHE: OnceLock<RwLock<Option<CachedSnapshot>>> = OnceLock::new();
-    CACHE.get_or_init(|| RwLock::new(None))
-}
-
-/// Resolve the machine-global A2A snapshot, memoized for [`AGENT_SNAPSHOT_TTL`].
-/// A fresh cached snapshot is returned without touching the filesystem; a stale
-/// or absent one triggers exactly one read pass. Honesty is preserved: the memo
-/// holds the real classification for at most the TTL, never an optimistic verdict.
-fn resolve_agent_snapshot() -> Arc<AgentSnapshot> {
-    if let Some((at, snap)) = agent_snapshot_cache()
-        .read()
-        .unwrap_or_else(|e| e.into_inner())
-        .as_ref()
-        && at.elapsed() < AGENT_SNAPSHOT_TTL
-    {
-        return snap.clone();
-    }
-    let snap = Arc::new(compute_agent_snapshot());
-    *agent_snapshot_cache()
-        .write()
-        .unwrap_or_else(|e| e.into_inner()) = Some((Instant::now(), snap.clone()));
-    snap
-}
-
-/// The single read pass behind the memo: derive the product paths once, read the
-/// receipt once and the discovery once, then build BOTH the agent availability
-/// and the component handshake from them. A path-resolution failure degrades
-/// honestly, never optimism.
-fn compute_agent_snapshot() -> AgentSnapshot {
-    let paths = match ProductPaths::derive() {
-        Ok(paths) => paths,
-        Err(e) => {
-            let reason = format!("a2a product paths unresolved: {e}");
-            return AgentSnapshot {
-                available: false,
-                reason: Some(reason.clone()),
-                handshake: json!({
-                    "installed": null,
-                    "installed_known": false,
-                    "install_state": "unverifiable",
-                    "readiness": null,
-                    "degraded": true,
-                    "available": false,
-                    "reason": reason,
-                }),
-            };
-        }
-    };
-    let owner_id = paths.root().to_string_lossy().to_string();
-    let release = observe_product_release(&paths, &owner_id);
-    let discovery = read_gateway_discovery(&paths);
-    let verdict = discovery
-        .as_ref()
-        .map(|d| d.classify(&discovery_ctx(&owner_id)));
-    let (available, reason) = availability_from(&release, verdict.as_ref());
-    let readiness = readiness_from(&release, verdict.as_ref());
-    let handshake = handshake_value(
-        &release,
-        discovery.as_ref(),
-        verdict.as_ref(),
-        readiness,
-        available,
-        reason.clone(),
-    );
-    AgentSnapshot {
-        available,
-        reason,
-        handshake,
-    }
-}
-
-/// Resolve the agent-orchestration tier MACHINE-GLOBALLY for the shared tiers
-/// builder: every served response overlays this honest classification onto
-/// the degraded-by-default seed, so absence can never masquerade as availability.
-/// Reads through the memoized snapshot so it shares one filesystem pass with the
-/// handshake decoration on the same response.
-pub(crate) fn resolve_agent_tier() -> (bool, Option<String>) {
-    let snap = resolve_agent_snapshot();
-    (snap.available, snap.reason.clone())
-}
-
-/// Resolve the A2A component handshake MACHINE-GLOBALLY for the tiers decoration,
-/// sharing the memoized read pass with [`resolve_agent_tier`].
-pub(crate) fn resolve_agent_handshake() -> Value {
-    resolve_agent_snapshot().handshake.clone()
 }
 
 /// The resolved orchestration endpoint for the run edge, or the honest
@@ -1367,6 +1097,9 @@ impl LifecyclePlane {
 
 #[cfg(test)]
 mod tests {
+    use super::agent_tier::{
+        ResidentSibling, availability_from, compose_availability, handshake_value,
+    };
     use super::*;
     // Constructed directly here to seed retention/TTL cases; the production
     // paths only ever mint a Job through `Registry::reserve`.
@@ -1380,17 +1113,73 @@ mod tests {
             ReleaseObservation::Busy,
             ReleaseObservation::Unverifiable,
         ] {
-            let (available, reason) = availability_from(&release, Some(&Verdict::OwnedLive));
+            let (available, reason) =
+                availability_from(&release, Some(&Verdict::OwnedLive), ResidentSibling::Absent);
             assert!(!available, "non-settled state {}", release.label());
             assert!(reason.is_some(), "non-settled state {}", release.label());
         }
     }
 
     #[test]
+    fn a_resident_sibling_makes_the_plane_available_without_a_verified_receipt() {
+        // The incoherence this fixes: a procs-booted dev sibling under the
+        // attach-never-own lane serves presets and runs through the pass-through
+        // while the tier — reading only the product lane — called that same plane
+        // unavailable in the very response carrying the sibling's answer. The
+        // `agent` tier answers reachability; the fixed-receipt authority keeps
+        // gating install/update/repair on the dedicated lifecycle plane, and the
+        // component handshake keeps reporting the unverified install state.
+        for release in [
+            ReleaseObservation::Absent,
+            ReleaseObservation::RecoveryRequired,
+            ReleaseObservation::Busy,
+            ReleaseObservation::Unverifiable,
+        ] {
+            let (available, reason) =
+                availability_from(&release, None, ResidentSibling::Attachable);
+            assert!(
+                available,
+                "a reachable resident sibling is available despite {}",
+                release.label()
+            );
+            assert!(
+                reason.is_none(),
+                "an available tier carries no degradation reason ({})",
+                release.label()
+            );
+        }
+    }
+
+    #[test]
+    fn a_resident_sibling_never_overrides_a_gateway_the_product_lane_knows_is_unusable() {
+        // A bare heartbeat is weaker evidence than a classification. Where the
+        // product lane HAS classified the running gateway and found it stale,
+        // protocol-incompatible, or foreign-immutable, that verdict wins: the
+        // fallback must never claim we can speak to a gateway we know we cannot.
+        let unusable = (
+            false,
+            Some("owned a2a gateway is incompatible with this release".to_string()),
+        );
+        let (available, reason) =
+            compose_availability(unusable.clone(), true, ResidentSibling::Attachable);
+        assert!(
+            !available,
+            "a classified-unusable gateway stays unavailable"
+        );
+        assert_eq!(reason, unusable.1, "its specific reason survives verbatim");
+
+        // An available product lane is never disturbed by the fallback either.
+        let (available, reason) = compose_availability((true, None), true, ResidentSibling::Absent);
+        assert!(available);
+        assert!(reason.is_none());
+    }
+
+    #[test]
     fn recovery_required_has_unknown_degraded_wire_and_typed_refusal_kind() {
         let release = ReleaseObservation::RecoveryRequired;
         let readiness = readiness_from(&release, Some(&Verdict::OwnedLive));
-        let (available, reason) = availability_from(&release, Some(&Verdict::OwnedLive));
+        let (available, reason) =
+            availability_from(&release, Some(&Verdict::OwnedLive), ResidentSibling::Absent);
         let wire = handshake_value(&release, None, None, readiness, available, reason);
 
         assert!(wire["installed"].is_null());

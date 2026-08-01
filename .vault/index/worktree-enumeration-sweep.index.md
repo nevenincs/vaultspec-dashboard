@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:8286c9fc9751ddcd6742c2fcca95c195b7260fafa775465a13335ac26899e807'
 related:
   - '[[2026-06-16-worktree-enumeration-sweep-audit]]'
   - '[[2026-06-16-worktree-enumeration-sweep-plan]]'

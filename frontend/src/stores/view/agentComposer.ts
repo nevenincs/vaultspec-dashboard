@@ -31,14 +31,18 @@ export const AGENT_COMPOSER_COMMENT_CAP = 32;
 /** Hard cap on the composer draft length, enforced as the input's maxLength. */
 export const AGENT_COMPOSER_TEXT_CAP = 16_384;
 
-/** The two corpus kinds a mention chip can reference. */
-export type AgentMentionKind = "feature" | "document";
+/** What a mention chip can reference. `feature` and `document` are corpus
+ *  identities the vault resolves; `path` is workspace EVIDENCE — a repo-relative
+ *  file the `@` picker accepted off the files providers
+ *  (agent-panel-shell-integration D3), which the vault has no stem for. */
+export type AgentMentionKind = "feature" | "document" | "path";
 
 export interface AgentMention {
   kind: AgentMentionKind;
-  /** The corpus value: a document stem or a bare feature tag. */
+  /** The reference value: a document stem, a bare feature tag, or a rel path. It
+   *  is the chip's identity — the dedupe key and what travels in the prompt. */
   value: string;
-  /** The human label the chip renders (a document title or the tag). */
+  /** The human label the chip renders (a document title, the tag, or a basename). */
   label: string;
 }
 
@@ -159,6 +163,18 @@ export function buildFeedbackBatchRequest(
   };
 }
 
+/** One mention's reference form inside the prompt. Each kind gets the syntax its
+ *  resolver already understands: a feature tag is hashed, a document stem is
+ *  wiki-linked, and a rel PATH is backtick-quoted so the a2a context harness's
+ *  context-ref discovery reads it as a path and not as prose
+ *  (agent-panel-shell-integration D3 — no new wire, the reference travels in the
+ *  message). */
+export function agentMentionReference(mention: AgentMention): string {
+  if (mention.kind === "feature") return `#${mention.value}`;
+  if (mention.kind === "path") return `\`${mention.value}\``;
+  return `[[${mention.value}]]`;
+}
+
 /** Serialize the typed text plus attached mentions into the one prompt string —
  *  each block deterministic and separated by a blank line. Staged comments no
  *  longer ride the prompt text: they are frozen into a structured engine feedback
@@ -172,9 +188,7 @@ export function buildAgentPrompt(
   const body = text.trim();
   if (body.length > 0) parts.push(body);
   if (mentions.length > 0) {
-    const refs = mentions
-      .map((m) => (m.kind === "feature" ? `#${m.value}` : `[[${m.value}]]`))
-      .join(" ");
+    const refs = mentions.map(agentMentionReference).join(" ");
     parts.push(`${AGENT_COMPOSER_CONTEXT_PREFIX} ${refs}`);
   }
   return parts.join("\n\n");

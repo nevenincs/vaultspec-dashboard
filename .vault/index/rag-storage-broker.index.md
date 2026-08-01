@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:f2176e1ae3bfd7c1f23de50608fcb170ce58dd25b9065a84bfd474e9c2964cf3'
 related:
   - '[[2026-06-27-rag-storage-broker-P01-S01]]'
   - '[[2026-06-27-rag-storage-broker-P01-S02]]'

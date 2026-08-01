@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:bf02df85929f348e3d927fe41b4c3e30bba026b44ace082e85692fcda45906a3'
 related:
   - '[[2026-07-15-left-rail-tier-presentation-adr]]'
   - '[[2026-07-15-left-rail-tier-presentation-research]]'

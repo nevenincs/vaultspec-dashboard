@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:834e81a7b0cbf947d01b50f9f1250ec72435649c4d86db49b99a30cf4ede45a5'
 related:
   - '[[2026-07-11-document-editor-redesign-P01-S01]]'
   - '[[2026-07-11-document-editor-redesign-P01-S02]]'

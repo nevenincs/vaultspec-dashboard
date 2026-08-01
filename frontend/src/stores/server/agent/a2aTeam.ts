@@ -1,12 +1,17 @@
 // The SOLE frontend client for a2a TEAM runs. The frontend NEVER calls the a2a
 // gateway directly — every team operation transits the engine's whitelisted
 // `/ops/a2a/{verb}` pass-through (`presets-list` feeds the Team selector,
-// `run-start`/`run-status`/`run-cancel` bind team runs, `service-state` feeds
-// degradation) and the per-run progress relay (`/ops/a2a/runs/{id}/stream`).
+// `run-start`/`run-status`/`run-cancel` bind team runs, `active-runs` recovers a
+// lost binding, `clarification-respond` resumes a parked run) and the per-run
+// progress relay (`/ops/a2a/runs/{id}/stream`).
 //
 // Degradation is read from `tiers` ONLY (never a transport error): a2a-down
 // renders the Team selector disabled-with-reason while single-agent authoring
-// keeps working. Relay frames are non-authoritative — truth is recovered
+// keeps working. It is read from the tiers block on the PRESETS query, via
+// `useTeamSelectorState` — this header used to credit a `service-state` verb
+// instead, which was wrong and was the cover under which that verb kept a full
+// client stack and a whitelist entry while rendering nothing anywhere. It is
+// deleted; the Team selector's degradation never came from it. Relay frames are non-authoritative — truth is recovered
 // by re-reading `run-status`, never reconstructed from a relay frame; when the
 // relay signals a gap or degrades, the consumer falls back to bounded run-status
 // polling with honest state, never faked liveness.
@@ -77,6 +82,38 @@ export interface TeamPreset {
   readonly is_mock: boolean;
   readonly origin?: string;
   readonly default_profile_id?: string;
+  /** The SERVED selectable model profiles for this preset. The sibling populates
+   *  this on `presets-list`; an older/sparse body simply yields an empty list, and
+   *  the picker falls back to naming `default_profile_id` alone. */
+  readonly profiles: TeamProfile[];
+}
+
+/** One role's provider binding inside a profile or a run. A profile may route
+ *  DIFFERENT roles to different providers, which is why this is a list and not one
+ *  label. Field names mirror the SERVED ones exactly (`role_id`, `agent_id`,
+ *  `provider_id`, `model_name`) — an earlier revision invented `role`/`model` and
+ *  silently dropped every assignment against the real wire. */
+export interface TeamRoleAssignment {
+  readonly role_id: string;
+  readonly agent_id?: string;
+  readonly provider_id?: string;
+  readonly model_name?: string;
+  /** The sibling's per-role readiness verdict — what actually explains an
+   *  ineligible profile, role by role. */
+  readonly provider_ready?: boolean;
+}
+
+/** One selectable model profile (the a2a `ProfileSummary`). `eligible` is the
+ *  sibling's own verdict; `unavailable_reasons` are its words for why not — both
+ *  render verbatim, never re-derived here. */
+export interface TeamProfile {
+  readonly id: string;
+  readonly display_name?: string;
+  readonly description?: string;
+  readonly is_default: boolean;
+  readonly eligible: boolean;
+  readonly unavailable_reasons: string[];
+  readonly assignments: TeamRoleAssignment[];
 }
 
 /** The a2a run-start acknowledgement (the `RunStartResponse`), or a business
@@ -106,18 +143,38 @@ export interface TeamRunStatus {
   readonly proposal_ids: string[];
   readonly changeset_ids: string[];
   readonly last_sequence?: number;
+  /** The run's roster with each role's SERVED state (a2a `RoleState`). Additive-v1:
+   *  a run started before the field existed simply serves none, and the run header
+   *  falls back to the roster the relay's status frames disclose. */
+  readonly roles: TeamRoleState[];
+  /** The profile FROZEN at run start — what the run is actually using, not what is
+   *  selected in the composer now. */
+  readonly profile_id?: string;
+  /** Per-role provider/model for the frozen profile (a2a `RoleAssignmentSummary`). */
+  readonly assignments: TeamRoleAssignment[];
+  /** Epoch milliseconds the run started, IF a future run-status ever serves one.
+   *  It does not today — `RunStatusResponse` carries no start time (the history
+   *  record's `created_at` is a different projection) — so this is undefined in
+   *  practice and the run header omits elapsed entirely. Kept because the reader
+   *  is free either way and the alternative, measuring from when this panel
+   *  started watching, would be a visible lie on a reloaded panel. */
+  readonly started_at_ms?: number;
+  /** The mid-run clarification the run is PARKED on, passed through verbatim
+   *  (agent-flow D5). This disclosure is the questionnaire's ONLY authority: the
+   *  `clarification-pending` relay frame is a re-read nudge and carries none, which
+   *  is what lets a reloaded panel recover the questions from status alone. */
+  readonly pending_clarification?: unknown;
   readonly tiers?: TiersBlock;
 }
 
-/** The a2a service readiness snapshot (`service-state`). */
-export interface A2aServiceState {
-  readonly status?: string;
-  readonly alive?: boolean;
-  readonly ready?: boolean;
-  readonly can_accept_run?: boolean;
-  readonly service_version?: string;
-  readonly degraded_reasons: string[];
-  readonly tiers?: TiersBlock;
+/** One role's served lifecycle state within a run (a2a `RoleState`). `agent_id` is
+ *  the REQUIRED identity; `role` and `display_name` both default to empty
+ *  server-side, so keying on `role` drops most rows. */
+export interface TeamRoleState {
+  readonly agent_id: string;
+  readonly role?: string;
+  readonly state?: string;
+  readonly display_name?: string;
 }
 
 /** The engine pass-through envelope, unwrapped: the sibling body under `envelope`,
@@ -176,6 +233,65 @@ export function scopedTeamRunStatus(
 const strArr = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
+/** Adapt one role assignment. Tolerant: an entry without a role name is dropped
+ *  rather than rendered as an anonymous binding. */
+function adaptRoleAssignment(raw: unknown): TeamRoleAssignment | null {
+  if (!isRec(raw)) return null;
+  const roleId = asStr(raw.role_id);
+  if (!roleId) return null;
+  return {
+    role_id: roleId,
+    agent_id: asStr(raw.agent_id),
+    provider_id: asStr(raw.provider_id),
+    model_name: asStr(raw.model_name),
+    provider_ready:
+      raw.provider_ready === undefined ? undefined : asBool(raw.provider_ready),
+  };
+}
+
+function adaptRoleAssignments(raw: unknown): TeamRoleAssignment[] {
+  return Array.isArray(raw)
+    ? raw
+        .map(adaptRoleAssignment)
+        .filter((entry): entry is TeamRoleAssignment => entry !== null)
+    : [];
+}
+
+/** Adapt one served profile. `eligible` defaults TRUE when the sibling omits it:
+ *  the absence of a verdict is not a refusal, and disabling a profile the sibling
+ *  never objected to would hide a working choice. */
+function adaptProfile(raw: unknown): TeamProfile | null {
+  if (!isRec(raw)) return null;
+  const id = asStr(raw.id);
+  if (!id) return null;
+  return {
+    id,
+    display_name: asStr(raw.display_name),
+    description: asStr(raw.description),
+    is_default: asBool(raw.is_default),
+    eligible: raw.eligible === undefined ? true : asBool(raw.eligible),
+    unavailable_reasons: strArr(raw.unavailable_reasons),
+    assignments: adaptRoleAssignments(raw.assignments),
+  };
+}
+
+/** The DISTINCT provider ids a profile routes its roles to, in first-seen order.
+ *  More than one means the profile is MIXED — the picker must say so per role
+ *  rather than collapse it to a single invented provider label. */
+export function profileProviderIds(profile: TeamProfile): string[] {
+  const seen: string[] = [];
+  for (const assignment of profile.assignments) {
+    const provider = assignment.provider_id;
+    if (provider && !seen.includes(provider)) seen.push(provider);
+  }
+  return seen;
+}
+
+/** Whether a profile routes its roles across more than one provider. */
+export function profileIsMixedProvider(profile: TeamProfile): boolean {
+  return profileProviderIds(profile).length > 1;
+}
+
 function adaptPreset(raw: unknown): TeamPreset | null {
   if (!isRec(raw)) return null;
   const id = asStr(raw.id);
@@ -193,6 +309,9 @@ function adaptPreset(raw: unknown): TeamPreset | null {
     is_mock: asBool(raw.is_mock),
     origin: asStr(raw.origin),
     default_profile_id: asStr(raw.default_profile_id),
+    profiles: Array.isArray(raw.profiles)
+      ? raw.profiles.map(adaptProfile).filter((p): p is TeamProfile => p !== null)
+      : [],
   };
 }
 
@@ -231,6 +350,44 @@ export function adaptRunStart(pass: PassThrough): TeamRunStartResult {
   };
 }
 
+/** Adapt the served role roster, keyed on the REQUIRED `agent_id`. An entry with no
+ *  agent id is dropped rather than rendered as an anonymous row; `role`,
+ *  `display_name`, and `state` are all optional server-side and pass through as
+ *  given. */
+function adaptRoleStates(raw: unknown): TeamRoleState[] {
+  if (!Array.isArray(raw)) return [];
+  const states: TeamRoleState[] = [];
+  for (const entry of raw) {
+    if (!isRec(entry)) continue;
+    const agentId = asStr(entry.agent_id);
+    if (!agentId) continue;
+    states.push({
+      agent_id: agentId,
+      role: asStr(entry.role),
+      state: asStr(entry.state),
+      display_name: asStr(entry.display_name),
+    });
+  }
+  return states;
+}
+
+/** The run's start time in epoch ms, from whichever field the sibling serves — a
+ *  numeric epoch (ms or seconds) or an ISO timestamp. Returns undefined when none
+ *  is served, which is what keeps the header from inventing an elapsed time. */
+export function startedAtMs(env: Rec): number | undefined {
+  const raw = env.started_at_ms ?? env.started_at ?? env.created_at;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    // Seconds vs milliseconds: anything below this threshold is far too small to
+    // be a millisecond epoch, so it is a seconds epoch.
+    return raw < 1e11 ? Math.round(raw * 1000) : Math.round(raw);
+  }
+  if (typeof raw === "string" && raw.length > 0) {
+    const parsed = Date.parse(raw);
+    return Number.isNaN(parsed) ? undefined : parsed;
+  }
+  return undefined;
+}
+
 export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
   const env: Rec = isRec(pass.envelope) ? pass.envelope : {};
   return {
@@ -243,6 +400,11 @@ export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
     changeset_ids: strArr(env.changeset_ids),
     last_sequence:
       typeof env.last_sequence === "number" ? env.last_sequence : undefined,
+    roles: adaptRoleStates(env.roles),
+    profile_id: asStr(env.profile_id),
+    assignments: adaptRoleAssignments(env.assignments),
+    started_at_ms: startedAtMs(env),
+    pending_clarification: env.pending_clarification,
     tiers: pass.tiers,
   };
 }
@@ -361,20 +523,6 @@ export function recoverableActiveRunId(
   return result.runs[0]?.run_id ?? null;
 }
 
-export function adaptServiceState(pass: PassThrough): A2aServiceState {
-  const env: Rec = isRec(pass.envelope) ? pass.envelope : {};
-  return {
-    status: asStr(env.status),
-    alive: env.alive === undefined ? undefined : asBool(env.alive),
-    ready: env.ready === undefined ? undefined : asBool(env.ready),
-    can_accept_run:
-      env.can_accept_run === undefined ? undefined : asBool(env.can_accept_run),
-    service_version: asStr(env.service_version),
-    degraded_reasons: strArr(env.degraded_reasons),
-    tiers: pass.tiers,
-  };
-}
-
 /** The interpreted availability of the a2a orchestration plane. */
 export interface AgentAvailability {
   readonly available: boolean;
@@ -467,10 +615,6 @@ export class A2aTeamClient {
     return adaptPresetsList(await this.passThrough("presets-list", {}, signal));
   }
 
-  async serviceState(signal?: AbortSignal): Promise<A2aServiceState> {
-    return adaptServiceState(await this.passThrough("service-state", {}, signal));
-  }
-
   async startRun(payload: TeamRunStartPayload): Promise<TeamRunStartResult> {
     // `run-start` is idempotent by its caller-supplied run_id. Retry one transport
     // failure with the EXACT same payload object; never retry an engine response
@@ -512,6 +656,23 @@ export class A2aTeamClient {
     );
   }
 
+  /** Answer a parked clarification (agent-flow D5(c)). The engine bounds both ids
+   *  and every answer before forwarding; a refusal comes back as the same
+   *  ok/refusal shape every other verb uses, so the card surfaces it identically. */
+  async respondToClarification(payload: {
+    runId: string;
+    requestId: string;
+    answers: Record<string, string>;
+  }): Promise<TeamRunStartResult> {
+    return adaptRunStart(
+      await this.passThrough("clarification-respond", {
+        run_id: payload.runId,
+        request_id: payload.requestId,
+        answers: payload.answers,
+      }),
+    );
+  }
+
   async cancelRun(runId: string): Promise<TeamRunStartResult> {
     // Cancel reuses the run-start result shape (ok / refusal / tiers); its
     // envelope is the a2a RunCancelResponse.
@@ -542,7 +703,6 @@ export const a2aTeamClient = new A2aTeamClient();
 export const a2aKeys = {
   all: ["a2a"] as const,
   presets: () => [...a2aKeys.all, "presets"] as const,
-  serviceState: () => [...a2aKeys.all, "service-state"] as const,
   runStatus: (runId: string) => [...a2aKeys.all, "run-status", runId] as const,
   runRelay: (runId: string) => [...a2aKeys.all, "run-relay", runId] as const,
   activeRuns: (scope: string, featureTag?: string) =>
@@ -609,17 +769,6 @@ export function useTeamSelectorState(): TeamSelectorState {
   }, [query]);
 }
 
-/** The a2a service readiness snapshot. */
-export function useA2aServiceState(): UseQueryResult<A2aServiceState, Error> {
-  return useQuery({
-    queryKey: a2aKeys.serviceState(),
-    queryFn: ({ signal }) => a2aTeamClient.serviceState(signal),
-    staleTime: 10_000,
-    gcTime: 60_000,
-    retry: false,
-  });
-}
-
 /** The workspace's live team runs, for reload-recovery of a lost viewing binding.
  *  `enabled` gates the read to when recovery is actually needed (no
  *  run bound) so an already-bound panel never polls it. Bounded staleTime/gcTime;
@@ -670,6 +819,25 @@ export function useTeamRunStatus(
 export function useStartTeamRun() {
   return useMutation({
     mutationFn: (payload: TeamRunStartPayload) => a2aTeamClient.startRun(payload),
+  });
+}
+
+/** Answer a parked clarification. On success the run resumes, so the AUTHORITATIVE
+ *  status is invalidated — the card's collapse into its recap follows the re-read,
+ *  never an optimistic local guess about whether the graph accepted the answers. */
+export function useRespondToClarification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      runId: string;
+      requestId: string;
+      answers: Record<string, string>;
+    }) => a2aTeamClient.respondToClarification(payload),
+    onSuccess: (_result, payload) => {
+      void queryClient.invalidateQueries({
+        queryKey: a2aKeys.runStatus(payload.runId),
+      });
+    },
   });
 }
 

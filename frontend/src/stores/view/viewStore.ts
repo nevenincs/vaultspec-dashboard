@@ -534,23 +534,20 @@ export interface ViewState {
   leftRailWidth: number;
   /** Expanded right rail width in pixels. */
   rightRailWidth: number;
-  /** Docked Agent panel width in pixels. A shell
-   *  column like the rails; its open flag lives in the agent-panel view store. */
-  agentPanelWidth: number;
   /** Whether the bottom timeline region is mounted in the shell layout. */
   timelineVisible: boolean;
-  /** Whether the graph element is mounted in the shell layout. The timeline is
-   *  tethered to the graph (they are one panel), so hiding the graph also hides
-   *  the timeline; the documents pane then takes the full center width. */
-  graphVisible: boolean;
+  /** Which occupant the center dock's ONE reserved slot holds — the graph, the
+   *  agent panel, or neither (agent-panel-shell-integration D1). The timeline is
+   *  tethered to the graph (they are one panel), so leaving the graph slot also
+   *  hides the timeline; the documents pane then takes the full center width. */
+  centerSlot: CenterSlot;
   /** Expanded timeline height in pixels. */
   timelineHeight: number;
   setLeftRailVisible: (visible: unknown) => void;
   setLeftRailWidth: (width: unknown) => void;
   setRightRailWidth: (width: unknown) => void;
-  setAgentPanelWidth: (width: unknown) => void;
   setTimelineVisible: (visible: unknown) => void;
-  setGraphVisible: (visible: unknown) => void;
+  setCenterSlot: (slot: unknown) => void;
   setTimelineHeight: (height: unknown) => void;
   /**
    * FOLLOW MODE (follow-mode-selection-sync): when on (the default), the rail and
@@ -595,12 +592,6 @@ export const LEFT_RAIL_DEFAULT_WIDTH = 252;
 export const RIGHT_RAIL_MIN_WIDTH = 220;
 export const RIGHT_RAIL_MAX_WIDTH = 420;
 export const RIGHT_RAIL_DEFAULT_WIDTH = 290;
-// The docked Agent panel is a shell-layout column
-// like the rails: its width lives here (canonical, resettable, shared-resize
-// state), a touch wider than the activity rail since it holds a conversation.
-export const AGENT_PANEL_MIN_WIDTH = 320;
-export const AGENT_PANEL_MAX_WIDTH = 640;
-export const AGENT_PANEL_DEFAULT_WIDTH = 400;
 export const TIMELINE_MIN_HEIGHT = 120;
 export const TIMELINE_MAX_HEIGHT = 360;
 export const TIMELINE_DEFAULT_HEIGHT = 212;
@@ -666,6 +657,26 @@ export function normalizeActiveDocId(
 
 export function normalizeShellLayoutVisible(value: unknown): boolean {
   return value === true;
+}
+
+/**
+ * The center dock's ONE reserved slot (agent-panel-shell-integration D1): it holds
+ * the graph, the agent panel, or neither — never both. This generalizes the former
+ * boolean `graphVisible` shell verb, so the agent panel gets the graph's own
+ * canvas-safe reserved-panel treatment instead of a second beside-the-work home.
+ */
+export type CenterSlot = "graph" | "agent" | "none";
+
+/**
+ * Validate unknown input at the boundary. Legacy BOOLEANS are migrated in place —
+ * a restored `graphVisible: true` reads as the graph slot and `false` as an empty
+ * one — so any layout blob written before the slot existed still lands on the verb
+ * it meant. Anything else falls back to the graph (the shipped default).
+ */
+export function normalizeCenterSlot(value: unknown): CenterSlot {
+  if (value === "graph" || value === "agent" || value === "none") return value;
+  if (typeof value === "boolean") return value ? "graph" : "none";
+  return "graph";
 }
 
 export function normalizeShellLayoutPanelSize(
@@ -779,9 +790,8 @@ export const useViewStore = create<ViewState>((set) => ({
   leftRailVisible: true,
   leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
   rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
-  agentPanelWidth: AGENT_PANEL_DEFAULT_WIDTH,
   timelineVisible: true,
-  graphVisible: true,
+  centerSlot: "graph",
   timelineHeight: TIMELINE_DEFAULT_HEIGHT,
   // Follow mode is opt-in but ON by default (follow-mode-selection-sync).
   followMode: true,
@@ -1291,18 +1301,9 @@ export const useViewStore = create<ViewState>((set) => ({
         RIGHT_RAIL_MAX_WIDTH,
       ),
     }),
-  setAgentPanelWidth: (width) =>
-    set({
-      agentPanelWidth: normalizeShellLayoutPanelSize(
-        width,
-        AGENT_PANEL_MIN_WIDTH,
-        AGENT_PANEL_MAX_WIDTH,
-      ),
-    }),
   setTimelineVisible: (timelineVisible) =>
     set({ timelineVisible: normalizeShellLayoutVisible(timelineVisible) }),
-  setGraphVisible: (graphVisible) =>
-    set({ graphVisible: normalizeShellLayoutVisible(graphVisible) }),
+  setCenterSlot: (slot) => set({ centerSlot: normalizeCenterSlot(slot) }),
   setTimelineHeight: (height) =>
     set({
       timelineHeight: normalizeShellLayoutPanelSize(
@@ -1319,9 +1320,8 @@ export const useViewStore = create<ViewState>((set) => ({
       leftRailVisible: true,
       leftRailWidth: LEFT_RAIL_DEFAULT_WIDTH,
       rightRailWidth: RIGHT_RAIL_DEFAULT_WIDTH,
-      agentPanelWidth: AGENT_PANEL_DEFAULT_WIDTH,
       timelineVisible: true,
-      graphVisible: true,
+      centerSlot: "graph",
       timelineHeight: TIMELINE_DEFAULT_HEIGHT,
     }),
 }));

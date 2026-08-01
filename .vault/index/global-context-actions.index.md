@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:0f0850486e3b708dc2c2a25f729c63997c09ef43c1f7ce2baff81f0f8a714fb0'
 related:
   - '[[2026-06-22-global-context-actions-adr]]'
   - '[[2026-06-22-global-context-actions-plan]]'

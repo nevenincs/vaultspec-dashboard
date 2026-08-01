@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:cbcd16a3863af841c61c86f615135f7e22f888b3d1e9cd9dcbd15e82fc006df6'
 related:
   - '[[2026-06-14-dashboard-design-language-adr]]'
   - '[[2026-06-14-dashboard-design-language-plan]]'

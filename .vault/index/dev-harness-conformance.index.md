@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:5436fffe08ba6cd0b532578f160cdade561d083347f56cbbb9c1df50297a1203'
 related:
   - '[[2026-07-31-dev-harness-conformance-adr]]'
   - '[[2026-07-31-dev-harness-conformance-plan]]'

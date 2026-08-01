@@ -1,17 +1,26 @@
-// Shared view-state for the docked Agent panel.
+// Shared view-state for the Agent panel.
 //
-// The panel is a non-modal docked region beside the work surface. Unlike the
-// control panels (modal, single-open, visited-not-lived-in), it coexists with the
-// editor/graph and holds a running conversation. So its open flag is a plain
-// boolean and it carries the CURRENT session id the header/transcript render.
+// The panel is a non-modal region beside the work surface. Unlike the control
+// panels (modal, single-open, visited-not-lived-in), it coexists with the
+// editor/graph and holds a running conversation.
 // Local chrome only: no wire access lives here; the
 // session data is the `stores/server/agent` slice.
 //
-// The panel's WIDTH is a shell-layout column like the rails, so it lives in the
-// canonical shell-layout store (`viewStore` via `shellLayout`), resized by the
-// shared `ShellResizeHandle` and reset by "Reset layout".
+// WHETHER the panel is mounted is NOT stored here: the panel occupies the center
+// dock's ONE reserved slot (agent-panel-shell-integration D1), so "open" IS
+// `centerSlot === "agent"` on the canonical shell-layout store, and its geometry
+// is dockview's. This slice keeps only what the shell verb cannot carry: which
+// VIEW the open panel renders and which session/team run it is bound to.
 
 import { create } from "zustand";
+
+import {
+  getShellCenterSlot,
+  setShellCenterSlot,
+  toggleShellAgentSlot,
+  useShellCenterSlot,
+} from "./shellLayout";
+import { clearClarificationRecaps } from "./clarificationRecaps";
 
 /** The two panel views: the running conversation and
  *  the folded-in cross-run "Pending changes" inbox. Local chrome — the transcript
@@ -43,9 +52,6 @@ export function scopedTeamRunId(
 }
 
 interface AgentPanelState {
-  /** Whether the docked panel is open. Collapsed, its only trace is the footer
-   *  chip (the panel is gone, not merely hidden). */
-  open: boolean;
   /** Which view the open panel renders: the running
    *  transcript (default) or the folded-in pending-changes inbox. */
   panelView: AgentPanelView;
@@ -66,11 +72,6 @@ interface AgentPanelState {
   /** Scope that owns the current viewing binding. A scope change clears it before
    *  discovery for the next workspace so no run renders under the wrong root. */
   teamRunScope: string | null;
-  /** Open the panel, optionally targeting a view (e.g. the footer Review chip opens
-   *  it directly in the pending inbox). Omitting the view leaves the current view. */
-  openPanel: (view?: AgentPanelView) => void;
-  closePanel: () => void;
-  togglePanel: () => void;
   setPanelView: (view: AgentPanelView) => void;
   setCurrentSession: (sessionId: string | null) => void;
   setTeamRun: (
@@ -79,21 +80,11 @@ interface AgentPanelState {
 }
 
 export const useAgentPanel = create<AgentPanelState>((set) => ({
-  open: false,
   panelView: "transcript",
   currentSessionId: null,
   teamRunId: null,
   teamRunPrompt: null,
   teamRunScope: null,
-  openPanel: (view) =>
-    set((state) => {
-      const nextView = view ?? state.panelView;
-      return state.open && state.panelView === nextView
-        ? state
-        : { open: true, panelView: nextView };
-    }),
-  closePanel: () => set((state) => (state.open ? { open: false } : state)),
-  togglePanel: () => set((state) => ({ open: !state.open })),
   setPanelView: (view) =>
     set((state) => (state.panelView === view ? state : { panelView: view })),
   setCurrentSession: (sessionId) =>
@@ -115,8 +106,11 @@ export const useAgentPanel = create<AgentPanelState>((set) => ({
 
 // --- selector hooks (raw primitives; value-compared, stable) --------------------
 
+/** Whether the Agent panel is mounted — i.e. whether it holds the center slot.
+ *  Derived, never stored: the slot is the single authority for what the center
+ *  renders, so no second open flag can disagree with it. */
 export function useAgentPanelOpen(): boolean {
-  return useAgentPanel((state) => state.open);
+  return useShellCenterSlot() === "agent";
 }
 
 export function useAgentPanelView(): AgentPanelView {
@@ -141,29 +135,41 @@ export function useAgentTeamRunScope(): string | null {
 
 // --- imperative seams (for a chip/action outside a component subscription) -------
 
+/** Give the center slot to the Agent panel, optionally targeting a view (the
+ *  footer pending chip opens it straight in the inbox). Omitting the view leaves
+ *  the current one. Every entry point — chip, chord, palette, background menu,
+ *  comment-send bridge — lands here, so the slot has one open path. */
 export function openAgentPanel(options?: { view?: AgentPanelView }): void {
-  useAgentPanel.getState().openPanel(options?.view);
+  if (options?.view !== undefined) setAgentPanelView(options.view);
+  setShellCenterSlot("agent");
 }
 
 export function setAgentPanelView(view: AgentPanelView): void {
   useAgentPanel.getState().setPanelView(view);
 }
 
+/** Empty the center slot when the Agent panel holds it. Never touches the slot
+ *  while the graph occupies it — closing a panel that is not open is a no-op, not
+ *  a hide of whatever replaced it. */
 export function closeAgentPanel(): void {
-  useAgentPanel.getState().closePanel();
+  if (getShellCenterSlot() === "agent") setShellCenterSlot("none");
 }
 
 export function toggleAgentPanel(): void {
-  useAgentPanel.getState().togglePanel();
+  toggleShellAgentSlot();
 }
 
 export function setAgentCurrentSession(sessionId: string | null): void {
   useAgentPanel.getState().setCurrentSession(sessionId);
 }
 
-/** Bind (or clear, with `null`) the active a2a team run the panel renders. */
+/** Bind (or clear, with `null`) the active a2a team run the panel renders. Leaving a
+ *  run drops the clarification recaps captured while viewing it: they are scoped to
+ *  that viewing, and a new binding must never inherit another run's decisions. */
 export function setAgentTeamRun(
   run: { runId: string; prompt: string | null; scope: string } | null,
 ): void {
+  const previous = useAgentPanel.getState().teamRunId;
+  if (previous !== null && previous !== run?.runId) clearClarificationRecaps(previous);
   useAgentPanel.getState().setTeamRun(run);
 }

@@ -6,6 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:bf491fc2b1af978f1d98e1e7dc564132c9fe9efda0a70ef863345403b4d95a79'
 related:
   - '[[2026-06-12-dashboard-foundation-adr]]'
   - '[[2026-06-12-dashboard-foundation-audit]]'

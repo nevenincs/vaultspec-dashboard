@@ -64,7 +64,7 @@ import { IconRail } from "./shell/IconRail";
 import { CompactAppShell } from "./shell/CompactAppShell";
 import { getScene } from "./stage/Stage";
 import { DockWorkspace } from "./stage/DockWorkspace";
-import { AgentPanel } from "./agent/AgentPanel";
+import { AgentLifecycleHost } from "./agent/AgentPanel";
 // The reader/code-viewer stack (react-markdown + Shiki) is heavy and only needed
 // Binding AppShell grid (figma-frontend-rewrite W02.P03 — board 117:2): three
 // fluid/fixed columns at full viewport height —
@@ -304,21 +304,21 @@ export function AppShell() {
         )}
       </aside>
 
-      {/* ── Agent panel — a docked, NON-MODAL region beside the work surface
-          (agentic-authoring-ux ADR D1). When open it occupies an EXPLICIT 4th grid
-          track (added to `gridColumns` by shellLayout, pinned via the frame's
-          `agentPanelClassName` col-start-4), so the stage's `1fr` reflows to make
-          room — it never overlays, never wraps to a new row, and never re-parents
-          the pinned canvas. Renders null when collapsed. Compact composition is a
-          deferred pass (ADR pitfalls), so it mounts desktop-only. */}
+      {/* The Agent panel has NO shell column of its own (agent-panel-shell-integration
+          D1): it is the center dock's reserved `__agent__` panel, mounted by
+          DockWorkspace whenever the slot verb names it. What stays here is only the
+          part that must outlive the panel — the durable agent lifecycle feed, which
+          keeps session/run events flowing while the graph holds the slot so the
+          footer AgentChip can trace a live run. Compact composition is a deferred
+          pass (ADR D6), so it mounts desktop-only, exactly as the panel did. */}
       <ErrorBoundary region="agent-panel">
-        <AgentPanel className={shellFrame.agentPanelClassName} />
+        <AgentLifecycleHost />
       </ErrorBoundary>
 
-      {/* The activity-rail (and graph) visibility toggles are NOT free-floating chrome
-          here: they live in the dock's top-right action cluster (DockWorkspace's
-          rightHeaderActionsComponent), which rides the top-right-most open panel and
-          is re-derived on every layout change. */}
+      {/* The activity-rail toggle and the {graph | agent} center-slot switch are NOT
+          free-floating chrome here: they live in the dock's top-right action cluster
+          (DockWorkspace's rightHeaderActionsComponent), which rides the top-right-most
+          open panel and is re-derived on every layout change. */}
     </div>
   );
 }

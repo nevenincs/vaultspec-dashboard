@@ -904,7 +904,7 @@ export function useCommandPaletteCommandView(): CommandPaletteCommandView {
         leftCollapsed: shellFrame.leftCollapsed,
         rightCollapsed: shellFrame.rightCollapsed,
         timelineVisible: shellFrame.timelineVisible,
-        graphVisible: shellFrame.graphVisible,
+        graphVisible: shellFrame.centerSlot === "graph",
       },
       activeDocumentStem,
       intents: {

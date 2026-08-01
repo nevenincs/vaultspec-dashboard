@@ -16,18 +16,13 @@ import {
   rightRailAdjacentTab,
   resetShellLayout,
   resizeShellPanelByKey,
-  setShellAgentPanelWidth,
+  setShellCenterSlot,
   shellResizeKeySize,
   shellResizePointerSize,
   startShellResizePointerSession,
   type ShellLayoutState,
 } from "./shellLayout";
-import {
-  AGENT_PANEL_DEFAULT_WIDTH,
-  AGENT_PANEL_MAX_WIDTH,
-  AGENT_PANEL_MIN_WIDTH,
-  useViewStore,
-} from "./viewStore";
+import { normalizeCenterSlot, useViewStore } from "./viewStore";
 
 describe("shell layout frame view", () => {
   beforeEach(() => {
@@ -38,9 +33,8 @@ describe("shell layout frame view", () => {
     leftRailVisible: true,
     leftRailWidth: 300,
     rightRailWidth: 320,
-    agentPanelWidth: 400,
     timelineVisible: true,
-    graphVisible: true,
+    centerSlot: "graph",
     timelineHeight: 180,
   };
   const shellChrome: DashboardShellChromeView = {
@@ -65,8 +59,6 @@ describe("shell layout frame view", () => {
         leftRailWidth: 300,
         rightCollapsed: false,
         rightRailWidth: 320,
-        agentPanelOpen: false,
-        agentPanelWidth: 400,
       }),
     ).toBe("300px 1fr 320px");
 
@@ -77,8 +69,6 @@ describe("shell layout frame view", () => {
         leftRailWidth: 300,
         rightCollapsed: false,
         rightRailWidth: 320,
-        agentPanelOpen: false,
-        agentPanelWidth: 400,
       }),
     ).toBe("48px 1fr 320px");
 
@@ -89,38 +79,26 @@ describe("shell layout frame view", () => {
         leftRailWidth: 300,
         rightCollapsed: true,
         rightRailWidth: 320,
-        agentPanelOpen: false,
-        agentPanelWidth: 400,
       }),
     ).toBe("0px 1fr 0px");
   });
 
-  it("adds an explicit fourth track when the agent panel is open, so the stage reflows beside it", () => {
-    // Open → a fourth track of the panel's width; the stage's 1fr shrinks to make room.
-    expect(
-      appShellGridColumns({
-        leftRailVisible: true,
-        leftCollapsed: false,
-        leftRailWidth: 300,
-        rightCollapsed: false,
-        rightRailWidth: 320,
-        agentPanelOpen: true,
-        agentPanelWidth: 400,
-      }),
-    ).toBe("300px 1fr 320px 400px");
-
-    // Closed → no fourth track (the panel occupies no cell).
-    expect(
-      appShellGridColumns({
-        leftRailVisible: true,
-        leftCollapsed: false,
-        leftRailWidth: 300,
-        rightCollapsed: false,
-        rightRailWidth: 320,
-        agentPanelOpen: false,
-        agentPanelWidth: 400,
-      }),
-    ).toBe("300px 1fr 320px");
+  it("is always exactly three tracks — the agent panel has no column of its own", () => {
+    // The 4th track is DELETED (agent-panel-shell-integration D1): the agent panel
+    // rides the center dock's reserved slot, so the shell grid never grows a column
+    // for it in ANY slot state. Nothing about the slot may reach the track math.
+    for (const slot of ["graph", "agent", "none"] as const) {
+      expect(normalizeCenterSlot(slot)).toBe(slot);
+      expect(
+        appShellGridColumns({
+          leftRailVisible: true,
+          leftCollapsed: false,
+          leftRailWidth: 300,
+          rightCollapsed: false,
+          rightRailWidth: 320,
+        }),
+      ).toBe("300px 1fr 320px");
+    }
   });
 
   it("bounds shell panel dimensions at the shell layout seam", () => {
@@ -403,37 +381,41 @@ describe("shell layout frame view", () => {
   });
 });
 
-// The docked Agent panel's width is a shell-layout column now (it moved out of the
-// agentPanel store): it clamps through the same bounded shell-panel seam as the
-// rails and persists on the canonical view store, reset by "Reset layout".
-describe("agent panel width clamp and persistence", () => {
+// The center slot is the shell verb the graph and the Agent panel share
+// (agent-panel-shell-integration D1). It normalizes at the boundary — including the
+// LEGACY boolean any pre-slot layout blob would carry — and resets to the graph.
+describe("center slot verb", () => {
   beforeEach(() => {
     resetShellLayout();
   });
 
-  it("clamps a below-min width up to the minimum and persists it", () => {
-    setShellAgentPanelWidth(50);
-    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_MIN_WIDTH);
+  it("migrates a legacy graphVisible boolean onto the slot", () => {
+    // The verb this replaced was a boolean: true meant the graph was in the center,
+    // false meant the center was empty. A restored blob written before the slot
+    // existed must land on exactly that reading, not on the fallback.
+    expect(normalizeCenterSlot(true)).toBe("graph");
+    expect(normalizeCenterSlot(false)).toBe("none");
   });
 
-  it("clamps an above-max width down to the maximum and persists it", () => {
-    setShellAgentPanelWidth(9999);
-    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_MAX_WIDTH);
+  it("falls back to the graph for anything it does not recognize", () => {
+    expect(normalizeCenterSlot("terminal")).toBe("graph");
+    expect(normalizeCenterSlot(null)).toBe("graph");
+    expect(normalizeCenterSlot(undefined)).toBe("graph");
+    expect(normalizeCenterSlot(7)).toBe("graph");
   });
 
-  it("keeps an in-bounds width and floors a non-finite width to the minimum", () => {
-    setShellAgentPanelWidth(440);
-    expect(useViewStore.getState().agentPanelWidth).toBe(440);
-    // Non-finite floors to the minimum through the shared bounded shell-panel seam
-    // (the same rule the rails and timeline follow), not to the default.
-    setShellAgentPanelWidth(Number.NaN);
-    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_MIN_WIDTH);
+  it("stores each occupant and validates through the same seam", () => {
+    setShellCenterSlot("agent");
+    expect(useViewStore.getState().centerSlot).toBe("agent");
+    setShellCenterSlot("none");
+    expect(useViewStore.getState().centerSlot).toBe("none");
+    setShellCenterSlot("nonsense");
+    expect(useViewStore.getState().centerSlot).toBe("graph");
   });
 
-  it("restores the default agent width on layout reset", () => {
-    setShellAgentPanelWidth(500);
-    expect(useViewStore.getState().agentPanelWidth).toBe(500);
+  it("restores the graph on layout reset", () => {
+    setShellCenterSlot("agent");
     resetShellLayout();
-    expect(useViewStore.getState().agentPanelWidth).toBe(AGENT_PANEL_DEFAULT_WIDTH);
+    expect(useViewStore.getState().centerSlot).toBe("graph");
   });
 });

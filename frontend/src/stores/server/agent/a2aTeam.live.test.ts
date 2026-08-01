@@ -15,7 +15,7 @@
 
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { liveScope, liveTransport } from "../../../testing/liveClient";
+import { liveFetch, liveScope, liveTransport } from "../../../testing/liveClient";
 import { A2aTeamClient, readAgentTierAvailability } from "./a2aTeam";
 
 /** A live a2a-team client bound to the spawned engine (bearer via live transport). */
@@ -53,13 +53,24 @@ describe("a2a team pass-through (live)", () => {
     }
   });
 
-  it("round-trips service-state with a tiers block", async () => {
-    const state = await a2a.serviceState();
-    expect(state.tiers).toBeDefined();
-    // Degraded reasons is always an array; status is present only when a2a answers.
-    expect(Array.isArray(state.degraded_reasons)).toBe(true);
-    const availability = readAgentTierAvailability(state.tiers);
-    expect(typeof availability.available).toBe("boolean");
+  it("REFUSES the retired service-state verb at the engine whitelist", async () => {
+    // This lane used to be proven here — "round-trips service-state with a tiers
+    // block" passed against the real engine and kept a verb with a full client
+    // stack and zero product consumers looking alive. The test proved the broker
+    // worked; nothing ever proved the product needed the broker. So the assertion
+    // is inverted rather than deleted: the verb is gone, and the live surface now
+    // says so, which is what stops it drifting back in unnoticed.
+    const response = await liveFetch("/ops/a2a/service-state", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    // 403 specifically, and refused at the whitelist — not a 404 from a missing
+    // route, and not a 502 from an absent sibling. The verb is unlisted, so the
+    // engine turns it away before any discovery or round-trip.
+    expect(response.status).toBe(403);
+    const body = (await response.json()) as { error?: string };
+    expect(body.error).toContain("service-state");
   });
 
   it("round-trips active-runs (reload-recovery discovery) with a tiers block", async () => {
