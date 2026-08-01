@@ -31,7 +31,13 @@
  */
 export const CLARIFICATION_MAX_QUESTIONS = 4;
 export const CLARIFICATION_MAX_OPTIONS = 4;
-export const CLARIFICATION_MAX_ANSWER_CHARS = 4096;
+// 2048 is a2a's MAX_ANSWER_CHARS, and it is the one of these three that was
+// wrong. It sat at 4096 - double a2a's - so the composer accepted an answer,
+// `submittableAnswer` sliced it to 4096 rather than 2048, and the run took a
+// 422 from a2a after a full round trip. The reconciliation test below could not
+// see it: it compares this number against the engine's, and the engine carried
+// the same wrong one.
+export const CLARIFICATION_MAX_ANSWER_CHARS = 2048;
 
 export type ClarificationKind = "choice" | "text";
 

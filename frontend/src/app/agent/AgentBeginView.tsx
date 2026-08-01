@@ -9,20 +9,30 @@
 // rigorously on the wire but invisibly at the input. Nothing here invents a
 // workspace name — with no resolved scope it says so rather than guessing.
 //
+// A degraded agent plane changes what this view is allowed to say. The invitation
+// and the starter verbs both promise that typing here will start something, so when
+// the served agent tier reports the plane down they are withheld and the state block
+// says so instead. The composer itself stays mounted and honest — its own controls
+// already carry the disabled-with-reason treatment (G10: status never blocks, but
+// the panel never claims a thing will work when it will not).
+//
 // Layer ownership: dumb app chrome. The scope comes from the served active scope,
-// recents from the shipped session list; this file starts nothing and fetches
-// nothing of its own. The composer it centers is the SAME `Composer` the continue
-// posture bottom-docks — one composer, two placements, never a second build.
+// recents from the shipped session list, availability from the same Team-selector
+// state the composer reads; this file starts nothing and fetches nothing of its own.
+// The composer it centers is the SAME `Composer` the continue posture bottom-docks —
+// one composer, two placements, never a second build.
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { deriveScopeShortName } from "../../stores/view/tabs";
 import { useActiveScope } from "../../stores/server/queries";
-import { useSessionList } from "../../stores/server/agent";
+import { useSessionList, useTeamSelectorState } from "../../stores/server/agent";
 import { setAgentCurrentSession } from "../../stores/view/agentPanel";
+import { StateBlock } from "../kit/StateBlock";
 import {
   AGENT_BEGIN_RECENTS_CAP,
   AGENT_STARTERS,
   agentBeginHeadlineDescriptor,
+  agentBeginPosture,
   agentBeginShowsRecents,
 } from "./agentBegin";
 import { Composer } from "./Composer";
@@ -31,6 +41,7 @@ const MSG = {
   starters: "common:agent.begin.startersLabel",
   recents: "common:agent.begin.recentsLabel",
   untitled: "common:agent.panel.untitledSession",
+  unavailable: "common:agent.transcript.unavailable",
 } as const;
 
 /** The starter verbs (G4). Selecting one seeds the composer draft through the
@@ -108,31 +119,56 @@ function AgentRecents({
 export function AgentBeginView({ onSeed }: { onSeed: (seed: string) => void }) {
   const resolveMessage = useLocalizedMessageResolver();
   const scope = useActiveScope();
+  const team = useTeamSelectorState();
   const list = useSessionList({ cap: AGENT_BEGIN_RECENTS_CAP });
   const recents = list.data?.items ?? [];
+  // The agent tier's served verdict, read through the SAME state the Team selector
+  // disables itself from — one source, so the headline and the selector can never
+  // tell the user two different stories about the plane.
+  const posture = agentBeginPosture({
+    agentPlaneAvailable: !team.disabled,
+    availabilityUnsettled: team.isLoading,
+  });
   const headline = resolveMessage(
     agentBeginHeadlineDescriptor(scope === null ? null : deriveScopeShortName(scope)),
   );
+  const unavailable = resolveMessage({ key: MSG.unavailable });
   return (
     <div
       className="flex min-h-0 flex-1 flex-col justify-center gap-fg-3 overflow-y-auto px-fg-3 py-fg-3"
       data-agent-begin
+      data-agent-begin-posture={posture}
     >
-      {!headline.usedFallback && (
-        <h2
-          className="text-center text-title text-ink"
-          data-agent-begin-headline
-          title={scope ?? undefined}
-        >
-          {headline.message}
-        </h2>
-      )}
-      {/* The one composer, centered. The continue posture docks this same component
-          at the panel bottom — placement encodes posture, nothing else differs. */}
+      {posture === "unavailable"
+        ? !unavailable.usedFallback && (
+            // The shared degraded block, not a bespoke one — and deliberately without
+            // the served reason, which the state-mode-uniformity law keeps out of the
+            // sentence. The reason still reaches the user where it always did: on the
+            // Team selector's disabled title, inside the composer below.
+            <StateBlock mode="degraded" message={unavailable.message} />
+          )
+        : !headline.usedFallback && (
+            <h2
+              className="text-center text-title text-ink"
+              data-agent-begin-headline
+              title={scope ?? undefined}
+            >
+              {headline.message}
+            </h2>
+          )}
+      {/* The one composer, centered, in BOTH postures. Its own controls carry the
+          disabled-with-reason treatment when the plane is down, so removing it here
+          would take away the honest surface rather than add one. The continue posture
+          docks this same component at the panel bottom — placement encodes posture,
+          nothing else differs. */}
       <div data-agent-composer-slot>
         <Composer />
       </div>
-      {agentBeginShowsRecents(recents.length) ? (
+      {/* Starters and recents both promise something the degraded plane cannot
+          deliver — one that a new run will start, the other that past conversations
+          are there to reopen. Neither is offered while the block above says the agent
+          data is unavailable. */}
+      {posture === "unavailable" ? null : agentBeginShowsRecents(recents.length) ? (
         <AgentRecents items={recents} />
       ) : (
         <AgentStarters onSeed={onSeed} />

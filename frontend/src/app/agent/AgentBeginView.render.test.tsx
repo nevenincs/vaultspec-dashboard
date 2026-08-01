@@ -6,26 +6,44 @@
 //
 // What matters here is what the user actually gets on a cold open: a question that
 // names their workspace, the composer sitting under it as the first thing to type
-// into, and starters that step aside the moment there is history to offer instead.
+// into, starters that step aside the moment there is history to offer instead — and,
+// when the served agent tier says the plane is down, none of that invitation at all.
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { I18nextProvider } from "react-i18next";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { en } from "../../locales/en";
 import { createTestLocalizationRuntime } from "../../localization/testing";
 import { liveScope } from "../../testing/liveClient";
+import { a2aKeys } from "../../stores/server/agent/a2aTeam";
 import { useAgentPanel } from "../../stores/view/agentPanel";
 import { useComposerDraft } from "./composerDraft";
 import { AgentBeginView } from "./AgentBeginView";
 
-function renderBegin(seeds: string[] = []) {
+const AGENT_DOWN_REASON = "The agent orchestration service is not running.";
+
+/** Render the begin view against the live engine, with ONE cached read seeded: the
+ *  presets response the Team-selector state derives the agent tier's verdict from.
+ *  Nothing about the transport is faked — but whether a2a happens to be up on the
+ *  machine running this suite is not the subject here, and the posture must be
+ *  pinned for the assertions to mean anything in either direction. */
+function renderBegin(seeds: string[] = [], options: { agentDown?: boolean } = {}) {
   const runtime = createTestLocalizationRuntime();
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client.setQueryData(
+    a2aKeys.presets(),
+    options.agentDown === true
+      ? {
+          presets: [],
+          tiers: { agent: { available: false, reason: AGENT_DOWN_REASON } },
+        }
+      : { presets: [] },
+  );
   return render(
     <I18nextProvider i18n={runtime}>
-      <QueryClientProvider
-        client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
-      >
+      <QueryClientProvider client={client}>
         <AgentBeginView onSeed={(seed) => seeds.push(seed)} />
       </QueryClientProvider>
     </I18nextProvider>,
@@ -96,5 +114,43 @@ describe("AgentBeginView", () => {
       // neither — is what is asserted, not which branch this environment lands in.
       expect(Boolean(starters) !== Boolean(recents)).toBe(true);
     });
+  });
+
+  it("invites normally while the served agent tier is healthy", async () => {
+    renderBegin();
+    await waitFor(() => {
+      expect(
+        document.querySelector('[data-agent-begin-posture="invite"]'),
+      ).not.toBeNull();
+    });
+    // The healthy direction of the same rule: the invitation is present and the
+    // degraded block is not, so the unavailable posture cannot be a state the panel
+    // simply falls into.
+    expect(document.querySelector("[data-agent-begin-headline]")).not.toBeNull();
+    expect(document.querySelector('[data-state-block="degraded"]')).toBeNull();
+  });
+
+  it("does not invite a prompt the degraded agent plane could not start", async () => {
+    renderBegin([], { agentDown: true });
+    const block = await waitFor(() => {
+      const el = document.querySelector('[data-state-block="degraded"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // The honest posture speaks the PARKED transcript-unavailable sentence — the
+    // catalogue's own wording, not a second one invented for this surface.
+    expect(block.textContent).toContain(en.common.agent.transcript.unavailable);
+    // Nothing that asks the user to start something survives: no headline question,
+    // no starter verbs, no recents offering conversations to reopen.
+    expect(
+      document.querySelector('[data-agent-begin-posture="unavailable"]'),
+    ).not.toBeNull();
+    expect(document.querySelector("[data-agent-begin-headline]")).toBeNull();
+    expect(document.querySelector("[data-agent-begin-starters]")).toBeNull();
+    expect(document.querySelector("[data-agent-begin-recents]")).toBeNull();
+    // G10: the status never BLOCKS. The composer stays mounted and carries its own
+    // disabled-with-reason controls rather than vanishing.
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    expect(document.querySelector("[data-agent-composer]")).not.toBeNull();
   });
 });

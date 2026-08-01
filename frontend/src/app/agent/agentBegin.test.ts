@@ -10,6 +10,7 @@ import {
   AGENT_BEGIN_RECENTS_CAP,
   AGENT_STARTERS,
   agentBeginHeadlineDescriptor,
+  agentBeginPosture,
   agentBeginShowsRecents,
   agentComposerPosture,
 } from "./agentBegin";
@@ -63,6 +64,30 @@ describe("agentComposerPosture", () => {
         transcriptUnsettled: true,
       }),
     ).toBe("continue");
+  });
+});
+
+describe("agentBeginPosture", () => {
+  it("invites when the served agent tier reports the plane usable", () => {
+    expect(agentBeginPosture({ agentPlaneAvailable: true })).toBe("invite");
+  });
+
+  it("withholds the invitation when the plane is degraded", () => {
+    // G10: the panel is allowed to keep the composer in front of the user, but it
+    // is not allowed to ask for a prompt it already knows cannot start.
+    expect(agentBeginPosture({ agentPlaneAvailable: false })).toBe("unavailable");
+  });
+
+  it("still invites while availability is unknown, rather than announcing a failure", () => {
+    // An unsettled read is not a degradation. Rendering the unavailable posture here
+    // would tell the user the agent is down and then take it back a moment later —
+    // a false alarm, which is worse than a momentary optimism that self-corrects.
+    expect(
+      agentBeginPosture({ agentPlaneAvailable: false, availabilityUnsettled: true }),
+    ).toBe("invite");
+    expect(
+      agentBeginPosture({ agentPlaneAvailable: true, availabilityUnsettled: true }),
+    ).toBe("invite");
   });
 });
 
