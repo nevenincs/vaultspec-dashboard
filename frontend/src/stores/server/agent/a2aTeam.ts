@@ -144,6 +144,11 @@ export interface TeamRunStatus {
    *  elapsed is NOT computable — the header omits it rather than measuring from
    *  when this panel happened to start watching. */
   readonly started_at_ms?: number;
+  /** The mid-run clarification the run is PARKED on, passed through verbatim
+   *  (agent-flow D5). This disclosure is the questionnaire's ONLY authority: the
+   *  `clarification-pending` relay frame is a re-read nudge and carries none, which
+   *  is what lets a reloaded panel recover the questions from status alone. */
+  readonly pending_clarification?: unknown;
   readonly tiers?: TiersBlock;
 }
 
@@ -382,6 +387,7 @@ export function adaptRunStatus(pass: PassThrough): TeamRunStatus {
     profile_id: asStr(env.profile_id),
     assignments: adaptRoleAssignments(env.assignments),
     started_at_ms: startedAtMs(env),
+    pending_clarification: env.pending_clarification,
     tiers: pass.tiers,
   };
 }
@@ -651,6 +657,23 @@ export class A2aTeamClient {
     );
   }
 
+  /** Answer a parked clarification (agent-flow D5(c)). The engine bounds both ids
+   *  and every answer before forwarding; a refusal comes back as the same
+   *  ok/refusal shape every other verb uses, so the card surfaces it identically. */
+  async respondToClarification(payload: {
+    runId: string;
+    requestId: string;
+    answers: Record<string, string>;
+  }): Promise<TeamRunStartResult> {
+    return adaptRunStart(
+      await this.passThrough("clarification-respond", {
+        run_id: payload.runId,
+        request_id: payload.requestId,
+        answers: payload.answers,
+      }),
+    );
+  }
+
   async cancelRun(runId: string): Promise<TeamRunStartResult> {
     // Cancel reuses the run-start result shape (ok / refusal / tiers); its
     // envelope is the a2a RunCancelResponse.
@@ -809,6 +832,25 @@ export function useTeamRunStatus(
 export function useStartTeamRun() {
   return useMutation({
     mutationFn: (payload: TeamRunStartPayload) => a2aTeamClient.startRun(payload),
+  });
+}
+
+/** Answer a parked clarification. On success the run resumes, so the AUTHORITATIVE
+ *  status is invalidated — the card's collapse into its recap follows the re-read,
+ *  never an optimistic local guess about whether the graph accepted the answers. */
+export function useRespondToClarification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: {
+      runId: string;
+      requestId: string;
+      answers: Record<string, string>;
+    }) => a2aTeamClient.respondToClarification(payload),
+    onSuccess: (_result, payload) => {
+      void queryClient.invalidateQueries({
+        queryKey: a2aKeys.runStatus(payload.runId),
+      });
+    },
   });
 }
 

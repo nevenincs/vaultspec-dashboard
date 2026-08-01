@@ -33,6 +33,15 @@ export const ltrAgentResources = {
     },
     startersLabel: "Manières de commencer",
   },
+  clarification: {
+    answerPlaceholder: "Saisissez votre réponse",
+    failed: "La réponse n’a pas pu être envoyée. Réessayez.",
+    recapTitle: "RÉPONDU",
+    region: "Question de l’exécution",
+    required: "Obligatoire",
+    submit: "Envoyer la réponse",
+    title: "L’exécution attend une décision",
+  },
   runHeader: {
     elapsed: "Écoulé {{elapsed}}",
     mixedProvider: "Fournisseurs mixtes",
@@ -90,6 +99,7 @@ export const ltrAgentResources = {
   },
   composer: {
     placeholder: "Écrire à l’assistant",
+    clarificationParked: "Répondez à la question ci-dessus pour continuer",
     steerPlaceholder: "Répondez pour orienter l’assistant en cours",
     send: "Envoyer",
     sendFailed: "Le message n’a pas pu être envoyé. Réessayez.",
@@ -180,6 +190,15 @@ export const rtlAgentResources = {
     },
     startersLabel: "طرق البدء",
   },
+  clarification: {
+    answerPlaceholder: "اكتب إجابتك",
+    failed: "تعذّر إرسال الإجابة. حاول مرة أخرى.",
+    recapTitle: "تمت الإجابة",
+    region: "سؤال من التشغيل",
+    required: "مطلوب",
+    submit: "إرسال الإجابة",
+    title: "التشغيل بحاجة إلى قرار",
+  },
   runHeader: {
     elapsed: "المنقضي {{elapsed}}",
     mixedProvider: "مزودون مختلطون",
@@ -239,6 +258,7 @@ export const rtlAgentResources = {
   },
   composer: {
     placeholder: "راسل المساعد",
+    clarificationParked: "أجب عن السؤال أعلاه لمتابعة التشغيل",
     steerPlaceholder: "أجب لتوجيه المساعد أثناء عمله",
     send: "إرسال",
     sendFailed: "تعذّر إرسال الرسالة. حاول مرة أخرى.",

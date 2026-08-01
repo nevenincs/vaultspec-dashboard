@@ -42,6 +42,15 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.autonomyBanner.dismiss": { role: "action" },
   // The docked run header (C5): a region name, the served phase rendered verbatim,
   // and the roster eyebrow.
+  // The mid-run questionnaire (D5). The title states a live condition, the recap
+  // eyebrow labels a durable transcript object, and Send answer is the one verb.
+  "common:agent.clarification.region": { role: "accessibility" },
+  "common:agent.clarification.title": { role: "status" },
+  "common:agent.clarification.submit": { role: "action" },
+  "common:agent.clarification.required": { role: "label" },
+  "common:agent.clarification.answerPlaceholder": { role: "label" },
+  "common:agent.clarification.failed": { role: "error-message" },
+  "common:agent.clarification.recapTitle": { role: "label" },
   "common:agent.runHeader.region": { role: "accessibility" },
   "common:agent.runHeader.phase": { role: "label" },
   "common:agent.runHeader.elapsed": { role: "label" },
@@ -101,6 +110,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.transcript.team.degraded": { role: "status" },
   "common:agent.transcript.team.error": { role: "error-message" },
   "common:agent.composer.placeholder": { role: "label" },
+  "common:agent.composer.clarificationParked": { role: "label" },
   "common:agent.composer.steerPlaceholder": { role: "label" },
   "common:agent.composer.send": { role: "action" },
   "common:agent.composer.sendFailed": { role: "error-message" },

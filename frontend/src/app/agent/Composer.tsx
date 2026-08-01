@@ -77,6 +77,7 @@ import {
   useTeamSelectorState,
 } from "../../stores/server/agent";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
+import { normalizePendingClarification } from "./clarification";
 import type { TeamProfile } from "../../stores/server/agent/a2aTeam";
 import {
   setAgentCurrentSession,
@@ -143,6 +144,7 @@ const MSG = {
   teamRunDegraded: "common:agent.composer.teamRunDegraded",
   teamRunDismiss: "common:agent.composer.teamRunDismiss",
   teamRunLocked: "common:agent.composer.teamRunLocked",
+  clarificationParked: "common:agent.composer.clarificationParked",
   attachContext: "common:agent.composer.attachContext",
 } as const;
 
@@ -641,6 +643,12 @@ export function Composer() {
   // snapshot. Relay terminal frames only trigger its immediate reconciliation.
   const teamTerminal = teamProgress.terminal;
   const teamPhase = teamProgress.status?.semantic_phase ?? teamProgress.status?.status;
+  // D5: while the run is PARKED on a clarification, the card is the sole answer
+  // surface (one authority per state). The composer disables itself and says why,
+  // rather than accepting a message the parked graph would never see. Read from the
+  // authoritative status, so a reloaded panel is disabled for the same reason.
+  const parkedOnClarification =
+    normalizePendingClarification(teamProgress.status?.pending_clarification) !== null;
   const teamMode = selectedTeamPreset !== null;
   // The model the run will actually use, read from the SERVED preset list: a preset
   // carries one `default_profile_id`. No preset (or none served) means no profile to
@@ -939,10 +947,14 @@ export function Composer() {
     }
   };
 
-  const placeholderKey =
-    destination === "steer" ? MSG.steerPlaceholder : MSG.idlePlaceholder;
+  const placeholderKey = parkedOnClarification
+    ? MSG.clarificationParked
+    : destination === "steer"
+      ? MSG.steerPlaceholder
+      : MSG.idlePlaceholder;
   const placeholder = resolveMessage({ key: placeholderKey }).message;
   const sendDisabled =
+    parkedOnClarification ||
     (buildAgentPrompt(text, mentions).length === 0 &&
       (commentBatch === null || commentBatch.comments.length === 0)) ||
     slashMode ||
@@ -1021,6 +1033,7 @@ export function Composer() {
           setSlashIndex(0);
         }}
         onKeyDown={onKeyDown}
+        disabled={parkedOnClarification}
         placeholder={placeholder}
         aria-label={placeholder}
         role="combobox"

@@ -385,6 +385,15 @@ export const common = {
       },
       startersLabel: "Ways to start",
     },
+    clarification: {
+      answerPlaceholder: "Type your answer",
+      failed: "The answer couldn’t be sent. Try again.",
+      recapTitle: "ANSWERED",
+      region: "Question from the run",
+      required: "Required",
+      submit: "Send answer",
+      title: "The run needs a decision",
+    },
     runHeader: {
       elapsed: "Elapsed {{elapsed}}",
       mixedProvider: "Mixed providers",
@@ -457,6 +466,7 @@ export const common = {
     },
     composer: {
       placeholder: "Message the agent",
+      clarificationParked: "Answer the question above to continue the run",
       steerPlaceholder: "Reply to guide the running agent",
       send: "Send",
       sendFailed: "The message couldn’t be sent. Try again.",

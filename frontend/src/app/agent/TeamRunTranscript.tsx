@@ -28,6 +28,8 @@ import {
   type TeamToolEntry,
 } from "./teamRun";
 import { useTeamRunProgress } from "./TeamRunProgressContext";
+import { ClarificationCard } from "./ClarificationCard";
+import { normalizePendingClarification } from "./clarification";
 
 const MSG = {
   thinking: "common:agent.transcript.team.thinking",
@@ -196,6 +198,12 @@ export function TeamRunTranscript() {
   const prompt = useAgentTeamRunPrompt();
   const progress = useTeamRunProgress();
   const frames = progress.frames;
+  // The AUTHORITATIVE questionnaire: read from the run-status disclosure, never
+  // from the relay frame that merely nudged the re-read.
+  const pendingClarification = useMemo(
+    () => normalizePendingClarification(progress.status?.pending_clarification),
+    [progress.status],
+  );
   const view = useMemo(
     () => assembleTeamRun(frames, progress.terminal),
     [frames, progress.terminal],
@@ -223,6 +231,12 @@ export function TeamRunTranscript() {
           ),
         )}
       </div>
+      {/* D5: the questionnaire renders AT THE PARK POINT — the end of the activity
+          so far, which is exactly where the run stopped and waited. It is the sole
+          answer surface while parked; the composer disables itself with a hint. */}
+      {pendingClarification !== null && runId !== null && (
+        <ClarificationCard runId={runId} pending={pendingClarification} />
+      )}
       <ActiveAgentsIndicator view={view} />
       {/* Honest degraded path: the relay gapped/degraded/was lost, so live
           activity is paused and `run-status` polling is authoritative — never a

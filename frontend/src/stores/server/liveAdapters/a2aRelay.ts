@@ -32,8 +32,12 @@ export const RELAY_TRANSCRIPT_BYTE_CAP = 2 * 1024 * 1024;
  *  `agent_status`/`team_status` (and the engine's degraded-poll snapshot);
  *  `gap`/`degraded` are the honest re-keyframe/poll-fallback signals; `terminal`
  *  ends the run; `dropped` is the upstream oversized-frame sentinel; `heartbeat`
- *  is a keep-alive; `error` is a run fault; `progress` is any other frame. */
+ *  is a keep-alive; `error` is a run fault; `clarification` is the
+ *  `clarification-pending` park signal (a RE-READ NUDGE only — the questions
+ *  themselves are read from the authoritative run-status disclosure, never from
+ *  this frame); `progress` is any other frame. */
 export type RelayFrameKind =
+  | "clarification"
   | "thought"
   | "token"
   | "tool_call"
@@ -80,6 +84,10 @@ export function classifyRelayFrame(event: string, payload: Rec): RelayFrameKind 
   // event with `degraded:true`, and they must stay in the `degraded` lane so the
   // consumer's poll fallback stays sticky (not flip off on the next status frame).
   if (payload.degraded === true) return "degraded";
+  // Matched BEFORE the generic lanes: a clarification park is the one frame whose
+  // only job is to make the client re-read run-status, and it must not fall into
+  // `progress` where nothing would act on it.
+  if (signal.includes("clarification")) return "clarification";
   if (signal.includes("gap")) return "gap";
   if (signal.includes("relay_degraded") || signal.includes("degraded"))
     return "degraded";
@@ -237,7 +245,10 @@ export function relayFrameForcesReconcile(frame: RelayTranscriptFrame): boolean 
     frame.kind === "degraded" ||
     frame.kind === "gap" ||
     frame.kind === "terminal" ||
-    frame.kind === "error"
+    frame.kind === "error" ||
+    // A clarification park forces the re-read that DISCLOSES the questions. The
+    // frame carries no authority over their content — it only says "ask again".
+    frame.kind === "clarification"
   );
 }
 
