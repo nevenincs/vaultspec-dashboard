@@ -5,13 +5,14 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
+body_hash: 'sha256:1ddf4838cad8c53a6920e2a3cb26dccbd0130c8d911c20eded6724c9a8df8758'
 related:
   - '[[2026-08-01-approval-shape-reconciliation-cross-repo-inventory-reference]]'
   - '[[2026-07-14-a2a-orchestration-edge-adr]]'
   - '[[2026-07-02-agentic-operation-modes-adr]]'
   - '[[2026-06-29-agentic-security-provenance-adr]]'
 ---
-# `approval-shape-reconciliation` adr: `one approval outcome, one enforced requirement, no second authority` | (**status:** `proposed`)
+# `approval-shape-reconciliation` adr: `one approval outcome, one enforced requirement, no second authority` | (**status:** `accepted`)
 
 ## Problem Statement
 
