@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:6ea45245fc01b4bda937ff92f18d3984dea24db5515e52027ec911d85e23e6ea'
+body_hash: 'sha256:fd08188d3f1b9efbbd6a3258e36f15f33f2d64f0b3ff5265baf2dd45804a73fe'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -78,11 +78,12 @@ The empty-state composer with scope-named headline, evidence autocomplete, serve
 
 The conversation grammar: bubbles, one-disclosure work stretches, stat cards, docked run header, recap cards (shell-integration D4).
 
-- [ ] `P07.S25` - Render user turns as right-aligned accent bubbles and assistant turns as full-width open markdown; `frontend/src/app/agent/Transcript.tsx`.
-- [ ] `P07.S26` - Group tool calls and thinking under one collapsed elapsed-labeled disclosure per work stretch expanding to the flat icon-label timeline, preserving the inline permission prompt; `frontend/src/app/agent/ToolCallEntry.tsx`.
-- [ ] `P07.S27` - Add an aggregate and per-file diffstat to the proposal card, client-computed from the served proposal-detail bodies (the wire deliberately serves no diff), with terminal-right actions; `frontend/src/app/authoring/ReviewStation.tsx`.
-- [ ] `P07.S28` - Rehome run metadata (phase, roster with per-role model, sources, elapsed) into the collapsible docked run header region; `frontend/src/app/agent/TeamRunProgressContext.tsx`.
-- [ ] `P07.S29` - Add render tests over authored states for each C-rule surface; `frontend/src/app/agent/`.
+- [x] `P07.S25` - Render user turns as right-aligned accent bubbles and assistant turns as full-width open markdown; `frontend/src/app/agent/Transcript.tsx`.
+- [x] `P07.S26` - Group tool calls and thinking under one collapsed elapsed-labeled disclosure per work stretch expanding to the flat icon-label timeline, preserving the inline permission prompt; `frontend/src/app/agent/ToolCallEntry.tsx`.
+- [x] `P07.S27` - Add an aggregate and per-file diffstat to the proposal card, client-computed from the served proposal-detail bodies (the wire deliberately serves no diff), with terminal-right actions; `frontend/src/app/authoring/ReviewStation.tsx`.
+- [x] `P07.S28` - Rehome run metadata (phase, roster with per-role model, sources, elapsed) into the collapsible docked run header region; `frontend/src/app/agent/TeamRunProgressContext.tsx`.
+- [x] `P07.S29` - Add render tests over authored states for each C-rule surface; `frontend/src/app/agent/`.
+- [ ] `P07.S42` - Consume the already-served run-status roles, frozen profile id, and per-role assignments in the team-run adapter and complete the run-header roster with per-role model (sources stay honestly absent - genuinely unserved); `frontend/src/stores/server/agent/a2aTeam.ts`.
 
 ### Phase `P08` - Questionnaire surface (frontend)
 
