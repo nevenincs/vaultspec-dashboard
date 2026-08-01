@@ -51,7 +51,7 @@ function renderBegin(seeds: string[] = [], options: { agentDown?: boolean } = {}
 }
 
 beforeEach(() => {
-  useAgentPanel.setState({ currentSessionId: null, panelView: "transcript" });
+  useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: false });
   useComposerDraft.setState({ seed: null });
 });
 afterEach(cleanup);

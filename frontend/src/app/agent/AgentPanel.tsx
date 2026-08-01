@@ -17,7 +17,7 @@
 //
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { X } from "lucide-react";
+import { Archive, History, Plus, X } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
@@ -34,29 +34,25 @@ import {
 import { useActiveScope } from "../../stores/server/queries";
 import {
   closeAgentPanel,
-  setAgentPanelView,
   setAgentCurrentSession,
   setAgentTeamRun,
   scopedTeamRunId,
   teamRunScopeAction,
   useAgentCurrentSessionId,
-  useAgentPanelView,
+  useAgentPendingChangesOpen,
   useAgentTeamRunId,
   useAgentTeamRunPrompt,
   useAgentTeamRunScope,
 } from "../../stores/view/agentPanel";
 import {
   agentNewSessionAction,
-  endActiveAgentSession,
+  archiveAgentSession,
 } from "../../stores/view/agentActions";
 import {
-  Divider,
   DropdownButton,
   IconButton,
   Popover,
   SectionLabel,
-  Segment,
-  SegmentedToggle,
   Skeleton,
   SkeletonRow,
   StateBlock,
@@ -75,117 +71,139 @@ import { deriveTeamRoster } from "./teamRun";
 
 const AGENT = {
   region: "common:agent.panel.region",
-  sessionsMenu: "common:agent.panel.sessionsMenu",
+  conversationMenu: "common:agent.panel.conversationMenu",
   newSession: "common:agent.panel.newSession",
-  endConversation: "common:agent.panel.endConversation",
+  archiveSession: "common:agent.panel.archiveSession",
+  history: "common:agent.panel.history",
   recentSessions: "common:agent.panel.recentSessions",
   untitledSession: "common:agent.panel.untitledSession",
   close: "common:agent.panel.close",
-  viewSwitcher: "common:agent.panel.view.switcher",
-  viewTranscript: "common:agent.panel.view.transcript",
-  viewPending: "common:agent.panel.view.pending",
   loading: "common:agent.transcript.loading",
   empty: "common:agent.transcript.empty",
   error: "common:agent.transcript.error",
 } as const;
 
+/** The panel header, on the captured reference grammar (D10): the open
+ *  conversation's TITLE with its own conversation-actions menu (the
+ *  title-with-menu idiom — Archive lives here, navigation never does), then New,
+ *  History (the recents popover), and Close. "End conversation" does not exist:
+ *  agents are STOPPED (composer run slot), sessions are ARCHIVED. */
 function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | null }) {
   const resolveMessage = useLocalizedMessageResolver();
   const list = useSessionList({ cap: 20 });
   const session = useSession(currentSessionId);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [titleMenuOpen, setTitleMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const untitled = resolveMessage({ key: AGENT.untitledSession }).message;
   const agentLabel = resolveMessage({ key: AGENT.region }).message;
   const newSessionLabel = resolveMessage({ key: AGENT.newSession }).message;
-  const endConversationLabel = resolveMessage({ key: AGENT.endConversation }).message;
-  const sessionsMenuLabel = resolveMessage({ key: AGENT.sessionsMenu }).message;
+  const archiveLabel = resolveMessage({ key: AGENT.archiveSession }).message;
+  const historyLabel = resolveMessage({ key: AGENT.history }).message;
+  const conversationMenuLabel = resolveMessage({ key: AGENT.conversationMenu }).message;
   const recentsLabel = resolveMessage({ key: AGENT.recentSessions }).message;
 
   const title = currentSessionId ? session.data?.session.title || untitled : agentLabel;
+  const recents = list.data?.items ?? [];
 
-  // Whether the current conversation can be explicitly ended (S45): a current,
-  // still-active session. Derived from the reactive session query (a loading
-  // snapshot is treated as endable so the control is not falsely hidden).
-  const canEndConversation =
-    currentSessionId !== null &&
-    (session.data?.session.status ?? "active") === "active";
-
-  // New session routes through the shared `agent:new-session` descriptor,
-  // so the header control and the Cmd+K command are one seam. It clears to a blank
+  // New conversation routes through the shared `agent:new-session` descriptor, so
+  // the header control and the Cmd+K command are one seam. It clears to a blank
   // composer; the durable session is created by the composer on the first prompt.
   const onNewSession = () => {
-    setMenuOpen(false);
+    setHistoryOpen(false);
     agentNewSessionAction().run?.();
   };
 
-  // End conversation is the EXPLICIT session-cancel (S45): distinct from Stop
-  // (run-scoped). Fires the one `endActiveAgentSession` seam.
-  const onEndConversation = () => {
-    setMenuOpen(false);
-    void endActiveAgentSession();
+  const onArchive = (sessionId: string) => {
+    setTitleMenuOpen(false);
+    setHistoryOpen(false);
+    void archiveAgentSession(sessionId);
   };
 
-  const recents = list.data?.items ?? [];
-
   return (
-    <header className="flex items-center gap-fg-2 border-b border-rule px-fg-2 py-fg-1-5">
+    <header className="flex items-center gap-fg-1 border-b border-rule px-fg-2 py-fg-1-5">
       <div className="relative min-w-0 flex-1">
-        <DropdownButton
-          label={title}
-          open={menuOpen}
-          onClick={() => setMenuOpen((open) => !open)}
-          ariaLabel={sessionsMenuLabel}
-        />
-        {menuOpen && (
+        {currentSessionId === null ? (
+          // No open conversation: nothing conversation-scoped to offer, so the
+          // title is plain text rather than an empty menu pretending otherwise.
+          <span className="block truncate text-label text-ink" data-agent-title>
+            {title}
+          </span>
+        ) : (
+          <>
+            <DropdownButton
+              label={title}
+              open={titleMenuOpen}
+              onClick={() => setTitleMenuOpen((open) => !open)}
+              ariaLabel={conversationMenuLabel}
+            />
+            {titleMenuOpen && (
+              <Popover
+                open
+                onDismiss={() => setTitleMenuOpen(false)}
+                role="menu"
+                aria-label={conversationMenuLabel}
+                className="absolute left-0 top-full z-40 mt-fg-1 flex w-56 flex-col gap-fg-1 rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => onArchive(currentSessionId)}
+                  data-agent-archive-session
+                  className="flex items-center gap-fg-2 rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
+                >
+                  <Archive size={14} aria-hidden className="shrink-0 text-ink-faint" />
+                  {archiveLabel}
+                </button>
+              </Popover>
+            )}
+          </>
+        )}
+      </div>
+      <IconButton label={newSessionLabel} onClick={onNewSession} data-agent-new-session>
+        <Plus size={16} aria-hidden />
+      </IconButton>
+      <div className="relative">
+        <IconButton
+          label={historyLabel}
+          onClick={() => setHistoryOpen((open) => !open)}
+          data-agent-history
+        >
+          <History size={16} aria-hidden />
+        </IconButton>
+        {historyOpen && (
           <Popover
             open
-            onDismiss={() => setMenuOpen(false)}
+            onDismiss={() => setHistoryOpen(false)}
             role="menu"
-            aria-label={sessionsMenuLabel}
-            className="absolute left-0 top-full z-40 mt-fg-1 flex max-h-80 w-64 flex-col gap-fg-1 overflow-y-auto rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
+            aria-label={historyLabel}
+            data-agent-history-menu
+            className="absolute right-0 top-full z-40 mt-fg-1 flex max-h-80 w-64 flex-col gap-fg-0-5 overflow-y-auto rounded-fg-md border border-rule bg-paper-raised p-fg-1 shadow-fg-popover"
           >
-            <button
-              type="button"
-              role="menuitem"
-              onClick={onNewSession}
-              data-agent-new-session
-              className="rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-ink transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
-            >
-              {newSessionLabel}
-            </button>
-            {canEndConversation && (
-              <button
-                type="button"
-                role="menuitem"
-                onClick={onEndConversation}
-                data-agent-end-conversation
-                className="rounded-fg-sm px-fg-2 py-fg-1 text-left text-label text-state-broken transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus disabled:opacity-50"
-              >
-                {endConversationLabel}
-              </button>
-            )}
-            {recents.length > 0 && (
-              <>
-                <Divider />
-                <SectionLabel>{recentsLabel}</SectionLabel>
-                {recents.map((item) => (
-                  <button
-                    key={item.session_id}
-                    type="button"
-                    role="menuitem"
-                    aria-current={item.session_id === currentSessionId}
-                    onClick={() => {
-                      setAgentCurrentSession(item.session_id);
-                      setMenuOpen(false);
-                    }}
-                    className="truncate rounded-fg-sm px-fg-2 py-fg-1 text-left text-meta text-ink-muted transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[current=true]:bg-paper-sunken aria-[current=true]:text-ink"
-                  >
-                    {item.title || untitled}
-                  </button>
-                ))}
-              </>
-            )}
+            <SectionLabel>{recentsLabel}</SectionLabel>
+            {recents.map((item) => (
+              <div key={item.session_id} className="flex items-center gap-fg-1">
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-current={item.session_id === currentSessionId}
+                  onClick={() => {
+                    setAgentCurrentSession(item.session_id);
+                    setHistoryOpen(false);
+                  }}
+                  className="min-w-0 flex-1 truncate rounded-fg-sm px-fg-2 py-fg-1 text-left text-meta text-ink-muted transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus aria-[current=true]:bg-paper-sunken aria-[current=true]:text-ink"
+                >
+                  {item.title || untitled}
+                </button>
+                <IconButton
+                  label={archiveLabel}
+                  onClick={() => onArchive(item.session_id)}
+                  data-agent-archive-recent={item.session_id}
+                >
+                  <Archive size={14} aria-hidden />
+                </IconButton>
+              </div>
+            ))}
           </Popover>
         )}
       </div>
@@ -256,32 +274,6 @@ function AgentTranscriptContainer({
     >
       {body}
       {teamRunId !== null && <TeamRunTranscript />}
-    </div>
-  );
-}
-
-/** The panel-header view switcher: a two-segment
- *  radiogroup flipping the open panel between the running conversation and the
- *  folded-in "Pending changes" inbox. Local chrome — it writes only the panel's
- *  view-store flag; the transcript is the default. */
-function AgentViewSwitcher({ panelView }: { panelView: "transcript" | "pending" }) {
-  const resolveMessage = useLocalizedMessageResolver();
-  const switcherLabel = resolveMessage({ key: AGENT.viewSwitcher }).message;
-  const transcriptLabel = resolveMessage({ key: AGENT.viewTranscript }).message;
-  const pendingLabel = resolveMessage({ key: AGENT.viewPending }).message;
-  return (
-    <div className="border-b border-rule px-fg-2 py-fg-1-5" data-agent-view-switcher>
-      <SegmentedToggle
-        value={panelView}
-        ariaLabel={switcherLabel}
-        fullWidth
-        onChange={(next) => {
-          if (next === "transcript" || next === "pending") setAgentPanelView(next);
-        }}
-      >
-        <Segment value="transcript">{transcriptLabel}</Segment>
-        <Segment value="pending">{pendingLabel}</Segment>
-      </SegmentedToggle>
     </div>
   );
 }
@@ -369,7 +361,7 @@ export function AgentLifecycleHost() {
  * decides that, and the header's close control hands the slot back.
  */
 export function AgentPanel() {
-  const panelView = useAgentPanelView();
+  const pendingChangesOpen = useAgentPendingChangesOpen();
   useReconcileTeamRunScope();
   const scope = useActiveScope();
   const teamRunId = useAgentTeamRunId();
@@ -397,34 +389,32 @@ export function AgentPanel() {
       aria-label={resolveMessage({ key: AGENT.region }).message}
     >
       <TeamRunProgressProvider runId={scopedRunId}>
-        {panelView === "transcript" && teamRunId === null && scope !== null ? (
+        {teamRunId === null && scope !== null ? (
           <ActiveTeamRunRecovery scope={scope} />
         ) : null}
         <AgentPanelHeader currentSessionId={currentSessionId} />
-        <AgentViewSwitcher panelView={panelView} />
-        {/* C5: live run metadata DOCKS beside the conversation. It sits between the
-            view switcher and the transcript in both postures, so it is never
-            scrolled away inside the message flow. */}
-        {panelView === "pending" ? null : <AgentRunHeaderSlot />}
-        {panelView === "pending" ? (
-          <PendingChangesView />
-        ) : posture === "begin" ? (
+        {/* C5: live run metadata DOCKS beside the conversation — between the header
+            and the transcript in both postures, never scrolled away inside flow. */}
+        <AgentRunHeaderSlot />
+        {posture === "begin" ? (
           /* Nothing to continue: the composer IS the content, centered under the
              headline (G1/G8). The cross-run bridge still rides above it — a proposal
              waiting from an earlier run is exactly the thing a fresh start should
-             not hide. The autonomy control travels INSIDE the composer now (D3
-             row-2 left), so it needs no slot of its own in either posture. */
+             not hide. The autonomy control travels INSIDE the composer (D3 row-2
+             left), so it needs no slot of its own in either posture. */
           <>
             <PendingChangesBridge />
+            {pendingChangesOpen && <PendingChangesView />}
             <AgentBeginView onSeed={setComposerDraft} />
           </>
         ) : (
+          /* ONE view (D9): the conversation. The pending queue is an in-flow
+             disclosure the bridge expands ABOVE the composer — the composer never
+             unmounts, and no view switch exists. */
           <>
             <AgentTranscriptContainer currentSessionId={currentSessionId} />
-            {/* Composer-adjacent, transcript-view only: the cross-run bridge into the
-              inbox (nothing when the queue is fully represented inline), then the
-              bottom-docked composer. */}
             <PendingChangesBridge />
+            {pendingChangesOpen && <PendingChangesView />}
             <AgentComposerSlot />
           </>
         )}

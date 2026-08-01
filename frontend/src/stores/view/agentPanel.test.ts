@@ -9,7 +9,7 @@ import {
   closeAgentPanel,
   openAgentPanel,
   setAgentCurrentSession,
-  setAgentPanelView,
+  setAgentPendingChangesOpen,
   setAgentTeamRun,
   scopedTeamRunId,
   teamRunScopeAction,
@@ -21,7 +21,7 @@ import { getShellCenterSlot, setShellCenterSlot } from "./shellLayout";
 function reset(): void {
   setShellCenterSlot("none");
   useAgentPanel.setState({
-    panelView: "transcript",
+    pendingChangesOpen: false,
     currentSessionId: null,
     teamRunId: null,
     teamRunPrompt: null,
@@ -60,17 +60,19 @@ describe("agent panel open lifecycle", () => {
     expect(getShellCenterSlot()).toBe("graph");
   });
 
-  it("opens straight into a targeted view and leaves the view alone otherwise", () => {
-    openAgentPanel({ view: "pending" });
+  it("expands the pending-changes region on request and leaves it alone otherwise", () => {
+    // D9: there is no view switch — the flag opens a disclosure INSIDE the one
+    // conversation view.
+    openAgentPanel({ pendingChanges: true });
     expect(getShellCenterSlot()).toBe("agent");
-    expect(useAgentPanel.getState().panelView).toBe("pending");
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(true);
 
     setShellCenterSlot("none");
     openAgentPanel();
-    expect(useAgentPanel.getState().panelView).toBe("pending");
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(true);
 
-    setAgentPanelView("transcript");
-    expect(useAgentPanel.getState().panelView).toBe("transcript");
+    setAgentPendingChangesOpen(false);
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(false);
   });
 });
 

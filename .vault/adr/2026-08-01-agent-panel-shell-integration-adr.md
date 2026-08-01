@@ -223,6 +223,74 @@ number: the compact shell ships a read-only run-status affordance (chip →
 sheet with transcript read and stop) before any compact composer is
 attempted. Tracked in the plan; not part of this record's acceptance.
 
+> **Amendment (2026-08-01, owner review of the merged panel — pixel-grounded
+> redesign):** the owner rejected the shipped panel as drifted from the
+> references and mandated the applications themselves as the binding reference.
+> A first-party re-capture pass (recorded in the grounding research, ZCode
+> desktop added to the set) grounds the following decisions, which supersede
+> the contradicted details of D1–D4 chrome while leaving the shell topology
+> (center slot, begin/continue postures, C-rules) intact.
+>
+> **D7 — The panel's purpose is stated, and the outcome is a first-class
+> object.** The panel is where the user asks an agent or team to produce or
+> revise the workspace's corpus — research, ADRs, plans, document edits, code
+> — and supervises that work; finished work returns as reviewable changes
+> (the authoring changeset/proposal plane), not as chat. All five owner-named
+> intents (new feature with documents, co-author, research document, edit,
+> summarize) are prompts through the one composer; summarize alone yields a
+> reply with no changeset. The outcome is PROMISED at the composer (the
+> lane's `authoring_capability` + the standing feature chip), PROGRESSES in
+> the docked run header, and is DELIVERED as the C4 stat card — which adopts
+> the captured Codex grammar: bold "Edited N files", colored aggregate
+> `+X −Y`, per-file rows with muted directory / emphasized filename, and a
+> `Review changes` terminal action. ZCode's task vocabulary is the register:
+> a conversation exists to complete a task, and the begin state's intent
+> cards say what each lane produces.
+>
+> **D8 — Selectors are value-labeled from the served truth, or absent.** The
+> reference label ("Gemini 3.6 Flash (High)") is provider-family model name
+> plus effort in ONE value. What the wire serves today: per-role
+> `provider_id`/`model_name` inside `TeamProfile.assignments`, profile
+> `display_name`, `eligible`, `unavailable_reasons`. The model pill therefore
+> labels by profile display name with the single provider·model where the
+> profile is uniform, expands per-role for mixed profiles, and NEVER renders
+> the invented words "Default" or "Model"; with no served profiles the pill
+> does not render. EFFORT IS NOT SERVED anywhere on `presets-list` — filed
+> as a cross-repo ask toward a2a (an effort/reasoning-tier field on
+> `ProfileSummary`); until served, labels omit effort rather than invent it.
+> The agent/team selector likewise labels by the preset's display name.
+>
+> **D9 — One view; the switcher dies.** The Conversation|Pending-changes
+> segmented switch and the `panelView` store are DELETED (owner: "not an
+> applicable concept"). Proposals render inline in the conversation as C4
+> stat cards; cross-run pending changes surface through the one
+> `PendingChangesBridge` signpost, which expands an in-flow bounded
+> "changes awaiting review" region above the composer — a disclosure inside
+> the conversation, never a second view; the composer never unmounts. The
+> footer pending chip opens the panel with that region expanded.
+>
+> **D10 — Agents STOP; sessions ARCHIVE.** "End conversation"/"Start
+> session" vocabulary is deleted. The run slot at composer right renders
+> nothing at idle (Enter sends — no send button exists in any captured
+> composer, and the owner named the ArrowUp as pure drift; the textarea
+> carries an accessible Enter-sends instruction), a square Stop while ANY
+> run streams (single-agent and team — one verb, one slot, C6), and the
+> existing dismiss on team-terminal. Session removal is ARCHIVE, offered on
+> the conversation title's own menu (the captured title-with-menu idiom:
+> conversation-scoped verbs behind the title, navigation never) and on
+> history rows; it rides the shipped session-cancel verb. The header
+> becomes: conversation title (+ its actions menu) · New · History (recents
+> popover, one-line titles) · Close.
+>
+> **D11 — The composer is ONE card.** A single bordered rounded container:
+> row 1 the borderless auto-grow input; row 2 left `+` attach (opening a
+> LABELED menu — the captured `+` is an attach affordance, not a mystery),
+> the standing scope chip (the captured `Select Project` pill — G5 made
+> visible), the feature chip for authoring lanes, and the autonomy pill;
+> row 2 right the preset selector, the D8 model pill, and the D10 run slot.
+> The oversized "Start team" primary button retires with the send arrow —
+> Enter starts whichever lane is armed.
+
 ## Rationale
 
 The owner's toggle proposal lands on the exact mechanism the codebase

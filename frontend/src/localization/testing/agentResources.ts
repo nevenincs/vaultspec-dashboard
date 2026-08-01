@@ -51,14 +51,12 @@ export const ltrAgentResources = {
     roster: "AGENTS",
   },
   pending: {
-    hide: "Masquer les modifications en attente",
     label: "Modifications en attente",
     show: "Afficher les modifications en attente",
     unavailable: "Modifications en attente indisponibles",
   },
   panel: {
     region: "Assistant",
-    sessionsMenu: "Sessions",
     newSession: "Nouvelle session",
     recentSessions: "Sessions récentes",
     untitledSession: "Session sans titre",
@@ -216,14 +214,12 @@ export const rtlAgentResources = {
     roster: "الوكلاء",
   },
   pending: {
-    hide: "إخفاء التغييرات المعلقة",
     label: "التغييرات المعلقة",
     show: "إظهار التغييرات المعلقة",
     unavailable: "التغييرات المعلقة غير متاحة",
   },
   panel: {
     region: "المساعد",
-    sessionsMenu: "الجلسات",
     newSession: "جلسة جديدة",
     recentSessions: "الجلسات الأخيرة",
     untitledSession: "جلسة بلا عنوان",

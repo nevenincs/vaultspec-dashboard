@@ -59,22 +59,19 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.runHeader.roster": { role: "label" },
   "common:agent.pending.label": { role: "label" },
   "common:agent.pending.show": { role: "action" },
-  "common:agent.pending.hide": { role: "action" },
   "common:agent.pending.unavailable": { role: "error-title" },
   "common:agent.panel.region": { role: "label" },
-  "common:agent.panel.sessionsMenu": { role: "accessibility" },
-  // "New session" is the Figma-bound noun-phrase menu name (like "New document"),
-  // not imperative copy — classified as a label, mirroring that precedent.
+  // The conversation title's own actions menu (the captured title-with-menu
+  // idiom, D10) and the History affordance are icon/menu accessible names.
+  "common:agent.panel.conversationMenu": { role: "accessibility" },
+  "common:agent.panel.history": { role: "accessibility" },
+  // "New session" / "Archive conversation" are Figma-bound noun-phrase menu names
+  // (like "New document"), not imperative copy — classified as labels.
   "common:agent.panel.newSession": { role: "label" },
-  "common:agent.panel.endConversation": { role: "label" },
+  "common:agent.panel.archiveSession": { role: "label" },
   "common:agent.panel.recentSessions": { role: "label" },
   "common:agent.panel.untitledSession": { role: "label" },
   "common:agent.panel.close": { role: "accessibility" },
-  "common:agent.panel.view.switcher": { role: "accessibility" },
-  // The two view names the switcher selects (radio-style segmented labels), not
-  // imperative action buttons — classified as labels like the autonomy segments.
-  "common:agent.panel.view.transcript": { role: "label" },
-  "common:agent.panel.view.pending": { role: "label" },
   "common:agent.transcript.loading": { role: "status" },
   "common:agent.transcript.empty": { role: "status" },
   "common:agent.transcript.error": { role: "error-message" },

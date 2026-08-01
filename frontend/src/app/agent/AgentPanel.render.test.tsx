@@ -33,7 +33,7 @@ import {
 import { AgentClient } from "../../stores/server/agent";
 import { a2aKeys, type ActiveRunsResult } from "../../stores/server/agent/a2aTeam";
 import {
-  setAgentPanelView,
+  setAgentPendingChangesOpen,
   setAgentTeamRun,
   useAgentPanel,
 } from "../../stores/view/agentPanel";
@@ -50,7 +50,7 @@ const canonicalTiers = {
 function resetStore(): void {
   useAgentPanel.setState({
     currentSessionId: null,
-    panelView: "transcript",
+    pendingChangesOpen: false,
     teamRunId: null,
     teamRunPrompt: null,
     teamRunScope: null,
@@ -220,15 +220,15 @@ describe("AgentPanel transcript states", () => {
     );
 
     // Deactivate and reactivate recovery. The panel no longer carries an open flag
-    // to flip — leaving the center slot unmounts the whole body, which this test
-    // cannot drive because it renders the panel directly rather than through the
-    // dock. The pending/transcript transition is the OTHER path the recovery host
-    // is documented to unmount across, and it exercises the same remount.
-    act(() => setAgentPanelView("pending"));
+    // (or a view) to flip — leaving the center slot unmounts the whole body, which
+    // this test cannot drive because it renders the panel directly rather than
+    // through the dock. Binding a team run is the OTHER path that unmounts the
+    // recovery host, and clearing it exercises the same remount.
+    act(() => setAgentTeamRun({ runId: "run-pause", prompt: null, scope }));
     await waitFor(() =>
-      expect(document.querySelector("[data-agent-transcript]")).toBeNull(),
+      expect(document.querySelector("[data-team-run]")).not.toBeNull(),
     );
-    act(() => setAgentPanelView("transcript"));
+    act(() => setAgentTeamRun(null));
     await waitFor(
       () => {
         const state = queryClient.getQueryState(key);
@@ -296,38 +296,34 @@ describe("AgentPanel transcript states", () => {
   });
 });
 
-describe("AgentPanel view switcher", () => {
-  it("defaults to the conversation view: composer present, no pending inbox", () => {
+describe("AgentPanel pending-changes disclosure (D9 — no view switch)", () => {
+  it("renders ONE view: no switcher exists, and the composer is always present", () => {
     useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
-    expect(document.querySelector("[data-agent-view-switcher]")).not.toBeNull();
+    // The Conversation|Pending-changes switch is DELETED, not restyled.
+    expect(document.querySelector("[data-agent-view-switcher]")).toBeNull();
     expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    // The pending region is closed by default — no standing chrome.
     expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
-    // The switcher shows the conversation segment selected.
-    expect(
-      screen.getByRole("radio", { name: "Conversation" }).getAttribute("aria-checked"),
-    ).toBe("true");
   });
 
-  it("switches to the pending-changes inbox: queue body shown, composer hidden", () => {
-    useAgentPanel.setState({ currentSessionId: null });
+  it("expands the in-flow region WITHOUT unmounting the composer", () => {
+    useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: true });
     renderPanel();
-    fireEvent.click(screen.getByRole("radio", { name: "Pending changes" }));
+    // The region renders inside the one conversation view…
     expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
-    // The inbox carries no composer of its own.
-    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
-    // And no transcript container in the pending view.
-    expect(document.querySelector("[data-agent-transcript]")).toBeNull();
+    // …and the composer stays mounted around it — the disclosure is a region,
+    // never a second view.
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
   });
 
-  it("opens directly in the pending view when the store targets it", () => {
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "pending",
-    });
+  it("collapses the region from the store seam", () => {
+    useAgentPanel.setState({ currentSessionId: null, pendingChangesOpen: true });
     renderPanel();
     expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
-    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
+    act(() => setAgentPendingChangesOpen(false));
+    expect(document.querySelector("[data-agent-pending-changes]")).toBeNull();
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
   });
 });
 
@@ -399,10 +395,7 @@ async function seedOutOfSessionProposal(): Promise<void> {
 
 describe("AgentPanel autonomy + bridge", () => {
   it("renders the autonomy control INSIDE the composer's scope controls", async () => {
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "transcript",
-    });
+    useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
     // The served scope-level mode (GET /v1/mode) resolves to a default, so the
     // control renders even with an empty queue. D3 relocated it from a panel band
@@ -434,25 +427,9 @@ describe("AgentPanel autonomy + bridge", () => {
     ).toBeTruthy();
   });
 
-  it("does not render the autonomy control (or a composer) in the pending view", () => {
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "pending",
-    });
-    renderPanel();
-    // The pending view hosts only the queue body — structurally no autonomy control
-    // and no composer (the inbox has neither).
-    expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull();
-    expect(document.querySelector("[data-autonomy-control]")).toBeNull();
-    expect(document.querySelector("[data-agent-composer-slot]")).toBeNull();
-  });
-
-  it("shows the pending bridge for out-of-session changes and switches to the inbox", async () => {
+  it("shows the pending bridge for out-of-session changes and expands the region in place", async () => {
     await seedOutOfSessionProposal();
-    useAgentPanel.setState({
-      currentSessionId: null,
-      panelView: "transcript",
-    });
+    useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
     const bridge = await waitFor(
       () => {
@@ -462,22 +439,60 @@ describe("AgentPanel autonomy + bridge", () => {
       },
       { timeout: 15_000 },
     );
-    // The affordance is composer-adjacent in the transcript view (not a modal).
+    // The affordance is composer-adjacent inside the one conversation view.
     expect(document.querySelector("[data-agent-panel]")?.contains(bridge)).toBe(true);
+    expect(bridge.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(bridge);
-    // Clicking switches the panel to the pending inbox view.
-    expect(useAgentPanel.getState().panelView).toBe("pending");
+    // Clicking expands the in-flow region — the composer stays mounted (D9).
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(true);
     await waitFor(() =>
       expect(document.querySelector("[data-agent-pending-changes]")).not.toBeNull(),
     );
+    expect(document.querySelector("[data-agent-composer-slot]")).not.toBeNull();
+    // The strip stays rendered as the collapse affordance, and collapses in place.
+    const openBridge = document.querySelector<HTMLElement>(
+      "[data-pending-changes-bridge]",
+    );
+    expect(openBridge?.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.click(openBridge!);
+    expect(useAgentPanel.getState().pendingChangesOpen).toBe(false);
   });
 });
 
 describe("AgentPanel header", () => {
-  it("opens the sessions menu and offers New session", () => {
+  it("offers New and History; End conversation does not exist (D10)", () => {
     useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
-    fireEvent.click(screen.getByRole("button", { name: "Sessions" }));
-    expect(screen.getByRole("menuitem", { name: "New session" })).toBeTruthy();
+    // New conversation and the recents History popover are standing icon
+    // affordances — never buried in a sessions dropdown.
+    expect(document.querySelector("[data-agent-new-session]")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "History" }));
+    expect(document.querySelector("[data-agent-history-menu]")).not.toBeNull();
+    // The retired vocabulary is GONE, not hidden.
+    expect(document.querySelector("[data-agent-end-conversation]")).toBeNull();
+    // With no open conversation the title is plain text — no empty menu.
+    expect(document.querySelector("[data-agent-title]")).not.toBeNull();
+  });
+
+  it("archives the open conversation from the title's own menu", async () => {
+    const sessionId = await createLiveSession(`Archive drill ${run}`);
+    useAgentPanel.setState({ currentSessionId: sessionId });
+    renderPanel();
+    // The conversation title carries its own actions menu once the session
+    // resolves (the captured title-with-menu idiom).
+    const titleMenu = await waitFor(
+      () => {
+        const el = screen.getByRole("button", { name: "Conversation options" });
+        expect(el).toBeTruthy();
+        return el;
+      },
+      { timeout: 10_000 },
+    );
+    fireEvent.click(titleMenu);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Archive conversation" }));
+    // Archiving the OPEN conversation clears the pointer → begin state.
+    await waitFor(() => expect(useAgentPanel.getState().currentSessionId).toBeNull(), {
+      timeout: 10_000,
+    });
   });
 });

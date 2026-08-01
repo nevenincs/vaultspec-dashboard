@@ -104,40 +104,24 @@ export async function stopActiveAgentRun(): Promise<void> {
   }
 }
 
-/** The current session id when there is an ACTIVE session to explicitly END, else
- *  null. A cancelled/closed session already terminated; a null snapshot (still
- *  loading) is treated as endable so the control is not falsely hidden — the cancel
- *  faults honestly on the wire if the session is gone. */
-function endableAgentSessionId(): string | null {
-  const sessionId = useAgentPanel.getState().currentSessionId;
-  if (sessionId === null) return null;
-  const snapshot = queryClient.getQueryData<SessionSnapshot>(
-    agentKeys.session(sessionId),
-  );
-  const status = snapshot?.session.status ?? null;
-  return status === null || status === "active" ? sessionId : null;
-}
-
-/** Whether there is a current conversation to explicitly end — the eligibility gate
- *  the End-conversation control reads so it is offered only when it can act. */
-export function hasEndableAgentSession(): boolean {
-  return endableAgentSessionId() !== null;
-}
-
-/** Explicitly END the current conversation: cancel the active run, void
- *  queued turns, and mark the session cancelled — DISTINCT from Stop, which
- *  is run-scoped and leaves the session active. The ONE seam the panel's
- *  End-conversation control fires; a no-op when there is no endable session. */
-export async function endActiveAgentSession(): Promise<void> {
-  const sessionId = endableAgentSessionId();
-  if (sessionId === null) return;
+/** ARCHIVE a conversation (agent-panel-shell-integration D10 — the owner's
+ *  vocabulary law: agents are STOPPED, sessions are ARCHIVED; "End conversation"
+ *  is not a concept the references have). Cancelling the session on the wire is
+ *  the one removal verb this plane serves: it stops any active run, voids queued
+ *  turns, and marks the session cancelled. Archiving the OPEN conversation also
+ *  clears the current-session pointer, returning the panel to its begin state.
+ *  The ONE seam the title-menu and history-row Archive controls fire. */
+export async function archiveAgentSession(sessionId: string): Promise<void> {
   try {
     await agentClient.cancelSession(
       sessionId,
-      { reason: "operator_end_conversation" },
+      { reason: "operator_archive" },
       { actorToken: await ensureActorToken() },
     );
   } finally {
+    if (useAgentPanel.getState().currentSessionId === sessionId) {
+      setAgentCurrentSession(null);
+    }
     invalidateAgent();
   }
 }

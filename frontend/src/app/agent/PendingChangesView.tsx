@@ -1,13 +1,12 @@
-// The Agent panel's "Pending changes" view: the
-// cross-run review inbox, folded into the Agent panel in place of the modal
-// "Approvals" dialog. A DUMB view — it re-hosts the existing review-queue body
-// (`ReviewStationBody`, which itself renders the applied-under-policy lane) over
-// the SAME store hooks the deleted dialog used, unchanged. No new fetch, no raw
-// tiers, no card fork (a view rewrite freezes the contract): the queue rows,
-// degraded/truncation states, and after-the-fact lane are the station body's.
-//
-// The autonomy control is NOT here — it relocates composer-adjacent; this
-// view is the inbox only, and the inbox carries no composer.
+// The in-conversation "changes awaiting review" region (D9): the cross-run
+// review queue as a BOUNDED disclosure inside the panel's one conversation view,
+// expanded/collapsed by `PendingChangesBridge` and by the footer pending chip.
+// There is no view switch — the transcript and composer stay mounted around it.
+// A DUMB view — it re-hosts the existing review-queue body (`ReviewStationBody`,
+// which itself renders the applied-under-policy lane) over the SAME store hooks
+// the retired inbox view used, unchanged. No new fetch, no raw tiers, no card
+// fork (a view rewrite freezes the contract): the queue rows, degraded/truncation
+// states, and after-the-fact lane are the station body's.
 
 import { useReviewStationView } from "../../stores/server/authoring";
 import { ReviewStationBody, useReviewActions } from "../authoring/ReviewStation";
@@ -17,7 +16,7 @@ export function PendingChangesView() {
   const actions = useReviewActions();
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col gap-fg-3 overflow-y-auto px-fg-2 py-fg-2 text-body"
+      className="flex max-h-80 shrink-0 flex-col gap-fg-3 overflow-y-auto border-t border-rule px-fg-2 py-fg-2 text-body"
       data-agent-pending-changes
     >
       <ReviewStationBody view={view} actions={actions} />

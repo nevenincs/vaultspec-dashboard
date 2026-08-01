@@ -317,24 +317,19 @@ export const common = {
       roster: "AGENTS",
     },
     pending: {
-      hide: "Hide pending changes",
       label: "Pending changes",
       show: "Show pending changes",
       unavailable: "Pending changes unavailable",
     },
     panel: {
       region: "Agent",
-      sessionsMenu: "Sessions",
+      conversationMenu: "Conversation options",
       newSession: "New session",
-      endConversation: "End conversation",
+      archiveSession: "Archive conversation",
+      history: "History",
       recentSessions: "Recent sessions",
       untitledSession: "Untitled session",
       close: "Close agent panel",
-      view: {
-        switcher: "Agent panel view",
-        transcript: "Conversation",
-        pending: "Pending changes",
-      },
     },
     transcript: {
       loading: "Loading the conversation…",

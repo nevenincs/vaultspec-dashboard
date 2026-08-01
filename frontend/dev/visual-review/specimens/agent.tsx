@@ -199,7 +199,7 @@ function AgentPanelSpecimen({ state }: { state: ReviewState }) {
   const currentSessionId =
     state === "empty" || state === "degraded" ? null : SESSION_ID_NORMAL;
   useEffect(() => {
-    openAgentPanel({ view: "transcript" });
+    openAgentPanel();
     setAgentCurrentSession(currentSessionId);
     return () => {
       closeAgentPanel();

@@ -3,7 +3,7 @@ tags:
   - '#research'
   - '#agent-panel'
 date: '2026-07-31'
-modified: '2026-07-31'
+modified: '2026-08-01'
 body_hash: 'sha256:e709f786dc45e6ef5d8d294347292899d8fdc7d0be39beabb2e9859ae7851c91'
 related:
   - '[[2026-07-19-review-surface-flow-research]]'
@@ -273,6 +273,49 @@ record suggests; what remains is a bounded consolidation, not a rebuild.
 - **G11 NOT MET:** no recents. The transcript is single-session; there is
   no run/session history list anywhere in the shell, though the wire
   (`GET /authoring/v1/sessions`, `active-runs`) already serves the data.
+
+### Re-capture pass (2026-08-01, first-party, pixels on disk)
+
+A second capture pass was taken directly from the running applications on this
+machine (window captures via PrintWindow/screen copy), after the owner mandated
+that the applications themselves remain the binding reference. The images live
+IN-REPO but untracked (per `no-tracked-visual-dev-artifacts`) at
+`.tmp/ui-captures/` — gitignored, machine-local, logged here so they are never
+lost: `claude-desktop.png`, `chatgpt-desktop.png`, `chatgpt-composer.png`,
+`antigravity-desktop.png`, `zcode-desktop.png`, `claude-begin.png`
+(a working copy also sits at `C:/Users/hello/ui-captures/`).
+
+New in this pass: **ZCode desktop joins the reference set** (it was not in the
+2026-07-31 pass). Its opening state: sidebar `New task` (with `Ctrl+N`
+accelerator shown inline), `Search` (`Ctrl+K`), `Automations`, `Skills`, a
+`Group|Project` toggle, then Projects and Tasks lists; main canvas a
+time-personalized headline, a `Select project ˅` pill directly above the
+composer, and the placeholder "Ask ZCode anything, @ for …". ZCode frames every
+conversation as a TASK — outcome-oriented naming, no chat noun anywhere.
+
+What the pixels confirm or sharpen against the prose capture:
+
+- **C4 sharpened:** the ChatGPT/Codex file-change card shows the aggregate
+  diffstat COLORED (`+155` green, `−833` red) under a bold "Edited 10 files"
+  title, an icon tile at left, `Review changes ↗` as the terminal action, and a
+  per-file list rendering the directory path muted with the filename emphasized.
+- **Claude desktop has moved to an app-level `Home|Code` toggle** (the G9 slot,
+  previously observed as Chat|Cowork), with sidebar `+ New`, `Projects`,
+  `Artifacts`, `Scheduled`, `Dispatch (Beta)`, `Customize`, then scrollable
+  `Recents`.
+- **The conversation header idiom is title-with-menu:** Claude renders the open
+  conversation's title center-top with a chevron (a conversation-actions menu);
+  Codex renders the title with a trailing `…` overflow. Conversation-scoped verbs
+  (rename/archive) live behind the title's own menu — navigation to OTHER
+  conversations never does; recents stay in the sidebar/history surface
+  (Antigravity names it `Conversation History`).
+- **G5 confirmed verbatim** in Antigravity and ZCode: a `Select Project ˅` pill
+  sits immediately above the input; Antigravity's model pill reads
+  `Gemini 3.6 Flash (High)` — provider-family model name plus effort tier in one
+  value-label.
+- **Recents rows carry an unread/activity blue dot** (Codex project conversation
+  rows), and no visible send button appears in any captured composer.
+
 
 ## Recommendation
 

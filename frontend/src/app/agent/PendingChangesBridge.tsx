@@ -1,17 +1,19 @@
-// The transcript -> inbox bridge affordance. Pinned
-// composer-adjacent in the transcript view, it signposts pending changes the
-// conversation cannot show inline: proposals NOT correlated to the current
-// session's runs (other sessions, expired sessions, human/non-agent changesets)
-// plus after-the-fact applied work not yet acknowledged. It renders nothing when
-// the queue is empty or fully represented inline (no standing chrome), and it opens
-// the pending-changes view on click.
+// The pending-changes signpost + disclosure toggle (D9). Pinned composer-adjacent,
+// it signposts pending changes the conversation cannot show inline: proposals NOT
+// correlated to the current session's runs (other sessions, expired sessions,
+// human/non-agent changesets) plus after-the-fact applied work not yet
+// acknowledged. Clicking it expands/collapses the in-flow "changes awaiting
+// review" region ABOVE the composer — a disclosure inside the one conversation
+// view, never a view switch; the composer never unmounts. It renders nothing when
+// the queue is empty AND the region is closed (no standing chrome), but stays
+// rendered while the region is open so the region can always be collapsed.
 //
-// Layer ownership: a DUMB app-chrome view over the SAME store hooks the inbox uses
+// Layer ownership: a DUMB app-chrome view over the SAME store hooks the region uses
 // (no new fetch, no new model). The count derivation is a PURE function
 // (`derivePendingChangesBridge`) so it is unit-tested directly.
 
 import { useMemo } from "react";
-import { Inbox } from "lucide-react";
+import { ChevronDown, ChevronRight, Inbox } from "lucide-react";
 
 import { useLocalizedMessageResolver } from "../../platform/localization/LocalizationProvider";
 import { useReviewStationView } from "../../stores/server/authoring";
@@ -21,13 +23,15 @@ import type {
 } from "../../stores/server/authoring";
 import { useSession } from "../../stores/server/agent";
 import {
-  setAgentPanelView,
+  setAgentPendingChangesOpen,
   useAgentCurrentSessionId,
+  useAgentPendingChangesOpen,
 } from "../../stores/view/agentPanel";
 
 const BRIDGE = {
   count: "common:agent.pendingBridge.count",
   more: "common:agent.pendingBridge.more",
+  regionName: "common:agent.pending.label",
 } as const;
 
 export interface PendingChangesBridgeInput {
@@ -105,22 +109,34 @@ export function PendingChangesBridge() {
     ],
   );
 
-  if (!bridge.present) return null;
+  const open = useAgentPendingChangesOpen();
 
-  const label =
-    bridge.count === null
+  // No standing chrome: nothing out-of-session and the region closed → nothing.
+  // While the region is OPEN the strip stays (it is the collapse affordance),
+  // labelled by the plain region name when there is no count to signpost.
+  if (!bridge.present && !open) return null;
+
+  const label = bridge.present
+    ? bridge.count === null
       ? resolveMessage({ key: BRIDGE.more }).message
-      : resolveMessage({ key: BRIDGE.count, values: { count: bridge.count } }).message;
+      : resolveMessage({ key: BRIDGE.count, values: { count: bridge.count } }).message
+    : resolveMessage({ key: BRIDGE.regionName }).message;
 
   return (
     <button
       type="button"
       data-pending-changes-bridge
-      onClick={() => setAgentPanelView("pending")}
+      aria-expanded={open}
+      onClick={() => setAgentPendingChangesOpen(!open)}
       className="flex w-full items-center gap-fg-2 border-t border-rule px-fg-2 py-fg-1-5 text-left text-meta text-ink-muted transition-colors duration-ui-fast hover:bg-paper-sunken focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-focus"
     >
       <Inbox size={16} aria-hidden className="shrink-0 text-ink-faint" />
       <span className="min-w-0 flex-1 truncate">{label}</span>
+      {open ? (
+        <ChevronDown size={14} aria-hidden className="shrink-0 text-ink-faint" />
+      ) : (
+        <ChevronRight size={14} aria-hidden className="shrink-0 text-ink-faint" />
+      )}
     </button>
   );
 }
