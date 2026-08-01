@@ -1124,8 +1124,15 @@ export function Composer() {
           composer's control row — never modal, never blocking the prompt. */}
       <ComposerAutonomyBanner />
       {/* Row 2 (G6, codified by D3): LEFT changes what the agent works on, RIGHT
-          changes how it thinks, and send is terminal-right. */}
-      <div className="flex items-center justify-between gap-fg-2">
+          changes how it thinks, and send is terminal-right.
+          The row WRAPS rather than overflowing. At panel width — the default
+          [document|agent] split — the pills plus the send control exceed one line,
+          and an unwrapped row does not clip the least important thing, it clips the
+          LAST one: the primary action slid under the model pill and became
+          unclickable. Wrapping keeps both clusters intact and their order (and so
+          the law) while guaranteeing the action is always reachable; `ml-auto`
+          keeps the right cluster right-aligned on whichever line it lands. */}
+      <div className="flex flex-wrap items-center justify-between gap-fg-2">
         <ComposerScopeControls
           onAttach={() => setMentionOpen(true)}
           attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
@@ -1140,7 +1147,7 @@ export function Composer() {
             ) : null
           }
         />
-        <div className="flex min-w-0 items-center gap-fg-2">
+        <div className="ml-auto flex min-w-0 items-center gap-fg-2">
           <ComposerThinkingControls
             selectedTeamPreset={selectedTeamPreset}
             onSelectTeam={setSelectedTeamPreset}
