@@ -121,12 +121,12 @@ function AgentPanelHeader({ currentSessionId }: { currentSessionId: string | nul
   };
 
   return (
-    <header className="flex items-center gap-fg-1 border-b border-rule px-fg-2 py-fg-1-5">
+    <header className="flex items-center gap-fg-1 border-b border-rule px-fg-3 py-fg-2">
       <div className="relative min-w-0 flex-1">
         {currentSessionId === null ? (
           // No open conversation: nothing conversation-scoped to offer, so the
           // title is plain text rather than an empty menu pretending otherwise.
-          <span className="block truncate text-label text-ink" data-agent-title>
+          <span className="block truncate text-body text-ink" data-agent-title>
             {title}
           </span>
         ) : (
@@ -268,7 +268,7 @@ function AgentTranscriptContainer({
 
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col gap-fg-3 overflow-y-auto px-fg-2 py-fg-2"
+      className="flex min-h-0 flex-1 flex-col gap-fg-4 overflow-y-auto px-fg-3 py-fg-3"
       data-agent-transcript
       aria-live="polite"
     >
@@ -336,7 +336,7 @@ function AgentRunHeaderSlot() {
  *  the same component centered instead, from `AgentBeginView`. */
 function AgentComposerSlot() {
   return (
-    <div className="border-t border-rule px-fg-2 py-fg-2" data-agent-composer-slot>
+    <div className="border-t border-rule px-fg-3 py-fg-3" data-agent-composer-slot>
       <Composer />
     </div>
   );

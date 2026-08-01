@@ -135,7 +135,7 @@ export function AgentBeginView({ onSeed }: { onSeed: (seed: string) => void }) {
   const unavailable = resolveMessage({ key: MSG.unavailable });
   return (
     <div
-      className="flex min-h-0 flex-1 flex-col justify-center gap-fg-3 overflow-y-auto px-fg-3 py-fg-3"
+      className="flex min-h-0 flex-1 flex-col justify-center gap-fg-4 overflow-y-auto px-fg-4 py-fg-4"
       data-agent-begin
       data-agent-begin-posture={posture}
     >

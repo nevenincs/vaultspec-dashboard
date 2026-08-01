@@ -3,7 +3,7 @@ tags:
   - '#adr'
   - '#agent-panel'
 date: '2026-08-01'
-modified: '2026-08-01'
+modified: '2026-08-02'
 body_hash: 'sha256:9d2d16e3ffbb456b8f1811cec34eb8682c7c5817025a05dfe32de5412e479f2c'
 related:
   - '[[2026-07-31-agent-panel-ux-research]]'
@@ -290,6 +290,18 @@ attempted. Tracked in the plan; not part of this record's acceptance.
 > row 2 right the preset selector, the D8 model pill, and the D10 run slot.
 > The oversized "Start team" primary button retires with the send arrow —
 > Enter starts whichever lane is armed.
+
+> **Amendment (2026-08-02, density tier — the owner's "does not look like
+> the references" verdict):** the panel steps UP one type tier and one
+> spacing tier from the surrounding dashboard chrome. Every captured
+> application renders conversation content at body size with generous row
+> spacing; the panel had been rendering at the rail's meta/label density,
+> which is why it read as a status panel rather than an application. The
+> tier choice, expressed only through the token scale: conversation text
+> (prompts, replies, the header title) at the body tier; conversation
+> gaps at the `fg-4` (1rem) spacing tier; region paddings at `fg-3`;
+> status metadata stays at the meta tier — the references render
+> metadata smaller than content too. No ad-hoc values.
 
 ## Rationale
 

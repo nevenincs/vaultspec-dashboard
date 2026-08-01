@@ -218,10 +218,10 @@ export function TeamRunTranscript() {
   if (runId === null) return null;
 
   return (
-    <section className="flex flex-col gap-fg-2" data-team-run={runId}>
+    <section className="flex flex-col gap-fg-3" data-team-run={runId}>
       {prompt !== null && prompt.length > 0 && (
         <div data-team-prompt>
-          <p className="rounded-fg-md bg-paper-sunken px-fg-2 py-fg-1-5 text-body text-ink">
+          <p className="rounded-fg-md bg-paper-sunken px-fg-3 py-fg-2 text-body text-ink">
             {prompt}
           </p>
         </div>

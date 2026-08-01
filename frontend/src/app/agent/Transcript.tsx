@@ -183,14 +183,14 @@ function TranscriptTurn({ view }: { view: TranscriptTurnView }) {
   const stretch = deriveWorkStretch(view.thinking, view.toolCalls);
   return (
     <li
-      className="flex flex-col gap-fg-1-5"
+      className="flex flex-col gap-fg-2"
       data-transcript-turn={view.turnId}
       data-transcript-live={view.live ? "" : undefined}
     >
       {/* C1: the USER turn is a right-aligned accent bubble. Bubble-vs-open text
           plus alignment is the ONLY speaker cue — there are no name labels. */}
       <div className="flex justify-end" data-transcript-prompt>
-        <p className="max-w-[85%] rounded-fg-md bg-accent/12 px-fg-2 py-fg-1-5 text-body text-ink">
+        <p className="max-w-[85%] rounded-fg-md bg-accent/12 px-fg-3 py-fg-2 text-body text-ink">
           {view.prompt}
         </p>
       </div>
@@ -243,7 +243,7 @@ export function Transcript({ snapshot }: { snapshot: SessionSnapshot }) {
           {resolveMessage({ key: MSG.showingRecent }).message}
         </p>
       )}
-      <ol className="flex flex-col gap-fg-3" data-agent-transcript-entries>
+      <ol className="flex flex-col gap-fg-4" data-agent-transcript-entries>
         {view.turns.map((turn) => (
           <TranscriptTurn key={turn.turnId} view={turn} />
         ))}
