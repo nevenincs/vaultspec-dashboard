@@ -6,7 +6,7 @@ tags:
 date: '2026-08-01'
 modified: '2026-08-01'
 body_schema: 'body-v1'
-body_hash: 'sha256:8db9669e5197f3ed8c9241ff8f6bcff310ddda16385bad230e93d608d710939f'
+body_hash: 'sha256:d0392189fea5f3952dcf7ed4f5283f6e4d7ef6e60cb090eda63e40919fd505f6'
 related:
   - '[[2026-08-01-approval-shape-reconciliation-W01-P01-S01]]'
   - '[[2026-08-01-approval-shape-reconciliation-W01-P01-S02]]'
@@ -17,6 +17,19 @@ related:
   - '[[2026-08-01-approval-shape-reconciliation-W01-P02-S06]]'
   - '[[2026-08-01-approval-shape-reconciliation-W01-P02-S07]]'
   - '[[2026-08-01-approval-shape-reconciliation-W01-P02-S08]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S09]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S10]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S11]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S12]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S13]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S14]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S15]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S16]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W01-P03-S17]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S18]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S19]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S20]]'
+  - '[[2026-08-01-approval-shape-reconciliation-W02-P04-S21]]'
   - '[[2026-08-01-approval-shape-reconciliation-W03-P06-S26]]'
   - '[[2026-08-01-approval-shape-reconciliation-W03-P06-S27]]'
   - '[[2026-08-01-approval-shape-reconciliation-W03-P07-S28]]'
@@ -56,6 +69,19 @@ Auto-generated index of all documents tagged with `#approval-shape-reconciliatio
 - `2026-08-01-approval-shape-reconciliation-W01-P02-S06` - Add the ReviewerApprovalRequired variant to ApprovalRequirement, update the approval_requirement matrix so manual non-destructive yields it, and correct decision_reason and system_auto_approval_eligibility wording for the three way split
 - `2026-08-01-approval-shape-reconciliation-W01-P02-S07` - Enforce the destructive floor inside review_decision_eligibility by reusing changeset_risk to refuse a non Human approver on a destructive changeset, with a test proving an agent reviewer is denied approving a destructive changeset
 - `2026-08-01-approval-shape-reconciliation-W01-P02-S08` - Enforce the same destructive floor Human kind refusal at the apply preflight seam, with a test proving a distinct agent actor is denied applying an approved destructive changeset
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S09` - Delete resolve_effective_mode and session_override_is_narrowing, remove session_override and session_override_ignored from PolicyDecisionProjection, and simplify decide_changeset_approval and decision_reason to drop the removed parameter
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S10` - Remove the session_override field from ExecuteToolCallRequest and its plumb through into the tool permission input construction
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S11` - Remove the session_override field from ToolPermissionRequestInput and use scope_mode directly instead of the deleted mode resolution helper
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S12` - Update the decide_changeset_approval call to drop the removed session_override argument
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S13` - Update the served policy projection call to decide_changeset_approval to drop the removed session_override argument
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S14` - Remove the session_override None line from the ExecuteToolCallRequest construction in the agent tool execute route
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S15` - Remove the session_override None line from the tool permission request fixture
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S16` - Remove the session_override None line from the HTTP test helper tool permission request construction
+- `2026-08-01-approval-shape-reconciliation-W01-P03-S17` - Add a forward amendment note stating the per session override layer is rescinded until a real consumer exists, leaving the original clause intact per the clause level amendment convention
+- `2026-08-01-approval-shape-reconciliation-W02-P04-S18` - Widen the ApprovalRequirement union to include reviewer_approval_required
+- `2026-08-01-approval-shape-reconciliation-W02-P04-S19` - Add reviewer approval descriptor entries to POLICY_DESCRIPTORS for all three modes and repoint the manual human approval entry at the destructive floor wording
+- `2026-08-01-approval-shape-reconciliation-W02-P04-S20` - Add the three reviewer approval policy copy strings and reword the manual human approval string off its former reviewer approval phrasing
+- `2026-08-01-approval-shape-reconciliation-W02-P04-S21` - Extend the exhaustive ApprovalRequirement coverage test to include the new reviewer approval required token
 - `2026-08-01-approval-shape-reconciliation-W03-P06-S26` - Add a LOCALLY_RESPONDABLE_PAUSE_CAUSES set that excludes document_approval_request and correct the misleading comment on PLAN_APPROVAL_PAUSE_CAUSES to describe it as a projection and FSM classification rather than an answerability set
 - `2026-08-01-approval-shape-reconciliation-W03-P06-S27` - Re export LOCALLY_RESPONDABLE_PAUSE_CAUSES alongside the existing pause cause export
 - `2026-08-01-approval-shape-reconciliation-W03-P07-S28` - Refuse a respond call against a document approval pause with a typed error naming the engine review surface, before the idempotency and transition logic runs, and narrow the local branching in the transition and approval status blocks to the locally respondable set
