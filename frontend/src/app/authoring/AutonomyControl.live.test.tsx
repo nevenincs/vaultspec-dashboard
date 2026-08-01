@@ -2,18 +2,17 @@
 //
 // The autonomy / operation-mode control, ONLINE against the real `vaultspec serve`
 // the global setup spawns over a scratch fixture workspace (agentic-authoring-ux
-// W04.P04.S19; relocated composer-adjacent by review-surface-flow ADR F2). Drives
-// the control through its production host `AgentAutonomyControl` against a real
-// review queue: it reads the SERVED worktree mode from a proposal's policy
-// projection, and clicking "Apply automatically" fires the real `POST
-// /authoring/v1/mode` and round-trips — the re-projected policy reads autonomous
-// and the control reflects it. Ambient provenance: the mode mutation mints the
-// operator token (human:local-operator), the human/system principal the engine
-// allows to change mode. No cargo rebuild — reuses the running engine.
-//
-// The control reflects a mode from either a proposal's `policy.effective_mode` or
-// the served scope-level `GET /v1/mode` read; this test drives the proposal-derived
-// path with a queued proposal.
+// W04.P04.S19). The standing composer pill host was RETIRED by the agent-panel
+// reference conformance (the captured composers carry no permission pill — C7's
+// banner is the elevated-state surface, and the mode SETTER lives on the review
+// surface), so this test hosts the control the way its production consumer wires
+// it: `useReviewStationView().operationMode` in, `useSetOperationMode` out. It
+// reads the SERVED worktree mode from a proposal's policy projection, and
+// clicking "Apply automatically" fires the real `POST /authoring/v1/mode` and
+// round-trips — the re-projected policy reads autonomous and the control
+// reflects it. Ambient provenance: the mode mutation mints the operator token
+// (human:local-operator), the human/system principal the engine allows to
+// change mode. No cargo rebuild — reuses the running engine.
 
 import { QueryClientProvider } from "@tanstack/react-query";
 import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
@@ -24,10 +23,12 @@ import { createTestLocalizationRuntime } from "../../localization/testing";
 import { createLiveClient, liveScope, liveTransport } from "../../testing/liveClient";
 import {
   AuthoringClient,
+  useReviewStationView,
+  useSetOperationMode,
   type CreateProposalPayload,
 } from "../../stores/server/authoring";
 import { queryClient } from "../../stores/server/queryClient";
-import { AgentAutonomyControl } from "../agent/AgentAutonomyControl";
+import { AutonomyControl } from "./ReviewStation";
 
 const run = `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
@@ -119,12 +120,27 @@ async function createLiveSession(actorToken: string): Promise<string> {
   return body.data.session_id;
 }
 
+/** The production wiring, hosted in-test: served mode in (the review-station
+ *  projection), the real mode mutation out. No wire is faked — both hooks hit
+ *  the live engine exactly as the review surface does. */
+function LiveModeHost() {
+  const view = useReviewStationView();
+  const setMode = useSetOperationMode();
+  if (view.operationMode === null) return null;
+  return (
+    <AutonomyControl
+      mode={view.operationMode}
+      onSelect={(next) => setMode.mutateAsync(next)}
+    />
+  );
+}
+
 function renderAutonomyControl() {
   const runtime = createTestLocalizationRuntime();
   return render(
     <I18nextProvider i18n={runtime}>
       <QueryClientProvider client={queryClient}>
-        <AgentAutonomyControl />
+        <LiveModeHost />
       </QueryClientProvider>
     </I18nextProvider>,
   );
@@ -156,19 +172,8 @@ describe("autonomy control (live wire)", () => {
 
     renderAutonomyControl();
 
-    // The pill appears once the queue serves a proposal, naming the default worktree
-    // mode. Since S45 the two-option control lives behind it, so the round-trip below
-    // drives the same real seam through one extra click — the wire path is unchanged.
-    const trigger = await waitFor(
-      () => {
-        const el = document.querySelector<HTMLElement>("[data-agent-autonomy] button");
-        expect(el).not.toBeNull();
-        return el!;
-      },
-      { timeout: 15_000 },
-    );
-    expect(trigger.textContent).toContain("Review each change");
-    fireEvent.click(trigger);
+    // The control appears once the queue serves a proposal, reflecting the
+    // default worktree mode.
     const control = await waitFor(
       () => {
         const el = document.querySelector<HTMLElement>("[data-autonomy-control]");
@@ -177,7 +182,7 @@ describe("autonomy control (live wire)", () => {
       },
       { timeout: 15_000 },
     );
-    const group = within(control).getByRole("radiogroup", { name: "Autonomy" });
+    const group = within(control).getByRole("radiogroup", { name: "Approvals" });
     expect(
       within(group)
         .getByRole("radio", { name: "Review each change" })

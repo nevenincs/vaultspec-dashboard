@@ -454,7 +454,7 @@ export const common = {
       modelUnavailable: "Using the default model.",
       team: "Team",
       teamDefault: "Single agent",
-      teamUnavailable: "Using one agent.",
+      teamUnset: "Select team",
       feature: "Feature",
       featureUnset: "Not set",
       featureUnbound: "Choose a feature before starting this run.",

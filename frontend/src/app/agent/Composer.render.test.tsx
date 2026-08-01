@@ -444,13 +444,10 @@ describe("Composer team selector (live a2a tier)", () => {
     // one).
     renderComposer();
 
-    // The control mounts immediately (the Team pill is always rendered).
-    await waitFor(() =>
-      expect(document.querySelector("[data-composer-team]")).not.toBeNull(),
-    );
-
-    // Let the presets read settle so we branch on the real tier, not the transient
-    // loading (empty-presets) state. The module query cache is the settle signal.
+    // Let the presets read settle FIRST: the pill renders only when there is
+    // something true to show (served presets, or a disabled plane with its
+    // reason) — an empty healthy plane renders NO pill rather than a placeholder
+    // word (D8). The module query cache is the settle signal.
     await waitFor(
       () =>
         expect(queryClient.getQueryState(["a2a", "presets"])?.status).not.toBe(
@@ -461,8 +458,17 @@ describe("Composer team selector (live a2a tier)", () => {
 
     const trigger = document.querySelector(
       "[data-composer-team] button",
-    ) as HTMLButtonElement;
-    expect(trigger).not.toBeNull();
+    ) as HTMLButtonElement | null;
+    if (trigger === null) {
+      // Honest absence: nothing served and the plane not degraded — assert the
+      // served list really is empty rather than accepting a silent miss.
+      const served = queryClient.getQueryData<{ presets?: unknown[] }>([
+        "a2a",
+        "presets",
+      ]);
+      expect(served?.presets ?? []).toHaveLength(0);
+      return;
+    }
 
     if (trigger.disabled) {
       // Disabled tier: the honest reason rides the wrapping title or the aria-label

@@ -114,7 +114,7 @@ export const EXPECTED_AGENT_KEYS = [
   "common:agent.composer.modelUnavailable",
   "common:agent.composer.team",
   "common:agent.composer.teamDefault",
-  "common:agent.composer.teamUnavailable",
+  "common:agent.composer.teamUnset",
   "common:agent.composer.feature",
   "common:agent.composer.featureUnset",
   "common:agent.composer.featureUnbound",

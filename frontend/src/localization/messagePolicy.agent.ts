@@ -141,7 +141,7 @@ export const AGENT_MESSAGE_POLICY = {
   "common:agent.composer.modelUnavailable": { role: "status" },
   "common:agent.composer.team": { role: "label" },
   "common:agent.composer.teamDefault": { role: "label" },
-  "common:agent.composer.teamUnavailable": { role: "status" },
+  "common:agent.composer.teamUnset": { role: "label" },
   "common:agent.composer.feature": { role: "label" },
   "common:agent.composer.featureUnset": { role: "label" },
   // Actionable: the operator settles this before the run can start (S44).

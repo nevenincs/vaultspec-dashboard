@@ -394,35 +394,27 @@ async function seedOutOfSessionProposal(): Promise<void> {
 }
 
 describe("AgentPanel autonomy + bridge", () => {
-  it("renders the autonomy control INSIDE the composer's scope controls", async () => {
+  it("carries NO standing permission pill in the composer row", async () => {
     useAgentPanel.setState({ currentSessionId: null });
     renderPanel();
-    // The served scope-level mode (GET /v1/mode) resolves to a default, so the
-    // control renders even with an empty queue. D3 relocated it from a panel band
-    // into the composer's row-2 LEFT group — the "what the agent may touch" side —
-    // so composer-ADJACENT became composer-RESIDENT.
-    //
-    // Since S45 what RESIDES in the row is the pill; the two-option control lives
-    // behind it. The placement law this guards is unchanged, so the selector moves
-    // to the pill and the expansion is asserted separately below.
-    const control = await waitFor(
+    // No captured composer renders a standing permission/autonomy control in its
+    // control row — the pill was our invention and is DELETED. The C7 banner is
+    // the elevated-posture surface, and the mode SETTER lives on the review
+    // surface. The row keeps its left/right law: scope group first, thinking
+    // controls after it.
+    const scopeControls = await waitFor(
       () => {
-        const el = document.querySelector<HTMLElement>("[data-agent-autonomy]");
+        const el = document.querySelector<HTMLElement>("[data-composer-scope]");
         expect(el).not.toBeNull();
         return el!;
       },
       { timeout: 15_000 },
     );
-    // The row holds ONE control, not the expanded pair (S45 — the pair overlapped
-    // the row's right-hand cluster at panel width).
+    expect(document.querySelector("[data-agent-autonomy]")).toBeNull();
     expect(document.querySelector("[data-autonomy-control]")).toBeNull();
-    const scopeControls = document.querySelector("[data-composer-scope]");
-    expect(scopeControls).not.toBeNull();
-    expect(scopeControls?.contains(control)).toBe(true);
-    // And the scope group is the LEFT of the row: the thinking controls follow it.
     const thinking = document.querySelector("[data-composer-thinking]");
     expect(
-      scopeControls!.compareDocumentPosition(thinking!) &
+      scopeControls.compareDocumentPosition(thinking!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });

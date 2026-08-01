@@ -108,7 +108,6 @@ import {
 } from "../../stores/view/commandPaletteCommands";
 import { AutocompleteCombobox, type ComboOption } from "../viewer/AutocompleteCombobox";
 import { Button, DropdownButton, IconButton, Popover, Spinner } from "../kit";
-import { AgentAutonomyControl } from "./AgentAutonomyControl";
 import { ComposerAutonomyBanner } from "./ComposerAutonomyBanner";
 import { ComposerEvidencePicker } from "./ComposerEvidencePicker";
 import { ComposerModelPicker } from "./ComposerModelPicker";
@@ -148,7 +147,7 @@ const MSG = {
   selectorDisabled: "common:agent.composer.selectorDisabled",
   team: "common:agent.composer.team",
   teamDefault: "common:agent.composer.teamDefault",
-  teamUnavailable: "common:agent.composer.teamUnavailable",
+  teamUnset: "common:agent.composer.teamUnset",
   teamMenuAria: "common:agent.composer.teamMenuAria",
   teamPresetUnavailable: "common:agent.composer.teamPresetUnavailable",
   cancelTeamRun: "common:agent.composer.cancelTeamRun",
@@ -437,18 +436,24 @@ function ComposerTeamSelector({
       : null;
   const teamLabel = resolveMessage({ key: MSG.team }).message;
   const teamDefaultLabel = resolveMessage({ key: MSG.teamDefault }).message;
+  // D8: label by the SERVED value, or by the captured unset idiom ("Select
+  // team", the Select-Project shape) — never the invented "Single agent"
+  // placeholder the owner rejected. The single-agent lane remains the implicit
+  // default; the MENU still offers it as an explicit row to return to.
   const valueLabel = selected
     ? (selected.display_name ?? selected.id)
-    : teamDefaultLabel;
+    : resolveMessage({ key: MSG.teamUnset }).message;
   const noTeams = state.presets.length === 0;
+  // Nothing served and nothing wrong: there is no team to select, so no pill —
+  // omit rather than invent (D8). A DISABLED plane still renders, with its
+  // served reason, because "teams exist but are unreachable" is a truth.
+  if (noTeams && !state.disabled) return null;
   const controlDisabled = state.disabled || noTeams || locked;
   const reason = state.disabled
     ? state.disabledReason
-    : noTeams
-      ? resolveMessage({ key: MSG.teamUnavailable }).message
-      : locked
-        ? resolveMessage({ key: MSG.teamRunLocked }).message
-        : undefined;
+    : locked
+      ? resolveMessage({ key: MSG.teamRunLocked }).message
+      : undefined;
 
   const pill = resolveMessage({
     key: MSG.selectorValue,
@@ -572,24 +577,18 @@ function ComposerThinkingControls({
 }
 
 /** Row 2 LEFT — what the agent works on (research G6, codified by D3/D11): the
- *  standing WORKSPACE chip (the captured "Select Project" pill made visible at
- *  the input — G5), the `+` attach affordance opening a LABELED menu (the
- *  captured `+` is an attach entry point, never a mystery icon), and the autonomy
- *  control, which IS the permission-scope selector the reference products
- *  converge on (C6). */
+ *  `+` attach affordance opening a LABELED menu (the captured `+` is an attach
+ *  entry point, never a mystery icon), the team selector, and the feature chip.
+ *  The workspace chip lives ABOVE the card (the captured Select-Project line),
+ *  and the permission posture is the C7 banner — a standing pill for it is our
+ *  invention, present in no captured composer. */
 function ComposerScopeControls({
-  scopeShortName,
-  scopeFull,
   onAttachCorpus,
   onAttachEvidence,
   attachDisabled,
   teamSelector,
   featureChip,
 }: {
-  /** The bound workspace's short name, or null while unresolved (chip withheld —
-   *  the truth is not yet known, and the chip never guesses). */
-  scopeShortName: string | null;
-  scopeFull: string | null;
   onAttachCorpus: () => void;
   onAttachEvidence: () => void;
   attachDisabled: boolean;
@@ -603,18 +602,7 @@ function ComposerScopeControls({
   const attach = resolveMessage({ key: MSG.attach });
   const corpusItem = resolveMessage({ key: MSG.attachContext });
   const evidenceItem = resolveMessage({ key: MSG.evidence });
-  const workspace = resolveMessage({ key: MSG.workspace });
   const [attachOpen, setAttachOpen] = useState(false);
-  const scopeAria =
-    scopeShortName === null
-      ? null
-      : resolveMessage({
-          key: MSG.selectorValue,
-          values: {
-            selector: workspace.message,
-            value: authoredDisplayText(scopeShortName),
-          },
-        }).message;
   return (
     <div className="flex min-w-0 items-center gap-fg-1-5" data-composer-scope>
       {!attach.usedFallback && (
@@ -669,22 +657,44 @@ function ComposerScopeControls({
           )}
         </div>
       )}
-      {/* G5 made visible: the workspace the run will bind to, AT the input — the
-          same truth the run-start generation fence enforces on the wire. */}
-      {scopeShortName !== null && scopeAria !== null && (
-        <span
-          className="inline-flex min-w-0 shrink items-center gap-fg-1 rounded-fg-pill border border-rule px-fg-2 py-fg-0-5 text-meta text-ink-muted"
-          data-composer-scope-chip
-          aria-label={scopeAria}
-          title={scopeFull ?? undefined}
-        >
-          <Folder size={12} aria-hidden className="shrink-0 text-ink-faint" />
-          <span className="min-w-0 truncate">{scopeShortName}</span>
-        </span>
-      )}
       {teamSelector}
       {featureChip}
-      <AgentAutonomyControl />
+    </div>
+  );
+}
+
+/** The workspace line ABOVE the composer card (G5's exact captured shape: the
+ *  `Select Project ˅` line sits on its own row immediately above the input,
+ *  outside the card border). Ours renders the BOUND workspace — the same truth
+ *  the run-start generation fence enforces — and is withheld while unresolved. */
+function ComposerWorkspaceLine({
+  scopeShortName,
+  scopeFull,
+}: {
+  scopeShortName: string | null;
+  scopeFull: string | null;
+}) {
+  const resolveMessage = useLocalizedMessageResolver();
+  const workspace = resolveMessage({ key: MSG.workspace });
+  if (scopeShortName === null || workspace.usedFallback) return null;
+  const aria = resolveMessage({
+    key: MSG.selectorValue,
+    values: {
+      selector: workspace.message,
+      value: authoredDisplayText(scopeShortName),
+    },
+  }).message;
+  return (
+    <div className="flex" data-composer-workspace-line>
+      <span
+        className="inline-flex min-w-0 items-center gap-fg-1-5 rounded-fg-pill px-fg-1 py-fg-0-5 text-label text-ink-muted"
+        data-composer-scope-chip
+        aria-label={aria}
+        title={scopeFull ?? undefined}
+      >
+        <Folder size={14} aria-hidden className="shrink-0 text-ink-faint" />
+        <span className="min-w-0 truncate">{scopeShortName}</span>
+      </span>
     </div>
   );
 }
@@ -1098,125 +1108,132 @@ export function Composer() {
   const stopDisabled = activeRun?.status === "cancel_requested";
 
   return (
-    // D11: the composer is ONE two-row card — a single bordered container holding
-    // the input and both control clusters, the shape every captured reference
-    // composer shares. The input inside is borderless; the card carries the
-    // focus ring.
-    <div
-      className="relative flex flex-col gap-fg-1-5 rounded-fg-md border border-rule bg-paper p-fg-2 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-focus"
-      data-agent-composer
-    >
-      <ComposerChipRow queuedCount={session.data?.queued_turn_ids.length ?? 0} />
-      {mentionOpen && (
-        <ComposerMentionPicker
-          onDismiss={() => setMentionOpen(false)}
-          inputRef={inputRef}
-        />
-      )}
-      {evidenceOpen && (
-        <ComposerEvidencePicker
-          onDismiss={() => setEvidenceOpen(false)}
-          inputRef={inputRef}
-        />
-      )}
-      {slashOpen && (
-        <ul
-          role="listbox"
-          aria-label={resolveMessage({ key: MSG.slashAria }).message}
-          data-composer-slash
-          className="absolute inset-x-0 bottom-full z-40 mb-fg-1 max-h-64 overflow-y-auto rounded-fg-md border border-rule bg-paper-raised py-fg-1 shadow-fg-popover"
-        >
-          {slashRows.map((row, index) => (
-            <li key={row.command.id} role="presentation">
-              <button
-                type="button"
-                role="option"
-                aria-selected={index === activeSlashIndex}
-                onMouseDown={(event) => {
-                  event.preventDefault();
-                  runSlashCommand(row);
-                }}
-                onMouseEnter={() => setSlashIndex(index)}
-                className={`flex w-full items-center px-fg-3 py-fg-1 text-left text-label transition-colors duration-ui-fast ${
-                  index === activeSlashIndex
-                    ? "bg-paper-sunken text-ink"
-                    : "text-ink-muted hover:bg-paper-sunken"
-                }`}
-              >
-                <span className="truncate">{row.label}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-      <textarea
-        ref={inputRef}
-        value={text}
-        rows={1}
-        maxLength={AGENT_COMPOSER_TEXT_CAP}
-        onChange={(event) => {
-          setText(event.target.value);
-          setSlashDismissed(false);
-          setSlashIndex(0);
-        }}
-        onKeyDown={onKeyDown}
-        disabled={parkedOnClarification}
-        placeholder={placeholder}
-        aria-label={placeholder}
-        aria-describedby={enterHintId}
-        role="combobox"
-        aria-expanded={slashOpen}
-        aria-autocomplete="list"
-        data-composer-input
-        className="max-h-[6.75rem] w-full resize-none overflow-y-auto bg-transparent px-fg-1 py-fg-1 text-body text-ink outline-none placeholder:text-ink-faint"
+    <div className="flex flex-col gap-fg-1-5" data-agent-composer-region>
+      {/* G5, the captured shape exactly: the workspace line sits ABOVE the card,
+          outside its border, the way Select Project does in the references. */}
+      <ComposerWorkspaceLine
+        scopeShortName={scope === null ? null : deriveScopeShortName(scope)}
+        scopeFull={scope}
       />
-      {/* No send button exists in any captured composer — Enter is the send. The
+      {/* D11: the composer is ONE two-row card — a single bordered container
+          holding the input and both control clusters, the shape every captured
+          reference composer shares. The input inside is borderless; the card
+          carries the focus ring. */}
+      <div
+        className="relative flex flex-col gap-fg-1-5 rounded-fg-md border border-rule bg-paper p-fg-2 focus-within:outline-2 focus-within:outline-offset-1 focus-within:outline-focus"
+        data-agent-composer
+      >
+        <ComposerChipRow queuedCount={session.data?.queued_turn_ids.length ?? 0} />
+        {mentionOpen && (
+          <ComposerMentionPicker
+            onDismiss={() => setMentionOpen(false)}
+            inputRef={inputRef}
+          />
+        )}
+        {evidenceOpen && (
+          <ComposerEvidencePicker
+            onDismiss={() => setEvidenceOpen(false)}
+            inputRef={inputRef}
+          />
+        )}
+        {slashOpen && (
+          <ul
+            role="listbox"
+            aria-label={resolveMessage({ key: MSG.slashAria }).message}
+            data-composer-slash
+            className="absolute inset-x-0 bottom-full z-40 mb-fg-1 max-h-64 overflow-y-auto rounded-fg-md border border-rule bg-paper-raised py-fg-1 shadow-fg-popover"
+          >
+            {slashRows.map((row, index) => (
+              <li key={row.command.id} role="presentation">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={index === activeSlashIndex}
+                  onMouseDown={(event) => {
+                    event.preventDefault();
+                    runSlashCommand(row);
+                  }}
+                  onMouseEnter={() => setSlashIndex(index)}
+                  className={`flex w-full items-center px-fg-3 py-fg-1 text-left text-label transition-colors duration-ui-fast ${
+                    index === activeSlashIndex
+                      ? "bg-paper-sunken text-ink"
+                      : "text-ink-muted hover:bg-paper-sunken"
+                  }`}
+                >
+                  <span className="truncate">{row.label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <textarea
+          ref={inputRef}
+          value={text}
+          rows={1}
+          maxLength={AGENT_COMPOSER_TEXT_CAP}
+          onChange={(event) => {
+            setText(event.target.value);
+            setSlashDismissed(false);
+            setSlashIndex(0);
+          }}
+          onKeyDown={onKeyDown}
+          disabled={parkedOnClarification}
+          placeholder={placeholder}
+          aria-label={placeholder}
+          aria-describedby={enterHintId}
+          role="combobox"
+          aria-expanded={slashOpen}
+          aria-autocomplete="list"
+          data-composer-input
+          className="max-h-[6.75rem] w-full resize-none overflow-y-auto bg-transparent px-fg-1 py-fg-1 text-body text-ink outline-none placeholder:text-ink-faint"
+        />
+        {/* No send button exists in any captured composer — Enter is the send. The
           verb still has to be DISCOVERABLE without guessing, so the input names it
           for assistive tech (and the keyboard legend lists it). */}
-      <span id={enterHintId} className="sr-only" data-composer-enter-hint>
-        {resolveMessage({ key: MSG.enterHint }).message}
-      </span>
-      {sendFailed && (
-        <p className="text-meta text-state-broken" data-composer-error role="status">
-          {teamRefused !== null
-            ? `${resolveMessage({ key: MSG.teamRunRefused }).message}${
-                teamRefused.detail !== undefined && teamRefused.detail.length > 0
-                  ? ` ${teamRefused.detail}`
-                  : ""
-              }`
-            : resolveMessage({ key: MSG.sendFailed }).message}
-        </p>
-      )}
-      {/* S44: a held start says what is missing. The button being disabled is not an
+        <span id={enterHintId} className="sr-only" data-composer-enter-hint>
+          {resolveMessage({ key: MSG.enterHint }).message}
+        </span>
+        {sendFailed && (
+          <p className="text-meta text-state-broken" data-composer-error role="status">
+            {teamRefused !== null
+              ? `${resolveMessage({ key: MSG.teamRunRefused }).message}${
+                  teamRefused.detail !== undefined && teamRefused.detail.length > 0
+                    ? ` ${teamRefused.detail}`
+                    : ""
+                }`
+              : resolveMessage({ key: MSG.sendFailed }).message}
+          </p>
+        )}
+        {/* S44: a held start says what is missing. The button being disabled is not an
           explanation, and the sibling's refusal would arrive too late to be one. */}
-      {featureBlocked && !teamRunActive && (
-        <p
-          className="text-meta text-ink-muted"
-          role="status"
-          data-composer-feature-hint
-        >
-          {resolveMessage({ key: MSG.featureUnbound }).message}
-        </p>
-      )}
-      {teamRunActive && (
-        <div
-          className="flex items-center gap-fg-2 text-meta text-ink-muted"
-          role="status"
-          data-composer-team-run
-        >
-          {!teamTerminal && <Spinner size="sm" label={teamPhaseLabel} />}
-          <span className="min-w-0 truncate">{teamPhaseLabel}</span>
-          {teamProgress.degraded && (
-            <span className="text-ink-faint" data-composer-team-degraded>
-              {resolveMessage({ key: MSG.teamRunDegraded }).message}
-            </span>
-          )}
-        </div>
-      )}
-      {/* C7: the standing elevated-autonomy warning sits directly ABOVE the
+        {featureBlocked && !teamRunActive && (
+          <p
+            className="text-meta text-ink-muted"
+            role="status"
+            data-composer-feature-hint
+          >
+            {resolveMessage({ key: MSG.featureUnbound }).message}
+          </p>
+        )}
+        {teamRunActive && (
+          <div
+            className="flex items-center gap-fg-2 text-meta text-ink-muted"
+            role="status"
+            data-composer-team-run
+          >
+            {!teamTerminal && <Spinner size="sm" label={teamPhaseLabel} />}
+            <span className="min-w-0 truncate">{teamPhaseLabel}</span>
+            {teamProgress.degraded && (
+              <span className="text-ink-faint" data-composer-team-degraded>
+                {resolveMessage({ key: MSG.teamRunDegraded }).message}
+              </span>
+            )}
+          </div>
+        )}
+        {/* C7: the standing elevated-autonomy warning sits directly ABOVE the
           composer's control row — never modal, never blocking the prompt. */}
-      <ComposerAutonomyBanner />
-      {/* Row 2 (G6, codified by D3): LEFT changes what the agent works on, RIGHT
+        <ComposerAutonomyBanner />
+        {/* Row 2 (G6, codified by D3): LEFT changes what the agent works on, RIGHT
           changes how it thinks, and send is terminal-right.
           The row WRAPS rather than overflowing. At panel width — the default
           [document|agent] split — the pills plus the send control exceed one line,
@@ -1225,71 +1242,70 @@ export function Composer() {
           unclickable. Wrapping keeps both clusters intact and their order (and so
           the law) while guaranteeing the action is always reachable; `ml-auto`
           keeps the right cluster right-aligned on whichever line it lands. */}
-      <div className="flex flex-wrap items-center justify-between gap-fg-2">
-        <ComposerScopeControls
-          scopeShortName={scope === null ? null : deriveScopeShortName(scope)}
-          scopeFull={scope}
-          onAttachCorpus={() => setMentionOpen(true)}
-          onAttachEvidence={() => setEvidenceOpen(true)}
-          attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
-          teamSelector={
-            <ComposerTeamSelector
-              selectedPresetId={selectedTeamPreset}
-              onSelectPreset={setSelectedTeamPreset}
-              locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
-            />
-          }
-          featureChip={
-            featureRequired ? (
-              <ComposerFeatureChip
-                binding={featureBinding}
-                featureTags={corpus.featureTags}
-                onSelectFeature={setChosenFeature}
-                locked={teamRunActive || startTeamRun.isPending}
+        <div className="flex flex-wrap items-center justify-between gap-fg-2">
+          <ComposerScopeControls
+            onAttachCorpus={() => setMentionOpen(true)}
+            onAttachEvidence={() => setEvidenceOpen(true)}
+            attachDisabled={mentions.length >= AGENT_COMPOSER_MENTION_CAP}
+            teamSelector={
+              <ComposerTeamSelector
+                selectedPresetId={selectedTeamPreset}
+                onSelectPreset={setSelectedTeamPreset}
+                locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
               />
-            ) : null
-          }
-        />
-        <div className="ml-auto flex min-w-0 items-center gap-fg-2">
-          <ComposerThinkingControls
-            locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
-            profiles={profiles}
-            selectedProfileId={selectedProfileId}
-            defaultProfileId={defaultProfileId}
-            onSelectProfile={setSelectedProfileId}
+            }
+            featureChip={
+              featureRequired ? (
+                <ComposerFeatureChip
+                  binding={featureBinding}
+                  featureTags={corpus.featureTags}
+                  onSelectFeature={setChosenFeature}
+                  locked={teamRunActive || startTeamRun.isPending}
+                />
+              ) : null
+            }
           />
-          {/* The RUN SLOT (D10, C6): nothing at idle — Enter sends and Enter
+          <div className="ml-auto flex min-w-0 items-center gap-fg-2">
+            <ComposerThinkingControls
+              locked={activeRun !== null || teamRunActive || startTeamRun.isPending}
+              profiles={profiles}
+              selectedProfileId={selectedProfileId}
+              defaultProfileId={defaultProfileId}
+              onSelectProfile={setSelectedProfileId}
+            />
+            {/* The RUN SLOT (D10, C6): nothing at idle — Enter sends and Enter
               starts a team run; there is no send or start button to drift from
               the references. While ANY run streams the slot holds the square
               Stop (one verb, both planes); a terminal team run leaves a small
               dismiss to fold the run away. */}
-          {teamRunActive && !teamTerminal ? (
-            <IconButton
-              label={resolveMessage({ key: MSG.cancelTeamRun }).message}
-              disabled={cancelTeamRun.isPending}
-              onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
-              data-composer-team-cancel
-            >
-              <Square size={14} aria-hidden fill="currentColor" />
-            </IconButton>
-          ) : teamRunActive && teamTerminal ? (
-            <Button
-              variant="secondary"
-              onClick={() => setAgentTeamRun(null)}
-              data-composer-team-dismiss
-            >
-              {resolveMessage({ key: MSG.teamRunDismiss }).message}
-            </Button>
-          ) : activeRun !== null ? (
-            <IconButton
-              label={resolveMessage({ key: MSG.stop }).message}
-              disabled={stopDisabled}
-              onClick={() => agentStopRunAction().run?.()}
-              data-composer-stop
-            >
-              <Square size={14} aria-hidden fill="currentColor" />
-            </IconButton>
-          ) : null}
+            {teamRunActive && !teamTerminal ? (
+              <IconButton
+                label={resolveMessage({ key: MSG.cancelTeamRun }).message}
+                disabled={cancelTeamRun.isPending}
+                onClick={() => void cancelTeamRun.mutateAsync(teamRunId!)}
+                data-composer-team-cancel
+              >
+                <Square size={14} aria-hidden fill="currentColor" />
+              </IconButton>
+            ) : teamRunActive && teamTerminal ? (
+              <Button
+                variant="secondary"
+                onClick={() => setAgentTeamRun(null)}
+                data-composer-team-dismiss
+              >
+                {resolveMessage({ key: MSG.teamRunDismiss }).message}
+              </Button>
+            ) : activeRun !== null ? (
+              <IconButton
+                label={resolveMessage({ key: MSG.stop }).message}
+                disabled={stopDisabled}
+                onClick={() => agentStopRunAction().run?.()}
+                data-composer-stop
+              >
+                <Square size={14} aria-hidden fill="currentColor" />
+              </IconButton>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
