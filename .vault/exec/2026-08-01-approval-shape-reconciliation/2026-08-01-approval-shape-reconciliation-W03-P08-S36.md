@@ -24,7 +24,7 @@ related:
 
 ## Outcome
 
-`TestPermissionRespond`: 12/12 passing (11 pre-existing + 1 new).
+`TestPermissionRespond`: 11/11 passing (10 pre-existing + 1 new).
 
 ## Notes
 
