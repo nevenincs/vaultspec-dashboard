@@ -4,7 +4,7 @@ tags:
   - '#approval-shape-reconciliation'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:b5d6a04d42d2cff2dc07be5b7e5eb8b701fdbfbed3fd81b29afb474989d1c82c'
+body_hash: 'sha256:8ef1debad849220aa65c60b7302e714d93341a13e510d31b810af4b697f05bf7'
 tier: L3
 related:
   - '[[2026-08-01-approval-shape-reconciliation-adr]]'
@@ -78,10 +78,10 @@ Widen the served ApprovalRequirement union, add the reviewer-approval label set,
 
 Remove the session_override and session_override_ignored fields from the served policy projection type and its adapter mapping, matching the engine's stripped wire shape.
 
-- [ ] `W02.P05.S22` - Remove the session_override and session_override_ignored fields from the PolicyDecisionProjection wire type; `frontend/src/stores/server/authoring/wireTypes.ts`.
-- [ ] `W02.P05.S23` - Remove the session_override and session_override_ignored mapping lines from the policy decision adapter; `frontend/src/stores/server/authoring/adapters.ts`.
-- [ ] `W02.P05.S24` - Remove the session_override and session_override_ignored fixture lines from the authoring store test; `frontend/src/stores/server/authoring.test.ts`.
-- [ ] `W02.P05.S25` - Remove the session_override_ignored fixture line from the review station render test; `frontend/src/app/authoring/ReviewStation.render.test.tsx`.
+- [x] `W02.P05.S22` - Remove the session_override and session_override_ignored fields from the PolicyDecisionProjection wire type; `frontend/src/stores/server/authoring/wireTypes.ts`.
+- [x] `W02.P05.S23` - Remove the session_override and session_override_ignored mapping lines from the policy decision adapter; `frontend/src/stores/server/authoring/adapters.ts`.
+- [x] `W02.P05.S24` - Remove the session_override and session_override_ignored fixture lines from the authoring store test; `frontend/src/stores/server/authoring.test.ts`.
+- [x] `W02.P05.S25` - Remove the session_override_ignored fixture line from the review station render test; `frontend/src/app/authoring/ReviewStation.render.test.tsx`.
 
 ## Wave `W03` - A2A respond route and verdict reconciliation
 
