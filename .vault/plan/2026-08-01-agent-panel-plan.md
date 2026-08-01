@@ -4,7 +4,7 @@ tags:
   - '#agent-panel'
 date: '2026-08-01'
 modified: '2026-08-01'
-body_hash: 'sha256:dfe4f98d091be109435bb02b21e916101e8bf7318c80006cdf3b74b12aaedcb7'
+body_hash: 'sha256:39ad43e27ff1b149121ffc8a73e307380a32eecd669a8effe34e4f047013a27f'
 tier: L2
 related:
   - '[[2026-08-01-agent-panel-shell-integration-adr]]'
@@ -89,9 +89,9 @@ The conversation grammar: bubbles, one-disclosure work stretches, stat cards, do
 
 ClarificationCard bound to the D5 payload: in-transcript answer surface, authoritative recovery, recap collapse (shell-integration D5).
 
-- [ ] `P08.S30` - Build ClarificationCard (choice buttons, bounded text inputs, required gating) rendered at the park point with the composer disabled with a hint; `frontend/src/app/agent/ClarificationCard.tsx`.
-- [ ] `P08.S31` - Wire clarification-respond through the a2a client and collapse the card into the C8 recap on success; `frontend/src/stores/server/agent/a2aTeam.ts`.
-- [ ] `P08.S32` - Re-render the pending questionnaire on reload from run-status disclosure alone with the relay frame acting only as a re-read nudge; `frontend/src/stores/server/liveAdapters/a2aRelay.ts`.
+- [x] `P08.S30` - Build ClarificationCard (choice buttons, bounded text inputs, required gating) rendered at the park point with the composer disabled with a hint; `frontend/src/app/agent/ClarificationCard.tsx`.
+- [x] `P08.S31` - Wire clarification-respond through the a2a client and collapse the card into the C8 recap on success; `frontend/src/stores/server/agent/a2aTeam.ts`.
+- [x] `P08.S32` - Re-render the pending questionnaire on reload from run-status disclosure alone with the relay frame acting only as a re-read nudge; `frontend/src/stores/server/liveAdapters/a2aRelay.ts`.
 
 ### Phase `P09` - Capability honesty gates (a2a)
 
