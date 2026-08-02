@@ -54,8 +54,11 @@ describe("deriveRagServiceIdentity", () => {
         },
       },
       "0.2.25",
+      { port: 8766, pid: 82300 },
     );
     expect(view).toEqual({
+      port: 8766,
+      processId: 82300,
       version: "0.2.25",
       installedVersion: "0.2.25",
       requiredVersion: "0.2.20",

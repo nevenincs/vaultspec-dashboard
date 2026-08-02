@@ -682,7 +682,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
       !/^documents:localizationWave\.plan\.(?:completion|phaseCount|stepCount|waveCount)_(?:one|other)$/u.test(
         key,
       ) &&
-      !/^operations:searchMaintenance\.(?:jobs\.(?:count|partial)|projects\.(?:live|partial|summary))_(?:zero|one|two|few|many|other)$/u.test(
+      !/^operations:searchMaintenance\.(?:jobs\.(?:count|partial)|projects\.(?:live|partial|summary)|searches\.results)_(?:zero|one|two|few|many|other)$/u.test(
         key,
       ) &&
       !/^(?:common:(?:changes\.filesChanged|palette\.commandCount|commandPalette\.selectionAnnouncement|searchPalette\.counts\.results)|documents:(?:documentSearch\.counts\.documents|reviewStation\.(?:counts\.(?:acknowledgements|changes)|diffstat\.editedFiles)|tree\.(?:featureAuditCount|featureDecisionCount|featurePlanCount|featureReferenceCount|featureResearchCount|featureStepCount|partialCount|sizeSummary|wordCount)|viewer\.(?:codeViewer\.footer\.summary|comments\.counts\.(?:commentsToReview|days|hours|minutes|months|years)|reader\.(?:metadata\.(?:readTime|readTimeStatus|createdReadTime|createdReadTimeStatus|updatedReadTime|updatedReadTimeStatus|createdUpdatedReadTime|createdUpdatedReadTimeStatus)|truncation\.bytes)))|graph:(?:accessibility\.workingSetCount|hover\.evidence\.(?:commits|documents)|islands\.progress\.stepsComplete|lab\.actions\.loadGenerated)|projects:(?:provisioning\.result\.itemCount|workspaceIdentity\.counts\.(?:ahead|behind)))_(?:one|other)$/u.test(
@@ -707,6 +707,7 @@ const EXPECTED_PUBLIC_MESSAGE_KEYS = [
   "common:changes.filesChanged",
   "common:palette.commandCount",
   "common:searchPalette.counts.results",
+  "operations:searchMaintenance.searches.results",
   "operations:searchMaintenance.jobs.count",
   "operations:searchMaintenance.jobs.partial",
   "operations:searchMaintenance.projects.live",
@@ -846,6 +847,7 @@ describe("shipped localization catalog keys", () => {
       "graph:islands.progress.stepsComplete",
       "graph:hover.evidence.commits",
       "graph:hover.evidence.documents",
+      "operations:searchMaintenance.searches.results",
       "operations:searchMaintenance.jobs.count",
       "operations:searchMaintenance.jobs.partial",
       "operations:searchMaintenance.projects.live",

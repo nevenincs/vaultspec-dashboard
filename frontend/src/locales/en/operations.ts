@@ -2,34 +2,42 @@ export const operations = {
   searchMaintenance: {
     accessibility: {
       filterByStatus: "Filter by status",
-      filterUpdates: "Filter index updates",
+      filterUpdates: "Filter index activity",
       progress: "Index update progress",
-      sortUpdates: "Sort index updates",
+      sortUpdates: "Sort index activity",
       updateStatus: "Index update: {{status}}",
     },
     actions: {
-      checkHealth: "Check index",
+      checkHealth: "Check service",
+      pause: "Pause service",
       refresh: "Refresh",
-      restart: "Restart index",
+      restart: "Restart service",
+      resume: "Resume service",
       retrySetup: "Set up and retry",
-      start: "Start index",
-      stop: "Stop index",
+      start: "Start service",
+      stop: "Stop service",
       update: "Rebuild index",
     },
     confirmations: {
+      pause: {
+        body: "Pausing holds indexing and search for every open project until the service is resumed.",
+        title: "Pause the search service?",
+      },
       stop: {
-        body: "Stopping the index affects every open project until it is started again.",
-        title: "Stop the index?",
+        body: "Stopping the search service affects every open project until it is started again.",
+        title: "Stop the search service?",
       },
     },
     destructiveActions: {
-      stop: "Stop index",
+      stop: "Stop service",
     },
     filters: {
-      placeholder: "Filter updates…",
+      placeholder: "Filter index activity…",
     },
     identity: {
-      title: "Index",
+      title: "Search service",
+      port: "Port",
+      process: "Process",
       version: "Running version",
       installedVersion: "Installed version",
       requiredVersion: "Required version",
@@ -50,6 +58,16 @@ export const operations = {
       unavailable: "The log is unavailable.",
       scopedToSelection: "Showing lines for the selected update.",
       region: "Log lines",
+    },
+    searches: {
+      title: "Searches",
+      empty: "No searches served yet.",
+      loading: "Loading searches…",
+      unavailable: "Search activity is unavailable.",
+      results_one: "{{count, number}} result",
+      results_other: "{{count, number}} results",
+      search: "Search",
+      status: "Search: {{status}}",
     },
     jobs: {
       count_one: "{{count, number}} update",
@@ -88,10 +106,13 @@ export const operations = {
     },
     service: {
       shared: "Shared across projects",
-      unavailable: "Index status is unavailable. Reload the page and try again.",
-      setupRequired: "The index needs setup. Set it up, then try again.",
-      startFailed: "The index could not start. Try again.",
-      updateUnavailable: "Start the index, then try again.",
+      unavailable: "The service status is unavailable. Reload the page and try again.",
+      setupRequired: "The service needs setup. Set it up, then try again.",
+      startFailed: "The service could not start. Try again.",
+      updateUnavailable: "Start the service, then try again.",
+      pauseUnavailable: "Start the service, then try again.",
+      resumeHeld:
+        "Another program is using the search hardware. Wait for it to finish, then resume again.",
     },
     states: {
       completed: "Completed",
@@ -104,6 +125,9 @@ export const operations = {
       unavailable: "Unavailable",
       started: "Running",
       stopped: "Stopped",
+      paused: "Paused",
+      pausing: "Pausing…",
+      resuming: "Resuming…",
     },
     storage: {
       loading: "Loading storage details…",
@@ -113,7 +137,7 @@ export const operations = {
       disabled: "Not watching",
       enabled: "Watching for changes",
       label: "Watch for changes",
-      unavailable: "Start the index, then try again.",
+      unavailable: "Start the service, then try again.",
     },
   },
   actions: {

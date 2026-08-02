@@ -141,6 +141,8 @@ const RAG_JOBS_VIEW_STATE: RagJobsTableViewState = {
 // "reachable but nothing served" case the header renders as an empty state.
 
 const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
+  port: 8766,
+  processId: 82300,
   version: null,
   installedVersion: "0.2.25",
   requiredVersion: "0.2.20",
@@ -155,6 +157,8 @@ const INDEX_IDENTITY_NORMAL: RagServiceIdentityView = {
 };
 
 const INDEX_IDENTITY_EMPTY: RagServiceIdentityView = {
+  port: null,
+  processId: null,
   version: null,
   installedVersion: null,
   requiredVersion: null,
@@ -408,7 +412,7 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
   },
 
   "panels-indexconsole": {
-    note: "Mounts the exported wire-free IndexConsoleHeader directly — the redesigned identity line the owner asked for: the SERVED tool name (never the word Search), the running/installed/required versions, the store's address, process, version and location, and normal-weight lifecycle actions instead of a row of large buttons. States are authored props: loading is the identity read in flight, degraded is the semantic tier reporting unavailable, empty is a reachable tool that served no identity fact at all.",
+    note: "Mounts the exported wire-free IndexConsoleHeader directly — the search-service identity line: health word first, then the service's own port and process (served verbatim), the versions, and the store facts, with the lifecycle verbs as compact icon controls (start / pause / stop / restart / check) and the index-domain rebuild deliberately absent (it lives with the index monitor). States are authored props: loading is the identity read in flight, degraded is the semantic tier reporting unavailable, empty is a reachable service that served no identity fact at all.",
     render: (state) => {
       if (state === "loading") {
         return (
@@ -421,12 +425,12 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
             healthTone="stale"
             actionsPending={false}
             doctorPending={false}
-            reindexActive={false}
             onStart={() => {}}
             onStop={() => {}}
             onRestart={() => {}}
             onDoctor={() => {}}
-            onReindex={() => {}}
+            onPause={() => {}}
+            onResume={() => {}}
           />
         );
       }
@@ -442,12 +446,12 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
             errored
             actionsPending={false}
             doctorPending={false}
-            reindexActive={false}
             onStart={() => {}}
             onStop={() => {}}
             onRestart={() => {}}
             onDoctor={() => {}}
-            onReindex={() => {}}
+            onPause={() => {}}
+            onResume={() => {}}
           />
         );
       }
@@ -462,12 +466,12 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
             healthTone="active"
             actionsPending={false}
             doctorPending={false}
-            reindexActive={false}
             onStart={() => {}}
             onStop={() => {}}
             onRestart={() => {}}
             onDoctor={() => {}}
-            onReindex={() => {}}
+            onPause={() => {}}
+            onResume={() => {}}
           />
         );
       }
@@ -481,13 +485,13 @@ export const panelsSpecimens: Readonly<Record<string, SpecimenDef>> = {
           healthTone="active"
           actionsPending={false}
           doctorPending={false}
-          reindexActive
-          reindexFraction={0.42}
+          quiesceWord="running"
           onStart={() => {}}
           onStop={() => {}}
           onRestart={() => {}}
           onDoctor={() => {}}
-          onReindex={() => {}}
+          onPause={() => {}}
+          onResume={() => {}}
         />
       );
     },

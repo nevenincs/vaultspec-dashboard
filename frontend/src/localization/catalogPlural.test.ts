@@ -139,6 +139,7 @@ describe("plural catalog manifest", () => {
       "graph:islands.progress.stepsComplete",
       "graph:hover.evidence.commits",
       "graph:hover.evidence.documents",
+      "operations:searchMaintenance.searches.results",
       "operations:searchMaintenance.jobs.count",
       "operations:searchMaintenance.jobs.partial",
       "operations:searchMaintenance.projects.live",

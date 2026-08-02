@@ -40,6 +40,8 @@ const SM = en.operations.searchMaintenance;
 afterEach(cleanup);
 
 const NO_IDENTITY: RagServiceIdentityView = {
+  port: null,
+  processId: null,
   version: null,
   installedVersion: null,
   requiredVersion: null,
@@ -56,6 +58,8 @@ const NO_IDENTITY: RagServiceIdentityView = {
 function setup(overrides: Partial<IndexConsoleHeaderProps> = {}) {
   const runtime = createTestLocalizationRuntime();
   let stops = 0;
+  let pauses = 0;
+  let resumes = 0;
   const props: IndexConsoleHeaderProps = {
     identity: NO_IDENTITY,
     identityLoading: false,
@@ -65,14 +69,18 @@ function setup(overrides: Partial<IndexConsoleHeaderProps> = {}) {
     healthTone: "active",
     actionsPending: false,
     doctorPending: false,
-    reindexActive: false,
     onStart: () => undefined,
     onStop: () => {
       stops += 1;
     },
     onRestart: () => undefined,
     onDoctor: () => undefined,
-    onReindex: () => undefined,
+    onPause: () => {
+      pauses += 1;
+    },
+    onResume: () => {
+      resumes += 1;
+    },
     ...overrides,
   };
   render(
@@ -80,7 +88,7 @@ function setup(overrides: Partial<IndexConsoleHeaderProps> = {}) {
       <IndexConsoleHeader {...props} />
     </I18nextProvider>,
   );
-  return { runtime, stops: () => stops };
+  return { runtime, stops: () => stops, pauses: () => pauses, resumes: () => resumes };
 }
 
 describe("IndexConsoleHeader", () => {
@@ -185,6 +193,58 @@ describe("IndexConsoleHeader", () => {
     expect(rows.length).toBe(2);
     expect(identity?.textContent).toContain("0.2.25");
     expect(identity?.textContent).toContain("127.0.0.1:6333");
+  });
+
+  it("requires explicit confirmation before pausing the shared service", () => {
+    // Pause is a MACHINE-GLOBAL hold: every consumer loses indexing and search
+    // until resume, so the verb is confirmation-gated and the confirmation
+    // states that consequence.
+    const state = setup();
+    fireEvent.click(screen.getByRole("button", { name: SM.actions.pause }));
+    expect(state.pauses()).toBe(0);
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText(SM.confirmations.pause.title)).toBeTruthy();
+    expect(within(dialog).getByText(SM.confirmations.pause.body)).toBeTruthy();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: SM.actions.pause }));
+    expect(state.pauses()).toBe(1);
+  });
+
+  it("swaps the hold verb with the quiesce lifecycle: pause running, resume held", () => {
+    const state = setup({ quiesceWord: "paused" });
+    expect(screen.queryByRole("button", { name: SM.actions.pause })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: SM.actions.resume }));
+    // Resume is a release, not a hold — it fires without a confirmation.
+    expect(state.resumes()).toBe(1);
+  });
+
+  it("renders the authored held sentence when a resume was refused", () => {
+    setup({ quiesceWord: "paused", resumeHeld: true });
+    expect(document.body.textContent).toContain(SM.service.resumeHeld);
+  });
+
+  it("states the service's own port and process first among the identity facts", () => {
+    setup({
+      identity: {
+        ...NO_IDENTITY,
+        port: 8766,
+        processId: 82300,
+        installedVersion: "0.2.25",
+        empty: false,
+      },
+    });
+    const rows = [
+      ...(document.querySelectorAll("[data-index-identity-row]") ?? []),
+    ].map((row) => row.textContent ?? "");
+    expect(rows.length).toBe(3);
+    // Port leads, process follows, and both render verbatim — an identifier is
+    // never grouped ("8,766" names no port).
+    expect(rows[0]).toContain(SM.identity.port);
+    expect(rows[0]).toContain("8766");
+    expect(rows[1]).toContain(SM.identity.process);
+    expect(rows[1]).toContain("82300");
+    expect(document.body.textContent).not.toContain("8,766");
   });
 
   it("titles itself from the catalog, never from the served package identifier", () => {
