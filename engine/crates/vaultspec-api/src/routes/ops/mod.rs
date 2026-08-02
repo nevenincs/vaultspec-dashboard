@@ -478,11 +478,19 @@ const RAG_READ_VERBS: &[&str] = &[
     // Tier-2 Qdrant-native collection health (optimizer/segments/indexed), gated
     // on the Qdrant version — the "needs repair" signal rag does not expose.
     "collection-health",
+    // The bounded served-search ledger — the QUERY half of the one activity
+    // surface (`jobs` is the index half).
+    "search-activity",
 ];
 
 /// Storage-survey namespace ceiling for the raw `storage-survey` read verb (the
 /// aggregated `ops-state` uses its own bounded survey limit).
 const MAX_RAG_SURVEY_LIMIT: u32 = 256;
+
+/// Served-search ledger row ceiling for the `search-activity` read verb — the
+/// operator page rag's own watch interface asks for; rag clamps server-side
+/// besides, and its ledger is itself bounded.
+const MAX_RAG_SEARCH_ACTIVITY_LIMIT: u32 = 100;
 
 pub async fn ops_rag_get(
     State(state): State<Arc<AppState>>,
@@ -534,6 +542,7 @@ pub async fn ops_rag_get(
     let limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_JOBS_LIMIT);
     let lines = bounded_rag_read_u32(&params, "lines", MAX_RAG_LOG_LINES);
     let survey_limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_SURVEY_LIMIT);
+    let activity_limit = bounded_rag_read_u32(&params, "limit", MAX_RAG_SEARCH_ACTIVITY_LIMIT);
 
     // Offload the blocking transport reads onto the blocking pool (RCR-001): the
     // closure owns the transport + args so a slow/stalled read cannot pin a worker.
@@ -549,6 +558,7 @@ pub async fn ops_rag_get(
             // Prometheus text is not JSON; forward it verbatim under a string field.
             "metrics" => control::metrics(&transport).map(|text| json!({ "metrics": text })),
             "storage-survey" => control::storage_survey(&transport, survey_limit),
+            "search-activity" => control::search_activity(&transport, activity_limit),
             // The Rust-aggregated size/state snapshot: fetch + derive, then serialize.
             "ops-state" => control::fetch_rag_ops_state(&transport, &project_root)
                 .and_then(|state| serde_json::to_value(state).map_err(Into::into)),
@@ -586,6 +596,11 @@ pub async fn ops_rag(
             | "watcher-reconfigure"
             | "project-evict"
             | "quality"
+            // Service quiesce: a hold at safe checkpoints and its release — the
+            // running daemon's own HTTP verbs (idempotent on rag's side), NOT
+            // process lifecycle: a paused service is alive and reachable.
+            | "pause"
+            | "resume"
     );
     if http_verb {
         // Validate args BEFORE building the transport so a bad value is a
@@ -692,6 +707,8 @@ pub async fn ops_rag(
             }
             "project-evict" => control::projects_evict(&transport, &evict_root),
             "quality" => control::quality(&transport),
+            "pause" => control::pause(&transport),
+            "resume" => control::resume(&transport),
             _ => unreachable!("http_verb set guards the match"),
         })
         .await?;
